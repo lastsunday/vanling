@@ -19,7 +19,7 @@ use crate::session::helpers::{create_mini_session, create_session, get_audio};
 async fn test_chat_flow_hello() -> anyhow::Result<()> {
     let mut session = create_mini_session().await;
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     session
         .accept_frame(&Frame::Hello(HelloMessage {
             ..Default::default()
@@ -47,7 +47,7 @@ async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
     let audio = get_audio();
     let (mut session, container, state) = create_session().await?;
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     session
         .accept_frame(&Frame::Hello(HelloMessage {
             ..Default::default()
@@ -99,7 +99,7 @@ async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
 async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
     let (mut session, container, state) = create_session().await?;
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
 
     // Hello
     session
@@ -288,7 +288,7 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
 async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
     let (mut session, container, state) = create_session().await?;
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     session
         .accept_frame(&Frame::Hello(HelloMessage {
             ..Default::default()
@@ -396,7 +396,7 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
 async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> anyhow::Result<()> {
     let mut session = create_mini_session().await;
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     session
         .accept_frame(&Frame::Hello(HelloMessage {
             ..Default::default()
@@ -473,7 +473,7 @@ async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()
     );
     let (mut session, container, state) = create_session().await?;
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     session
         .accept_frame(&Frame::Hello(HelloMessage {
             ..Default::default()
@@ -561,7 +561,7 @@ async fn test_chat_flow_handle_text_message() -> anyhow::Result<()> {
     let (mut session, container, state) = create_session().await?;
     let session_id = session.id.clone();
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     // TODO: need refactor,remove tokio::spawn
     let join_handle = tokio::spawn(async move {
         while let Some(data) = output.next().await {
@@ -617,7 +617,7 @@ async fn test_chat_flow_break() -> anyhow::Result<()> {
     let mut session = create_mini_session().await;
     let session_id = session.id.clone();
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
     let mut count = 0;
     // Expect 1 TTS Stop (the second/interrupting round completes;
     // the first round's output is filtered by epoch bump from interrupt_output)

@@ -8,15 +8,17 @@ use api::{
     mcp::mcp_host::UnionMcpHost,
     tts::TtsFactory,
     vad::VadFactory,
-    ws::frame::{Frame, FrameResult},
     ws::session::SessionBuilder,
     ws::session::listener::DefaultListener,
 };
 use framework::id::gen_id;
-use service::chobits::message::{
-    hello::HelloMessage,
-    listen::{ListenMessage, ListenMode, ListenState},
-    tts::TtsState,
+use service::{
+    chobits::message::{
+        hello::HelloMessage,
+        listen::{ListenMessage, ListenMode, ListenState},
+        tts::TtsState,
+    },
+    ws::frame::{Frame, FrameResult},
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -103,7 +105,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .build();
 
     session.start().await?;
-    let (mut output, _, _, _, _) = session.output_frame().await;
+    let mut output = session.output_frame().await;
 
     session
         .accept_frame(&Frame::Hello(HelloMessage {

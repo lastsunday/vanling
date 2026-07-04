@@ -10,8 +10,6 @@ use crate::{
         client::server::ServerMcpClient,
         mcp_host::{McpHost, UnionMcpHost},
     },
-    record::collector::RecordCollector,
-    record::observer::SessionObserver,
     tts::TtsFactory,
     vad::VadFactory,
     ws::session::Session,
@@ -106,6 +104,7 @@ async fn ws_handler(
     })
 }
 
+#[allow(dead_code)]
 pub(crate) struct SocketContext {
     session_id: String,
     conn: sea_orm::DatabaseConnection,
@@ -122,7 +121,6 @@ where
 {
     let span = span!(Level::DEBUG, "socket", id=%ctx.session_id);
     let _guard = span.enter();
-    let record = RecordCollector::new(ctx.conn);
     let mut session = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
@@ -137,11 +135,7 @@ where
         )))
         .with_config(ctx.session_config.clone())
         .with_audio_config(ctx.audio_config.clone())
-        .add_observer(Arc::new(record) as Arc<dyn SessionObserver>)
         .build();
-    for observer in &session.observers {
-        observer.on_session_start(&ctx.session_id).await;
-    }
     if let Err(e) = session.start().instrument(span.clone()).await {
         error!("{}", e);
         let result = write.close().await;
@@ -151,8 +145,7 @@ where
         return;
     }
     let session_id_clone = ctx.session_id.clone();
-    let (output_stream, _epoch, _latest_activity_time, _frame_duration, _session_epoch) =
-        session.output_frame().await;
+    let output_stream = session.output_frame().await;
     tokio::spawn(async move {
         let span = span!(parent:None,Level::DEBUG, "socket", id=%session_id_clone);
         on_send(output_stream, write).instrument(span).await
@@ -292,9 +285,10 @@ where
 
 #[error_code]
 pub enum WsErrorCode {
-    TtsEncode = 504001,
-    TtsText = 504002,
-    AsrFailure = 504003,
-    LlmFailure = 504004,
-    InternalError = 504005,
+    ListenFailure = 504001,
+    TtsEncode = 504002,
+    TtsText = 504003,
+    AsrFailure = 504004,
+    LlmFailure = 504005,
+    InternalError = 504006,
 }

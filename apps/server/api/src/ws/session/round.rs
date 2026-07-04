@@ -1,17 +1,8 @@
 use crate::llm::client::{ChatRequest, Client};
-use crate::record::observer::{
-    FrameContext, FrameDirection, LlmDeltaContext, RoundEndContext, RoundEndReason,
-    SessionObserver, TextInputContext, TtsDeltaContext,
-};
+use crate::record::observer::{FrameContext, FrameDirection};
 use crate::tts::Tts;
 use crate::util::llm::{EMOJI_MAP, analyze_emotion};
 use crate::ws::WsErrorCode;
-use service::ws::frame::FrameResult;
-pub struct OutputMessage {
-    pub epoch: u64,
-    pub payload: Result<FrameResult, AppError>,
-    pub frame_ctx: Option<FrameContext>,
-}
 use anyhow::Context;
 use core::result::Result;
 use framework::err;
@@ -23,6 +14,7 @@ use service::chobits::message::audio::AudioMessage;
 use service::chobits::message::llm::LlmMessage;
 use service::chobits::message::stt::SttMessage;
 use service::chobits::message::tts::{TtsMessage, TtsState};
+use service::ws::frame::FrameResult;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,7 +24,13 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, Level, error, info, span};
+use tracing::{error, info, trace};
+
+pub struct OutputMessage {
+    pub epoch: u64,
+    pub payload: Result<FrameResult, AppError>,
+    pub frame_ctx: Option<FrameContext>,
+}
 
 pub struct Round {
     pub parent_id: String,
@@ -44,15 +42,17 @@ pub struct Round {
     pub tts_state: Arc<Mutex<Option<TtsState>>>,
     pub cancel: CancellationToken,
     pub join_handle: Option<JoinHandle<()>>,
-    pub observers: Vec<Arc<dyn SessionObserver>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Command<'a> {
-    Chat { text: &'a str },
-    AsrChat { text: &'a str },
-    Wake { text: &'a str },
-    ListenUnclear { text: &'a str },
+    Chat(ChatParam<'a>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ChatParam<'a> {
+    pub text: &'a str,
+    pub prob: &'a f32,
 }
 
 #[derive(Clone)]
@@ -198,7 +198,6 @@ impl Round {
         tx: TracedSender,
         client: Arc<Client>,
         tts: Arc<Box<dyn Tts>>,
-        observers: Vec<Arc<dyn SessionObserver>>,
         cancel: CancellationToken,
     ) -> Self {
         Self {
@@ -211,32 +210,23 @@ impl Round {
             tts_state: Arc::new(Mutex::new(None)),
             cancel,
             join_handle: None,
-            observers,
         }
     }
 
     pub async fn start(&self) {
-        info!(target:"round","start");
+        info!("round start");
     }
 
     pub async fn accept_command<'a>(&mut self, command: Command<'a>) {
+        info!("accept_command {:?}", command);
         match command {
-            Command::Chat { text } => {
-                for observer in &self.observers {
-                    observer.on_text_input(&TextInputContext {
-                        round_id: self.id.clone(),
-                        text: text.to_string(),
-                    });
-                }
-                self.llm_tts_handle(text).await
+            Command::Chat(chat_param) => {
+                self.llm_tts_handle(chat_param.text, chat_param.prob).await
             }
-            Command::AsrChat { text }
-            | Command::Wake { text }
-            | Command::ListenUnclear { text } => self.llm_tts_handle(text).await,
         }
     }
 
-    async fn llm_tts_handle(&mut self, text: &str) {
+    async fn llm_tts_handle(&mut self, text: &str, _prob: &f32) {
         let tx = self.tx.clone();
         let stop_me = self.stop.clone();
         let session_id = self.parent_id.clone();
@@ -244,159 +234,143 @@ impl Round {
         let tts = self.tts.clone();
         let tts_state_clone = self.tts_state.clone();
         let text = String::from(text);
-        let observers = self.observers.clone();
-        let round_id = self.id.clone();
         let cancel = self.cancel.clone();
-        let span = span!(parent:None,Level::DEBUG, "socket", id=%session_id);
-        self.join_handle = Some(tokio::spawn(
-            async move {
-                if tx
-                    .send(Ok(FrameResult::STTResult(SttMessage::new(
-                        Some(session_id.clone()),
-                        Some(text.to_string()),
-                    ))))
-                    .await
-                    .is_err()
-                {
-                    info!(target:"round","send stt result failure");
-                    return;
-                }
-                let request = ChatRequest {
-                    message: Message::User {
-                        content: OneOrMany::one(UserContent::Text(Text { text: text.clone() })),
-                    },
-                };
-                let llm_output = client.chat(request, cancel.clone());
-                let mut tts_output = tts.stream(Box::pin(llm_output), cancel).await;
-                let stop_me = stop_me.clone();
-                if send_tts_frame_and_change_state(
-                    tts_state_clone.clone(),
-                    &tx,
-                    session_id.clone(),
-                    TtsState::Start,
-                    None,
-                )
+        self.join_handle = Some(tokio::spawn(async move {
+            if tx
+                .send(Ok(FrameResult::STTResult(SttMessage::new(
+                    Some(session_id.clone()),
+                    Some(text.to_string()),
+                ))))
                 .await
                 .is_err()
-                {
-                    info!(target:"round","send tts state start failure");
-                    stop_me.store(true, Ordering::Relaxed);
-                }
-                while let Some(result) = tts_output.next().await {
-                    match result {
-                        Ok(result) => {
-                            if stop_me.load(Ordering::Relaxed) {
-                                break;
-                            }
-                            let text = result.text;
-                            for observer in &observers {
-                                observer.on_llm_delta(&LlmDeltaContext {
-                                    round_id: round_id.clone(),
-                                    text: text.clone(),
-                                });
-                                if let Some((pcm, sr)) = &result.raw_pcm {
-                                    observer.on_tts_delta(&TtsDeltaContext {
-                                        round_id: round_id.clone(),
-                                        text: text.clone(),
-                                        raw_pcm: Some((pcm.clone(), *sr as u32)),
-                                    });
+            {
+                info!(target:"round","send stt result failure");
+                return;
+            }
+            let request = ChatRequest {
+                message: Message::User {
+                    content: OneOrMany::one(UserContent::Text(Text { text: text.clone() })),
+                },
+            };
+            let llm_output = client.chat(request, cancel.clone());
+            let mut tts_output = tts.stream(Box::pin(llm_output), cancel).await;
+            let stop_me = stop_me.clone();
+            if send_tts_frame_and_change_state(
+                tts_state_clone.clone(),
+                &tx,
+                session_id.clone(),
+                TtsState::Start,
+                None,
+            )
+            .await
+            .is_err()
+            {
+                info!(target:"round","send tts state start failure");
+                stop_me.store(true, Ordering::Relaxed);
+            }
+            while let Some(result) = tts_output.next().await {
+                match result {
+                    Ok(result) => {
+                        if stop_me.load(Ordering::Relaxed) {
+                            trace!("stop_me");
+                            break;
+                        }
+                        let text = result.text;
+                        let emotion = analyze_emotion(&text);
+                        let session_id = session_id.clone();
+                        let tx = tx.clone();
+                        let text = text.clone();
+                        let audio_data = result.audio;
+                        let tts_state_clone = tts_state_clone.clone();
+                        let stop_me_by_tts_packet = stop_me.clone();
+                        let result: Result<(), anyhow::Error> = async {
+                            tx.send(Ok(FrameResult::LLMResult(LlmMessage::new(
+                                Some(session_id.to_string()),
+                                Some(emotion.to_string()),
+                                Some(EMOJI_MAP.get(emotion).map_or(r#"😶"#, |v| v).to_string()),
+                            ))))
+                            .await
+                            .context("send llm result failure")?;
+                            send_tts_frame_and_change_state(
+                                tts_state_clone.clone(),
+                                &tx,
+                                session_id.clone(),
+                                TtsState::SentenceStart,
+                                Some(text.to_string()),
+                            )
+                            .await?;
+                            let audio_data = audio_data.unwrap_or_default();
+                            let data = audio_data.into_iter();
+                            for packet in data {
+                                if stop_me_by_tts_packet.load(Ordering::Relaxed) {
+                                    trace!("stop_me_by_tts_packet");
+                                    break;
                                 }
-                            }
-                            let emotion = analyze_emotion(&text);
-                            let session_id = session_id.clone();
-                            let tx = tx.clone();
-                            let text = text.clone();
-                            let audio_data = result.audio;
-                            let tts_state_clone = tts_state_clone.clone();
-                            let stop_me_by_tts_packet = stop_me.clone();
-                            let result: Result<(), anyhow::Error> = async {
-                                tx.send(Ok(FrameResult::LLMResult(LlmMessage::new(
+                                tx.send_audio(Ok(FrameResult::AudioResult(AudioMessage::new(
                                     Some(session_id.to_string()),
-                                    Some(emotion.to_string()),
-                                    Some(EMOJI_MAP.get(emotion).map_or(r#"😶"#, |v| v).to_string()),
+                                    packet,
                                 ))))
                                 .await
-                                .context("send llm result failure")?;
-                                send_tts_frame_and_change_state(
-                                    tts_state_clone.clone(),
-                                    &tx,
-                                    session_id.clone(),
-                                    TtsState::SentenceStart,
-                                    Some(text.to_string()),
-                                )
-                                .await?;
-                                let audio_data = audio_data.unwrap_or_default();
-                                let data = audio_data.into_iter();
-                                for packet in data {
-                                    if stop_me_by_tts_packet.load(Ordering::Relaxed) {
-                                        break;
-                                    }
-                                    tx.send_audio(Ok(FrameResult::AudioResult(AudioMessage::new(
-                                        Some(session_id.to_string()),
-                                        packet,
-                                    ))))
-                                    .await
-                                    .context("send audio result failure")?;
-                                }
-                                send_tts_frame_and_change_state(
-                                    tts_state_clone.clone(),
-                                    &tx,
-                                    session_id.clone(),
-                                    TtsState::SentenceEnd,
-                                    None,
-                                )
-                                .await?;
-                                Ok(())
+                                .context("send audio result failure")?;
                             }
-                            .await;
-                            if let Err(e) = result {
-                                error!(target:"round","{:?}", e);
-                                stop_me.store(true, Ordering::Relaxed);
-                                break;
-                            }
+                            send_tts_frame_and_change_state(
+                                tts_state_clone.clone(),
+                                &tx,
+                                session_id.clone(),
+                                TtsState::SentenceEnd,
+                                None,
+                            )
+                            .await?;
+                            Ok(())
                         }
-                        Err(e) => {
+                        .await;
+                        if let Err(e) = result {
                             error!(target:"round","{:?}", e);
-                            if let Err(e) = tx
-                                .send(Err(err!(WsErrorCode::TtsEncode).with_extra(e.to_string())))
-                                .await
-                            {
-                                error!(target:"round","{:?}", e);
-                            }
                             stop_me.store(true, Ordering::Relaxed);
                             break;
                         }
                     }
+                    Err(e) => {
+                        error!(target:"round","{:?}", e);
+                        if let Err(e) = tx
+                            .send(Err(err!(WsErrorCode::TtsEncode).with_extra(e.to_string())))
+                            .await
+                        {
+                            error!(target:"round","{:?}", e);
+                        }
+                        stop_me.store(true, Ordering::Relaxed);
+                        break;
+                    }
                 }
-                if send_tts_frame_and_change_state(
-                    tts_state_clone.clone(),
-                    &tx,
-                    session_id.clone(),
-                    TtsState::Stop,
-                    None,
-                )
-                .await
-                .is_err()
-                {
-                    stop_me.store(true, Ordering::Relaxed);
-                }
-                for observer in &observers {
-                    let _ = observer
-                        .on_round_end(&RoundEndContext {
-                            round_id: round_id.clone(),
-                            reason: RoundEndReason::Completed,
-                        })
-                        .await;
-                }
-                info!(target:"round","end");
             }
-            .instrument(span),
-        ));
+            if send_tts_frame_and_change_state(
+                tts_state_clone.clone(),
+                &tx,
+                session_id.clone(),
+                TtsState::Stop,
+                None,
+            )
+            .await
+            .is_err()
+            {
+                stop_me.store(true, Ordering::Relaxed);
+            }
+            info!(target:"round","end");
+        }));
+    }
+
+    pub async fn is_speaking(&self) -> bool {
+        let state = self.tts_state.lock().await;
+        if let Some(state) = &*state {
+            !matches!(state, TtsState::Stop)
+        } else {
+            false
+        }
     }
 
     pub async fn stop(&self) {
-        info!(target:"round","stop");
         self.stop.store(true, Ordering::Relaxed);
         self.cancel.cancel();
+        info!("round stop");
     }
 }

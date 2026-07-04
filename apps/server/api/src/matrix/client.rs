@@ -234,11 +234,8 @@ impl Bot {
                 .with_config(self.session_config.clone())
                 .with_audio_config(self.audio_config.clone())
                 .build();
-            for observer in &session.observers {
-                observer.on_session_start(&id).await;
-            }
             session.start().await?;
-            let (mut output, _, _, _, _) = session.output_frame().await;
+            let mut output = session.output_frame().await;
             // send hello frame
             session
                 .accept_frame(&Frame::Hello(HelloMessage {

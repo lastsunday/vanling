@@ -1,11 +1,8 @@
-use super::round::OutputMessage;
-use crate::ws::WsErrorCode;
 use crate::{asr::Asr, common::ModelError, config::audio::AudioConfig, vad::Vad};
 use async_trait::async_trait;
 use chrono::Local;
-use framework::err;
 use std::sync::{Arc, Mutex as StdMutex};
-use tokio::sync::{Mutex, mpsc::UnboundedSender};
+use tokio::sync::Mutex;
 
 /// Maximum prefix padding in samples (300ms at 16kHz).
 const PREFIX_SAMPLES_MAX: usize = 4800;
@@ -22,7 +19,6 @@ pub trait Listener: Send + Sync {
     fn set_state(&mut self, state: ListenState);
     fn get_state(&self) -> ListenState;
     async fn reset(&mut self, silence_voice_timeout: Option<i64>);
-    async fn set_sender(&mut self, tx: UnboundedSender<OutputMessage>);
 
     /// Extract voice data without running ASR (for parallel ASR path).
     async fn take_voice(&mut self) -> Vec<f32> {
@@ -64,7 +60,6 @@ pub struct DefaultListener {
     silence_voice_timeout: Option<i64>,
     latest_speaking_time: Option<i64>,
     audio_config: Arc<AudioConfig>,
-    error_tx: Option<UnboundedSender<OutputMessage>>,
     /// Ring buffer for prefix padding (~300ms of raw audio).
     prefix_buffer: Vec<f32>,
     /// Whether prefix has been flushed for current speech turn.
@@ -93,7 +88,6 @@ impl DefaultListener {
             silence_voice_timeout: None,
             latest_speaking_time: None,
             audio_config,
-            error_tx: None,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             prefix_flushed: false,
             total_pcm: Vec::new(),
@@ -245,17 +239,7 @@ impl Listener for DefaultListener {
                     prob: transcript.prob,
                 }),
             ),
-            Err(e) => {
-                tracing::error!("{:?}", e);
-                if let Some(tx) = &self.error_tx {
-                    let _ = tx.send(OutputMessage {
-                        epoch: 0,
-                        payload: Err(err!(WsErrorCode::AsrFailure).with_extra(e.to_string())),
-                        frame_ctx: None,
-                    });
-                }
-                (voice_data, Err(e))
-            }
+            Err(e) => (voice_data, Err(e)),
         }
     }
 
@@ -270,10 +254,6 @@ impl Listener for DefaultListener {
         self.prefix_flushed = false;
         self.total_pcm.clear();
         self.pending_text = None;
-    }
-
-    async fn set_sender(&mut self, tx: UnboundedSender<OutputMessage>) {
-        self.error_tx = Some(tx);
     }
 
     async fn get_raw_pcm(&mut self) -> Vec<f32> {
