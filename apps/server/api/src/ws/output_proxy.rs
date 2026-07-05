@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::ws::Message;
-use futures_util::Sink;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use super::write_payload_to_ws;
+use crate::error::AppError;
 use crate::record::collector::RecordCollector;
 use crate::record::observer::{FrameDirection, SessionEvent};
 use crate::ws::output_sender::OutputSender;
@@ -66,13 +64,10 @@ impl OutputProxy {
 }
 
 #[async_trait]
-impl<W: Sink<Message> + Unpin + Send> OutputSender<W> for OutputProxy {
-    async fn recv(&mut self) -> Option<OutputMessage> {
-        self.output_rx.recv().await
-    }
-
-    async fn write(&mut self, write: &mut W, msg: OutputMessage) -> bool {
+impl OutputSender for OutputProxy {
+    async fn recv(&mut self) -> Option<Result<FrameResult, AppError>> {
+        let msg = self.output_rx.recv().await?;
         self.record_frame(&msg);
-        write_payload_to_ws(&msg.payload, write).await
+        Some(msg.payload)
     }
 }

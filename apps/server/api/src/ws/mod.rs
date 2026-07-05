@@ -9,7 +9,6 @@ use crate::{
     AppState,
     asr::AsrFactory,
     config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
-    error::AppError,
     llm::LlmFactory,
     mcp::{
         client::server::ServerMcpClient,
@@ -193,41 +192,34 @@ where
     input_sender.send(Frame::Close(CloseMessage::new(1000, String::new())));
 }
 
-async fn ws_output<W>(mut write: W, mut output_sender: impl OutputSender<W>)
+async fn ws_output<W>(mut write: W, mut output_sender: impl OutputSender)
 where
     W: Sink<Message> + Unpin + Send + 'static,
 {
-    while let Some(msg) = output_sender.recv().await {
-        if !output_sender.write(&mut write, msg).await {
+    while let Some(frame) = output_sender.recv().await {
+        let result = match &frame {
+            Ok(FrameResult::AudioResult(audio)) => {
+                write.send(Message::Binary(audio.data.clone().into())).await
+            }
+            Ok(other) => {
+                let text = serde_json::to_string(other).unwrap_or_default();
+                write.send(Message::Text(text.into())).await
+            }
+            Err(e) => {
+                let error_frame = ErrorFrame {
+                    mtype: "error",
+                    code: WsErrorCode::InternalError as u32,
+                    message: e.to_string(),
+                };
+                let text = serde_json::to_string(&error_frame).unwrap_or_default();
+                write.send(Message::Text(text.into())).await
+            }
+        };
+        if result.is_err() {
             break;
         }
     }
     let _ = write.close().await;
-}
-
-async fn write_payload_to_ws<W>(payload: &Result<FrameResult, AppError>, write: &mut W) -> bool
-where
-    W: Sink<Message> + Unpin + Send,
-{
-    let result = match payload {
-        Ok(FrameResult::AudioResult(audio)) => {
-            write.send(Message::Binary(audio.data.clone().into())).await
-        }
-        Ok(other) => {
-            let text = serde_json::to_string(other).unwrap_or_default();
-            write.send(Message::Text(text.into())).await
-        }
-        Err(e) => {
-            let error_frame = ErrorFrame {
-                mtype: "error",
-                code: WsErrorCode::InternalError as u32,
-                message: e.to_string(),
-            };
-            let text = serde_json::to_string(&error_frame).unwrap_or_default();
-            write.send(Message::Text(text.into())).await
-        }
-    };
-    result.is_ok()
 }
 
 async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {
