@@ -8,6 +8,8 @@ pub struct LlmMessage {
     pub session_id: Option<String>,
     pub emotion: Option<String>,
     pub text: Option<String>,
+    #[serde(skip)]
+    pub full_text: Option<String>,
 }
 
 impl LlmMessage {
@@ -17,6 +19,7 @@ impl LlmMessage {
             session_id,
             emotion,
             text,
+            full_text: None,
         }
     }
 }

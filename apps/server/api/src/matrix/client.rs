@@ -26,6 +26,7 @@ use service::chobits::message::{
 };
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{error, info};
 
 use crate::{
@@ -40,7 +41,7 @@ use crate::{
         mcp_host::{McpHost, UnionMcpHost},
     },
     vad::VadFactory,
-    ws::session::{Session, SessionBuilder, listener::DefaultListener},
+    ws::session::{SessionBuilder, listener::DefaultListener},
 };
 use service::ws::frame::{Frame, FrameResult};
 
@@ -72,7 +73,7 @@ struct Bot {
     matrix_client: MatrixClient,
     /// The user ID of the Matrix account used by the bot.
     user_id: OwnedUserId,
-    session_map: Arc<Mutex<HashMap<String, Arc<Mutex<Session>>>>>,
+    session_map: Arc<Mutex<HashMap<String, tokio::sync::mpsc::UnboundedSender<Frame>>>>,
     session_config: Arc<SessionConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
@@ -222,7 +223,7 @@ impl Bot {
                     }
                 }
             }
-            let mut session = SessionBuilder::new()
+            let (session, input_tx, output_rx) = SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
                     VadFactory::create_model(&self.vad_config),
@@ -234,14 +235,12 @@ impl Bot {
                 .with_config(self.session_config.clone())
                 .with_audio_config(self.audio_config.clone())
                 .build();
-            session.start().await?;
-            let mut output = session.output_frame().await;
+            tokio::spawn(session.start());
+            let mut output = UnboundedReceiverStream::new(output_rx);
             // send hello frame
-            session
-                .accept_frame(&Frame::Hello(HelloMessage {
-                    ..Default::default()
-                }))
-                .await;
+            input_tx.send(Frame::Hello(HelloMessage {
+                ..Default::default()
+            }))?;
             if let Some(data) = output.next().await {
                 match data.payload {
                     Ok(frame_result) => {
@@ -339,22 +338,19 @@ impl Bot {
                 }
             });
             // TODO: add to session map
-            session_map.insert(session_key.to_string(), Arc::new(Mutex::new(session)));
+            session_map.insert(session_key.to_string(), input_tx);
         }
-        let session = session_map
+        let tx = session_map
             .get(session_key)
             .unwrap_or_else(|| panic!("session not exists for provided session key"))
             .clone();
         drop(session_map);
-        let mut session = session.lock().await;
-        session
-            .accept_frame(&Frame::Listen(ListenMessage {
-                state: ListenState::Detect,
-                mmod: Some(ListenMode::Manual),
-                text: Some(&t.body),
-                ..Default::default()
-            }))
-            .await;
+        let _ = tx.send(Frame::Listen(ListenMessage {
+            state: ListenState::Detect,
+            mmod: Some(ListenMode::Manual),
+            text: Some(t.body),
+            ..Default::default()
+        }));
         Ok(())
     }
 

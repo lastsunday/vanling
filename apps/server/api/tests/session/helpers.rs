@@ -15,6 +15,7 @@ use api::{
     util::audio::pcm_decode,
     vad::VadFactory,
     ws::session::SessionBuilder,
+    ws::session::round::OutputMessage,
     ws::session::{Session, listener::DefaultListener},
 };
 use framework::id::gen_id;
@@ -25,6 +26,7 @@ use rmcp::{
     },
 };
 use serde::Serialize;
+use service::ws::frame::Frame;
 
 use std::{
     cmp,
@@ -46,7 +48,7 @@ fn workspace_root() -> PathBuf {
 }
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 use tracing::debug;
 use utoipa_axum::router::OpenApiRouter;
 
@@ -54,10 +56,16 @@ use crate::common::{router_client::RouterClient, setup_database};
 
 /// Full session pipeline test at 16000Hz output.
 /// Uses Void VAD/ASR + Echo LLM + Matcha TTS.
-/// Captures all Opus packets from the output stream via OutputController,
-/// decodes to PCM, and saves as WAV for analysis.
-pub async fn create_session()
--> Result<(Session, Option<ContainerAsync<Postgres>>, AppState), anyhow::Error> {
+pub async fn create_session() -> Result<
+    (
+        Session,
+        mpsc::UnboundedSender<Frame>,
+        mpsc::UnboundedReceiver<OutputMessage>,
+        Option<ContainerAsync<Postgres>>,
+        AppState,
+    ),
+    anyhow::Error,
+> {
     let (container, state) = setup_database().await;
     // server client
     let router = OpenApiRouter::new();
@@ -85,7 +93,7 @@ pub async fn create_session()
         output_channel: Some(1),
         output_frame_duration: Some(20_u64),
     });
-    let session = SessionBuilder::new()
+    let (session, input_tx, output_rx) = SessionBuilder::new()
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
@@ -131,10 +139,13 @@ pub async fn create_session()
         }))
         .with_audio_config(audio_config.clone())
         .build();
-    Ok((session, container, state))
+    Ok((session, input_tx, output_rx, container, state))
 }
 
-pub async fn create_mini_session() -> Session {
+pub async fn create_mini_session_channel() -> (
+    mpsc::UnboundedSender<Frame>,
+    mpsc::UnboundedReceiver<OutputMessage>,
+) {
     let audio_config = Arc::new(AudioConfig {
         input_sample_rate: Some(16000),
         input_frame_duration: Some(20_u64),
@@ -144,7 +155,7 @@ pub async fn create_mini_session() -> Session {
         output_frame_duration: Some(20_u64),
     });
     let session_id = gen_id();
-    SessionBuilder::new()
+    let (session, input_tx, output_rx) = SessionBuilder::new()
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
@@ -177,7 +188,20 @@ pub async fn create_mini_session() -> Session {
             max_prompt_len: Some(3000),
         }))
         .with_audio_config(audio_config.clone())
-        .build()
+        .build();
+    tokio::spawn(session.start());
+    (input_tx, output_rx)
+}
+
+pub async fn create_session_channel() -> (
+    mpsc::UnboundedSender<Frame>,
+    mpsc::UnboundedReceiver<OutputMessage>,
+    Option<ContainerAsync<Postgres>>,
+    AppState,
+) {
+    let (session, input_tx, output_rx, container, state) = create_session().await.unwrap();
+    tokio::spawn(session.start());
+    (input_tx, output_rx, container, state)
 }
 
 pub fn get_audio() -> Vec<Vec<u8>> {

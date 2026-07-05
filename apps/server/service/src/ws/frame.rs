@@ -15,20 +15,20 @@ use crate::chobits::message::{
 };
 
 #[derive(Debug, Clone)]
-pub enum Frame<'a> {
+pub enum Frame {
     Hello(HelloMessage),
-    Listen(ListenMessage<'a>),
-    UnknowText { data: &'a [u8] },
-    Voice { data: &'a [u8] },
-    Abort(AbortMessage<'a>),
-    Ping { data: &'a [u8] },
-    Pong { data: &'a [u8] },
-    Close(CloseMessage<'a>),
+    Listen(ListenMessage),
+    UnknowText { data: Vec<u8> },
+    Voice { data: Vec<u8> },
+    Abort(AbortMessage),
+    Ping { data: Vec<u8> },
+    Pong { data: Vec<u8> },
+    Close(CloseMessage),
     Mcp(McpMessage),
     Error { code: u32, message: String },
 }
 
-impl fmt::Display for Frame<'_> {
+impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Frame::Hello(msg) => write!(f, "Hello(session_id={:?})", msg.session_id),
@@ -40,7 +40,7 @@ impl fmt::Display for Frame<'_> {
                     ListenState::Detect => write!(f, "Detect")?,
                     ListenState::Text => write!(f, "Text")?,
                 }
-                if let Some(text) = msg.text {
+                if let Some(text) = &msg.text {
                     write!(f, ", text=\"{text}\"")?;
                 }
                 write!(f, ")")

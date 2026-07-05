@@ -8,8 +8,7 @@ use api::{
     mcp::mcp_host::UnionMcpHost,
     tts::TtsFactory,
     vad::VadFactory,
-    ws::session::SessionBuilder,
-    ws::session::listener::DefaultListener,
+    ws::session::{SessionBuilder, listener::DefaultListener},
 };
 use framework::id::gen_id;
 use service::{
@@ -20,9 +19,8 @@ use service::{
     },
     ws::frame::{Frame, FrameResult},
 };
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use tokio::sync::Mutex;
-use tokio_stream::StreamExt;
 use tracing::info;
 use tracing_test::traced_test;
 
@@ -30,8 +28,6 @@ use tracing_test::traced_test;
 #[traced_test]
 /// Collect full TTS audio through complete session pipeline (Void VAD/ASR + Echo LLM + Matcha TTS)
 async fn test_tts_audio_collect() -> anyhow::Result<()> {
-    use std::path::Path;
-
     let audio_config = Arc::new(AudioConfig {
         input_sample_rate: Some(16000),
         input_frame_duration: Some(20_u64),
@@ -54,7 +50,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .into_owned();
 
     let session_id = gen_id();
-    let mut session = SessionBuilder::new()
+    let (session, input_tx, mut output_rx) = SessionBuilder::new()
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Void),
@@ -104,32 +100,27 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .with_audio_config(audio_config.clone())
         .build();
 
-    session.start().await?;
-    let mut output = session.output_frame().await;
+    tokio::spawn(session.start());
 
-    session
-        .accept_frame(&Frame::Hello(HelloMessage {
-            ..Default::default()
-        }))
-        .await;
+    input_tx.send(Frame::Hello(HelloMessage {
+        ..Default::default()
+    }))?;
     assert!(matches!(
-        output.next().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload.unwrap(),
         FrameResult::HelloResult(..)
     ));
 
     let text = "对于有媒体报道称，“特朗普说，如果中国不在霍尔木兹海峡护航问题上提供协助，他将推迟访华”，林剑说，中方注意到美方已就媒体不实报道公开作出澄清，表示有关报道是完全错误的，强调访问与霍尔木兹海峡通航问题无关。";
-    session
-        .accept_frame(&Frame::Listen(ListenMessage {
-            state: ListenState::Detect,
-            mmod: Some(ListenMode::Manual),
-            text: Some(text),
-            ..Default::default()
-        }))
-        .await;
+    input_tx.send(Frame::Listen(ListenMessage {
+        state: ListenState::Detect,
+        mmod: Some(ListenMode::Manual),
+        text: Some(text.to_string()),
+        ..Default::default()
+    }))?;
 
     let mut all_packets: Vec<Vec<u8>> = Vec::new();
     loop {
-        let data = output.next().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload.unwrap();
         match data {
             FrameResult::TTSResult(msg) => {
                 if msg.state == Some(TtsState::Stop) {
@@ -144,7 +135,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
     }
     info!("collected {} opus packets", all_packets.len());
 
-    session.stop().await;
+    drop(input_tx);
 
     let mut decoder = opus::Decoder::new(16000, opus::Channels::Mono).unwrap();
     let mut decoded = Vec::new();

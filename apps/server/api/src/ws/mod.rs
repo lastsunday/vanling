@@ -1,18 +1,27 @@
+pub mod input_proxy;
+pub mod input_sender;
 pub mod message_converter;
+pub mod output_proxy;
+pub mod output_sender;
 pub mod session;
 
 use crate::{
     AppState,
     asr::AsrFactory,
     config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
+    error::AppError,
     llm::LlmFactory,
     mcp::{
         client::server::ServerMcpClient,
         mcp_host::{McpHost, UnionMcpHost},
     },
+    record::collector::RecordCollector,
     tts::TtsFactory,
     vad::VadFactory,
-    ws::session::Session,
+    ws::{
+        input_proxy::InputProxy, input_sender::InputSender, output_proxy::OutputProxy,
+        output_sender::OutputSender, session::SessionBuilder, session::listener::DefaultListener,
+    },
 };
 
 use axum::{
@@ -22,7 +31,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::{TypedHeader, headers};
-use framework::error::AppError;
 use framework::id::gen_id;
 use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
@@ -31,18 +39,17 @@ use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
 use serde::Serialize;
-use service::ws::frame::FrameResult;
-use session::round::OutputMessage;
-use session::{SessionBuilder, listener::DefaultListener};
-
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use service::chobits::message::close::CloseMessage;
+use service::ws::frame::{Frame, FrameResult};
 use tokio::sync::Mutex;
-use tracing::{Instrument, Level, debug, error, info, span, trace, warn};
+use tracing::{Instrument, Level, debug, error, span, warn};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+
 #[derive(Serialize)]
-struct ErrorFrame {
+pub(crate) struct ErrorFrame {
     #[serde(rename = "type")]
     mtype: &'static str,
     code: u32,
@@ -54,7 +61,6 @@ const TAG: &str = "ws";
 pub fn create_routes(state: AppState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(ws_handler))
-        //.layer(get_auth_layer())
         .with_state(state)
 }
 
@@ -114,14 +120,15 @@ pub(crate) struct SocketContext {
     audio_config: Arc<AudioConfig>,
 }
 
-pub(crate) async fn handle_socket<W, R>(ctx: SocketContext, mut write: W, read: R)
+pub(crate) async fn handle_socket<W, R>(ctx: SocketContext, write: W, read: R)
 where
     W: Sink<Message> + Unpin + Send + 'static,
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
     let span = span!(Level::DEBUG, "socket", id=%ctx.session_id);
     let _guard = span.enter();
-    let mut session = SessionBuilder::new()
+
+    let (session, input_tx, output_rx) = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&ctx.vad_config),
@@ -136,98 +143,91 @@ where
         .with_config(ctx.session_config.clone())
         .with_audio_config(ctx.audio_config.clone())
         .build();
-    if let Err(e) = session.start().instrument(span.clone()).await {
-        error!("{}", e);
-        let result = write.close().await;
-        if result.is_err() {
-            info!("write close failure");
-        }
-        return;
-    }
-    let session_id_clone = ctx.session_id.clone();
-    let output_stream = session.output_frame().await;
-    tokio::spawn(async move {
-        let span = span!(parent:None,Level::DEBUG, "socket", id=%session_id_clone);
-        on_send(output_stream, write).instrument(span).await
-    });
-    tokio::spawn(async move {
-        let span = span!(parent:None,Level::DEBUG, "socket", id=%ctx.session_id);
-        on_recv(session, read).instrument(span).await
-    });
+
+    let collector = Arc::new(RecordCollector::new(ctx.conn.clone()));
+
+    let session_handle = tokio::spawn(
+        session
+            .start()
+            .instrument(span!(parent: &span, Level::DEBUG, "session")),
+    );
+    let output_handle = tokio::spawn(
+        ws_output(
+            write,
+            OutputProxy::new(output_rx, Some(collector.clone()), ctx.session_id.clone()),
+        )
+        .instrument(span!(parent: &span, Level::DEBUG, "output")),
+    );
+    let input_handle = tokio::spawn(
+        ws_input(
+            read,
+            InputProxy::new(ctx.session_id.clone(), Some(collector.clone()), input_tx),
+        )
+        .instrument(span!(parent: &span, Level::DEBUG, "input")),
+    );
+
+    let _ = tokio::join!(session_handle, output_handle, input_handle);
 }
 
-async fn on_recv<R>(mut session: Session, mut read: R)
+async fn ws_input<R>(mut read: R, input_sender: impl InputSender)
 where
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
     while let Some(Ok(msg)) = read.next().await {
         let result = convert_to_frame(&msg);
         if result.is_break() {
-            if let Some(item) = result.break_value() {
-                match item {
-                    Some(frame) => session.accept_frame(&frame).await,
-                    None => trace!("break value none"),
-                }
+            if let Some(frame) = result.break_value().flatten() {
+                input_sender.send(frame);
             }
-            session.stop().await;
+            input_sender.send(Frame::Close(CloseMessage::new(1000, String::new())));
             return;
         }
-        if result.is_continue()
-            && let Some(item) = result.continue_value()
-            && let Some(frame) = item
-        {
-            session.accept_frame(&frame).await
-        } else {
-            warn!("unknown continue message");
-        }
-    }
-    session.stop().await;
-}
-
-async fn on_send<W>(
-    mut output: impl Stream<Item = OutputMessage> + Unpin + Send + 'static,
-    mut write: W,
-) where
-    W: Sink<Message> + Unpin + Send + 'static,
-{
-    while let Some(msg) = output.next().await {
-        match msg.payload {
-            Ok(frame) => match frame {
-                FrameResult::AudioResult(msg) => {
-                    if write.send(Message::Binary(msg.data.into())).await.is_err() {
-                        break;
-                    }
-                }
-                FrameResult::CloseResult => {
-                    if write.close().await.is_err() {
-                        break;
-                    }
-                }
-                _ => {
-                    let data = serde_json::to_string(&frame).expect("frame to json failure");
-                    if write.send(Message::Text(data.into())).await.is_err() {
-                        break;
-                    }
-                }
-            },
-            Err(api_err) => {
-                api_err.log();
-                let AppError::App { code, message, .. } = &api_err;
-                let data = serde_json::to_string(&ErrorFrame {
-                    mtype: "error",
-                    code: *code,
-                    message: message.clone(),
-                })
-                .expect("error frame to json failure");
-                if write.send(Message::Text(data.into())).await.is_err() {
-                    break;
-                }
+        if result.is_continue() {
+            if let Some(frame) = result.continue_value().flatten() {
+                input_sender.send(frame);
+            } else {
+                warn!("unknown continue message");
             }
         }
     }
-    if write.close().await.is_err() {
-        info!("write close failure");
+    input_sender.send(Frame::Close(CloseMessage::new(1000, String::new())));
+}
+
+async fn ws_output<W>(mut write: W, mut output_sender: impl OutputSender<W>)
+where
+    W: Sink<Message> + Unpin + Send + 'static,
+{
+    while let Some(msg) = output_sender.recv().await {
+        if !output_sender.write(&mut write, msg).await {
+            break;
+        }
     }
+    let _ = write.close().await;
+}
+
+async fn write_payload_to_ws<W>(payload: &Result<FrameResult, AppError>, write: &mut W) -> bool
+where
+    W: Sink<Message> + Unpin + Send,
+{
+    let result = match payload {
+        Ok(FrameResult::AudioResult(audio)) => {
+            write.send(Message::Binary(audio.data.clone().into())).await
+        }
+        Ok(other) => {
+            let text = serde_json::to_string(other).unwrap_or_default();
+            write.send(Message::Text(text.into())).await
+        }
+        Err(e) => {
+            let error_frame = ErrorFrame {
+                mtype: "error",
+                code: WsErrorCode::InternalError as u32,
+                message: e.to_string(),
+            };
+            let text = serde_json::to_string(&error_frame).unwrap_or_default();
+            write.send(Message::Text(text.into())).await
+        }
+    };
+    result.is_ok()
 }
 
 async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {

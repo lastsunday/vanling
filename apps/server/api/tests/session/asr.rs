@@ -21,7 +21,6 @@ use service::{
 };
 use std::{path::Path, sync::Arc};
 use tokio::sync::Mutex;
-use tokio_stream::StreamExt;
 use tracing::debug;
 use tracing_test::traced_test;
 
@@ -40,7 +39,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         output_frame_duration: Some(20_u64),
     });
     let session_id = gen_id();
-    let mut session = SessionBuilder::new()
+    let (session, input_tx, mut output_rx) = SessionBuilder::new()
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
@@ -94,46 +93,37 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         .with_audio_config(audio_config.clone())
         .build();
 
-    session.start().await?;
-    let mut output = session.output_frame().await;
+    tokio::spawn(session.start());
 
-    session
-        .accept_frame(&Frame::Hello(HelloMessage {
-            ..Default::default()
-        }))
-        .await;
+    input_tx.send(Frame::Hello(HelloMessage {
+        ..Default::default()
+    }))?;
     assert!(matches!(
-        output.next().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload.unwrap(),
         FrameResult::HelloResult(..)
     ));
 
-    session
-        .accept_frame(&Frame::Listen(ListenMessage {
-            state: ListenState::Start,
-            mmod: Some(ListenMode::Manual),
-            ..Default::default()
-        }))
-        .await;
+    input_tx.send(Frame::Listen(ListenMessage {
+        state: ListenState::Start,
+        mmod: Some(ListenMode::Manual),
+        ..Default::default()
+    }))?;
 
     for n in 0..audio.len() {
-        session
-            .accept_frame(&Frame::Voice {
-                data: audio.get(n).unwrap(),
-            })
-            .await;
+        input_tx.send(Frame::Voice {
+            data: audio.get(n).unwrap().to_vec(),
+        })?;
     }
 
-    session
-        .accept_frame(&Frame::Listen(ListenMessage {
-            state: ListenState::Stop,
-            mmod: Some(ListenMode::Manual),
-            ..Default::default()
-        }))
-        .await;
+    input_tx.send(Frame::Listen(ListenMessage {
+        state: ListenState::Stop,
+        mmod: Some(ListenMode::Manual),
+        ..Default::default()
+    }))?;
 
     let mut frames = Vec::new();
     loop {
-        let frame = output.next().await.unwrap().payload.unwrap();
+        let frame = output_rx.recv().await.unwrap().payload.unwrap();
         let is_stop =
             matches!(&frame, FrameResult::TTSResult(msg) if msg.state == Some(TtsState::Stop));
         frames.push(frame);
@@ -189,6 +179,6 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         "Missing LLMResult"
     );
 
-    session.stop().await;
+    drop(input_tx);
     Ok(())
 }

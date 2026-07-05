@@ -1,6 +1,5 @@
 pub mod collector;
 pub mod observer;
-pub mod wav;
 
 use std::collections::HashMap;
 
@@ -33,6 +32,28 @@ pub fn create_routes(state: AppState) -> OpenApiRouter {
         .with_state(state)
 }
 
+fn to_utc(dt: Option<chrono::DateTime<chrono::FixedOffset>>) -> Option<DateTime<Utc>> {
+    dt.map(|d| d.naive_utc().and_utc())
+}
+
+async fn batch_load_round_data(
+    conn: &sea_orm::DatabaseConnection,
+    round_ids: &[String],
+) -> Result<HashMap<String, Vec<round_data::Model>>, sea_orm::DbErr> {
+    if round_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let items = round_data::Entity::find()
+        .filter(round_data::Column::RoundId.is_in(round_ids.iter().cloned()))
+        .all(conn)
+        .await?;
+    let mut map: HashMap<String, Vec<round_data::Model>> = HashMap::new();
+    for d in items {
+        map.entry(d.round_id.clone()).or_default().push(d);
+    }
+    Ok(map)
+}
+
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListSessionsParams {
@@ -51,6 +72,34 @@ pub struct TurnStep {
     pub text: Option<String>,
     pub duration_ms: Option<i64>,
     pub audio_duration_ms: Option<i64>,
+}
+
+fn extract_field(d: &&round_data::Model, field: &str) -> Option<i64> {
+    d.metadata
+        .as_ref()
+        .and_then(|m| m.get(field))
+        .and_then(|v| v.as_i64())
+}
+
+fn build_turn_steps(rd: &[round_data::Model]) -> Vec<TurnStep> {
+    rd.iter()
+        .map(|d| {
+            let step = d.data_type.as_str();
+            TurnStep {
+                step: step.to_string(),
+                has_data: true,
+                text: match step {
+                    "input_audio" | "tts" => None,
+                    _ => d.text.clone(),
+                },
+                duration_ms: extract_field(&d, "duration_ms"),
+                audio_duration_ms: match step {
+                    "input_audio" | "tts" => extract_field(&d, "audio_duration_ms"),
+                    _ => None,
+                },
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -85,42 +134,6 @@ pub struct SessionRound {
     pub mode: String,
     pub create_datetime: Option<DateTime<Utc>>,
     pub steps: Vec<TurnStep>,
-}
-
-fn extract_field(d: &&round_data::Model, field: &str) -> Option<i64> {
-    d.metadata
-        .as_ref()
-        .and_then(|m| m.get(field))
-        .and_then(|v| v.as_i64())
-}
-
-fn extract_duration_ms(d: &&round_data::Model) -> Option<i64> {
-    extract_field(d, "duration_ms")
-}
-
-fn extract_audio_duration_ms(d: &&round_data::Model) -> Option<i64> {
-    extract_field(d, "audio_duration_ms")
-}
-
-fn build_turn_steps(rd: &[&round_data::Model]) -> Vec<TurnStep> {
-    rd.iter()
-        .map(|d| {
-            let step = d.data_type.as_str();
-            TurnStep {
-                step: step.to_string(),
-                has_data: true,
-                text: match step {
-                    "input_audio" | "tts" => None,
-                    _ => d.text.clone(),
-                },
-                duration_ms: extract_duration_ms(d),
-                audio_duration_ms: match step {
-                    "input_audio" | "tts" => extract_audio_duration_ms(d),
-                    _ => None,
-                },
-            }
-        })
-        .collect()
 }
 
 #[debug_handler]
@@ -162,7 +175,6 @@ async fn list_sessions(
     let items = paginator.fetch_page(page - 1).await?;
     let total = paginator.num_items().await?;
 
-    // Batch-fetch rounds for current page
     let session_ids: Vec<String> = items.iter().map(|s| s.id.clone()).collect();
     let rounds = if !session_ids.is_empty() {
         round::Entity::find()
@@ -174,24 +186,9 @@ async fn list_sessions(
         vec![]
     };
 
-    // Batch-fetch round_data for all rounds
     let round_ids: Vec<String> = rounds.iter().map(|r| r.id.clone()).collect();
-    let data_items = if !round_ids.is_empty() {
-        round_data::Entity::find()
-            .filter(round_data::Column::RoundId.is_in(round_ids))
-            .all(&conn)
-            .await?
-    } else {
-        vec![]
-    };
+    let data_by_round = batch_load_round_data(&conn, &round_ids).await?;
 
-    // Index round_data by round_id
-    let mut data_by_round: HashMap<String, Vec<&round_data::Model>> = HashMap::new();
-    for d in &data_items {
-        data_by_round.entry(d.round_id.clone()).or_default().push(d);
-    }
-
-    // Group rounds by session_id
     let mut rounds_by_session: HashMap<String, Vec<&round::Model>> = HashMap::new();
     for r in &rounds {
         rounds_by_session
@@ -200,7 +197,6 @@ async fn list_sessions(
             .push(r);
     }
 
-    // Build response
     let response_items: Vec<SessionListItem> = items
         .into_iter()
         .map(|s| {
@@ -210,13 +206,13 @@ async fn list_sessions(
                 .into_iter()
                 .enumerate()
                 .map(|(i, r)| {
-                    let rd = data_by_round.remove(&r.id).unwrap_or_default();
+                    let rd = data_by_round.get(&r.id).cloned().unwrap_or_default();
                     let steps = build_turn_steps(&rd);
                     TurnSummary {
                         turn_index: (i + 1) as i32,
                         round_id: r.id.clone(),
                         mode: r.mode.clone(),
-                        create_datetime: r.create_datetime.map(|d| d.naive_utc().and_utc()),
+                        create_datetime: to_utc(r.create_datetime),
                         steps,
                     }
                 })
@@ -224,8 +220,8 @@ async fn list_sessions(
 
             SessionListItem {
                 session_id: s.id,
-                create_datetime: s.create_datetime.map(|d| d.naive_utc().and_utc()),
-                update_datetime: s.update_datetime.map(|d| d.naive_utc().and_utc()),
+                create_datetime: to_utc(s.create_datetime),
+                update_datetime: to_utc(s.update_datetime),
                 turn_count,
                 turns,
             }
@@ -255,29 +251,17 @@ async fn get_session_rounds(
         .await?;
 
     let round_ids: Vec<String> = rounds.iter().map(|r| r.id.clone()).collect();
-    let data_items = if !round_ids.is_empty() {
-        round_data::Entity::find()
-            .filter(round_data::Column::RoundId.is_in(round_ids))
-            .all(&conn)
-            .await?
-    } else {
-        vec![]
-    };
-
-    let mut data_by_round: HashMap<String, Vec<&round_data::Model>> = HashMap::new();
-    for d in &data_items {
-        data_by_round.entry(d.round_id.clone()).or_default().push(d);
-    }
+    let data_by_round = batch_load_round_data(&conn, &round_ids).await?;
 
     let result: Vec<SessionRound> = rounds
         .into_iter()
         .map(|r| {
-            let rd = data_by_round.remove(&r.id).unwrap_or_default();
+            let rd = data_by_round.get(&r.id).cloned().unwrap_or_default();
             let steps = build_turn_steps(&rd);
             SessionRound {
                 round_id: r.id,
                 mode: r.mode,
-                create_datetime: r.create_datetime.map(|d| d.naive_utc().and_utc()),
+                create_datetime: to_utc(r.create_datetime),
                 steps,
             }
         })
@@ -348,32 +332,33 @@ async fn list_frames(
     Query(params): Query<ListFramesParams>,
 ) -> AppResult<ApiResponse<FrameListResponse>> {
     let page_size = params.page_size.unwrap_or(0);
-    if page_size == 0 {
+    let page = if page_size == 0 {
         let items = Frame::find()
             .filter(frame::Column::RoundId.eq(&id))
             .order_by_asc(frame::Column::Seq)
             .all(&conn)
             .await?;
         let total = items.len() as u64;
-        Ok(ApiResponse::success(Some(FrameListResponse {
+        return Ok(ApiResponse::success(Some(FrameListResponse {
             items,
             total,
             page: 1,
             page_size: total,
-        })))
+        })));
     } else {
-        let page = params.page.unwrap_or(1).max(1);
-        let paginator = Frame::find()
-            .filter(frame::Column::RoundId.eq(&id))
-            .order_by_asc(frame::Column::Seq)
-            .paginate(&conn, page_size);
-        let items = paginator.fetch_page(page - 1).await?;
-        let total = paginator.num_items().await?;
-        Ok(ApiResponse::success(Some(FrameListResponse {
-            items,
-            total,
-            page,
-            page_size,
-        })))
-    }
+        params.page.unwrap_or(1).max(1)
+    };
+
+    let paginator = Frame::find()
+        .filter(frame::Column::RoundId.eq(&id))
+        .order_by_asc(frame::Column::Seq)
+        .paginate(&conn, page_size);
+    let items = paginator.fetch_page(page - 1).await?;
+    let total = paginator.num_items().await?;
+    Ok(ApiResponse::success(Some(FrameListResponse {
+        items,
+        total,
+        page,
+        page_size,
+    })))
 }
