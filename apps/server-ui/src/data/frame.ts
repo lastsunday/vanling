@@ -7,6 +7,7 @@ export interface Frame {
   kind: string;
   detail: string | null;
   elapsed_us: number | null;
+  data: number[] | null;
   create_datetime: string | null;
   update_datetime: string | null;
 }

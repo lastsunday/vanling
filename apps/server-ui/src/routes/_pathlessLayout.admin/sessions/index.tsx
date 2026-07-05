@@ -153,11 +153,11 @@ function RouteComponent() {
                 <Table>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th style={{ width: 170, whiteSpace: 'nowrap' }}>时间</Table.Th>
-                      <Table.Th>摘要</Table.Th>
-                      <Table.Th style={{ width: 50, whiteSpace: 'nowrap' }}>轮次</Table.Th>
-                      <Table.Th style={{ width: 70, whiteSpace: 'nowrap' }}>处理耗时</Table.Th>
-                      <Table.Th style={{ width: 50, whiteSpace: 'nowrap' }}>操作</Table.Th>
+                      <Table.Th style={{ width: 170, whiteSpace: 'nowrap' }}>{t('sessions.table.time')}</Table.Th>
+                      <Table.Th>{t('sessions.table.summary')}</Table.Th>
+                      <Table.Th style={{ width: 50, whiteSpace: 'nowrap' }}>{t('sessions.table.turns')}</Table.Th>
+                      <Table.Th style={{ width: 70, whiteSpace: 'nowrap' }}>{t('sessions.table.duration')}</Table.Th>
+                      <Table.Th style={{ width: 50, whiteSpace: 'nowrap' }}>{t('sessions.table.actions')}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>

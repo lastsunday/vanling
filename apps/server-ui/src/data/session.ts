@@ -9,7 +9,6 @@ export interface TurnStep {
 export interface TurnSummary {
   turn_index: number;
   round_id: string;
-  mode: string;
   create_datetime: string | null;
   steps: TurnStep[];
 }
@@ -24,7 +23,6 @@ export interface SessionListItem {
 
 export interface SessionRound {
   round_id: string;
-  mode: string;
   create_datetime: string | null;
   steps: TurnStep[];
 }

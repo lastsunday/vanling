@@ -655,7 +655,9 @@ impl Config {
     }
 
     pub fn data_dir(&self) -> &str {
-        self.data_dir.as_deref().unwrap_or("data")
+        self.data_dir
+            .as_deref()
+            .expect("data_dir should have default")
     }
 
     /// Derive the full TTS path by joining `data_dir`, `base_path`, and `variant`.

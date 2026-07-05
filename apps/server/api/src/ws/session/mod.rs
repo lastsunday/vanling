@@ -495,7 +495,6 @@ impl Session {
     }
 
     async fn on_listening(&mut self, frame: &Frame, param: &ListeningParam) {
-        info!("on_listening,{:?}", param);
         let ListeningParam { can_barge_in } = param;
         match frame {
             Frame::Listen(listen_message) => {

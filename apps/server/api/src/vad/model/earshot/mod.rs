@@ -19,10 +19,12 @@ impl VadEarshot {
         Ok(Self {
             detector,
             is_speech: false,
-            min_silence_duration: config.min_silence_duration.unwrap_or(1000.0),
+            min_silence_duration: config
+                .min_silence_duration
+                .expect("min_silence_duration should have default"),
             current_silence_duration: 0.0,
             prediction_list: Vec::new(),
-            threshold: config.threshold.unwrap_or(0.5),
+            threshold: config.threshold.expect("threshold should have default"),
         })
     }
 }

@@ -24,36 +24,44 @@ impl AuthConfig {
     pub fn access_token_secret(&self) -> &str {
         self.access_token_secret
             .as_deref()
-            .unwrap_or("QLjJTeVblAlM47de")
+            .expect("access_token_secret should have default")
     }
 
     pub fn access_token_expires_in(&self) -> u64 {
-        self.access_token_expires_in.unwrap_or(28800)
+        self.access_token_expires_in
+            .expect("access_token_expires_in should have default")
     }
 
     pub fn refresh_token_secret(&self) -> &str {
         self.refresh_token_secret
             .as_deref()
-            .unwrap_or("N8lI0uitNzJl6vYK")
+            .expect("refresh_token_secret should have default")
     }
 
     pub fn refresh_token_expires_in(&self) -> u64 {
-        self.refresh_token_expires_in.unwrap_or(15897600)
+        self.refresh_token_expires_in
+            .expect("refresh_token_expires_in should have default")
     }
 
     pub fn audience(&self) -> &str {
-        self.audience.as_deref().unwrap_or("audience")
+        self.audience
+            .as_deref()
+            .expect("audience should have default")
     }
 
     pub fn issuer(&self) -> &str {
-        self.issuer.as_deref().unwrap_or("issuer")
+        self.issuer.as_deref().expect("issuer should have default")
     }
 
     pub fn client_id(&self) -> &str {
-        self.client_id.as_deref().unwrap_or("d1aicsr57dijo7h963ig")
+        self.client_id
+            .as_deref()
+            .expect("client_id should have default")
     }
 
     pub fn client_secret(&self) -> &str {
-        self.client_secret.as_deref().unwrap_or("ujTgh2lEQYy0PXhK")
+        self.client_secret
+            .as_deref()
+            .expect("client_secret should have default")
     }
 }

@@ -1,5 +1,4 @@
 import { getSessionRounds, listRoundData } from '@/api';
-import { LatencyWaterfall } from '@/components/LatencyWaterfall';
 import { SessionMinimap } from '@/components/SessionMinimap';
 import { Timeline } from '@/components/Timeline';
 import type { RoundData } from '@/data/round-data';
@@ -18,14 +17,6 @@ import dayjs from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
-
-const stepLabels: Record<string, string> = {
-  input_audio: '语音输入',
-  asr: '语音识别',
-  text: '文本输入',
-  llm: '大模型',
-  tts: '语音合成',
-};
 
 const stepColors: Record<string, string> = {
   input_audio: 'green',
@@ -51,6 +42,7 @@ function stepValueMs(s: TurnStep): number | null {
 }
 
 function RoundSummary({ steps }: { steps: TurnStep[] }) {
+  const { t } = useTranslation();
   const valid = steps.filter((s) => {
     const v = stepValueMs(s);
     return v != null && s.has_data;
@@ -83,7 +75,7 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
           const proc = s.duration_ms != null
             ? `⏱${(s.duration_ms / 1000).toFixed(s.duration_ms < 1000 ? 1 : 0)}s`
             : '';
-          const label = stepLabels[s.step] ?? s.step;
+          const label = t(`sessions.step.${s.step}`);
           const dur = `${(v / 1000).toFixed(v < 1000 ? 1 : 0)}s`;
 
           let badgeText: string;
@@ -118,7 +110,7 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
           <Box mt={4} mb={6} ml="lg" style={{ borderTop: '1px dashed var(--mantine-color-gray-3)' }} />
           <Box ml="lg">
             <Group gap={8} mb={2} wrap="nowrap">
-              <Text style={{ width: 56, flexShrink: 0 }} c="dimmed" size="xs">处理耗时</Text>
+              <Text style={{ width: 56, flexShrink: 0 }} c="dimmed" size="xs">{t('sessions.latency_waterfall')}</Text>
               <Box style={{ display: 'flex', flex: 1, height: 14, borderRadius: 3, overflow: 'hidden', background: 'var(--mantine-color-gray-1)' }}>
                 {processSteps.map((s) => {
                   const pct = totalProcessMs > 0 ? ((s.duration_ms ?? 0) / totalProcessMs) * 100 : 0;
@@ -141,7 +133,7 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
               </Text>
             </Group>
             <Group gap={8} wrap="nowrap">
-              <Text style={{ width: 56, flexShrink: 0 }} c="dimmed" size="xs">运行时间</Text>
+              <Text style={{ width: 56, flexShrink: 0 }} c="dimmed" size="xs">{t('sessions.runtime')}</Text>
               <Box style={{ display: 'flex', flex: 1, height: 14, borderRadius: 3, overflow: 'hidden', background: 'var(--mantine-color-gray-1)' }}>
                 {runSteps.map((s) => {
                   const v = s.step === 'input_audio' || s.step === 'tts'
@@ -252,7 +244,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                   {sessionId}
                 </Text>
                 <Button variant="subtle" size="compact-xs" onClick={copy} px={4}>
-                  {copied ? '✓' : '复制'}
+                  {copied ? '✓' : t('sessions.detail.copy')}
                 </Button>
               </Group>
             )}
@@ -260,7 +252,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         </Group>
         <Group gap="md">
           <Text size="xs" c="dimmed">
-            {rounds.length}轮
+            {t('sessions.turn_count', { count: rounds.length })}
           </Text>
           {totalMs > 0 && (
             <Text size="xs" c="dimmed">
@@ -307,7 +299,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                 <IconChevronRight size={14} style={{ flexShrink: 0, color: 'var(--mantine-color-gray-5)' }} />
               )}
               <Text size="sm" fw={600}>
-                第{idx + 1}轮({t(`sessions.mode.${round.mode}`)})
+                {t('sessions.round_label', { number: idx + 1 })}
               </Text>
               <Text size="xs" c="dimmed">
                 {round.create_datetime
@@ -317,7 +309,6 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
             </Group>
             {isExpanded ? (
               <>
-                <LatencyWaterfall steps={round.steps} />
                 <Timeline
                   roundId={round.round_id}
                   dataItems={roundDataMap[round.round_id] ?? []}

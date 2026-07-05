@@ -1306,14 +1306,22 @@ fn config_to_targets(config: &AppConfig) -> Vec<(String, String, Option<String>)
         targets.push(("asr".into(), stem, config.asr_variant.clone()));
     }
 
-    match config.llm_model.clone().unwrap_or_default() {
+    match config
+        .llm_model
+        .clone()
+        .expect("llm_model should have default")
+    {
         LlmModel::Qwen3 => {
             targets.push(("llm".into(), "qwen3".into(), config.llm_variant.clone()));
         }
         LlmModel::Echo => {}
     }
 
-    match config.vad_model.clone().unwrap_or_default() {
+    match config
+        .vad_model
+        .clone()
+        .expect("vad_model should have default")
+    {
         VadModel::Earshot | VadModel::Void => {}
     }
 

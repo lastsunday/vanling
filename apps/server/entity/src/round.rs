@@ -11,7 +11,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     pub session_id: String,
-    pub mode: String,
     #[sea_orm(column_type = "JsonBinary", nullable)]
     pub client_info: Option<Json>,
     pub status: Option<String>,

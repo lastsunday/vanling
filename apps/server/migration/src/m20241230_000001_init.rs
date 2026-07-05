@@ -59,7 +59,6 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(string_uniq(Round::Id))
                     .col(string(Round::SessionId))
-                    .col(string(Round::Mode))
                     .col(json_binary_null(Round::ClientInfo))
                     .col(string_null(Round::Status))
                     .col(timestamp_with_time_zone_null(Round::CreateDatetime))
@@ -174,7 +173,6 @@ enum Round {
     Table,
     Id,
     SessionId,
-    Mode,
     ClientInfo,
     Status,
     CreateDatetime,

@@ -67,18 +67,33 @@
       "play": "Play",
       "back": "Back to List"
     },
-    "mode": {
-      "auto": "Auto",
-      "manual": "Manual",
-      "realtime": "Real-Time",
-      "text": "Text"
-    },
     "latency_waterfall": "Latency Waterfall",
     "bottleneck": "Bottleneck",
+    "runtime": "Runtime",
+    "round_label": "Round {{number}}",
+    "detail": {
+      "copy": "Copy"
+    },
+    "step": {
+      "input_audio": "Voice Input",
+      "asr": "Speech Recognition",
+      "text": "Text Input",
+      "llm": "LLM",
+      "tts": "Speech Synthesis"
+    },
+    "table": {
+      "time": "Time",
+      "summary": "Summary",
+      "turns": "Turns",
+      "duration": "Duration",
+      "actions": "Actions"
+    },
     "timeline": {
       "business": "Business Events",
-      "frames": "Frames",
-      "no_data": "No playable data"
+      "frames": "Frames ({{count}})",
+      "no_data": "No playable data",
+      "char_count": "{{count}} chars",
+      "wave_sync": "Wave Sync"
     }
   }
 }

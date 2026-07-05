@@ -1,5 +1,5 @@
-pub mod collector;
-pub mod observer;
+pub mod ogg;
+pub mod recorder;
 
 use std::collections::HashMap;
 
@@ -18,6 +18,8 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 use crate::AppState;
 use entity::prelude::*;
 use entity::{frame, round, round_data, session};
+
+const OGG_MAGIC: [u8; 4] = [0x4f, 0x67, 0x67, 0x53]; // "OggS"
 
 const TAG: &str = "record";
 
@@ -92,7 +94,7 @@ fn build_turn_steps(rd: &[round_data::Model]) -> Vec<TurnStep> {
                     "input_audio" | "tts" => None,
                     _ => d.text.clone(),
                 },
-                duration_ms: extract_field(&d, "duration_ms"),
+                duration_ms: extract_field(&d, "elapsed_ms"),
                 audio_duration_ms: match step {
                     "input_audio" | "tts" => extract_field(&d, "audio_duration_ms"),
                     _ => None,
@@ -106,7 +108,6 @@ fn build_turn_steps(rd: &[round_data::Model]) -> Vec<TurnStep> {
 pub struct TurnSummary {
     pub turn_index: i32,
     pub round_id: String,
-    pub mode: String,
     pub create_datetime: Option<DateTime<Utc>>,
     pub steps: Vec<TurnStep>,
 }
@@ -131,7 +132,6 @@ pub struct SessionListResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SessionRound {
     pub round_id: String,
-    pub mode: String,
     pub create_datetime: Option<DateTime<Utc>>,
     pub steps: Vec<TurnStep>,
 }
@@ -211,7 +211,6 @@ async fn list_sessions(
                     TurnSummary {
                         turn_index: (i + 1) as i32,
                         round_id: r.id.clone(),
-                        mode: r.mode.clone(),
                         create_datetime: to_utc(r.create_datetime),
                         steps,
                     }
@@ -260,7 +259,6 @@ async fn get_session_rounds(
             let steps = build_turn_steps(&rd);
             SessionRound {
                 round_id: r.id,
-                mode: r.mode,
                 create_datetime: to_utc(r.create_datetime),
                 steps,
             }
@@ -287,7 +285,7 @@ async fn list_round_data(
 
 #[debug_handler]
 #[utoipa::path(get, path = "/record/rounds/{id}/data/{data_id}/blob", tag = TAG, responses(
-    (status = 200, content_type = "audio/wav", body = Vec<u8>),
+    (status = 200, content_type = "audio/ogg", body = Vec<u8>),
 ))]
 async fn get_round_data_blob(
     State(AppState { conn, .. }): State<AppState>,
@@ -300,7 +298,14 @@ async fn get_round_data_blob(
             framework::err!(framework::error::critical_code::CriticalErrorCode::ResourceNotFound)
         })?;
     match item.data {
-        Some(bytes) => Ok(([("Content-Type", "audio/wav")], bytes).into_response()),
+        Some(bytes) => {
+            let content_type = if bytes.len() >= 4 && bytes[..4] == OGG_MAGIC {
+                "audio/ogg"
+            } else {
+                "audio/wav"
+            };
+            Ok(([("Content-Type", content_type)], bytes).into_response())
+        }
         None => Err(framework::err!(
             framework::error::critical_code::CriticalErrorCode::ResourceNotFound
         )),

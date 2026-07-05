@@ -71,6 +71,7 @@ futures-util = { workspace = true, features = ["sink", "std"] }
 futures-channel = { workspace = true }
 jiff = { workspace = true }
 opus = { workspace = true }
+ogg = { workspace = true }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }

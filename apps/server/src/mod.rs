@@ -148,7 +148,10 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
     let tts_config =
         {
             let data_dir = config.data_dir();
-            let model = config.tts_model.clone().unwrap_or_default();
+            let model = config
+                .tts_model
+                .clone()
+                .expect("tts_model should have default");
 
             // Resolve variant: user config → manifest default
             let effective_variant = config
@@ -215,7 +218,10 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
             })
         };
     let asr_config = {
-        let model = config.asr_model.clone().unwrap_or_default();
+        let model = config
+            .asr_model
+            .clone()
+            .expect("asr_model should have default");
         let (effective_variant, asr_path) = if model == AsrModel::Void {
             (None, None)
         } else {

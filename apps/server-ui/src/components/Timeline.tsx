@@ -14,14 +14,6 @@ interface TimelineProps {
   dataItems: RoundData[];
 }
 
-const stepLabels: Record<string, string> = {
-  input_audio: '语音输入',
-  asr: '语音识别',
-  text: '文本输入',
-  llm: '大模型',
-  tts: '语音合成',
-};
-
 const stepColors: Record<string, string> = {
   input_audio: '#40c057',
   asr: '#15aabf',
@@ -47,6 +39,8 @@ function parseFrameLabel(detail: string | null): string {
     CloseResult: 'close',
     McpResult: 'mcp',
     Mcp: 'mcp',
+    Ping: 'ping',
+    Pong: 'ping',
     Error: 'error',
   };
   return map[prefix] ?? prefix.slice(0, 5).toLowerCase();
@@ -64,6 +58,7 @@ const frameTypeColors: Record<string, string> = {
   abort: '#e03131',
   close: '#e64980',
   mcp: '#0ca678',
+  ping: '#adb5bd',
   error: '#e03131',
 };
 
@@ -77,21 +72,35 @@ function lightenColor(hex: string, amount: number): string {
 
 const FrameGridCell = memo(function FrameGridCell({
   seq,
+  dbId,
   dir,
   seekMs,
   color,
   isActive,
   detail,
   kind,
+  typeSeq,
+  isFirstOfType,
+  isLastOfAudio,
+  dataLength,
+  elapsed_us,
+  createDatetime,
   onSeek,
 }: {
   seq: number;
+  dbId: number;
   dir: string;
   seekMs: number;
   color: string;
   isActive: boolean;
   detail: string | null;
   kind: string;
+  typeSeq: string;
+  isFirstOfType: boolean;
+  isLastOfAudio: boolean;
+  dataLength: number | null;
+  elapsed_us: number | null;
+  createDatetime: string | null;
   onSeek: (seekMs: number) => void;
 }) {
   const [phase, setPhase] = useState<'none' | 'sweeping' | 'active' | 'fading'>('none');
@@ -121,18 +130,36 @@ const FrameGridCell = memo(function FrameGridCell({
   const textInactive = '#495057';
   const bgActiveBase = color;
   const bgActiveHighlight = lightenColor(color, 0.4);
-  const dirColor = dir === 'inbound' ? '#228be6' : '#fab005';
 
   const isHighlighted = phase === 'sweeping' || phase === 'active';
+  const isError = detail === 'Error' || detail?.startsWith('Abort');
+
+  const formatElapsed = (us: number | null): string => {
+    if (us == null) return '';
+    const ms = us / 1000;
+    if (ms >= 1000) return `+${(ms / 1000).toFixed(2)}s`;
+    return `+${ms.toFixed(1)}ms`;
+  };
+
+  const formatDatetime = (dt: string | null): string => {
+    if (!dt) return '';
+    const d = new Date(dt);
+    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}.${d.getMilliseconds().toString().padStart(3, '0')}`;
+  };
 
   return (
     <Tooltip
       label={
         <Box>
           <Text size="xs" fw={600}>#{seq}</Text>
-          <Text size="xs">{dir === 'inbound' ? '\u2193 inbound' : '\u2191 outbound'}</Text>
+          <Text size="xs">{dir === 'input' ? '\u2193 input' : '\u2191 output'}</Text>
           <Text size="xs">{kind}</Text>
           {detail && <Text size="xs" style={{ maxWidth: 240, wordBreak: 'break-all' }}>{detail}</Text>}
+          <Text size="xs">{formatElapsed(elapsed_us)}</Text>
+          {dataLength != null && <Text size="xs">data: {dataLength} bytes</Text>}
+          <Text size="xs">{formatDatetime(createDatetime)}</Text>
+          <Text size="xs">db_id: {dbId}</Text>
+          <Text size="xs">frame {typeSeq}</Text>
         </Box>
       }
       withArrow
@@ -171,11 +198,39 @@ const FrameGridCell = memo(function FrameGridCell({
               ? 'background 0.8s, transform 0.8s, box-shadow 0.8s, color 0.8s'
               : 'transform 0.2s, box-shadow 0.2s, color 0.2s',
           zIndex: isHighlighted ? 1 : 0,
-          borderTop: dir === 'outbound' ? `2px solid ${dirColor}` : 'none',
-          borderBottom: dir === 'inbound' ? `2px solid ${dirColor}` : 'none',
+          borderTop: dir === 'output' ? `2px solid #fab005` : 'none',
+          borderBottom: dir === 'input' ? `2px solid #228be6` : 'none',
         }}
       >
-        {seq}
+        {(isFirstOfType || isLastOfAudio) && (
+          <span
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 1,
+              fontSize: 8,
+              lineHeight: 1,
+              color: '#868e96',
+            }}
+          >
+            {isLastOfAudio ? '\u25FC' : '\u25B7'}
+          </span>
+        )}
+        {isError && (
+          <span
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 1,
+              fontSize: 8,
+              lineHeight: 1,
+              color: '#e03131',
+            }}
+          >
+            {'\u26A0'}
+          </span>
+        )}
+        <span style={{ lineHeight: 1.2 }}>{seq}</span>
       </Box>
     </Tooltip>
   );
@@ -292,11 +347,11 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
         startMs,
         endMs: startMs + durMs,
         durationMs: durMs,
-        label: stepLabels[d.data_type] ?? d.data_type,
+        label: t(`sessions.step.${d.data_type}`),
       });
     }
     return result;
-  }, [sorted, t0Ms]);
+  }, [sorted, t0Ms, t]);
 
   const { data: framesData } = useQuery({
     queryKey: ['round-frames', roundId],
@@ -321,7 +376,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
     const ttsFrames = items.filter((f) => f.detail?.startsWith('TTSResult'));
 
     for (const f of ttsFrames) {
-      if (f.detail.includes('Start') || f.detail.includes('SentenceStart')) {
+      if (f.detail?.includes('Start') || f.detail?.includes('SentenceStart')) {
         map.set(f.seq, baseMs);
       } else {
         map.set(f.seq, baseMs + ttsDurationMs);
@@ -333,19 +388,56 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
 
   const frameList = useMemo(() => {
     if (!framesData?.items.length) return [];
+
+    const typeTotals: Record<string, number> = {};
+    for (const f of framesData.items) {
+      const detail = f.detail ?? 'unknown';
+      typeTotals[detail] = (typeTotals[detail] || 0) + 1;
+    }
+
+    const seenTypes = new Set<string>();
+    let lastAudioResultSeq = -1;
+    for (const f of framesData.items) {
+      if (f.detail === 'AudioResult') {
+        lastAudioResultSeq = Math.max(lastAudioResultSeq, f.seq);
+      }
+    }
+
+    const typeCounts: Record<string, number> = {};
     const t0 = t0Ms;
     return framesData.items.map((f) => {
+      const detail = f.detail ?? 'unknown';
+      typeCounts[detail] = (typeCounts[detail] || 0) + 1;
+      const typeIndex = typeCounts[detail];
+      const typeTotal = typeTotals[detail];
+
+      const isFirstOfType = !seenTypes.has(detail);
+      seenTypes.add(detail);
+
+      const isLastOfAudio = detail === 'AudioResult' && f.seq === lastAudioResultSeq;
+
       const label = parseFrameLabel(f.detail);
       const seekMs = ttsSyncPositions.get(f.seq) ?? (f.elapsed_us != null ? f.elapsed_us / 1000 - t0 : 0);
+
+      const dataLength = Array.isArray(f.data) ? f.data.length : null;
+
       return {
         seq: f.seq,
+        dbId: f.id,
         dir: f.dir,
         kind: f.kind,
         detail: f.detail,
         elapsed_us: f.elapsed_us,
+        createDatetime: f.create_datetime,
         seekMs,
         label,
         color: frameTypeColors[label] ?? '#868e96',
+        typeIndex,
+        typeTotal,
+        typeSeq: `${typeIndex}/${typeTotal}`,
+        isFirstOfType,
+        isLastOfAudio,
+        dataLength,
       };
     });
   }, [framesData, ttsSyncPositions, t0Ms]);
@@ -375,7 +467,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
         kind: f.kind,
         detail: f.detail,
         startMs,
-        color: f.dir === 'inbound' ? '#228be6' : '#fab005',
+        color: f.dir === 'input' ? '#228be6' : '#fab005',
       });
     }
     result.sort((a, b) => a.startMs - b.startMs || a.seq - b.seq);
@@ -601,7 +693,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
       {sorted.length > 0 && (
         <Stack gap={4} mt={8}>
           {sorted.map((d, i) => {
-            const label = stepLabels[d.data_type] ?? d.data_type;
+            const label = t(`sessions.step.${d.data_type}`);
             const meta = d.metadata;
             const procMs = meta?.duration_ms as number | undefined;
             const audioDurMs = meta?.audio_duration_ms as number | undefined;
@@ -617,7 +709,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
               const txt = d.text
                 ? d.text.length <= 10
                   ? `"${d.text}"`
-                  : `"${d.text.slice(0, 10)}..."(${d.text.length}字)`
+                  : `"${d.text.slice(0, 10)}..."(${t('sessions.timeline.char_count', { count: d.text.length })})`
                 : '✓';
               const proc = procMs != null ? `⏱${(procMs / 1000).toFixed(procMs < 1000 ? 1 : 0)}s` : '';
               headerText = `${txt}${proc ? `｜${proc}` : ''}`;
@@ -654,12 +746,12 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
           >
             {showFrames ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
             <Text size="xs" fw={600}>
-              帧记录 ({frameList.length}条)
+              {t('sessions.timeline.frames', { count: frameList.length })}
             </Text>
             <Box ml="auto" onClick={(e) => e.stopPropagation()}>
               <Switch
                 size="xs"
-                label="波形同步"
+                label={t('sessions.timeline.wave_sync')}
                 checked={syncMode}
                 onChange={(e) => setSyncMode(e.currentTarget.checked)}
               />
@@ -681,12 +773,19 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
                 <FrameGridCell
                   key={f.seq}
                   seq={f.seq}
+                  dbId={f.dbId}
                   dir={f.dir}
                   seekMs={f.seekMs}
                   color={f.color}
                   isActive={f.seq === currentFrameSeq}
                   detail={f.detail}
                   kind={f.kind}
+                  typeSeq={f.typeSeq}
+                  isFirstOfType={f.isFirstOfType}
+                  isLastOfAudio={f.isLastOfAudio}
+                  dataLength={f.dataLength}
+                  elapsed_us={f.elapsed_us}
+                  createDatetime={f.createDatetime}
                   onSeek={handleSeek}
                 />
               ))}

@@ -14,7 +14,7 @@ use crate::{
         client::server::ServerMcpClient,
         mcp_host::{McpHost, UnionMcpHost},
     },
-    record::collector::RecordCollector,
+    record::recorder::Recorder,
     tts::TtsFactory,
     vad::VadFactory,
     ws::{
@@ -143,7 +143,7 @@ where
         .with_audio_config(ctx.audio_config.clone())
         .build();
 
-    let collector = Arc::new(RecordCollector::new(ctx.conn.clone()));
+    let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
 
     let session_handle = tokio::spawn(
         session
@@ -153,14 +153,28 @@ where
     let output_handle = tokio::spawn(
         ws_output(
             write,
-            OutputProxy::new(output_rx, Some(collector.clone()), ctx.session_id.clone()),
+            OutputProxy::new(output_rx, Some(recorder.clone()), ctx.session_id.clone()),
         )
         .instrument(span!(parent: &span, Level::DEBUG, "output")),
     );
+    let input_frame_duration = ctx
+        .audio_config
+        .input_frame_duration
+        .expect("input_frame_duration should have default");
+    let input_channels = ctx
+        .audio_config
+        .input_channel
+        .expect("input_channel should have default");
     let input_handle = tokio::spawn(
         ws_input(
             read,
-            InputProxy::new(ctx.session_id.clone(), Some(collector.clone()), input_tx),
+            InputProxy::new(
+                ctx.session_id.clone(),
+                Some(recorder.clone()),
+                input_tx,
+                input_frame_duration,
+                input_channels,
+            ),
         )
         .instrument(span!(parent: &span, Level::DEBUG, "input")),
     );
