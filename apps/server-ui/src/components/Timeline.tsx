@@ -31,6 +31,7 @@ function parseFrameLabel(detail: string | null): string {
     Listen: 'listen',
     Voice: 'voice',
     UnknowText: 'text',
+    Chat: 'text',
     STTResult: 'asr',
     LLMResult: 'llm',
     TTSResult: 'tts',

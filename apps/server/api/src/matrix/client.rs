@@ -243,26 +243,23 @@ impl Bot {
             }))?;
             if let Some(data) = output.next().await {
                 match data.payload {
-                    Ok(frame_result) => {
-                        if let FrameResult::HelloResult(HelloMessage {
-                            message: _,
-                            version: _,
-                            transport: _,
-                            audio_params: _,
-                            features: _,
-                            session_id: _,
-                        }) = frame_result
-                        {
-                            // TODO: handle hello result
-                        } else {
-                            return Err(anyhow::anyhow!(format!(
-                                "not recv hello frame result,frame result = {:?}",
-                                frame_result
-                            ))
-                            .into());
-                        }
+                    FrameResult::HelloResult(HelloMessage {
+                        message: _,
+                        version: _,
+                        transport: _,
+                        audio_params: _,
+                        features: _,
+                        session_id: _,
+                    }) => {
+                        // TODO: handle hello result
                     }
-                    Err(e) => return Err(anyhow::anyhow!(e.to_string()).into()),
+                    frame_result => {
+                        return Err(anyhow::anyhow!(format!(
+                            "not recv hello frame result,frame result = {:?}",
+                            frame_result
+                        ))
+                        .into());
+                    }
                 }
             }
             //start frame listener async task
@@ -272,68 +269,63 @@ impl Bot {
                 let id = room_id_clone;
                 while let Some(data) = output.next().await {
                     match data.payload {
-                        Ok(frame_result) => match frame_result {
-                            FrameResult::HelloResult(_hello_message) => todo!(),
-                            FrameResult::STTResult(stt_message) => {
-                                // TODO:
-                                info!("{:?}", stt_message);
-                            }
-                            FrameResult::LLMResult(_llm_message) => {
-                                // TODO:
-                            }
-                            FrameResult::TTSResult(tts_message) => {
-                                match tts_message.state {
-                                    Some(state) => match state {
-                                        TtsState::Start => {
-                                            // TODO:
-                                        }
-                                        TtsState::SentenceStart => {
-                                            // TODO:
-                                            if let Some(text) = tts_message.text {
-                                                let text_content =
-                                                    RoomMessageEventContent::notice_plain(text);
-                                                let txn_id = TransactionId::new();
-                                                let req = send_message_event::v3::Request::new(
-                                                    id.to_owned(),
-                                                    txn_id,
-                                                    &text_content,
-                                                );
-                                                match req {
-                                                    Ok(req) => {
-                                                        // Do nothing if we can't send the message.
-                                                        let _ =
-                                                            matrix_client.send_request(req).await;
-                                                    }
-                                                    Err(_) => todo!(),
-                                                }
-                                            } else {
-                                                // TODO: text is none
-                                            }
-                                        }
-                                        TtsState::SentenceEnd => {
-                                            // TODO:
-                                        }
-                                        TtsState::Stop => {
-
-                                            // TODO:
-                                        }
-                                    },
-                                    None => {
+                        FrameResult::HelloResult(_hello_message) => todo!(),
+                        FrameResult::STTResult(stt_message) => {
+                            // TODO:
+                            info!("{:?}", stt_message);
+                        }
+                        FrameResult::LLMResult(_llm_message) => {
+                            // TODO:
+                        }
+                        FrameResult::TTSResult(tts_message) => {
+                            match tts_message.state {
+                                Some(state) => match state {
+                                    TtsState::Start => {
                                         // TODO:
                                     }
+                                    TtsState::SentenceStart => {
+                                        // TODO:
+                                        if let Some(text) = tts_message.text {
+                                            let text_content =
+                                                RoomMessageEventContent::notice_plain(text);
+                                            let txn_id = TransactionId::new();
+                                            let req = send_message_event::v3::Request::new(
+                                                id.to_owned(),
+                                                txn_id,
+                                                &text_content,
+                                            );
+                                            match req {
+                                                Ok(req) => {
+                                                    // Do nothing if we can't send the message.
+                                                    let _ = matrix_client.send_request(req).await;
+                                                }
+                                                Err(_) => todo!(),
+                                            }
+                                        } else {
+                                            // TODO: text is none
+                                        }
+                                    }
+                                    TtsState::SentenceEnd => {
+                                        // TODO:
+                                    }
+                                    TtsState::Stop => {
+
+                                        // TODO:
+                                    }
+                                },
+                                None => {
+                                    // TODO:
                                 }
                             }
-                            FrameResult::AudioResult(_audio_message) => {
-                                // TODO:
-                            }
-                            FrameResult::CloseResult => {
-                                // TODO: shutdown session and clear session map
-                            }
-                            FrameResult::McpResult(_mcp_request) => todo!(),
-                        },
-                        Err(_e) => {
-                            // TODO: handle frame error
                         }
+                        FrameResult::AudioResult(_audio_message) => {
+                            // TODO:
+                        }
+                        FrameResult::CloseResult => {
+                            // TODO: shutdown session and clear session map
+                        }
+                        FrameResult::McpResult(_mcp_request) => todo!(),
+                        _ => {}
                     }
                 }
             });

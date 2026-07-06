@@ -1,8 +1,8 @@
 pub mod input_proxy;
 pub mod input_sender;
-pub mod message_converter;
 pub mod output_proxy;
 pub mod output_sender;
+pub mod protocol_translator;
 pub mod session;
 
 use crate::{
@@ -19,7 +19,8 @@ use crate::{
     vad::VadFactory,
     ws::{
         input_proxy::InputProxy, input_sender::InputSender, output_proxy::OutputProxy,
-        output_sender::OutputSender, session::SessionBuilder, session::listener::DefaultListener,
+        output_sender::OutputSender, protocol_translator::ProtocolTranslator,
+        session::SessionBuilder, session::listener::DefaultListener,
     },
 };
 
@@ -33,27 +34,17 @@ use axum_extra::{TypedHeader, headers};
 use framework::id::gen_id;
 use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use message_converter::convert_to_frame;
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
-use serde::Serialize;
 use service::chobits::message::close::CloseMessage;
-use service::ws::frame::{Frame, FrameResult};
+use service::ws::frame::Frame;
 use tokio::sync::Mutex;
-use tracing::{Instrument, Level, debug, error, span, warn};
+use tracing::{Instrument, Level, debug, error, span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
-
-#[derive(Serialize)]
-pub(crate) struct ErrorFrame {
-    #[serde(rename = "type")]
-    mtype: &'static str,
-    code: u32,
-    message: String,
-}
 
 const TAG: &str = "ws";
 
@@ -144,6 +135,7 @@ where
         .build();
 
     let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
+    let translator = protocol_translator::XiaozhiProtocolTranslator;
 
     let session_handle = tokio::spawn(
         session
@@ -154,6 +146,7 @@ where
         ws_output(
             write,
             OutputProxy::new(output_rx, Some(recorder.clone()), ctx.session_id.clone()),
+            translator,
         )
         .instrument(span!(parent: &span, Level::DEBUG, "output")),
     );
@@ -175,6 +168,7 @@ where
                 input_frame_duration,
                 input_channels,
             ),
+            translator,
         )
         .instrument(span!(parent: &span, Level::DEBUG, "input")),
     );
@@ -182,54 +176,34 @@ where
     let _ = tokio::join!(session_handle, output_handle, input_handle);
 }
 
-async fn ws_input<R>(mut read: R, input_sender: impl InputSender)
-where
+async fn ws_input<R>(
+    mut read: R,
+    input_sender: impl InputSender,
+    translator: impl ProtocolTranslator,
+) where
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
     while let Some(Ok(msg)) = read.next().await {
-        let result = convert_to_frame(&msg);
-        if result.is_break() {
-            if let Some(frame) = result.break_value().flatten() {
-                input_sender.send(frame);
-            }
-            input_sender.send(Frame::Close(CloseMessage::new(1000, String::new())));
+        let frame = translator.input(msg);
+        let is_close = matches!(&frame, Frame::Close(_));
+        input_sender.send(frame);
+        if is_close {
             return;
-        }
-        if result.is_continue() {
-            if let Some(frame) = result.continue_value().flatten() {
-                input_sender.send(frame);
-            } else {
-                warn!("unknown continue message");
-            }
         }
     }
     input_sender.send(Frame::Close(CloseMessage::new(1000, String::new())));
 }
 
-async fn ws_output<W>(mut write: W, mut output_sender: impl OutputSender)
-where
+async fn ws_output<W>(
+    mut write: W,
+    mut output_sender: impl OutputSender,
+    translator: impl ProtocolTranslator,
+) where
     W: Sink<Message> + Unpin + Send + 'static,
 {
-    while let Some(frame) = output_sender.recv().await {
-        let result = match &frame {
-            Ok(FrameResult::AudioResult(audio)) => {
-                write.send(Message::Binary(audio.data.clone().into())).await
-            }
-            Ok(other) => {
-                let text = serde_json::to_string(other).unwrap_or_default();
-                write.send(Message::Text(text.into())).await
-            }
-            Err(e) => {
-                let error_frame = ErrorFrame {
-                    mtype: "error",
-                    code: WsErrorCode::InternalError as u32,
-                    message: e.to_string(),
-                };
-                let text = serde_json::to_string(&error_frame).unwrap_or_default();
-                write.send(Message::Text(text.into())).await
-            }
-        };
-        if result.is_err() {
+    while let Some(result) = output_sender.recv().await {
+        let msg = translator.output(result);
+        if write.send(msg).await.is_err() {
             break;
         }
     }

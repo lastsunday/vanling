@@ -106,7 +106,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
 
@@ -120,7 +120,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
 
     let mut all_packets: Vec<Vec<u8>> = Vec::new();
     loop {
-        let data = output_rx.recv().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload;
         match data {
             FrameResult::TTSResult(msg) => {
                 if msg.state == Some(TtsState::Stop) {

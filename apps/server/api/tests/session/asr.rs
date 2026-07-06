@@ -99,7 +99,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
 
@@ -123,7 +123,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
 
     let mut frames = Vec::new();
     loop {
-        let frame = output_rx.recv().await.unwrap().payload.unwrap();
+        let frame = output_rx.recv().await.unwrap().payload;
         let is_stop =
             matches!(&frame, FrameResult::TTSResult(msg) if msg.state == Some(TtsState::Stop));
         frames.push(frame);

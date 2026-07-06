@@ -1,6 +1,8 @@
 use std::fmt;
 
+use framework::error::AppError;
 use serde::Serialize;
+use serde::ser::SerializeMap;
 
 use crate::chobits::message::{
     abort::AbortMessage,
@@ -18,6 +20,7 @@ use crate::chobits::message::{
 pub enum Frame {
     Hello(HelloMessage),
     Listen(ListenMessage),
+    Chat { text: String },
     UnknowText { data: Vec<u8> },
     Voice { data: Vec<u8> },
     Abort(AbortMessage),
@@ -46,6 +49,7 @@ impl fmt::Display for Frame {
                 write!(f, ")")
             }
             Frame::Voice { data } => write!(f, "Voice(data_len={})", data.len()),
+            Frame::Chat { text } => write!(f, "Chat(text=\"{text}\")"),
             Frame::UnknowText { data } => write!(f, "UnknowText(data_len={})", data.len()),
             Frame::Abort(msg) => write!(f, "Abort(reason={:?})", msg.reason),
             Frame::Ping { data } => write!(f, "Ping(data_len={})", data.len()),
@@ -70,6 +74,7 @@ pub enum FrameResult {
     AudioResult(AudioMessage),
     CloseResult,
     McpResult(McpRequest),
+    Error(AppError),
 }
 
 impl Serialize for FrameResult {
@@ -85,6 +90,12 @@ impl Serialize for FrameResult {
             Self::McpResult(msg) => msg.serialize(serializer),
             Self::AudioResult(msg) => msg.serialize(serializer),
             Self::CloseResult => serializer.serialize_unit(),
+            Self::Error(e) => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("code", &e.code())?;
+                map.serialize_entry("message", &e.message())?;
+                map.end()
+            }
         }
     }
 }
@@ -116,6 +127,9 @@ impl fmt::Display for FrameResult {
                 "McpResult(payload={})",
                 serde_json::to_string(&req.payload).unwrap_or_default()
             ),
+            FrameResult::Error(e) => {
+                write!(f, "Error(code={}, msg={})", e.code(), e.message())
+            }
         }
     }
 }

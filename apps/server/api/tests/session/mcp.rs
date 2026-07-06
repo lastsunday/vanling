@@ -126,10 +126,10 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     assert!(matches!(frame_result, FrameResult::McpResult(..)));
     if let FrameResult::McpResult(request) = frame_result {
         assert_eq!(request.payload.request.method, "initialize");
@@ -156,7 +156,7 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
         },
     ))))?;
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     if let FrameResult::McpResult(request) = frame_result {
         assert_eq!(request.payload.request.method, "tools/list");
@@ -178,23 +178,23 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     assert!(matches!(frame_result, FrameResult::STTResult(..)));
 
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::TTSResult(TtsMessage {
             state: Some(TtsState::Start),
             ..
         })
     ));
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     assert!(matches!(frame_result, FrameResult::LLMResult(..)));
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", frame_result);
     assert!(matches!(
         frame_result,
@@ -206,24 +206,17 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
 
     // has some audio result,detect first one
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::AudioResult(AudioMessage { .. })
     ));
 
     while let Some(data) = output_rx.recv().await {
-        match data.payload {
-            Ok(frame_result) => {
-                if let FrameResult::TTSResult(tts_message) = frame_result {
-                    let state = tts_message.state;
-                    if let Some(state) = state
-                        && TtsState::Stop == state
-                    {
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                panic!("{:?}", e)
+        if let FrameResult::TTSResult(tts_message) = data.payload {
+            let state = tts_message.state;
+            if let Some(state) = state
+                && TtsState::Stop == state
+            {
+                break;
             }
         }
     }
@@ -317,10 +310,10 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     assert!(matches!(frame_result, FrameResult::McpResult(..)));
     if let FrameResult::McpResult(request) = frame_result {
         assert_eq!(request.payload.request.method, "initialize");
@@ -347,7 +340,7 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
         },
     ))))?;
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     if let FrameResult::McpResult(request) = frame_result {
         assert_eq!(request.payload.request.method, "tools/list");
@@ -369,19 +362,19 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     assert!(matches!(frame_result, FrameResult::STTResult(..)));
 
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::TTSResult(TtsMessage {
             state: Some(TtsState::Start),
             ..
         })
     ));
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     assert!(matches!(frame_result, FrameResult::McpResult(..)));
 
@@ -420,11 +413,11 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
         },
     ))))?;
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
     assert!(matches!(frame_result, FrameResult::LLMResult(..)));
 
-    let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+    let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", frame_result);
     assert!(matches!(
         frame_result,
@@ -436,24 +429,17 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
 
     // has some audio result,detect first one
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::AudioResult(AudioMessage { .. })
     ));
 
     while let Some(data) = output_rx.recv().await {
-        match data.payload {
-            Ok(frame_result) => {
-                if let FrameResult::TTSResult(tts_message) = frame_result {
-                    let state = tts_message.state;
-                    if let Some(state) = state
-                        && TtsState::Stop == state
-                    {
-                        break;
-                    }
-                }
-            }
-            Err(e) => {
-                panic!("{:?}", e)
+        if let FrameResult::TTSResult(tts_message) = data.payload {
+            let state = tts_message.state;
+            if let Some(state) = state
+                && TtsState::Stop == state
+            {
+                break;
             }
         }
     }

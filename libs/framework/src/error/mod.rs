@@ -120,6 +120,25 @@ impl AppError {
         };
     }
 
+    pub fn code(&self) -> u32 {
+        match self {
+            AppError::App { code, .. } => *code,
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            AppError::App {
+                code: _,
+                message,
+                extra_message: _,
+                file: _,
+                line: _,
+                error: _,
+            } => message.clone(),
+        }
+    }
+
     pub fn gen_response(&self) -> Response {
         let (status_code, code, message) = match self {
             AppError::App {

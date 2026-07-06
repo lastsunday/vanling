@@ -47,6 +47,7 @@ pub enum FrameDetail {
     Mcp,
     Ping,
     Pong,
+    Chat,
 }
 
 impl FrameDetail {
@@ -66,6 +67,7 @@ impl FrameDetail {
             FrameDetail::Mcp => "Mcp",
             FrameDetail::Ping => "Ping",
             FrameDetail::Pong => "Pong",
+            FrameDetail::Chat => "Chat",
         }
     }
 }
@@ -75,6 +77,7 @@ pub enum DataType {
     InputAudio,
     Llm,
     Tts,
+    Text,
 }
 
 impl DataType {
@@ -83,6 +86,7 @@ impl DataType {
             DataType::InputAudio => "input_audio",
             DataType::Llm => "llm",
             DataType::Tts => "tts",
+            DataType::Text => "text",
         }
     }
 }
@@ -127,6 +131,9 @@ pub enum EntryKind {
         text: String,
     },
     TtsText {
+        text: String,
+    },
+    Text {
         text: String,
     },
 }
@@ -389,6 +396,26 @@ impl Recorder {
                         id: Set(gen_id()),
                         round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),
                         data_type: Set(DataType::Llm.as_str().to_string()),
+                        data: Set(None),
+                        text: Set(Some(text.clone())),
+                        metadata: Set(Some(serde_json::json!({
+                            "elapsed_ms": elapsed_ms,
+                        }))),
+                        ..Default::default()
+                    })
+                    .insert(&txn)
+                    .await
+                    .is_err()
+                    {
+                        return;
+                    }
+                }
+                EntryKind::Text { text } => {
+                    let elapsed_ms = elapsed_us.map(|u| u / 1000).unwrap_or(0);
+                    if (round_data::ActiveModel {
+                        id: Set(gen_id()),
+                        round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),
+                        data_type: Set(DataType::Text.as_str().to_string()),
                         data: Set(None),
                         text: Set(Some(text.clone())),
                         metadata: Set(Some(serde_json::json!({

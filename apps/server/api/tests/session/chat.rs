@@ -20,7 +20,7 @@ async fn test_chat_flow_hello() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
     drop(input_tx);
@@ -44,7 +44,7 @@ async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
     input_tx.send(Frame::Listen(ListenMessage {
@@ -63,7 +63,7 @@ async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     loop {
-        let data = output_rx.recv().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload;
         if let FrameResult::TTSResult(tts_message) = data {
             match tts_message.state {
                 Some(TtsState::Stop) => break,
@@ -86,7 +86,7 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
 
@@ -100,7 +100,7 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
 
     // Drain: STTResult → TTS Start → LLMResult → SentenceStart → SentenceEnd → Stop
     loop {
-        let data = output_rx.recv().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload;
         if let FrameResult::TTSResult(tts_message) = data {
             if let Some(TtsState::Stop) = tts_message.state {
                 break;
@@ -117,7 +117,7 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
     }))?;
 
     loop {
-        let data = output_rx.recv().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload;
         if let FrameResult::TTSResult(tts_message) = data {
             if let Some(TtsState::Stop) = tts_message.state {
                 break;
@@ -129,7 +129,7 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
         .send(Frame::Close(CloseMessage::new(1000, String::new())))
         .unwrap();
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::CloseResult
     ));
     Ok(())
@@ -186,7 +186,7 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
 
@@ -200,7 +200,7 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
 
     // Drain: STTResult → TTS Start → LLMResult → SentenceStart → SentenceEnd → Stop
     loop {
-        let data = output_rx.recv().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload;
         if let FrameResult::TTSResult(tts_message) = data {
             if let Some(TtsState::Stop) = tts_message.state {
                 break;
@@ -212,7 +212,7 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
         .send(Frame::Close(CloseMessage::new(1000, String::new())))
         .unwrap();
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::CloseResult
     ));
     Ok(())
@@ -225,7 +225,7 @@ async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> any
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
     input_tx.send(Frame::Listen(ListenMessage {
@@ -237,7 +237,7 @@ async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> any
     // drain Wake pipeline before Listen(Start, RealTime) to avoid epoch bump
     // discarding the Wake pipeline's STTResult
     while let Some(data) = output_rx.recv().await {
-        let data = data.payload.unwrap();
+        let data = data.payload;
         match data {
             FrameResult::TTSResult(tts_message) => {
                 if let Some(TtsState::Stop) = tts_message.state {
@@ -258,7 +258,7 @@ async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> any
         .send(Frame::Close(CloseMessage::new(1000, String::new())))
         .unwrap();
     loop {
-        let data = output_rx.recv().await.unwrap().payload.unwrap();
+        let data = output_rx.recv().await.unwrap().payload;
         if let FrameResult::CloseResult = data {
             break;
         }
@@ -280,7 +280,7 @@ async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()
         ..Default::default()
     }))?;
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload.unwrap(),
+        output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
     // let mut user_answer = vec![String::from("世界上第高的山是什么，只回答结果不用详细介绍")];
@@ -296,23 +296,23 @@ async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()
             text: Some(user_answer.get(index).unwrap().to_string()),
             ..Default::default()
         }))?;
-        let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+        let frame_result = output_rx.recv().await.unwrap().payload;
         debug!("{:?}", &frame_result);
         assert!(matches!(frame_result, FrameResult::STTResult(..)));
 
         assert!(matches!(
-            output_rx.recv().await.unwrap().payload.unwrap(),
+            output_rx.recv().await.unwrap().payload,
             FrameResult::TTSResult(TtsMessage {
                 state: Some(TtsState::Start),
                 ..
             })
         ));
 
-        let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+        let frame_result = output_rx.recv().await.unwrap().payload;
         debug!("{:?}", &frame_result);
         assert!(matches!(frame_result, FrameResult::LLMResult(..)));
 
-        let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+        let frame_result = output_rx.recv().await.unwrap().payload;
         debug!("{:?}", frame_result);
         assert!(matches!(
             frame_result,
@@ -322,7 +322,7 @@ async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()
             })
         ));
         // has some audio result,detect first one
-        let frame_result = output_rx.recv().await.unwrap().payload.unwrap();
+        let frame_result = output_rx.recv().await.unwrap().payload;
         debug!("{:?}", frame_result);
         assert!(matches!(
             frame_result,
@@ -330,19 +330,12 @@ async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()
         ));
 
         while let Some(data) = output_rx.recv().await {
-            match data.payload {
-                Ok(frame_result) => {
-                    if let FrameResult::TTSResult(tts_message) = frame_result {
-                        let state = tts_message.state;
-                        if let Some(state) = state
-                            && TtsState::Stop == state
-                        {
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    panic!("{:?}", e)
+            if let FrameResult::TTSResult(tts_message) = data.payload {
+                let state = tts_message.state;
+                if let Some(state) = state
+                    && TtsState::Stop == state
+                {
+                    break;
                 }
             }
         }
@@ -365,25 +358,23 @@ async fn test_chat_flow_handle_text_message() -> anyhow::Result<()> {
                 data.session_id, data.payload
             );
             match data.payload {
-                Ok(frame_result) => match frame_result {
-                    FrameResult::HelloResult(_hello_message) => {}
-                    FrameResult::STTResult(_stt_message) => {}
-                    FrameResult::LLMResult(_llm_message) => {}
-                    FrameResult::TTSResult(tts_message) => {
-                        let state = tts_message.state;
-                        if let Some(state) = state
-                            && TtsState::Stop == state
-                        {
-                            return;
-                        }
+                FrameResult::HelloResult(_hello_message) => {}
+                FrameResult::STTResult(_stt_message) => {}
+                FrameResult::LLMResult(_llm_message) => {}
+                FrameResult::TTSResult(tts_message) => {
+                    let state = tts_message.state;
+                    if let Some(state) = state
+                        && TtsState::Stop == state
+                    {
+                        return;
                     }
-                    FrameResult::AudioResult(_audio_message) => {}
-                    _ => {
-                        panic!("unexpected frame result");
-                    }
-                },
-                Err(_) => {
+                }
+                FrameResult::AudioResult(_audio_message) => {}
+                FrameResult::Error(_) => {
                     break;
+                }
+                _ => {
+                    panic!("unexpected frame result");
                 }
             }
         }
@@ -419,28 +410,26 @@ async fn test_chat_flow_break() -> anyhow::Result<()> {
                 data.session_id, data.payload
             );
             match data.payload {
-                Ok(frame_result) => match frame_result {
-                    FrameResult::HelloResult(_hello_message) => {}
-                    FrameResult::STTResult(_stt_message) => {}
-                    FrameResult::LLMResult(_llm_message) => {}
-                    FrameResult::TTSResult(tts_message) => {
-                        let state = tts_message.state;
-                        if let Some(state) = state
-                            && TtsState::Stop == state
-                        {
-                            count += 1;
-                            if count >= 1 {
-                                return;
-                            }
+                FrameResult::HelloResult(_hello_message) => {}
+                FrameResult::STTResult(_stt_message) => {}
+                FrameResult::LLMResult(_llm_message) => {}
+                FrameResult::TTSResult(tts_message) => {
+                    let state = tts_message.state;
+                    if let Some(state) = state
+                        && TtsState::Stop == state
+                    {
+                        count += 1;
+                        if count >= 1 {
+                            return;
                         }
                     }
-                    FrameResult::AudioResult(_audio_message) => {}
-                    _ => {
-                        panic!("unexpected frame result");
-                    }
-                },
-                Err(_) => {
+                }
+                FrameResult::AudioResult(_audio_message) => {}
+                FrameResult::Error(_) => {
                     break;
+                }
+                _ => {
+                    panic!("unexpected frame result");
                 }
             }
         }

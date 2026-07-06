@@ -142,6 +142,19 @@ impl InputProxy {
             Frame::Close(_) => {
                 self.record_frame(recorder, now, FrameDetail::Close, None);
             }
+            Frame::Chat { text } => {
+                self.record_frame(
+                    recorder,
+                    now,
+                    FrameDetail::Chat,
+                    Some(text.as_bytes().to_vec()),
+                );
+                recorder.push_entry(RecordEntry {
+                    received_at: now,
+                    seq: None,
+                    kind: EntryKind::Text { text: text.clone() },
+                });
+            }
             Frame::UnknowText { data } => {
                 self.record_frame(recorder, now, FrameDetail::UnknownText, Some(data.clone()));
             }

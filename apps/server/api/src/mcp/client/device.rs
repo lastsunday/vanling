@@ -77,7 +77,7 @@ impl McpClient for DeviceMcpClient {
             epoch: 0,
             round_id: None,
             session_id: session_id.clone().unwrap_or_default(),
-            payload: Ok(FrameResult::McpResult(McpRequest::new(
+            payload: FrameResult::McpResult(McpRequest::new(
                 session_id,
                 JsonRpcRequest {
                     jsonrpc: JsonRpcVersion2_0,
@@ -88,7 +88,7 @@ impl McpClient for DeviceMcpClient {
                         ..Default::default()
                     },
                 },
-            ))),
+            )),
         });
         if result.is_err() {
             Err(anyhow::anyhow!(
@@ -294,7 +294,7 @@ impl DeviceMcpClient {
             epoch: 0,
             round_id: None,
             session_id: self.session_id.clone().unwrap_or_default(),
-            payload: Ok(FrameResult::McpResult(request)),
+            payload: FrameResult::McpResult(request),
         });
         if result.is_err() {
             info!("tx send mcp initialize reqeust failure");
@@ -311,9 +311,7 @@ impl DeviceMcpClient {
             epoch: 0,
             round_id: None,
             session_id: self.session_id.clone().unwrap_or_default(),
-            payload: Ok(FrameResult::McpResult(
-                self.create_tools_list_request().await,
-            )),
+            payload: FrameResult::McpResult(self.create_tools_list_request().await),
         });
         if result.is_err() {
             info!("tx send mcp tools list reqeust failure");

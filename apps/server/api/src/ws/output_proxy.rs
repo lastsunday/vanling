@@ -5,7 +5,6 @@ use chrono::{DateTime, FixedOffset, Local};
 use service::chobits::message::tts::TtsState;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::error::AppError;
 use crate::record::recorder::{Dir, EntryKind, FrameDetail, RecordEntry, Recorder, RoundStatus};
 use crate::ws::output_sender::OutputSender;
 use crate::ws::session::round::OutputMessage;
@@ -61,13 +60,13 @@ impl OutputProxy {
         let Some(rid) = &msg.round_id else {
             // Pre-round output frames (no round_id)
             match &msg.payload {
-                Ok(FrameResult::HelloResult(_)) => {
+                FrameResult::HelloResult(_) => {
                     Self::record_frame(recorder, now, FrameDetail::Hello, None, &self.session_id);
                 }
-                Ok(FrameResult::CloseResult) => {
+                FrameResult::CloseResult => {
                     Self::record_frame(recorder, now, FrameDetail::Close, None, &self.session_id);
                 }
-                Ok(FrameResult::McpResult(_)) => {
+                FrameResult::McpResult(_) => {
                     Self::record_frame(recorder, now, FrameDetail::Mcp, None, &self.session_id);
                 }
                 _ => {}
@@ -84,7 +83,7 @@ impl OutputProxy {
         }
 
         match &msg.payload {
-            Ok(FrameResult::STTResult(stt)) => {
+            FrameResult::STTResult(stt) => {
                 Self::record_frame(
                     recorder,
                     now,
@@ -93,7 +92,7 @@ impl OutputProxy {
                     &self.session_id,
                 );
             }
-            Ok(FrameResult::LLMResult(llm)) => {
+            FrameResult::LLMResult(llm) => {
                 if let Some(text) = &llm.full_text {
                     recorder.push_entry(RecordEntry {
                         received_at: now,
@@ -109,7 +108,7 @@ impl OutputProxy {
                     &self.session_id,
                 );
             }
-            Ok(FrameResult::TTSResult(tts)) => {
+            FrameResult::TTSResult(tts) => {
                 if tts.state == Some(TtsState::Stop) {
                     Self::record_frame(
                         recorder,
@@ -138,7 +137,7 @@ impl OutputProxy {
                     &self.session_id,
                 );
             }
-            Ok(FrameResult::AudioResult(audio)) => {
+            FrameResult::AudioResult(audio) => {
                 Self::record_frame(
                     recorder,
                     now,
@@ -147,12 +146,10 @@ impl OutputProxy {
                     &self.session_id,
                 );
             }
-            Ok(
-                FrameResult::HelloResult(_) | FrameResult::CloseResult | FrameResult::McpResult(_),
-            ) => {
+            FrameResult::HelloResult(_) | FrameResult::CloseResult | FrameResult::McpResult(_) => {
                 // Handled above for pre-round; should not reach here with round_id
             }
-            Err(_) => {
+            FrameResult::Error(_) => {
                 Self::record_frame(recorder, now, FrameDetail::Error, None, &self.session_id);
             }
         }
@@ -161,7 +158,7 @@ impl OutputProxy {
 
 #[async_trait]
 impl OutputSender for OutputProxy {
-    async fn recv(&mut self) -> Option<Result<FrameResult, AppError>> {
+    async fn recv(&mut self) -> Option<FrameResult> {
         let msg = self.output_rx.recv().await?;
         self.record_output(&msg).await;
         Some(msg.payload)

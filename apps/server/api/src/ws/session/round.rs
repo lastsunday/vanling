@@ -3,9 +3,7 @@ use crate::tts::Tts;
 use crate::util::llm::{EMOJI_MAP, analyze_emotion};
 use crate::ws::WsErrorCode;
 use anyhow::Context;
-use core::result::Result;
 use framework::err;
-use framework::error::AppError;
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::message::{Message, Text, UserContent};
@@ -27,14 +25,14 @@ pub struct OutputMessage {
     pub epoch: u64,
     pub round_id: Option<String>,
     pub session_id: String,
-    pub payload: Result<FrameResult, AppError>,
+    pub payload: FrameResult,
 }
 
 pub struct Round {
     pub parent_id: String,
     pub id: String,
     output_tx: UnboundedSender<OutputMessage>,
-    epoch: u64,
+    pub epoch: u64,
     stop: Arc<AtomicBool>,
     client: Arc<Client>,
     tts: Arc<Box<dyn Tts>>,
@@ -108,7 +106,7 @@ impl Round {
         let text = String::from(text);
         let cancel = self.cancel.clone();
         self.join_handle = Some(tokio::spawn(async move {
-            let send = |payload: Result<FrameResult, AppError>| {
+            let send = |payload: FrameResult| {
                 output_tx
                     .send(OutputMessage {
                         epoch,
@@ -121,15 +119,15 @@ impl Round {
                             epoch,
                             round_id: Some(round_id.clone()),
                             session_id: session_id.clone(),
-                            payload: Err(err!(WsErrorCode::InternalError)),
+                            payload: FrameResult::Error(err!(WsErrorCode::InternalError)),
                         }))
                     })
             };
 
-            if send(Ok(FrameResult::STTResult(SttMessage::new(
+            if send(FrameResult::STTResult(SttMessage::new(
                 Some(session_id.clone()),
                 Some(text.to_string()),
-            ))))
+            )))
             .is_err()
             {
                 info!(target:"round","send stt result failure");
@@ -146,11 +144,11 @@ impl Round {
             let stop_me = stop_me.clone();
 
             change_tts_state(tts_state_clone.clone(), TtsState::Start).await;
-            if send(Ok(FrameResult::TTSResult(TtsMessage::new(
+            if send(FrameResult::TTSResult(TtsMessage::new(
                 Some(session_id.clone()),
                 Some(TtsState::Start),
                 None,
-            ))))
+            )))
             .is_err()
             {
                 info!(target:"round","send tts state start failure");
@@ -177,16 +175,16 @@ impl Round {
                                 Some(EMOJI_MAP.get(emotion).map_or(r#"😶"#, |v| v).to_string()),
                             );
                             llm_msg.full_text = Some(text.clone());
-                            send(Ok(FrameResult::LLMResult(llm_msg)))
+                            send(FrameResult::LLMResult(llm_msg))
                                 .context("send llm result failure")?;
 
                             change_tts_state(tts_state_clone.clone(), TtsState::SentenceStart)
                                 .await;
-                            send(Ok(FrameResult::TTSResult(TtsMessage::new(
+                            send(FrameResult::TTSResult(TtsMessage::new(
                                 Some(session_id.to_string()),
                                 Some(TtsState::SentenceStart),
                                 Some(text.to_string()),
-                            ))))
+                            )))
                             .context("send tts sentence start failure")?;
 
                             let audio_data = audio_data.unwrap_or_default();
@@ -196,19 +194,19 @@ impl Round {
                                     trace!("stop_me_by_tts_packet");
                                     break;
                                 }
-                                send(Ok(FrameResult::AudioResult(AudioMessage::new(
+                                send(FrameResult::AudioResult(AudioMessage::new(
                                     Some(session_id.to_string()),
                                     packet,
-                                ))))
+                                )))
                                 .context("send audio result failure")?;
                             }
 
                             change_tts_state(tts_state_clone.clone(), TtsState::SentenceEnd).await;
-                            send(Ok(FrameResult::TTSResult(TtsMessage::new(
+                            send(FrameResult::TTSResult(TtsMessage::new(
                                 Some(session_id.to_string()),
                                 Some(TtsState::SentenceEnd),
                                 None,
-                            ))))
+                            )))
                             .context("send tts sentence end failure")?;
 
                             Ok(())
@@ -222,9 +220,9 @@ impl Round {
                     }
                     Err(e) => {
                         error!(target:"round","{:?}", e);
-                        if let Err(e) =
-                            send(Err(err!(WsErrorCode::TtsEncode).with_extra(e.to_string())))
-                        {
+                        if let Err(e) = send(FrameResult::Error(
+                            err!(WsErrorCode::TtsEncode).with_extra(e.to_string()),
+                        )) {
                             error!(target:"round","{:?}", e);
                         }
                         stop_me.store(true, Ordering::Relaxed);
@@ -234,11 +232,11 @@ impl Round {
             }
 
             change_tts_state(tts_state_clone.clone(), TtsState::Stop).await;
-            if send(Ok(FrameResult::TTSResult(TtsMessage::new(
+            if send(FrameResult::TTSResult(TtsMessage::new(
                 Some(session_id.clone()),
                 Some(TtsState::Stop),
                 None,
-            ))))
+            )))
             .is_err()
             {
                 stop_me.store(true, Ordering::Relaxed);

@@ -211,7 +211,7 @@ impl Session {
                     }
 
                     // audio pacing
-                    if matches!(msg.payload, Ok(FrameResult::AudioResult(_))) {
+                    if matches!(msg.payload, FrameResult::AudioResult(_)) {
                         audio_pacer.get_or_insert_with(|| {
                             tokio::time::interval_at(
                                 tokio::time::Instant::now() + tokio::time::Duration::from_millis(frame_duration),
@@ -239,7 +239,7 @@ impl Session {
             epoch: self.epoch,
             round_id: None,
             session_id: self.id.clone(),
-            payload: Ok(FrameResult::CloseResult),
+            payload: FrameResult::CloseResult,
         });
         info!("session stop");
     }
@@ -279,6 +279,17 @@ impl Session {
             round.join_handle.take();
         }
         info!("stop round");
+    }
+
+    async fn upgrade_shadow_round(&mut self) {
+        if self.running_round.is_some() {
+            self.epoch += 1;
+            if let Some(round) = &mut self.shadow_round {
+                round.epoch = self.epoch;
+            }
+            self.stop_round().await;
+        }
+        self.running_round = self.shadow_round.take();
     }
 
     pub async fn accept_frame(&mut self, frame: &Frame) {
@@ -404,7 +415,7 @@ impl Session {
             epoch: 0,
             round_id: None,
             session_id: self.id.clone(),
-            payload: Ok(FrameResult::HelloResult(data)),
+            payload: FrameResult::HelloResult(data),
         });
     }
 
@@ -451,11 +462,7 @@ impl Session {
                             let text = &listen_message.text;
                             match text {
                                 Some(text) => {
-                                    if self.running_round.is_some() {
-                                        self.epoch += 1;
-                                        self.stop_round().await;
-                                    }
-                                    self.running_round = self.shadow_round.take();
+                                    self.upgrade_shadow_round().await;
                                     self.phase = Phase::Speaking(SpeakingParam {
                                         audio: None,
                                         text: text.to_string(),
@@ -478,6 +485,15 @@ impl Session {
                             );
                         }
                     }
+                }
+                Frame::Chat { text } => {
+                    self.upgrade_shadow_round().await;
+                    self.phase = Phase::Speaking(SpeakingParam {
+                        audio: None,
+                        text: text.clone(),
+                        prob: 1.0,
+                    });
+                    Box::pin(self.forwarding_frame(frame)).await;
                 }
                 Frame::Voice { data } => {
                     self.listener
@@ -515,8 +531,8 @@ impl Session {
                                     epoch: self.epoch,
                                     round_id: None,
                                     session_id: self.id.clone(),
-                                    payload: Err(
-                                        err!(WsErrorCode::AsrFailure).with_extra(e.to_string())
+                                    payload: FrameResult::Error(
+                                        err!(WsErrorCode::AsrFailure).with_extra(e.to_string()),
                                     ),
                                 });
                                 return;
