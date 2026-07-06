@@ -46,7 +46,7 @@ impl Model for Echo {
                                 if let Err(e) =
                                     tx.send(Ok(RawStreamingChoice::Message(text.text))).await
                                 {
-                                    error!("send text error = {}", e);
+                                    error!(error = %e, "send text error");
                                 }
                             }
                             _ => {

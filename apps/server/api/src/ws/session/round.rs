@@ -19,6 +19,22 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tracing;
+
+#[derive(Debug, Clone, Copy)]
+pub enum RoundStatus {
+    Ok,
+    Error,
+}
+
+impl std::fmt::Display for RoundStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ok => write!(f, "ok"),
+            Self::Error => write!(f, "error"),
+        }
+    }
+}
 
 pub struct OutputMessage {
     pub epoch: u64,
@@ -102,6 +118,10 @@ impl Round {
         let text = String::from(text);
         let cancel = self.cancel.clone();
         self.join_handle = Some(tokio::spawn(async move {
+            let round_start = std::time::Instant::now();
+            let mut status = RoundStatus::Ok;
+            tracing::debug!(session_id = %session_id, round_id = %round_id, "llm_tts start");
+
             let send = |payload: FrameResult| {
                 output_tx
                     .send(OutputMessage {
@@ -135,6 +155,7 @@ impl Round {
                 },
             };
             let llm_output = client.chat(request, cancel.clone());
+            tracing::debug!(session_id = %session_id, round_id = %round_id, "tts start");
             let mut tts_output = tts.stream(Box::pin(llm_output), cancel).await;
             let stop_me = stop_me.clone();
 
@@ -204,12 +225,16 @@ impl Round {
                             Ok(())
                         }
                         .await;
-                        if result.is_err() {
+                        if let Err(e) = &result {
+                            tracing::warn!(session_id = %session_id, round_id = %round_id, error = %e, "send pipeline failure");
+                            status = RoundStatus::Error;
                             stop_me.store(true, Ordering::Relaxed);
                             break;
                         }
                     }
                     Err(e) => {
+                        status = RoundStatus::Error;
+                        tracing::warn!(session_id = %session_id, round_id = %round_id, error = %e, "tts stream error");
                         let _ = send(FrameResult::Error(
                             err!(WsErrorCode::TtsEncode).with_extra(e.to_string()),
                         ));
@@ -227,8 +252,11 @@ impl Round {
             )))
             .is_err()
             {
+                status = RoundStatus::Error;
                 stop_me.store(true, Ordering::Relaxed);
             }
+            let duration_ms = round_start.elapsed().as_millis() as u64;
+            tracing::debug!(session_id = %session_id, round_id = %round_id, duration_ms, %status, "round complete");
         }));
     }
 

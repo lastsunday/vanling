@@ -81,7 +81,7 @@ impl Client {
         let temperature = self.temperature;
         let max_tokens = self.max_tokens;
         let max_prompt_len = self.max_prompt_len;
-        let span = span!(parent:None,Level::DEBUG, "socket", id=%session_id.unwrap_or_default());
+        let span = span!(parent:None,Level::DEBUG, "llm_client", session_id=%session_id.unwrap_or_default());
         thread::spawn(move || {
             if cancel.is_cancelled() {
                 return;
@@ -119,10 +119,7 @@ impl Client {
                                 break;
                             }
                         }
-                        trace!(
-                            "truncation history ({}/{}): {:?} -> {:?}",
-                            current_len, max_prompt_len, history.chat_history, target_message_list
-                        );
+                        trace!(current_len, max_prompt_len, ?history.chat_history, ?target_message_list, "truncation history");
                         history.chat_history.clear();
                         history
                             .chat_history
@@ -152,11 +149,11 @@ impl Client {
                             tool_choice: None,
                             additional_params: None,
                         };
-                        trace!("[REQUEST] {:?}", &request);
+                        trace!(?request, "[REQUEST]");
                         let response = model.stream(request).await;
                         let messages =
                             handle_response(response, Some(tx.clone()), cancel.clone()).await;
-                        trace!("[RESPONSE] {:?}", messages);
+                        trace!(?messages, "[RESPONSE]");
                         match messages {
                             Ok(messages) => {
                                 has_next_step = false;
@@ -217,7 +214,7 @@ impl Client {
                                 }
                             }
                             Err(e) => {
-                                tracing::error!("LLM stream error: {:?}", e);
+                                tracing::error!(error = %e, "LLM stream error");
                                 break;
                             }
                         }
@@ -234,7 +231,7 @@ impl Client {
                 Err(e) => {
                     block_on(async move {
                         if let Err(e) = tx_main.send(Err(ModelError::Chat(e.to_string()))).await {
-                            error!("{:?}", e);
+                            error!(error = %e, "send response error");
                         }
                         drop(tx_main);
                     });
@@ -299,7 +296,7 @@ pub async fn handle_response(
                         content,
                     }) => {
                         // TODO:
-                        trace!("{:?}", content);
+                        trace!(?content, "tool call delta");
                     }
                     Ok(StreamedAssistantContent::Reasoning(Reasoning {
                         id: _id,
@@ -307,10 +304,10 @@ pub async fn handle_response(
                         ..
                     })) => {
                         // TODO:
-                        trace!("{:?}", reasoning);
+                        trace!(?reasoning, "reasoning");
                     }
                     Ok(StreamedAssistantContent::ReasoningDelta { id: _id, reasoning }) => {
-                        trace!("{:?}", reasoning);
+                        trace!(?reasoning, "reasoning delta");
                     }
                     Err(e) => {
                         if let Some(tx) = &tx {

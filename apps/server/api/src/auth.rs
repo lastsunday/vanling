@@ -68,8 +68,12 @@ async fn login(
         .filter(user::Column::Account.eq(&param.account))
         .one(&conn)
         .await?
-        .ok_or_else(|| err!(UserErrorCode::AccountNotFound))?;
+        .ok_or_else(|| {
+            tracing::warn!(account = %param.account, ip = %addr, "login failed: account not found");
+            err!(UserErrorCode::AccountNotFound)
+        })?;
     if !verify(&param.password, &user.password)? {
+        tracing::warn!(account = %param.account, ip = %addr, "login failed: wrong password");
         return Err(err!(UserErrorCode::AccountNotFound));
     }
     let principal = Principal {
@@ -123,11 +127,16 @@ async fn access_token(
             .as_ref()
             .expect("auth client secret is empty"))
     {
+        tracing::warn!(ip = %addr, "token refresh failed: invalid client credentials");
         return Err(err!(UserErrorCode::ClientIdOrSecretInvalid));
     } else if !param.grant_type.eq("refresh_token") {
+        tracing::warn!(ip = %addr, grant_type = %param.grant_type, "token refresh failed: invalid grant type");
         return Err(err!(UserErrorCode::GrantTypeMustBeRefreshToken));
     } else {
-        let refresh_token_principal = Jwt::global().refresh_token_decode(&param.refresh_token)?;
+        let refresh_token_principal = Jwt::global().refresh_token_decode(&param.refresh_token).map_err(|e| {
+            tracing::warn!(ip = %addr, error = %e, "token refresh failed: invalid refresh token");
+            e
+        })?;
         let access_token = Jwt::global().access_token_encode(refresh_token_principal.clone())?;
         let expires_in = Jwt::global().access_token_expires_in();
         let refresh_token = Jwt::global().refresh_token_encode(refresh_token_principal.clone())?;
@@ -167,6 +176,7 @@ async fn reset_password(
         .await?
         .ok_or_else(|| err!(UserErrorCode::AccountNotFoundForReset))?;
     if !verify(&param.old_password, &user.password)? {
+        tracing::warn!(user_id = %principal.id, "password reset failed: old password incorrect");
         return Err(err!(UserErrorCode::OldPasswordIncorrect));
     }
     let hash_password = hash(param.password.as_str())?;

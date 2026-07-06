@@ -241,7 +241,7 @@ async fn handle(
         let messages = token_converter.accept_text(&t)?;
         for message in messages.iter() {
             if let Err(e) = tx.send(Ok(message.clone())).await {
-                error!("send text error = {}", e);
+                error!(error = %e, "send text error");
             }
         }
     }
@@ -286,7 +286,7 @@ async fn handle(
             let messages = token_converter.accept_text(&t)?;
             for message in messages.iter() {
                 if let Err(e) = tx.send(Ok(message.clone())).await {
-                    error!("send text error = {}", e);
+                    error!(error = %e, "send text error");
                     break;
                 }
             }
@@ -304,7 +304,7 @@ async fn handle(
         let messages = token_converter.accept_final_text(&rest)?;
         for message in messages.iter() {
             if let Err(e) = tx.send(Ok(message.clone())).await {
-                error!("send text error = {}", e);
+                error!(error = %e, "send text error");
             }
         }
     }
@@ -349,7 +349,7 @@ impl Model for LlmQwen {
                 if let Err(e) = handle(&request, tokenizer, model, device, tx.clone()).await
                     && let Err(e) = tx.send(Err(e)).await
                 {
-                    error!("chat llmError send error = {}", e);
+                    error!(error = %e, "chat llm error send error");
                 };
                 drop(tx);
             })

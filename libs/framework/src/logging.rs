@@ -104,19 +104,17 @@ where
         + 'static,
     W: for<'a> tracing_subscriber::fmt::MakeWriter<'a> + Send + Sync + 'static,
 {
-    let span_events = FmtSpan::CLOSE;
     match format {
         LogFormat::Json => Box::new(
             fmt::layer()
-                .with_span_events(span_events)
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
                 .json()
+                .with_current_span(true)
                 .with_writer(writer),
         ),
         LogFormat::Compact => Box::new(
             fmt::layer()
-                .with_span_events(span_events)
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
                 .compact()
@@ -124,7 +122,6 @@ where
         ),
         LogFormat::Pretty => Box::new(
             fmt::layer()
-                .with_span_events(span_events)
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
                 .pretty()
@@ -132,7 +129,6 @@ where
         ),
         LogFormat::Text => Box::new(
             fmt::layer()
-                .with_span_events(span_events)
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
                 .with_writer(writer),
@@ -189,6 +185,22 @@ fn mk_filter(enabled: bool, level: &str) -> EnvFilter {
     EnvFilter::builder()
         .with_default_directive(level_filter.into())
         .from_env_lossy()
+        .add_directive(
+            "sea_orm::database::transaction=warn"
+                .parse()
+                .expect("invalid filter directive"),
+        )
+        .add_directive(
+            "hyper_util::client::legacy::connect::http=warn"
+                .parse()
+                .expect("invalid filter directive"),
+        )
+        .add_directive(
+            "tower_http::trace=warn"
+                .parse()
+                .expect("invalid filter directive"),
+        )
+        .add_directive("rmcp=warn".parse().expect("invalid filter directive"))
 }
 
 #[allow(unused_variables)]
@@ -373,7 +385,7 @@ pub fn init(config: LogConfig) -> anyhow::Result<LoggingHandle> {
     set_global_default(subscriber);
 
     if !console_enabled && !console_disabled_reason.is_empty() {
-        tracing::warn!("{}", console_disabled_reason);
+        tracing::warn!(%console_disabled_reason, "console layer disabled");
     }
 
     Ok(handle)

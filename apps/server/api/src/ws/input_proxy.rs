@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use chrono::{DateTime, FixedOffset, Local};
 use service::ws::frame::Frame;
 use tokio::sync::mpsc::UnboundedSender;
+use tracing;
 
 use crate::record::recorder::{Dir, EntryKind, FrameDetail, RecordEntry, Recorder};
 use crate::ws::input_sender::InputSender;
@@ -71,7 +72,9 @@ impl InputProxy {
 
     pub fn send(&self, msg: Frame) {
         let Some(ref recorder) = self.recorder else {
-            let _ = self.input_tx.send(msg);
+            if self.input_tx.send(msg).is_err() {
+                tracing::warn!(session_id = %self.session_id, "input channel closed, dropping frame");
+            }
             return;
         };
 
@@ -143,7 +146,8 @@ impl InputProxy {
                     Some(message.as_bytes().to_vec()),
                 );
             }
-            Frame::Close(_) => {
+            Frame::Close(reason) => {
+                tracing::debug!(session_id = %self.session_id, reason = reason.code, "close frame received");
                 self.record_frame(recorder, now, FrameDetail::Close, None);
             }
             Frame::Input { text } => {

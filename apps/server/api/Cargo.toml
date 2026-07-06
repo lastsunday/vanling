@@ -21,7 +21,7 @@ axum = { workspace = true, features = ["macros", "ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }
 tokio = { workspace = true, features = ["full"] }
 # log start
-tracing = { workspace = true, features = ["async-await"] }
+tracing = { workspace = true, features = ["async-await", "attributes"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "chrono"] }
 # log end
 # config start

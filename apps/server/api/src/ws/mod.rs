@@ -109,13 +109,13 @@ pub(crate) struct SocketContext {
     audio_config: Arc<AudioConfig>,
 }
 
+#[tracing::instrument(skip_all, fields(session_id = %ctx.session_id))]
 pub(crate) async fn handle_socket<W, R>(ctx: SocketContext, write: W, read: R)
 where
     W: Sink<Message> + Unpin + Send + 'static,
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    let span = span!(Level::DEBUG, "socket", id=%ctx.session_id);
-    let _guard = span.enter();
+    tracing::info!("session started");
 
     let (session, input_tx, output_rx) = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
@@ -135,18 +135,14 @@ where
     let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
     let translator = protocol_translator::XiaozhiProtocolTranslator;
 
-    let session_handle = tokio::spawn(
-        session
-            .start()
-            .instrument(span!(parent: &span, Level::DEBUG, "session")),
-    );
+    let session_handle = tokio::spawn(session.start().instrument(span!(Level::DEBUG, "session")));
     let output_handle = tokio::spawn(
         ws_output(
             write,
             OutputProxy::new(output_rx, Some(recorder.clone()), ctx.session_id.clone()),
             translator,
         )
-        .instrument(span!(parent: &span, Level::DEBUG, "output")),
+        .instrument(span!(Level::DEBUG, "output")),
     );
     // Temp defaults; InputProxy updates from Frame::Hello before any audio arrives.
     let input_handle = tokio::spawn(
@@ -161,10 +157,12 @@ where
             ),
             translator,
         )
-        .instrument(span!(parent: &span, Level::DEBUG, "input")),
+        .instrument(span!(Level::DEBUG, "input")),
     );
 
     let _ = tokio::join!(session_handle, output_handle, input_handle);
+
+    tracing::info!("session ended");
 }
 
 async fn ws_input<R>(
@@ -210,13 +208,16 @@ async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient
 }
 
 async fn create_mcp_host(session_id: String, mcp_config: Arc<McpConfig>) -> UnionMcpHost {
-    let mut mcp_host = UnionMcpHost::new(Some(session_id));
+    let mut mcp_host = UnionMcpHost::new(Some(session_id.clone()));
     let uri_list = &mcp_config.uri_list;
     if let Some(uri_list) = uri_list {
         for uri in uri_list {
             let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-            if let Ok(server_mcp_client) = server_mcp_client {
-                mcp_host.add_client(Box::new(server_mcp_client)).await;
+            match server_mcp_client {
+                Ok(client) => mcp_host.add_client(Box::new(client)).await,
+                Err(e) => {
+                    tracing::warn!(session_id, uri = %uri, error = %e, "mcp server init failed")
+                }
             }
         }
     }

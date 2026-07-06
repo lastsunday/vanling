@@ -17,14 +17,50 @@ use service::chobits::message::{AudioFormat, Transport};
 use service::ws::frame::{Frame, FrameResult};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Instant;
 
 use tokio::select;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Sender, UnboundedSender, channel};
 use tokio_util::sync::CancellationToken;
+use tracing;
 
 pub mod listener;
 pub mod round;
+
+#[derive(Debug, Clone, Copy)]
+pub enum RoundStopReason {
+    BargeIn,
+    Upgrade,
+    SessionEnd,
+}
+
+impl std::fmt::Display for RoundStopReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BargeIn => write!(f, "barge_in"),
+            Self::Upgrade => write!(f, "upgrade"),
+            Self::SessionEnd => write!(f, "session_end"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SessionEndReason {
+    ClientClose,
+    ClientDisconnect,
+    ChannelClosed,
+}
+
+impl std::fmt::Display for SessionEndReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ClientClose => write!(f, "client_close"),
+            Self::ClientDisconnect => write!(f, "client_disconnect"),
+            Self::ChannelClosed => write!(f, "channel_closed"),
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct SessionBuilder {
@@ -96,6 +132,8 @@ impl SessionBuilder {
             tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
         let session = Session {
             id: self.id.expect("id is required"),
+            started_at: Instant::now(),
+            round_count: 0,
             running_round: None,
             shadow_round: None,
             session_rx,
@@ -124,6 +162,8 @@ impl SessionBuilder {
 
 pub struct Session {
     pub id: String,
+    started_at: Instant,
+    round_count: u64,
     running_round: Option<Box<Round>>,
     shadow_round: Option<Box<Round>>,
     session_rx: tokio::sync::mpsc::UnboundedReceiver<Frame>,
@@ -191,15 +231,18 @@ impl Session {
             select! {
                 msg = self.session_rx.recv() => {
                     match msg {
-                        Some(Frame::Close(_)) | None => {
-                            self.stop().await;
+                         Some(Frame::Close(_)) | None => {
+                            self.stop(SessionEndReason::ClientDisconnect).await;
                             break;
                         }
                         Some(msg) => self.accept_frame(&msg).await,
                     }
                 }
                 msg = self.output_rx_inner.recv() => {
-                    let Some(msg) = msg else { break };
+                    let Some(msg) = msg else {
+                        self.stop(SessionEndReason::ChannelClosed).await;
+                        break;
+                    };
 
                     // epoch filter: skip stale messages from old rounds
                     if msg.epoch != 0 && msg.epoch < self.epoch {
@@ -222,6 +265,7 @@ impl Session {
                     }
 
                     if self.output_tx_outer.send(msg).is_err() {
+                        self.stop(SessionEndReason::ChannelClosed).await;
                         break;
                     }
                 }
@@ -229,8 +273,10 @@ impl Session {
         }
     }
 
-    pub async fn stop(&mut self) {
-        self.stop_round().await;
+    pub async fn stop(&mut self, reason: SessionEndReason) {
+        let duration_ms = self.started_at.elapsed().as_millis() as u64;
+        self.stop_round(RoundStopReason::SessionEnd).await;
+        tracing::info!(session_id = %self.id, rounds = self.round_count, duration_ms, %reason, "session ended");
         let _ = self.output_tx_outer.send(OutputMessage {
             epoch: self.epoch,
             round_id: None,
@@ -240,6 +286,7 @@ impl Session {
     }
 
     pub async fn new_round(&mut self) {
+        self.round_count += 1;
         let tx = self.output_tx.clone();
         let client = ClientBuilder::new()
             .with_session_id(Some(self.id.clone()))
@@ -251,6 +298,7 @@ impl Session {
         let round_id = framework::id::gen_id();
         let cancel_token = CancellationToken::new();
         let epoch = self.epoch;
+        tracing::debug!(session_id = %self.id, round_id = %round_id, epoch, "new round");
         self.shadow_round = Some(Box::new(Round::new(
             self.id.clone(),
             round_id,
@@ -265,10 +313,17 @@ impl Session {
         } else {
             panic!("current round is none");
         }
+        tracing::debug!(
+            session_id = %self.id,
+            running_round_id = ?self.running_round.as_ref().map(|r| &r.id),
+            shadow_round_id = ?self.shadow_round.as_ref().map(|r| &r.id),
+            "round state",
+        );
     }
 
-    pub async fn stop_round(&mut self) {
+    pub async fn stop_round(&mut self, reason: RoundStopReason) {
         if let Some(round) = &mut self.running_round {
+            tracing::debug!(session_id = %self.id, round_id = %round.id, %reason, "round stopped");
             round.stop().await;
             round.join_handle.take();
         }
@@ -279,10 +334,25 @@ impl Session {
             self.epoch += 1;
             if let Some(round) = &mut self.shadow_round {
                 round.epoch = self.epoch;
+                tracing::debug!(
+                    session_id = %self.id, epoch = self.epoch, round_id = %round.id,
+                    "round upgraded",
+                );
             }
-            self.stop_round().await;
+            self.stop_round(RoundStopReason::Upgrade).await;
+        } else if let Some(round) = &self.shadow_round {
+            tracing::debug!(
+                session_id = %self.id, epoch = round.epoch, round_id = %round.id,
+                "shadow round running",
+            );
         }
         self.running_round = self.shadow_round.take();
+        tracing::debug!(
+            session_id = %self.id,
+            running_round_id = ?self.running_round.as_ref().map(|r| &r.id),
+            shadow_round_id = ?self.shadow_round.as_ref().map(|r| &r.id),
+            "round state",
+        );
     }
 
     pub async fn accept_frame(&mut self, frame: &Frame) {
@@ -295,11 +365,13 @@ impl Session {
 
     async fn _accept_frame(&mut self, frame: &Frame, forwarding: bool) {
         match frame {
-            Frame::Close(_) => {
-                self.stop().await;
+            Frame::Close(reason) => {
+                tracing::debug!(session_id = %self.id, reason = reason.code, "close frame");
+                self.stop(SessionEndReason::ClientClose).await;
                 return;
             }
             Frame::Abort(_) => {
+                tracing::debug!(session_id = %self.id, "abort received");
                 return;
             }
             Frame::Ping { .. } | Frame::Pong { .. } => return,
@@ -344,6 +416,12 @@ impl Session {
     async fn on_idle(&mut self, frame: &Frame) {
         self.new_round().await;
         if let Frame::Hello(hello_message) = frame {
+            tracing::debug!(
+                session_id = %self.id,
+                version = hello_message.version,
+                transport = ?hello_message.transport,
+                "client hello"
+            );
             let mut has_mcp = false;
             if let Some(features) = &hello_message.features
                 && let Some(mcp) = features.mcp
@@ -409,7 +487,7 @@ impl Session {
                 Frame::ListenStart { barge_in } => {
                     if self.running_round.is_some() {
                         self.epoch += 1;
-                        self.stop_round().await;
+                        self.stop_round(RoundStopReason::BargeIn).await;
                     }
                     self.phase = Phase::Listening(ListeningParam {
                         can_barge_in: *barge_in,

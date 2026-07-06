@@ -217,10 +217,11 @@ pub async fn start_app(
     )
     .with_graceful_shutdown(async move {
         tokio::signal::ctrl_c().await.unwrap();
+        tracing::info!("shutting down...");
         ct.cancel();
     })
     .await?;
-    tracing::info!("app end");
+    tracing::info!("shutdown complete");
     Ok(())
 }
 
@@ -274,7 +275,7 @@ pub fn setup_default(router: Router) -> Router {
             let path = request.uri().path();
             let headers = request.headers();
             let id = xid::new();
-            tracing::debug!("headers = {:?}", headers);
+            tracing::trace!("headers = {:?}", headers);
             tracing::info_span!("Api Request",id = %id,method = %method,path = %path)
         })
         .on_request(())

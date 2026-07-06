@@ -4,6 +4,7 @@ use chrono::Local;
 use service::chobits::message::hello::AudioParam;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
+use tracing;
 
 /// Maximum prefix padding in samples (300ms at 16kHz).
 const PREFIX_SAMPLES_MAX: usize = 4800;
@@ -126,7 +127,10 @@ impl Listener for DefaultListener {
                             .decode_float(&data, &mut samples, false)
                         {
                             Ok(len) => len,
-                            Err(_) => return,
+                            Err(_) => {
+                                tracing::warn!("opus decode error");
+                                return;
+                            }
                         };
                     for s in samples[..len].iter_mut() {
                         *s = s.clamp(-1.0, 1.0);

@@ -118,6 +118,13 @@
 - AI 模块 (LLM/TTS/VAD/ASR) 使用 Factory 模式，通过 `XxxFactory::init()` 初始化，通过 `XxxFactory::get()` 获取实例
 - Downloader 命令从 `apps/server/` 运行时使用 `--data-dir ../../data`（不是 `--data-dir data`）
 - Rust: 引入新类型/新模式后（如用 `SessionObserver` 替代 `RecordCollector`、用 `Context` 替代裸 String），用 `rg <旧类型名> --type rust` 确认无残留引用。无引用则删除对应旧文件/旧模块，清零 `#[allow(...)]` 豁免
+- **日志**:
+  - 必须使用结构化 key-value 字段，禁用 format string 参数（`info!(field = %val, "msg")` ✅；`info!("msg {}", val)` ❌）
+  - `#[instrument]` 仅用于入口函数，内部函数禁止
+  - 所有事件显式携带 `session_id`（round 相关加 `round_id`）
+  - 禁止在 async 代码中使用 `span.enter()`
+  - INFO: 生命周期；DEBUG: 流转；WARN: 故障
+  - 控制台 `FmtSpan::NONE`，文件 `FmtSpan::CLOSE`
 
 ## 4. 开发工作流
 
