@@ -3,7 +3,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use chrono::{DateTime, FixedOffset, Local};
-use service::chobits::message::listen::ListenState;
 use service::ws::frame::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -101,40 +100,36 @@ impl InputProxy {
                     state.audio_buffer.push(data.clone());
                 }
             }
-            Frame::Listen(listen) => {
-                self.record_frame(recorder, now, FrameDetail::Listen, None);
+            Frame::ListenStart { .. } => {
+                self.record_frame(recorder, now, FrameDetail::ListenStart, None);
 
                 let mut state = self.state.lock().expect("state lock");
-                match listen.state {
-                    ListenState::Start => {
-                        recorder.mark_voice_start(now);
-                        state.input_active = true;
-                        state.audio_buffer.clear();
-                        state.voice_start_time = None;
-                    }
-                    ListenState::Stop => {
-                        if state.input_active && !state.audio_buffer.is_empty() {
-                            let frames = std::mem::take(&mut state.audio_buffer);
-                            let first_frame_at = state.voice_start_time.take();
-                            recorder.push_entry(RecordEntry {
-                                received_at: now,
-                                seq: None,
-                                kind: EntryKind::InputAudio {
-                                    frames,
-                                    first_frame_at,
-                                    frame_duration_ms: self
-                                        .input_frame_duration
-                                        .load(Ordering::Relaxed),
-                                    channels: self.input_channels.load(Ordering::Relaxed) as u8,
-                                },
-                            });
-                        }
-                        state.input_active = false;
-                        state.audio_buffer.clear();
-                        state.voice_start_time = None;
-                    }
-                    _ => {}
+                recorder.mark_voice_start(now);
+                state.input_active = true;
+                state.audio_buffer.clear();
+                state.voice_start_time = None;
+            }
+            Frame::ListenStop => {
+                self.record_frame(recorder, now, FrameDetail::ListenStop, None);
+
+                let mut state = self.state.lock().expect("state lock");
+                if state.input_active && !state.audio_buffer.is_empty() {
+                    let frames = std::mem::take(&mut state.audio_buffer);
+                    let first_frame_at = state.voice_start_time.take();
+                    recorder.push_entry(RecordEntry {
+                        received_at: now,
+                        seq: None,
+                        kind: EntryKind::InputAudio {
+                            frames,
+                            first_frame_at,
+                            frame_duration_ms: self.input_frame_duration.load(Ordering::Relaxed),
+                            channels: self.input_channels.load(Ordering::Relaxed) as u8,
+                        },
+                    });
                 }
+                state.input_active = false;
+                state.audio_buffer.clear();
+                state.voice_start_time = None;
             }
             Frame::Abort(_) => {
                 self.record_frame(recorder, now, FrameDetail::Abort, None);
@@ -151,11 +146,11 @@ impl InputProxy {
             Frame::Close(_) => {
                 self.record_frame(recorder, now, FrameDetail::Close, None);
             }
-            Frame::Chat { text } => {
+            Frame::Input { text } => {
                 self.record_frame(
                     recorder,
                     now,
-                    FrameDetail::Chat,
+                    FrameDetail::Input,
                     Some(text.as_bytes().to_vec()),
                 );
                 recorder.push_entry(RecordEntry {
@@ -164,7 +159,7 @@ impl InputProxy {
                     kind: EntryKind::Text { text: text.clone() },
                 });
             }
-            Frame::UnknowText { data } => {
+            Frame::UnknownText { data } => {
                 self.record_frame(recorder, now, FrameDetail::UnknownText, Some(data.clone()));
             }
             Frame::Mcp(_) => {

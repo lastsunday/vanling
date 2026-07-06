@@ -28,10 +28,11 @@ function parseFrameLabel(detail: string | null): string {
   const map: Record<string, string> = {
     Hello: 'hello',
     HelloResult: 'hello',
-    Listen: 'listen',
+    ListenStart: 'listen_start',
+    ListenStop: 'listen_stop',
+    Input: 'text',
     Voice: 'voice',
-    UnknowText: 'text',
-    Chat: 'text',
+    UnknownText: 'text',
     STTResult: 'asr',
     LLMResult: 'llm',
     TTSResult: 'tts',
@@ -49,7 +50,8 @@ function parseFrameLabel(detail: string | null): string {
 
 const frameTypeColors: Record<string, string> = {
   hello: '#20c997',
-  listen: '#868e96',
+  listen_start: '#868e96',
+  listen_stop: '#868e96',
   voice: '#40c057',
   text: '#fab005',
   asr: '#15aabf',

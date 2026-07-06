@@ -19,7 +19,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, trace};
 
 pub struct OutputMessage {
     pub epoch: u64,
@@ -81,12 +80,9 @@ impl Round {
         }
     }
 
-    pub async fn start(&self) {
-        info!("round start");
-    }
+    pub async fn start(&self) {}
 
     pub async fn accept_command<'a>(&mut self, command: Command<'a>) {
-        info!("accept_command {:?}", command);
         match command {
             Command::Chat(chat_param) => {
                 self.llm_tts_handle(chat_param.text, chat_param.prob).await
@@ -130,7 +126,6 @@ impl Round {
             )))
             .is_err()
             {
-                info!(target:"round","send stt result failure");
                 return;
             }
 
@@ -151,7 +146,6 @@ impl Round {
             )))
             .is_err()
             {
-                info!(target:"round","send tts state start failure");
                 stop_me.store(true, Ordering::Relaxed);
             }
 
@@ -159,7 +153,6 @@ impl Round {
                 match result {
                     Ok(result) => {
                         if stop_me.load(Ordering::Relaxed) {
-                            trace!("stop_me");
                             break;
                         }
                         let text = result.text;
@@ -191,7 +184,6 @@ impl Round {
                             let data = audio_data.into_iter();
                             for packet in data {
                                 if stop_me_by_tts_packet.load(Ordering::Relaxed) {
-                                    trace!("stop_me_by_tts_packet");
                                     break;
                                 }
                                 send(FrameResult::AudioResult(AudioMessage::new(
@@ -212,19 +204,15 @@ impl Round {
                             Ok(())
                         }
                         .await;
-                        if let Err(e) = result {
-                            error!(target:"round","{:?}", e);
+                        if result.is_err() {
                             stop_me.store(true, Ordering::Relaxed);
                             break;
                         }
                     }
                     Err(e) => {
-                        error!(target:"round","{:?}", e);
-                        if let Err(e) = send(FrameResult::Error(
+                        let _ = send(FrameResult::Error(
                             err!(WsErrorCode::TtsEncode).with_extra(e.to_string()),
-                        )) {
-                            error!(target:"round","{:?}", e);
-                        }
+                        ));
                         stop_me.store(true, Ordering::Relaxed);
                         break;
                     }
@@ -241,8 +229,6 @@ impl Round {
             {
                 stop_me.store(true, Ordering::Relaxed);
             }
-
-            info!(target:"round","end");
         }));
     }
 
@@ -258,6 +244,5 @@ impl Round {
     pub async fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
         self.cancel.cancel();
-        info!("round stop");
     }
 }

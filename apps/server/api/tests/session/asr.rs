@@ -12,11 +12,7 @@ use api::{
 };
 use framework::id::gen_id;
 use service::{
-    chobits::message::{
-        hello::HelloMessage,
-        listen::{ListenMessage, ListenMode, ListenState},
-        tts::TtsState,
-    },
+    chobits::message::{hello::HelloMessage, tts::TtsState},
     ws::frame::{Frame, FrameResult},
 };
 use std::{path::Path, sync::Arc};
@@ -99,11 +95,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         FrameResult::HelloResult(..)
     ));
 
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Start,
-        mmod: Some(ListenMode::Manual),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::ListenStart { barge_in: true })?;
 
     for n in 0..audio.len() {
         input_tx.send(Frame::Voice {
@@ -111,11 +103,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         })?;
     }
 
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Stop,
-        mmod: Some(ListenMode::Manual),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::ListenStop)?;
 
     let mut frames = Vec::new();
     loop {

@@ -2,11 +2,7 @@ use axum::extract::ws::Message;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use service::chobits::message::{
-    abort::AbortMessage,
-    close::CloseMessage,
-    hello::HelloMessage,
-    listen::{ListenMessage, ListenState},
-    mcp::McpMessage,
+    abort::AbortMessage, close::CloseMessage, hello::HelloMessage, mcp::McpMessage,
 };
 use service::ws::frame::{Frame, FrameResult};
 use tracing::warn;
@@ -28,28 +24,49 @@ impl ProtocolTranslator for XiaozhiProtocolTranslator {
                     Ok(json) if json.is_object() => {
                         match json.get("type").and_then(|v| v.as_str()) {
                             Some("hello") => try_parse::<HelloMessage>(bytes, Frame::Hello),
-                            Some("listen") => {
-                                match serde_json::from_slice::<ListenMessage>(&bytes) {
-                                    Ok(listen) if is_text_input(&listen) => Frame::Chat {
-                                        text: listen.text.unwrap_or_default(),
-                                    },
-                                    Ok(listen) => Frame::Listen(listen),
-                                    Err(_) => Frame::UnknowText { data: bytes },
+                            Some("listen") => match serde_json::from_slice::<Value>(&bytes) {
+                                Ok(json) => {
+                                    let state = json.get("state").and_then(|v| v.as_str());
+                                    match state {
+                                        Some("start") => {
+                                            let barge_in = json
+                                                .get("mode")
+                                                .and_then(|v| v.as_str())
+                                                .is_some_and(|m| m != "auto");
+                                            Frame::ListenStart { barge_in }
+                                        }
+                                        Some("stop") => Frame::ListenStop,
+                                        Some("detect") | Some("text") => {
+                                            let text = json
+                                                .get("text")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("");
+                                            if text.is_empty() {
+                                                Frame::UnknownText { data: bytes }
+                                            } else {
+                                                Frame::Input {
+                                                    text: text.to_string(),
+                                                }
+                                            }
+                                        }
+                                        _ => Frame::UnknownText { data: bytes },
+                                    }
                                 }
-                            }
+                                Err(_) => Frame::UnknownText { data: bytes },
+                            },
                             Some("abort") => try_parse::<AbortMessage>(bytes, Frame::Abort),
                             Some("mcp") => try_parse::<McpMessage>(bytes, Frame::Mcp),
                             _ => {
                                 warn!("unknown message type");
-                                Frame::UnknowText { data: bytes }
+                                Frame::UnknownText { data: bytes }
                             }
                         }
                     }
                     Ok(json) => {
                         warn!("unknown json message = {json}");
-                        Frame::UnknowText { data: bytes }
+                        Frame::UnknownText { data: bytes }
                     }
-                    Err(_) => Frame::UnknowText { data: bytes },
+                    Err(_) => Frame::UnknownText { data: bytes },
                 }
             }
             Message::Binary(data) => Frame::Voice {
@@ -94,12 +111,6 @@ impl ProtocolTranslator for XiaozhiProtocolTranslator {
 fn try_parse<T: DeserializeOwned>(data: Vec<u8>, make: impl FnOnce(T) -> Frame) -> Frame {
     match serde_json::from_slice::<T>(&data) {
         Ok(msg) => make(msg),
-        Err(_) => Frame::UnknowText { data },
+        Err(_) => Frame::UnknownText { data },
     }
-}
-
-fn is_text_input(listen: &ListenMessage) -> bool {
-    matches!(listen.state, ListenState::Text)
-        || (matches!(listen.state, ListenState::Start | ListenState::Detect)
-            && listen.text.as_ref().is_some_and(|t| !t.is_empty()))
 }

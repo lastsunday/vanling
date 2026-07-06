@@ -13,7 +13,6 @@ use chrono::Local;
 use framework::prelude::err;
 use rig::message::ToolResult;
 use service::chobits::message::hello::{AudioParam, HelloMessage};
-use service::chobits::message::listen::ListenState;
 use service::chobits::message::{AudioFormat, Transport};
 use service::ws::frame::{Frame, FrameResult};
 use std::sync::Arc;
@@ -23,7 +22,6 @@ use tokio::select;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{Sender, UnboundedSender, channel};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
 
 pub mod listener;
 pub mod round;
@@ -163,7 +161,6 @@ pub struct ListeningParam {
 
 #[derive(Debug, Clone)]
 pub struct SpeakingParam {
-    audio: Option<Vec<f32>>,
     text: String,
     prob: f32,
 }
@@ -182,7 +179,6 @@ impl Session {
             .await
             .set_device_client(Arc::new(Mutex::new(device)))
             .await;
-        info!("session start");
 
         let frame_duration = self
             .audio_config
@@ -241,7 +237,6 @@ impl Session {
             session_id: self.id.clone(),
             payload: FrameResult::CloseResult,
         });
-        info!("session stop");
     }
 
     pub async fn new_round(&mut self) {
@@ -270,7 +265,6 @@ impl Session {
         } else {
             panic!("current round is none");
         }
-        info!("new round");
     }
 
     pub async fn stop_round(&mut self) {
@@ -278,7 +272,6 @@ impl Session {
             round.stop().await;
             round.join_handle.take();
         }
-        info!("stop round");
     }
 
     async fn upgrade_shadow_round(&mut self) {
@@ -303,12 +296,10 @@ impl Session {
     async fn _accept_frame(&mut self, frame: &Frame, forwarding: bool) {
         match frame {
             Frame::Close(_) => {
-                info!(target:"session","close");
                 self.stop().await;
                 return;
             }
             Frame::Abort(_) => {
-                info!(target:"session","abort");
                 return;
             }
             Frame::Ping { .. } | Frame::Pong { .. } => return,
@@ -335,8 +326,6 @@ impl Session {
                     if let Some(device_mcp_client) = device_mcp_client {
                         let mut device_mcp_client = device_mcp_client.lock().await;
                         self.device_mcp_phase = device_mcp_client.handle_mcp(message).await.clone();
-                    } else {
-                        error!("mcp device client not exists");
                     }
                 }
             }
@@ -353,37 +342,27 @@ impl Session {
     }
 
     async fn on_idle(&mut self, frame: &Frame) {
-        info!("on_idle");
         self.new_round().await;
-        match frame {
-            Frame::Hello(hello_message) => {
-                let mut has_mcp = false;
-                if let Some(features) = &hello_message.features
-                    && let Some(mcp) = features.mcp
-                {
-                    has_mcp = mcp;
-                }
-                self.handle_connect(hello_message).await;
-                self.phase = Phase::Ready;
-                if has_mcp {
-                    //init Device MCP client
-                    let mut mcp_host = self.mcp_host.lock().await;
-                    let device_mcp_client = mcp_host
-                        .get_device_client()
-                        .await
-                        .clone()
-                        .expect("device mcp not exists");
-                    let mut device_mcp_client = device_mcp_client.lock().await;
-                    device_mcp_client
-                        .request_mcp_initialize(hello_message)
-                        .await;
-                }
+        if let Frame::Hello(hello_message) = frame {
+            let mut has_mcp = false;
+            if let Some(features) = &hello_message.features
+                && let Some(mcp) = features.mcp
+            {
+                has_mcp = mcp;
             }
-            _ => {
-                error!(
-                    "invalid frame in phase = {:?},frame = {:?}",
-                    self.phase, frame
-                );
+            self.handle_connect(hello_message).await;
+            self.phase = Phase::Ready;
+            if has_mcp {
+                let mut mcp_host = self.mcp_host.lock().await;
+                let device_mcp_client = mcp_host
+                    .get_device_client()
+                    .await
+                    .clone()
+                    .expect("device mcp not exists");
+                let mut device_mcp_client = device_mcp_client.lock().await;
+                device_mcp_client
+                    .request_mcp_initialize(hello_message)
+                    .await;
             }
         }
     }
@@ -423,76 +402,23 @@ impl Session {
     }
 
     async fn on_ready(&mut self, frame: &Frame, forwarding: bool) {
-        info!("on_ready");
         if forwarding {
             self.new_round().await;
         } else {
             match frame {
-                Frame::Listen(listen_message) => {
-                    let state = &listen_message.state;
-                    match state {
-                        ListenState::Start => {
-                            if self.running_round.is_some() {
-                                self.epoch += 1;
-                                self.stop_round().await;
-                            }
-                            let mode = &listen_message.mmod;
-                            if let Some(mode) = mode {
-                                match mode {
-                                    service::chobits::message::listen::ListenMode::Auto => {
-                                        self.phase = Phase::Listening(ListeningParam {
-                                            can_barge_in: false,
-                                        });
-                                    }
-                                    service::chobits::message::listen::ListenMode::Manual => {
-                                        self.phase =
-                                            Phase::Listening(ListeningParam { can_barge_in: true });
-                                    }
-                                    service::chobits::message::listen::ListenMode::RealTime => {
-                                        self.phase =
-                                            Phase::Listening(ListeningParam { can_barge_in: true });
-                                    }
-                                }
-                                self.new_round().await;
-                            } else {
-                                error!(
-                                    "invalid frame in phase = {:?},frame = {:?}, state = {:?}",
-                                    self.phase, frame, state
-                                );
-                            }
-                        }
-                        ListenState::Detect => {
-                            let text = &listen_message.text;
-                            match text {
-                                Some(text) => {
-                                    self.upgrade_shadow_round().await;
-                                    self.phase = Phase::Speaking(SpeakingParam {
-                                        audio: None,
-                                        text: text.to_string(),
-                                        prob: 1.0,
-                                    });
-                                    Box::pin(self.forwarding_frame(frame)).await;
-                                }
-                                None => {
-                                    error!(
-                                        "invalid frame in phase = {:?},frame = {:?}, text = {:?}",
-                                        self.phase, frame, text
-                                    );
-                                }
-                            }
-                        }
-                        _ => {
-                            error!(
-                                "invalid frame in phase = {:?},frame = {:?}, state = {:?}",
-                                self.phase, frame, state
-                            );
-                        }
+                Frame::ListenStart { barge_in } => {
+                    if self.running_round.is_some() {
+                        self.epoch += 1;
+                        self.stop_round().await;
                     }
+                    self.phase = Phase::Listening(ListeningParam {
+                        can_barge_in: *barge_in,
+                    });
+                    self.new_round().await;
                 }
-                Frame::Chat { text } => {
+                Frame::Input { text } => {
                     self.upgrade_shadow_round().await;
                     self.phase = Phase::Speaking(SpeakingParam {
-                        audio: None,
                         text: text.clone(),
                         prob: 1.0,
                     });
@@ -503,12 +429,7 @@ impl Session {
                         .accept(listener::ListenInput::Audio(data.to_vec()))
                         .await;
                 }
-                _ => {
-                    error!(
-                        "invalid frame in phase = {:?},frame = {:?}",
-                        self.phase, frame
-                    );
-                }
+                _ => {}
             }
         }
     }
@@ -516,48 +437,34 @@ impl Session {
     async fn on_listening(&mut self, frame: &Frame, param: &ListeningParam) {
         let ListeningParam { can_barge_in } = param;
         match frame {
-            Frame::Listen(listen_message) => {
-                let state = &listen_message.state;
-                match state {
-                    ListenState::Stop => {
-                        self.listener
-                            .set_state(crate::ws::session::listener::ListenState::End);
-                        let (audio, result) = self.listener.take_result().await;
-                        let audio = if audio.is_empty() { None } else { Some(audio) };
-                        let (text, prob) = match result {
-                            Ok(result) => match result {
-                                listener::ListenResult::Text(text) => (text, 1.0),
-                                listener::ListenResult::Audio { text, prob } => (text, prob),
-                            },
-                            Err(e) => {
-                                let _ = self.output_tx.send(OutputMessage {
-                                    epoch: self.epoch,
-                                    round_id: None,
-                                    session_id: self.id.clone(),
-                                    payload: FrameResult::Error(
-                                        err!(WsErrorCode::AsrFailure).with_extra(e.to_string()),
-                                    ),
-                                });
-                                return;
-                            }
-                        };
-                        self.phase = Phase::Speaking(SpeakingParam { audio, text, prob });
-                        self.running_round = self.shadow_round.take();
-                        let silence_voice_timeout = self
-                            .config
-                            .silence_voice_timeout
-                            .expect("logic silence voice timeout is empty");
-                        self.listener.reset(Some(silence_voice_timeout)).await;
-                        // forwarding frame
-                        Box::pin(self.forwarding_frame(frame)).await;
+            Frame::ListenStop => {
+                self.listener.set_state(listener::ListenState::End);
+                let (_, result) = self.listener.take_result().await;
+                let (text, prob) = match result {
+                    Ok(result) => match result {
+                        listener::ListenResult::Text(text) => (text, 1.0),
+                        listener::ListenResult::Audio { text, prob } => (text, prob),
+                    },
+                    Err(e) => {
+                        let _ = self.output_tx.send(OutputMessage {
+                            epoch: self.epoch,
+                            round_id: None,
+                            session_id: self.id.clone(),
+                            payload: FrameResult::Error(
+                                err!(WsErrorCode::AsrFailure).with_extra(e.to_string()),
+                            ),
+                        });
+                        return;
                     }
-                    _ => {
-                        error!(
-                            "invalid frame in phase = {:?},frame = {:?}",
-                            self.phase, frame
-                        );
-                    }
-                }
+                };
+                self.phase = Phase::Speaking(SpeakingParam { text, prob });
+                self.upgrade_shadow_round().await;
+                let silence_voice_timeout = self
+                    .config
+                    .silence_voice_timeout
+                    .expect("logic silence voice timeout is empty");
+                self.listener.reset(Some(silence_voice_timeout)).await;
+                Box::pin(self.forwarding_frame(frame)).await;
             }
             Frame::Voice { data } => {
                 let is_speaking = match &self.running_round {
@@ -570,21 +477,12 @@ impl Session {
                         .await;
                 }
             }
-            _ => {
-                error!(
-                    "invalid frame in phase = {:?},frame = {:?}",
-                    self.phase, frame
-                );
-            }
+            _ => {}
         }
     }
 
     async fn on_speaking(&mut self, frame: &Frame, param: &SpeakingParam) {
-        let SpeakingParam { audio, text, prob } = param;
-        if let Some(audio) = audio {
-            info!("on_speaking, audio len = {}", audio.len());
-        }
-        info!("on_speaking,text = {},prob = {}", text, prob);
+        let SpeakingParam { text, prob } = param;
         if let Some(round) = &mut self.running_round {
             round
                 .accept_command(Command::Chat(ChatParam { text, prob }))
@@ -593,7 +491,6 @@ impl Session {
             panic!("current round is none");
         }
         self.phase = Phase::Ready;
-        // forwarding frame
         Box::pin(self.forwarding_frame(frame)).await;
     }
 

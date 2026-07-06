@@ -17,7 +17,6 @@
 // use sea_orm::entity::prelude::*;
 // use service::chobits::message::{
 //     hello::HelloMessage,
-//     listen::{ListenMessage, ListenMode, ListenState},
 //     tts::TtsState,
 // };
 // use std::{sync::Arc, time::Duration};
@@ -109,14 +108,9 @@
 //         FrameResult::HelloResult(..)
 //     ));
 //
-//     // Send text message via Detect
+//     // Send text message via Input
 //     session
-//         .accept_frame(&Frame::Listen(ListenMessage {
-//             state: ListenState::Detect,
-//             mmod: Some(ListenMode::Manual),
-//             text: Some("Hello"),
-//             ..Default::default()
-//         }))
+//         .accept_frame(&Frame::Input { text: "Hello".to_string() })
 //         .await;
 //
 //     // Consume output until TTS::Stop

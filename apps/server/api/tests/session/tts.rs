@@ -12,11 +12,7 @@ use api::{
 };
 use framework::id::gen_id;
 use service::{
-    chobits::message::{
-        hello::HelloMessage,
-        listen::{ListenMessage, ListenMode, ListenState},
-        tts::TtsState,
-    },
+    chobits::message::{hello::HelloMessage, tts::TtsState},
     ws::frame::{Frame, FrameResult},
 };
 use std::{path::Path, sync::Arc};
@@ -107,12 +103,9 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
     ));
 
     let text = "对于有媒体报道称，“特朗普说，如果中国不在霍尔木兹海峡护航问题上提供协助，他将推迟访华”，林剑说，中方注意到美方已就媒体不实报道公开作出澄清，表示有关报道是完全错误的，强调访问与霍尔木兹海峡通航问题无关。";
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(ListenMode::Manual),
-        text: Some(text.to_string()),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::Input {
+        text: text.to_string(),
+    })?;
 
     let mut all_packets: Vec<Vec<u8>> = Vec::new();
     loop {

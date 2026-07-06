@@ -40,7 +40,7 @@ use rmcp::transport::{
 use service::chobits::message::close::CloseMessage;
 use service::ws::frame::Frame;
 use tokio::sync::Mutex;
-use tracing::{Instrument, Level, debug, error, span};
+use tracing::{Instrument, Level, span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -70,7 +70,7 @@ pub fn create_routes(state: AppState) -> OpenApiRouter {
 async fn ws_handler(
     _version: Version,
     ws: WebSocketUpgrade,
-    user_agent: Option<TypedHeader<headers::UserAgent>>,
+    _user_agent: Option<TypedHeader<headers::UserAgent>>,
     _headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(AppState {
@@ -82,7 +82,6 @@ async fn ws_handler(
         ..
     }): State<AppState>,
 ) -> impl IntoResponse {
-    debug!("user_agent = {:?}", user_agent);
     ws.on_upgrade(move |socket| {
         let (write, read) = socket.split();
         handle_socket(
@@ -216,13 +215,8 @@ async fn create_mcp_host(session_id: String, mcp_config: Arc<McpConfig>) -> Unio
     if let Some(uri_list) = uri_list {
         for uri in uri_list {
             let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-            match server_mcp_client {
-                Ok(server_mcp_client) => {
-                    mcp_host.add_client(Box::new(server_mcp_client)).await;
-                }
-                Err(e) => {
-                    error!("{:?}", e);
-                }
+            if let Ok(server_mcp_client) = server_mcp_client {
+                mcp_host.add_client(Box::new(server_mcp_client)).await;
             }
         }
     }

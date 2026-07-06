@@ -40,14 +40,15 @@ pub enum FrameDetail {
     AudioResult,
     Error,
     Hello,
-    Listen,
+    ListenStart,
+    ListenStop,
+    Input,
+    UnknownText,
     Abort,
     Close,
-    UnknownText,
     Mcp,
     Ping,
     Pong,
-    Chat,
 }
 
 impl FrameDetail {
@@ -60,14 +61,15 @@ impl FrameDetail {
             FrameDetail::AudioResult => "AudioResult",
             FrameDetail::Error => "Error",
             FrameDetail::Hello => "Hello",
-            FrameDetail::Listen => "Listen",
+            FrameDetail::ListenStart => "ListenStart",
+            FrameDetail::ListenStop => "ListenStop",
+            FrameDetail::Input => "Input",
+            FrameDetail::UnknownText => "UnknownText",
             FrameDetail::Abort => "Abort",
             FrameDetail::Close => "Close",
-            FrameDetail::UnknownText => "UnknownText",
             FrameDetail::Mcp => "Mcp",
             FrameDetail::Ping => "Ping",
             FrameDetail::Pong => "Pong",
-            FrameDetail::Chat => "Chat",
         }
     }
 }

@@ -19,11 +19,7 @@ use ruma::{
     presence::PresenceState,
     serde::Raw,
 };
-use service::chobits::message::{
-    hello::HelloMessage,
-    listen::{ListenMessage, ListenMode, ListenState},
-    tts::TtsState,
-};
+use service::chobits::message::{hello::HelloMessage, tts::TtsState};
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -336,12 +332,7 @@ impl Bot {
             .unwrap_or_else(|| panic!("session not exists for provided session key"))
             .clone();
         drop(session_map);
-        let _ = tx.send(Frame::Listen(ListenMessage {
-            state: ListenState::Detect,
-            mmod: Some(ListenMode::Manual),
-            text: Some(t.body),
-            ..Default::default()
-        }));
+        let _ = tx.send(Frame::Input { text: t.body });
         Ok(())
     }
 

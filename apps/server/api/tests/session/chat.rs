@@ -2,7 +2,6 @@ use service::chobits::message::{
     audio::AudioMessage,
     close::CloseMessage,
     hello::HelloMessage,
-    listen::{ListenMessage, ListenMode, ListenState},
     tts::{TtsMessage, TtsState},
 };
 use service::ws::frame::{Frame, FrameResult};
@@ -47,21 +46,13 @@ async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
         output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Start,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::ListenStart { barge_in: true })?;
     for n in 0..audio.len() {
         input_tx.send(Frame::Voice {
             data: audio.get(n).unwrap().to_vec(),
         })?;
     }
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Stop,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::ListenStop)?;
     loop {
         let data = output_rx.recv().await.unwrap().payload;
         if let FrameResult::TTSResult(tts_message) = data {
@@ -90,13 +81,10 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
         FrameResult::HelloResult(..)
     ));
 
-    // First round via text-based Detect
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(ListenMode::Manual),
-        text: Some("Hello".to_string()),
-        ..Default::default()
-    }))?;
+    // First round via text-based Input
+    input_tx.send(Frame::Input {
+        text: "Hello".to_string(),
+    })?;
 
     // Drain: STTResult → TTS Start → LLMResult → SentenceStart → SentenceEnd → Stop
     loop {
@@ -108,13 +96,10 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
         }
     }
 
-    // Second round via text-based Detect
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(ListenMode::Manual),
-        text: Some("Second input".to_string()),
-        ..Default::default()
-    }))?;
+    // Second round via text-based Input
+    input_tx.send(Frame::Input {
+        text: "Second input".to_string(),
+    })?;
 
     loop {
         let data = output_rx.recv().await.unwrap().payload;
@@ -190,13 +175,10 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
         FrameResult::HelloResult(..)
     ));
 
-    // First round via text-based Detect
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(ListenMode::Manual),
-        text: Some("Hello".to_string()),
-        ..Default::default()
-    }))?;
+    // First round via text-based Input
+    input_tx.send(Frame::Input {
+        text: "Hello".to_string(),
+    })?;
 
     // Drain: STTResult → TTS Start → LLMResult → SentenceStart → SentenceEnd → Stop
     loop {
@@ -228,12 +210,9 @@ async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> any
         output_rx.recv().await.unwrap().payload,
         FrameResult::HelloResult(..)
     ));
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: None,
-        text: Some("Hello".to_string()),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::Input {
+        text: "Hello".to_string(),
+    })?;
     // drain Wake pipeline before Listen(Start, RealTime) to avoid epoch bump
     // discarding the Wake pipeline's STTResult
     while let Some(data) = output_rx.recv().await {
@@ -247,11 +226,7 @@ async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> any
             _ => continue,
         }
     }
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Start,
-        mmod: Some(ListenMode::RealTime),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::ListenStart { barge_in: true })?;
 
     // Send Close to trigger session shutdown
     input_tx
@@ -290,12 +265,9 @@ async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()
         user_answer.push(text);
     }
     for index in 0..user_answer.len() {
-        input_tx.send(Frame::Listen(ListenMessage {
-            state: ListenState::Detect,
-            mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-            text: Some(user_answer.get(index).unwrap().to_string()),
-            ..Default::default()
-        }))?;
+        input_tx.send(Frame::Input {
+            text: user_answer.get(index).unwrap().to_string(),
+        })?;
         let frame_result = output_rx.recv().await.unwrap().payload;
         debug!("{:?}", &frame_result);
         assert!(matches!(frame_result, FrameResult::STTResult(..)));
@@ -383,12 +355,9 @@ async fn test_chat_flow_handle_text_message() -> anyhow::Result<()> {
     input_tx.send(Frame::Hello(HelloMessage {
         ..Default::default()
     }))?;
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        text: Some("Hello".to_string()),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::Input {
+        text: "Hello".to_string(),
+    })?;
     join_handle.await?;
     drop(input_tx);
     let _ = &state.conn.close().await?;
@@ -438,18 +407,12 @@ async fn test_chat_flow_break() -> anyhow::Result<()> {
     input_tx.send(Frame::Hello(HelloMessage {
         ..Default::default()
     }))?;
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        text: Some("Hello".to_string()),
-        ..Default::default()
-    }))?;
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        text: Some("Hello".to_string()),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::Input {
+        text: "Hello".to_string(),
+    })?;
+    input_tx.send(Frame::Input {
+        text: "Hello".to_string(),
+    })?;
     join_handle.await?;
     drop(input_tx);
     Ok(())

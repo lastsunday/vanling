@@ -126,14 +126,7 @@ impl Listener for DefaultListener {
                             .decode_float(&data, &mut samples, false)
                         {
                             Ok(len) => len,
-                            Err(e) => {
-                                tracing::error!(
-                                    "Opus decode error: {e}, data_len={}, first_bytes={:02x?}",
-                                    data.len(),
-                                    &data[..data.len().min(8)]
-                                );
-                                return;
-                            }
+                            Err(_) => return,
                         };
                     for s in samples[..len].iter_mut() {
                         *s = s.clamp(-1.0, 1.0);
@@ -152,8 +145,7 @@ impl Listener for DefaultListener {
                         }
 
                         // 2. VAD decision only (no longer accumulates audio internally).
-                        if let Err(e) = self.vad.accept_waveform(&window) {
-                            tracing::error!("accept_waveform error = {}", e.to_string());
+                        if self.vad.accept_waveform(&window).is_err() {
                             return;
                         }
 

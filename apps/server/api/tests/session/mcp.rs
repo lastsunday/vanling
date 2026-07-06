@@ -5,7 +5,6 @@ use rmcp::model::{
 use service::chobits::message::{
     audio::AudioMessage,
     hello::{Feature, HelloMessage},
-    listen::{ListenMessage, ListenState},
     mcp::McpMessage,
     tts::{TtsMessage, TtsState},
 };
@@ -171,12 +170,9 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
         },
     ))))?;
 
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        text: Some("现在几点".to_string()),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::Input {
+        text: "现在几点".to_string(),
+    })?;
 
     let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);
@@ -355,12 +351,9 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
         },
     ))))?;
 
-    input_tx.send(Frame::Listen(ListenMessage {
-        state: ListenState::Detect,
-        mmod: Some(service::chobits::message::listen::ListenMode::Manual),
-        text: Some("get device status".to_string()),
-        ..Default::default()
-    }))?;
+    input_tx.send(Frame::Input {
+        text: "get device status".to_string(),
+    })?;
 
     let frame_result = output_rx.recv().await.unwrap().payload;
     debug!("{:?}", &frame_result);

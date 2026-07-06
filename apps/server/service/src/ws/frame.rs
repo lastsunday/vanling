@@ -9,7 +9,6 @@ use crate::chobits::message::{
     audio::AudioMessage,
     close::CloseMessage,
     hello::HelloMessage,
-    listen::{ListenMessage, ListenState},
     llm::LlmMessage,
     mcp::{McpMessage, McpRequest},
     stt::SttMessage,
@@ -19,9 +18,9 @@ use crate::chobits::message::{
 #[derive(Debug, Clone)]
 pub enum Frame {
     Hello(HelloMessage),
-    Listen(ListenMessage),
-    Chat { text: String },
-    UnknowText { data: Vec<u8> },
+    ListenStart { barge_in: bool },
+    ListenStop,
+    Input { text: String },
     Voice { data: Vec<u8> },
     Abort(AbortMessage),
     Ping { data: Vec<u8> },
@@ -29,28 +28,19 @@ pub enum Frame {
     Close(CloseMessage),
     Mcp(McpMessage),
     Error { code: u32, message: String },
+    UnknownText { data: Vec<u8> },
 }
 
 impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Frame::Hello(msg) => write!(f, "Hello(session_id={:?})", msg.session_id),
-            Frame::Listen(msg) => {
-                write!(f, "Listen(state=")?;
-                match msg.state {
-                    ListenState::Start => write!(f, "Start")?,
-                    ListenState::Stop => write!(f, "Stop")?,
-                    ListenState::Detect => write!(f, "Detect")?,
-                    ListenState::Text => write!(f, "Text")?,
-                }
-                if let Some(text) = &msg.text {
-                    write!(f, ", text=\"{text}\"")?;
-                }
-                write!(f, ")")
+            Frame::ListenStart { barge_in } => {
+                write!(f, "ListenStart(barge_in={barge_in})")
             }
+            Frame::ListenStop => write!(f, "ListenStop"),
+            Frame::Input { text } => write!(f, "Input(text=\"{text}\")"),
             Frame::Voice { data } => write!(f, "Voice(data_len={})", data.len()),
-            Frame::Chat { text } => write!(f, "Chat(text=\"{text}\")"),
-            Frame::UnknowText { data } => write!(f, "UnknowText(data_len={})", data.len()),
             Frame::Abort(msg) => write!(f, "Abort(reason={:?})", msg.reason),
             Frame::Ping { data } => write!(f, "Ping(data_len={})", data.len()),
             Frame::Pong { data } => write!(f, "Pong(data_len={})", data.len()),
@@ -61,6 +51,7 @@ impl fmt::Display for Frame {
                 serde_json::to_string(&msg.payload).unwrap_or_default()
             ),
             Frame::Error { code, message } => write!(f, "Error(code={code}, msg={message})"),
+            Frame::UnknownText { data } => write!(f, "UnknownText(data_len={})", data.len()),
         }
     }
 }
