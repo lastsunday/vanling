@@ -224,18 +224,6 @@ pub struct Config {
     pub llm_variant: Option<String>,
 
     /// default: 16000
-    #[serde(default = "default_audio_input_sample_rate")]
-    pub audio_input_sample_rate: Option<u32>,
-
-    /// default: 20
-    #[serde(default = "default_audio_input_frame_duration")]
-    pub audio_input_frame_duration: Option<u64>,
-
-    /// default: 1
-    #[serde(default = "default_audio_input_channel")]
-    pub audio_input_channel: Option<u32>,
-
-    /// default: 16000
     #[serde(default = "default_audio_output_sample_rate")]
     pub audio_output_sample_rate: Option<u32>,
 
@@ -447,18 +435,6 @@ fn default_llm_model() -> Option<LlmModel> {
 
 fn default_llm_path() -> Option<String> {
     None
-}
-
-fn default_audio_input_sample_rate() -> Option<u32> {
-    Some(16000)
-}
-
-fn default_audio_input_frame_duration() -> Option<u64> {
-    Some(20_u64)
-}
-
-fn default_audio_input_channel() -> Option<u32> {
-    Some(1)
 }
 
 fn default_audio_output_sample_rate() -> Option<u32> {

@@ -228,7 +228,6 @@ impl Bot {
                 .with_listener(Box::new(DefaultListener::new(
                     VadFactory::create_model(&self.vad_config),
                     AsrFactory::global().default().clone(),
-                    self.audio_config.clone(),
                 )))
                 .with_model(LlmFactory::global().default())
                 .with_mcp_host(Arc::new(Mutex::new(mcp_host)))

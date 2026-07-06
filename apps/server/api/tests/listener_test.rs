@@ -1,6 +1,5 @@
 use api::asr::Asr;
 use api::asr::model::void::AsrVoid;
-use api::config::audio::AudioConfig;
 use api::config::vad::VadConfig;
 use api::vad::Vad;
 use api::vad::model::earshot::VadEarshot;
@@ -13,23 +12,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing_test::traced_test;
 
-/// AudioConfig for all tests: 16kHz mono, 20ms frames (320 samples).
-fn audio_config() -> Arc<AudioConfig> {
-    Arc::new(AudioConfig {
-        input_sample_rate: Some(16000),
-        input_channel: Some(1),
-        input_frame_duration: Some(20),
-        output_sample_rate: Some(16000),
-        output_channel: Some(1),
-        output_frame_duration: Some(20),
-    })
-}
-
 /// Build a DefaultListener with VadEarshot (speech detection) + AsrVoid (no-op ASR).
 fn make_listener() -> DefaultListener {
     let vad = Box::new(VadEarshot::new(&VadConfig::default()).unwrap()) as Box<dyn Vad>;
     let asr = Arc::new(Mutex::new(Box::new(AsrVoid::new().unwrap()) as Box<dyn Asr>));
-    DefaultListener::new(vad, asr, audio_config())
+    DefaultListener::new(vad, asr)
 }
 
 /// Encode PCM f32 into Opus packets (20ms, 320-sample frames, 16kHz).

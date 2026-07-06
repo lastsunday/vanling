@@ -123,7 +123,6 @@ where
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&ctx.vad_config),
             AsrFactory::global().default().clone(),
-            ctx.audio_config.clone(),
         )))
         .with_model(LlmFactory::global().default())
         .with_tts(TtsFactory::global().default())
@@ -150,14 +149,7 @@ where
         )
         .instrument(span!(parent: &span, Level::DEBUG, "output")),
     );
-    let input_frame_duration = ctx
-        .audio_config
-        .input_frame_duration
-        .expect("input_frame_duration should have default");
-    let input_channels = ctx
-        .audio_config
-        .input_channel
-        .expect("input_channel should have default");
+    // Temp defaults; InputProxy updates from Frame::Hello before any audio arrives.
     let input_handle = tokio::spawn(
         ws_input(
             read,
@@ -165,8 +157,8 @@ where
                 ctx.session_id.clone(),
                 Some(recorder.clone()),
                 input_tx,
-                input_frame_duration,
-                input_channels,
+                20,
+                1,
             ),
             translator,
         )

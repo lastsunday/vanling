@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use chrono::{DateTime, FixedOffset, Local};
 use service::chobits::message::listen::ListenState;
@@ -20,8 +21,8 @@ pub struct InputProxy {
     recorder: Option<Arc<Recorder>>,
     input_tx: UnboundedSender<Frame>,
     state: Mutex<InputState>,
-    input_frame_duration: u64,
-    input_channels: u32,
+    input_frame_duration: AtomicU64,
+    input_channels: AtomicU32,
 }
 
 impl InputProxy {
@@ -41,8 +42,8 @@ impl InputProxy {
                 audio_buffer: Vec::new(),
                 voice_start_time: None,
             }),
-            input_frame_duration,
-            input_channels,
+            input_frame_duration: AtomicU64::new(input_frame_duration),
+            input_channels: AtomicU32::new(input_channels),
         }
     }
 
@@ -79,7 +80,13 @@ impl InputProxy {
         self.ensure_session(recorder);
 
         match &msg {
-            Frame::Hello(_) => {
+            Frame::Hello(hello) => {
+                if let Some(params) = &hello.audio_params {
+                    self.input_frame_duration
+                        .store(params.frame_duration, Ordering::Relaxed);
+                    self.input_channels
+                        .store(params.channels, Ordering::Relaxed);
+                }
                 self.record_frame(recorder, now, FrameDetail::Hello, None);
             }
             Frame::Voice { data } => {
@@ -115,8 +122,10 @@ impl InputProxy {
                                 kind: EntryKind::InputAudio {
                                     frames,
                                     first_frame_at,
-                                    frame_duration_ms: self.input_frame_duration,
-                                    channels: self.input_channels as u8,
+                                    frame_duration_ms: self
+                                        .input_frame_duration
+                                        .load(Ordering::Relaxed),
+                                    channels: self.input_channels.load(Ordering::Relaxed) as u8,
                                 },
                             });
                         }

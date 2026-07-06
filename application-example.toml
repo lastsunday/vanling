@@ -173,18 +173,6 @@
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#audio_input_sample_rate = 16000
-
-# This item is undocumented. Please contribute documentation for it.
-#
-#audio_input_frame_duration = 20
-
-# This item is undocumented. Please contribute documentation for it.
-#
-#audio_input_channel = 1
-
-# This item is undocumented. Please contribute documentation for it.
-#
 #audio_output_sample_rate = 16000
 
 # This item is undocumented. Please contribute documentation for it.

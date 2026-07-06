@@ -86,9 +86,6 @@ pub async fn create_session() -> Result<
     mcp_host.add_client(Box::new(server_client)).await;
 
     let audio_config = Arc::new(AudioConfig {
-        input_sample_rate: Some(16000),
-        input_frame_duration: Some(20_u64),
-        input_channel: Some(1),
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(20_u64),
@@ -109,7 +106,6 @@ pub async fn create_session() -> Result<
                 ),
                 variant: None,
             }))),
-            audio_config.clone(),
         )))
         .with_id(session_id.clone())
         .with_model(
@@ -147,9 +143,6 @@ pub async fn create_mini_session_channel() -> (
     mpsc::UnboundedReceiver<OutputMessage>,
 ) {
     let audio_config = Arc::new(AudioConfig {
-        input_sample_rate: Some(16000),
-        input_frame_duration: Some(20_u64),
-        input_channel: Some(1),
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(20_u64),
@@ -165,7 +158,6 @@ pub async fn create_mini_session_channel() -> (
                 model:Some(AsrModel::Void),
                 ..Default::default()
             }))),
-            audio_config.clone(),
         )))
         .with_id(session_id.clone())
         .with_model(

@@ -1,11 +1,18 @@
-use crate::{asr::Asr, common::ModelError, config::audio::AudioConfig, vad::Vad};
+use crate::{asr::Asr, common::ModelError, vad::Vad};
 use async_trait::async_trait;
 use chrono::Local;
+use service::chobits::message::hello::AudioParam;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 
 /// Maximum prefix padding in samples (300ms at 16kHz).
 const PREFIX_SAMPLES_MAX: usize = 4800;
+
+/// Maximum Opus frame duration in ms (per spec, one packet ≤ 120ms).
+const MAX_OPUS_FRAME_MS: u64 = 120;
+
+/// Default input sample rate when client does not advertise audio_params.
+const DEFAULT_SAMPLE_RATE: u32 = 16000;
 
 #[derive(Debug, Clone)]
 pub enum ListenInput {
@@ -19,6 +26,9 @@ pub trait Listener: Send + Sync {
     fn set_state(&mut self, state: ListenState);
     fn get_state(&self) -> ListenState;
     async fn reset(&mut self, silence_voice_timeout: Option<i64>);
+
+    /// Reconfigure decoder and input parameters from client's hello audio_params.
+    fn reconfigure(&mut self, params: &AudioParam);
 
     /// Extract voice data without running ASR (for parallel ASR path).
     async fn take_voice(&mut self) -> Vec<f32> {
@@ -59,7 +69,8 @@ pub struct DefaultListener {
     pub state: ListenState,
     silence_voice_timeout: Option<i64>,
     latest_speaking_time: Option<i64>,
-    audio_config: Arc<AudioConfig>,
+    /// Sample rate from client hello (defaults to 16000).
+    client_input_sample_rate: u32,
     /// Ring buffer for prefix padding (~300ms of raw audio).
     prefix_buffer: Vec<f32>,
     /// Whether prefix has been flushed for current speech turn.
@@ -70,24 +81,19 @@ pub struct DefaultListener {
 }
 
 impl DefaultListener {
-    pub fn new(
-        vad: Box<dyn Vad>,
-        asr: Arc<Mutex<Box<dyn Asr>>>,
-        audio_config: Arc<AudioConfig>,
-    ) -> Self {
-        let sample_rate = audio_config
-            .input_sample_rate
-            .expect("input sample rate is empty");
+    pub fn new(vad: Box<dyn Vad>, asr: Arc<Mutex<Box<dyn Asr>>>) -> Self {
         Self {
             vad,
             asr,
             temp_voice_data: Vec::new(),
             voice_data: Vec::new(),
-            decoder: StdMutex::new(opus::Decoder::new(sample_rate, opus::Channels::Mono).unwrap()),
+            decoder: StdMutex::new(
+                opus::Decoder::new(DEFAULT_SAMPLE_RATE, opus::Channels::Mono).unwrap(),
+            ),
             state: ListenState::Idle,
             silence_voice_timeout: None,
             latest_speaking_time: None,
-            audio_config,
+            client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             prefix_flushed: false,
             total_pcm: Vec::new(),
@@ -108,20 +114,9 @@ impl Listener for DefaultListener {
                     self.state = ListenState::Listening(false);
                 }
                 if let ListenState::Listening(_) = self.state {
-                    let sample_rate = self
-                        .audio_config
-                        .input_sample_rate
-                        .expect("input sample rate is empty");
-                    let channel = self
-                        .audio_config
-                        .input_channel
-                        .expect("input channel is empty");
-                    let frame_duration = self
-                        .audio_config
-                        .input_frame_duration
-                        .expect("input frame duration is empty");
-                    let frame_size =
-                        ((sample_rate as u64 * channel as u64 * frame_duration) / 1000) as usize;
+                    // Allocate buffer large enough for any Opus packet (max 120ms).
+                    let frame_size = ((self.client_input_sample_rate as u64 * MAX_OPUS_FRAME_MS)
+                        / 1000) as usize;
                     let mut samples = vec![0f32; frame_size];
                     let len =
                         match self
@@ -195,6 +190,12 @@ impl Listener for DefaultListener {
         }
     }
 
+    fn reconfigure(&mut self, params: &AudioParam) {
+        self.client_input_sample_rate = params.sample_rate;
+        let mut dec = self.decoder.lock().unwrap();
+        *dec = opus::Decoder::new(params.sample_rate, opus::Channels::Mono).unwrap();
+    }
+
     fn set_state(&mut self, state: ListenState) {
         self.state = state;
     }
@@ -225,12 +226,10 @@ impl Listener for DefaultListener {
                 }),
             );
         }
-        let sample_rate: u32 = self
-            .audio_config
-            .input_sample_rate
-            .expect("input sample rate is empty");
         let mut asr = self.asr.lock().await;
-        let result = asr.transcribe(sample_rate, &voice_data).await;
+        let result = asr
+            .transcribe(self.client_input_sample_rate, &voice_data)
+            .await;
         match result {
             Ok(transcript) => (
                 voice_data,

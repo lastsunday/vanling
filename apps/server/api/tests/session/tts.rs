@@ -29,9 +29,6 @@ use tracing_test::traced_test;
 /// Collect full TTS audio through complete session pipeline (Void VAD/ASR + Echo LLM + Matcha TTS)
 async fn test_tts_audio_collect() -> anyhow::Result<()> {
     let audio_config = Arc::new(AudioConfig {
-        input_sample_rate: Some(16000),
-        input_frame_duration: Some(20_u64),
-        input_channel: Some(1),
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(60_u64),
@@ -60,7 +57,6 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
                 model: Some(AsrModel::Void),
                 ..Default::default()
             }))),
-            audio_config.clone(),
         )))
         .with_id(session_id.clone())
         .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {

@@ -125,9 +125,6 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         min_silence_duration: config.vad_min_silence_duration,
     });
     let audio_config = Arc::new(AudioConfig {
-        input_sample_rate: config.audio_input_sample_rate,
-        input_frame_duration: config.audio_input_frame_duration,
-        input_channel: config.audio_input_channel,
         output_sample_rate: config.audio_output_sample_rate,
         output_channel: config.audio_output_channel,
         output_frame_duration: config.audio_output_frame_duration,

@@ -388,7 +388,10 @@ impl Session {
         }
     }
 
-    async fn handle_connect(&mut self, _hello_message: &HelloMessage) {
+    async fn handle_connect(&mut self, hello_message: &HelloMessage) {
+        if let Some(params) = &hello_message.audio_params {
+            self.listener.reconfigure(params);
+        }
         let audio_config = &self.audio_config;
         let data = HelloMessage {
             message: service::chobits::message::Message {

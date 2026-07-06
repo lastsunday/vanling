@@ -31,9 +31,6 @@ use crate::session::helpers::get_audio;
 async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
     let audio = get_audio();
     let audio_config = Arc::new(AudioConfig {
-        input_sample_rate: Some(16000),
-        input_frame_duration: Some(20_u64),
-        input_channel: Some(1),
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(20_u64),
@@ -61,7 +58,6 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
                 ),
                 ..Default::default()
             }))),
-            audio_config.clone(),
         )))
         .with_id(session_id.clone())
         .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
