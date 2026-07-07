@@ -2,6 +2,7 @@ pub use framework::error;
 
 pub mod asr;
 pub mod auth;
+pub mod chii;
 pub mod common;
 pub mod config;
 pub mod index;

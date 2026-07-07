@@ -4,11 +4,11 @@ use api::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
         tts::TtsConfig, vad::VadConfig,
     },
-    llm::{LlmFactory, client::ClientBuilder},
     mcp::provider::McpProviderImpl,
     tts::TtsFactory,
     vad::VadFactory,
     ws::default_listener::DefaultListener,
+    {chii::ChiiCoreBuilder, llm::LlmFactory},
 };
 use framework::id::gen_id;
 use service::chobits::{
@@ -50,8 +50,8 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
     let mcp_host = mcp_impl.mcp_host();
     let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
 
-    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
-        ClientBuilder::new()
+    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
+        ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
@@ -93,7 +93,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
                 ..Default::default()
             }))),
         )))
-        .with_llm(llm)
+        .with_chii(chii)
         .with_tts(tts)
         .with_mcp(mcp_provider)
         .with_config(ServiceSessionConfig {

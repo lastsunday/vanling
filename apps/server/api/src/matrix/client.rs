@@ -32,11 +32,11 @@ use crate::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    llm::{LlmFactory, client::ClientBuilder},
     mcp::{client::create_server_mcp_client, provider::McpProviderImpl},
     tts::TtsFactory,
     vad::VadFactory,
     ws::default_listener::DefaultListener,
+    {chii::ChiiCoreBuilder, llm::LlmFactory},
 };
 
 pub async fn start(
@@ -221,8 +221,8 @@ impl Bot {
             let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> =
                 Arc::new(Mutex::new(mcp_impl));
 
-            let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
-                ClientBuilder::new()
+            let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
+                ChiiCoreBuilder::new()
                     .with_session_id(Some(id.clone()))
                     .with_model(LlmFactory::global().default())
                     .with_mcp_host(mcp_host)
@@ -258,7 +258,7 @@ impl Bot {
                     VadFactory::create_model(&self.vad_config),
                     AsrFactory::global().default().clone(),
                 )))
-                .with_llm(llm)
+                .with_chii(chii)
                 .with_tts(tts)
                 .with_mcp(mcp_provider)
                 .with_config(session_config)

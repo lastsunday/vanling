@@ -1,8 +1,11 @@
+pub mod splitter;
+pub use splitter::Splitter;
+
 use std::{collections::VecDeque, sync::Arc, thread};
 
 use crate::{
     common::ModelError,
-    llm::{LlmEngine, chat::Chat, model::echo::Echo},
+    llm::{Llm, model::echo::Echo},
     mcp::mcp_host::McpHost,
 };
 use framework::id::gen_id;
@@ -23,9 +26,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Level, error, span, trace};
 
 #[derive(Clone)]
-pub struct Client {
+pub struct ChiiCore {
     session_id: Option<String>,
-    model: Arc<Box<dyn LlmEngine>>,
+    model: Arc<Box<dyn Llm>>,
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     max_prompt_len: Option<u64>,
@@ -42,9 +45,9 @@ pub struct History {
     pub chat_history: Vec<Message>,
 }
 
-impl Client {
-    pub fn builder() -> ClientBuilder {
-        ClientBuilder::new()
+impl ChiiCore {
+    pub fn builder() -> ChiiCoreBuilder {
+        ChiiCoreBuilder::new()
     }
 
     pub fn with_history(mut self, history: Arc<Mutex<History>>) -> Self {
@@ -67,7 +70,7 @@ impl Client {
         self
     }
 
-    pub fn chat(
+    pub fn complete(
         &self,
         request: ChatRequest,
         cancel: CancellationToken,
@@ -81,7 +84,7 @@ impl Client {
         let temperature = self.temperature;
         let max_tokens = self.max_tokens;
         let max_prompt_len = self.max_prompt_len;
-        let span = span!(parent:None,Level::DEBUG, "llm_client", session_id=%session_id.unwrap_or_default());
+        let span = span!(parent:None,Level::DEBUG, "chii_core", session_id=%session_id.unwrap_or_default());
         thread::spawn(move || {
             if cancel.is_cancelled() {
                 return;
@@ -252,7 +255,7 @@ pub async fn handle_response(
 ) -> anyhow::Result<Vec<Message>> {
     let mut messages: Vec<Message> = vec![];
     let mut text_collector = String::new();
-    let mut chat = Chat::new();
+    let mut splitter = Splitter::new();
     match response {
         Ok(mut stream) => {
             while let Some(value) = stream.next().await {
@@ -263,7 +266,7 @@ pub async fn handle_response(
                     Ok(StreamedAssistantContent::Text(text)) => {
                         text_collector.push_str(&text.text);
                         if let Some(tx) = &tx {
-                            let sentence_list = chat.accept_text(&text.text);
+                            let sentence_list = splitter.accept_text(&text.text);
                             let sentence_iter = sentence_list.iter();
                             for sentence in sentence_iter {
                                 tx.send(Ok(sentence.to_string())).await?;
@@ -318,7 +321,7 @@ pub async fn handle_response(
                 }
             }
             if let Some(tx) = &tx {
-                let sentence_list = chat.accept_final();
+                let sentence_list = splitter.accept_final();
                 let sentence_iter = sentence_list.iter();
                 for sentence in sentence_iter {
                     tx.send(Ok(sentence.to_string())).await?;
@@ -338,34 +341,34 @@ pub async fn handle_response(
     }
 }
 
-pub struct ClientBuilder {
+pub struct ChiiCoreBuilder {
     session_id: Option<String>,
-    model: Arc<Box<dyn LlmEngine>>,
+    model: Arc<Box<dyn Llm>>,
     mcp_host: Option<Arc<Mutex<dyn McpHost>>>,
 }
 
-impl ClientBuilder {
+impl ChiiCoreBuilder {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn with_session_id(mut self, session_id: Option<String>) -> ClientBuilder {
+    pub fn with_session_id(mut self, session_id: Option<String>) -> ChiiCoreBuilder {
         self.session_id = session_id;
         self
     }
 
-    pub fn with_model(mut self, model: Arc<Box<dyn LlmEngine>>) -> ClientBuilder {
+    pub fn with_model(mut self, model: Arc<Box<dyn Llm>>) -> ChiiCoreBuilder {
         self.model = model;
         self
     }
 
-    pub fn with_mcp_host(mut self, mcp_host: Arc<Mutex<dyn McpHost>>) -> ClientBuilder {
+    pub fn with_mcp_host(mut self, mcp_host: Arc<Mutex<dyn McpHost>>) -> ChiiCoreBuilder {
         self.mcp_host = Some(mcp_host);
         self
     }
 
-    pub fn build(self) -> Client {
-        Client {
+    pub fn build(self) -> ChiiCore {
+        ChiiCore {
             session_id: self.session_id,
             model: self.model,
             temperature: None,
@@ -380,7 +383,7 @@ impl ClientBuilder {
     }
 }
 
-impl Default for ClientBuilder {
+impl Default for ChiiCoreBuilder {
     fn default() -> Self {
         Self {
             session_id: None,
@@ -392,23 +395,27 @@ impl Default for ClientBuilder {
 
 use async_trait::async_trait;
 use framework::error::AppError;
-use service::chobits::llm::Llm;
+use service::chobits::chii::{Chii, ContentBlock, Input, OutputBlock};
 use std::pin::Pin;
 
 #[async_trait]
-impl Llm for Client {
-    async fn chat(
+impl Chii for ChiiCore {
+    async fn ask(
         &self,
-        text: String,
+        input: Input,
         cancel: CancellationToken,
-    ) -> Pin<Box<dyn Stream<Item = Result<String, AppError>> + Send + 'static>> {
+    ) -> Pin<Box<dyn Stream<Item = Result<OutputBlock, AppError>> + Send + 'static>> {
+        let text = match input.content.first() {
+            Some(ContentBlock::Text(t)) => t.clone(),
+            _ => String::new(),
+        };
         let request = ChatRequest {
             message: Message::User {
                 content: OneOrMany::one(UserContent::Text(Text { text })),
             },
         };
-        let stream = self.chat(request, cancel);
-        let mapped = stream.map(|item| item.map_err(AppError::from));
+        let stream = self.complete(request, cancel);
+        let mapped = stream.map(|item| item.map(OutputBlock::Text).map_err(AppError::from));
         Box::pin(mapped)
     }
 }

@@ -9,7 +9,7 @@ pub mod quantized;
 use super::token_output_stream::TokenOutputStream;
 use crate::{
     common::{ModelError, device},
-    llm::{LlmEngine, model::token_converter::TokenConverter},
+    llm::{Llm, model::token_converter::TokenConverter},
 };
 use async_trait::async_trait;
 use candle_core::{Device, Tensor, quantized::gguf_file};
@@ -326,7 +326,7 @@ async fn handle(
 }
 
 #[async_trait]
-impl LlmEngine for LlmQwen {
+impl Llm for LlmQwen {
     async fn stream(
         &self,
         request: CompletionRequest,

@@ -5,13 +5,13 @@ use api::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
         tts::TtsConfig, vad::VadConfig,
     },
-    llm::{LlmFactory, client::ClientBuilder},
     mcp::{client::server::ServerMcpClient, provider::McpProviderImpl},
     setup_mcp,
     tts::TtsFactory,
     util::audio::pcm_decode,
     vad::VadFactory,
     ws::default_listener::DefaultListener,
+    {chii::ChiiCoreBuilder, llm::LlmFactory},
 };
 use framework::id::gen_id;
 use rmcp::{
@@ -91,8 +91,8 @@ pub async fn create_session() -> Result<
         output_frame_duration: Some(20_u64),
     });
 
-    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
-        ClientBuilder::new()
+    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
+        ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
@@ -138,7 +138,7 @@ pub async fn create_session() -> Result<
                 variant: None,
             }))),
         )))
-        .with_llm(llm)
+        .with_chii(chii)
         .with_tts(tts)
         .with_mcp(mcp_provider)
         .with_config(ServiceSessionConfig {
@@ -167,8 +167,8 @@ pub async fn create_mini_session_channel() -> (
     let mcp_host = mcp_impl.mcp_host();
     let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
 
-    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
-        ClientBuilder::new()
+    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
+        ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
@@ -208,7 +208,7 @@ pub async fn create_mini_session_channel() -> (
                 ..Default::default()
             }))),
         )))
-        .with_llm(llm)
+        .with_chii(chii)
         .with_tts(tts)
         .with_mcp(mcp_provider)
         .with_config(ServiceSessionConfig {

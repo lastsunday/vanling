@@ -3,7 +3,7 @@ use std::sync::Arc;
 use api::{
     common::ModelError,
     config::{LlmModel, llm::LlmConfig},
-    llm::{LlmFactory, chat::Chat},
+    {chii::Splitter, llm::LlmFactory},
 };
 use framework::id::gen_id;
 use rig::{
@@ -394,7 +394,7 @@ async fn handle_response(
 ) -> anyhow::Result<Vec<Message>> {
     let mut messages: Vec<Message> = vec![];
     let mut text_collector = String::new();
-    let mut chat = Chat::new();
+    let mut splitter = Splitter::new();
     match response {
         Ok(mut stream) => {
             // TODO:
@@ -404,7 +404,7 @@ async fn handle_response(
                         info!("{:?}", text);
                         text_collector.push_str(&text.text);
                         if let Some(tx) = &tx {
-                            let sentence_list = chat.accept_text(&text.text);
+                            let sentence_list = splitter.accept_text(&text.text);
                             let sentence_iter = sentence_list.iter();
                             for sentence in sentence_iter {
                                 tx.send(Ok(sentence.to_string())).await?;
@@ -453,7 +453,7 @@ async fn handle_response(
                 }
             }
             if let Some(tx) = &tx {
-                let sentence_list = chat.accept_final();
+                let sentence_list = splitter.accept_final();
                 let sentence_iter = sentence_list.iter();
                 for sentence in sentence_iter {
                     tx.send(Ok(sentence.to_string())).await?;

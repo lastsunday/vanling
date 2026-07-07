@@ -1,4 +1,4 @@
-use crate::{common::ModelError, llm::LlmEngine};
+use crate::{common::ModelError, llm::Llm};
 use async_trait::async_trait;
 use futures::{SinkExt, executor::block_on};
 use futures_channel::mpsc::channel;
@@ -20,7 +20,7 @@ impl Echo {
 }
 
 #[async_trait]
-impl LlmEngine for Echo {
+impl Llm for Echo {
     async fn stream(
         &self,
         request: CompletionRequest,

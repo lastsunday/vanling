@@ -3,11 +3,11 @@ use fancy_regex::Regex;
 use std::sync::OnceLock;
 
 #[derive(Default)]
-pub struct Chat {
+pub struct Splitter {
     text_collector: String,
 }
 
-impl Chat {
+impl Splitter {
     pub fn new() -> Self {
         Self {
             text_collector: String::new(),
@@ -91,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    /// cargo test --package api --lib -- ws::llm::chat::tests::test_break_char --show-output
+    /// cargo test --package api --lib -- chat::splitter::tests::test_break_char --show-output
     async fn test_break_char() {
         let break_char = ["。", "！", "？", "!", "?"];
         let break_char_array_str = break_char.concat();
@@ -107,7 +107,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    /// cargo test --package api --lib -- ws::llm::chat::tests::test_split_sentence --show-output
+    /// cargo test --package api --lib -- chat::splitter::tests::test_split_sentence --show-output
     async fn test_split_sentence() {
         let break_char = ["。", "！", "？", "!", "?"];
         let break_char_array_str = break_char.concat();
@@ -128,7 +128,7 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    /// cargo test --package api --lib -- ws::llm::chat::tests::test_filter --show-output
+    /// cargo test --package api --lib -- chat::splitter::tests::test_filter --show-output
     async fn test_filter() {
         let result = filter("1+1=2");
         assert_eq!(result, "1+1=2");

@@ -10,10 +10,10 @@ use tokio::select;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
+use crate::chobits::chii::Chii;
 use crate::chobits::frame::Frame;
 use crate::chobits::frame::{FrameResult, OutputMessage};
 use crate::chobits::listener::{ListenInput, ListenResult, Listener};
-use crate::chobits::llm::Llm;
 use crate::chobits::mcp::Mcp;
 use crate::chobits::message::hello::{AudioParam, HelloMessage};
 use crate::chobits::message::{AudioFormat, Transport};
@@ -95,7 +95,7 @@ pub struct SpeakingParam {
 pub struct SessionBuilder {
     id: Option<String>,
     listener: Option<Box<dyn Listener>>,
-    llm: Option<Arc<dyn Llm>>,
+    chii: Option<Arc<dyn Chii>>,
     tts: Option<Arc<dyn Tts>>,
     mcp: Option<Arc<Mutex<dyn Mcp>>>,
     config: Option<SessionConfig>,
@@ -117,8 +117,8 @@ impl SessionBuilder {
         self
     }
 
-    pub fn with_llm(mut self, llm: Arc<dyn Llm>) -> Self {
-        self.llm = Some(llm);
+    pub fn with_chii(mut self, chii: Arc<dyn Chii>) -> Self {
+        self.chii = Some(chii);
         self
     }
 
@@ -172,7 +172,7 @@ impl SessionBuilder {
             config,
             audio_config,
             listener: self.listener.expect("listener is required"),
-            llm: self.llm.expect("llm is required"),
+            chii: self.chii.expect("chii is required"),
             tts: self.tts.expect("tts is required"),
             mcp: self.mcp.expect("mcp is required"),
         };
@@ -198,7 +198,7 @@ pub struct Session {
     config: SessionConfig,
     audio_config: AudioConfig,
 
-    llm: Arc<dyn Llm>,
+    chii: Arc<dyn Chii>,
     tts: Arc<dyn Tts>,
     listener: Box<dyn Listener>,
     mcp: Arc<Mutex<dyn Mcp>>,
@@ -277,7 +277,7 @@ impl Session {
             round_id,
             tx,
             epoch,
-            self.llm.clone(),
+            self.chii.clone(),
             self.tts.clone(),
             cancel,
         )));

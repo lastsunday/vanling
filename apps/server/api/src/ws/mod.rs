@@ -27,7 +27,6 @@ use crate::{
     AppState,
     asr::AsrFactory,
     config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
-    llm::{LlmFactory, client::ClientBuilder},
     mcp::{client::create_server_mcp_client, provider::McpProviderImpl},
     record::recorder::Recorder,
     tts::TtsFactory,
@@ -37,6 +36,7 @@ use crate::{
         output_proxy::OutputProxy, output_sender::OutputSender,
         protocol_translator::ProtocolTranslator,
     },
+    {chii::ChiiCoreBuilder, llm::LlmFactory},
 };
 
 const TAG: &str = "ws";
@@ -128,8 +128,8 @@ where
     }
     let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
 
-    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
-        ClientBuilder::new()
+    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
+        ChiiCoreBuilder::new()
             .with_session_id(Some(ctx.session_id.clone()))
             .with_model(LlmFactory::global().default())
             .with_mcp_host(mcp_host)
@@ -167,7 +167,7 @@ where
             VadFactory::create_model(&ctx.vad_config),
             AsrFactory::global().default().clone(),
         )))
-        .with_llm(llm)
+        .with_chii(chii)
         .with_tts(tts)
         .with_mcp(mcp_provider)
         .with_config(session_config)

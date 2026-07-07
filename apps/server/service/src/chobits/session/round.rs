@@ -8,8 +8,8 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::chobits::chii::{Chii, Input, OutputBlock};
 use crate::chobits::frame::{FrameResult, OutputMessage};
-use crate::chobits::llm::Llm;
 use crate::chobits::message::audio::AudioMessage;
 use crate::chobits::message::llm::LlmMessage;
 use crate::chobits::message::stt::SttMessage;
@@ -70,7 +70,7 @@ pub struct Round {
     output_tx: UnboundedSender<OutputMessage>,
     pub epoch: u64,
     stop: Arc<AtomicBool>,
-    llm: Arc<dyn Llm>,
+    chii: Arc<dyn Chii>,
     tts: Arc<dyn Tts>,
     pub tts_state: Arc<Mutex<Option<TtsState>>>,
     pub cancel: CancellationToken,
@@ -94,7 +94,7 @@ impl Round {
         id: String,
         output_tx: UnboundedSender<OutputMessage>,
         epoch: u64,
-        llm: Arc<dyn Llm>,
+        chii: Arc<dyn Chii>,
         tts: Arc<dyn Tts>,
         cancel: CancellationToken,
     ) -> Self {
@@ -104,7 +104,7 @@ impl Round {
             output_tx,
             epoch,
             stop: Arc::new(AtomicBool::new(false)),
-            llm,
+            chii,
             tts,
             tts_state: Arc::new(Mutex::new(None)),
             cancel,
@@ -117,18 +117,18 @@ impl Round {
     pub async fn accept_command(&mut self, command: Command) {
         match command {
             Command::Chat(chat_param) => {
-                self.llm_tts_handle(chat_param.text, chat_param.prob).await;
+                self.chat_tts_handle(chat_param.text, chat_param.prob).await;
             }
         }
     }
 
-    async fn llm_tts_handle(&mut self, text: String, _prob: f32) {
+    async fn chat_tts_handle(&mut self, text: String, _prob: f32) {
         let output_tx = self.output_tx.clone();
         let epoch = self.epoch;
         let round_id = self.id.clone();
         let stop_me = self.stop.clone();
         let session_id = self.parent_id.clone();
-        let llm = self.llm.clone();
+        let chii = self.chii.clone();
         let tts = self.tts.clone();
         let tts_state_clone = self.tts_state.clone();
         let cancel = self.cancel.clone();
@@ -158,9 +158,13 @@ impl Round {
             }
 
             use futures::StreamExt;
-            let llm_stream = llm.chat(text, cancel.clone()).await;
-            let llm_text_stream = llm_stream.filter_map(|r| async move { r.ok() });
-            let tts_output = tts.stream(Box::pin(llm_text_stream), cancel.clone()).await;
+            let chii_stream = chii.ask(Input::text(text), cancel.clone()).await;
+            let chat_text_stream = chii_stream.filter_map(|r| async move {
+                r.ok().map(|block| match block {
+                    OutputBlock::Text(s) => s,
+                })
+            });
+            let tts_output = tts.stream(Box::pin(chat_text_stream), cancel.clone()).await;
 
             async fn change_state(tts_state: &Arc<Mutex<Option<TtsState>>>, state: TtsState) {
                 let mut ts = tts_state.lock().await;

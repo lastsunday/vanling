@@ -1,9 +1,7 @@
 use api::{
+    chii::{ChatRequest, ChiiCoreBuilder, History},
     config::{LlmModel, llm::LlmConfig},
-    llm::{
-        LlmEngine, LlmFactory,
-        client::{self, ChatRequest, ClientBuilder, History},
-    },
+    llm::{Llm, LlmFactory},
     mcp::{client::server::ServerMcpClient, provider::McpProviderImpl},
     setup_mcp,
 };
@@ -26,7 +24,7 @@ use common::{setup_database, tear_down};
 
 use crate::common::router_client::RouterClient;
 
-fn create_model() -> Box<dyn LlmEngine> {
+fn create_model() -> Box<dyn Llm> {
     let model_path = common::tts::ws_root()
         .join("data/llm/model/qwen3/0.6b/")
         .to_string_lossy()
@@ -41,7 +39,7 @@ fn create_model() -> Box<dyn LlmEngine> {
 #[tokio::test]
 #[traced_test]
 async fn test_chat_echo() {
-    let client = ClientBuilder::new()
+    let client = ChiiCoreBuilder::new()
         .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
             model: Some(LlmModel::Echo),
             path: None,
@@ -52,7 +50,7 @@ async fn test_chat_echo() {
             preamble: None,
             chat_history: vec![],
         })));
-    let mut output = client.chat(
+    let mut output = client.complete(
         ChatRequest {
             message: Message::User {
                 content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
@@ -87,7 +85,7 @@ async fn test_chat_simple() {
         preamble: Some(system_prompt),
         chat_history: vec![],
     }));
-    let client = ClientBuilder::new()
+    let client = ChiiCoreBuilder::new()
         .with_model(Arc::new(model))
         .build()
         .with_history(hisotry);
@@ -98,7 +96,7 @@ async fn test_chat_simple() {
             })),
         },
     };
-    let mut output = client.chat(request, CancellationToken::new());
+    let mut output = client.complete(request, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -125,7 +123,7 @@ async fn test_short_question() {
         preamble: Some(system_prompt),
         chat_history: vec![],
     }));
-    let client = ClientBuilder::new()
+    let client = ChiiCoreBuilder::new()
         .with_model(Arc::new(model))
         .build()
         .with_history(history);
@@ -136,7 +134,7 @@ async fn test_short_question() {
             })),
         },
     };
-    let mut output = client.chat(request, CancellationToken::new());
+    let mut output = client.complete(request, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -165,7 +163,7 @@ async fn test_english_question() {
         preamble: Some(system_prompt),
         chat_history: vec![],
     }));
-    let client = ClientBuilder::new()
+    let client = ChiiCoreBuilder::new()
         .with_model(Arc::new(model))
         .build()
         .with_history(history);
@@ -176,7 +174,7 @@ async fn test_english_question() {
             })),
         },
     };
-    let mut output = client.chat(request, CancellationToken::new());
+    let mut output = client.complete(request, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -215,7 +213,7 @@ async fn test_chat_history() {
             },
         ],
     }));
-    let client = ClientBuilder::new()
+    let client = ChiiCoreBuilder::new()
         .with_model(Arc::new(model))
         .build()
         .with_history(history);
@@ -226,7 +224,7 @@ async fn test_chat_history() {
             })),
         },
     };
-    let mut output = client.chat(request, CancellationToken::new());
+    let mut output = client.complete(request, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -269,7 +267,7 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
     let mcp_host = mcp_impl.mcp_host();
     mcp_impl.add_client(Box::new(server_client)).await;
 
-    let client = client::ClientBuilder::new()
+    let client = ChiiCoreBuilder::new()
         .with_model(Arc::new(model))
         .with_mcp_host(mcp_host)
         .build();
@@ -289,7 +287,7 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
             })),
         },
     };
-    let mut output = client.chat(request, CancellationToken::new());
+    let mut output = client.complete(request, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {

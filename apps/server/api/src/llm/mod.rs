@@ -1,5 +1,3 @@
-pub mod chat;
-pub mod client;
 pub mod model;
 
 use crate::{
@@ -15,7 +13,7 @@ use rig::{
 use std::sync::{Arc, OnceLock};
 
 #[async_trait]
-pub trait LlmEngine: Send + Sync {
+pub trait Llm: Send + Sync {
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -34,12 +32,12 @@ pub trait LlmEngine: Send + Sync {
 static INSTANCE: OnceLock<LlmFactory> = OnceLock::new();
 
 pub struct LlmFactory {
-    default_llm: Arc<Box<dyn LlmEngine>>,
+    default_llm: Arc<Box<dyn Llm>>,
     pub config: Arc<LlmConfig>,
 }
 
 impl LlmFactory {
-    pub fn new(default_llm: Arc<Box<dyn LlmEngine>>, config: Arc<LlmConfig>) -> Self {
+    pub fn new(default_llm: Arc<Box<dyn Llm>>, config: Arc<LlmConfig>) -> Self {
         Self {
             default_llm,
             config,
@@ -51,11 +49,11 @@ impl LlmFactory {
         INSTANCE.get_or_init(|| -> Self { Self::new(Arc::new(llm), config) })
     }
 
-    pub fn default(&self) -> Arc<Box<dyn LlmEngine>> {
+    pub fn default(&self) -> Arc<Box<dyn Llm>> {
         self.default_llm.clone()
     }
 
-    pub fn create_model(config: &LlmConfig) -> Box<dyn LlmEngine> {
+    pub fn create_model(config: &LlmConfig) -> Box<dyn Llm> {
         match config.model.as_ref().expect("llm model is empty") {
             config::LlmModel::Qwen3 => {
                 Box::new(LlmQwen::new(config.path.as_ref().expect("llm path is empty")).unwrap())

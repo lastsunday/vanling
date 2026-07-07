@@ -1,7 +1,7 @@
 pub mod asr;
+pub mod chii;
 pub mod frame;
 pub mod listener;
-pub mod llm;
 pub mod mcp;
 pub mod message;
 pub mod session;
