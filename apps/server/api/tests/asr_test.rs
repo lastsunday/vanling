@@ -6,7 +6,7 @@ use api::{
 };
 use std::{path::PathBuf, sync::Arc};
 use tokio_stream::StreamExt;
-use tokio_util::sync::CancellationToken;
+
 use tracing::debug;
 use tracing_test::traced_test;
 
@@ -142,12 +142,16 @@ async fn test_tts_asr_loopback() {
     let mut tts_stream = tts.stream(Box::pin(text_stream), cancel).await;
 
     let mut all_pcm = Vec::new();
-    let mut sample_rate = 0i32;
+    let sample_rate = 16000i32;
+    let decode_fs = 320;
+    let mut decoder = opus::Decoder::new(16000, opus::Channels::Mono).unwrap();
     while let Some(data) = tts_stream.next().await {
         let data = data.unwrap();
-        if let Some((pcm, sr)) = data.raw_pcm {
-            all_pcm = pcm;
-            sample_rate = sr;
+        for packet in data.audio {
+            let mut samples = vec![0f32; decode_fs];
+            if let Ok(len) = decoder.decode_float(&packet, &mut samples, false) {
+                all_pcm.extend_from_slice(&samples[..len]);
+            }
         }
     }
     let tts_elapsed = tts_start.elapsed();

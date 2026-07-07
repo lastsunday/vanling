@@ -2,9 +2,6 @@ use std::{collections::HashMap, error::Error, sync::Arc, time::Duration};
 
 use framework::id::gen_id;
 use futures_util::future::{join, join_all};
-use rmcp::transport::{
-    StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
-};
 use ruma::{
     OwnedRoomId, OwnedUserId, TransactionId, UserId,
     api::client::{
@@ -19,7 +16,11 @@ use ruma::{
     presence::PresenceState,
     serde::Raw,
 };
-use service::chobits::message::{hello::HelloMessage, tts::TtsState};
+use service::chobits::{
+    frame::{Frame, FrameResult},
+    message::{hello::HelloMessage, tts::TtsState},
+    session::{AudioConfig as ServiceAudioConfig, SessionConfig as ServiceSessionConfig},
+};
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -31,15 +32,12 @@ use crate::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    llm::LlmFactory,
-    mcp::{
-        client::server::ServerMcpClient,
-        mcp_host::{McpHost, UnionMcpHost},
-    },
+    llm::{LlmFactory, client::ClientBuilder},
+    mcp::{client::create_server_mcp_client, provider::McpProviderImpl},
+    tts::TtsFactory,
     vad::VadFactory,
-    ws::session::{SessionBuilder, listener::DefaultListener},
+    ws::default_listener::DefaultListener,
 };
-use service::ws::frame::{Frame, FrameResult};
 
 pub async fn start(
     matrix_config: Arc<MatrixConfig>,
@@ -204,14 +202,15 @@ impl Bot {
         if !session_map.contains_key(session_key) {
             // init session
             let id = gen_id();
-            let mut mcp_host = UnionMcpHost::new(Some(id.clone()));
+            let mut mcp_impl = McpProviderImpl::new(id.clone());
+            let mcp_host = mcp_impl.mcp_host();
             let uri_list = self.mcp_config.uri_list.as_ref();
             if let Some(uri_list) = uri_list {
                 for uri in uri_list {
                     let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
                     match server_mcp_client {
                         Ok(server_mcp_client) => {
-                            mcp_host.add_client(Box::new(server_mcp_client)).await;
+                            mcp_impl.add_client(Box::new(server_mcp_client)).await;
                         }
                         Err(e) => {
                             error!("{:?}", e);
@@ -219,16 +218,51 @@ impl Bot {
                     }
                 }
             }
-            let (session, input_tx, output_rx) = SessionBuilder::new()
+            let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> =
+                Arc::new(Mutex::new(mcp_impl));
+
+            let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
+                ClientBuilder::new()
+                    .with_session_id(Some(id.clone()))
+                    .with_model(LlmFactory::global().default())
+                    .with_mcp_host(mcp_host)
+                    .build(),
+            );
+
+            let tts: Arc<dyn service::chobits::tts::Tts> = TtsFactory::global().default();
+
+            let session_config = ServiceSessionConfig {
+                system_prompt: self.session_config.system_prompt.clone(),
+                max_prompt_len: self.session_config.max_prompt_len,
+                silence_voice_timeout: self.session_config.silence_voice_timeout,
+                close_connection_no_voice_time: self.session_config.close_connection_no_voice_time,
+            };
+            let audio_config = ServiceAudioConfig {
+                output_sample_rate: self
+                    .audio_config
+                    .output_sample_rate
+                    .expect("output sample rate is empty"),
+                output_channel: self
+                    .audio_config
+                    .output_channel
+                    .expect("output channel is empty"),
+                output_frame_duration: self
+                    .audio_config
+                    .output_frame_duration
+                    .expect("output frame duration is empty"),
+            };
+
+            let (session, input_tx, output_rx) = service::chobits::session::SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
                     VadFactory::create_model(&self.vad_config),
                     AsrFactory::global().default().clone(),
                 )))
-                .with_model(LlmFactory::global().default())
-                .with_mcp_host(Arc::new(Mutex::new(mcp_host)))
-                .with_config(self.session_config.clone())
-                .with_audio_config(self.audio_config.clone())
+                .with_llm(llm)
+                .with_tts(tts)
+                .with_mcp(mcp_provider)
+                .with_config(session_config)
+                .with_audio_config(audio_config)
                 .build();
             tokio::spawn(session.start());
             let mut output = UnboundedReceiverStream::new(output_rx);
@@ -344,12 +378,4 @@ impl Bot {
             .await?;
         Ok(())
     }
-}
-
-async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {
-    let config = StreamableHttpClientTransportConfig::with_uri(uri);
-    let transport = StreamableHttpClientTransport::from_config(config);
-    let mut server_mcp_client = ServerMcpClient::new(transport).await?;
-    server_mcp_client.init().await?;
-    Ok(server_mcp_client)
 }

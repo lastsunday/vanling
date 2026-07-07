@@ -1,6 +1,8 @@
 use async_trait::async_trait;
+use framework::error::AppError;
 use futures::Stream;
 use rubato::{FftFixedIn, Resampler};
+use service::chobits::tts::{Tts, TtsPacket};
 use sherpa_onnx::{
     GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsMatchaModelConfig,
     OfflineTtsModelConfig,
@@ -13,10 +15,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-use crate::common::ModelError;
 use crate::config::audio::AudioConfig;
 use crate::config::tts::TtsConfig;
-use crate::tts::{Tts, TtsData, TtsError, encode_sample_to_tts_packet};
+use crate::tts::encode_sample_to_tts_packet;
 
 pub struct TtsMatcha {
     tts: Arc<OfflineTts>,
@@ -207,12 +208,10 @@ impl TtsMatcha {
 impl Tts for TtsMatcha {
     async fn stream(
         &self,
-        text_stream: Pin<
-            Box<dyn Stream<Item = core::result::Result<String, ModelError>> + Send + Sync>,
-        >,
+        mut text_stream: Pin<Box<dyn Stream<Item = String> + Send + 'static>>,
         cancel: CancellationToken,
-    ) -> Pin<Box<dyn Stream<Item = core::result::Result<TtsData, TtsError>> + Send + Sync>> {
-        let (tx, rx) = channel::<core::result::Result<TtsData, TtsError>>(64);
+    ) -> Pin<Box<dyn Stream<Item = Result<TtsPacket, AppError>> + Send + 'static>> {
+        let (tx, rx) = channel::<Result<TtsPacket, AppError>>(64);
 
         let tts = self.tts.clone();
         let output_sample_rate = self.output_sample_rate;
@@ -221,7 +220,6 @@ impl Tts for TtsMatcha {
         let speed = self.speed;
 
         tokio::spawn(async move {
-            let mut pinned = text_stream;
             let encode_sr = output_sample_rate;
             let channels = match output_channel {
                 2 => 2_usize,
@@ -241,22 +239,11 @@ impl Tts for TtsMatcha {
                     }
                 };
 
-            while let Some(text_result) = pinned.next().await {
+            while let Some(text) = text_stream.next().await {
                 if cancel.is_cancelled() {
                     break;
                 }
-                let text = match text_result {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error!("[MatchaTTS] text stream error = {}", e);
-                        let _ = tx.send(Err(TtsError::Text(e.to_string()))).await;
-                        break;
-                    }
-                };
 
-                if cancel.is_cancelled() {
-                    break;
-                }
                 let tts_clone = tts.clone();
                 let text_clone = text.clone();
                 let result = tokio::task::spawn_blocking(move || {
@@ -327,13 +314,12 @@ impl Tts for TtsMatcha {
                     output_frame_duration,
                 );
 
-                let data = TtsData {
-                    audio: Some(audio_packets),
-                    text: text.clone(),
-                    raw_pcm: Some((pcm_samples, pcm_sample_rate)),
+                let packet = TtsPacket {
+                    audio: audio_packets,
+                    text,
                 };
 
-                if tx.send(Ok(data)).await.is_err() {
+                if tx.send(Ok(packet)).await.is_err() {
                     break;
                 }
             }

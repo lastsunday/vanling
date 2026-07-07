@@ -1,10 +1,13 @@
-use crate::{asr::Asr, common::ModelError, vad::Vad};
+use std::sync::{Arc, Mutex as StdMutex};
+
 use async_trait::async_trait;
 use chrono::Local;
+use framework::error::AppError;
+use service::chobits::asr::Asr;
+use service::chobits::listener::{ListenInput, ListenResult, ListenState, Listener};
 use service::chobits::message::hello::AudioParam;
-use std::sync::{Arc, Mutex as StdMutex};
+use service::chobits::vad::Vad;
 use tokio::sync::Mutex;
-use tracing;
 
 /// Maximum prefix padding in samples (300ms at 16kHz).
 const PREFIX_SAMPLES_MAX: usize = 4800;
@@ -14,52 +17,6 @@ const MAX_OPUS_FRAME_MS: u64 = 120;
 
 /// Default input sample rate when client does not advertise audio_params.
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
-
-#[derive(Debug, Clone)]
-pub enum ListenInput {
-    Text(String),
-    Audio(Vec<u8>),
-}
-
-#[async_trait]
-pub trait Listener: Send + Sync {
-    async fn accept(&mut self, input: ListenInput);
-    fn set_state(&mut self, state: ListenState);
-    fn get_state(&self) -> ListenState;
-    async fn reset(&mut self, silence_voice_timeout: Option<i64>);
-
-    /// Reconfigure decoder and input parameters from client's hello audio_params.
-    fn reconfigure(&mut self, params: &AudioParam);
-
-    /// Extract voice data without running ASR (for parallel ASR path).
-    async fn take_voice(&mut self) -> Vec<f32> {
-        Vec::new()
-    }
-
-    async fn take_result(&mut self) -> (Vec<f32>, core::result::Result<ListenResult, ModelError>);
-
-    fn clone_asr(&self) -> Option<Arc<Mutex<Box<dyn Asr>>>> {
-        None
-    }
-
-    async fn get_raw_pcm(&mut self) -> Vec<f32> {
-        Vec::new()
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ListenState {
-    Idle,
-    /// is_speech
-    Listening(bool),
-    End,
-}
-
-#[derive(Debug, Clone)]
-pub enum ListenResult {
-    Text(String),
-    Audio { text: String, prob: f32 },
-}
 
 pub struct DefaultListener {
     temp_voice_data: Vec<f32>,
@@ -112,10 +69,9 @@ impl Listener for DefaultListener {
             }
             ListenInput::Audio(data) => {
                 if self.state == ListenState::Idle {
-                    self.state = ListenState::Listening(false);
+                    self.state = ListenState::Listening { is_speech: false };
                 }
-                if let ListenState::Listening(_) = self.state {
-                    // Allocate buffer large enough for any Opus packet (max 120ms).
+                if let ListenState::Listening { .. } = self.state {
                     let frame_size = ((self.client_input_sample_rate as u64 * MAX_OPUS_FRAME_MS)
                         / 1000) as usize;
                     let mut samples = vec![0f32; frame_size];
@@ -141,34 +97,29 @@ impl Listener for DefaultListener {
                     while self.temp_voice_data.len() > window_size {
                         let window: Vec<f32> = self.temp_voice_data.drain(..window_size).collect();
 
-                        // 1. Maintain ring buffer for prefix padding.
                         self.prefix_buffer.extend(&window);
                         if self.prefix_buffer.len() > PREFIX_SAMPLES_MAX {
                             let excess = self.prefix_buffer.len() - PREFIX_SAMPLES_MAX;
                             self.prefix_buffer.drain(..excess);
                         }
 
-                        // 2. VAD decision only (no longer accumulates audio internally).
                         if self.vad.accept_waveform(&window).is_err() {
                             return;
                         }
 
-                        // 3. Audio management in Listener.
                         if self.vad.is_speech() {
-                            self.state = ListenState::Listening(true);
+                            self.state = ListenState::Listening { is_speech: true };
                             self.latest_speaking_time = Some(Local::now().timestamp_millis());
                         } else {
                             self.prefix_flushed = false;
                         }
 
-                        if self.state == ListenState::Listening(true) {
+                        if let ListenState::Listening { is_speech: true } = self.state {
                             if !self.prefix_flushed {
-                                // First speech frame in this turn — flush prefix (includes current window).
                                 self.voice_data.append(&mut self.prefix_buffer);
                                 self.prefix_buffer = Vec::with_capacity(PREFIX_SAMPLES_MAX);
                                 self.prefix_flushed = true;
                             } else {
-                                // Subsequent speech frames.
                                 self.voice_data.extend_from_slice(&window);
                             }
                         }
@@ -204,11 +155,7 @@ impl Listener for DefaultListener {
         core::mem::take(&mut self.voice_data)
     }
 
-    fn clone_asr(&self) -> Option<Arc<Mutex<Box<dyn Asr>>>> {
-        Some(self.asr.clone())
-    }
-
-    async fn take_result(&mut self) -> (Vec<f32>, core::result::Result<ListenResult, ModelError>) {
+    async fn take_result(&mut self) -> (Vec<f32>, Result<ListenResult, AppError>) {
         if let Some(text) = self.pending_text.take() {
             return (Vec::new(), Ok(ListenResult::Text(text)));
         }

@@ -1,12 +1,11 @@
 use async_trait::async_trait;
+use framework::error::AppError;
+use service::chobits::asr::{Asr, RecognizerResult};
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::{
-    asr::{Asr, RecognizerResult},
-    common::ModelError,
-};
+use crate::common::ModelError;
 
 pub struct AsrSenseVoice {
     recognizer: Arc<Mutex<OfflineRecognizer>>,
@@ -47,7 +46,7 @@ impl Asr for AsrSenseVoice {
         &mut self,
         sample_rate: u32,
         samples: &[f32],
-    ) -> Result<RecognizerResult, ModelError> {
+    ) -> Result<RecognizerResult, AppError> {
         let recognizer = self.recognizer.clone();
         let recognizer = &mut *recognizer.lock().await;
         let stream = recognizer.create_stream();
@@ -55,7 +54,8 @@ impl Asr for AsrSenseVoice {
         recognizer.decode(&stream);
         let result = stream
             .get_result()
-            .ok_or_else(|| ModelError::Asr("SenseVoice returned no result".into()))?;
+            .ok_or_else(|| ModelError::Asr("SenseVoice returned no result".into()))
+            .map_err(AppError::from)?;
 
         Ok(RecognizerResult {
             text: result.text,

@@ -1,28 +1,10 @@
+pub mod default_listener;
 pub mod input_proxy;
 pub mod input_sender;
 pub mod output_proxy;
 pub mod output_sender;
 pub mod protocol_translator;
-pub mod session;
-
-use crate::{
-    AppState,
-    asr::AsrFactory,
-    config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
-    llm::LlmFactory,
-    mcp::{
-        client::server::ServerMcpClient,
-        mcp_host::{McpHost, UnionMcpHost},
-    },
-    record::recorder::Recorder,
-    tts::TtsFactory,
-    vad::VadFactory,
-    ws::{
-        input_proxy::InputProxy, input_sender::InputSender, output_proxy::OutputProxy,
-        output_sender::OutputSender, protocol_translator::ProtocolTranslator,
-        session::SessionBuilder, session::listener::DefaultListener,
-    },
-};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use axum::{
     RequestPartsExt, debug_handler,
@@ -34,17 +16,28 @@ use axum_extra::{TypedHeader, headers};
 use framework::id::gen_id;
 use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use rmcp::transport::{
-    StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
-};
+use service::chobits::frame::Frame;
 use service::chobits::message::close::CloseMessage;
-use service::ws::frame::Frame;
 use tokio::sync::Mutex;
 use tracing::{Instrument, Level, span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
+use crate::{
+    AppState,
+    asr::AsrFactory,
+    config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
+    llm::{LlmFactory, client::ClientBuilder},
+    mcp::{client::create_server_mcp_client, provider::McpProviderImpl},
+    record::recorder::Recorder,
+    tts::TtsFactory,
+    vad::VadFactory,
+    ws::{
+        default_listener::DefaultListener, input_proxy::InputProxy, input_sender::InputSender,
+        output_proxy::OutputProxy, output_sender::OutputSender,
+        protocol_translator::ProtocolTranslator,
+    },
+};
 
 const TAG: &str = "ws";
 
@@ -117,19 +110,68 @@ where
 {
     tracing::info!("session started");
 
+    let mut mcp_impl = McpProviderImpl::new(ctx.session_id.clone());
+    let mcp_host = mcp_impl.mcp_host();
+    let uri_list = &ctx.mcp_config.uri_list;
+    if let Some(uri_list) = uri_list {
+        for uri in uri_list {
+            let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
+            match server_mcp_client {
+                Ok(client) => {
+                    mcp_impl.add_client(Box::new(client)).await;
+                }
+                Err(e) => {
+                    tracing::warn!(session_id = %ctx.session_id, uri = %uri, error = %e, "mcp server init failed")
+                }
+            }
+        }
+    }
+    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+
+    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
+        ClientBuilder::new()
+            .with_session_id(Some(ctx.session_id.clone()))
+            .with_model(LlmFactory::global().default())
+            .with_mcp_host(mcp_host)
+            .build(),
+    );
+
+    let tts: Arc<dyn service::chobits::tts::Tts> = TtsFactory::global().default();
+
+    use service::chobits::session::{AudioConfig, SessionBuilder, SessionConfig};
+
+    let session_config = SessionConfig {
+        system_prompt: ctx.session_config.system_prompt.clone(),
+        max_prompt_len: ctx.session_config.max_prompt_len,
+        silence_voice_timeout: ctx.session_config.silence_voice_timeout,
+        close_connection_no_voice_time: ctx.session_config.close_connection_no_voice_time,
+    };
+    let audio_config = AudioConfig {
+        output_sample_rate: ctx
+            .audio_config
+            .output_sample_rate
+            .expect("output sample rate is empty"),
+        output_channel: ctx
+            .audio_config
+            .output_channel
+            .expect("output channel is empty"),
+        output_frame_duration: ctx
+            .audio_config
+            .output_frame_duration
+            .expect("output frame duration is empty"),
+    };
+
     let (session, input_tx, output_rx) = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&ctx.vad_config),
             AsrFactory::global().default().clone(),
         )))
-        .with_model(LlmFactory::global().default())
-        .with_tts(TtsFactory::global().default())
-        .with_mcp_host(Arc::new(Mutex::new(
-            create_mcp_host(ctx.session_id.clone(), ctx.mcp_config.clone()).await,
-        )))
-        .with_config(ctx.session_config.clone())
-        .with_audio_config(ctx.audio_config.clone())
+        .with_llm(llm)
+        .with_tts(tts)
+        .with_mcp(mcp_provider)
+        .with_config(session_config)
+        .with_audio_config(audio_config)
         .build();
 
     let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
@@ -144,7 +186,6 @@ where
         )
         .instrument(span!(Level::DEBUG, "output")),
     );
-    // Temp defaults; InputProxy updates from Frame::Hello before any audio arrives.
     let input_handle = tokio::spawn(
         ws_input(
             read,
@@ -197,31 +238,6 @@ async fn ws_output<W>(
         }
     }
     let _ = write.close().await;
-}
-
-async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {
-    let config = StreamableHttpClientTransportConfig::with_uri(uri);
-    let transport = StreamableHttpClientTransport::from_config(config);
-    let mut server_mcp_client = ServerMcpClient::new(transport).await?;
-    server_mcp_client.init().await?;
-    Ok(server_mcp_client)
-}
-
-async fn create_mcp_host(session_id: String, mcp_config: Arc<McpConfig>) -> UnionMcpHost {
-    let mut mcp_host = UnionMcpHost::new(Some(session_id.clone()));
-    let uri_list = &mcp_config.uri_list;
-    if let Some(uri_list) = uri_list {
-        for uri in uri_list {
-            let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-            match server_mcp_client {
-                Ok(client) => mcp_host.add_client(Box::new(client)).await,
-                Err(e) => {
-                    tracing::warn!(session_id, uri = %uri, error = %e, "mcp server init failed")
-                }
-            }
-        }
-    }
-    mcp_host
 }
 
 #[derive(Debug, PartialEq, Eq, ToSchema)]

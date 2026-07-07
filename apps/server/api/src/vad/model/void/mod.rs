@@ -1,16 +1,17 @@
-use crate::{common::ModelError, vad::Vad};
+use framework::error::AppError;
+use service::chobits::vad::Vad;
 
 #[derive(Clone)]
 pub struct VadVoid {}
 
 impl VadVoid {
-    pub fn new() -> core::result::Result<Self, ModelError> {
+    pub fn new() -> Result<Self, AppError> {
         Ok(Self {})
     }
 }
 
 impl Vad for VadVoid {
-    fn accept_waveform(&mut self, _samples: &[f32]) -> Result<f32, ModelError> {
+    fn accept_waveform(&mut self, _samples: &[f32]) -> Result<f32, AppError> {
         Ok(1.0)
     }
 

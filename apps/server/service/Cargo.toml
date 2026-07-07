@@ -21,6 +21,10 @@ uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+tokio-util = { workspace = true }
+strum_macros = { workspace = true }
 rmcp = { workspace = true }
 migration = { path = "../migration" }
 entity = { path = "../entity" }

@@ -1,6 +1,8 @@
 use earshot::Detector;
+use framework::error::AppError;
+use service::chobits::vad::Vad;
 
-use crate::{common::ModelError, config::vad::VadConfig, vad::Vad};
+use crate::config::vad::VadConfig;
 
 pub struct VadEarshot {
     detector: Detector,
@@ -14,7 +16,7 @@ pub struct VadEarshot {
 }
 
 impl VadEarshot {
-    pub fn new(config: &VadConfig) -> core::result::Result<Self, ModelError> {
+    pub fn new(config: &VadConfig) -> Result<Self, AppError> {
         let detector = Detector::default();
         Ok(Self {
             detector,
@@ -30,7 +32,7 @@ impl VadEarshot {
 }
 
 impl Vad for VadEarshot {
-    fn accept_waveform(&mut self, samples: &[f32]) -> Result<f32, ModelError> {
+    fn accept_waveform(&mut self, samples: &[f32]) -> Result<f32, AppError> {
         let sample_rate: i64 = 16000;
         let score = self.detector.predict_f32(samples);
         if !self.is_speech {

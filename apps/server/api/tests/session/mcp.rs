@@ -2,13 +2,13 @@ use rmcp::model::{
     CallToolResult, Content, Icon, Implementation, InitializeResult, ListToolsResult,
     ProtocolVersion, RawTextContent, ServerCapabilities,
 };
+use service::chobits::frame::{Frame, FrameResult};
 use service::chobits::message::{
     audio::AudioMessage,
     hello::{Feature, HelloMessage},
     mcp::McpMessage,
     tts::{TtsMessage, TtsState},
 };
-use service::ws::frame::{Frame, FrameResult};
 use std::sync::atomic::{AtomicI64, Ordering};
 use tracing::debug;
 use tracing_test::traced_test;

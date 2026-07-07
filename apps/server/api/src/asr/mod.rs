@@ -2,27 +2,11 @@ pub mod model;
 
 use crate::{
     asr::model::{sense_voice::AsrSenseVoice, void::AsrVoid},
-    common::ModelError,
     config::{AsrModel, asr::AsrConfig},
 };
-use async_trait::async_trait;
+use service::chobits::asr::Asr;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
-
-#[async_trait]
-pub trait Asr: Send + Sync {
-    async fn transcribe(
-        &mut self,
-        sample_rate: u32,
-        samples: &[f32],
-    ) -> Result<RecognizerResult, ModelError>;
-}
-
-#[derive(Debug, Clone)]
-pub struct RecognizerResult {
-    pub text: String,
-    pub prob: f32,
-}
 
 static INSTANCE: OnceLock<AsrFactory> = OnceLock::new();
 

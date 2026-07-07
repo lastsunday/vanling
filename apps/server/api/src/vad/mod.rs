@@ -2,19 +2,9 @@ pub mod model;
 use crate::config::VadModel;
 use crate::config::vad::VadConfig;
 use crate::vad::model::earshot::VadEarshot;
-use crate::{common::ModelError, vad::model::void::VadVoid};
+use crate::vad::model::void::VadVoid;
+use service::chobits::vad::Vad;
 use std::sync::{Arc, OnceLock};
-
-pub trait Vad: Send + Sync {
-    /// Feed audio frame (window_size samples). Returns speech probability [0, 1].
-    fn accept_waveform(&mut self, samples: &[f32]) -> Result<f32, ModelError>;
-    /// Whether the state machine currently considers speech active.
-    fn is_speech(&mut self) -> bool;
-    /// Reset all internal state.
-    fn clear(&mut self);
-    /// Number of samples expected per frame.
-    fn window_size(&self) -> usize;
-}
 
 static VAD_INSTANCE: OnceLock<VadFactory> = OnceLock::new();
 

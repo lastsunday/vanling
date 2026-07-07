@@ -1,8 +1,8 @@
-use crate::common::ModelError;
-use crate::tts::{Tts, TtsData, TtsError};
 use async_trait::async_trait;
+use framework::error::AppError;
 use futures::Stream;
 use futures::executor::block_on;
+use service::chobits::tts::{Tts, TtsPacket};
 use std::pin::Pin;
 use std::thread;
 use tokio::sync::mpsc::channel;
@@ -23,11 +23,9 @@ impl TtsMute {
 impl Tts for TtsMute {
     async fn stream(
         &self,
-        mut text_stream: Pin<
-            Box<dyn Stream<Item = core::result::Result<String, ModelError>> + Send + Sync>,
-        >,
+        mut text_stream: Pin<Box<dyn Stream<Item = String> + Send + 'static>>,
         cancel: CancellationToken,
-    ) -> Pin<Box<dyn Stream<Item = core::result::Result<TtsData, TtsError>> + Send + Sync>> {
+    ) -> Pin<Box<dyn Stream<Item = Result<TtsPacket, AppError>> + Send + 'static>> {
         let (tx, rx) = channel(10);
         thread::spawn(move || {
             block_on(async move {
@@ -36,25 +34,13 @@ impl Tts for TtsMute {
                         break;
                     }
                     let tx = tx.clone();
-                    match &text {
-                        Ok(text) => {
-                            let data = TtsData {
-                                audio: None,
-                                text: text.to_string(),
-                                raw_pcm: None,
-                            };
-                            if let Err(e) = tx.send(Ok(data)).await {
-                                error!("output packet error = {}", e);
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            error!("tts text stream error = {}", e.to_string());
-                            if let Err(e) = tx.send(Err(TtsError::Text(e.to_string()))).await {
-                                error!("send error failure = {}", e);
-                            }
-                            break;
-                        }
+                    let packet = TtsPacket {
+                        audio: vec![],
+                        text,
+                    };
+                    if let Err(e) = tx.send(Ok(packet)).await {
+                        error!("output packet error = {}", e);
+                        break;
                     }
                 }
                 drop(tx);

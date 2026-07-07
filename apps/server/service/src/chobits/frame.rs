@@ -124,3 +124,11 @@ impl fmt::Display for FrameResult {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct OutputMessage {
+    pub epoch: u64,
+    pub round_id: Option<String>,
+    pub session_id: String,
+    pub payload: FrameResult,
+}

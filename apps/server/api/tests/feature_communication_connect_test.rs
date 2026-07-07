@@ -99,7 +99,6 @@ async fn main() {
                 let (container, mut state) = setup_database().await;
                 state.ws_config = Arc::new(WsConfig {
                     schema: Some(String::from("ws")),
-                    ..Default::default()
                 });
                 world.container = container;
                 world.state = Some(state.clone());

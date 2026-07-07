@@ -1,10 +1,10 @@
 use axum::extract::ws::Message;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use service::chobits::frame::{Frame, FrameResult};
 use service::chobits::message::{
     abort::AbortMessage, close::CloseMessage, hello::HelloMessage, mcp::McpMessage,
 };
-use service::ws::frame::{Frame, FrameResult};
 use tracing::warn;
 
 pub trait ProtocolTranslator: Send + Sync {

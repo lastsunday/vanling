@@ -15,7 +15,7 @@ use rig::{
 use std::sync::{Arc, OnceLock};
 
 #[async_trait]
-pub trait Model: Send + Sync {
+pub trait LlmEngine: Send + Sync {
     async fn stream(
         &self,
         request: CompletionRequest,
@@ -34,12 +34,12 @@ pub trait Model: Send + Sync {
 static INSTANCE: OnceLock<LlmFactory> = OnceLock::new();
 
 pub struct LlmFactory {
-    default_llm: Arc<Box<dyn Model>>,
+    default_llm: Arc<Box<dyn LlmEngine>>,
     pub config: Arc<LlmConfig>,
 }
 
 impl LlmFactory {
-    pub fn new(default_llm: Arc<Box<dyn Model>>, config: Arc<LlmConfig>) -> Self {
+    pub fn new(default_llm: Arc<Box<dyn LlmEngine>>, config: Arc<LlmConfig>) -> Self {
         Self {
             default_llm,
             config,
@@ -51,11 +51,11 @@ impl LlmFactory {
         INSTANCE.get_or_init(|| -> Self { Self::new(Arc::new(llm), config) })
     }
 
-    pub fn default(&self) -> Arc<Box<dyn Model>> {
+    pub fn default(&self) -> Arc<Box<dyn LlmEngine>> {
         self.default_llm.clone()
     }
 
-    pub fn create_model(config: &LlmConfig) -> Box<dyn Model> {
+    pub fn create_model(config: &LlmConfig) -> Box<dyn LlmEngine> {
         match config.model.as_ref().expect("llm model is empty") {
             config::LlmModel::Qwen3 => {
                 Box::new(LlmQwen::new(config.path.as_ref().expect("llm path is empty")).unwrap())

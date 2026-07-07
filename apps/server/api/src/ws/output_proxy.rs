@@ -7,8 +7,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::record::recorder::{Dir, EntryKind, FrameDetail, RecordEntry, Recorder, RoundStatus};
 use crate::ws::output_sender::OutputSender;
-use crate::ws::session::round::OutputMessage;
-use service::ws::frame::FrameResult;
+use service::chobits::frame::{FrameResult, OutputMessage};
 
 pub struct OutputProxy {
     output_rx: UnboundedReceiver<OutputMessage>,

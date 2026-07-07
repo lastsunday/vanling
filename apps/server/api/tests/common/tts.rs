@@ -5,10 +5,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 use std::thread;
 
-use api::{
-    common::ModelError,
-    config::{audio::AudioConfig, tts::TtsConfig},
-};
+use api::config::{audio::AudioConfig, tts::TtsConfig};
 use futures::{Stream, executor::block_on};
 use tokio::sync::mpsc::channel;
 use tokio_stream::{StreamExt, wrappers::ReceiverStream};
@@ -398,9 +395,7 @@ pub async fn run_tts_test(
         match data {
             Ok(data) => {
                 info!("text: {}", data.text);
-                if let Some(packets) = data.audio {
-                    all_packets.extend(packets);
-                }
+                all_packets.extend(data.audio);
             }
             Err(e) => panic!("{:?}", e),
         }
@@ -427,13 +422,11 @@ pub async fn run_tts_test(
 }
 
 /// Create a TTS input stream from a text string.
-pub fn tts_stream(
-    text: String,
-) -> impl Stream<Item = core::result::Result<String, ModelError>> + Unpin + Send + 'static {
-    let (tx, rx) = channel::<core::result::Result<String, ModelError>>(10);
+pub fn tts_stream(text: String) -> impl Stream<Item = String> + Unpin + Send + 'static {
+    let (tx, rx) = channel::<String>(10);
     thread::spawn(move || {
         block_on(async move {
-            let _ = tx.send(Ok(text)).await;
+            let _ = tx.send(text).await;
             drop(tx);
         })
     });

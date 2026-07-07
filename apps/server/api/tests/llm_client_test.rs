@@ -1,13 +1,10 @@
 use api::{
     config::{LlmModel, llm::LlmConfig},
     llm::{
-        LlmFactory, Model,
+        LlmEngine, LlmFactory,
         client::{self, ChatRequest, ClientBuilder, History},
     },
-    mcp::{
-        client::server::ServerMcpClient,
-        mcp_host::{McpHost, UnionMcpHost},
-    },
+    mcp::{client::server::ServerMcpClient, provider::McpProviderImpl},
     setup_mcp,
 };
 use rig::{
@@ -29,7 +26,7 @@ use common::{setup_database, tear_down};
 
 use crate::common::router_client::RouterClient;
 
-fn create_model() -> Box<dyn Model> {
+fn create_model() -> Box<dyn LlmEngine> {
     let model_path = common::tts::ws_root()
         .join("data/llm/model/qwen3/0.6b/")
         .to_string_lossy()
@@ -252,8 +249,6 @@ async fn test_chat_history() {
 #[ignore]
 async fn test_chat_mcp() -> anyhow::Result<()> {
     let model = create_model();
-    let mut union_mcp_host = UnionMcpHost::new(None);
-    // TODO: sever client
     let (container, state) = setup_database().await;
     let router = OpenApiRouter::new();
     let ct = tokio_util::sync::CancellationToken::new();
@@ -269,11 +264,14 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
 
     let mut server_client = ServerMcpClient::new(transport).await?;
     server_client.init().await?;
-    union_mcp_host.add_client(Box::new(server_client)).await;
+
+    let mut mcp_impl = McpProviderImpl::new(framework::id::gen_id());
+    let mcp_host = mcp_impl.mcp_host();
+    mcp_impl.add_client(Box::new(server_client)).await;
 
     let client = client::ClientBuilder::new()
         .with_model(Arc::new(model))
-        .with_mcp_host(Arc::new(Mutex::new(union_mcp_host)))
+        .with_mcp_host(mcp_host)
         .build();
     // let request = ChatRequest {
     //     message: Message::User {

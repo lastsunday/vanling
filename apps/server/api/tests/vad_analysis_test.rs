@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use api::config::vad::VadConfig;
-use api::vad::Vad;
 use api::vad::model::earshot::VadEarshot;
 use earshot::Detector;
+use service::chobits::vad::Vad;
 use tracing::info;
 use tracing_test::traced_test;
 
@@ -340,11 +340,9 @@ async fn detect_segments(audio: &[f32]) -> anyhow::Result<Vec<SegmentReport>> {
             });
         }
 
-        if now_speech {
-            if let Some(last) = segments.last_mut() {
-                last.duration_ms += frame_dur_ms;
-                last.samples += chunk_len;
-            }
+        if now_speech && let Some(last) = segments.last_mut() {
+            last.duration_ms += frame_dur_ms;
+            last.samples += chunk_len;
         }
 
         was_speech = now_speech;

@@ -1,4 +1,4 @@
-use service::ws::frame::Frame;
+use service::chobits::frame::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub trait InputSender: Send + Sync {

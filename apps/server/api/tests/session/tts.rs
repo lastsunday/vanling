@@ -2,18 +2,21 @@ use api::{
     asr::AsrFactory,
     config::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
-        session::SessionConfig, tts::TtsConfig, vad::VadConfig,
+        tts::TtsConfig, vad::VadConfig,
     },
-    llm::LlmFactory,
-    mcp::mcp_host::UnionMcpHost,
+    llm::{LlmFactory, client::ClientBuilder},
+    mcp::provider::McpProviderImpl,
     tts::TtsFactory,
     vad::VadFactory,
-    ws::session::{SessionBuilder, listener::DefaultListener},
+    ws::default_listener::DefaultListener,
 };
 use framework::id::gen_id;
-use service::{
-    chobits::message::{hello::HelloMessage, tts::TtsState},
-    ws::frame::{Frame, FrameResult},
+use service::chobits::{
+    frame::{Frame, FrameResult},
+    message::{hello::HelloMessage, tts::TtsState},
+    session::{
+        AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
+    },
 };
 use std::{path::Path, sync::Arc};
 use tokio::sync::Mutex;
@@ -43,7 +46,43 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .into_owned();
 
     let session_id = gen_id();
+    let mcp_impl = McpProviderImpl::new(session_id.clone());
+    let mcp_host = mcp_impl.mcp_host();
+    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+
+    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
+        ClientBuilder::new()
+            .with_session_id(Some(session_id.clone()))
+            .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+                model: Some(LlmModel::Echo),
+                ..Default::default()
+            })))
+            .with_mcp_host(mcp_host)
+            .build(),
+    );
+
+    let tts: Arc<dyn service::chobits::tts::Tts> = Arc::from(
+        TtsFactory::create_model(
+            &TtsConfig {
+                model: Some(TtsModel::MatchaTts),
+                path: Some(model_path),
+                options: Some(serde_json::json!({
+                    "num_threads": 2,
+                    "noise_scale": 0.667,
+                    "length_scale": 1.0,
+                    "speed": 1.0,
+                    "debug": false,
+                })),
+                ..Default::default()
+            },
+            &audio_config,
+        )
+        .await
+        .unwrap(),
+    );
+
     let (session, input_tx, mut output_rx) = SessionBuilder::new()
+        .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Void),
@@ -54,42 +93,22 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
                 ..Default::default()
             }))),
         )))
-        .with_id(session_id.clone())
-        .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
-            model: Some(LlmModel::Echo),
-            ..Default::default()
-        })))
-        .with_tts(Arc::new(
-            TtsFactory::create_model(
-                &TtsConfig {
-                    model: Some(TtsModel::MatchaTts),
-                    path: Some(model_path),
-                    options: Some(serde_json::json!({
-                        "num_threads": 2,
-                        "noise_scale": 0.667,
-                        "length_scale": 1.0,
-                        "speed": 1.0,
-                        "debug": false,
-                    })),
-                    ..Default::default()
-                },
-                &audio_config,
-            )
-            .await
-            .unwrap(),
-        ))
-        .with_mcp_host(Arc::new(Mutex::new(UnionMcpHost::new(Some(
-            session_id.clone(),
-        )))))
-        .with_config(Arc::new(SessionConfig {
+        .with_llm(llm)
+        .with_tts(tts)
+        .with_mcp(mcp_provider)
+        .with_config(ServiceSessionConfig {
             close_connection_no_voice_time: Some(3000),
             silence_voice_timeout: Some(1200),
             system_prompt: Some(String::from(
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
             )),
             max_prompt_len: Some(3000),
-        }))
-        .with_audio_config(audio_config.clone())
+        })
+        .with_audio_config(ServiceAudioConfig {
+            output_sample_rate: 16000,
+            output_channel: 1,
+            output_frame_duration: 60,
+        })
         .build();
 
     tokio::spawn(session.start());
@@ -111,11 +130,10 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
     loop {
         let data = output_rx.recv().await.unwrap().payload;
         match data {
-            FrameResult::TTSResult(msg) => {
-                if msg.state == Some(TtsState::Stop) {
-                    break;
-                }
+            FrameResult::TTSResult(msg) if msg.state == Some(TtsState::Stop) => {
+                break;
             }
+            FrameResult::TTSResult(_) => {}
             FrameResult::AudioResult(audio) => {
                 all_packets.push(audio.data);
             }

@@ -8,6 +8,7 @@ use crate::{AppState, mcp::tool::administrator::Administrator};
 
 pub mod client;
 pub mod mcp_host;
+pub mod provider;
 pub mod tool;
 
 pub fn create_routes(state: AppState, cancellation_token: CancellationToken) -> OpenApiRouter {

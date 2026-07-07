@@ -1,10 +1,10 @@
+use service::chobits::frame::{Frame, FrameResult};
 use service::chobits::message::{
     audio::AudioMessage,
     close::CloseMessage,
     hello::HelloMessage,
     tts::{TtsMessage, TtsState},
 };
-use service::ws::frame::{Frame, FrameResult};
 use tracing::debug;
 use tracing_test::traced_test;
 
@@ -89,10 +89,11 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
     // Drain: STTResult → TTS Start → LLMResult → SentenceStart → SentenceEnd → Stop
     loop {
         let data = output_rx.recv().await.unwrap().payload;
-        if let FrameResult::TTSResult(tts_message) = data {
-            if let Some(TtsState::Stop) = tts_message.state {
-                break;
-            }
+        let FrameResult::TTSResult(tts_message) = data else {
+            continue;
+        };
+        if let Some(TtsState::Stop) = tts_message.state {
+            break;
         }
     }
 
@@ -103,10 +104,11 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
 
     loop {
         let data = output_rx.recv().await.unwrap().payload;
-        if let FrameResult::TTSResult(tts_message) = data {
-            if let Some(TtsState::Stop) = tts_message.state {
-                break;
-            }
+        let FrameResult::TTSResult(tts_message) = data else {
+            continue;
+        };
+        if let Some(TtsState::Stop) = tts_message.state {
+            break;
         }
     }
 
@@ -183,10 +185,11 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
     // Drain: STTResult → TTS Start → LLMResult → SentenceStart → SentenceEnd → Stop
     loop {
         let data = output_rx.recv().await.unwrap().payload;
-        if let FrameResult::TTSResult(tts_message) = data {
-            if let Some(TtsState::Stop) = tts_message.state {
-                break;
-            }
+        let FrameResult::TTSResult(tts_message) = data else {
+            continue;
+        };
+        if let Some(TtsState::Stop) = tts_message.state {
+            break;
         }
     }
 

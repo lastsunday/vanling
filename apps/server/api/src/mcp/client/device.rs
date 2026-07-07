@@ -4,7 +4,6 @@ use std::sync::{
 };
 
 use crate::mcp::client::McpClient;
-use crate::ws::session::round::OutputMessage;
 use anyhow::Context;
 use async_trait::async_trait;
 use rig::{
@@ -19,11 +18,11 @@ use rmcp::model::{
     PaginatedRequestParams, ProtocolVersion, RawContent, Request, RequestId, Tool, object,
 };
 use serde::Serialize;
+use service::chobits::frame::{FrameResult, OutputMessage};
 use service::chobits::message::{
     hello::HelloMessage,
     mcp::{McpMessage, McpRequest},
 };
-use service::ws::frame::FrameResult;
 use tokio::sync::{
     Mutex,
     mpsc::{Receiver, UnboundedSender},

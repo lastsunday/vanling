@@ -1,8 +1,9 @@
+pub use framework::error;
+
 pub mod asr;
 pub mod auth;
 pub mod common;
 pub mod config;
-pub mod error;
 pub mod index;
 pub mod llm;
 pub mod matrix;

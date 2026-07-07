@@ -3,20 +3,15 @@ use api::{
     asr::AsrFactory,
     config::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
-        session::SessionConfig, tts::TtsConfig, vad::VadConfig,
+        tts::TtsConfig, vad::VadConfig,
     },
-    llm::LlmFactory,
-    mcp::{
-        client::server::ServerMcpClient,
-        mcp_host::{McpHost, UnionMcpHost},
-    },
+    llm::{LlmFactory, client::ClientBuilder},
+    mcp::{client::server::ServerMcpClient, provider::McpProviderImpl},
     setup_mcp,
     tts::TtsFactory,
     util::audio::pcm_decode,
     vad::VadFactory,
-    ws::session::SessionBuilder,
-    ws::session::round::OutputMessage,
-    ws::session::{Session, listener::DefaultListener},
+    ws::default_listener::DefaultListener,
 };
 use framework::id::gen_id;
 use rmcp::{
@@ -26,7 +21,10 @@ use rmcp::{
     },
 };
 use serde::Serialize;
-use service::ws::frame::Frame;
+use service::chobits::frame::{Frame, OutputMessage};
+use service::chobits::session::{
+    AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
+};
 
 use std::{
     cmp,
@@ -58,7 +56,7 @@ use crate::common::{router_client::RouterClient, setup_database};
 /// Uses Void VAD/ASR + Echo LLM + Matcha TTS.
 pub async fn create_session() -> Result<
     (
-        Session,
+        service::chobits::session::Session,
         mpsc::UnboundedSender<Frame>,
         mpsc::UnboundedReceiver<OutputMessage>,
         Option<ContainerAsync<Postgres>>,
@@ -82,15 +80,48 @@ pub async fn create_session() -> Result<
     let mut server_client = ServerMcpClient::new(transport).await?;
     server_client.init().await?;
     let session_id = gen_id();
-    let mut mcp_host = UnionMcpHost::new(Some(session_id.clone()));
-    mcp_host.add_client(Box::new(server_client)).await;
+    let mut mcp_impl = McpProviderImpl::new(session_id.clone());
+    let mcp_host = mcp_impl.mcp_host();
+    mcp_impl.add_client(Box::new(server_client)).await;
+    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
 
     let audio_config = Arc::new(AudioConfig {
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(20_u64),
     });
+
+    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
+        ClientBuilder::new()
+            .with_session_id(Some(session_id.clone()))
+            .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+                model: Some(LlmModel::Echo),
+                ..Default::default()
+            })))
+            .with_mcp_host(mcp_host)
+            .build(),
+    );
+
+    let tts: Arc<dyn service::chobits::tts::Tts> = Arc::from(
+        TtsFactory::create_model(
+            &TtsConfig {
+                model: Some(TtsModel::MatchaTts),
+                path: Some(
+                    workspace_root()
+                        .join("data/tts/model/matcha/matcha-icefall-zh-en/")
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                ..Default::default()
+            },
+            &audio_config,
+        )
+        .await
+        .unwrap(),
+    );
+
     let (session, input_tx, output_rx) = SessionBuilder::new()
+        .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
@@ -107,33 +138,22 @@ pub async fn create_session() -> Result<
                 variant: None,
             }))),
         )))
-        .with_id(session_id.clone())
-        .with_model(
-           Arc::new( LlmFactory::create_model(&LlmConfig {
-                model: Some(LlmModel::Echo),
-                ..Default::default()
-            }))
-        )
-            .with_tts(Arc::new(TtsFactory::create_model(&TtsConfig {
-                model: Some(TtsModel::MatchaTts),
-                path: Some(
-                    workspace_root()
-                        .join("data/tts/model/matcha/matcha-icefall-zh-en/")
-                        .to_string_lossy()
-                        .into_owned(),
-                ),
-                ..Default::default()
-            }, &audio_config).await.unwrap()))
-        .with_mcp_host(Arc::new(Mutex::new(mcp_host)))
-        .with_config(Arc::new(SessionConfig {
+        .with_llm(llm)
+        .with_tts(tts)
+        .with_mcp(mcp_provider)
+        .with_config(ServiceSessionConfig {
             close_connection_no_voice_time: Some(3000),
             silence_voice_timeout: Some(1200),
             system_prompt: Some(String::from(
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
             )),
             max_prompt_len: Some(6000),
-        }))
-        .with_audio_config(audio_config.clone())
+        })
+        .with_audio_config(ServiceAudioConfig {
+            output_sample_rate: 16000,
+            output_channel: 1,
+            output_frame_duration: 20,
+        })
         .build();
     Ok((session, input_tx, output_rx, container, state))
 }
@@ -142,44 +162,68 @@ pub async fn create_mini_session_channel() -> (
     mpsc::UnboundedSender<Frame>,
     mpsc::UnboundedReceiver<OutputMessage>,
 ) {
+    let session_id = gen_id();
+    let mcp_impl = McpProviderImpl::new(session_id.clone());
+    let mcp_host = mcp_impl.mcp_host();
+    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+
+    let llm: Arc<dyn service::chobits::llm::Llm> = Arc::new(
+        ClientBuilder::new()
+            .with_session_id(Some(session_id.clone()))
+            .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+                model: Some(LlmModel::Echo),
+                ..Default::default()
+            })))
+            .with_mcp_host(mcp_host)
+            .build(),
+    );
+
     let audio_config = Arc::new(AudioConfig {
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(20_u64),
     });
-    let session_id = gen_id();
+
+    let tts: Arc<dyn service::chobits::tts::Tts> = Arc::from(
+        TtsFactory::create_model(
+            &TtsConfig {
+                model: Some(TtsModel::Mute),
+                ..Default::default()
+            },
+            &audio_config,
+        )
+        .await
+        .unwrap(),
+    );
+
     let (session, input_tx, output_rx) = SessionBuilder::new()
+        .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
                 ..Default::default()
             })),
             Arc::new(Mutex::new(AsrFactory::create_model(&AsrConfig {
-                model:Some(AsrModel::Void),
+                model: Some(AsrModel::Void),
                 ..Default::default()
             }))),
         )))
-        .with_id(session_id.clone())
-        .with_model(
-           Arc::new( LlmFactory::create_model(&LlmConfig {
-            model: Some(LlmModel::Echo),
-            ..Default::default()
-            }))
-        )
-            .with_tts(Arc::new(TtsFactory::create_model(&TtsConfig {
-            model: Some(TtsModel::Mute),
-            ..Default::default()
-        }, &audio_config).await.unwrap()))
-        .with_mcp_host(Arc::new(Mutex::new(UnionMcpHost::new(Some(session_id.clone())))))
-        .with_config(Arc::new(SessionConfig {
+        .with_llm(llm)
+        .with_tts(tts)
+        .with_mcp(mcp_provider)
+        .with_config(ServiceSessionConfig {
             close_connection_no_voice_time: Some(3000),
             silence_voice_timeout: Some(1200),
             system_prompt: Some(String::from(
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
             )),
             max_prompt_len: Some(3000),
-        }))
-        .with_audio_config(audio_config.clone())
+        })
+        .with_audio_config(ServiceAudioConfig {
+            output_sample_rate: 16000,
+            output_channel: 1,
+            output_frame_duration: 20,
+        })
         .build();
     tokio::spawn(session.start());
     (input_tx, output_rx)

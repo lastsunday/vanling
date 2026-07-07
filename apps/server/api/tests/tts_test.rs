@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 
 use api::{
@@ -38,14 +37,7 @@ async fn test_tts_default() -> anyhow::Result<()> {
         match data {
             Ok(data) => {
                 info!("{:?}", data.text);
-                match data.audio {
-                    Some(data) => {
-                        audio.append(&mut data.clone());
-                    }
-                    None => {
-                        audio.append(&mut vec![]);
-                    }
-                }
+                audio.append(&mut data.audio.to_vec());
             }
             Err(e) => {
                 panic!("{:?}", e);
@@ -92,14 +84,7 @@ async fn test_tts_mute() -> anyhow::Result<()> {
         match data {
             Ok(data) => {
                 assert_eq!(data.text, TEST_TTS_TEXT);
-                match data.audio {
-                    Some(data) => {
-                        audio.append(&mut data.clone());
-                    }
-                    None => {
-                        audio.append(&mut vec![]);
-                    }
-                }
+                audio.append(&mut data.audio.to_vec());
             }
             Err(e) => {
                 panic!("{:?}", e);

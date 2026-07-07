@@ -1,9 +1,7 @@
 use async_trait::async_trait;
 
-use service::ws::frame::FrameResult;
+use service::chobits::frame::{FrameResult, OutputMessage};
 use tokio::sync::mpsc::UnboundedReceiver;
-
-use crate::ws::session::round::OutputMessage;
 
 #[async_trait]
 pub trait OutputSender: Send {

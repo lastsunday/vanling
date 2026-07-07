@@ -2,55 +2,23 @@ pub mod model;
 
 use self::model::matcha::TtsMatcha;
 use self::model::mute::TtsMute;
-use crate::common::ModelError;
 use crate::config;
 use crate::config::audio::AudioConfig;
 use crate::config::tts::TtsConfig;
-use async_trait::async_trait;
-use futures::Stream;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::OnceLock;
-use tokio_util::sync::CancellationToken;
-
-#[async_trait]
-pub trait Tts: Send + Sync {
-    async fn stream(
-        &self,
-        text_stream: Pin<
-            Box<dyn Stream<Item = core::result::Result<String, ModelError>> + Send + Sync>,
-        >,
-        cancel: CancellationToken,
-    ) -> Pin<Box<dyn Stream<Item = core::result::Result<TtsData, TtsError>> + Send + Sync>>;
-}
-
-pub struct TtsData {
-    pub audio: Option<Vec<Vec<u8>>>,
-    pub text: String,
-    pub raw_pcm: Option<(Vec<f32>, i32)>,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum TtsError {
-    #[error("init error")]
-    Init,
-    #[error("encode error {0}")]
-    Encode(String),
-    #[error("text error {0}")]
-    Text(String),
-}
+use service::chobits::tts::Tts;
+use std::sync::{Arc, OnceLock};
 
 static INSTANCE: OnceLock<TtsFactory> = OnceLock::new();
 
 pub struct TtsFactory {
-    default_instance: Arc<Box<dyn Tts>>,
+    default_instance: Arc<dyn Tts>,
     pub tts_config: Arc<TtsConfig>,
     pub audio_config: Arc<AudioConfig>,
 }
 
 impl TtsFactory {
     pub fn new(
-        default_instance: Arc<Box<dyn Tts>>,
+        default_instance: Arc<dyn Tts>,
         tts_config: Arc<TtsConfig>,
         audio_config: Arc<AudioConfig>,
     ) -> Self {
@@ -66,10 +34,13 @@ impl TtsFactory {
         audio_config: Arc<AudioConfig>,
     ) -> Result<&'static Self, anyhow::Error> {
         let tts = Self::create_model(&tts_config, &audio_config).await?;
-        Ok(INSTANCE.get_or_init(|| -> Self { Self::new(Arc::new(tts), tts_config, audio_config) }))
+        Ok(
+            INSTANCE
+                .get_or_init(|| -> Self { Self::new(Arc::from(tts), tts_config, audio_config) }),
+        )
     }
 
-    pub fn default(&self) -> Arc<Box<dyn Tts>> {
+    pub fn default(&self) -> Arc<dyn Tts> {
         self.default_instance.clone()
     }
 
@@ -87,16 +58,6 @@ impl TtsFactory {
 
     pub fn global() -> &'static TtsFactory {
         INSTANCE.get().unwrap()
-    }
-}
-
-use crate::common::ModelErrorCode;
-use framework::err;
-use framework::error::AppError;
-
-impl From<TtsError> for AppError {
-    fn from(value: TtsError) -> Self {
-        err!(ModelErrorCode::Tts).with_extra(value.to_string())
     }
 }
 

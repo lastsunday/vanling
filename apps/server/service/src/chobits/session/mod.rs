@@ -1,32 +1,28 @@
-use super::session::listener::Listener;
-use super::session::round::{Command, OutputMessage, Round};
-use crate::config::audio::AudioConfig;
-use crate::config::session::SessionConfig;
-use crate::llm::Model;
-use crate::llm::client::{ClientBuilder, History};
-use crate::mcp::client::device::{DeviceMcpClient, DeviceMcpPhase};
-use crate::mcp::mcp_host::{McpHost, UnionMcpHost};
-use crate::tts::Tts;
-use crate::ws::WsErrorCode;
-use crate::ws::session::round::ChatParam;
-use chrono::Local;
-use framework::prelude::err;
-use rig::message::ToolResult;
-use service::chobits::message::hello::{AudioParam, HelloMessage};
-use service::chobits::message::{AudioFormat, Transport};
-use service::ws::frame::{Frame, FrameResult};
+pub mod history;
+pub mod round;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
 
+use chrono::Local;
 use tokio::select;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc::{Sender, UnboundedSender, channel};
-use tokio_util::sync::CancellationToken;
-use tracing;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-pub mod listener;
-pub mod round;
+use crate::chobits::frame::Frame;
+use crate::chobits::frame::{FrameResult, OutputMessage};
+use crate::chobits::listener::{ListenInput, ListenResult, Listener};
+use crate::chobits::llm::Llm;
+use crate::chobits::mcp::Mcp;
+use crate::chobits::message::hello::{AudioParam, HelloMessage};
+use crate::chobits::message::{AudioFormat, Transport};
+use crate::chobits::tts::Tts;
+
+use framework::err;
+use framework::prelude::error;
+
+use round::{ChatParam, Command, Round};
 
 #[derive(Debug, Clone, Copy)]
 pub enum RoundStopReason {
@@ -62,128 +58,18 @@ impl std::fmt::Display for SessionEndReason {
     }
 }
 
-#[derive(Default)]
-pub struct SessionBuilder {
-    id: Option<String>,
-    listener: Option<Box<dyn Listener>>,
-    model: Option<Arc<Box<dyn Model>>>,
-    tts: Option<Arc<Box<dyn Tts>>>,
-    mcp_host: Option<Arc<Mutex<UnionMcpHost>>>,
-    config: Option<Arc<SessionConfig>>,
-    audio_config: Option<Arc<AudioConfig>>,
+#[derive(Debug, Clone, Default)]
+pub struct SessionConfig {
+    pub system_prompt: Option<String>,
+    pub max_prompt_len: Option<u64>,
+    pub silence_voice_timeout: Option<i64>,
+    pub close_connection_no_voice_time: Option<i64>,
 }
 
-impl SessionBuilder {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn with_id(mut self, id: String) -> SessionBuilder {
-        self.id = Some(id);
-        self
-    }
-
-    pub fn with_listener(mut self, listener: Box<dyn Listener>) -> SessionBuilder {
-        self.listener = Some(listener);
-        self
-    }
-
-    pub fn with_model(mut self, model: Arc<Box<dyn Model>>) -> SessionBuilder {
-        self.model = Some(model);
-        self
-    }
-
-    pub fn with_tts(mut self, tts: Arc<Box<dyn Tts>>) -> SessionBuilder {
-        self.tts = Some(tts);
-        self
-    }
-
-    pub fn with_mcp_host(mut self, mcp_host: Arc<Mutex<UnionMcpHost>>) -> SessionBuilder {
-        self.mcp_host = Some(mcp_host);
-        self
-    }
-
-    pub fn with_config(mut self, config: Arc<SessionConfig>) -> SessionBuilder {
-        self.config = Some(config);
-        self
-    }
-
-    pub fn with_audio_config(mut self, config: Arc<AudioConfig>) -> SessionBuilder {
-        self.audio_config = Some(config);
-        self
-    }
-
-    pub fn build(
-        self,
-    ) -> (
-        Session,
-        tokio::sync::mpsc::UnboundedSender<Frame>,
-        tokio::sync::mpsc::UnboundedReceiver<OutputMessage>,
-    ) {
-        let config = self.config.expect("config is required");
-        let audio_config = self.audio_config.expect("audio is required");
-        let system_prompt = config
-            .system_prompt
-            .as_ref()
-            .expect("logic system prompt is empty");
-        let (session_tx, session_rx) = tokio::sync::mpsc::unbounded_channel::<Frame>();
-        let (output_tx, output_rx_inner) = tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
-        let (output_tx_outer, output_rx_outer) =
-            tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
-        let session = Session {
-            id: self.id.expect("id is required"),
-            started_at: Instant::now(),
-            round_count: 0,
-            running_round: None,
-            shadow_round: None,
-            session_rx,
-            output_tx,
-            output_rx_inner,
-            output_tx_outer,
-            epoch: 1,
-            phase: Phase::Idle,
-            latest_activity_time: Arc::new(AtomicI64::new(0)),
-            history: Arc::new(Mutex::new(History {
-                preamble: Some(system_prompt.to_string()),
-                chat_history: vec![],
-            })),
-            config,
-            audio_config,
-            listener: self.listener.expect("listener is required"),
-            model: self.model.expect("model is required"),
-            tts: self.tts.expect("tts is required"),
-            mcp_host: self.mcp_host.expect("mcp host is required"),
-            device_mcp_phase: DeviceMcpPhase::Initialize,
-            device_mcp_call_tool_result_tx: None,
-        };
-        (session, session_tx, output_rx_outer)
-    }
-}
-
-pub struct Session {
-    pub id: String,
-    started_at: Instant,
-    round_count: u64,
-    running_round: Option<Box<Round>>,
-    shadow_round: Option<Box<Round>>,
-    session_rx: tokio::sync::mpsc::UnboundedReceiver<Frame>,
-    output_tx: UnboundedSender<OutputMessage>,
-    output_rx_inner: tokio::sync::mpsc::UnboundedReceiver<OutputMessage>,
-    output_tx_outer: UnboundedSender<OutputMessage>,
-    epoch: u64,
-    phase: Phase,
-    latest_activity_time: Arc<AtomicI64>,
-    history: Arc<Mutex<History>>,
-
-    config: Arc<SessionConfig>,
-    audio_config: Arc<AudioConfig>,
-
-    model: Arc<Box<dyn Model>>,
-    tts: Arc<Box<dyn Tts>>,
-    listener: Box<dyn Listener>,
-    mcp_host: Arc<Mutex<UnionMcpHost>>,
-    device_mcp_phase: DeviceMcpPhase,
-    device_mcp_call_tool_result_tx: Option<Sender<anyhow::Result<ToolResult>>>,
+pub struct AudioConfig {
+    pub output_sample_rate: u32,
+    pub output_channel: u32,
+    pub output_frame_duration: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -196,42 +82,138 @@ pub enum Phase {
 
 #[derive(Debug, Clone)]
 pub struct ListeningParam {
-    can_barge_in: bool,
+    pub can_barge_in: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct SpeakingParam {
-    text: String,
-    prob: f32,
+    pub text: String,
+    pub prob: f32,
+}
+
+#[derive(Default)]
+pub struct SessionBuilder {
+    id: Option<String>,
+    listener: Option<Box<dyn Listener>>,
+    llm: Option<Arc<dyn Llm>>,
+    tts: Option<Arc<dyn Tts>>,
+    mcp: Option<Arc<Mutex<dyn Mcp>>>,
+    config: Option<SessionConfig>,
+    audio_config: Option<AudioConfig>,
+}
+
+impl SessionBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn with_id(mut self, id: String) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn with_listener(mut self, listener: Box<dyn Listener>) -> Self {
+        self.listener = Some(listener);
+        self
+    }
+
+    pub fn with_llm(mut self, llm: Arc<dyn Llm>) -> Self {
+        self.llm = Some(llm);
+        self
+    }
+
+    pub fn with_tts(mut self, tts: Arc<dyn Tts>) -> Self {
+        self.tts = Some(tts);
+        self
+    }
+
+    pub fn with_mcp(mut self, mcp: Arc<Mutex<dyn Mcp>>) -> Self {
+        self.mcp = Some(mcp);
+        self
+    }
+
+    pub fn with_config(mut self, config: SessionConfig) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    pub fn with_audio_config(mut self, config: AudioConfig) -> Self {
+        self.audio_config = Some(config);
+        self
+    }
+
+    pub fn build(
+        self,
+    ) -> (
+        Session,
+        UnboundedSender<Frame>,
+        UnboundedReceiver<OutputMessage>,
+    ) {
+        let config = self.config.expect("config is required");
+        let audio_config = self.audio_config.expect("audio is required");
+
+        let (session_tx, session_rx) = tokio::sync::mpsc::unbounded_channel::<Frame>();
+        let (inner_tx, inner_rx) = tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
+        let (outer_tx, outer_rx) = tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
+
+        let session = Session {
+            id: self.id.expect("id is required"),
+            started_at: Instant::now(),
+            round_count: 0,
+            running_round: None,
+            shadow_round: None,
+            session_rx,
+            output_tx: inner_tx,
+            output_rx_inner: inner_rx,
+            output_tx_outer: outer_tx,
+            epoch: 1,
+            phase: Phase::Idle,
+            latest_activity_time: Arc::new(AtomicI64::new(0)),
+            config,
+            audio_config,
+            listener: self.listener.expect("listener is required"),
+            llm: self.llm.expect("llm is required"),
+            tts: self.tts.expect("tts is required"),
+            mcp: self.mcp.expect("mcp is required"),
+        };
+
+        (session, session_tx, outer_rx)
+    }
+}
+
+pub struct Session {
+    pub id: String,
+    started_at: Instant,
+    round_count: u64,
+    running_round: Option<Box<Round>>,
+    shadow_round: Option<Box<Round>>,
+    session_rx: UnboundedReceiver<Frame>,
+    output_tx: UnboundedSender<OutputMessage>,
+    output_rx_inner: UnboundedReceiver<OutputMessage>,
+    output_tx_outer: UnboundedSender<OutputMessage>,
+    epoch: u64,
+    phase: Phase,
+    latest_activity_time: Arc<AtomicI64>,
+
+    config: SessionConfig,
+    audio_config: AudioConfig,
+
+    llm: Arc<dyn Llm>,
+    tts: Arc<dyn Tts>,
+    listener: Box<dyn Listener>,
+    mcp: Arc<Mutex<dyn Mcp>>,
 }
 
 impl Session {
     pub async fn start(mut self) {
-        let (result_tx, result_rx) = channel::<anyhow::Result<ToolResult>>(1);
-        self.device_mcp_call_tool_result_tx = Some(result_tx);
-        let device = DeviceMcpClient::new(
-            Some(self.id.clone()),
-            self.output_tx.clone(),
-            Arc::new(Mutex::new(result_rx)),
-        );
-        self.mcp_host
-            .lock()
-            .await
-            .set_device_client(Arc::new(Mutex::new(device)))
-            .await;
-
-        let frame_duration = self
-            .audio_config
-            .output_frame_duration
-            .expect("output frame duration is empty");
-
+        let frame_duration = self.audio_config.output_frame_duration;
         let mut audio_pacer: Option<tokio::time::Interval> = None;
 
         loop {
             select! {
                 msg = self.session_rx.recv() => {
                     match msg {
-                         Some(Frame::Close(_)) | None => {
+                        Some(Frame::Close(_)) | None => {
                             self.stop(SessionEndReason::ClientDisconnect).await;
                             break;
                         }
@@ -244,12 +226,10 @@ impl Session {
                         break;
                     };
 
-                    // epoch filter: skip stale messages from old rounds
                     if msg.epoch != 0 && msg.epoch < self.epoch {
                         continue;
                     }
 
-                    // audio pacing
                     if matches!(msg.payload, FrameResult::AudioResult(_)) {
                         audio_pacer.get_or_insert_with(|| {
                             tokio::time::interval_at(
@@ -288,15 +268,8 @@ impl Session {
     pub async fn new_round(&mut self) {
         self.round_count += 1;
         let tx = self.output_tx.clone();
-        let client = ClientBuilder::new()
-            .with_session_id(Some(self.id.clone()))
-            .with_model(self.model.clone())
-            .with_mcp_host(self.mcp_host.clone())
-            .build()
-            .with_history(self.history.clone())
-            .with_max_prompt_len(self.config.max_prompt_len);
         let round_id = framework::id::gen_id();
-        let cancel_token = CancellationToken::new();
+        let cancel = tokio_util::sync::CancellationToken::new();
         let epoch = self.epoch;
         tracing::debug!(session_id = %self.id, round_id = %round_id, epoch, "new round");
         self.shadow_round = Some(Box::new(Round::new(
@@ -304,21 +277,15 @@ impl Session {
             round_id,
             tx,
             epoch,
-            Arc::new(client),
+            self.llm.clone(),
             self.tts.clone(),
-            cancel_token,
+            cancel,
         )));
         if let Some(round) = &mut self.shadow_round {
             round.start().await;
         } else {
             panic!("current round is none");
         }
-        tracing::debug!(
-            session_id = %self.id,
-            running_round_id = ?self.running_round.as_ref().map(|r| &r.id),
-            shadow_round_id = ?self.shadow_round.as_ref().map(|r| &r.id),
-            "round state",
-        );
     }
 
     pub async fn stop_round(&mut self, reason: RoundStopReason) {
@@ -347,12 +314,6 @@ impl Session {
             );
         }
         self.running_round = self.shadow_round.take();
-        tracing::debug!(
-            session_id = %self.id,
-            running_round_id = ?self.running_round.as_ref().map(|r| &r.id),
-            shadow_round_id = ?self.shadow_round.as_ref().map(|r| &r.id),
-            "round state",
-        );
     }
 
     pub async fn accept_frame(&mut self, frame: &Frame) {
@@ -379,28 +340,8 @@ impl Session {
         }
 
         if let Frame::Mcp(message) = frame {
-            match self.device_mcp_phase {
-                DeviceMcpPhase::ToolCall => {
-                    let result = DeviceMcpClient::handle_mcp_tool_call_result(message).await;
-                    let device_mcp_call_tool_result_tx = self
-                        .device_mcp_call_tool_result_tx
-                        .clone()
-                        .expect("device mcp call tool result tx not exists");
-                    if let Err(ex) = device_mcp_call_tool_result_tx.send(result).await {
-                        panic!("can't send device mcp call tool result {:?}", ex);
-                    }
-                }
-                _ => {
-                    let mcp_host = self.mcp_host.clone();
-                    let mut mcp_host = mcp_host.lock().await;
-                    let device_mcp_client = mcp_host.get_device_client().await;
-                    let device_mcp_client = device_mcp_client.clone();
-                    if let Some(device_mcp_client) = device_mcp_client {
-                        let mut device_mcp_client = device_mcp_client.lock().await;
-                        self.device_mcp_phase = device_mcp_client.handle_mcp(message).await.clone();
-                    }
-                }
-            }
+            let mut mcp = self.mcp.lock().await;
+            mcp.handle_frame(message, &self.output_tx).await;
             return;
         }
 
@@ -408,8 +349,8 @@ impl Session {
         match phase {
             Phase::Idle => self.on_idle(frame).await,
             Phase::Ready => self.on_ready(frame, forwarding).await,
-            Phase::Listening(listening_param) => self.on_listening(frame, &listening_param).await,
-            Phase::Speaking(speaking_param) => self.on_speaking(frame, &speaking_param).await,
+            Phase::Listening(ref param) => self.on_listening(frame, param).await,
+            Phase::Speaking(ref param) => self.on_speaking(frame, param).await,
         }
     }
 
@@ -422,25 +363,18 @@ impl Session {
                 transport = ?hello_message.transport,
                 "client hello"
             );
-            let mut has_mcp = false;
-            if let Some(features) = &hello_message.features
-                && let Some(mcp) = features.mcp
-            {
-                has_mcp = mcp;
-            }
+            let has_mcp = hello_message
+                .features
+                .as_ref()
+                .and_then(|f| f.mcp)
+                .unwrap_or(false);
+
             self.handle_connect(hello_message).await;
             self.phase = Phase::Ready;
+
             if has_mcp {
-                let mut mcp_host = self.mcp_host.lock().await;
-                let device_mcp_client = mcp_host
-                    .get_device_client()
-                    .await
-                    .clone()
-                    .expect("device mcp not exists");
-                let mut device_mcp_client = device_mcp_client.lock().await;
-                device_mcp_client
-                    .request_mcp_initialize(hello_message)
-                    .await;
+                let mut mcp = self.mcp.lock().await;
+                mcp.handle_hello(hello_message, &self.output_tx).await;
             }
         }
     }
@@ -451,21 +385,15 @@ impl Session {
         }
         let audio_config = &self.audio_config;
         let data = HelloMessage {
-            message: service::chobits::message::Message {
-                mtype: service::chobits::message::Type::Hello,
+            message: crate::chobits::message::Message {
+                mtype: crate::chobits::message::Type::Hello,
             },
             transport: Some(Transport::Websocket),
             audio_params: Some(AudioParam {
                 format: AudioFormat::Opus,
-                sample_rate: audio_config
-                    .output_sample_rate
-                    .expect("output sample rate is empty"),
-                channels: audio_config
-                    .output_channel
-                    .expect("output channel is empty"),
-                frame_duration: audio_config
-                    .output_frame_duration
-                    .expect("output frame duration is empty"),
+                sample_rate: audio_config.output_sample_rate,
+                channels: audio_config.output_channel,
+                frame_duration: audio_config.output_frame_duration,
             }),
             version: None,
             features: None,
@@ -504,7 +432,7 @@ impl Session {
                 }
                 Frame::Voice { data } => {
                     self.listener
-                        .accept(listener::ListenInput::Audio(data.to_vec()))
+                        .accept(ListenInput::Audio(data.to_vec()))
                         .await;
                 }
                 _ => {}
@@ -513,15 +441,15 @@ impl Session {
     }
 
     async fn on_listening(&mut self, frame: &Frame, param: &ListeningParam) {
-        let ListeningParam { can_barge_in } = param;
         match frame {
             Frame::ListenStop => {
-                self.listener.set_state(listener::ListenState::End);
+                self.listener
+                    .set_state(crate::chobits::listener::ListenState::End);
                 let (_, result) = self.listener.take_result().await;
                 let (text, prob) = match result {
                     Ok(result) => match result {
-                        listener::ListenResult::Text(text) => (text, 1.0),
-                        listener::ListenResult::Audio { text, prob } => (text, prob),
+                        ListenResult::Text(text) => (text, 1.0),
+                        ListenResult::Audio { text, prob } => (text, prob),
                     },
                     Err(e) => {
                         let _ = self.output_tx.send(OutputMessage {
@@ -529,7 +457,7 @@ impl Session {
                             round_id: None,
                             session_id: self.id.clone(),
                             payload: FrameResult::Error(
-                                err!(WsErrorCode::AsrFailure).with_extra(e.to_string()),
+                                err!(SessionErrorCode::AsrFailure).with_extra(e.to_string()),
                             ),
                         });
                         return;
@@ -540,7 +468,7 @@ impl Session {
                 let silence_voice_timeout = self
                     .config
                     .silence_voice_timeout
-                    .expect("logic silence voice timeout is empty");
+                    .expect("silence voice timeout is empty");
                 self.listener.reset(Some(silence_voice_timeout)).await;
                 Box::pin(self.forwarding_frame(frame)).await;
             }
@@ -549,9 +477,9 @@ impl Session {
                     Some(round) => round.is_speaking().await,
                     None => false,
                 };
-                if *can_barge_in || !is_speaking {
+                if param.can_barge_in || !is_speaking {
                     self.listener
-                        .accept(listener::ListenInput::Audio(data.to_vec()))
+                        .accept(ListenInput::Audio(data.to_vec()))
                         .await;
                 }
             }
@@ -560,10 +488,12 @@ impl Session {
     }
 
     async fn on_speaking(&mut self, frame: &Frame, param: &SpeakingParam) {
-        let SpeakingParam { text, prob } = param;
         if let Some(round) = &mut self.running_round {
             round
-                .accept_command(Command::Chat(ChatParam { text, prob }))
+                .accept_command(Command::Chat(ChatParam {
+                    text: param.text.clone(),
+                    prob: param.prob,
+                }))
                 .await;
         } else {
             panic!("current round is none");
@@ -581,4 +511,14 @@ impl Session {
         let time = self.latest_activity_time.load(Ordering::Acquire);
         if time == 0 { None } else { Some(time) }
     }
+}
+
+#[error]
+pub enum SessionErrorCode {
+    ListenFailure = 504001,
+    TtsEncode = 504002,
+    TtsText = 504003,
+    AsrFailure = 504004,
+    LlmFailure = 504005,
+    InternalError = 504006,
 }

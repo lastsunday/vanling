@@ -2,7 +2,7 @@ use std::{collections::VecDeque, sync::Arc, thread};
 
 use crate::{
     common::ModelError,
-    llm::{Model, chat::Chat, model::echo::Echo},
+    llm::{LlmEngine, chat::Chat, model::echo::Echo},
     mcp::mcp_host::McpHost,
 };
 use framework::id::gen_id;
@@ -25,7 +25,7 @@ use tracing::{Instrument, Level, error, span, trace};
 #[derive(Clone)]
 pub struct Client {
     session_id: Option<String>,
-    model: Arc<Box<dyn Model>>,
+    model: Arc<Box<dyn LlmEngine>>,
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     max_prompt_len: Option<u64>,
@@ -340,7 +340,7 @@ pub async fn handle_response(
 
 pub struct ClientBuilder {
     session_id: Option<String>,
-    model: Arc<Box<dyn Model>>,
+    model: Arc<Box<dyn LlmEngine>>,
     mcp_host: Option<Arc<Mutex<dyn McpHost>>>,
 }
 
@@ -354,7 +354,7 @@ impl ClientBuilder {
         self
     }
 
-    pub fn with_model(mut self, model: Arc<Box<dyn Model>>) -> ClientBuilder {
+    pub fn with_model(mut self, model: Arc<Box<dyn LlmEngine>>) -> ClientBuilder {
         self.model = model;
         self
     }
@@ -387,5 +387,28 @@ impl Default for ClientBuilder {
             model: Arc::new(Box::new(Echo::default())),
             mcp_host: None,
         }
+    }
+}
+
+use async_trait::async_trait;
+use framework::error::AppError;
+use service::chobits::llm::Llm;
+use std::pin::Pin;
+
+#[async_trait]
+impl Llm for Client {
+    async fn chat(
+        &self,
+        text: String,
+        cancel: CancellationToken,
+    ) -> Pin<Box<dyn Stream<Item = Result<String, AppError>> + Send + 'static>> {
+        let request = ChatRequest {
+            message: Message::User {
+                content: OneOrMany::one(UserContent::Text(Text { text })),
+            },
+        };
+        let stream = self.chat(request, cancel);
+        let mapped = stream.map(|item| item.map_err(AppError::from));
+        Box::pin(mapped)
     }
 }

@@ -1,9 +1,10 @@
-use api::asr::Asr;
 use api::asr::model::void::AsrVoid;
 use api::config::vad::VadConfig;
-use api::vad::Vad;
 use api::vad::model::earshot::VadEarshot;
-use api::ws::session::listener::{DefaultListener, ListenInput, ListenState, Listener};
+use api::ws::default_listener::DefaultListener;
+use service::chobits::asr::Asr;
+use service::chobits::listener::{ListenInput, ListenState, Listener};
+use service::chobits::vad::Vad;
 
 mod common;
 use common::vad::*;
@@ -197,7 +198,10 @@ async fn test_silence_only_no_end_state() -> anyhow::Result<()> {
     let silence = vec![0.0f32; 16000 * 5]; // 5 seconds
     feed_all(&mut listener, &encode_opus(&silence)).await;
 
-    assert_eq!(listener.get_state(), ListenState::Listening(false));
+    assert_eq!(
+        listener.get_state(),
+        ListenState::Listening { is_speech: false }
+    );
     assert!(listener.take_voice().await.is_empty());
 
     Ok(())
