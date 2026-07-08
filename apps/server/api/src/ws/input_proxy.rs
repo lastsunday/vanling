@@ -166,9 +166,7 @@ impl InputProxy {
             Frame::UnknownText { data } => {
                 self.record_frame(recorder, now, FrameDetail::UnknownText, Some(data.clone()));
             }
-            Frame::Mcp(_) => {
-                self.record_frame(recorder, now, FrameDetail::Mcp, None);
-            }
+            Frame::Mcp(_) => {}
             Frame::Ping { data } => {
                 self.record_frame(recorder, now, FrameDetail::Ping, Some(data.clone()));
             }

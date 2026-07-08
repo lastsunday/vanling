@@ -7,18 +7,15 @@ use utoipa_axum::router::OpenApiRouter;
 use crate::{AppState, mcp::tool::administrator::Administrator};
 
 pub mod client;
-pub mod mcp_host;
-pub mod provider;
 pub mod tool;
 
 pub fn create_routes(state: AppState, cancellation_token: CancellationToken) -> OpenApiRouter {
     let service = StreamableHttpService::new(
         || Ok(Administrator::new()),
         LocalSessionManager::default().into(),
-        StreamableHttpServerConfig {
-            cancellation_token,
-            ..Default::default()
-        },
+        StreamableHttpServerConfig::default()
+            .with_cancellation_token(cancellation_token)
+            .disable_allowed_hosts(),
     );
 
     OpenApiRouter::new()

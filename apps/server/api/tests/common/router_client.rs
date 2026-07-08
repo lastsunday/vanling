@@ -1,9 +1,9 @@
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use axum::{
     Router,
     body::Body,
-    http::{self, Request, StatusCode},
+    http::{self, HeaderName, HeaderValue, Request, StatusCode},
 };
 use futures::{StreamExt, stream::BoxStream};
 use http_body_util::BodyExt;
@@ -49,6 +49,7 @@ impl StreamableHttpClient for RouterClient {
         message: ClientJsonRpcMessage,
         session_id: Option<Arc<str>>,
         auth_header: Option<String>,
+        custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<
         rmcp::transport::streamable_http_client::StreamableHttpPostResponse,
         rmcp::transport::streamable_http_client::StreamableHttpError<Self::Error>,
@@ -65,11 +66,16 @@ impl StreamableHttpClient for RouterClient {
                 ]
                 .join(", "),
             );
+        // rmcp 2.1.0 requires a Host header for DNS rebinding protection
+        builder = builder.header(http::header::HOST, "localhost");
         if let Some(auth_token) = auth_header {
             builder = builder.header(http::header::AUTHORIZATION, format!("Bearer {auth_token}"));
         }
         if let Some(session_id) = session_id {
             builder = builder.header(HEADER_SESSION_ID, session_id.as_ref());
+        }
+        for (name, value) in &custom_headers {
+            builder = builder.header(name, value);
         }
 
         let router = self.router.clone();
@@ -95,9 +101,9 @@ impl StreamableHttpClient for RouterClient {
                     ))
                 })?
                 .to_string();
-            return Err(StreamableHttpError::AuthRequired(AuthRequiredError {
-                www_authenticate_header: header,
-            }));
+            return Err(StreamableHttpError::AuthRequired(AuthRequiredError::new(
+                header,
+            )));
         }
         if status.is_client_error() || status.is_server_error() {
             return Err(StreamableHttpError::UnexpectedServerResponse(
@@ -154,13 +160,18 @@ impl StreamableHttpClient for RouterClient {
         uri: Arc<str>,
         session_id: Arc<str>,
         auth_header: Option<String>,
+        custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<(), rmcp::transport::streamable_http_client::StreamableHttpError<Self::Error>> {
         let mut builder = Request::builder()
             .uri(uri.to_string())
             .method("DELETE")
             .header(HEADER_SESSION_ID, session_id.as_ref());
+        builder = builder.header(http::header::HOST, "localhost");
         if let Some(auth_token) = auth_header {
             builder = builder.header(http::header::AUTHORIZATION, format!("Bearer {auth_token}"));
+        }
+        for (name, value) in &custom_headers {
+            builder = builder.header(name, value);
         }
 
         let router = self.router.clone();
@@ -190,6 +201,7 @@ impl StreamableHttpClient for RouterClient {
         session_id: Arc<str>,
         last_event_id: Option<String>,
         auth_header: Option<String>,
+        custom_headers: HashMap<HeaderName, HeaderValue>,
     ) -> Result<
         BoxStream<'static, Result<Sse, SseError>>,
         rmcp::transport::streamable_http_client::StreamableHttpError<Self::Error>,
@@ -207,11 +219,15 @@ impl StreamableHttpClient for RouterClient {
                 .join(", "),
             )
             .header(HEADER_SESSION_ID, session_id.as_ref());
+        builder = builder.header(http::header::HOST, "localhost");
         if let Some(auth_token) = auth_header {
             builder = builder.header(http::header::AUTHORIZATION, format!("Bearer {auth_token}"));
         }
         if let Some(last_event_id) = last_event_id {
             builder = builder.header(HEADER_LAST_EVENT_ID, last_event_id);
+        }
+        for (name, value) in &custom_headers {
+            builder = builder.header(name, value);
         }
 
         let router = self.router.clone();

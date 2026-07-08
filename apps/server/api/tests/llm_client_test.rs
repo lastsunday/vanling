@@ -2,15 +2,15 @@ use api::{
     chii::{ChatRequest, ChiiCoreBuilder, History},
     config::{LlmModel, llm::LlmConfig},
     llm::{Llm, LlmFactory},
-    mcp::{client::server::ServerMcpClient, provider::McpProviderImpl},
+    mcp::client::server::ServerMcpClient,
     setup_mcp,
-};
-use rig::{
-    OneOrMany,
-    message::{AssistantContent, Message, Text, UserContent},
 };
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
+};
+use service::chobits::{
+    llm::{ContentPart, Message, Role},
+    mcp::McpRegistry,
 };
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -24,7 +24,7 @@ use common::{setup_database, tear_down};
 
 use crate::common::router_client::RouterClient;
 
-fn create_model() -> Box<dyn Llm> {
+fn create_model() -> Arc<dyn Llm> {
     let model_path = common::tts::ws_root()
         .join("data/llm/model/qwen3/0.6b/")
         .to_string_lossy()
@@ -40,11 +40,11 @@ fn create_model() -> Box<dyn Llm> {
 #[traced_test]
 async fn test_chat_echo() {
     let client = ChiiCoreBuilder::new()
-        .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+        .with_model(LlmFactory::create_model(&LlmConfig {
             model: Some(LlmModel::Echo),
             path: None,
             variant: None,
-        })))
+        }))
         .build()
         .with_history(Arc::new(Mutex::new(History {
             preamble: None,
@@ -52,10 +52,9 @@ async fn test_chat_echo() {
         })));
     let mut output = client.complete(
         ChatRequest {
-            message: Message::User {
-                content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                    text: r#"Hello"#.to_string(),
-                })),
+            message: Message {
+                role: Role::User,
+                parts: vec![ContentPart::Text(r#"Hello"#.to_string())],
             },
         },
         CancellationToken::new(),
@@ -86,14 +85,13 @@ async fn test_chat_simple() {
         chat_history: vec![],
     }));
     let client = ChiiCoreBuilder::new()
-        .with_model(Arc::new(model))
+        .with_model(model)
         .build()
         .with_history(hisotry);
     let request = ChatRequest {
-        message: Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                text: r#"静夜思的内容"#.to_string(),
-            })),
+        message: Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text(r#"静夜思的内容"#.to_string())],
         },
     };
     let mut output = client.complete(request, CancellationToken::new());
@@ -124,14 +122,13 @@ async fn test_short_question() {
         chat_history: vec![],
     }));
     let client = ChiiCoreBuilder::new()
-        .with_model(Arc::new(model))
+        .with_model(model)
         .build()
         .with_history(history);
     let request = ChatRequest {
-        message: Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                text: r#"1+1="#.to_string(),
-            })),
+        message: Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text(r#"1+1="#.to_string())],
         },
     };
     let mut output = client.complete(request, CancellationToken::new());
@@ -164,14 +161,13 @@ async fn test_english_question() {
         chat_history: vec![],
     }));
     let client = ChiiCoreBuilder::new()
-        .with_model(Arc::new(model))
+        .with_model(model)
         .build()
         .with_history(history);
     let request = ChatRequest {
-        message: Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                text: r#"Who is Albert Einstein"#.to_string(),
-            })),
+        message: Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text(r#"Who is Albert Einstein"#.to_string())],
         },
     };
     let mut output = client.complete(request, CancellationToken::new());
@@ -200,28 +196,24 @@ async fn test_chat_history() {
     let history = Arc::new(Mutex::new(History {
         preamble: Some(system_prompt),
         chat_history: vec![
-            Message::User {
-                content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                    text: r#"小小电话号码为12349876"#.to_string(),
-                })),
+            Message {
+                role: Role::User,
+                parts: vec![ContentPart::Text(r#"小小电话号码为12349876"#.to_string())],
             },
-            Message::Assistant {
-                id: None,
-                content: OneOrMany::<AssistantContent>::one(AssistantContent::Text(Text {
-                    text: r#"小小电话号码为12349876"#.to_string(),
-                })),
+            Message {
+                role: Role::Assistant,
+                parts: vec![ContentPart::Text(r#"小小电话号码为12349876"#.to_string())],
             },
         ],
     }));
     let client = ChiiCoreBuilder::new()
-        .with_model(Arc::new(model))
+        .with_model(model)
         .build()
         .with_history(history);
     let request = ChatRequest {
-        message: Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                text: r#"小小的电话号码是多少"#.to_string(),
-            })),
+        message: Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text(r#"小小的电话号码是多少"#.to_string())],
         },
     };
     let mut output = client.complete(request, CancellationToken::new());
@@ -253,38 +245,28 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
     let router = setup_mcp(router, state.clone(), ct.child_token())
         .split_for_parts()
         .0;
-    let config = StreamableHttpClientTransportConfig {
-        uri: "/mcp".into(),
-        ..Default::default()
-    };
+    let config = StreamableHttpClientTransportConfig::with_uri("/mcp");
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, config);
 
     let mut server_client = ServerMcpClient::new(transport).await?;
     server_client.init().await?;
 
-    let mut mcp_impl = McpProviderImpl::new(framework::id::gen_id());
-    let mcp_host = mcp_impl.mcp_host();
-    mcp_impl.add_client(Box::new(server_client)).await;
+    let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(framework::id::gen_id()))));
+    mcp_registry
+        .lock()
+        .await
+        .add_client(Arc::new(server_client))
+        .await;
 
     let client = ChiiCoreBuilder::new()
-        .with_model(Arc::new(model))
-        .with_mcp_host(mcp_host)
+        .with_model(model)
+        .with_mcp_registry(mcp_registry)
         .build();
-    // let request = ChatRequest {
-    //     message: Message::User {
-    //         content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-    //             text: r#"Calculate the sum of 24.5 and 17.3 using the calculator service"#
-    //                 .to_string(),
-    //         })),
-    //     },
-    // };
     let request = ChatRequest {
-        message: Message::User {
-            content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-                // text: r#"What time is it now"#.to_string(),
-                text: r#"现在几点"#.to_string(),
-            })),
+        message: Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text(r#"现在几点"#.to_string())],
         },
     };
     let mut output = client.complete(request, CancellationToken::new());

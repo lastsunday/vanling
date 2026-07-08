@@ -18,6 +18,7 @@ use ruma::{
 };
 use service::chobits::{
     frame::{Frame, FrameResult},
+    mcp::McpRegistry,
     message::{hello::HelloMessage, tts::TtsState},
     session::{AudioConfig as ServiceAudioConfig, SessionConfig as ServiceSessionConfig},
 };
@@ -32,7 +33,7 @@ use crate::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    mcp::{client::create_server_mcp_client, provider::McpProviderImpl},
+    mcp::client::create_server_mcp_client,
     tts::TtsFactory,
     vad::VadFactory,
     ws::default_listener::DefaultListener,
@@ -202,15 +203,18 @@ impl Bot {
         if !session_map.contains_key(session_key) {
             // init session
             let id = gen_id();
-            let mut mcp_impl = McpProviderImpl::new(id.clone());
-            let mcp_host = mcp_impl.mcp_host();
+            let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(id.clone()))));
             let uri_list = self.mcp_config.uri_list.as_ref();
             if let Some(uri_list) = uri_list {
                 for uri in uri_list {
                     let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
                     match server_mcp_client {
                         Ok(server_mcp_client) => {
-                            mcp_impl.add_client(Box::new(server_mcp_client)).await;
+                            mcp_registry
+                                .lock()
+                                .await
+                                .add_client(Arc::new(server_mcp_client))
+                                .await;
                         }
                         Err(e) => {
                             error!("{:?}", e);
@@ -218,14 +222,12 @@ impl Bot {
                     }
                 }
             }
-            let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> =
-                Arc::new(Mutex::new(mcp_impl));
 
             let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
                 ChiiCoreBuilder::new()
                     .with_session_id(Some(id.clone()))
                     .with_model(LlmFactory::global().default())
-                    .with_mcp_host(mcp_host)
+                    .with_mcp_registry(mcp_registry)
                     .build(),
             );
 
@@ -260,7 +262,6 @@ impl Bot {
                 )))
                 .with_chii(chii)
                 .with_tts(tts)
-                .with_mcp(mcp_provider)
                 .with_config(session_config)
                 .with_audio_config(audio_config)
                 .build();
@@ -353,7 +354,10 @@ impl Bot {
                         FrameResult::CloseResult => {
                             // TODO: shutdown session and clear session map
                         }
-                        FrameResult::McpResult(_mcp_request) => todo!(),
+                        FrameResult::McpResult(_mcp_request) => {
+                            // Unreachable: MCP frames are routed through
+                            // DeviceMcpTransport channel, not session output_rx.
+                        }
                         _ => {}
                     }
                 }

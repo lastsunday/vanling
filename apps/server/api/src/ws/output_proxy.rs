@@ -65,9 +65,6 @@ impl OutputProxy {
                 FrameResult::CloseResult => {
                     Self::record_frame(recorder, now, FrameDetail::Close, None, &self.session_id);
                 }
-                FrameResult::McpResult(_) => {
-                    Self::record_frame(recorder, now, FrameDetail::Mcp, None, &self.session_id);
-                }
                 _ => {}
             }
             return;
@@ -145,9 +142,7 @@ impl OutputProxy {
                     &self.session_id,
                 );
             }
-            FrameResult::HelloResult(_) | FrameResult::CloseResult | FrameResult::McpResult(_) => {
-                // Handled above for pre-round; should not reach here with round_id
-            }
+            FrameResult::HelloResult(_) | FrameResult::CloseResult | FrameResult::McpResult(_) => {}
             FrameResult::Error(_) => {
                 Self::record_frame(recorder, now, FrameDetail::Error, None, &self.session_id);
             }

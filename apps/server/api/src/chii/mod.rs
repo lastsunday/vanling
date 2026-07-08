@@ -3,24 +3,12 @@ pub use splitter::Splitter;
 
 use std::{collections::VecDeque, sync::Arc, thread};
 
-use crate::{
-    common::ModelError,
-    llm::{Llm, model::echo::Echo},
-    mcp::mcp_host::McpHost,
-};
-use framework::id::gen_id;
+use crate::common::ModelError;
 use futures::StreamExt;
 use futures::{Stream, executor::block_on};
-use rig::{
-    OneOrMany,
-    completion::{CompletionError, CompletionRequest},
-    message::{AssistantContent, Message, Reasoning, Text, ToolCall, UserContent},
-    streaming::{StreamedAssistantContent, StreamingCompletionResponse},
-};
-use tokio::sync::{
-    Mutex,
-    mpsc::{Sender, channel},
-};
+use service::chobits::llm::{CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role};
+use service::chobits::mcp::McpRegistry;
+use tokio::sync::{Mutex, mpsc::channel};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Level, error, span, trace};
@@ -28,12 +16,12 @@ use tracing::{Instrument, Level, error, span, trace};
 #[derive(Clone)]
 pub struct ChiiCore {
     session_id: Option<String>,
-    model: Arc<Box<dyn Llm>>,
+    model: Arc<dyn Llm>,
     temperature: Option<f64>,
     max_tokens: Option<u64>,
     max_prompt_len: Option<u64>,
     history: Arc<Mutex<History>>,
-    mcp_host: Option<Arc<Mutex<dyn McpHost>>>,
+    mcp_registry: Option<Arc<Mutex<McpRegistry>>>,
 }
 
 pub struct ChatRequest {
@@ -78,7 +66,7 @@ impl ChiiCore {
         let (tx, rx) = channel::<core::result::Result<String, ModelError>>(10);
         let session_id = self.session_id.clone();
         let model = self.model.clone();
-        let mcp_host = self.mcp_host.clone();
+        let mcp_registry = self.mcp_registry.clone();
         let tx_main = tx.clone();
         let clone_history = self.history.clone();
         let temperature = self.temperature;
@@ -92,9 +80,9 @@ impl ChiiCore {
             let output = block_on(
                 async move {
                     let tools = {
-                        if let Some(mcp_host) = &mcp_host {
-                            let mcp_host = mcp_host.lock().await;
-                            mcp_host.get_tool().await?
+                        if let Some(mcp_registry) = &mcp_registry {
+                            let mcp_registry = mcp_registry.lock().await;
+                            mcp_registry.get_tool().await?
                         } else {
                             vec![]
                         }
@@ -103,14 +91,12 @@ impl ChiiCore {
                     let history = clone_history.clone();
                     let mut history = history.lock().await;
                     if let Some(max_prompt_len) = max_prompt_len {
-                        // cut prompt
                         let mut current_len: u64 = 0;
                         if let Some(item) = &history.preamble {
                             current_len += item.len() as u64;
                         }
                         current_len += model.calculate_tools_prompt_len(&tools);
                         let mut target_message_list = VecDeque::new();
-                        // TODO: remove clone?
                         let chat_history: Vec<_> =
                             history.chat_history.clone().into_iter().rev().collect();
                         for message in chat_history {
@@ -140,87 +126,133 @@ impl ChiiCore {
                         let history = clone_history.clone();
                         let history = history.lock().await;
                         let preamble = history.preamble.clone();
-                        let chat_history = OneOrMany::many(history.chat_history.clone()).unwrap();
+                        let messages = history.chat_history.clone();
                         drop(history);
-                        let request = CompletionRequest {
+                        let req = CompletionRequest {
                             preamble: preamble.clone(),
-                            chat_history: chat_history.clone(),
-                            documents: vec![],
+                            messages: messages.clone(),
                             tools: tools.clone(),
                             temperature,
                             max_tokens,
-                            tool_choice: None,
-                            additional_params: None,
                         };
-                        trace!(?request, "[REQUEST]");
-                        let response = model.stream(request).await;
-                        let messages =
-                            handle_response(response, Some(tx.clone()), cancel.clone()).await;
-                        trace!(?messages, "[RESPONSE]");
-                        match messages {
-                            Ok(messages) => {
-                                has_next_step = false;
-                                for message in &messages {
+                        trace!(?req, "[REQUEST]");
+                        let mut stream = model.stream(req, cancel.clone()).await;
+                        let mut text_collector = String::new();
+                        let mut assistant_events: Vec<CompletionEvent> = vec![];
+                        let mut splitter = Splitter::new();
+                        while let Some(event) = stream.next().await {
+                            if cancel.is_cancelled() {
+                                break;
+                            }
+                            match event {
+                                Ok(CompletionEvent::Text(text)) => {
+                                    text_collector.push_str(&text);
+                                    let sentence_list = splitter.accept_text(&text);
+                                    for sentence in sentence_list {
+                                        tx.send(Ok(sentence)).await?;
+                                    }
+                                }
+                                Ok(CompletionEvent::ToolCall {
+                                    id,
+                                    name,
+                                    arguments,
+                                }) => {
+                                    assistant_events.push(CompletionEvent::ToolCall {
+                                        id,
+                                        name,
+                                        arguments,
+                                    });
+                                }
+                                Ok(CompletionEvent::Reasoning(_)) => {
+                                    // skip
+                                }
+                                Ok(CompletionEvent::Final { .. }) => {
+                                    if !text_collector.is_empty() {
+                                        let sentence_list = splitter.accept_final();
+                                        for sentence in sentence_list {
+                                            tx.send(Ok(sentence)).await?;
+                                        }
+                                        assistant_events.push(CompletionEvent::Text(
+                                            text_collector.clone(),
+                                        ));
+                                    }
+                                }
+                                Ok(CompletionEvent::Error(e)) => {
+                                    error!(error = %e, "LLM stream event error");
+                                }
+                                Err(e) => {
+                                    error!(error = %e, "LLM stream error");
+                                    let _ = tx.send(Err(ModelError::Chat(e.to_string()))).await;
+                                }
+                            }
+                        }
+                        trace!(?assistant_events, "[RESPONSE]");
+                        let mut has_tool_call = false;
+                        for event in &assistant_events {
+                            match event {
+                                CompletionEvent::Text(text) => {
                                     let history = clone_history.clone();
                                     let mut history = history.lock().await;
-                                    history.chat_history.push(message.clone());
+                                    history
+                                        .chat_history
+                                        .push(Message {
+                                            role: Role::Assistant,
+                                            parts: vec![ContentPart::Text(text.clone())],
+                                        });
                                     drop(history);
-                                    match message {
-                                        Message::User { content: _content } => {
-                                            //skip
-                                        }
-                                        Message::Assistant { id: _id, content } => {
-                                            for item in content.iter() {
-                                                match item {
-                                                    AssistantContent::ToolCall(ToolCall {
-                                                        id,
-                                                        call_id,
-                                                        function,
-                                                        signature,
-                                                        additional_params,
-                                                    }) => {
-                                                        if let Some(mcp_host) = mcp_host.clone() {
-                                                            let mcp_host = mcp_host.lock().await;
-                                                            let result = mcp_host
-                                                                .call_tool(ToolCall {
-                                                                    id: id.clone(),
-                                                                    call_id: call_id.clone(),
-                                                                    function: function.clone(),
-                                                                    signature: signature.clone(),
-                                                                    additional_params:
-                                                                        additional_params.clone(),
-                                                                })
-                                                                .await?;
-                                                            let history = clone_history.clone();
-                                                            let mut history = history.lock().await;
-                                                            history
-                                                                .chat_history
-                                                                .push(Message::User {
-                                                                content:
-                                                                    OneOrMany::<UserContent>::one(
-                                                                        UserContent::ToolResult(
-                                                                            result,
-                                                                        ),
-                                                                    ),
-                                                            });
-                                                            drop(history);
-                                                            has_next_step = true;
-                                                        }
-                                                    }
-                                                    _ => {
-                                                        //skip
-                                                    }
-                                                }
+                                }
+                                CompletionEvent::ToolCall {
+                                    id,
+                                    name,
+                                    arguments,
+                                } => {
+                                    has_tool_call = true;
+                                    let history = clone_history.clone();
+                                    let mut history = history.lock().await;
+                                    history
+                                        .chat_history
+                                        .push(Message {
+                                            role: Role::Assistant,
+                                            parts: vec![ContentPart::ToolCall {
+                                                id: id.clone(),
+                                                name: name.clone(),
+                                                arguments: arguments.clone(),
+                                            }],
+                                        });
+                                    drop(history);
+                                    if let Some(mcp_registry) = mcp_registry.clone() {
+                                        let mcp_registry = mcp_registry.lock().await;
+                                        match mcp_registry
+                                            .call_tool(name, arguments.clone())
+                                            .await
+                                        {
+                                            Ok(result) => {
+                                                let history = clone_history.clone();
+                                                let mut history = history.lock().await;
+                                                history
+                                                    .chat_history
+                                                    .push(Message {
+                                                        role: Role::User,
+                                                        parts: vec![ContentPart::ToolResult {
+                                                            id: id.clone(),
+                                                            output: result,
+                                                        }],
+                                                    });
+                                                drop(history);
+                                            }
+                                            Err(e) => {
+                                                error!(error = %e, "tool call error");
+                                                let _ = tx
+                                                    .send(Err(ModelError::Chat(e.to_string())))
+                                                    .await;
                                             }
                                         }
                                     }
                                 }
-                            }
-                            Err(e) => {
-                                tracing::error!(error = %e, "LLM stream error");
-                                break;
+                                _ => {}
                             }
                         }
+                        has_next_step = has_tool_call;
                     }
                     drop(tx);
                     anyhow::Ok(())
@@ -245,154 +277,6 @@ impl ChiiCore {
     }
 }
 
-pub async fn handle_response(
-    response: Result<
-        StreamingCompletionResponse<rig::providers::openai::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    >,
-    tx: Option<Sender<Result<String, ModelError>>>,
-    cancel: CancellationToken,
-) -> anyhow::Result<Vec<Message>> {
-    let mut messages: Vec<Message> = vec![];
-    let mut text_collector = String::new();
-    let mut splitter = Splitter::new();
-    match response {
-        Ok(mut stream) => {
-            while let Some(value) = stream.next().await {
-                if cancel.is_cancelled() {
-                    break;
-                }
-                match value {
-                    Ok(StreamedAssistantContent::Text(text)) => {
-                        text_collector.push_str(&text.text);
-                        if let Some(tx) = &tx {
-                            let sentence_list = splitter.accept_text(&text.text);
-                            let sentence_iter = sentence_list.iter();
-                            for sentence in sentence_iter {
-                                tx.send(Ok(sentence.to_string())).await?;
-                            }
-                        }
-                    }
-                    Ok(StreamedAssistantContent::Final(
-                        rig::providers::openai::StreamingCompletionResponse { usage: _usage },
-                    )) => {}
-                    Ok(StreamedAssistantContent::ToolCall {
-                        tool_call,
-                        internal_call_id: _internal_call_id,
-                    }) => {
-                        messages.push(Message::Assistant {
-                            id: Some(tool_call.id.clone()),
-                            content: OneOrMany::<AssistantContent>::one(
-                                AssistantContent::ToolCall(ToolCall {
-                                    id: tool_call.id.clone(),
-                                    call_id: tool_call.call_id.clone(),
-                                    function: tool_call.function,
-                                    signature: tool_call.signature.clone(),
-                                    additional_params: tool_call.additional_params.clone(),
-                                }),
-                            ),
-                        });
-                    }
-                    Ok(StreamedAssistantContent::ToolCallDelta {
-                        id: _id,
-                        internal_call_id: _internal_call_id,
-                        content,
-                    }) => {
-                        // TODO:
-                        trace!(?content, "tool call delta");
-                    }
-                    Ok(StreamedAssistantContent::Reasoning(Reasoning {
-                        id: _id,
-                        reasoning,
-                        ..
-                    })) => {
-                        // TODO:
-                        trace!(?reasoning, "reasoning");
-                    }
-                    Ok(StreamedAssistantContent::ReasoningDelta { id: _id, reasoning }) => {
-                        trace!(?reasoning, "reasoning delta");
-                    }
-                    Err(e) => {
-                        if let Some(tx) = &tx {
-                            tx.send(Err(ModelError::ModelCompletionError(e.to_string())))
-                                .await?;
-                        }
-                    }
-                }
-            }
-            if let Some(tx) = &tx {
-                let sentence_list = splitter.accept_final();
-                let sentence_iter = sentence_list.iter();
-                for sentence in sentence_iter {
-                    tx.send(Ok(sentence.to_string())).await?;
-                }
-            }
-            if !text_collector.is_empty() {
-                messages.push(Message::Assistant {
-                    id: Some(gen_id()),
-                    content: OneOrMany::<AssistantContent>::one(AssistantContent::Text(Text {
-                        text: text_collector,
-                    })),
-                });
-            }
-            Ok(messages)
-        }
-        Err(e) => Err(anyhow::anyhow!(e.to_string())),
-    }
-}
-
-pub struct ChiiCoreBuilder {
-    session_id: Option<String>,
-    model: Arc<Box<dyn Llm>>,
-    mcp_host: Option<Arc<Mutex<dyn McpHost>>>,
-}
-
-impl ChiiCoreBuilder {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn with_session_id(mut self, session_id: Option<String>) -> ChiiCoreBuilder {
-        self.session_id = session_id;
-        self
-    }
-
-    pub fn with_model(mut self, model: Arc<Box<dyn Llm>>) -> ChiiCoreBuilder {
-        self.model = model;
-        self
-    }
-
-    pub fn with_mcp_host(mut self, mcp_host: Arc<Mutex<dyn McpHost>>) -> ChiiCoreBuilder {
-        self.mcp_host = Some(mcp_host);
-        self
-    }
-
-    pub fn build(self) -> ChiiCore {
-        ChiiCore {
-            session_id: self.session_id,
-            model: self.model,
-            temperature: None,
-            max_tokens: None,
-            max_prompt_len: Some(6000),
-            history: Arc::new(Mutex::new(History {
-                preamble: None,
-                chat_history: vec![],
-            })),
-            mcp_host: self.mcp_host,
-        }
-    }
-}
-
-impl Default for ChiiCoreBuilder {
-    fn default() -> Self {
-        Self {
-            session_id: None,
-            model: Arc::new(Box::new(Echo::default())),
-            mcp_host: None,
-        }
-    }
-}
-
 use async_trait::async_trait;
 use framework::error::AppError;
 use service::chobits::chii::{Chii, ContentBlock, Input, OutputBlock};
@@ -410,12 +294,56 @@ impl Chii for ChiiCore {
             _ => String::new(),
         };
         let request = ChatRequest {
-            message: Message::User {
-                content: OneOrMany::one(UserContent::Text(Text { text })),
+            message: Message {
+                role: Role::User,
+                parts: vec![ContentPart::Text(text)],
             },
         };
         let stream = self.complete(request, cancel);
         let mapped = stream.map(|item| item.map(OutputBlock::Text).map_err(AppError::from));
         Box::pin(mapped)
+    }
+}
+
+#[derive(Default)]
+pub struct ChiiCoreBuilder {
+    session_id: Option<String>,
+    model: Option<Arc<dyn Llm>>,
+    mcp_registry: Option<Arc<Mutex<McpRegistry>>>,
+}
+
+impl ChiiCoreBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn with_session_id(mut self, session_id: Option<String>) -> ChiiCoreBuilder {
+        self.session_id = session_id;
+        self
+    }
+
+    pub fn with_model(mut self, model: Arc<dyn Llm>) -> ChiiCoreBuilder {
+        self.model = Some(model);
+        self
+    }
+
+    pub fn with_mcp_registry(mut self, mcp_registry: Arc<Mutex<McpRegistry>>) -> ChiiCoreBuilder {
+        self.mcp_registry = Some(mcp_registry);
+        self
+    }
+
+    pub fn build(self) -> ChiiCore {
+        ChiiCore {
+            session_id: self.session_id,
+            model: self.model.expect("model is required"),
+            temperature: None,
+            max_tokens: None,
+            max_prompt_len: Some(6000),
+            history: Arc::new(Mutex::new(History {
+                preamble: None,
+                chat_history: vec![],
+            })),
+            mcp_registry: self.mcp_registry,
+        }
     }
 }

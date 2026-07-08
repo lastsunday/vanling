@@ -46,7 +46,6 @@ pub enum FrameDetail {
     UnknownText,
     Abort,
     Close,
-    Mcp,
     Ping,
     Pong,
 }
@@ -67,7 +66,6 @@ impl FrameDetail {
             FrameDetail::UnknownText => "UnknownText",
             FrameDetail::Abort => "Abort",
             FrameDetail::Close => "Close",
-            FrameDetail::Mcp => "Mcp",
             FrameDetail::Ping => "Ping",
             FrameDetail::Pong => "Pong",
         }

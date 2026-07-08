@@ -24,6 +24,8 @@ serde_json = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
 tokio-util = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
 strum_macros = { workspace = true }
 rmcp = { workspace = true }
 migration = { path = "../migration" }

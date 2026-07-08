@@ -5,7 +5,7 @@ use api::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
         tts::TtsConfig, vad::VadConfig,
     },
-    mcp::{client::server::ServerMcpClient, provider::McpProviderImpl},
+    mcp::client::server::ServerMcpClient,
     setup_mcp,
     tts::TtsFactory,
     util::audio::pcm_decode,
@@ -21,9 +21,12 @@ use rmcp::{
     },
 };
 use serde::Serialize;
-use service::chobits::frame::{Frame, OutputMessage};
-use service::chobits::session::{
-    AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
+use service::chobits::{
+    frame::{Frame, OutputMessage},
+    mcp::McpRegistry,
+    session::{
+        AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
+    },
 };
 
 use std::{
@@ -71,19 +74,18 @@ pub async fn create_session() -> Result<
     let router = setup_mcp(router, state.clone(), ct.child_token())
         .split_for_parts()
         .0;
-    let mcp_config = StreamableHttpClientTransportConfig {
-        uri: "/mcp".into(),
-        ..Default::default()
-    };
+    let mcp_config = StreamableHttpClientTransportConfig::with_uri("/mcp");
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, mcp_config);
     let mut server_client = ServerMcpClient::new(transport).await?;
     server_client.init().await?;
     let session_id = gen_id();
-    let mut mcp_impl = McpProviderImpl::new(session_id.clone());
-    let mcp_host = mcp_impl.mcp_host();
-    mcp_impl.add_client(Box::new(server_client)).await;
-    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+    let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
+    mcp_registry
+        .lock()
+        .await
+        .add_client(Arc::new(server_client))
+        .await;
 
     let audio_config = Arc::new(AudioConfig {
         output_sample_rate: Some(16000),
@@ -94,11 +96,11 @@ pub async fn create_session() -> Result<
     let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
-            .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+            .with_model(LlmFactory::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
                 ..Default::default()
-            })))
-            .with_mcp_host(mcp_host)
+            }))
+            .with_mcp_registry(mcp_registry)
             .build(),
     );
 
@@ -140,7 +142,6 @@ pub async fn create_session() -> Result<
         )))
         .with_chii(chii)
         .with_tts(tts)
-        .with_mcp(mcp_provider)
         .with_config(ServiceSessionConfig {
             close_connection_no_voice_time: Some(3000),
             silence_voice_timeout: Some(1200),
@@ -163,18 +164,16 @@ pub async fn create_mini_session_channel() -> (
     mpsc::UnboundedReceiver<OutputMessage>,
 ) {
     let session_id = gen_id();
-    let mcp_impl = McpProviderImpl::new(session_id.clone());
-    let mcp_host = mcp_impl.mcp_host();
-    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+    let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
 
     let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
-            .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+            .with_model(LlmFactory::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
                 ..Default::default()
-            })))
-            .with_mcp_host(mcp_host)
+            }))
+            .with_mcp_registry(mcp_registry)
             .build(),
     );
 
@@ -210,7 +209,6 @@ pub async fn create_mini_session_channel() -> (
         )))
         .with_chii(chii)
         .with_tts(tts)
-        .with_mcp(mcp_provider)
         .with_config(ServiceSessionConfig {
             close_connection_no_voice_time: Some(3000),
             silence_voice_timeout: Some(1200),

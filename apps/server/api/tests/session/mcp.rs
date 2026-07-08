@@ -1,6 +1,6 @@
 use rmcp::model::{
-    CallToolResult, Content, Icon, Implementation, InitializeResult, ListToolsResult,
-    ProtocolVersion, RawTextContent, ServerCapabilities,
+    CallToolResult, ContentBlock, Icon, Implementation, InitializeResult, ListToolsResult,
+    ServerCapabilities, TextContent,
 };
 use service::chobits::frame::{Frame, FrameResult};
 use service::chobits::message::{
@@ -16,6 +16,13 @@ use tracing_test::traced_test;
 use crate::common::tear_down;
 use crate::session::helpers::{create_session_channel, to_json_rpc_response};
 
+// This test is BROKEN in the new DeviceMcpTransport architecture:
+// Frame::Mcp no longer goes through the session's input_tx/output_rx.
+// MCP frames are now routed exclusively through DeviceMcpTransport
+// (ws_input → mcp_inbound_tx → RmcpDeviceClient → mcp_outbound_rx → ws_output).
+// See test_device_mcp_transport_handshake in tests/mcp_test.rs for the
+// equivalent test using the new transport path.
+#[ignore]
 #[tokio::test]
 /// 1. [Device -> Server] hello request
 /// 2. [Server -> Device] hello response
@@ -136,23 +143,13 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
 
     input_tx.send(Frame::Mcp(McpMessage::new(to_json_rpc_response(
         request_id.fetch_add(1, Ordering::Relaxed),
-        InitializeResult {
-            protocol_version: ProtocolVersion::default(),
-            capabilities: ServerCapabilities::default(),
-            server_info: Implementation {
-                name: "icon-server".to_string(),
-                title: None,
-                version: "2.0.0".to_string(),
-                icons: Some(vec![Icon {
-                    src: "https://example.com/server.png".to_string(),
-                    mime_type: Some("image/png".to_string()),
-                    sizes: None,
-                }]),
-                website_url: Some("https://docs.example.com".to_string()),
-                description: None,
-            },
-            instructions: None,
-        },
+        InitializeResult::new(ServerCapabilities::default()).with_server_info(
+            Implementation::new("icon-server", "2.0.0")
+                .with_icons(vec![
+                    Icon::new("https://example.com/server.png").with_mime_type("image/png"),
+                ])
+                .with_website_url("https://docs.example.com"),
+        ),
     ))))?;
 
     let frame_result = output_rx.recv().await.unwrap().payload;
@@ -163,11 +160,9 @@ async fn test_mcp_flow_server_client() -> anyhow::Result<()> {
 
     input_tx.send(Frame::Mcp(McpMessage::new(to_json_rpc_response(
         request_id.fetch_add(1, Ordering::Relaxed),
-        ListToolsResult {
-            next_cursor: None,
-            tools: serde_json::from_str(device_mcp_tools_list_response).unwrap(),
-            meta: None,
-        },
+        ListToolsResult::with_all_items(
+            serde_json::from_str(device_mcp_tools_list_response).unwrap(),
+        ),
     ))))?;
 
     input_tx.send(Frame::Input {
@@ -317,23 +312,13 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
 
     input_tx.send(Frame::Mcp(McpMessage::new(to_json_rpc_response(
         request_id.fetch_add(1, Ordering::Relaxed),
-        InitializeResult {
-            protocol_version: ProtocolVersion::default(),
-            capabilities: ServerCapabilities::default(),
-            server_info: Implementation {
-                name: "icon-server".to_string(),
-                title: None,
-                version: "2.0.0".to_string(),
-                icons: Some(vec![Icon {
-                    src: "https://example.com/server.png".to_string(),
-                    mime_type: Some("image/png".to_string()),
-                    sizes: None,
-                }]),
-                website_url: Some("https://docs.example.com".to_string()),
-                description: None,
-            },
-            instructions: None,
-        },
+        InitializeResult::new(ServerCapabilities::default()).with_server_info(
+            Implementation::new("icon-server", "2.0.0")
+                .with_icons(vec![
+                    Icon::new("https://example.com/server.png").with_mime_type("image/png"),
+                ])
+                .with_website_url("https://docs.example.com"),
+        ),
     ))))?;
 
     let frame_result = output_rx.recv().await.unwrap().payload;
@@ -344,11 +329,9 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
 
     input_tx.send(Frame::Mcp(McpMessage::new(to_json_rpc_response(
         request_id.fetch_add(1, Ordering::Relaxed),
-        ListToolsResult {
-            next_cursor: None,
-            tools: serde_json::from_str(device_mcp_tools_list_response).unwrap(),
-            meta: None,
-        },
+        ListToolsResult::with_all_items(
+            serde_json::from_str(device_mcp_tools_list_response).unwrap(),
+        ),
     ))))?;
 
     input_tx.send(Frame::Input {
@@ -392,18 +375,9 @@ async fn test_mcp_flow_device_client() -> anyhow::Result<()> {
     }"#;
     input_tx.send(Frame::Mcp(McpMessage::new(to_json_rpc_response(
         request_id.fetch_add(1, Ordering::Relaxed),
-        CallToolResult {
-            content: vec![Content {
-                raw: rmcp::model::RawContent::Text(RawTextContent {
-                    text: mcp_tool_call_response.to_string(),
-                    meta: None,
-                }),
-                annotations: None,
-            }],
-            structured_content: None,
-            is_error: None,
-            meta: None,
-        },
+        CallToolResult::success(vec![ContentBlock::Text(TextContent::new(
+            mcp_tool_call_response.to_string(),
+        ))]),
     ))))?;
 
     let frame_result = output_rx.recv().await.unwrap().payload;

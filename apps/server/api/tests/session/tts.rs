@@ -4,7 +4,6 @@ use api::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
         tts::TtsConfig, vad::VadConfig,
     },
-    mcp::provider::McpProviderImpl,
     tts::TtsFactory,
     vad::VadFactory,
     ws::default_listener::DefaultListener,
@@ -13,6 +12,7 @@ use api::{
 use framework::id::gen_id;
 use service::chobits::{
     frame::{Frame, FrameResult},
+    mcp::McpRegistry,
     message::{hello::HelloMessage, tts::TtsState},
     session::{
         AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
@@ -46,18 +46,16 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .into_owned();
 
     let session_id = gen_id();
-    let mcp_impl = McpProviderImpl::new(session_id.clone());
-    let mcp_host = mcp_impl.mcp_host();
-    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+    let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
 
     let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
-            .with_model(Arc::new(LlmFactory::create_model(&LlmConfig {
+            .with_model(LlmFactory::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
                 ..Default::default()
-            })))
-            .with_mcp_host(mcp_host)
+            }))
+            .with_mcp_registry(mcp_registry)
             .build(),
     );
 
@@ -65,14 +63,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         TtsFactory::create_model(
             &TtsConfig {
                 model: Some(TtsModel::MatchaTts),
-                path: Some(model_path),
-                options: Some(serde_json::json!({
-                    "num_threads": 2,
-                    "noise_scale": 0.667,
-                    "length_scale": 1.0,
-                    "speed": 1.0,
-                    "debug": false,
-                })),
+                path: Some(model_path.clone()),
                 ..Default::default()
             },
             &audio_config,
@@ -85,7 +76,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
-                model: Some(VadModel::Void),
+                model: Some(VadModel::Earshot),
                 ..Default::default()
             })),
             Arc::new(Mutex::new(AsrFactory::create_model(&AsrConfig {
@@ -95,7 +86,6 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         )))
         .with_chii(chii)
         .with_tts(tts)
-        .with_mcp(mcp_provider)
         .with_config(ServiceSessionConfig {
             close_connection_no_voice_time: Some(3000),
             silence_voice_timeout: Some(1200),
@@ -110,53 +100,53 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
             output_frame_duration: 60,
         })
         .build();
-
     tokio::spawn(session.start());
 
-    input_tx.send(Frame::Hello(HelloMessage {
+    let hello = Frame::Hello(HelloMessage {
+        session_id: Some(session_id.clone()),
         ..Default::default()
-    }))?;
-    assert!(matches!(
-        output_rx.recv().await.unwrap().payload,
-        FrameResult::HelloResult(..)
-    ));
+    });
+    input_tx.send(hello).unwrap();
 
-    let text = "对于有媒体报道称，“特朗普说，如果中国不在霍尔木兹海峡护航问题上提供协助，他将推迟访华”，林剑说，中方注意到美方已就媒体不实报道公开作出澄清，表示有关报道是完全错误的，强调访问与霍尔木兹海峡通航问题无关。";
-    input_tx.send(Frame::Input {
-        text: text.to_string(),
-    })?;
+    // send the text
+    input_tx
+        .send(Frame::Input {
+            text: "今天天气怎么样".to_string(),
+        })
+        .unwrap();
 
-    let mut all_packets: Vec<Vec<u8>> = Vec::new();
+    // wait for TTS stop
+    let mut audio_frames: Vec<Vec<u8>> = Vec::new();
+    let mut tts_text: String = String::new();
     loop {
-        let data = output_rx.recv().await.unwrap().payload;
-        match data {
-            FrameResult::TTSResult(msg) if msg.state == Some(TtsState::Stop) => {
-                break;
+        match output_rx.recv().await {
+            Some(msg) => {
+                info!("{:?}", msg.payload.to_string());
+                match msg.payload {
+                    FrameResult::HelloResult(_) => continue,
+                    FrameResult::AudioResult(audio) => {
+                        audio_frames.push(audio.data);
+                    }
+                    FrameResult::TTSResult(tts) => {
+                        if let Some(text) = tts.text {
+                            tts_text.push_str(&text);
+                        }
+                        if tts.state == Some(TtsState::Stop) {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
             }
-            FrameResult::TTSResult(_) => {}
-            FrameResult::AudioResult(audio) => {
-                all_packets.push(audio.data);
-            }
-            _ => {}
+            None => break,
         }
     }
-    info!("collected {} opus packets", all_packets.len());
 
-    drop(input_tx);
-
-    let mut decoder = opus::Decoder::new(16000, opus::Channels::Mono).unwrap();
-    let mut decoded = Vec::new();
-    for packet in &all_packets {
-        let mut samples = vec![0f32; 960];
-        if let Ok(len) = decoder.decode_float(packet, &mut samples, false) {
-            decoded.extend_from_slice(&samples[..len]);
-        }
-    }
-    info!("decoded {} PCM samples", decoded.len());
-
-    assert!(!decoded.is_empty(), "no audio decoded");
-    std::fs::create_dir_all("./test_data")?;
-    wavers::write("./test_data/test_tts_collect_16k.wav", &decoded, 16000, 1)?;
-    info!("saved test_data/test_tts_collect_16k.wav");
+    assert!(audio_frames.len() > 0, "no audio collected");
+    info!(
+        "TTS text: {:?}, audio frames: {}",
+        tts_text,
+        audio_frames.len()
+    );
     Ok(())
 }

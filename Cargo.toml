@@ -116,7 +116,7 @@ earshot = "1.0.0"
 sherpa-onnx = "1.13.3"
 # tts + asr end
 # mcp start
-rmcp = "0.15.0"
+rmcp = "2.1.0"
 sse-stream = "0.2.1"
 # mcp end
 # matrix start

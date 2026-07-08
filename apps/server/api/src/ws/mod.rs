@@ -1,6 +1,7 @@
 pub mod default_listener;
 pub mod input_proxy;
 pub mod input_sender;
+pub mod mcp_handler;
 pub mod output_proxy;
 pub mod output_sender;
 pub mod protocol_translator;
@@ -18,7 +19,6 @@ use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use service::chobits::frame::Frame;
 use service::chobits::message::close::CloseMessage;
-use tokio::sync::Mutex;
 use tracing::{Instrument, Level, span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -27,13 +27,18 @@ use crate::{
     AppState,
     asr::AsrFactory,
     config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
-    mcp::{client::create_server_mcp_client, provider::McpProviderImpl},
     record::recorder::Recorder,
     tts::TtsFactory,
     vad::VadFactory,
     ws::{
-        default_listener::DefaultListener, input_proxy::InputProxy, input_sender::InputSender,
-        output_proxy::OutputProxy, output_sender::OutputSender,
+        default_listener::DefaultListener,
+        input_proxy::InputProxy,
+        input_sender::InputSender,
+        mcp_handler::{
+            McpContext, McpFrameAction, ServerJsonRpcMessage, handle_mcp_frame, setup_mcp_handler,
+        },
+        output_proxy::OutputProxy,
+        output_sender::OutputSender,
         protocol_translator::ProtocolTranslator,
     },
     {chii::ChiiCoreBuilder, llm::LlmFactory},
@@ -92,7 +97,6 @@ async fn ws_handler(
     })
 }
 
-#[allow(dead_code)]
 pub(crate) struct SocketContext {
     session_id: String,
     conn: sea_orm::DatabaseConnection,
@@ -110,29 +114,17 @@ where
 {
     tracing::info!("session started");
 
-    let mut mcp_impl = McpProviderImpl::new(ctx.session_id.clone());
-    let mcp_host = mcp_impl.mcp_host();
-    let uri_list = &ctx.mcp_config.uri_list;
-    if let Some(uri_list) = uri_list {
-        for uri in uri_list {
-            let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-            match server_mcp_client {
-                Ok(client) => {
-                    mcp_impl.add_client(Box::new(client)).await;
-                }
-                Err(e) => {
-                    tracing::warn!(session_id = %ctx.session_id, uri = %uri, error = %e, "mcp server init failed")
-                }
-            }
-        }
-    }
-    let mcp_provider: Arc<Mutex<dyn service::chobits::mcp::Mcp>> = Arc::new(Mutex::new(mcp_impl));
+    let McpContext {
+        registry,
+        inbound_tx: mcp_inbound_tx,
+        outbound_rx: mcp_outbound_rx,
+    } = setup_mcp_handler(ctx.session_id.clone(), &ctx.mcp_config).await;
 
     let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
         ChiiCoreBuilder::new()
             .with_session_id(Some(ctx.session_id.clone()))
             .with_model(LlmFactory::global().default())
-            .with_mcp_host(mcp_host)
+            .with_mcp_registry(registry.clone())
             .build(),
     );
 
@@ -169,7 +161,6 @@ where
         )))
         .with_chii(chii)
         .with_tts(tts)
-        .with_mcp(mcp_provider)
         .with_config(session_config)
         .with_audio_config(audio_config)
         .build();
@@ -182,10 +173,12 @@ where
         ws_output(
             write,
             OutputProxy::new(output_rx, Some(recorder.clone()), ctx.session_id.clone()),
+            mcp_outbound_rx,
             translator,
         )
         .instrument(span!(Level::DEBUG, "output")),
     );
+
     let input_handle = tokio::spawn(
         ws_input(
             read,
@@ -196,6 +189,7 @@ where
                 20,
                 1,
             ),
+            mcp_inbound_tx,
             translator,
         )
         .instrument(span!(Level::DEBUG, "input")),
@@ -209,12 +203,18 @@ where
 async fn ws_input<R>(
     mut read: R,
     input_sender: impl InputSender,
+    mcp_inbound_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
     translator: impl ProtocolTranslator,
 ) where
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
     while let Some(Ok(msg)) = read.next().await {
         let frame = translator.input(msg);
+        match handle_mcp_frame(&frame, &mcp_inbound_tx).await {
+            McpFrameAction::Handled => continue,
+            McpFrameAction::ChannelClosed => break,
+            McpFrameAction::NotMcp => {}
+        }
         let is_close = matches!(&frame, Frame::Close(_));
         input_sender.send(frame);
         if is_close {
@@ -226,15 +226,27 @@ async fn ws_input<R>(
 
 async fn ws_output<W>(
     mut write: W,
-    mut output_sender: impl OutputSender,
+    mut session_output: impl OutputSender,
+    mut mcp_outbound_rx: tokio::sync::mpsc::UnboundedReceiver<
+        service::chobits::frame::OutputMessage,
+    >,
     translator: impl ProtocolTranslator,
 ) where
     W: Sink<Message> + Unpin + Send + 'static,
 {
-    while let Some(result) = output_sender.recv().await {
-        let msg = translator.output(result);
-        if write.send(msg).await.is_err() {
-            break;
+    loop {
+        let payload = tokio::select! {
+            result = session_output.recv() => result,
+            msg = mcp_outbound_rx.recv() => msg.map(|m| m.payload),
+        };
+        match payload {
+            Some(payload) => {
+                let msg = translator.output(payload);
+                if write.send(msg).await.is_err() {
+                    break;
+                }
+            }
+            None => break,
         }
     }
     let _ = write.close().await;

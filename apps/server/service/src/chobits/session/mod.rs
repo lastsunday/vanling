@@ -7,14 +7,12 @@ use std::time::Instant;
 
 use chrono::Local;
 use tokio::select;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::chobits::chii::Chii;
 use crate::chobits::frame::Frame;
 use crate::chobits::frame::{FrameResult, OutputMessage};
 use crate::chobits::listener::{ListenInput, ListenResult, Listener};
-use crate::chobits::mcp::Mcp;
 use crate::chobits::message::hello::{AudioParam, HelloMessage};
 use crate::chobits::message::{AudioFormat, Transport};
 use crate::chobits::tts::Tts;
@@ -97,7 +95,6 @@ pub struct SessionBuilder {
     listener: Option<Box<dyn Listener>>,
     chii: Option<Arc<dyn Chii>>,
     tts: Option<Arc<dyn Tts>>,
-    mcp: Option<Arc<Mutex<dyn Mcp>>>,
     config: Option<SessionConfig>,
     audio_config: Option<AudioConfig>,
 }
@@ -124,11 +121,6 @@ impl SessionBuilder {
 
     pub fn with_tts(mut self, tts: Arc<dyn Tts>) -> Self {
         self.tts = Some(tts);
-        self
-    }
-
-    pub fn with_mcp(mut self, mcp: Arc<Mutex<dyn Mcp>>) -> Self {
-        self.mcp = Some(mcp);
         self
     }
 
@@ -174,7 +166,6 @@ impl SessionBuilder {
             listener: self.listener.expect("listener is required"),
             chii: self.chii.expect("chii is required"),
             tts: self.tts.expect("tts is required"),
-            mcp: self.mcp.expect("mcp is required"),
         };
 
         (session, session_tx, outer_rx)
@@ -201,7 +192,6 @@ pub struct Session {
     chii: Arc<dyn Chii>,
     tts: Arc<dyn Tts>,
     listener: Box<dyn Listener>,
-    mcp: Arc<Mutex<dyn Mcp>>,
 }
 
 impl Session {
@@ -339,12 +329,6 @@ impl Session {
             _ => {}
         }
 
-        if let Frame::Mcp(message) = frame {
-            let mut mcp = self.mcp.lock().await;
-            mcp.handle_frame(message, &self.output_tx).await;
-            return;
-        }
-
         let phase = self.phase.clone();
         match phase {
             Phase::Idle => self.on_idle(frame).await,
@@ -363,19 +347,8 @@ impl Session {
                 transport = ?hello_message.transport,
                 "client hello"
             );
-            let has_mcp = hello_message
-                .features
-                .as_ref()
-                .and_then(|f| f.mcp)
-                .unwrap_or(false);
-
             self.handle_connect(hello_message).await;
             self.phase = Phase::Ready;
-
-            if has_mcp {
-                let mut mcp = self.mcp.lock().await;
-                mcp.handle_hello(hello_message, &self.output_tx).await;
-            }
         }
     }
 
