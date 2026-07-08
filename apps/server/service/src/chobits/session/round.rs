@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use futures::StreamExt;
+
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
@@ -157,7 +159,6 @@ impl Round {
                 return;
             }
 
-            use futures::StreamExt;
             let chii_stream = chii.ask(Input::text(text), cancel.clone()).await;
             let chat_text_stream = chii_stream.filter_map(|r| async move {
                 r.ok().map(|block| match block {

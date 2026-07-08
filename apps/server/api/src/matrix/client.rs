@@ -254,7 +254,7 @@ impl Bot {
                     .expect("output frame duration is empty"),
             };
 
-            let (session, input_tx, output_rx) = service::chobits::session::SessionBuilder::new()
+            let session_ctx = service::chobits::session::SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
                     VadFactory::create_model(&self.vad_config),
@@ -265,10 +265,10 @@ impl Bot {
                 .with_config(session_config)
                 .with_audio_config(audio_config)
                 .build();
-            tokio::spawn(session.start());
-            let mut output = UnboundedReceiverStream::new(output_rx);
+            tokio::spawn(session_ctx.session.start());
+            let mut output = UnboundedReceiverStream::new(session_ctx.output_rx);
             // send hello frame
-            input_tx.send(Frame::Hello(HelloMessage {
+            session_ctx.input_tx.send(Frame::Hello(HelloMessage {
                 ..Default::default()
             }))?;
             if let Some(data) = output.next().await {
@@ -363,7 +363,7 @@ impl Bot {
                 }
             });
             // TODO: add to session map
-            session_map.insert(session_key.to_string(), input_tx);
+            session_map.insert(session_key.to_string(), session_ctx.input_tx);
         }
         let tx = session_map
             .get(session_key)

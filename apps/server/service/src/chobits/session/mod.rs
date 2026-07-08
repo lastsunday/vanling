@@ -22,6 +22,12 @@ use framework::prelude::error;
 
 use round::{ChatParam, Command, Round};
 
+pub struct SessionContext {
+    pub session: Session,
+    pub input_tx: UnboundedSender<Frame>,
+    pub output_rx: UnboundedReceiver<OutputMessage>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum RoundStopReason {
     BargeIn,
@@ -134,13 +140,7 @@ impl SessionBuilder {
         self
     }
 
-    pub fn build(
-        self,
-    ) -> (
-        Session,
-        UnboundedSender<Frame>,
-        UnboundedReceiver<OutputMessage>,
-    ) {
+    pub fn build(self) -> SessionContext {
         let config = self.config.expect("config is required");
         let audio_config = self.audio_config.expect("audio is required");
 
@@ -168,7 +168,11 @@ impl SessionBuilder {
             tts: self.tts.expect("tts is required"),
         };
 
-        (session, session_tx, outer_rx)
+        SessionContext {
+            session,
+            input_tx: session_tx,
+            output_rx: outer_rx,
+        }
     }
 }
 

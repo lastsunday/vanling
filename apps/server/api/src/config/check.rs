@@ -1,4 +1,5 @@
 use figment::Figment;
+use std::path::Path;
 use tracing::{debug, error, info, warn};
 
 use super::DEPRECATED_KEYS;
@@ -20,8 +21,6 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
     }
 
     config.get_bind_addrs().iter().for_each(|addr| {
-        use std::path::Path;
-
         if addr.ip().is_loopback() {
             info!(
                 "Found loopback listening address {addr}, running checks if we're in a \

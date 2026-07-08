@@ -72,7 +72,7 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
         .unwrap(),
     );
 
-    let (session, input_tx, mut output_rx) = SessionBuilder::new()
+    let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
@@ -100,22 +100,24 @@ async fn test_tts_audio_collect() -> anyhow::Result<()> {
             output_frame_duration: 60,
         })
         .build();
-    tokio::spawn(session.start());
+    tokio::spawn(session_ctx.session.start());
 
     let hello = Frame::Hello(HelloMessage {
         session_id: Some(session_id.clone()),
         ..Default::default()
     });
-    input_tx.send(hello).unwrap();
+    session_ctx.input_tx.send(hello).unwrap();
 
     // send the text
-    input_tx
+    session_ctx
+        .input_tx
         .send(Frame::Input {
             text: "今天天气怎么样".to_string(),
         })
         .unwrap();
 
     // wait for TTS stop
+    let mut output_rx = session_ctx.output_rx;
     let mut audio_frames: Vec<Vec<u8>> = Vec::new();
     let mut tts_text: String = String::new();
     loop {

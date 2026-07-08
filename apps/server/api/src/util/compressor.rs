@@ -1,3 +1,4 @@
+use ebur128::{EbuR128, Mode};
 use serde::Deserialize;
 
 /// Soft-knee compressor configuration.
@@ -105,8 +106,6 @@ pub struct AudioMetrics {
 ///
 /// Returns (LRA, integrated LUFS, crest factor).
 pub fn evaluate_compressed(samples: &[f32], sample_rate: u32) -> anyhow::Result<AudioMetrics> {
-    use ebur128::{EbuR128, Mode};
-
     let mut meter = EbuR128::new(1, sample_rate, Mode::I | Mode::LRA | Mode::SAMPLE_PEAK)?;
     meter.set_channel(0, ebur128::Channel::Left)?;
     meter.add_frames_f32(samples)?;

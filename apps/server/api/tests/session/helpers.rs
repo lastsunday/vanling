@@ -122,7 +122,7 @@ pub async fn create_session() -> Result<
         .unwrap(),
     );
 
-    let (session, input_tx, output_rx) = SessionBuilder::new()
+    let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
@@ -156,7 +156,13 @@ pub async fn create_session() -> Result<
             output_frame_duration: 20,
         })
         .build();
-    Ok((session, input_tx, output_rx, container, state))
+    Ok((
+        session_ctx.session,
+        session_ctx.input_tx,
+        session_ctx.output_rx,
+        container,
+        state,
+    ))
 }
 
 pub async fn create_mini_session_channel() -> (
@@ -195,7 +201,7 @@ pub async fn create_mini_session_channel() -> (
         .unwrap(),
     );
 
-    let (session, input_tx, output_rx) = SessionBuilder::new()
+    let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
@@ -223,8 +229,8 @@ pub async fn create_mini_session_channel() -> (
             output_frame_duration: 20,
         })
         .build();
-    tokio::spawn(session.start());
-    (input_tx, output_rx)
+    tokio::spawn(session_ctx.session.start());
+    (session_ctx.input_tx, session_ctx.output_rx)
 }
 
 pub async fn create_session_channel() -> (

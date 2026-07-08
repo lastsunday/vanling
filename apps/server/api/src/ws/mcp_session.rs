@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use serde_json;
 use service::chobits::frame::{Frame, OutputMessage};
 use tokio::sync::Mutex;
 
@@ -7,19 +9,19 @@ use crate::config::mcp::McpConfig;
 use crate::mcp::client::{
     create_server_mcp_client, device_transport::DeviceMcpTransport, rmcp_device::RmcpDeviceClient,
 };
+use crate::ws::filter::{FilterAction, FilterCtx, InputFilter};
 
 pub(crate) use rmcp::model::ServerJsonRpcMessage;
 
 pub(crate) struct McpContext {
     pub registry: Arc<Mutex<service::chobits::mcp::McpRegistry>>,
-    pub inbound_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
-    pub outbound_rx: tokio::sync::mpsc::UnboundedReceiver<OutputMessage>,
+    pub input_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
+    pub output_rx: tokio::sync::mpsc::UnboundedReceiver<OutputMessage>,
 }
 
-pub(crate) async fn setup_mcp_handler(session_id: String, mcp_config: &McpConfig) -> McpContext {
-    let (mcp_inbound_tx, mcp_inbound_rx) = tokio::sync::mpsc::channel::<ServerJsonRpcMessage>(64);
-    let (mcp_outbound_tx, mcp_outbound_rx) =
-        tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
+pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig) -> McpContext {
+    let (mcp_input_tx, mcp_input_rx) = tokio::sync::mpsc::channel::<ServerJsonRpcMessage>(64);
+    let (mcp_output_tx, mcp_output_rx) = tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
 
     let registry = Arc::new(Mutex::new(service::chobits::mcp::McpRegistry::new(Some(
         session_id.clone(),
@@ -46,8 +48,7 @@ pub(crate) async fn setup_mcp_handler(session_id: String, mcp_config: &McpConfig
 
     let mcp_registry = registry.clone();
     let mcp_session_id = session_id.clone();
-    let transport =
-        DeviceMcpTransport::new(mcp_inbound_rx, mcp_outbound_tx, mcp_session_id.clone());
+    let transport = DeviceMcpTransport::new(mcp_input_rx, mcp_output_tx, mcp_session_id.clone());
     tokio::spawn(async move {
         match RmcpDeviceClient::new(transport).await {
             Ok(client) => {
@@ -72,39 +73,44 @@ pub(crate) async fn setup_mcp_handler(session_id: String, mcp_config: &McpConfig
 
     McpContext {
         registry,
-        inbound_tx: mcp_inbound_tx,
-        outbound_rx: mcp_outbound_rx,
+        input_tx: mcp_input_tx,
+        output_rx: mcp_output_rx,
     }
 }
 
-pub(crate) enum McpFrameAction {
-    Handled,
-    ChannelClosed,
-    NotMcp,
+pub(crate) struct McpRouterFilter {
+    input_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
 }
 
-pub(crate) async fn handle_mcp_frame(
-    frame: &Frame,
-    inbound_tx: &tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
-) -> McpFrameAction {
-    let Frame::Mcp(mcp_msg) = frame else {
-        return McpFrameAction::NotMcp;
-    };
+impl McpRouterFilter {
+    pub(crate) fn new(input_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>) -> Self {
+        Self { input_tx }
+    }
+}
 
-    match serde_json::to_value(&mcp_msg.payload) {
-        Ok(value) => match serde_json::from_value(value) {
-            Ok(server_msg) => {
-                if inbound_tx.send(server_msg).await.is_err() {
-                    return McpFrameAction::ChannelClosed;
+#[async_trait]
+impl InputFilter for McpRouterFilter {
+    async fn process(&self, _ctx: &FilterCtx, frame: Frame) -> FilterAction<Frame> {
+        let Frame::Mcp(mcp_msg) = frame else {
+            return FilterAction::Continue(frame);
+        };
+
+        match serde_json::to_value(&mcp_msg.payload) {
+            Ok(value) => match serde_json::from_value(value) {
+                Ok(server_msg) => {
+                    if self.input_tx.send(server_msg).await.is_err() {
+                        return FilterAction::Break;
+                    }
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to convert mcp payload");
+                }
+            },
             Err(e) => {
-                tracing::warn!(error = %e, "failed to convert mcp payload");
+                tracing::warn!(error = %e, "failed to serialize mcp payload");
             }
-        },
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to serialize mcp payload");
         }
+
+        FilterAction::Consumed
     }
-    McpFrameAction::Handled
 }

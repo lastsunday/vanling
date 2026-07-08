@@ -61,7 +61,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         .unwrap(),
     );
 
-    let (session, input_tx, output_rx) = SessionBuilder::new()
+    let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&Arc::new(VadConfig {
@@ -101,16 +101,17 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
             output_frame_duration: 20,
         })
         .build();
-    tokio::spawn(session.start());
+    tokio::spawn(session_ctx.session.start());
 
     let hello = Frame::Hello(HelloMessage {
         session_id: Some(session_id.clone()),
         ..Default::default()
     });
-    input_tx.send(hello).unwrap();
+    session_ctx.input_tx.send(hello).unwrap();
 
     for packet in &audio {
-        input_tx
+        session_ctx
+            .input_tx
             .send(Frame::Voice {
                 data: packet.clone(),
             })
@@ -121,12 +122,12 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
     // now send a listen stop since we're not using input-based timing
-    input_tx.send(Frame::ListenStop).unwrap();
+    session_ctx.input_tx.send(Frame::ListenStop).unwrap();
 
     // wait for up to n seconds for the first non-hello output
     let result = tokio::time::timeout(
         tokio::time::Duration::from_secs(30),
-        collect_results(output_rx, vec!["hello".to_string()], 20),
+        collect_results(session_ctx.output_rx, vec!["hello".to_string()], 20),
     )
     .await;
     match result {

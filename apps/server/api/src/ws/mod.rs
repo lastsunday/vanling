@@ -1,8 +1,7 @@
 pub mod default_listener;
-pub mod input_proxy;
+pub mod filter;
 pub mod input_sender;
-pub mod mcp_handler;
-pub mod output_proxy;
+pub mod mcp_session;
 pub mod output_sender;
 pub mod protocol_translator;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
@@ -17,8 +16,11 @@ use axum_extra::{TypedHeader, headers};
 use framework::id::gen_id;
 use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use service::chobits::frame::Frame;
-use service::chobits::message::close::CloseMessage;
+use service::chobits::frame::{Frame, OutputMessage};
+use service::chobits::session::{self, SessionBuilder};
+use tokio_stream::StreamMap;
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Level, span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -32,13 +34,12 @@ use crate::{
     vad::VadFactory,
     ws::{
         default_listener::DefaultListener,
-        input_proxy::InputProxy,
-        input_sender::InputSender,
-        mcp_handler::{
-            McpContext, McpFrameAction, ServerJsonRpcMessage, handle_mcp_frame, setup_mcp_handler,
+        filter::{
+            FilterCtx, FilterStep, InputFilter, OutputFilter, RecorderInputFilter,
+            RecorderOutputFilter, run_input_filters, run_output_filters,
         },
-        output_proxy::OutputProxy,
-        output_sender::OutputSender,
+        input_sender::InputSender,
+        mcp_session::{McpRouterFilter, setup_mcp_session},
         protocol_translator::ProtocolTranslator,
     },
     {chii::ChiiCoreBuilder, llm::LlmFactory},
@@ -106,6 +107,34 @@ pub(crate) struct SocketContext {
     audio_config: Arc<AudioConfig>,
 }
 
+impl SocketContext {
+    fn to_session_config(&self) -> session::SessionConfig {
+        session::SessionConfig {
+            system_prompt: self.session_config.system_prompt.clone(),
+            max_prompt_len: self.session_config.max_prompt_len,
+            silence_voice_timeout: self.session_config.silence_voice_timeout,
+            close_connection_no_voice_time: self.session_config.close_connection_no_voice_time,
+        }
+    }
+
+    fn to_audio_config(&self) -> session::AudioConfig {
+        session::AudioConfig {
+            output_sample_rate: self
+                .audio_config
+                .output_sample_rate
+                .expect("output sample rate is empty"),
+            output_channel: self
+                .audio_config
+                .output_channel
+                .expect("output channel is empty"),
+            output_frame_duration: self
+                .audio_config
+                .output_frame_duration
+                .expect("output frame duration is empty"),
+        }
+    }
+}
+
 #[tracing::instrument(skip_all, fields(session_id = %ctx.session_id))]
 pub(crate) async fn handle_socket<W, R>(ctx: SocketContext, write: W, read: R)
 where
@@ -114,83 +143,76 @@ where
 {
     tracing::info!("session started");
 
-    let McpContext {
-        registry,
-        inbound_tx: mcp_inbound_tx,
-        outbound_rx: mcp_outbound_rx,
-    } = setup_mcp_handler(ctx.session_id.clone(), &ctx.mcp_config).await;
+    let mcp_ctx = setup_mcp_session(ctx.session_id.clone(), &ctx.mcp_config).await;
 
-    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
-        ChiiCoreBuilder::new()
-            .with_session_id(Some(ctx.session_id.clone()))
-            .with_model(LlmFactory::global().default())
-            .with_mcp_registry(registry.clone())
-            .build(),
-    );
-
-    let tts: Arc<dyn service::chobits::tts::Tts> = TtsFactory::global().default();
-
-    use service::chobits::session::{AudioConfig, SessionBuilder, SessionConfig};
-
-    let session_config = SessionConfig {
-        system_prompt: ctx.session_config.system_prompt.clone(),
-        max_prompt_len: ctx.session_config.max_prompt_len,
-        silence_voice_timeout: ctx.session_config.silence_voice_timeout,
-        close_connection_no_voice_time: ctx.session_config.close_connection_no_voice_time,
-    };
-    let audio_config = AudioConfig {
-        output_sample_rate: ctx
-            .audio_config
-            .output_sample_rate
-            .expect("output sample rate is empty"),
-        output_channel: ctx
-            .audio_config
-            .output_channel
-            .expect("output channel is empty"),
-        output_frame_duration: ctx
-            .audio_config
-            .output_frame_duration
-            .expect("output frame duration is empty"),
-    };
-
-    let (session, input_tx, output_rx) = SessionBuilder::new()
+    let session_ctx = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
             VadFactory::create_model(&ctx.vad_config),
             AsrFactory::global().default().clone(),
         )))
-        .with_chii(chii)
-        .with_tts(tts)
-        .with_config(session_config)
-        .with_audio_config(audio_config)
+        .with_chii(Arc::new(
+            ChiiCoreBuilder::new()
+                .with_session_id(Some(ctx.session_id.clone()))
+                .with_model(LlmFactory::global().default())
+                .with_mcp_registry(mcp_ctx.registry)
+                .build(),
+        ))
+        .with_tts(TtsFactory::global().default())
+        .with_config(ctx.to_session_config())
+        .with_audio_config(ctx.to_audio_config())
         .build();
 
     let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
+    let cancel = CancellationToken::new();
+
+    let input_filters: Vec<Box<dyn InputFilter>> = vec![
+        Box::new(McpRouterFilter::new(mcp_ctx.input_tx)),
+        Box::new(RecorderInputFilter::new(
+            Some(recorder.clone()),
+            ctx.session_id.clone(),
+        )),
+    ];
+    let output_filters: Vec<Box<dyn OutputFilter>> = vec![Box::new(RecorderOutputFilter::new(
+        Some(recorder),
+        ctx.session_id.clone(),
+    ))];
+
+    let mut output_streams: StreamMap<&str, UnboundedReceiverStream<OutputMessage>> =
+        StreamMap::new();
+    output_streams.insert(
+        "session",
+        UnboundedReceiverStream::new(session_ctx.output_rx),
+    );
+    output_streams.insert("mcp", UnboundedReceiverStream::new(mcp_ctx.output_rx));
+
     let translator = protocol_translator::XiaozhiProtocolTranslator;
 
-    let session_handle = tokio::spawn(session.start().instrument(span!(Level::DEBUG, "session")));
+    let session_handle = tokio::spawn(
+        session_ctx
+            .session
+            .start()
+            .instrument(span!(Level::DEBUG, "session")),
+    );
     let output_handle = tokio::spawn(
         ws_output(
             write,
-            OutputProxy::new(output_rx, Some(recorder.clone()), ctx.session_id.clone()),
-            mcp_outbound_rx,
             translator,
+            output_streams,
+            output_filters,
+            cancel.child_token(),
+            ctx.session_id.clone(),
         )
         .instrument(span!(Level::DEBUG, "output")),
     );
-
     let input_handle = tokio::spawn(
         ws_input(
             read,
-            InputProxy::new(
-                ctx.session_id.clone(),
-                Some(recorder.clone()),
-                input_tx,
-                20,
-                1,
-            ),
-            mcp_inbound_tx,
             translator,
+            session_ctx.input_tx,
+            input_filters,
+            cancel.child_token(),
+            ctx.session_id.clone(),
         )
         .instrument(span!(Level::DEBUG, "input")),
     );
@@ -202,53 +224,87 @@ where
 
 async fn ws_input<R>(
     mut read: R,
-    input_sender: impl InputSender,
-    mcp_inbound_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
     translator: impl ProtocolTranslator,
+    input_tx: impl InputSender,
+    filters: Vec<Box<dyn InputFilter>>,
+    cancel: CancellationToken,
+    session_id: String,
 ) where
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    while let Some(Ok(msg)) = read.next().await {
-        let frame = translator.input(msg);
-        match handle_mcp_frame(&frame, &mcp_inbound_tx).await {
-            McpFrameAction::Handled => continue,
-            McpFrameAction::ChannelClosed => break,
-            McpFrameAction::NotMcp => {}
-        }
-        let is_close = matches!(&frame, Frame::Close(_));
-        input_sender.send(frame);
-        if is_close {
-            return;
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = cancel.cancelled() => {
+                tracing::debug!(session_id = %session_id, "input cancelled");
+                break;
+            }
+
+            msg = read.next() => {
+                let Some(Ok(msg)) = msg else {
+                    cancel.cancel();
+                    break;
+                };
+
+                let ctx = FilterCtx { session_id: session_id.clone() };
+                let frame = translator.input(msg);
+
+                match run_input_filters(&filters, &ctx, frame).await {
+                    FilterStep::Pass(frame) => {
+                        let is_close = matches!(&frame, Frame::Close(_));
+                        input_tx.send(frame);
+                        if is_close {
+                            cancel.cancel();
+                            return;
+                        }
+                    }
+                    FilterStep::Skip => continue,
+                    FilterStep::Abort => { cancel.cancel(); break; }
+                }
+            }
         }
     }
-    input_sender.send(Frame::Close(CloseMessage::new(1000, String::new())));
 }
 
 async fn ws_output<W>(
     mut write: W,
-    mut session_output: impl OutputSender,
-    mut mcp_outbound_rx: tokio::sync::mpsc::UnboundedReceiver<
-        service::chobits::frame::OutputMessage,
-    >,
     translator: impl ProtocolTranslator,
+    mut output_streams: StreamMap<&str, UnboundedReceiverStream<OutputMessage>>,
+    filters: Vec<Box<dyn OutputFilter>>,
+    cancel: CancellationToken,
+    session_id: String,
 ) where
     W: Sink<Message> + Unpin + Send + 'static,
 {
     loop {
-        let payload = tokio::select! {
-            result = session_output.recv() => result,
-            msg = mcp_outbound_rx.recv() => msg.map(|m| m.payload),
-        };
-        match payload {
-            Some(payload) => {
-                let msg = translator.output(payload);
-                if write.send(msg).await.is_err() {
-                    break;
+        tokio::select! {
+            biased;
+
+            _ = cancel.cancelled() => {
+                tracing::debug!(session_id = %session_id, "output cancelled");
+                break;
+            }
+
+            output = output_streams.next() => {
+                let Some((_source, msg)) = output else { break };
+
+                let ctx = FilterCtx { session_id: session_id.clone() };
+                match run_output_filters(&filters, &ctx, msg).await {
+                    FilterStep::Pass(msg) => {
+                        let ws_msg = translator.output(msg.payload);
+                        if write.send(ws_msg).await.is_err() {
+                            cancel.cancel();
+                            break;
+                        }
+                    }
+                    FilterStep::Skip => continue,
+                    FilterStep::Abort => { cancel.cancel(); break; }
                 }
             }
-            None => break,
         }
     }
+
     let _ = write.close().await;
 }
 
