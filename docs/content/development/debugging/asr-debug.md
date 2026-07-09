@@ -7,13 +7,13 @@ weight = 402
 
 ## 架构
 
-ASR 模块位于 `apps/server/api/src/asr/`，使用 **Factory 单例模式**管理模型实例，底层集成 **sherpa-onnx** 的 `OfflineRecognizer`。
+ASR 模块位于 `apps/server/api/src/asr/`，使用 **Manager 单例模式**管理模型实例，底层集成 **sherpa-onnx** 的 `OfflineRecognizer`。
 
-### Factory 模式
+### Manager 模式
 
 ```rust
-AsrFactory::init(config).await;                             // 应用启动时初始化
-let mut model = AsrFactory::global().default().lock().await; // 获取 Arc<Mutex<Box<dyn Asr>>>
+AsrManager::init(config).await;                             // 应用启动时初始化
+let mut model = AsrManager::global().default().lock().await; // 获取 Arc<Mutex<Box<dyn Asr>>>
 let result = model.transcribe(sample_rate, &samples).await;
 ```
 
@@ -167,14 +167,14 @@ cargo test --package api --test asr_test -- --ignored --nocapture
 2. **实现 model module**：`apps/server/api/src/asr/model/<model>/mod.rs`，实现 `Asr` trait
 3. **注册模型**：`api/src/asr/model/mod.rs` 添加 `pub mod <model>`
 4. **添加枚举变体**：`api/src/config/mod.rs` 的 `AsrModel` enum 添加 `<Model>`
-5. **注册 Factory**：`api/src/asr/mod.rs` 的 `create_model()` 添加 match arm
+5. **注册 Manager**：`api/src/asr/mod.rs` 的 `create_model()` 添加 match arm
 6. **添加测试**：`api/tests/asr_test.rs` 添加参考音频和闭环测试
 
 ## 关键文件
 
 | 文件 | 作用 |
 |------|------|
-| `apps/server/api/src/asr/mod.rs` | Asr trait、Factory、RecognizerResult |
+| `apps/server/api/src/asr/mod.rs` | Asr trait、Manager、RecognizerResult |
 | `apps/server/api/src/asr/model/sense_voice/mod.rs` | SenseVoice 模型实现 |
 | `apps/server/api/src/asr/model/void/mod.rs` | Void no-op 模型 |
 | `apps/server/api/src/config/asr.rs` | AsrConfig 结构体 |

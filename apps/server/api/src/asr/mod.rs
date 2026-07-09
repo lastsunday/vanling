@@ -8,14 +8,14 @@ use service::chobits::asr::Asr;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
 
-static INSTANCE: OnceLock<AsrFactory> = OnceLock::new();
+static INSTANCE: OnceLock<AsrManager> = OnceLock::new();
 
-pub struct AsrFactory {
+pub struct AsrManager {
     default_instance: Arc<Mutex<Box<dyn Asr>>>,
     pub config: Arc<AsrConfig>,
 }
 
-impl AsrFactory {
+impl AsrManager {
     pub fn new(default_instance: Arc<Mutex<Box<dyn Asr>>>, config: Arc<AsrConfig>) -> Self {
         Self {
             default_instance,
@@ -29,7 +29,7 @@ impl AsrFactory {
         })
     }
 
-    pub fn global() -> &'static AsrFactory {
+    pub fn global() -> &'static AsrManager {
         INSTANCE.get().unwrap()
     }
 

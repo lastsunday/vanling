@@ -1,13 +1,13 @@
 use api::{
-    asr::AsrFactory,
+    asr::AsrManager,
     config::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
         tts::TtsConfig, vad::VadConfig,
     },
-    tts::TtsFactory,
-    vad::VadFactory,
+    tts::TtsManager,
+    vad::VadManager,
     ws::default_listener::DefaultListener,
-    {chii::ChiiCoreBuilder, llm::LlmFactory},
+    {chii::ChiiCoreBuilder, llm::LlmManager},
 };
 use framework::id::gen_id;
 use service::chobits::{
@@ -35,7 +35,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
     let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
-            .with_model(LlmFactory::create_model(&LlmConfig {
+            .with_model(LlmManager::create_model(&LlmConfig {
                 model: Some(LlmModel::Echo),
                 ..Default::default()
             }))
@@ -50,7 +50,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
     });
 
     let tts: Arc<dyn service::chobits::tts::Tts> = Arc::from(
-        TtsFactory::create_model(
+        TtsManager::create_model(
             &TtsConfig {
                 model: Some(TtsModel::Mute),
                 ..Default::default()
@@ -64,11 +64,11 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
     let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
-            VadFactory::create_model(&Arc::new(VadConfig {
+            VadManager::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
                 ..Default::default()
             })),
-            Arc::new(Mutex::new(AsrFactory::create_model(&AsrConfig {
+            Arc::new(Mutex::new(AsrManager::create_model(&AsrConfig {
                 model: Some(AsrModel::SenseVoice),
                 path: Some(
                     Path::new(env!("CARGO_MANIFEST_DIR"))

@@ -6,14 +6,14 @@ use crate::vad::model::void::VadVoid;
 use service::chobits::vad::Vad;
 use std::sync::{Arc, OnceLock};
 
-static VAD_INSTANCE: OnceLock<VadFactory> = OnceLock::new();
+static VAD_INSTANCE: OnceLock<VadManager> = OnceLock::new();
 
 #[derive(Default)]
-pub struct VadFactory {
+pub struct VadManager {
     pub config: Arc<VadConfig>,
 }
 
-impl VadFactory {
+impl VadManager {
     pub fn new(config: Arc<VadConfig>) -> Self {
         Self { config }
     }
@@ -22,7 +22,7 @@ impl VadFactory {
         VAD_INSTANCE.get_or_init(|| -> Self { Self::new(config) })
     }
 
-    pub fn global() -> &'static VadFactory {
+    pub fn global() -> &'static VadManager {
         VAD_INSTANCE.get().unwrap()
     }
 

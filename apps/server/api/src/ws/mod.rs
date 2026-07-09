@@ -26,11 +26,11 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
     AppState,
-    asr::AsrFactory,
+    asr::AsrManager,
     config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
     record::recorder::Recorder,
-    tts::TtsFactory,
-    vad::VadFactory,
+    tts::TtsManager,
+    vad::VadManager,
     ws::{
         default_listener::DefaultListener,
         filter::{
@@ -40,7 +40,7 @@ use crate::{
         mcp_session::{McpRouterFilter, setup_mcp_session},
         protocol_translator::ProtocolTranslator,
     },
-    {chii::ChiiCoreBuilder, llm::LlmFactory},
+    {chii::ChiiCoreBuilder, llm::LlmManager},
 };
 
 const TAG: &str = "ws";
@@ -146,17 +146,17 @@ where
     let session_ctx = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
-            VadFactory::create_model(&ctx.vad_config),
-            AsrFactory::global().default().clone(),
+            VadManager::create_model(&ctx.vad_config),
+            AsrManager::global().default().clone(),
         )))
         .with_chii(Arc::new(
             ChiiCoreBuilder::new()
                 .with_session_id(Some(ctx.session_id.clone()))
-                .with_model(LlmFactory::global().default())
+                .with_model(LlmManager::global().default())
                 .with_mcp_registry(mcp_ctx.registry)
                 .build(),
         ))
-        .with_tts(TtsFactory::global().default())
+        .with_tts(TtsManager::global().default())
         .with_config(ctx.to_session_config())
         .with_audio_config(ctx.to_audio_config())
         .build();

@@ -8,15 +8,15 @@ use crate::config::tts::TtsConfig;
 use service::chobits::tts::Tts;
 use std::sync::{Arc, OnceLock};
 
-static INSTANCE: OnceLock<TtsFactory> = OnceLock::new();
+static INSTANCE: OnceLock<TtsManager> = OnceLock::new();
 
-pub struct TtsFactory {
+pub struct TtsManager {
     default_instance: Arc<dyn Tts>,
     pub tts_config: Arc<TtsConfig>,
     pub audio_config: Arc<AudioConfig>,
 }
 
-impl TtsFactory {
+impl TtsManager {
     pub fn new(
         default_instance: Arc<dyn Tts>,
         tts_config: Arc<TtsConfig>,
@@ -56,7 +56,7 @@ impl TtsFactory {
         }
     }
 
-    pub fn global() -> &'static TtsFactory {
+    pub fn global() -> &'static TtsManager {
         INSTANCE.get().unwrap()
     }
 }

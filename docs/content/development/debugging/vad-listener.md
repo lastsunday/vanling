@@ -12,7 +12,7 @@ weight = 400
 - **VAD**：纯决策引擎，只回答"当前帧是否有语音"，不管理任何音频缓冲区
 - **Listener**：音频管道管理器，负责 Opus 解码、VAD 窗口循环、音频积累和状态管理
 
-VAD 模块位于 `apps/server/api/src/vad/`（Vad trait + VadFactory + model/），Listener 位于 `apps/server/api/src/ws/session/listener.rs`，会话记录位于 `apps/server/api/src/record/`。
+VAD 模块位于 `apps/server/api/src/vad/`（Vad trait + VadManager + model/），Listener 位于 `apps/server/api/src/ws/session/listener.rs`，会话记录位于 `apps/server/api/src/record/`。
 
 ### 处理流程
 
@@ -143,14 +143,14 @@ vad_min_silence_duration = 1000.0
 | `threshold` | `0.5` | VAD 语音判定阈值，越低越敏感。阈值扫描结果见[测试](#测试策略) |
 | `min_silence_duration` | `1000` | 语音结束判定：连续静默超过此值（ms）才认为语音结束 |
 
-### Factory 模式
+### Manager 模式
 
 ```rust
 // 初始化（应用启动时调用一次）
-VadFactory::init(config).await;
+VadManager::init(config).await;
 
 // 使用（create_model 为静态方法，无需 global()）
-let vad = VadFactory::create_model(&VadConfig { ... });  // Box<dyn Vad>
+let vad = VadManager::create_model(&VadConfig { ... });  // Box<dyn Vad>
 vad.accept_waveform(&samples)?;
 ```
 

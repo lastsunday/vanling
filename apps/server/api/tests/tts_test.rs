@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use api::{
     config::{TtsModel, audio::AudioConfig, tts::TtsConfig},
-    tts::TtsFactory,
+    tts::TtsManager,
 };
 use tokio_stream::StreamExt;
 use tracing::info;
@@ -17,7 +17,7 @@ async fn test_tts_default() -> anyhow::Result<()> {
     const ENCODE_SAMPLE_RATE: u32 = 16000;
     const MONO_20MS: usize = ENCODE_SAMPLE_RATE as usize * 20 / 1000;
     let size = MONO_20MS;
-    TtsFactory::init(
+    TtsManager::init(
         Arc::new(TtsConfig {
             model: Some(TtsModel::Mute),
             ..Default::default()
@@ -27,7 +27,7 @@ async fn test_tts_default() -> anyhow::Result<()> {
         }),
     )
     .await?;
-    let tts = TtsFactory::global().default();
+    let tts = TtsManager::global().default();
     let text_stream = tts_stream(String::from(TEST_TTS_TEXT));
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut tts_stream = tts.stream(Box::pin(text_stream), cancel).await;
@@ -65,7 +65,7 @@ async fn test_tts_default() -> anyhow::Result<()> {
 #[tokio::test]
 #[traced_test]
 async fn test_tts_mute() -> anyhow::Result<()> {
-    TtsFactory::init(
+    TtsManager::init(
         Arc::new(TtsConfig {
             model: Some(TtsModel::Mute),
             ..Default::default()
@@ -75,7 +75,7 @@ async fn test_tts_mute() -> anyhow::Result<()> {
         }),
     )
     .await?;
-    let tts = TtsFactory::global().default();
+    let tts = TtsManager::global().default();
     let text_stream = tts_stream(String::from(TEST_TTS_TEXT));
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut tts_stream = tts.stream(Box::pin(text_stream), cancel).await;

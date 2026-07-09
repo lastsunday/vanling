@@ -56,7 +56,7 @@ use utoipa_scalar::{Scalar, Servable as ScalarServable};
 
 use framework::auth::Jwt;
 
-use crate::asr::AsrFactory;
+use crate::asr::AsrManager;
 use crate::config::Config;
 use crate::config::asr::AsrConfig;
 use crate::config::audio::AudioConfig;
@@ -69,9 +69,9 @@ use crate::config::session::SessionConfig;
 use crate::config::tts::TtsConfig;
 use crate::config::vad::VadConfig;
 use crate::config::ws::WsConfig;
-use crate::llm::LlmFactory;
-use crate::tts::TtsFactory;
-use crate::vad::VadFactory;
+use crate::llm::LlmManager;
+use crate::tts::TtsManager;
+use crate::vad::VadManager;
 
 pub struct StartParams {
     pub server_config: Arc<ServerConfig>,
@@ -113,18 +113,18 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
     tracing::info!("Database connected successfully");
     // database schema init or upgrade
     migration::Migrator::up(&conn, None).await?;
-    tracing::info!("init tts factory");
-    TtsFactory::init(tts_config, audio_config.clone()).await?;
-    tracing::info!("init tts factory successfully");
-    tracing::info!("init vad factory");
-    VadFactory::init(vad_config.clone()).await;
-    tracing::info!("init vad factory successfully");
-    tracing::info!("init asr factory");
-    AsrFactory::init(asr_config).await;
-    tracing::info!("init asr factory successfully");
-    tracing::info!("init llm factory");
-    LlmFactory::init(llm_config).await;
-    tracing::info!("init llm factory successfully");
+    tracing::info!("init tts manager");
+    TtsManager::init(tts_config, audio_config.clone()).await?;
+    tracing::info!("init tts manager successfully");
+    tracing::info!("init vad manager");
+    VadManager::init(vad_config.clone()).await;
+    tracing::info!("init vad manager successfully");
+    tracing::info!("init asr manager");
+    AsrManager::init(asr_config).await;
+    tracing::info!("init asr manager successfully");
+    tracing::info!("init llm manager");
+    LlmManager::init(llm_config).await;
+    tracing::info!("init llm manager successfully");
     let ct = tokio_util::sync::CancellationToken::new();
     let ct_for_app = ct.clone();
     let mut handles = Vec::new();

@@ -5,7 +5,7 @@ use api::{
     chii::Splitter,
     common::ModelError,
     config::{LlmModel, llm::LlmConfig},
-    llm::LlmFactory,
+    llm::LlmManager,
 };
 use framework::error::AppError;
 use futures::{Stream, StreamExt};
@@ -50,7 +50,7 @@ fn create_llm_config() -> LlmConfig {
 #[tokio::test]
 #[traced_test]
 async fn test_llm_model_echo() -> anyhow::Result<()> {
-    let model = LlmFactory::create_model(&LlmConfig {
+    let model = LlmManager::create_model(&LlmConfig {
         model: Some(LlmModel::Echo),
         ..Default::default()
     });
@@ -201,8 +201,8 @@ async fn test_chat_mcp(text: &str) -> anyhow::Result<()> {
     }
     tracing::info!("{:?}", tools);
     let config = create_llm_config();
-    LlmFactory::init(Arc::new(config.clone())).await;
-    let model = LlmFactory::create_model(&config);
+    LlmManager::init(Arc::new(config.clone())).await;
+    let model = LlmManager::create_model(&config);
 
     let mut has_next_step = true;
     let system_prompt = "".to_string();

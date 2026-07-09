@@ -6,14 +6,14 @@ use std::sync::{Arc, OnceLock};
 
 pub use service::chobits::llm::Llm;
 
-static INSTANCE: OnceLock<LlmFactory> = OnceLock::new();
+static INSTANCE: OnceLock<LlmManager> = OnceLock::new();
 
-pub struct LlmFactory {
+pub struct LlmManager {
     default_llm: Arc<dyn Llm>,
     pub config: Arc<LlmConfig>,
 }
 
-impl LlmFactory {
+impl LlmManager {
     pub fn new(default_llm: Arc<dyn Llm>, config: Arc<LlmConfig>) -> Self {
         Self {
             default_llm,
@@ -22,7 +22,7 @@ impl LlmFactory {
     }
 
     pub async fn init(config: Arc<LlmConfig>) -> &'static Self {
-        let llm = LlmFactory::create_model(&config);
+        let llm = LlmManager::create_model(&config);
         INSTANCE.get_or_init(|| Self::new(llm, config))
     }
 
@@ -39,7 +39,7 @@ impl LlmFactory {
         }
     }
 
-    pub fn global() -> &'static LlmFactory {
+    pub fn global() -> &'static LlmManager {
         INSTANCE.get().unwrap()
     }
 }

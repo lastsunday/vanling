@@ -384,7 +384,7 @@ pub async fn run_tts_test(
     audio_config: &AudioConfig,
     wav: &str,
 ) -> anyhow::Result<()> {
-    let tts = api::tts::TtsFactory::create_model(tts_config, audio_config).await?;
+    let tts = api::tts::TtsManager::create_model(tts_config, audio_config).await?;
     let text_stream = tts_stream(String::from(TEST_TTS_TEXT));
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut tts_stream = tts.stream(Box::pin(text_stream), cancel).await;

@@ -29,7 +29,7 @@
 ### ✅ Always
 
 - **路由**: `create_routes(state) → OpenApiRouter`，在 `create_router` 的 `setup_*` 中注册。禁止直接挂载到主路由
-- **AI 模块**: `XxxFactory::init(config).await` 初始化 → `XxxFactory::global().default()` 使用。禁止 `new()` 直接实例化
+- **AI 模块**: `XxxManager::init(config).await` 初始化 → `XxxManager::global().default()` 使用。禁止 `new()` 直接实例化
 - **结构化日志**: 关键路径 `info!(%session_id, %reason, "msg")`；`#[instrument]` 仅入口函数；console→`FmtSpan::NONE`、file→`FmtSpan::CLOSE`。禁止 `println!()` 或 `eprintln!()`
 - **测试**: `apps/server/api/tests/` 按功能分类；每次修改增/改对应测试
 - **命名**: Rust snake_case / PascalCase 类型；TS camelCase 变量 / PascalCase 组件 / PascalCase.tsx
@@ -79,7 +79,7 @@
 | 模块 | 关键路径 |
 |---|---|
 | Rust 业务 | `migration/` → `entity/` → `api/` handler → `service/` 逻辑 → 注册路由 → 验证 |
-| AI 模型 | 实现 Trait → config 枚举变体 → manifest → `model/mod.rs` 注册 → Factory match arm → 测试 → 更新配置示例 |
+| AI 模型 | 实现 Trait → config 枚举变体 → manifest → `model/mod.rs` 注册 → Manager match arm → 测试 → 更新配置示例 |
 | 前端页面 | `routes/` `.tsx` → `data/` 类型 → `api/` 调用 → `components/` → i18n → typecheck |
 | 多语文档 | 改 `docs/src/` → AI 翻译 `docs/en/` → `moon run docs:check-translation` → 更新 `translation-status.json` |
 
@@ -89,4 +89,4 @@
 
 `Client → WS → Auth → Session → [VAD] → [ASR] → [ChiiCore (LLM + MCP)] → [TTS] → Client`
 
-要点：Xiaozhi 协议 / Factory + OnceLock 单例 / Config 原子指针 + 本地缓存 / Session + RoundLoop
+要点：Xiaozhi 协议 / Manager + OnceLock 单例 / Config 原子指针 + 本地缓存 / Session + RoundLoop

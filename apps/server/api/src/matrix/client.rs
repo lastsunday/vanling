@@ -28,16 +28,16 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{error, info};
 
 use crate::{
-    asr::AsrFactory,
+    asr::AsrManager,
     config::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
     mcp::client::create_external_mcp_client,
-    tts::TtsFactory,
-    vad::VadFactory,
+    tts::TtsManager,
+    vad::VadManager,
     ws::default_listener::DefaultListener,
-    {chii::ChiiCoreBuilder, llm::LlmFactory},
+    {chii::ChiiCoreBuilder, llm::LlmManager},
 };
 
 pub async fn start(
@@ -226,12 +226,12 @@ impl Bot {
             let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
                 ChiiCoreBuilder::new()
                     .with_session_id(Some(id.clone()))
-                    .with_model(LlmFactory::global().default())
+                    .with_model(LlmManager::global().default())
                     .with_mcp_registry(mcp_registry)
                     .build(),
             );
 
-            let tts: Arc<dyn service::chobits::tts::Tts> = TtsFactory::global().default();
+            let tts: Arc<dyn service::chobits::tts::Tts> = TtsManager::global().default();
 
             let session_config = ServiceSessionConfig {
                 system_prompt: self.session_config.system_prompt.clone(),
@@ -257,8 +257,8 @@ impl Bot {
             let session_ctx = service::chobits::session::SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
-                    VadFactory::create_model(&self.vad_config),
-                    AsrFactory::global().default().clone(),
+                    VadManager::create_model(&self.vad_config),
+                    AsrManager::global().default().clone(),
                 )))
                 .with_chii(chii)
                 .with_tts(tts)

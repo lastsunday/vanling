@@ -1,7 +1,7 @@
 use api::{
     chii::{ChatRequest, ChiiCoreBuilder, History},
     config::{LlmModel, llm::LlmConfig},
-    llm::{Llm, LlmFactory},
+    llm::{Llm, LlmManager},
     mcp::client::external::ExternalMcpClient,
     setup_mcp,
 };
@@ -29,7 +29,7 @@ fn create_model() -> Arc<dyn Llm> {
         .join("data/llm/model/qwen3/0.6b/")
         .to_string_lossy()
         .into_owned();
-    LlmFactory::create_model(&LlmConfig {
+    LlmManager::create_model(&LlmConfig {
         model: Some(LlmModel::Qwen3),
         path: Some(model_path),
         variant: None,
@@ -40,7 +40,7 @@ fn create_model() -> Arc<dyn Llm> {
 #[traced_test]
 async fn test_chat_echo() {
     let client = ChiiCoreBuilder::new()
-        .with_model(LlmFactory::create_model(&LlmConfig {
+        .with_model(LlmManager::create_model(&LlmConfig {
             model: Some(LlmModel::Echo),
             path: None,
             variant: None,
