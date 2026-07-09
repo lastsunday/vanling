@@ -2,8 +2,8 @@
 title = "Models and Deployment"
 weight = 203
 [extra]
-source_file_hash = "f73d4802118254cd043ac51b9fe2bb54f85fdc80"
-translated_at = "2026-07-09T00:00:00Z"
+source_file_hash = "c4164923ed2cfc27a9e4c40ac33db3f0212b34ca"
+translated_at = "2026-07-09T21:00:00Z"
 +++
 
 # Models and Deployment

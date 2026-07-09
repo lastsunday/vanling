@@ -2,8 +2,8 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "8f75a98219a5e973dc6bedc4b2ea024cb38d7b7b"
-translated_at = "2026-07-09T00:00:00Z"
+source_file_hash = "4a2aea105045383105dbce4552861293ffde9623"
+translated_at = "2026-07-09T21:00:00Z"
 +++
 
 # Core Architecture
