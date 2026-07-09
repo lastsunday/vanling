@@ -1,6 +1,7 @@
 projects:
   - 'apps/*'
   - 'libs/*'
+  - 'tools/*'
   - 'docs'
 
 vcs:

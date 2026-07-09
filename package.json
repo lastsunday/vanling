@@ -26,7 +26,7 @@
     "@eslint/compat": "2.1.0",
     "@eslint/js": "10.0.1",
     "@iconify/json": "2.2.477",
-    "@moonrepo/cli": "2.3.2",
+    "@moonrepo/cli": "2.4.2",
     "@playwright/test": "1.60.0",
     "@swc-node/register": "1.11.1",
     "@swc/cli": "0.8.1",
