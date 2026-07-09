@@ -12,12 +12,12 @@ use rmcp::{
 use service::chobits::llm::ToolDef;
 use service::chobits::mcp::McpClient;
 
-pub struct ServerMcpClient {
+pub struct ExternalMcpClient {
     client: RunningService<RoleClient, InitializeRequestParams>,
     tools: Vec<ToolDef>,
 }
 
-impl ServerMcpClient {
+impl ExternalMcpClient {
     pub async fn new<T, E, A>(transport: T) -> anyhow::Result<Self>
     where
         T: IntoTransport<RoleClient, E, A>,
@@ -59,7 +59,7 @@ impl ServerMcpClient {
 }
 
 #[async_trait]
-impl McpClient for ServerMcpClient {
+impl McpClient for ExternalMcpClient {
     async fn get_tool(&self) -> Result<Vec<ToolDef>, AppError> {
         Ok(self.tools.clone())
     }

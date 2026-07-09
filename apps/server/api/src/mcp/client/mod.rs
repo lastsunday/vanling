@@ -1,17 +1,17 @@
+pub mod device;
 pub mod device_transport;
-pub mod rmcp_device;
-pub mod server;
+pub mod external;
 
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
 
-use server::ServerMcpClient;
+use external::ExternalMcpClient;
 
-pub async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {
+pub async fn create_external_mcp_client(uri: String) -> anyhow::Result<ExternalMcpClient> {
     let config = StreamableHttpClientTransportConfig::with_uri(uri);
     let transport = StreamableHttpClientTransport::from_config(config);
-    let mut server_mcp_client = ServerMcpClient::new(transport).await?;
-    server_mcp_client.init().await?;
-    Ok(server_mcp_client)
+    let mut external_mcp_client = ExternalMcpClient::new(transport).await?;
+    external_mcp_client.init().await?;
+    Ok(external_mcp_client)
 }

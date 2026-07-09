@@ -5,7 +5,7 @@ use api::{
         AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
         tts::TtsConfig, vad::VadConfig,
     },
-    mcp::client::server::ServerMcpClient,
+    mcp::client::external::ExternalMcpClient,
     setup_mcp,
     tts::TtsFactory,
     util::audio::pcm_decode,
@@ -77,14 +77,14 @@ pub async fn create_session() -> Result<
     let mcp_config = StreamableHttpClientTransportConfig::with_uri("/mcp");
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, mcp_config);
-    let mut server_client = ServerMcpClient::new(transport).await?;
-    server_client.init().await?;
+    let mut external_client = ExternalMcpClient::new(transport).await?;
+    external_client.init().await?;
     let session_id = gen_id();
     let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
     mcp_registry
         .lock()
         .await
-        .add_client(Arc::new(server_client))
+        .add_client(Arc::new(external_client))
         .await;
 
     let audio_config = Arc::new(AudioConfig {

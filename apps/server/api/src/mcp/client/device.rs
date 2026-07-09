@@ -11,11 +11,11 @@ use service::chobits::{llm::ToolDef, mcp::McpClient};
 
 use super::device_transport::DeviceMcpTransport;
 
-pub struct RmcpDeviceClient {
+pub struct DeviceMcpClient {
     service: RunningService<RoleClient, ()>,
 }
 
-impl RmcpDeviceClient {
+impl DeviceMcpClient {
     pub async fn new(transport: DeviceMcpTransport) -> Result<Self, AppError> {
         let service = ()
             .serve(transport)
@@ -30,7 +30,7 @@ impl RmcpDeviceClient {
 }
 
 #[async_trait]
-impl McpClient for RmcpDeviceClient {
+impl McpClient for DeviceMcpClient {
     async fn get_tool(&self) -> Result<Vec<ToolDef>, AppError> {
         let result = self
             .service

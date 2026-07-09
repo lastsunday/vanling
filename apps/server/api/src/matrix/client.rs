@@ -33,7 +33,7 @@ use crate::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    mcp::client::create_server_mcp_client,
+    mcp::client::create_external_mcp_client,
     tts::TtsFactory,
     vad::VadFactory,
     ws::default_listener::DefaultListener,
@@ -207,8 +207,8 @@ impl Bot {
             let uri_list = self.mcp_config.uri_list.as_ref();
             if let Some(uri_list) = uri_list {
                 for uri in uri_list {
-                    let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-                    match server_mcp_client {
+                    let external_mcp_client = create_external_mcp_client(uri.to_string()).await;
+                    match external_mcp_client {
                         Ok(server_mcp_client) => {
                             mcp_registry
                                 .lock()

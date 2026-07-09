@@ -1,6 +1,6 @@
 use anyhow::Context;
 use api::{
-    mcp::client::{device_transport::DeviceMcpTransport, rmcp_device::RmcpDeviceClient},
+    mcp::client::{device::DeviceMcpClient, device_transport::DeviceMcpTransport},
     setup_mcp,
 };
 use rmcp::{
@@ -25,7 +25,7 @@ use crate::common::router_client::RouterClient;
 
 #[tokio::test]
 #[traced_test]
-/// Validates DeviceMcpTransport + RmcpDeviceClient initialization handshake
+/// Validates DeviceMcpTransport + DeviceMcpClient initialization handshake
 /// through mock channels, verifying the rmcp protocol flow:
 ///   initialize → init response → initialized notification → client ready
 async fn test_device_mcp_transport_handshake() -> anyhow::Result<()> {
@@ -34,7 +34,7 @@ async fn test_device_mcp_transport_handshake() -> anyhow::Result<()> {
 
     let transport = DeviceMcpTransport::new(inbound_rx, outbound_tx, "test-session".into());
 
-    let client_handle = tokio::spawn(async move { RmcpDeviceClient::new(transport).await });
+    let client_handle = tokio::spawn(async move { DeviceMcpClient::new(transport).await });
 
     // ---- Step 1: Receive "initialize" request ----
     let msg = outbound_rx

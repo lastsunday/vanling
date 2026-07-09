@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::config::mcp::McpConfig;
 use crate::mcp::client::{
-    create_server_mcp_client, device_transport::DeviceMcpTransport, rmcp_device::RmcpDeviceClient,
+    create_external_mcp_client, device::DeviceMcpClient, device_transport::DeviceMcpTransport,
 };
 use crate::ws::filter::{FilterAction, FilterCtx, InputFilter};
 
@@ -29,8 +29,8 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
 
     if let Some(uri_list) = &mcp_config.uri_list {
         for uri in uri_list {
-            let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-            match server_mcp_client {
+            let external_mcp_client = create_external_mcp_client(uri.to_string()).await;
+            match external_mcp_client {
                 Ok(client) => {
                     registry.lock().await.add_client(Arc::new(client)).await;
                 }
@@ -50,7 +50,7 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
     let mcp_session_id = session_id.clone();
     let transport = DeviceMcpTransport::new(mcp_input_rx, mcp_output_tx, mcp_session_id.clone());
     tokio::spawn(async move {
-        match RmcpDeviceClient::new(transport).await {
+        match DeviceMcpClient::new(transport).await {
             Ok(client) => {
                 let client: Arc<dyn service::chobits::mcp::McpClient> = Arc::new(client);
                 let mut reg = mcp_registry.lock().await;

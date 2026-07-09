@@ -2,7 +2,6 @@ pub mod default_listener;
 pub mod filter;
 pub mod input_sender;
 pub mod mcp_session;
-pub mod output_sender;
 pub mod protocol_translator;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 

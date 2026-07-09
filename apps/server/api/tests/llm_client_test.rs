@@ -2,7 +2,7 @@ use api::{
     chii::{ChatRequest, ChiiCoreBuilder, History},
     config::{LlmModel, llm::LlmConfig},
     llm::{Llm, LlmFactory},
-    mcp::client::server::ServerMcpClient,
+    mcp::client::external::ExternalMcpClient,
     setup_mcp,
 };
 use rmcp::transport::{
@@ -249,14 +249,14 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, config);
 
-    let mut server_client = ServerMcpClient::new(transport).await?;
-    server_client.init().await?;
+    let mut external_client = ExternalMcpClient::new(transport).await?;
+    external_client.init().await?;
 
     let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(framework::id::gen_id()))));
     mcp_registry
         .lock()
         .await
-        .add_client(Arc::new(server_client))
+        .add_client(Arc::new(external_client))
         .await;
 
     let client = ChiiCoreBuilder::new()
