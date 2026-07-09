@@ -165,6 +165,10 @@ impl Recorder {
         }
     }
 
+    pub fn entries_snapshot(&self) -> Vec<RecordEntry> {
+        self.entries.lock().map(|e| e.clone()).unwrap_or_default()
+    }
+
     pub fn push_entry(&self, mut entry: RecordEntry) {
         if matches!(entry.kind, EntryKind::Frame { .. }) {
             entry.seq = Some(self.next_seq.fetch_add(1, Ordering::Relaxed));

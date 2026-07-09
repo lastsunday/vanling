@@ -3,24 +3,23 @@ pub mod recorder;
 use async_trait::async_trait;
 use service::chobits::frame::{Frame, OutputMessage};
 
-pub(crate) struct FilterCtx {
-    #[expect(dead_code)]
+pub struct FilterCtx {
     pub session_id: String,
 }
 
-pub(crate) enum FilterAction<T> {
+pub enum FilterAction<T> {
     Continue(T),
     Consumed,
     Break,
 }
 
 #[async_trait]
-pub(crate) trait InputFilter: Send + Sync {
+pub trait InputFilter: Send + Sync {
     async fn process(&self, ctx: &FilterCtx, frame: Frame) -> FilterAction<Frame>;
 }
 
 #[async_trait]
-pub(crate) trait OutputFilter: Send + Sync {
+pub trait OutputFilter: Send + Sync {
     async fn process(&self, ctx: &FilterCtx, msg: OutputMessage) -> FilterAction<OutputMessage>;
 }
 
@@ -62,4 +61,4 @@ pub(crate) async fn run_output_filters(
     FilterStep::Pass(msg)
 }
 
-pub(crate) use recorder::*;
+pub use recorder::*;

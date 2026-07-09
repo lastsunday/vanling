@@ -16,7 +16,7 @@ struct InputRecorderState {
     voice_start_time: Option<DateTime<FixedOffset>>,
 }
 
-pub(crate) struct RecorderInputFilter {
+pub struct RecorderInputFilter {
     recorder: Option<Arc<Recorder>>,
     session_id: String,
     state: Mutex<InputRecorderState>,
@@ -25,7 +25,7 @@ pub(crate) struct RecorderInputFilter {
 }
 
 impl RecorderInputFilter {
-    pub(crate) fn new(recorder: Option<Arc<Recorder>>, session_id: String) -> Self {
+    pub fn new(recorder: Option<Arc<Recorder>>, session_id: String) -> Self {
         Self {
             recorder,
             session_id,
@@ -175,14 +175,14 @@ impl InputFilter for RecorderInputFilter {
     }
 }
 
-pub(crate) struct RecorderOutputFilter {
+pub struct RecorderOutputFilter {
     recorder: Option<Arc<Recorder>>,
     session_id: String,
     current_round_id: Mutex<Option<String>>,
 }
 
 impl RecorderOutputFilter {
-    pub(crate) fn new(recorder: Option<Arc<Recorder>>, session_id: String) -> Self {
+    pub fn new(recorder: Option<Arc<Recorder>>, session_id: String) -> Self {
         Self {
             recorder,
             session_id,
