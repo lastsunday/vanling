@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM ubuntu:24.04
+FROM --platform=$BUILDPLATFORM ubuntu:26.04
 RUN apt update && apt install wget bzip2 -y
 WORKDIR /app
 ARG TARGETOS TARGETARCH
