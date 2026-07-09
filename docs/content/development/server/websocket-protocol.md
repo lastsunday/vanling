@@ -302,7 +302,7 @@ type:stt
 type:llm
   session_id: string
   emotion: string           "happy"|"sad"|"neutral"|...
-  text: string              表情符号
+  text: string              LLM 输出文本片段（流式）
 
 type:tts, state:start
   session_id: string

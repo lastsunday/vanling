@@ -305,7 +305,7 @@ type:stt
 type:llm
   session_id: string
   emotion: string           "happy"|"sad"|"neutral"|...
-  text: string              Emoji
+  text: string              LLM output text chunk (streaming)
 
 type:tts, state:start
   session_id: string
