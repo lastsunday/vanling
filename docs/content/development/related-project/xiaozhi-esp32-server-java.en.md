@@ -2,7 +2,7 @@
 title = "xiaozhi-esp32-server-java"
 weight = 602
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "b84e562ecc847f60e47dbd990e781fb0a84be228"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

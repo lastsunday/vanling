@@ -2,7 +2,7 @@
 title = "ESP32"
 weight = 301
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "ec0ae0c0c6bfbba58c9ab563acb816bd0daf4504"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

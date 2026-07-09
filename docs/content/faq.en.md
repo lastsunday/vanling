@@ -1,7 +1,7 @@
 +++
 title = "FAQ"
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "06ef37006cbfedf49145c9b47634f20d64ab342e"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

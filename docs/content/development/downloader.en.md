@@ -2,7 +2,7 @@
 title = "Model Downloader"
 weight = 500
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "7e87efd0e1df1589acc52d340805fb74d801dac2"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

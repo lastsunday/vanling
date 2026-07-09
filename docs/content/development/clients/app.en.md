@@ -2,7 +2,7 @@
 title = "App Client"
 weight = 300
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "52d986968906e788ff51158861be1c854bff54dd"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

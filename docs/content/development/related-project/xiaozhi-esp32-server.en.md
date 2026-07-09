@@ -2,7 +2,7 @@
 title = "xiaozhi-esp32-server"
 weight = 601
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "ac2376222cb50129c624675c0a94539a4ea2e26f"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

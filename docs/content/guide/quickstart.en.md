@@ -2,7 +2,7 @@
 title = "Quick Start"
 weight = 100
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "86f88208c332b87ff7a3d0cf955ba8419ff62aa9"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

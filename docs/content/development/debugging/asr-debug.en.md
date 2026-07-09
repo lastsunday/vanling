@@ -2,21 +2,21 @@
 title = "ASR Speech Recognition"
 weight = 402
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "2e85692265de4868e01a100831f39cf6a3ec67cb"
+translated_at = "2026-07-09T00:00:00Z"
 +++
 
 # ASR Speech Recognition
 
 ## Architecture
 
-The ASR module lives at `apps/server/api/src/asr/`, using the **Factory singleton pattern** for model instance management, with **sherpa-onnx**'s `OfflineRecognizer` under the hood.
+The ASR module lives at `apps/server/api/src/asr/`, using the **Manager singleton pattern** for model instance management, with **sherpa-onnx**'s `OfflineRecognizer` under the hood.
 
-### Factory Pattern
+### Manager Pattern
 
 ```rust
-AsrFactory::init(config).await;                             // Initialize at application startup
-let mut model = AsrFactory::global().default().lock().await; // Get Arc<Mutex<Box<dyn Asr>>>
+AsrManager::init(config).await;                             // Initialize at application startup
+let mut model = AsrManager::global().default().lock().await; // Get Arc<Mutex<Box<dyn Asr>>>
 let result = model.transcribe(sample_rate, &samples).await;
 ```
 
@@ -170,14 +170,14 @@ cargo test --package api --test asr_test -- --ignored --nocapture
 2. **Implement model module**: `apps/server/api/src/asr/model/<model>/mod.rs`, implement the `Asr` trait
 3. **Register model**: Add `pub mod <model>` in `api/src/asr/model/mod.rs`
 4. **Add enum variant**: Add `<Model>` to the `AsrModel` enum in `api/src/config/mod.rs`
-5. **Register Factory**: Add match arm in `create_model()` in `api/src/asr/mod.rs`
+5. **Register Manager**: Add match arm in `create_model()` in `api/src/asr/mod.rs`
 6. **Add tests**: Add reference audio and loopback tests in `api/tests/asr_test.rs`
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `apps/server/api/src/asr/mod.rs` | Asr trait, Factory, RecognizerResult |
+| `apps/server/api/src/asr/mod.rs` | Asr trait, Manager, RecognizerResult |
 | `apps/server/api/src/asr/model/sense_voice/mod.rs` | SenseVoice model implementation |
 | `apps/server/api/src/asr/model/void/mod.rs` | Void no-op model |
 | `apps/server/api/src/config/asr.rs` | AsrConfig struct |

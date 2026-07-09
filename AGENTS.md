@@ -81,7 +81,7 @@
 | Rust 业务 | `migration/` → `entity/` → `api/` handler → `service/` 逻辑 → 注册路由 → 验证 |
 | AI 模型 | 实现 Trait → config 枚举变体 → manifest → `model/mod.rs` 注册 → Manager match arm → 测试 → 更新配置示例 |
 | 前端页面 | `routes/` `.tsx` → `data/` 类型 → `api/` 调用 → `components/` → i18n → typecheck |
-| 多语文档 | 改 `docs/src/` → AI 翻译 `docs/en/` → `moon run docs:check-translation` → 更新 `translation-status.json` |
+| 多语文档 | 改 `docs/` 下中文 `.md` → 提交 → 用该 commit hash 更新对应 `.en.md` 的 `source_file_hash`（`git hash-object <source.md>`） + `translated_at` → 再次提交 |
 
 ## 架构
 

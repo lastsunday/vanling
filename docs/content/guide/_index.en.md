@@ -3,7 +3,7 @@ title = "User Guide"
 weight = 10
 sort_by = "weight"
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "b832a36fb53955a1faf4a6acce63b1ac298cae0b"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

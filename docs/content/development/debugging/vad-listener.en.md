@@ -2,8 +2,8 @@
 title = "VAD and Listener"
 weight = 400
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "893ad9b97cb970d16ebc576c17f65218bef400a3"
+translated_at = "2026-07-09T00:00:00Z"
 +++
 
 # VAD and Listener
@@ -15,7 +15,7 @@ Voice Activity Detection (VAD) and the audio Listener are the starting points of
 - **VAD**: A pure decision engine — it only answers "does the current frame contain speech?" without managing any audio buffer
 - **Listener**: An audio pipeline manager responsible for Opus decoding, VAD window cycling, audio accumulation, and state management
 
-The VAD module lives at `apps/server/api/src/vad/` (Vad trait + VadFactory + model/), the Listener at `apps/server/api/src/ws/session/listener.rs`, and session recording at `apps/server/api/src/record/`.
+The VAD module lives at `apps/server/api/src/vad/` (Vad trait + VadManager + model/), the Listener at `apps/server/api/src/ws/session/listener.rs`, and session recording at `apps/server/api/src/record/`.
 
 ### Processing Flow
 
@@ -146,14 +146,14 @@ vad_min_silence_duration = 1000.0
 | `threshold` | `0.5` | VAD speech threshold; lower is more sensitive |
 | `min_silence_duration` | `1000` | Speech end detection: consecutive silence exceeding this value (ms) marks speech as finished |
 
-### Factory Pattern
+### Manager Pattern
 
 ```rust
 // Initialization (called once at application startup)
-VadFactory::init(config).await;
+VadManager::init(config).await;
 
 // Usage (create_model is a static method, no global() needed)
-let vad = VadFactory::create_model(&VadConfig { ... });  // Box<dyn Vad>
+let vad = VadManager::create_model(&VadConfig { ... });  // Box<dyn Vad>
 vad.accept_waveform(&samples)?;
 ```
 

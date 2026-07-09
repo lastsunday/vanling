@@ -1,7 +1,7 @@
 +++
 title = "Chobits"
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "8b7ab6a2a78cb24a16e6d796b90ef4c48582be79"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

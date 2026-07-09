@@ -3,7 +3,7 @@ title = "Related Projects"
 weight = 400
 sort_by = "weight"
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "db145425a0749c35e614f9e2ee747ba6499eb850"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

@@ -2,7 +2,7 @@
 title = "Resource Files"
 weight = 700
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "6e243d6559dd5a56f398b8b85a276225e5fb47d0"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

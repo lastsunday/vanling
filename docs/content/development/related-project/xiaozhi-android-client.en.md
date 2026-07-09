@@ -2,7 +2,7 @@
 title = "xiaozhi-android-client"
 weight = 603
 [extra]
-source_hash = "970b4ecbfeeba26d399924658e0e189c517479fb"
+source_file_hash = "f3ba64256ec0921e9c00976c55769a62f88c3d18"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 
