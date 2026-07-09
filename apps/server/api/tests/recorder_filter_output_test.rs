@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use api::record::recorder::{Dir, EntryKind, FrameDetail, Recorder};
+use api::record::recorder::{Dir, EntryKind, FrameDetail, RecordEntry, Recorder};
 use api::ws::filter::{FilterCtx, OutputFilter, RecorderOutputFilter};
 use framework::error::AppError;
 use framework::error::critical_code::CriticalErrorCode;
@@ -458,4 +458,68 @@ async fn test_entry_ordering() {
         ),
         "entry[3] should be AudioResult"
     );
+}
+
+#[tokio::test]
+async fn test_pre_round_frames_elapsed_us_non_negative() {
+    use entity::frame;
+    use migration::{Migrator, MigratorTrait};
+    use sea_orm::EntityTrait;
+
+    let conn = framework::database::establish_connection("sqlite::memory:")
+        .await
+        .expect("create memory db");
+    Migrator::up(&conn, None).await.expect("run migration");
+    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
+
+    // 1. start_round 之前记录帧
+    process(
+        &filter,
+        make_msg(None, FrameResult::HelloResult(HelloMessage::default())),
+    )
+    .await;
+    recorder.push_entry(RecordEntry {
+        received_at: chrono::Local::now().fixed_offset(),
+        seq: None,
+        kind: EntryKind::Frame {
+            dir: Dir::Input,
+            detail: FrameDetail::ListenStart,
+            data: None,
+            session_id: Some("test".into()),
+        },
+    });
+
+    // 2. 开始并结束一轮
+    let rid = "round-1";
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::STTResult(SttMessage::new(None, Some("hi".into()))),
+        ),
+    )
+    .await;
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Stop), None)),
+        ),
+    )
+    .await;
+
+    // 3. 验证 DB 中所有 elapsed_us >= 0
+    let frames = frame::Entity::find().all(&conn).await.unwrap();
+    assert!(!frames.is_empty(), "frames should have been flushed");
+    for f in &frames {
+        assert!(
+            f.elapsed_us.map_or(true, |v| v >= 0),
+            "frame seq={} dir={} detail={:?} has negative elapsed_us={:?}",
+            f.seq,
+            f.dir,
+            f.detail,
+            f.elapsed_us,
+        );
+    }
 }

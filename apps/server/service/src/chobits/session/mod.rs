@@ -327,6 +327,10 @@ impl Session {
             }
             Frame::Abort(_) => {
                 tracing::debug!(session_id = %self.id, "abort received");
+                if self.running_round.is_some() {
+                    self.epoch += 1;
+                    self.stop_round(RoundStopReason::BargeIn).await;
+                }
                 return;
             }
             Frame::Ping { .. } | Frame::Pong { .. } => return,

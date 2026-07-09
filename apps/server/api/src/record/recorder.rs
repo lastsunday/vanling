@@ -325,7 +325,8 @@ impl Recorder {
 
         for entry in entries {
             let elapsed_us = round_info
-                .and_then(|info| (entry.received_at - info.started_at).num_microseconds());
+                .and_then(|info| (entry.received_at - info.started_at).num_microseconds())
+                .map(|v| v.max(0));
 
             match &entry.kind {
                 EntryKind::Frame {
