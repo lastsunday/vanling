@@ -4,7 +4,7 @@ use candle_core::{
 };
 use framework::err;
 use framework::error::{AppError, critical_code::CriticalErrorCode};
-use rig::completion::CompletionError;
+use rig_core::completion::CompletionError;
 
 use framework::prelude::error;
 

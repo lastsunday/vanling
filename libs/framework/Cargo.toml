@@ -45,7 +45,7 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 core_affinity = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
-tracing-core = "0.1"
+tracing-core = { workspace = true }
 parking_lot = { workspace = true, features = ["deadlock_detection"] }
 backtrace = { workspace = true }
 arrayvec = { workspace = true }

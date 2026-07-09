@@ -99,7 +99,7 @@ earshot = { workspace = true }
 # vad end
 # tts start
 rubato = { workspace = true }
-ebur128 = "0.1"
+ebur128 = { workspace = true }
 # tts end
 # mcp start
 rmcp = { workspace = true, features = [
@@ -114,7 +114,7 @@ rmcp = { workspace = true, features = [
 ruma = { workspace = true, features = ["client-api-c", "rand"] }
 ruma-client = { workspace = true, features = [
   "client-api",
-  "reqwest-rustls-webpki-roots",
+  "reqwest-rustls",
 ] }
 # matrix end
 

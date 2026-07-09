@@ -8,8 +8,5 @@
     "typecheck": "tsc --noEmit --project tsconfig.app.json",
     "preview": "vite preview"
   },
-  "dependencies": {
-    "@tabler/icons-react": "^3.44.0",
-    "wavesurfer.js": "^7.12.8"
-  }
+  "dependencies": {}
 }

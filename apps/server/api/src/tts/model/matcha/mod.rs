@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use framework::error::AppError;
 use futures::Stream;
-use rubato::{FftFixedIn, Resampler};
+use rubato::audioadapter_buffers::direct::SequentialSliceOfVecs;
+use rubato::{Fft, FixedSync, Resampler};
 use service::chobits::tts::{Tts, TtsPacket};
 use sherpa_onnx::{
     GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsMatchaModelConfig,
@@ -277,30 +278,28 @@ impl Tts for TtsMatcha {
 
                 let (opus_pcm, _opus_sr) = if pcm_sample_rate != encode_sr as i32 {
                     let chunk_size = 4096.min(pcm_samples.len());
-                    let mut resampler = FftFixedIn::<f32>::new(
+                    let mut resampler = Fft::<f32>::new(
                         pcm_sample_rate as usize,
                         encode_sr as usize,
                         chunk_size,
+                        2,
                         1,
-                        1,
+                        FixedSync::Input,
                     )
                     .expect("Failed to create resampler");
-                    let mut all_output = Vec::new();
-                    for chunk in pcm_samples.chunks(chunk_size) {
-                        let out = if chunk.len() < chunk_size {
-                            resampler
-                                .process_partial(Some(&[chunk][..]), None)
-                                .expect("Resampling failed")
-                        } else {
-                            resampler
-                                .process(&[chunk], None)
-                                .expect("Resampling failed")
-                        };
-                        all_output.extend_from_slice(&out[0]);
-                    }
-                    if let Ok(tail) = resampler.process_partial(None::<&[&[f32]]>, None) {
-                        all_output.extend_from_slice(&tail[0]);
-                    }
+                    let input_frames = pcm_samples.len();
+                    let input_data = vec![pcm_samples.clone()];
+                    let input = SequentialSliceOfVecs::new(&input_data, 1, input_frames)
+                        .expect("Failed to create input adapter");
+                    let output_len = resampler.process_all_needed_output_len(input_frames);
+                    let mut output_data = vec![vec![0.0f32; output_len]; 1];
+                    let mut output =
+                        SequentialSliceOfVecs::new_mut(&mut output_data, 1, output_len)
+                            .expect("Failed to create output adapter");
+                    let (_, nbr_out) = resampler
+                        .process_all_into_buffer(&input, &mut output, input_frames, None)
+                        .expect("Resampling failed");
+                    let all_output = output_data[0][..nbr_out].to_vec();
                     (all_output, encode_sr as i32)
                 } else {
                     (pcm_samples.clone(), pcm_sample_rate)

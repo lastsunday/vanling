@@ -304,34 +304,32 @@ pub fn collect_rule_fsts(dir: &std::path::Path) -> Option<String> {
 /// Resample → Opus encode → Opus decode → return decoded PCM at `encode_sr`.
 pub fn opus_pipeline(samples: &[f32], sample_rate: i32, encode_sr: u32) -> Vec<f32> {
     use rubato::Resampler;
+    use rubato::audioadapter_buffers::direct::SequentialSliceOfVecs;
     let channels = 1_usize;
     let chunk_size = 4096.min(samples.len());
 
     let (pcm, sr) = if sample_rate as u32 != encode_sr {
-        let mut resampler = rubato::FftFixedIn::<f32>::new(
+        let mut resampler = rubato::Fft::<f32>::new(
             sample_rate as usize,
             encode_sr as usize,
             chunk_size,
+            2,
             1,
-            1,
+            rubato::FixedSync::Input,
         )
         .expect("Failed to create resampler");
-        let mut all_output = Vec::new();
-        for chunk in samples.chunks(chunk_size) {
-            let out = if chunk.len() < chunk_size {
-                resampler
-                    .process_partial(Some(&[chunk][..]), None)
-                    .expect("Resampling failed")
-            } else {
-                resampler
-                    .process(&[chunk], None)
-                    .expect("Resampling failed")
-            };
-            all_output.extend_from_slice(&out[0]);
-        }
-        if let Ok(tail) = resampler.process_partial(None::<&[&[f32]]>, None) {
-            all_output.extend_from_slice(&tail[0]);
-        }
+        let input_frames = samples.len();
+        let input_data = vec![samples.to_vec()];
+        let input = SequentialSliceOfVecs::new(&input_data, 1, input_frames)
+            .expect("Failed to create input adapter");
+        let output_len = resampler.process_all_needed_output_len(input_frames);
+        let mut output_data = vec![vec![0.0f32; output_len]; 1];
+        let mut output = SequentialSliceOfVecs::new_mut(&mut output_data, 1, output_len)
+            .expect("Failed to create output adapter");
+        let (_, nbr_out) = resampler
+            .process_all_into_buffer(&input, &mut output, input_frames, None)
+            .expect("Resampling failed");
+        let all_output = output_data[0][..nbr_out].to_vec();
         (all_output, encode_sr)
     } else {
         (samples.to_vec(), sample_rate as u32)

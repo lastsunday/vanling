@@ -45,7 +45,7 @@ clap = { workspace = true, features = [
   "usage",
 ] }
 # download start
-reqwest = { workspace = true, features = ["rustls-tls"] }
+reqwest = { workspace = true, features = ["rustls"] }
 include_dir = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
