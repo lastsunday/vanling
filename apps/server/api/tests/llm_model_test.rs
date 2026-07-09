@@ -1,22 +1,19 @@
+use std::pin::Pin;
 use std::sync::Arc;
 
 use api::{
+    chii::Splitter,
     common::ModelError,
     config::{LlmModel, llm::LlmConfig},
-    llm::{LlmFactory, chat::Chat},
+    llm::LlmManager,
 };
-use framework::id::gen_id;
-use rig::{
-    OneOrMany,
-    completion::{CompletionError, CompletionRequest, ToolDefinition},
-    message::{
-        AssistantContent, Message, Reasoning, Text, ToolCall, ToolResult, ToolResultContent,
-        UserContent,
-    },
-    streaming::{StreamedAssistantContent, StreamingCompletionResponse},
+use framework::error::AppError;
+use futures::{Stream, StreamExt};
+use service::chobits::llm::{
+    CompletionEvent, CompletionRequest, ContentPart, Message, Role, ToolDef,
 };
 use tokio::sync::mpsc::Sender;
-use tokio_stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 use tracing_test::traced_test;
 
@@ -24,8 +21,8 @@ use api::setup_mcp;
 use rmcp::{
     ServiceExt as _rmcp_ServiceExt,
     model::{
-        CallToolRequestParams, ClientCapabilities, ClientInfo, Implementation,
-        PaginatedRequestParams, Tool,
+        CallToolRequestParams, ClientCapabilities, ContentBlock, Implementation,
+        InitializeRequestParams, PaginatedRequestParams, Tool,
     },
     transport::{
         StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
@@ -39,53 +36,49 @@ use common::{setup_database, tear_down};
 use crate::common::router_client::RouterClient;
 
 fn create_llm_config() -> LlmConfig {
+    let model_path = crate::common::tts::ws_root()
+        .join("data/llm/model/qwen3/0.6b/")
+        .to_string_lossy()
+        .into_owned();
     LlmConfig {
         model: Some(LlmModel::Qwen3),
-        path: Some(String::from("data/llm/model/unsloth/Qwen3-1.7B-GGUF/")),
+        path: Some(model_path),
+        variant: None,
     }
 }
 
 #[tokio::test]
 #[traced_test]
-/// cargo test --test llm_model_test -- test_llm_model_echo --nocapture
 async fn test_llm_model_echo() -> anyhow::Result<()> {
-    let model = LlmFactory::create_model(&LlmConfig {
+    let model = LlmManager::create_model(&LlmConfig {
         model: Some(LlmModel::Echo),
         ..Default::default()
     });
-    let chat_history = OneOrMany::<Message>::one(Message::User {
-        content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-            text: String::from("Hello"),
-        })),
-    });
     let request = CompletionRequest {
         preamble: None,
-        chat_history: chat_history.clone(),
-        documents: vec![],
+        messages: vec![Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text("Hello".to_string())],
+        }],
         tools: vec![],
         temperature: None,
         max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
     };
-    let mut response = model.stream(request).await?;
-    let response = response.next().await;
-    let response = response.expect("has value")?;
-    match response {
-        StreamedAssistantContent::Text(text) => {
-            assert_eq!("Hello", text.text);
-        }
-        _ => {
-            panic!("assistant content not text")
-        }
-    }
+    let cancel = CancellationToken::new();
+    let mut stream = model.stream(request, cancel).await;
+    let event = stream.next().await;
+    let event = event.expect("has value")?;
+    let msg = match event {
+        CompletionEvent::Text(text) => text,
+        _ => panic!("expected Text event, got {:?}", event),
+    };
+    assert_eq!("Hello", msg);
     Ok(())
 }
 
 #[tokio::test]
 #[traced_test]
 #[ignore]
-/// cargo test --test llm_model_test -- test_chat_server_mcp --ignored --nocapture
 async fn test_chat_server_mcp() -> anyhow::Result<()> {
     test_chat_mcp(r#"Calculate the sum of 24.5 and 17.3 using the calculator service"#).await
 }
@@ -97,44 +90,30 @@ async fn test_chat_mcp(text: &str) -> anyhow::Result<()> {
     let router = setup_mcp(router, state.clone(), ct.child_token())
         .split_for_parts()
         .0;
-    let config = StreamableHttpClientTransportConfig {
-        uri: "/mcp".into(),
-        ..Default::default()
-    };
+    let config = StreamableHttpClientTransportConfig::with_uri("/mcp");
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, config);
-    let client_info = ClientInfo {
-        meta: None,
-        protocol_version: Default::default(),
-        capabilities: ClientCapabilities::default(),
-        client_info: Implementation {
-            name: "test sse client".to_string(),
-            title: None,
-            version: "0.0.1".to_string(),
-            website_url: None,
-            icons: None,
-            description: None,
-        },
-    };
+    let client_info = InitializeRequestParams::new(
+        ClientCapabilities::default(),
+        Implementation::new("test sse client", "0.0.1"),
+    );
     let client = client_info.serve(transport).await.inspect_err(|e| {
         tracing::error!("client error: {:?}", e);
     })?;
-    // Initialize
     let server_info = client.peer_info();
     tracing::info!("Connected to server: {server_info:#?}");
 
     let mut tools = vec![];
     let mut cursor = None;
     loop {
-        // List tools
         let tools_result = client
-            .list_tools(Some(PaginatedRequestParams { meta: None, cursor }))
+            .list_tools(Some(PaginatedRequestParams::default().with_cursor(cursor)))
             .await?;
         for tool in tools_result.tools {
-            tools.push(ToolDefinition {
+            tools.push(ToolDef {
                 name: tool.name.to_string(),
                 description: tool.description.unwrap_or_default().to_string(),
-                parameters: serde_json::to_value(tool.input_schema)?,
+                input_schema: serde_json::to_value(tool.input_schema)?,
             });
         }
         if let Some(next_cursor) = tools_result.next_cursor {
@@ -214,260 +193,154 @@ async fn test_chat_mcp(text: &str) -> anyhow::Result<()> {
 
     let device_list_tool: Vec<Tool> = serde_json::from_str(device_mcp_tools_list_response).unwrap();
     for tool in device_list_tool {
-        tools.push(ToolDefinition {
+        tools.push(ToolDef {
             name: tool.name.to_string(),
             description: tool.description.unwrap_or_default().to_string(),
-            parameters: serde_json::to_value(tool.input_schema)?,
+            input_schema: serde_json::to_value(tool.input_schema)?,
         });
     }
     tracing::info!("{:?}", tools);
     let config = create_llm_config();
-    LlmFactory::init(Arc::new(config.clone())).await;
-    let model = LlmFactory::create_model(&config);
+    LlmManager::init(Arc::new(config.clone())).await;
+    let model = LlmManager::create_model(&config);
 
     let mut has_next_step = true;
-
     let system_prompt = "".to_string();
-    let mut chat_history = OneOrMany::<Message>::one(Message::User {
-        content: OneOrMany::<UserContent>::one(UserContent::Text(Text {
-            text: text.to_string(),
-        })),
-    });
+    let mut messages = vec![Message {
+        role: Role::User,
+        parts: vec![ContentPart::Text(text.to_string())],
+    }];
+
+    let cancel = tokio_util::sync::CancellationToken::new();
 
     while has_next_step {
         let request = CompletionRequest {
             preamble: Some(system_prompt.clone()),
-            chat_history: chat_history.clone(),
-            documents: vec![],
+            messages: messages.clone(),
             tools: tools.clone(),
             temperature: Some(0.8),
             max_tokens: Some(999),
-            tool_choice: None,
-            additional_params: None,
         };
-        let response = model.stream(request).await;
+        let stream = model.stream(request, cancel.child_token()).await;
 
-        let messages = handle_response(response, None).await?;
+        let new_messages = handle_response(stream, None).await?;
         has_next_step = false;
-        for message in &messages {
-            chat_history.push(message.clone());
-            match message {
-                Message::User { .. } => {
-                    //skip
-                }
-                Message::Assistant { id: _id, content } => {
-                    for item in content.iter() {
-                        match item {
-                            AssistantContent::ToolCall(ToolCall {
-                                id,
-                                call_id,
-                                function,
-                                signature: _signature,
-                                additional_params: _additional_params,
-                            }) => {
-                                let function_json_text = serde_json::to_string(&function)?;
-                                let param: CallToolRequestParams =
-                                    serde_json::from_str(function_json_text.as_str())?;
-                                let result = client.call_tool(param).await?;
-                                let content = &result.content;
-                                let content = {
-                                    match &content.len() {
-                                        0 => {
-                                            panic!("call tool result must be not empty")
-                                        }
-                                        1 => {
-                                            let item = content.first().unwrap();
-                                            match &item.raw {
-                                                rmcp::model::RawContent::Text(raw_text_content) => {
-                                                    OneOrMany::<UserContent>::one(
-                                                        UserContent::ToolResult(ToolResult {
-                                                            id: id.clone(),
-                                                            call_id: call_id.clone(),
-                                                            content: OneOrMany::one(
-                                                                ToolResultContent::Text(Text {
-                                                                    text: raw_text_content
-                                                                        .text
-                                                                        .clone(),
-                                                                }),
-                                                            ),
-                                                        }),
-                                                    )
-                                                }
-                                                rmcp::model::RawContent::Image(..) => {
-                                                    // TODO:
-                                                    panic!(
-                                                        "tool call image result not supported yet"
-                                                    )
-                                                }
-                                                rmcp::model::RawContent::Resource(..) => {
-                                                    // TODO:
-                                                    panic!(
-                                                        "tool call resource result not supported yet"
-                                                    )
-                                                }
-                                                rmcp::model::RawContent::Audio(..) => {
-                                                    // TODO:
-                                                    panic!(
-                                                        "tool call audio result not supported yet"
-                                                    )
-                                                }
-                                                rmcp::model::RawContent::ResourceLink(..) => {
-                                                    // TODO:
-                                                    panic!(
-                                                        "tool call resource link result not supported yet"
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        _ => {
-                                            let items: Vec<UserContent> =
-                                        content.iter().map(|item| {
-                                                match &item.raw {
-                                                    rmcp::model::RawContent::Text(raw_text_content) => {
-                                                        UserContent::ToolResult(
-                                                            ToolResult {
-                                                                id: id.clone(),
-                                                                call_id:call_id.clone(),
-                                                                content: OneOrMany::one(
-                                                                    ToolResultContent::Text(Text {
-                                                                        text: raw_text_content.text.clone(),
-                                                                    }),
-                                                                ),
-                                                            },
-                                                        )
-                                                    }
-                                                    rmcp::model::RawContent::Image(..) => {
-                                                        // TODO:
-                                                        panic!("tool call image result not supported yet")
-                                                    }
-                                                    rmcp::model::RawContent::Resource(
-                                                        ..
-                                                    ) => {
-                                                        // TODO:
-                                                        panic!("tool call resource result not supported yet")
-                                                    }
-                                                    rmcp::model::RawContent::Audio(..) => {
-                                                        // TODO:
-                                                        panic!("tool call audio result not supported yet")
-                                                    }
-                                                    rmcp::model::RawContent::ResourceLink(..) => {
-                                                        // TODO:
-                                                        panic!(
-                                                            "tool call resource link result not supported yet"
-                                                        )
-                                                    }
-                                                }
-                                            })
-                                            .collect();
-                                            OneOrMany::<UserContent>::many(items).unwrap()
-                                        }
-                                    }
-                                };
-                                chat_history.push(Message::User { content });
-                                has_next_step = true;
+        for msg in &new_messages {
+            messages.push(msg.clone());
+            if matches!(msg.role, Role::Assistant) {
+                for part in &msg.parts {
+                    if let ContentPart::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    } = part
+                    {
+                        let params = match arguments.as_object().cloned() {
+                            Some(args) => {
+                                CallToolRequestParams::new(name.clone()).with_arguments(args)
+                            }
+                            None => CallToolRequestParams::new(name.clone()),
+                        };
+                        let result = client.call_tool(params).await?;
+                        let content = &result.content;
+                        let output = match content.len() {
+                            0 => panic!("call tool result must be not empty"),
+                            1 => {
+                                let item = content.first().unwrap();
+                                match item {
+                                    ContentBlock::Text(t) => t.text.clone(),
+                                    _ => panic!("unsupported tool result content type"),
+                                }
                             }
                             _ => {
-                                //skip
+                                let texts: Vec<String> = content
+                                    .iter()
+                                    .map(|item| match item {
+                                        ContentBlock::Text(t) => t.text.clone(),
+                                        _ => panic!("unsupported tool result content type"),
+                                    })
+                                    .collect();
+                                texts.join("\n")
                             }
-                        }
+                        };
+                        messages.push(Message {
+                            role: Role::User,
+                            parts: vec![ContentPart::ToolResult {
+                                id: id.clone(),
+                                output,
+                            }],
+                        });
+                        has_next_step = true;
                     }
                 }
             }
         }
-
-        info!("{:?}", chat_history);
+        info!("{:?}", messages);
     }
     let _ = &state.conn.close().await.unwrap();
-    tear_down(&container).await;
+    tear_down(container).await;
     Ok(())
 }
 
 async fn handle_response(
-    response: Result<
-        StreamingCompletionResponse<rig::providers::openai::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    >,
+    mut stream: Pin<Box<dyn Stream<Item = Result<CompletionEvent, AppError>> + Send>>,
     tx: Option<Sender<Result<String, ModelError>>>,
 ) -> anyhow::Result<Vec<Message>> {
     let mut messages: Vec<Message> = vec![];
     let mut text_collector = String::new();
-    let mut chat = Chat::new();
-    match response {
-        Ok(mut stream) => {
-            // TODO:
-            while let Some(value) = stream.next().await {
-                match value {
-                    Ok(StreamedAssistantContent::Text(text)) => {
-                        info!("{:?}", text);
-                        text_collector.push_str(&text.text);
-                        if let Some(tx) = &tx {
-                            let sentence_list = chat.accept_text(&text.text);
-                            let sentence_iter = sentence_list.iter();
-                            for sentence in sentence_iter {
-                                tx.send(Ok(sentence.to_string())).await?;
-                            }
-                        }
-                    }
-                    Ok(StreamedAssistantContent::Final(
-                        rig::providers::openai::StreamingCompletionResponse { usage },
-                    )) => {
-                        info!("{:?}", usage);
-                    }
-                    Ok(StreamedAssistantContent::ToolCall {
-                        tool_call,
-                        internal_call_id: _internal_call_id,
-                    }) => {
-                        info!("{:?}", tool_call.function);
-                        messages.push(Message::Assistant {
-                            id: Some(tool_call.id.clone()),
-                            content: OneOrMany::<AssistantContent>::one(
-                                AssistantContent::ToolCall(ToolCall {
-                                    id: tool_call.id.clone(),
-                                    call_id: tool_call.call_id.clone(),
-                                    function: tool_call.function,
-                                    signature: None,
-                                    additional_params: None,
-                                }),
-                            ),
-                        });
-                    }
-                    Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {
-                        // TODO:
-                    }
-                    Ok(StreamedAssistantContent::Reasoning(Reasoning {
-                        id: _id,
-                        reasoning,
-                        ..
-                    })) => {
-                        info!("reasoning -> {:?}", reasoning);
-                    }
-                    Ok(StreamedAssistantContent::ReasoningDelta { id: _id, reasoning }) => {
-                        info!("reasoning -> {:?}", reasoning);
-                    }
-                    Err(e) => {
-                        panic!("has completion error: {:?}", e);
+    let mut splitter = Splitter::new();
+    while let Some(value) = stream.next().await {
+        match value {
+            Ok(CompletionEvent::Text(text)) => {
+                info!("{:?}", text);
+                text_collector.push_str(&text);
+                if let Some(tx) = &tx {
+                    let sentence_list = splitter.accept_text(&text);
+                    for sentence in sentence_list {
+                        tx.send(Ok(sentence)).await?;
                     }
                 }
             }
-            if let Some(tx) = &tx {
-                let sentence_list = chat.accept_final();
-                let sentence_iter = sentence_list.iter();
-                for sentence in sentence_iter {
-                    tx.send(Ok(sentence.to_string())).await?;
-                }
+            Ok(CompletionEvent::Final { .. }) => {
+                info!("usage");
             }
-            if !text_collector.is_empty() {
-                messages.push(Message::Assistant {
-                    id: Some(gen_id()),
-                    content: OneOrMany::<AssistantContent>::one(AssistantContent::Text(Text {
-                        text: text_collector,
-                    })),
+            Ok(CompletionEvent::ToolCall {
+                id,
+                name,
+                arguments,
+            }) => {
+                info!("tool call: {}", name);
+                messages.push(Message {
+                    role: Role::Assistant,
+                    parts: vec![ContentPart::ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    }],
                 });
             }
-            Ok(messages)
-        }
-        Err(_e) => {
-            panic!("has completion error");
+            Ok(CompletionEvent::Reasoning(r)) => {
+                info!("reasoning -> {:?}", r);
+            }
+            Ok(CompletionEvent::Error(e)) => {
+                panic!("completion error: {:?}", e);
+            }
+            Err(e) => {
+                panic!("has completion error: {:?}", e);
+            }
         }
     }
+    if let Some(tx) = &tx {
+        let sentence_list = splitter.accept_final();
+        for sentence in sentence_list {
+            tx.send(Ok(sentence)).await?;
+        }
+    }
+    if !text_collector.is_empty() {
+        messages.push(Message {
+            role: Role::Assistant,
+            parts: vec![ContentPart::Text(text_collector)],
+        });
+    }
+    Ok(messages)
 }

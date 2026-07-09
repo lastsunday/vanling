@@ -15,53 +15,89 @@ use migration::MigratorTrait;
 use serde_json::Value;
 use std::{str::FromStr, sync::Arc};
 use testcontainers::ContainerAsync;
+use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 use tower::ServiceExt;
 
+pub mod asr;
 pub mod router_client;
+pub mod tts;
+pub mod vad;
 
 #[allow(dead_code)]
 pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
-    // postgres
-    // let container = postgres::Postgres::default().start().await.unwrap();
-    // let host_port = container.get_host_port_ipv4(5432).await.unwrap();
-    // let database_url = &format!("postgres://postgres:postgres@127.0.0.1:{host_port}/postgres");
-
-    // sqlite
-    let container = None;
-    let database_url = &"sqlite::memory:";
-    let conn: sea_orm::DatabaseConnection = framework::database::establish_connection(database_url)
-        .await
-        .unwrap();
-    migration::Migrator::up(&conn, None).await.unwrap();
-    let state = AppState {
-        conn,
-        session_config: Arc::new(SessionConfig {
-            ..Default::default()
-        }),
-        mcp_config: Arc::new(McpConfig {
-            ..Default::default()
-        }),
-        vad_config: Arc::new(VadConfig {
-            ..Default::default()
-        }),
-        audio_config: Arc::new(AudioConfig {
-            ..Default::default()
-        }),
-        auth_config: Arc::new(AuthConfig {
-            ..Default::default()
-        }),
-        ws_config: Arc::new(WsConfig {
-            ..Default::default()
-        }),
-    };
-    (container, state)
+    match std::env::var("TEST_DATABASE").as_deref() {
+        Ok("pg") => {
+            let container = Postgres::default().start().await.unwrap();
+            let host_port = container.get_host_port_ipv4(5432).await.unwrap();
+            let database_url =
+                format!("postgres://postgres:postgres@127.0.0.1:{host_port}/postgres");
+            let conn: sea_orm::DatabaseConnection =
+                framework::database::establish_connection(&database_url)
+                    .await
+                    .unwrap();
+            migration::Migrator::up(&conn, None).await.unwrap();
+            let state = AppState {
+                conn,
+                session_config: Arc::new(SessionConfig {
+                    ..Default::default()
+                }),
+                mcp_config: Arc::new(McpConfig {
+                    ..Default::default()
+                }),
+                vad_config: Arc::new(VadConfig {
+                    ..Default::default()
+                }),
+                audio_config: Arc::new(AudioConfig {
+                    ..Default::default()
+                }),
+                auth_config: Arc::new(AuthConfig {
+                    ..Default::default()
+                }),
+                ws_config: Arc::new(WsConfig {
+                    ..Default::default()
+                }),
+            };
+            (Some(container), state)
+        }
+        _ => {
+            let container = None;
+            let database_url = "sqlite::memory:";
+            let conn: sea_orm::DatabaseConnection =
+                framework::database::establish_connection(database_url)
+                    .await
+                    .unwrap();
+            migration::Migrator::up(&conn, None).await.unwrap();
+            let state = AppState {
+                conn,
+                session_config: Arc::new(SessionConfig {
+                    ..Default::default()
+                }),
+                mcp_config: Arc::new(McpConfig {
+                    ..Default::default()
+                }),
+                vad_config: Arc::new(VadConfig {
+                    ..Default::default()
+                }),
+                audio_config: Arc::new(AudioConfig {
+                    ..Default::default()
+                }),
+                auth_config: Arc::new(AuthConfig {
+                    ..Default::default()
+                }),
+                ws_config: Arc::new(WsConfig {
+                    ..Default::default()
+                }),
+            };
+            (container, state)
+        }
+    }
 }
 
 #[allow(dead_code)]
-pub async fn tear_down(container: &Option<ContainerAsync<Postgres>>) {
-    if container.is_some() {
-        container.as_ref().unwrap().stop().await.unwrap();
+pub async fn tear_down(container: Option<ContainerAsync<Postgres>>) {
+    if let Some(container) = container {
+        container.rm().await.unwrap();
     }
 }
 

@@ -9,7 +9,7 @@ export class AudioPlayer {
         // 音频参数
         this.SAMPLE_RATE = 16000;
         this.CHANNELS = 1;
-        this.FRAME_SIZE = 960;
+        this.FRAME_SIZE = 320;
         this.MIN_AUDIO_DURATION = 0.12;
 
         // 状态

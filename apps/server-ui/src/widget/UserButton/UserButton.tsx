@@ -1,5 +1,4 @@
 import { Avatar, Group, Text, UnstyledButton } from '@mantine/core';
-import classes from './UserButton.module.css';
 import { forwardRef } from 'react';
 
 export interface UserButtonProps extends React.ComponentPropsWithoutRef<'button'> {

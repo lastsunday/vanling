@@ -1,0 +1,25 @@
+base_url = "https://docs.chobits.ai"
+title = "Chobits"
+description = "Chobits 文档"
+default_language = "zh"
+build_search_index = false
+compile_sass = true
+generate_feeds = false
+
+slugify = { paths = "on", taxonomies = "on", anchors = "safe" }
+
+[markdown]
+
+[markdown.highlighting]
+theme = "catppuccin-latte"
+style = "class"
+
+[extra]
+repo_url = "https://github.com/anomalyco/chobits"
+
+[languages.en]
+build_search_index = false
+title = "Chobits"
+
+[languages.en.translations]
+description = "Chobits Documentation"

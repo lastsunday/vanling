@@ -12,7 +12,6 @@ use tracing_test::traced_test;
 
 #[tokio::test]
 #[traced_test]
-/// cargo test --test concurrent_test -- test_atomic --nocapture
 async fn test_atomic() {
     let count = Arc::new(AtomicI32::new(0));
     let count = count.clone();

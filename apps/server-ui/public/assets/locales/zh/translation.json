@@ -8,7 +8,8 @@
   "admin": {
     "title": "管理页面",
     "menu": {
-      "dashboard": "仪表板"
+      "dashboard": "仪表板",
+      "sessions": "会话列表"
     },
     "confirm_logout": "确认登出？",
     "password_not_equal": "密码不一致",
@@ -44,5 +45,55 @@
   "version": "版本",
   "version_unknown": "未知",
   "loading": "加载中",
-  "logout": "登出"
+  "logout": "登出",
+  "sessions": {
+    "title": "会话列表",
+    "search": "搜索会话 ID",
+    "search_btn": "搜索",
+    "date_from": "开始时间",
+    "date_to": "结束时间",
+    "sort_created_desc": "最新优先",
+    "sort_created_asc": "最早优先",
+    "turn_count": "共 {{count}} 轮",
+    "show_all": "显示全部 {{count}} 条",
+    "collapse": "收起",
+    "select_hint": "选择一个会话查看详情",
+    "detail": {
+      "title": "会话详情",
+      "session_id": "会话 ID",
+      "created": "创建时间",
+      "updated": "更新时间",
+      "turn_count": "共 {{count}} 轮",
+      "play": "播放",
+      "back": "返回列表"
+    },
+    "latency_waterfall": "处理耗时",
+    "bottleneck": "瓶颈",
+    "runtime": "运行时间",
+    "round_label": "第 {{number}} 轮",
+    "detail": {
+      "copy": "复制"
+    },
+    "step": {
+      "input_audio": "语音输入",
+      "asr": "语音识别",
+      "text": "文本输入",
+      "llm": "大模型",
+      "tts": "语音合成"
+    },
+    "table": {
+      "time": "时间",
+      "summary": "摘要",
+      "turns": "轮次",
+      "duration": "处理耗时",
+      "actions": "操作"
+    },
+    "timeline": {
+      "business": "业务事件",
+      "frames": "帧记录 ({{count}}条)",
+      "no_data": "无可播放数据",
+      "char_count": "{{count}}字",
+      "wave_sync": "波形同步"
+    }
+  }
 }

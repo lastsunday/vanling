@@ -1,0 +1,23 @@
+{
+  "config": {
+    "category": "llm",
+    "model": "qwen3"
+  },
+  "default_variant": "0.6b",
+  "variants": {
+    "0.6b": {
+      "files": [
+        {
+          "path": "llm/model/qwen3/0.6b/tokenizer.json",
+          "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+          "url": "https://huggingface.co/Qwen/Qwen3-0.6B/resolve/167b8104f88905a951069f5f95f9776908da5f68/tokenizer.json"
+        },
+        {
+          "path": "llm/model/qwen3/0.6b/model.gguf",
+          "sha256": "ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a",
+          "url": "https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/058b74ede71731e4a323a88d68da1386519ec6fc/Qwen3-0.6B-Q4_K_M.gguf"
+        }
+      ]
+    }
+  }
+}

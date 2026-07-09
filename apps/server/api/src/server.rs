@@ -6,6 +6,8 @@ use std::{
     time::SystemTime,
 };
 
+use std::{io, io::ErrorKind::Interrupted};
+
 use tokio::{runtime, sync::broadcast};
 
 use crate::{config, config::Config};
@@ -114,8 +116,6 @@ impl Server {
 
     #[inline]
     pub fn check_running(&self) -> Result<(), anyhow::Error> {
-        use std::{io, io::ErrorKind::Interrupted};
-
         self.running()
             .then_some(())
             .ok_or_else(|| io::Error::new(Interrupted, "Server shutting down"))

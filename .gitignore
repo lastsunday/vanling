@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+/target
 tmp
 out-tsc
 
@@ -38,12 +39,14 @@ testem.log
 .DS_Store
 Thumbs.db
 
-.nx/cache
-.nx/workspace-data
+.moon/cache
+.moon/workspace-data
 apps/extension/package-lock.json
+apps/server-ui-e2e/test-results
 
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+
 
 storybook-static
 
@@ -53,19 +56,31 @@ out
 test-output
 lua
 
-*.sqlite
+*.sqlite*
 application.yaml
-/data
-target
-apps/server/api/*.wav
-asr_result*.wav
-
-# FVM Version Cache
-.fvm/
 
 # book
 docs/book/
-/config
-/session
-/application.toml
-/logs
+
+
+.claude/worktrees
+
+
+application.toml
+application-dev.toml
+logs/
+/apps/server/data/
+/data/
+/apps/server-ui-e2e/playwright-report/
+/apps/server/api/test_data
+
+# Lix / Nix
+.nix-direnv/
+.direnv/
+result
+
+/test_data
+\#*
+
+# Zola build output
+docs/public/

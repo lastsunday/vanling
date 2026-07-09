@@ -65,6 +65,7 @@ class _HomePageState extends State<HomePage> {
     menuOpenSubscription = AppStore.eventBus.on<MenuOpenEvent>().listen((
       event,
     ) {
+      if (!mounted) return;
       final isDesktop = isDisplayDesktop(context);
       if (isDesktop) {
         desktopShowMenu = !desktopShowMenu;
@@ -76,6 +77,7 @@ class _HomePageState extends State<HomePage> {
     errorToastSubscription = AppStore.eventBus.on<ErrorToastEvent>().listen((
       event,
     ) {
+      if (!mounted) return;
       if (event.e is AuthorizedDeniedException) {
         UI.showError(AppLocalizations.of(context)!.pleaseLogin);
       } else if (event.e is ServiceException) {
@@ -167,6 +169,7 @@ class _HomePageState extends State<HomePage> {
       id = await RUpgrade.upgrade(bestItem!.fileURL!);
     }
     Future.delayed(const Duration(milliseconds: 0), () async {
+      if (!mounted) return;
       await showDialog(
         context: context,
         builder: (context) {
@@ -274,7 +277,7 @@ class _HomePageState extends State<HomePage> {
           AppStore.eventBus.fire(
             LoginEvent(
               loginSuccess: Provider.of<ConnectionProvider>(
-                context,
+                this.context,
                 listen: false,
               ).authorized,
             ),
@@ -293,7 +296,7 @@ class _HomePageState extends State<HomePage> {
           AppStore.eventBus.fire(
             LoginEvent(
               loginSuccess: Provider.of<ConnectionProvider>(
-                context,
+                this.context,
                 listen: false,
               ).authorized,
             ),

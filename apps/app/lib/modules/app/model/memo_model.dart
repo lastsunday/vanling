@@ -32,6 +32,6 @@ enum DisplayMode {
 
   final int value;
 
-  static getType(int value) =>
+  static DisplayMode getType(int value) =>
       DisplayMode.values.firstWhere((element) => element.value == value);
 }

@@ -1,0 +1,125 @@
+language: "rust"
+tags: ["backend"]
+
+tasks:
+  bump:
+    script: |
+      bash ../../scripts/bump.sh \
+        "chobits-server" \
+        "Cargo.toml" \
+        "apps/server/**" \
+        "apps/server-ui/**"
+    options:
+      runInCI: false
+
+  format:
+    command: "cargo fmt --check"
+
+  check:
+    command: "cargo check --package chobits-server"
+
+  build:
+    command: "cargo build --package chobits-server"
+    outputs: ["/target/debug/chobits-server"]
+    deps:
+      - ~:check
+
+  lint:
+    command: "cargo clippy --workspace -- -D warnings"
+    deps:
+      - ~:check
+
+  test-download-resources:
+    script: |
+      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet asr sense_voice default && \
+      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet tts matcha matcha-icefall-zh-en && \
+      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet llm qwen3 0.6b
+    deps:
+      - ~:build
+    options:
+      cache: false
+
+  test:
+    command: "cargo test --package chobits-server --package api"
+    deps:
+      - ~:build
+      - ~:test-download-resources
+
+  test-pg:
+    command: "cargo test --package chobits-server --package api"
+    env:
+      TEST_DATABASE: "pg"
+    deps:
+      - ~:build
+      - ~:test-download-resources
+
+  run:
+    command: "cargo run --package chobits-server -- --config=application.toml"
+    deps:
+      - ~:build
+    options:
+      persistent: true
+      cache: false
+
+  dev:
+    command: "cargo run --package chobits-server -- --config=application-dev.toml"
+    deps:
+      - ~:build
+    options:
+      persistent: true
+      cache: false
+
+  dev-minimal:
+    command: 'cargo run --package chobits-server -- -O "vad_model=''void''" -O "asr_model=''void''" -O "tts_model=''mute''" -O "llm_model=''echo''"'
+    deps:
+      - ~:build
+    options:
+      persistent: true
+      cache: false
+
+  dev-lite:
+    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''sensevoice''" -O "tts_model=''matchatts''" -O "llm_model=''echo''"'
+    deps:
+      - ~:build
+    options:
+      persistent: true
+      cache: false
+
+  downloader:
+    command: "cargo run --package chobits-server -- downloader"
+    deps:
+      - ~:build
+    options:
+      cache: false
+      runInCI: false
+
+  downloader-install:
+    command: "cargo run --package chobits-server -- downloader install --data-dir ../../data"
+    deps:
+      - ~:build
+    options:
+      cache: false
+      runInCI: false
+
+  sweep:
+    command: "cargo sweep --maxsize 20GB"
+    options:
+      runInCI: false
+
+  downloader-list:
+    command: "cargo run --package chobits-server -- downloader list"
+    deps:
+      - ~:build
+    options:
+      cache: false
+      runInCI: false
+
+  downloader-all-and-checksums:
+    script: |
+      cargo run --package chobits-server -- downloader install --all --data-dir ../../data && \
+      cargo run --package chobits-server -- downloader update-checksums --data-dir ../../data
+    deps:
+      - ~:build
+    options:
+      cache: false
+      runInCI: false

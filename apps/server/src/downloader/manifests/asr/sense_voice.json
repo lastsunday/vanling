@@ -1,0 +1,45 @@
+{
+  "config": {
+    "category": "asr",
+    "model": "sensevoice"
+  },
+  "default_variant": "default",
+  "variants": {
+    "default": {
+      "archives": [
+        {
+          "extract": [
+            {
+              "path": "model.int8.onnx",
+              "sha256": "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51",
+              "target": "model.int8.onnx"
+            },
+            {
+              "path": "tokens.txt",
+              "sha256": "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc",
+              "target": "tokens.txt"
+            },
+            {
+              "path": "test_wavs/zh.wav",
+              "sha256": "b77f1794fe374a0ba1ee1dc458bfaf9349496cbbfc32780c50ba3c5a7ad8e373",
+              "target": "zh.wav"
+            },
+            {
+              "path": "test_wavs/en.wav",
+              "sha256": "eb1eb008904465b74c304aad8342e8c7d3c6e61ffe9f66adcaca9cf0f76a93f4",
+              "target": "en.wav"
+            },
+            {
+              "path": "test_wavs/yue.wav",
+              "sha256": "0960b2db54ae202071d250e6462fbf74a3c863f0e3e7f01273e4939c996875a0",
+              "target": "yue.wav"
+            }
+          ],
+          "path": "asr/model/sense_voice/default/",
+          "sha256": "f6b2a72ebcb1ac7a764d4cfccd886e6bcb2a95c4657c2199d0ba95ed4b9ea71a",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2"
+        }
+      ]
+    }
+  }
+}

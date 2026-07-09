@@ -6,6 +6,7 @@ use rust_embed::Embed;
 #[derive(Embed)]
 #[folder = "dist"]
 #[include = "index.html"]
+#[allow_missing = true]
 struct IndexHtml;
 
 pub async fn index_handler(method: Method) -> impl IntoResponse {
@@ -19,6 +20,7 @@ pub async fn index_handler(method: Method) -> impl IntoResponse {
 
 #[derive(Embed)]
 #[folder = "dist/assets"]
+#[allow_missing = true]
 struct Assets;
 
 struct AssetsFile<T>(T);
@@ -42,7 +44,33 @@ pub async fn assets_handler(Path(path): Path<String>) -> impl IntoResponse {
 }
 
 #[derive(Embed)]
+#[folder = "dist/locales"]
+#[allow_missing = true]
+struct Locales;
+
+struct LocalesFile<T>(T);
+
+impl<T: AsRef<str>> IntoResponse for LocalesFile<T> {
+    fn into_response(self) -> axum::response::Response {
+        let path = self.0.as_ref();
+        match Locales::get(path) {
+            Some(file) => {
+                let mime = file.metadata.mimetype();
+                let body = file.data;
+                ([(header::CONTENT_TYPE, mime)], body).into_response()
+            }
+            None => (StatusCode::NOT_FOUND, "Not found").into_response(),
+        }
+    }
+}
+
+pub async fn locales_handler(Path(path): Path<String>) -> impl IntoResponse {
+    LocalesFile(path).into_response()
+}
+
+#[derive(Embed)]
 #[folder = "device/assets"]
+#[allow_missing = true]
 struct DeviceAssets;
 
 struct DeviceAssetsFile<T>(T);
@@ -67,6 +95,7 @@ pub async fn device_assets_handler(Path(path): Path<String>) -> impl IntoRespons
 
 #[derive(Embed)]
 #[folder = "dist/test"]
+#[allow_missing = true]
 struct Test;
 
 struct TestFile<T>(T);

@@ -19,6 +19,7 @@ export class AudioRecorder {
         this.visualizationRequest = null;
         this.recordingTimer = null;
         this.websocket = null;
+        this.frameSize = 320; // 20ms，在 start 时根据实际 sampleRate 更新
 
         // 回调函数
         this.onRecordingStart = null;
@@ -38,21 +39,25 @@ export class AudioRecorder {
     }
 
     // 初始化编码器
-    initEncoder() {
+    initEncoder(sampleRate = 16000) {
         if (!this.opusEncoder) {
-            this.opusEncoder = initOpusEncoder();
+            this.opusEncoder = initOpusEncoder(sampleRate);
+        } else if (this.opusEncoder.sampleRate !== sampleRate) {
+            // 采样率变化时重新创建编码器
+            this.opusEncoder.destroy();
+            this.opusEncoder = initOpusEncoder(sampleRate);
         }
         return this.opusEncoder;
     }
 
     // PCM处理器代码
-    getAudioProcessorCode() {
+    getAudioProcessorCode(frameSize) {
         return `
             class AudioRecorderProcessor extends AudioWorkletProcessor {
                 constructor() {
                     super();
                     this.buffers = [];
-                    this.frameSize = 960;
+                    this.frameSize = ${frameSize};
                     this.buffer = new Int16Array(this.frameSize);
                     this.bufferIndex = 0;
                     this.isRecording = false;
@@ -107,10 +112,12 @@ export class AudioRecorder {
     // 创建音频处理器
     async createAudioProcessor() {
         this.audioContext = this.getAudioContext();
+        const actualSampleRate = this.audioContext.sampleRate;
+        this.frameSize = Math.round(actualSampleRate * 20 / 1000); // 20ms 帧
 
         try {
             if (this.audioContext.audioWorklet) {
-                const blob = new Blob([this.getAudioProcessorCode()], { type: 'application/javascript' });
+                const blob = new Blob([this.getAudioProcessorCode(this.frameSize)], { type: 'application/javascript' });
                 const url = URL.createObjectURL(blob);
                 await this.audioContext.audioWorklet.addModule(url);
                 URL.revokeObjectURL(url);
@@ -181,11 +188,9 @@ export class AudioRecorder {
         newBuffer.set(buffer, this.pcmDataBuffer.length);
         this.pcmDataBuffer = newBuffer;
 
-        const samplesPerFrame = 960;
-
-        while (this.pcmDataBuffer.length >= samplesPerFrame) {
-            const frameData = this.pcmDataBuffer.slice(0, samplesPerFrame);
-            this.pcmDataBuffer = this.pcmDataBuffer.slice(samplesPerFrame);
+        while (this.pcmDataBuffer.length >= this.frameSize) {
+            const frameData = this.pcmDataBuffer.slice(0, this.frameSize);
+            this.pcmDataBuffer = this.pcmDataBuffer.slice(this.frameSize);
 
             this.encodeAndSendOpus(frameData);
         }
@@ -219,13 +224,12 @@ export class AudioRecorder {
                 }
             } else {
                 if (this.pcmDataBuffer.length > 0) {
-                    const samplesPerFrame = 960;
-                    if (this.pcmDataBuffer.length < samplesPerFrame) {
-                        const paddedBuffer = new Int16Array(samplesPerFrame);
+                    if (this.pcmDataBuffer.length < this.frameSize) {
+                        const paddedBuffer = new Int16Array(this.frameSize);
                         paddedBuffer.set(this.pcmDataBuffer);
                         this.encodeAndSendOpus(paddedBuffer);
                     } else {
-                        this.encodeAndSendOpus(this.pcmDataBuffer.slice(0, samplesPerFrame));
+                        this.encodeAndSendOpus(this.pcmDataBuffer.slice(0, this.frameSize));
                     }
                     this.pcmDataBuffer = new Int16Array(0);
                 }
@@ -258,11 +262,6 @@ export class AudioRecorder {
                 }
             }
 
-            if (!this.initEncoder()) {
-                log('无法启动录音: Opus编码器初始化失败', 'error');
-                return false;
-            }
-
             log('请至少录制1-2秒钟的音频，确保采集到足够数据', 'info');
 
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -278,6 +277,18 @@ export class AudioRecorder {
 
             if (this.audioContext.state === 'suspended') {
                 await this.audioContext.resume();
+            }
+
+            // 验证 AudioContext 实际采样率
+            const actualSampleRate = this.audioContext.sampleRate;
+            log(`AudioContext 采样率: ${actualSampleRate}Hz`, 'info');
+            if (actualSampleRate !== 16000) {
+                log(`警告: 浏览器不支持 16000Hz AudioContext，实际使用 ${actualSampleRate}Hz`, 'warning');
+            }
+
+            if (!this.initEncoder(actualSampleRate)) {
+                log('无法启动录音: Opus编码器初始化失败', 'error');
+                return false;
             }
 
             const processorResult = await this.createAudioProcessor();

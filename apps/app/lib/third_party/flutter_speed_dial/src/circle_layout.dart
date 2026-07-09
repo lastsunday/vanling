@@ -24,14 +24,13 @@ class CircleLayout extends StatelessWidget {
   /// * [radiusRatio] 用来调节子部件圆心与容器圆心的距离
   ///
   const CircleLayout({
-    Key? key,
+    super.key,
     required this.children,
     this.reverse = false,
     this.radiusRatio = 1.0,
     this.initAngle = 0,
   })  : assert(0.0 <= radiusRatio && radiusRatio <= 1.0),
-        assert(0 <= initAngle && initAngle <= 360),
-        super(key: key);
+        assert(0 <= initAngle && initAngle <= 360);
 
   @override
   Widget build(BuildContext context) {
@@ -86,8 +85,8 @@ class _RingDelegate extends MultiChildLayoutDelegate {
       // 缓存所有子部件尺寸 备用
       sizeCache.add(Size.copy(childSize));
 
-      double _radius = max(childSize.width, childSize.height) / 2;
-      largersRadius = _radius > largersRadius ? _radius : largersRadius;
+      double radius = max(childSize.width, childSize.height) / 2;
+      largersRadius = radius > largersRadius ? radius : largersRadius;
     }
     fatherRadius -= largersRadius;
 

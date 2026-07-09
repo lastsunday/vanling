@@ -2,9 +2,6 @@ use std::{collections::HashMap, error::Error, sync::Arc, time::Duration};
 
 use framework::id::gen_id;
 use futures_util::future::{join, join_all};
-use rmcp::transport::{
-    StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
-};
 use ruma::{
     OwnedRoomId, OwnedUserId, TransactionId, UserId,
     api::client::{
@@ -19,31 +16,28 @@ use ruma::{
     presence::PresenceState,
     serde::Raw,
 };
-use service::chobits::message::{
-    hello::HelloMessage,
-    listen::{ListenMessage, ListenMode, ListenState},
-    tts::TtsState,
+use service::chobits::{
+    frame::{Frame, FrameResult},
+    mcp::McpRegistry,
+    message::{hello::HelloMessage, tts::TtsState},
+    session::{AudioConfig as ServiceAudioConfig, SessionConfig as ServiceSessionConfig},
 };
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tracing::{error, info};
 
 use crate::{
-    asr::AsrFactory,
+    asr::AsrManager,
     config::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    llm::LlmFactory,
-    mcp::{
-        client::server::ServerMcpClient,
-        mcp_host::{McpHost, UnionMcpHost},
-    },
-    vad::VadFactory,
-    ws::{
-        frame::{Frame, FrameResult},
-        session::{Session, SessionBuilder, listener::DefaultListener},
-    },
+    mcp::client::create_external_mcp_client,
+    tts::TtsManager,
+    vad::VadManager,
+    ws::default_listener::DefaultListener,
+    {chii::ChiiCoreBuilder, llm::LlmManager},
 };
 
 pub async fn start(
@@ -65,7 +59,7 @@ pub async fn start(
     Ok(())
 }
 
-type HttpClient = ruma_client::http_client::HyperNativeTls;
+type HttpClient = ruma_client::http_client::Reqwest;
 type MatrixClient = ruma_client::Client<HttpClient>;
 
 /// The bot.
@@ -74,7 +68,7 @@ struct Bot {
     matrix_client: MatrixClient,
     /// The user ID of the Matrix account used by the bot.
     user_id: OwnedUserId,
-    session_map: Arc<Mutex<HashMap<String, Arc<Mutex<Session>>>>>,
+    session_map: Arc<Mutex<HashMap<String, tokio::sync::mpsc::UnboundedSender<Frame>>>>,
     session_config: Arc<SessionConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
@@ -209,14 +203,18 @@ impl Bot {
         if !session_map.contains_key(session_key) {
             // init session
             let id = gen_id();
-            let mut mcp_host = UnionMcpHost::new(Some(id.clone()));
+            let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(id.clone()))));
             let uri_list = self.mcp_config.uri_list.as_ref();
             if let Some(uri_list) = uri_list {
                 for uri in uri_list {
-                    let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-                    match server_mcp_client {
+                    let external_mcp_client = create_external_mcp_client(uri.to_string()).await;
+                    match external_mcp_client {
                         Ok(server_mcp_client) => {
-                            mcp_host.add_client(Box::new(server_mcp_client)).await;
+                            mcp_registry
+                                .lock()
+                                .await
+                                .add_client(Arc::new(server_mcp_client))
+                                .await;
                         }
                         Err(e) => {
                             error!("{:?}", e);
@@ -224,48 +222,74 @@ impl Bot {
                     }
                 }
             }
-            let mut session = SessionBuilder::new()
+
+            let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
+                ChiiCoreBuilder::new()
+                    .with_session_id(Some(id.clone()))
+                    .with_model(LlmManager::global().default())
+                    .with_mcp_registry(mcp_registry)
+                    .build(),
+            );
+
+            let tts: Arc<dyn service::chobits::tts::Tts> = TtsManager::global().default();
+
+            let session_config = ServiceSessionConfig {
+                system_prompt: self.session_config.system_prompt.clone(),
+                max_prompt_len: self.session_config.max_prompt_len,
+                silence_voice_timeout: self.session_config.silence_voice_timeout,
+                close_connection_no_voice_time: self.session_config.close_connection_no_voice_time,
+            };
+            let audio_config = ServiceAudioConfig {
+                output_sample_rate: self
+                    .audio_config
+                    .output_sample_rate
+                    .expect("output sample rate is empty"),
+                output_channel: self
+                    .audio_config
+                    .output_channel
+                    .expect("output channel is empty"),
+                output_frame_duration: self
+                    .audio_config
+                    .output_frame_duration
+                    .expect("output frame duration is empty"),
+            };
+
+            let session_ctx = service::chobits::session::SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
-                    Arc::new(Mutex::new(VadFactory::create_model(&self.vad_config))),
-                    AsrFactory::global().default().clone(),
-                    self.audio_config.clone(),
+                    VadManager::create_model(&self.vad_config),
+                    AsrManager::global().default().clone(),
                 )))
-                .with_model(LlmFactory::global().default())
-                .with_mcp_host(Arc::new(Mutex::new(mcp_host)))
-                .with_config(self.session_config.clone())
-                .with_audio_config(self.audio_config.clone())
+                .with_chii(chii)
+                .with_tts(tts)
+                .with_config(session_config)
+                .with_audio_config(audio_config)
                 .build();
-            session.start().await?;
-            let mut output = session.output_frame().await;
+            tokio::spawn(session_ctx.session.start());
+            let mut output = UnboundedReceiverStream::new(session_ctx.output_rx);
             // send hello frame
-            session
-                .accept_frame(&Frame::Hello(HelloMessage {
-                    ..Default::default()
-                }))
-                .await;
+            session_ctx.input_tx.send(Frame::Hello(HelloMessage {
+                ..Default::default()
+            }))?;
             if let Some(data) = output.next().await {
-                match data {
-                    Ok(frame_result) => {
-                        if let FrameResult::HelloResult(HelloMessage {
-                            message,
-                            version,
-                            transport,
-                            audio_params,
-                            features,
-                            session_id,
-                        }) = frame_result
-                        {
-                            // TODO: handle hello result
-                        } else {
-                            return Err(anyhow::anyhow!(format!(
-                                "not recv hello frame result,frame result = {:?}",
-                                frame_result
-                            ))
-                            .into());
-                        }
+                match data.payload {
+                    FrameResult::HelloResult(HelloMessage {
+                        message: _,
+                        version: _,
+                        transport: _,
+                        audio_params: _,
+                        features: _,
+                        session_id: _,
+                    }) => {
+                        // TODO: handle hello result
                     }
-                    Err(e) => return Err(anyhow::anyhow!(e.to_string()).into()),
+                    frame_result => {
+                        return Err(anyhow::anyhow!(format!(
+                            "not recv hello frame result,frame result = {:?}",
+                            frame_result
+                        ))
+                        .into());
+                    }
                 }
             }
             //start frame listener async task
@@ -274,89 +298,79 @@ impl Bot {
             tokio::spawn(async move {
                 let id = room_id_clone;
                 while let Some(data) = output.next().await {
-                    match data {
-                        Ok(frame_result) => match frame_result {
-                            FrameResult::HelloResult(hello_message) => todo!(),
-                            FrameResult::STTResult(stt_message) => {
-                                // TODO:
-                                info!("{:?}", stt_message);
-                            }
-                            FrameResult::LLMResult(llm_message) => {
-                                // TODO:
-                            }
-                            FrameResult::TTSResult(tts_message) => {
-                                match tts_message.state {
-                                    Some(state) => match state {
-                                        TtsState::Start => {
-                                            // TODO:
-                                        }
-                                        TtsState::SentenceStart => {
-                                            // TODO:
-                                            if let Some(text) = tts_message.text {
-                                                let text_content =
-                                                    RoomMessageEventContent::notice_plain(text);
-                                                let txn_id = TransactionId::new();
-                                                let req = send_message_event::v3::Request::new(
-                                                    id.to_owned(),
-                                                    txn_id,
-                                                    &text_content,
-                                                );
-                                                match req {
-                                                    Ok(req) => {
-                                                        // Do nothing if we can't send the message.
-                                                        let _ =
-                                                            matrix_client.send_request(req).await;
-                                                    }
-                                                    Err(_) => todo!(),
-                                                }
-                                            } else {
-                                                // TODO: text is none
-                                            }
-                                        }
-                                        TtsState::SentenceEnd => {
-                                            // TODO:
-                                        }
-                                        TtsState::Stop => {
-
-                                            // TODO:
-                                        }
-                                    },
-                                    None => {
+                    match data.payload {
+                        FrameResult::HelloResult(_hello_message) => todo!(),
+                        FrameResult::STTResult(stt_message) => {
+                            // TODO:
+                            info!("{:?}", stt_message);
+                        }
+                        FrameResult::LLMResult(_llm_message) => {
+                            // TODO:
+                        }
+                        FrameResult::TTSResult(tts_message) => {
+                            match tts_message.state {
+                                Some(state) => match state {
+                                    TtsState::Start => {
                                         // TODO:
                                     }
+                                    TtsState::SentenceStart => {
+                                        // TODO:
+                                        if let Some(text) = tts_message.text {
+                                            let text_content =
+                                                RoomMessageEventContent::notice_plain(text);
+                                            let txn_id = TransactionId::new();
+                                            let req = send_message_event::v3::Request::new(
+                                                id.to_owned(),
+                                                txn_id,
+                                                &text_content,
+                                            );
+                                            match req {
+                                                Ok(req) => {
+                                                    // Do nothing if we can't send the message.
+                                                    let _ = matrix_client.send_request(req).await;
+                                                }
+                                                Err(_) => todo!(),
+                                            }
+                                        } else {
+                                            // TODO: text is none
+                                        }
+                                    }
+                                    TtsState::SentenceEnd => {
+                                        // TODO:
+                                    }
+                                    TtsState::Stop => {
+
+                                        // TODO:
+                                    }
+                                },
+                                None => {
+                                    // TODO:
                                 }
                             }
-                            FrameResult::AudioResult(audio_message) => {
-                                // TODO:
-                            }
-                            FrameResult::CloseResult => {
-                                // TODO: shutdown session and clear session map
-                            }
-                            FrameResult::McpResult(mcp_request) => todo!(),
-                        },
-                        Err(e) => {
-                            // TODO: handle frame error
                         }
+                        FrameResult::AudioResult(_audio_message) => {
+                            // TODO:
+                        }
+                        FrameResult::CloseResult => {
+                            // TODO: shutdown session and clear session map
+                        }
+                        FrameResult::McpResult(_mcp_request) => {
+                            // Unreachable: MCP frames are routed through
+                            // DeviceMcpTransport channel, not session output_rx.
+                        }
+                        _ => {}
                     }
                 }
             });
             // TODO: add to session map
-            session_map.insert(session_key.to_string(), Arc::new(Mutex::new(session)));
+            session_map.insert(session_key.to_string(), session_ctx.input_tx);
         }
-        let session = session_map
+        let tx = session_map
             .get(session_key)
             .unwrap_or_else(|| panic!("session not exists for provided session key"))
             .clone();
         drop(session_map);
-        let mut session = session.lock().await;
-        session
-            .accept_frame(&Frame::Listen(ListenMessage {
-                state: ListenState::Detect,
-                mmod: Some(ListenMode::Manual),
-                text: Some(&t.body),
-                ..Default::default()
-            }))
-            .await;
+        let _ = tx.send(Frame::Input { text: t.body });
         Ok(())
     }
 
@@ -368,12 +382,4 @@ impl Bot {
             .await?;
         Ok(())
     }
-}
-
-async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {
-    let config = StreamableHttpClientTransportConfig::with_uri(uri);
-    let transport = StreamableHttpClientTransport::from_config(config);
-    let mut server_mcp_client = ServerMcpClient::new(transport).await?;
-    server_mcp_client.init().await?;
-    Ok(server_mcp_client)
 }

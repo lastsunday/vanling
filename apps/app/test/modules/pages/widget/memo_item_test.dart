@@ -10,7 +10,7 @@ void main() {
     // Create the widget by telling the tester to build it.
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
-      body: MemoItem(text: "T", dateTime: DateTime(2017, 9, 7, 17, 30)),
+      body: MemoItem(text: "T", dateTime: DateTime(2017, 9, 7, 17, 30), showDatetime: true),
     )));
     // Create the Finders.
     final textFinder = find.text('T');

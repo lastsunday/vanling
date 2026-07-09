@@ -45,142 +45,114 @@ export function checkOpusLoaded() {
 
 // 创建一个Opus编码器
 let opusEncoder = null;
-export function initOpusEncoder() {
-    try {
-        if (opusEncoder) {
-            return opusEncoder; // 已经初始化过
-        }
+export function initOpusEncoder(sampleRate = 16000) {
+    if (opusEncoder) {
+        return opusEncoder;
+    }
 
-        if (!window.ModuleInstance) {
-            log('无法创建Opus编码器：ModuleInstance不可用', 'error');
-            return;
-        }
+    if (!window.ModuleInstance) {
+        log('无法创建Opus编码器：ModuleInstance不可用', 'error');
+        return;
+    }
 
-        // 初始化一个Opus编码器
-        const mod = window.ModuleInstance;
-        const sampleRate = 16000; // 16kHz采样率
-        const channels = 1;       // 单声道
-        const application = 2048; // OPUS_APPLICATION_VOIP = 2048
+    const mod = window.ModuleInstance;
+    const channels = 1;
+    const application = 2048; // OPUS_APPLICATION_VOIP
+    const frameSize = Math.round(sampleRate * 20 / 1000); // 20ms帧
 
-        // 创建编码器
-        opusEncoder = {
-            channels: channels,
-            sampleRate: sampleRate,
-            frameSize: 960, // 60ms @ 16kHz = 60 * 16 = 960 samples
-            maxPacketSize: 4000, // 最大包大小
-            module: mod,
+    opusEncoder = {
+        channels,
+        sampleRate,
+        frameSize,
+        maxPacketSize: 4000,
+        module: mod,
+        bitrate: 24000, // 24kbps (之前16kbps，提高品质)
+        encoderPtr: null,
 
-            // 初始化编码器
-            init: function () {
-                try {
-                    // 获取编码器大小
-                    const encoderSize = mod._opus_encoder_get_size(this.channels);
-                    log(`Opus编码器大小: ${encoderSize}字节`, 'info');
-
-                    // 分配内存
-                    this.encoderPtr = mod._malloc(encoderSize);
-                    if (!this.encoderPtr) {
-                        throw new Error("无法分配编码器内存");
-                    }
-
-                    // 初始化编码器
-                    const err = mod._opus_encoder_init(
-                        this.encoderPtr,
-                        this.sampleRate,
-                        this.channels,
-                        application
-                    );
-
-                    if (err < 0) {
-                        throw new Error(`Opus编码器初始化失败: ${err}`);
-                    }
-
-                    // 设置位率 (16kbps)
-                    mod._opus_encoder_ctl(this.encoderPtr, 4002, 16000); // OPUS_SET_BITRATE
-
-                    // 设置复杂度 (0-10, 越高质量越好但CPU使用越多)
-                    mod._opus_encoder_ctl(this.encoderPtr, 4010, 5);     // OPUS_SET_COMPLEXITY
-
-                    // 设置使用DTX (不传输静音帧)
-                    mod._opus_encoder_ctl(this.encoderPtr, 4016, 1);     // OPUS_SET_DTX
-
-                    log("Opus编码器初始化成功", 'success');
-                    return true;
-                } catch (error) {
-                    if (this.encoderPtr) {
-                        mod._free(this.encoderPtr);
-                        this.encoderPtr = null;
-                    }
-                    log(`Opus编码器初始化失败: ${error.message}`, 'error');
-                    return false;
-                }
-            },
-
-            // 编码PCM数据为Opus
-            encode: function (pcmData) {
+        init() {
+            try {
+                const encoderSize = mod._opus_encoder_get_size(this.channels);
+                this.encoderPtr = mod._malloc(encoderSize);
                 if (!this.encoderPtr) {
-                    if (!this.init()) {
-                        return null;
-                    }
+                    throw new Error("无法分配编码器内存");
                 }
 
-                try {
-                    const mod = this.module;
+                const err = mod._opus_encoder_init(
+                    this.encoderPtr,
+                    this.sampleRate,
+                    this.channels,
+                    application
+                );
 
-                    // 为PCM数据分配内存
-                    const pcmPtr = mod._malloc(pcmData.length * 2); // 2字节/int16
-
-                    // 将PCM数据复制到HEAP
-                    for (let i = 0; i < pcmData.length; i++) {
-                        mod.HEAP16[(pcmPtr >> 1) + i] = pcmData[i];
-                    }
-
-                    // 为输出分配内存
-                    const outPtr = mod._malloc(this.maxPacketSize);
-
-                    // 进行编码
-                    const encodedLen = mod._opus_encode(
-                        this.encoderPtr,
-                        pcmPtr,
-                        this.frameSize,
-                        outPtr,
-                        this.maxPacketSize
-                    );
-
-                    if (encodedLen < 0) {
-                        throw new Error(`Opus编码失败: ${encodedLen}`);
-                    }
-
-                    // 复制编码后的数据
-                    const opusData = new Uint8Array(encodedLen);
-                    for (let i = 0; i < encodedLen; i++) {
-                        opusData[i] = mod.HEAPU8[outPtr + i];
-                    }
-
-                    // 释放内存
-                    mod._free(pcmPtr);
-                    mod._free(outPtr);
-
-                    return opusData;
-                } catch (error) {
-                    log(`Opus编码出错: ${error.message}`, 'error');
-                    return null;
+                if (err < 0) {
+                    throw new Error(`Opus编码器初始化失败: ${err}`);
                 }
-            },
 
-            // 销毁编码器
-            destroy: function () {
+                // 设置位率 (24kbps)
+                mod._opus_encoder_ctl(this.encoderPtr, 4002, this.bitrate);
+
+                // 设置复杂度
+                mod._opus_encoder_ctl(this.encoderPtr, 4010, 5);
+
+                // 禁用DTX — 避免静音→语音过渡时产生方波伪影
+                mod._opus_encoder_ctl(this.encoderPtr, 4016, 0);
+
+                return true;
+            } catch (error) {
                 if (this.encoderPtr) {
-                    this.module._free(this.encoderPtr);
+                    mod._free(this.encoderPtr);
                     this.encoderPtr = null;
                 }
+                log(`Opus编码器初始化失败: ${error.message}`, 'error');
+                return false;
             }
-        };
+        },
 
-        opusEncoder.init();
-        return opusEncoder;
-    } catch (error) {
-        log(`创建Opus编码器失败: ${error.message}`, 'error');
-        return false;
-    }
+        encode(pcmData) {
+            if (!this.encoderPtr && !this.init()) {
+                return null;
+            }
+
+            try {
+                const mod = this.module;
+                const pcmPtr = mod._malloc(pcmData.length * 2);
+                for (let i = 0; i < pcmData.length; i++) {
+                    mod.HEAP16[(pcmPtr >> 1) + i] = pcmData[i];
+                }
+
+                const outPtr = mod._malloc(this.maxPacketSize);
+                const encodedLen = mod._opus_encode(
+                    this.encoderPtr, pcmPtr, this.frameSize, outPtr, this.maxPacketSize,
+                );
+
+                mod._free(pcmPtr);
+
+                if (encodedLen < 0) {
+                    mod._free(outPtr);
+                    throw new Error(`Opus编码失败: ${encodedLen}`);
+                }
+
+                const opusData = new Uint8Array(encodedLen);
+                for (let i = 0; i < encodedLen; i++) {
+                    opusData[i] = mod.HEAPU8[outPtr + i];
+                }
+                mod._free(outPtr);
+
+                return opusData;
+            } catch (error) {
+                log(`Opus编码出错: ${error.message}`, 'error');
+                return null;
+            }
+        },
+
+        destroy() {
+            if (this.encoderPtr) {
+                this.module._free(this.encoderPtr);
+                this.encoderPtr = null;
+            }
+        },
+    };
+
+    opusEncoder.init();
+    return opusEncoder;
 }

@@ -1,6 +1,7 @@
 import 'virtual:uno.css'
 import '@mantine/core/styles.css';
-import '@mantine/notifications/styles.css'
+import '@mantine/notifications/styles.css';
+import '@mantine/dates/styles.css';
 import './i18n/config';
 import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'

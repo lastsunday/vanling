@@ -55,7 +55,7 @@ class AppSetting {
     if (_textScaleFactor == systemTextScaleFactorOption) {
       return useSentinel
           ? systemTextScaleFactorOption
-          : MediaQuery.of(context).textScaleFactor;
+          : MediaQuery.textScalerOf(context).scale(1.0);
     } else {
       return _textScaleFactor;
     }
@@ -150,7 +150,7 @@ class ApplyTextOptions extends StatelessWidget {
 
     Widget widget = MediaQuery(
       data: MediaQuery.of(context).copyWith(
-        textScaleFactor: textScaleFactor,
+        textScaler: TextScaler.linear(textScaleFactor),
       ),
       child: child,
     );

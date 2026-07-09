@@ -1,4 +1,5 @@
 use api::AppState;
+use api::config::ws::WsConfig;
 use api::setup_default;
 use api::setup_ota;
 use axum::body::Body;
@@ -95,7 +96,10 @@ async fn main() {
     TestWorld::cucumber()
         .before(|_feature, _rule, _scenario, world| {
             async move {
-                let (container, state) = setup_database().await;
+                let (container, mut state) = setup_database().await;
+                state.ws_config = Arc::new(WsConfig {
+                    schema: Some(String::from("ws")),
+                });
                 world.container = container;
                 world.state = Some(state.clone());
                 Jwt::init(Arc::new(AuthConfig {
@@ -118,8 +122,8 @@ async fn main() {
         })
         .after(|_feature, _rule, _scenario, _ev, world| {
             async move {
-                if let Some(world) = world.as_ref() {
-                    tear_down(&world.container).await;
+                if let Some(world) = world {
+                    tear_down(world.container.take()).await;
                 }
             }
             .boxed()

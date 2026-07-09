@@ -70,7 +70,7 @@ class LoginModel {
         .postWithConnection<LoginResult>('$baseUrl$_path', (data) {
       return LoginResult.fromJson(data!);
     }, data: data, headers: header);
-    var token = Token(loginResult.access_token, "", loginResult.expire_in, "",
+    var token = Token(loginResult.accessToken, "", loginResult.expireIn, "",
         GlobalTime.now().millisecondsSinceEpoch);
     return Future.value(token);
   }

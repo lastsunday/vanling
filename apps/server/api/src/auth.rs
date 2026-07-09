@@ -1,7 +1,6 @@
 use axum::{
     Extension, debug_handler,
     extract::{ConnectInfo, State},
-    http::HeaderMap,
 };
 use framework::{
     auth::{Jwt, Principal},
@@ -9,7 +8,8 @@ use framework::{
         ApiResponse,
         valid::{ValidJson, ValidQuery},
     },
-    error::ApiResult,
+    err,
+    error::AppResult,
     middleware::get_auth_layer,
     password::{hash, verify},
 };
@@ -19,7 +19,7 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use validator::Validate;
 
-use crate::{AppState, auth_error::*};
+use crate::AppState;
 use entity::{prelude::*, user};
 use sea_orm::{ActiveValue::Set, prelude::*};
 
@@ -62,16 +62,19 @@ pub struct LoginResult {
 async fn login(
     State(AppState { conn, .. }): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
     ValidJson(param): ValidJson<LoginParam>,
-) -> ApiResult<ApiResponse<LoginResult>> {
+) -> AppResult<ApiResponse<LoginResult>> {
     let user = User::find()
         .filter(user::Column::Account.eq(&param.account))
         .one(&conn)
         .await?
-        .ok_or_else(|| ERROR_AUTH_ACCOUNT_NOT_FOUND.gen_api_error(&headers))?;
+        .ok_or_else(|| {
+            tracing::warn!(account = %param.account, ip = %addr, "login failed: account not found");
+            err!(UserErrorCode::AccountNotFound)
+        })?;
     if !verify(&param.password, &user.password)? {
-        return Err(ERROR_AUTH_ACCOUNT_NOT_FOUND.gen_api_error(&headers));
+        tracing::warn!(account = %param.account, ip = %addr, "login failed: wrong password");
+        return Err(err!(UserErrorCode::AccountNotFound));
     }
     let principal = Principal {
         id: user.id,
@@ -113,9 +116,8 @@ pub struct AccessTokenParam {
 async fn access_token(
     State(AppState { auth_config, .. }): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
     ValidQuery(param): ValidQuery<AccessTokenParam>,
-) -> ApiResult<ApiResponse<LoginResult>> {
+) -> AppResult<ApiResponse<LoginResult>> {
     if !param.client_id.eq(auth_config
         .client_id
         .as_ref()
@@ -125,11 +127,16 @@ async fn access_token(
             .as_ref()
             .expect("auth client secret is empty"))
     {
-        return Err(ERROR_CLIENT_ID_OR_CLINET_SECRET_INVALID.gen_api_error(&headers));
+        tracing::warn!(ip = %addr, "token refresh failed: invalid client credentials");
+        return Err(err!(UserErrorCode::ClientIdOrSecretInvalid));
     } else if !param.grant_type.eq("refresh_token") {
-        return Err(ERROR_GRANT_TYPE_MUST_BE_REFERSH_TOKEN.gen_api_error(&headers));
+        tracing::warn!(ip = %addr, grant_type = %param.grant_type, "token refresh failed: invalid grant type");
+        return Err(err!(UserErrorCode::GrantTypeMustBeRefreshToken));
     } else {
-        let refresh_token_principal = Jwt::global().refresh_token_decode(&param.refresh_token)?;
+        let refresh_token_principal = Jwt::global().refresh_token_decode(&param.refresh_token).map_err(|e| {
+            tracing::warn!(ip = %addr, error = %e, "token refresh failed: invalid refresh token");
+            e
+        })?;
         let access_token = Jwt::global().access_token_encode(refresh_token_principal.clone())?;
         let expires_in = Jwt::global().access_token_expires_in();
         let refresh_token = Jwt::global().refresh_token_encode(refresh_token_principal.clone())?;
@@ -161,16 +168,16 @@ pub struct ResetPasswordParam {
 async fn reset_password(
     State(AppState { conn, .. }): State<AppState>,
     Extension(principal): Extension<Principal>,
-    headers: HeaderMap,
     ValidJson(param): ValidJson<ResetPasswordParam>,
-) -> ApiResult<ApiResponse<()>> {
+) -> AppResult<ApiResponse<()>> {
     let user = User::find()
         .filter(user::Column::Id.eq(principal.id.clone()))
         .one(&conn)
         .await?
-        .ok_or_else(|| ERROR_ACCOUNT_NOT_FOUND.gen_api_error(&headers))?;
+        .ok_or_else(|| err!(UserErrorCode::AccountNotFoundForReset))?;
     if !verify(&param.old_password, &user.password)? {
-        return Err(ERROR_OLD_PASSWORD_NOT_CORRECT.gen_api_error(&headers));
+        tracing::warn!(user_id = %principal.id, "password reset failed: old password incorrect");
+        return Err(err!(UserErrorCode::OldPasswordIncorrect));
     }
     let hash_password = hash(param.password.as_str())?;
     let model = user::ActiveModel {
@@ -186,6 +193,17 @@ async fn reset_password(
 #[utoipa::path(get, path = "/auth/user",tag=TAG,security(()),responses(
     (status=OK,body=ApiResponse<Principal>)
 ))]
-async fn user(Extension(principal): Extension<Principal>) -> ApiResult<ApiResponse<Principal>> {
+async fn user(Extension(principal): Extension<Principal>) -> AppResult<ApiResponse<Principal>> {
     Ok(ApiResponse::success(Some(principal)))
+}
+
+use framework::prelude::error;
+
+#[error]
+pub enum UserErrorCode {
+    AccountNotFound = 501001,
+    ClientIdOrSecretInvalid = 501002,
+    GrantTypeMustBeRefreshToken = 501003,
+    AccountNotFoundForReset = 501004,
+    OldPasswordIncorrect = 501005,
 }

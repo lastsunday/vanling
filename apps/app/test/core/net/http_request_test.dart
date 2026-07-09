@@ -130,7 +130,7 @@ void main() {
             cancelToken: null,
             onSendProgress: null,
             onReceiveProgress: null))
-        .thenThrow(DioError(
+        .thenThrow(DioException(
             requestOptions: RequestOptions(path: ''),
             response: Response(
                 requestOptions: RequestOptions(path: ''), statusCode: 304),
@@ -149,7 +149,7 @@ void main() {
             cancelToken: null,
             onSendProgress: null,
             onReceiveProgress: null))
-        .thenThrow(DioError(
+        .thenThrow(DioException(
             requestOptions: RequestOptions(path: ''),
             response: Response(
                 requestOptions: RequestOptions(path: ''), statusCode: 304),

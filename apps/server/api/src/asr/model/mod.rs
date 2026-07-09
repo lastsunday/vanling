@@ -1,3 +1,2 @@
-pub mod qwen3;
+pub mod sense_voice;
 pub mod void;
-pub mod whisper;

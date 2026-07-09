@@ -2,7 +2,6 @@ import {
   Badge,
   Container,
   Group,
-  Text,
   Title
 } from '@mantine/core';
 import { createFileRoute } from '@tanstack/react-router';
@@ -31,9 +30,6 @@ function HomeComponent() {
       <Title order={2} className={classes.title} ta="center" mt="sm">
         {t('title')}
       </Title>
-
-      <Text c="dimmed" className={classes.description} ta="center" mt="md">
-      </Text>
 
     </Container>
     <WebsiteFooter />

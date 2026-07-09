@@ -9,13 +9,12 @@ import 'package:image_picker/image_picker.dart';
 import 'utils.dart';
 
 class GalleryView extends StatefulWidget {
-  GalleryView(
-      {Key? key,
+  const GalleryView(
+      {super.key,
       required this.title,
       this.text,
       required this.onImage,
-      required this.onDetectorViewModeChanged})
-      : super(key: key);
+      required this.onDetectorViewModeChanged});
 
   final String title;
   final String? text;
@@ -128,6 +127,7 @@ class _GalleryViewState extends State<GalleryView> {
             key.contains('.webp'))
         .toList();
 
+    if (!mounted) return;
     showDialog(
         context: context,
         builder: (BuildContext context) {

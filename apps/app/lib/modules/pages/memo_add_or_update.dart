@@ -336,7 +336,7 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
                       const OutlineInputBorder(borderSide: BorderSide.none),
                   focusedBorder:
                       const OutlineInputBorder(borderSide: BorderSide.none),
-                  fillColor: Colors.grey.withOpacity(0.1),
+                  fillColor: Colors.grey.withValues(alpha: 0.1),
                   filled: true,
                   hintText: AppLocalizations.of(context)!.inputContentHint),
               style: Theme.of(context).textTheme.bodyMedium,

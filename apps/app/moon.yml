@@ -1,0 +1,31 @@
+language: "dart"
+tags: ["mobile", "flutter"]
+
+tasks:
+  analyze:
+    command: "flutter analyze"
+
+  format:
+    command: "dart format ."
+    options:
+      runInCI: false
+
+  test:
+    command: "flutter test"
+
+  build-android:
+    command: "flutter build apk"
+    options:
+      runInCI: false
+
+  build-ios:
+    command: "flutter build ios"
+    options:
+      runInCI: false
+
+  run:
+    command: "flutter run"
+    options:
+      persistent: true
+      cache: false
+      runInCI: false

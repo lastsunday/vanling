@@ -30,7 +30,7 @@ To make an self contained chatbot(self host all component,eg: llm,tts etc..), li
 
 You can find user guide documentation on [here](./docs/src/guide/README.md).
 
-You can find user development documentation on [here](/docs/src/development/README.md).
+You can find user development documentation on [here](./docs/src/development/README.md).
 
 ## Quick start
 
@@ -40,10 +40,10 @@ You can find user development documentation on [here](/docs/src/development/READ
 
 ```shell
 pnpm i
-pnpm exec nx run @chobits/server-ui:build
-./apps/server/script/download_model.sh
-# using cuda: pnpm nx run chobits-server:run --features cuda
-pnpm nx run chobits-server:run
+moon run server-ui:build
+chobits-server download
+# using cuda: moon run server:run --features cuda
+moon run server:run
 ```
 
 - Access home page <http://127.0.0.1:3000>
@@ -61,7 +61,7 @@ pnpm nx run chobits-server:run
 
 ```shell
 pnpm i
-pnpm exec nx run @chobits/server-ui:dev
+moon run server-ui:dev
 ```
 
 #### apps/app

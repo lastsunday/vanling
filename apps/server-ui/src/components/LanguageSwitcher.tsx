@@ -1,4 +1,4 @@
-import { Center, Menu } from "@mantine/core"
+import { Center, Menu, MenuTarget, MenuDropdown, MenuItem } from "@mantine/core"
 import classes from './LanguageSwitcher.module.css';
 import i18n from "@/i18n/config";
 import { useEffect, useState } from "react";
@@ -38,7 +38,7 @@ export function LanguageSwitcher() {
   }, [])
 
   return <Menu key="language" trigger="click-hover" withinPortal closeDelay={400}>
-    <Menu.Target>
+    <MenuTarget>
       <a
         className={classes.link}
         onClick={(event) => event.preventDefault()}
@@ -49,17 +49,17 @@ export function LanguageSwitcher() {
           {getSelectedLanguageDisplay(language)}
         </Center>
       </a>
-    </Menu.Target>
-    <Menu.Dropdown className={classes.menu}>
+    </MenuTarget>
+    <MenuDropdown className={classes.menu}>
       {
         items.map(item => {
-          return <Menu.Item key={item.language} onClick={() => {
+          return <MenuItem key={item.language} onClick={() => {
             changeLanguage(item.language);
           }} className={language == item.language ? classes.menuHighline : ''} >
             {item.label}
-          </Menu.Item>
+          </MenuItem>
         })
       }
-    </Menu.Dropdown>
+    </MenuDropdown>
   </Menu>
 } 

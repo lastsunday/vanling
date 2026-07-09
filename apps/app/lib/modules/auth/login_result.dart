@@ -5,11 +5,14 @@ part 'login_result.g.dart';
 @JsonSerializable()
 class LoginResult {
   LoginResult(
-      {required this.access_token, required this.expire_in, this.client_id});
+      {required this.accessToken, required this.expireIn, this.clientId});
 
-  String access_token;
-  int expire_in;
-  String? client_id;
+  @JsonKey(name: 'access_token')
+  String accessToken;
+  @JsonKey(name: 'expire_in')
+  int expireIn;
+  @JsonKey(name: 'client_id')
+  String? clientId;
   String? imToken;
 
   factory LoginResult.fromJson(Map<String, dynamic> json) =>

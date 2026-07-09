@@ -13,11 +13,10 @@ crate-type = [
 ]
 [dependencies]
 api = { path = "api" }
-framework = { path = "framework" }
+framework = { path = "../../libs/framework" }
 # log start
 tracing-subscriber = { workspace = true, features = ["env-filter", "chrono"] }
 color-eyre = { workspace = true }
-tracing-appender = { workspace = true }
 tracing-error = { workspace = true }
 # log end
 figment = { workspace = true }
@@ -25,6 +24,7 @@ anyhow = { workspace = true }
 toml = { workspace = true, features = ["parse"] }
 tokio = { workspace = true }
 tracing = { workspace = true }
+async-trait = { workspace = true }
 # llm start
 candle-core = { workspace = true }
 candle-transformers = { workspace = true }
@@ -34,7 +34,6 @@ intel-mkl-src = { workspace = true, features = [
   "mkl-static-lp64-iomp",
 ], optional = true }
 accelerate-src = { workspace = true, optional = true }
-aha = { workspace = true }
 # llm end
 clap = { workspace = true, features = [
   "derive",
@@ -45,6 +44,23 @@ clap = { workspace = true, features = [
   "string",
   "usage",
 ] }
+# download start
+reqwest = { workspace = true, features = ["rustls-tls"] }
+include_dir = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+futures-util = { workspace = true }
+jiff = { workspace = true }
+dialoguer = { workspace = true }
+indicatif = { workspace = true }
+tar = { workspace = true }
+bzip2 = { workspace = true }
+# download end
+
+[dev-dependencies]
+mockito = { workspace = true }
 
 [build-dependencies]
 # llm start
@@ -59,5 +75,4 @@ cuda = [
   "candle-nn/cuda",
   "candle-transformers/cuda",
   "dep:bindgen_cuda",
-  "aha/cuda",
 ]

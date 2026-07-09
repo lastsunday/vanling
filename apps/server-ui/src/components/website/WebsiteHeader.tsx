@@ -31,7 +31,6 @@ export function WebsiteHeader() {
               {t('menu.home')}
             </a>
             <LanguageSwitcher></LanguageSwitcher>
-            <Burger opened={drawerOpened} onClick={toggleDrawer} hiddenFrom="sm" />
           </Group>
 
           <Burger opened={drawerOpened} onClick={toggleDrawer} hiddenFrom="sm" />

@@ -9,7 +9,7 @@ import {
   TextInput,
   Title
 } from '@mantine/core';
-import { showNotification } from '@mantine/notifications';
+import { notifications } from '@mantine/notifications';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect, useRouter, useRouterState } from '@tanstack/react-router';
 import React, { useState } from 'react';
@@ -66,8 +66,7 @@ function RouteComponent() {
 
       await navigate({ to: search.redirect || fallback })
     } catch (error) {
-      console.error('Error logging in: ', error)
-      showNotification({
+      notifications.show({
         color: "red",
         title: t('error'),
         message: `${error}`

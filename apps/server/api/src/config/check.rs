@@ -1,4 +1,5 @@
 use figment::Figment;
+use std::path::Path;
 use tracing::{debug, error, info, warn};
 
 use super::DEPRECATED_KEYS;
@@ -13,50 +14,13 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
     warn_deprecated(config);
     warn_unknown_key(config);
 
-    // if config.sentry && config.sentry_endpoint.is_none() {
-    //     return Err!(Config(
-    //         "sentry_endpoint",
-    //         "Sentry cannot be enabled without an endpoint set"
-    //     ));
-    // }
-
-    // if cfg!(all(
-    //     feature = "hardened_malloc",
-    //     feature = "jemalloc",
-    //     not(target_env = "msvc")
-    // )) {
-    //     debug_warn!(
-    //         "hardened_malloc and jemalloc compile-time features are both enabled, this causes \
-    // jemalloc to be used."
-    //     );
-    // }
-    // if cfg!(not(unix)) && config.unix_socket_path.is_some() {
-    //     return Err!(Config(
-    //         "unix_socket_path",
-    //         "UNIX socket support is only available on *nix platforms. Please remove \
-    // 'unix_socket_path' from your config."
-    //     ));
-    // }
-
-    // if config.unix_socket_path.is_none() && config.get_bind_hosts().is_empty() {
-    //     return Err!(Config(
-    //         "address",
-    //         "No TCP addresses were specified to listen on"
-    //     ));
-    // }
-    //
-
-    // if config.unix_socket_path.is_none() && config.get_bind_ports().is_empty() {
     if config.get_bind_ports().is_empty() {
         return Err(anyhow::anyhow!(
             "config port : No ports were specified to listen on"
         ));
     }
 
-    // if config.unix_socket_path.is_none() {
     config.get_bind_addrs().iter().for_each(|addr| {
-        use std::path::Path;
-
         if addr.ip().is_loopback() {
             info!(
                 "Found loopback listening address {addr}, running checks if we're in a \

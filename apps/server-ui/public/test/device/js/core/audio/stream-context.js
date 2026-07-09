@@ -62,7 +62,7 @@ export class StreamingContext {
         return this.audioBufferQueue.length + this.pendingAudioBufferQueue.length;
     }
 
-    // 获取待播放样本数（转换为包数，每包960样本）
+    // 获取待播放样本数（转换为包数，每包320样本）
     getPendingPlayCount() {
         // 计算已在队列中的样本
         const queuedSamples = this.activeQueue.length + this.queue.length;
@@ -76,7 +76,7 @@ export class StreamingContext {
         }
 
         const totalSamples = queuedSamples + scheduledSamples;
-        return Math.ceil(totalSamples / 960);
+        return Math.ceil(totalSamples / 320);
     }
 
     // 清空所有音频缓冲

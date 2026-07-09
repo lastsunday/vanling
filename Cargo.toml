@@ -1,6 +1,12 @@
 [workspace]
 resolver = '2'
-members = ['apps/server']
+members = [
+  'apps/server',
+  'libs/macros',
+  'libs/build-metadata',
+  'libs/framework',
+  'libs/framework/macros',
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,123 +14,134 @@ edition = "2024"
 authors = ["lastsunday"]
 
 [workspace.dependencies]
-chobits-build-metadata = { package = "chobits_build_metadata", path = "apps/server/build_metadata", default-features = false }
-chobits-macros = { package = "chobits_macros", path = "apps/server/macros", default-features = false }
-clap = "4.5.58"
-axum = "0.8.8"
+chobits-build-metadata = { package = "chobits_build_metadata", path = "libs/build-metadata", default-features = false }
+chobits-macros = { package = "chobits_macros", path = "libs/macros", default-features = false }
+chobits-framework-macros = { package = "framework-macros", path = "libs/framework/macros", default-features = false }
+clap = "4.6.1"
+axum = "0.8.9"
 axum-extra = "0.12.5"
-tokio = "1.49.0"
+tokio = "1.52.3"
 # log start
 tracing = "0.1.44"
-tracing-subscriber = "0.3.22"
+tracing-subscriber = "0.3.23"
 color-eyre = "0.6.5"
-tracing-appender = "0.2.4"
+tracing-appender = "0.2.3"
 tracing-error = "0.2.1"
 # log end
-toml = "1.0.1+spec-1.1.0"
-syn = "2.0.115"
-quote = "1.0.44"
+strum = "0.27"
+strum_macros = "0.27"
+toml = "1.1.2"
+syn = "2.0.117"
+quote = "1.0.45"
 proc-macro2 = "1.0.106"
 itertools = "0.14.0"
 core_affinity = "0.8.3"
 # config start
-config = "0.15.19"
+config = "0.15.23"
 figment = "0.10.19"
-either = "1.15.0"
+either = "1.16.0"
 # config end
 serde = "1.0.228"
 serde_yaml = "0.9.34"
-anyhow = "1.0.101"
-sea-orm = "2.0.0-rc.31"
-sea-orm-migration = "2.0.0-rc.31"
+anyhow = "1.0.102"
+sea-orm = "2.0.0-rc.40"
+sea-orm-migration = "2.0.0-rc.40"
 thiserror = "2.0.18"
-tower-http = "0.6.8"
+tower-http = "0.6.11"
 tower-layer = "0.3.3"
 xid = "1.1.1"
-idgenerator = "2.0.0"
 bytesize = "2.3.1"
 validator = "0.20.0"
 axum-valid = "0.24.0"
 regex = "1.12.3"
-bcrypt = "0.18.0"
-jsonwebtoken = "10.3.0"
-utoipa = "5.4.0"
+bcrypt = "0.19.1"
+jsonwebtoken = "10.4.0"
+utoipa = "5.5.0"
 utoipa-axum = "0.2.0"
 utoipa-scalar = "0.3.0"
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 serde-aux = "4.7.0"
 http-body-util = "0.1.3"
 mime = "0.3.17"
-chrono = "0.4.43"
-testcontainers = "0.26.3"
-testcontainers-modules = "0.14.0"
+chrono = "0.4.44"
+testcontainers = "0.27.3"
+testcontainers-modules = "0.15.0"
 rust-i18n = "3.1.5"
 futures-util = "0.3.31"
 futures-channel = "0.3.31"
 jiff = "0.2.19"
 opus = "0.3.1"
+ogg = "0.9.2"
 tokio-stream = "0.1.18"
 tokio-util = "0.7.18"
-futures = "0.3.31"
-openssl = "0.10.75"
+futures = "0.3.32"
 async-trait = "0.1.89"
-uuid = "1.20.0"
+parking_lot = "0.12"
+backtrace = "0.3"
+arrayvec = "0.7"
+nix = { version = "0.29", default-features = false, features = ["signal"] }
+sentry = "0.34"
+sentry-tracing = "0.34"
+opentelemetry = "0.27"
+opentelemetry-otlp = "0.27"
+opentelemetry_sdk = "0.27"
+tracing-opentelemetry = "0.29"
+tracing-flame = "0.2"
+tracing-journald = "0.3"
+console-subscriber = "0.4"
+uuid = "1.23.1"
 async-std = "1.13.2"
 num_cpus = "1.17.0"
 rust-embed = "8.11.0"
-git2 = "0.20.4"
-ssh-key = "0.6.7"
 # audio start
 symphonia = "0.5.5"
 wavers = "1.5.1"
-resampler = "0.4.1"
+rubato = "0.16.0"
 # audio end
 # llm start
 candle-core = "0.9.1"
 candle-transformers = "0.9.1"
-candle-onnx = "0.9.1"
 candle-nn = "0.9.1"
 tokenizers = "0.22.2"
 fancy-regex = "0.17.0"
 intel-mkl-src = "0.8.1"
 accelerate-src = "0.3.2"
 rig-core = "0.30.0"
-aha = "0.1.8"
-aha_openai_dive = "1.4.0"
 bindgen_cuda = "=0.1.5"
 # llm end
 # vad start
 earshot = "1.0.0"
 # vad end
-# asr start
-byteorder = "1.5.0"
-rand = "0.10.0"
-rand_distr = "0.6.0"
-qwen-asr = "0.3.0"
-# asr end
-# tts start
-kokoro-tts = "0.3.2"
-# tts end
+# tts + asr start
+sherpa-onnx = "1.13.3"
+# tts + asr end
 # mcp start
-rmcp = "0.15.0"
+rmcp = "2.1.0"
 sse-stream = "0.2.1"
 # mcp end
 # matrix start
 ruma = "0.14.1"
 ruma-client = "0.17.0"
-hyper = "1.8.1"
 # matrix end
 tracing-test = "0.2.6"
+# download start
+reqwest = { version = "0.12.28", default-features = false }
+include_dir = "0.7.4"
+sha2 = "0.10.9"
+hex = "0.4.3"
+dialoguer = "0.11"
+indicatif = "0.17"
+tar = "0.4"
+bzip2 = "0.5"
+# download end
 # dev start
 tower = "0.5.3"
-cucumber = "0.22.1"
+cucumber = "0.23.0"
+mockito = "1.7.2"
 # dev end
 
 [profile.dev]
-
-[profile.test]
-# speed up test case (special for llm) 
-opt-level = 1
+strip = "debuginfo"
 
 [profile.release]
 opt-level = 3

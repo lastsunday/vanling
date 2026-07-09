@@ -2,7 +2,7 @@ use chrono::{FixedOffset, Utc};
 use rmcp::{
     ErrorData, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ContentBlock, InitializeResult, ServerCapabilities},
     schemars, tool, tool_handler, tool_router,
 };
 
@@ -15,6 +15,7 @@ pub struct SumRequest {
 
 #[derive(Debug, Clone)]
 pub struct Administrator {
+    #[expect(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
@@ -43,7 +44,7 @@ impl Administrator {
     fn datetime(&self) -> Result<CallToolResult, ErrorData> {
         let offset = FixedOffset::east_opt(8 * 60 * 60).unwrap();
         let datetime = Utc::now().with_timezone(&offset);
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             datetime.to_rfc3339(),
         )]))
     }
@@ -51,11 +52,8 @@ impl Administrator {
 
 #[tool_handler]
 impl ServerHandler for Administrator {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some("A server administrator".into()),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+    fn get_info(&self) -> InitializeResult {
+        InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions("A server administrator")
     }
 }

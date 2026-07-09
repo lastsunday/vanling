@@ -7,7 +7,6 @@ use wavers::write;
 
 #[tokio::test]
 #[traced_test]
-/// cargo test --test audio_test -- test_audio_encode_decode --nocapture
 async fn test_audio_encode_decode() {
     // 1. get wav file
     let wav_file: PathBuf = [
@@ -27,7 +26,8 @@ async fn test_audio_encode_decode() {
         sample_rate
     );
     // the follow code is output wav file to test
-    let fp = "./pcm_decode_data.wav";
+    std::fs::create_dir_all("./test_data").ok();
+    let fp = "./test_data/pcm_decode_data.wav";
     let sr: i32 = 16000;
     let _ = write(fp, &pcm_data, sr, 1);
 
@@ -39,9 +39,9 @@ async fn test_audio_encode_decode() {
     )
     .unwrap();
 
-    // 16000Hz * 1 channel * 60 ms / 1000 = 960
-    const MONO_60MS: usize = ENCODE_SAMPLE_RATE as usize * 60 / 1000;
-    let size = MONO_60MS;
+    // 16000Hz * 1 channel * 20 ms / 1000 = 320
+    const MONO_20MS: usize = ENCODE_SAMPLE_RATE as usize * 20 / 1000;
+    let size = MONO_20MS;
     info!("size = {}", size);
     let len = pcm_data.len();
     let mut count = len / size;
@@ -59,7 +59,6 @@ async fn test_audio_encode_decode() {
         let packet = encoder
             .encode_vec_float(&pcm_data[start..end], size)
             .unwrap();
-        // info!("packet len = {}", packet.len());
         audio.push(packet);
     }
     let audio_len = audio.len();
@@ -77,7 +76,7 @@ async fn test_audio_encode_decode() {
 
     // the follow code is output wav file to test
     info!("decode_data len = {}", decode_data.len());
-    let fp = "./after_decode.wav";
+    let fp = "./test_data/after_decode.wav";
     let sr: i32 = 16000;
     let _ = write(fp, &decode_data, sr, 1);
 }

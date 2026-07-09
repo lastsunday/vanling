@@ -20,5 +20,5 @@ async fn test_find_by_id() {
         .unwrap();
     assert!(user.is_some());
     let _ = &state.conn.close().await.unwrap();
-    tear_down(&container).await;
+    tear_down(container).await;
 }

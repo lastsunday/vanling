@@ -1,38 +1,21 @@
 pub mod model;
 
 use crate::{
-    asr::model::{qwen3::AsrQwen3, void::AsrVoid},
-    common::ModelError,
+    asr::model::{sense_voice::AsrSenseVoice, void::AsrVoid},
     config::{AsrModel, asr::AsrConfig},
 };
-use async_trait::async_trait;
-use model::whisper::AsrWhisper;
+use service::chobits::asr::Asr;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
 
-#[async_trait]
-pub trait Asr: Send + Sync {
-    async fn transcribe(
-        &mut self,
-        sample_rate: u32,
-        samples: &[f32],
-    ) -> Result<RecognizerResult, ModelError>;
-}
+static INSTANCE: OnceLock<AsrManager> = OnceLock::new();
 
-#[derive(Debug, Clone)]
-pub struct RecognizerResult {
-    pub text: String,
-    pub prob: f32,
-}
-
-static INSTANCE: OnceLock<AsrFactory> = OnceLock::new();
-
-pub struct AsrFactory {
+pub struct AsrManager {
     default_instance: Arc<Mutex<Box<dyn Asr>>>,
     pub config: Arc<AsrConfig>,
 }
 
-impl AsrFactory {
+impl AsrManager {
     pub fn new(default_instance: Arc<Mutex<Box<dyn Asr>>>, config: Arc<AsrConfig>) -> Self {
         Self {
             default_instance,
@@ -46,7 +29,7 @@ impl AsrFactory {
         })
     }
 
-    pub fn global() -> &'static AsrFactory {
+    pub fn global() -> &'static AsrManager {
         INSTANCE.get().unwrap()
     }
 
@@ -57,15 +40,11 @@ impl AsrFactory {
     pub fn create_model(config: &AsrConfig) -> Box<dyn Asr> {
         let model = config.model.clone().expect("asr model is empty");
         match model {
-            AsrModel::Qwen3 | AsrModel::Whisper => {
-                let path = config.path.clone().expect("asr path is empty").to_string();
-                if model == AsrModel::Qwen3 {
-                    Box::new(AsrQwen3::new(path).unwrap())
-                } else {
-                    Box::new(AsrWhisper::new(path).unwrap())
-                }
-            }
             AsrModel::Void => Box::new(AsrVoid::new().unwrap()),
+            AsrModel::SenseVoice => {
+                let path = config.path.clone().expect("asr path is empty");
+                Box::new(AsrSenseVoice::new(&path).unwrap())
+            }
         }
     }
 }

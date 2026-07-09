@@ -1,16 +1,17 @@
+pub use framework::error;
+
 pub mod asr;
 pub mod auth;
-pub mod auth_error;
+pub mod chii;
 pub mod common;
 pub mod config;
-pub mod i18n;
 pub mod index;
 pub mod llm;
 pub mod matrix;
 pub mod mcp;
 pub mod ota;
 pub mod ota_data;
-pub mod ota_error;
+pub mod record;
 pub mod server;
 pub mod tts;
 pub mod util;
@@ -30,8 +31,9 @@ use axum::routing::get;
 use bytesize::ByteSize;
 use either::Either;
 use framework::config::auth::AuthConfig;
-use framework::error::ApiError;
-use framework::error::ApiResult;
+use framework::error::{
+    AppError, AppResult, critical_code::CriticalErrorCode, framework_code::FrameworkErrorCode,
+};
 use framework::trace::LatencyOnResponse;
 use futures::future::join_all;
 use migration::MigratorTrait;
@@ -54,7 +56,7 @@ use utoipa_scalar::{Scalar, Servable as ScalarServable};
 
 use framework::auth::Jwt;
 
-use crate::asr::AsrFactory;
+use crate::asr::AsrManager;
 use crate::config::Config;
 use crate::config::asr::AsrConfig;
 use crate::config::audio::AudioConfig;
@@ -67,29 +69,40 @@ use crate::config::session::SessionConfig;
 use crate::config::tts::TtsConfig;
 use crate::config::vad::VadConfig;
 use crate::config::ws::WsConfig;
-use crate::llm::LlmFactory;
-use crate::tts::TtsFactory;
-use crate::vad::VadFactory;
+use crate::llm::LlmManager;
+use crate::tts::TtsManager;
+use crate::vad::VadManager;
 
-#[macro_use]
-extern crate rust_i18n;
-i18n!("locales", fallback = "zh");
+pub struct StartParams {
+    pub server_config: Arc<ServerConfig>,
+    pub database_config: Arc<DatabaseConfig>,
+    pub session_config: Arc<SessionConfig>,
+    pub mcp_config: Arc<McpConfig>,
+    pub vad_config: Arc<VadConfig>,
+    pub audio_config: Arc<AudioConfig>,
+    pub auth_config: Arc<AuthConfig>,
+    pub ws_config: Arc<WsConfig>,
+    pub tts_config: Arc<TtsConfig>,
+    pub asr_config: Arc<AsrConfig>,
+    pub llm_config: Arc<LlmConfig>,
+    pub matrix_config: Arc<MatrixConfig>,
+}
 
-#[allow(clippy::too_many_arguments)]
-pub async fn start(
-    server_config: Arc<ServerConfig>,
-    database_config: Arc<DatabaseConfig>,
-    session_config: Arc<SessionConfig>,
-    mcp_config: Arc<McpConfig>,
-    vad_config: Arc<VadConfig>,
-    audio_config: Arc<AudioConfig>,
-    auth_config: Arc<AuthConfig>,
-    ws_config: Arc<WsConfig>,
-    tts_config: Arc<TtsConfig>,
-    asr_config: Arc<AsrConfig>,
-    llm_config: Arc<LlmConfig>,
-    matrix_config: Arc<MatrixConfig>,
-) -> anyhow::Result<()> {
+pub async fn start(params: StartParams) -> anyhow::Result<()> {
+    let StartParams {
+        server_config,
+        database_config,
+        session_config,
+        mcp_config,
+        vad_config,
+        audio_config,
+        auth_config,
+        ws_config,
+        tts_config,
+        asr_config,
+        llm_config,
+        matrix_config,
+    } = params;
     // auth
     Jwt::init(auth_config.clone());
     // database init
@@ -100,41 +113,32 @@ pub async fn start(
     tracing::info!("Database connected successfully");
     // database schema init or upgrade
     migration::Migrator::up(&conn, None).await?;
-    tracing::info!("init tts factory");
-    TtsFactory::init(tts_config, audio_config.clone()).await?;
-    tracing::info!("init tts factory successfully");
-    tracing::info!("init vad factory");
-    VadFactory::init(vad_config.clone()).await;
-    tracing::info!("init vad factory successfully");
-    tracing::info!("init asr factory");
-    AsrFactory::init(asr_config).await;
-    tracing::info!("init asr factory successfully");
-    tracing::info!("init llm factory");
-    LlmFactory::init(llm_config).await;
-    tracing::info!("init llm factory successfully");
+    tracing::info!("init tts manager");
+    TtsManager::init(tts_config, audio_config.clone()).await?;
+    tracing::info!("init tts manager successfully");
+    tracing::info!("init vad manager");
+    VadManager::init(vad_config.clone()).await;
+    tracing::info!("init vad manager successfully");
+    tracing::info!("init asr manager");
+    AsrManager::init(asr_config).await;
+    tracing::info!("init asr manager successfully");
+    tracing::info!("init llm manager");
+    LlmManager::init(llm_config).await;
+    tracing::info!("init llm manager successfully");
     let ct = tokio_util::sync::CancellationToken::new();
     let ct_for_app = ct.clone();
     let mut handles = Vec::new();
-    let session_config_clone = session_config.clone();
-    let mcp_config_clone = mcp_config.clone();
-    let vad_config_clone = vad_config.clone();
-    let audio_config_clone = audio_config.clone();
-    let auth_config_clone = auth_config.clone();
-    let ws_config_clone = ws_config.clone();
+    let state = AppState {
+        conn,
+        session_config: session_config.clone(),
+        mcp_config: mcp_config.clone(),
+        vad_config: vad_config.clone(),
+        audio_config: audio_config.clone(),
+        auth_config: auth_config.clone(),
+        ws_config: ws_config.clone(),
+    };
     handles.push(tokio::spawn(async move {
-        if let Err(error) = start_app(
-            server_config,
-            session_config_clone,
-            mcp_config_clone,
-            vad_config_clone,
-            audio_config_clone,
-            auth_config_clone,
-            ws_config_clone,
-            conn,
-            ct_for_app,
-        )
-        .await
-        {
+        if let Err(error) = start_app(server_config, state, ct_for_app).await {
             tracing::error!("{:?}", error);
         }
     }));
@@ -178,16 +182,9 @@ pub async fn start_matrix_client(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn start_app(
     server_config: Arc<ServerConfig>,
-    session_config: Arc<SessionConfig>,
-    mcp_config: Arc<McpConfig>,
-    vad_config: Arc<VadConfig>,
-    audio_config: Arc<AudioConfig>,
-    auth_config: Arc<AuthConfig>,
-    ws_config: Arc<WsConfig>,
-    conn: sea_orm::DatabaseConnection,
+    state: AppState,
     ct: CancellationToken,
 ) -> anyhow::Result<()> {
     let addrs = server_config
@@ -204,16 +201,6 @@ pub async fn start_app(
     {
         Either::Left(value) => value,
         Either::Right(values) => values.first().expect("port is empty"),
-    };
-    // state
-    let state = AppState {
-        conn,
-        session_config,
-        mcp_config,
-        vad_config,
-        audio_config,
-        auth_config,
-        ws_config,
     };
     // router
     let (app, ct) = create_router(state, ct);
@@ -232,10 +219,11 @@ pub async fn start_app(
     )
     .with_graceful_shutdown(async move {
         tokio::signal::ctrl_c().await.unwrap();
+        tracing::info!("shutting down...");
         ct.cancel();
     })
     .await?;
-    tracing::info!("app end");
+    tracing::info!("shutdown complete");
     Ok(())
 }
 
@@ -256,6 +244,7 @@ pub fn create_router(
     api_router = setup_index(api_router);
     api_router = setup_auth(api_router, state.clone());
     api_router = setup_ota(api_router, state.clone());
+    api_router = setup_record(api_router, state.clone());
     api_router = setup_ws(api_router, state.clone());
     api_router = setup_mcp(api_router, state.clone(), cancellation_token.child_token());
     let (mut app, api) = api_router.split_for_parts();
@@ -269,9 +258,9 @@ pub fn create_router(
 pub fn setup_default(router: Router) -> Router {
     let app = router
         .fallback(web::index_handler)
-        .method_not_allowed_fallback(async || -> ApiResult<()> {
+        .method_not_allowed_fallback(async || -> AppResult<()> {
             tracing::warn!("Method not allowed");
-            Err(ApiError::MethodNotAllowed)
+            Err(AppError::from_code(FrameworkErrorCode::MethodNotAllowed))
         });
     let timeout =
         TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(120));
@@ -288,7 +277,7 @@ pub fn setup_default(router: Router) -> Router {
             let path = request.uri().path();
             let headers = request.headers();
             let id = xid::new();
-            tracing::debug!("headers = {:?}", headers);
+            tracing::trace!("headers = {:?}", headers);
             tracing::info_span!("Api Request",id = %id,method = %method,path = %path)
         })
         .on_request(())
@@ -324,6 +313,10 @@ pub fn setup_ota(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
     api_setup(router, ota::create_routes(state))
 }
 
+pub fn setup_record(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
+    api_setup(router, record::create_routes(state))
+}
+
 fn api_setup(router: OpenApiRouter, api_router: OpenApiRouter) -> OpenApiRouter {
     router.nest("/api", api_router)
 }
@@ -331,9 +324,9 @@ fn api_setup(router: OpenApiRouter, api_router: OpenApiRouter) -> OpenApiRouter 
 fn setup_api_fallback(router: Router) -> Router {
     router.nest(
         "/api",
-        Router::new().fallback(async || -> ApiResult<()> {
+        Router::new().fallback(async || -> AppResult<()> {
             tracing::warn!("Not found");
-            Err(ApiError::NotFound)
+            Err(AppError::from_code(CriticalErrorCode::ResourceNotFound))
         }),
     )
 }
@@ -344,6 +337,12 @@ pub fn setup_web(router: Router) -> Router {
             "/assets",
             Router::new()
                 .route("/{*file}", get(web::assets_handler))
+                .route_layer(CompressionLayer::new()),
+        )
+        .nest(
+            "/locales",
+            Router::new()
+                .route("/{*file}", get(web::locales_handler))
                 .route_layer(CompressionLayer::new()),
         )
         .nest(

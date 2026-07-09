@@ -1,15 +1,10 @@
 import 'dart:async';
 
 import 'package:app/l10n/app_localizations.dart';
-import 'package:clipboard/clipboard.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/env.dart';
-import 'package:app/modules/app/ui.dart';
-import 'package:app/modules/modules.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:pretty_qr_code/pretty_qr_code.dart';
-import 'package:provider/provider.dart';
 import 'package:r_upgrade/r_upgrade.dart';
 import 'package:upgrader/upgrader.dart';
 import 'package:app/core/log_helper.dart';
@@ -106,6 +101,7 @@ class _AboutPageState extends State<AboutPage> {
       id = await RUpgrade.upgrade(bestItem!.fileURL!);
     }
     Future.delayed(const Duration(milliseconds: 0), () async {
+      if (!mounted) return;
       await showDialog(
         context: context,
         builder: (context) {

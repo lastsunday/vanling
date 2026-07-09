@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ config.title }}{% endblock title %}</title>
+<meta name="description" content="{% block description %}{{ config.description }}{% endblock description %}">
+<link rel="icon" href="{{ get_url(path='logo.svg') }}">
+<link rel="stylesheet" href="{{ get_url(path='main.css') }}">
+<link rel="stylesheet" href="{{ get_url(path='giallo.css') }}">
+{% if config.build_search_index %}
+<script defer src="{{ get_url(path='elasticlunr.min.js') }}"></script>
+<script defer src="{{ get_url(path='search_index.' ~ lang ~ '.js') }}"></script>
+{% endif %}
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="{{ get_url(path='') }}" class="logo">{{ config.title }}</a>
+    <nav class="header-nav">
+      {% block extra_nav %}{% endblock %}
+    </nav>
+    <div class="header-right">
+      {% if config.build_search_index %}
+      <div class="search-box">
+        <input type="search" id="search-input" placeholder="Search...">
+        <div id="search-results" style="display:none"></div>
+      </div>
+      {% endif %}
+      <div class="lang-switcher">
+        {% if lang == "zh" %}
+          <a href="/en{{ current_path }}">English</a>
+        {% else %}
+          <a href="{{ current_path | trim_start_matches(pat='/en') | default(value='/') }}">中文</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    {% block sidebar %}
+    <nav class="sidebar-nav">
+    {% set index_path = "_index.md" %}
+    {% set index = get_section(path=index_path, lang=lang) %}
+    {% for subsection_path in index.subsections %}
+      {% set subsection = get_section(path=subsection_path) %}
+      <div class="sidebar-section">
+        <a href="{{ subsection.permalink }}" class="sidebar-section-title{% if subsection.permalink == current_url %} active leaf{% elif current_url is starting_with(subsection.permalink) %} active{% endif %}">{{ subsection.title }}</a>
+        {% if subsection.pages or subsection.subsections %}
+        <ul class="sidebar-pages">
+          {% for sub_subsection_path in subsection.subsections %}
+            {% set sub_subsection = get_section(path=sub_subsection_path) %}
+            <li>
+              <a href="{{ sub_subsection.permalink }}" class="sidebar-link{% if sub_subsection.permalink == current_url %} active leaf{% elif current_url is starting_with(sub_subsection.permalink) %} active{% endif %}">{{ sub_subsection.title }}</a>
+              {% if sub_subsection.pages %}
+              <ul class="sidebar-pages">
+                {% for sub_page in sub_subsection.pages %}
+                <li><a href="{{ sub_page.permalink }}" class="sidebar-link{% if sub_page.permalink == current_url %} active leaf{% endif %}">{{ sub_page.title }}</a></li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </li>
+          {% endfor %}
+          {% for page in subsection.pages %}
+            <li><a href="{{ page.permalink }}" class="sidebar-link{% if page.permalink == current_url %} active leaf{% endif %}">{{ page.title }}</a></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    {% endfor %}
+    {% for page in index.pages %}
+      <div class="sidebar-section">
+        <a href="{{ page.permalink }}" class="sidebar-section-title{% if page.permalink == current_url %} active leaf{% endif %}">{{ page.title }}</a>
+      </div>
+    {% endfor %}
+    </nav>
+    {% endblock sidebar %}
+  </aside>
+  <main class="content">
+    {% block content %}{% endblock content %}
+  </main>
+</div>
+<script src="{{ get_url(path='mermaid.min.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+{% if config.build_search_index %}
+(function() {
+  var idx = null;
+  var searchData = null;
+  function initSearch() {
+    if (typeof elasticlunr === 'undefined') return;
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function() {
+      searchData = JSON.parse(this.responseText);
+      idx = elasticlunr.Index.load(searchData);
+    };
+    xhr.open('GET', '{{ get_url(path="search_index." ~ lang ~ ".js") }}');
+    xhr.send();
+  }
+  if (document.readyState === 'complete') {
+    initSearch();
+  } else {
+    document.addEventListener('DOMContentLoaded', initSearch);
+  }
+  document.getElementById('search-input').addEventListener('input', function() {
+    var results = document.getElementById('search-results');
+    var query = this.value.trim();
+    if (!query || !idx) {
+      results.style.display = 'none';
+      return;
+    }
+    var hits = idx.search(query, { expand: true });
+    results.innerHTML = '';
+    if (hits.length === 0) {
+      results.innerHTML = '<div class="search-result-empty">No results</div>';
+    } else {
+      var shown = 0;
+      hits.forEach(function(hit) {
+        if (shown >= 10) return;
+        var doc = searchData.documentStore.getDoc(hit.ref);
+        if (!doc) return;
+        var div = document.createElement('div');
+        div.className = 'search-result-item';
+        div.innerHTML = '<a href="' + doc.url + '">' + doc.title + '</a>';
+        results.appendChild(div);
+        shown++;
+      });
+    }
+    results.style.display = 'block';
+  });
+  document.addEventListener('click', function(e) {
+    if (!document.getElementById('search-results').contains(e.target) && e.target !== document.getElementById('search-input')) {
+      document.getElementById('search-results').style.display = 'none';
+    }
+  });
+})();
+{% endif %}
+</script>
+</body>
+</html>

@@ -12,11 +12,11 @@ class PageParam {
   PageParam(
       {this.pageNum = 1, this.pageSize = 20, this.orderByColumn, this.isAsc});
 
-  get limit => pageSize;
+  int get limit => pageSize;
 
-  get offset => (pageNum - 1) * pageSize;
+  int get offset => (pageNum - 1) * pageSize;
 
-  get orderBy => " $orderByColumn $isAsc";
+  String get orderBy => " $orderByColumn $isAsc";
 
   factory PageParam.fromJson(Map<String, dynamic> json) =>
       _$PageParamFromJson(json);

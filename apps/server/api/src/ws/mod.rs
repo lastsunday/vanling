@@ -1,23 +1,8 @@
-pub mod frame;
-pub mod message_converter;
-pub mod session;
-
-use crate::{
-    AppState,
-    asr::AsrFactory,
-    config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
-    llm::LlmFactory,
-    mcp::{
-        client::server::ServerMcpClient,
-        mcp_host::{McpHost, UnionMcpHost},
-    },
-    tts::TtsFactory,
-    vad::VadFactory,
-    ws::{
-        frame::{FrameError, FrameResult},
-        session::Session,
-    },
-};
+pub mod default_listener;
+pub mod filter;
+pub mod mcp_session;
+pub mod protocol_translator;
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use axum::{
     RequestPartsExt, debug_handler,
@@ -27,25 +12,42 @@ use axum::{
 };
 use axum_extra::{TypedHeader, headers};
 use framework::id::gen_id;
+use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use message_converter::convert_to_frame;
-use rmcp::transport::{
-    StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
-};
-use serde::Serialize;
-use session::{SessionBuilder, listener::DefaultListener};
-use std::{collections::HashMap, net::SocketAddr, sync::Arc};
-use tokio::sync::Mutex;
-use tracing::{Instrument, Level, debug, error, info, span, trace};
+use service::chobits::frame::{Frame, OutputMessage};
+use service::chobits::session::{self, SessionBuilder};
+use tokio::sync::mpsc::UnboundedSender;
+use tokio_stream::StreamMap;
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, Level, span};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
+
+use crate::{
+    AppState,
+    asr::AsrManager,
+    config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
+    record::recorder::Recorder,
+    tts::TtsManager,
+    vad::VadManager,
+    ws::{
+        default_listener::DefaultListener,
+        filter::{
+            FilterCtx, FilterStep, InputFilter, OutputFilter, RecorderInputFilter,
+            RecorderOutputFilter, run_input_filters, run_output_filters,
+        },
+        mcp_session::{McpRouterFilter, setup_mcp_session},
+        protocol_translator::ProtocolTranslator,
+    },
+    {chii::ChiiCoreBuilder, llm::LlmManager},
+};
 
 const TAG: &str = "ws";
 
 pub fn create_routes(state: AppState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(ws_handler))
-        //.layer(get_auth_layer())
         .with_state(state)
 }
 
@@ -65,10 +67,11 @@ pub fn create_routes(state: AppState) -> OpenApiRouter {
 async fn ws_handler(
     _version: Version,
     ws: WebSocketUpgrade,
-    user_agent: Option<TypedHeader<headers::UserAgent>>,
+    _user_agent: Option<TypedHeader<headers::UserAgent>>,
     _headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(AppState {
+        conn,
         session_config,
         mcp_config,
         vad_config,
@@ -76,256 +79,231 @@ async fn ws_handler(
         ..
     }): State<AppState>,
 ) -> impl IntoResponse {
-    info!("user_agent = {:?}", user_agent);
     ws.on_upgrade(move |socket| {
-        let session_id = gen_id();
         let (write, read) = socket.split();
         handle_socket(
-            session_id,
-            session_config,
-            mcp_config,
-            vad_config,
-            audio_config,
+            SocketContext {
+                session_id: gen_id(),
+                conn,
+                session_config,
+                mcp_config,
+                vad_config,
+                audio_config,
+            },
             write,
             read,
         )
     })
 }
 
-pub async fn handle_socket<W, R>(
+pub(crate) struct SocketContext {
     session_id: String,
+    conn: sea_orm::DatabaseConnection,
     session_config: Arc<SessionConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
     audio_config: Arc<AudioConfig>,
-    mut write: W,
-    read: R,
-) where
+}
+
+impl SocketContext {
+    fn to_session_config(&self) -> session::SessionConfig {
+        session::SessionConfig {
+            system_prompt: self.session_config.system_prompt.clone(),
+            max_prompt_len: self.session_config.max_prompt_len,
+            silence_voice_timeout: self.session_config.silence_voice_timeout,
+            close_connection_no_voice_time: self.session_config.close_connection_no_voice_time,
+        }
+    }
+
+    fn to_audio_config(&self) -> session::AudioConfig {
+        session::AudioConfig {
+            output_sample_rate: self
+                .audio_config
+                .output_sample_rate
+                .expect("output sample rate is empty"),
+            output_channel: self
+                .audio_config
+                .output_channel
+                .expect("output channel is empty"),
+            output_frame_duration: self
+                .audio_config
+                .output_frame_duration
+                .expect("output frame duration is empty"),
+        }
+    }
+}
+
+#[tracing::instrument(skip_all, fields(session_id = %ctx.session_id))]
+pub(crate) async fn handle_socket<W, R>(ctx: SocketContext, write: W, read: R)
+where
     W: Sink<Message> + Unpin + Send + 'static,
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    let span = span!(Level::DEBUG, "socket", id=%session_id);
-    let _guard = span.enter();
-    let mut session = SessionBuilder::new()
-        .with_id(session_id.clone())
+    tracing::info!("session started");
+
+    let mcp_ctx = setup_mcp_session(ctx.session_id.clone(), &ctx.mcp_config).await;
+
+    let session_ctx = SessionBuilder::new()
+        .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
-            Arc::new(Mutex::new(VadFactory::create_model(&vad_config))),
-            AsrFactory::global().default().clone(),
-            audio_config.clone(),
+            VadManager::create_model(&ctx.vad_config),
+            AsrManager::global().default().clone(),
         )))
-        .with_model(LlmFactory::global().default())
-        .with_tts(TtsFactory::global().default())
-        .with_mcp_host(Arc::new(Mutex::new(
-            create_mcp_host(session_id.clone(), mcp_config.clone()).await,
-        )))
-        .with_config(session_config.clone())
-        .with_audio_config(audio_config.clone())
+        .with_chii(Arc::new(
+            ChiiCoreBuilder::new()
+                .with_session_id(Some(ctx.session_id.clone()))
+                .with_model(LlmManager::global().default())
+                .with_mcp_registry(mcp_ctx.registry)
+                .build(),
+        ))
+        .with_tts(TtsManager::global().default())
+        .with_config(ctx.to_session_config())
+        .with_audio_config(ctx.to_audio_config())
         .build();
-    if let Err(e) = session.start().instrument(span.clone()).await {
-        error!("{}", e);
-        let result = write.close().await;
-        if result.is_err() {
-            info!("write close failure");
-        }
-        return;
-    }
-    let session_id_clone = session_id.clone();
-    let output = session.output_frame().await;
-    tokio::spawn(async move {
-        let span = span!(parent:None,Level::DEBUG, "socket", id=%session_id_clone);
-        on_send(output, write).instrument(span).await
-    });
-    tokio::spawn(async move {
-        let span = span!(parent:None,Level::DEBUG, "socket", id=%session_id);
-        on_recv(session, read).instrument(span).await
-    });
+
+    let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
+    let cancel = CancellationToken::new();
+
+    let input_filters: Vec<Box<dyn InputFilter>> = vec![
+        Box::new(McpRouterFilter::new(mcp_ctx.input_tx)),
+        Box::new(RecorderInputFilter::new(
+            Some(recorder.clone()),
+            ctx.session_id.clone(),
+        )),
+    ];
+    let output_filters: Vec<Box<dyn OutputFilter>> = vec![Box::new(RecorderOutputFilter::new(
+        Some(recorder),
+        ctx.session_id.clone(),
+    ))];
+
+    let mut output_streams: StreamMap<&str, UnboundedReceiverStream<OutputMessage>> =
+        StreamMap::new();
+    output_streams.insert(
+        "session",
+        UnboundedReceiverStream::new(session_ctx.output_rx),
+    );
+    output_streams.insert("mcp", UnboundedReceiverStream::new(mcp_ctx.output_rx));
+
+    let translator = protocol_translator::XiaozhiProtocolTranslator;
+
+    let session_handle = tokio::spawn(
+        session_ctx
+            .session
+            .start()
+            .instrument(span!(Level::DEBUG, "session")),
+    );
+    let output_handle = tokio::spawn(
+        ws_output(
+            write,
+            translator,
+            output_streams,
+            output_filters,
+            cancel.child_token(),
+            ctx.session_id.clone(),
+        )
+        .instrument(span!(Level::DEBUG, "output")),
+    );
+    let input_handle = tokio::spawn(
+        ws_input(
+            read,
+            translator,
+            session_ctx.input_tx,
+            input_filters,
+            cancel.child_token(),
+            ctx.session_id.clone(),
+        )
+        .instrument(span!(Level::DEBUG, "input")),
+    );
+
+    let _ = tokio::join!(session_handle, output_handle, input_handle);
+
+    tracing::info!("session ended");
 }
 
-async fn on_recv<R>(mut session: Session, mut read: R)
-where
+async fn ws_input<R>(
+    mut read: R,
+    translator: impl ProtocolTranslator,
+    input_tx: UnboundedSender<Frame>,
+    filters: Vec<Box<dyn InputFilter>>,
+    cancel: CancellationToken,
+    session_id: String,
+) where
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    while let Some(Ok(msg)) = read.next().await {
-        let result = convert_to_frame(&msg).await;
-        if result.is_break() {
-            if let Some(item) = result.break_value() {
-                match item {
-                    Some(frame) => {
-                        match frame {
-                            frame::Frame::Voice { data: _data } => {
-                                trace!(target:"frame","[RECV] Voice");
-                            }
-                            _ => {
-                                debug!(target:"frame","[RECV] {:?}", frame);
-                            }
-                        }
-                        match frame {
-                            frame::Frame::Close(close_message) => {
-                                info!("break value close message = {:?}", close_message);
-                                session.stop().await;
-                                return;
-                            }
-                            _ => {
-                                session.accept_frame(&frame).await;
-                            }
-                        }
-                    }
-                    None => {
-                        info!("break value none");
-                        session.stop().await;
-                        return;
-                    }
-                }
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = cancel.cancelled() => {
+                tracing::debug!(session_id = %session_id, "input cancelled");
+                break;
             }
-            return;
-        }
-        if result.is_continue()
-            && let Some(item) = result.continue_value()
-        {
-            match item {
-                Some(frame) => {
-                    match frame {
-                        frame::Frame::Voice { data: _data } => {
-                            trace!(target:"frame","[RECV] Voice");
-                        }
-                        _ => {
-                            debug!(target:"frame","[RECV] {:?}", frame);
-                        }
-                    }
-                    match frame {
-                        frame::Frame::Abort(abort_message) => {
-                            debug!(",abort message = {:?}", abort_message);
-                            session.new_round().await;
-                        }
-                        frame::Frame::Ping { data } => {
-                            debug!("ping,len = {}", data.len());
-                        }
-                        frame::Frame::Pong { data } => {
-                            debug!("pong,len = {}", data.len());
-                        }
-                        _ => {
-                            session.accept_frame(&frame).await;
+
+            msg = read.next() => {
+                let Some(Ok(msg)) = msg else {
+                    cancel.cancel();
+                    break;
+                };
+
+                let ctx = FilterCtx { session_id: session_id.clone() };
+                let frame = translator.input(msg);
+
+                match run_input_filters(&filters, &ctx, frame).await {
+                    FilterStep::Pass(frame) => {
+                        let is_close = matches!(&frame, Frame::Close(_));
+                        let _ = input_tx.send(frame);
+                        if is_close {
+                            cancel.cancel();
+                            return;
                         }
                     }
-                }
-                None => {
-                    info!("unkonw continue message");
+                    FilterStep::Skip => continue,
+                    FilterStep::Abort => { cancel.cancel(); break; }
                 }
             }
         }
     }
 }
 
-async fn on_send<W>(
-    mut output: impl Stream<Item = Result<FrameResult, FrameError>> + Unpin + Send + 'static,
+async fn ws_output<W>(
     mut write: W,
+    translator: impl ProtocolTranslator,
+    mut output_streams: StreamMap<&str, UnboundedReceiverStream<OutputMessage>>,
+    filters: Vec<Box<dyn OutputFilter>>,
+    cancel: CancellationToken,
+    session_id: String,
 ) where
     W: Sink<Message> + Unpin + Send + 'static,
 {
-    while let Some(data) = output.next().await {
-        match data {
-            Ok(frame) => {
-                match &frame {
-                    frame::FrameResult::AudioResult(_audio_message) => {
-                        trace!(target:"frame","[SEND] Audio");
-                    }
-                    _ => {
-                        debug!(target:"frame","[SEND] {:?}", frame);
-                    }
-                }
-                match frame {
-                    frame::FrameResult::HelloResult(message) => {
-                        if send_text(&mut write, &message).await {
-                            info!("send hello data failure");
-                            break;
-                        }
-                    }
-                    frame::FrameResult::STTResult(message) => {
-                        if send_text(&mut write, &message).await {
-                            info!("send stt data failure");
-                            break;
-                        }
-                    }
-                    frame::FrameResult::LLMResult(message) => {
-                        if send_text(&mut write, &message).await {
-                            info!("send llm data failure");
-                            break;
-                        }
-                    }
-                    frame::FrameResult::TTSResult(message) => {
-                        if send_text(&mut write, &message).await {
-                            info!("send tts data failure");
-                            break;
-                        }
-                    }
-                    frame::FrameResult::McpResult(message) => {
-                        if send_text(&mut write, &message).await {
-                            info!("send mcp request data failure");
-                            break;
-                        }
-                    }
-                    frame::FrameResult::AudioResult(audio_message) => {
-                        let data = audio_message.data;
-                        if write.send(Message::Binary(data.into())).await.is_err() {
-                            info!("send audio data failure");
-                            break;
-                        }
-                    }
-                    frame::FrameResult::CloseResult => {
-                        let result = write.close().await;
-                        if result.is_err() {
-                            info!("write close failure");
-                            break;
-                        }
-                    }
-                }
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = cancel.cancelled() => {
+                tracing::debug!(session_id = %session_id, "output cancelled");
+                break;
             }
-            Err(e) => {
-                error!("{:?}", e);
-                return;
-            }
-        }
-    }
-    let result = write.close().await;
-    if result.is_err() {
-        info!("write close failure");
-    }
-}
 
-pub async fn send_text<W, T>(write: &mut W, value: &T) -> bool
-where
-    W: Sink<Message> + Unpin + Send + 'static,
-    T: ?Sized + Serialize,
-{
-    let result: String = serde_json::to_string(value).expect("value to json failure");
-    write.send(Message::Text(result.into())).await.is_err()
-}
+            output = output_streams.next() => {
+                let Some((_source, msg)) = output else { break };
 
-async fn create_server_mcp_client(uri: String) -> anyhow::Result<ServerMcpClient> {
-    let config = StreamableHttpClientTransportConfig::with_uri(uri);
-    let transport = StreamableHttpClientTransport::from_config(config);
-    let mut server_mcp_client = ServerMcpClient::new(transport).await?;
-    server_mcp_client.init().await?;
-    Ok(server_mcp_client)
-}
-
-async fn create_mcp_host(session_id: String, mcp_config: Arc<McpConfig>) -> UnionMcpHost {
-    let mut mcp_host = UnionMcpHost::new(Some(session_id));
-    let uri_list = &mcp_config.uri_list;
-    if let Some(uri_list) = uri_list {
-        for uri in uri_list {
-            let server_mcp_client = create_server_mcp_client(uri.to_string()).await;
-            match server_mcp_client {
-                Ok(server_mcp_client) => {
-                    mcp_host.add_client(Box::new(server_mcp_client)).await;
-                }
-                Err(e) => {
-                    error!("{:?}", e);
+                let ctx = FilterCtx { session_id: session_id.clone() };
+                match run_output_filters(&filters, &ctx, msg).await {
+                    FilterStep::Pass(msg) => {
+                        let ws_msg = translator.output(msg.payload);
+                        if write.send(ws_msg).await.is_err() {
+                            cancel.cancel();
+                            break;
+                        }
+                    }
+                    FilterStep::Skip => continue,
+                    FilterStep::Abort => { cancel.cancel(); break; }
                 }
             }
         }
     }
-    mcp_host
+
+    let _ = write.close().await;
 }
 
 #[derive(Debug, PartialEq, Eq, ToSchema)]
@@ -352,4 +330,14 @@ where
             _ => Err((StatusCode::NOT_FOUND, "unknown version").into_response()),
         }
     }
+}
+
+#[error_code]
+pub enum WsErrorCode {
+    ListenFailure = 504001,
+    TtsEncode = 504002,
+    TtsText = 504003,
+    AsrFailure = 504004,
+    LlmFailure = 504005,
+    InternalError = 504006,
 }

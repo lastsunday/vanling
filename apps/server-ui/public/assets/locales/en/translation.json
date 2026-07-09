@@ -8,7 +8,8 @@
   "admin": {
     "title": "Admin Page",
     "menu": {
-      "dashboard": "Dashboard"
+      "dashboard": "Dashboard",
+      "sessions": "Sessions"
     },
     "confirm_logout": "Confirm logout?",
     "password_not_equal": "Password not equal",
@@ -44,5 +45,55 @@
   "version": "Version",
   "version_unknown": "Unknown",
   "loading": "Loading",
-  "logout": "Logout"
+  "logout": "Logout",
+  "sessions": {
+    "title": "Sessions",
+    "search": "Search Session ID",
+    "search_btn": "Search",
+    "date_from": "From",
+    "date_to": "To",
+    "sort_created_desc": "Newest first",
+    "sort_created_asc": "Oldest first",
+    "turn_count": "{{count}} turns",
+    "show_all": "Show all {{count}}",
+    "collapse": "Collapse",
+    "select_hint": "Select a session to view details",
+    "detail": {
+      "title": "Session Detail",
+      "session_id": "Session ID",
+      "created": "Created",
+      "updated": "Updated",
+      "turn_count": "{{count}} turns",
+      "play": "Play",
+      "back": "Back to List"
+    },
+    "latency_waterfall": "Latency Waterfall",
+    "bottleneck": "Bottleneck",
+    "runtime": "Runtime",
+    "round_label": "Round {{number}}",
+    "detail": {
+      "copy": "Copy"
+    },
+    "step": {
+      "input_audio": "Voice Input",
+      "asr": "Speech Recognition",
+      "text": "Text Input",
+      "llm": "LLM",
+      "tts": "Speech Synthesis"
+    },
+    "table": {
+      "time": "Time",
+      "summary": "Summary",
+      "turns": "Turns",
+      "duration": "Duration",
+      "actions": "Actions"
+    },
+    "timeline": {
+      "business": "Business Events",
+      "frames": "Frames ({{count}})",
+      "no_data": "No playable data",
+      "char_count": "{{count}} chars",
+      "wave_sync": "Wave Sync"
+    }
+  }
 }

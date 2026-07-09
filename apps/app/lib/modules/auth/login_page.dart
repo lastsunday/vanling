@@ -10,7 +10,7 @@ import 'package:app/modules/auth/login_model.dart';
 class LoginPage extends StatefulWidget {
   final Map arguments;
 
-  const LoginPage({required this.arguments, Key? key}) : super(key: key);
+  const LoginPage({required this.arguments, super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();

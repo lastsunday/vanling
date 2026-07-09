@@ -5,12 +5,12 @@ use axum::{
     http::HeaderMap,
 };
 use axum_extra::{TypedHeader, headers};
-use framework::{data::valid::ValidJson, error::ApiResult, id::gen_id};
+use framework::{data::valid::ValidJson, err, error::AppResult, id::gen_id};
 use std::net::SocketAddr;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+use crate::AppState;
 use crate::ota_data::*;
-use crate::{AppState, ota_error::*};
 
 use chrono::Local;
 use jiff::tz::TimeZone;
@@ -177,15 +177,15 @@ async fn ota(
     host: TypedHeader<headers::Host>,
     //TODO: param not use
     ValidJson(_param): ValidJson<OtaParam>,
-) -> ApiResult<Json<OtaResult>> {
+) -> AppResult<Json<OtaResult>> {
     if headers.get(KEY_DEVICE_ID).is_none() {
-        return Err(ERROR_OTA_LACK_DEVICE_ID.gen_api_error(&headers));
+        return Err(err!(OtaErrorCode::LackDeviceId));
     }
     if headers.get(KEY_CLIENT_ID).is_none() {
-        return Err(ERROR_OTA_LACK_CLIENT_ID.gen_api_error(&headers));
+        return Err(err!(OtaErrorCode::LackClientId));
     }
     if headers.get(KEY_USER_AGENT).is_none() {
-        return Err(ERROR_OTA_LACK_USER_AGENT.gen_api_error(&headers));
+        return Err(err!(OtaErrorCode::LackUserAgent));
     }
     // TODO: save device info to database
     let _device_id = headers.get(KEY_DEVICE_ID).unwrap().to_str().unwrap();
@@ -218,16 +218,6 @@ async fn ota(
             url: None,
         }),
         activation: None,
-        // TODO: fill activate logic
-        // activation: Some(Activation {
-        //     code: activation_code.clone(),
-        //     message: format!(
-        //         "{} {}",
-        //         t("ota.activation_message", &headers),
-        //         activation_code
-        //     ),
-        //     challenge: String::from(device_id),
-        // }),
     })) //
 }
 
@@ -245,11 +235,20 @@ async fn activate(
     State(AppState { .. }): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-) -> ApiResult<String> {
+) -> AppResult<String> {
     if headers.get(KEY_DEVICE_ID).is_none() {
-        return Err(ERROR_OTA_LACK_DEVICE_ID.gen_api_error(&headers));
+        return Err(err!(OtaErrorCode::LackDeviceId));
     }
     // TODO:check device id in database
     // TODO:logic failure need return status code 202
     Ok(String::from("success"))
+}
+
+use framework::prelude::error;
+
+#[error]
+pub enum OtaErrorCode {
+    LackDeviceId = 502001,
+    LackClientId = 502002,
+    LackUserAgent = 502003,
 }

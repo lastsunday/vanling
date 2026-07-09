@@ -7,5 +7,5 @@ class PageResult<T> {
 
   PageResult({required this.param, required this.total, required this.rows});
 
-  get hasNext => param.pageNum * param.pageSize < total;
+  bool get hasNext => param.pageNum * param.pageSize < total;
 }

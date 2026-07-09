@@ -19,7 +19,7 @@ class AnimatedFloatingButton extends StatefulWidget {
   final bool mini;
 
   const AnimatedFloatingButton({
-    Key? key,
+    super.key,
     this.visible = true,
     this.callback,
     this.label,
@@ -36,7 +36,7 @@ class AnimatedFloatingButton extends StatefulWidget {
     this.shape = const CircleBorder(),
     this.curve = Curves.fastOutSlowIn,
     this.onLongPress,
-  }) : super(key: key);
+  });
 
   @override
   State createState() => _AnimatedFloatingButtonState();

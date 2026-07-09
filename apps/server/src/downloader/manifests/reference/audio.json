@@ -1,0 +1,65 @@
+{
+  "config": {
+    "category": "reference",
+    "model": "audio"
+  },
+  "default_variant": "xiyangyang",
+  "variants": {
+    "xiyangyang": {
+      "prompt_text": "一定被灰太狼给吃了，我已经为他准备好了花圈了",
+      "files": [
+        {
+          "path": "tts/reference/xiyangyang.wav",
+          "sha256": "2614110791c5fd6bcc0d1a5276226d23233864ff5f6739bd820fe80b7a116fbe",
+          "url": "https://github.com/jhqxxx/aha/raw/3ba4de8a7dd578b809fa4676f865a438abba91ab/assets/audio/voice_05.wav"
+        }
+      ]
+    },
+    "bria": {
+      "prompt_text": "In the heart of an ancient forest, where the trees whispered secrets of the past, there lived a peculiar rabbit named Luna.Unlike any other rabbit, Luna was born with wings, a rare gift that she had yet to understand the purpose of.Each night, under the glow of the moon, she would gaze up at the stars, wondering if there was more to her existence.One evening, as the forest bathed in silvery moonlight, Luna discovered a clearing she had never seen before.  In the center stood a crystal-clear pond that mirrored the night sky. Drawn to its beauty, Luna approached the pond and, for the first time, unfolded her wings.As she touched the water's surface with her paw, the pond rippled, and the reflection of the stars began to swirl. ",
+      "archives": [
+        {
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2",
+          "sha256": null,
+          "path": "tts/reference/",
+          "extract": [
+            {"path": "test_wavs/bria.wav"}
+          ]
+        }
+      ]
+    },
+    "zh": {
+      "prompt_text": "开放时间早上9点至下午5点。",
+      "archives": [
+        {
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
+          "sha256": null,
+          "path": "asr/reference/",
+          "extract": [{"path": "test_wavs/zh.wav"}]
+        }
+      ]
+    },
+    "en": {
+      "prompt_text": "The tribal chieftain called for the boy and presented him with 50 pieces of gold.",
+      "archives": [
+        {
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
+          "sha256": null,
+          "path": "asr/reference/",
+          "extract": [{"path": "test_wavs/en.wav"}]
+        }
+      ]
+    },
+    "yue": {
+      "prompt_text": "(tbd)",
+      "archives": [
+        {
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
+          "sha256": null,
+          "path": "asr/reference/",
+          "extract": [{"path": "test_wavs/yue.wav"}]
+        }
+      ]
+    }
+  }
+}

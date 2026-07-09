@@ -2,36 +2,18 @@ pub mod model;
 use crate::config::VadModel;
 use crate::config::vad::VadConfig;
 use crate::vad::model::earshot::VadEarshot;
-use crate::{common::ModelError, vad::model::void::VadVoid};
-use async_trait::async_trait;
-use model::silero::VadSilero;
+use crate::vad::model::void::VadVoid;
+use service::chobits::vad::Vad;
 use std::sync::{Arc, OnceLock};
 
-#[async_trait]
-pub trait Vad: Send + Sync {
-    async fn accept_waveform(&mut self, samples: Vec<f32>) -> Result<(), ModelError>;
-    async fn front(&mut self) -> SpeechSegment;
-    async fn is_empty(&mut self) -> bool;
-    async fn is_speech(&mut self) -> bool;
-    async fn pop(&mut self);
-    async fn clear(&mut self);
-    async fn window_size(&self) -> usize;
-}
-
-#[derive(Debug)]
-pub struct SpeechSegment {
-    pub start: i32,
-    pub samples: Vec<f32>,
-}
-
-static VAD_INSTANCE: OnceLock<VadFactory> = OnceLock::new();
+static VAD_INSTANCE: OnceLock<VadManager> = OnceLock::new();
 
 #[derive(Default)]
-pub struct VadFactory {
+pub struct VadManager {
     pub config: Arc<VadConfig>,
 }
 
-impl VadFactory {
+impl VadManager {
     pub fn new(config: Arc<VadConfig>) -> Self {
         Self { config }
     }
@@ -40,7 +22,7 @@ impl VadFactory {
         VAD_INSTANCE.get_or_init(|| -> Self { Self::new(config) })
     }
 
-    pub fn global() -> &'static VadFactory {
+    pub fn global() -> &'static VadManager {
         VAD_INSTANCE.get().unwrap()
     }
 
@@ -50,11 +32,8 @@ impl VadFactory {
 
     pub fn create_model(config: &VadConfig) -> Box<dyn Vad> {
         match config.model.as_ref().expect("vad model empty") {
-            VadModel::Silero => {
-                Box::new(VadSilero::new(config.path.clone().expect("vad path is empty")).unwrap())
-            }
             VadModel::Void => Box::new(VadVoid::new().unwrap()),
-            VadModel::Earshot => Box::new(VadEarshot::new().unwrap()),
+            VadModel::Earshot => Box::new(VadEarshot::new(config).unwrap()),
         }
     }
 }

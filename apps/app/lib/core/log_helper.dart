@@ -24,7 +24,7 @@ class LogHelper {
     _logger.finer(message);
   }
 
-  static get log => _logger;
+  static Logger get log => _logger;
 
   static void setLevel(Level level) {
     PrintAppender.setupLogging(level: level);

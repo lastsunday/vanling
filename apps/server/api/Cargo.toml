@@ -13,7 +13,7 @@ path = "src/lib.rs"
 entity = { path = "../entity" }
 migration = { path = "../migration" }
 service = { path = "../service" }
-framework = { path = "../framework" }
+framework = { path = "../../../libs/framework" }
 web = { path = "../web" }
 chobits-macros = { workspace = true }
 
@@ -21,7 +21,7 @@ axum = { workspace = true, features = ["macros", "ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }
 tokio = { workspace = true, features = ["full"] }
 # log start
-tracing = { workspace = true, features = ["async-await"] }
+tracing = { workspace = true, features = ["async-await", "attributes"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "chrono"] }
 # log end
 # config start
@@ -30,7 +30,6 @@ figment = { workspace = true, features = ["env", "toml"] }
 either = { workspace = true, features = ["serde"] }
 # config end
 serde = { workspace = true, features = ["derive"] }
-serde_yaml = { workspace = true }
 anyhow = { workspace = true }
 sea-orm = { workspace = true, features = [
   "with-chrono",
@@ -42,6 +41,8 @@ sea-orm = { workspace = true, features = [
   "macros",
 ] }
 thiserror = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
 tower-http = { workspace = true, features = [
   "trace",
   "timeout",
@@ -64,25 +65,19 @@ utoipa-axum = { workspace = true, features = ["debug"] }
 utoipa-scalar = { workspace = true, features = ["axum"] }
 serde_json = { workspace = true }
 serde-aux = { workspace = true }
-http-body-util = { workspace = true }
-mime = { workspace = true }
 chrono = { workspace = true }
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true, features = ["postgres", "gitea"] }
 rust-i18n = { workspace = true }
 futures-util = { workspace = true, features = ["sink", "std"] }
 futures-channel = { workspace = true }
 jiff = { workspace = true }
 opus = { workspace = true }
+ogg = { workspace = true }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
-openssl = { workspace = true, features = ["vendored"] }
 async-trait = { workspace = true }
 # audio start
 symphonia = { workspace = true }
-wavers = { workspace = true }
-resampler = { workspace = true }
 # audio end
 # llm start
 candle-core = { workspace = true }
@@ -94,22 +89,17 @@ intel-mkl-src = { workspace = true, features = [
   "mkl-static-lp64-iomp",
 ], optional = true }
 accelerate-src = { workspace = true, optional = true }
-candle-onnx = { workspace = true }
 rig-core = { workspace = true }
-aha = { workspace = true }
-aha_openai_dive = { workspace = true, features = ["stream"] }
 # llm end
-# asr start
-byteorder = { workspace = true }
-rand = { workspace = true }
-rand_distr = { workspace = true }
-qwen-asr = { workspace = true }
-# asr end
+# asr + tts start
+sherpa-onnx = { workspace = true }
+# asr + tts end
 # vad start
 earshot = { workspace = true }
 # vad end
 # tts start
-kokoro-tts = { workspace = true }
+rubato = { workspace = true }
+ebur128 = "0.1"
 # tts end
 # mcp start
 rmcp = { workspace = true, features = [
@@ -119,23 +109,26 @@ rmcp = { workspace = true, features = [
   "reqwest",
   "transport-streamable-http-client-reqwest",
 ] }
-sse-stream = { workspace = true }
 # mcp end
 # matrix start
 ruma = { workspace = true, features = ["client-api-c", "rand"] }
 ruma-client = { workspace = true, features = [
   "client-api",
-  "hyper-native-tls",
+  "reqwest-rustls-webpki-roots",
 ] }
-hyper = { workspace = true }
 # matrix end
-
-tracing-test = { workspace = true }
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
 cucumber = { workspace = true, features = ["tracing", "output-json"] }
 futures = { workspace = true }
+http-body-util = { workspace = true }
+mime = { workspace = true }
+sse-stream = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true, features = ["postgres", "gitea"] }
+wavers = { workspace = true }
+tracing-test = { workspace = true }
 
 [build-dependencies]
 # llm start
@@ -163,6 +156,5 @@ cuda = [
   "candle-nn/cuda",
   "candle-transformers/cuda",
   "dep:bindgen_cuda",
-  "aha/cuda",
 ]
 # llm end

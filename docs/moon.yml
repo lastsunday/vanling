@@ -1,0 +1,27 @@
+language: "rust"
+tags: ["docs"]
+
+tasks:
+  build:
+    command: "zola build"
+    inputs:
+      - "content/**/*"
+      - "templates/**/*"
+      - "sass/**/*"
+      - "static/**/*"
+      - "zola.toml"
+    outputs:
+      - "public"
+
+  dev:
+    command: "zola serve --open"
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
+  check-translation:
+    command: "scripts/check-translation.sh"
+    inputs:
+      - "content/**/*.en.md"
+      - "content/**/*.md"

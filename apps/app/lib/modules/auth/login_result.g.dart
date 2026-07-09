@@ -7,15 +7,15 @@ part of 'login_result.dart';
 // **************************************************************************
 
 LoginResult _$LoginResultFromJson(Map<String, dynamic> json) => LoginResult(
-      access_token: json['access_token'] as String,
-      expire_in: (json['expire_in'] as num).toInt(),
-      client_id: json['client_id'] as String?,
+      accessToken: json['access_token'] as String,
+      expireIn: (json['expire_in'] as num).toInt(),
+      clientId: json['client_id'] as String?,
     )..imToken = json['imToken'] as String?;
 
 Map<String, dynamic> _$LoginResultToJson(LoginResult instance) =>
     <String, dynamic>{
-      'access_token': instance.access_token,
-      'expire_in': instance.expire_in,
-      'client_id': instance.client_id,
+      'access_token': instance.accessToken,
+      'expire_in': instance.expireIn,
+      'client_id': instance.clientId,
       'imToken': instance.imToken,
     };

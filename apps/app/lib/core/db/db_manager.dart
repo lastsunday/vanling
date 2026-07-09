@@ -18,9 +18,9 @@ class DbManager {
 
   factory DbManager.instance() => _instance;
 
-  changelog() => DbChangelog.getChangelogList();
+  List<Changelog> changelog() => DbChangelog.getChangelogList();
 
-  init(List<Changelog> changelogList, String databasesPath, String name) {
+  void init(List<Changelog> changelogList, String databasesPath, String name) {
     changelog().addAll(changelogList);
     _name = name;
     _databasesPath = databasesPath;

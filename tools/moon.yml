@@ -1,0 +1,11 @@
+tasks:
+  update-moon:
+    script: |
+      bash ../scripts/update-moon.sh
+    options:
+      runInCI: false
+
+  update-moon-check:
+    command: "bash ../scripts/update-moon.sh --check"
+    options:
+      runInCI: false

@@ -1,18 +1,23 @@
 use api::{
-    asr::AsrFactory,
-    config::{AsrModel, asr::AsrConfig},
+    asr::AsrManager,
+    config::{AsrModel, TtsModel, asr::AsrConfig, tts::TtsConfig},
+    tts::TtsManager,
     util::audio::pcm_decode,
 };
 use std::{path::PathBuf, sync::Arc};
+use tokio_stream::StreamExt;
+
 use tracing::debug;
 use tracing_test::traced_test;
 
+mod common;
+use common::asr::analyze_asr;
+use common::tts::{TEST_TTS_TEXT, test_audio_config, tts_stream, ws_root};
+
+const ASR_TEST_CASES: &[(&str, &str)] = &[("zh", "开放时间"), ("en", "pieces"), ("yue", "")];
+
 #[tokio::test]
 #[traced_test]
-#[ignore]
-/// cargo test --test asr_test -- test_asr --ignored --nocapture
-/// asr speed up by release mode
-/// cargo test --test asr_test --release -- test_asr --ignored --nocapture
 async fn test_asr() {
     let wav_file: PathBuf = [
         env!("CARGO_MANIFEST_DIR"),
@@ -30,12 +35,17 @@ async fn test_asr() {
         sample_rate
     );
 
-    AsrFactory::init(Arc::new(AsrConfig {
-        model: Some(AsrModel::Qwen3),
-        path: Some(String::from("data/asr/model/Qwen/Qwen3-ASR-0.6B/")),
+    let model_path = ws_root()
+        .join("data/asr/model/sense_voice/default/")
+        .to_string_lossy()
+        .into_owned();
+    AsrManager::init(Arc::new(AsrConfig {
+        model: Some(AsrModel::SenseVoice),
+        path: Some(model_path),
+        variant: None,
     }))
     .await;
-    let asr = AsrFactory::global().default();
+    let asr = AsrManager::global().default();
     let asr = asr.clone();
     let mut asr = asr.lock().await;
     let result = asr.transcribe(sample_rate, &pcm_data).await;
@@ -44,13 +54,129 @@ async fn test_asr() {
 
 #[tokio::test]
 #[traced_test]
-/// cargo test --test asr_test -- test_asr_model_void  --nocapture
 async fn test_asr_model_void() {
-    let mut model = AsrFactory::create_model(&AsrConfig {
+    let mut model = AsrManager::create_model(&AsrConfig {
         model: Some(AsrModel::Void),
         ..Default::default()
     });
     let result = model.transcribe(16000, &[]).await.unwrap();
     assert_eq!(String::new(), result.text);
     assert_eq!(1.0, result.prob);
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_asr_with_reference_audio() {
+    for (variant, expected) in ASR_TEST_CASES {
+        let wav_path = ws_root().join(format!("data/asr/model/sense_voice/default/{variant}.wav"));
+        if !wav_path.exists() {
+            debug!("Skipping {variant}: file not found at {:?}", wav_path);
+            continue;
+        }
+
+        let (samples, sr) = pcm_decode(&wav_path).unwrap();
+
+        let model_path = ws_root()
+            .join("data/asr/model/sense_voice/default/")
+            .to_string_lossy()
+            .into_owned();
+
+        let mut model = AsrManager::create_model(&AsrConfig {
+            model: Some(AsrModel::SenseVoice),
+            path: Some(model_path),
+            ..Default::default()
+        });
+
+        let result = model.transcribe(sr, &samples).await.unwrap();
+        debug!("Variant: {variant}, recognized: {:?}", result.text);
+
+        if !expected.is_empty() {
+            assert!(
+                result
+                    .text
+                    .to_lowercase()
+                    .contains(&expected.to_lowercase()),
+                "Variant '{variant}': expected '{expected}' in '{}'",
+                result.text
+            );
+        }
+    }
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_tts_asr_loopback() {
+    let tts_path = ws_root()
+        .join("data/tts/model/matcha/matcha-icefall-zh-en/")
+        .to_string_lossy()
+        .into_owned();
+
+    let asr_path = ws_root()
+        .join("data/asr/model/sense_voice/default/")
+        .to_string_lossy()
+        .into_owned();
+
+    let text = TEST_TTS_TEXT;
+
+    let tts = TtsManager::create_model(
+        &TtsConfig {
+            model: Some(TtsModel::MatchaTts),
+            path: Some(tts_path),
+            options: Some(serde_json::json!({
+                "num_threads": 2,
+                "noise_scale": 0.667,
+                "length_scale": 1.0,
+                "speed": 1.0,
+                "debug": false,
+            })),
+            ..Default::default()
+        },
+        &test_audio_config(),
+    )
+    .await
+    .unwrap();
+
+    let tts_start = std::time::Instant::now();
+    let text_stream = tts_stream(text.to_string());
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut tts_stream = tts.stream(Box::pin(text_stream), cancel).await;
+
+    let mut all_pcm = Vec::new();
+    let sample_rate = 16000i32;
+    let decode_fs = 320;
+    let mut decoder = opus::Decoder::new(16000, opus::Channels::Mono).unwrap();
+    while let Some(data) = tts_stream.next().await {
+        let data = data.unwrap();
+        for packet in data.audio {
+            let mut samples = vec![0f32; decode_fs];
+            if let Ok(len) = decoder.decode_float(&packet, &mut samples, false) {
+                all_pcm.extend_from_slice(&samples[..len]);
+            }
+        }
+    }
+    let tts_elapsed = tts_start.elapsed();
+
+    assert!(!all_pcm.is_empty(), "No PCM data generated by TTS");
+
+    let mut asr = AsrManager::create_model(&AsrConfig {
+        model: Some(AsrModel::SenseVoice),
+        path: Some(asr_path),
+        ..Default::default()
+    });
+
+    let asr_start = std::time::Instant::now();
+    let result = asr.transcribe(sample_rate as u32, &all_pcm).await.unwrap();
+    let asr_elapsed = asr_start.elapsed();
+
+    let audio_dur = all_pcm.len() as f64 / sample_rate as f64;
+    let diag = analyze_asr(audio_dur, asr_elapsed, text, &result.text);
+
+    debug!("TTS 生成: {:.2}s", tts_elapsed.as_secs_f64());
+    debug!("ASR 诊断: {diag}");
+
+    assert!(
+        diag.cer < 0.06,
+        "CER {:.2}% >= 6% threshold. Diag: {diag}",
+        diag.cer * 100.0
+    );
 }

@@ -2,7 +2,6 @@
 //make some change for speed_dial.dart,speed_dial_direction.dart
 //change log:
 //  add SpeedDialDirection.circular
-library flutter_speed_dial;
 
 export 'src/speed_dial.dart';
 export 'src/speed_dial_child.dart';

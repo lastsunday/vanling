@@ -1,33 +1,15 @@
 {
   "name": "@chobits/server-ui",
-  "version": "0.0.1",
   "private": true,
-  "dependencies": {
-    "@mantine/core": "^8.3.14",
-    "@mantine/hooks": "^8.3.14",
-    "@mantine/notifications": "^8.3.14",
-    "@tanstack/react-query": "^5.90.20",
-    "@tanstack/react-query-devtools": "^5.91.3",
-    "@tanstack/react-router": "^1.159.5",
-    "@tanstack/react-router-devtools": "^1.159.5",
-    "axios": "^1.13.5",
-    "i18next": "^25.8.4",
-    "i18next-browser-languagedetector": "^8.2.0",
-    "i18next-http-backend": "^3.0.2",
-    "react-i18next": "^15.7.4",
-    "zod": "^3.25.76"
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --project tsconfig.app.json",
+    "preview": "vite preview"
   },
-  "devDependencies": {
-    "@iconify/json": "^2.2.438",
-    "@tanstack/router-plugin": "^1.159.5",
-    "@unocss/preset-icons": "66.1.0-beta.10",
-    "@unocss/preset-uno": "^65.5.0",
-    "@vitejs/plugin-react-oxc": "^0.2.3",
-    "postcss": "^8.5.6",
-    "postcss-preset-mantine": "^1.18.0",
-    "postcss-simple-vars": "^7.0.1",
-    "unocss": "^66.6.0",
-    "vite": "npm:rolldown-vite@^7.3.1",
-    "vite-tsconfig-paths": "^5.1.4"
+  "dependencies": {
+    "@tabler/icons-react": "^3.44.0",
+    "wavesurfer.js": "^7.12.8"
   }
 }

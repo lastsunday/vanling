@@ -10,8 +10,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 class Oauth2CodeLoginPage extends StatefulWidget {
   final Map arguments;
 
-  const Oauth2CodeLoginPage({required this.arguments, Key? key})
-      : super(key: key);
+  const Oauth2CodeLoginPage({required this.arguments, super.key});
 
   @override
   State<Oauth2CodeLoginPage> createState() => _Oauth2CodeLoginPageState();
@@ -43,10 +42,10 @@ class _Oauth2CodeLoginPageState extends State<Oauth2CodeLoginPage> {
             String code = uri.queryParameters["code"] as String;
             String redirectUri = uri.origin + uri.path;
             _loginModel.exchangeToken(code, redirectUri).then((bool success) {
-              if (success) Navigator.pop(context, true);
+              if (success && mounted) Navigator.pop(context, true);
             }).catchError((e) {
               _clearCookies();
-              Navigator.pop(context, true);
+              if (mounted) Navigator.pop(context, true);
               throw e;
             });
             return NavigationDecision.prevent;
@@ -65,14 +64,14 @@ class _Oauth2CodeLoginPageState extends State<Oauth2CodeLoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-        onWillPop: () async {
+    return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
           var canGoBack = await _controller.canGoBack();
           if (canGoBack) {
             _controller.goBack();
-            return false;
           }
-          return true;
         },
         child: Scaffold(
             appBar: CommonAppBar(
@@ -82,14 +81,15 @@ class _Oauth2CodeLoginPageState extends State<Oauth2CodeLoginPage> {
               leading: BackButton(
                   color: Colors.black,
                   onPressed: () {
-                    _controller.canGoBack().then((value) => {
-                          if (value)
-                            {_controller.goBack()}
-                          else
-                            {Navigator.pop(context)}
-                        });
-                  }),
-            ),
+                    _controller.canGoBack().then((value) {
+                      if (value) {
+                        _controller.goBack();
+                      } else if (mounted) {
+                        Navigator.pop(this.context);
+                      }
+                    });
+                  },
+            )),
             body: _loginModel.authorizeUrl == null
                 ? Container()
                 : WebViewWidget(controller: _controller)));

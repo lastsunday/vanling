@@ -10,6 +10,8 @@ import 'detector_view.dart';
 import 'painters/barcode_detector_painter.dart';
 
 class BarcodeScannerView extends StatefulWidget {
+  const BarcodeScannerView({super.key});
+
   @override
   State<BarcodeScannerView> createState() => _BarcodeScannerViewState();
 }
@@ -80,7 +82,7 @@ class _BarcodeScannerViewState extends State<BarcodeScannerView> {
         List<String> result = resultBarcode.toList();
         resultBarcode.clear();
         Future.delayed(Duration(milliseconds: 500),(){
-          context.pop(BarcodeScannerViewResult(contentList: result));
+          if (mounted) context.pop(BarcodeScannerViewResult(contentList: result));
         });
       }
     }

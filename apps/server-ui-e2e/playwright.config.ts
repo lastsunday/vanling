@@ -1,63 +1,29 @@
 import { defineConfig, devices } from '@playwright/test';
-import { nxE2EPreset } from '@nx/playwright/preset';
-import { workspaceRoot } from '@nx/devkit';
+import path from 'path';
 
-// For CI, you may want to set BASE_URL to the deployed application.
 const baseURL = process.env['BASE_URL'] || 'http://localhost:4300';
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// require('dotenv').config();
-
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
 export default defineConfig({
-  ...nxE2EPreset(__filename, { testDir: './src' }),
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
+  testDir: './src',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
   use: {
     baseURL,
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
   },
-  /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'pnpm exec nx run server-ui:preview',
+    command: 'pnpm run preview',
     url: 'http://localhost:4300',
     reuseExistingServer: !process.env.CI,
-    cwd: workspaceRoot,
+    cwd: path.resolve(__dirname, '../server-ui'),
   },
   projects: [
-
     {
       name: "chromium",
-      //channel: "chromium" -> https://github.com/microsoft/playwright/issues/33682
-      use: { ...devices["Desktop Chrome"], channel: "chromium" },
+      use: { ...devices["Desktop Chrome"] },
     },
-    {
-      name: 'Microsoft Edge',
-      use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    },
-    // Uncomment for mobile browsers support
-    /* {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    }, */
-
-    // Uncomment for branded browsers
-    /* {
-      name: 'Microsoft Edge',
-      use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    },
-    {
-      name: 'Google Chrome',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    } */
   ],
 });

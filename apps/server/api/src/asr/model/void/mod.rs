@@ -1,14 +1,11 @@
 use async_trait::async_trait;
-
-use crate::{
-    asr::{Asr, RecognizerResult},
-    common::ModelError,
-};
+use framework::error::AppError;
+use service::chobits::asr::{Asr, RecognizerResult};
 
 pub struct AsrVoid {}
 
 impl AsrVoid {
-    pub fn new() -> Result<Self, ModelError> {
+    pub fn new() -> Result<Self, AppError> {
         Ok(Self {})
     }
 }
@@ -19,7 +16,7 @@ impl Asr for AsrVoid {
         &mut self,
         _sample_rate: u32,
         _samples: &[f32],
-    ) -> Result<RecognizerResult, ModelError> {
+    ) -> Result<RecognizerResult, AppError> {
         Ok(RecognizerResult {
             text: String::new(),
             prob: 1.0,

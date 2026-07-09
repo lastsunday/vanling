@@ -1,44 +1,20 @@
-const nx = require('@nx/eslint-plugin');
+const js = require('@eslint/js');
+const globals = require('globals');
+const tseslint = require('typescript-eslint');
 
 module.exports = [
-  ...nx.configs['flat/base'],
-  ...nx.configs['flat/typescript'],
-  ...nx.configs['flat/javascript'],
+  { ignores: ['**/dist', '**/vite.config.*.timestamp*', '**/vitest.config.*.timestamp*'] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    ignores: [
-      '**/dist',
-      '**/vite.config.*.timestamp*',
-      '**/vitest.config.*.timestamp*',
-    ],
-  },
-  {
-    files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
     rules: {
-      '@nx/enforce-module-boundaries': [
-        'error',
-        {
-          enforceBuildableLibDependency: true,
-          allow: ['^.*/eslint(\\.base)?\\.config\\.[cm]?js$'],
-          depConstraints: [
-            {
-              sourceTag: '*',
-              onlyDependOnLibsWithTags: ['*'],
-            },
-          ],
-        },
-      ],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {
-    files: [
-      '**/*.ts',
-      '**/*.tsx',
-      '**/*.js',
-      '**/*.jsx',
-      '**/*.cjs',
-      '**/*.mjs',
-    ],
-    // Override or add rules here
-    rules: {},
+    files: ['**/*.cjs', '**/*.mjs'],
+    rules: {
+      'no-undef': 'off',
+    },
   },
 ];

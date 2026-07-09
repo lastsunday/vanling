@@ -444,7 +444,7 @@ class _MemoPageState extends State<MemoPage>
                                 Icons.close),
                             onPressed: () async {
                               await flutterTts.stop();
-                              Navigator.of(context).pop();
+                              if (mounted) Navigator.of(this.context).pop();
                             },
                           )
                         ],

@@ -1,8 +1,8 @@
 import { getUser, resetPassword } from '@/api';
 import { UserResult } from '@/data/user-result';
-import { AppShell, Burger, Button, Group, Menu, MenuTarget, Modal, PasswordInput, Text } from '@mantine/core';
+import { AppShell, AppShellHeader, AppShellNavbar, AppShellMain, Burger, Button, Group, Modal, PasswordInput, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { showNotification } from '@mantine/notifications';
+import { notifications } from '@mantine/notifications';
 import { createFileRoute, Outlet, redirect, useRouter, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import logo from '../../assets/logo.svg';
@@ -47,7 +47,8 @@ function RouteComponent() {
   const { t } = useTranslation();
 
   const data = [
-    { link: '', key: 'dashboard', label: t('admin.menu.dashboard'), icon: "i-mdi:monitor-dashboard" },
+    { link: '/admin', key: 'dashboard', label: t('admin.menu.dashboard'), icon: "i-mdi:monitor-dashboard" },
+    { link: '/admin/sessions', key: 'sessions', label: t('admin.menu.sessions'), icon: "i-mdi:chat-processing" },
   ];
 
   useEffect(() => {
@@ -73,6 +74,7 @@ function RouteComponent() {
       onClick={(event) => {
         event.preventDefault();
         setActive(item.label);
+        navigate({ to: item.link as any });
       }}
     >
       <div className={`${item.icon} ${classes.linkIcon}`} />
@@ -92,12 +94,12 @@ function RouteComponent() {
 
       if (!oldPasswordValue || !passwordValue || !confirmPasswordValue) return;
       if (passwordValue !== confirmPasswordValue) {
-        showNotification({ color: "red", title: t('error'), message: t('admin.password_not_equal') })
+        notifications.show({ color: "red", title: t('error'), message: t('admin.password_not_equal') })
       } else {
         const oldPassword = oldPasswordValue.toString();
         const password = passwordValue.toString();
         await resetPassword({ password, old_password: oldPassword });
-        showNotification({
+        notifications.show({
           color: "green",
           title: t('admin.password_update_success'),
           message: t('admin.login_again')
@@ -110,8 +112,7 @@ function RouteComponent() {
         })
       }
     } catch (error) {
-      console.error('Error logging in: ', error)
-      showNotification({
+      notifications.show({
         color: "red",
         title: t('error'),
         message: `${error}`
@@ -130,23 +131,17 @@ function RouteComponent() {
       navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       padding="md"
     >
-      <AppShell.Header>
+      <AppShellHeader>
         <Group h="100%" px="md">
           <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
           <img className={classes.logo} src={logo}></img>
           <Text>{t('title')}</Text>
         </Group>
-      </AppShell.Header>
-      <AppShell.Navbar p="md">
+      </AppShellHeader>
+      <AppShellNavbar p="md">
         <nav className={classes.navbar}>
           <div className={classes.section}>
-            <Menu withArrow width={200}>
-              <MenuTarget>
-                <UserButton className="w-full" name={user?.name ?? ''} image='' email='' />
-              </MenuTarget>
-              <Menu.Dropdown>
-              </Menu.Dropdown>
-            </Menu>
+            <UserButton className="w-full" name={user?.name ?? ''} image='' email='' />
           </div>
           <div className={classes.navbarMain}>
             {links}
@@ -168,10 +163,10 @@ function RouteComponent() {
             </a>
           </div>
         </nav>
-      </AppShell.Navbar>
-      <AppShell.Main>
+      </AppShellNavbar>
+      <AppShellMain>
         <Outlet />
-      </AppShell.Main>
+      </AppShellMain>
       <Modal opened={openedPassword} onClose={closePassword} title={t('admin.update_password')}>
         <form className="mt-4 max-w-lg" onSubmit={onFormSubmit}>
           <PasswordInput name="oldPassword" label={t('admin.password.old_password')} placeholder={t('admin.password.old_password_hint')} required mt="md" radius="md" minLength={6} maxLength={16} />

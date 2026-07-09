@@ -113,10 +113,10 @@ class MemoItem extends StatelessWidget {
                 bottom: 0,
                 child: Container(
                     padding: const EdgeInsets.only(right: 5),
-                    color: Colors.black.withOpacity(0.6),
+                    color: Colors.black.withValues(alpha: 0.6),
                     child: Text(
                       DateUtil.format(dateTime),
-                      style: TextStyle(color: Colors.white.withOpacity(1)),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 1)),
                       textAlign: TextAlign.end,
                     )))
             : Container()),

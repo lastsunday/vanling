@@ -20,4 +20,4 @@ sea-orm-migration = { workspace = true, features = [
 ] }
 async-std = { workspace = true, features = ["attributes", "tokio1"] }
 entity = { path = "../entity" }
-framework = { path = "../framework" }
+framework = { path = "../../../libs/framework" }

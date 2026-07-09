@@ -13,6 +13,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PathlessLayoutIndexRouteImport } from './routes/_pathlessLayout/index'
 import { Route as PathlessLayoutAdminRouteRouteImport } from './routes/_pathlessLayout.admin/route'
 import { Route as PathlessLayoutAdminIndexRouteImport } from './routes/_pathlessLayout.admin/index'
+import { Route as PathlessLayoutAdminSessionsIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/index'
+import { Route as PathlessLayoutAdminSessionsIdIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/$id/index'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -36,17 +38,33 @@ const PathlessLayoutAdminIndexRoute =
     path: '/',
     getParentRoute: () => PathlessLayoutAdminRouteRoute,
   } as any)
+const PathlessLayoutAdminSessionsIndexRoute =
+  PathlessLayoutAdminSessionsIndexRouteImport.update({
+    id: '/sessions/',
+    path: '/sessions/',
+    getParentRoute: () => PathlessLayoutAdminRouteRoute,
+  } as any)
+const PathlessLayoutAdminSessionsIdIndexRoute =
+  PathlessLayoutAdminSessionsIdIndexRouteImport.update({
+    id: '/sessions/$id/',
+    path: '/sessions/$id/',
+    getParentRoute: () => PathlessLayoutAdminRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/admin': typeof PathlessLayoutAdminRouteRouteWithChildren
   '/': typeof PathlessLayoutIndexRoute
   '/admin/': typeof PathlessLayoutAdminIndexRoute
+  '/admin/sessions/': typeof PathlessLayoutAdminSessionsIndexRoute
+  '/admin/sessions/$id/': typeof PathlessLayoutAdminSessionsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof PathlessLayoutIndexRoute
   '/admin': typeof PathlessLayoutAdminIndexRoute
+  '/admin/sessions': typeof PathlessLayoutAdminSessionsIndexRoute
+  '/admin/sessions/$id': typeof PathlessLayoutAdminSessionsIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -54,18 +72,28 @@ export interface FileRoutesById {
   '/_pathlessLayout/admin': typeof PathlessLayoutAdminRouteRouteWithChildren
   '/_pathlessLayout/': typeof PathlessLayoutIndexRoute
   '/_pathlessLayout/admin/': typeof PathlessLayoutAdminIndexRoute
+  '/_pathlessLayout/admin/sessions/': typeof PathlessLayoutAdminSessionsIndexRoute
+  '/_pathlessLayout/admin/sessions/$id/': typeof PathlessLayoutAdminSessionsIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/login' | '/admin' | '/' | '/admin/'
+  fullPaths:
+    | '/login'
+    | '/admin'
+    | '/'
+    | '/admin/'
+    | '/admin/sessions/'
+    | '/admin/sessions/$id/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/' | '/admin'
+  to: '/login' | '/' | '/admin' | '/admin/sessions' | '/admin/sessions/$id'
   id:
     | '__root__'
     | '/login'
     | '/_pathlessLayout/admin'
     | '/_pathlessLayout/'
     | '/_pathlessLayout/admin/'
+    | '/_pathlessLayout/admin/sessions/'
+    | '/_pathlessLayout/admin/sessions/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -104,16 +132,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PathlessLayoutAdminIndexRouteImport
       parentRoute: typeof PathlessLayoutAdminRouteRoute
     }
+    '/_pathlessLayout/admin/sessions/': {
+      id: '/_pathlessLayout/admin/sessions/'
+      path: '/sessions'
+      fullPath: '/admin/sessions/'
+      preLoaderRoute: typeof PathlessLayoutAdminSessionsIndexRouteImport
+      parentRoute: typeof PathlessLayoutAdminRouteRoute
+    }
+    '/_pathlessLayout/admin/sessions/$id/': {
+      id: '/_pathlessLayout/admin/sessions/$id/'
+      path: '/sessions/$id'
+      fullPath: '/admin/sessions/$id/'
+      preLoaderRoute: typeof PathlessLayoutAdminSessionsIdIndexRouteImport
+      parentRoute: typeof PathlessLayoutAdminRouteRoute
+    }
   }
 }
 
 interface PathlessLayoutAdminRouteRouteChildren {
   PathlessLayoutAdminIndexRoute: typeof PathlessLayoutAdminIndexRoute
+  PathlessLayoutAdminSessionsIndexRoute: typeof PathlessLayoutAdminSessionsIndexRoute
+  PathlessLayoutAdminSessionsIdIndexRoute: typeof PathlessLayoutAdminSessionsIdIndexRoute
 }
 
 const PathlessLayoutAdminRouteRouteChildren: PathlessLayoutAdminRouteRouteChildren =
   {
     PathlessLayoutAdminIndexRoute: PathlessLayoutAdminIndexRoute,
+    PathlessLayoutAdminSessionsIndexRoute:
+      PathlessLayoutAdminSessionsIndexRoute,
+    PathlessLayoutAdminSessionsIdIndexRoute:
+      PathlessLayoutAdminSessionsIdIndexRoute,
   }
 
 const PathlessLayoutAdminRouteRouteWithChildren =

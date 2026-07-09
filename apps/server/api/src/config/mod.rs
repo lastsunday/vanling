@@ -19,7 +19,7 @@ use figment::{
     Figment,
     providers::{Env, Format, Toml},
 };
-use serde::{Deserialize, de::IgnoredAny};
+use serde::{Deserialize, Serialize, de::IgnoredAny};
 use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -59,6 +59,12 @@ pub struct Config {
     /// default: localhost.localdomain
     #[serde(default = "default_server_name")]
     pub server_name: String,
+
+    /// Base data directory for model files. All model paths are relative to this.
+    ///
+    /// default: data
+    #[serde(default = "default_data_dir")]
+    pub data_dir: Option<String>,
 
     /// The default address (IPv4 or IPv6) continuwuity will listen on.
     ///
@@ -122,61 +128,100 @@ pub struct Config {
     #[serde(default = "default_ws_schema")]
     pub ws_schema: Option<String>,
 
-    /// default: silero
+    /// default: earshot
     #[serde(default = "default_vad_model")]
     pub vad_model: Option<VadModel>,
 
-    /// default: data/vad/model/onnx-community/silero-vad/
+    /// default: auto-derived from model+variant
     #[serde(default = "default_vad_path")]
     pub vad_path: Option<String>,
+
+    #[serde(default)]
+    pub vad_variant: Option<String>,
 
     /// default: 4
     #[serde(default = "default_vad_num_threads")]
     pub vad_num_threads: Option<i32>,
 
-    /// default: kokoro
+    /// VAD detection threshold (0.0–1.0). Higher = fewer false positives, more false negatives.
+    ///
+    /// display: VAD Threshold
+    /// default: 0.5
+    #[serde(default = "default_vad_threshold")]
+    pub vad_threshold: Option<f32>,
+
+    /// Minimum silence duration in ms before VAD considers speech ended.
+    ///
+    /// display: Min Silence Duration
+    /// default: 1000
+    #[serde(default = "default_vad_min_silence_duration")]
+    pub vad_min_silence_duration: Option<f32>,
+
+    /// default: matchatts
     #[serde(default = "default_tts_model")]
     pub tts_model: Option<TtsModel>,
 
-    /// default: data/tts/model/mzdk100/kokoro/
+    /// default: auto-derived from model manifest
     #[serde(default = "default_tts_path")]
     pub tts_path: Option<String>,
 
-    /// default: 一定被灰太狼给吃了，我已经为他准备好了花圈了
-    #[serde(default = "default_tts_reference_prompt_text")]
+    /// Variant override for the active TTS model.
+    ///
+    /// When not set, the default variant is read from the embedded model manifest.
+    /// This is useful for switching between different model variants without
+    /// changing the model type.
+    ///
+    /// default: auto-detected from model manifest
+    #[serde(default)]
+    pub tts_variant: Option<String>,
+
+    /// default: auto-detected from model manifest
+    #[serde(default)]
+    pub tts_reference_variant: Option<String>,
+
+    /// override the auto-derived prompt text from manifest
+    #[serde(default)]
     pub tts_reference_prompt_text: Option<String>,
 
-    /// default: file://data/tts/reference/voice_05.wav
-    #[serde(default = "default_tts_reference_prompt_wav_path")]
+    /// override the auto-derived prompt wav path from manifest
+    #[serde(default)]
     pub tts_reference_prompt_wav_path: Option<String>,
 
-    /// default: qwen3
+    /// TTS 模型特有配置
+    /// MatchaTTS 模型支持以下选项：
+    ///   - num_threads:      线程数 (默认 2)
+    ///   - noise_scale:     生成噪声参数 (默认 0.667)
+    ///   - length_scale:    语速缩放 (默认 auto-detected from model manifest)
+    ///   - speed:           播放速度 (默认 1.0)
+    ///   - debug:           是否输出调试信息 (默认 false)
+    ///   - dict_dir:        发音字典目录路径 (可选)
+    ///   - data_dir:        espeak-ng 数据目录路径 (可选)
+    ///   - acoustic_model:  声学模型 .onnx 文件路径 (自动发现 model-steps-3.onnx)
+    ///   - vocoder:         声码器 .onnx 文件路径 (自动发现 vocos-22khz-univ.onnx / vocos-16khz-univ.onnx)
+    #[serde(default)]
+    pub tts_options: Option<serde_json::Value>,
+
+    /// default: sensevoice
     #[serde(default = "default_asr_model")]
     pub asr_model: Option<AsrModel>,
 
-    /// default: data/asr/model/Qwen/Qwen3-ASR-0.6B/
+    /// default: auto-derived from model+variant
     #[serde(default = "default_asr_path")]
     pub asr_path: Option<String>,
+
+    #[serde(default)]
+    pub asr_variant: Option<String>,
 
     /// default: qwen3
     #[serde(default = "default_llm_model")]
     pub llm_model: Option<LlmModel>,
 
-    /// default: data/llm/model/unsloth/Qwen3-1.7B-GGUF/
+    /// default: auto-derived from model+variant
     #[serde(default = "default_llm_path")]
     pub llm_path: Option<String>,
 
-    /// default: 16000
-    #[serde(default = "default_audio_input_sample_rate")]
-    pub audio_input_sample_rate: Option<u32>,
-
-    /// default: 60
-    #[serde(default = "default_audio_input_frame_duration")]
-    pub audio_input_frame_duration: Option<u64>,
-
-    /// default: 1
-    #[serde(default = "default_audio_input_channel")]
-    pub audio_input_channel: Option<u32>,
+    #[serde(default)]
+    pub llm_variant: Option<String>,
 
     /// default: 16000
     #[serde(default = "default_audio_output_sample_rate")]
@@ -186,7 +231,7 @@ pub struct Config {
     #[serde(default = "default_audio_output_channel")]
     pub audio_output_channel: Option<u32>,
 
-    /// default: 60
+    /// default: 20
     #[serde(default = "default_audio_output_frame_duration")]
     pub audio_output_frame_duration: Option<u64>,
 
@@ -230,6 +275,84 @@ pub struct Config {
     #[serde(default = "default_matrix_client_password")]
     pub matrix_client_password: Option<String>,
 
+    /// Enable console logging
+    ///
+    /// default: true
+    #[serde(default = "default_log_console_enabled")]
+    pub log_console_enabled: Option<bool>,
+
+    /// Console log level (trace, debug, info, warn, error)
+    ///
+    /// default: info
+    #[serde(default = "default_log_console_level")]
+    pub log_console_level: Option<String>,
+
+    /// Console log format (text, json, compact, pretty)
+    ///
+    /// default: text
+    #[serde(default = "default_log_console_format")]
+    pub log_console_format: Option<String>,
+
+    /// Enable file logging
+    ///
+    /// default: false
+    #[serde(default = "default_log_file_enabled")]
+    pub log_file_enabled: Option<bool>,
+
+    /// File log level (trace, debug, info, warn, error)
+    ///
+    /// default: info
+    #[serde(default = "default_log_file_level")]
+    pub log_file_level: Option<String>,
+
+    /// File log format (text, json, compact, pretty)
+    ///
+    /// default: json
+    #[serde(default = "default_log_file_format")]
+    pub log_file_format: Option<String>,
+
+    /// File log directory
+    ///
+    /// default: ./logs
+    #[serde(default = "default_log_file_directory")]
+    pub log_file_directory: Option<String>,
+
+    /// File log name prefix
+    ///
+    /// default: server
+    #[serde(default = "default_log_file_name")]
+    pub log_file_name: Option<String>,
+
+    /// Max log files to retain
+    ///
+    /// default: 10
+    #[serde(default = "default_log_file_max_files")]
+    pub log_file_max_files: Option<usize>,
+
+    /// Log rotation (daily, hourly, never)
+    ///
+    /// default: daily
+    #[serde(default = "default_log_file_rotation")]
+    pub log_file_rotation: Option<String>,
+
+    /// Enable tracing-flame profiling output
+    ///
+    /// default: false
+    #[serde(default = "default_log_flame_enabled")]
+    pub log_flame_enabled: Option<bool>,
+
+    /// Flame graph output directory
+    ///
+    /// default: ./flame
+    #[serde(default = "default_log_flame_directory")]
+    pub log_flame_directory: Option<String>,
+
+    /// Enable tokio-console
+    ///
+    /// default: false
+    #[serde(default = "default_log_tokio_console_enabled")]
+    pub log_tokio_console_enabled: Option<bool>,
+
     #[serde(flatten)]
     #[allow(clippy::zero_sized_map_values)]
     // this is a catchall, the map shouldn't be zero at runtime
@@ -238,6 +361,10 @@ pub struct Config {
 
 fn default_server_name() -> String {
     String::from("localhost")
+}
+
+fn default_data_dir() -> Option<String> {
+    Some("data".into())
 }
 
 fn default_address() -> ListeningAddr {
@@ -287,27 +414,19 @@ fn default_auth_client_secret() -> Option<String> {
 }
 
 fn default_tts_model() -> Option<TtsModel> {
-    Some(TtsModel::Kokoro)
+    Some(TtsModel::MatchaTts)
 }
 
 fn default_tts_path() -> Option<String> {
-    Some(String::from("data/tts/model/mzdk100/kokoro/"))
-}
-
-fn default_tts_reference_prompt_text() -> Option<String> {
-    Some(String::from("一定被灰太狼给吃了，我已经为他准备好了花圈了"))
-}
-
-fn default_tts_reference_prompt_wav_path() -> Option<String> {
-    Some(String::from("file://data/tts/reference/voice_05.wav"))
+    None
 }
 
 fn default_asr_model() -> Option<AsrModel> {
-    Some(AsrModel::Qwen3)
+    Some(AsrModel::SenseVoice)
 }
 
 fn default_asr_path() -> Option<String> {
-    Some(String::from("data/asr/model/Qwen/Qwen3-ASR-0.6B/"))
+    None
 }
 
 fn default_llm_model() -> Option<LlmModel> {
@@ -315,19 +434,7 @@ fn default_llm_model() -> Option<LlmModel> {
 }
 
 fn default_llm_path() -> Option<String> {
-    Some(String::from("data/llm/model/unsloth/Qwen3-1.7B-GGUF/"))
-}
-
-fn default_audio_input_sample_rate() -> Option<u32> {
-    Some(16000)
-}
-
-fn default_audio_input_frame_duration() -> Option<u64> {
-    Some(60_u64)
-}
-
-fn default_audio_input_channel() -> Option<u32> {
-    Some(1)
+    None
 }
 
 fn default_audio_output_sample_rate() -> Option<u32> {
@@ -339,7 +446,7 @@ fn default_audio_output_channel() -> Option<u32> {
 }
 
 fn default_audio_output_frame_duration() -> Option<u64> {
-    Some(60_u64)
+    Some(20_u64)
 }
 
 fn default_session_close_connection_no_voice_time() -> Option<i64> {
@@ -373,11 +480,19 @@ fn default_vad_model() -> Option<VadModel> {
 }
 
 fn default_vad_path() -> Option<String> {
-    Some(String::from("data/vad/model/onnx-community/silero-vad/"))
+    None
 }
 
 fn default_vad_num_threads() -> Option<i32> {
     Some(4)
+}
+
+fn default_vad_threshold() -> Option<f32> {
+    Some(0.5)
+}
+
+fn default_vad_min_silence_duration() -> Option<f32> {
+    Some(1000.0)
 }
 
 fn default_matrix_enable() -> Option<bool> {
@@ -398,6 +513,58 @@ fn default_matrix_client_username() -> Option<String> {
 
 fn default_matrix_client_password() -> Option<String> {
     None
+}
+
+fn default_log_console_enabled() -> Option<bool> {
+    Some(true)
+}
+
+fn default_log_console_level() -> Option<String> {
+    Some("info".into())
+}
+
+fn default_log_console_format() -> Option<String> {
+    Some("text".into())
+}
+
+fn default_log_file_enabled() -> Option<bool> {
+    Some(false)
+}
+
+fn default_log_file_level() -> Option<String> {
+    Some("info".into())
+}
+
+fn default_log_file_format() -> Option<String> {
+    Some("json".into())
+}
+
+fn default_log_file_directory() -> Option<String> {
+    Some("./logs".into())
+}
+
+fn default_log_file_name() -> Option<String> {
+    Some("server".into())
+}
+
+fn default_log_file_max_files() -> Option<usize> {
+    Some(10)
+}
+
+fn default_log_file_rotation() -> Option<String> {
+    Some("daily".into())
+}
+
+fn default_log_flame_enabled() -> Option<bool> {
+    Some(false)
+}
+
+fn default_log_flame_directory() -> Option<String> {
+    Some("./flame".into())
+}
+
+fn default_log_tokio_console_enabled() -> Option<bool> {
+    Some(false)
 }
 
 impl Config {
@@ -462,6 +629,63 @@ impl Config {
     pub fn check(&self) -> Result<(), Error> {
         check(self)
     }
+
+    pub fn data_dir(&self) -> &str {
+        self.data_dir
+            .as_deref()
+            .expect("data_dir should have default")
+    }
+
+    /// Derive the full TTS path by joining `data_dir`, `base_path`, and `variant`.
+    ///
+    /// `base_path` comes from the manifest (e.g. `"tts/model/matcha/"`).
+    /// `variant` should already be resolved before calling this method.
+    pub fn derive_tts_path(&self, base_path: &str, variant: &str) -> Option<String> {
+        match self.tts_model.clone().unwrap_or_default() {
+            TtsModel::Mute => None,
+            _ => {
+                let d = self.data_dir().trim_end_matches('/');
+                Some(format!("{d}/{base_path}{variant}/"))
+            }
+        }
+    }
+
+    pub fn derive_asr_path(&self, base_path: &str, variant: &str) -> Option<String> {
+        match self.asr_model.clone().unwrap_or_default() {
+            AsrModel::Void => None,
+            _ => {
+                let d = self.data_dir().trim_end_matches('/');
+                Some(format!("{d}/{base_path}{variant}/"))
+            }
+        }
+    }
+
+    pub fn derive_llm_path(&self) -> Option<String> {
+        if self.llm_path.is_some() {
+            return self.llm_path.clone();
+        }
+        let variant = self.llm_variant.clone().unwrap_or_else(|| {
+            match self.llm_model.clone().unwrap_or_default() {
+                LlmModel::Qwen3 => "0.6b".into(),
+                _ => String::new(),
+            }
+        });
+        if variant.is_empty() {
+            return None;
+        }
+        let d = self.data_dir();
+        match self.llm_model.clone().unwrap_or_default() {
+            LlmModel::Qwen3 => Some(format!("{d}/llm/model/qwen3/{variant}/")),
+            _ => None,
+        }
+    }
+
+    pub fn derive_vad_path(&self) -> Option<String> {
+        if self.vad_path.is_some() {
+            return self.vad_path.clone();
+        }
+        None
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -481,28 +705,25 @@ pub struct ListeningAddr {
 #[derive(Clone, Debug, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum VadModel {
-    Silero,
     Void,
     #[default]
     Earshot,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Default)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AsrModel {
     #[default]
-    Qwen3,
-    Whisper,
+    SenseVoice,
     Void,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Default)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum TtsModel {
-    #[default]
-    Kokoro,
-    Voxcpm,
     Mute,
+    #[default]
+    MatchaTts,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Default)]
@@ -510,6 +731,5 @@ pub enum TtsModel {
 pub enum LlmModel {
     #[default]
     Qwen3,
-    MiniCPM4,
     Echo,
 }

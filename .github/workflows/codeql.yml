@@ -1,0 +1,78 @@
+name: codeql
+run-name: ${{ github.actor }} CodeQL analysis
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches:
+      - dev
+    paths:
+      - "apps/server/**"
+      - "libs/**"
+      - ".github/**"
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - "apps/server/**"
+      - "libs/**"
+      - ".github/**"
+  merge_group:
+    branches:
+      - dev
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - javascript-typescript
+          - rust
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Install Nix
+        if: matrix.language == 'rust'
+        uses: DeterminateSystems/nix-installer-action@e50d5f73bfe71c2dd0aa4218de8f4afa59f8f81d
+        with:
+          extra-conf: |
+            accept-flake-config = true
+
+      - name: Cache Nix store
+        if: matrix.language == 'rust'
+        uses: DeterminateSystems/magic-nix-cache-action@6221693898146dc97e38ad0e013488a16477a4c4
+        continue-on-error: true
+
+      - name: Build Rust
+        if: matrix.language == 'rust'
+        run: nix develop --command cargo build --workspace --exclude chobits-server --exclude web --verbose
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        if: matrix.language != 'rust'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2

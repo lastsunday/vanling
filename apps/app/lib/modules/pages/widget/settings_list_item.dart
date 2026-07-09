@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// ignore_for_file: deprecated_member_use
+
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -65,7 +67,7 @@ class ToggleSetting extends StatelessWidget {
               Padding(
                 padding: const EdgeInsetsDirectional.only(end: 8),
                 child: Switch(
-                  activeColor: colorScheme.primary,
+                  activeThumbColor: colorScheme.primary,
                   value: value,
                   onChanged: onChanged,
                 ),
@@ -212,7 +214,7 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
           border: BorderDirectional(
             start: BorderSide(
               width: 2,
-              color: theme.colorScheme.background,
+              color: theme.colorScheme.surface,
             ),
           ),
         ),
@@ -240,13 +242,17 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
                         color: Theme.of(context)
                             .colorScheme
                             .onPrimary
-                            .withOpacity(0.8),
+                            .withValues(alpha: 0.8),
                       ),
                     ),
                 ],
               ),
               groupValue: widget.selectedOption,
-              onChanged: (newOption) => widget.onOptionChanged(newOption),
+              onChanged: (newOption) {
+                if (newOption != null) {
+                  widget.onOptionChanged(newOption);
+                }
+              },
               activeColor: Theme.of(context).colorScheme.primary,
               dense: true,
             );

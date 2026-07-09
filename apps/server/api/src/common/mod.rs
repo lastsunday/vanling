@@ -2,7 +2,18 @@ use candle_core::{
     Device, Error, Result,
     utils::{cuda_is_available, metal_is_available},
 };
+use framework::err;
+use framework::error::{AppError, critical_code::CriticalErrorCode};
 use rig::completion::CompletionError;
+
+use framework::prelude::error;
+
+#[error]
+pub enum ModelErrorCode {
+    Chat = 503001,
+    Tts = 503002,
+    Asr = 503003,
+}
 
 pub fn device(cpu: bool) -> Result<Device> {
     if cpu {
@@ -14,7 +25,7 @@ pub fn device(cpu: bool) -> Result<Device> {
     } else {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            println!(
+            tracing::info!(
                 "Running on CPU, to run on GPU(metal), build this example with `--features metal`"
             );
         }
@@ -87,5 +98,39 @@ impl From<regex::Error> for ModelError {
 impl From<ModelError> for CompletionError {
     fn from(value: ModelError) -> Self {
         CompletionError::ResponseError(value.to_string())
+    }
+}
+
+impl From<ModelError> for AppError {
+    fn from(value: ModelError) -> Self {
+        match &value {
+            ModelError::Chat(_) => err!(ModelErrorCode::Chat).with_extra(value.to_string()),
+            ModelError::Tts(_) => err!(ModelErrorCode::Tts).with_extra(value.to_string()),
+            ModelError::Asr(_) => err!(ModelErrorCode::Asr).with_extra(value.to_string()),
+            ModelError::ModelFileNotFound(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::TokenFileNotFound(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::ModelInitFailure(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::TokenInitFailure(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::TokenConvertFailure(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::ModelCompletionError(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::Tensor(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+            ModelError::Decoder(_) => {
+                err!(CriticalErrorCode::InternalError).with_extra(value.to_string())
+            }
+        }
     }
 }

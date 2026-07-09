@@ -6,7 +6,6 @@ import 'package:event_bus/event_bus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 import 'package:app/constants.dart';
 import 'package:app/core/db/db_manager.dart';
 import 'package:app/core/local_storage.dart';
@@ -32,8 +31,8 @@ import 'package:geolocator/geolocator.dart';
 class AppStore extends ChangeNotifier {
   static late RotatingFileAppender rotatingFileAppender;
 
-  static const ITEM_KEY_APP_SETTING = "ITEM_KEY_APP_SETTING";
-  static const ITEM_KEY_TTS_LOCALE = "ITEM_KEY_TTS_LOCALE";
+  static const itemKeyAppSetting = "itemKeyAppSetting";
+  static const itemKeyTtsLocale = "itemKeyTtsLocale";
 
   bool initValue = false;
   bool initUIValue = false;
@@ -225,9 +224,9 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  get showDatetime => _showDatetime;
+  bool get showDatetime => _showDatetime;
 
-  get showOnlineMemo => _showOnlineMemo;
+  bool get showOnlineMemo => _showOnlineMemo;
 
   // get deviceId => _deviceId;
 
@@ -251,7 +250,7 @@ class AppStore extends ChangeNotifier {
   }
 
   AppSetting getAppSetting() {
-    String appSettingString = LocalStorage.get(ITEM_KEY_APP_SETTING, "");
+    String appSettingString = LocalStorage.get(itemKeyAppSetting, "");
     if (appSettingString.isNotEmpty) {
       return AppSetting.fromJson(jsonDecode(appSettingString));
     } else {
@@ -260,15 +259,15 @@ class AppStore extends ChangeNotifier {
   }
 
   void updateAppSetting(AppSetting appSetting) {
-    LocalStorage.save(ITEM_KEY_APP_SETTING, jsonEncode(appSetting));
+    LocalStorage.save(itemKeyAppSetting, jsonEncode(appSetting));
   }
 
   static Future<void> saveTtsLocale(String? locale) {
-    return LocalStorage.save(ITEM_KEY_TTS_LOCALE, locale);
+    return LocalStorage.save(itemKeyTtsLocale, locale);
   }
 
   static String getTtsLocale() {
-    return LocalStorage.get(ITEM_KEY_TTS_LOCALE, "");
+    return LocalStorage.get(itemKeyTtsLocale, "");
   }
 
   Menu getMenu() {

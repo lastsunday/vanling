@@ -7,7 +7,7 @@ use validator::Validate;
 
 use framework::{
     data::{ApiResponse, PageParam, valid::ValidQuery},
-    error::ApiResult,
+    error::AppResult,
 };
 
 const TAG: &str = "index";
@@ -57,6 +57,6 @@ pub struct TestQueryParam {
 ))]
 pub async fn test_path_query(
     ValidQuery(param): ValidQuery<TestQueryParam>,
-) -> ApiResult<ApiResponse<TestQueryParam>> {
+) -> AppResult<ApiResponse<TestQueryParam>> {
     Ok(ApiResponse::success(Some(param)))
 }

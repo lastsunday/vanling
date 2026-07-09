@@ -19,6 +19,10 @@
 #
 #server_name = localhost.localdomain
 
+# Base data directory for model files. All model paths are relative to this.
+#
+#data_dir = data
+
 # The default address (IPv4 or IPv6) continuwuity will listen on.
 #
 # If you are using Docker or a container NAT networking setup, this must
@@ -79,39 +83,81 @@
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#vad_model = silero
+#vad_model = earshot
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#vad_path = data/vad/model/onnx-community/silero-vad/
+#vad_path = auto-derived from model+variant
+
+# This item is undocumented. Please contribute documentation for it.
+#
+#vad_variant = false
 
 # This item is undocumented. Please contribute documentation for it.
 #
 #vad_num_threads = 4
 
-# This item is undocumented. Please contribute documentation for it.
+# VAD detection threshold (0.0–1.0). Higher = fewer false positives, more false negatives.
 #
-#tts_model = kokoro
+#vad_threshold = 0.5
+
+# Minimum silence duration in ms before VAD considers speech ended.
+#
+#vad_min_silence_duration = 1000
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#tts_path = data/tts/model/mzdk100/kokoro/
+#tts_model = matchatts
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#tts_reference_prompt_text = 一定被灰太狼给吃了，我已经为他准备好了花圈了
+#tts_path = auto-derived from model manifest
+
+# Variant override for the active TTS model.
+#
+# When not set, the default variant is read from the embedded model manifest.
+# This is useful for switching between different model variants without
+# changing the model type.
+#
+#tts_variant = auto-detected from model manifest
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#tts_reference_prompt_wav_path = file://data/tts/reference/voice_05.wav
+#tts_reference_variant = auto-detected from model manifest
+
+# override the auto-derived prompt text from manifest
+#
+#tts_reference_prompt_text = false
+
+# override the auto-derived prompt wav path from manifest
+#
+#tts_reference_prompt_wav_path = false
+
+# TTS 模型特有配置
+# MatchaTTS 模型支持以下选项：
+#   - num_threads:      线程数 (默认 2)
+#   - noise_scale:     生成噪声参数 (默认 0.667)
+#   - length_scale:    语速缩放 (默认 auto-detected from model manifest)
+#   - speed:           播放速度 (默认 1.0)
+#   - debug:           是否输出调试信息 (默认 false)
+#   - dict_dir:        发音字典目录路径 (可选)
+#   - data_dir:        espeak-ng 数据目录路径 (可选)
+#   - acoustic_model:  声学模型 .onnx 文件路径 (自动发现 model-steps-3.onnx)
+#   - vocoder:         声码器 .onnx 文件路径 (自动发现 vocos-22khz-univ.onnx / vocos-16khz-univ.onnx)
+#
+#tts_options = false
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#asr_model = qwen3
+#asr_model = sensevoice
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#asr_path = data/asr/model/Qwen/Qwen3-ASR-0.6B/
+#asr_path = auto-derived from model+variant
+
+# This item is undocumented. Please contribute documentation for it.
+#
+#asr_variant = false
 
 # This item is undocumented. Please contribute documentation for it.
 #
@@ -119,19 +165,11 @@
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#llm_path = data/llm/model/unsloth/Qwen3-1.7B-GGUF/
+#llm_path = auto-derived from model+variant
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#audio_input_sample_rate = 16000
-
-# This item is undocumented. Please contribute documentation for it.
-#
-#audio_input_frame_duration = 60
-
-# This item is undocumented. Please contribute documentation for it.
-#
-#audio_input_channel = 1
+#llm_variant = false
 
 # This item is undocumented. Please contribute documentation for it.
 #
@@ -143,7 +181,7 @@
 
 # This item is undocumented. Please contribute documentation for it.
 #
-#audio_output_frame_duration = 60
+#audio_output_frame_duration = 20
 
 # This item is undocumented. Please contribute documentation for it.
 #
@@ -184,3 +222,55 @@
 # This item is undocumented. Please contribute documentation for it.
 #
 #matrix_client_password =
+
+# Enable console logging
+#
+#log_console_enabled = true
+
+# Console log level (trace, debug, info, warn, error)
+#
+#log_console_level = info
+
+# Console log format (text, json, compact, pretty)
+#
+#log_console_format = text
+
+# Enable file logging
+#
+#log_file_enabled = false
+
+# File log level (trace, debug, info, warn, error)
+#
+#log_file_level = info
+
+# File log format (text, json, compact, pretty)
+#
+#log_file_format = json
+
+# File log directory
+#
+#log_file_directory = ./logs
+
+# File log name prefix
+#
+#log_file_name = server
+
+# Max log files to retain
+#
+#log_file_max_files = 10
+
+# Log rotation (daily, hourly, never)
+#
+#log_file_rotation = daily
+
+# Enable tracing-flame profiling output
+#
+#log_flame_enabled = false
+
+# Flame graph output directory
+#
+#log_flame_directory = ./flame
+
+# Enable tokio-console
+#
+#log_tokio_console_enabled = false

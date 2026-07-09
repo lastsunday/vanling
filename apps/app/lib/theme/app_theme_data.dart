@@ -3,14 +3,13 @@
 // found in the LICENSE file.
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppThemeData {
   static const _lightFillColor = Colors.black;
   static const _darkFillColor = Colors.white;
 
-  static final Color _lightFocusColor = Colors.black.withOpacity(0.12);
-  static final Color _darkFocusColor = Colors.white.withOpacity(0.12);
+  static final Color _lightFocusColor = Colors.black.withValues(alpha: 0.12);
+  static final Color _darkFocusColor = Colors.white.withValues(alpha: 0.12);
 
   static ThemeData lightThemeData =
       themeData(lightColorScheme, _lightFocusColor, lightListTileThemeData);
@@ -23,19 +22,19 @@ class AppThemeData {
       colorScheme: colorScheme,
       textTheme: _textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: colorScheme.background,
+        backgroundColor: colorScheme.surface,
         elevation: 0,
         iconTheme: IconThemeData(color: colorScheme.primary),
       ),
       iconTheme: IconThemeData(color: colorScheme.onPrimary),
-      canvasColor: colorScheme.background,
-      scaffoldBackgroundColor: colorScheme.background,
+      canvasColor: colorScheme.surface,
+      scaffoldBackgroundColor: colorScheme.surface,
       highlightColor: Colors.transparent,
       focusColor: focusColor,
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: Color.alphaBlend(
-          _lightFillColor.withOpacity(0.80),
+          _lightFillColor.withValues(alpha: 0.80),
           _darkFillColor,
         ),
         contentTextStyle: _textTheme.titleMedium!.apply(color: _darkFillColor),
@@ -49,9 +48,7 @@ class AppThemeData {
     primaryContainer: Color(0xFF117378),
     secondary: Color(0xFFEFF3F3),
     secondaryContainer: Color(0xFFFAFBFB),
-    background: Color(0xFFE6EBEB),
-    surface: Color(0xFFFAFBFB),
-    onBackground: Colors.white,
+    surface: Color(0xFFE6EBEB),
     error: _lightFillColor,
     onError: _lightFillColor,
     onPrimary: _lightFillColor,
@@ -67,9 +64,7 @@ class AppThemeData {
     primaryContainer: Color(0xFF1CDEC9),
     secondary: Color(0xFF4D1F7C),
     secondaryContainer: Color(0xFF451B6F),
-    background: Color(0xFF241E30),
-    surface: Color(0xFF1F1929),
-    onBackground: Color(0x0DFFFFFF), // White with 0.05 opacity
+    surface: Color(0xFF241E30),
     error: _darkFillColor,
     onError: _darkFillColor,
     onPrimary: _darkFillColor,
