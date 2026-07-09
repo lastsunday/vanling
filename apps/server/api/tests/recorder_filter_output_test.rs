@@ -523,3 +523,329 @@ async fn test_pre_round_frames_elapsed_us_non_negative() {
         );
     }
 }
+
+// 11. multi-sentence TTS round: verify each TTS entry gets its own audio OGG
+#[tokio::test]
+async fn test_multi_sentence_tts_round_data() {
+    use entity::round_data;
+    use migration::{Migrator, MigratorTrait};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let conn = framework::database::establish_connection("sqlite::memory:")
+        .await
+        .expect("create memory db");
+    Migrator::up(&conn, None).await.expect("run migration");
+    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
+    let rid = "multi-tts-round";
+
+    // 1. STT result
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::STTResult(SttMessage::new(None, Some("input text".into()))),
+        ),
+    )
+    .await;
+
+    // 2. TTS Start
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Start), None)),
+        ),
+    )
+    .await;
+
+    // 3. Sentence 1: LLM + TTS(SentenceStart) + 5 AudioResult + TTS(SentenceEnd)
+    let mut llm1 = LlmMessage::new(None, None, None);
+    llm1.full_text = Some("sentence 1".into());
+    process(&filter, make_msg(Some(rid), FrameResult::LLMResult(llm1))).await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(
+                None,
+                Some(TtsState::SentenceStart),
+                Some("sentence 1".into()),
+            )),
+        ),
+    )
+    .await;
+
+    for _ in 0..5 {
+        process(
+            &filter,
+            make_msg(
+                Some(rid),
+                FrameResult::AudioResult(AudioMessage::new(None, vec![1u8; 37])),
+            ),
+        )
+        .await;
+    }
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::SentenceEnd), None)),
+        ),
+    )
+    .await;
+
+    // 4. Sentence 2: LLM + TTS(SentenceStart) + 10 AudioResult + TTS(SentenceEnd)
+    let mut llm2 = LlmMessage::new(None, None, None);
+    llm2.full_text = Some("sentence 2".into());
+    process(&filter, make_msg(Some(rid), FrameResult::LLMResult(llm2))).await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(
+                None,
+                Some(TtsState::SentenceStart),
+                Some("sentence 2".into()),
+            )),
+        ),
+    )
+    .await;
+
+    for _ in 0..10 {
+        process(
+            &filter,
+            make_msg(
+                Some(rid),
+                FrameResult::AudioResult(AudioMessage::new(None, vec![2u8; 42])),
+            ),
+        )
+        .await;
+    }
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::SentenceEnd), None)),
+        ),
+    )
+    .await;
+
+    // 5. TTS Stop → triggers flush
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Stop), None)),
+        ),
+    )
+    .await;
+
+    // 6. Verify round_data
+    let data = round_data::Entity::find()
+        .filter(round_data::Column::RoundId.eq(rid))
+        .all(&conn)
+        .await
+        .unwrap();
+
+    let tts_entries: Vec<_> = data.iter().filter(|d| d.data_type == "tts").collect();
+    assert_eq!(tts_entries.len(), 2, "should have 2 TTS entries");
+
+    // Sentence 1
+    let tts1 = tts_entries[0];
+    assert_eq!(tts1.text.as_deref(), Some("sentence 1"));
+    let meta1: serde_json::Value = tts1.metadata.as_ref().unwrap().clone();
+    assert_eq!(meta1["audio_duration_ms"], 100); // 5 packets * 20ms
+    assert_eq!(meta1["format"], "ogg");
+    assert!(tts1.data.is_some(), "sentence 1 should have audio data");
+    assert!(
+        tts1.data.as_ref().unwrap().len() > 100,
+        "sentence 1 OGG should be non-trivial"
+    );
+
+    // Sentence 2
+    let tts2 = tts_entries[1];
+    assert_eq!(tts2.text.as_deref(), Some("sentence 2"));
+    let meta2: serde_json::Value = tts2.metadata.as_ref().unwrap().clone();
+    assert_eq!(meta2["audio_duration_ms"], 200); // 10 packets * 20ms
+    assert_eq!(meta2["format"], "ogg");
+    assert!(tts2.data.is_some(), "sentence 2 should have audio data");
+
+    // Audio data MUST be different (each sentence has its own OGG)
+    assert_ne!(
+        tts1.data, tts2.data,
+        "each TTS sentence must have its own OGG blob"
+    );
+}
+
+// 12. single-sentence TTS round: basic sanity
+#[tokio::test]
+async fn test_single_sentence_tts_round_data() {
+    use entity::round_data;
+    use migration::{Migrator, MigratorTrait};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let conn = framework::database::establish_connection("sqlite::memory:")
+        .await
+        .expect("create memory db");
+    Migrator::up(&conn, None).await.expect("run migration");
+    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
+    let rid = "single-tts-round";
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::STTResult(SttMessage::new(None, Some("hi".into()))),
+        ),
+    )
+    .await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Start), None)),
+        ),
+    )
+    .await;
+
+    let mut llm = LlmMessage::new(None, None, None);
+    llm.full_text = Some("only sentence".into());
+    process(&filter, make_msg(Some(rid), FrameResult::LLMResult(llm))).await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(
+                None,
+                Some(TtsState::SentenceStart),
+                Some("only sentence".into()),
+            )),
+        ),
+    )
+    .await;
+
+    // 3 AudioResult packets
+    for _ in 0..3 {
+        process(
+            &filter,
+            make_msg(
+                Some(rid),
+                FrameResult::AudioResult(AudioMessage::new(None, vec![3u8; 40])),
+            ),
+        )
+        .await;
+    }
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::SentenceEnd), None)),
+        ),
+    )
+    .await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Stop), None)),
+        ),
+    )
+    .await;
+
+    let data = round_data::Entity::find()
+        .filter(round_data::Column::RoundId.eq(rid))
+        .all(&conn)
+        .await
+        .unwrap();
+
+    let tts_entries: Vec<_> = data.iter().filter(|d| d.data_type == "tts").collect();
+    assert_eq!(tts_entries.len(), 1, "should have 1 TTS entry");
+
+    let tts = &tts_entries[0];
+    assert_eq!(tts.text.as_deref(), Some("only sentence"));
+    let meta: serde_json::Value = tts.metadata.as_ref().unwrap().clone();
+    assert_eq!(meta["audio_duration_ms"], 60); // 3 packets * 20ms
+    assert!(tts.data.is_some());
+}
+
+// 13. TTS sentence with no audio packets: data should be None
+#[tokio::test]
+async fn test_tts_round_data_no_audio() {
+    use entity::round_data;
+    use migration::{Migrator, MigratorTrait};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let conn = framework::database::establish_connection("sqlite::memory:")
+        .await
+        .expect("create memory db");
+    Migrator::up(&conn, None).await.expect("run migration");
+    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
+    let rid = "no-audio-tts-round";
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Start), None)),
+        ),
+    )
+    .await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(
+                None,
+                Some(TtsState::SentenceStart),
+                Some("silent sentence".into()),
+            )),
+        ),
+    )
+    .await;
+
+    // No AudioResult packets for this sentence
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::SentenceEnd), None)),
+        ),
+    )
+    .await;
+
+    process(
+        &filter,
+        make_msg(
+            Some(rid),
+            FrameResult::TTSResult(TtsMessage::new(None, Some(TtsState::Stop), None)),
+        ),
+    )
+    .await;
+
+    let data = round_data::Entity::find()
+        .filter(round_data::Column::RoundId.eq(rid))
+        .all(&conn)
+        .await
+        .unwrap();
+
+    let tts_entries: Vec<_> = data.iter().filter(|d| d.data_type == "tts").collect();
+    assert_eq!(tts_entries.len(), 1);
+    let tts = &tts_entries[0];
+    assert_eq!(tts.text.as_deref(), Some("silent sentence"));
+    assert!(tts.data.is_none(), "no audio → data should be None");
+    let meta: serde_json::Value = tts.metadata.as_ref().unwrap().clone();
+    assert_eq!(meta["audio_duration_ms"], serde_json::Value::Null);
+}

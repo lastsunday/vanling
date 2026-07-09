@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, FixedOffset, Local};
@@ -151,6 +151,9 @@ pub struct Recorder {
     known_sessions: Arc<Mutex<HashSet<String>>>,
     next_seq: AtomicU64,
     voice_start: Mutex<Option<DateTime<FixedOffset>>>,
+    tts_frame_duration: AtomicU64,
+    tts_channels: AtomicU32,
+    tts_sample_rate: AtomicU32,
 }
 
 impl Recorder {
@@ -162,6 +165,9 @@ impl Recorder {
             known_sessions: Arc::new(Mutex::new(HashSet::new())),
             next_seq: AtomicU64::new(1),
             voice_start: Mutex::new(None),
+            tts_frame_duration: AtomicU64::new(20),
+            tts_channels: AtomicU32::new(1),
+            tts_sample_rate: AtomicU32::new(16000),
         }
     }
 
@@ -176,6 +182,13 @@ impl Recorder {
         if let Ok(mut entries) = self.entries.lock() {
             entries.push(entry);
         }
+    }
+
+    pub fn set_tts_params(&self, frame_duration: u64, channels: u8, sample_rate: u32) {
+        self.tts_frame_duration
+            .store(frame_duration, Ordering::Relaxed);
+        self.tts_channels.store(channels as u32, Ordering::Relaxed);
+        self.tts_sample_rate.store(sample_rate, Ordering::Relaxed);
     }
 
     pub fn has_active_round(&self) -> bool {
@@ -196,12 +209,18 @@ impl Recorder {
         }
         if round_info.is_some() && !entries.is_empty() {
             let conn = self.conn.clone();
+            let tts_frame_duration = self.tts_frame_duration.load(Ordering::Relaxed);
+            let tts_channels = self.tts_channels.load(Ordering::Relaxed) as u8;
+            let tts_sample_rate = self.tts_sample_rate.load(Ordering::Relaxed);
             tokio::spawn(async move {
                 Self::flush(
                     &conn,
                     &entries,
                     round_info.as_ref(),
                     RoundStatus::Interrupted,
+                    tts_frame_duration,
+                    tts_channels,
+                    tts_sample_rate,
                 )
                 .await;
             });
@@ -253,7 +272,19 @@ impl Recorder {
             .round_info
             .lock()
             .map_or_else(|_| None, |mut r| r.take());
-        Self::flush(&self.conn, &entries, round_info.as_ref(), status).await;
+        let tts_frame_duration = self.tts_frame_duration.load(Ordering::Relaxed);
+        let tts_channels = self.tts_channels.load(Ordering::Relaxed) as u8;
+        let tts_sample_rate = self.tts_sample_rate.load(Ordering::Relaxed);
+        Self::flush(
+            &self.conn,
+            &entries,
+            round_info.as_ref(),
+            status,
+            tts_frame_duration,
+            tts_channels,
+            tts_sample_rate,
+        )
+        .await;
     }
 
     async fn flush(
@@ -261,6 +292,9 @@ impl Recorder {
         entries: &[RecordEntry],
         round_info: Option<&RoundInfo>,
         status: RoundStatus,
+        tts_frame_duration_ms: u64,
+        tts_channels: u8,
+        tts_sample_rate: u32,
     ) {
         if entries.is_empty() && round_info.is_none() {
             return;
@@ -292,37 +326,57 @@ impl Recorder {
             }
         }
 
-        let tts_ogg = {
-            let mut audio_result_packets: Vec<Vec<u8>> = Vec::new();
-            let mut has_tts_text = false;
+        // Group AudioResult packets per TTS sentence based on entry order.
+        // Each TtsText entry starts a new sentence group. Subsequent AudioResult
+        // packets belong to that sentence until the next TtsText is encountered.
+        let sentence_oggs: Vec<Option<(Vec<u8>, u64)>> = {
+            let sentence_count = entries
+                .iter()
+                .filter(|e| matches!(e.kind, EntryKind::TtsText { .. }))
+                .count();
+
+            let mut groups: Vec<Vec<Vec<u8>>> = vec![Vec::new(); sentence_count];
+            let mut current = 0usize;
             for entry in entries.iter() {
                 match &entry.kind {
+                    EntryKind::TtsText { .. } if current < sentence_count => {
+                        current += 1;
+                    }
                     EntryKind::Frame {
                         detail: FrameDetail::AudioResult,
                         data: Some(p),
                         ..
-                    } => {
-                        audio_result_packets.push(p.clone());
-                    }
-                    EntryKind::TtsText { .. } => {
-                        has_tts_text = true;
+                    } if current > 0 && current <= sentence_count => {
+                        groups[current - 1].push(p.clone());
                     }
                     _ => {}
                 }
             }
-            if has_tts_text && !audio_result_packets.is_empty() {
-                match mux_opus_to_ogg(&audio_result_packets, 20, 1, 16000) {
-                    Ok(data) => Some((data, audio_result_packets.len() as u64 * 20)),
-                    Err(e) => {
-                        tracing::error!("tts ogg mux error: {e}");
-                        None
+
+            groups
+                .into_iter()
+                .map(|packets| {
+                    if packets.is_empty() {
+                        return None;
                     }
-                }
-            } else {
-                None
-            }
+                    let duration = packets.len() as u64 * 20;
+                    match mux_opus_to_ogg(
+                        &packets,
+                        tts_frame_duration_ms,
+                        tts_channels,
+                        tts_sample_rate,
+                    ) {
+                        Ok(data) => Some((data, duration)),
+                        Err(e) => {
+                            tracing::error!("tts ogg mux error: {e}");
+                            None
+                        }
+                    }
+                })
+                .collect()
         };
 
+        let mut tts_idx = 0usize;
         for entry in entries {
             let elapsed_us = round_info
                 .and_then(|info| (entry.received_at - info.started_at).num_microseconds())
@@ -437,10 +491,12 @@ impl Recorder {
                 }
                 EntryKind::TtsText { text } => {
                     let elapsed_ms = elapsed_us.map(|u| u / 1000).unwrap_or(0);
-                    let (data, audio_duration_ms) = tts_ogg
-                        .as_ref()
+                    let (data, audio_duration_ms) = sentence_oggs
+                        .get(tts_idx)
+                        .and_then(|opt| opt.as_ref())
                         .map(|(d, dur)| (Some(d.clone()), Some(*dur as i64)))
                         .unwrap_or((None, None));
+                    tts_idx += 1;
                     if (round_data::ActiveModel {
                         id: Set(gen_id()),
                         round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),

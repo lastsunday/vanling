@@ -222,7 +222,14 @@ impl OutputFilter for RecorderOutputFilter {
 
         let Some(rid) = &msg.round_id else {
             match &payload {
-                FrameResult::HelloResult(_) => {
+                FrameResult::HelloResult(hello) => {
+                    if let Some(params) = &hello.audio_params {
+                        recorder.set_tts_params(
+                            params.frame_duration,
+                            params.channels as u8,
+                            params.sample_rate,
+                        );
+                    }
                     self.record_frame(recorder, now, FrameDetail::Hello, None);
                 }
                 FrameResult::CloseResult => {
