@@ -1,6 +1,5 @@
 pub mod default_listener;
 pub mod filter;
-pub mod input_sender;
 pub mod mcp_session;
 pub mod protocol_translator;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
@@ -17,6 +16,7 @@ use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use service::chobits::frame::{Frame, OutputMessage};
 use service::chobits::session::{self, SessionBuilder};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::StreamMap;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::sync::CancellationToken;
@@ -37,7 +37,6 @@ use crate::{
             FilterCtx, FilterStep, InputFilter, OutputFilter, RecorderInputFilter,
             RecorderOutputFilter, run_input_filters, run_output_filters,
         },
-        input_sender::InputSender,
         mcp_session::{McpRouterFilter, setup_mcp_session},
         protocol_translator::ProtocolTranslator,
     },
@@ -224,7 +223,7 @@ where
 async fn ws_input<R>(
     mut read: R,
     translator: impl ProtocolTranslator,
-    input_tx: impl InputSender,
+    input_tx: UnboundedSender<Frame>,
     filters: Vec<Box<dyn InputFilter>>,
     cancel: CancellationToken,
     session_id: String,
@@ -252,7 +251,7 @@ async fn ws_input<R>(
                 match run_input_filters(&filters, &ctx, frame).await {
                     FilterStep::Pass(frame) => {
                         let is_close = matches!(&frame, Frame::Close(_));
-                        input_tx.send(frame);
+                        let _ = input_tx.send(frame);
                         if is_close {
                             cancel.cancel();
                             return;
