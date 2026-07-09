@@ -233,19 +233,18 @@ impl OutputFilter for RecorderOutputFilter {
             return FilterAction::Continue(msg);
         };
 
-        let prev_round_id = {
-            let mut current = self.current_round_id.lock().expect("round id lock");
-            if current.as_deref() == Some(rid) {
-                return FilterAction::Continue(msg);
+        let prev_round_id = self
+            .current_round_id
+            .lock()
+            .expect("round id lock")
+            .replace(rid.clone());
+
+        if prev_round_id.as_deref() != Some(rid) {
+            if prev_round_id.is_some() && recorder.has_active_round() {
+                recorder.end_round(RoundStatus::Interrupted).await;
             }
-            current.replace(rid.clone())
-        };
-
-        if prev_round_id.is_some() && recorder.has_active_round() {
-            recorder.end_round(RoundStatus::Interrupted).await;
+            recorder.start_round(rid.clone(), Some(self.session_id.clone()));
         }
-
-        recorder.start_round(rid.clone(), Some(self.session_id.clone()));
 
         match &payload {
             FrameResult::STTResult(stt) => {
