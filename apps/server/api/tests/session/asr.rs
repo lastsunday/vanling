@@ -109,6 +109,11 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
     });
     session_ctx.input_tx.send(hello).unwrap();
 
+    session_ctx
+        .input_tx
+        .send(Frame::ListenStart { barge_in: true })
+        .unwrap();
+
     for packet in &audio {
         session_ctx
             .input_tx
@@ -118,10 +123,6 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
             .unwrap();
     }
 
-    // give it some time to process
-    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-
-    // now send a listen stop since we're not using input-based timing
     session_ctx.input_tx.send(Frame::ListenStop).unwrap();
 
     // wait for up to n seconds for the first non-hello output
