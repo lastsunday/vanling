@@ -1,6 +1,6 @@
 use api::{
     chii::{ChatRequest, ChiiCoreBuilder, History},
-    config::{LlmModel, llm::LlmConfig},
+    config::{LlmProvider, llm::LlmConfig},
     llm::{Llm, LlmManager},
     mcp::client::external::ExternalMcpClient,
     setup_mcp,
@@ -30,9 +30,9 @@ fn create_model() -> Arc<dyn Llm> {
         .to_string_lossy()
         .into_owned();
     LlmManager::create_model(&LlmConfig {
-        model: Some(LlmModel::Qwen3),
+        provider: Some(LlmProvider::LocalQwen3),
         path: Some(model_path),
-        variant: None,
+        ..Default::default()
     })
 }
 
@@ -41,9 +41,8 @@ fn create_model() -> Arc<dyn Llm> {
 async fn test_chat_echo() {
     let client = ChiiCoreBuilder::new()
         .with_model(LlmManager::create_model(&LlmConfig {
-            model: Some(LlmModel::Echo),
-            path: None,
-            variant: None,
+            provider: Some(LlmProvider::LocalEcho),
+            ..Default::default()
         }))
         .build()
         .with_history(Arc::new(Mutex::new(History {

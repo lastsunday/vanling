@@ -2,8 +2,8 @@
 title = "ASR Speech Recognition"
 weight = 402
 [extra]
-source_file_hash = "2e85692265de4868e01a100831f39cf6a3ec67cb"
-translated_at = "2026-07-09T00:00:00Z"
+source_file_hash = "9c2482713d8febed978b63651db96d84523c1e26"
+translated_at = "2026-07-11T00:00:00Z"
 +++
 
 # ASR Speech Recognition
@@ -41,7 +41,7 @@ All models share `RecognizerResult { text: String, prob: f32 }` as output.
 
 | Model | Config Name | Model File | Size | Languages | Architecture |
 |-------|-------------|------------|------|-----------|-------------|
-| **SenseVoice** | `sensevoice` | `model.int8.onnx` | 228MB | zh/en/ja/ko/yue | OfflineSenseVoice |
+| **SenseVoice** | `sense_voice` | `model.int8.onnx` | 228MB | zh/en/ja/ko/yue | OfflineSenseVoice |
 | **Void** | `void` | None (no-op) | 0 | — | — |
 
 All models come from <https://github.com/k2-fsa/sherpa-onnx>, managed via downloader manifests.

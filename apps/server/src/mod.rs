@@ -241,12 +241,15 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         })
     };
     let llm_config = Arc::new(LlmConfig {
-        model: config.llm_model.to_owned(),
+        provider: config.llm_provider.to_owned(),
         variant: config.llm_variant.to_owned(),
         path: config
             .llm_path
             .to_owned()
             .or_else(|| config.derive_llm_path()),
+        api_url: config.llm_api_url.to_owned(),
+        api_key: config.llm_api_key.to_owned(),
+        model: config.llm_model.to_owned(),
     });
     let matrix_config = Arc::new(MatrixConfig {
         enable: config.matrix_enable,

@@ -1,7 +1,7 @@
 {
   "config": {
     "category": "tts",
-    "model": "matchatts"
+    "model": "matcha_tts"
   },
   "default_variant": "matcha-icefall-zh-en",
   "variants": {

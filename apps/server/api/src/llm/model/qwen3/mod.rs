@@ -12,16 +12,16 @@ use async_trait::async_trait;
 use candle_core::{Device, Tensor, quantized::gguf_file};
 use candle_transformers::generation::{LogitsProcessor, Sampling};
 use framework::error::AppError;
-use futures::{SinkExt, Stream, executor::block_on};
-use futures_channel::mpsc::{Sender, channel};
+use futures::Stream;
 use quantized::ModelWeights as Qwen3Model;
 use service::chobits::llm::TokenConverter;
 use service::chobits::llm::{
     CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role, ToolDef,
 };
 use std::pin::Pin;
-use std::thread;
 use tokenizers::Tokenizer;
+use tokio::sync::mpsc::{Sender, channel};
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
@@ -146,7 +146,7 @@ async fn handle(
     tokenizer: Tokenizer,
     mut model: Qwen3Model,
     device: Device,
-    mut tx: Sender<Result<CompletionEvent, AppError>>,
+    tx: Sender<Result<CompletionEvent, AppError>>,
     cancel: CancellationToken,
 ) -> Result<(), AppError> {
     if cancel.is_cancelled() {
@@ -286,18 +286,19 @@ impl Llm for LlmQwen {
         let tokenizer = self.tokenizer.clone();
         let model = self.model.clone();
         let device = self.device.clone();
-        let (mut tx, rx) = channel::<Result<CompletionEvent, AppError>>(10);
-        thread::spawn(move || {
-            block_on(async move {
+        let (tx, rx) = channel::<Result<CompletionEvent, AppError>>(10);
+        let rt_handle = tokio::runtime::Handle::current();
+        tokio::task::spawn_blocking(move || {
+            rt_handle.block_on(async {
                 if let Err(e) = handle(&request, tokenizer, model, device, tx.clone(), cancel).await
                     && let Err(e) = tx.send(Err(e)).await
                 {
                     error!(error = %e, "chat llm error send error");
                 };
                 drop(tx);
-            })
+            });
         });
-        Box::pin(rx)
+        Box::pin(ReceiverStream::new(rx))
     }
 
     fn calculate_system_prompt_len(&self, system_prompt: &Option<String>) -> u64 {

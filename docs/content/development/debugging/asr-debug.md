@@ -38,7 +38,7 @@ pub trait Asr: Send + Sync {
 
 | 模型 | 配置名 | 模型文件 | 大小 | 语言 | 架构 |
 |------|--------|---------|------|------|------|
-| **SenseVoice** | `sensevoice` | `model.int8.onnx` | 228MB | 中/英/日/韩/粤 | OfflineSenseVoice |
+| **SenseVoice** | `sense_voice` | `model.int8.onnx` | 228MB | 中/英/日/韩/粤 | OfflineSenseVoice |
 | **Void** | `void` | 无 (no-op) | 0 | — | — |
 
 所有模型均来自 <https://github.com/k2-fsa/sherpa-onnx>，通过下载器 manifest 管理。

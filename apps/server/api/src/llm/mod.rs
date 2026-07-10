@@ -1,7 +1,7 @@
 pub mod model;
 
 use crate::config::{self, llm::LlmConfig};
-use crate::llm::model::{echo::Echo, qwen3::LlmQwen};
+use crate::llm::model::{echo::Echo, openai_compatible::OpenAiCompatible, qwen3::LlmQwen};
 use std::sync::{Arc, OnceLock};
 
 pub use service::chobits::llm::Llm;
@@ -31,11 +31,26 @@ impl LlmManager {
     }
 
     pub fn create_model(config: &LlmConfig) -> Arc<dyn Llm> {
-        match config.model.as_ref().expect("llm model is empty") {
-            config::LlmModel::Qwen3 => {
+        match config.provider.as_ref().expect("llm provider is empty") {
+            config::LlmProvider::LocalQwen3 => {
                 Arc::new(LlmQwen::new(config.path.as_ref().expect("llm path is empty")).unwrap())
             }
-            config::LlmModel::Echo => Arc::new(Echo::new().unwrap()),
+            config::LlmProvider::LocalEcho => Arc::new(Echo::new().unwrap()),
+            config::LlmProvider::RemoteOpenAiCompatible => {
+                let api_url = config
+                    .api_url
+                    .as_deref()
+                    .expect("llm.api_url is required for openai_compatible model");
+                let api_key = config.api_key.as_deref().unwrap_or("");
+                let api_model = config
+                    .model
+                    .as_deref()
+                    .expect("llm.model is required for openai_compatible model");
+                Arc::new(
+                    OpenAiCompatible::new(api_url, api_key, api_model)
+                        .expect("failed to create OpenAiCompatible model"),
+                )
+            }
         }
     }
 

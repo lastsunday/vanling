@@ -1,5 +1,5 @@
-language: "rust"
-tags: ["backend"]
+language: 'rust'
+tags: ['backend']
 
 tasks:
   bump:
@@ -13,19 +13,19 @@ tasks:
       runInCI: false
 
   format:
-    command: "cargo fmt --check"
+    command: 'cargo fmt --check'
 
   check:
-    command: "cargo check --package chobits-server"
+    command: 'cargo check --package chobits-server'
 
   build:
-    command: "cargo build --package chobits-server"
-    outputs: ["/target/debug/chobits-server"]
+    command: 'cargo build --package chobits-server'
+    outputs: ['/target/debug/chobits-server']
     deps:
       - ~:check
 
   lint:
-    command: "cargo clippy --workspace -- -D warnings"
+    command: 'cargo clippy --workspace -- -D warnings'
     deps:
       - ~:check
 
@@ -40,21 +40,21 @@ tasks:
       cache: false
 
   test:
-    command: "cargo test --package chobits-server --package api"
+    command: 'cargo test --package chobits-server --package api'
     deps:
       - ~:build
       - ~:test-download-resources
 
   test-pg:
-    command: "cargo test --package chobits-server --package api"
+    command: 'cargo test --package chobits-server --package api'
     env:
-      TEST_DATABASE: "pg"
+      TEST_DATABASE: 'pg'
     deps:
       - ~:build
       - ~:test-download-resources
 
   run:
-    command: "cargo run --package chobits-server -- --config=application.toml"
+    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" --config=application.toml'
     deps:
       - ~:build
     options:
@@ -62,7 +62,7 @@ tasks:
       cache: false
 
   dev:
-    command: "cargo run --package chobits-server -- --config=application-dev.toml"
+    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" --config=application-dev.toml'
     deps:
       - ~:build
     options:
@@ -70,7 +70,7 @@ tasks:
       cache: false
 
   dev-minimal:
-    command: 'cargo run --package chobits-server -- -O "vad_model=''void''" -O "asr_model=''void''" -O "tts_model=''mute''" -O "llm_model=''echo''"'
+    command: 'cargo run --package chobits-server -- -O "vad_model=''void''" -O "asr_model=''void''" -O "tts_model=''mute''" -O "llm_provider=''local_echo''"'
     deps:
       - ~:build
     options:
@@ -78,7 +78,7 @@ tasks:
       cache: false
 
   dev-lite:
-    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''sensevoice''" -O "tts_model=''matchatts''" -O "llm_model=''echo''"'
+    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''sense_voice''" -O "tts_model=''matcha_tts''" -O "llm_provider=''local_echo''"'
     deps:
       - ~:build
     options:
@@ -86,7 +86,7 @@ tasks:
       cache: false
 
   downloader:
-    command: "cargo run --package chobits-server -- downloader"
+    command: 'cargo run --package chobits-server -- downloader'
     deps:
       - ~:build
     options:
@@ -94,7 +94,7 @@ tasks:
       runInCI: false
 
   downloader-install:
-    command: "cargo run --package chobits-server -- downloader install --data-dir ../../data"
+    command: 'cargo run --package chobits-server -- downloader install --data-dir ../../data'
     deps:
       - ~:build
     options:
@@ -102,12 +102,12 @@ tasks:
       runInCI: false
 
   sweep:
-    command: "cargo sweep --maxsize 20GB"
+    command: 'cargo sweep --maxsize 20GB'
     options:
       runInCI: false
 
   downloader-list:
-    command: "cargo run --package chobits-server -- downloader list"
+    command: 'cargo run --package chobits-server -- downloader list'
     deps:
       - ~:build
     options:

@@ -1,11 +1,11 @@
 pub mod splitter;
 pub use splitter::Splitter;
 
-use std::{collections::VecDeque, sync::Arc, thread};
+use std::{collections::VecDeque, sync::Arc};
 
 use crate::common::ModelError;
+use futures::Stream;
 use futures::StreamExt;
-use futures::{Stream, executor::block_on};
 use service::chobits::llm::{CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role};
 use service::chobits::mcp::McpRegistry;
 use tokio::sync::{Mutex, mpsc::channel};
@@ -73,12 +73,11 @@ impl ChiiCore {
         let max_tokens = self.max_tokens;
         let max_prompt_len = self.max_prompt_len;
         let span = span!(parent:None,Level::DEBUG, "chii_core", session_id=%session_id.unwrap_or_default());
-        thread::spawn(move || {
+        tokio::spawn(async move {
             if cancel.is_cancelled() {
                 return;
             }
-            let output = block_on(
-                async move {
+            let result: Result<(), anyhow::Error> = async {
                     let tools = {
                         if let Some(mcp_registry) = &mcp_registry {
                             let mcp_registry = mcp_registry.lock().await;
@@ -257,19 +256,13 @@ impl ChiiCore {
                     drop(tx);
                     anyhow::Ok(())
                 }
-                .instrument(span),
-            );
-            match output {
-                Ok(_) => {
-                    drop(tx_main);
-                }
+                .instrument(span)
+                .await;
+            match result {
+                Ok(_) => drop(tx_main),
                 Err(e) => {
-                    block_on(async move {
-                        if let Err(e) = tx_main.send(Err(ModelError::Chat(e.to_string()))).await {
-                            error!(error = %e, "send response error");
-                        }
-                        drop(tx_main);
-                    });
+                    let _ = tx_main.send(Err(ModelError::Chat(e.to_string()))).await;
+                    drop(tx_main);
                 }
             }
         });

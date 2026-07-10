@@ -256,9 +256,9 @@ moon run server:download-all-and-checksums # 下载所有模型并更新 SHA
 
 | 配置字段 | 可选值 | 下载目标 |
 |----------|--------|----------|
-| `tts_model` | `matchatts` / `mute` | `mute` 跳过 |
-| `asr_model` | `sensevoice` / `void` | `void` 跳过 |
-| `llm_model` | `qwen3` / `echo` | `echo` 跳过 |
+| `tts_model` | `matcha_tts` / `mute` | `mute` 跳过 |
+| `asr_model` | `sense_voice` / `void` | `void` 跳过 |
+| `llm_provider` | `local_qwen3` / `local_echo` | `local_echo` 跳过 |
 | `vad_model` | `earshot` / `void` | 均跳过（earshot 内嵌，void no-op） |
 
 ### config 文件查找

@@ -81,9 +81,9 @@ Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilt
 | 服务器 | `port` | `3000` | 监听端口 |
 | 数据库 | `database_url` | `sqlite://db.sqlite?mode=rwc` | SQLite 或 PostgreSQL URL |
 | 认证 | `auth_access_token_secret` | `QLjJTeVblAlM47de` | JWT 签名密钥 |
-| TTS | `tts_model` | `matchatts` | 模型选择 |
-| ASR | `asr_model` | `sensevoice` | 模型选择 |
-| LLM | `llm_model` | `qwen3` | 模型选择 |
+| TTS | `tts_model` | `matcha_tts` | 模型选择 |
+| ASR | `asr_model` | `sense_voice` | 模型选择 |
+| LLM | `llm_provider` | `local_qwen3` | 模型选择 |
 | VAD | `vad_model` | `earshot` | 模型选择 |
 | Session | `silence_voice_timeout` | `1200` | 静默超时 (ms) |
 | 日志 | `log_console_enabled` | `true` | 控制台日志 |

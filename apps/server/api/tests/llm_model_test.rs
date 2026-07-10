@@ -4,7 +4,7 @@ use std::sync::Arc;
 use api::{
     chii::Splitter,
     common::ModelError,
-    config::{LlmModel, llm::LlmConfig},
+    config::{LlmProvider, llm::LlmConfig},
     llm::LlmManager,
 };
 use framework::error::AppError;
@@ -41,9 +41,9 @@ fn create_llm_config() -> LlmConfig {
         .to_string_lossy()
         .into_owned();
     LlmConfig {
-        model: Some(LlmModel::Qwen3),
+        provider: Some(LlmProvider::LocalQwen3),
         path: Some(model_path),
-        variant: None,
+        ..Default::default()
     }
 }
 
@@ -51,7 +51,7 @@ fn create_llm_config() -> LlmConfig {
 #[traced_test]
 async fn test_llm_model_echo() -> anyhow::Result<()> {
     let model = LlmManager::create_model(&LlmConfig {
-        model: Some(LlmModel::Echo),
+        provider: Some(LlmProvider::LocalEcho),
         ..Default::default()
     });
     let request = CompletionRequest {

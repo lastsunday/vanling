@@ -1,7 +1,7 @@
 {
   "config": {
     "category": "asr",
-    "model": "sensevoice"
+    "model": "sense_voice"
   },
   "default_variant": "default",
   "variants": {

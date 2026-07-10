@@ -149,7 +149,7 @@ fn test_config_to_targets_all_quiet() {
     let t = config_to_targets(&make_cfg(serde_json::json!({
         "tts_model": "mute",
         "asr_model": "void",
-        "llm_model": "echo",
+        "llm_provider": "local_echo",
         "vad_model": "void",
     })));
     assert!(t.is_empty());
@@ -160,7 +160,7 @@ fn test_config_to_targets_mute() {
     let t = config_to_targets(&make_cfg(serde_json::json!({
         "tts_model": "mute",
         "asr_model": "void",
-        "llm_model": "echo",
+        "llm_provider": "local_echo",
         "vad_model": "void",
     })));
     assert!(t.is_empty());

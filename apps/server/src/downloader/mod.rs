@@ -9,7 +9,7 @@ use std::time::Duration;
 use bzip2::read::BzDecoder;
 use tar::Archive;
 
-use api::config::{AsrModel, Config as AppConfig, LlmModel, TtsModel, VadModel};
+use api::config::{AsrModel, Config as AppConfig, LlmProvider, TtsModel, VadModel};
 use dialoguer::Select;
 use include_dir::{Dir, include_dir};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -1307,14 +1307,15 @@ fn config_to_targets(config: &AppConfig) -> Vec<(String, String, Option<String>)
     }
 
     match config
-        .llm_model
+        .llm_provider
         .clone()
-        .expect("llm_model should have default")
+        .expect("llm_provider should have default")
     {
-        LlmModel::Qwen3 => {
+        LlmProvider::LocalQwen3 => {
             targets.push(("llm".into(), "qwen3".into(), config.llm_variant.clone()));
         }
-        LlmModel::Echo => {}
+        LlmProvider::LocalEcho => {}
+        LlmProvider::RemoteOpenAiCompatible => {}
     }
 
     match config

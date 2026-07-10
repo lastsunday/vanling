@@ -53,9 +53,12 @@ const DEPRECATED_KEYS: &[&str] = &[];
 ### that say "YOU NEED TO EDIT THIS".
 ###
 "#,
-    ignore = "config_paths catchall"
+    ignore = "config_paths catchall",
+    source = "src/config/mod.rs"
 )]
 pub struct Config {
+    /// Server hostname displayed to clients.
+    ///
     /// default: localhost.localdomain
     #[serde(default = "default_server_name")]
     pub server_name: String,
@@ -66,7 +69,7 @@ pub struct Config {
     #[serde(default = "default_data_dir")]
     pub data_dir: Option<String>,
 
-    /// The default address (IPv4 or IPv6) continuwuity will listen on.
+    /// The default address (IPv4 or IPv6)  will listen on.
     ///
     /// If you are using Docker or a container NAT networking setup, this must
     /// be "0.0.0.0".
@@ -76,10 +79,7 @@ pub struct Config {
     #[serde(default = "default_address")]
     pub address: ListeningAddr,
 
-    /// The port(s) continuwuity will listen on.
-    ///
-    /// For reverse proxying, see:
-    /// https://continuwuity.org/deploying/generic.html#setting-up-the-reverse-proxy
+    /// The port(s) will listen on.
     ///
     /// If you are using Docker, don't change this, you'll need to map an
     /// external port to this.
@@ -88,57 +88,84 @@ pub struct Config {
     #[serde(default = "default_port")]
     pub port: ListeningPort,
 
+    /// Database connection URL.
+    ///
     /// default: sqlite://db.sqlite?mode=rwc
     #[serde(default = "default_database_url")]
     pub database_url: Option<String>,
 
+    /// Secret key for signing JWT access tokens.
+    ///
     /// default: QLjJTeVblAlM47de
     #[serde(default = "default_auth_access_token_secret")]
     pub auth_access_token_secret: Option<String>,
 
+    /// Access token expiry duration in seconds.
+    ///
     /// default: 28800
     #[serde(default = "default_auth_access_token_expires_in")]
     pub auth_access_token_expires_in: Option<u64>,
 
+    /// Secret key for signing JWT refresh tokens.
+    ///
     /// default: N8lI0uitNzJl6vYK
     #[serde(default = "default_auth_refresh_token_secret")]
     pub auth_refresh_token_secret: Option<String>,
 
+    /// Refresh token expiry duration in seconds.
+    ///
     /// default: 15897600
     #[serde(default = "default_auth_refresh_token_expires_in")]
     pub auth_refresh_token_expires_in: Option<u64>,
 
+    /// JWT audience claim.
+    ///
     /// default: audience
     #[serde(default = "default_auth_audience")]
     pub auth_audience: Option<String>,
 
+    /// JWT issuer claim.
+    ///
     /// default: issuer
     #[serde(default = "default_auth_issuer")]
     pub auth_issuer: Option<String>,
 
+    /// OAuth 2.0 client ID.
+    ///
     /// default: d1aicsr57dijo7h963ig
     #[serde(default = "default_auth_client_id")]
     pub auth_client_id: Option<String>,
 
+    /// OAuth 2.0 client secret.
+    ///
     /// default: ujTgh2lEQYy0PXhK
     #[serde(default = "default_auth_client_secret")]
     pub auth_client_secret: Option<String>,
 
+    /// WebSocket URL scheme (ws or wss).
+    ///
     /// default: ws
     #[serde(default = "default_ws_schema")]
     pub ws_schema: Option<String>,
 
+    /// Voice Activity Detection model to use.
+    ///
     /// default: earshot
     #[serde(default = "default_vad_model")]
     pub vad_model: Option<VadModel>,
 
+    /// Path to the VAD model file or directory.
+    ///
     /// default: auto-derived from model+variant
     #[serde(default = "default_vad_path")]
     pub vad_path: Option<String>,
 
+    /// Variant of the VAD model to load.
     #[serde(default)]
     pub vad_variant: Option<String>,
 
+    /// Number of threads for VAD inference.
+    ///
     /// default: 4
     #[serde(default = "default_vad_num_threads")]
     pub vad_num_threads: Option<i32>,
@@ -157,10 +184,14 @@ pub struct Config {
     #[serde(default = "default_vad_min_silence_duration")]
     pub vad_min_silence_duration: Option<f32>,
 
-    /// default: matchatts
+    /// Text-to-Speech model to use.
+    ///
+    /// default: matcha_tts
     #[serde(default = "default_tts_model")]
     pub tts_model: Option<TtsModel>,
 
+    /// Path to the TTS model file or directory.
+    ///
     /// default: auto-derived from model manifest
     #[serde(default = "default_tts_path")]
     pub tts_path: Option<String>,
@@ -175,6 +206,8 @@ pub struct Config {
     #[serde(default)]
     pub tts_variant: Option<String>,
 
+    /// Variant override for the TTS reference audio.
+    ///
     /// default: auto-detected from model manifest
     #[serde(default)]
     pub tts_reference_variant: Option<String>,
@@ -201,76 +234,136 @@ pub struct Config {
     #[serde(default)]
     pub tts_options: Option<serde_json::Value>,
 
-    /// default: sensevoice
+    /// Automatic Speech Recognition model to use.
+    ///
+    /// default: sense_voice
     #[serde(default = "default_asr_model")]
     pub asr_model: Option<AsrModel>,
 
+    /// Path to the ASR model file or directory.
+    ///
     /// default: auto-derived from model+variant
     #[serde(default = "default_asr_path")]
     pub asr_path: Option<String>,
 
+    /// Variant of the ASR model to load.
     #[serde(default)]
     pub asr_variant: Option<String>,
 
-    /// default: qwen3
-    #[serde(default = "default_llm_model")]
-    pub llm_model: Option<LlmModel>,
+    /// LLM provider to use.
+    ///
+    /// default: local_qwen3
+    #[serde(default = "default_llm_provider")]
+    pub llm_provider: Option<LlmProvider>,
 
+    /// Path to the local LLM model file or directory.
+    /// Only used with local providers (local_qwen3, local_echo).
+    ///
     /// default: auto-derived from model+variant
     #[serde(default = "default_llm_path")]
     pub llm_path: Option<String>,
 
+    /// Model variant for the local LLM.
+    /// Only used with local providers (local_qwen3, local_echo).
     #[serde(default)]
     pub llm_variant: Option<String>,
 
+    /// Base URL for the remote OpenAI-compatible API.
+    /// Only used with remote_open_ai_compatible provider.
+    ///
+    /// default: http://localhost:11434
+    #[serde(default = "default_llm_api_url")]
+    pub llm_api_url: Option<String>,
+
+    /// API key for remote OpenAI-compatible providers.
+    /// Leave empty for local-only setups.
+    ///
+    /// display: sensitive
+    /// default:
+    #[serde(default = "default_llm_api_key")]
+    pub llm_api_key: Option<String>,
+
+    /// Remote model identifier sent to the API.
+    /// Only used with remote_open_ai_compatible provider.
+    ///
+    /// default: qwen3.5:4b
+    #[serde(default = "default_llm_model")]
+    pub llm_model: Option<String>,
+
+    /// Output audio sample rate in Hz.
+    ///
     /// default: 16000
     #[serde(default = "default_audio_output_sample_rate")]
     pub audio_output_sample_rate: Option<u32>,
 
+    /// Number of output audio channels.
+    ///
     /// default: 1
     #[serde(default = "default_audio_output_channel")]
     pub audio_output_channel: Option<u32>,
 
+    /// Output audio frame duration in milliseconds.
+    ///
     /// default: 20
     #[serde(default = "default_audio_output_frame_duration")]
     pub audio_output_frame_duration: Option<u64>,
 
+    /// Time in ms before closing connection when no voice detected.
+    ///
     /// default: 30000
     #[serde(default = "default_session_close_connection_no_voice_time")]
     pub session_close_connection_no_voice_time: Option<i64>,
 
+    /// Silence timeout in ms during active voice session.
+    ///
     /// default: 1200
     #[serde(default = "default_session_silence_voice_timeout")]
     pub session_silence_voice_timeout: Option<i64>,
 
+    /// System prompt for the LLM.
+    ///
     /// default: "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。如果用户询问的内容为空，则请求用户描述清楚。",
     #[serde(default = "default_session_system_prompt")]
     pub session_system_prompt: Option<String>,
 
+    /// Maximum number of prompt tokens.
+    ///
     /// default: 3000
     #[serde(default = "default_session_max_prompt_len")]
     pub session_max_prompt_len: Option<u64>,
 
+    /// List of MCP server URIs.
+    ///
     /// default: ["http://127.0.0.1:3000/mcp"]
     #[serde(default = "default_mcp_uri_list")]
     pub mcp_uri_list: Option<Vec<String>>,
 
+    /// Enable Matrix messaging integration.
+    ///
     /// default: false
     #[serde(default = "default_matrix_enable")]
     pub matrix_enable: Option<bool>,
 
+    /// Matrix client application name.
+    ///
     /// default: chobits
     #[serde(default = "default_matrix_client_name")]
     pub matrix_client_name: Option<String>,
 
+    /// Matrix homeserver URL.
+    ///
     /// default: http://127.0.0.1:8008
     #[serde(default = "default_matrix_homeserver")]
     pub matrix_homeserver: Option<String>,
 
+    /// Matrix client user ID.
+    ///
     /// default: @chobits:localhost.localdomain
     #[serde(default = "default_matrix_client_username")]
     pub matrix_client_username: Option<String>,
 
+    /// Matrix client password.
+    ///
     /// default:
     #[serde(default = "default_matrix_client_password")]
     pub matrix_client_password: Option<String>,
@@ -429,12 +522,24 @@ fn default_asr_path() -> Option<String> {
     None
 }
 
-fn default_llm_model() -> Option<LlmModel> {
-    Some(LlmModel::Qwen3)
+fn default_llm_provider() -> Option<LlmProvider> {
+    Some(LlmProvider::LocalQwen3)
 }
 
 fn default_llm_path() -> Option<String> {
     None
+}
+
+fn default_llm_api_url() -> Option<String> {
+    Some("http://localhost:11434".into())
+}
+
+fn default_llm_api_key() -> Option<String> {
+    Some(String::new())
+}
+
+fn default_llm_model() -> Option<String> {
+    Some("qwen3.5:4b".into())
 }
 
 fn default_audio_output_sample_rate() -> Option<u32> {
@@ -459,7 +564,7 @@ fn default_session_silence_voice_timeout() -> Option<i64> {
 
 fn default_session_system_prompt() -> Option<String> {
     Some(String::from(
-        "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。如果用户询问的内容为空，则请求用户描述清楚。",
+        "你是一个语音助手，所有回答必须用中文（不允许这些内容：emoji，表情符，特殊符号，标点符号，Markdown，特殊制表符等）口述，简短，精确，除非是询问原因，过程，否则不解释。如果用户询问的内容为空，则请求用户描述清楚。",
     ))
 }
 
@@ -664,9 +769,12 @@ impl Config {
         if self.llm_path.is_some() {
             return self.llm_path.clone();
         }
+        if self.llm_provider.clone().unwrap_or_default() == LlmProvider::RemoteOpenAiCompatible {
+            return None;
+        }
         let variant = self.llm_variant.clone().unwrap_or_else(|| {
-            match self.llm_model.clone().unwrap_or_default() {
-                LlmModel::Qwen3 => "0.6b".into(),
+            match self.llm_provider.clone().unwrap_or_default() {
+                LlmProvider::LocalQwen3 => "0.6b".into(),
                 _ => String::new(),
             }
         });
@@ -674,8 +782,8 @@ impl Config {
             return None;
         }
         let d = self.data_dir();
-        match self.llm_model.clone().unwrap_or_default() {
-            LlmModel::Qwen3 => Some(format!("{d}/llm/model/qwen3/{variant}/")),
+        match self.llm_provider.clone().unwrap_or_default() {
+            LlmProvider::LocalQwen3 => Some(format!("{d}/llm/model/qwen3/{variant}/")),
             _ => None,
         }
     }
@@ -703,7 +811,7 @@ pub struct ListeningAddr {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum VadModel {
     Void,
     #[default]
@@ -711,7 +819,7 @@ pub enum VadModel {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum AsrModel {
     #[default]
     SenseVoice,
@@ -719,7 +827,7 @@ pub enum AsrModel {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum TtsModel {
     Mute,
     #[default]
@@ -727,9 +835,10 @@ pub enum TtsModel {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum LlmModel {
+#[serde(rename_all = "snake_case")]
+pub enum LlmProvider {
     #[default]
-    Qwen3,
-    Echo,
+    LocalQwen3,
+    LocalEcho,
+    RemoteOpenAiCompatible,
 }

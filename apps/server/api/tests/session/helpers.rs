@@ -2,8 +2,8 @@ use api::{
     AppState,
     asr::AsrManager,
     config::{
-        AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
-        tts::TtsConfig, vad::VadConfig,
+        AsrModel, LlmProvider, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig,
+        llm::LlmConfig, tts::TtsConfig, vad::VadConfig,
     },
     mcp::client::external::ExternalMcpClient,
     setup_mcp,
@@ -97,7 +97,7 @@ pub async fn create_session() -> Result<
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
-                model: Some(LlmModel::Echo),
+                provider: Some(LlmProvider::LocalEcho),
                 ..Default::default()
             }))
             .with_mcp_registry(mcp_registry)
@@ -176,7 +176,7 @@ pub async fn create_mini_session_channel() -> (
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
-                model: Some(LlmModel::Echo),
+                provider: Some(LlmProvider::LocalEcho),
                 ..Default::default()
             }))
             .with_mcp_registry(mcp_registry)

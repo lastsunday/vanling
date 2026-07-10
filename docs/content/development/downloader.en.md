@@ -2,8 +2,8 @@
 title = "Model Downloader"
 weight = 500
 [extra]
-source_file_hash = "7e87efd0e1df1589acc52d340805fb74d801dac2"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "de3f94e63a4a7edefc2fecc44eb6840b883a6b9a"
+translated_at = "2026-07-11T00:00:00Z"
 +++
 
 # Model Downloader
@@ -259,9 +259,9 @@ Reads the `*_model` / `*_variant` fields from `application.toml` and converts th
 
 | Config Field | Possible Values | Download Target |
 |-------------|----------------|-----------------|
-| `tts_model` | `matchatts` / `mute` | `mute` skipped |
-| `asr_model` | `sensevoice` / `void` | `void` skipped |
-| `llm_model` | `qwen3` / `echo` | `echo` skipped |
+| `tts_model` | `matcha_tts` / `mute` | `mute` skipped |
+| `asr_model` | `sense_voice` / `void` | `void` skipped |
+| `llm_provider` | `local_qwen3` / `local_echo` | `local_echo` skipped |
 | `vad_model` | `earshot` / `void` | Both skipped (earshot embedded, void no-op) |
 
 ### Config File Discovery

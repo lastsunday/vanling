@@ -1,8 +1,8 @@
 use api::{
     asr::AsrManager,
     config::{
-        AsrModel, LlmModel, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig, llm::LlmConfig,
-        tts::TtsConfig, vad::VadConfig,
+        AsrModel, LlmProvider, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig,
+        llm::LlmConfig, tts::TtsConfig, vad::VadConfig,
     },
     tts::TtsManager,
     vad::VadManager,
@@ -36,7 +36,7 @@ async fn test_asr_voice_input_manual() -> anyhow::Result<()> {
         ChiiCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
-                model: Some(LlmModel::Echo),
+                provider: Some(LlmProvider::LocalEcho),
                 ..Default::default()
             }))
             .with_mcp_registry(mcp_registry)

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::{collections::HashSet, fmt::Write as _, fs::OpenOptions, io::Write as _};
 
 use proc_macro::TokenStream;
@@ -89,6 +91,17 @@ fn generate_example(input: &ItemStruct, args: &[Meta], write: bool) -> Result<To
             .expect("written to config file");
     }
 
+    let source_file = settings.get("source").and_then(|rel| {
+        let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| String::from("."));
+        let path = PathBuf::from(manifest).join(rel);
+        path.is_file().then_some(path)
+    });
+    let enum_variants = source_file
+        .as_ref()
+        .and_then(|p| collect_enum_variants(p))
+        .unwrap_or_default();
+    let enum_types: HashSet<String> = enum_variants.keys().cloned().collect();
+
     let mut summary: Vec<TokenStream2> = Vec::new();
     let mut nested_displays: Vec<TokenStream2> = Vec::new();
 
@@ -119,10 +132,23 @@ fn generate_example(input: &ItemStruct, args: &[Meta], write: bool) -> Result<To
 
             // Only generate config file entries for non-nested, visible types
             if !is_nested && !is_hidden {
-                let doc = get_doc_comment(field)
-                    .unwrap_or_else(|| undocumented.into())
-                    .trim_end()
-                    .to_owned();
+                let enum_doc = resolve_enum_type(field, &enum_types)
+                    .and_then(|et| enum_variants.get(et.as_str()))
+                    .map(|vars| format!("# Available values: {}.\n#\n", vars.join(", ")));
+
+                let doc = match enum_doc {
+                    Some(ref ed) => {
+                        let base = get_doc_comment(field)
+                            .unwrap_or_else(|| undocumented.into())
+                            .trim_end()
+                            .to_owned();
+                        format!("{ed}{base}")
+                    }
+                    None => get_doc_comment(field)
+                        .unwrap_or_else(|| undocumented.into())
+                        .trim_end()
+                        .to_owned(),
+                };
 
                 let doc = if doc.ends_with('#') {
                     format!("{doc}\n")
@@ -252,7 +278,7 @@ fn get_default(field: &Field) -> Option<String> {
                     _ => return None,
                 };
             }
-            Meta::Path { .. } => return Some("false".to_owned()),
+            Meta::Path { .. } => return None,
             _ => return None,
         }
     }
@@ -328,4 +354,115 @@ fn get_type_name(field: &Field) -> Option<String> {
         .iter()
         .next()
         .map(|segment| segment.ident.to_string())
+}
+
+fn collect_enum_variants(path: &std::path::Path) -> Option<HashMap<String, Vec<String>>> {
+    let source = std::fs::read_to_string(path).ok()?;
+    let syntax: syn::File = syn::parse_file(&source).ok()?;
+
+    let mut enums = HashMap::new();
+
+    for item in &syntax.items {
+        let syn::Item::Enum(enum_item) = item else {
+            continue;
+        };
+
+        let enum_name = enum_item.ident.to_string();
+        let rename_all = find_serde_rename_all(&enum_item.attrs);
+
+        let variants: Vec<String> = enum_item
+            .variants
+            .iter()
+            .map(|v| serde_variant_name(&v.ident.to_string(), rename_all.as_deref()))
+            .collect();
+
+        enums.insert(enum_name, variants);
+    }
+
+    Some(enums)
+}
+
+fn find_serde_rename_all(attrs: &[syn::Attribute]) -> Option<String> {
+    for attr in attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        let Meta::List(MetaList { tokens, .. }) = &attr.meta else {
+            continue;
+        };
+        let nested = Punctuated::<Meta, syn::Token![,]>::parse_terminated
+            .parse(tokens.clone().into())
+            .ok()?;
+        for meta in nested {
+            if let Meta::NameValue(MetaNameValue { path, value, .. }) = &meta
+                && path.is_ident("rename_all")
+                && let Expr::Lit(ExprLit {
+                    lit: Lit::Str(s), ..
+                }) = value
+            {
+                return Some(s.value());
+            }
+        }
+    }
+    None
+}
+
+fn serde_variant_name(name: &str, rename_all: Option<&str>) -> String {
+    match rename_all {
+        Some("snake_case") => to_snake_case(name),
+        Some("lowercase") => name.to_lowercase(),
+        Some("UPPERCASE") => name.to_uppercase(),
+        Some("kebab-case") => to_kebab_case(name),
+        _ => name.to_string(),
+    }
+}
+
+fn to_snake_case(name: &str) -> String {
+    let mut result = String::with_capacity(name.len() + 4);
+    let chars: Vec<char> = name.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_uppercase() {
+            if i > 0 {
+                let prev = chars[i - 1];
+                if prev.is_lowercase() || prev.is_ascii_digit() {
+                    result.push('_');
+                }
+            }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+fn to_kebab_case(name: &str) -> String {
+    to_snake_case(name).replace('_', "-")
+}
+
+fn resolve_enum_type<'a>(field: &Field, enum_types: &'a HashSet<String>) -> Option<&'a String> {
+    let Type::Path(TypePath { path, .. }) = &field.ty else {
+        return None;
+    };
+
+    let first = path.segments.first()?;
+    let type_name = first.ident.to_string();
+
+    if enum_types.contains(&type_name) {
+        return enum_types.get(&type_name);
+    }
+
+    if type_name == "Option"
+        && let syn::PathArguments::AngleBracketed(args) = &first.arguments
+        && let Some(syn::GenericArgument::Type(Type::Path(TypePath { path, .. }))) =
+            args.args.first()
+        && let Some(inner) = path.segments.first()
+    {
+        let inner_name = inner.ident.to_string();
+        if enum_types.contains(&inner_name) {
+            return enum_types.get(&inner_name);
+        }
+    }
+
+    None
 }

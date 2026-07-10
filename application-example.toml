@@ -15,7 +15,7 @@
 
 [global]
 
-# This item is undocumented. Please contribute documentation for it.
+# Server hostname displayed to clients.
 #
 #server_name = localhost.localdomain
 
@@ -23,7 +23,7 @@
 #
 #data_dir = data
 
-# The default address (IPv4 or IPv6) continuwuity will listen on.
+# The default address (IPv4 or IPv6)  will listen on.
 #
 # If you are using Docker or a container NAT networking setup, this must
 # be "0.0.0.0".
@@ -31,69 +31,68 @@
 #
 #address = 127.0.0.1
 
-# The port(s) continuwuity will listen on.
-#
-# For reverse proxying, see:
-# https://continuwuity.org/deploying/generic.html#setting-up-the-reverse-proxy
+# The port(s) will listen on.
 #
 # If you are using Docker, don't change this, you'll need to map an
 # external port to this.
 #
 #port = 3000
 
-# This item is undocumented. Please contribute documentation for it.
+# Database connection URL.
 #
 #database_url = sqlite://db.sqlite?mode=rwc
 
-# This item is undocumented. Please contribute documentation for it.
+# Secret key for signing JWT access tokens.
 #
 #auth_access_token_secret = QLjJTeVblAlM47de
 
-# This item is undocumented. Please contribute documentation for it.
+# Access token expiry duration in seconds.
 #
 #auth_access_token_expires_in = 28800
 
-# This item is undocumented. Please contribute documentation for it.
+# Secret key for signing JWT refresh tokens.
 #
 #auth_refresh_token_secret = N8lI0uitNzJl6vYK
 
-# This item is undocumented. Please contribute documentation for it.
+# Refresh token expiry duration in seconds.
 #
 #auth_refresh_token_expires_in = 15897600
 
-# This item is undocumented. Please contribute documentation for it.
+# JWT audience claim.
 #
 #auth_audience = audience
 
-# This item is undocumented. Please contribute documentation for it.
+# JWT issuer claim.
 #
 #auth_issuer = issuer
 
-# This item is undocumented. Please contribute documentation for it.
+# OAuth 2.0 client ID.
 #
 #auth_client_id = d1aicsr57dijo7h963ig
 
-# This item is undocumented. Please contribute documentation for it.
+# OAuth 2.0 client secret.
 #
 #auth_client_secret = ujTgh2lEQYy0PXhK
 
-# This item is undocumented. Please contribute documentation for it.
+# WebSocket URL scheme (ws or wss).
 #
 #ws_schema = ws
 
-# This item is undocumented. Please contribute documentation for it.
+# Available values: void, earshot.
+#
+# Voice Activity Detection model to use.
 #
 #vad_model = earshot
 
-# This item is undocumented. Please contribute documentation for it.
+# Path to the VAD model file or directory.
 #
 #vad_path = auto-derived from model+variant
 
-# This item is undocumented. Please contribute documentation for it.
+# Variant of the VAD model to load.
 #
-#vad_variant = false
+#vad_variant =
 
-# This item is undocumented. Please contribute documentation for it.
+# Number of threads for VAD inference.
 #
 #vad_num_threads = 4
 
@@ -105,11 +104,13 @@
 #
 #vad_min_silence_duration = 1000
 
-# This item is undocumented. Please contribute documentation for it.
+# Available values: mute, matcha_tts.
 #
-#tts_model = matchatts
+# Text-to-Speech model to use.
+#
+#tts_model = matcha_tts
 
-# This item is undocumented. Please contribute documentation for it.
+# Path to the TTS model file or directory.
 #
 #tts_path = auto-derived from model manifest
 
@@ -121,17 +122,17 @@
 #
 #tts_variant = auto-detected from model manifest
 
-# This item is undocumented. Please contribute documentation for it.
+# Variant override for the TTS reference audio.
 #
 #tts_reference_variant = auto-detected from model manifest
 
 # override the auto-derived prompt text from manifest
 #
-#tts_reference_prompt_text = false
+#tts_reference_prompt_text =
 
 # override the auto-derived prompt wav path from manifest
 #
-#tts_reference_prompt_wav_path = false
+#tts_reference_prompt_wav_path =
 
 # TTS 模型特有配置
 # MatchaTTS 模型支持以下选项：
@@ -145,81 +146,102 @@
 #   - acoustic_model:  声学模型 .onnx 文件路径 (自动发现 model-steps-3.onnx)
 #   - vocoder:         声码器 .onnx 文件路径 (自动发现 vocos-22khz-univ.onnx / vocos-16khz-univ.onnx)
 #
-#tts_options = false
+#tts_options =
 
-# This item is undocumented. Please contribute documentation for it.
+# Available values: sense_voice, void.
 #
-#asr_model = sensevoice
+# Automatic Speech Recognition model to use.
+#
+#asr_model = sense_voice
 
-# This item is undocumented. Please contribute documentation for it.
+# Path to the ASR model file or directory.
 #
 #asr_path = auto-derived from model+variant
 
-# This item is undocumented. Please contribute documentation for it.
+# Variant of the ASR model to load.
 #
-#asr_variant = false
+#asr_variant =
 
-# This item is undocumented. Please contribute documentation for it.
+# Available values: local_qwen3, local_echo, remote_open_ai_compatible.
 #
-#llm_model = qwen3
+# LLM provider to use.
+#
+#llm_provider = local_qwen3
 
-# This item is undocumented. Please contribute documentation for it.
+# Path to the local LLM model file or directory.
+# Only used with local providers (local_qwen3, local_echo).
 #
 #llm_path = auto-derived from model+variant
 
-# This item is undocumented. Please contribute documentation for it.
+# Model variant for the local LLM.
+# Only used with local providers (local_qwen3, local_echo).
 #
-#llm_variant = false
+#llm_variant =
 
-# This item is undocumented. Please contribute documentation for it.
+# Base URL for the remote OpenAI-compatible API.
+# Only used with remote_open_ai_compatible provider.
+#
+#llm_api_url = http://localhost:11434
+
+# API key for remote OpenAI-compatible providers.
+# Leave empty for local-only setups.
+#
+#llm_api_key =
+
+# Remote model identifier sent to the API.
+# Only used with remote_open_ai_compatible provider.
+#
+#llm_model = qwen3.5:4b
+
+# Output audio sample rate in Hz.
 #
 #audio_output_sample_rate = 16000
 
-# This item is undocumented. Please contribute documentation for it.
+# Number of output audio channels.
 #
 #audio_output_channel = 1
 
-# This item is undocumented. Please contribute documentation for it.
+# Output audio frame duration in milliseconds.
 #
 #audio_output_frame_duration = 20
 
-# This item is undocumented. Please contribute documentation for it.
+# Time in ms before closing connection when no voice detected.
 #
 #session_close_connection_no_voice_time = 30000
 
-# This item is undocumented. Please contribute documentation for it.
+# Silence timeout in ms during active voice session.
 #
 #session_silence_voice_timeout = 1200
 
-# This item is undocumented. Please contribute documentation for it.
+# System prompt for the LLM.
 #
 #session_system_prompt = "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。如果用户询问的内容为空，则请求用户描述清楚。",
 
-# This item is undocumented. Please contribute documentation for it.
+# Maximum number of prompt tokens.
 #
 #session_max_prompt_len = 3000
 
-# This item is undocumented. Please contribute documentation for it.
+# List of MCP server URIs.
 #
 #mcp_uri_list = ["http://127.0.0.1:3000/mcp"]
 
-# This item is undocumented. Please contribute documentation for it.
+# Enable Matrix messaging integration.
 #
 #matrix_enable = false
 
-# This item is undocumented. Please contribute documentation for it.
+# Matrix client application name.
 #
 #matrix_client_name = chobits
 
-# This item is undocumented. Please contribute documentation for it.
+# Matrix homeserver URL.
 #
 #matrix_homeserver = http://127.0.0.1:8008
 
-# This item is undocumented. Please contribute documentation for it.
+# Matrix client user ID.
 #
 #matrix_client_username = @chobits:localhost.localdomain
 
-# This item is undocumented. Please contribute documentation for it.
+# Matrix client password.
 #
 #matrix_client_password =
 

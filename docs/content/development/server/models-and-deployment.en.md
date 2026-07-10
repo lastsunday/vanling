@@ -2,8 +2,8 @@
 title = "Models and Deployment"
 weight = 203
 [extra]
-source_file_hash = "c4164923ed2cfc27a9e4c40ac33db3f0212b34ca"
-translated_at = "2026-07-09T21:00:00Z"
+source_file_hash = "8e111c371f16c6783c31d566b6569d301a0a0ffd"
+translated_at = "2026-07-11T00:00:00Z"
 +++
 
 # Models and Deployment
@@ -84,9 +84,9 @@ Configuration uses [figment](https://docs.rs/figment) with layered loading, lowe
 | Server | `port` | `3000` | Listen port |
 | Database | `database_url` | `sqlite://db.sqlite?mode=rwc` | SQLite or PostgreSQL URL |
 | Auth | `auth_access_token_secret` | `QLjJTeVblAlM47de` | JWT signing secret |
-| TTS | `tts_model` | `matchatts` | Model selection |
-| ASR | `asr_model` | `sensevoice` | Model selection |
-| LLM | `llm_model` | `qwen3` | Model selection |
+| TTS | `tts_model` | `matcha_tts` | Model selection |
+| ASR | `asr_model` | `sense_voice` | Model selection |
+| LLM | `llm_provider` | `local_qwen3` | Model selection |
 | VAD | `vad_model` | `earshot` | Model selection |
 | Session | `silence_voice_timeout` | `1200` | Silence timeout (ms) |
 | Logging | `log_console_enabled` | `true` | Console logging |
