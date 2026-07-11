@@ -46,6 +46,7 @@ weight = 204
 | 🟡 P1 | 音频热路径克隆 | `api/src/ws/default_listener.rs` | 每 20ms `data.to_vec()` 频繁克隆 | 🟡 P1 |
 | 🟡 P1 | Quick Reply 预回复 | 新功能 | LLM 推理期间先播放"我在"/"来了"等短语，降低感知延迟。参考项目黑客365 Go 版已实现，UX 关键，实现简单 | 🟡 P1 |
 | 🟡 P1 | 动态 TTS 声音切换 | 新功能 | 基于声纹识别自动切换不同 TTS 音色。参考项目黑客365 Go 版已实现（sherpa-onnx 声纹 + per-speaker TTS voice），声纹识别的自然延伸 | 🟡 P1 |
+| 🟡 P1 | 语义 VAD | 新功能 | 参考项目 OpenAI Realtime 实现模型级轮替检测（非纯静音检测），能区分咳嗽与开始新句子。行业金标准，比传统 VAD 更智能的中断/轮替判断 | 🟡 P1 |
 | 🟡 P1 | LLM 历史阻塞 | `api/src/llm/model/qwen3/mod.rs` | DB 落盘导致完整线程阻塞 | 🟡 P1 |
 | 🟡 P1 | Recorder 无上限 | `api/src/record/recorder.rs` | `Vec<RecordEntry>` 无大小限制，高并发内存无限增长 | 🟡 P1 |
 | ⚠️ P2 | 消息类型 | `api/src/ws/frame.rs` | 缺失 `system`、`alert`、`custom`、`wake_word` 消息类型（对比 xiaozhi-esp32 规范） | ⚠️ P2 |
@@ -56,6 +57,9 @@ weight = 204
 | ⚠️ P2 | 配置向导+全链路测试 | 新功能 | 参考项目黑客365 Go 版有首次运行向导（OTA/VAD/ASR/LLM/TTS 逐步配置）+ 每组件延迟测试 + 可视化图表。chobits 当前无部署向导 | ⚠️ P2 |
 | ⚠️ P2 | MCP 工具聚合 | 新功能 | 参考项目 xiaozhi-mcp / yuexianga/xiaozhi-mcp 提供预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算），开箱即用。chobits 无内置 MCP 工具包 | ⚠️ P2 |
 | ⚠️ P2 | MQTT 网关 | 新功能 | 参考项目 xinnan-tech/xiaozhi-mqtt-gateway 实现 MQTT+UDP → WS 桥接：分布式部署 + 动态负载均衡 + HMAC 认证 + MCP 命令下发。chobits 当前仅 WS 单协议 | ⚠️ P2 |
+| ⚠️ P2 | 对话韵律 TTS | 新功能 | 参考项目 Sesame CSM（Apache 2.0 开源）生成呼吸/犹豫/笑声等对话韵律，让语音更像真人。Cartesia Sonic 3.5 使用 SSM 架构实现 <90ms TTS 延迟 | ⚠️ P2 |
+| ⚠️ P2 | 情绪自适应语调 | 新功能 | 参考项目 Hume AI EVI 检测 600+ 情感标签（犹豫/讽刺/宽慰），自适应调整 TTS 语气。MiniMax Speech-2.8 支持 7 种情绪 + 0-100% 强度控制 + 插入标签 `(laughs)` `(sighs)` | ⚠️ P2 |
+| ⚠️ P2 | Agent 任务编排 | 新功能 | 参考项目 Alexa+ 自主执行 Uber/OpenTable/Grubhub；Rabbit R1 LAM 大动作模型；Doubao 超能模式自主分解复杂任务。LLM + MCP 工具链实现自主任务执行 | ⚠️ P2 |
 | ⚠️ P2 | VAD 采样率 | `api/src/vad/` | 硬编码 16kHz，非 16kHz 输入无声失败 | ⚠️ P2 |
 | ⚠️ P2 | ASR | `api/src/asr/` | SenseVoice (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | ⚠️ P2 |
 | 🟢 P3 | 视觉感知 (VLLM) | 新功能 | 参考项目 xinnan-tech 支持 GLM-4V / Qwen-VL 视觉模型，可拍照识物。chobits 当前纯语音 | 🟢 P3 |
@@ -69,10 +73,15 @@ weight = 204
 | 🟢 P3 | 音频标准化集成 | `api/src/util/compressor.rs` → 管道 | `adaptive_normalize()` 已实现但未集成到 TTS 输出管道 | 🟢 P3 |
 | 🟢 P3 | Live2D 头像 | 客户端功能 | 参考项目 Android 客户端（TOM88812）已实现：多模型切换 + 实时动画 + 自定义角色 + 情绪模式。chobits Flutter 客户端可参考 | 🟢 P3 |
 | 🟢 P3 | 具身 AI / GPIO | 新功能 | 参考项目 py-xiaozhi 已实现：树莓派/Jetson/STM32 直接控制硬件（电机/传感器/LED），摄像头视觉理解。垂直场景，非通用语音助手核心 | 🟢 P3 |
+| 🟢 P3 | UGC 角色市场 | 新功能 | 参考项目 Character.AI 有 1000万+ 用户创建角色；Doubao 智能体平台支持无代码创建 AI 角色。chobits 可支持用户自定义 AI 人格 + 声音 + 背景故事 | 🟢 P3 |
 | 🟢 P3 | Session 导出/删除 | `api/src/record/` | Session 仅可查看，不可导出或删除 | 🟢 P3 |
 | 🟢 P3 | describe O(n) | `api/src/llm/model/qwen3/mod.rs` | 实时构建全消息历史 | 🟢 P3 |
 | 🟢 P3 | TTS 循环克隆 | `api/src/tts/` | `Arc<str>` vs `String` 克隆风暴 | 🟢 P3 |
 | 🟢 P3 | 双重序列化 | `api/src/record/recorder.rs` | record 路径双重 JSON 序列化 | 🟢 P3 |
+| 🟡 P1 | Piper/Kokoro TTS 集成 | `api/src/tts/` | 开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 🟡 P1 |
+| ⚠️ P2 | 环境监听模式 | 新功能 | 医疗 AI（Nuance DAX/Nabla）的被动监听模式：非唤醒词触发，持续监听环境音频，主动响应用户需求。需隐私架构（Nabla 模式：不存储原始音频）。适合家庭/办公场景 | ⚠️ P2 |
+| 🟢 P3 | Matter/Thread 协议 | 新功能 | 智能家居 Hub 标准协议（Matter 1.3+Thread 1.4），实现跨平台设备兼容（Apple/Google/Amazon/Samsung）。ESP32 已有 Thread 支持，需集成 Matter SDK | 🟢 P3 |
+| 🟢 P3 | 引导式推理对话 | 新功能 | 教育 AI（作业帮/有道）的引导模式：不直接给答案，逐步引导用户思考。适合儿童/学习场景，需 LLM prompt 工程 + 对话状态管理 | 🟢 P3 |
 
 ## 基础设施
 
@@ -139,6 +148,48 @@ weight = 204
 | 配置向导设计 | 参考项目黑客365 Go 版有首次运行向导 + 全链路延迟测试。chobits 是否需要部署向导降低使用门槛？ |
 | MQTT 网关架构 | 分布式部署需要 MQTT+UDP 桥接 + 动态负载均衡（参考 xinnan-tech/xiaozhi-mqtt-gateway）。chobits 是否需要 MQTT 网关层？ |
 | MCP 工具聚合策略 | 参考项目有预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算等），chobits 是否需要内置 MCP 工具包？ |
+| 端到端 S2S 架构 | OpenAI/Hume/Sesame 使用单模型处理音频输入输出（非级联 STT→LLM→TTS），chobits 当前级联方案是否需要演进？ |
+| 语义 VAD 实现方案 | OpenAI 的模型级轮替检测 vs 传统 VAD，chobits 如何实现更智能的中断/轮替判断？ |
+| 对话韵律 TTS | Sesame CSM 开源模型（Apache 2.0）可直接使用，chobits TTS 是否集成呼吸/犹豫/笑声等韵律？ |
+| 隐私策略设计 | Always-listening 设备的隐私架构（Bee 无音频存储 / Omi 本地处理），chobits 如何平衡功能与隐私？ |
+| SSM 架构 TTS | Cartesia 使用 State Space Model 替代 Transformer 实现 <90ms TTS，chobits TTS 是否考虑 SSM 架构？ |
+| Piper/Kokoro 评估 | 开源 TTS 模型 Piper（20M 参数/MIT）和 Kokoro（82M/Apache 2.0）是否适合替换或补充当前 MatchaTTS？Piper 适合边缘部署，Kokoro 是最佳质量/体积比 |
+| Step-Audio-TTS-3B 集成 | 阶跃星辰开源中文 TTS（Apache 2.0、情绪控制、方言支持），是否作为服务端 TTS 候选？需评估 GPU 需求和延迟 |
+| 环境监听架构 | 医疗 AI 的被动监听模式（非唤醒词），chobits 是否支持？隐私如何保障？参考 Nabla（不存储原始音频）架构 |
+| Matter 协议支持 | 智能家居 Hub 标准协议（Matter 1.3+Thread 1.4），ESP32 已有 Thread 支持。chobits 是否需要完整 Matter SDK 集成以实现跨平台设备兼容？ |
+
+---
+
+## 附录 B：开源语音模型
+
+> 开源 TTS/语音模型，按质量/体积/许可证排序。chobits 可直接集成。
+
+| 模型 | 参数量 | 许可证 | 延迟 | 声音克隆 | 适合 chobits |
+|------|--------|--------|------|----------|-------------|
+| [Piper](https://github.com/rhasspy/piper) | ~20M | MIT | 55ms（10s 音频） | 否 | ★★★★★ CPU 运行，30+ 语言，边缘部署首选 |
+| [Kokoro v1.0](https://github.com/hexgrad/kokoro) | 82M | Apache 2.0 | CPU 实时 | 否（KokoClone 扩展支持） | ★★★★★ 最佳质量/体积比，54 声音 |
+| [Step-Audio-TTS-3B](https://github.com/stepfun-ai/Step-Audio-TTS-3B) | 3B | Apache 2.0 | 需 GPU | 是 | ★★★★ 最佳中文语音质量+情绪控制+方言 |
+| [Coqui XTTS v2](https://github.com/coqui-ai/TTS) | 467M | CPML（非商用） | <200ms | 是（6s 样本） | ★★★★ 最佳克隆，17 语言，但许可证限制 |
+| [F5-TTS](https://github.com/SWivid/F5-TTS) | 335M | CC-BY-NC | 需 GPU | 是（零样本） | ★★★ 克隆质量优秀，中英混杂，但非商用 |
+| [Orpheus TTS](https://github.com/canopylabs-ai/orpheus-tts) | 3B | — | 需 GPU | 否 | ★★★ Llama 骨干，风格控制 |
+| [Bark (Suno)](https://github.com/suno-ai/bark) | — | MIT | 0.8x（太慢） | 否 | ★★ 表现力强（笑声/叹气/音乐），但实时性差 |
+
+### 推荐架构
+
+```
+ESP32 (边缘)                    服务器 (chobits)
+┌──────────┐                ┌─────────────────────┐
+│ VAD      │                │ ASR: sherpa-onnx     │
+│ Piper/   │◄── WebSocket ──│ LLM: Qwen3 candle    │
+│ Kokoro   │                │ TTS: Kokoro/         │
+│ (本地    │                │ Step-Audio-TTS-3B    │
+│  TTS)    │                └─────────────────────┘
+└──────────┘
+```
+
+- **Piper 或 Kokoro** 用于 ESP32 边缘 TTS（轻量、快速、CPU 运行）
+- **Kokoro** 用于服务端 TTS（最佳质量/体积比，Apache 2.0）
+- **Step-Audio-TTS-3B** 用于服务端高质量中文语音（情绪控制、方言支持）
 
 ---
 
@@ -221,6 +272,99 @@ weight = 204
 |------|------|
 | [busy-worker/xiaozhi-esp32-server-java](https://github.com/busy-worker/xiaozhi-esp32-server-java) | Java 管理平台：Token 用量 + 对话时长 + 设备活跃度 + 数据可视化 |
 | [joey-zhou/xiaozhi-concurrent](https://github.com/joey-zhou/xiaozhi-concurrent) | WS 并发压测工具：指标仪表盘 + 自动性能报告 |
+
+### 商业产品参考
+
+> 闭源商业产品的关键技术和 UX 模式，供 chobits 取舍参考。
+
+#### 语音 AI 平台
+
+| 产品 | 关键技术 | 对 chobits 的参考 |
+|------|----------|-------------------|
+| OpenAI Realtime | 端到端 S2S、语义 VAD、WebRTC、~232ms 延迟 | 语义 VAD 是轮替/中断金标准；WebRTC 传输架构可参考 |
+| Cartesia Sonic 3.5 | SSM 架构 TTS、<90ms 延迟、3 秒声音克隆 | SSM 是 TTS 新方向，比 Transformer 更快 |
+| ElevenLabs | 语音克隆（1-25 样本）、Expressive Mode、11.ai MCP 语音助手 | 语音 + MCP 集成模式；Agent coaching/evaluation |
+| MiniMax Speech-2.8 | 插入标签 `(laughs)` `(sighs)`、7 情绪 + 0-100% 强度、逐句情绪控制 | 简单实用的情绪表达方案，无需 SSML |
+| Inworld AI | 15 秒声音克隆、文本描述生成声音、<130ms TTS | 最低门槛声音个性化 |
+| Hume AI EVI | 600+ 情感标签、情绪自适应语调、检测犹豫/讽刺/宽慰 | 情绪检测 + 自适应语调是关键差异化 |
+| Sesame CSM | 对话韵律（呼吸/犹豫/笑声）、开源 Apache 2.0 | 可直接使用的开源模型，让语音更像真人 |
+
+#### 语音 AI 基础设施
+
+| 产品 | 关键技术 | 对 chobits 的参考 |
+|------|----------|-------------------|
+| LiveKit / Pipecat | 开源 SFU 架构、50+ AI 模型集成、OpenAI ChatGPT 底层 | 语音 AI 基础设施标准，可用作传输层 |
+| Retell AI | ~600ms 端到端（免调优）、专有轮替模型、BYO-LLM | 轮替检测是核心差异化 |
+| Vapi | BYO-stack（自选 STT/LLM/TTS）、A/B 测试、1000+ 模板 | 可组合架构模式 |
+
+#### 智能音箱 / 手机助手
+
+| 产品 | 关键技术 | 对 chobits 的参考 |
+|------|----------|-------------------|
+| Amazon Alexa+ | 自主任务执行（Uber/OpenTable/Grubhub）、模型无关路由、跨设备连续性 | Agent 链式执行模式；chobits 可通过 MCP 实现 |
+| Google Gemini for Home | 自然语言创建自动化（"Ask Home"）、AI 摄像头理解 | "描述自动化" UX 模式 |
+| 小米超级小爱 | 声纹识别家庭成员、AI 通话代接、灵动气泡视觉反馈 | 多成员声纹 + 家庭功能 |
+| 小度 | 蓝牙 Mesh 本地网关、无网控制、声音人格持久化 | 本地网关架构；声音人格是情感纽带 |
+| 天猫精灵 | "1+3+N" 架构、空间智能体、边缘场景调度 | 空间智能体：从命令式到上下文感知 |
+| 讯飞星火 | 一句话声音克隆、74+ 方言、端到端语音翻译 | 一句话克隆是杀手级功能 |
+| 豆包 | 超能模式（自主任务分解）、100M+ DAU、Coze 智能体平台 | Agent 任务分解 + UGC 角色平台 |
+
+#### AI 可穿戴
+
+| 产品 | 关键技术 | 对 chobits 的参考 |
+|------|----------|-------------------|
+| Meta Ray-Ban | 76% 市场份额、音频优先、视觉感知、7+ 语言实时翻译 | 音频优先 + 视觉感知是成功模式 |
+| Omi（开源） | $89、MIT 许可、250+ 社区 App、本地录制+云端同步 | 最接近的开源可穿戴参考 |
+| Bee AI（Amazon） | $50、7 天电池、无音频存储隐私策略 | 低价 + 长续航 + 隐私优先 |
+| Looki L1 | 30g 挂坠、12 小时电池、AI 环境感知 + 生活日志 | 最小形态 + 感知共鸣理念 |
+| Limitless Pendant | 始终监听、说话人分离、MCP 服务器集成、100+ 语言 | 环境上下文捕获 + MCP 集成模式 |
+
+#### AI 陪伴应用
+
+| 产品 | 关键技术 | 对 chobits 的参考 |
+|------|----------|-------------------|
+| Character.AI | 1000万+ 用户角色、Lorebook 世界观、PipSqueak 2 模型 | UGC 角色市场 + 持久人格模式 |
+| Replika 2.0 | 跨月记忆重建、主动提醒、AR 体验、视频通话 | 主动记忆驱动建议是强大 UX |
+| ChatGPT Voice | 端到端音频模型、320ms 延迟、22 种神经 TTS 声音 | 消费级语音 AI 标杆 |
+| Microsoft Copilot | Work IQ 持久记忆、Agent 365 治理、计算机使用代理 | 最成熟的企业级记忆系统 |
+
+#### 关键行业趋势
+
+| 趋势 | 代表产品 | chobits 机会 |
+|------|----------|-------------|
+| 语义 VAD | OpenAI（模型级轮替检测） | 比纯 VAD 更智能的中断处理 |
+| 对话韵律 | Sesame CSM（呼吸/犹豫/笑声） | 让 TTS 更自然 |
+| 端到端 S2S | OpenAI/Hume/Sesame | 终极目标，当前级联更实际 |
+| 情绪自适应 | Hume AI（检测→自适应语调） | 语音助手关键差异化 |
+| SSM 架构 TTS | Cartesia（State Space Model） | 更快的 TTS 推理 |
+| 持久记忆 | Work IQ / Replika / Character.AI | 从 chat history 到长期记忆 |
+| MCP 语音集成 | OpenAI + MCP、ElevenLabs 11.ai | 语音对话中调用工具 |
+| 声音克隆民主化 | Cartesia 3 秒 / Inworld 15 秒 / MiniMax 10 秒 | 最低门槛声音个性化 |
+| 隐私优先 | Bee（无音频存储）、Omi（本地处理） | Always-listening 的隐私策略 |
+
+#### 垂直行业语音
+
+> 汽车、医疗、教育、翻译等垂直行业的语音 AI 方案，供 chobits 垂直场景参考。
+
+| 行业 | 代表产品 | 关键技术 | 对 chobits 的参考 |
+|------|----------|----------|-------------------|
+| 汽车语音 | NIO NOMI、小鹏天机、SoundHound | 边缘离线处理、14 种情绪语调、RAG 车辆手册、Speech-to-Meaning | 边缘离线是关键；情绪语调定制；RAG 参考 |
+| 医疗语音 | Nuance DAX、Nabla、Abridge、Suki AI | 环境临床记录、隐私优先（不存储数据）、HIPAA 合规、引导推理 | 被动监听模式；隐私优先架构；引导式对话 |
+| 教育语音 | Duolingo Max、作业帮 P50、有道子曰 | 逐步引导推理、个性化学习路径、游戏化、实时发音纠正 | 引导式对话模式；游戏化驱动参与 |
+| 翻译设备 | Pocketalk、Timekettle、Vasco | 双麦降噪、<1s 延迟、离线翻译包、专用硬件 | 双麦降噪+低延迟是关键；离线能力 |
+| 智能家居 Hub | Echo Hub、HomePod、SmartThings | Matter 1.3/Thread 1.4、离线语音（0.2-0.4s 本地）、预测性自动化 | ESP32 作为隐私优先本地控制器 |
+
+#### 中国 AI 创业公司（2025-2026）
+
+> 中国 AI 六小虎等新兴公司的语音 AI 技术，供 chobits 技术选型参考。
+
+| 公司 | 关键技术 | 对 chobits 的参考 |
+|------|----------|-------------------|
+| [阶跃星辰 StepFun](https://github.com/stepfun-ai) | Step-Audio 2（130B S2S）、Step-Audio-TTS-3B、Apache 2.0 开源、情绪控制+方言 | **最相关**：最佳开源语音 AI，可直接使用 |
+| [智谱 AI](https://github.com/THUDM) | GLM-4V 视觉模型、85% 收入来自本地部署、港股 IPO | 本地部署商业模式参考；视觉能力 |
+| [MiniMax](https://github.com/MiniMaxAI) | 海螺 AI、星野、1.75 万亿周 Token 调用量、Speech-2.8 | 消费级 AI 产品运营参考；情绪 TTS |
+| [月之暗面 Kimi](https://github.com/MoonshotAI) | Kimi K2.5 + Kimi Claw、估值 3 个月从 $4.3B→$18B | 超长上下文 + 语音 AI 结合 |
+| [百川智能](https://github.com/baichuan-inc) | 医疗垂直 LLM、3B 现金储备 | 垂直行业深耕模式 |
 
 ---
 
