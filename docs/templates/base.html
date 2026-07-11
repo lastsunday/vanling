@@ -29,9 +29,9 @@
       {% endif %}
       <div class="lang-switcher">
         {% if lang == "zh" %}
-          <a href="/en{{ current_path }}">English</a>
+          <a href="{{ get_url(path='/en' ~ current_path) }}">English</a>
         {% else %}
-          <a href="{{ current_path | trim_start_matches(pat='/en') | default(value='/') }}">中文</a>
+          <a href="{{ get_url(path=current_path | trim_start_matches(pat='/en') | default(value='/')) }}">中文</a>
         {% endif %}
       </div>
     </div>
