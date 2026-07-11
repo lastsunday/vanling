@@ -23,12 +23,12 @@ jobs:
     outputs:
       dev-version: ${{ steps.gen.outputs.DEV_VERSION }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
-      - uses: dorny/paths-filter@de90bc6a95a69c3fdf0c0f30488bf5fbe7054183
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706
         id: filter
         with:
           filters: |

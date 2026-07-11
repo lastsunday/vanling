@@ -26,7 +26,7 @@ jobs:
       checks: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           ref: ${{ inputs.ref || github.ref }}
@@ -34,20 +34,20 @@ jobs:
       - uses: ./.github/actions/free-disk-space
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@e50d5f73bfe71c2dd0aa4218de8f4afa59f8f81d
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
         with:
           extra-conf: |
             accept-flake-config = true
 
       - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@6221693898146dc97e38ad0e013488a16477a4c4
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
         continue-on-error: true
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
 
       - name: Cache model files
-        uses: actions/cache@d4323d4df104b026a6aa633fdb11d772146be0bf
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: data
           key: models-${{ hashFiles('apps/server/src/downloader/manifests/**') }}
@@ -81,7 +81,7 @@ jobs:
           fi
 
       - name: (allure-report) Load test report history
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
         continue-on-error: true
         with:
@@ -90,7 +90,7 @@ jobs:
           fetch-depth: 1
 
       - name: (allure-report) Build test report
-        uses: simple-elf/allure-report-action@53ebb757a2097edc77c53ecef4d454fc2f2f774c
+        uses: simple-elf/allure-report-action@e463a472d3b1d750f9544369d60589ff1964c820
         if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
         with:
           gh_pages: gh-test
@@ -98,7 +98,7 @@ jobs:
           allure_results: apps/extension/allure-results
 
       - name: (allure-report) Upload test report to action artifacts
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
         with:
           name: extension-e2e-tests-allure-report
@@ -106,7 +106,7 @@ jobs:
           retention-days: 30
 
       - name: (cucumber-report) Upload test report to action artifacts
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
         with:
           name: extension-e2e-tests-cucumber-report
@@ -118,19 +118,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@e50d5f73bfe71c2dd0aa4218de8f4afa59f8f81d
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
         with:
           extra-conf: |
             accept-flake-config = true
 
       - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@6221693898146dc97e38ad0e013488a16477a4c4
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
         continue-on-error: true
 
       - name: Check translations
@@ -143,19 +143,19 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 1
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@e50d5f73bfe71c2dd0aa4218de8f4afa59f8f81d
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
         with:
           extra-conf: |
             accept-flake-config = true
 
       - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@6221693898146dc97e38ad0e013488a16477a4c4
+        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
         continue-on-error: true
 
       - name: Build docs
