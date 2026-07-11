@@ -84,3 +84,4 @@ result
 
 # Zola build output
 docs/public/
+docs/public-gh/

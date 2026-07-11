@@ -14,7 +14,7 @@ tasks:
       - "public"
 
   build-gh:
-    command: "zola build --base-url https://lastsunday.github.io/chobits"
+    command: "zola build --base-url https://lastsunday.github.io/chobits --output-dir public-gh"
     inputs:
       - "content/**/*"
       - "templates/**/*"
@@ -22,7 +22,7 @@ tasks:
       - "static/**/*"
       - "zola.toml"
     outputs:
-      - "public"
+      - "public-gh"
 
   dev:
     command: "zola serve --open"
