@@ -31,6 +31,7 @@ jobs:
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706
         id: filter
         with:
+          base: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           filters: |
             server:
               - 'apps/server/**'
