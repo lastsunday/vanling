@@ -30,6 +30,7 @@ env:
   USER_NAME: lastsunday
   IMAGE_NAME: chobits
   BIN_NAME: chobits-server
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
   build-assets:
