@@ -159,7 +159,7 @@ jobs:
         continue-on-error: true
 
       - name: Build docs
-        run: nix develop --command moon run docs:build
+        run: nix develop --command moon run docs:build-gh
 
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453

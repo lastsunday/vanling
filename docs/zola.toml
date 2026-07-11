@@ -1,4 +1,4 @@
-base_url = "https://docs.chobits.ai"
+base_url = "/"
 title = "Chobits"
 description = "Chobits 文档"
 default_language = "zh"
@@ -15,7 +15,7 @@ theme = "catppuccin-latte"
 style = "class"
 
 [extra]
-repo_url = "https://github.com/anomalyco/chobits"
+repo_url = "https://github.com/lastsunday/chobits"
 
 [languages.en]
 build_search_index = false
