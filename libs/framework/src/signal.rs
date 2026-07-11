@@ -52,13 +52,13 @@ pub async fn handle_signals(handler: Arc<dyn SignalHandler>) {
 #[tracing::instrument(skip_all, level = "info")]
 pub async fn handle_signals(handler: Arc<dyn SignalHandler>) {
     loop {
-        use tracing::{debug_error, warn};
+        use tracing::{error, warn};
 
         tokio::select! {
             _ = signal::ctrl_c() => {
                 warn!("Received Ctrl+C");
                 if let Err(e) = handler.signal("SIGINT").await {
-                    debug_error!("signal: {e}");
+                    error!("signal: {e}");
                 }
             },
         }
