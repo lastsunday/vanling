@@ -140,6 +140,12 @@ jobs:
           target: ${{ matrix.target }}
           runner: none
 
+      - name: Set cmake wrapper for musl targets
+        if: runner.os == 'Linux' && contains(matrix.target, 'musl')
+        run: |
+          echo "CMAKE_X86_64_UNKNOWN_LINUX_MUSL=${{ github.workspace }}/.github/scripts/cmake-musl-wrapper.sh" >> "$GITHUB_ENV"
+          echo "CMAKE_AARCH64_UNKNOWN_LINUX_MUSL=${{ github.workspace }}/.github/scripts/cmake-musl-wrapper.sh" >> "$GITHUB_ENV"
+
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
         run: |
