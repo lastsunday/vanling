@@ -115,21 +115,29 @@ jobs:
         uses: ./.github/actions/setup-nix
 
       - name: Setup sccache (Linux / macOS)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && !contains(matrix.target, 'musl')
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
 
-      - name: Setup cross-compilation toolchain (Linux only)
-        if: runner.os == 'Linux'
-        uses: taiki-e/setup-cross-toolchain-action@3d9770ce98eb7dbcf378563182a5e8031165f75b
-        with:
-          target: ${{ matrix.target }}
-          runner: none
-
-      - name: Set musl cross-compilation flags
+      - name: Build with Nix (musl targets)
         if: runner.os == 'Linux' && contains(matrix.target, 'musl')
+        shell: bash
         run: |
-          echo "CFLAGS=-fno-stack-protector" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-fno-stack-protector" >> "$GITHUB_ENV"
+          nix_shell="musl64"
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            nix_shell="musl64-arm64"
+          fi
+          
+          nix develop ".#$nix_shell" \
+            --ignore-env \
+            -k CARGO_BUILD_RUSTC_WRAPPER \
+            -k SCCACHE_GHA_ENABLED \
+            -k ACTIONS_CACHE_URL \
+            -k ACTIONS_RUNTIME_TOKEN \
+            --command cargo build \
+              --release \
+              --target "${{ matrix.target }}" \
+              --bin "${{ env.BIN_NAME }}" \
+              --features vendored-openssl
 
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
@@ -138,6 +146,7 @@ jobs:
           mv ../server-ui/dist ./web/dist
 
       - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6
+        if: !contains(matrix.target, 'musl')
         with:
           bin: ${{ env.BIN_NAME }}
           archive: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.target }}
