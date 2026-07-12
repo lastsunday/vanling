@@ -38,6 +38,8 @@ jobs:
       run:
         shell: bash
         working-directory: ${{ env.ROOT_DIR }}
+    env:
+      CFLAGS: ${{ contains(matrix.target, 'musl') && '-fno-stack-protector' || '' }}
     strategy:
       matrix:
         include:
