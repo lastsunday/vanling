@@ -168,7 +168,6 @@
             buildInputs = with pkgsMusl; [
               openssl
               sqlite
-              postgresql_16
               openblas
               libopus.dev
             ];
@@ -205,7 +204,6 @@
             buildInputs = with pkgsMuslArm64; [
               openssl
               sqlite
-              postgresql_16
               openblas
               libopus.dev
             ];
