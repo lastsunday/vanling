@@ -71,11 +71,6 @@ jobs:
       run:
         shell: bash
         working-directory: ${{ env.ROOT_DIR }}
-    env:
-      CFLAGS: ${{ contains(matrix.target, 'musl') && '-fno-stack-protector' || '' }}
-      CFLAGS_X86_64_UNKNOWN_LINUX_MUSL: -fno-stack-protector
-      CFLAGS_AARCH64_UNKNOWN_LINUX_MUSL: -fno-stack-protector
-      OPUS_NO_PKG: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -137,6 +132,13 @@ jobs:
       - name: Setup sccache (Linux / macOS)
         if: runner.os != 'Windows'
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
+
+      - name: Setup cross-compilation toolchain (Linux only)
+        if: runner.os == 'Linux'
+        uses: taiki-e/setup-cross-toolchain-action@3d9770ce98eb7dbcf378563182a5e8031165f75b
+        with:
+          target: ${{ matrix.target }}
+          runner: none
 
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
