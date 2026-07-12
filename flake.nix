@@ -165,12 +165,7 @@
               pkgsMusl.ninja
             ];
 
-            buildInputs = with pkgsMusl; [
-              openssl
-              sqlite
-              openblas
-              libopus.dev
-            ];
+            buildInputs = [];
 
             shellHook = ''
               export CARGO_BUILD_TARGET=x86_64-unknown-linux-musl
@@ -201,12 +196,7 @@
               pkgsMuslArm64.ninja
             ];
 
-            buildInputs = with pkgsMuslArm64; [
-              openssl
-              sqlite
-              openblas
-              libopus.dev
-            ];
+            buildInputs = [];
 
             shellHook = ''
               export CARGO_BUILD_TARGET=aarch64-unknown-linux-musl
