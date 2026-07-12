@@ -227,12 +227,14 @@ impl Tts for TtsMatcha {
                 _ => 1_usize,
             };
             let opus_channels = if channels == 2 {
-                opus::Channels::Stereo
+                ropus::Channels::Stereo
             } else {
-                opus::Channels::Mono
+                ropus::Channels::Mono
             };
             let mut encoder =
-                match opus::Encoder::new(encode_sr, opus_channels, opus::Application::Audio) {
+                match ropus::Encoder::builder(encode_sr, opus_channels, ropus::Application::Audio)
+                    .build()
+                {
                     Ok(e) => e,
                     Err(err) => {
                         error!("[MatchaTTS] opus encoder creation error = {}", err);

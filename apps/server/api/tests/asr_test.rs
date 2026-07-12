@@ -144,12 +144,13 @@ async fn test_tts_asr_loopback() {
     let mut all_pcm = Vec::new();
     let sample_rate = 16000i32;
     let decode_fs = 320;
-    let mut decoder = opus::Decoder::new(16000, opus::Channels::Mono).unwrap();
+    let mut decoder = ropus::Decoder::new(16000, ropus::Channels::Mono).unwrap();
     while let Some(data) = tts_stream.next().await {
         let data = data.unwrap();
         for packet in data.audio {
             let mut samples = vec![0f32; decode_fs];
-            if let Ok(len) = decoder.decode_float(&packet, &mut samples, false) {
+            if let Ok(len) = decoder.decode_float(&packet, &mut samples, ropus::DecodeMode::Normal)
+            {
                 all_pcm.extend_from_slice(&samples[..len]);
             }
         }

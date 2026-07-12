@@ -63,7 +63,7 @@ impl TtsManager {
 
 pub fn encode_sample_to_tts_packet(
     sample: Vec<f32>,
-    encoder: &mut opus::Encoder,
+    encoder: &mut ropus::Encoder,
     encode_sample_rate: u32,
     encode_channel: u32,
     encode_frame_duration: u64,
@@ -77,8 +77,10 @@ pub fn encode_sample_to_tts_packet(
         let end = std::cmp::min(start + size, len);
         let mut frame: Vec<f32> = sample[start..end].to_vec();
         frame.resize(size, 0.0);
-        let packet = encoder.encode_vec_float(&frame, size).unwrap();
-        audio.push(packet);
+        let mut buf = vec![0u8; size * 4];
+        let written = encoder.encode_float(&frame, &mut buf).unwrap();
+        buf.truncate(written);
+        audio.push(buf);
     }
     audio
 }

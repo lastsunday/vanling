@@ -23,7 +23,7 @@ pub struct DefaultListener {
     voice_data: Vec<f32>,
     vad: Box<dyn Vad>,
     asr: Arc<Mutex<Box<dyn Asr>>>,
-    decoder: StdMutex<opus::Decoder>,
+    decoder: StdMutex<ropus::Decoder>,
     pub state: ListenState,
     silence_voice_timeout: Option<i64>,
     latest_speaking_time: Option<i64>,
@@ -46,7 +46,7 @@ impl DefaultListener {
             temp_voice_data: Vec::new(),
             voice_data: Vec::new(),
             decoder: StdMutex::new(
-                opus::Decoder::new(DEFAULT_SAMPLE_RATE, opus::Channels::Mono).unwrap(),
+                ropus::Decoder::new(DEFAULT_SAMPLE_RATE, ropus::Channels::Mono).unwrap(),
             ),
             state: ListenState::Idle,
             silence_voice_timeout: None,
@@ -75,19 +75,17 @@ impl Listener for DefaultListener {
                     let frame_size = ((self.client_input_sample_rate as u64 * MAX_OPUS_FRAME_MS)
                         / 1000) as usize;
                     let mut samples = vec![0f32; frame_size];
-                    let len =
-                        match self
-                            .decoder
-                            .lock()
-                            .unwrap()
-                            .decode_float(&data, &mut samples, false)
-                        {
-                            Ok(len) => len,
-                            Err(_) => {
-                                tracing::warn!("opus decode error");
-                                return;
-                            }
-                        };
+                    let len = match self.decoder.lock().unwrap().decode_float(
+                        &data,
+                        &mut samples,
+                        ropus::DecodeMode::Normal,
+                    ) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            tracing::warn!("opus decode error");
+                            return;
+                        }
+                    };
                     for s in samples[..len].iter_mut() {
                         *s = s.clamp(-1.0, 1.0);
                     }
@@ -140,7 +138,7 @@ impl Listener for DefaultListener {
     fn reconfigure(&mut self, params: &AudioParam) {
         self.client_input_sample_rate = params.sample_rate;
         let mut dec = self.decoder.lock().unwrap();
-        *dec = opus::Decoder::new(params.sample_rate, opus::Channels::Mono).unwrap();
+        *dec = ropus::Decoder::new(params.sample_rate, ropus::Channels::Mono).unwrap();
     }
 
     fn set_state(&mut self, state: ListenState) {

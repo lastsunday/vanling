@@ -264,11 +264,12 @@ pub fn get_audio() -> Vec<Vec<u8>> {
     );
 
     const ENCODE_SAMPLE_RATE: u32 = 16000;
-    let mut encoder = opus::Encoder::new(
+    let mut encoder = ropus::Encoder::builder(
         ENCODE_SAMPLE_RATE,
-        opus::Channels::Mono,
-        opus::Application::Audio,
+        ropus::Channels::Mono,
+        ropus::Application::Audio,
     )
+    .build()
     .unwrap();
 
     // 16000Hz * 1 channel * 20 ms / 1000 = 320
@@ -286,10 +287,12 @@ pub fn get_audio() -> Vec<Vec<u8>> {
     for n in 0..count {
         let start = n * size;
         let end = cmp::min((n + 1) * size, len);
-        let packet = encoder
-            .encode_vec_float(&pcm_data[start..end], size)
+        let mut buf = vec![0u8; size * 4];
+        let written = encoder
+            .encode_float(&pcm_data[start..end], &mut buf)
             .unwrap();
-        audio.push(packet);
+        buf.truncate(written);
+        audio.push(buf);
     }
     audio
 }

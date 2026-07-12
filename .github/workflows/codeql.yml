@@ -54,17 +54,9 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
-      - name: Install Nix
+      - name: Setup Nix
         if: matrix.language == 'rust'
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
-        with:
-          extra-conf: |
-            accept-flake-config = true
-
-      - name: Cache Nix store
-        if: matrix.language == 'rust'
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
-        continue-on-error: true
+        uses: ./.github/actions/setup-nix
 
       - name: Build Rust
         if: matrix.language == 'rust'

@@ -33,15 +33,7 @@ jobs:
 
       - uses: ./.github/actions/free-disk-space
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
-        with:
-          extra-conf: |
-            accept-flake-config = true
-
-      - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
-        continue-on-error: true
+      - uses: ./.github/actions/setup-nix
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
@@ -120,18 +112,10 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
-        with:
-          extra-conf: |
-            accept-flake-config = true
-
-      - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
-        continue-on-error: true
+      - uses: ./.github/actions/setup-nix
 
       - name: Check translations
         run: nix develop --command moon run docs:check-translation
@@ -148,15 +132,7 @@ jobs:
           fetch-depth: 1
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
-        with:
-          extra-conf: |
-            accept-flake-config = true
-
-      - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
-        continue-on-error: true
+      - uses: ./.github/actions/setup-nix
 
       - name: Build docs
         run: nix develop --command moon run docs:build-gh
