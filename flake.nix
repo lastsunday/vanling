@@ -204,6 +204,7 @@
               export CXX_aarch64_unknown_linux_musl="${pkgsMuslArm64.stdenv.cc}/bin/${pkgsMuslArm64.stdenv.cc.targetPrefix}g++"
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER="${pkgsMuslArm64.stdenv.cc}/bin/${pkgsMuslArm64.stdenv.cc.targetPrefix}cc"
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
+              export CRATE_CC_NO_DEFAULTS=1
 
               echo "✦ chobits musl64-arm64 cross-compilation shell"
               echo "  Target: aarch64-unknown-linux-musl"
