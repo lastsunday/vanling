@@ -14,6 +14,10 @@ on:
     types: [completed]
     branches: [dev]
 
+concurrency:
+  group: server-dev-release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -25,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          fetch-depth: 0
+          fetch-depth: 2
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706
@@ -64,7 +68,7 @@ jobs:
     secrets: inherit
 
   cleanup:
-    needs: build
+    needs: prepare
     uses: ./.github/workflows/reusable-dev-release-cleanup.yml
     with:
       tag-prefix: dev-server-

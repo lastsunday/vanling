@@ -33,28 +33,59 @@ env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
+  build-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25
+        with:
+          extra-conf: |
+            accept-flake-config = true
+
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+        continue-on-error: true
+
+      - name: Build UI
+        run: >
+          nix develop
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command moon run server-ui:build
+
+      - name: Upload UI dist
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: server-ui-dist
+          path: apps/server-ui/dist
+          retention-days: 1
+
   build-assets:
+    needs: build-ui
     defaults:
       run:
         shell: bash
         working-directory: ${{ env.ROOT_DIR }}
     env:
       CFLAGS: ${{ contains(matrix.target, 'musl') && '-fno-stack-protector' || '' }}
+      CFLAGS_X86_64_UNKNOWN_LINUX_MUSL: -fno-stack-protector
+      CFLAGS_AARCH64_UNKNOWN_LINUX_MUSL: -fno-stack-protector
+      OPUS_NO_PKG: "1"
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             targetOSAndARCH: linux-arm64
-          - target: aarch64-apple-darwin
-            os: macos-latest
-            targetOSAndARCH: macos-arm64
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             targetOSAndARCH: linux-amd64
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            targetOSAndARCH: macos-amd64
           - target: universal-apple-darwin
             os: macos-latest
             targetOSAndARCH: macos
@@ -66,6 +97,12 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 1
+
+      - name: Download UI dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: server-ui-dist
+          path: apps/server-ui/dist
 
       - uses: ./.github/actions/free-disk-space
         if: runner.os == 'Linux'
@@ -101,43 +138,7 @@ jobs:
         if: runner.os != 'Windows'
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
 
-      - name: Install pnpm (Windows)
-        if: runner.os == 'Windows'
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271
-        with:
-          version: "10.13.1"
-          run_install: false
-
-      - name: Setup Node.js (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
-        with:
-          node-version-file: '.node-version'
-          cache: pnpm
-
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: pnpm install --frozen-lockfile
-        working-directory: ${{ github.workspace }}
-
-      - name: Build UI
-        run: >
-          nix develop
-          --ignore-env
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
-          -k ACTIONS_CACHE_URL
-          -k ACTIONS_RUNTIME_TOKEN
-          --command moon run server-ui:build
-        if: runner.os != 'Windows'
-
-      - name: Build UI (Windows)
-        if: runner.os == 'Windows'
-        run: pnpm exec moon run server-ui:build
-        working-directory: ${{ github.workspace }}
-
-      - name: Move UI dist to web/
+      - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
         run: |
           rm -rf ./web/dist
@@ -166,6 +167,7 @@ jobs:
         with:
           name: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.targetOSAndARCH }}
           path: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}-${{ matrix.targetOSAndARCH }}*
+          retention-days: 7
 
   create-release:
     needs: build-assets
@@ -231,7 +233,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: ${{ env.IMAGE_NAME }}
-          pattern: ${{ env.BIN_NAME }}-${{ inputs.version }}-*
+          pattern: ${{ env.BIN_NAME }}-${{ inputs.version }}-linux-*
           merge-multiple: true
 
       - name: Move & chmod
