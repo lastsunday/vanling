@@ -246,13 +246,8 @@ async fn test_chat_flow_listen_realtime_silent_voice_connection_timeout() -> any
 }
 
 #[tokio::test]
+#[traced_test]
 async fn test_chat_flow_handle_text_message_multiple_time() -> anyhow::Result<()> {
-    let _ = tracing::subscriber::set_global_default(
-        tracing_subscriber::fmt::Subscriber::builder()
-            .compact()
-            .with_max_level(tracing::Level::TRACE)
-            .finish(),
-    );
     let (input_tx, mut output_rx, container, state) = create_session_channel().await;
     input_tx.send(Frame::Hello(HelloMessage {
         ..Default::default()
