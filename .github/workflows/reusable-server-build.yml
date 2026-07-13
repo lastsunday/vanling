@@ -68,10 +68,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-unknown-linux-musl
+          - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             targetOSAndARCH: linux-arm64
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             targetOSAndARCH: linux-amd64
           - target: universal-apple-darwin
@@ -115,16 +115,16 @@ jobs:
         uses: ./.github/actions/setup-nix
 
       - name: Setup sccache (Linux / macOS)
-        if: runner.os != 'Windows' && !contains(matrix.target, 'musl')
+        if: runner.os != 'Windows'
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
 
-      - name: Build with Nix (musl targets)
-        if: runner.os == 'Linux' && contains(matrix.target, 'musl')
+      - name: Build with Nix (gnu static targets)
+        if: runner.os == 'Linux' && contains(matrix.target, 'linux-gnu')
         shell: bash
         run: |
-          nix_shell="musl64"
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
-            nix_shell="musl64-arm64"
+          nix_shell="gnu64"
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            nix_shell="gnu64-arm64"
           fi
           
           nix develop ".#$nix_shell" \
@@ -136,8 +136,7 @@ jobs:
             --command cargo build \
               --release \
               --target "${{ matrix.target }}" \
-              --bin "${{ env.BIN_NAME }}" \
-              --features vendored-openssl
+              --bin "${{ env.BIN_NAME }}"
 
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
@@ -146,14 +145,12 @@ jobs:
           mv ../server-ui/dist ./web/dist
 
       - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6
-        if: ${{ !contains(matrix.target, 'musl') }}
         with:
           bin: ${{ env.BIN_NAME }}
           archive: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.target }}
           target: ${{ matrix.target }}
           dry-run: true
           manifest-path: Cargo.toml
-          features: vendored-openssl
 
       - name: Rename bin for artifact
         shell: bash

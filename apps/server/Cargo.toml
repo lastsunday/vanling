@@ -69,7 +69,6 @@ bindgen_cuda = { workspace = true, optional = true }
 
 [features]
 default = []
-vendored-openssl = []
 cuda = [
   "candle-core/cuda",
   "candle-nn/cuda",

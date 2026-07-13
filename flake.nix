@@ -19,13 +19,6 @@
           overlays = [ rust-overlay.overlays.default ];
         };
 
-        # Cross-compilation for musl targets (x86_64-unknown-linux-musl)
-        pkgsMusl = import nixpkgs {
-          inherit system;
-          overlays = [ rust-overlay.overlays.default ];
-          crossSystem = nixpkgs.lib.systems.examples.musl64;
-        };
-
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
         nodeMajor = builtins.head (builtins.match "([0-9]+)\\..*" (
@@ -155,61 +148,59 @@
             ];
           };
 
-          # Cross-compilation shell for x86_64-unknown-linux-musl
-          musl64 = pkgsMusl.mkShell {
+          # Cross-compilation shell for x86_64-unknown-linux-gnu (static)
+          gnu64 = pkgs.mkShell {
             packages = [
-              # Use host Rust toolchain (supports cross-compilation via targets)
               rustToolchain
-              pkgsMusl.cmake
-              pkgsMusl.pkg-config
-              pkgsMusl.ninja
+              pkgs.cmake
+              pkgs.pkg-config
+              pkgs.ninja
             ];
 
             buildInputs = [];
 
             shellHook = ''
-              export CARGO_BUILD_TARGET=x86_64-unknown-linux-musl
-              export CC_x86_64_unknown_linux_musl="${pkgsMusl.stdenv.cc}/bin/${pkgsMusl.stdenv.cc.targetPrefix}cc"
-              export CXX_x86_64_unknown_linux_musl="${pkgsMusl.stdenv.cc}/bin/${pkgsMusl.stdenv.cc.targetPrefix}g++"
-              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER="${pkgsMusl.stdenv.cc}/bin/${pkgsMusl.stdenv.cc.targetPrefix}cc"
-              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
+              export CARGO_BUILD_TARGET=x86_64-unknown-linux-gnu
+              export CC_x86_64_unknown_linux_gnu="${pkgs.stdenv.cc}/bin/cc"
+              export CXX_x86_64_unknown_linux_gnu="${pkgs.stdenv.cc}/bin/g++"
+              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${pkgs.stdenv.cc}/bin/cc"
+              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static"
 
-              echo "✦ chobits musl64 cross-compilation shell"
-              echo "  Target: x86_64-unknown-linux-musl"
-              echo "  CC: $CC_x86_64_unknown_linux_musl"
-              echo "  CXX: $CXX_x86_64_unknown_linux_musl"
+              echo "✦ chobits gnu64 static-compilation shell"
+              echo "  Target: x86_64-unknown-linux-gnu"
+              echo "  CC: $CC_x86_64_unknown_linux_gnu"
+              echo "  CXX: $CXX_x86_64_unknown_linux_gnu"
             '';
           };
 
-          # Cross-compilation shell for aarch64-unknown-linux-musl
-          musl64-arm64 = let
-            pkgsMuslArm64 = import nixpkgs {
+          # Cross-compilation shell for aarch64-unknown-linux-gnu (static)
+          gnu64-arm64 = let
+            pkgsArm64 = import nixpkgs {
               inherit system;
               overlays = [ rust-overlay.overlays.default ];
-              crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform-musl;
+              crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
             };
-          in pkgsMuslArm64.mkShell {
+          in pkgsArm64.mkShell {
             packages = [
               rustToolchain
-              pkgsMuslArm64.cmake
-              pkgsMuslArm64.pkg-config
-              pkgsMuslArm64.ninja
+              pkgsArm64.cmake
+              pkgsArm64.pkg-config
+              pkgsArm64.ninja
             ];
 
             buildInputs = [];
 
             shellHook = ''
-              export CARGO_BUILD_TARGET=aarch64-unknown-linux-musl
-              export CC_aarch64_unknown_linux_musl="${pkgsMuslArm64.stdenv.cc}/bin/${pkgsMuslArm64.stdenv.cc.targetPrefix}cc"
-              export CXX_aarch64_unknown_linux_musl="${pkgsMuslArm64.stdenv.cc}/bin/${pkgsMuslArm64.stdenv.cc.targetPrefix}g++"
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER="${pkgsMuslArm64.stdenv.cc}/bin/${pkgsMuslArm64.stdenv.cc.targetPrefix}cc"
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
-              export CRATE_CC_NO_DEFAULTS=1
+              export CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu
+              export CC_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
+              export CXX_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}g++"
+              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
+              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static"
 
-              echo "✦ chobits musl64-arm64 cross-compilation shell"
-              echo "  Target: aarch64-unknown-linux-musl"
-              echo "  CC: $CC_aarch64_unknown_linux_musl"
-              echo "  CXX: $CXX_aarch64_unknown_linux_musl"
+              echo "✦ chobits gnu64-arm64 cross-compilation shell"
+              echo "  Target: aarch64-unknown-linux-gnu"
+              echo "  CC: $CC_aarch64_unknown_linux_gnu"
+              echo "  CXX: $CXX_aarch64_unknown_linux_gnu"
             '';
           };
         };

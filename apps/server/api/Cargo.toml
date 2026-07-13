@@ -137,7 +137,6 @@ bindgen_cuda = { workspace = true, optional = true }
 
 [features]
 default = []
-vendored-openssl = []
 # llm start
 accelerate = [
   "dep:accelerate-src",
