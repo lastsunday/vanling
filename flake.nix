@@ -157,7 +157,9 @@
               pkgs.ninja
             ];
 
-            buildInputs = [];
+            buildInputs = [
+              pkgs.glibc.static
+            ];
 
             shellHook = ''
               export CARGO_BUILD_TARGET=x86_64-unknown-linux-gnu
@@ -188,10 +190,13 @@
               pkgsArm64.ninja
             ];
 
-            buildInputs = [];
+            buildInputs = [
+              pkgsArm64.glibc.static
+            ];
 
             shellHook = ''
               export CARGO_BUILD_TARGET=aarch64-unknown-linux-gnu
+              export HOST_CC="${pkgs.stdenv.cc}/bin/cc"
               export CC_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
               export CXX_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}g++"
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
