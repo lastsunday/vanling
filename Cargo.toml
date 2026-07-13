@@ -150,7 +150,7 @@ strip = "debuginfo"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 codegen-units = 8
 strip = true
 debug = false
