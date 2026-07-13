@@ -60,7 +60,7 @@ jobs:
           path: apps/server-ui/dist
           retention-days: 1
 
-  build-assets:
+  build-linux:
     needs: build-ui
     defaults:
       run:
@@ -76,6 +76,76 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             targetOSAndARCH: linux-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
+
+      - name: Download UI dist
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: server-ui-dist
+          path: apps/server-ui/dist
+
+      - uses: ./.github/actions/free-disk-space
+
+      - name: Install Nix
+        uses: ./.github/actions/setup-nix
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
+
+      - name: Build with Nix (gnu static targets)
+        shell: bash
+        run: |
+          nix_shell="gnu64"
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            nix_shell="gnu64-arm64"
+          fi
+          
+          nix develop ".#$nix_shell" \
+            --ignore-env \
+            -k CARGO_BUILD_RUSTC_WRAPPER \
+            -k SCCACHE_GHA_ENABLED \
+            -k ACTIONS_CACHE_URL \
+            -k ACTIONS_RUNTIME_TOKEN \
+            --command moon run server:build-release
+
+      - name: Rename bin for artifact
+        shell: bash
+        run: |
+          src="${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}"
+          dst="${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}-${{ matrix.targetOSAndARCH }}"
+          mv "$src" "$dst"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.targetOSAndARCH }}
+          path: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}-${{ matrix.targetOSAndARCH }}*
+          retention-days: 7
+
+  build-other:
+    needs: build-ui
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ env.ROOT_DIR }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           - target: universal-apple-darwin
             os: macos-latest
             targetOSAndARCH: macos
@@ -104,9 +174,6 @@ jobs:
           name: server-ui-dist
           path: apps/server-ui/dist
 
-      - uses: ./.github/actions/free-disk-space
-        if: runner.os == 'Linux'
-
       - name: Setup Perl (Windows only)
         uses: shogo82148/actions-setup-perl@a198315ec4e9244f206879ea7b63078003aec8a6
         if: contains(matrix.os, 'windows')
@@ -122,30 +189,13 @@ jobs:
           echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Install Nix (Linux / macOS)
+      - name: Install Nix (macOS)
         if: runner.os != 'Windows'
         uses: ./.github/actions/setup-nix
 
-      - name: Setup sccache (Linux / macOS)
+      - name: Setup sccache (macOS)
         if: runner.os != 'Windows'
         uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
-
-      - name: Build with Nix (gnu static targets)
-        if: runner.os == 'Linux' && contains(matrix.target, 'linux-gnu')
-        shell: bash
-        run: |
-          nix_shell="gnu64"
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            nix_shell="gnu64-arm64"
-          fi
-          
-          nix develop ".#$nix_shell" \
-            --ignore-env \
-            -k CARGO_BUILD_RUSTC_WRAPPER \
-            -k SCCACHE_GHA_ENABLED \
-            -k ACTIONS_CACHE_URL \
-            -k ACTIONS_RUNTIME_TOKEN \
-            --command moon run server:build-release
 
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
@@ -154,7 +204,6 @@ jobs:
           mv ../server-ui/dist ./web/dist
 
       - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6
-        if: runner.os != 'Linux'
         with:
           bin: ${{ env.BIN_NAME }}
           archive: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.target }}
@@ -179,7 +228,7 @@ jobs:
           retention-days: 7
 
   create-release:
-    needs: build-assets
+    needs: [build-linux, build-other]
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     permissions:
@@ -226,7 +275,7 @@ jobs:
 
 
   push-docker:
-    needs: build-assets
+    needs: build-linux
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     defaults:
@@ -249,6 +298,9 @@ jobs:
         run: |
           mv ${{ github.workspace }}/${{ env.IMAGE_NAME }}/* ./
           chmod 755 ${{ env.BIN_NAME }}-*
+
+      - name: Download models
+        run: ./chobits-server-linux-amd64 downloader install --all
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
