@@ -158,7 +158,6 @@
             ];
 
             buildInputs = [
-              pkgs.glibc.static
             ];
 
             shellHook = ''
@@ -166,7 +165,7 @@
               export CC_x86_64_unknown_linux_gnu="${pkgs.stdenv.cc}/bin/cc"
               export CXX_x86_64_unknown_linux_gnu="${pkgs.stdenv.cc}/bin/g++"
               export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${pkgs.stdenv.cc}/bin/cc"
-              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static"
+              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${pkgs.glibc.static}/lib"
 
               echo "✦ chobits gnu64 static-compilation shell"
               echo "  Target: x86_64-unknown-linux-gnu"
@@ -191,7 +190,6 @@
             ];
 
             buildInputs = [
-              pkgsArm64.glibc.static
             ];
 
             shellHook = ''
@@ -200,7 +198,7 @@
               export CC_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
               export CXX_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}g++"
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static"
+              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${pkgsArm64.glibc.static}/lib"
 
               echo "✦ chobits gnu64-arm64 cross-compilation shell"
               echo "  Target: aarch64-unknown-linux-gnu"
