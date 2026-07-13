@@ -156,6 +156,7 @@
               pkgs.pkg-config
               pkgs.ninja
               moon
+              pkgs.sccache
             ];
 
             buildInputs = [
@@ -190,6 +191,7 @@
               pkgsArm64.pkg-config
               pkgsArm64.ninja
               moon
+              pkgs.sccache
             ];
 
             buildInputs = [
