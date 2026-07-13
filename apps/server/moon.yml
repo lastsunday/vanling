@@ -24,6 +24,9 @@ tasks:
     deps:
       - ~:check
 
+  build-release:
+    command: 'cargo build --release --package chobits-server'
+
   lint:
     command: 'cargo clippy --workspace -- -D warnings'
     deps:

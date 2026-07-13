@@ -133,10 +133,7 @@ jobs:
             -k SCCACHE_GHA_ENABLED \
             -k ACTIONS_CACHE_URL \
             -k ACTIONS_RUNTIME_TOKEN \
-            --command cargo build \
-              --release \
-              --target "${{ matrix.target }}" \
-              --bin "${{ env.BIN_NAME }}"
+            --command moon run server:build-release
 
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
@@ -145,6 +142,7 @@ jobs:
           mv ../server-ui/dist ./web/dist
 
       - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6
+        if: runner.os != 'Linux'
         with:
           bin: ${{ env.BIN_NAME }}
           archive: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.target }}
