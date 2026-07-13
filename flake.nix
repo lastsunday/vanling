@@ -155,6 +155,7 @@
               pkgs.cmake
               pkgs.pkg-config
               pkgs.ninja
+              moon
             ];
 
             buildInputs = [
@@ -188,6 +189,7 @@
               pkgsArm64.cmake
               pkgsArm64.pkg-config
               pkgsArm64.ninja
+              moon
             ];
 
             buildInputs = [

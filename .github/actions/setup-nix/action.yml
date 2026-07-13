@@ -1,9 +1,9 @@
 name: Setup Nix
-description: Install Nix with flake support and optional magic cache
+description: Install Nix with flake support and optional store caching
 
 inputs:
   cache:
-    description: Enable magic-nix-cache for faster subsequent runs
+    description: Enable Nix store caching via GitHub Actions Cache
     default: "true"
 
 runs:
@@ -14,5 +14,8 @@ runs:
         extra-conf: |
           accept-flake-config = true
     - if: inputs.cache == 'true'
-      uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
-      continue-on-error: true
+      uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+      with:
+        primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.nix', '**/flake.lock') }}
+        restore-prefixes-first-match: nix-${{ runner.os }}-
+        gc-max-store-size-linux: 3G

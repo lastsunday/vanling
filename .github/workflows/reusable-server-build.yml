@@ -40,6 +40,8 @@ jobs:
           fetch-depth: 1
 
       - uses: ./.github/actions/setup-nix
+        with:
+          cache: false
 
       - name: Build UI
         run: >
