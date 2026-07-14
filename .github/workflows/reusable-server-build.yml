@@ -278,32 +278,51 @@ jobs:
     needs: build-linux
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ env.ROOT_DIR }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 1
 
-      - name: Download binaries
+      - name: Install Nix
+        uses: ./.github/actions/setup-nix
+
+      - name: Build Docker image (amd64)
+        run: nix build .#docker-amd64
+
+      - name: Build Docker image (arm64)
+        run: nix build .#docker-arm64
+
+      - name: Load images
+        run: |
+          docker load < result
+
+      - name: Download binaries for data
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          path: ${{ env.IMAGE_NAME }}
-          pattern: ${{ env.BIN_NAME }}-${{ inputs.version }}-linux-*
+          path: bins
+          pattern: ${{ env.BIN_NAME }}-${{ inputs.version }}-linux-amd64
           merge-multiple: true
 
-      - name: Move & chmod
-        run: |
-          mv ${{ github.workspace }}/${{ env.IMAGE_NAME }}/* ./
-          chmod 755 ${{ env.BIN_NAME }}-*
-
       - name: Download models
-        run: ./chobits-server-linux-amd64 downloader install --all
+        run: |
+          chmod +x bins/${{ env.BIN_NAME }}-*
+          nix develop --command ./bins/${{ env.BIN_NAME }}-* downloader install --all
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
+      - name: Add data layer to images
+        run: |
+          # amd64
+          docker create --name temp-amd64 chobits:dev-amd64
+          docker cp ./data temp-amd64:/app/data
+          docker cp ./download-report.json temp-amd64:/app/data/ 2>/dev/null || true
+          docker commit temp-amd64 chobits:dev-amd64-data
+          docker rm temp-amd64
+
+          # arm64
+          docker create --name temp-arm64 chobits:dev-arm64
+          docker cp ./data temp-arm64:/app/data
+          docker cp ./download-report.json temp-arm64:/app/data/ 2>/dev/null || true
+          docker commit temp-arm64 chobits:dev-arm64-data
+          docker rm temp-arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
@@ -335,17 +354,18 @@ jobs:
           flavor: |
             latest=${{ !inputs.prerelease }}
 
-      - name: Build and push Docker images
-        id: push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
-        with:
-          context: ${{ env.ROOT_DIR }}
-          platforms: linux/amd64,linux/arm64
-          push: ${{ !inputs.dry-run }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create and push manifest
+        run: |
+          TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
+          for tag in $TAGS; do
+            docker tag chobits:dev-amd64-data "$tag-amd64"
+            docker push "$tag-amd64"
+            docker tag chobits:dev-arm64-data "$tag-arm64"
+            docker push "$tag-arm64"
+
+            docker manifest create "$tag" "$tag-amd64" "$tag-arm64"
+            docker manifest push "$tag"
+          done
 
       - name: Generate artifact attestation
         if: ${{ !inputs.dry-run }}

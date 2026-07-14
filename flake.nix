@@ -53,8 +53,108 @@
           '';
           meta.mainProgram = "moon";
         };
+        # sherpa-onnx prebuilt static libraries (must match Cargo.lock version)
+        sherpaOnnxVersion = "1.13.4";
+        sherpaOnnxUrlBase = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v${sherpaOnnxVersion}";
+
+        # Host platform sherpa-onnx prebuilt static library
+        sherpaOnnxLib = let
+          archiveName = {
+            x86_64-linux   = "sherpa-onnx-v${sherpaOnnxVersion}-linux-x64-static-lib.tar.bz2";
+            aarch64-linux  = "sherpa-onnx-v${sherpaOnnxVersion}-linux-aarch64-static-lib.tar.bz2";
+            x86_64-darwin  = "sherpa-onnx-v${sherpaOnnxVersion}-osx-x64-static-lib.tar.bz2";
+            aarch64-darwin = "sherpa-onnx-v${sherpaOnnxVersion}-osx-arm64-static-lib.tar.bz2";
+          }.${system};
+          hash = {
+            x86_64-linux   = "sha256-";  # TODO: get hash on Linux CI
+            aarch64-linux  = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
+            x86_64-darwin  = "sha256-RXSXvLMxdACgZZRpHY8oNb/H6cJn3izY19+jfJt7AOA=";
+            aarch64-darwin = "sha256-";  # TODO: get hash on arm64 Mac
+          }.${system};
+        in pkgs.fetchzip {
+          url = "${sherpaOnnxUrlBase}/${archiveName}";
+          inherit hash;
+          stripRoot = true;
+        };
+
+        # aarch64-linux sherpa-onnx prebuilt static library (for cross-compilation)
+        sherpaOnnxLibArm64 = pkgs.fetchzip {
+          url = "${sherpaOnnxUrlBase}/sherpa-onnx-v${sherpaOnnxVersion}-linux-aarch64-static-lib.tar.bz2";
+          hash = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
+          stripRoot = true;
+        };
+
       in {
-        packages.moon = moon;
+        packages = let
+          chobits-server = pkgs.rustPlatform.buildRustPackage {
+            pname = "chobits-server";
+            version = "dev";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+            cargoBuildOptions = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+            SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLib}/lib";
+            nativeBuildInputs = [
+              pkgs.pkg-config
+            ];
+            buildInputs = with pkgs; [
+              openssl
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+              pkgs.libiconv
+            ];
+            doCheck = false;
+          };
+
+          docker-amd64 = pkgs.dockerTools.buildImage {
+            name = "chobits";
+            tag = "dev-amd64";
+            copyToRoot = [ chobits-server ];
+            config = {
+              Cmd = [ "/bin/chobits-server" ];
+              WorkingDir = "/app";
+              ExposedPorts = { "3000/tcp" = {}; };
+            };
+          };
+
+          docker-arm64 = let
+            pkgsArm64 = import nixpkgs {
+              inherit system;
+              overlays = [ rust-overlay.overlays.default ];
+              crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
+            };
+            chobits-server-arm64 = pkgsArm64.rustPlatform.buildRustPackage {
+              pname = "chobits-server";
+              version = "dev";
+              src = ./.;
+              cargoLock.lockFile = ./Cargo.lock;
+              cargoBuildOptions = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+              SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLibArm64}/lib";
+              nativeBuildInputs = [
+                pkgsArm64.pkg-config
+              ];
+              buildInputs = with pkgsArm64; [
+                openssl
+              ];
+              # Cross-compilation environment variables
+              CARGO_BUILD_TARGET = "aarch64-unknown-linux-gnu";
+              HOST_CC = "${pkgs.stdenv.cc}/bin/cc";
+              CC_aarch64_unknown_linux_gnu = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
+              doCheck = false;
+            };
+          in pkgsArm64.dockerTools.buildImage {
+            name = "chobits";
+            tag = "dev-arm64";
+            architecture = "arm64";
+            copyToRoot = [ chobits-server-arm64 ];
+            config = {
+              Cmd = [ "/bin/chobits-server" ];
+              WorkingDir = "/app";
+              ExposedPorts = { "3000/tcp" = {}; };
+            };
+          };
+        in {
+          inherit moon chobits-server docker-amd64 docker-arm64;
+        };
 
         devShells = {
           default = pkgs.mkShell {
@@ -79,10 +179,6 @@
 
             buildInputs = with pkgs; [
               openssl
-              sqlite
-              postgresql_16
-              openblas
-              libopus.dev
             ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
               pkgs.libiconv
             ];
@@ -128,10 +224,6 @@
             ];
             buildInputs = with pkgs; [
               openssl
-              sqlite
-              postgresql_16
-              openblas
-              libopus.dev
             ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
               pkgs.libiconv
             ];
@@ -160,6 +252,7 @@
             ];
 
             buildInputs = [
+              pkgs.openssl
             ];
 
             shellHook = ''
@@ -167,7 +260,7 @@
               export CC_x86_64_unknown_linux_gnu="${pkgs.stdenv.cc}/bin/cc"
               export CXX_x86_64_unknown_linux_gnu="${pkgs.stdenv.cc}/bin/g++"
               export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${pkgs.stdenv.cc}/bin/cc"
-              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${pkgs.glibc.static}/lib"
+              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${if pkgs.stdenv.isLinux then "${pkgs.glibc.static}/lib" else ""}"
 
               export CARGO_BUILD_RUSTC_WRAPPER=sccache
               echo "✦ chobits gnu64 static-compilation shell"
@@ -195,6 +288,7 @@
             ];
 
             buildInputs = [
+              pkgsArm64.openssl
             ];
 
             shellHook = ''
@@ -203,7 +297,7 @@
               export CC_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
               export CXX_aarch64_unknown_linux_gnu="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}g++"
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${pkgsArm64.glibc.static}/lib -L ${pkgsArm64.stdenv.cc.cc.lib}/lib"
+              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${if pkgsArm64.stdenv.isLinux then "${pkgsArm64.glibc.static}/lib -L ${pkgsArm64.stdenv.cc.cc.lib}/lib" else ""}"
 
               export CARGO_BUILD_RUSTC_WRAPPER=sccache
               echo "✦ chobits gnu64-arm64 cross-compilation shell"
