@@ -69,6 +69,10 @@ jobs:
 
   cleanup:
     needs: [prepare, build]
+    if: |
+      always() &&
+      needs.prepare.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
     uses: ./.github/workflows/reusable-dev-release-cleanup.yml
     with:
       tag-prefix: dev-server-
