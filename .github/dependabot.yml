@@ -49,12 +49,3 @@ updates:
       - dependencies
     reviewers:
       - "lastsunday"
-
-  - package-ecosystem: docker
-    directory: /apps/server
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-    reviewers:
-      - "lastsunday"

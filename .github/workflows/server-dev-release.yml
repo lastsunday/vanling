@@ -68,7 +68,7 @@ jobs:
     secrets: inherit
 
   cleanup:
-    needs: prepare
+    needs: [prepare, build]
     uses: ./.github/workflows/reusable-dev-release-cleanup.yml
     with:
       tag-prefix: dev-server-

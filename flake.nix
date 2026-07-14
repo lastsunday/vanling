@@ -242,7 +242,8 @@
             ];
           };
 
-          # Cross-compilation shell for x86_64-unknown-linux-gnu (static)
+          # Local-only cross-compilation shell for x86_64-unknown-linux-gnu (static)
+          # CI uses `nix build .#chobits-server` instead
           gnu64 = pkgs.mkShell {
             packages = [
               rustToolchain
@@ -272,7 +273,8 @@
             '';
           };
 
-          # Cross-compilation shell for aarch64-unknown-linux-gnu (static)
+          # Local-only cross-compilation shell for aarch64-unknown-linux-gnu (static)
+          # CI uses `nix build .#chobits-server-arm64` instead
           gnu64-arm64 = let
             pkgsArm64 = import nixpkgs {
               inherit system;

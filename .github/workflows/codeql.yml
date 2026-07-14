@@ -58,9 +58,11 @@ jobs:
         if: matrix.language == 'rust'
         uses: ./.github/actions/setup-nix
 
+      # chobits-server excluded: requires SHERPA_ONNX_LIB_DIR (sherpa-onnx prebuilt libs)
+      # only available via Nix buildRustPackage, not the devShell
       - name: Build Rust
         if: matrix.language == 'rust'
-        run: nix develop --command cargo build --workspace --exclude chobits-server --exclude web --verbose
+        run: nix develop --command cargo build --workspace --exclude chobits-server --verbose
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0

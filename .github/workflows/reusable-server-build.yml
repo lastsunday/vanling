@@ -40,8 +40,6 @@ jobs:
           fetch-depth: 1
 
       - uses: ./.github/actions/setup-nix
-        with:
-          cache: false
 
       - name: Build UI
         run: >
@@ -100,9 +98,9 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            nix build .#chobits-server-arm64 --quiet --no-print-build-logs
+            nix build .#chobits-server-arm64 --quiet
           else
-            nix build .#chobits-server --quiet --no-print-build-logs
+            nix build .#chobits-server --quiet
           fi
 
       - name: Copy binary from Nix store
@@ -157,29 +155,6 @@ jobs:
         with:
           name: server-ui-dist
           path: apps/server-ui/dist
-
-      - name: Setup Perl (Windows only)
-        uses: shogo82148/actions-setup-perl@a198315ec4e9244f206879ea7b63078003aec8a6
-        if: contains(matrix.os, 'windows')
-        with:
-          perl-version: "5.38"
-          distribution: strawberry
-
-      - name: Set Perl environment variables (Windows only)
-        shell: powershell
-        working-directory: \
-        if: runner.os == 'Windows'
-        run: |
-          echo "PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          echo "OPENSSL_SRC_PERL=$((where.exe perl)[0])" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Install Nix (macOS)
-        if: runner.os != 'Windows'
-        uses: ./.github/actions/setup-nix
-
-      - name: Setup sccache (macOS)
-        if: runner.os != 'Windows'
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
 
       - name: Move UI dist to web/ (Windows)
         if: runner.os == 'Windows'
@@ -267,14 +242,16 @@ jobs:
         with:
           fetch-depth: 1
 
+      - uses: ./.github/actions/free-disk-space
+
       - name: Install Nix
         uses: ./.github/actions/setup-nix
 
       - name: Build Docker image (amd64)
-        run: nix build .#docker-amd64 --out-link result-amd64 --quiet --no-print-build-logs
+        run: nix build .#docker-amd64 --out-link result-amd64 --quiet
 
       - name: Build Docker image (arm64)
-        run: nix build .#docker-arm64 --out-link result-arm64 --quiet --no-print-build-logs
+        run: nix build .#docker-arm64 --out-link result-arm64 --quiet
 
       - name: Load images
         run: |
@@ -289,9 +266,10 @@ jobs:
           merge-multiple: true
 
       - name: Download models
+        timeout-minutes: 30
         run: |
-          chmod +x bins/${{ env.BIN_NAME }}-*
-          ./bins/${{ env.BIN_NAME }}-* downloader install --all --data-dir ./data --quiet
+          chmod +x bins/${{ env.BIN_NAME }}-linux-amd64
+          ./bins/${{ env.BIN_NAME }}-linux-amd64 downloader install --all --data-dir ./data --quiet
 
       - name: Add data layer to images
         run: |
@@ -308,9 +286,6 @@ jobs:
           docker cp ./download-report.json temp-arm64:/app/data/ 2>/dev/null || true
           docker commit temp-arm64 chobits:dev-arm64-data
           docker rm temp-arm64
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
       - name: Login to Docker Hub
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
@@ -353,9 +328,7 @@ jobs:
           done
 
       - name: Generate artifact attestation
-        if: ${{ !inputs.dry-run }}
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true

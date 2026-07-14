@@ -35,9 +35,6 @@ jobs:
 
       - uses: ./.github/actions/setup-nix
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
-
       - name: Cache model files
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -118,7 +115,17 @@ jobs:
       - uses: ./.github/actions/setup-nix
 
       - name: Check translations
-        run: nix develop --command moon run docs:check-translation
+        run: >
+          nix develop
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command moon run docs:check-translation
+        env:
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
 
   docs-deploy:
     if: github.event_name != 'pull_request'
@@ -135,7 +142,17 @@ jobs:
       - uses: ./.github/actions/setup-nix
 
       - name: Build docs
-        run: nix develop --command moon run docs:build-gh
+        run: >
+          nix develop
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command moon run docs:build-gh
+        env:
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
 
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453
