@@ -84,6 +84,34 @@
           stripRoot = true;
         };
 
+        # Cross-compilation nixpkgs for aarch64
+        pkgsArm64 = import nixpkgs {
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
+          crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
+        };
+
+        chobits-server-arm64 = pkgsArm64.rustPlatform.buildRustPackage {
+          pname = "chobits-server";
+          version = "dev";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildOptions = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+          SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLibArm64}/lib";
+          nativeBuildInputs = [
+            pkgsArm64.pkg-config
+          ];
+          buildInputs = with pkgsArm64; [
+            openssl
+          ];
+          # Cross-compilation environment variables
+          CARGO_BUILD_TARGET = "aarch64-unknown-linux-gnu";
+          HOST_CC = "${pkgs.stdenv.cc}/bin/cc";
+          CC_aarch64_unknown_linux_gnu = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
+          doCheck = false;
+        };
+
       in {
         packages = let
           chobits-server = pkgs.rustPlatform.buildRustPackage {
@@ -115,33 +143,7 @@
             };
           };
 
-          docker-arm64 = let
-            pkgsArm64 = import nixpkgs {
-              inherit system;
-              overlays = [ rust-overlay.overlays.default ];
-              crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
-            };
-            chobits-server-arm64 = pkgsArm64.rustPlatform.buildRustPackage {
-              pname = "chobits-server";
-              version = "dev";
-              src = ./.;
-              cargoLock.lockFile = ./Cargo.lock;
-              cargoBuildOptions = [ "--package" "chobits-server" "--bin" "chobits-server" ];
-              SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLibArm64}/lib";
-              nativeBuildInputs = [
-                pkgsArm64.pkg-config
-              ];
-              buildInputs = with pkgsArm64; [
-                openssl
-              ];
-              # Cross-compilation environment variables
-              CARGO_BUILD_TARGET = "aarch64-unknown-linux-gnu";
-              HOST_CC = "${pkgs.stdenv.cc}/bin/cc";
-              CC_aarch64_unknown_linux_gnu = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
-              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
-              doCheck = false;
-            };
-          in pkgsArm64.dockerTools.buildImage {
+          docker-arm64 = pkgsArm64.dockerTools.buildImage {
             name = "chobits";
             tag = "dev-arm64";
             architecture = "arm64";
@@ -153,7 +155,7 @@
             };
           };
         in {
-          inherit moon chobits-server docker-amd64 docker-arm64;
+          inherit moon chobits-server chobits-server-arm64 docker-amd64 docker-arm64;
         };
 
         devShells = {

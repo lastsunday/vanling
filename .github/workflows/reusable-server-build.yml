@@ -52,6 +52,9 @@ jobs:
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run server-ui:build
+        env:
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
 
       - name: Upload UI dist
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -82,16 +85,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-registry-${{ runner.os }}-
-
       - name: Download UI dist
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -103,31 +96,22 @@ jobs:
       - name: Install Nix
         uses: ./.github/actions/setup-nix
 
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696
-
-      - name: Build with Nix (gnu static targets)
+      - name: Build with Nix
         shell: bash
         run: |
-          nix_shell="gnu64"
           if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            nix_shell="gnu64-arm64"
+            nix build .#chobits-server-arm64 --quiet --no-print-build-logs
+          else
+            nix build .#chobits-server --quiet --no-print-build-logs
           fi
-          
-          nix develop ".#$nix_shell" \
-            --ignore-env \
-            -k CARGO_BUILD_RUSTC_WRAPPER \
-            -k SCCACHE_GHA_ENABLED \
-            -k ACTIONS_CACHE_URL \
-            -k ACTIONS_RUNTIME_TOKEN \
-            --command moon run server:build-release
 
-      - name: Rename bin for artifact
+      - name: Copy binary from Nix store
         shell: bash
         run: |
-          src="${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}"
+          src="result/bin/${{ env.BIN_NAME }}"
           dst="${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}-${{ matrix.targetOSAndARCH }}"
-          mv "$src" "$dst"
+          mkdir -p "$(dirname "$dst")"
+          cp "$src" "$dst"
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -287,14 +271,15 @@ jobs:
         uses: ./.github/actions/setup-nix
 
       - name: Build Docker image (amd64)
-        run: nix build .#docker-amd64
+        run: nix build .#docker-amd64 --out-link result-amd64 --quiet --no-print-build-logs
 
       - name: Build Docker image (arm64)
-        run: nix build .#docker-arm64
+        run: nix build .#docker-arm64 --out-link result-arm64 --quiet --no-print-build-logs
 
       - name: Load images
         run: |
-          docker load < result
+          docker load < result-amd64
+          docker load < result-arm64
 
       - name: Download binaries for data
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -306,7 +291,7 @@ jobs:
       - name: Download models
         run: |
           chmod +x bins/${{ env.BIN_NAME }}-*
-          nix develop --command ./bins/${{ env.BIN_NAME }}-* downloader install --all
+          ./bins/${{ env.BIN_NAME }}-* downloader install --all --data-dir ./data --quiet
 
       - name: Add data layer to images
         run: |
