@@ -66,10 +66,10 @@
             aarch64-darwin = "sherpa-onnx-v${sherpaOnnxVersion}-osx-arm64-static-lib.tar.bz2";
           }.${system};
           hash = {
-            x86_64-linux   = "sha256-";  # TODO: get hash on Linux CI
+            x86_64-linux   = "sha256-bGDnnCS3JQoltQ7FDi4k6ozt20B3Xasu54/UIExSKjQ=";
             aarch64-linux  = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
             x86_64-darwin  = "sha256-RXSXvLMxdACgZZRpHY8oNb/H6cJn3izY19+jfJt7AOA=";
-            aarch64-darwin = "sha256-";  # TODO: get hash on arm64 Mac
+            aarch64-darwin = "sha256-n9foeCcAesFJT1RcCgW4a3xFGaSy3Qw+/6CVcVeiiD0=";
           }.${system};
         in pkgs.fetchzip {
           url = "${sherpaOnnxUrlBase}/${archiveName}";
