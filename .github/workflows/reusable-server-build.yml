@@ -194,18 +194,16 @@ jobs:
         if: ${{ !inputs.dry-run }}
         run: |
           TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
-          FIRST_TAG=""
           for tag in $TAGS; do
             docker tag chobits:dev-amd64-data "$tag-amd64"
             docker push "$tag-amd64"
             docker tag chobits:dev-arm64-data "$tag-arm64"
             docker push "$tag-arm64"
 
-            docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64"
-
-            [ -z "$FIRST_TAG" ] && FIRST_TAG="$tag"
+            docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64" \
+              --metadata-file /tmp/metadata.json
           done
-          echo "digest=$(docker manifest inspect "$FIRST_TAG" | jq -r '.config.digest')" >> "$GITHUB_OUTPUT"
+          echo "digest=$(jq -r '.["containerimage.descriptor"].digest' /tmp/metadata.json)" >> "$GITHUB_OUTPUT"
 
       - name: Generate artifact attestation
         if: ${{ !inputs.dry-run }}
