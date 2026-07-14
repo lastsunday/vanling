@@ -138,11 +138,33 @@ jobs:
           docker load < result-amd64
           docker load < result-arm64
 
+      - name: Diagnose binary
+        run: |
+          echo "=== Binary file info ==="
+          file "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64"
+          echo "=== Dynamic dependencies ==="
+          ldd "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64" || true
+          echo "=== Binary permissions ==="
+          ls -la "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64"
+          echo "=== Disk space ==="
+          df -h .
+
       - name: Download models
         timeout-minutes: 30
         run: |
           chmod +x "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64"
-          "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64" downloader install --all --data-dir ./data --quiet
+          "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64" downloader install --all --data-dir ./data || {
+            echo "Binary exit code: $?"
+            echo "Checking if data directory exists:"
+            ls -la ./data || echo "data dir does not exist"
+          }
+
+      - name: Verify downloaded models
+        run: |
+          echo "=== Data directory contents ==="
+          find ./data -type f -exec ls -lh {} \; 2>/dev/null || echo "No files found"
+          echo "=== Total size ==="
+          du -sh ./data 2>/dev/null || echo "Directory empty or not found"
 
       - name: Add data layer to images
         run: |
