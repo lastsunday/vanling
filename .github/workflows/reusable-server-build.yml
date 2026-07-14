@@ -95,23 +95,27 @@ jobs:
           restore-keys: |
             models-
 
-      - name: Build all targets
-        run: |
-          nix build .#chobits-server --quiet &
-          nix build .#chobits-server-arm64 --quiet &
-          nix build .#docker-amd64 --out-link result-amd64 --quiet &
-          nix build .#docker-arm64 --out-link result-arm64 --quiet &
-          wait
+      - name: Build binary (amd64)
+        run: nix build .#chobits-server --quiet
 
       - name: Copy binary (amd64)
         run: |
           mkdir -p "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release"
           cp result/bin/${{ env.BIN_NAME }} "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64"
 
+      - name: Build binary (arm64)
+        run: nix build .#chobits-server-arm64 --quiet
+
       - name: Copy binary (arm64)
         run: |
           mkdir -p "${{ github.workspace }}/target/aarch64-unknown-linux-gnu/release"
           cp result/bin/${{ env.BIN_NAME }} "${{ github.workspace }}/target/aarch64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-arm64"
+
+      - name: Build Docker image (amd64)
+        run: nix build .#docker-amd64 --out-link result-amd64 --quiet
+
+      - name: Build Docker image (arm64)
+        run: nix build .#docker-arm64 --out-link result-arm64 --quiet
 
       - name: Upload binary (amd64)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
