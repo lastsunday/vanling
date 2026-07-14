@@ -12,6 +12,11 @@ on:
         type: number
         default: 5
         description: "Number of latest releases to keep"
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+        description: "Skip Docker image cleanup (only clean GitHub releases/tags)"
 
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -20,7 +25,8 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - run: |
+      - name: Clean GitHub releases and tags
+        run: |
           KEEP=${{ inputs.keep }}
           TAG_PREFIX="${{ inputs.tag-prefix }}"
           gh api --paginate "/repos/${GITHUB_REPOSITORY}/git/refs/tags" \
@@ -30,3 +36,148 @@ jobs:
             gh release delete "$tag" --yes || true
             gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/git/refs/${ref#refs/}" || true
           done
+
+      - name: Clean old Docker Hub dev images
+        if: ${{ !inputs.dry-run }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
+          IMAGE_NAME: chobits
+          KEEP: ${{ inputs.keep }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DOCKERHUB_USERNAME:-}" ] || [ -z "${DOCKERHUB_TOKEN:-}" ]; then
+            echo "::warning::Docker Hub credentials not configured, skipping cleanup"
+            exit 0
+          fi
+
+          # Authenticate with Docker Hub
+          auth_response="$(curl --fail --silent --show-error \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data "$(jq -cn \
+              --arg identifier "$DOCKERHUB_USERNAME" \
+              --arg secret "$DOCKERHUB_TOKEN" \
+              '{identifier: $identifier, secret: $secret}')" \
+            'https://hub.docker.com/v2/auth/token')"
+          access_token="$(printf '%s' "$auth_response" | jq -r '.access_token // empty')"
+
+          if [ -z "$access_token" ]; then
+            echo "::error::Docker Hub authentication failed"
+            exit 1
+          fi
+
+          echo "Fetching tags for ${DOCKERHUB_USERNAME}/${IMAGE_NAME}..."
+
+          # Fetch all tags with pagination
+          all_tags="[]"
+          page_url="https://hub.docker.com/v2/namespaces/${DOCKERHUB_USERNAME}/repositories/${IMAGE_NAME}/tags?page_size=100"
+
+          while [ -n "$page_url" ] && [ "$page_url" != "null" ]; do
+            page_json="$(curl --fail --silent --show-error \
+              --header "Authorization: Bearer $access_token" \
+              "$page_url")"
+            all_tags="$(printf '%s%s' "$all_tags" "$(printf '%s' "$page_json" | jq '.results')" | jq -s 'add')"
+            page_url="$(printf '%s' "$page_json" | jq -r '.next // empty')"
+          done
+
+          total_count="$(printf '%s' "$all_tags" | jq 'length')"
+          echo "Found ${total_count} total tags"
+
+          # Filter dev-* tags (exclude plain "dev" floating tag)
+          dev_tags="$(printf '%s' "$all_tags" | jq -r '
+            [.[] | select(.name | test("^dev-")) | {name: .name, updated: (.tag_last_pushed // .last_updated)}]
+            | sort_by(.updated) | reverse
+          ')"
+
+          dev_count="$(printf '%s' "$dev_tags" | jq 'length')"
+          echo "Found ${dev_count} dev versioned tags"
+
+          if [ "$dev_count" -eq 0 ]; then
+            echo "No dev tags to clean"
+            exit 0
+          fi
+
+          # Extract unique versions (e.g., dev-0.1.0-123) and keep latest KEEP
+          # Strip "dev-" prefix, then strip platform suffixes (-amd64, -arm64)
+          versions_to_delete="$(printf '%s' "$dev_tags" | jq -r '
+            [.[] | .name
+              | ltrimstr("dev-")
+              | sub("-amd64$"; "")
+              | sub("-arm64$"; "")]
+            | unique
+            | sort
+            | reverse
+            | .['"${KEEP}"':]
+          ')"
+
+          delete_count="$(printf '%s' "$versions_to_delete" | jq 'length')"
+          echo "Versions to delete: ${delete_count}"
+
+          if [ "$delete_count" -eq 0 ]; then
+            echo "All dev tags within retention limit"
+            exit 0
+          fi
+
+          # Delete tags for old versions (including platform-specific variants)
+          for version in $(printf '%s' "$versions_to_delete" | jq -r '.[]'); do
+            # Find all tags for this version (dev-<ver>, dev-<ver>-amd64, dev-<ver>-arm64)
+            matching_tags="$(printf '%s' "$all_tags" | jq -r --arg v "dev-${version}" '
+              [.[] | select(.name == $v or .name == "\($v)-amd64" or .name == "\($v)-arm64") | .name]
+            ')"
+
+            for tag in $matching_tags; do
+              echo "Deleting Docker Hub tag: ${tag}"
+              curl --fail --silent --show-error \
+                --request DELETE \
+                --header "Authorization: Bearer $access_token" \
+                "https://hub.docker.com/v2/namespaces/${DOCKERHUB_USERNAME}/repositories/${IMAGE_NAME}/tags/${tag}" || true
+            done
+          done
+
+          echo "Docker Hub cleanup complete"
+
+      - name: Clean old ghcr.io dev images
+        if: ${{ !inputs.dry-run }}
+        env:
+          PACKAGE_NAME: chobits
+          KEEP: ${{ inputs.keep }}
+        run: |
+          set -euo pipefail
+
+          echo "Fetching ghcr.io package versions..."
+
+          # List all versions for the container package
+          versions_json="$(gh api \
+            --paginate \
+            "/user/packages/container/${PACKAGE_NAME}/versions" \
+            --jq '[.[] | select(.metadata.container.tags != null)]')"
+
+          total_count="$(printf '%s' "$versions_json" | jq 'length')"
+          echo "Found ${total_count} versions with tags"
+
+          # Filter versions that have dev-* tags
+          dev_versions="$(printf '%s' "$versions_json" | jq -r '
+            [.[] | select(.metadata.container.tags | any(test("^dev-")))]
+            | sort_by(.updated_at) | reverse
+          ')"
+
+          dev_count="$(printf '%s' "$dev_versions" | jq 'length')"
+          echo "Found ${dev_count} dev versions"
+
+          if [ "$dev_count" -le "${KEEP}" ]; then
+            echo "All dev versions within retention limit"
+            exit 0
+          fi
+
+          # Versions to delete (skip the first KEEP)
+          versions_to_delete="$(printf '%s' "$dev_versions" | jq -r '.['"${KEEP}"':][].id')"
+
+          for version_id in $versions_to_delete; do
+            echo "Deleting ghcr.io version: ${version_id}"
+            gh api -X DELETE \
+              "/user/packages/container/${PACKAGE_NAME}/versions/${version_id}" || true
+          done
+
+          echo "ghcr.io cleanup complete"
