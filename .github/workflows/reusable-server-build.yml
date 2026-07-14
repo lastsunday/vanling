@@ -88,7 +88,7 @@ jobs:
         uses: ./.github/actions/setup-nix
 
       - name: Cache model files
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: apps/server/data
           key: models-${{ hashFiles('apps/server/src/downloader/manifests/**') }}
@@ -233,7 +233,7 @@ jobs:
           fetch-depth: 1
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
