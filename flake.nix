@@ -9,9 +9,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay }:
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, crane }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -91,47 +95,86 @@
           crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
         };
 
-        chobits-server-arm64 = pkgsArm64.rustPlatform.buildRustPackage {
+        # Crane library for workspace builds with custom toolchain
+        craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
+
+        # Source filtering for Rust workspace (improves cache hit rates)
+        src = craneLib.cleanCargoSource ./.;
+
+        # Common arguments shared across all crane builds
+        commonCraneArgs = {
+          inherit src;
+          strictDeps = true;
+
+          nativeBuildInputs = [
+            pkgs.pkg-config
+          ];
+
+          buildInputs = [
+            pkgs.openssl
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.libiconv
+          ];
+
+          SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLib}/lib";
+          doCheck = false;
+        };
+
+        # Build workspace dependencies once for reuse across packages
+        cargoArtifacts = craneLib.buildDepsOnly (commonCraneArgs // {
+          pname = "chobits-workspace-deps";
+        });
+
+        # Build chobits-server binary
+        chobits-server = craneLib.buildPackage (commonCraneArgs // {
+          inherit cargoArtifacts;
           pname = "chobits-server";
           version = "dev";
-          src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildOptions = [ "--package" "chobits-server" "--bin" "chobits-server" ];
-          SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLibArm64}/lib";
+          cargoBuildFlags = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+        });
+
+        # Crane library for arm64 cross-compilation
+        craneLibArm64 = (crane.mkLib pkgsArm64).overrideToolchain (_: rustToolchain);
+
+        # Common arguments for arm64 cross-compilation
+        commonCraneArgsArm64 = {
+          src = craneLibArm64.cleanCargoSource ./.;
+          strictDeps = true;
+
           nativeBuildInputs = [
             pkgsArm64.pkg-config
           ];
-          buildInputs = with pkgsArm64; [
-            openssl
+
+          buildInputs = [
+            pkgsArm64.openssl
           ];
+
+          SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLibArm64}/lib";
+
           # Cross-compilation environment variables
           CARGO_BUILD_TARGET = "aarch64-unknown-linux-gnu";
           HOST_CC = "${pkgs.stdenv.cc}/bin/cc";
           CC_aarch64_unknown_linux_gnu = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc";
+
           doCheck = false;
         };
 
+        # Build arm64 dependencies once for reuse
+        cargoArtifactsArm64 = craneLibArm64.buildDepsOnly (commonCraneArgsArm64 // {
+          pname = "chobits-workspace-deps-arm64";
+        });
+
+        # Build arm64 binary
+        chobits-server-arm64 = craneLibArm64.buildPackage (commonCraneArgsArm64 // {
+          inherit cargoArtifactsArm64;
+          pname = "chobits-server";
+          version = "dev";
+          cargoBuildFlags = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+        });
+
       in {
         packages = let
-          chobits-server = pkgs.rustPlatform.buildRustPackage {
-            pname = "chobits-server";
-            version = "dev";
-            src = ./.;
-            cargoLock.lockFile = ./Cargo.lock;
-            cargoBuildOptions = [ "--package" "chobits-server" "--bin" "chobits-server" ];
-            SHERPA_ONNX_LIB_DIR = "${sherpaOnnxLib}/lib";
-            nativeBuildInputs = [
-              pkgs.pkg-config
-            ];
-            buildInputs = with pkgs; [
-              openssl
-            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-              pkgs.libiconv
-            ];
-            doCheck = false;
-          };
-
           docker-amd64 = pkgs.dockerTools.buildImage {
             name = "chobits";
             tag = "dev-amd64";
