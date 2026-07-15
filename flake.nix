@@ -308,6 +308,9 @@
 
           flutter = pkgs.mkShell {
             packages = with pkgs; [
+              git
+              moon
+              fvm
               jdk17
               cmake
               ninja
@@ -346,6 +349,18 @@
               # Ensure PUB_CACHE is writable
               if [ -z "$PUB_CACHE" ]; then
                 export PUB_CACHE="$HOME/.pub-cache"
+              fi
+
+              # Auto-install Flutter version pinned in .fvmrc (runs once only)
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null && [ ! -d .fvm ]; then
+                fvm install 2>/dev/null
+              fi
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
+                _FVM_PATH="$(fvm path 2>/dev/null)"
+                if [ -n "$_FVM_PATH" ] && [ -d "$_FVM_PATH/bin" ]; then
+                  export PATH="$_FVM_PATH/bin:$PATH"
+                fi
+                unset _FVM_PATH
               fi
 
               # Clear stale Flutter SDK config that overrides ANDROID_HOME

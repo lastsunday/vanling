@@ -141,7 +141,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version-file: ${{ env.APP_DIR }}/.fvmrc
+          flutter-version-file: .fvmrc
           cache: true
           pub-cache: true
 
@@ -182,7 +182,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version-file: ${{ env.APP_DIR }}/.fvmrc
+          flutter-version-file: .fvmrc
           cache: true
           pub-cache: true
 
@@ -212,7 +212,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version-file: ${{ env.APP_DIR }}/.fvmrc
+          flutter-version-file: .fvmrc
           cache: true
           pub-cache: true
 
