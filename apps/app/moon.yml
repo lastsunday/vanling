@@ -49,7 +49,7 @@ tasks:
   build-ios:
     script: |
       VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
-      flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="${BUILD_NUMBER:-0}"
+      flutter build ios --release --no-codesign
     inputs:
       - "/.fvmrc"
       - "lib/**"
@@ -58,7 +58,7 @@ tasks:
       - "pubspec.lock"
     options:
       os: "macos"
-      runInCI: false
+      runInCI: true
 
   build-web:
     script: |
@@ -98,7 +98,7 @@ tasks:
       - "pubspec.lock"
     options:
       os: "macos"
-      runInCI: false
+      runInCI: true
 
   build-windows:
     script: |
@@ -112,7 +112,7 @@ tasks:
       - "pubspec.lock"
     options:
       os: "windows"
-      runInCI: false
+      runInCI: true
 
   run:
     command: "flutter run"

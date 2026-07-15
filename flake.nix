@@ -257,12 +257,8 @@
               if [ -f .fvmrc ] && command -v fvm &>/dev/null && [ ! -d .fvm ]; then
                 fvm install 2>/dev/null
               fi
-              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
-                _FVM_PATH="$(fvm path 2>/dev/null)"
-                if [ -n "$_FVM_PATH" ] && [ -d "$_FVM_PATH/bin" ]; then
-                  export PATH="$_FVM_PATH/bin:$PATH"
-                fi
-                unset _FVM_PATH
+              if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
+                export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
               fi
 
               export MOON_TOOLCHAIN_FORCE_GLOBALS=true
@@ -363,12 +359,8 @@
               if [ -f .fvmrc ] && command -v fvm &>/dev/null && [ ! -d .fvm ]; then
                 fvm install 2>/dev/null
               fi
-              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
-                _FVM_PATH="$(fvm path 2>/dev/null)"
-                if [ -n "$_FVM_PATH" ] && [ -d "$_FVM_PATH/bin" ]; then
-                  export PATH="$_FVM_PATH/bin:$PATH"
-                fi
-                unset _FVM_PATH
+              if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
+                export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
               fi
 
               # Clear stale Flutter SDK config that overrides ANDROID_HOME
