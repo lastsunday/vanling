@@ -72,7 +72,7 @@
 
 ## 环境
 
-首次: `curl -sSf -L https://install.lix.systems/lix | sh` → `nix develop .#server`（Rust）/ `.#frontend`（JS）。`.envrc` 自动执行 hook + commit template。
+首次: `curl -sSf -L https://install.lix.systems/lix | sh` → `nix develop`（全功能：Rust + Node + Flutter + Android SDK）。`.envrc` 自动执行 hook + commit template。
 
 ## 新增模块
 

@@ -40,7 +40,7 @@ jobs:
 
       - name: Build Android APK
         run: >
-          nix develop .#flutter
+          nix develop
           --ignore-env
           -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
@@ -74,7 +74,7 @@ jobs:
 
       - name: Build Web
         run: >
-          nix develop .#flutter
+          nix develop
           --ignore-env
           -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
@@ -108,7 +108,7 @@ jobs:
 
       - name: Build Linux Desktop
         run: >
-          nix develop .#flutter
+          nix develop
           --ignore-env
           -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
