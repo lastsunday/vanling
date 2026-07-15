@@ -93,6 +93,17 @@
           stripRoot = true;
         };
 
+        # Android SDK for Flutter builds (declarative, managed by Nix)
+        androidComposition = pkgs.androidenv.composeAndroidPackages {
+          buildToolsVersions = [ "35.0.0" ];
+          platformVersions = [ "35" ];
+          abiVersions = [ "armeabi-v7a" "arm64-v8a" ];
+          includeNDK = false;
+          includeEmulator = false;
+          includeSystemImages = false;
+        };
+        androidSdk = androidComposition.androidsdk;
+
         # Cross-compilation nixpkgs for aarch64
         pkgsArm64 = import nixpkgs {
           inherit system;
@@ -235,6 +246,21 @@
               protobuf
               sccache
               fvm
+              # Flutter build dependencies
+              jdk17
+              cmake
+              ninja
+              # Linux desktop (Flutter official requirements)
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+              gtk3
+              pcre2
+              util-linux
+              libselinux
+              libsoup_3
+              libepoxy
+            ] ++ [
+              # Android SDK
+              androidSdk
             ];
 
             buildInputs = with pkgs; [
@@ -243,7 +269,24 @@
               pkgs.libiconv
             ];
 
+            ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
+            ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
+            JAVA_HOME = "${pkgs.jdk17}";
+            GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/libexec/android-sdk/build-tools/35.0.0/aapt2";
+
             shellHook = ''
+              # macOS native xcrun wrapper — override Nix xcbuild's xcrun
+              # which breaks Flutter's codesign invocation.
+              if [ "$(uname)" = "Darwin" ]; then
+                mkdir -p /tmp/nix-xcrun-wrapper
+                printf '%s\n' '#!/bin/sh' 'unset DEVELOPER_DIR SDKROOT' 'exec /usr/bin/xcrun "$@"' > /tmp/nix-xcrun-wrapper/xcrun
+                chmod +x /tmp/nix-xcrun-wrapper/xcrun
+                export PATH="/tmp/nix-xcrun-wrapper:$PATH"
+              fi
+
+              # Expose external Android SDK tools
+              export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
               # Ensure PUB_CACHE is writable (HOME may be missing in CI)
               if [ -z "$PUB_CACHE" ]; then
                 if [ -n "$HOME" ]; then
@@ -264,17 +307,25 @@
                 fvm flutter precache --dart 2>/dev/null || true
               fi
 
+              # Clear stale Flutter SDK config that overrides ANDROID_HOME
+              if [ -n "$HOME" ]; then
+                FLUTTER_SETTINGS="$HOME/.config/flutter/settings"
+                if [ -f "$FLUTTER_SETTINGS" ] && grep -q "android-sdk" "$FLUTTER_SETTINGS" 2>/dev/null; then
+                  rm -f "$FLUTTER_SETTINGS"
+                fi
+              fi
+
               export MOON_TOOLCHAIN_FORCE_GLOBALS=true
 
               echo "✦ chobits devShell (${system})"
-              echo "  Rust: $(rustc --version)"
-              echo "  Moon: $(moon --version)"
-              echo "  Node: $(node --version)"
-              echo "  pnpm: $(pnpm --version)"
+              echo "  Rust:    $(rustc --version)"
+              echo "  Moon:    $(moon --version)"
+              echo "  Node:    $(node --version)"
+              echo "  pnpm:   $(pnpm --version)"
+              echo "  Flutter: $(fvm flutter --version 2>/dev/null | head -1 || echo 'run fvm install')"
               echo "  sccache: $(sccache --version | head -1)"
               echo ""
               echo "  Run: moon run <task>"
-              echo "  Flutter: nix develop .#flutter"
               export CARGO_BUILD_RUSTC_WRAPPER=sccache
             '';
           };
@@ -315,6 +366,7 @@
               ninja
               pkg-config
               # Linux desktop (Flutter official requirements)
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               gtk3
               pcre2
               util-linux

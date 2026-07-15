@@ -84,6 +84,7 @@ tasks:
       - "pubspec.yaml"
       - "pubspec.lock"
     options:
+      os: "linux"
       runInCI: true
 
   build-macos:
