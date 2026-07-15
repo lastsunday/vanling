@@ -36,7 +36,7 @@
         nodejs = pkgs."nodejs_${nodeMajor}";
 
         # moonrepo CLI v2 — prebuilt binary from GitHub releases
-        moonVersion = "2.4.2";
+        moonVersion = "2.4.3";
         moonTarget = {
           x86_64-linux   = "x86_64-unknown-linux-gnu";
           aarch64-linux  = "aarch64-unknown-linux-gnu";
@@ -44,10 +44,10 @@
           aarch64-darwin = "aarch64-apple-darwin";
         }.${system};
         moonSha256 = {
-          x86_64-linux   = "5603438fbf14be0515f27f0756d99e4a806097993e21467f9daf9b509cdf8a8d";
-          aarch64-linux  = "7f922174533817a553c8c0becb0fc1fcc45f400104824af42bc0da525c4d06af";
-          x86_64-darwin  = "5cb29e1e8ddde538aeb9a77c18cb3b9ace991fe7d2307ff8a8badc34c7be9de8";
-          aarch64-darwin = "dcefe53256ca65c91259b6e6bc570e18231020653d421cc70680f7868250c1bf";
+          x86_64-linux   = "368fb8ca4307cab5a0bf55013e4a3fa92e58a35934d0bdd92413e7bb49facbb6";
+          aarch64-linux  = "94d8a30c31a127ceb471c295294b77b2565ce90eabb6b6728db782864451ab70";
+          x86_64-darwin  = "60148eb5ee8cf8fa596852f083390ad52518f08b6ddcc4348afb85219a3d4901";
+          aarch64-darwin = "82ebc8c54ff4f75a3c78068e872cefe29284cad5f05a27ca778a4a714df87f7b";
         }.${system};
         moon = pkgs.stdenv.mkDerivation {
           name = "moon-${moonVersion}";

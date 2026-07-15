@@ -36,15 +36,20 @@ TARGETS=(
   "aarch64-darwin:aarch64-apple-darwin"
 )
 
+BAK=$(mktemp)
+trap 'rm -f "$BAK" "$FLAKE.bak"' EXIT
+
 for pair in "${TARGETS[@]}"; do
   nix_name="${pair%%:*}"
   gh_name="${pair##*:}"
   url="https://github.com/moonrepo/moon/releases/download/v${LATEST}/moon_cli-${gh_name}.tar.xz.sha256"
   hash=$(curl -sSfL "$url" | awk '{print $1}')
-  sed -i '' "/${nix_name}/s/\"[a-f0-9]\{64\}\"/\"${hash}\"/" "$FLAKE"
+  sed -i.bak "/${nix_name}/s/\"[a-f0-9]\{64\}\"/\"${hash}\"/" "$FLAKE"
+  rm -f "$FLAKE.bak"
   echo "  $nix_name: $hash"
 done
 
-sed -i '' "s/moonVersion = \"${CURRENT}\"/moonVersion = \"${LATEST}\"/" "$FLAKE"
+sed -i.bak "s/moonVersion = \"${CURRENT}\"/moonVersion = \"${LATEST}\"/" "$FLAKE"
+rm -f "$FLAKE.bak"
 
 echo "Done. Run 'nix build .#moon' to verify."
