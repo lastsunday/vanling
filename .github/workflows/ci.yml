@@ -43,6 +43,24 @@ jobs:
           restore-keys: |
             models-
 
+      - name: Debug git in nix environment
+        run: >
+          nix develop
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command sh -c '
+            echo "=== git path ==="
+            which git
+            readlink -f "$(which git)"
+            echo "=== git status ==="
+            git status
+            echo "=== PATH ==="
+            echo "$PATH" | tr ":" "\n" | head -20
+          '
+
       - name: Moon CI pipeline (affected)
         run: >
           nix develop
@@ -54,7 +72,7 @@ jobs:
           --command moon ci --base=${{ github.event.before || format('origin/{0}', github.base_ref || 'dev') }}
         env:
           MOON_OUTPUT_STYLE: buffer-only-failure
-          MOON_LOG: error
+          MOON_LOG: trace
 
       - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6
         if: success() || failure()
