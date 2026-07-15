@@ -258,7 +258,11 @@
                 fvm install 2>/dev/null
               fi
               if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
-                export PATH="$(fvm path)/bin:$PATH"
+                _FVM_PATH="$(fvm path 2>/dev/null)"
+                if [ -n "$_FVM_PATH" ] && [ -d "$_FVM_PATH/bin" ]; then
+                  export PATH="$_FVM_PATH/bin:$PATH"
+                fi
+                unset _FVM_PATH
               fi
 
               export MOON_TOOLCHAIN_FORCE_GLOBALS=true
