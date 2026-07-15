@@ -260,6 +260,9 @@
               if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
               fi
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
+                fvm flutter precache --dart 2>/dev/null || true
+              fi
 
               export MOON_TOOLCHAIN_FORCE_GLOBALS=true
 
@@ -361,6 +364,9 @@
               fi
               if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
+              fi
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
+                fvm flutter precache --dart 2>/dev/null || true
               fi
 
               # Clear stale Flutter SDK config that overrides ANDROID_HOME
