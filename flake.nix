@@ -330,8 +330,12 @@
               pkgs.libiconv
             ];
 
-            ANDROID_HOME = "${builtins.getEnv "HOME"}/Library/Android/sdk";
-            ANDROID_SDK_ROOT = "${builtins.getEnv "HOME"}/Library/Android/sdk";
+            ANDROID_HOME = if pkgs.stdenv.isDarwin
+              then "${builtins.getEnv "HOME"}/Library/Android/sdk"
+              else "${builtins.getEnv "HOME"}/Android/Sdk";
+            ANDROID_SDK_ROOT = if pkgs.stdenv.isDarwin
+              then "${builtins.getEnv "HOME"}/Library/Android/sdk"
+              else "${builtins.getEnv "HOME"}/Android/Sdk";
 
             shellHook = ''
               # macOS native xcrun wrapper — override Nix xcbuild's xcrun
