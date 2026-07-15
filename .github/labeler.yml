@@ -1,3 +1,7 @@
+app:
+  - changed-files:
+      - any-glob-to-any-file: apps/app/**
+
 server:
   - changed-files:
       - any-glob-to-any-file: apps/server/**

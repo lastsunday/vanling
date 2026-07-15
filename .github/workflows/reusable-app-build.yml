@@ -1,0 +1,278 @@
+name: app-build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+        description: "Version string for artifacts and release name"
+      prerelease:
+        required: false
+        type: boolean
+        default: false
+        description: "Create a GitHub Pre-release instead of Release"
+      dry-run:
+        required: false
+        type: boolean
+        default: false
+        description: "Skip GitHub release creation"
+      tag-name:
+        required: false
+        type: string
+        default: ""
+        description: "Git tag for the release (defaults to GITHUB_REF_NAME)"
+
+env:
+  APP_DIR: apps/app
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-nix
+
+      - name: Build Android APK
+        run: >
+          nix develop .#flutter
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command moon run app:build-android
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chobits-${{ inputs.version }}-android
+          path: chobits-*-android.apk
+          retention-days: 7
+
+  build-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-nix
+
+      - name: Build Web
+        run: >
+          nix develop .#flutter
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command moon run app:build-web
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
+
+      - name: Upload Web build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chobits-${{ inputs.version }}-web
+          path: chobits-*-web/
+          retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-nix
+
+      - name: Build Linux Desktop
+        run: >
+          nix develop .#flutter
+          --ignore-env
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
+          --command moon run app:build-linux
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chobits-${{ inputs.version }}-linux
+          path: chobits-*-linux/
+          retention-days: 7
+
+  build-ios:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: ${{ env.APP_DIR }}/.fvmrc
+          cache: true
+          pub-cache: true
+
+      - name: Build iOS
+        run: moon run app:build-ios
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
+
+      - name: Package iOS IPA
+        run: |
+          mkdir -p Payload
+          cp -r ${{ env.APP_DIR }}/build/ios/iphoneos/Runner.app Payload/
+          zip -r "chobits-${{ inputs.version }}-ios.ipa" Payload/
+          rm -rf Payload
+
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chobits-${{ inputs.version }}-ios
+          path: chobits-*-ios.ipa
+          retention-days: 7
+
+  build-macos:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: ${{ env.APP_DIR }}/.fvmrc
+          cache: true
+          pub-cache: true
+
+      - name: Build macOS Desktop
+        run: moon run app:build-macos
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
+
+      - name: Upload macOS build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chobits-${{ inputs.version }}-macos
+          path: chobits-*-macos.app/
+          retention-days: 7
+
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: ${{ env.APP_DIR }}/.fvmrc
+          cache: true
+          pub-cache: true
+
+      - name: Build Windows Desktop
+        run: moon run app:build-windows
+        env:
+          APP_VERSION: ${{ inputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: error
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chobits-${{ inputs.version }}-windows
+          path: chobits-*-windows/
+          retention-days: 7
+
+  create-release:
+    needs: [build-android, build-web, build-linux, build-ios, build-macos, build-windows]
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        if: ${{ !inputs.prerelease }}
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/extract-changelog
+        if: ${{ !inputs.prerelease }}
+        with:
+          changelog-path: ${{ env.APP_DIR }}/CHANGELOG.md
+          output-path: /tmp/RELEASE_BODY.md
+
+      - name: Prepare generic body
+        if: ${{ inputs.prerelease }}
+        run: |
+          {
+            echo "Dev build from \`${GITHUB_SHA:0:7}\`"
+            echo ""
+            echo "Run number: ${GITHUB_RUN_NUMBER}"
+            echo "Date: $(date -u +%Y%m%d)"
+            echo "Version: ${{ inputs.version }}"
+          } > /tmp/RELEASE_BODY.md
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: release-artifacts
+          pattern: chobits-${{ inputs.version }}-*
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
+        with:
+          token: ${{ github.token }}
+          body_path: /tmp/RELEASE_BODY.md
+          prerelease: ${{ inputs.prerelease }}
+          make_latest: false
+          tag_name: ${{ inputs.tag-name || github.ref_name }}
+          name: ${{ inputs.tag-name || github.ref_name }}
+          files: release-artifacts/*

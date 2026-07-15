@@ -14,10 +14,27 @@ extract_version() {
   case "$file" in
     *.toml) grep -m1 -oE '^version = "[0-9]+\.[0-9]+\.[0-9]+"' "$file" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ;;
     *.json) grep -m1 -oE '"version": "[0-9]+\.[0-9]+\.[0-9]+"' "$file" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ;;
+    *.yaml|*.yml) grep -m1 -oP '^version:\s*\K[0-9]+\.[0-9]+\.[0-9]+' "$file" ;;
     *) echo "Unsupported manifest: $file" >&2; exit 1 ;;
   esac
 }
 
+# CI/CD: 使用传入的版本
+if [ -n "${APP_VERSION:-}" ]; then
+  if [ "$APP_VERSION" = "release" ]; then
+    version=$(extract_version "$manifest")
+    [ -z "$version" ] && { echo "Failed to extract version from $manifest" >&2; exit 1; }
+    echo "$version"
+  else
+    echo "$APP_VERSION"
+  fi
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    echo "DEV_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+  fi
+  exit 0
+fi
+
+# 本地: 生成 dev 版本
 version=$(extract_version "$manifest")
 [ -z "$version" ] && { echo "Failed to extract version from $manifest" >&2; exit 1; }
 

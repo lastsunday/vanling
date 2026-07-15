@@ -2,8 +2,22 @@ language: "dart"
 tags: ["mobile", "flutter"]
 
 tasks:
+  bump:
+    script: |
+      bash ../../scripts/bump.sh \
+        "chobits-app" \
+        "pubspec.yaml" \
+        "apps/app/**"
+    options:
+      runInCI: false
+
   analyze:
     command: "flutter analyze"
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
 
   format:
     command: "dart format ."
@@ -12,15 +26,92 @@ tasks:
 
   test:
     command: "flutter test"
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "test/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
 
   build-android:
-    command: "flutter build apk"
+    script: |
+      VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
+      flutter build apk --release --build-name="$VERSION" --build-number="${BUILD_NUMBER:-0}"
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "android/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
     options:
-      runInCI: false
+      runInCI: true
 
   build-ios:
-    command: "flutter build ios"
+    script: |
+      VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
+      flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="${BUILD_NUMBER:-0}"
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "ios/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
     options:
+      os: "macos"
+      runInCI: false
+
+  build-web:
+    script: |
+      VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
+      flutter build web --release
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "web/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+    options:
+      runInCI: true
+
+  build-linux:
+    script: |
+      VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
+      flutter build linux --release
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "linux/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+    options:
+      runInCI: true
+
+  build-macos:
+    script: |
+      VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
+      flutter build macos --release
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "macos/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+    options:
+      os: "macos"
+      runInCI: false
+
+  build-windows:
+    script: |
+      VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
+      flutter build windows --release
+    inputs:
+      - "/.fvmrc"
+      - "lib/**"
+      - "windows/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+    options:
+      os: "windows"
       runInCI: false
 
   run:

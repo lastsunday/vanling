@@ -45,6 +45,7 @@ extract_version() {
   case "$file" in
     *.toml) grep -m1 -oE '^version = "[0-9]+\.[0-9]+\.[0-9]+"' "$file" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ;;
     *.json) grep -m1 -oE '"version": "[0-9]+\.[0-9]+\.[0-9]+"' "$file" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' ;;
+    *.yaml|*.yml) grep -m1 -oP '^version:\s*\K[0-9]+\.[0-9]+\.[0-9]+' "$file" ;;
     *) echo "Unsupported manifest: $file" >&2; exit 1 ;;
   esac
 }
@@ -54,6 +55,10 @@ update_version() {
   case "$file" in
     *.toml) sed -i.bak "s/^version = \"$current\"/version = \"$new\"/" "$file" ;;
     *.json) sed -i.bak "s/\"version\": \"$current\"/\"version\": \"$new\"/" "$file" ;;
+    *.yaml|*.yml)
+      local build_num=$(grep -m1 -oP '^version:\s*[0-9]+\.[0-9]+\.[0-9]+\+\K[0-9]+' "$file")
+      build_num=$(( ${build_num:-0} + 1 ))
+      sed -i.bak "s/^version: .*/version: $new+$build_num/" "$file" ;;
   esac
   rm -f "$file.bak"
 }
