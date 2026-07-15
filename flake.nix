@@ -22,6 +22,10 @@
         pkgs = import nixpkgs {
           inherit system;
           overlays = [ rust-overlay.overlays.default ];
+          config = {
+            allowUnfree = true;
+            android_sdk.accept_license = true;
+          };
         };
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
@@ -230,10 +234,7 @@
               lefthook
               protobuf
               sccache
-              flutter
-              jdk17
-              cmake
-              ninja
+              fvm
             ];
 
             buildInputs = with pkgs; [
@@ -243,13 +244,6 @@
             ];
 
             shellHook = ''
-              # macOS native xcrun wrapper — override Nix xcbuild's xcrun
-              # which breaks Flutter's codesign invocation.
-              mkdir -p /tmp/nix-xcrun-wrapper
-              printf '%s\n' '#!/bin/sh' 'unset DEVELOPER_DIR SDKROOT' 'exec /usr/bin/xcrun "$@"' > /tmp/nix-xcrun-wrapper/xcrun
-              chmod +x /tmp/nix-xcrun-wrapper/xcrun
-              export PATH="/tmp/nix-xcrun-wrapper:$PATH"
-
               # Ensure PUB_CACHE is writable (HOME may be missing in CI)
               if [ -z "$PUB_CACHE" ]; then
                 if [ -n "$HOME" ]; then
@@ -257,6 +251,14 @@
                 else
                   export PUB_CACHE="/tmp/.pub-cache"
                 fi
+              fi
+
+              # Auto-install Flutter version pinned in .fvmrc (runs once only)
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null && [ ! -d .fvm ]; then
+                fvm install 2>/dev/null
+              fi
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
+                export PATH="$(fvm path)/bin:$PATH"
               fi
 
               export MOON_TOOLCHAIN_FORCE_GLOBALS=true
@@ -269,6 +271,7 @@
               echo "  sccache: $(sccache --version | head -1)"
               echo ""
               echo "  Run: moon run <task>"
+              echo "  Flutter: nix develop .#flutter"
               export CARGO_BUILD_RUSTC_WRAPPER=sccache
             '';
           };
@@ -297,6 +300,62 @@
               nodejs
               pnpm
             ];
+          };
+
+          flutter = pkgs.mkShell {
+            packages = with pkgs; [
+              jdk17
+              cmake
+              ninja
+              pkg-config
+              # Linux desktop (Flutter official requirements)
+              gtk3
+              pcre2
+              util-linux
+              libselinux
+              libsoup_3
+              libepoxy
+            ];
+
+            buildInputs = with pkgs; [
+              openssl
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+              pkgs.libiconv
+            ];
+
+            ANDROID_HOME = "${builtins.getEnv "HOME"}/Library/Android/sdk";
+            ANDROID_SDK_ROOT = "${builtins.getEnv "HOME"}/Library/Android/sdk";
+
+            shellHook = ''
+              # macOS native xcrun wrapper — override Nix xcbuild's xcrun
+              # which breaks Flutter's codesign invocation.
+              if [ "$(uname)" = "Darwin" ]; then
+                mkdir -p /tmp/nix-xcrun-wrapper
+                printf '%s\n' '#!/bin/sh' 'unset DEVELOPER_DIR SDKROOT' 'exec /usr/bin/xcrun "$@"' > /tmp/nix-xcrun-wrapper/xcrun
+                chmod +x /tmp/nix-xcrun-wrapper/xcrun
+                export PATH="/tmp/nix-xcrun-wrapper:$PATH"
+              fi
+
+              # Expose external Android SDK tools
+              export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+              # Ensure PUB_CACHE is writable
+              if [ -z "$PUB_CACHE" ]; then
+                export PUB_CACHE="$HOME/.pub-cache"
+              fi
+
+              # Clear stale Flutter SDK config that overrides ANDROID_HOME
+              FLUTTER_SETTINGS="$HOME/.config/flutter/settings"
+              if [ -f "$FLUTTER_SETTINGS" ] && grep -q "android-sdk" "$FLUTTER_SETTINGS" 2>/dev/null; then
+                rm -f "$FLUTTER_SETTINGS"
+              fi
+
+              echo "✦ chobits flutter devShell (${system})"
+              echo "  Flutter: $(fvm flutter --version 2>/dev/null | head -1 || echo 'run fvm install')"
+              echo "  Java:    $(java -version 2>&1 | head -1)"
+              echo "  Android: $ANDROID_HOME"
+              echo "  Targets: android, ios, linux, macos, web"
+            '';
           };
 
           # Local-only cross-compilation shell for x86_64-unknown-linux-gnu (static)

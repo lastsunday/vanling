@@ -47,7 +47,6 @@ apps/server-ui-e2e/test-results
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
 
-
 storybook-static
 
 # Next.js
@@ -62,9 +61,7 @@ application.yaml
 # book
 docs/book/
 
-
 .claude/worktrees
-
 
 application.toml
 application-dev.toml
@@ -85,3 +82,6 @@ result
 # Zola build output
 docs/public/
 docs/public-gh/
+
+# FVM Version Cache
+.fvm/
