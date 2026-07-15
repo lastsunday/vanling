@@ -6,6 +6,12 @@ pre-commit:
     clippy:
       glob: "apps/server/**/*.rs"
       run: cargo clippy -- -D warnings
+    dart-format:
+      glob: "apps/app/**/*.dart"
+      run: dart format --set-exit-if-changed .
+    flutter-analyze:
+      glob: "apps/app/**/*.dart"
+      run: flutter analyze
 
 post-checkout:
   commands:
