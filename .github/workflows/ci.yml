@@ -53,7 +53,7 @@ jobs:
           -k ACTIONS_RUNTIME_TOKEN
           -k MOON_LOG
           -k MOON_OUTPUT_STYLE
-          --command moon ci --base=${{ github.event.before || format("origin/{0}", github.base_ref || "dev") }}
+          --command moon ci --base=${{ github.event.before || format('origin/{0}', github.base_ref || 'dev') }}
         env:
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
