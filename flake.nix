@@ -100,7 +100,14 @@
         craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
 
         # Source filtering for Rust workspace (improves cache hit rates)
-        src = craneLib.cleanCargoSource ./.;
+        # Uses fileset to include downloader manifest JSON files embedded via include_dir!
+        src = pkgs.lib.fileset.toSource {
+          root = ./.;
+          fileset = pkgs.lib.fileset.unions [
+            (craneLib.fileset.commonCargoSources ./.)
+            (pkgs.lib.fileset.fileFilter (file: file.hasExt "json") ./apps/server/src/downloader/manifests)
+          ];
+        };
 
         # Common arguments shared across all crane builds
         commonCraneArgs = {
@@ -139,7 +146,13 @@
 
         # Common arguments for arm64 cross-compilation
         commonCraneArgsArm64 = {
-          src = craneLibArm64.cleanCargoSource ./.;
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              (craneLibArm64.fileset.commonCargoSources ./.)
+              (pkgs.lib.fileset.fileFilter (file: file.hasExt "json") ./apps/server/src/downloader/manifests)
+            ];
+          };
           strictDeps = true;
 
           nativeBuildInputs = [
