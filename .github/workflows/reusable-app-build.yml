@@ -42,6 +42,7 @@ jobs:
         run: >
           nix develop .#flutter
           --ignore-env
+          -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
@@ -75,6 +76,7 @@ jobs:
         run: >
           nix develop .#flutter
           --ignore-env
+          -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
@@ -108,6 +110,7 @@ jobs:
         run: >
           nix develop .#flutter
           --ignore-env
+          -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
@@ -145,8 +148,11 @@ jobs:
           cache: true
           pub-cache: true
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Build iOS
-        run: moon run app:build-ios
+        run: pnpm exec moon run app:build-ios
         env:
           APP_VERSION: ${{ inputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
@@ -186,8 +192,11 @@ jobs:
           cache: true
           pub-cache: true
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Build macOS Desktop
-        run: moon run app:build-macos
+        run: pnpm exec moon run app:build-macos
         env:
           APP_VERSION: ${{ inputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
@@ -216,8 +225,11 @@ jobs:
           cache: true
           pub-cache: true
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Build Windows Desktop
-        run: moon run app:build-windows
+        run: pnpm exec moon run app:build-windows
         env:
           APP_VERSION: ${{ inputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}

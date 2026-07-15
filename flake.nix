@@ -346,9 +346,13 @@
               # Expose external Android SDK tools
               export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-              # Ensure PUB_CACHE is writable
+              # Ensure PUB_CACHE is writable (HOME may be missing in CI)
               if [ -z "$PUB_CACHE" ]; then
-                export PUB_CACHE="$HOME/.pub-cache"
+                if [ -n "$HOME" ]; then
+                  export PUB_CACHE="$HOME/.pub-cache"
+                else
+                  export PUB_CACHE="/tmp/.pub-cache"
+                fi
               fi
 
               # Auto-install Flutter version pinned in .fvmrc (runs once only)
@@ -364,9 +368,11 @@
               fi
 
               # Clear stale Flutter SDK config that overrides ANDROID_HOME
-              FLUTTER_SETTINGS="$HOME/.config/flutter/settings"
-              if [ -f "$FLUTTER_SETTINGS" ] && grep -q "android-sdk" "$FLUTTER_SETTINGS" 2>/dev/null; then
-                rm -f "$FLUTTER_SETTINGS"
+              if [ -n "$HOME" ]; then
+                FLUTTER_SETTINGS="$HOME/.config/flutter/settings"
+                if [ -f "$FLUTTER_SETTINGS" ] && grep -q "android-sdk" "$FLUTTER_SETTINGS" 2>/dev/null; then
+                  rm -f "$FLUTTER_SETTINGS"
+                fi
               fi
 
               echo "✦ chobits flutter devShell (${system})"
