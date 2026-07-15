@@ -69,6 +69,21 @@ jobs:
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
+          -k MOON_LOG
+          -k MOON_OUTPUT_STYLE
+          --command moon ci --base=${{ github.event.before || format('origin/{0}', github.base_ref || 'dev') }}
+        env:
+          MOON_OUTPUT_STYLE: buffer-only-failure
+          MOON_LOG: trace
+
+      - name: Moon CI retry without --ignore-env
+        if: failure()
+        run: >
+          nix develop
+          -k CARGO_BUILD_RUSTC_WRAPPER
+          -k SCCACHE_GHA_ENABLED
+          -k ACTIONS_CACHE_URL
+          -k ACTIONS_RUNTIME_TOKEN
           --command moon ci --base=${{ github.event.before || format('origin/{0}', github.base_ref || 'dev') }}
         env:
           MOON_OUTPUT_STYLE: buffer-only-failure
