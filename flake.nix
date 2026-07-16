@@ -312,10 +312,10 @@
                   echo "  [fvm] ls .fvm/:"
                   ls -la .fvm/ 2>&1 | sed 's/^/    /'
                 fi
-                echo "  [fvm] Running: fvm install --force"
-                fvm install --force
-                echo "  [fvm] Running: fvm use --yes"
-                fvm use --yes
+                echo "  [fvm] Running: fvm install"
+                fvm install
+                echo "  [fvm] Running: fvm use --force"
+                fvm use --force
                 echo "  [fvm] After fvm use, .fvm/ contents:"
                 ls -la .fvm/ 2>&1 | sed 's/^/    /'
                 if [ -L .fvm/flutter_sdk ]; then
