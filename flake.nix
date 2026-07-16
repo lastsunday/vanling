@@ -263,6 +263,7 @@
               libselinux
               libsoup_3
               libepoxy
+              libsysprof-capture
             ] ++ [
               # Android SDK
               androidSdk

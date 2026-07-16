@@ -49,6 +49,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.0"
+  background_downloader:
+    dependency: "direct main"
+    description:
+      name: background_downloader
+      sha256: d27fcaf94f738032f1e6db098230799bf31ae7bf184f173fc9a752fcdae75c0e
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.5.6"
   badges:
     dependency: "direct main"
     description:
@@ -1237,14 +1245,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.0"
-  r_upgrade:
-    dependency: "direct main"
-    description:
-      name: r_upgrade
-      sha256: "14337dd29cf67265ec86e1d518212cb6b6eafe9167fd366b050ccb1656461c55"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.4.2"
   reorderable_grid:
     dependency: "direct main"
     description:

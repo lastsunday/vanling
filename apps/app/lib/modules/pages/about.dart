@@ -1,11 +1,9 @@
-import 'dart:async';
-
 import 'package:app/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:app/env.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:r_upgrade/r_upgrade.dart';
+import 'package:background_downloader/background_downloader.dart';
 import 'package:upgrader/upgrader.dart';
 import 'package:app/core/log_helper.dart';
 import 'package:version/version.dart';
@@ -32,11 +30,8 @@ class _AboutPageState extends State<AboutPage> {
   String? _newVersion = "";
 
   final appcast = Appcast(osVersion: Version(0, 0, 0));
-  int installPackageCurrentLength = 0;
-  int installPackageMaxLength = 0;
-  double installPackageSpeed = 0.0;
-  double installPackagePlanTime = 0.0;
-  int? id;
+  double installPackageProgress = 0.0;
+  DownloadTask? _downloadTask;
 
   @override
   void initState() {
@@ -77,97 +72,72 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   void _showDownloadDialog() async {
-    StreamSubscription<DownloadInfo>? streamSubscription;
     AppcastItem? bestItem = appcast.bestItem();
-    // id = await RUpgrade.getLastUpgradedId();//如果获取上一次持久化的id，如果文件下载不完整则会一直安装失败（如果RUpgrade的类库支持文件安装前校验（如md5），则可解决。这暂未找到类库有此特性提供）
-    if (id != null) {
-      DownloadStatus? status = await RUpgrade.getDownloadStatus(id!);
-      if (status != null) {
-        if (status == DownloadStatus.STATUS_SUCCESSFUL) {
-          RUpgrade.install(id!);
-          return;
-        } else if (status == DownloadStatus.STATUS_FAILED) {
-          RUpgrade.cancel(id!);
-        }
-      }
-      bool? isSuccess = await RUpgrade.upgradeWithId(id!);
-      if (!isSuccess!) {
-        id = await RUpgrade.upgrade(
-          bestItem!.fileURL!,
-          fileName: bestItem.versionString,
-        );
-      }
-    } else {
-      id = await RUpgrade.upgrade(bestItem!.fileURL!);
-    }
-    Future.delayed(const Duration(milliseconds: 0), () async {
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setState) {
-              streamSubscription = RUpgrade.stream.listen((event) {
+    if (bestItem == null || bestItem.fileURL == null) return;
+    final task = DownloadTask(
+      url: bestItem.fileURL!,
+      filename: bestItem.versionString,
+      baseDirectory: BaseDirectory.applicationSupport,
+      allowPause: true,
+      updates: Updates.statusAndProgress,
+    );
+    _downloadTask = task;
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            FileDownloader().download(
+              task,
+              onProgress: (progress) {
                 if (context.mounted) {
-                  if (event.status == DownloadStatus.STATUS_SUCCESSFUL) {
-                    //当下载完成，从event获取的currentLength和maxLength的值为0，所以使用有效的值进行替代（值为0这个问题，类库需要进行修正）
-                    setState(() {
-                      installPackageCurrentLength = installPackageMaxLength;
-                      installPackageSpeed = 0;
-                      installPackagePlanTime = 0;
-                    });
-                  }
-                  if (event.status == DownloadStatus.STATUS_RUNNING) {
-                    setState(() {
-                      installPackageCurrentLength = event.currentLength!;
-                      installPackageMaxLength = event.maxLength!;
-                      installPackageSpeed = event.speed ?? 0;
-                      installPackagePlanTime = event.planTime ?? 0;
-                    });
-                  }
+                  setState(() {
+                    installPackageProgress = progress;
+                  });
                 }
-                LogHelper.debug(
-                  "${event.currentLength}/${event.maxLength},${event.status},${event.path},${event.speed},${event.planTime}",
-                );
-              });
-              return AlertDialog(
-                title: Text(AppLocalizations.of(context)!.newVersionDownload),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: LinearProgressIndicator(
-                        value: installPackageMaxLength == 0
-                            ? 0
-                            : (installPackageCurrentLength /
-                                  installPackageMaxLength),
-                      ),
+                LogHelper.debug("download progress: $progress");
+              },
+              onStatus: (status) {
+                LogHelper.debug("download status: $status");
+                if (status == TaskStatus.complete && context.mounted) {
+                  FileDownloader().openFile(
+                    task: task,
+                    mimeType: 'application/vnd.android.package-archive',
+                  );
+                }
+              },
+            );
+            return AlertDialog(
+              title: Text(AppLocalizations.of(context)!.newVersionDownload),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: LinearProgressIndicator(
+                      value: installPackageProgress,
                     ),
-                    Text(
-                      "${(installPackageCurrentLength / (1024 * 1024)).toStringAsFixed(2)}MB/${(installPackageMaxLength / (1024 * 1024)).toStringAsFixed(2)}MB(${(installPackageCurrentLength / installPackageMaxLength * 100).toStringAsFixed(2)}%)",
-                    ),
-                    Text(
-                      "${installPackageSpeed.toInt()} kb/s,${AppLocalizations.of(context)!.planTime}:${installPackagePlanTime.toInt()}s",
-                    ),
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      context.pop();
-                    },
-                    child: Text(AppLocalizations.of(context)!.cancel),
                   ),
+                  Text("${(installPackageProgress * 100).toStringAsFixed(2)}%"),
                 ],
-              );
-            },
-          );
-        },
-      );
-      streamSubscription?.cancel();
-      RUpgrade.pause(id!);
-    });
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    context.pop();
+                  },
+                  child: Text(AppLocalizations.of(context)!.cancel),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (_downloadTask != null) {
+      FileDownloader().pause(_downloadTask!);
+    }
   }
 
   @override
