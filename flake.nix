@@ -134,14 +134,14 @@
             }
           )
         );
-        flutterPkgConfigPath = pkgs.lib.optionals pkgs.stdenv.isLinux (
+        flutterPkgConfigPath = pkgs.lib.optionalString pkgs.stdenv.isLinux (
           pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" appBuildDeps
           + pkgs.lib.makeSearchPathOutput "dev" "share/pkgconfig" appBuildDeps
         );
-        flutterIncludePath = pkgs.lib.optionals pkgs.stdenv.isLinux (
-          pkgs.lib.makeSearchPathOutput "dev" "include" appBuildDeps
+        flutterIncludeFlags = pkgs.lib.optionalString pkgs.stdenv.isLinux (
+          pkgs.lib.concatMapStringsSep " " (pkg: "-isystem ${pkgs.lib.getOutput "dev" pkg}/include") appBuildDeps
         );
-        flutterLibraryPath = pkgs.lib.optionals pkgs.stdenv.isLinux (
+        flutterLibraryPath = pkgs.lib.optionalString pkgs.stdenv.isLinux (
           pkgs.lib.makeSearchPath "lib" appRuntimeDeps
         );
 
@@ -381,7 +381,7 @@
               # Flutter Linux desktop — auto-computed transitive closure (genericClosure)
               if [ "$(uname)" = "Linux" ] && [ -n "${flutterPkgConfigPath}" ]; then
                 export PKG_CONFIG_PATH="${flutterPkgConfigPath}:''${PKG_CONFIG_PATH:-}"
-                export CFLAGS="-isystem ${flutterIncludePath} ''${CFLAGS:-}"
+                export CFLAGS="${flutterIncludeFlags} ''${CFLAGS:-}"
                 export CXXFLAGS="$CFLAGS"
                 export LIBRARY_PATH="${flutterLibraryPath}:''${LIBRARY_PATH:-}"
               fi
