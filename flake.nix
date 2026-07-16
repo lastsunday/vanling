@@ -296,6 +296,11 @@
                 fi
               fi
 
+              # Ensure HOME is set (CI --ignore-env may strip it; FVM needs it)
+              if [ -z "$HOME" ]; then
+                export HOME="/tmp"
+              fi
+
               # Auto-install Flutter version pinned in .fvmrc
               if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
                 echo "  [fvm] pwd=$(pwd) HOME=$HOME"
