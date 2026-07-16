@@ -72,6 +72,9 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
 
+      - name: Package Android APK
+        run: cp ${{ env.APP_DIR }}/build/app/outputs/flutter-apk/app-release.apk "chobits-${{ inputs.version }}-android.apk"
+
       - name: Upload Android APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -108,6 +111,9 @@ jobs:
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
 
+      - name: Package Web build
+        run: cp -r ${{ env.APP_DIR }}/build/web "chobits-${{ inputs.version }}-web"
+
       - name: Upload Web build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -143,6 +149,9 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
+
+      - name: Package Linux build
+        run: cp -r ${{ env.APP_DIR }}/build/linux/x64/release/bundle "chobits-${{ inputs.version }}-linux"
 
       - name: Upload Linux build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -245,6 +254,9 @@ jobs:
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
 
+      - name: Package macOS build
+        run: cp -r ${{ env.APP_DIR }}/build/macos/Build/Products/Release/app.app "chobits-${{ inputs.version }}-macos.app"
+
       - name: Upload macOS build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -287,6 +299,10 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
+
+      - name: Package Windows build
+        shell: bash
+        run: cp -r ${{ env.APP_DIR }}/build/windows/x64/runner/Release "chobits-${{ inputs.version }}-windows"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
