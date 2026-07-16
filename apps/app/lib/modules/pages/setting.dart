@@ -11,11 +11,7 @@ import 'package:provider/provider.dart';
 
 import 'package:app/constants.dart';
 
-enum _ExpandableSetting {
-  textScale,
-  theme,
-  locale,
-}
+enum _ExpandableSetting { textScale, theme, locale }
 
 class SettingPage extends StatefulWidget {
   const SettingPage({super.key});
@@ -38,10 +34,7 @@ class _SettingPageState extends State<SettingPage> {
   }
 
   void _updateSetting(BuildContext context, AppSetting appSetting) {
-    AppSetting.update(
-      context,
-      appSetting,
-    );
+    AppSetting.update(context, appSetting);
     Provider.of<AppStore>(context, listen: false).updateAppSetting(appSetting);
   }
 
@@ -91,12 +84,14 @@ class _SettingPageState extends State<SettingPage> {
     var supportedLocales = List<Locale>.from(AppLocalizations.supportedLocales);
     supportedLocales.removeWhere((locale) => locale == deviceLocale);
 
-    final displayLocales = Map<Locale, DisplayOption>.fromIterable(
-      supportedLocales,
-      value: (dynamic locale) =>
-          _getLocaleDisplayOption(context, locale as Locale?),
-    ).entries.toList()
-      ..sort((l1, l2) => compareAsciiUpperCase(l1.value.title, l2.value.title));
+    final displayLocales =
+        Map<Locale, DisplayOption>.fromIterable(
+          supportedLocales,
+          value: (dynamic locale) =>
+              _getLocaleDisplayOption(context, locale as Locale?),
+        ).entries.toList()..sort(
+          (l1, l2) => compareAsciiUpperCase(l1.value.title, l2.value.title),
+        );
 
     localeOptions.addAll(LinkedHashMap.fromEntries(displayLocales));
     return localeOptions;
@@ -110,10 +105,7 @@ class _SettingPageState extends State<SettingPage> {
     final settingsListItems = [
       SettingsListItem<double?>(
         title: AppLocalizations.of(context)!.settingsTextScaling,
-        selectedOption: options.textScaleFactor(
-          context,
-          useSentinel: true,
-        ),
+        selectedOption: options.textScaleFactor(context, useSentinel: true),
         optionsMap: LinkedHashMap.of({
           systemTextScaleFactorOption: DisplayOption(
             // localizations.settingsSystemDefault,
@@ -138,7 +130,9 @@ class _SettingPageState extends State<SettingPage> {
         }),
         onOptionChanged: (newTextScale) => {
           _updateSetting(
-              context, options.copyWith(textScaleFactor: newTextScale))
+            context,
+            options.copyWith(textScaleFactor: newTextScale),
+          ),
         },
         onTapSetting: () => onTapSetting(_ExpandableSetting.textScale),
         isExpanded: _expandedSettingId == _ExpandableSetting.textScale,
@@ -169,18 +163,21 @@ class _SettingPageState extends State<SettingPage> {
             : options.locale,
         optionsMap: _getLocaleOptions(),
         onOptionChanged: (newLocale) => _updateSetting(
-            context, options.copyWith(locale: newLocale!.toString())),
+          context,
+          options.copyWith(locale: newLocale!.toString()),
+        ),
         onTapSetting: () => onTapSetting(_ExpandableSetting.locale),
         isExpanded: _expandedSettingId == _ExpandableSetting.locale,
       ),
     ];
     return Scaffold(
-        appBar: AppBar(
-          title: Text(AppLocalizations.of(context)!.setting),
+      appBar: AppBar(title: Text(AppLocalizations.of(context)!.setting)),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(0, 25, 0, 0),
+        child: SingleChildScrollView(
+          child: Column(children: settingsListItems),
         ),
-        body: Padding(
-            padding: const EdgeInsets.fromLTRB(0, 25, 0, 0),
-            child: SingleChildScrollView(
-                child: Column(children: settingsListItems))));
+      ),
+    );
   }
 }

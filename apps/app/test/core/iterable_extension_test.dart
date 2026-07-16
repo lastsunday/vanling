@@ -4,8 +4,10 @@ import 'package:app/core/iterable_extension.dart';
 void main() {
   group('Should execute `reduceOr`', () {
     test('Should throw when reduce empty list using reduce', () {
-      expect(() => [].reduce((value, element) => value += element),
-          throwsA(isA<StateError>()));
+      expect(
+        () => [].reduce((value, element) => value += element),
+        throwsA(isA<StateError>()),
+      );
     });
 
     test('Should reduce empty list with default value', () {
@@ -34,10 +36,12 @@ void main() {
       expect([1, 2].firstOr(0), 1);
     });
 
-    test('Should get null when get first in empty list using firstNullable',
-        () {
-      expect([].firstNullable, null);
-    });
+    test(
+      'Should get null when get first in empty list using firstNullable',
+      () {
+        expect([].firstNullable, null);
+      },
+    );
 
     test('Should get first when get first in list using firstNullable', () {
       expect([1].firstNullable, 1);

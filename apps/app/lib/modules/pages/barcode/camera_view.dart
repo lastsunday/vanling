@@ -6,14 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 
 class CameraView extends StatefulWidget {
-  const CameraView(
-      {super.key,
-      required this.customPaint,
-      required this.onImage,
-      this.onCameraFeedReady,
-      this.onDetectorViewModeChanged,
-      this.onCameraLensDirectionChanged,
-      this.initialCameraLensDirection = CameraLensDirection.back});
+  const CameraView({
+    super.key,
+    required this.customPaint,
+    required this.onImage,
+    this.onCameraFeedReady,
+    this.onDetectorViewModeChanged,
+    this.onCameraLensDirectionChanged,
+    this.initialCameraLensDirection = CameraLensDirection.back,
+  });
 
   final CustomPaint? customPaint;
   final Function(InputImage inputImage) onImage;
@@ -76,13 +77,8 @@ class _CameraViewState extends State<CameraView> {
         children: <Widget>[
           Center(
             child: _changingCameraLens
-                ? Center(
-                    child: const Text('Changing camera lens'),
-                  )
-                : CameraPreview(
-                    _controller!,
-                    child: widget.customPaint,
-                  ),
+                ? Center(child: const Text('Changing camera lens'))
+                : CameraPreview(_controller!, child: widget.customPaint),
           ),
           _backButton(),
           _switchLiveCameraToggle(),
@@ -92,44 +88,44 @@ class _CameraViewState extends State<CameraView> {
   }
 
   Widget _backButton() => Positioned(
-        top: 40,
-        left: 8,
-        child: SizedBox(
-          height: 50.0,
-          width: 50.0,
-          child: FloatingActionButton(
-            heroTag: Object(),
-            onPressed: () => Navigator.of(context).pop(),
-            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-            child: Icon(
-              Icons.arrow_back_ios_outlined,
-              color: Theme.of(context).colorScheme.primary,
-              size: 20,
-            ),
-          ),
+    top: 40,
+    left: 8,
+    child: SizedBox(
+      height: 50.0,
+      width: 50.0,
+      child: FloatingActionButton(
+        heroTag: Object(),
+        onPressed: () => Navigator.of(context).pop(),
+        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+        child: Icon(
+          Icons.arrow_back_ios_outlined,
+          color: Theme.of(context).colorScheme.primary,
+          size: 20,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _switchLiveCameraToggle() => Positioned(
-        bottom: 8,
-        right: 8,
-        child: SizedBox(
-          height: 50.0,
-          width: 50.0,
-          child: FloatingActionButton(
-            heroTag: Object(),
-            onPressed: _switchLiveCamera,
-            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-            child: Icon(
-              Platform.isIOS
-                  ? Icons.flip_camera_ios_outlined
-                  : Icons.flip_camera_android_outlined,
-              color:Theme.of(context).colorScheme.primary,
-              size: 25,
-            ),
-          ),
+    bottom: 8,
+    right: 8,
+    child: SizedBox(
+      height: 50.0,
+      width: 50.0,
+      child: FloatingActionButton(
+        heroTag: Object(),
+        onPressed: _switchLiveCamera,
+        backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+        child: Icon(
+          Platform.isIOS
+              ? Icons.flip_camera_ios_outlined
+              : Icons.flip_camera_android_outlined,
+          color: Theme.of(context).colorScheme.primary,
+          size: 25,
         ),
-      );
+      ),
+    ),
+  );
 
   Future _startLiveFeed() async {
     final camera = _cameras[_cameraIndex];

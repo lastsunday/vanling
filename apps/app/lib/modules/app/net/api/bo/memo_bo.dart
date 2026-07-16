@@ -5,7 +5,11 @@ part 'memo_bo.g.dart';
 @JsonSerializable()
 class MemoBo {
   MemoBo(
-      this.id, this.content, this.displaymode, this.displaymodeForDisplayList);
+    this.id,
+    this.content,
+    this.displaymode,
+    this.displaymodeForDisplayList,
+  );
 
   String? id;
   String? content = "";

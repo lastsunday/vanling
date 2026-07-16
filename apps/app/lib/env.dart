@@ -68,7 +68,7 @@ class Env {
 
   static EnvConfig get config => _getEnvConfig();
 
-// 根据不同环境返回对应的环境配置
+  // 根据不同环境返回对应的环境配置
   static EnvConfig _getEnvConfig() {
     switch (appEnv) {
       case EnvName.dev:

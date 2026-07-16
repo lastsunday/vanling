@@ -31,26 +31,33 @@ class MemoApi {
     if (bo != null) {
       result.addAll(bo.toJson());
     }
-    return await Http.instance()
-        .get<MemoVo, PageResult<MemoVo>>(urlPathList, result, (json) {
-      return MemoVo.fromJson(json!);
-    }, (list, total) {
-      return PageResult(param: target, total: total!, rows: list!);
-    });
+    return await Http.instance().get<MemoVo, PageResult<MemoVo>>(
+      urlPathList,
+      result,
+      (json) {
+        return MemoVo.fromJson(json!);
+      },
+      (list, total) {
+        return PageResult(param: target, total: total!, rows: list!);
+      },
+    );
   }
 
   Future<void> insertToTop(MemoBo bo) async {
-    return await Http.instance().postJson<void>(urlPathMemoAddToTop, bo,
-        (json) {
+    return await Http.instance().postJson<void>(urlPathMemoAddToTop, bo, (
+      json,
+    ) {
       return;
     });
   }
 
   Future<void> delete(String id) async {
-    return await Http.instance().delete<void>("$urlPathDeleteMemoWithOrder/$id",
-        (json) {
-      return;
-    });
+    return await Http.instance().delete<void>(
+      "$urlPathDeleteMemoWithOrder/$id",
+      (json) {
+        return;
+      },
+    );
   }
 
   Future<void> update(MemoBo bo) async {
@@ -75,11 +82,15 @@ class MemoApi {
     if (bo != null) {
       result.addAll(bo.toJson());
     }
-    return await Http.instance()
-        .get<MemoVo, PageResult<MemoVo>>(urlPathSearch, result, (json) {
-      return MemoVo.fromJson(json!);
-    }, (list, total) {
-      return PageResult(param: target, total: total!, rows: list!);
-    });
+    return await Http.instance().get<MemoVo, PageResult<MemoVo>>(
+      urlPathSearch,
+      result,
+      (json) {
+        return MemoVo.fromJson(json!);
+      },
+      (list, total) {
+        return PageResult(param: target, total: total!, rows: list!);
+      },
+    );
   }
 }

@@ -38,6 +38,12 @@ jobs:
 
       - uses: ./.github/actions/setup-nix
 
+      - name: Decode Android keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > apps/app/android/app/release.keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
       - name: Build Android APK
         run: >
           nix develop
@@ -47,12 +53,20 @@ jobs:
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
+          -k ANDROID_KEYSTORE_FILE
+          -k ANDROID_KEY_ALIAS
+          -k ANDROID_KEY_PASSWORD
+          -k ANDROID_STORE_PASSWORD
           --command moon run app:build-android
         env:
           APP_VERSION: ${{ inputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
+          ANDROID_KEYSTORE_FILE: apps/app/android/app/release.keystore
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
 
       - name: Upload Android APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

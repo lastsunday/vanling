@@ -4,7 +4,9 @@ import 'package:app/modules/app/model/memo_model.dart';
 
 class MemoUtil {
   static String getLableByDisplayMode(
-      DisplayMode displayMode, BuildContext context) {
+    DisplayMode displayMode,
+    BuildContext context,
+  ) {
     return switch (displayMode) {
       DisplayMode.auto => AppLocalizations.of(context)!.displayModeAuto,
       DisplayMode.text => AppLocalizations.of(context)!.displayModeText,

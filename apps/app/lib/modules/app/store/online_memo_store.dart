@@ -10,8 +10,11 @@ import 'package:app/modules/app/store/memo_store.dart';
 
 class OnlineMemoStore extends MemoStore {
   @override
-  Future<PageResult<MemoModel>> pageMemo(PageParam param,
-      {int? displaymode, String? keyword}) async {
+  Future<PageResult<MemoModel>> pageMemo(
+    PageParam param, {
+    int? displaymode,
+    String? keyword,
+  }) async {
     PageResult<MemoVo> result;
     if (keyword == null || keyword.isEmpty) {
       var bo = MemoBo(null, null, null, displaymode);
@@ -22,17 +25,23 @@ class OnlineMemoStore extends MemoStore {
     }
     memoTotal = result.total;
     notifyListeners();
-    return Future(() => PageResult(
+    return Future(
+      () => PageResult(
         param: param,
         rows: result.rows
-            .map((e) => MemoModel(
+            .map(
+              (e) => MemoModel(
                 content: e.content,
                 datetime: e.createTime,
                 id: e.id,
                 displaymode: e.displaymode,
-                updatedatetime: e.updateTime))
+                updatedatetime: e.updateTime,
+              ),
+            )
             .toList(),
-        total: result.total));
+        total: result.total,
+      ),
+    );
   }
 
   @override
@@ -43,8 +52,12 @@ class OnlineMemoStore extends MemoStore {
 
   @override
   Future<void> addMemoToTop(MemoModel memo, int? displaymode) {
-    MemoBo memoBo =
-        MemoBo(memo.id, memo.content, memo.displaymode, displaymode);
+    MemoBo memoBo = MemoBo(
+      memo.id,
+      memo.content,
+      memo.displaymode,
+      displaymode,
+    );
     return MemoApi.instance().insertToTop(memoBo);
   }
 
@@ -55,7 +68,11 @@ class OnlineMemoStore extends MemoStore {
 
   @override
   Future<void> sortMemo(
-      int? displaymode, Map<String, int> idAndSeqMap, int minSeq, int maxSeq) {
+    int? displaymode,
+    Map<String, int> idAndSeqMap,
+    int minSeq,
+    int maxSeq,
+  ) {
     MemoSortBo bo = MemoSortBo(displaymode, idAndSeqMap, minSeq, maxSeq);
     return MemoApi.instance().sort(bo);
   }

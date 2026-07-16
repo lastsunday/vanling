@@ -9,8 +9,12 @@ class PageParam {
   String? orderByColumn;
   String? isAsc;
 
-  PageParam(
-      {this.pageNum = 1, this.pageSize = 20, this.orderByColumn, this.isAsc});
+  PageParam({
+    this.pageNum = 1,
+    this.pageSize = 20,
+    this.orderByColumn,
+    this.isAsc,
+  });
 
   int get limit => pageSize;
 

@@ -1,4 +1,4 @@
-enum SpeedDialDirection { up, down, left, right,circular }
+enum SpeedDialDirection { up, down, left, right, circular }
 
 extension EnumExtension on SpeedDialDirection {
   bool get isDown => this == SpeedDialDirection.down;

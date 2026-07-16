@@ -7,8 +7,8 @@ import 'package:app/core/domain/token.dart';
 import 'package:app/core/local_storage.dart';
 import 'package:app/core/log_helper.dart';
 
-typedef FetchUserByTokenCallback = Future<User> Function(
-    String baseUrl, Token token);
+typedef FetchUserByTokenCallback =
+    Future<User> Function(String baseUrl, Token token);
 
 class ConnectionProvider extends ChangeNotifier {
   static ConnectionProvider _instance = ConnectionProvider._internal();
@@ -34,8 +34,11 @@ class ConnectionProvider extends ChangeNotifier {
 
   static bool get onAuthTokenRequest => Connections.onAuthTokenRequest;
 
-  Future<Map<String, dynamic>> addUserByToken(Token token, String baseUrl,
-      FetchUserByTokenCallback fetchUserByTokenCallback) async {
+  Future<Map<String, dynamic>> addUserByToken(
+    Token token,
+    String baseUrl,
+    FetchUserByTokenCallback fetchUserByTokenCallback,
+  ) async {
     try {
       User user = await fetchUserByTokenCallback(baseUrl, token);
       var connection = Connection(user, BaseUrl(baseUrl), active: true);

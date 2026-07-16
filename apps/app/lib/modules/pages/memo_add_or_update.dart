@@ -71,23 +71,26 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
 
   void _delete() {
     showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            content: Text(AppLocalizations.of(context)!.confirmDelete),
-            actions: [
-              TextButton(
-                  onPressed: () => {context.pop()},
-                  child: Text(AppLocalizations.of(context)!.cancel)),
-              TextButton(
-                  onPressed: () {
-                    context.pop();
-                    context.pop({MemoResult(memo: widget.memo!, delete: true)});
-                  },
-                  child: Text(AppLocalizations.of(context)!.confirm)),
-            ],
-          );
-        });
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          content: Text(AppLocalizations.of(context)!.confirmDelete),
+          actions: [
+            TextButton(
+              onPressed: () => {context.pop()},
+              child: Text(AppLocalizations.of(context)!.cancel),
+            ),
+            TextButton(
+              onPressed: () {
+                context.pop();
+                context.pop({MemoResult(memo: widget.memo!, delete: true)});
+              },
+              child: Text(AppLocalizations.of(context)!.confirm),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _changeViewer(BuildContext context) {
@@ -114,17 +117,23 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
                   itemCount: displayModes.length,
                   itemBuilder: (context, index) {
                     return ListTile(
-                        title: TextButton.icon(
-                      icon: Icon(
-                          MemoUtil.getIconByDisplayMode(displayModes[index])),
-                      label: Text(MemoUtil.getLableByDisplayMode(
-                          displayModes[index], context)),
-                      onPressed: () {
-                        displaymode = index;
-                        setState(() {});
-                        Navigator.pop(context);
-                      },
-                    ));
+                      title: TextButton.icon(
+                        icon: Icon(
+                          MemoUtil.getIconByDisplayMode(displayModes[index]),
+                        ),
+                        label: Text(
+                          MemoUtil.getLableByDisplayMode(
+                            displayModes[index],
+                            context,
+                          ),
+                        ),
+                        onPressed: () {
+                          displaymode = index;
+                          setState(() {});
+                          Navigator.pop(context);
+                        },
+                      ),
+                    );
                   },
                 ),
               ),
@@ -138,8 +147,11 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
   Widget _getIconWidget(int displaymode, IconData iconData) {
     if (displaymode == DisplayMode.image.value && content.startsWith("http")) {
       return badges.Badge(
-        badgeContent:
-            const Icon(Icons.tips_and_updates, color: Colors.white, size: 10),
+        badgeContent: const Icon(
+          Icons.tips_and_updates,
+          color: Colors.white,
+          size: 10,
+        ),
         position: badges.BadgePosition.topEnd(top: -10, end: -12),
         showBadge: true,
         child: Icon(iconData),
@@ -177,25 +189,28 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
                   itemCount: 1,
                   itemBuilder: (context, index) {
                     return ListTile(
-                        title: TextButton.icon(
-                      icon: const Icon(Icons.transform),
-                      label:
-                          Text(AppLocalizations.of(context)!.convertToBase64),
-                      onPressed: () async {
-                        final ByteData imageData =
-                            await NetworkAssetBundle(Uri.parse(content))
-                                .load("");
-                        final Uint8List bytes = imageData.buffer.asUint8List();
-                        var base64Content = base64Encode(bytes);
-                        setState(() {
-                          content = base64Content;
-                        });
-                        contentController.text = content;
-                        if (context.mounted) {
-                          context.pop();
-                        }
-                      },
-                    ));
+                      title: TextButton.icon(
+                        icon: const Icon(Icons.transform),
+                        label: Text(
+                          AppLocalizations.of(context)!.convertToBase64,
+                        ),
+                        onPressed: () async {
+                          final ByteData imageData = await NetworkAssetBundle(
+                            Uri.parse(content),
+                          ).load("");
+                          final Uint8List bytes = imageData.buffer
+                              .asUint8List();
+                          var base64Content = base64Encode(bytes);
+                          setState(() {
+                            content = base64Content;
+                          });
+                          contentController.text = content;
+                          if (context.mounted) {
+                            context.pop();
+                          }
+                        },
+                      ),
+                    );
                   },
                 ),
               ),
@@ -220,32 +235,33 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
       var fileTotalLength = file.lengthSync();
       List<int> dataLoaded = [];
       file.openRead().listen(
-          (event) async {
-            dataLoaded.addAll(event);
-            var countLength = dataLoaded.length;
-            double progressValue = countLength / fileTotalLength;
-            LogHelper.debug("countLength = $countLength");
-            LogHelper.debug("fileTotalLength = $fileTotalLength");
-            LogHelper.debug("progress = $progressValue");
-            UI.showProgress(countLength / fileTotalLength);
-          },
-          onError: (Object error) => {UI.showError("$error")},
-          onDone: () async {
-            UI.showProgress(1);
-            await Future.delayed(const Duration(milliseconds: 500));
-            if (displaymode == DisplayMode.image.value) {
-              var text = const Base64Encoder().convert(dataLoaded.cast());
-              setState(() {
-                content = text;
-              });
-            } else {
-              var text = String.fromCharCodes(dataLoaded);
-              setState(() {
-                content = text;
-              });
-            }
-            UI.hideLoading();
-          });
+        (event) async {
+          dataLoaded.addAll(event);
+          var countLength = dataLoaded.length;
+          double progressValue = countLength / fileTotalLength;
+          LogHelper.debug("countLength = $countLength");
+          LogHelper.debug("fileTotalLength = $fileTotalLength");
+          LogHelper.debug("progress = $progressValue");
+          UI.showProgress(countLength / fileTotalLength);
+        },
+        onError: (Object error) => {UI.showError("$error")},
+        onDone: () async {
+          UI.showProgress(1);
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (displaymode == DisplayMode.image.value) {
+            var text = const Base64Encoder().convert(dataLoaded.cast());
+            setState(() {
+              content = text;
+            });
+          } else {
+            var text = String.fromCharCodes(dataLoaded);
+            setState(() {
+              content = text;
+            });
+          }
+          UI.hideLoading();
+        },
+      );
     } else {
       // User canceled the picker
       UI.hideLoading();
@@ -254,38 +270,51 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
 
   List<Widget> _getActionList(BuildContext context) {
     List<Widget> result = [];
-    result.add(IconButton(
-      onPressed: _fileOpen,
-      icon: const Icon(Icons.file_open),
-      tooltip: AppLocalizations.of(context)!.importFile,
-    ));
-    result.add(Tooltip(
-      message: AppLocalizations.of(context)!.displayMode,
-      child: Center(
+    result.add(
+      IconButton(
+        onPressed: _fileOpen,
+        icon: const Icon(Icons.file_open),
+        tooltip: AppLocalizations.of(context)!.importFile,
+      ),
+    );
+    result.add(
+      Tooltip(
+        message: AppLocalizations.of(context)!.displayMode,
+        child: Center(
           child: InkWell(
-              onLongPress: () => _convertContent(context),
-              onTap: () => _changeViewer(context),
-              child: Ink(
-                child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: _getIconWidget(
-                        displaymode,
-                        MemoUtil.getIconByDisplayMode(
-                            DisplayMode.getType(displaymode)))),
-              ))),
-    ));
+            onLongPress: () => _convertContent(context),
+            onTap: () => _changeViewer(context),
+            child: Ink(
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: _getIconWidget(
+                  displaymode,
+                  MemoUtil.getIconByDisplayMode(
+                    DisplayMode.getType(displaymode),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
     if (widget.updatePage) {
-      result.add(IconButton(
-        onPressed: _delete,
-        icon: const Icon(Icons.delete),
-        tooltip: AppLocalizations.of(context)!.delete,
-      ));
+      result.add(
+        IconButton(
+          onPressed: _delete,
+          icon: const Icon(Icons.delete),
+          tooltip: AppLocalizations.of(context)!.delete,
+        ),
+      );
     }
-    result.add(IconButton(
-      onPressed: _save,
-      icon: const Icon(Icons.save),
-      tooltip: AppLocalizations.of(context)!.save,
-    ));
+    result.add(
+      IconButton(
+        onPressed: _save,
+        icon: const Icon(Icons.save),
+        tooltip: AppLocalizations.of(context)!.save,
+      ),
+    );
     return result;
   }
 
@@ -298,26 +327,27 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
     return Scaffold(
-        appBar: AppBar(
-          // TRY THIS: Try changing the color here to a specific color (to
-          // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-          // change color while the other colors stay the same.
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          // Here we take the value from the MyHomePage object that was created by
-          // the App.build method, and use it to set our appbar title.
-          title: widget.updatePage
-              ? Text(AppLocalizations.of(context)!.updateMemo)
-              : Text(AppLocalizations.of(context)!.addMemo),
-          actions: _getActionList(context),
-        ),
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        body: Column(children: [
+      appBar: AppBar(
+        // TRY THIS: Try changing the color here to a specific color (to
+        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
+        // change color while the other colors stay the same.
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        // Here we take the value from the MyHomePage object that was created by
+        // the App.build method, and use it to set our appbar title.
+        title: widget.updatePage
+            ? Text(AppLocalizations.of(context)!.updateMemo)
+            : Text(AppLocalizations.of(context)!.addMemo),
+        actions: _getActionList(context),
+      ),
+      // Center is a layout widget. It takes a single child and positions it
+      // in the middle of the parent.
+      body: Column(
+        children: [
           Row(
             children: [
               Text(DateUtil.format(widget.memo!.datetime)),
               const Text(" | "),
-              Text("$wordCount ${AppLocalizations.of(context)!.word}")
+              Text("$wordCount ${AppLocalizations.of(context)!.word}"),
             ],
           ),
           Expanded(
@@ -328,27 +358,33 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
               expands: true,
               textAlignVertical: TextAlignVertical.top,
               decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.all(5),
-                  border: const OutlineInputBorder(),
-                  enabledBorder:
-                      const OutlineInputBorder(borderSide: BorderSide.none),
-                  disabledBorder:
-                      const OutlineInputBorder(borderSide: BorderSide.none),
-                  focusedBorder:
-                      const OutlineInputBorder(borderSide: BorderSide.none),
-                  fillColor: Colors.grey.withValues(alpha: 0.1),
-                  filled: true,
-                  hintText: AppLocalizations.of(context)!.inputContentHint),
+                contentPadding: const EdgeInsets.all(5),
+                border: const OutlineInputBorder(),
+                enabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide.none,
+                ),
+                disabledBorder: const OutlineInputBorder(
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderSide: BorderSide.none,
+                ),
+                fillColor: Colors.grey.withValues(alpha: 0.1),
+                filled: true,
+                hintText: AppLocalizations.of(context)!.inputContentHint,
+              ),
               style: Theme.of(context).textTheme.bodyMedium,
               // initialValue: content,
               onChanged: (value) => {
                 setState(() {
                   content = value;
                   wordCount = value.length;
-                })
+                }),
               },
             ),
-          )
-        ]));
+          ),
+        ],
+      ),
+    );
   }
 }

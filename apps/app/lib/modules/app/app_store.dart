@@ -75,8 +75,9 @@ class AppStore extends ChangeNotifier {
       Directory appRootDir = await getApplicationDocumentsDirectory();
       LogHelper.info("appRootDir dir path = ${appRootDir.absolute.path}");
       var packageInfo = await PackageInfo.fromPlatform();
-      Directory logDir =
-          Directory("${appRootDir.absolute.path}/${packageInfo.appName}/log");
+      Directory logDir = Directory(
+        "${appRootDir.absolute.path}/${packageInfo.appName}/log",
+      );
       if (!logDir.existsSync()) {
         logDir.createSync(recursive: true);
         LogHelper.info("log dir create = ${logDir.absolute.path}");
@@ -87,17 +88,20 @@ class AppStore extends ChangeNotifier {
       LogHelper.info("log dir path = ${logDir.absolute.path}");
       LogHelper.info("log file path = $logFilePath");
       //DB init
-      Directory dbDir =
-          Directory("${appRootDir.absolute.path}/${packageInfo.appName}/db");
+      Directory dbDir = Directory(
+        "${appRootDir.absolute.path}/${packageInfo.appName}/db",
+      );
       DbManager.instance().init(
-          [ChangeLogV1(), ChangeLogV2(), ChangeLogV3(), ChangeLogV4()],
-          dbDir.path,
-          "app.db");
+        [ChangeLogV1(), ChangeLogV2(), ChangeLogV3(), ChangeLogV4()],
+        dbDir.path,
+        "app.db",
+      );
     } else {
       DbManager.instance().init(
-          [ChangeLogV1(), ChangeLogV2(), ChangeLogV3(), ChangeLogV4()],
-          "",
-          "app.db");
+        [ChangeLogV1(), ChangeLogV2(), ChangeLogV3(), ChangeLogV4()],
+        "",
+        "app.db",
+      );
     }
     Database db = await DbManager.instance().open();
     var dbVersion = await db.getVersion();
@@ -166,18 +170,22 @@ class AppStore extends ChangeNotifier {
   // }
 
   void _initTimerTask(BuildContext buildContext) {
-    timerRunningTask.add(Task(
+    timerRunningTask.add(
+      Task(
         name: "taskInfo",
         offset: 20000,
         callback: (Task task) {
           LogHelper.info("------task info start------");
           for (Task item in timerRunningTask) {
             LogHelper.info(
-                "${item.name},previousExcuteTime=${item.previousExcuteTime},offset=${item.offset},running=${item.running}");
+              "${item.name},previousExcuteTime=${item.previousExcuteTime},offset=${item.offset},running=${item.running}",
+            );
           }
           LogHelper.info("------task info end------");
           task.running = false;
-        }));
+        },
+      ),
+    );
   }
 
   void initWithContext(BuildContext buildContext) {
@@ -195,8 +203,11 @@ class AppStore extends ChangeNotifier {
             continue;
           } else {
             if (task.previousExcuteTime == null ||
-                now.isAfter(task.previousExcuteTime!
-                    .add(Duration(milliseconds: task.offset)))) {
+                now.isAfter(
+                  task.previousExcuteTime!.add(
+                    Duration(milliseconds: task.offset),
+                  ),
+                )) {
               task.running = true;
               task.previousExcuteTime = now;
               task.callback(task);
@@ -242,11 +253,12 @@ class AppStore extends ChangeNotifier {
 
   static AppSetting getDefaultAppSetting() {
     return AppSetting(
-        themeMode: ThemeMode.system,
-        platform: defaultTargetPlatform,
-        textScaleFactorValue: systemTextScaleFactorOption,
-        timeDilation: timeDilation,
-        localeValue: AppSetting.systemLocaleOption.toString());
+      themeMode: ThemeMode.system,
+      platform: defaultTargetPlatform,
+      textScaleFactorValue: systemTextScaleFactorOption,
+      timeDilation: timeDilation,
+      localeValue: AppSetting.systemLocaleOption.toString(),
+    );
   }
 
   AppSetting getAppSetting() {

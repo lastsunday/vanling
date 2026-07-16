@@ -20,8 +20,10 @@ class Http {
     T Function(Map<String, dynamic>? json) fromJsonT,
     R Function(List<T>? list, int? total) fromListT,
   ) async {
-    var responseResult = await HttpClient.instance()
-        .get<Map<String, dynamic>>(path, queryParameters: queryParameters);
+    var responseResult = await HttpClient.instance().get<Map<String, dynamic>>(
+      path,
+      queryParameters: queryParameters,
+    );
     return _handleResponse(responseResult.body(), fromJsonT, fromListT);
   }
 
@@ -32,47 +34,61 @@ class Http {
     Map<String, dynamic>? queryParameters,
     Map<String, dynamic>? headers,
   }) async {
-    var responseResult =
-        await HttpClient.instance().postWithConnection<Map<String, dynamic>>(
-      path,
-      data: data,
-      queryParameters: queryParameters,
-      headers: headers,
-    );
+    var responseResult = await HttpClient.instance()
+        .postWithConnection<Map<String, dynamic>>(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          headers: headers,
+        );
     return _handleResponse(responseResult.body(), fromJsonT, null);
   }
 
-  Future<T> postJson<T>(String path, data,
-      T Function(Map<String, dynamic>? json) fromJsonT) async {
+  Future<T> postJson<T>(
+    String path,
+    data,
+    T Function(Map<String, dynamic>? json) fromJsonT,
+  ) async {
     var responseResult = await HttpClient.instance().postJson(path, data);
     return _handleResponse(responseResult.body(), fromJsonT, null);
   }
 
   Future<T> delete<T>(
-      String path, T Function(Map<String, dynamic>? json) fromJsonT,
-      {Map<String, dynamic>? queryParameters}) async {
-    var responseResult = await HttpClient.instance()
-        .delete(path, queryParameters: queryParameters);
+    String path,
+    T Function(Map<String, dynamic>? json) fromJsonT, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    var responseResult = await HttpClient.instance().delete(
+      path,
+      queryParameters: queryParameters,
+    );
     return _handleResponse(responseResult.body(), fromJsonT, null);
   }
 
-  Future<T> putJson<T>(String path, data,
-      T Function(Map<String, dynamic>? json) fromJsonT) async {
+  Future<T> putJson<T>(
+    String path,
+    data,
+    T Function(Map<String, dynamic>? json) fromJsonT,
+  ) async {
     var responseResult = await HttpClient.instance().putJson(path, data);
     return _handleResponse(responseResult.body(), fromJsonT, null);
   }
 
-  Future<T> getWithHeader<T>(String path, Map<String, String> header,
-      T Function(Map<String, dynamic>? json) fromJsonT) async {
+  Future<T> getWithHeader<T>(
+    String path,
+    Map<String, String> header,
+    T Function(Map<String, dynamic>? json) fromJsonT,
+  ) async {
     var responseResult = await HttpClient.instance()
         .getJsonWithHeader<Map<String, dynamic>>(path, header);
     return _handleResponse(responseResult.body(), fromJsonT, null);
   }
 
   Future<R> _handleResponse<T, R>(
-      Map<String, dynamic> body,
-      T Function(Map<String, dynamic>? json) fromJsonT,
-      R Function(List<T>? list, int? total)? fromListT) {
+    Map<String, dynamic> body,
+    T Function(Map<String, dynamic>? json) fromJsonT,
+    R Function(List<T>? list, int? total)? fromListT,
+  ) {
     var response = ResponseModel<T>.fromJson(body, fromJsonT);
     if (response.code == ResponseModel.codeSuccess) {
       if (response.data == null && response.rows == null) {
@@ -88,7 +104,9 @@ class Http {
       ConnectionProvider().notifyChanged();
       return Future.error(AuthorizedDeniedException());
     } else {
-      return Future.error(ServiceException(response.msg??response.code as String));
+      return Future.error(
+        ServiceException(response.msg ?? response.code as String),
+      );
     }
   }
 }

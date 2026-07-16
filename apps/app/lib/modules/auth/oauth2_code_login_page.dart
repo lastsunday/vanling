@@ -28,31 +28,37 @@ class _Oauth2CodeLoginPageState extends State<Oauth2CodeLoginPage> {
     late final PlatformWebViewControllerCreationParams params;
     if (WebViewPlatform.instance is WebKitWebViewPlatform) {
       params = WebKitWebViewControllerCreationParams(
-          allowsInlineMediaPlayback: true,
-          mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{});
+        allowsInlineMediaPlayback: true,
+        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+      );
     } else {
       params = const PlatformWebViewControllerCreationParams();
     }
     _controller = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (NavigationRequest request) {
-          if (request.url.startsWith(_loginModel.redirectUri!)) {
-            var uri = Uri.parse(request.url);
-            String code = uri.queryParameters["code"] as String;
-            String redirectUri = uri.origin + uri.path;
-            _loginModel.exchangeToken(code, redirectUri).then((bool success) {
-              if (success && mounted) Navigator.pop(context, true);
-            }).catchError((e) {
-              _clearCookies();
-              if (mounted) Navigator.pop(context, true);
-              throw e;
-            });
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
-        },
-      ));
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (NavigationRequest request) {
+            if (request.url.startsWith(_loginModel.redirectUri!)) {
+              var uri = Uri.parse(request.url);
+              String code = uri.queryParameters["code"] as String;
+              String redirectUri = uri.origin + uri.path;
+              _loginModel
+                  .exchangeToken(code, redirectUri)
+                  .then((bool success) {
+                    if (success && mounted) Navigator.pop(context, true);
+                  })
+                  .catchError((e) {
+                    _clearCookies();
+                    if (mounted) Navigator.pop(context, true);
+                    throw e;
+                  });
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+        ),
+      );
     if (ConnectionProvider.isLoggedOutByUser) {
       _controller.clearCache();
       _clearCookies();
@@ -65,34 +71,37 @@ class _Oauth2CodeLoginPageState extends State<Oauth2CodeLoginPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) return;
-          var canGoBack = await _controller.canGoBack();
-          if (canGoBack) {
-            _controller.goBack();
-          }
-        },
-        child: Scaffold(
-            appBar: CommonAppBar(
-              title: const Text(""),
-              showLeading: true,
-              backgroundColor: Colors.white,
-              leading: BackButton(
-                  color: Colors.black,
-                  onPressed: () {
-                    _controller.canGoBack().then((value) {
-                      if (value) {
-                        _controller.goBack();
-                      } else if (mounted) {
-                        Navigator.pop(this.context);
-                      }
-                    });
-                  },
-            )),
-            body: _loginModel.authorizeUrl == null
-                ? Container()
-                : WebViewWidget(controller: _controller)));
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        var canGoBack = await _controller.canGoBack();
+        if (canGoBack) {
+          _controller.goBack();
+        }
+      },
+      child: Scaffold(
+        appBar: CommonAppBar(
+          title: const Text(""),
+          showLeading: true,
+          backgroundColor: Colors.white,
+          leading: BackButton(
+            color: Colors.black,
+            onPressed: () {
+              _controller.canGoBack().then((value) {
+                if (value) {
+                  _controller.goBack();
+                } else if (mounted) {
+                  Navigator.pop(this.context);
+                }
+              });
+            },
+          ),
+        ),
+        body: _loginModel.authorizeUrl == null
+            ? Container()
+            : WebViewWidget(controller: _controller),
+      ),
+    );
   }
 
   Future<void> _clearCookies() async {

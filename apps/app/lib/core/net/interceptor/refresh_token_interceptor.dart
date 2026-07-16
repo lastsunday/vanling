@@ -15,7 +15,9 @@ class RefreshTokenInterceptor extends Interceptor {
 
   @override
   void onRequest(
-      RequestOptions options, RequestInterceptorHandler handler) async {
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     //encrypt reqeust
     // HttpClientEncrypt.instance().handleEncrypt(options);
     if (connection != null) {
@@ -29,7 +31,8 @@ class RefreshTokenInterceptor extends Interceptor {
       return;
     }
     LogHelper.info(
-        "onRequest path ${options.method}: ${options.baseUrl}, ${options.path}");
+      "onRequest path ${options.method}: ${options.baseUrl}, ${options.path}",
+    );
     _addAuthorizationHeader(options);
     _addClientIdHeader(options);
     if (ConnectionProvider.onAuthTokenRequest) {
@@ -40,14 +43,16 @@ class RefreshTokenInterceptor extends Interceptor {
         connection!.canRefreshToken &&
         !options.path.contains("/oauth/token")) {
       LogHelper.info(
-          "onRequest refreshToken path ${options.method}: ${options.baseUrl}, ${options.path}");
+        "onRequest refreshToken path ${options.method}: ${options.baseUrl}, ${options.path}",
+      );
       if (await connection!.refreshToken()) {
         _addAuthorizationHeader(options);
         _addClientIdHeader(options);
         LogHelper.info("token will expire,auto refresh success");
       } else if (!ConnectionProvider.onAuthTokenRequest) {
         LogHelper.debug(
-            "onRequest refreshToken failed path ${options.method}: ${options.baseUrl}, ${options.path}");
+          "onRequest refreshToken failed path ${options.method}: ${options.baseUrl}, ${options.path}",
+        );
         ConnectionProvider().clearActive();
         ConnectionProvider().loggedOut(byUser: false);
       }
@@ -59,21 +64,24 @@ class RefreshTokenInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     var response = err.response;
     LogHelper.err(
-        "onError path ${response?.requestOptions.method}: ${response?.requestOptions.baseUrl}, ${response?.requestOptions.path}",
-        err);
+      "onError path ${response?.requestOptions.method}: ${response?.requestOptions.baseUrl}, ${response?.requestOptions.path}",
+      err,
+    );
     if (ConnectionProvider.onAuthTokenRequest) {
       handler.next(err);
       return;
     }
     if (connection != null && response != null && response.statusCode == 401) {
       LogHelper.info(
-          "onError refreshToken path ${response.requestOptions.method}: ${response.requestOptions.baseUrl}, ${response.requestOptions.path}");
+        "onError refreshToken path ${response.requestOptions.method}: ${response.requestOptions.baseUrl}, ${response.requestOptions.path}",
+      );
       if (connection!.canRefreshToken && await connection!.refreshToken()) {
         LogHelper.info("token expired,auto refresh success");
         handler.resolve(await _retry(response.requestOptions));
       } else if (!ConnectionProvider.onAuthTokenRequest) {
         LogHelper.debug(
-            "onError refreshToken failed path ${response.requestOptions.method}: ${response.requestOptions.baseUrl}, ${response.requestOptions.path}");
+          "onError refreshToken failed path ${response.requestOptions.method}: ${response.requestOptions.baseUrl}, ${response.requestOptions.path}",
+        );
         ConnectionProvider().clearActive();
         ConnectionProvider().loggedOut(byUser: false);
         handler.next(err);
@@ -84,13 +92,12 @@ class RefreshTokenInterceptor extends Interceptor {
   }
 
   Future<Response> _retry(RequestOptions options) async {
-    return await _dio.request(options.path,
-        data: options.data,
-        queryParameters: options.queryParameters,
-        options: Options(
-          method: options.method,
-          headers: options.headers,
-        ));
+    return await _dio.request(
+      options.path,
+      data: options.data,
+      queryParameters: options.queryParameters,
+      options: Options(method: options.method, headers: options.headers),
+    );
   }
 
   void _addAuthorizationHeader(RequestOptions options) {

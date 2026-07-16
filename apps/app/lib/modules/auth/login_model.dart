@@ -30,7 +30,7 @@ class LoginModel {
       "password": password,
       "rememberMe": false,
       "clientId": Env.config.oauthClientId,
-      "grantType": "password"
+      "grantType": "password",
     };
 
     Map<String, String> header = {
@@ -40,21 +40,28 @@ class LoginModel {
     };
     try {
       await ConnectionProvider().addUserByToken(
-          await _doRequest(data, header, Env.config.oauthUrl),
-          Env.config.oauthUrl, (baseUrl, token) async {
-        //Fetch login user info
-        var loginUserInfo = await Http.instance()
-            .getWithHeader<LoginUserInfoResult>('$baseUrl$_pathUserInfo', {
-          Env.config.authorizationHeader: 'Bearer ${token.accessToken}',
-          "Clientid": Env.config.oauthClientId,
-        }, (data) {
-          return LoginUserInfoResult.fromJson(data!);
-        });
-        var user = base_user.User(
+        await _doRequest(data, header, Env.config.oauthUrl),
+        Env.config.oauthUrl,
+        (baseUrl, token) async {
+          //Fetch login user info
+          var loginUserInfo = await Http.instance()
+              .getWithHeader<LoginUserInfoResult>(
+                '$baseUrl$_pathUserInfo',
+                {
+                  Env.config.authorizationHeader: 'Bearer ${token.accessToken}',
+                  "Clientid": Env.config.oauthClientId,
+                },
+                (data) {
+                  return LoginUserInfoResult.fromJson(data!);
+                },
+              );
+          var user = base_user.User(
             sub: loginUserInfo.user.userName,
-            avatar: loginUserInfo.user.avatar);
-        return Future.value(user);
-      });
+            avatar: loginUserInfo.user.avatar,
+          );
+          return Future.value(user);
+        },
+      );
       _onAuthTokenRequest = false;
       return Future.value(true);
     } catch (e, stackTrace) {
@@ -64,14 +71,26 @@ class LoginModel {
     }
   }
 
-  Future<Token> _doRequest(Map<String, dynamic> data,
-      Map<String, String> header, String baseUrl) async {
-    var loginResult = await Http.instance()
-        .postWithConnection<LoginResult>('$baseUrl$_path', (data) {
-      return LoginResult.fromJson(data!);
-    }, data: data, headers: header);
-    var token = Token(loginResult.accessToken, "", loginResult.expireIn, "",
-        GlobalTime.now().millisecondsSinceEpoch);
+  Future<Token> _doRequest(
+    Map<String, dynamic> data,
+    Map<String, String> header,
+    String baseUrl,
+  ) async {
+    var loginResult = await Http.instance().postWithConnection<LoginResult>(
+      '$baseUrl$_path',
+      (data) {
+        return LoginResult.fromJson(data!);
+      },
+      data: data,
+      headers: header,
+    );
+    var token = Token(
+      loginResult.accessToken,
+      "",
+      loginResult.expireIn,
+      "",
+      GlobalTime.now().millisecondsSinceEpoch,
+    );
     return Future.value(token);
   }
 

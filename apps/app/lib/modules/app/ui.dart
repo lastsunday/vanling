@@ -6,9 +6,11 @@ class UI {
   }
 
   static void showProgress(double value) {
-    EasyLoading.showProgress(value,
-        maskType: EasyLoadingMaskType.black,
-        status: "${(value * 100).toStringAsFixed(2)}%");
+    EasyLoading.showProgress(
+      value,
+      maskType: EasyLoadingMaskType.black,
+      status: "${(value * 100).toStringAsFixed(2)}%",
+    );
   }
 
   static void hideLoading() {

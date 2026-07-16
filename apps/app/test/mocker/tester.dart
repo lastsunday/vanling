@@ -8,11 +8,12 @@ class Tester {
   }
 
   static Connection user() {
-    var userInfo = User.fromJson({
-      "sub": "user",
-    });
-    var user = Connection(userInfo, BaseUrl('https://memo.lastsunday.info'),
-        active: true);
+    var userInfo = User.fromJson({"sub": "user"});
+    var user = Connection(
+      userInfo,
+      BaseUrl('https://memo.lastsunday.info'),
+      active: true,
+    );
     user.token = token();
     return user;
   }

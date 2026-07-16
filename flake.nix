@@ -254,6 +254,7 @@
               ninja
               # Linux desktop (Flutter official requirements)
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
+              clang
               gtk3
               pcre2
               util-linux

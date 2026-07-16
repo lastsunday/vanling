@@ -28,50 +28,52 @@ class BackgroundOverlay extends AnimatedWidget {
   Widget build(BuildContext context) {
     final Animation<double> animation = listenable as Animation<double>;
     return ColorFiltered(
-        colorFilter: ColorFilter.mode(
-            color.withValues(alpha: opacity * animation.value), BlendMode.srcOut),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            GestureDetector(
-              onTap: closeManually ? null : onTap,
-              child: Container(
-                decoration: BoxDecoration(
-                    color: color, backgroundBlendMode: BlendMode.dstOut),
+      colorFilter: ColorFilter.mode(
+        color.withValues(alpha: opacity * animation.value),
+        BlendMode.srcOut,
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          GestureDetector(
+            onTap: closeManually ? null : onTap,
+            child: Container(
+              decoration: BoxDecoration(
+                color: color,
+                backgroundBlendMode: BlendMode.dstOut,
               ),
             ),
-            Positioned(
-              width: dialKey.globalPaintBounds?.size.width,
-              child: CompositedTransformFollower(
-                link: layerLink,
-                showWhenUnlinked: false,
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: () {
-                    final Widget child = GestureDetector(
-                      onTap: onTap,
-                      child: Container(
-                        width: dialKey.globalPaintBounds?.size.width,
-                        height: dialKey.globalPaintBounds?.size.height,
-                        decoration: ShapeDecoration(
-                          shape: shape == const CircleBorder()
-                              ? const StadiumBorder()
-                              : shape,
-                          color: Colors.white,
-                        ),
+          ),
+          Positioned(
+            width: dialKey.globalPaintBounds?.size.width,
+            child: CompositedTransformFollower(
+              link: layerLink,
+              showWhenUnlinked: false,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: () {
+                  final Widget child = GestureDetector(
+                    onTap: onTap,
+                    child: Container(
+                      width: dialKey.globalPaintBounds?.size.width,
+                      height: dialKey.globalPaintBounds?.size.height,
+                      decoration: ShapeDecoration(
+                        shape: shape == const CircleBorder()
+                            ? const StadiumBorder()
+                            : shape,
+                        color: Colors.white,
                       ),
-                    );
-                    return tooltip != null && tooltip!.isNotEmpty
-                        ? Tooltip(
-                            message: tooltip!,
-                            child: child,
-                          )
-                        : child;
-                  }(),
-                ),
+                    ),
+                  );
+                  return tooltip != null && tooltip!.isNotEmpty
+                      ? Tooltip(message: tooltip!, child: child)
+                      : child;
+                }(),
               ),
             ),
-          ],
-        ));
+          ),
+        ],
+      ),
+    );
   }
 }

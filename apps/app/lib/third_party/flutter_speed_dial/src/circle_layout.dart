@@ -29,20 +29,21 @@ class CircleLayout extends StatelessWidget {
     this.reverse = false,
     this.radiusRatio = 1.0,
     this.initAngle = 0,
-  })  : assert(0.0 <= radiusRatio && radiusRatio <= 1.0),
-        assert(0 <= initAngle && initAngle <= 360);
+  }) : assert(0.0 <= radiusRatio && radiusRatio <= 1.0),
+       assert(0 <= initAngle && initAngle <= 360);
 
   @override
   Widget build(BuildContext context) {
     return CustomMultiChildLayout(
       delegate: _RingDelegate(
-          count: children.length,
-          initAngle: initAngle,
-          reverse: reverse,
-          radiusRatio: radiusRatio),
+        count: children.length,
+        initAngle: initAngle,
+        reverse: reverse,
+        radiusRatio: radiusRatio,
+      ),
       children: [
         for (int i = 0; i < children.length; i++)
-          LayoutId(id: i, child: children[i])
+          LayoutId(id: i, child: children[i]),
       ],
     );
   }
@@ -95,12 +96,13 @@ class _RingDelegate extends MultiChildLayoutDelegate {
       if (!hasChild(i)) break;
 
       Offset offset = _getChildCenterOffset(
-          centerPoint: centralPoint,
-          radius: fatherRadius * radiusRatio,
-          which: i,
-          count: count,
-          initAngle: initAngle,
-          direction: reverse ? -1 : 1);
+        centerPoint: centralPoint,
+        radius: fatherRadius * radiusRatio,
+        which: i,
+        count: count,
+        initAngle: initAngle,
+        direction: reverse ? -1 : 1,
+      );
       // 由于绘制方向是lt-rb, 为了避免绘制时超出父容器边界所以还需要去掉子控件自身的"半径"
       double cr = max(sizeCache[i].width, sizeCache[i].height) / 2;
       offset -= Offset(cr, cr);

@@ -7,12 +7,12 @@ part of 'app_setting.dart';
 // **************************************************************************
 
 AppSetting _$AppSettingFromJson(Map<String, dynamic> json) => AppSetting(
-      themeMode: $enumDecode(_$ThemeModeEnumMap, json['themeMode']),
-      platform: $enumDecodeNullable(_$TargetPlatformEnumMap, json['platform']),
-      textScaleFactorValue: (json['textScaleFactorValue'] as num).toDouble(),
-      timeDilation: (json['timeDilation'] as num).toDouble(),
-      localeValue: json['localeValue'] as String,
-    );
+  themeMode: $enumDecode(_$ThemeModeEnumMap, json['themeMode']),
+  platform: $enumDecodeNullable(_$TargetPlatformEnumMap, json['platform']),
+  textScaleFactorValue: (json['textScaleFactorValue'] as num).toDouble(),
+  timeDilation: (json['timeDilation'] as num).toDouble(),
+  localeValue: json['localeValue'] as String,
+);
 
 Map<String, dynamic> _$AppSettingToJson(AppSetting instance) =>
     <String, dynamic>{

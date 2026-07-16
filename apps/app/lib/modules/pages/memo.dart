@@ -82,7 +82,9 @@ class _MemoPageState extends State<MemoPage>
       controlFinishLoad: true,
     );
     _itemCanMoveAnimation = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 300));
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
     _animation =
         Tween<double>(begin: -0.02, end: 0.02).animate(_itemCanMoveAnimation)
           ..addStatusListener((status) {
@@ -142,26 +144,32 @@ class _MemoPageState extends State<MemoPage>
       );
 
   List<DropdownMenuItem<String>> getLanguageDropDownMenuItems(
-      List<dynamic> languages) {
+    List<dynamic> languages,
+  ) {
     var items = <DropdownMenuItem<String>>[];
     for (dynamic type in languages) {
       String? typeString = type as String;
       List<String> typeSplitList = typeString.toLowerCase().split("-");
-      items.add(DropdownMenuItem(
+      items.add(
+        DropdownMenuItem(
           value: typeString,
           child: Row(
             children: [
               ClipRRect(
-                  borderRadius: const BorderRadius.all(Radius.circular(10)),
-                  child: Flag.fromString(
-                      typeSplitList.length > 1
-                          ? typeSplitList[1]
-                          : typeSplitList[0],
-                      width: 30,
-                      height: 30)),
-              Text(typeString)
+                borderRadius: const BorderRadius.all(Radius.circular(10)),
+                child: Flag.fromString(
+                  typeSplitList.length > 1
+                      ? typeSplitList[1]
+                      : typeSplitList[0],
+                  width: 30,
+                  height: 30,
+                ),
+              ),
+              Text(typeString),
             ],
-          )));
+          ),
+        ),
+      );
     }
     return items;
   }
@@ -180,28 +188,30 @@ class _MemoPageState extends State<MemoPage>
   }
 
   Widget _futureBuilder(Function setState) => FutureBuilder<dynamic>(
-      future: _getLanguages(),
-      builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
-        if (snapshot.hasData) {
-          List<dynamic> languageList = snapshot.data as List<dynamic>;
-          language = AppStore.getTtsLocale();
-          if (language == null || language!.isEmpty) {
-            language = languageList.firstOrNull;
-          }
-          if (language != null) {
-            flutterTts.setLanguage(language!);
-            if (isAndroid) {
-              flutterTts.isLanguageInstalled(language!).then(
-                  (value) => isCurrentLanguageInstalled = (value as bool));
-            }
-          }
-          return _languageDropDownSection(languageList, setState);
-        } else if (snapshot.hasError) {
-          return Container();
-        } else {
-          return Container();
+    future: _getLanguages(),
+    builder: (BuildContext context, AsyncSnapshot<dynamic> snapshot) {
+      if (snapshot.hasData) {
+        List<dynamic> languageList = snapshot.data as List<dynamic>;
+        language = AppStore.getTtsLocale();
+        if (language == null || language!.isEmpty) {
+          language = languageList.firstOrNull;
         }
-      });
+        if (language != null) {
+          flutterTts.setLanguage(language!);
+          if (isAndroid) {
+            flutterTts
+                .isLanguageInstalled(language!)
+                .then((value) => isCurrentLanguageInstalled = (value as bool));
+          }
+        }
+        return _languageDropDownSection(languageList, setState);
+      } else if (snapshot.hasError) {
+        return Container();
+      } else {
+        return Container();
+      }
+    },
+  );
 
   Future<dynamic> _getLanguages() async => await flutterTts.getLanguages;
 
@@ -222,24 +232,29 @@ class _MemoPageState extends State<MemoPage>
 
   void _update(MemoModel memo) async {
     var now = DateTime.now();
-    await widget.memoStore.updateMemo(MemoModel(
+    await widget.memoStore.updateMemo(
+      MemoModel(
         id: memo.id,
         content: memo.content,
         datetime: memo.datetime,
         displaymode: memo.displaymode,
-        updatedatetime: now));
+        updatedatetime: now,
+      ),
+    );
     _refreshList();
   }
 
   void _save(MemoModel memo) async {
     var now = DateTime.now();
     await widget.memoStore.addMemoToTop(
-        MemoModel(
-            content: memo.content,
-            datetime: now,
-            displaymode: memo.displaymode,
-            updatedatetime: now),
-        _displaymode);
+      MemoModel(
+        content: memo.content,
+        datetime: now,
+        displaymode: memo.displaymode,
+        updatedatetime: now,
+      ),
+      _displaymode,
+    );
     _refreshList();
   }
 
@@ -249,26 +264,33 @@ class _MemoPageState extends State<MemoPage>
   }
 
   Future<void> _sortMemo(
-      int? displaymode, Map<String, int> idAndSeqMap, int minSeq, int maxSeq) {
+    int? displaymode,
+    Map<String, int> idAndSeqMap,
+    int minSeq,
+    int maxSeq,
+  ) {
     return widget.memoStore.sortMemo(displaymode, idAndSeqMap, minSeq, maxSeq);
   }
 
   Future<PageResult> _loadData() async {
     var result = await widget.memoStore.pageMemo(
-        PageParam(
-            pageNum: _pageNum,
-            pageSize: _pageSize,
-            orderByColumn: "datetime",
-            isAsc: "desc"),
-        displaymode: _displaymode,
-        keyword: searchKeyword);
+      PageParam(
+        pageNum: _pageNum,
+        pageSize: _pageSize,
+        orderByColumn: "datetime",
+        isAsc: "desc",
+      ),
+      displaymode: _displaymode,
+      keyword: searchKeyword,
+    );
     if (!mounted) {
       return Future.value(result);
     }
     _memoModelList.addAll(result.rows);
     _total = result.total;
     LogHelper.debug(
-        "[Memo] loadData pageNum = $_pageNum,pageSize = $_pageSize,total = $_total,displaymode = $_displaymode,search keyword = $searchKeyword;");
+      "[Memo] loadData pageNum = $_pageNum,pageSize = $_pageSize,total = $_total,displaymode = $_displaymode,search keyword = $searchKeyword;",
+    );
     return Future.value(result);
   }
 
@@ -320,24 +342,26 @@ class _MemoPageState extends State<MemoPage>
         SpeedDial(
           dialRoot: (context, open, toggleChildren) {
             return Container(
-                padding: const EdgeInsets.fromLTRB(5, 5, 5, 5),
-                child: GestureDetector(
-                    onTap: () async {
-                      if (canMove) {
-                        canMove = !canMove;
-                        setState(() {});
-                        return;
-                      }
-                      preview(item);
-                    },
-                    onLongPress: canMove ? () => {} : toggleChildren,
-                    child: MemoItem(
-                      key: Key("${item.id}${item.updatedatetime}"),
-                      text: item.content,
-                      dateTime: item.datetime,
-                      showDatetime: showDatetime,
-                      displayMode: DisplayMode.getType(item.displaymode),
-                    )));
+              padding: const EdgeInsets.fromLTRB(5, 5, 5, 5),
+              child: GestureDetector(
+                onTap: () async {
+                  if (canMove) {
+                    canMove = !canMove;
+                    setState(() {});
+                    return;
+                  }
+                  preview(item);
+                },
+                onLongPress: canMove ? () => {} : toggleChildren,
+                child: MemoItem(
+                  key: Key("${item.id}${item.updatedatetime}"),
+                  text: item.content,
+                  dateTime: item.datetime,
+                  showDatetime: showDatetime,
+                  displayMode: DisplayMode.getType(item.displaymode),
+                ),
+              ),
+            );
           },
           direction: SpeedDialDirection.circular,
           children: _getPopupMenuChildren(item),
@@ -353,8 +377,10 @@ class _MemoPageState extends State<MemoPage>
       setState(() {});
       return;
     }
-    Set<MemoResult>? result =
-        await context.push("/memo/update", extra: MemoParam(memo: item));
+    Set<MemoResult>? result = await context.push(
+      "/memo/update",
+      extra: MemoParam(memo: item),
+    );
     if (result != null) {
       MemoResult item = result.first;
       if (item.delete) {
@@ -374,173 +400,199 @@ class _MemoPageState extends State<MemoPage>
         imageProvider = MemoryImage(base64Decode(item.content));
       }
       showDialog(
-          context: context,
-          builder: (context) {
-            return Material(
-              child: Stack(
-                children: [
-                  PhotoView(
-                    imageProvider: imageProvider,
-                    loadingBuilder: (context, event) {
-                      if (event == null) {
-                        return Center(
-                          child: Text(AppLocalizations.of(context)!.loading),
-                        );
-                      }
-                      final value = event.cumulativeBytesLoaded /
-                          (event.expectedTotalBytes ??
-                              event.cumulativeBytesLoaded);
-                      final percentage = (100 * value).floor();
+        context: context,
+        builder: (context) {
+          return Material(
+            child: Stack(
+              children: [
+                PhotoView(
+                  imageProvider: imageProvider,
+                  loadingBuilder: (context, event) {
+                    if (event == null) {
                       return Center(
-                        child: Text("$percentage%"),
+                        child: Text(AppLocalizations.of(context)!.loading),
                       );
+                    }
+                    final value =
+                        event.cumulativeBytesLoaded /
+                        (event.expectedTotalBytes ??
+                            event.cumulativeBytesLoaded);
+                    final percentage = (100 * value).floor();
+                    return Center(child: Text("$percentage%"));
+                  },
+                ),
+                Positioned(
+                  right: 30,
+                  top: 30,
+                  child: IconButton(
+                    icon: Icon(
+                      color: Theme.of(context).primaryColor,
+                      Icons.close,
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
                     },
                   ),
-                  Positioned(
-                      right: 30,
-                      top: 30,
-                      child: IconButton(
-                        icon: Icon(
-                            color: Theme.of(context).primaryColor, Icons.close),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                        },
-                      )),
-                ],
-              ),
-            );
-          });
+                ),
+              ],
+            ),
+          );
+        },
+      );
     } else {
       showDialog(
-          context: context,
-          builder: (context) {
-            return StatefulBuilder(
-              builder: (context, setState) {
-                return Material(
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          _futureBuilder(setState),
-                          IconButton(
-                            icon: Icon(
-                                color: Theme.of(context).primaryIconTheme.color,
-                                _ttsState == TtsState.stopped
-                                    ? Icons.play_arrow
-                                    : Icons.stop),
-                            onPressed: () async {
-                              _initTts(setState);
-                              if (_ttsState == TtsState.stopped) {
-                                await flutterTts.speak(item.content);
-                              } else {
-                                await flutterTts.stop();
-                              }
-                            },
+        context: context,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setState) {
+              return Material(
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _futureBuilder(setState),
+                        IconButton(
+                          icon: Icon(
+                            color: Theme.of(context).primaryIconTheme.color,
+                            _ttsState == TtsState.stopped
+                                ? Icons.play_arrow
+                                : Icons.stop,
                           ),
-                          IconButton(
-                            icon: Icon(
-                                color: Theme.of(context).primaryIconTheme.color,
-                                Icons.close),
-                            onPressed: () async {
+                          onPressed: () async {
+                            _initTts(setState);
+                            if (_ttsState == TtsState.stopped) {
+                              await flutterTts.speak(item.content);
+                            } else {
                               await flutterTts.stop();
-                              if (mounted) Navigator.of(this.context).pop();
-                            },
-                          )
-                        ],
-                      ),
-                      Row(children: [
+                            }
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            color: Theme.of(context).primaryIconTheme.color,
+                            Icons.close,
+                          ),
+                          onPressed: () async {
+                            await flutterTts.stop();
+                            if (mounted) Navigator.of(this.context).pop();
+                          },
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
                         Expanded(
-                            child: SingleChildScrollView(
-                          child: Text(item.content),
-                        ))
-                      ])
-                    ],
-                  ),
-                );
-              },
-            );
-          });
+                          child: SingleChildScrollView(
+                            child: Text(item.content),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
     }
   }
 
   List<SpeedDialChild> _getPopupMenuChildren(MemoModel item) {
     List<SpeedDialChild> result = [];
-    result.add(SpeedDialChild(
-      child: const Icon(Icons.preview),
-      onTap: () {
-        preview(item);
-      },
-    ));
-    result.add(SpeedDialChild(
-      child: const Icon(Icons.edit),
-      onTap: () {
-        edit(item);
-      },
-    ));
-    if (!searchMode) {
-      result.add(SpeedDialChild(
-        child: const Icon(Icons.open_with),
+    result.add(
+      SpeedDialChild(
+        child: const Icon(Icons.preview),
         onTap: () {
-          canMove = !canMove;
-          if (canMove) {
-            if (!_itemCanMoveAnimation.isAnimating) {
-              _itemCanMoveAnimation.forward();
-            }
-          }
-          setState(() {});
+          preview(item);
         },
-      ));
+      ),
+    );
+    result.add(
+      SpeedDialChild(
+        child: const Icon(Icons.edit),
+        onTap: () {
+          edit(item);
+        },
+      ),
+    );
+    if (!searchMode) {
+      result.add(
+        SpeedDialChild(
+          child: const Icon(Icons.open_with),
+          onTap: () {
+            canMove = !canMove;
+            if (canMove) {
+              if (!_itemCanMoveAnimation.isAnimating) {
+                _itemCanMoveAnimation.forward();
+              }
+            }
+            setState(() {});
+          },
+        ),
+      );
     }
     if (utf8.encode(item.content).length * 8 + 20 < 23648) {
-      result.add(SpeedDialChild(
-        child: const Icon(Icons.qr_code),
-        onTap: () {
-          showDialog(
+      result.add(
+        SpeedDialChild(
+          child: const Icon(Icons.qr_code),
+          onTap: () {
+            showDialog(
               context: context,
               builder: (context) {
                 var contentSize = utf8.encode(item.content).length * 8 + 20;
                 return GestureDetector(
-                    onTap: () => {Navigator.of(context).pop()},
-                    child: Dialog(
-                        child: contentSize < 23648
-                            ? QrImageView(data: item.content)
-                            : Center(
-                                child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                    Text(
-                                      AppLocalizations.of(context)!
-                                          .qrcodeNotShow,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .displayMedium,
-                                    ),
-                                    Text(
-                                      AppLocalizations.of(context)!
-                                          .qrcodeContentToLong(
-                                              item.content.length, 2953),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyMedium,
-                                    )
-                                  ]))));
-              });
-        },
-      ));
+                  onTap: () => {Navigator.of(context).pop()},
+                  child: Dialog(
+                    child: contentSize < 23648
+                        ? QrImageView(data: item.content)
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  AppLocalizations.of(context)!.qrcodeNotShow,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.displayMedium,
+                                ),
+                                Text(
+                                  AppLocalizations.of(
+                                    context,
+                                  )!.qrcodeContentToLong(
+                                    item.content.length,
+                                    2953,
+                                  ),
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      );
     }
     return result;
   }
 
   void _addMemo() async {
     var now = DateTime.now();
-    Set? result = await context.push("/memo/add",
-        extra: MemoParam(
-            memo: MemoModel(
-                content: "",
-                datetime: now,
-                updatedatetime: now,
-                displaymode: _displaymode == null ? 0 : _displaymode!)));
+    Set? result = await context.push(
+      "/memo/add",
+      extra: MemoParam(
+        memo: MemoModel(
+          content: "",
+          datetime: now,
+          updatedatetime: now,
+          displaymode: _displaymode == null ? 0 : _displaymode!,
+        ),
+      ),
+    );
     if (result != null) {
       MemoResult item = result.first;
       _save(item.memo);
@@ -557,30 +609,37 @@ class _MemoPageState extends State<MemoPage>
       }
       var now = DateTime.now();
       _save(
-          MemoModel(content: resultString, datetime: now, updatedatetime: now));
+        MemoModel(content: resultString, datetime: now, updatedatetime: now),
+      );
     }
   }
 
   Widget _getFloatingActionButton() {
     List<Widget> buttons = [];
     if (cameras.isNotEmpty) {
-      buttons.add(Padding(
+      buttons.add(
+        Padding(
           padding: const EdgeInsets.all(5),
           child: FloatingActionButton(
             heroTag: "scan",
             onPressed: _scanMemo,
             tooltip: AppLocalizations.of(context)!.scan,
             child: const Icon(Icons.scanner),
-          )));
+          ),
+        ),
+      );
     }
-    buttons.add(Padding(
+    buttons.add(
+      Padding(
         padding: const EdgeInsets.all(5),
         child: FloatingActionButton(
           heroTag: "add",
           onPressed: _addMemo,
           tooltip: AppLocalizations.of(context)!.add,
           child: const Icon(Icons.add),
-        )));
+        ),
+      ),
+    );
     return Row(mainAxisAlignment: MainAxisAlignment.end, children: buttons);
   }
 
@@ -591,23 +650,25 @@ class _MemoPageState extends State<MemoPage>
 
   void _setupSubscription() {
     memoFilterSubscription?.cancel();
-    memoFilterSubscription =
-        AppStore.eventBus.on<MemoFilterChangeEvent>().listen((event) {
-      _displaymode = event.displaymode;
-      resetPageInfo();
-      _refreshList();
-    });
+    memoFilterSubscription = AppStore.eventBus
+        .on<MemoFilterChangeEvent>()
+        .listen((event) {
+          _displaymode = event.displaymode;
+          resetPageInfo();
+          _refreshList();
+        });
     memoSearchSubscription?.cancel();
-    memoSearchSubscription =
-        AppStore.eventBus.on<MemoSearchChangeEvent>().listen((event) {
-      searchKeyword = event.keyword;
-      if (searchKeyword != null && searchKeyword!.isNotEmpty) {
-        searchMode = true;
-      } else {
-        searchMode = false;
-      }
-      _controller.callRefresh();
-    });
+    memoSearchSubscription = AppStore.eventBus
+        .on<MemoSearchChangeEvent>()
+        .listen((event) {
+          searchKeyword = event.keyword;
+          if (searchKeyword != null && searchKeyword!.isNotEmpty) {
+            searchMode = true;
+          } else {
+            searchMode = false;
+          }
+          _controller.callRefresh();
+        });
   }
 
   @override
@@ -670,31 +731,36 @@ class _MemoPageState extends State<MemoPage>
               physics: physics,
               slivers: [
                 SliverFillRemaining(
-                    child: GestureDetector(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      SpinKitCubeGrid(
-                        size: 80,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(AppLocalizations.of(context)!.hasNoDataClickRefresh)
-                    ],
+                  child: GestureDetector(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        SpinKitCubeGrid(
+                          size: 80,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          AppLocalizations.of(context)!.hasNoDataClickRefresh,
+                        ),
+                      ],
+                    ),
+                    onTap: () {
+                      _controller.callRefresh();
+                    },
                   ),
-                  onTap: () {
-                    _controller.callRefresh();
-                  },
-                ))
+                ),
               ],
             );
           } else {
-            return CustomScrollView(physics: physics, slivers: [
-              SliverReorderableGrid(
-                itemBuilder: (context, index) {
-                  if (_memoModelList.length > index) {
-                    return GestureDetector(
+            return CustomScrollView(
+              physics: physics,
+              slivers: [
+                SliverReorderableGrid(
+                  itemBuilder: (context, index) {
+                    if (_memoModelList.length > index) {
+                      return GestureDetector(
                         key: Key("${_memoModelList[index].id}"),
                         child: ReorderableGridDragStartListener(
                           enabled: canMove,
@@ -703,29 +769,36 @@ class _MemoPageState extends State<MemoPage>
                               ? RotationTransition(
                                   turns: _animation,
                                   child: _createMemoItem(
-                                      _memoModelList[index],
-                                      Provider.of<AppStore>(context)
-                                          .showDatetime))
-                              : _createMemoItem(_memoModelList[index],
-                                  Provider.of<AppStore>(context).showDatetime),
-                        ));
-                  } else {
-                    return Container(
-                      key: const Key("key"),
-                    );
-                  }
-                },
-                itemCount: _memoModelList.length,
-                onReorder: onReorder,
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 210),
-              ),
-            ]);
+                                    _memoModelList[index],
+                                    Provider.of<AppStore>(context).showDatetime,
+                                  ),
+                                )
+                              : _createMemoItem(
+                                  _memoModelList[index],
+                                  Provider.of<AppStore>(context).showDatetime,
+                                ),
+                        ),
+                      );
+                    } else {
+                      return Container(key: const Key("key"));
+                    }
+                  },
+                  itemCount: _memoModelList.length,
+                  onReorder: onReorder,
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 210,
+                  ),
+                ),
+              ],
+            );
           }
         },
       ),
-      bottomNavigationBar:
-          _BottomAppBar(_displaymode, widget.memoStore, searchMode),
+      bottomNavigationBar: _BottomAppBar(
+        _displaymode,
+        widget.memoStore,
+        searchMode,
+      ),
       floatingActionButton: Semantics(
         sortKey: const OrdinalSortKey(0),
         container: true,
@@ -751,45 +824,53 @@ class _BottomAppBar extends StatelessWidget {
       return const Icon(Icons.comment);
     } else {
       return Icon(
-          MemoUtil.getIconByDisplayMode(DisplayMode.getType(displaymode)));
+        MemoUtil.getIconByDisplayMode(DisplayMode.getType(displaymode)),
+      );
     }
   }
 
   List<SpeedDialChild> _getMemoFilterMenu(BuildContext context) {
     List<SpeedDialChild> result = [];
-    result.add(SpeedDialChild(
-      child: Tooltip(
-        message: AppLocalizations.of(context)!.displayAll,
-        child: _getDisplaymodeIcon(null),
-      ),
-      onTap: () {
-        AppStore.eventBus.fire(MemoFilterChangeEvent());
-      },
-    ));
-    for (var element in DisplayMode.values) {
-      result.add(SpeedDialChild(
+    result.add(
+      SpeedDialChild(
         child: Tooltip(
-          message: MemoUtil.getLableByDisplayMode(element, context),
-          child: _getDisplaymodeIcon(element.value),
+          message: AppLocalizations.of(context)!.displayAll,
+          child: _getDisplaymodeIcon(null),
         ),
         onTap: () {
-          AppStore.eventBus
-              .fire(MemoFilterChangeEvent(displaymode: element.value));
+          AppStore.eventBus.fire(MemoFilterChangeEvent());
         },
-      ));
+      ),
+    );
+    for (var element in DisplayMode.values) {
+      result.add(
+        SpeedDialChild(
+          child: Tooltip(
+            message: MemoUtil.getLableByDisplayMode(element, context),
+            child: _getDisplaymodeIcon(element.value),
+          ),
+          onTap: () {
+            AppStore.eventBus.fire(
+              MemoFilterChangeEvent(displaymode: element.value),
+            );
+          },
+        ),
+      );
     }
     return result;
   }
 
   List<Widget> _createBottomBottom(BuildContext context) {
     List<Widget> result = [];
-    result.add(IconButton(
-      tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
-      icon: const Icon(Icons.menu),
-      onPressed: () {
-        AppStore.eventBus.fire(MenuOpenEvent());
-      },
-    ));
+    result.add(
+      IconButton(
+        tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
+        icon: const Icon(Icons.menu),
+        onPressed: () {
+          AppStore.eventBus.fire(MenuOpenEvent());
+        },
+      ),
+    );
     result.addAll([
       SpeedDial(
         dialRoot: (context, open, toggleChildren) {
@@ -833,49 +914,63 @@ class _BottomAppBar extends StatelessWidget {
             : const Icon(Icons.search),
         onPressed: () {
           showDialog(
-              context: context,
-              builder: (context) {
-                return GestureDetector(
-                  onTap: () => {Navigator.of(context).pop()},
-                  child: Center(
-                      child: Column(children: [
-                    Container(
-                      margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-                      decoration: BoxDecoration(
+            context: context,
+            builder: (context) {
+              return GestureDetector(
+                onTap: () => {Navigator.of(context).pop()},
+                child: Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+                        decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.secondary,
-                          borderRadius:
-                              const BorderRadius.all(Radius.circular(9))),
-                      child: TextField(
-                        controller: searchTextController,
-                        autofocus: true,
-                        onSubmitted: (value) {
-                          AppStore.eventBus
-                              .fire(MemoSearchChangeEvent(keyword: value));
-                          searchTextController.clear();
-                          context.pop();
-                        },
-                        decoration: InputDecoration(
-                            hintText:
-                                AppLocalizations.of(context)!.inputSearchHint,
+                          borderRadius: const BorderRadius.all(
+                            Radius.circular(9),
+                          ),
+                        ),
+                        child: TextField(
+                          controller: searchTextController,
+                          autofocus: true,
+                          onSubmitted: (value) {
+                            AppStore.eventBus.fire(
+                              MemoSearchChangeEvent(keyword: value),
+                            );
+                            searchTextController.clear();
+                            context.pop();
+                          },
+                          decoration: InputDecoration(
+                            hintText: AppLocalizations.of(
+                              context,
+                            )!.inputSearchHint,
                             border: const OutlineInputBorder(
-                                borderRadius:
-                                    BorderRadius.all(Radius.circular(9))),
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(9),
+                              ),
+                            ),
                             suffixIcon: IconButton(
                               onPressed: () {
-                                AppStore.eventBus.fire(MemoSearchChangeEvent(
-                                    keyword: searchTextController.text));
+                                AppStore.eventBus.fire(
+                                  MemoSearchChangeEvent(
+                                    keyword: searchTextController.text,
+                                  ),
+                                );
                                 searchTextController.clear();
                                 context.pop();
                               },
                               icon: const Icon(Icons.search),
-                            )),
+                            ),
+                          ),
+                        ),
                       ),
-                    )
-                  ])),
-                );
-              });
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
         },
-      )
+      ),
     ]);
     return result;
   }
@@ -888,9 +983,7 @@ class _BottomAppBar extends StatelessWidget {
       child: BottomAppBar(
         child: IconTheme(
           data: IconThemeData(color: Theme.of(context).colorScheme.primary),
-          child: Row(
-            children: _createBottomBottom(context),
-          ),
+          child: Row(children: _createBottomBottom(context)),
         ),
       ),
     );

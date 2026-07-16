@@ -113,7 +113,7 @@ class _HomePageState extends State<HomePage> {
             linux: initializationSettingsLinux,
           );
       await flutterLocalNotificationsPlugin.initialize(
-        initializationSettings,
+        settings: initializationSettings,
         onDidReceiveNotificationResponse: onDidReceiveNotificationResponse,
       );
       const AndroidNotificationDetails androidNotificationDetails =
@@ -127,10 +127,10 @@ class _HomePageState extends State<HomePage> {
         android: androidNotificationDetails,
       );
       flutterLocalNotificationsPlugin.show(
-        0,
-        event.name,
-        event.text,
-        notificationDetails,
+        id: 0,
+        title: event.name,
+        body: event.text,
+        notificationDetails: notificationDetails,
       );
     });
   }

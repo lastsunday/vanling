@@ -11,13 +11,22 @@ class AppThemeData {
   static final Color _lightFocusColor = Colors.black.withValues(alpha: 0.12);
   static final Color _darkFocusColor = Colors.white.withValues(alpha: 0.12);
 
-  static ThemeData lightThemeData =
-      themeData(lightColorScheme, _lightFocusColor, lightListTileThemeData);
-  static ThemeData darkThemeData =
-      themeData(darkColorScheme, _darkFocusColor, darkListTileThemeData);
+  static ThemeData lightThemeData = themeData(
+    lightColorScheme,
+    _lightFocusColor,
+    lightListTileThemeData,
+  );
+  static ThemeData darkThemeData = themeData(
+    darkColorScheme,
+    _darkFocusColor,
+    darkListTileThemeData,
+  );
 
-  static ThemeData themeData(ColorScheme colorScheme, Color focusColor,
-      ListTileThemeData listTileThemeData) {
+  static ThemeData themeData(
+    ColorScheme colorScheme,
+    Color focusColor,
+    ListTileThemeData listTileThemeData,
+  ) {
     return ThemeData(
       colorScheme: colorScheme,
       textTheme: _textTheme,

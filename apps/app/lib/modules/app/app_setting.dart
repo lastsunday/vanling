@@ -114,31 +114,28 @@ class AppSetting {
 
   @override
   int get hashCode => Object.hash(
-        themeMode,
-        platform,
-        _textScaleFactor,
-        timeDilation,
-        localeValue,
-      );
+    themeMode,
+    platform,
+    _textScaleFactor,
+    timeDilation,
+    localeValue,
+  );
 
   static AppSetting of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<_ModelBindingScope>()!;
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_ModelBindingScope>()!;
     return scope.modelBindingState.currentModel;
   }
 
   static void update(BuildContext context, AppSetting newModel) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<_ModelBindingScope>()!;
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_ModelBindingScope>()!;
     scope.modelBindingState.updateModel(newModel);
   }
 }
 
 class ApplyTextOptions extends StatelessWidget {
-  const ApplyTextOptions({
-    super.key,
-    required this.child,
-  });
+  const ApplyTextOptions({super.key, required this.child});
 
   final Widget child;
 
@@ -149,9 +146,9 @@ class ApplyTextOptions extends StatelessWidget {
     final textScaleFactor = options.textScaleFactor(context);
 
     Widget widget = MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: TextScaler.linear(textScaleFactor),
-      ),
+      data: MediaQuery.of(
+        context,
+      ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
       child: child,
     );
     // return textDirection == null
@@ -238,9 +235,6 @@ class _ModelBindingState extends State<ModelBinding> {
 
   @override
   Widget build(BuildContext context) {
-    return _ModelBindingScope(
-      modelBindingState: this,
-      child: widget.child,
-    );
+    return _ModelBindingScope(modelBindingState: this, child: widget.child);
   }
 }

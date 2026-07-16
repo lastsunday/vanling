@@ -6,8 +6,11 @@ import 'package:app/modules/app/model/memo_model.dart';
 abstract class MemoStore extends ChangeNotifier {
   int memoTotal = 0;
 
-  Future<PageResult<MemoModel>> pageMemo(PageParam param,
-      {int? displaymode, String? keyword});
+  Future<PageResult<MemoModel>> pageMemo(
+    PageParam param, {
+    int? displaymode,
+    String? keyword,
+  });
 
   Future<void> addMemo(MemoModel memo);
 
@@ -18,5 +21,9 @@ abstract class MemoStore extends ChangeNotifier {
   Future<void> deleteMemo(MemoModel memo);
 
   Future<void> sortMemo(
-      int? displaymode, Map<String, int> idAndSeqMap, int minSeq, int maxSeq);
+    int? displaymode,
+    Map<String, int> idAndSeqMap,
+    int minSeq,
+    int maxSeq,
+  );
 }

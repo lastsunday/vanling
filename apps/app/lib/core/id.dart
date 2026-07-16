@@ -14,7 +14,9 @@ class Id {
   int get id => _id;
 
   @override
-  bool operator ==(Object other) => identical(this, other) || other is Id && runtimeType == other.runtimeType && _id == other._id;
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Id && runtimeType == other.runtimeType && _id == other._id;
 
   @override
   int get hashCode => _id.hashCode;

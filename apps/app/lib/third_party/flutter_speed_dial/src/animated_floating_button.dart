@@ -52,8 +52,8 @@ class _AnimatedFloatingButtonState extends State<AnimatedFloatingButton>
             duration: const Duration(milliseconds: 150),
             height: widget.visible
                 ? widget.mini
-                    ? 40
-                    : widget.size.height
+                      ? 40
+                      : widget.size.height
                 : 0,
             child: FittedBox(
               child: GestureDetector(

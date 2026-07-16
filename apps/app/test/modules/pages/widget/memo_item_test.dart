@@ -8,10 +8,17 @@ void main() {
   // with widgets in the test environment.
   testWidgets('MemoItem has a text and date', (tester) async {
     // Create the widget by telling the tester to build it.
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(
+      MaterialApp(
         home: Scaffold(
-      body: MemoItem(text: "T", dateTime: DateTime(2017, 9, 7, 17, 30), showDatetime: true),
-    )));
+          body: MemoItem(
+            text: "T",
+            dateTime: DateTime(2017, 9, 7, 17, 30),
+            showDatetime: true,
+          ),
+        ),
+      ),
+    );
     // Create the Finders.
     final textFinder = find.text('T');
     final dateFinder = find.text('2017-09-07 17:30:00');

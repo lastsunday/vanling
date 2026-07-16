@@ -42,9 +42,10 @@ class DbManager {
     }
     LogHelper.info("databasesPath path = $_databasesPath");
     var options = OpenDatabaseOptions(
-        version: changelog().length,
-        onCreate: _onCreate,
-        onUpgrade: _onUpgrade);
+      version: changelog().length,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+    );
     return await databaseFactory.openDatabase(dbFilePath, options: options);
   }
 
@@ -64,7 +65,8 @@ class DbManager {
 
   void _onUpgrade(Database db, int oldVersion, int newVersion) {
     LogHelper.info(
-        '[DB] onUpgrade:oldVersion -> $oldVersion, newVersion -> $newVersion');
+      '[DB] onUpgrade:oldVersion -> $oldVersion, newVersion -> $newVersion',
+    );
     List<Changelog> changelogList = DbChangelog.getChangelogList();
     LogHelper.info("changelogList length = ${changelogList.length}");
     db.transaction((txn) async {
@@ -81,79 +83,109 @@ class DbManager {
     });
   }
 
-  Future<int> insert(String table, Map<String, Object?> values,
-      {String? nullColumnHack, ConflictAlgorithm? conflictAlgorithm}) async {
+  Future<int> insert(
+    String table,
+    Map<String, Object?> values, {
+    String? nullColumnHack,
+    ConflictAlgorithm? conflictAlgorithm,
+  }) async {
     var db = await getDb();
-    return db.insert(table, values,
-        nullColumnHack: nullColumnHack, conflictAlgorithm: conflictAlgorithm);
+    return db.insert(
+      table,
+      values,
+      nullColumnHack: nullColumnHack,
+      conflictAlgorithm: conflictAlgorithm,
+    );
   }
 
   Future<List<int>> batchInsert(
-      String tableName, List<Map<String, dynamic>> values,
-      {String? nullColumnHack, ConflictAlgorithm? conflictAlgorithm}) async {
+    String tableName,
+    List<Map<String, dynamic>> values, {
+    String? nullColumnHack,
+    ConflictAlgorithm? conflictAlgorithm,
+  }) async {
     var db = await getDb();
     return db.transaction((txn) async {
       List<int> result = [];
       for (var element in values) {
-        int id = await txn.insert(tableName, element,
-            nullColumnHack: nullColumnHack,
-            conflictAlgorithm: conflictAlgorithm);
+        int id = await txn.insert(
+          tableName,
+          element,
+          nullColumnHack: nullColumnHack,
+          conflictAlgorithm: conflictAlgorithm,
+        );
         result.add(id);
       }
       return result;
     });
   }
 
-  Future<int> batchUpdate(String tableName, List<Map<String, dynamic>> values,
-      {String? nullColumnHack, ConflictAlgorithm? conflictAlgorithm}) async {
+  Future<int> batchUpdate(
+    String tableName,
+    List<Map<String, dynamic>> values, {
+    String? nullColumnHack,
+    ConflictAlgorithm? conflictAlgorithm,
+  }) async {
     var db = await getDb();
     return await db.transaction<int>((txn) async {
       int result = 0;
       for (var value in values) {
-        int count = await txn.update(tableName, value,
-            where: " id = ? ", whereArgs: [value['id']]);
+        int count = await txn.update(
+          tableName,
+          value,
+          where: " id = ? ",
+          whereArgs: [value['id']],
+        );
         result += count;
       }
       return result;
     });
   }
 
-  Future<Map<String, dynamic>?> findOne(String tableName,
-      {bool? distinct,
-      List<String>? columns,
-      String? where,
-      List<Object?>? whereArgs}) async {
+  Future<Map<String, dynamic>?> findOne(
+    String tableName, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
     var db = await getDb();
-    var list = await db.query(tableName,
-        distinct: distinct,
-        columns: columns,
-        where: where,
-        whereArgs: whereArgs,
-        limit: 1);
+    var list = await db.query(
+      tableName,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
     return list.isNotEmpty ? list[0] : null;
   }
 
-  Future<List<Map<String, dynamic>>> find(String tableName,
-      {bool? distinct,
-      List<String>? columns,
-      String? where,
-      List<Object?>? whereArgs,
-      String? groupBy,
-      String? having,
-      String? orderBy,
-      int? limit,
-      int? offset}) async {
+  Future<List<Map<String, dynamic>>> find(
+    String tableName, {
+    bool? distinct,
+    List<String>? columns,
+    String? where,
+    List<Object?>? whereArgs,
+    String? groupBy,
+    String? having,
+    String? orderBy,
+    int? limit,
+    int? offset,
+  }) async {
     var db = await getDb();
-    return await db.query(tableName,
-        distinct: distinct,
-        columns: columns,
-        where: where,
-        whereArgs: whereArgs,
-        groupBy: groupBy,
-        having: having,
-        orderBy: orderBy,
-        limit: limit,
-        offset: offset);
+    return await db.query(
+      tableName,
+      distinct: distinct,
+      columns: columns,
+      where: where,
+      whereArgs: whereArgs,
+      groupBy: groupBy,
+      having: having,
+      orderBy: orderBy,
+      limit: limit,
+      offset: offset,
+    );
   }
 
   Future<List<Map<String, dynamic>>> rawFind(String sql) async {
@@ -161,10 +193,16 @@ class DbManager {
     return await db.rawQuery(sql);
   }
 
-  Future<int> delete(String tableName,
-      {String? where, List<Object?>? whereArgs}) async {
-    return (await getDb())
-        .delete(tableName, where: where, whereArgs: whereArgs);
+  Future<int> delete(
+    String tableName, {
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
+    return (await getDb()).delete(
+      tableName,
+      where: where,
+      whereArgs: whereArgs,
+    );
   }
 
   Future<int> rawDelete(String sql) async {
@@ -172,24 +210,37 @@ class DbManager {
     return await db.rawDelete(sql);
   }
 
-  Future<int> update(String tableName, Map<String, Object?> values,
-      {String? where,
-      List<Object?>? whereArgs,
-      ConflictAlgorithm? conflictAlgorithm}) async {
-    return (await getDb()).update(tableName, values,
-        where: where,
-        whereArgs: whereArgs,
-        conflictAlgorithm: conflictAlgorithm);
+  Future<int> update(
+    String tableName,
+    Map<String, Object?> values, {
+    String? where,
+    List<Object?>? whereArgs,
+    ConflictAlgorithm? conflictAlgorithm,
+  }) async {
+    return (await getDb()).update(
+      tableName,
+      values,
+      where: where,
+      whereArgs: whereArgs,
+      conflictAlgorithm: conflictAlgorithm,
+    );
   }
 
   Future<int> rawUpdate(String sql) async {
     return (await getDb()).rawUpdate(sql);
   }
 
-  Future<int> count(String tableName,
-      {String? where, List<Object?>? whereArgs}) async {
-    List<Map<String, Object?>> query = await (await getDb())
-        .query(tableName, columns: ['id'], where: where, whereArgs: whereArgs);
+  Future<int> count(
+    String tableName, {
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
+    List<Map<String, Object?>> query = await (await getDb()).query(
+      tableName,
+      columns: ['id'],
+      where: where,
+      whereArgs: whereArgs,
+    );
     return Future(() => query.length);
   }
 

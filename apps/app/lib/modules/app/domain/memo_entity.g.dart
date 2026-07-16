@@ -7,11 +7,11 @@ part of 'memo_entity.dart';
 // **************************************************************************
 
 MemoEntity _$MemoEntityFromJson(Map<String, dynamic> json) => MemoEntity(
-      id: json['id'] as String?,
-      content: json['content'] as String?,
-      datetime: json['datetime'] as String?,
-      displaymode: (json['displaymode'] as num?)?.toInt(),
-    )..updatedatetime = json['updatedatetime'] as String?;
+  id: json['id'] as String?,
+  content: json['content'] as String?,
+  datetime: json['datetime'] as String?,
+  displaymode: (json['displaymode'] as num?)?.toInt(),
+)..updatedatetime = json['updatedatetime'] as String?;
 
 Map<String, dynamic> _$MemoEntityToJson(MemoEntity instance) =>
     <String, dynamic>{

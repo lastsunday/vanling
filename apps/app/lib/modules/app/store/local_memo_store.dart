@@ -12,16 +12,25 @@ import 'memo_store.dart';
 
 class LocalMemoStore extends MemoStore {
   @override
-  Future<PageResult<MemoModel>> pageMemo(PageParam param,
-      {int? displaymode, String? keyword}) async {
-    PageResult<MemoEntity> result = await MemoMapper.page(param,
-        displaymode: displaymode, content: keyword);
+  Future<PageResult<MemoModel>> pageMemo(
+    PageParam param, {
+    int? displaymode,
+    String? keyword,
+  }) async {
+    PageResult<MemoEntity> result = await MemoMapper.page(
+      param,
+      displaymode: displaymode,
+      content: keyword,
+    );
     memoTotal = result.total;
     notifyListeners();
-    return Future(() => PageResult(
+    return Future(
+      () => PageResult(
         param: param,
         rows: result.rows.map((e) => MemoModel.fromJson(e.toJson())).toList(),
-        total: result.total));
+        total: result.total,
+      ),
+    );
   }
 
   @override
@@ -38,7 +47,9 @@ class LocalMemoStore extends MemoStore {
     var param = MemoModel.fromJson(memo.toJson());
     param.id = IdUtil.genUUID();
     await MemoMapper.saveToTop(
-        MemoEntity.fromJson(param.toJson()), displaymode);
+      MemoEntity.fromJson(param.toJson()),
+      displaymode,
+    );
     notifyListeners();
     return Future.value(null);
   }
@@ -61,7 +72,11 @@ class LocalMemoStore extends MemoStore {
 
   @override
   Future<void> sortMemo(
-      int? displaymode, Map<String, int> idAndSeqMap, int minSeq, int maxSeq) {
+    int? displaymode,
+    Map<String, int> idAndSeqMap,
+    int minSeq,
+    int maxSeq,
+  ) {
     LogHelper.info("[Memo] sort memo}");
     return MemoMapper.sort(displaymode, idAndSeqMap, minSeq, maxSeq);
   }

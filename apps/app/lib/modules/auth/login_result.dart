@@ -4,8 +4,11 @@ part 'login_result.g.dart';
 
 @JsonSerializable()
 class LoginResult {
-  LoginResult(
-      {required this.accessToken, required this.expireIn, this.clientId});
+  LoginResult({
+    required this.accessToken,
+    required this.expireIn,
+    this.clientId,
+  });
 
   @JsonKey(name: 'access_token')
   String accessToken;

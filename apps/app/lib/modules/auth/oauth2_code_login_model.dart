@@ -40,7 +40,7 @@ class Oauth2CodeLoginModel {
       "client_id": Env.config.oauthClientId,
       "grant_type": _grantTypeExchange,
       "redirect_uri": redirectUri,
-      "code": code
+      "code": code,
     };
 
     Map<String, String> header = {
@@ -48,16 +48,18 @@ class Oauth2CodeLoginModel {
           "Basic ${base64.encode(utf8.encode("${Env.config.oauthClientId}:${Env.config.oauthClientSecret}"))}",
     };
     try {
-      await ConnectionProvider()
-          .addUserByToken(await _doRequest(data, header, _baseUrl!), _baseUrl!,
-              ((baseUrl, token) async {
-        var response = await HttpClient.instance()
-            .getWithHeader<Map<String, dynamic>>('$baseUrl/userinfo', {
-          Env.config.authorizationHeader: 'Bearer ${token.accessToken}'
-        });
-        var resp = response.body();
-        return User.fromJson(resp);
-      }));
+      await ConnectionProvider().addUserByToken(
+        await _doRequest(data, header, _baseUrl!),
+        _baseUrl!,
+        ((baseUrl, token) async {
+          var response = await HttpClient.instance()
+              .getWithHeader<Map<String, dynamic>>('$baseUrl/userinfo', {
+                Env.config.authorizationHeader: 'Bearer ${token.accessToken}',
+              });
+          var resp = response.body();
+          return User.fromJson(resp);
+        }),
+      );
       _onAuthTokenRequest = false;
       return Future.value(true);
     } catch (e) {
@@ -67,11 +69,17 @@ class Oauth2CodeLoginModel {
     }
   }
 
-  Future<Token> _doRequest(Map<String, dynamic> data,
-      Map<String, String> header, String baseUrl) async {
+  Future<Token> _doRequest(
+    Map<String, dynamic> data,
+    Map<String, String> header,
+    String baseUrl,
+  ) async {
     var response = await HttpClient.instance()
         .postWithQueryAndHeader<Map<String, dynamic>>(
-            '$baseUrl$_path', data, header);
+          '$baseUrl$_path',
+          data,
+          header,
+        );
     var result = Token.fromJson(response.body());
     result.expiresIn = result.expiresIn * 1000;
     result.createdAt = GlobalTime.now().millisecondsSinceEpoch;

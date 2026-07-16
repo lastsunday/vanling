@@ -86,10 +86,12 @@ class AnimatedChild extends AnimatedWidget {
         padding: childMargin,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: labelBackgroundColor ??
+            color:
+                labelBackgroundColor ??
                 (dark ? Colors.grey[800] : Colors.grey[50]),
             borderRadius: borderRadius,
-            boxShadow: labelShadow ??
+            boxShadow:
+                labelShadow ??
                 [
                   BoxShadow(
                     color: dark
@@ -106,8 +108,9 @@ class AnimatedChild extends AnimatedWidget {
             clipBehavior: Clip.hardEdge,
             child: InkWell(
               onTap: performAction,
-              onLongPress:
-                  onLongPress == null ? null : () => performAction(true),
+              onLongPress: onLongPress == null
+                  ? null
+                  : () => performAction(true),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   vertical: 5.0,
@@ -122,19 +125,20 @@ class AnimatedChild extends AnimatedWidget {
     }
 
     Widget button = ScaleTransition(
-        scale: animation,
-        child: FloatingActionButton(
-          key: btnKey,
-          heroTag: heroTag,
-          onPressed: performAction,
-          backgroundColor:
-              backgroundColor ?? (dark ? Colors.grey[800] : Colors.grey[50]),
-          foregroundColor:
-              foregroundColor ?? (dark ? Colors.white : Colors.black),
-          elevation: elevation ?? 6.0,
-          shape: shape,
-          child: child,
-        ));
+      scale: animation,
+      child: FloatingActionButton(
+        key: btnKey,
+        heroTag: heroTag,
+        onPressed: performAction,
+        backgroundColor:
+            backgroundColor ?? (dark ? Colors.grey[800] : Colors.grey[50]),
+        foregroundColor:
+            foregroundColor ?? (dark ? Colors.white : Colors.black),
+        elevation: elevation ?? 6.0,
+        shape: shape,
+        child: child,
+      ),
+    );
 
     List<Widget> children = [
       if (label != null || labelWidget != null)
@@ -161,14 +165,16 @@ class AnimatedChild extends AnimatedWidget {
                     child: button,
                   ),
                 ),
-        )
+        ),
     ];
 
-    Widget buildColumnOrRow(bool isColumn,
-        {CrossAxisAlignment? crossAxisAlignment,
-        MainAxisAlignment? mainAxisAlignment,
-        required List<Widget> children,
-        MainAxisSize? mainAxisSize}) {
+    Widget buildColumnOrRow(
+      bool isColumn, {
+      CrossAxisAlignment? crossAxisAlignment,
+      MainAxisAlignment? mainAxisAlignment,
+      required List<Widget> children,
+      MainAxisSize? mainAxisSize,
+    }) {
       return isColumn
           ? Column(
               mainAxisSize: mainAxisSize ?? MainAxisSize.max,
@@ -192,8 +198,9 @@ class AnimatedChild extends AnimatedWidget {
             child: buildColumnOrRow(
               useColumn,
               mainAxisSize: MainAxisSize.min,
-              children:
-                  switchLabelPosition ? children.reversed.toList() : children,
+              children: switchLabelPosition
+                  ? children.reversed.toList()
+                  : children,
             ),
           )
         : Container();

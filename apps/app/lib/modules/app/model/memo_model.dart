@@ -4,12 +4,13 @@ part 'memo_model.g.dart';
 
 @JsonSerializable()
 class MemoModel {
-  MemoModel(
-      {this.id,
-      required this.content,
-      required this.datetime,
-      this.updatedatetime,
-      this.displaymode = 0});
+  MemoModel({
+    this.id,
+    required this.content,
+    required this.datetime,
+    this.updatedatetime,
+    this.displaymode = 0,
+  });
 
   String? id;
   String content = "";

@@ -17,8 +17,11 @@ void main() {
     final dbPath = Directory.systemTemp.createTempSync('chobits_test_');
     DbManager.instance().init([ChangelogV1()], dbPath.path, 'test.db');
     await DbManager.instance().open();
-    var result = await DbManager.instance()
-        .findOne("memo", where: "content = ?", whereArgs: ["test"]);
+    var result = await DbManager.instance().findOne(
+      "memo",
+      where: "content = ?",
+      whereArgs: ["test"],
+    );
     expect(result!["content"], "test");
     await DbManager.instance().close();
     dbPath.deleteSync(recursive: true);
@@ -38,7 +41,7 @@ class ChangelogV1 implements Changelog {
     """,
       """
       INSERT INTO memo(content,datetime) VALUES('test','2023-06-30 19:00:00')
-    """
+    """,
     ];
   }
 }

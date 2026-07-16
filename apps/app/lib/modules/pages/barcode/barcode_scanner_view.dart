@@ -77,12 +77,14 @@ class _BarcodeScannerViewState extends State<BarcodeScannerView> {
       for (var element in barcodes) {
         resultBarcode.add(element.rawValue!);
       }
-      if(resultBarcode.isNotEmpty){
+      if (resultBarcode.isNotEmpty) {
         _canProcess = false;
         List<String> result = resultBarcode.toList();
         resultBarcode.clear();
-        Future.delayed(Duration(milliseconds: 500),(){
-          if (mounted) context.pop(BarcodeScannerViewResult(contentList: result));
+        Future.delayed(Duration(milliseconds: 500), () {
+          if (mounted) {
+            context.pop(BarcodeScannerViewResult(contentList: result));
+          }
         });
       }
     }

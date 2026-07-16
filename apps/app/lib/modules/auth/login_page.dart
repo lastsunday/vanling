@@ -25,7 +25,9 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _onLogin() async {
     try {
       var loginResult = await loginModel.exchangeToken(
-          nameController.text, passwordController.text);
+        nameController.text,
+        passwordController.text,
+      );
       if (loginResult) {
         LogHelper.info("[Login] login success");
         if (mounted) {
@@ -47,61 +49,67 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: CommonAppBar(
-          title: Text(AppLocalizations.of(context)!.login),
-          showLeading: true,
-          backgroundColor: Colors.white,
-          leading: BackButton(
-              color: Colors.black,
-              onPressed: () {
-                Navigator.pop(context);
-              }),
+      appBar: CommonAppBar(
+        title: Text(AppLocalizations.of(context)!.login),
+        showLeading: true,
+        backgroundColor: Colors.white,
+        leading: BackButton(
+          color: Colors.black,
+          onPressed: () {
+            Navigator.pop(context);
+          },
         ),
-        body: Padding(
-            padding: const EdgeInsets.all(10),
-            child: ListView(
-              children: <Widget>[
-                Container(
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(10),
-                    child: Text(
-                      AppLocalizations.of(context)!.memo,
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 30),
-                    )),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  child: TextField(
-                    autofocus: true,
-                    controller: nameController,
-                    decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      labelText: AppLocalizations.of(context)!.account,
-                    ),
-                  ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(10),
+        child: ListView(
+          children: <Widget>[
+            Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.all(10),
+              child: Text(
+                AppLocalizations.of(context)!.memo,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 30,
                 ),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-                  child: TextField(
-                    obscureText: true,
-                    controller: passwordController,
-                    decoration: InputDecoration(
-                      border: const OutlineInputBorder(),
-                      labelText: AppLocalizations.of(context)!.password,
-                    ),
-                    onSubmitted: (value) => _onLogin(),
-                  ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(10),
+              child: TextField(
+                autofocus: true,
+                controller: nameController,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: AppLocalizations.of(context)!.account,
                 ),
-                Container(
-                    height: 50,
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
-                    child: ElevatedButton(
-                      onPressed: _onLogin,
-                      child: Text(AppLocalizations.of(context)!.login),
-                    )),
-              ],
-            )));
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+              child: TextField(
+                obscureText: true,
+                controller: passwordController,
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  labelText: AppLocalizations.of(context)!.password,
+                ),
+                onSubmitted: (value) => _onLogin(),
+              ),
+            ),
+            Container(
+              height: 50,
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+              child: ElevatedButton(
+                onPressed: _onLogin,
+                child: Text(AppLocalizations.of(context)!.login),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -6,6 +6,8 @@ class GlobalTime {
   }
 
   static void reset([String? timeString]) {
-    _currentTimeGetter = timeString == null ? () => DateTime.now() : () => DateTime.parse(timeString);
+    _currentTimeGetter = timeString == null
+        ? () => DateTime.now()
+        : () => DateTime.parse(timeString);
   }
 }

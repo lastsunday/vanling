@@ -70,6 +70,7 @@ logs/
 /data/
 /apps/server-ui-e2e/playwright-report/
 /apps/server/api/test_data
+/apps/app/android/build/
 
 # Lix / Nix
 .nix-direnv/

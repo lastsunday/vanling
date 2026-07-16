@@ -7,8 +7,13 @@
 class ResponseModel<T> {
   static const codeSuccess = 200;
 
-  ResponseModel(
-      {required this.code, this.msg, this.data, this.rows, this.total});
+  ResponseModel({
+    required this.code,
+    this.msg,
+    this.data,
+    this.rows,
+    this.total,
+  });
 
   final int code;
   final String? msg;
@@ -16,9 +21,10 @@ class ResponseModel<T> {
   final List<T>? rows;
   final int? total;
 
-  factory ResponseModel.fromJson(Map<String, dynamic> json,
-          T Function(Map<String, dynamic>? json) fromJsonT) =>
-      _$ResponseModelFromJson(json, fromJsonT);
+  factory ResponseModel.fromJson(
+    Map<String, dynamic> json,
+    T Function(Map<String, dynamic>? json) fromJsonT,
+  ) => _$ResponseModelFromJson(json, fromJsonT);
 
   Map<String, dynamic> toJson(Object Function(T value) toJsonT) =>
       _$ResponseModelToJson(this, toJsonT);
@@ -60,21 +66,18 @@ ResponseModel<T> _$ResponseModelFromJson<T>(
 Map<String, dynamic> _$ResponseModelToJson<T>(
   ResponseModel<T> instance,
   Object? Function(T value) toJsonT,
-) =>
-    <String, dynamic>{
-      'code': instance.code,
-      'msg': instance.msg,
-      'data': _$nullableGenericToJson(instance.data, toJsonT),
-    };
+) => <String, dynamic>{
+  'code': instance.code,
+  'msg': instance.msg,
+  'data': _$nullableGenericToJson(instance.data, toJsonT),
+};
 
 T? _$nullableGenericFromJson<T>(
   Map<String, dynamic>? input,
   T Function(Map<String, dynamic>? json) fromJson,
-) =>
-    input == null ? null : fromJson(input);
+) => input == null ? null : fromJson(input);
 
 Object? _$nullableGenericToJson<T>(
   T? input,
   Object? Function(T value) toJson,
-) =>
-    input == null ? null : toJson(input);
+) => input == null ? null : toJson(input);

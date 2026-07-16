@@ -20,10 +20,13 @@ class Connection {
 
   factory Connection.fromJson(Map<String, dynamic> json) {
     var connection = Connection(
-        User.fromJson(json['info']), BaseUrl(json['base_url']),
-        active: json['active']);
-    connection.token =
-        json['token'] == null ? null : Token.fromJson(json['token']);
+      User.fromJson(json['info']),
+      BaseUrl(json['base_url']),
+      active: json['active'],
+    );
+    connection.token = json['token'] == null
+        ? null
+        : Token.fromJson(json['token']);
     return connection;
   }
 
@@ -45,14 +48,17 @@ class Connection {
       Map<String, dynamic> queryParameters = {
         "client_id": Env.config.oauthClientId,
         "grant_type": _grantTypeRefresh,
-        "refresh_token": token!.refreshToken
+        "refresh_token": token!.refreshToken,
       };
       Map<String, String> headers = {
         Env.config.authorizationHeader:
             "Basic ${base64.encode(utf8.encode("${Env.config.oauthClientId}:${Env.config.oauthClientSecret}"))}",
       };
-      token = await _doRequest(baseUrl.get,
-          queryParameters: queryParameters, headers: headers);
+      token = await _doRequest(
+        baseUrl.get,
+        queryParameters: queryParameters,
+        headers: headers,
+      );
       return Future.value(true);
     } catch (e) {
       LogHelper.err('RefreshToken error', e);
@@ -71,8 +77,12 @@ class Connection {
     Map<String, String>? headers,
   }) async {
     var response = await HttpClient.instance()
-        .postWithConnection<Map<String, dynamic>>('$baseUrl$_path',
-            data: data, queryParameters: queryParameters, headers: headers);
+        .postWithConnection<Map<String, dynamic>>(
+          '$baseUrl$_path',
+          data: data,
+          queryParameters: queryParameters,
+          headers: headers,
+        );
     return Token.fromJson(response.body());
   }
 

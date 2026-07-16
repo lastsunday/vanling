@@ -27,25 +27,29 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
 class TestingWebViewPlatform extends WebViewPlatform {
   @override
   PlatformWebViewController createPlatformWebViewController(
-      PlatformWebViewControllerCreationParams params) {
+    PlatformWebViewControllerCreationParams params,
+  ) {
     return TestingWebViewController(params);
   }
 
   @override
   PlatformWebViewCookieManager createPlatformCookieManager(
-      PlatformWebViewCookieManagerCreationParams params) {
+    PlatformWebViewCookieManagerCreationParams params,
+  ) {
     return AndroidWebViewCookieManager(params);
   }
 
   @override
   PlatformNavigationDelegate createPlatformNavigationDelegate(
-      PlatformNavigationDelegateCreationParams params) {
+    PlatformNavigationDelegateCreationParams params,
+  ) {
     return AndroidNavigationDelegate(params);
   }
 
   @override
   PlatformWebViewWidget createPlatformWebViewWidget(
-      PlatformWebViewWidgetCreationParams params) {
+    PlatformWebViewWidgetCreationParams params,
+  ) {
     return AndroidWebViewWidget(params);
   }
 }

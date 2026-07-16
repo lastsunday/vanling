@@ -90,7 +90,7 @@ dependencies:
   pretty_qr_code: ^3.0.0
   clipboard: ^3.0.8
   battery_plus: ^7.0.0
-  flutter_local_notifications: ^19.5.0
+  flutter_local_notifications: ^22.0.0
   flutter_tts: ^4.2.5
   flag: ^7.0.0
   version: ^3.0.2

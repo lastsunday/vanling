@@ -104,8 +104,9 @@ class SettingsListItem<T> extends StatefulWidget {
 
 class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
     with SingleTickerProviderStateMixin {
-  static final Animatable<double> _easeInTween =
-      CurveTween(curve: Curves.easeIn);
+  static final Animatable<double> _easeInTween = CurveTween(
+    curve: Curves.easeIn,
+  );
   static const _expandDuration = Duration(milliseconds: 150);
   late AnimationController _controller;
   late Animation<double> _childrenHeightFactor;
@@ -125,8 +126,10 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
     super.initState();
     _controller = AnimationController(duration: _expandDuration, vsync: this);
     _childrenHeightFactor = _controller.drive(_easeInTween);
-    _headerChevronRotation =
-        Tween<double>(begin: 0, end: 0.5).animate(_controller);
+    _headerChevronRotation = Tween<double>(
+      begin: 0,
+      end: 0.5,
+    ).animate(_controller);
     _headerMargin = EdgeInsetsGeometryTween(
       begin: settingItemHeaderMargin,
       end: EdgeInsets.zero,
@@ -135,8 +138,9 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
       begin: const EdgeInsetsDirectional.fromSTEB(16, 10, 0, 10),
       end: const EdgeInsetsDirectional.fromSTEB(32, 18, 32, 20),
     ).animate(_controller);
-    _headerSubtitleHeight =
-        _controller.drive(Tween<double>(begin: 1.0, end: 0.0));
+    _headerSubtitleHeight = _controller.drive(
+      Tween<double>(begin: 1.0, end: 0.0),
+    );
     _childrenPadding = EdgeInsetsGeometryTween(
       begin: const EdgeInsets.symmetric(horizontal: 32),
       end: EdgeInsets.zero,
@@ -212,10 +216,7 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
         margin: const EdgeInsetsDirectional.only(start: 24, bottom: 40),
         decoration: BoxDecoration(
           border: BorderDirectional(
-            start: BorderSide(
-              width: 2,
-              color: theme.colorScheme.surface,
-            ),
+            start: BorderSide(width: 2, color: theme.colorScheme.surface),
           ),
         ),
         child: ListView.builder(
@@ -239,10 +240,9 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
                       displayOption.subtitle!,
                       style: theme.textTheme.bodyLarge!.copyWith(
                         fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onPrimary
-                            .withValues(alpha: 0.8),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onPrimary.withValues(alpha: 0.8),
                       ),
                     ),
                 ],
@@ -322,21 +322,18 @@ class _CategoryHeader extends StatelessWidget {
                             color: colorScheme.primary,
                           ),
                         ),
-                      )
+                      ),
                     ],
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsetsDirectional.only(
-                  start: 8,
-                  end: 24,
-                ),
+                padding: const EdgeInsetsDirectional.only(start: 8, end: 24),
                 child: RotationTransition(
                   turns: chevronRotation,
                   child: const Icon(Icons.arrow_drop_down),
                 ),
-              )
+              ),
             ],
           ),
         ),

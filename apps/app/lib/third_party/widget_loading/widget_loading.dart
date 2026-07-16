@@ -25,10 +25,7 @@ class _WidgetLoadingState extends State<WidgetLoading> {
     return Stack(
       children: [
         widget.child,
-        const ModalBarrier(
-          color: Colors.black38,
-          dismissible: false,
-        ),
+        const ModalBarrier(color: Colors.black38, dismissible: false),
         Center(
           child: LoadingAnimationWidget.discreteCircle(
             color: Colors.white,

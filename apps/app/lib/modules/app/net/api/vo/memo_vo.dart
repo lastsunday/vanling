@@ -4,12 +4,13 @@ part 'memo_vo.g.dart';
 
 @JsonSerializable()
 class MemoVo {
-  MemoVo(
-      {required this.id,
-      required this.content,
-      required this.displaymode,
-      required this.createTime,
-      this.updateTime});
+  MemoVo({
+    required this.id,
+    required this.content,
+    required this.displaymode,
+    required this.createTime,
+    this.updateTime,
+  });
 
   String id;
   String content;
