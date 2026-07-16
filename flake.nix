@@ -267,29 +267,38 @@
               freetype
               atk
               gdk-pixbuf
-              libthai
-              libdatrie
-              # GLib ecosystem
               pcre2
               util-linux
-              libsoup_3
               libepoxy
+              libdeflate
+              lerc
+              zlib
+              # Accessibility + system
+              at-spi2-core
+              dbus
+              libsoup_3
+              # SELinux
               libselinux
               libsepol
+              # Pango text shaping
+              libthai
+              libdatrie
               # X11 (Flutter engine links directly)
-              xorg.libX11
-              xorg.libXcomposite
-              xorg.libXcursor
-              xorg.libXdamage
-              xorg.libXext
-              xorg.libXfixes
-              xorg.libXi
-              xorg.libXrender
-              xorg.libXtst
-              xorg.libXrandr
-              xorg.libxcb
-              xorg.xorgproto
-              xorg.libxshmfence
+              libx11
+              libxau
+              libxcb
+              libxdmcp
+              libxcomposite
+              libxcursor
+              libxdamage
+              libxext
+              libxfixes
+              libxi
+              libxrandr
+              libxrender
+              libxshmfence
+              libxtst
+              xorgproto
               # GL/Display + keyboard
               libglvnd
               libxkbcommon
