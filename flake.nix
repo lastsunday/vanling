@@ -257,14 +257,42 @@
               # Linux desktop (Flutter official requirements)
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               clang
+              # GTK3 + transitive deps (pkg-config .pc files)
               gtk3
               glib.dev
+              pango
+              harfbuzz
+              cairo
+              fontconfig
+              freetype
+              atk
+              gdk-pixbuf
+              libthai
+              libdatrie
+              # GLib ecosystem
               pcre2
               util-linux
-              libselinux
-              libsepol
               libsoup_3
               libepoxy
+              libselinux
+              libsepol
+              # X11 (Flutter engine links directly)
+              xorg.libX11
+              xorg.libXcomposite
+              xorg.libXcursor
+              xorg.libXdamage
+              xorg.libXext
+              xorg.libXfixes
+              xorg.libXi
+              xorg.libXrender
+              xorg.libXtst
+              xorg.libXrandr
+              xorg.libxcb
+              xorg.xorgproto
+              xorg.libxshmfence
+              # GL/Display + keyboard
+              libglvnd
+              libxkbcommon
               libsysprof-capture
             ] ++ [
               # Android SDK
