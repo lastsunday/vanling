@@ -302,9 +302,14 @@
               fi
               if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
+                if [ -x "$(pwd)/.fvm/flutter_sdk/bin/flutter" ]; then
+                  echo "  [fvm] Flutter SDK: $(readlink -f .fvm/flutter_sdk 2>/dev/null || readlink .fvm/flutter_sdk)"
+                else
+                  echo "  [fvm] WARNING: .fvm/flutter_sdk/bin/flutter not found or not executable"
+                fi
               fi
               if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
-                fvm flutter precache --dart 2>/dev/null || true
+                flutter precache --dart 2>/dev/null || true
               fi
 
               # Clear stale Flutter SDK config that overrides ANDROID_HOME
@@ -322,7 +327,7 @@
               echo "  Moon:    $(moon --version)"
               echo "  Node:    $(node --version)"
               echo "  pnpm:   $(pnpm --version)"
-              echo "  Flutter: $(fvm flutter --version 2>/dev/null | head -1 || echo 'run fvm install')"
+              echo "  Flutter: $(flutter --version 2>/dev/null | head -1 || echo 'run fvm install')"
               echo "  sccache: $(sccache --version | head -1)"
               echo ""
               echo "  Run: moon run <task>"
