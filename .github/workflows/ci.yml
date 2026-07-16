@@ -47,6 +47,7 @@ jobs:
         run: >
           nix develop
           --ignore-env
+          -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
@@ -120,6 +121,7 @@ jobs:
         run: >
           nix develop
           --ignore-env
+          -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
@@ -147,6 +149,7 @@ jobs:
         run: >
           nix develop
           --ignore-env
+          -k HOME
           -k CARGO_BUILD_RUSTC_WRAPPER
           -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
