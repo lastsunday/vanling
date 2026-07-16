@@ -2,9 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'dart:ui';
+
 import 'package:adaptive_breakpoints/adaptive_breakpoints.dart';
-import 'package:dual_screen/dual_screen.dart';
 import 'package:flutter/material.dart';
+
+extension _MediaQueryHinge on MediaQueryData {
+  DisplayFeature? get hinge {
+    for (final DisplayFeature e in displayFeatures) {
+      if (e.type == DisplayFeatureType.hinge) return e;
+    }
+    return null;
+  }
+}
 
 /// The maximum width taken up by each item on the home screen.
 const maxHomeItemWidth = 1400.0;

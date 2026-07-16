@@ -47,7 +47,6 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   adaptive_breakpoints: ^0.1.7
-  dual_screen: ^1.0.4
   intl: any
   flutter_localized_locales: ^2.0.4
   collection: ^1.17.1
