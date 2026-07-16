@@ -98,7 +98,8 @@
           buildToolsVersions = [ "35.0.0" ];
           platformVersions = [ "35" ];
           abiVersions = [ "armeabi-v7a" "arm64-v8a" ];
-          includeNDK = false;
+          includeNDK = true;
+          ndkVersions = [ "28.2.13676358" ];
           includeEmulator = false;
           includeSystemImages = false;
         };
@@ -256,6 +257,7 @@
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               clang
               gtk3
+              glib.dev
               pcre2
               util-linux
               libselinux
