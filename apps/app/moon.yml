@@ -76,7 +76,7 @@ tasks:
   build-linux:
     script: |
       VERSION=$(bash ../../scripts/version.sh pubspec.yaml)
-      flutter build linux --release
+      flutter build linux --release --verbose
     inputs:
       - "/.fvmrc"
       - "lib/**"
