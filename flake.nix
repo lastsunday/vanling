@@ -299,6 +299,7 @@
               # Auto-install Flutter version pinned in .fvmrc (runs once only)
               if [ -f .fvmrc ] && command -v fvm &>/dev/null && [ ! -d .fvm ]; then
                 fvm install 2>/dev/null
+                fvm use 2>/dev/null
               fi
               if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
