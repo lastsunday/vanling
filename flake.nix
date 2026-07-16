@@ -296,19 +296,40 @@
                 fi
               fi
 
-              # Auto-install Flutter version pinned in .fvmrc (runs once only)
-              if [ -f .fvmrc ] && command -v fvm &>/dev/null && [ ! -d .fvm ]; then
-                fvm install 2>/dev/null
-                fvm use 2>/dev/null
+              # Auto-install Flutter version pinned in .fvmrc
+              if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
+                echo "  [fvm] pwd=$(pwd) HOME=$HOME"
+                echo "  [fvm] .fvmrc: $(cat .fvmrc)"
+                echo "  [fvm] .fvm/ exists: $([ -d .fvm ] && echo yes || echo no)"
+                if [ -d .fvm ]; then
+                  echo "  [fvm] ls .fvm/:"
+                  ls -la .fvm/ 2>&1 | sed 's/^/    /'
+                fi
+                echo "  [fvm] Running: fvm install"
+                fvm install
+                echo "  [fvm] Running: fvm use"
+                fvm use
+                echo "  [fvm] After fvm use, .fvm/ contents:"
+                ls -la .fvm/ 2>&1 | sed 's/^/    /'
+                if [ -L .fvm/flutter_sdk ]; then
+                  echo "  [fvm] .fvm/flutter_sdk symlink -> $(readlink .fvm/flutter_sdk)"
+                  echo "  [fvm] readlink -f = $(readlink -f .fvm/flutter_sdk 2>/dev/null || echo 'failed')"
+                else
+                  echo "  [fvm] .fvm/flutter_sdk is NOT a symlink (missing or regular dir)"
+                fi
               fi
-              if [ -f .fvmrc ] && [ -d .fvm/flutter_sdk ]; then
+
+              if [ -f .fvmrc ] && [ -L .fvm/flutter_sdk ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
                 if [ -x "$(pwd)/.fvm/flutter_sdk/bin/flutter" ]; then
                   echo "  [fvm] Flutter SDK: $(readlink -f .fvm/flutter_sdk 2>/dev/null || readlink .fvm/flutter_sdk)"
                 else
-                  echo "  [fvm] WARNING: .fvm/flutter_sdk/bin/flutter not found or not executable"
+                  echo "  [fvm] WARNING: .fvm/flutter_sdk/bin/flutter exists but not executable"
                 fi
+              else
+                echo "  [fvm] WARNING: .fvm/flutter_sdk symlink not valid"
               fi
+
               if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
                 flutter precache --dart 2>/dev/null || true
               fi
