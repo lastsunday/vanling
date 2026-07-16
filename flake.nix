@@ -95,8 +95,9 @@
 
         # Android SDK for Flutter builds (declarative, managed by Nix)
         androidComposition = pkgs.androidenv.composeAndroidPackages {
-          buildToolsVersions = [ "35.0.0" ];
-          platformVersions = [ "35" ];
+          buildToolsVersions = [ "36.0.0" ];
+          platformVersions = [ "34" "35" "36" ];
+          cmakeVersions = [ "3.22.1" ];
           abiVersions = [ "armeabi-v7a" "arm64-v8a" ];
           includeNDK = true;
           ndkVersions = [ "28.2.13676358" ];
@@ -278,7 +279,7 @@
             ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
             ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
             JAVA_HOME = "${pkgs.jdk17}";
-            GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/libexec/android-sdk/build-tools/35.0.0/aapt2";
+            GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/libexec/android-sdk/build-tools/36.0.0/aapt2";
 
             shellHook = ''
               # macOS native xcrun wrapper — override Nix xcbuild's xcrun
