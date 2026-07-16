@@ -67,7 +67,7 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
-          ANDROID_KEYSTORE_FILE: apps/app/android/app/release.keystore
+          ANDROID_KEYSTORE_FILE: release.keystore
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}

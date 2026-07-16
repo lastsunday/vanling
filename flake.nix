@@ -262,6 +262,7 @@
               pcre2
               util-linux
               libselinux
+              libsepol
               libsoup_3
               libepoxy
               libsysprof-capture
