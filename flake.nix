@@ -384,11 +384,9 @@
                 export CFLAGS="${flutterIncludeFlags} ''${CFLAGS:-}"
                 export CXXFLAGS="$CFLAGS"
                 export LIBRARY_PATH="${flutterLibraryPath}:''${LIBRARY_PATH:-}"
-                export LDFLAGS="${flutterLibraryPath} ''${LDFLAGS:-}"
                 echo "  [linux-deps] PKG_CONFIG_PATH: ''$(echo $PKG_CONFIG_PATH | cut -c1-200)..."
                 echo "  [linux-deps] CFLAGS (len): ''${#CFLAGS}"
                 echo "  [linux-deps] LIBRARY_PATH: ''$(echo $LIBRARY_PATH | cut -c1-200)..."
-                echo "  [linux-deps] LDFLAGS: ''$(echo $LDFLAGS | cut -c1-200)..."
               fi
 
               echo "✦ chobits devShell (${system})"
