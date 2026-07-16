@@ -116,6 +116,35 @@
         # Crane library for workspace builds with custom toolchain
         craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
 
+        # Flutter Linux desktop deps — genericClosure transitive closure (same as nixpkgs wrapper.nix)
+        appRuntimeDeps = pkgs.lib.optionals pkgs.stdenv.isLinux [
+          pkgs.atk pkgs.cairo pkgs.gdk-pixbuf pkgs.glib pkgs.gtk3
+          pkgs.harfbuzz pkgs.libepoxy pkgs.pango pkgs.libx11 pkgs.libdeflate
+        ];
+        appBuildDeps = pkgs.lib.optionals pkgs.stdenv.isLinux (
+          let
+            deps = pkg: pkgs.lib.filter pkgs.lib.isDerivation ((pkg.buildInputs or []) ++ (pkg.propagatedBuildInputs or []));
+            withKey = pkg: { key = pkg.outPath; val = pkg; };
+            collect = pkg: pkgs.lib.map withKey ([ pkg ] ++ deps pkg);
+          in
+          pkgs.lib.map (e: e.val) (
+            pkgs.lib.genericClosure {
+              startSet = pkgs.lib.map withKey appRuntimeDeps;
+              operator = item: collect item.val;
+            }
+          )
+        );
+        flutterPkgConfigPath = pkgs.lib.optionals pkgs.stdenv.isLinux (
+          pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" appBuildDeps
+          + pkgs.lib.makeSearchPathOutput "dev" "share/pkgconfig" appBuildDeps
+        );
+        flutterIncludePath = pkgs.lib.optionals pkgs.stdenv.isLinux (
+          pkgs.lib.makeSearchPathOutput "dev" "include" appBuildDeps
+        );
+        flutterLibraryPath = pkgs.lib.optionals pkgs.stdenv.isLinux (
+          pkgs.lib.makeSearchPath "lib" appRuntimeDeps
+        );
+
         # Source filtering for Rust workspace (improves cache hit rates)
         # Uses fileset to include downloader manifest JSON files embedded via include_dir!
         src = pkgs.lib.fileset.toSource {
@@ -257,52 +286,7 @@
               # Linux desktop (Flutter official requirements)
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
               clang
-              # GTK3 + transitive deps (pkg-config .pc files)
-              gtk3
-              glib.dev
-              pango
-              harfbuzz
-              cairo
-              fontconfig
-              freetype
-              atk
-              gdk-pixbuf
-              pcre2
-              util-linux
-              libepoxy
-              libdeflate
-              lerc
-              zlib
-              # Accessibility + system
-              at-spi2-core
-              dbus
-              libsoup_3
-              # SELinux
-              libselinux
-              libsepol
-              # Pango text shaping
-              libthai
-              libdatrie
-              # X11 (Flutter engine links directly)
-              libx11
-              libxau
-              libxcb
-              libxdmcp
-              libxcomposite
-              libxcursor
-              libxdamage
-              libxext
-              libxfixes
-              libxi
-              libxrandr
-              libxrender
-              libxshmfence
-              libxtst
-              xorgproto
-              # GL/Display + keyboard
-              libglvnd
-              libxkbcommon
-              libsysprof-capture
+              # GTK3 + transitive deps auto-computed via genericClosure in shellHook
             ] ++ [
               # Android SDK
               androidSdk
@@ -393,6 +377,14 @@
               fi
 
               export MOON_TOOLCHAIN_FORCE_GLOBALS=true
+
+              # Flutter Linux desktop — auto-computed transitive closure (genericClosure)
+              if [ "$(uname)" = "Linux" ] && [ -n "${flutterPkgConfigPath}" ]; then
+                export PKG_CONFIG_PATH="${flutterPkgConfigPath}:''${PKG_CONFIG_PATH:-}"
+                export CFLAGS="-isystem ${flutterIncludePath} ''${CFLAGS:-}"
+                export CXXFLAGS="$CFLAGS"
+                export LIBRARY_PATH="${flutterLibraryPath}:''${LIBRARY_PATH:-}"
+              fi
 
               echo "✦ chobits devShell (${system})"
               echo "  Rust:    $(rustc --version)"
