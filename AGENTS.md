@@ -41,7 +41,7 @@
 ### ⚠️ Ask First
 
 - 添加新 crate / npm package
-- 修改 `flake.nix` / `flake.lock`（用 `nix flake update`）
+- 修改 `flake.nix` / `flake.lock`。版本号在 `versions` attrset，平台数据在 `platformData`。升级 moon/sherpa-onnx 请用 `scripts/update-moon.sh` / `scripts/update-sherpa-hashes.sh`
 - 数据库 schema 变更或修改已有迁移
 - 删除已有文件或模块
 
@@ -52,6 +52,7 @@
 - async 代码中使用 `span.enter()`
 - 提交生成文件（dist/、target/、node_modules/）
 - 跳过 pre-commit hooks（`--no-verify`）
+- 自动提交或推送代码（必须等待用户明确确认后再提交）
 
 ### Definition of Done
 
