@@ -19,6 +19,49 @@
   outputs = { self, nixpkgs, flake-utils, rust-overlay, crane }:
     flake-utils.lib.eachDefaultSystem (system:
       let
+        # ── Versions ──────────────────────────────────────────────────────
+        versions = {
+          moon = "2.4.3";
+          sherpaOnnx = "1.13.4";
+          android = {
+            buildTools = "36.0.0";
+            ndk = "28.2.13676358";
+          };
+        };
+
+        # ── Platform metadata ─────────────────────────────────────────────
+        # Single source of truth for all per-platform data.
+        # To add a new platform, add one entry here.
+        platformData = {
+          x86_64-linux = {
+            moonTarget = "x86_64-unknown-linux-gnu";
+            moonSha256 = "368fb8ca4307cab5a0bf55013e4a3fa92e58a35934d0bdd92413e7bb49facbb6";
+            sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-linux-x64-static-lib.tar.bz2";
+            sherpaOnnxHash = "sha256-bGDnnCS3JQoltQ7FDi4k6ozt20B3Xasu54/UIExSKjQ=";
+          };
+          aarch64-linux = {
+            moonTarget = "aarch64-unknown-linux-gnu";
+            moonSha256 = "94d8a30c31a127ceb471c295294b77b2565ce90eabb6b6728db782864451ab70";
+            sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-linux-aarch64-static-lib.tar.bz2";
+            sherpaOnnxHash = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
+          };
+          x86_64-darwin = {
+            moonTarget = "x86_64-apple-darwin";
+            moonSha256 = "60148eb5ee8cf8fa596852f083390ad52518f08b6ddcc4348afb85219a3d4901";
+            sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-osx-x64-static-lib.tar.bz2";
+            sherpaOnnxHash = "sha256-RXSXvLMxdACgZZRpHY8oNb/H6cJn3izY19+jfJt7AOA=";
+          };
+          aarch64-darwin = {
+            moonTarget = "aarch64-apple-darwin";
+            moonSha256 = "82ebc8c54ff4f75a3c78068e872cefe29284cad5f05a27ca778a4a714df87f7b";
+            sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-osx-arm64-static-lib.tar.bz2";
+            sherpaOnnxHash = "sha256-n9foeCcAesFJT1RcCgW4a3xFGaSy3Qw+/6CVcVeiiD0=";
+          };
+        };
+
+        currentPlatform = platformData.${system};
+
+        # ── Infrastructure ────────────────────────────────────────────────
         pkgs = import nixpkgs {
           inherit system;
           overlays = [ rust-overlay.overlays.default ];
@@ -35,72 +78,45 @@
         ));
         nodejs = pkgs."nodejs_${nodeMajor}";
 
+        # ── External prebuilt dependencies ────────────────────────────────
         # moonrepo CLI v2 — prebuilt binary from GitHub releases
-        moonVersion = "2.4.3";
-        moonTarget = {
-          x86_64-linux   = "x86_64-unknown-linux-gnu";
-          aarch64-linux  = "aarch64-unknown-linux-gnu";
-          x86_64-darwin  = "x86_64-apple-darwin";
-          aarch64-darwin = "aarch64-apple-darwin";
-        }.${system};
-        moonSha256 = {
-          x86_64-linux   = "368fb8ca4307cab5a0bf55013e4a3fa92e58a35934d0bdd92413e7bb49facbb6";
-          aarch64-linux  = "94d8a30c31a127ceb471c295294b77b2565ce90eabb6b6728db782864451ab70";
-          x86_64-darwin  = "60148eb5ee8cf8fa596852f083390ad52518f08b6ddcc4348afb85219a3d4901";
-          aarch64-darwin = "82ebc8c54ff4f75a3c78068e872cefe29284cad5f05a27ca778a4a714df87f7b";
-        }.${system};
         moon = pkgs.stdenv.mkDerivation {
-          name = "moon-${moonVersion}";
+          name = "moon-${versions.moon}";
           src = pkgs.fetchurl {
-            url = "https://github.com/moonrepo/moon/releases/download/v${moonVersion}/moon_cli-${moonTarget}.tar.xz";
-            sha256 = moonSha256;
+            url = "https://github.com/moonrepo/moon/releases/download/v${versions.moon}/moon_cli-${currentPlatform.moonTarget}.tar.xz";
+            sha256 = currentPlatform.moonSha256;
           };
-          sourceRoot = "moon_cli-${moonTarget}";
+          sourceRoot = "moon_cli-${currentPlatform.moonTarget}";
           installPhase = ''
             install -m755 -D moon "$out/bin/moon"
             install -m755 -D moonx "$out/bin/moonx"
           '';
           meta.mainProgram = "moon";
         };
-        # sherpa-onnx prebuilt static libraries (must match Cargo.lock version)
-        sherpaOnnxVersion = "1.13.4";
-        sherpaOnnxUrlBase = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v${sherpaOnnxVersion}";
 
-        # Host platform sherpa-onnx prebuilt static library
-        sherpaOnnxLib = let
-          archiveName = {
-            x86_64-linux   = "sherpa-onnx-v${sherpaOnnxVersion}-linux-x64-static-lib.tar.bz2";
-            aarch64-linux  = "sherpa-onnx-v${sherpaOnnxVersion}-linux-aarch64-static-lib.tar.bz2";
-            x86_64-darwin  = "sherpa-onnx-v${sherpaOnnxVersion}-osx-x64-static-lib.tar.bz2";
-            aarch64-darwin = "sherpa-onnx-v${sherpaOnnxVersion}-osx-arm64-static-lib.tar.bz2";
-          }.${system};
-          hash = {
-            x86_64-linux   = "sha256-bGDnnCS3JQoltQ7FDi4k6ozt20B3Xasu54/UIExSKjQ=";
-            aarch64-linux  = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
-            x86_64-darwin  = "sha256-RXSXvLMxdACgZZRpHY8oNb/H6cJn3izY19+jfJt7AOA=";
-            aarch64-darwin = "sha256-n9foeCcAesFJT1RcCgW4a3xFGaSy3Qw+/6CVcVeiiD0=";
-          }.${system};
-        in pkgs.fetchzip {
-          url = "${sherpaOnnxUrlBase}/${archiveName}";
-          inherit hash;
+        # sherpa-onnx prebuilt static libraries (must match Cargo.lock version)
+        sherpaOnnxUrlBase = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v${versions.sherpaOnnx}";
+        sherpaOnnxLib = pkgs.fetchzip {
+          url = "${sherpaOnnxUrlBase}/${currentPlatform.sherpaOnnxArchive}";
+          hash = currentPlatform.sherpaOnnxHash;
           stripRoot = true;
         };
-
         # aarch64-linux sherpa-onnx prebuilt static library (for cross-compilation)
         sherpaOnnxLibArm64 = pkgs.fetchzip {
-          url = "${sherpaOnnxUrlBase}/sherpa-onnx-v${sherpaOnnxVersion}-linux-aarch64-static-lib.tar.bz2";
+          url = "${sherpaOnnxUrlBase}/sherpa-onnx-v${versions.sherpaOnnx}-linux-aarch64-static-lib.tar.bz2";
           hash = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
           stripRoot = true;
         };
 
+        # ── Build target platforms ────────────────────────────────────────
         # Android SDK for Flutter builds (declarative, managed by Nix)
         androidComposition = pkgs.androidenv.composeAndroidPackages {
-          buildToolsVersions = [ "36.0.0" ];
+          buildToolsVersions = [ versions.android.buildTools ];
           platformVersions = [ "34" "35" "36" ];
           cmakeVersions = [ "3.22.1" ];
           abiVersions = [ "armeabi-v7a" "arm64-v8a" ];
           includeNDK = true;
-          ndkVersions = [ "28.2.13676358" ];
+          ndkVersions = [ versions.android.ndk ];
           includeEmulator = false;
           includeSystemImages = false;
         };
@@ -113,7 +129,7 @@
           crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
         };
 
-        # Crane library for workspace builds with custom toolchain
+        # ── Crane build system ────────────────────────────────────────────
         craneLib = (crane.mkLib pkgs).overrideToolchain (_: rustToolchain);
 
         # Flutter Linux desktop deps — genericClosure transitive closure (same as nixpkgs wrapper.nix)
@@ -147,17 +163,17 @@
 
         # Source filtering for Rust workspace (improves cache hit rates)
         # Uses fileset to include downloader manifest JSON files embedded via include_dir!
-        src = pkgs.lib.fileset.toSource {
+        mkCraneSrc = crane': pkgs.lib.fileset.toSource {
           root = ./.;
           fileset = pkgs.lib.fileset.unions [
-            (craneLib.fileset.commonCargoSources ./.)
+            (crane'.fileset.commonCargoSources ./.)
             (pkgs.lib.fileset.fileFilter (file: file.hasExt "json") ./apps/server/src/downloader/manifests)
           ];
         };
 
         # Common arguments shared across all crane builds
         commonCraneArgs = {
-          inherit src;
+          src = mkCraneSrc craneLib;
           strictDeps = true;
 
           nativeBuildInputs = [
@@ -192,13 +208,7 @@
 
         # Common arguments for arm64 cross-compilation
         commonCraneArgsArm64 = {
-          src = pkgs.lib.fileset.toSource {
-            root = ./.;
-            fileset = pkgs.lib.fileset.unions [
-              (craneLibArm64.fileset.commonCargoSources ./.)
-              (pkgs.lib.fileset.fileFilter (file: file.hasExt "json") ./apps/server/src/downloader/manifests)
-            ];
-          };
+          src = mkCraneSrc craneLibArm64;
           strictDeps = true;
 
           nativeBuildInputs = [
@@ -233,12 +243,13 @@
           cargoBuildFlags = [ "--package" "chobits-server" "--bin" "chobits-server" ];
         });
 
-      in {
-        packages = let
-          docker-amd64 = pkgs.dockerTools.buildImage {
+        # ── Docker images ─────────────────────────────────────────────────
+        mkDockerImage = { dockerPkgs, binary, arch, label }:
+          dockerPkgs.dockerTools.buildImage {
             name = "chobits";
-            tag = "dev-amd64";
-            copyToRoot = [ chobits-server ];
+            tag = "dev-${label}";
+            copyToRoot = [ binary ];
+            architecture = arch;
             config = {
               Cmd = [ "/bin/chobits-server" ];
               WorkingDir = "/app";
@@ -246,21 +257,24 @@
             };
           };
 
-          docker-arm64 = pkgsArm64.dockerTools.buildImage {
-            name = "chobits";
-            tag = "dev-arm64";
-            architecture = "arm64";
-            copyToRoot = [ chobits-server-arm64 ];
-            config = {
-              Cmd = [ "/bin/chobits-server" ];
-              WorkingDir = "/app";
-              ExposedPorts = { "3000/tcp" = {}; };
-            };
+      in {
+        packages = {
+          inherit moon chobits-server chobits-server-arm64;
+          docker-amd64 = mkDockerImage {
+            dockerPkgs = pkgs;
+            binary = chobits-server;
+            arch = "amd64";
+            label = "amd64";
           };
-        in {
-          inherit moon chobits-server chobits-server-arm64 docker-amd64 docker-arm64;
+          docker-arm64 = mkDockerImage {
+            dockerPkgs = pkgsArm64;
+            binary = chobits-server-arm64;
+            arch = "arm64";
+            label = "arm64";
+          };
         };
 
+        # ── Development shells ────────────────────────────────────────────
         devShells = {
           default = pkgs.mkShell {
             packages = with pkgs; [
@@ -301,7 +315,7 @@
             ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
             ANDROID_SDK_ROOT = "${androidSdk}/libexec/android-sdk";
             JAVA_HOME = "${pkgs.jdk17}";
-            GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/libexec/android-sdk/build-tools/36.0.0/aapt2";
+            GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${androidSdk}/libexec/android-sdk/build-tools/${versions.android.buildTools}/aapt2";
 
             shellHook = ''
               # macOS native xcrun wrapper — override Nix xcbuild's xcrun
@@ -332,35 +346,35 @@
 
               # Auto-install Flutter version pinned in .fvmrc
               if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
-                echo "  [fvm] pwd=$(pwd) HOME=$HOME"
-                echo "  [fvm] .fvmrc: $(cat .fvmrc)"
-                echo "  [fvm] .fvm/ exists: $([ -d .fvm ] && echo yes || echo no)"
-                if [ -d .fvm ]; then
-                  echo "  [fvm] ls .fvm/:"
-                  ls -la .fvm/ 2>&1 | sed 's/^/    /'
+                if [ "''${CHOBITS_DEBUG:-0}" = "1" ]; then
+                  echo "  [fvm] pwd=$(pwd) HOME=$HOME"
+                  echo "  [fvm] .fvmrc: $(cat .fvmrc)"
+                  echo "  [fvm] .fvm/ exists: $([ -d .fvm ] && echo yes || echo no)"
+                  if [ -d .fvm ]; then
+                    echo "  [fvm] ls .fvm/:"
+                    ls -la .fvm/ 2>&1 | sed 's/^/    /'
+                  fi
                 fi
-                echo "  [fvm] Running: fvm install"
                 fvm install
-                echo "  [fvm] Running: fvm use --force"
                 fvm use --force
-                echo "  [fvm] After fvm use, .fvm/ contents:"
-                ls -la .fvm/ 2>&1 | sed 's/^/    /'
-                if [ -L .fvm/flutter_sdk ]; then
-                  echo "  [fvm] .fvm/flutter_sdk symlink -> $(readlink .fvm/flutter_sdk)"
-                  echo "  [fvm] readlink -f = $(readlink -f .fvm/flutter_sdk 2>/dev/null || echo 'failed')"
-                else
-                  echo "  [fvm] .fvm/flutter_sdk is NOT a symlink (missing or regular dir)"
+                if [ "''${CHOBITS_DEBUG:-0}" = "1" ]; then
+                  echo "  [fvm] After fvm use, .fvm/ contents:"
+                  ls -la .fvm/ 2>&1 | sed 's/^/    /'
+                  if [ -L .fvm/flutter_sdk ]; then
+                    echo "  [fvm] .fvm/flutter_sdk symlink -> $(readlink .fvm/flutter_sdk)"
+                    echo "  [fvm] readlink -f = $(readlink -f .fvm/flutter_sdk 2>/dev/null || echo 'failed')"
+                  else
+                    echo "  [fvm] .fvm/flutter_sdk is NOT a symlink (missing or regular dir)"
+                  fi
                 fi
               fi
 
               if [ -f .fvmrc ] && [ -L .fvm/flutter_sdk ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
-                if [ -x "$(pwd)/.fvm/flutter_sdk/bin/flutter" ]; then
+                if [ "''${CHOBITS_DEBUG:-0}" = "1" ] && [ -x "$(pwd)/.fvm/flutter_sdk/bin/flutter" ]; then
                   echo "  [fvm] Flutter SDK: $(readlink -f .fvm/flutter_sdk 2>/dev/null || readlink .fvm/flutter_sdk)"
-                else
-                  echo "  [fvm] WARNING: .fvm/flutter_sdk/bin/flutter exists but not executable"
                 fi
-              else
+              elif [ -f .fvmrc ]; then
                 echo "  [fvm] WARNING: .fvm/flutter_sdk symlink not valid"
               fi
 
@@ -435,13 +449,7 @@
 
           # Local-only cross-compilation shell for aarch64-unknown-linux-gnu (static)
           # CI uses `nix build .#chobits-server-arm64` instead
-          gnu64-arm64 = let
-            pkgsArm64 = import nixpkgs {
-              inherit system;
-              overlays = [ rust-overlay.overlays.default ];
-              crossSystem = nixpkgs.lib.systems.examples.aarch64-multiplatform;
-            };
-          in pkgsArm64.mkShell {
+          gnu64-arm64 = pkgsArm64.mkShell {
             packages = [
               rustToolchain
               pkgsArm64.cmake

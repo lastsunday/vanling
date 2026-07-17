@@ -15,7 +15,7 @@ if [ -z "$LATEST" ]; then
     "https://github.com/moonrepo/moon/releases/latest" | sed 's|.*/v||')
 fi
 
-CURRENT=$(grep 'moonVersion = "' "$FLAKE" | sed 's/.*"\(.*\)".*/\1/')
+CURRENT=$(grep 'moon = "' "$FLAKE" | sed 's/.*"\(.*\)".*/\1/')
 
 if [ "$LATEST" = "$CURRENT" ]; then
   echo "moon is already at $LATEST"
@@ -44,12 +44,12 @@ for pair in "${TARGETS[@]}"; do
   gh_name="${pair##*:}"
   url="https://github.com/moonrepo/moon/releases/download/v${LATEST}/moon_cli-${gh_name}.tar.xz.sha256"
   hash=$(curl -sSfL "$url" | awk '{print $1}')
-  sed -i.bak "/${nix_name}/s/\"[a-f0-9]\{64\}\"/\"${hash}\"/" "$FLAKE"
+  sed -i.bak "/${nix_name}/,/moonSha256/s#moonSha256 = \"[a-f0-9]*\"#moonSha256 = \"${hash}\"#" "$FLAKE"
   rm -f "$FLAKE.bak"
   echo "  $nix_name: $hash"
 done
 
-sed -i.bak "s/moonVersion = \"${CURRENT}\"/moonVersion = \"${LATEST}\"/" "$FLAKE"
+sed -i.bak "s/moon = \"${CURRENT}\"/moon = \"${LATEST}\"/" "$FLAKE"
 rm -f "$FLAKE.bak"
 
 echo "Done. Run 'nix build .#moon' to verify."

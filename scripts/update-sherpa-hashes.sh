@@ -3,7 +3,7 @@ set -euo pipefail
 
 FLAKE="$(cd "$(dirname "$0")/.." && pwd)/flake.nix"
 
-VERSION=$(grep 'sherpaOnnxVersion = "' "$FLAKE" | sed 's/.*"\(.*\)".*/\1/')
+VERSION=$(grep 'sherpaOnnx = "' "$FLAKE" | sed 's/.*"\(.*\)".*/\1/')
 BASE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${VERSION}"
 
 echo "sherpa-onnx version: $VERSION"
@@ -27,14 +27,13 @@ for nix_sys in x86_64-linux aarch64-linux x86_64-darwin aarch64-darwin; do
 
   echo "$sri_hash"
 
-  # Use flexible whitespace pattern: match any amount of spaces/tabs
   tmp_file=$(mktemp)
-  sed "s#\( *${nix_sys} *= *\)\"sha256-[^\"]*\"#\1\"${sri_hash}\"#" "$FLAKE" > "$tmp_file"
+  sed "/${nix_sys}/,/sherpaOnnxHash/s#sherpaOnnxHash = \"sha256-[^\"]*\"#sherpaOnnxHash = \"${sri_hash}\"#" "$FLAKE" > "$tmp_file"
   mv "$tmp_file" "$FLAKE"
 done
 
 # sherpaOnnxLibArm64 uses the same aarch64-linux hash
-arm64_hash=$(grep 'aarch64-linux  = "sha256-' "$FLAKE" | head -1 | sed 's/.*"\(sha256-[^"]*\)".*/\1/')
+arm64_hash=$(grep 'sherpaOnnxHash = "sha256-' "$FLAKE" | head -1 | sed 's/.*"\(sha256-[^"]*\)".*/\1/')
 tmp_file=$(mktemp)
 sed "/sherpaOnnxLibArm64/,/stripRoot/s#hash = \"sha256-[^\"]*\"#hash = \"${arm64_hash}\"#" "$FLAKE" > "$tmp_file"
 mv "$tmp_file" "$FLAKE"
