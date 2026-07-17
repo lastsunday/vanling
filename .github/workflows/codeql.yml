@@ -52,11 +52,8 @@ jobs:
       - name: Install zstd
         run: sudo apt-get update && sudo apt-get install -y zstd
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
-        with:
-          languages: ${{ matrix.language }}
-
+      # Free disk space must run BEFORE Initialize CodeQL,
+      # otherwise it deletes the freshly installed CodeQL binary.
       - name: Free Disk Space
         if: matrix.language == 'rust'
         uses: ./.github/actions/free-disk-space
@@ -64,6 +61,11 @@ jobs:
       - name: Setup Nix
         if: matrix.language == 'rust'
         uses: ./.github/actions/setup-nix
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          languages: ${{ matrix.language }}
 
       # chobits-server excluded: requires SHERPA_ONNX_LIB_DIR (sherpa-onnx prebuilt libs)
       # only available via Nix buildRustPackage, not the devShell
