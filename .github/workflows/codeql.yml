@@ -54,6 +54,10 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
+      - name: Free Disk Space
+        if: matrix.language == 'rust'
+        uses: ./.github/actions/free-disk-space
+
       - name: Setup Nix
         if: matrix.language == 'rust'
         uses: ./.github/actions/setup-nix
