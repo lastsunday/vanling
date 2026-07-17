@@ -110,6 +110,12 @@ for the full license text.
 
 </details>
 
+## AI-Assisted Development
+
+Part of the code and documentation in this project was generated with the assistance of AI tools. All AI-generated content has been reviewed and modified by the project maintainer.
+
+- OpenCode (Big Pickle,DeepSeek V4 Flash)
+
 ## Thanks
 
 <https://github.com/78/xiaozhi-esp32>
