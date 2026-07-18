@@ -1,9 +1,8 @@
 +++
 title = "ESP32"
 weight = 301
-[extra]
-source_file_hash = "ec0ae0c0c6bfbba58c9ab563acb816bd0daf4504"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "8d4afdbafb3a51b785c2e35656698c5af9bb8dbe"
+translated_at = "2026-07-18"
 +++
 
 # ESP32
@@ -16,16 +15,16 @@ git clone git@github.com:78/xiaozhi-esp32.git
 
 ## Install ESP-IDF
 
-> <https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32/get-started/linux-macos-setup.html>
+> <https://docs.espressif.com/projects/esp-idf/en/v6.0.2/esp32/get-started/macos-setup.html>
 
 ## Development
 
-### Configure Environment & Flash Device
+### Configure Environment and Flash Device
 
 - esp32-s3
 
 ```shell
-. $HOME/esp/esp-idf/export.sh
+source ~/.espressif/tools/activate_idf_v6.0.2.sh
 idf.py set-target esp32-s3
 idf.py menuconfig
 idf.py build
@@ -39,13 +38,13 @@ idf.py -p /dev/ttyACM0 flash
 
 ### Other Common Commands
 
-- List ports
+- Get Port
 
 ```shell
 ls /dev/cu.*
 ```
 
-- Debug monitor
+- Debug Monitor
 
 ```shell
 idf.py monitor

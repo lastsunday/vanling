@@ -13,7 +13,7 @@ git clone git@github.com:78/xiaozhi-esp32.git
 
 ## 安装 ESP-IDF
 
-> <https://docs.espressif.com/projects/esp-idf/zh_CN/v5.5.2/esp32/get-started/linux-macos-setup.html>
+> <https://docs.espressif.com/projects/esp-idf/zh_CN/v6.0.2/esp32/get-started/macos-setup.html>
 
 ## 开发
 
@@ -22,7 +22,7 @@ git clone git@github.com:78/xiaozhi-esp32.git
 - esp32-s3
 
 ```shell
-. $HOME/esp/esp-idf/export.sh
+source ~/.espressif/tools/activate_idf_v6.0.2.sh
 idf.py set-target esp32-s3
 idf.py menuconfig
 idf.py build
