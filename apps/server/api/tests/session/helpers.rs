@@ -29,16 +29,18 @@ use service::chobits::{
     },
 };
 
+use futures::StreamExt;
 use std::{
     cmp,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
+use tokio_util::sync::CancellationToken;
 
 /// Absolute workspace root, derived from CARGO_MANIFEST_DIR (compile-time constant).
 /// CARGO_MANIFEST_DIR = <root>/apps/server/api → 3 `.parent()` calls = root.
-fn workspace_root() -> PathBuf {
+pub fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -54,7 +56,7 @@ use tokio::sync::{Mutex, mpsc};
 use tracing::debug;
 use utoipa_axum::router::OpenApiRouter;
 
-use crate::common::{router_client::RouterClient, setup_database};
+use crate::common::{router_client::RouterClient, setup_database, tts::tts_stream};
 
 /// Full session pipeline test at 16000Hz output.
 /// Uses Void VAD/ASR + Echo LLM + Matcha TTS.
@@ -296,6 +298,41 @@ pub fn get_audio() -> Vec<Vec<u8>> {
         audio.push(buf);
     }
     audio
+}
+
+/// Generate Opus-encoded audio frames from text via Matcha TTS.
+/// Uses the same TTS config as `create_session_channel()` so the audio is
+/// compatible with the session's ASR pipeline.
+pub async fn get_tts_audio(text: &str) -> Vec<Vec<u8>> {
+    let audio_config = Arc::new(AudioConfig {
+        output_sample_rate: Some(16000),
+        output_channel: Some(1),
+        output_frame_duration: Some(20_u64),
+    });
+    let tts = TtsManager::create_model(
+        &TtsConfig {
+            model: Some(TtsModel::MatchaTts),
+            path: Some(
+                workspace_root()
+                    .join("data/tts/model/matcha/matcha-icefall-zh-en/")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ..Default::default()
+        },
+        &audio_config,
+    )
+    .await
+    .unwrap();
+
+    let text_stream = tts_stream(text.to_string());
+    let cancel = CancellationToken::new();
+    let mut stream = tts.stream(Box::pin(text_stream), cancel).await;
+    let mut all_audio = Vec::new();
+    while let Some(packet) = stream.next().await {
+        all_audio.extend(packet.unwrap().audio);
+    }
+    all_audio
 }
 
 /// Receive the next frame with a per-step timeout.

@@ -10,7 +10,7 @@ use tracing_test::traced_test;
 
 use crate::common::tear_down;
 use crate::session::helpers::{
-    create_mini_session_channel, create_session_channel, get_audio, recv_frame,
+    create_mini_session_channel, create_session_channel, get_tts_audio, recv_frame,
 };
 
 #[tokio::test]
@@ -56,7 +56,7 @@ async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
      * <- tts result stop
      */
 
-    let audio = get_audio();
+    let audio = get_tts_audio("你好").await;
     let (input_tx, mut output_rx, container, state) = create_session_channel().await;
     // -> hello
     input_tx.send(Frame::Hello(HelloMessage {
@@ -166,7 +166,7 @@ async fn test_chat_flow_listen_auto() -> anyhow::Result<()> {
      * }
      * <- tts result stop
      */
-    let audio = get_audio();
+    let audio = get_tts_audio("你好").await;
     let (input_tx, mut output_rx, container, state) = create_session_channel().await;
     // -> hello
     input_tx.send(Frame::Hello(HelloMessage {
@@ -326,7 +326,7 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
      * }
      * <- tts result stop
      */
-    let audio = get_audio();
+    let audio = get_tts_audio("你好").await;
     let (input_tx, mut output_rx, container, state) = create_session_channel().await;
     // -> hello
     input_tx.send(Frame::Hello(HelloMessage {
