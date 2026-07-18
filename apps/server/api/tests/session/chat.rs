@@ -9,10 +9,16 @@ use tracing::debug;
 use tracing_test::traced_test;
 
 use crate::common::tear_down;
-use crate::session::helpers::{create_mini_session_channel, create_session_channel, get_audio};
+use crate::session::helpers::{
+    create_mini_session_channel, create_session_channel, get_audio, recv_frame,
+};
 
 #[tokio::test]
 #[traced_test]
+/*
+* -> hello
+* <- hello result
+* */
 async fn test_chat_flow_hello() -> anyhow::Result<()> {
     let (input_tx, mut output_rx) = create_mini_session_channel().await;
     input_tx.send(Frame::Hello(HelloMessage {
@@ -29,38 +35,91 @@ async fn test_chat_flow_hello() -> anyhow::Result<()> {
 #[tokio::test]
 #[traced_test]
 /*
-2026-03-16T09:26:06.988023Z DEBUG frame: [RECV] Hello(HelloMessage { message: Message { mtype: Hello }, version: None, transport: None, audio_params: None, features: Some(Feature { mcp: Some(true), aec: None }), session_id: None })
-2026-03-16T09:26:06.988091Z DEBUG frame: [SEND] HelloResult(HelloMessage { message: Message { mtype: Hello }, version: None, transport: Some(Websocket), audio_params: Some(AudioParam { format: Opus, sample_rate: 16000, channels: 1, frame_duration: 60 }), features: None, session_id: Some("d6rspbklm6jn11rmp49g") })
-2026-03-16T09:26:06.988133Z DEBUG frame: [SEND] McpResult(McpRequest { message: Message { mtype: Mcp }, session_id: Some("d6rspbklm6jn11rmp49g"), payload: JsonRpcRequest { jsonrpc: JsonRpcVersion2_0, id: Number(0), request: Request { method: "initialize", params: {"capabilities": Object {}, "clientInfo": Object {"name": String("rmcp"), "version": String("0.15.0")}, "protocolVersion": String("2025-06-18")}, extensions: Extensions } } })
-2026-03-16T09:26:07.037845Z DEBUG frame: [RECV] Mcp(McpMessage { message: Message { mtype: Mcp }, payload: Response(JsonRpcResponse { jsonrpc: JsonRpcVersion2_0, id: Number(0), result: {"capabilities": Object {"tools": Object {}}, "protocolVersion": String("2025-06-18"), "serverInfo": Object {"name": String("Web测试设备"), "version": String("1.0.0")}} }) })
-2026-03-16T09:26:07.037933Z DEBUG frame: [SEND] McpResult(McpRequest { message: Message { mtype: Mcp }, session_id: Some("d6rspbklm6jn11rmp49g"), payload: JsonRpcRequest { jsonrpc: JsonRpcVersion2_0, id: Number(1), request: Request { method: "tools/list", params: {}, extensions: Extensions } } })
-2026-03-16T09:26:07.045113Z DEBUG frame: [RECV] Mcp(McpMessage { message: Message { mtype: Mcp }, payload: Response(JsonRpcResponse { jsonrpc: JsonRpcVersion2_0, id: Number(1), result: {"tools": Array [Object {"description": String("Provides the real-time information of the device, including the current status of the audio speaker, battery, network, etc.\nUse this tool for: \n1. Answering questions about current condition (e.g. what is the current volume of the audio speaker?)\n2. As the first step to control the device (e.g. turn up / down the volume of the audio speaker, etc.)"), "inputSchema": Object {"properties": Object {}, "type": String("object")}, "name": String("self.get_device_status")}, Object {"description": String("Set the volume of the audio speaker. If the current volume is unknown, you must call `self.get_device_status` tool first and then call this tool."), "inputSchema": Object {"properties": Object {"volume": Object {"maximum": Number(100), "minimum": Number(0), "type": String("integer")}}, "required": Array [String("volume")], "type": String("object")}, "name": String("self.audio_speaker.set_volume")}, Object {"description": String("Set the brightness of the screen."), "inputSchema": Object {"properties": Object {"brightness": Object {"maximum": Number(100), "minimum": Number(0), "type": String("integer")}}, "required": Array [String("brightness")], "type": String("object")}, "name": String("self.screen.set_brightness")}]} }) })
-*/
+* -> hello
+* <- hello result
+* -> listen start
+* -> voice *X
+* -> listen stop
+* <- stt result
+* <- tts result start
+* loop {
+*     <- llm result
+*     <- tts result sentence start
+*     <- audio result *X
+*     <- tts result sentence end
+* }
+* <- tts result stop
+* */
 async fn test_chat_flow_listen_manual() -> anyhow::Result<()> {
     let audio = get_audio();
     let (input_tx, mut output_rx, container, state) = create_session_channel().await;
+    // -> hello
     input_tx.send(Frame::Hello(HelloMessage {
         ..Default::default()
     }))?;
+    // <- hello result
     assert!(matches!(
-        output_rx.recv().await.unwrap().payload,
+        recv_frame(&mut output_rx, "hello result").await,
         FrameResult::HelloResult(..)
     ));
+    // -> listen start
     input_tx.send(Frame::ListenStart { barge_in: true })?;
+    // -> voice *X
     for n in 0..audio.len() {
         input_tx.send(Frame::Voice {
             data: audio.get(n).unwrap().to_vec(),
         })?;
     }
+    // -> listen stop
     input_tx.send(Frame::ListenStop)?;
+    // <- stt result
+    assert!(matches!(
+        recv_frame(&mut output_rx, "stt result").await,
+        FrameResult::STTResult(..)
+    ));
+    // <- tts result start
+    assert!(matches!(
+        recv_frame(&mut output_rx, "tts start").await,
+        FrameResult::TTSResult(TtsMessage {
+            state: Some(TtsState::Start),
+            ..
+        })
+    ));
+    // <- tts result stop
+    // loop {
+    //     <- llm result
+    //     <- tts result sentence start
+    //     <- audio result *X
+    //     <- tts result sentence end
+    // }
     loop {
-        let data = output_rx.recv().await.unwrap().payload;
-        if let FrameResult::TTSResult(tts_message) = data {
-            match tts_message.state {
-                Some(TtsState::Stop) => break,
-                Some(_) => {}
-                None => {}
+        match recv_frame(&mut output_rx, "llm result or stop").await {
+            FrameResult::LLMResult(..) => {
+                // <- tts result sentence start
+                assert!(matches!(
+                    recv_frame(&mut output_rx, "sentence start").await,
+                    FrameResult::TTSResult(TtsMessage {
+                        state: Some(TtsState::SentenceStart),
+                        ..
+                    })
+                ));
+                // <- audio result *X + <- tts result sentence end
+                loop {
+                    match recv_frame(&mut output_rx, "audio or sentence end").await {
+                        FrameResult::AudioResult(_) => {}
+                        FrameResult::TTSResult(TtsMessage {
+                            state: Some(TtsState::SentenceEnd),
+                            ..
+                        }) => break,
+                        other => panic!("expected AudioResult or SentenceEnd, got {:?}", other),
+                    }
+                }
             }
+            FrameResult::TTSResult(TtsMessage {
+                state: Some(TtsState::Stop),
+                ..
+            }) => break,
+            other => panic!("expected LLMResult or TTSResult(Stop), got {:?}", other),
         }
     }
     drop(input_tx);

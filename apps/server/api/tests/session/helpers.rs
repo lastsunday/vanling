@@ -22,7 +22,7 @@ use rmcp::{
 };
 use serde::Serialize;
 use service::chobits::{
-    frame::{Frame, OutputMessage},
+    frame::{Frame, FrameResult, OutputMessage},
     mcp::McpRegistry,
     session::{
         AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
@@ -33,6 +33,7 @@ use std::{
     cmp,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 /// Absolute workspace root, derived from CARGO_MANIFEST_DIR (compile-time constant).
@@ -295,6 +296,19 @@ pub fn get_audio() -> Vec<Vec<u8>> {
         audio.push(buf);
     }
     audio
+}
+
+/// Receive the next frame with a per-step timeout.
+/// Panics on timeout or channel close.
+pub async fn recv_frame(
+    rx: &mut mpsc::UnboundedReceiver<OutputMessage>,
+    step: &str,
+) -> FrameResult {
+    tokio::time::timeout(Duration::from_secs(10), rx.recv())
+        .await
+        .unwrap_or_else(|_| panic!("timeout at: {}", step))
+        .unwrap_or_else(|| panic!("closed at: {}", step))
+        .payload
 }
 
 pub fn to_json_rpc_response<T>(id: i64, result: T) -> JsonRpcMessage
