@@ -21,7 +21,7 @@
       let
         # ── Versions ──────────────────────────────────────────────────────
         versions = {
-          moon = "2.4.3";
+          moon = "2.4.4";
           sherpaOnnx = "1.13.4";
           android = {
             buildTools = "36.0.0";
@@ -35,25 +35,25 @@
         platformData = {
           x86_64-linux = {
             moonTarget = "x86_64-unknown-linux-gnu";
-            moonSha256 = "368fb8ca4307cab5a0bf55013e4a3fa92e58a35934d0bdd92413e7bb49facbb6";
+            moonSha256 = "e2d59a8f3b7c69f05424fd3de255da26d775847299ae5651bd6364dc4a729c11";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-linux-x64-static-lib.tar.bz2";
             sherpaOnnxHash = "sha256-bGDnnCS3JQoltQ7FDi4k6ozt20B3Xasu54/UIExSKjQ=";
           };
           aarch64-linux = {
             moonTarget = "aarch64-unknown-linux-gnu";
-            moonSha256 = "94d8a30c31a127ceb471c295294b77b2565ce90eabb6b6728db782864451ab70";
+            moonSha256 = "df85955ddc177c7ca3454a579e5deee8113aeeb9347e99765f2de9047dbf91f2";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-linux-aarch64-static-lib.tar.bz2";
             sherpaOnnxHash = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
           };
           x86_64-darwin = {
             moonTarget = "x86_64-apple-darwin";
-            moonSha256 = "60148eb5ee8cf8fa596852f083390ad52518f08b6ddcc4348afb85219a3d4901";
+            moonSha256 = "728ff28e7625269d314770a248fb58572b2443328d4e422073ae66338d7e4cf2";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-osx-x64-static-lib.tar.bz2";
             sherpaOnnxHash = "sha256-RXSXvLMxdACgZZRpHY8oNb/H6cJn3izY19+jfJt7AOA=";
           };
           aarch64-darwin = {
             moonTarget = "aarch64-apple-darwin";
-            moonSha256 = "82ebc8c54ff4f75a3c78068e872cefe29284cad5f05a27ca778a4a714df87f7b";
+            moonSha256 = "d3c2e3a81a3c9569db1637c3d079958862df7dbf246bb6678043263193d21b8f";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-osx-arm64-static-lib.tar.bz2";
             sherpaOnnxHash = "sha256-n9foeCcAesFJT1RcCgW4a3xFGaSy3Qw+/6CVcVeiiD0=";
           };
