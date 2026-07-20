@@ -9,10 +9,10 @@
     "@mantine/dates": "9.4.1",
     "@mantine/hooks": "9.4.1",
     "@mantine/notifications": "9.4.1",
-    "@tabler/icons-react": "3.44.0",
+    "@tabler/icons-react": "3.45.0",
     "@tanstack/react-query": "5.101.2",
     "@tanstack/react-query-devtools": "5.101.2",
-    "@tanstack/react-router": "1.170.17",
+    "@tanstack/react-router": "1.170.18",
     "@tanstack/react-router-devtools": "1.167.0",
     "axios": "1.18.1",
     "dayjs": "1.11.21",
@@ -20,8 +20,8 @@
     "i18next-http-backend": "4.0.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "react-i18next": "17.0.9",
-    "wavesurfer.js": "7.12.10",
+    "react-i18next": "17.0.10",
+    "wavesurfer.js": "7.12.11",
     "zod": "4.4.3"
   },
   "devDependencies": {
