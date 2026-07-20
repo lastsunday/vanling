@@ -1,27 +1,17 @@
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Local};
-use service::chobits::frame::{Frame, FrameResult, OutputMessage};
+use service::chobits::frame::{Frame, FrameResult, InputMode, OutputMessage};
 use service::chobits::message::tts::TtsState;
 
 use crate::record::recorder::{Dir, EntryKind, FrameDetail, RecordEntry, Recorder, RoundStatus};
 use crate::ws::filter::{FilterAction, FilterCtx, InputFilter, OutputFilter};
 
-struct InputRecorderState {
-    input_active: bool,
-    audio_buffer: Vec<Vec<u8>>,
-    voice_start_time: Option<DateTime<FixedOffset>>,
-}
-
 pub struct RecorderInputFilter {
     recorder: Option<Arc<Recorder>>,
     session_id: String,
-    state: Mutex<InputRecorderState>,
-    input_frame_duration: AtomicU64,
-    input_channels: AtomicU32,
 }
 
 impl RecorderInputFilter {
@@ -29,13 +19,6 @@ impl RecorderInputFilter {
         Self {
             recorder,
             session_id,
-            state: Mutex::new(InputRecorderState {
-                input_active: false,
-                audio_buffer: Vec::new(),
-                voice_start_time: None,
-            }),
-            input_frame_duration: AtomicU64::new(20),
-            input_channels: AtomicU32::new(1),
         }
     }
 
@@ -76,55 +59,18 @@ impl InputFilter for RecorderInputFilter {
         match &frame {
             Frame::Hello(hello) => {
                 if let Some(params) = &hello.audio_params {
-                    self.input_frame_duration
-                        .store(params.frame_duration, Ordering::Relaxed);
-                    self.input_channels
-                        .store(params.channels, Ordering::Relaxed);
+                    recorder.set_input_params(params.frame_duration, params.channels);
                 }
                 self.record_frame(recorder, now, FrameDetail::Hello, None);
             }
             Frame::Voice { data } => {
                 self.record_frame(recorder, now, FrameDetail::Voice, Some(data.clone()));
-
-                let mut state = self.state.lock().expect("state lock");
-                if state.input_active {
-                    if state.voice_start_time.is_none() {
-                        state.voice_start_time = Some(now);
-                        recorder.mark_voice_start(now);
-                    }
-                    state.audio_buffer.push(data.clone());
-                }
             }
             Frame::ListenStart { .. } => {
                 self.record_frame(recorder, now, FrameDetail::ListenStart, None);
-
-                let mut state = self.state.lock().expect("state lock");
-                recorder.mark_voice_start(now);
-                state.input_active = true;
-                state.audio_buffer.clear();
-                state.voice_start_time = None;
             }
             Frame::ListenStop => {
                 self.record_frame(recorder, now, FrameDetail::ListenStop, None);
-
-                let mut state = self.state.lock().expect("state lock");
-                if state.input_active && !state.audio_buffer.is_empty() {
-                    let frames = std::mem::take(&mut state.audio_buffer);
-                    let first_frame_at = state.voice_start_time.take();
-                    recorder.push_entry(RecordEntry {
-                        received_at: now,
-                        seq: None,
-                        kind: EntryKind::InputAudio {
-                            frames,
-                            first_frame_at,
-                            frame_duration_ms: self.input_frame_duration.load(Ordering::Relaxed),
-                            channels: self.input_channels.load(Ordering::Relaxed) as u8,
-                        },
-                    });
-                }
-                state.input_active = false;
-                state.audio_buffer.clear();
-                state.voice_start_time = None;
             }
             Frame::Abort(_) => {
                 self.record_frame(recorder, now, FrameDetail::Abort, None);
@@ -147,17 +93,24 @@ impl InputFilter for RecorderInputFilter {
                 );
                 self.record_frame(recorder, now, FrameDetail::Close, None);
             }
-            Frame::Input { text, .. } => {
+            Frame::Input { text, mode } => {
                 self.record_frame(
                     recorder,
                     now,
                     FrameDetail::Input,
                     Some(text.as_bytes().to_vec()),
                 );
+                let mode_str = match mode {
+                    InputMode::Wake => "wake".to_string(),
+                    InputMode::Normal => "normal".to_string(),
+                };
                 recorder.push_entry(RecordEntry {
                     received_at: now,
                     seq: None,
-                    kind: EntryKind::Text { text: text.clone() },
+                    kind: EntryKind::Text {
+                        text: text.clone(),
+                        mode: mode_str,
+                    },
                 });
             }
             Frame::UnknownText { data } => {

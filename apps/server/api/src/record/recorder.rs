@@ -75,6 +75,7 @@ impl FrameDetail {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataType {
     InputAudio,
+    InputAudioTail,
     Llm,
     Tts,
     Text,
@@ -84,6 +85,7 @@ impl DataType {
     pub fn as_str(&self) -> &'static str {
         match self {
             DataType::InputAudio => "input_audio",
+            DataType::InputAudioTail => "input_audio_tail",
             DataType::Llm => "llm",
             DataType::Tts => "tts",
             DataType::Text => "text",
@@ -121,12 +123,6 @@ pub enum EntryKind {
         data: Option<Vec<u8>>,
         session_id: Option<String>,
     },
-    InputAudio {
-        frames: Vec<Vec<u8>>,
-        first_frame_at: Option<DateTime<FixedOffset>>,
-        frame_duration_ms: u64,
-        channels: u8,
-    },
     LlmText {
         text: String,
     },
@@ -135,6 +131,7 @@ pub enum EntryKind {
     },
     Text {
         text: String,
+        mode: String,
     },
 }
 
@@ -142,6 +139,17 @@ struct RoundInfo {
     round_id: String,
     session_id: Option<String>,
     started_at: DateTime<FixedOffset>,
+}
+
+struct TtsParams {
+    frame_duration_ms: u64,
+    channels: u8,
+    sample_rate: u32,
+}
+
+struct InputParams {
+    frame_duration_ms: u64,
+    channels: u8,
 }
 
 pub struct Recorder {
@@ -154,6 +162,8 @@ pub struct Recorder {
     tts_frame_duration: AtomicU64,
     tts_channels: AtomicU32,
     tts_sample_rate: AtomicU32,
+    input_frame_duration: AtomicU64,
+    input_channels: AtomicU32,
 }
 
 impl Recorder {
@@ -168,6 +178,8 @@ impl Recorder {
             tts_frame_duration: AtomicU64::new(20),
             tts_channels: AtomicU32::new(1),
             tts_sample_rate: AtomicU32::new(16000),
+            input_frame_duration: AtomicU64::new(20),
+            input_channels: AtomicU32::new(1),
         }
     }
 
@@ -191,6 +203,12 @@ impl Recorder {
         self.tts_sample_rate.store(sample_rate, Ordering::Relaxed);
     }
 
+    pub fn set_input_params(&self, frame_duration: u64, channels: u32) {
+        self.input_frame_duration
+            .store(frame_duration, Ordering::Relaxed);
+        self.input_channels.store(channels, Ordering::Relaxed);
+    }
+
     pub fn has_active_round(&self) -> bool {
         self.round_info.lock().is_ok_and(|info| info.is_some())
     }
@@ -209,18 +227,23 @@ impl Recorder {
         }
         if round_info.is_some() && !entries.is_empty() {
             let conn = self.conn.clone();
-            let tts_frame_duration = self.tts_frame_duration.load(Ordering::Relaxed);
-            let tts_channels = self.tts_channels.load(Ordering::Relaxed) as u8;
-            let tts_sample_rate = self.tts_sample_rate.load(Ordering::Relaxed);
+            let tts = TtsParams {
+                frame_duration_ms: self.tts_frame_duration.load(Ordering::Relaxed),
+                channels: self.tts_channels.load(Ordering::Relaxed) as u8,
+                sample_rate: self.tts_sample_rate.load(Ordering::Relaxed),
+            };
+            let input = InputParams {
+                frame_duration_ms: self.input_frame_duration.load(Ordering::Relaxed),
+                channels: self.input_channels.load(Ordering::Relaxed) as u8,
+            };
             tokio::spawn(async move {
                 Self::flush(
                     &conn,
                     &entries,
                     round_info.as_ref(),
                     RoundStatus::Interrupted,
-                    tts_frame_duration,
-                    tts_channels,
-                    tts_sample_rate,
+                    tts,
+                    input,
                 )
                 .await;
             });
@@ -287,17 +310,22 @@ impl Recorder {
             .round_info
             .lock()
             .map_or_else(|_| None, |mut r| r.take());
-        let tts_frame_duration = self.tts_frame_duration.load(Ordering::Relaxed);
-        let tts_channels = self.tts_channels.load(Ordering::Relaxed) as u8;
-        let tts_sample_rate = self.tts_sample_rate.load(Ordering::Relaxed);
+        let tts = TtsParams {
+            frame_duration_ms: self.tts_frame_duration.load(Ordering::Relaxed),
+            channels: self.tts_channels.load(Ordering::Relaxed) as u8,
+            sample_rate: self.tts_sample_rate.load(Ordering::Relaxed),
+        };
+        let input = InputParams {
+            frame_duration_ms: self.input_frame_duration.load(Ordering::Relaxed),
+            channels: self.input_channels.load(Ordering::Relaxed) as u8,
+        };
         Self::flush(
             &self.conn,
             &entries,
             round_info.as_ref(),
             status,
-            tts_frame_duration,
-            tts_channels,
-            tts_sample_rate,
+            tts,
+            input,
         )
         .await;
     }
@@ -307,9 +335,8 @@ impl Recorder {
         entries: &[RecordEntry],
         round_info: Option<&RoundInfo>,
         status: RoundStatus,
-        tts_frame_duration_ms: u64,
-        tts_channels: u8,
-        tts_sample_rate: u32,
+        tts: TtsParams,
+        input: InputParams,
     ) {
         if entries.is_empty() && round_info.is_none() {
             return;
@@ -338,6 +365,105 @@ impl Recorder {
             .is_err()
             {
                 return;
+            }
+        }
+
+        // Aggregate Voice frames into input_audio round_data
+        let voice_frames: Vec<(&RecordEntry, Vec<u8>)> = entries
+            .iter()
+            .filter_map(|e| {
+                if let EntryKind::Frame {
+                    dir: Dir::Input,
+                    detail: FrameDetail::Voice,
+                    data: Some(d),
+                    ..
+                } = &e.kind
+                {
+                    Some((e, d.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Find the first STTResult frame to split pre/post
+        let first_stt_seq = entries.iter().find_map(|e| {
+            if let EntryKind::Frame {
+                detail: FrameDetail::STTResult,
+                ..
+            } = &e.kind
+            {
+                e.seq
+            } else {
+                None
+            }
+        });
+
+        if !voice_frames.is_empty() {
+            // Split voice frames at STTResult boundary
+            let (pre_stt, post_stt): (Vec<_>, Vec<_>) =
+                voice_frames.into_iter().partition(|(e, _)| {
+                    first_stt_seq.is_none() || e.seq.unwrap_or(0) < first_stt_seq.unwrap_or(0)
+                });
+
+            // Create input_audio for pre-STT frames
+            if !pre_stt.is_empty() {
+                let frames_data: Vec<Vec<u8>> = pre_stt.iter().map(|(_, d)| d.clone()).collect();
+                let first_at = pre_stt.first().map(|(e, _)| e.received_at);
+                let elapsed_ms = round_info
+                    .and_then(|info| first_at.map(|t| (t - info.started_at).num_milliseconds()))
+                    .unwrap_or(0);
+                let audio_duration_ms = frames_data.len() as u64 * input.frame_duration_ms;
+
+                if let Ok(ogg_data) =
+                    mux_opus_to_ogg(&frames_data, input.frame_duration_ms, input.channels, 16000)
+                {
+                    let _ = (round_data::ActiveModel {
+                        id: Set(gen_id()),
+                        round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),
+                        data_type: Set(DataType::InputAudio.as_str().to_string()),
+                        data: Set(Some(ogg_data)),
+                        text: Set(None),
+                        metadata: Set(Some(serde_json::json!({
+                            "elapsed_ms": elapsed_ms,
+                            "audio_duration_ms": audio_duration_ms,
+                            "format": "ogg",
+                        }))),
+                        ..Default::default()
+                    })
+                    .insert(&txn)
+                    .await;
+                }
+            }
+
+            // Create input_audio_tail for post-STT frames
+            if !post_stt.is_empty() {
+                let frames_data: Vec<Vec<u8>> = post_stt.iter().map(|(_, d)| d.clone()).collect();
+                let first_at = post_stt.first().map(|(e, _)| e.received_at);
+                let elapsed_ms = round_info
+                    .and_then(|info| first_at.map(|t| (t - info.started_at).num_milliseconds()))
+                    .unwrap_or(0);
+                let audio_duration_ms = frames_data.len() as u64 * input.frame_duration_ms;
+
+                if let Ok(ogg_data) =
+                    mux_opus_to_ogg(&frames_data, input.frame_duration_ms, input.channels, 16000)
+                {
+                    let _ = (round_data::ActiveModel {
+                        id: Set(gen_id()),
+                        round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),
+                        data_type: Set(DataType::InputAudioTail.as_str().to_string()),
+                        data: Set(Some(ogg_data)),
+                        text: Set(None),
+                        metadata: Set(Some(serde_json::json!({
+                            "elapsed_ms": elapsed_ms,
+                            "audio_duration_ms": audio_duration_ms,
+                            "format": "ogg",
+                        }))),
+                        ..Default::default()
+                    })
+                    .insert(&txn)
+                    .await;
+                }
             }
         }
 
@@ -377,9 +503,9 @@ impl Recorder {
                     let duration = packets.len() as u64 * 20;
                     match mux_opus_to_ogg(
                         &packets,
-                        tts_frame_duration_ms,
-                        tts_channels,
-                        tts_sample_rate,
+                        tts.frame_duration_ms,
+                        tts.channels,
+                        tts.sample_rate,
                     ) {
                         Ok(data) => Some((data, duration)),
                         Err(e) => {
@@ -423,47 +549,6 @@ impl Recorder {
                         return;
                     }
                 }
-                EntryKind::InputAudio {
-                    frames,
-                    first_frame_at,
-                    frame_duration_ms,
-                    channels,
-                } => {
-                    let elapsed_ms = round_info
-                        .and_then(|info| {
-                            first_frame_at.map(|t| (t - info.started_at).num_milliseconds())
-                        })
-                        .unwrap_or(0);
-                    let num_frames = frames.len();
-                    let audio_duration_ms = num_frames as u64 * frame_duration_ms;
-                    let ogg_data =
-                        match mux_opus_to_ogg(frames, *frame_duration_ms, *channels, 16000) {
-                            Ok(data) => data,
-                            Err(e) => {
-                                tracing::error!("ogg mux error: {e}");
-                                return;
-                            }
-                        };
-                    if (round_data::ActiveModel {
-                        id: Set(gen_id()),
-                        round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),
-                        data_type: Set(DataType::InputAudio.as_str().to_string()),
-                        data: Set(Some(ogg_data)),
-                        text: Set(None),
-                        metadata: Set(Some(serde_json::json!({
-                            "elapsed_ms": elapsed_ms,
-                            "audio_duration_ms": audio_duration_ms,
-                            "format": "ogg",
-                        }))),
-                        ..Default::default()
-                    })
-                    .insert(&txn)
-                    .await
-                    .is_err()
-                    {
-                        return;
-                    }
-                }
                 EntryKind::LlmText { text } => {
                     let elapsed_ms = elapsed_us.map(|u| u / 1000).unwrap_or(0);
                     if (round_data::ActiveModel {
@@ -484,7 +569,7 @@ impl Recorder {
                         return;
                     }
                 }
-                EntryKind::Text { text } => {
+                EntryKind::Text { text, mode } => {
                     let elapsed_ms = elapsed_us.map(|u| u / 1000).unwrap_or(0);
                     if (round_data::ActiveModel {
                         id: Set(gen_id()),
@@ -494,6 +579,7 @@ impl Recorder {
                         text: Set(Some(text.clone())),
                         metadata: Set(Some(serde_json::json!({
                             "elapsed_ms": elapsed_ms,
+                            "mode": mode,
                         }))),
                         ..Default::default()
                     })

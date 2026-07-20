@@ -1,6 +1,6 @@
 import { getAudioBlob, listFrames } from '@/api';
 import type { RoundData } from '@/data/round-data';
-import { ActionIcon, Box, Group, Stack, Switch, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Box, Chip, Group, Stack, Switch, Text, Tooltip } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconPlayerPlayFilled, IconPlayerPauseFilled, IconPlayerStop, IconZoomIn, IconZoomOut } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -16,6 +16,7 @@ interface TimelineProps {
 
 const stepColors: Record<string, string> = {
   input_audio: '#40c057',
+  input_audio_tail: '#a9e34b',
   asr: '#15aabf',
   text: '#fab005',
   llm: '#7950f2',
@@ -301,6 +302,9 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
   const [pixelsPerSecond, setPixelsPerSecond] = useState(80);
   const [currentTime, setCurrentTime] = useState(0);
   const [syncMode, setSyncMode] = useState(true);
+  const [showInputAudio, setShowInputAudio] = useState(true);
+  const [showInputAudioTail, setShowInputAudioTail] = useState(false);
+  const [showTts, setShowTts] = useState(true);
 
   const sorted = useMemo(() => {
     return [...dataItems]
@@ -324,13 +328,24 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
     return isFinite(min) ? min : 0;
   }, [sorted]);
 
+  const hasInputAudio = sorted.some((d) => d.data_type === 'input_audio');
+  const hasInputAudioTail = sorted.some((d) => d.data_type === 'input_audio_tail');
+  const hasTts = sorted.some((d) => d.data_type === 'tts');
+
   const clips = useMemo(() => {
     const result: ClipData[] = [];
     for (let i = 0; i < sorted.length; i++) {
       const d = sorted[i];
+      if (
+        (d.data_type === 'input_audio' && !showInputAudio) ||
+        (d.data_type === 'input_audio_tail' && !showInputAudioTail) ||
+        (d.data_type === 'tts' && !showTts)
+      ) {
+        continue;
+      }
       const dt = (d.metadata?.elapsed_ms as number) ?? (d.metadata?.duration_ms as number) ?? 0;
       let durMs: number;
-      if (d.data_type === 'input_audio' || d.data_type === 'tts') {
+      if (d.data_type === 'input_audio' || d.data_type === 'input_audio_tail' || d.data_type === 'tts') {
         durMs = (d.metadata?.audio_duration_ms as number) ?? 500;
       } else {
         const next = sorted[i + 1];
@@ -354,7 +369,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
       });
     }
     return result;
-  }, [sorted, t0Ms, t]);
+  }, [sorted, t0Ms, t, showInputAudio, showInputAudioTail, showTts]);
 
   const { data: framesData } = useQuery({
     queryKey: ['round-frames', roundId],
@@ -486,7 +501,11 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
 
     (async () => {
       const audioSteps = sorted.filter(
-        (d) => (d.data_type === 'input_audio' || d.data_type === 'tts') && d.create_datetime,
+        (d) => (
+          (d.data_type === 'input_audio' && showInputAudio) ||
+          (d.data_type === 'input_audio_tail' && showInputAudioTail) ||
+          (d.data_type === 'tts' && showTts)
+        ) && d.create_datetime,
       );
       const audioMap = new Map<string, AudioBuffer>();
 
@@ -606,7 +625,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
       setIsPlaying(false);
       setCurrentTime(0);
     };
-  }, [roundId]);
+  }, [roundId, showInputAudio, showInputAudioTail, showTts, sorted, clips, t0Ms, totalDurationMs]);
 
   useEffect(() => {
     wsRef.current?.zoom(pixelsPerSecond);
@@ -661,6 +680,41 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
     <Stack gap={4}>
       <style>{`@keyframes frameCellSweep{0%{background-position:0% 0}100%{background-position:100% 0}}`}</style>
       <Group justify="flex-end" gap={4}>
+        <Group gap={6}>
+          {hasInputAudio && (
+            <Chip
+              size="xs"
+              checked={showInputAudio}
+              onChange={setShowInputAudio}
+              color={stepColors.input_audio}
+              variant="filled"
+            >
+              {t('sessions.step.input_audio')}
+            </Chip>
+          )}
+          {hasInputAudioTail && (
+            <Chip
+              size="xs"
+              checked={showInputAudioTail}
+              onChange={setShowInputAudioTail}
+              color={stepColors.input_audio_tail}
+              variant="filled"
+            >
+              {t('sessions.step.input_audio_tail')}
+            </Chip>
+          )}
+          {hasTts && (
+            <Chip
+              size="xs"
+              checked={showTts}
+              onChange={setShowTts}
+              color={stepColors.tts}
+              variant="filled"
+            >
+              {t('sessions.step.tts')}
+            </Chip>
+          )}
+        </Group>
         <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setPixelsPerSecond((z) => Math.max(z / 1.5, 10))}>
           <IconZoomOut />
         </ActionIcon>
@@ -702,7 +756,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
             const audioDurMs = meta?.audio_duration_ms as number | undefined;
 
             let headerText: string;
-            if (d.data_type === 'input_audio') {
+            if (d.data_type === 'input_audio' || d.data_type === 'input_audio_tail') {
               headerText = audioDurMs != null ? `✓ ${(audioDurMs / 1000).toFixed(1)}s` : '';
             } else if (d.data_type === 'tts') {
               const dataPart = audioDurMs != null ? `✓ ${(audioDurMs / 1000).toFixed(1)}s` : '✓';
@@ -715,7 +769,8 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
                   : `"${d.text.slice(0, 10)}..."(${t('sessions.timeline.char_count', { count: d.text.length })})`
                 : '✓';
               const proc = procMs != null ? `⏱${(procMs / 1000).toFixed(procMs < 1000 ? 1 : 0)}s` : '';
-              headerText = `${txt}${proc ? `｜${proc}` : ''}`;
+              const modeTag = d.metadata?.mode === 'wake' ? ` [${t('sessions.mode.wake')}]` : '';
+              headerText = `${txt}${modeTag}${proc ? `｜${proc}` : ''}`;
             }
 
             return (
@@ -728,7 +783,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
                     {headerText}
                   </Text>
                 </Group>
-                {d.text && d.data_type !== 'input_audio' && (
+                {d.text && d.data_type !== 'input_audio' && d.data_type !== 'input_audio_tail' && (
                   <Text pl={16} size="xs" c="dimmed" style={{ lineHeight: 1.5 }}>
                     &ldquo;{d.text}&rdquo;
                   </Text>

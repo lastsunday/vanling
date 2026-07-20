@@ -20,6 +20,7 @@ import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 
 const stepColors: Record<string, string> = {
   input_audio: 'green',
+  input_audio_tail: 'lime',
   asr: 'cyan',
   text: 'yellow',
   llm: 'violet',
@@ -28,6 +29,7 @@ const stepColors: Record<string, string> = {
 
 const barHexColors: Record<string, string> = {
   input_audio: '#40c057',
+  input_audio_tail: '#69db7c',
   asr: '#15aabf',
   text: '#fab005',
   llm: '#7950f2',
@@ -35,7 +37,7 @@ const barHexColors: Record<string, string> = {
 };
 
 function stepValueMs(s: TurnStep): number | null {
-  if (s.step === 'input_audio' || s.step === 'tts') {
+  if (s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts') {
     return s.audio_duration_ms;
   }
   return s.duration_ms;
@@ -50,7 +52,7 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
   if (valid.length === 0) return null;
 
   const processSteps = steps.filter((s) =>
-    s.step !== 'input_audio' && s.step !== 'text'
+    s.step !== 'input_audio' && s.step !== 'input_audio_tail' && s.step !== 'text'
     && s.has_data && s.duration_ms != null && s.duration_ms >= 0,
   );
   const totalProcessMs = processSteps.reduce((sum, s) => sum + s.duration_ms!, 0);
@@ -58,12 +60,12 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
   const runSteps = steps.filter((s) =>
     s.step !== 'text' && s.has_data,
   ).filter((s) => {
-    const v = s.step === 'input_audio' || s.step === 'tts'
+    const v = s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts'
       ? s.audio_duration_ms : s.duration_ms;
     return v != null && v >= 0;
   });
   const totalRunMs = runSteps.reduce((sum, s) => {
-    return sum + (s.step === 'input_audio' || s.step === 'tts'
+    return sum + (s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts'
       ? (s.audio_duration_ms ?? 0) : (s.duration_ms ?? 0));
   }, 0);
 
@@ -79,7 +81,7 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
           const dur = `${(v / 1000).toFixed(v < 1000 ? 1 : 0)}s`;
 
           let badgeText: string;
-          if (s.step === 'input_audio') {
+          if (s.step === 'input_audio' || s.step === 'input_audio_tail') {
             badgeText = `${label} ${dur}`;
           } else if (s.step === 'tts') {
             badgeText = `${label} ${dur}${proc ? ' ' + proc : ''}`;
@@ -87,7 +89,8 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
             const txt = s.text
               ? ` "${s.text.slice(0, 20)}${s.text.length > 20 ? '...' : ''}"`
               : '';
-            badgeText = `${label}${txt}${proc ? ' ' + proc : ''}`;
+            const modeTag = s.mode === 'wake' ? ` [${t('sessions.mode.wake')}]` : '';
+            badgeText = `${label}${modeTag}${txt}${proc ? ' ' + proc : ''}`;
           }
 
           return (

@@ -76,6 +76,7 @@
     },
     "step": {
       "input_audio": "语音输入",
+      "input_audio_tail": "语音输入（续听）",
       "asr": "语音识别",
       "text": "文本输入",
       "llm": "大模型",
@@ -94,6 +95,9 @@
       "no_data": "无可播放数据",
       "char_count": "{{count}}字",
       "wave_sync": "波形同步"
+    },
+    "mode": {
+      "wake": "唤醒词"
     }
   }
 }

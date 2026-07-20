@@ -76,6 +76,7 @@
     },
     "step": {
       "input_audio": "Voice Input",
+      "input_audio_tail": "Voice Input (Post-STT)",
       "asr": "Speech Recognition",
       "text": "Text Input",
       "llm": "LLM",
@@ -94,6 +95,9 @@
       "no_data": "No playable data",
       "char_count": "{{count}} chars",
       "wave_sync": "Wave Sync"
+    },
+    "mode": {
+      "wake": "Wake Word"
     }
   }
 }

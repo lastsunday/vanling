@@ -74,6 +74,7 @@ pub struct TurnStep {
     pub text: Option<String>,
     pub duration_ms: Option<i64>,
     pub audio_duration_ms: Option<i64>,
+    pub mode: Option<String>,
 }
 
 fn extract_field(d: &&round_data::Model, field: &str) -> Option<i64> {
@@ -81,6 +82,14 @@ fn extract_field(d: &&round_data::Model, field: &str) -> Option<i64> {
         .as_ref()
         .and_then(|m| m.get(field))
         .and_then(|v| v.as_i64())
+}
+
+fn extract_str_field(d: &&round_data::Model, field: &str) -> Option<String> {
+    d.metadata
+        .as_ref()
+        .and_then(|m| m.get(field))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn build_turn_steps(rd: &[round_data::Model]) -> Vec<TurnStep> {
@@ -99,6 +108,7 @@ fn build_turn_steps(rd: &[round_data::Model]) -> Vec<TurnStep> {
                     "input_audio" | "tts" => extract_field(&d, "audio_duration_ms"),
                     _ => None,
                 },
+                mode: extract_str_field(&d, "mode"),
             }
         })
         .collect()

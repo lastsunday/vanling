@@ -4,6 +4,7 @@ export interface TurnStep {
   text: string | null;
   duration_ms: number | null;
   audio_duration_ms: number | null;
+  mode?: string | null;
 }
 
 export interface TurnSummary {
