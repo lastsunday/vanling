@@ -140,13 +140,14 @@ impl InputFilter for RecorderInputFilter {
             }
             Frame::Close(reason) => {
                 tracing::debug!(
+                    component = "recorder", event = "close_frame_received",
                     session_id = %self.session_id,
                     reason = reason.code,
                     "close frame received",
                 );
                 self.record_frame(recorder, now, FrameDetail::Close, None);
             }
-            Frame::Input { text } => {
+            Frame::Input { text, .. } => {
                 self.record_frame(
                     recorder,
                     now,

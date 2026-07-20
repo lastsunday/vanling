@@ -19,6 +19,7 @@ const MAX_OPUS_FRAME_MS: u64 = 120;
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
 
 pub struct DefaultListener {
+    session_id: String,
     temp_voice_data: Vec<f32>,
     voice_data: Vec<f32>,
     vad: Box<dyn Vad>,
@@ -27,20 +28,23 @@ pub struct DefaultListener {
     pub state: ListenState,
     silence_voice_timeout: Option<i64>,
     latest_speaking_time: Option<i64>,
-    /// Sample rate from client hello (defaults to 16000).
     client_input_sample_rate: u32,
-    /// Ring buffer for prefix padding (~300ms of raw audio).
     prefix_buffer: Vec<f32>,
-    /// Whether prefix has been flushed for current speech turn.
     prefix_flushed: bool,
-    /// Accumulates ALL decoded PCM (diagnostic only).
     total_pcm: Vec<f32>,
     pending_text: Option<String>,
+    speech_only_samples: usize,
 }
 
 impl DefaultListener {
-    pub fn new(vad: Box<dyn Vad>, asr: Arc<Mutex<Box<dyn Asr>>>) -> Self {
+    pub fn new(
+        session_id: String,
+        vad: Box<dyn Vad>,
+        asr: Arc<Mutex<Box<dyn Asr>>>,
+        silence_voice_timeout: Option<i64>,
+    ) -> Self {
         Self {
+            session_id,
             vad,
             asr,
             temp_voice_data: Vec::new(),
@@ -49,13 +53,14 @@ impl DefaultListener {
                 ropus::Decoder::new(DEFAULT_SAMPLE_RATE, ropus::Channels::Mono).unwrap(),
             ),
             state: ListenState::Idle,
-            silence_voice_timeout: None,
+            silence_voice_timeout,
             latest_speaking_time: None,
             client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             prefix_flushed: false,
             total_pcm: Vec::new(),
             pending_text: None,
+            speech_only_samples: 0,
         }
     }
 }
@@ -81,8 +86,14 @@ impl Listener for DefaultListener {
                         ropus::DecodeMode::Normal,
                     ) {
                         Ok(len) => len,
-                        Err(_) => {
-                            tracing::warn!("opus decode error");
+                        Err(e) => {
+                            tracing::warn!(
+                                component = "vad", event = "opus_decode_error",
+                                session_id = %self.session_id,
+                                data_len = data.len(),
+                                error = %e,
+                                "opus decode error"
+                            );
                             return;
                         }
                     };
@@ -105,11 +116,22 @@ impl Listener for DefaultListener {
                             return;
                         }
 
+                        let was_speech =
+                            matches!(self.state, ListenState::Listening { is_speech: true });
                         if self.vad.is_speech() {
                             self.state = ListenState::Listening { is_speech: true };
                             self.latest_speaking_time = Some(Local::now().timestamp_millis());
                         } else {
                             self.prefix_flushed = false;
+                        }
+                        if !was_speech
+                            && matches!(self.state, ListenState::Listening { is_speech: true })
+                        {
+                            tracing::debug!(
+                                component = "vad", event = "speech_started",
+                                session_id = %self.session_id,
+                                "listener: speech started"
+                            );
                         }
 
                         if let ListenState::Listening { is_speech: true } = self.state {
@@ -119,6 +141,7 @@ impl Listener for DefaultListener {
                                 self.prefix_flushed = true;
                             } else {
                                 self.voice_data.extend_from_slice(&window);
+                                self.speech_only_samples += window.len();
                             }
                         }
                     }
@@ -128,6 +151,12 @@ impl Listener for DefaultListener {
                 {
                     let offset_time = Local::now().timestamp_millis() - latest_speaking_time;
                     if offset_time >= silence_voice_timeout {
+                        tracing::debug!(
+                            component = "vad", event = "silence_timeout",
+                            session_id = %self.session_id,
+                            silence_ms = offset_time,
+                            "listener: silence timeout"
+                        );
                         self.state = ListenState::End;
                     }
                 }
@@ -136,6 +165,12 @@ impl Listener for DefaultListener {
     }
 
     fn reconfigure(&mut self, params: &AudioParam) {
+        tracing::debug!(
+            component = "listener", event = "listener_reconfigure",
+            session_id = %self.session_id,
+            sample_rate = params.sample_rate,
+            "listener reconfigure"
+        );
         self.client_input_sample_rate = params.sample_rate;
         let mut dec = self.decoder.lock().unwrap();
         *dec = ropus::Decoder::new(params.sample_rate, ropus::Channels::Mono).unwrap();
@@ -158,7 +193,16 @@ impl Listener for DefaultListener {
             return (Vec::new(), Ok(ListenResult::Text(text)));
         }
         let voice_data = core::mem::take(&mut self.voice_data);
-        if voice_data.is_empty() {
+        let speech_only = self.speech_only_samples;
+        self.speech_only_samples = 0;
+        if voice_data.is_empty() || speech_only < 3200 {
+            tracing::debug!(
+                component = "asr", event = "speech_too_short",
+                session_id = %self.session_id,
+                speech_only,
+                voice_data_len = voice_data.len(),
+                "asr: speech too short, skipping"
+            );
             return (
                 voice_data,
                 Ok(ListenResult::Audio {
@@ -168,22 +212,53 @@ impl Listener for DefaultListener {
             );
         }
         let mut asr = self.asr.lock().await;
+        tracing::debug!(
+            component = "asr", event = "asr_start",
+            session_id = %self.session_id,
+            speech_only_samples = speech_only,
+            "asr start"
+        );
         let result = asr
             .transcribe(self.client_input_sample_rate, &voice_data)
             .await;
         match result {
-            Ok(transcript) => (
-                voice_data,
-                Ok(ListenResult::Audio {
-                    text: transcript.text,
-                    prob: transcript.prob,
-                }),
-            ),
+            Ok(transcript) => {
+                let text = transcript.text;
+                let cleaned: String = text
+                    .chars()
+                    .filter(|c| !c.is_ascii_punctuation() && !is_cjk_punctuation(*c))
+                    .collect();
+                if cleaned.trim().is_empty() {
+                    tracing::debug!(component = "asr", event = "asr_no_meaningful_text", session_id = %self.session_id, %text, "asr: no meaningful text, skipping");
+                    return (
+                        voice_data,
+                        Ok(ListenResult::Audio {
+                            text: String::new(),
+                            prob: transcript.prob,
+                        }),
+                    );
+                }
+                tracing::debug!(
+                    component = "asr", event = "asr_complete",
+                    session_id = %self.session_id,
+                    text = %cleaned,
+                    prob = transcript.prob,
+                    "asr complete"
+                );
+                (
+                    voice_data,
+                    Ok(ListenResult::Audio {
+                        text,
+                        prob: transcript.prob,
+                    }),
+                )
+            }
             Err(e) => (voice_data, Err(e)),
         }
     }
 
     async fn reset(&mut self, silence_voice_timeout: Option<i64>) {
+        tracing::debug!(component = "listener", event = "listener_reset", session_id = %self.session_id, "listener reset");
         self.state = ListenState::Idle;
         self.silence_voice_timeout = silence_voice_timeout;
         self.latest_speaking_time = None;
@@ -194,9 +269,55 @@ impl Listener for DefaultListener {
         self.prefix_flushed = false;
         self.total_pcm.clear();
         self.pending_text = None;
+        self.speech_only_samples = 0;
     }
 
     async fn get_raw_pcm(&mut self) -> Vec<f32> {
         core::mem::take(&mut self.total_pcm)
     }
+
+    fn poll_timeout(&mut self) -> Option<()> {
+        match self.state {
+            ListenState::Listening { is_speech: true } => {
+                if let (Some(timeout), Some(last)) =
+                    (self.silence_voice_timeout, self.latest_speaking_time)
+                    && Local::now().timestamp_millis() - last >= timeout
+                {
+                    self.state = ListenState::End;
+                    return Some(());
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+}
+
+fn is_cjk_punctuation(c: char) -> bool {
+    matches!(
+        c,
+        '。' | '，'
+            | '、'
+            | '；'
+            | '：'
+            | '？'
+            | '！'
+            | '（'
+            | '）'
+            | '【'
+            | '】'
+            | '《'
+            | '》'
+            | '「'
+            | '」'
+            | '『'
+            | '』'
+            | '〝'
+            | '〞'
+            | '─'
+            | '—'
+            | '…'
+            | '～'
+            | '·'
+    )
 }

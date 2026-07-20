@@ -17,7 +17,7 @@ use ruma::{
     serde::Raw,
 };
 use service::chobits::{
-    frame::{Frame, FrameResult},
+    frame::{Frame, FrameResult, InputMode},
     mcp::McpRegistry,
     message::{hello::HelloMessage, tts::TtsState},
     session::{AudioConfig as ServiceAudioConfig, SessionConfig as ServiceSessionConfig},
@@ -237,7 +237,9 @@ impl Bot {
                 system_prompt: self.session_config.system_prompt.clone(),
                 max_prompt_len: self.session_config.max_prompt_len,
                 silence_voice_timeout: self.session_config.silence_voice_timeout,
-                close_connection_no_voice_time: self.session_config.close_connection_no_voice_time,
+                close_connection_no_activity_time: self
+                    .session_config
+                    .close_connection_no_activity_time,
             };
             let audio_config = ServiceAudioConfig {
                 output_sample_rate: self
@@ -257,8 +259,10 @@ impl Bot {
             let session_ctx = service::chobits::session::SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
+                    id.clone(),
                     VadManager::create_model(&self.vad_config),
                     AsrManager::global().default().clone(),
+                    self.session_config.silence_voice_timeout,
                 )))
                 .with_chii(chii)
                 .with_tts(tts)
@@ -370,7 +374,10 @@ impl Bot {
             .unwrap_or_else(|| panic!("session not exists for provided session key"))
             .clone();
         drop(session_map);
-        let _ = tx.send(Frame::Input { text: t.body });
+        let _ = tx.send(Frame::Input {
+            text: t.body,
+            mode: InputMode::Normal,
+        });
         Ok(())
     }
 

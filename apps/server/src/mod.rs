@@ -105,7 +105,9 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         url: config.database_url.to_owned(),
     });
     let session_config = Arc::new(SessionConfig {
-        close_connection_no_voice_time: config.session_close_connection_no_voice_time.to_owned(),
+        close_connection_no_activity_time: config
+            .session_close_connection_no_activity_time
+            .to_owned(),
         silence_voice_timeout: config.session_silence_voice_timeout.to_owned(),
         system_prompt: config.session_system_prompt.to_owned(),
         max_prompt_len: config.session_max_prompt_len.to_owned(),
@@ -123,6 +125,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         num_threads: config.vad_num_threads,
         threshold: config.vad_threshold,
         min_silence_duration: config.vad_min_silence_duration,
+        min_speech_duration: config.vad_min_speech_duration,
     });
     let audio_config = Arc::new(AudioConfig {
         output_sample_rate: config.audio_output_sample_rate,

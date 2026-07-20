@@ -104,6 +104,11 @@
 #
 #vad_min_silence_duration = 1000
 
+# Minimum continuous speech duration in ms before VAD triggers is_speech.
+# Prevents short noise bursts from being classified as speech.
+#
+#vad_min_speech_duration = 300
+
 # Available values: mute, matcha_tts.
 #
 # Text-to-Speech model to use.
@@ -205,9 +210,9 @@
 #
 #audio_output_frame_duration = 20
 
-# Time in ms before closing connection when no voice detected.
+# Time in ms before closing connection when no activity detected.
 #
-#session_close_connection_no_voice_time = 30000
+#session_close_connection_no_activity_time = 30000
 
 # Silence timeout in ms during active voice session.
 #

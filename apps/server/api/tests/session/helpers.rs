@@ -24,6 +24,7 @@ use serde::Serialize;
 use service::chobits::{
     frame::{Frame, FrameResult, OutputMessage},
     mcp::McpRegistry,
+    message::tts::{TtsMessage, TtsState},
     session::{
         AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
     },
@@ -128,6 +129,7 @@ pub async fn create_session() -> Result<
     let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
+            session_id.clone(),
             VadManager::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
                 ..Default::default()
@@ -142,11 +144,12 @@ pub async fn create_session() -> Result<
                 ),
                 variant: None,
             }))),
+            Some(1200),
         )))
         .with_chii(chii)
         .with_tts(tts)
         .with_config(ServiceSessionConfig {
-            close_connection_no_voice_time: Some(3000),
+            close_connection_no_activity_time: Some(3000),
             silence_voice_timeout: Some(1200),
             system_prompt: Some(String::from(
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
@@ -169,6 +172,15 @@ pub async fn create_session() -> Result<
 }
 
 pub async fn create_mini_session_channel() -> (
+    mpsc::UnboundedSender<Frame>,
+    mpsc::UnboundedReceiver<OutputMessage>,
+) {
+    create_mini_session_with_timeout(3000).await
+}
+
+pub async fn create_mini_session_with_timeout(
+    close_connection_no_activity_time_ms: i64,
+) -> (
     mpsc::UnboundedSender<Frame>,
     mpsc::UnboundedReceiver<OutputMessage>,
 ) {
@@ -207,6 +219,7 @@ pub async fn create_mini_session_channel() -> (
     let session_ctx = SessionBuilder::new()
         .with_id(session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
+            session_id.clone(),
             VadManager::create_model(&Arc::new(VadConfig {
                 model: Some(VadModel::Earshot),
                 ..Default::default()
@@ -215,11 +228,12 @@ pub async fn create_mini_session_channel() -> (
                 model: Some(AsrModel::Void),
                 ..Default::default()
             }))),
+            Some(1200),
         )))
         .with_chii(chii)
         .with_tts(tts)
         .with_config(ServiceSessionConfig {
-            close_connection_no_voice_time: Some(3000),
+            close_connection_no_activity_time: Some(close_connection_no_activity_time_ms),
             silence_voice_timeout: Some(1200),
             system_prompt: Some(String::from(
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
@@ -245,59 +259,6 @@ pub async fn create_session_channel() -> (
     let (session, input_tx, output_rx, container, state) = create_session().await.unwrap();
     tokio::spawn(session.start());
     (input_tx, output_rx, container, state)
-}
-
-pub fn get_audio() -> Vec<Vec<u8>> {
-    use std::path::PathBuf;
-
-    let wav_file: PathBuf = [
-        env!("CARGO_MANIFEST_DIR"),
-        "resources",
-        "test",
-        "samples_jfk.wav",
-    ]
-    .iter()
-    .collect();
-    debug!("{}", wav_file.display());
-    let (pcm_data, sample_rate) = pcm_decode(wav_file).unwrap();
-    debug!(
-        "pcm_data len = {},sample_rate = {}",
-        pcm_data.len(),
-        sample_rate
-    );
-
-    const ENCODE_SAMPLE_RATE: u32 = 16000;
-    let mut encoder = ropus::Encoder::builder(
-        ENCODE_SAMPLE_RATE,
-        ropus::Channels::Mono,
-        ropus::Application::Audio,
-    )
-    .build()
-    .unwrap();
-
-    // 16000Hz * 1 channel * 20 ms / 1000 = 320
-    const MONO_20MS: usize = ENCODE_SAMPLE_RATE as usize * 20 / 1000;
-    let size = MONO_20MS;
-    debug!("size = {}", size);
-    let len = pcm_data.len();
-    let mut count = len / size;
-    if len % size > 0 {
-        count += 1;
-    }
-    debug!("count = {}", count);
-    let mut audio: Vec<Vec<u8>> = Vec::new();
-
-    for n in 0..count {
-        let start = n * size;
-        let end = cmp::min((n + 1) * size, len);
-        let mut buf = vec![0u8; size * 4];
-        let written = encoder
-            .encode_float(&pcm_data[start..end], &mut buf)
-            .unwrap();
-        buf.truncate(written);
-        audio.push(buf);
-    }
-    audio
 }
 
 /// Generate Opus-encoded audio frames from text via Matcha TTS.
@@ -335,33 +296,79 @@ pub async fn get_tts_audio(text: &str) -> Vec<Vec<u8>> {
     all_audio
 }
 
+/// Default timeout for recv operations.
+const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Receive the next frame with a per-step timeout.
 /// Panics on timeout or channel close.
+/// Set `TEST_RECV_TIMEOUT` env var (seconds) to override default 60s timeout.
 pub async fn recv_frame(
     rx: &mut mpsc::UnboundedReceiver<OutputMessage>,
     step: &str,
 ) -> FrameResult {
-    tokio::time::timeout(Duration::from_secs(10), rx.recv())
+    let timeout = std::env::var("TEST_RECV_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_RECV_TIMEOUT);
+    let msg = tokio::time::timeout(timeout, rx.recv())
         .await
-        .unwrap_or_else(|_| panic!("timeout at: {}", step))
-        .unwrap_or_else(|| panic!("closed at: {}", step))
-        .payload
+        .unwrap_or_else(|_| panic!("timeout at: {step}"))
+        .unwrap_or_else(|| panic!("closed at: {step}"));
+    tracing::debug!(payload = %msg.payload, epoch = msg.epoch, step, "<<< recv");
+    msg.payload
 }
 
-pub fn to_json_rpc_response<T>(id: i64, result: T) -> JsonRpcMessage
-where
-    T: Serialize,
-{
-    JsonRpcMessage::Response(JsonRpcResponse {
-        jsonrpc: JsonRpcVersion2_0,
-        id: RequestId::Number(id),
-        result: to_json_object(result),
-    })
+/// Send a frame with tracing log.
+pub fn send_frame(tx: &mpsc::UnboundedSender<Frame>, frame: Frame) {
+    tracing::debug!(%frame, ">>> send");
+    tx.send(frame).expect("send frame failed");
 }
 
-pub fn to_json_object<T>(value: T) -> JsonObject
-where
-    T: Serialize,
-{
-    object(serde_json::to_value(value).unwrap())
+/// Drain the LLM+TTS sentence loop until TTSResult(Stop).
+/// Each iteration: LLMResult → SentenceStart → AudioResult* → SentenceEnd.
+/// Returns the number of sentences processed.
+pub async fn recv_llm_tts_loop(
+    rx: &mut mpsc::UnboundedReceiver<OutputMessage>,
+    round: &str,
+) -> usize {
+    let mut sentences = 0;
+    loop {
+        match recv_frame(rx, &format!("{round}/llm or stop")).await {
+            FrameResult::LLMResult(..) => {
+                sentences += 1;
+                let f = recv_frame(rx, &format!("{round}/sentence start")).await;
+                assert!(
+                    matches!(
+                        f,
+                        FrameResult::TTSResult(TtsMessage {
+                            state: Some(TtsState::SentenceStart),
+                            ..
+                        })
+                    ),
+                    "expected TTSResult(SentenceStart), got {f}"
+                );
+                loop {
+                    match recv_frame(rx, &format!("{round}/audio or end")).await {
+                        FrameResult::AudioResult(_) => {}
+                        FrameResult::TTSResult(TtsMessage {
+                            state: Some(TtsState::SentenceEnd),
+                            ..
+                        }) => break,
+                        other => {
+                            panic!("{round}: expected AudioResult or SentenceEnd, got {other}")
+                        }
+                    }
+                }
+            }
+            FrameResult::TTSResult(TtsMessage {
+                state: Some(TtsState::Stop),
+                ..
+            }) => break,
+            other => {
+                panic!("{round}: expected LLMResult or TTSResult(Stop), got {other}")
+            }
+        }
+    }
+    sentences
 }

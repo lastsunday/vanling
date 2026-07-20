@@ -236,7 +236,22 @@ impl Recorder {
     pub fn start_round(&self, round_id: String, session_id: Option<String>) {
         let now = Local::now().fixed_offset();
         let voice_start = self.voice_start.lock().map_or(None, |mut vs| vs.take());
-        let started_at = voice_start.map(|vs| vs.min(now)).unwrap_or(now);
+        let mut started_at = voice_start.map(|vs| vs.min(now)).unwrap_or(now);
+        if let Ok(entries) = self.entries.lock() {
+            for entry in entries.iter() {
+                if let EntryKind::Frame {
+                    dir: Dir::Input,
+                    detail: FrameDetail::Voice,
+                    ..
+                } = &entry.kind
+                {
+                    if entry.received_at < started_at {
+                        started_at = entry.received_at;
+                    }
+                    break;
+                }
+            }
+        }
         if let Ok(mut info) = self.round_info.lock() {
             *info = Some(RoundInfo {
                 round_id,

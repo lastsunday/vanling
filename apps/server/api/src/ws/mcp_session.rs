@@ -36,6 +36,7 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
                 }
                 Err(e) => {
                     tracing::warn!(
+                        component = "mcp", event = "mcp_server_init_failed",
                         session_id = %session_id,
                         uri = %uri,
                         error = %e,
@@ -56,12 +57,14 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
                 let mut reg = mcp_registry.lock().await;
                 reg.add_client(client).await;
                 tracing::debug!(
+                    component = "mcp", event = "device_mcp_client_initialized",
                     session_id = %mcp_session_id,
                     "device mcp client initialized"
                 );
             }
             Err(e) => {
                 tracing::warn!(
+                    component = "mcp", event = "device_mcp_client_init_failed",
                     session_id = %mcp_session_id,
                     error = %e,
                     "device mcp client init failed"
@@ -103,11 +106,11 @@ impl InputFilter for McpRouterFilter {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(error = %e, "failed to convert mcp payload");
+                    tracing::warn!(component = "mcp", event = "mcp_payload_convert_failed", error = %e, "failed to convert mcp payload");
                 }
             },
             Err(e) => {
-                tracing::warn!(error = %e, "failed to serialize mcp payload");
+                tracing::warn!(component = "mcp", event = "mcp_payload_serialize_failed", error = %e, "failed to serialize mcp payload");
             }
         }
 

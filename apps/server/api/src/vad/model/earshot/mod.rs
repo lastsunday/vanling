@@ -13,6 +13,10 @@ pub struct VadEarshot {
     current_silence_duration: f32,
     prediction_list: Vec<f32>,
     threshold: f32,
+    /// Minimum continuous speech duration (ms) before triggering is_speech.
+    min_speech_duration: f32,
+    /// Accumulated speech duration (ms) in current pre-speech window.
+    speech_duration_ms: f32,
 }
 
 impl VadEarshot {
@@ -27,7 +31,18 @@ impl VadEarshot {
             current_silence_duration: 0.0,
             prediction_list: Vec::new(),
             threshold: config.threshold.expect("threshold should have default"),
+            min_speech_duration: config.min_speech_duration.unwrap_or(300.0),
+            speech_duration_ms: 0.0,
         })
+    }
+}
+
+impl VadEarshot {
+    fn clear_state(&mut self) {
+        self.is_speech = false;
+        self.current_silence_duration = 0.0;
+        self.prediction_list.clear();
+        self.speech_duration_ms = 0.0;
     }
 }
 
@@ -38,19 +53,22 @@ impl Vad for VadEarshot {
         if !self.is_speech {
             if score >= self.threshold {
                 self.prediction_list.push(score);
+                self.speech_duration_ms += (samples.len() as f32 / sample_rate as f32) * 1000.0;
             } else {
-                self.clear();
+                self.prediction_list.clear();
+                self.speech_duration_ms = 0.0;
             }
 
-            // avoid some noise trigger speech detect
-            if self.prediction_list.len() >= 5 && !self.is_speech {
+            if self.prediction_list.len() >= 10
+                && self.speech_duration_ms >= self.min_speech_duration
+            {
                 self.is_speech = true;
             }
         } else if score >= self.threshold {
             self.current_silence_duration = 0.0;
         } else {
             if self.current_silence_duration > self.min_silence_duration {
-                self.clear();
+                self.clear_state();
             }
             self.current_silence_duration += (samples.len() as f32 / sample_rate as f32) * 1000.0;
         }
@@ -62,10 +80,7 @@ impl Vad for VadEarshot {
     }
 
     fn clear(&mut self) {
-        self.detector.reset();
-        self.is_speech = false;
-        self.current_silence_duration = 0.0;
-        self.prediction_list.clear();
+        self.clear_state();
     }
 
     fn window_size(&self) -> usize {

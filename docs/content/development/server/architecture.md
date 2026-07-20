@@ -237,11 +237,10 @@ TtsManager (OnceLock)
 
 ## 会话活动超时
 
-Session 使用 `AtomicI64` 记录最新活动时间戳（`latest_activity_time`）：
+Session 在主循环中通过空闲时间戳实现无活动超时：
 
-- `update_latest_activity_time()` 更新时间
-- `get_latest_activity_time()` 返回时间
-- `close_connection_no_voice_time`（默认 30s）静默超时断连
+- `idle_since: Option<Instant>` 记录进入空闲的时间点，非空闲时重置为 `None`
+- `close_connection_no_activity_time`（默认 30s）无活动超时断连
 - `silence_voice_timeout`（默认 1200ms）VAD 静默判定
 
 ## 中断（BargeIn）
@@ -253,3 +252,44 @@ Session 使用 `AtomicI64` 记录最新活动时间戳（`latest_activity_time`�
 3. 当前 Running Round 被取消
 4. Epoch 递增，后续过期的 OutputMessage 被丢弃
 5. 新 Shadow Round 升级为 Running Round
+
+## 日志与可观测性
+
+### 输出格式
+
+日志以结构化格式输出：
+
+```
+2026-07-20T08:58:12.870289Z DEBUG [<SESSION> asr result] component="session" event="asr_result" session_id=... text=Yeah.
+```
+
+- 括号对 `[<COMPONENT> message]` 之间为纯人类可读文本
+- 其后为 `key=value` 结构化字段，可被机器解析
+- 组件名大写：`SESSION`、`VAD`、`ROUND`、`LISTENER`、`ASR`、`MCP`、`WS`
+
+### 结构化字段约定
+
+| 字段 | 用途 | 示例 |
+|------|------|------|
+| `component` | 组件名 | `session`、`vad`、`ws` |
+| `event` | 事件名 | `asr_result`、`voice_received`、`round_upgraded` |
+| `session_id` | 会话 ID | — |
+| `reason` | 原因 | `timeout`、`barge_in` |
+
+### 输出目标
+
+- **Console**（text/compact）：`[<COMPONENT> msg]` 格式 + `FmtSpan::NONE`
+- **File**（JSON）：完整结构化日志 + `FmtSpan::CLOSE`
+- **Pretty** / **Json**：不使用 bracket 前缀
+
+### 日志级别指南
+
+| 级别 | 用途 |
+|------|------|
+| `error!` | 不可恢复错误、连接中断、ASR/TTS 失败 |
+| `warn!` | 异常但可恢复的情况 |
+| `info!` | 关键流程（session 开始/结束、round 升级） |
+| `debug!` | 详细事件（ASR 结果、VAD 状态变更） |
+| `trace!` | 数据帧内容、调试用细节 |
+
+禁止 `println!()` / `eprintln!()`。

@@ -2,7 +2,7 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "4a2aea105045383105dbce4552861293ffde9623"
+source_file_hash = "253ffc3c2552a57a5941146ddc09ad8b4ff6979f"
 translated_at = "2026-07-09T21:00:00Z"
 +++
 
@@ -240,11 +240,10 @@ Model variants are selected via config and instantiated at startup.
 
 ## Session Activity Timeout
 
-Sessions use `AtomicI64` to track the latest activity timestamp (`latest_activity_time`):
+Sessions implement no-activity timeout via idle timestamp tracking in the main loop:
 
-- `update_latest_activity_time()` updates the timestamp
-- `get_latest_activity_time()` returns the timestamp
-- `close_connection_no_voice_time` (default 30s): silence disconnect timeout
+- `idle_since: Option<Instant>` records when the session became idle; reset to `None` on activity
+- `close_connection_no_activity_time` (default 30s): no-activity disconnect timeout
 - `silence_voice_timeout` (default 1200ms): VAD silence detection
 
 ## Interruption (BargeIn)
@@ -256,3 +255,44 @@ Users can interrupt TTS playback:
 3. Current Running Round is cancelled
 4. Epoch is incremented, stale OutputMessages are discarded
 5. New Shadow Round upgrades to Running Round
+
+## Logging and Observability
+
+### Output Format
+
+Logs use a structured output format:
+
+```
+2026-07-20T08:58:12.870289Z DEBUG [<SESSION> asr result] component="session" event="asr_result" session_id=... text=Yeah.
+```
+
+- The `[<COMPONENT> message]` bracket pair contains human-readable text
+- After the brackets, `key=value` structured fields provide machine-parseable data
+- Component names are uppercase: `SESSION`, `VAD`, `ROUND`, `LISTENER`, `ASR`, `MCP`, `WS`
+
+### Structured Field Convention
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `component` | Component name | `session`, `vad`, `ws` |
+| `event` | Event name | `asr_result`, `voice_received`, `round_upgraded` |
+| `session_id` | Session ID | — |
+| `reason` | Reason | `timeout`, `barge_in` |
+
+### Output Targets
+
+- **Console** (text/compact): `[<COMPONENT> msg]` format + `FmtSpan::NONE`
+- **File** (JSON): Full structured logging + `FmtSpan::CLOSE`
+- **Pretty** / **Json**: No bracket prefix
+
+### Log Level Guidelines
+
+| Level | Usage |
+|-------|-------|
+| `error!` | Unrecoverable errors, connection drops, ASR/TTS failures |
+| `warn!` | Recoverable anomalies |
+| `info!` | Key lifecycle events (session start/end, round upgrade) |
+| `debug!` | Detailed events (ASR results, VAD state changes) |
+| `trace!` | Raw frame data, debugging details |
+
+`println!()` / `eprintln!()` are prohibited.

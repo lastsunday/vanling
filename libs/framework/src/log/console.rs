@@ -1,5 +1,6 @@
 use std::{env, io, sync::LazyLock};
 
+use std::fmt::Write as _;
 use tracing::{
     Event, Level, Subscriber,
     field::{Field, Visit},
@@ -9,7 +10,7 @@ use tracing_subscriber::{
     fmt,
     fmt::{
         FmtContext, FormatEvent, FormatFields, MakeWriter,
-        format::{Compact, DefaultVisitor, Format, Full, Pretty, Writer},
+        format::{Compact, Format, Full, Pretty, Writer},
     },
     registry::LookupSpan,
 };
@@ -119,32 +120,89 @@ where
     }
 }
 
-struct ConsoleVisitor<'a> {
-    visitor: DefaultVisitor<'a>,
-}
-
 impl<'writer> FormatFields<'writer> for ConsoleFormat {
-    fn format_fields<R>(&self, writer: Writer<'writer>, fields: R) -> Result<(), std::fmt::Error>
+    fn format_fields<R>(
+        &self,
+        mut writer: Writer<'writer>,
+        fields: R,
+    ) -> Result<(), std::fmt::Error>
     where
         R: RecordFields,
     {
-        let mut visitor = ConsoleVisitor {
-            visitor: DefaultVisitor::<'_>::new(writer, true),
-        };
+        let mut component = String::new();
+        let mut message = String::new();
+        let mut buf = String::new();
 
-        fields.record(&mut visitor);
+        {
+            struct V<'a> {
+                component: &'a mut String,
+                message: &'a mut String,
+                buf: &'a mut String,
+            }
 
-        Ok(())
-    }
-}
+            impl Visit for V<'_> {
+                fn record_str(&mut self, field: &Field, value: &str) {
+                    if field.name() == "component" {
+                        *self.component = value.to_owned();
+                    }
 
-impl Visit for ConsoleVisitor<'_> {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if field.name().starts_with('_') {
-            return;
+                    if !field.name().starts_with('_') {
+                        let _ = write!(self.buf, " {}=\"{}\"", field.name(), value);
+                    }
+                }
+
+                fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                    if field.name() == "message" {
+                        *self.message = format!("{:?}", value);
+                    } else if !field.name().starts_with('_') {
+                        let _ = write!(self.buf, " {}={:?}", field.name(), value);
+                    }
+                }
+
+                fn record_i64(&mut self, field: &Field, value: i64) {
+                    if !field.name().starts_with('_') {
+                        let _ = write!(self.buf, " {}={}", field.name(), value);
+                    }
+                }
+
+                fn record_u64(&mut self, field: &Field, value: u64) {
+                    if !field.name().starts_with('_') {
+                        let _ = write!(self.buf, " {}={}", field.name(), value);
+                    }
+                }
+
+                fn record_bool(&mut self, field: &Field, value: bool) {
+                    if !field.name().starts_with('_') {
+                        let _ = write!(self.buf, " {}={}", field.name(), value);
+                    }
+                }
+
+                fn record_error(&mut self, _field: &Field, _value: &dyn std::error::Error) {
+                    // Skip error fields — they're redundant with record_debug
+                }
+            }
+
+            let mut visitor = V {
+                component: &mut component,
+                message: &mut message,
+                buf: &mut buf,
+            };
+            fields.record(&mut visitor);
         }
 
-        self.visitor.record_debug(field, value);
+        if !component.is_empty() {
+            write!(
+                writer,
+                "[<{}> {}]{}",
+                component.to_uppercase(),
+                message,
+                buf
+            )?;
+        } else {
+            write!(writer, "{}{}", message, buf)?;
+        }
+
+        Ok(())
     }
 }
 

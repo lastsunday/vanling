@@ -18,28 +18,66 @@ use crate::chobits::message::{
 #[derive(Debug, Clone)]
 pub enum Frame {
     Hello(HelloMessage),
-    ListenStart { barge_in: bool },
+    ListenStart {
+        barge_in: bool,
+        is_voice_break_detect: bool,
+    },
     ListenStop,
-    Input { text: String },
-    Voice { data: Vec<u8> },
+    Input {
+        text: String,
+        mode: InputMode,
+    },
+    Voice {
+        data: Vec<u8>,
+    },
     Abort(AbortMessage),
-    Ping { data: Vec<u8> },
-    Pong { data: Vec<u8> },
+    Ping {
+        data: Vec<u8>,
+    },
+    Pong {
+        data: Vec<u8>,
+    },
     Close(CloseMessage),
     Mcp(McpMessage),
-    Error { code: u32, message: String },
-    UnknownText { data: Vec<u8> },
+    Error {
+        code: u32,
+        message: String,
+    },
+    UnknownText {
+        data: Vec<u8>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum InputMode {
+    Normal,
+    Wake,
+}
+
+impl fmt::Display for InputMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InputMode::Normal => write!(f, "Normal"),
+            InputMode::Wake => write!(f, "Wake"),
+        }
+    }
 }
 
 impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Frame::Hello(msg) => write!(f, "Hello(session_id={:?})", msg.session_id),
-            Frame::ListenStart { barge_in } => {
-                write!(f, "ListenStart(barge_in={barge_in})")
+            Frame::ListenStart {
+                barge_in,
+                is_voice_break_detect,
+            } => {
+                write!(
+                    f,
+                    "ListenStart(barge_in={barge_in},is_voice_break_detect={is_voice_break_detect})"
+                )
             }
             Frame::ListenStop => write!(f, "ListenStop"),
-            Frame::Input { text } => write!(f, "Input(text=\"{text}\")"),
+            Frame::Input { text, mode } => write!(f, "Input(text=\"{text}\",mode=\"{mode}\")"),
             Frame::Voice { data } => write!(f, "Voice(data_len={})", data.len()),
             Frame::Abort(msg) => write!(f, "Abort(reason={:?})", msg.reason),
             Frame::Ping { data } => write!(f, "Ping(data_len={})", data.len()),

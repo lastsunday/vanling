@@ -36,4 +36,5 @@ pub trait Listener: Send + Sync {
     async fn get_raw_pcm(&mut self) -> Vec<f32> {
         Vec::new()
     }
+    fn poll_timeout(&mut self) -> Option<()>;
 }

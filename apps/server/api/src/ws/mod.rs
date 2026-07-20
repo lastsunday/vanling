@@ -14,13 +14,13 @@ use axum_extra::{TypedHeader, headers};
 use framework::id::gen_id;
 use framework::prelude::error as error_code;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use service::chobits::frame::{Frame, OutputMessage};
+use service::chobits::frame::{Frame, FrameResult, OutputMessage};
 use service::chobits::session::{self, SessionBuilder};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::StreamMap;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, Level, span};
+
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -111,7 +111,9 @@ impl SocketContext {
             system_prompt: self.session_config.system_prompt.clone(),
             max_prompt_len: self.session_config.max_prompt_len,
             silence_voice_timeout: self.session_config.silence_voice_timeout,
-            close_connection_no_voice_time: self.session_config.close_connection_no_voice_time,
+            close_connection_no_activity_time: self
+                .session_config
+                .close_connection_no_activity_time,
         }
     }
 
@@ -133,21 +135,22 @@ impl SocketContext {
     }
 }
 
-#[tracing::instrument(skip_all, fields(session_id = %ctx.session_id))]
 pub(crate) async fn handle_socket<W, R>(ctx: SocketContext, write: W, read: R)
 where
     W: Sink<Message> + Unpin + Send + 'static,
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    tracing::info!("session started");
+    tracing::info!(component = "ws", event = "session_started", session_id = %ctx.session_id, "session started");
 
     let mcp_ctx = setup_mcp_session(ctx.session_id.clone(), &ctx.mcp_config).await;
 
     let session_ctx = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
         .with_listener(Box::new(DefaultListener::new(
+            ctx.session_id.clone(),
             VadManager::create_model(&ctx.vad_config),
             AsrManager::global().default().clone(),
+            ctx.session_config.silence_voice_timeout,
         )))
         .with_chii(Arc::new(
             ChiiCoreBuilder::new()
@@ -186,38 +189,27 @@ where
 
     let translator = protocol_translator::XiaozhiProtocolTranslator;
 
-    let session_handle = tokio::spawn(
-        session_ctx
-            .session
-            .start()
-            .instrument(span!(Level::DEBUG, "session")),
-    );
-    let output_handle = tokio::spawn(
-        ws_output(
-            write,
-            translator,
-            output_streams,
-            output_filters,
-            cancel.child_token(),
-            ctx.session_id.clone(),
-        )
-        .instrument(span!(Level::DEBUG, "output")),
-    );
-    let input_handle = tokio::spawn(
-        ws_input(
-            read,
-            translator,
-            session_ctx.input_tx,
-            input_filters,
-            cancel.child_token(),
-            ctx.session_id.clone(),
-        )
-        .instrument(span!(Level::DEBUG, "input")),
-    );
+    let session_handle = tokio::spawn(session_ctx.session.start());
+    let output_handle = tokio::spawn(ws_output(
+        write,
+        translator,
+        output_streams,
+        output_filters,
+        cancel.child_token(),
+        ctx.session_id.clone(),
+    ));
+    let input_handle = tokio::spawn(ws_input(
+        read,
+        translator,
+        session_ctx.input_tx,
+        input_filters,
+        cancel.child_token(),
+        ctx.session_id.clone(),
+    ));
 
     let _ = tokio::join!(session_handle, output_handle, input_handle);
 
-    tracing::info!("session ended");
+    tracing::info!(component = "ws", event = "session_ended", "session ended");
 }
 
 async fn ws_input<R>(
@@ -235,7 +227,7 @@ async fn ws_input<R>(
             biased;
 
             _ = cancel.cancelled() => {
-                tracing::debug!(session_id = %session_id, "input cancelled");
+                tracing::debug!(component = "ws", event = "input_cancelled", session_id = %session_id, "input cancelled");
                 break;
             }
 
@@ -280,7 +272,7 @@ async fn ws_output<W>(
             biased;
 
             _ = cancel.cancelled() => {
-                tracing::debug!(session_id = %session_id, "output cancelled");
+                tracing::debug!(component = "ws", event = "output_cancelled", session_id = %session_id, "output cancelled");
                 break;
             }
 
@@ -290,6 +282,17 @@ async fn ws_output<W>(
                 let ctx = FilterCtx { session_id: session_id.clone() };
                 match run_output_filters(&filters, &ctx, msg).await {
                     FilterStep::Pass(msg) => {
+                        if matches!(msg.payload, FrameResult::CloseResult) {
+                            let close_frame = Message::Close(Some(
+                                axum::extract::ws::CloseFrame {
+                                    code: axum::extract::ws::close_code::NORMAL,
+                                    reason: "session closed".into(),
+                                },
+                            ));
+                            let _ = write.send(close_frame).await;
+                            cancel.cancel();
+                            break;
+                        }
                         let ws_msg = translator.output(msg.payload);
                         if write.send(ws_msg).await.is_err() {
                             cancel.cancel();

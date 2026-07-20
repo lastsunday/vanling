@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use futures::StreamExt;
 
@@ -138,6 +139,9 @@ impl Round {
         self.join_handle = Some(tokio::spawn(async move {
             let round_start = std::time::Instant::now();
             let mut status = RoundStatus::Ok;
+            let mut sentence_count: u32 = 0;
+
+            tracing::debug!(component = "round", event = "round_start", session_id = %session_id, round_id = %round_id, text = %text, "round start");
 
             let send = |payload: FrameResult| {
                 output_tx
@@ -158,13 +162,28 @@ impl Round {
             {
                 return;
             }
+            tracing::debug!(component = "round", event = "stt_result_sent", session_id = %session_id, round_id = %round_id, "stt result sent");
 
+            tracing::debug!(component = "round", event = "llm_start", session_id = %session_id, round_id = %round_id, "llm start");
             let chii_stream = chii.ask(Input::text(text), cancel.clone()).await;
-            let chat_text_stream = chii_stream.filter_map(|r| async move {
-                r.ok().map(|block| match block {
-                    OutputBlock::Text(s) => s,
-                })
+            let sid = session_id.clone();
+            let rid = round_id.clone();
+            let chat_text_stream = chii_stream.filter_map(move |r| {
+                let sid = sid.clone();
+                let rid = rid.clone();
+                async move {
+                    match r {
+                        Ok(block) => match block {
+                            OutputBlock::Text(s) => Some(s),
+                        },
+                        Err(e) => {
+                            tracing::warn!(component = "round", event = "llm_error", session_id = %sid, round_id = %rid, error = %e, "llm error");
+                            None
+                        }
+                    }
+                }
             });
+            tracing::debug!(component = "round", event = "tts_start", session_id = %session_id, round_id = %round_id, "tts start");
             let tts_output = tts.stream(Box::pin(chat_text_stream), cancel.clone()).await;
 
             async fn change_state(tts_state: &Arc<Mutex<Option<TtsState>>>, state: TtsState) {
@@ -184,76 +203,96 @@ impl Round {
             }
 
             let mut tts_output = tts_output;
-            while let Some(result) = tts_output.next().await {
-                match result {
-                    Ok(packet) => {
-                        if stop_me.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        let text = packet.text;
-                        let emotion = analyze_emotion(&text);
-                        let audio_data = packet.audio;
-                        let tts_state_c = tts_state_clone.clone();
-                        let stop_by_tts = stop_me.clone();
-
-                        let mut llm_msg = LlmMessage::new(
-                            Some(session_id.to_string()),
-                            Some(emotion.to_string()),
-                            Some(EMOJI_MAP.get(emotion).map_or("😶", |v| v).to_string()),
-                        );
-                        llm_msg.full_text = Some(text.clone());
-                        if send(FrameResult::LLMResult(llm_msg)).is_err() {
-                            status = RoundStatus::Error;
-                            stop_me.store(true, Ordering::Relaxed);
-                            break;
-                        }
-
-                        change_state(&tts_state_c, TtsState::SentenceStart).await;
-                        if send(FrameResult::TTSResult(TtsMessage::new(
-                            Some(session_id.to_string()),
-                            Some(TtsState::SentenceStart),
-                            Some(text.to_string()),
-                        )))
-                        .is_err()
-                        {
-                            status = RoundStatus::Error;
-                            stop_me.store(true, Ordering::Relaxed);
-                            break;
-                        }
-
-                        for packet_data in audio_data.into_iter() {
-                            if stop_by_tts.load(Ordering::Relaxed) {
+            loop {
+                match tokio::time::timeout(Duration::from_secs(30), tts_output.next()).await {
+                    Ok(Some(result)) => match result {
+                        Ok(packet) => {
+                            if stop_me.load(Ordering::Relaxed) {
                                 break;
                             }
-                            if send(FrameResult::AudioResult(AudioMessage::new(
+                            let text = packet.text;
+                            let emotion = analyze_emotion(&text);
+                            let audio_data = packet.audio;
+                            let audio_len: usize = audio_data.iter().map(|a| a.len()).sum();
+                            sentence_count += 1;
+                            tracing::debug!(
+                                component = "round", event = "sentence",
+                                session_id = %session_id, round_id = %round_id,
+                                sentence = sentence_count, text = %text, emotion, audio_bytes = audio_len,
+                                "sentence"
+                            );
+                            let tts_state_c = tts_state_clone.clone();
+                            let stop_by_tts = stop_me.clone();
+
+                            let mut llm_msg = LlmMessage::new(
                                 Some(session_id.to_string()),
-                                packet_data,
+                                Some(emotion.to_string()),
+                                Some(EMOJI_MAP.get(emotion).map_or("😶", |v| v).to_string()),
+                            );
+                            llm_msg.full_text = Some(text.clone());
+                            if send(FrameResult::LLMResult(llm_msg)).is_err() {
+                                status = RoundStatus::Error;
+                                stop_me.store(true, Ordering::Relaxed);
+                                break;
+                            }
+
+                            change_state(&tts_state_c, TtsState::SentenceStart).await;
+                            if send(FrameResult::TTSResult(TtsMessage::new(
+                                Some(session_id.to_string()),
+                                Some(TtsState::SentenceStart),
+                                Some(text.to_string()),
                             )))
                             .is_err()
                             {
+                                status = RoundStatus::Error;
+                                stop_me.store(true, Ordering::Relaxed);
+                                break;
+                            }
+
+                            for packet_data in audio_data.into_iter() {
+                                if stop_by_tts.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if send(FrameResult::AudioResult(AudioMessage::new(
+                                    Some(session_id.to_string()),
+                                    packet_data,
+                                )))
+                                .is_err()
+                                {
+                                    break;
+                                }
+                            }
+
+                            change_state(&tts_state_c, TtsState::SentenceEnd).await;
+                            if send(FrameResult::TTSResult(TtsMessage::new(
+                                Some(session_id.to_string()),
+                                Some(TtsState::SentenceEnd),
+                                None,
+                            )))
+                            .is_err()
+                            {
+                                status = RoundStatus::Error;
+                                stop_me.store(true, Ordering::Relaxed);
                                 break;
                             }
                         }
-
-                        change_state(&tts_state_c, TtsState::SentenceEnd).await;
-                        if send(FrameResult::TTSResult(TtsMessage::new(
-                            Some(session_id.to_string()),
-                            Some(TtsState::SentenceEnd),
-                            None,
-                        )))
-                        .is_err()
-                        {
+                        Err(e) => {
                             status = RoundStatus::Error;
+                            tracing::warn!(component = "round", event = "tts_encode_error", session_id = %session_id, round_id = %round_id, error = %e, "tts encode error");
+                            let _ = send(FrameResult::Error(
+                                err!(SessionErrorCode::TtsEncode).with_extra(e.to_string()),
+                            ));
                             stop_me.store(true, Ordering::Relaxed);
                             break;
                         }
+                    },
+                    Ok(None) => {
+                        tracing::debug!(component = "round", event = "tts_stream_ended", session_id = %session_id, round_id = %round_id, "tts: stream ended");
+                        break;
                     }
-                    Err(e) => {
+                    Err(_) => {
+                        tracing::warn!(component = "round", event = "tts_timeout", session_id = %session_id, round_id = %round_id, "tts timeout");
                         status = RoundStatus::Error;
-                        let _ = send(FrameResult::Error(
-                            err!(SessionErrorCode::TtsEncode).with_extra(e.to_string()),
-                        ));
-                        stop_me.store(true, Ordering::Relaxed);
                         break;
                     }
                 }
@@ -271,7 +310,12 @@ impl Round {
                 stop_me.store(true, Ordering::Relaxed);
             }
             let duration_ms = round_start.elapsed().as_millis() as u64;
-            tracing::debug!(session_id = %session_id, round_id = %round_id, duration_ms, %status, "round complete");
+            tracing::debug!(
+                component = "round", event = "round_complete",
+                session_id = %session_id, round_id = %round_id,
+                duration_ms, sentences = sentence_count, %status,
+                "round complete"
+            );
         }));
     }
 

@@ -1,7 +1,7 @@
 use axum::extract::ws::Message;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use service::chobits::frame::{Frame, FrameResult};
+use service::chobits::frame::{Frame, FrameResult, InputMode};
 use service::chobits::message::{
     abort::AbortMessage, close::CloseMessage, hello::HelloMessage, mcp::McpMessage,
 };
@@ -33,7 +33,14 @@ impl ProtocolTranslator for XiaozhiProtocolTranslator {
                                                 .get("mode")
                                                 .and_then(|v| v.as_str())
                                                 .is_some_and(|m| m != "auto");
-                                            Frame::ListenStart { barge_in }
+                                            let is_voice_break_detect = json
+                                                .get("mode")
+                                                .and_then(|v| v.as_str())
+                                                .is_some_and(|m| m == "auto" || m == "realtime");
+                                            Frame::ListenStart {
+                                                barge_in,
+                                                is_voice_break_detect,
+                                            }
                                         }
                                         Some("stop") => Frame::ListenStop,
                                         Some("detect") | Some("text") => {
@@ -44,8 +51,16 @@ impl ProtocolTranslator for XiaozhiProtocolTranslator {
                                             if text.is_empty() {
                                                 Frame::UnknownText { data: bytes }
                                             } else {
-                                                Frame::Input {
-                                                    text: text.to_string(),
+                                                if state == Some("detect") {
+                                                    Frame::Input {
+                                                        text: text.to_string(),
+                                                        mode: InputMode::Wake,
+                                                    }
+                                                } else {
+                                                    Frame::Input {
+                                                        text: text.to_string(),
+                                                        mode: InputMode::Normal,
+                                                    }
                                                 }
                                             }
                                         }

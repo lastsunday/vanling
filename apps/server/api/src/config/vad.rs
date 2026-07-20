@@ -14,6 +14,8 @@ pub struct VadConfig {
     pub threshold: Option<f32>,
     #[serde(default)]
     pub min_silence_duration: Option<f32>,
+    #[serde(default)]
+    pub min_speech_duration: Option<f32>,
 }
 
 impl Default for VadConfig {
@@ -25,6 +27,7 @@ impl Default for VadConfig {
             num_threads: Default::default(),
             threshold: Some(0.5),
             min_silence_duration: Some(1000.0),
+            min_speech_duration: Some(300.0),
         }
     }
 }

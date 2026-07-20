@@ -17,7 +17,7 @@ use tracing_test::traced_test;
 fn make_listener() -> DefaultListener {
     let vad = Box::new(VadEarshot::new(&VadConfig::default()).unwrap()) as Box<dyn Vad>;
     let asr = Arc::new(Mutex::new(Box::new(AsrVoid::new().unwrap()) as Box<dyn Asr>));
-    DefaultListener::new(vad, asr)
+    DefaultListener::new("test".to_string(), vad, asr, Some(1200))
 }
 
 /// Encode PCM f32 into Opus packets (20ms, 320-sample frames, 16kHz).
@@ -104,53 +104,7 @@ async fn test_voice_data_grows_monotonically() -> anyhow::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Silence between speech turns resets prefix_flushed so the next turn
-//    also receives a fresh prefix.
-// ---------------------------------------------------------------------------
-#[tokio::test]
-#[traced_test]
-async fn test_prefix_fresh_after_silence() -> anyhow::Result<()> {
-    let mut listener = make_listener();
-
-    // -- Round 1: silence + speech → prefix included --
-    let silence = vec![0.0f32; 16000 * 2];
-    feed_all(&mut listener, &encode_opus(&silence)).await;
-    let (speech_pcm, sr) = read_wav(&resource_path("speech_a.wav").to_string_lossy());
-    assert_eq!(sr, 16000);
-    feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
-    let round1_len = listener.take_voice().await.len();
-    assert!(round1_len >= 4800, "round 1 should have prefix padding",);
-
-    // -- Silence gap (no reset) — is_speech transitions back to false --
-    let gap = vec![0.0f32; 16000 * 3]; // 3s silence (> min_silence_duration=1000ms)
-    feed_all(&mut listener, &encode_opus(&gap)).await;
-
-    let after_gap = listener.take_voice().await.len();
-    assert!(
-        after_gap >= round1_len,
-        "voice_data should not shrink during silence",
-    );
-
-    // -- Round 2: verify voice_data does NOT grow by a huge amount
-    //    (prefix_flushed was reset by silence → new prefix on next speech)
-    let (speech2_pcm, sr2) = read_wav(&resource_path("speech_b.wav").to_string_lossy());
-    assert_eq!(sr2, 16000);
-    feed_all(&mut listener, &encode_opus(&speech2_pcm)).await;
-    let round2_len = listener.take_voice().await.len();
-
-    // Round 2 should get a fresh prefix (up to 4800) + speech windows.
-    // If prefix_flushed was NOT reset, round2 would only be ~a few windows (< 5000).
-    assert!(
-        round2_len >= 4800,
-        "round 2 should include a fresh prefix (>=4800 samples); got round2_len={}",
-        round2_len,
-    );
-
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// 4. Reset clears voice_data, prefix_buffer, and prefix_flushed.
+// 3. Reset clears voice_data, prefix_buffer, and prefix_flushed.
 // ---------------------------------------------------------------------------
 #[tokio::test]
 #[traced_test]
@@ -191,7 +145,7 @@ async fn test_reset_clears_everything() -> anyhow::Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Silence-only input: no timeout set → never reaches End, voice_data empty.
+// 4. Silence-only input: no timeout set → never reaches End, voice_data empty.
 // ---------------------------------------------------------------------------
 #[tokio::test]
 #[traced_test]

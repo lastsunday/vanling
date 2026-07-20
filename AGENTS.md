@@ -30,7 +30,8 @@
 
 - **路由**: `create_routes(state) → OpenApiRouter`，在 `create_router` 的 `setup_*` 中注册。禁止直接挂载到主路由
 - **AI 模块**: `XxxManager::init(config).await` 初始化 → `XxxManager::global().default()` 使用。禁止 `new()` 直接实例化
-- **结构化日志**: 关键路径 `info!(%session_id, %reason, "msg")`；`#[instrument]` 仅入口函数；console→`FmtSpan::NONE`、file→`FmtSpan::CLOSE`。禁止 `println!()` 或 `eprintln!()`
+- **结构化日志**: 所有 tracing 调用必须含 `component` + `event` 字段；格式 `tracing::info!(component = "xxx", event = "yyy", key = %value, "human msg")`；禁止 `#[instrument]`（用 component/event 替代 span 前缀）；console→`FmtSpan::NONE`、file→`FmtSpan::CLOSE`；禁止 `println!()` / `eprintln!()`
+- **日志格式**: `[<COMPONENT> human msg] component=xxx event=yyy session_id=...`；组件名大写（SESSION、VAD、ROUND、LISTENER、ASR、MCP、WS）；仅 Text/Compact 启用，Pretty/Json 不变
 - **测试**: `apps/server/api/tests/` 按功能分类；每次修改增/改对应测试
 - **命名**: Rust snake_case / PascalCase 类型；TS camelCase 变量 / PascalCase 组件 / PascalCase.tsx
 - **提交**: Conventional Commits（`feat:|fix:|perf:|remove:|deprecate:|security:`）。破坏性用 `feat!:` 或 BREAKING CHANGE。禁止自由格式信息
@@ -68,7 +69,7 @@
 2. 搜索网络主流方案再动手
 3. 查看同类模块测试文件了解预期行为
 4. 阅读 trait 定义（`service/src/chobits/`）
-5. 检查 `docs/src/development/server/` 架构文档
+5. 检查 `docs/content/development/server/` 架构文档
 6. 分支实验 + `cargo check`
 
 ## 环境
@@ -86,7 +87,7 @@
 
 ## 架构
 
-> 详见 `docs/src/development/server/architecture.md`
+> 详见 `docs/content/development/server/architecture.md`
 
 `Client → WS → Auth → Session → [VAD] → [ASR] → [ChiiCore (LLM + MCP)] → [TTS] → Client`
 

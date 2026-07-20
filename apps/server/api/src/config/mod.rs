@@ -184,6 +184,14 @@ pub struct Config {
     #[serde(default = "default_vad_min_silence_duration")]
     pub vad_min_silence_duration: Option<f32>,
 
+    /// Minimum continuous speech duration in ms before VAD triggers is_speech.
+    /// Prevents short noise bursts from being classified as speech.
+    ///
+    /// display: Min Speech Duration
+    /// default: 300
+    #[serde(default = "default_vad_min_speech_duration")]
+    pub vad_min_speech_duration: Option<f32>,
+
     /// Text-to-Speech model to use.
     ///
     /// default: matcha_tts
@@ -308,11 +316,11 @@ pub struct Config {
     #[serde(default = "default_audio_output_frame_duration")]
     pub audio_output_frame_duration: Option<u64>,
 
-    /// Time in ms before closing connection when no voice detected.
+    /// Time in ms before closing connection when no activity detected.
     ///
     /// default: 30000
-    #[serde(default = "default_session_close_connection_no_voice_time")]
-    pub session_close_connection_no_voice_time: Option<i64>,
+    #[serde(default = "default_session_close_connection_no_activity_time")]
+    pub session_close_connection_no_activity_time: Option<i64>,
 
     /// Silence timeout in ms during active voice session.
     ///
@@ -554,7 +562,7 @@ fn default_audio_output_frame_duration() -> Option<u64> {
     Some(20_u64)
 }
 
-fn default_session_close_connection_no_voice_time() -> Option<i64> {
+fn default_session_close_connection_no_activity_time() -> Option<i64> {
     Some(30000)
 }
 
@@ -598,6 +606,10 @@ fn default_vad_threshold() -> Option<f32> {
 
 fn default_vad_min_silence_duration() -> Option<f32> {
     Some(1000.0)
+}
+
+fn default_vad_min_speech_duration() -> Option<f32> {
+    Some(300.0)
 }
 
 fn default_matrix_enable() -> Option<bool> {

@@ -15,6 +15,7 @@ use tracing_subscriber::{
 };
 
 use crate::config::logging::{LogConfig, LogFormat};
+use crate::log::ConsoleFormat;
 use crate::log::capture;
 
 #[cfg(feature = "perf")]
@@ -109,21 +110,25 @@ where
             fmt::layer()
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
+                .with_target(false)
                 .json()
                 .with_current_span(true)
                 .with_writer(writer),
         ),
         LogFormat::Compact => Box::new(
             fmt::layer()
+                .compact()
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
-                .compact()
+                .with_target(false)
+                .fmt_fields(ConsoleFormat::new(log_thread_ids, log_colors))
                 .with_writer(writer),
         ),
         LogFormat::Pretty => Box::new(
             fmt::layer()
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
+                .with_target(false)
                 .pretty()
                 .with_writer(writer),
         ),
@@ -131,6 +136,8 @@ where
             fmt::layer()
                 .with_thread_ids(log_thread_ids)
                 .with_ansi(log_colors)
+                .with_target(false)
+                .fmt_fields(ConsoleFormat::new(log_thread_ids, log_colors))
                 .with_writer(writer),
         ),
     }
