@@ -8,19 +8,14 @@ use api::{
     mcp::client::external::ExternalMcpClient,
     setup_mcp,
     tts::TtsManager,
-    util::audio::pcm_decode,
     vad::VadManager,
     ws::default_listener::DefaultListener,
     {chii::ChiiCoreBuilder, llm::LlmManager},
 };
 use framework::id::gen_id;
-use rmcp::{
-    model::{JsonObject, JsonRpcMessage, JsonRpcResponse, JsonRpcVersion2_0, RequestId, object},
-    transport::{
-        StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
-    },
+use rmcp::transport::{
+    StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
-use serde::Serialize;
 use service::chobits::{
     frame::{Frame, FrameResult, OutputMessage},
     mcp::McpRegistry,
@@ -32,7 +27,6 @@ use service::chobits::{
 
 use futures::StreamExt;
 use std::{
-    cmp,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -54,7 +48,6 @@ pub fn workspace_root() -> PathBuf {
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::{Mutex, mpsc};
-use tracing::debug;
 use utoipa_axum::router::OpenApiRouter;
 
 use crate::common::{router_client::RouterClient, setup_database, tts::tts_stream};

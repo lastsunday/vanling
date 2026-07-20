@@ -315,6 +315,11 @@ impl Session {
     }
 
     fn check_idle_timeout(&mut self) -> bool {
+        if let Phase::Listening(param) = &self.phase
+            && !param.is_voice_break_detect
+        {
+            return false;
+        }
         let is_idle = self.running_round.is_none()
             && matches!(
                 self.listener.get_state(),
@@ -567,7 +572,7 @@ impl Session {
                     .accept(ListenInput::Audio(data.to_vec()))
                     .await;
                 let new_state = self.listener.get_state();
-                if param.is_voice_break_detect
+                if param.can_barge_in
                     && self.running_round.is_some()
                     && prev_state != (ListenState::Listening { is_speech: true })
                     && new_state == (ListenState::Listening { is_speech: true })
