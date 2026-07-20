@@ -69,6 +69,10 @@ pub struct SessionConfig {
     pub max_prompt_len: Option<u64>,
     pub silence_voice_timeout: Option<i64>,
     pub close_connection_no_activity_time: Option<i64>,
+    /// Barge-in lockout duration in milliseconds.
+    /// After TTS starts or stops, barge-in is suppressed for this duration.
+    /// Default: 250ms
+    pub barge_in_lockout_ms: Option<u64>,
 }
 
 pub struct AudioConfig {
@@ -196,6 +200,7 @@ impl SessionBuilder {
             epoch: 1,
             phase: Phase::Idle,
             idle_since: None,
+            last_tts_state_change: None,
             config,
             audio_config,
             listener: self.listener.expect("listener is required"),
@@ -224,6 +229,9 @@ pub struct Session {
     epoch: u64,
     phase: Phase,
     idle_since: Option<Instant>,
+    /// Last time TTS state changed (started or stopped).
+    /// Used for barge-in lockout to prevent immediate interruption.
+    last_tts_state_change: Option<Instant>,
 
     config: SessionConfig,
     audio_config: AudioConfig,
@@ -283,6 +291,12 @@ impl Session {
                     {
                         continue;
                     }
+
+                    // Track TTS state changes for barge-in lockout
+                    if let FrameResult::TTSResult(tts) = &msg.payload
+                        && matches!(tts.state, Some(TtsState::Start)) {
+                            self.last_tts_state_change = Some(Instant::now());
+                        }
 
                     if matches!(msg.payload, FrameResult::AudioResult(_)) {
                         audio_pacer.get_or_insert_with(|| {
@@ -577,8 +591,16 @@ impl Session {
                     .accept(ListenInput::Audio(data.to_vec()))
                     .await;
                 let new_state = self.listener.get_state();
+
+                // Check barge-in lockout: suppress barge-in for a period after TTS state changes
+                let lockout_ms = self.config.barge_in_lockout_ms.unwrap_or(250);
+                let is_in_lockout = self
+                    .last_tts_state_change
+                    .is_some_and(|t| t.elapsed() < Duration::from_millis(lockout_ms));
+
                 if param.can_barge_in
                     && self.running_round.is_some()
+                    && !is_in_lockout
                     && prev_state != (ListenState::Listening { is_speech: true })
                     && new_state == (ListenState::Listening { is_speech: true })
                 {
@@ -586,6 +608,12 @@ impl Session {
                     self.epoch += 1;
                     self.stop_round(RoundStopReason::BargeIn).await;
                     self.new_shadow_round().await;
+                } else if is_in_lockout && param.can_barge_in && self.running_round.is_some() {
+                    tracing::debug!(
+                        component = "session", event = "barge_in_suppressed",
+                        session_id = %self.id, lockout_ms,
+                        "barge-in suppressed during lockout period"
+                    );
                 }
                 if param.is_voice_break_detect && matches!(new_state, ListenState::End) {
                     Box::pin(self.forwarding_frame(&Frame::ListenStop)).await;

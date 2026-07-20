@@ -12,6 +12,10 @@ pub struct VadConfig {
     pub num_threads: Option<i32>,
     #[serde(default)]
     pub threshold: Option<f32>,
+    /// Deactivation threshold for hysteresis. Must be < threshold.
+    /// Speech stops when score drops below this value during active speech.
+    #[serde(default)]
+    pub deactivation_threshold: Option<f32>,
     #[serde(default)]
     pub min_silence_duration: Option<f32>,
     #[serde(default)]
@@ -25,8 +29,9 @@ impl Default for VadConfig {
             variant: Default::default(),
             path: Default::default(),
             num_threads: Default::default(),
-            threshold: Some(0.5),
-            min_silence_duration: Some(1000.0),
+            threshold: Some(0.6),
+            deactivation_threshold: Some(0.5),
+            min_silence_duration: Some(550.0),
             min_speech_duration: Some(300.0),
         }
     }

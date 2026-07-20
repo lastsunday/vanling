@@ -114,6 +114,7 @@ impl SocketContext {
             close_connection_no_activity_time: self
                 .session_config
                 .close_connection_no_activity_time,
+            barge_in_lockout_ms: self.session_config.barge_in_lockout_ms,
         }
     }
 

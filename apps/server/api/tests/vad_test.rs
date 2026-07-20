@@ -9,7 +9,11 @@ use tracing_test::traced_test;
 #[tokio::test]
 #[traced_test]
 async fn test_state_machine() -> anyhow::Result<()> {
-    let config = VadConfig::default();
+    let config = VadConfig {
+        threshold: Some(0.5),
+        deactivation_threshold: Some(0.5),
+        ..Default::default()
+    };
     let mut vad = VadEarshot::new(&config)?;
     let (speech1, sr1) = read_wav(&resource_path("speech_a.wav").to_string_lossy());
     let (speech2, _sr2) = read_wav(&resource_path("speech_b.wav").to_string_lossy());

@@ -148,6 +148,7 @@ pub async fn create_session() -> Result<
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
             )),
             max_prompt_len: Some(6000),
+            barge_in_lockout_ms: Some(250),
         })
         .with_audio_config(ServiceAudioConfig {
             output_sample_rate: 16000,
@@ -232,6 +233,7 @@ pub async fn create_mini_session_with_timeout(
                 "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
             )),
             max_prompt_len: Some(3000),
+            barge_in_lockout_ms: Some(250),
         })
         .with_audio_config(ServiceAudioConfig {
             output_sample_rate: 16000,

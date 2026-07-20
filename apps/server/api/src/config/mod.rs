@@ -177,10 +177,18 @@ pub struct Config {
     #[serde(default = "default_vad_threshold")]
     pub vad_threshold: Option<f32>,
 
+    /// VAD deactivation threshold for hysteresis. Must be < vad_threshold.
+    /// Speech stops when score drops below this value during active speech.
+    ///
+    /// display: VAD Deactivation Threshold
+    /// default: 0.35
+    #[serde(default = "default_vad_deactivation_threshold")]
+    pub vad_deactivation_threshold: Option<f32>,
+
     /// Minimum silence duration in ms before VAD considers speech ended.
     ///
     /// display: Min Silence Duration
-    /// default: 1000
+    /// default: 550
     #[serde(default = "default_vad_min_silence_duration")]
     pub vad_min_silence_duration: Option<f32>,
 
@@ -339,6 +347,13 @@ pub struct Config {
     /// default: 3000
     #[serde(default = "default_session_max_prompt_len")]
     pub session_max_prompt_len: Option<u64>,
+
+    /// Barge-in lockout duration in ms. After TTS starts or stops,
+    /// barge-in is suppressed for this duration to prevent echo-triggered interruptions.
+    ///
+    /// default: 250
+    #[serde(default = "default_session_barge_in_lockout_ms")]
+    pub session_barge_in_lockout_ms: Option<u64>,
 
     /// List of MCP server URIs.
     ///
@@ -580,6 +595,10 @@ fn default_session_max_prompt_len() -> Option<u64> {
     Some(6000)
 }
 
+fn default_session_barge_in_lockout_ms() -> Option<u64> {
+    Some(250)
+}
+
 fn default_mcp_uri_list() -> Option<Vec<String>> {
     Some(vec![String::from("http://127.0.0.1:3000/mcp")])
 }
@@ -601,11 +620,15 @@ fn default_vad_num_threads() -> Option<i32> {
 }
 
 fn default_vad_threshold() -> Option<f32> {
+    Some(0.6)
+}
+
+fn default_vad_deactivation_threshold() -> Option<f32> {
     Some(0.5)
 }
 
 fn default_vad_min_silence_duration() -> Option<f32> {
-    Some(1000.0)
+    Some(550.0)
 }
 
 fn default_vad_min_speech_duration() -> Option<f32> {

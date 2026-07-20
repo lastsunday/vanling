@@ -111,6 +111,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         silence_voice_timeout: config.session_silence_voice_timeout.to_owned(),
         system_prompt: config.session_system_prompt.to_owned(),
         max_prompt_len: config.session_max_prompt_len.to_owned(),
+        barge_in_lockout_ms: config.session_barge_in_lockout_ms.to_owned(),
     });
     let mcp_config = Arc::new(McpConfig {
         uri_list: config.mcp_uri_list.to_owned(),
@@ -124,6 +125,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
             .or_else(|| config.derive_vad_path()),
         num_threads: config.vad_num_threads,
         threshold: config.vad_threshold,
+        deactivation_threshold: config.vad_deactivation_threshold,
         min_silence_duration: config.vad_min_silence_duration,
         min_speech_duration: config.vad_min_speech_duration,
     });

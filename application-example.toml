@@ -100,9 +100,14 @@
 #
 #vad_threshold = 0.5
 
+# VAD deactivation threshold for hysteresis. Must be < vad_threshold.
+# Speech stops when score drops below this value during active speech.
+#
+#vad_deactivation_threshold = 0.35
+
 # Minimum silence duration in ms before VAD considers speech ended.
 #
-#vad_min_silence_duration = 1000
+#vad_min_silence_duration = 550
 
 # Minimum continuous speech duration in ms before VAD triggers is_speech.
 # Prevents short noise bursts from being classified as speech.
@@ -225,6 +230,11 @@
 # Maximum number of prompt tokens.
 #
 #session_max_prompt_len = 3000
+
+# Barge-in lockout duration in ms. After TTS starts or stops,
+# barge-in is suppressed for this duration to prevent echo-triggered interruptions.
+#
+#session_barge_in_lockout_ms = 250
 
 # List of MCP server URIs.
 #

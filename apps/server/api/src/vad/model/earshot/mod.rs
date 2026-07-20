@@ -13,6 +13,9 @@ pub struct VadEarshot {
     current_silence_duration: f32,
     prediction_list: Vec<f32>,
     threshold: f32,
+    /// Deactivation threshold for hysteresis. Must be < threshold.
+    /// Speech stops when score drops below this value during active speech.
+    deactivation_threshold: f32,
     /// Minimum continuous speech duration (ms) before triggering is_speech.
     min_speech_duration: f32,
     /// Accumulated speech duration (ms) in current pre-speech window.
@@ -22,6 +25,11 @@ pub struct VadEarshot {
 impl VadEarshot {
     pub fn new(config: &VadConfig) -> Result<Self, AppError> {
         let detector = Detector::default();
+        let threshold = config.threshold.expect("threshold should have default");
+        let deactivation_threshold = config
+            .deactivation_threshold
+            .unwrap_or(threshold)
+            .min(threshold);
         Ok(Self {
             detector,
             is_speech: false,
@@ -30,7 +38,8 @@ impl VadEarshot {
                 .expect("min_silence_duration should have default"),
             current_silence_duration: 0.0,
             prediction_list: Vec::new(),
-            threshold: config.threshold.expect("threshold should have default"),
+            threshold,
+            deactivation_threshold,
             min_speech_duration: config.min_speech_duration.unwrap_or(300.0),
             speech_duration_ms: 0.0,
         })
@@ -64,7 +73,7 @@ impl Vad for VadEarshot {
             {
                 self.is_speech = true;
             }
-        } else if score >= self.threshold {
+        } else if score >= self.deactivation_threshold {
             self.current_silence_duration = 0.0;
         } else {
             if self.current_silence_duration > self.min_silence_duration {

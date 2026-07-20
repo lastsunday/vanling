@@ -240,6 +240,7 @@ impl Bot {
                 close_connection_no_activity_time: self
                     .session_config
                     .close_connection_no_activity_time,
+                barge_in_lockout_ms: self.session_config.barge_in_lockout_ms,
             };
             let audio_config = ServiceAudioConfig {
                 output_sample_rate: self
