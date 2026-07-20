@@ -263,13 +263,6 @@ impl Session {
                         self.forwarding_frame(&Frame::ListenStop).await;
                     }
 
-                    let should_clear = self.running_round.as_ref().is_some_and(|r| {
-                        r.join_handle.as_ref().is_none_or(|h| h.is_finished())
-                    });
-                    if should_clear && let Some(mut round) = self.running_round.take() {
-                        round.join_handle.take();
-                    }
-
                     if self.check_idle_timeout() {
                         self.stop(SessionEndReason::NoActivityTimeout).await;
                         break;
@@ -320,7 +313,12 @@ impl Session {
         {
             return false;
         }
-        let is_idle = self.running_round.is_none()
+        let round_idle = self.running_round.as_ref().is_none_or(|r| {
+            r.tts_state
+                .try_lock()
+                .is_ok_and(|state| state.as_ref().is_some_and(|s| matches!(s, TtsState::Stop)))
+        });
+        let is_idle = round_idle
             && matches!(
                 self.listener.get_state(),
                 ListenState::Idle | ListenState::End | ListenState::Listening { is_speech: false }
@@ -548,10 +546,17 @@ impl Session {
                 Box::pin(self.forwarding_frame(frame)).await;
             }
             Frame::Input { text, mode } => {
-                let is_wake = match mode {
-                    InputMode::Normal => false,
-                    InputMode::Wake => true,
-                };
+                let is_wake = matches!(mode, InputMode::Wake);
+                tracing::debug!(
+                    component = "session", event = "input_received",
+                    session_id = %self.id,
+                    text_len = text.len(),
+                    is_wake,
+                    has_running_round = self.running_round.is_some(),
+                    has_shadow_round = self.shadow_round.is_some(),
+                    "input received, will interrupt: {}",
+                    self.running_round.is_some(),
+                );
                 if is_wake {
                     let silence_voice_timeout = self.config.silence_voice_timeout.unwrap_or(1200);
                     self.listener.reset(Some(silence_voice_timeout)).await;
