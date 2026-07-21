@@ -386,30 +386,45 @@ impl Recorder {
             })
             .collect();
 
-        // Find the first STTResult frame to split pre/post
-        let first_stt_seq = entries.iter().find_map(|e| {
-            if let EntryKind::Frame {
-                detail: FrameDetail::STTResult,
-                ..
-            } = &e.kind
-            {
-                e.seq
-            } else {
-                None
-            }
-        });
+        // Determine boundary seq: prefer Input frame, fall back to STTResult
+        let boundary_seq = entries
+            .iter()
+            .find_map(|e| {
+                if let EntryKind::Frame {
+                    detail: FrameDetail::Input,
+                    ..
+                } = &e.kind
+                {
+                    e.seq
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                entries.iter().find_map(|e| {
+                    if let EntryKind::Frame {
+                        detail: FrameDetail::STTResult,
+                        ..
+                    } = &e.kind
+                    {
+                        e.seq
+                    } else {
+                        None
+                    }
+                })
+            });
 
         if !voice_frames.is_empty() {
-            // Split voice frames at STTResult boundary
-            let (pre_stt, post_stt): (Vec<_>, Vec<_>) =
-                voice_frames.into_iter().partition(|(e, _)| {
-                    first_stt_seq.is_none() || e.seq.unwrap_or(0) < first_stt_seq.unwrap_or(0)
-                });
+            // Split voice frames at boundary
+            // Frames before boundary → input_audio, after → input_audio_tail
+            let (pre, post): (Vec<_>, Vec<_>) = voice_frames.into_iter().partition(|(e, _)| {
+                boundary_seq.is_none() || e.seq.unwrap_or(u64::MAX) < boundary_seq.unwrap()
+            });
 
-            // Create input_audio for pre-STT frames
-            if !pre_stt.is_empty() {
-                let frames_data: Vec<Vec<u8>> = pre_stt.iter().map(|(_, d)| d.clone()).collect();
-                let first_at = pre_stt.first().map(|(e, _)| e.received_at);
+            // Create input_audio for pre-boundary frames
+            if !pre.is_empty() {
+                let frames_data: Vec<Vec<u8>> = pre.iter().map(|(_, d)| d.clone()).collect();
+                let first_at = pre.first().map(|(e, _)| e.received_at);
                 let elapsed_ms = round_info
                     .and_then(|info| first_at.map(|t| (t - info.started_at).num_milliseconds()))
                     .unwrap_or(0);
@@ -436,13 +451,9 @@ impl Recorder {
                 }
             }
 
-            // Create input_audio_tail for post-STT frames
-            if !post_stt.is_empty() {
-                let frames_data: Vec<Vec<u8>> = post_stt.iter().map(|(_, d)| d.clone()).collect();
-                let first_at = post_stt.first().map(|(e, _)| e.received_at);
-                let elapsed_ms = round_info
-                    .and_then(|info| first_at.map(|t| (t - info.started_at).num_milliseconds()))
-                    .unwrap_or(0);
+            // Create input_audio_tail for post-boundary frames
+            if !post.is_empty() {
+                let frames_data: Vec<Vec<u8>> = post.iter().map(|(_, d)| d.clone()).collect();
                 let audio_duration_ms = frames_data.len() as u64 * input.frame_duration_ms;
 
                 if let Ok(ogg_data) =
@@ -455,7 +466,7 @@ impl Recorder {
                         data: Set(Some(ogg_data)),
                         text: Set(None),
                         metadata: Set(Some(serde_json::json!({
-                            "elapsed_ms": elapsed_ms,
+                            "elapsed_ms": pre.len() as u64 * input.frame_duration_ms,
                             "audio_duration_ms": audio_duration_ms,
                             "format": "ogg",
                         }))),
@@ -570,7 +581,41 @@ impl Recorder {
                     }
                 }
                 EntryKind::Text { text, mode } => {
-                    let elapsed_ms = elapsed_us.map(|u| u / 1000).unwrap_or(0);
+                    let elapsed_ms = if let Some(seq) = boundary_seq {
+                        let pre_cnt = entries
+                            .iter()
+                            .filter(|e| {
+                                matches!(
+                                    &e.kind,
+                                    EntryKind::Frame {
+                                        dir: Dir::Input,
+                                        detail: FrameDetail::Voice,
+                                        ..
+                                    }
+                                ) && e.seq.unwrap_or(u64::MAX) < seq
+                            })
+                            .count();
+                        let post_cnt = entries
+                            .iter()
+                            .filter(|e| {
+                                matches!(
+                                    &e.kind,
+                                    EntryKind::Frame {
+                                        dir: Dir::Input,
+                                        detail: FrameDetail::Voice,
+                                        ..
+                                    }
+                                ) && e.seq.unwrap_or(0) >= seq
+                            })
+                            .count();
+                        if pre_cnt > 0 && post_cnt > 0 {
+                            pre_cnt as u64 * input.frame_duration_ms
+                        } else {
+                            elapsed_us.map(|u| u / 1000).unwrap_or(0) as u64
+                        }
+                    } else {
+                        elapsed_us.map(|u| u / 1000).unwrap_or(0) as u64
+                    };
                     if (round_data::ActiveModel {
                         id: Set(gen_id()),
                         round_id: Set(round_info.map(|r| r.round_id.clone()).unwrap_or_default()),
