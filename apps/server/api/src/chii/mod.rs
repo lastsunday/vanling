@@ -120,8 +120,8 @@ impl ChiiCore {
                     let mut loop_count = 0u32;
                     while has_next_step {
                         loop_count += 1;
-                        info!(
-                            component = "CHII_CORE", event = "loop_iteration",
+                        debug!(
+                            component = "CHII", event = "loop_iteration",
                             session_id = ?session_id,
                             iteration = loop_count,
                             "LLM complete loop iteration"
@@ -152,8 +152,8 @@ impl ChiiCore {
                             }
                             match event {
                                 Ok(CompletionEvent::Text(text)) => {
-                                    debug!(
-                                        component = "CHII_CORE", event = "text_event",
+                                    trace!(
+                                        component = "CHII", event = "text_event",
                                         session_id = ?session_id,
                                         text_len = text.len(),
                                         "text event received"
@@ -170,7 +170,7 @@ impl ChiiCore {
                                     arguments,
                                 }) => {
                                     info!(
-                                        component = "CHII_CORE", event = "tool_call",
+                                        component = "CHII", event = "tool_call",
                                         session_id = ?session_id,
                                         tool_name = %name,
                                         "tool call received"
@@ -183,7 +183,7 @@ impl ChiiCore {
                                 }
                                 Ok(CompletionEvent::Reasoning(text)) => {
                                     debug!(
-                                        component = "CHII_CORE", event = "reasoning_event",
+                                        component = "CHII", event = "reasoning_event",
                                         session_id = ?session_id,
                                         text_len = text.len(),
                                         "reasoning event received"
@@ -191,12 +191,12 @@ impl ChiiCore {
                                     assistant_events.push(CompletionEvent::Reasoning(text));
                                 }
                                 Ok(CompletionEvent::Final { .. }) => {
-                                    info!(
-                                        component = "CHII_CORE", event = "final_event",
-                                        session_id = ?session_id,
-                                        text_collector_len = text_collector.len(),
-                                        "final event received"
-                                    );
+                                debug!(
+                                    component = "CHII", event = "final_event",
+                                    session_id = ?session_id,
+                                    text_collector_len = text_collector.len(),
+                                    "final event received"
+                                );
                                     if !text_collector.is_empty() {
                                         let sentence_list = splitter.accept_final();
                                         for sentence in sentence_list {
@@ -208,10 +208,10 @@ impl ChiiCore {
                                     }
                                 }
                                 Ok(CompletionEvent::Error(e)) => {
-                                    error!(component = "CHII_CORE", event = "llm_stream_event_error", error = %e, "LLM stream event error");
+                                    error!(component = "CHII", event = "llm_stream_event_error", error = %e, "LLM stream event error");
                                 }
                                 Err(e) => {
-                                    error!(component = "CHII_CORE", event = "llm_stream_error", error = %e, "LLM stream error");
+                                    error!(component = "CHII", event = "llm_stream_error", error = %e, "LLM stream error");
                                     let _ = tx.send(Err(ModelError::Chat(e.to_string()))).await;
                                 }
                             }
@@ -258,7 +258,7 @@ impl ChiiCore {
                                         {
                                             Ok(result) => {
                                                 info!(
-                                                    component = "CHII_CORE", event = "tool_result",
+                                                    component = "CHII", event = "tool_result",
                                                     session_id = ?session_id,
                                                     tool_name = %name,
                                                     result_len = result.len(),
@@ -279,7 +279,7 @@ impl ChiiCore {
                                             }
                                             Err(e) => {
                                                 error!(
-                                                    component = "CHII_CORE", event = "tool_error",
+                                                    component = "CHII", event = "tool_error",
                                                     session_id = ?session_id,
                                                     tool_name = %name,
                                                     error = %e,
@@ -308,7 +308,7 @@ impl ChiiCore {
                         }
                         if text_collector.is_empty() && !has_tool_call {
                             warn!(
-                                component = "CHII_CORE", event = "llm_no_usable_output",
+                                component = "CHII", event = "llm_no_usable_output",
                                 session_id = ?session_id,
                                 "LLM completed with no usable output"
                             );

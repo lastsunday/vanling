@@ -279,7 +279,7 @@ pub fn setup_default(router: Router) -> Router {
             let headers = request.headers();
             let id = xid::new();
             tracing::trace!("headers = {:?}", headers);
-            tracing::info_span!("Api Request",id = %id,method = %method,path = %path)
+            tracing::debug_span!("Api Request",id = %id,method = %method,path = %path)
         })
         .on_request(())
         .on_failure(())

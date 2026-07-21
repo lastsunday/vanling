@@ -9,7 +9,7 @@ pub struct LatencyOnResponse;
 
 impl<B> OnResponse<B> for LatencyOnResponse {
     fn on_response(self, response: &Response<B>, latency: Duration, _span: &Span) {
-        tracing::info!(latency = %Latency(latency), status = response.status().as_u16(),)
+        tracing::debug!(latency = %Latency(latency), status = response.status().as_u16(),)
     }
 }
 

@@ -10,13 +10,12 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::chobits::chii::Chii;
 use crate::chobits::frame::{Frame, InputMode};
 use crate::chobits::frame::{FrameResult, OutputMessage};
-use crate::chobits::listener::{ListenInput, ListenResult, ListenState, Listener};
+use crate::chobits::listener::{ListenInput, Listener, TurnOutput};
 use crate::chobits::message::hello::{AudioParam, HelloMessage};
 use crate::chobits::message::tts::TtsState;
 use crate::chobits::message::{AudioFormat, Transport};
 use crate::chobits::tts::Tts;
 
-use framework::err;
 use framework::prelude::error;
 
 use round::{ChatParam, Command, Round};
@@ -264,11 +263,13 @@ impl Session {
                     }
                 }
                 _ = tick.tick() => {
-                    if let Phase::Listening(param) = &self.phase
-                        && param.is_voice_break_detect
-                        && self.listener.poll_timeout().is_some()
-                    {
-                        self.forwarding_frame(&Frame::ListenStop).await;
+                    for event in self.listener.drain_outputs().await {
+                        if let TurnOutput::TurnComplete(result) = event
+                            && let Phase::Listening(param) = &self.phase
+                            && param.is_voice_break_detect
+                        {
+                            self.on_turn_complete(result, param.is_wake, param.can_barge_in, param.is_voice_break_detect).await;
+                        }
                     }
 
                     if self.check_idle_timeout() {
@@ -332,29 +333,25 @@ impl Session {
                 .try_lock()
                 .is_ok_and(|state| state.as_ref().is_some_and(|s| matches!(s, TtsState::Stop)))
         });
-        let is_idle = round_idle
-            && matches!(
-                self.listener.get_state(),
-                ListenState::Idle | ListenState::End | ListenState::Listening { is_speech: false }
-            );
+        let is_idle = round_idle && !self.listener.has_active_speech();
         if is_idle {
             if self.idle_since.is_none() {
                 self.idle_since = Some(Instant::now());
-                tracing::debug!(component = "session", event = "idle_started", session_id = %self.id, "idle started");
+                tracing::debug!(component = "SESSION", event = "listening_for_input", session_id = %self.id, "listening for input");
             }
             if let Some(timeout) = self.config.close_connection_no_activity_time
                 && let Some(since) = self.idle_since
                 && since.elapsed() >= Duration::from_millis(timeout as u64)
             {
                 tracing::info!(
-                    component = "session", event = "no_activity_timeout",
+                    component = "SESSION", event = "no_activity_timeout",
                     session_id = %self.id, timeout_ms = timeout,
                     "no activity timeout, closing connection"
                 );
                 return true;
             }
-        } else if self.idle_since.take().is_some() {
-            tracing::debug!(component = "session", event = "idle_cancelled", session_id = %self.id, "idle cancelled");
+        } else {
+            self.idle_since = None;
         }
         false
     }
@@ -362,7 +359,7 @@ impl Session {
     pub async fn stop(&mut self, reason: SessionEndReason) {
         let duration_ms = self.started_at.elapsed().as_millis() as u64;
         self.stop_round(RoundStopReason::SessionEnd).await;
-        tracing::info!(component = "session", event = "session_ended", session_id = %self.id, rounds = self.round_count, duration_ms, %reason, "session ended");
+        tracing::info!(component = "SESSION", event = "session_ended", session_id = %self.id, rounds = self.round_count, duration_ms, %reason, "session ended");
         let _ = self.output_tx_outer.send(OutputMessage {
             epoch: self.epoch,
             round_id: None,
@@ -377,7 +374,7 @@ impl Session {
         let round_id = framework::id::gen_id();
         let cancel = tokio_util::sync::CancellationToken::new();
         let epoch = self.epoch;
-        tracing::debug!(component = "session", event = "new_round", session_id = %self.id, round_id = %round_id, epoch, "new round");
+        tracing::debug!(component = "SESSION", event = "new_round", session_id = %self.id, round_id = %round_id, epoch, "new round");
         self.shadow_round = Some(Box::new(Round::new(
             self.id.clone(),
             round_id,
@@ -396,7 +393,7 @@ impl Session {
 
     pub async fn stop_round(&mut self, reason: RoundStopReason) {
         if let Some(round) = &mut self.running_round {
-            tracing::debug!(component = "session", event = "round_stopped", session_id = %self.id, round_id = %round.id, %reason, "round stopped");
+            tracing::debug!(component = "SESSION", event = "round_stopped", session_id = %self.id, round_id = %round.id, %reason, "round stopped");
             round.stop().await;
             round.join_handle.take();
         }
@@ -408,18 +405,12 @@ impl Session {
             if let Some(round) = &mut self.shadow_round {
                 round.epoch = self.epoch;
                 tracing::debug!(
-                    component = "session", event = "round_upgraded",
+                    component = "SESSION", event = "round_upgraded",
                     session_id = %self.id, epoch = self.epoch, round_id = %round.id,
                     "round upgraded",
                 );
             }
             self.stop_round(RoundStopReason::Upgrade).await;
-        } else if let Some(round) = &self.shadow_round {
-            tracing::debug!(
-                component = "session", event = "shadow_round_running",
-                session_id = %self.id, epoch = round.epoch, round_id = %round.id,
-                "shadow round running",
-            );
         }
         self.running_round = self.shadow_round.take();
     }
@@ -458,8 +449,27 @@ impl Session {
     }
 
     fn set_phase(&mut self, new_phase: Phase) {
-        tracing::debug!(component = "session", event = "phase_changed", session_id = %self.id, from = %self.phase, to = %new_phase, "phase changed");
         self.phase = new_phase;
+    }
+
+    async fn on_turn_complete(
+        &mut self,
+        result: crate::chobits::listener::TurnResult,
+        is_wake: bool,
+        can_barge_in: bool,
+        is_voice_break_detect: bool,
+    ) {
+        self.set_phase(Phase::Speaking(SpeakingParam {
+            text: result.text,
+            prob: result.prob,
+            can_barge_in,
+            is_wake,
+            is_voice_break_detect,
+        }));
+        self.upgrade_shadow_round().await;
+        let silence_voice_timeout = self.config.silence_voice_timeout.unwrap_or(1200);
+        self.listener.reset(Some(silence_voice_timeout)).await;
+        Box::pin(self.forwarding_frame(&Frame::ListenStop)).await;
     }
 
     async fn on_idle(&mut self, frame: &Frame) {
@@ -518,51 +528,26 @@ impl Session {
                     is_voice_break_detect: is_voice_break_detect.to_owned(),
                 }));
             }
-            Frame::ListenStop => {
-                self.listener
-                    .set_state(crate::chobits::listener::ListenState::End);
-                let (_, result) = self.listener.take_result().await;
-                let (text, prob) = match result {
-                    Ok(result) => match result {
-                        ListenResult::Text(text) => (text, 1.0),
-                        ListenResult::Audio { text, prob } => (text, prob),
-                    },
-                    Err(e) => {
-                        tracing::warn!(component = "session", event = "asr_failed", session_id = %self.id, error = %e, "asr failed");
-                        let _ = self.output_tx.send(OutputMessage {
-                            epoch: self.epoch,
-                            round_id: None,
-                            session_id: self.id.clone(),
-                            payload: FrameResult::Error(
-                                err!(SessionErrorCode::AsrFailure).with_extra(e.to_string()),
-                            ),
-                        });
-                        return;
-                    }
-                };
-                if text.trim().is_empty() {
-                    tracing::debug!(component = "session", event = "asr_empty_text", session_id = %self.id, "asr: empty text, skipping");
+            Frame::ListenStop => match self.listener.flush().await {
+                Some(result) if !result.text.trim().is_empty() => {
+                    self.on_turn_complete(
+                        result,
+                        param.is_wake,
+                        param.can_barge_in,
+                        param.is_voice_break_detect,
+                    )
+                    .await;
+                }
+                _ => {
+                    tracing::debug!(component = "SESSION", event = "asr_empty_text", session_id = %self.id, "asr: empty text, skipping");
                     let silence_voice_timeout = self.config.silence_voice_timeout.unwrap_or(1200);
                     self.listener.reset(Some(silence_voice_timeout)).await;
-                    return;
                 }
-                tracing::debug!(component = "session", event = "asr_result", session_id = %self.id, text = %text, prob, "asr result");
-                self.set_phase(Phase::Speaking(SpeakingParam {
-                    text,
-                    prob,
-                    can_barge_in: param.can_barge_in,
-                    is_wake: param.is_wake,
-                    is_voice_break_detect: param.is_voice_break_detect,
-                }));
-                self.upgrade_shadow_round().await;
-                let silence_voice_timeout = self.config.silence_voice_timeout.unwrap_or(1200);
-                self.listener.reset(Some(silence_voice_timeout)).await;
-                Box::pin(self.forwarding_frame(frame)).await;
-            }
+            },
             Frame::Input { text, mode } => {
                 let is_wake = matches!(mode, InputMode::Wake);
                 tracing::debug!(
-                    component = "session", event = "input_received",
+                    component = "SESSION", event = "input_received",
                     session_id = %self.id,
                     text_len = text.len(),
                     is_wake,
@@ -586,37 +571,44 @@ impl Session {
                 Box::pin(self.forwarding_frame(frame)).await;
             }
             Frame::Voice { data } => {
-                let prev_state = self.listener.get_state();
                 self.listener
                     .accept(ListenInput::Audio(data.to_vec()))
                     .await;
-                let new_state = self.listener.get_state();
 
-                // Check barge-in lockout: suppress barge-in for a period after TTS state changes
-                let lockout_ms = self.config.barge_in_lockout_ms.unwrap_or(250);
-                let is_in_lockout = self
-                    .last_tts_state_change
-                    .is_some_and(|t| t.elapsed() < Duration::from_millis(lockout_ms));
-
-                if param.can_barge_in
-                    && self.running_round.is_some()
-                    && !is_in_lockout
-                    && prev_state != (ListenState::Listening { is_speech: true })
-                    && new_state == (ListenState::Listening { is_speech: true })
-                {
-                    tracing::debug!(component = "session", event = "barge_in", session_id = %self.id, "voice break detect: barge-in");
-                    self.epoch += 1;
-                    self.stop_round(RoundStopReason::BargeIn).await;
-                    self.new_shadow_round().await;
-                } else if is_in_lockout && param.can_barge_in && self.running_round.is_some() {
-                    tracing::debug!(
-                        component = "session", event = "barge_in_suppressed",
-                        session_id = %self.id, lockout_ms,
-                        "barge-in suppressed during lockout period"
-                    );
-                }
-                if param.is_voice_break_detect && matches!(new_state, ListenState::End) {
-                    Box::pin(self.forwarding_frame(&Frame::ListenStop)).await;
+                for event in self.listener.drain_outputs().await {
+                    match event {
+                        TurnOutput::SpeechStarted => {
+                            if param.can_barge_in && self.running_round.is_some() {
+                                let lockout_ms = self.config.barge_in_lockout_ms.unwrap_or(250);
+                                let is_in_lockout = self.last_tts_state_change.is_some_and(|t| {
+                                    t.elapsed() < Duration::from_millis(lockout_ms)
+                                });
+                                if !is_in_lockout {
+                                    tracing::debug!(component = "SESSION", event = "barge_in_detected", session_id = %self.id, "barge-in detected");
+                                    self.epoch += 1;
+                                    self.stop_round(RoundStopReason::BargeIn).await;
+                                    self.new_shadow_round().await;
+                                } else {
+                                    tracing::debug!(
+                                        component = "SESSION", event = "barge_in_suppressed",
+                                        session_id = %self.id, lockout_ms,
+                                        "barge-in suppressed during lockout period"
+                                    );
+                                }
+                            }
+                        }
+                        TurnOutput::TurnComplete(result) => {
+                            if param.is_voice_break_detect {
+                                self.on_turn_complete(
+                                    result,
+                                    param.is_wake,
+                                    param.can_barge_in,
+                                    param.is_voice_break_detect,
+                                )
+                                .await;
+                            }
+                        }
+                    }
                 }
             }
             _ => {}

@@ -72,13 +72,17 @@ impl ProtocolTranslator for XiaozhiProtocolTranslator {
                             Some("abort") => try_parse::<AbortMessage>(bytes, Frame::Abort),
                             Some("mcp") => try_parse::<McpMessage>(bytes, Frame::Mcp),
                             _ => {
-                                warn!("unknown message type");
+                                warn!(
+                                    component = "WS",
+                                    event = "unknown_message_type",
+                                    "unknown message type"
+                                );
                                 Frame::UnknownText { data: bytes }
                             }
                         }
                     }
                     Ok(json) => {
-                        warn!("unknown json message = {json}");
+                        warn!(component = "WS", event = "unknown_json_message", json = %json, "unknown json message");
                         Frame::UnknownText { data: bytes }
                     }
                     Err(_) => Frame::UnknownText { data: bytes },

@@ -144,7 +144,7 @@ impl Round {
             let mut status = RoundStatus::Ok;
             let mut sentence_count: u32 = 0;
 
-            tracing::debug!(component = "round", event = "round_start", session_id = %session_id, round_id = %round_id, text = %text, "round start");
+            tracing::debug!(component = "ROUND", event = "round_start", session_id = %session_id, round_id = %round_id, text = %text, "round start");
 
             let send = |payload: FrameResult| {
                 output_tx
@@ -165,9 +165,9 @@ impl Round {
             {
                 return;
             }
-            tracing::debug!(component = "round", event = "stt_result_sent", session_id = %session_id, round_id = %round_id, "stt result sent");
+            tracing::debug!(component = "ROUND", event = "stt_result_sent", session_id = %session_id, round_id = %round_id, "stt result sent");
 
-            tracing::debug!(component = "round", event = "llm_start", session_id = %session_id, round_id = %round_id, "llm start");
+            tracing::debug!(component = "ROUND", event = "llm_start", session_id = %session_id, round_id = %round_id, "llm start");
             let chii_stream = chii.ask(Input::text(text), cancel.clone()).await;
             let sid = session_id.clone();
             let rid = round_id.clone();
@@ -182,14 +182,14 @@ impl Round {
                             OutputBlock::Text(s) => Some(s),
                         },
                         Err(e) => {
-                            tracing::warn!(component = "round", event = "llm_error", session_id = %sid, round_id = %rid, error = %e, "llm error");
+                            tracing::warn!(component = "ROUND", event = "llm_error", session_id = %sid, round_id = %rid, error = %e, "llm error");
                             let _ = llm_err_tx.send(Some(e.to_string()));
                             None
                         }
                     }
                 }
             });
-            tracing::debug!(component = "round", event = "tts_start", session_id = %session_id, round_id = %round_id, "tts start");
+            tracing::debug!(component = "ROUND", event = "tts_start", session_id = %session_id, round_id = %round_id, "tts start");
             let tts_output = tts.stream(Box::pin(chat_text_stream), cancel.clone()).await;
 
             async fn change_state(tts_state: &Arc<Mutex<Option<TtsState>>>, state: TtsState) {
@@ -225,7 +225,7 @@ impl Round {
                                     let audio_len: usize = audio_data.iter().map(|a| a.len()).sum();
                                     sentence_count += 1;
                                     tracing::debug!(
-                                        component = "round", event = "sentence",
+                                        component = "ROUND", event = "sentence",
                                         session_id = %session_id, round_id = %round_id,
                                         sentence = sentence_count, text = %text, emotion, audio_bytes = audio_len,
                                         "sentence"
@@ -287,7 +287,7 @@ impl Round {
                                 }
                                 Err(e) => {
                                     status = RoundStatus::Error;
-                                    tracing::warn!(component = "round", event = "tts_encode_error", session_id = %session_id, round_id = %round_id, error = %e, "tts encode error");
+                                    tracing::warn!(component = "ROUND", event = "tts_encode_error", session_id = %session_id, round_id = %round_id, error = %e, "tts encode error");
                                     let _ = send(FrameResult::Error(
                                         err!(SessionErrorCode::TtsEncode).with_extra(e.to_string()),
                                     ));
@@ -296,11 +296,10 @@ impl Round {
                                 }
                             },
                             Ok(None) => {
-                                tracing::debug!(component = "round", event = "tts_stream_ended", session_id = %session_id, round_id = %round_id, "tts: stream ended");
                                 break;
                             }
                             Err(_) => {
-                                tracing::warn!(component = "round", event = "tts_timeout", session_id = %session_id, round_id = %round_id, "tts timeout");
+                                tracing::warn!(component = "ROUND", event = "tts_timeout", session_id = %session_id, round_id = %round_id, "tts timeout");
                                 status = RoundStatus::Error;
                                 break;
                             }
@@ -309,7 +308,7 @@ impl Round {
                     _ = llm_err_rx.changed() => {
                         if let Some(e) = llm_err_rx.borrow().clone() {
                             tracing::warn!(
-                                component = "round", event = "llm_error_detected",
+                                component = "ROUND", event = "llm_error_detected",
                                 session_id = %session_id, round_id = %round_id,
                                 "LLM error detected, aborting TTS"
                             );
@@ -333,7 +332,7 @@ impl Round {
             {
                 status = RoundStatus::Error;
                 tracing::warn!(
-                    component = "round", event = "llm_no_usable_output",
+                    component = "ROUND", event = "llm_no_usable_output",
                     session_id = %session_id, round_id = %round_id,
                     "LLM completed with no usable output"
                 );
@@ -355,7 +354,7 @@ impl Round {
             }
             let duration_ms = round_start.elapsed().as_millis() as u64;
             tracing::debug!(
-                component = "round", event = "round_complete",
+                component = "ROUND", event = "round_complete",
                 session_id = %session_id, round_id = %round_id,
                 duration_ms, sentences = sentence_count, %status,
                 "round complete"

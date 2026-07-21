@@ -141,7 +141,7 @@ where
     W: Sink<Message> + Unpin + Send + 'static,
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    tracing::info!(component = "ws", event = "session_started", session_id = %ctx.session_id, "session started");
+    tracing::info!(component = "WS", event = "session_started", session_id = %ctx.session_id, "session started");
 
     let mcp_ctx = setup_mcp_session(ctx.session_id.clone(), &ctx.mcp_config).await;
 
@@ -210,7 +210,7 @@ where
 
     let _ = tokio::join!(session_handle, output_handle, input_handle);
 
-    tracing::info!(component = "ws", event = "session_ended", "session ended");
+    tracing::info!(component = "WS", event = "session_ended", "session ended");
 }
 
 async fn ws_input<R>(
@@ -228,7 +228,7 @@ async fn ws_input<R>(
             biased;
 
             _ = cancel.cancelled() => {
-                tracing::debug!(component = "ws", event = "input_cancelled", session_id = %session_id, "input cancelled");
+                tracing::debug!(component = "WS", event = "input_cancelled", session_id = %session_id, "input cancelled");
                 break;
             }
 
@@ -273,7 +273,7 @@ async fn ws_output<W>(
             biased;
 
             _ = cancel.cancelled() => {
-                tracing::debug!(component = "ws", event = "output_cancelled", session_id = %session_id, "output cancelled");
+                tracing::debug!(component = "WS", event = "output_cancelled", session_id = %session_id, "output cancelled");
                 break;
             }
 
