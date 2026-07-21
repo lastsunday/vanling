@@ -71,6 +71,12 @@ export class WebSocketHandler {
 
   // 处理文本消息
   handleTextMessage(message) {
+    // 检查是否是错误消息（有code字段但没有type字段）
+    if (message.code !== undefined && message.type === undefined) {
+      this.handleErrorMessage(message);
+      return;
+    }
+
     if (message.type === 'hello') {
       log(`服务器回应：${JSON.stringify(message, null, 2)}`, 'success');
     } else if (message.type === 'tts') {
@@ -104,6 +110,13 @@ export class WebSocketHandler {
       log(`未知消息类型: ${message.type}`, 'info');
       addMessage(JSON.stringify(message, null, 2));
     }
+  }
+
+  // 处理错误消息
+  handleErrorMessage(message) {
+    const { code, message: errorMsg } = message;
+    log(`服务器错误 [${code}]: ${errorMsg}`, 'error');
+    addMessage(`错误 [${code}]: ${errorMsg}`);
   }
 
   // 处理TTS消息

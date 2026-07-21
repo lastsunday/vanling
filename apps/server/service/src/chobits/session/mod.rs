@@ -651,4 +651,5 @@ pub enum SessionErrorCode {
     AsrFailure = 504004,
     LlmFailure = 504005,
     InternalError = 504006,
+    LlmNoUsableOutput = 504007,
 }

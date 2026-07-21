@@ -115,6 +115,12 @@ fn create_message_prompt(message: &Message) -> String {
                     tool_call_text
                 ));
             }
+            ContentPart::Reasoning(text) => {
+                prompt.push_str(&format!(
+                    "<|im_start|>assistant\n<think>{}</think><|im_end|>\n",
+                    text
+                ));
+            }
             ContentPart::ToolResult { output, .. } => {
                 prompt.push_str(&format!(
                     "<|im_start|>user\n<tool_response>{}</tool_response><|im_end|>\n",

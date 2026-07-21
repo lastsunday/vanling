@@ -18,8 +18,11 @@ use service::chobits::llm::{
     CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role, ToolDef,
 };
 use std::pin::Pin;
+use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-use tracing::error;
+use tracing::{debug, error, info, warn};
+
+const LLM_STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct OpenAiCompatible {
@@ -85,6 +88,9 @@ fn convert_messages_to_rig(messages: &[Message], preamble: &Option<String>) -> V
                         } => {
                             contents.push(AssistantContent::tool_call(id, name, arguments.clone()));
                         }
+                        ContentPart::Reasoning(text) => {
+                            contents.push(AssistantContent::reasoning(text));
+                        }
                         _ => {}
                     }
                 }
@@ -133,7 +139,7 @@ impl Llm for OpenAiCompatible {
     async fn stream(
         &self,
         request: CompletionRequest,
-        _cancel: CancellationToken,
+        cancel: CancellationToken,
     ) -> Pin<Box<dyn Stream<Item = Result<CompletionEvent, AppError>> + Send>> {
         let (mut tx, rx) = channel::<Result<CompletionEvent, AppError>>(16);
         let rig_request = build_rig_request(request);
@@ -143,37 +149,78 @@ impl Llm for OpenAiCompatible {
             let stream = match rig_model.stream(rig_request).await {
                 Ok(s) => s,
                 Err(e) => {
-                    error!(error = %e, "OpenAI-compatible stream init failed");
+                    error!(component = "OPENAI_MODEL", event = "stream_init_error", error = %e, "LLM stream init failed");
                     let _ = tx.send(Ok(CompletionEvent::Error(e.to_string()))).await;
                     return;
                 }
             };
 
             let mut stream = Box::pin(stream);
-            while let Some(item) = stream.next().await {
-                let event = match item {
-                    Ok(StreamedAssistantContent::Text(text)) => {
-                        Ok(CompletionEvent::Text(text.text))
+            loop {
+                tokio::select! {
+                    item = tokio::time::timeout(LLM_STREAM_TIMEOUT, stream.next()) => {
+                        match item {
+                            Ok(Some(item)) => {
+                                let event = match item {
+                                    Ok(StreamedAssistantContent::Text(text)) => {
+                                        Ok(CompletionEvent::Text(text.text))
+                                    }
+                                    Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
+                                        Ok(CompletionEvent::Reasoning(reasoning))
+                                    }
+                                    Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                                        Ok(CompletionEvent::Reasoning(reasoning.display_text()))
+                                    }
+                                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                                        Ok(CompletionEvent::ToolCall {
+                                            id: tool_call.id,
+                                            name: tool_call.function.name,
+                                            arguments: tool_call.function.arguments,
+                                        })
+                                    }
+                                    Ok(StreamedAssistantContent::Final(response)) => Ok(CompletionEvent::Final {
+                                        prompt_tokens: response.usage.prompt_tokens,
+                                        total_tokens: response.usage.total_tokens,
+                                    }),
+                                    Ok(other) => {
+                                        debug!(
+                                            component = "OPENAI_MODEL", event = "unknown_stream_event",
+                                            variant = std::any::type_name_of_val(&other),
+                                            "unhandled streaming event skipped"
+                                        );
+                                        continue;
+                                    }
+                                    Err(e) => Ok(CompletionEvent::Error(e.to_string())),
+                                };
+                                if tx.send(event).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(None) => {
+                                // Stream ended normally
+                                break;
+                            }
+                            Err(_) => {
+                                // Timeout: no event received within LLM_STREAM_TIMEOUT
+                                warn!(
+                                    component = "OPENAI_MODEL", event = "stream_timeout",
+                                    timeout_secs = LLM_STREAM_TIMEOUT.as_secs(),
+                                    "LLM stream timeout: no response received"
+                                );
+                                let _ = tx.send(Ok(CompletionEvent::Error(
+                                    format!("LLM stream timeout: no response within {} seconds", LLM_STREAM_TIMEOUT.as_secs())
+                                ))).await;
+                                break;
+                            }
+                        }
                     }
-                    Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
-                        Ok(CompletionEvent::Reasoning(reasoning))
+                    _ = cancel.cancelled() => {
+                        info!(
+                            component = "OPENAI_MODEL", event = "stream_cancelled",
+                            "LLM stream cancelled"
+                        );
+                        break;
                     }
-                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                        Ok(CompletionEvent::ToolCall {
-                            id: tool_call.id,
-                            name: tool_call.function.name,
-                            arguments: tool_call.function.arguments,
-                        })
-                    }
-                    Ok(StreamedAssistantContent::Final(response)) => Ok(CompletionEvent::Final {
-                        prompt_tokens: response.usage.prompt_tokens,
-                        total_tokens: response.usage.total_tokens,
-                    }),
-                    Ok(_) => continue,
-                    Err(e) => Ok(CompletionEvent::Error(e.to_string())),
-                };
-                if tx.send(event).await.is_err() {
-                    break;
                 }
             }
         });

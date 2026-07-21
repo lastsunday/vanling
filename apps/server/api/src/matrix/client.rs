@@ -1,5 +1,7 @@
 use std::{collections::HashMap, error::Error, sync::Arc, time::Duration};
 
+const MATRIX_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
+
 use framework::id::gen_id;
 use futures_util::future::{join, join_all};
 use ruma::{
@@ -146,7 +148,7 @@ impl Bot {
             Some(filter),
             initial_sync_response.next_batch,
             PresenceState::Online,
-            Some(Duration::from_secs(30)),
+            Some(MATRIX_SYNC_TIMEOUT),
         ));
 
         info!("matrix client listening...");

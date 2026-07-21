@@ -88,12 +88,6 @@ pub fn run_with_args(args: &ServeArgs) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-#[tracing::instrument(
-	name = "main",
-	parent = None,
-	skip_all,
-	level = "info"
-)]
 async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
     let config = server.server.config.clone();
     let server_config = Arc::new(ServerConfig {

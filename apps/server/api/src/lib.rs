@@ -22,6 +22,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+
 use axum::Router;
 use axum::ServiceExt;
 use axum::extract::DefaultBodyLimit;
@@ -262,8 +264,7 @@ pub fn setup_default(router: Router) -> Router {
             tracing::warn!("Method not allowed");
             Err(AppError::from_code(FrameworkErrorCode::MethodNotAllowed))
         });
-    let timeout =
-        TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(120));
+    let timeout = TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, HTTP_REQUEST_TIMEOUT);
     let body_limit = DefaultBodyLimit::max(ByteSize::mib(10).as_u64() as usize);
     let cors = CorsLayer::new()
         .allow_origin(cors::Any)

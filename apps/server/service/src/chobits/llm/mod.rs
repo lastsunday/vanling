@@ -33,6 +33,7 @@ pub enum ContentPart {
         id: String,
         output: String,
     },
+    Reasoning(String),
 }
 
 #[derive(Debug, Clone)]

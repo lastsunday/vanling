@@ -21,67 +21,91 @@ weight = 204
 | 🟡 P1 | OTA 设备激活 | `api/src/ota.rs` | `activate` 端点为 stub，返回 "success" 但不验证设备，设备信息未存 DB | — |
 | 🟡 P1 | MCP 认证 | `api/src/mcp/mod.rs` | `/mcp` 端点认证被注释掉 | 已有: `rmcp` |
 
-## 核心功能
+## 语音输入与处理
+
+| 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 |
+|--------|------|------|------|-------------|
+| 🔴 P0 | Wake Word 支持 | `api/src/ws/` + 协议层 | ESP32 客户端已有 ESP-SR 离线唤醒，服务端需处理 `wake_word` 消息类型，当前协议无此字段。行业标配（Echo/Google/Xiaozhi 均有），响应延迟 <200ms | — (ESP32 端 ESP-SR，服务端仅协议解析) |
+| 🟡 P1 | 声纹识别 (Voiceprint) | 新功能 | 参考项目 xinnan-tech 已实现（3D-Speaker 模型），与 ASR 并行处理，识别说话人身份传递给 LLM 实现个性化回复。sherpa-onnx 已支持 speaker identification（ECAPA-TDNN/WeSpeaker），无需新依赖。黑客365 Go 版使用 Qdrant 向量库 + 动态 TTS 声音切换，架构更成熟。需：注册/管理/识别流程 + DB 存储声纹向量 + LLM 上下文注入 | 已有: `sherpa-onnx` (ECAPA-TDNN/WeSpeaker) |
+| 🟡 P1 | Opus 除零 | `api/src/ws/default_listener.rs` | channels=0 / sample_rate=0 时除零 | — |
+| 🟡 P1 | 音频热路径克隆 | `api/src/ws/default_listener.rs` | 每 20ms `data.to_vec()` 频繁克隆 | — |
+| 🟡 P1 | 分层轮次检测 | 新功能 | 4 层架构替代纯 VAD：Layer 1 Silero VAD（<1ms/帧）→ Layer 2 持续时间检查（min_silence_ms）→ Layer 3 标点/语义完整性（`.?!` 立即提交，无标点延长窗口）→ Layer 4 填充词检测（uh/um 延长 reopen）。LiveKit Turn Detector v1.0（2026.06）实测 300ms 延迟下 9.9% 误切率（vs Deepgram 12.9%）；OpenAI 用 `silence_duration_ms=500` + `prefix_padding_ms=300` 配置服务端 VAD。当前 chobits 仅 Layer 1（Earshot Silero），缺少语义层。arxiv 2606.13450 展示可提前 2.56s 预测端点，减少 505ms 平均延迟 | 建议: LiveKit `v1-mini`（量化版 CPU 可推理）; OpenAI 配置模式; arxiv 2606.13450 Endpoint Anticipation |
+| 🟡 P1 | 动态 VAD 参数 | `api/src/ws/default_listener.rs` + `vad/` | **当前瓶颈**：VAD 参数在配置时固定，`silence_voice_timeout=1200ms` 固定。OpenAI Realtime 用 `threshold=0.5` + `prefix_padding_ms=300` + `silence_duration_ms=500` 配置，LiveKit 支持 `update_options()` 运行时修改。**方案**：助理刚说完→缩短 silence 到 300ms（快速回复）；用户长发言→延长 max_speech_ms；能量预过滤静音帧跳过 VAD 推理（省 CPU）。vui 通过命令队列实时修改 `stop_secs`，speech-to-speech 有 RuntimeConfig | 参考: vui `asr_worker.py:198-206`; speech-to-speech `RuntimeConfig`; OpenAI `server_vad` 配置 |
+| 🟡 P1 | ASR Settle 延迟 + Speculative Reopen | `api/src/ws/default_listener.rs` | **当前瓶颈**：VAD silence 后立即 ASR，可能丢失尾部音素；无 turn reopen 机制。**方案**：(1) 分层提交：silence→等 120ms 让最后中间结果到达→标点检查→`.?!` 立即提交，无标点额外等 700ms trailing-off（vui tiered_commit 实测：干净句子 420ms，trailing off 1120ms）；(2) Speculative Reopen：参考 HF speech-to-speech 的 SpeculativeTurnTracker，64ms 静默即软结束开始 ASR/LLM，turn 保持 reopenable 1s，用户重新说话→revision+1 丢弃旧工作。**防止误提交**：用户说"嗯...其实..."时不会过早触发回复 | 参考: vui `voice_turn.py:696-771`; HF speech-to-speech `speculative_turns.py` |
+| ⚠️ P2 | 填充词/犹豫检测 | `api/src/ws/default_listener.rs` | ASR 输出 `uh/um/呃/嗯` 等填充词 + 短音频（<3s）→ 丢弃不触发 LLM。**方案**：(1) 轻量：ASR 后处理检查末尾填充词（vui `_ends_with_filler`，支持 `uh/um/uhhh/ummm` 变体）；(2) 音频级：desert-ant-labs `uhm` 项目，DistilHuBERT 分类器，iPhone 169-296x realtime，6 类无需 ASR；(3) 训练级：disfluency LoRA 微调 whisper-large-v3-turbo，75% filler 召回率。chobits 推荐方案 (1)，与分层轮次检测的 Layer 4 结合 | 参考: vui `_ends_with_filler` `voice_turn.py:25-35`; desert-ant-labs/uhm; disfluency LoRA |
+| ⚠️ P2 | VAD 采样率 | `api/src/vad/` | 硬编码 16kHz，非 16kHz 输入无声失败 | — |
+| ⚠️ P2 | ASR | `api/src/asr/` | SenseVoice (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | 已有: `sherpa-onnx` |
+| ⚠️ P2 | 环境监听模式 | 新功能 | 医疗 AI（Nuance DAX/Nabla）的被动监听模式：非唤醒词触发，持续监听环境音频，主动响应用户需求。需隐私架构（Nabla 模式：不存储原始音频）。适合家庭/办公场景 | — |
+| 🟢 P3 | Speaker Diarization | `api/src/listener/` | 说话人分离，多人场景下区分不同用户。sherpa-onnx 已支持（ECAPA-TDNN + AHC 聚类） | 已有: `sherpa-onnx` / 建议: `polyvoice` |
+| 🟢 P3 | AEC 服务端降噪 | `api/src/ws/default_listener.rs` | joey-zhou 已实现 WebRTC AEC3 服务端回声消除（含噪声抑制 + 高通滤波 + 自适应增益）。chobits 仅客户端 AEC | 建议: `aec3` — 纯 Rust WebRTC AEC3 |
+| 🟢 P3 | WebRTC 实时音视频 | 新功能 | 参考项目 dairoot/xiaozhi-webrtc 实现 WebRTC 低延迟 + Live2D + 多模态视觉 + MCP。chobits 当前仅 WS 协议 | 建议: `webrtc-rs` (v0.17.x) |
+| 🟢 P3 | 音频标准化集成 | `api/src/util/compressor.rs` → 管道 | `adaptive_normalize()` 已实现但未集成到 TTS 输出管道 | — |
+| 🟢 P3 | 引导式推理对话 | 新功能 | 教育 AI（作业帮/有道）的引导模式：不直接给答案，逐步引导用户思考。适合儿童/学习场景，需 LLM prompt 工程 + 对话状态管理 | — |
+
+## 语言模型与推理
+
+| 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 |
+|--------|------|------|------|-------------|
+| 🔴 P0 | LLM 线程安全 | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on`，未 `catch_unwind`，panic 静默崩溃 | — |
+| 🔴 P0 | LLM Echo 线程 | `api/src/llm/model/echo/mod.rs` | 同上 | — |
+| 🟡 P1 | 情绪识别完善 | `api/src/llm/model/` (analyze_emotion) | 当前 stub 返回 "happy"。行业方案：音频特征 (wav2vec2 SER) + 文本情感 (GoEmotions) 双通道融合，用于调整 TTS 语气和回复风格 | 已有: `sherpa-onnx` (SER 模型) |
+| 🟡 P1 | 个性化记忆/长期偏好 | 新功能 | 当前仅 chat history，无长期偏好存储。参考项目 xinnan-tech 有 PowerMem（用户画像 + 艾宾浩斯遗忘曲线 + 向量检索）；joey-zhou 有 3 种记忆模式（window/summary/long + 图检索） | 建议: `qdrant` + `rig-core` — 向量 DB + RAG 框架 |
+| 🟡 P1 | RAG 知识库 | MCP 或内置模块 | 参考项目 xinnan-tech 集成 RAGFlow；joey-zhou 有 EmbeddingModelFactory + 图检索。当前 MCP 框架可接入但无内置向量检索 | 已有: `rig-core` (10+ 向量存储后端) |
+| 🟡 P1 | Intent 识别 | 新功能 | 参考项目 xinnan-tech 支持 3 种模式：function_call（推荐）、intent_llm（专用 LLM）、nointent。当前 chobits 无独立 intent 层 | 已有: `rmcp` (function_call) |
+| 🟡 P1 | LLM 历史阻塞 | `api/src/llm/model/qwen3/mod.rs` | DB 落盘导致完整线程阻塞 | — |
+| ⚠️ P2 | Agent 任务编排 | 新功能 | 参考项目 Alexa+ 自主执行 Uber/OpenTable/Grubhub；Rabbit R1 LAM 大动作模型；Doubao 超能模式自主分解复杂任务。LLM + MCP 工具链实现自主任务执行 | 已有: `rig-core` (Agent/Chain/Router) |
+| 🟢 P3 | describe O(n) | `api/src/llm/model/qwen3/mod.rs` | 实时构建全消息历史 | — |
+
+## 语音合成 (TTS)
+
+| 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 |
+|--------|------|------|------|-------------|
+| 🟡 P1 | Piper/Kokoro TTS 集成 | `api/src/tts/` | 开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 建议: `sherpa-onnx` (Piper ONNX 模型) |
+| 🟡 P1 | 流式 LLM→TTS 管道并行 | `api/src/chii/splitter.rs` + `round.rs` | **当前瓶颈**：Splitter 严格按 `。！？!?` 拆分，无子句拆分；MatchaTTS `generate_with_config` 一次性生成整句音频（callback 参数为 `None`，sherpa-onnx 实际支持流式 callback）。arxiv 2603.05413 实测流水线并行 TTFA 755ms（vs 串行 26.5s → 17x 改善）。**方案**：Splitter 改为 `SentenceBuffer`，first_chunk 用 3-5 词快速出首包（`first_chunk_words`），后续 15-20 词或 break_chars 兜底；TTS 改用 callback 模式边生成边 Opus 编码边发送，取消时 callback 返回 false 中断。核心原则：延迟从 `STT+LLM+TTS` 变为 `max(STT,LLM,TTS)` | 参考: vui `engine.py:73` `chunk_words`; arxiv 2603.05413; sherpa-onnx callback API |
+| 🟡 P1 | 音频 Hold Buffer + Fade-out | `api/src/tts/` | TTS 输出音频尾部 abrupt cutoff 产生 click。最后 N 帧（~240ms）缓存，尾部 200ms 做线性淡出消除杂音，参考 vui `tts_worker.py:713-783` 的 hold buffer + fade-out 实现 | 参考: vui `tts_worker.py:713-783` |
+| 🟡 P1 | TTS Callback 流式合成 | `api/src/tts/model/matcha/mod.rs` | **当前瓶颈**：`generate_with_config` 的 callback 参数为 `None`（line 260），一次性生成整句全部 PCM 后才编码 Opus。sherpa-onnx `OfflineTts` 实际支持 streaming callback：每 ~100ms 音频 chunk 调用一次回调，可边生成边编码边发送。配合 SentenceBuffer，首包音频可在 LLM 第一个 sentence 到达后 ~100ms 内发出（而非等整句合成完）。取消时 callback 返回 false 中断推理，实现 BargeIn 低延迟 | 参考: sherpa-onnx `generate_with_config` callback API; vui streaming vocoder |
+| 🟡 P1 | 多语言 TTS | `api/src/tts/` | 当前仅单语言 TTS voice。ESP32 客户端已支持 25+ 语言 ASR，TTS 侧需匹配 | 建议: `sherpa-onnx` (Piper/VITS ONNX 模型) |
+| 🟡 P1 | Quick Reply 预回复 | 新功能 | LLM 推理期间先播放"我在"/"来了"等短语，降低感知延迟。参考项目黑客365 Go 版已实现，UX 关键，实现简单 | — |
+| 🟡 P1 | 动态 TTS 声音切换 | 新功能 | 基于声纹识别自动切换不同 TTS 音色。参考项目黑客365 Go 版已实现（sherpa-onnx 声纹 + per-speaker TTS voice），声纹识别的自然延伸 | 已有: `sherpa-onnx` (声纹+TTS 切换) |
+| ⚠️ P2 | 句间静音优化 | `api/src/tts/` | TTS 句间固定静音。改为按标点类型动态调整：逗号 0.3s，句号 0.6s，其他 0.3s，让对话节奏更自然 | 参考: RealtimeVoiceChat `ENGINE_SILENCES` `audio_module.py:22-26` |
+| ⚠️ P2 | 对话韵律 TTS | 新功能 | 参考项目 Sesame CSM（Apache 2.0 开源）生成呼吸/犹豫/笑声等对话韵律，让语音更像真人。Cartesia Sonic 3.5 使用 SSM 架构实现 <90ms TTS 延迟 | 建议: `csm.rs` — Rust Sesame CSM (AGPL-3.0) |
+| ⚠️ P2 | 情绪自适应语调 | 新功能 | 参考项目 Hume AI EVI 检测 600+ 情感标签（犹豫/讽刺/宽慰），自适应调整 TTS 语气。MiniMax Speech-2.8 支持 7 种情绪 + 0-100% 强度控制 + 插入标签 `(laughs)` `(sighs)` | 建议: `voirs-emotion` — 多维情绪控制 |
+| 🟢 P3 | 声音克隆 | `api/src/tts/` | 参考项目 xinnan-tech 支持火山引擎语音克隆；joey-zhou 支持按角色声音克隆。MatchaTTS 已支持 reference audio，需暴露配置接口 | 建议: `sherpa-onnx` (speaker embedding) |
+| 🟢 P3 | TTS 循环克隆 | `api/src/tts/` | `Arc<str>` vs `String` 克隆风暴 | — |
+
+## 工具与集成
+
+| 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 |
+|--------|------|------|------|-------------|
+| 🟡 P1 | 家居集成 (Home Assistant) | MCP 或独立模块 | 参考项目 xinnan-tech 有 3 种 HA 集成方式（社区插件/HA 作为 LLM 工具/HA MCP Server）。智能家居是语音助手核心场景 | 已有: `rmcp` (HA MCP Server) |
+| 🟡 P1 | 设备间通话 | MCP tool 或独立功能 | 参考项目 xinnan-tech 有 `call_device.py`，ESP32 设备间可像电话一样互相呼叫，需 MQTT gateway + 通讯录管理 | 建议: `rumqttc` — 纯 Rust MQTT 客户端 |
+| 🟡 P1 | 音乐播放 | MCP tool 或独立功能 | 参考项目 xinnan-tech 有 `play_music.py` + `hass_play_music.py`；joey-zhou 有 `MusicPlayer` 支持 LRC 歌词同步。行业标配 | 建议: `rodio` — 跨平台音频播放 |
+| 🟡 P1 | Timer/提醒/闹钟 | MCP tool 或独立功能 | 行业标配（"Alexa, set a timer"），当前无任何定时/提醒机制 | 建议: `tokio-cron-scheduler` — Tokio 异步 cron |
+| ⚠️ P2 | MCP 认证 | `api/src/mcp/mod.rs` | `/mcp` 端点认证被注释掉 | 已有: `rmcp` |
+| ⚠️ P2 | 插件系统 | 新功能 | 参考项目 xinnan-tech 有 13 个内置插件 + 热加载机制。chobits 无插件架构，功能扩展需修改核心代码 | 建议: `wasmtime` — WASI P2 + Component Model |
+| ⚠️ P2 | MCP Market / 工具市场 | 新功能 | 参考项目黑客365 Go 版实现 MCP 工具"应用商店"：聚合多第三方市场（如 ModelScope），一键导入远程 MCP 服务 + 热加载。chobits 当前无 MCP 工具发现/聚合机制 | 已有: `rmcp` |
+| ⚠️ P2 | MCP 调试控制台 | 新功能 | 参考项目黑客365 Go 版有 Agent/Device 维度 MCP 远程调试：Web 控制台生成每 Agent 独立 MCP 端点，实时调用测试，支持 per-agent 工具过滤。chobits 当前无 MCP 调试工具 | 已有: `rmcp` |
+| ⚠️ P2 | MCP 工具聚合 | 新功能 | 参考项目 xiaozhi-mcp / yuexianga/xiaozhi-mcp 提供预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算），开箱即用。chobits 无内置 MCP 工具包 | 已有: `rmcp` |
+| ⚠️ P2 | MQTT 网关 | 新功能 | 参考项目 xinnan-tech/xiaozhi-mqtt-gateway 实现 MQTT+UDP → WS 桥接：分布式部署 + 动态负载均衡 + HMAC 认证 + MCP 命令下发。chobits 当前仅 WS 单协议 | 建议: `rumqttc` — 纯 Rust，tokio 原生 |
+| ⚠️ P2 | 配置向导+全链路测试 | 新功能 | 参考项目黑客365 Go 版有首次运行向导（OTA/VAD/ASR/LLM/TTS 逐步配置）+ 每组件延迟测试 + 可视化图表。chobits 当前无部署向导 | — |
+
+## 会话与设备
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 |
 |--------|------|------|------|-------------|
 | 🔴 P0 | stop_round 竞态 | `service/src/chobits/session/round.rs` | `llm_tts_handle` 与 `stop_round` 之间缺少同步，可能 use-after-cancel | — |
-| 🔴 P0 | LLM 线程安全 | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on`，未 `catch_unwind`，panic 静默崩溃 | — |
-| 🔴 P0 | LLM Echo 线程 | `api/src/llm/model/echo/mod.rs` | 同上 | — |
-| 🔴 P0 | Wake Word 支持 | `api/src/ws/` + 协议层 | ESP32 客户端已有 ESP-SR 离线唤醒，服务端需处理 `wake_word` 消息类型，当前协议无此字段。行业标配（Echo/Google/Xiaozhi 均有），响应延迟 <200ms | — (ESP32 端 ESP-SR，服务端仅协议解析) |
-| 🟡 P1 | 声纹识别 (Voiceprint) | 新功能 | 参考项目 xinnan-tech 已实现（3D-Speaker 模型），与 ASR 并行处理，识别说话人身份传递给 LLM 实现个性化回复。sherpa-onnx 已支持 speaker identification（ECAPA-TDNN/WeSpeaker），无需新依赖。黑客365 Go 版使用 Qdrant 向量库 + 动态 TTS 声音切换，架构更成熟。需：注册/管理/识别流程 + DB 存储声纹向量 + LLM 上下文注入 | 已有: `sherpa-onnx` (ECAPA-TDNN/WeSpeaker) |
-| 🟡 P1 | Opus 除零 | `api/src/ws/default_listener.rs` | channels=0 / sample_rate=0 时除零 | — |
+| 🟡 P1 | Continued Conversation | `service/src/chobits/session/` | 回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持 | — |
 | 🟡 P1 | 时钟溢出 | `service/src/chobits/session/mod.rs` | `Local::now()` 非单调，减法可溢出 | 已有: `jiff` (单调时钟) |
 | 🟡 P1 | 设备管理 | 新功能 | 无设备注册/绑定/列表，OTA 激活后无设备持久化。参考项目有完整设备生命周期管理（注册/状态/配置/OTA/批量操作） | 已有: `sea-orm` |
-| 🟡 P1 | 音乐播放 | MCP tool 或独立功能 | 参考项目 xinnan-tech 有 `play_music.py` + `hass_play_music.py`；joey-zhou 有 `MusicPlayer` 支持 LRC 歌词同步。行业标配 | 建议: `rodio` — 跨平台音频播放 |
-| 🟡 P1 | Timer/提醒/闹钟 | MCP tool 或独立功能 | 行业标配（"Alexa, set a timer"），当前无任何定时/提醒机制 | 建议: `tokio-cron-scheduler` — Tokio 异步 cron |
-| 🟡 P1 | Continued Conversation | `service/src/chobits/session/` | 回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持 | — |
-| 🟡 P1 | 情绪识别完善 | `api/src/llm/model/` (analyze_emotion) | 当前 stub 返回 "happy"。行业方案：音频特征 (wav2vec2 SER) + 文本情感 (GoEmotions) 双通道融合，用于调整 TTS 语气和回复风格 | 已有: `sherpa-onnx` (SER 模型) |
-| 🟡 P1 | 个性化记忆/长期偏好 | 新功能 | 当前仅 chat history，无长期偏好存储。参考项目 xinnan-tech 有 PowerMem（用户画像 + 艾宾浩斯遗忘曲线 + 向量检索）；joey-zhou 有 3 种记忆模式（window/summary/long + 图检索） | 建议: `qdrant` + `rig-core` — 向量 DB + RAG 框架 |
-| 🟡 P1 | RAG 知识库 | MCP 或内置模块 | 参考项目 xinnan-tech 集成 RAGFlow；joey-zhou 有 EmbeddingModelFactory + 图检索。当前 MCP 框架可接入但无内置向量检索 | 已有: `rig-core` (10+ 向量存储后端) |
-| 🟡 P1 | 多语言 TTS | `api/src/tts/` | 当前仅单语言 TTS voice。ESP32 客户端已支持 25+ 语言 ASR，TTS 侧需匹配 | 建议: `sherpa-onnx` (Piper/VITS ONNX 模型) |
-| 🟡 P1 | 家居集成 (Home Assistant) | MCP 或独立模块 | 参考项目 xinnan-tech 有 3 种 HA 集成方式（社区插件/HA 作为 LLM 工具/HA MCP Server）。智能家居是语音助手核心场景 | 已有: `rmcp` (HA MCP Server) |
-| 🟡 P1 | 设备间通话 | MCP tool 或独立功能 | 参考项目 xinnan-tech 有 `call_device.py`，ESP32 设备间可像电话一样互相呼叫，需 MQTT gateway + 通讯录管理 | 建议: `rumqttc` — 纯 Rust MQTT 客户端 |
-| 🟡 P1 | Intent 识别 | 新功能 | 参考项目 xinnan-tech 支持 3 种模式：function_call（推荐）、intent_llm（专用 LLM）、nointent。当前 chobits 无独立 intent 层 | 已有: `rmcp` (function_call) |
-| 🟡 P1 | 音频热路径克隆 | `api/src/ws/default_listener.rs` | 每 20ms `data.to_vec()` 频繁克隆 | — |
-| 🟡 P1 | Quick Reply 预回复 | 新功能 | LLM 推理期间先播放"我在"/"来了"等短语，降低感知延迟。参考项目黑客365 Go 版已实现，UX 关键，实现简单 | — |
-| 🟡 P1 | 动态 TTS 声音切换 | 新功能 | 基于声纹识别自动切换不同 TTS 音色。参考项目黑客365 Go 版已实现（sherpa-onnx 声纹 + per-speaker TTS voice），声纹识别的自然延伸 | 已有: `sherpa-onnx` (声纹+TTS 切换) |
-| 🟡 P1 | 语义 VAD | 新功能 | 参考项目 OpenAI Realtime 实现模型级轮替检测（非纯静音检测），能区分咳嗽与开始新句子。行业金标准，比传统 VAD 更智能的中断/轮替判断 | 建议: `wavekat-vad` — 统一 trait 封装 WebRTC+Silero |
-| 🟡 P1 | LLM 历史阻塞 | `api/src/llm/model/qwen3/mod.rs` | DB 落盘导致完整线程阻塞 | — |
 | 🟡 P1 | Recorder 无上限 | `api/src/record/recorder.rs` | `Vec<RecordEntry>` 无大小限制，高并发内存无限增长 | — |
-| 🟡 P1 | Piper/Kokoro TTS 集成 | `api/src/tts/` | 开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 建议: `sherpa-onnx` (Piper ONNX 模型) |
+| 🟢 P3 | Session 导出/删除 | `api/src/record/` | Session 仅可查看，不可导出或删除 | — |
+
+## 协议与传输
+
+| 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 |
+|--------|------|------|------|-------------|
 | ⚠️ P2 | 消息类型 | `api/src/ws/frame.rs` | 缺失 `system`、`alert`、`custom`、`wake_word` 消息类型（对比 xiaozhi-esp32 规范） | — |
 | ⚠️ P2 | 多 ASR/TTS Provider | `api/src/asr/` + `api/src/tts/` | 参考项目 xinnan-tech 支持 12 ASR + 18+ TTS provider（含免费 EdgeTTS）；joey-zhou 有 7 STT + 8 TTS。chobits 仅 1 ASR + 1 TTS | 已有: `sherpa-onnx` (多模型切换) |
-| ⚠️ P2 | 插件系统 | 新功能 | 参考项目 xinnan-tech 有 13 个内置插件 + 热加载机制。chobits 无插件架构，功能扩展需修改核心代码 | 建议: `wasmtime` — WASI P2 + Component Model |
-| ⚠️ P2 | MCP Market / 工具市场 | 新功能 | 参考项目黑客365 Go 版实现 MCP 工具"应用商店"：聚合多第三方市场（如 ModelScope），一键导入远程 MCP 服务 + 热加载。chobits 当前无 MCP 工具发现/聚合机制 | 已有: `rmcp` |
-| ⚠️ P2 | MCP 调试控制台 | 新功能 | 参考项目黑客365 Go 版有 Agent/Device 维度 MCP 远程调试：Web 控制台生成每 Agent 独立 MCP 端点，实时调用测试，支持 per-agent 工具过滤。chobits 当前无 MCP 调试工具 | 已有: `rmcp` |
-| ⚠️ P2 | 配置向导+全链路测试 | 新功能 | 参考项目黑客365 Go 版有首次运行向导（OTA/VAD/ASR/LLM/TTS 逐步配置）+ 每组件延迟测试 + 可视化图表。chobits 当前无部署向导 | — |
-| ⚠️ P2 | MCP 工具聚合 | 新功能 | 参考项目 xiaozhi-mcp / yuexianga/xiaozhi-mcp 提供预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算），开箱即用。chobits 无内置 MCP 工具包 | 已有: `rmcp` |
-| ⚠️ P2 | MQTT 网关 | 新功能 | 参考项目 xinnan-tech/xiaozhi-mqtt-gateway 实现 MQTT+UDP → WS 桥接：分布式部署 + 动态负载均衡 + HMAC 认证 + MCP 命令下发。chobits 当前仅 WS 单协议 | 建议: `rumqttc` — 纯 Rust，tokio 原生 |
-| ⚠️ P2 | 对话韵律 TTS | 新功能 | 参考项目 Sesame CSM（Apache 2.0 开源）生成呼吸/犹豫/笑声等对话韵律，让语音更像真人。Cartesia Sonic 3.5 使用 SSM 架构实现 <90ms TTS 延迟 | 建议: `csm.rs` — Rust Sesame CSM (AGPL-3.0) |
-| ⚠️ P2 | 情绪自适应语调 | 新功能 | 参考项目 Hume AI EVI 检测 600+ 情感标签（犹豫/讽刺/宽慰），自适应调整 TTS 语气。MiniMax Speech-2.8 支持 7 种情绪 + 0-100% 强度控制 + 插入标签 `(laughs)` `(sighs)` | 建议: `voirs-emotion` — 多维情绪控制 |
-| ⚠️ P2 | Agent 任务编排 | 新功能 | 参考项目 Alexa+ 自主执行 Uber/OpenTable/Grubhub；Rabbit R1 LAM 大动作模型；Doubao 超能模式自主分解复杂任务。LLM + MCP 工具链实现自主任务执行 | 已有: `rig-core` (Agent/Chain/Router) |
-| ⚠️ P2 | VAD 采样率 | `api/src/vad/` | 硬编码 16kHz，非 16kHz 输入无声失败 | — |
-| ⚠️ P2 | ASR | `api/src/asr/` | SenseVoice (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | 已有: `sherpa-onnx` |
-| ⚠️ P2 | 环境监听模式 | 新功能 | 医疗 AI（Nuance DAX/Nabla）的被动监听模式：非唤醒词触发，持续监听环境音频，主动响应用户需求。需隐私架构（Nabla 模式：不存储原始音频）。适合家庭/办公场景 | — |
-| 🟢 P3 | 视觉感知 (VLLM) | 新功能 | 参考项目 xinnan-tech 支持 GLM-4V / Qwen-VL 视觉模型，可拍照识物。chobits 当前纯语音 | 建议: `reqwest` → Ollama/vLLM (OpenAI API) |
-| 🟢 P3 | Proactive 主动建议 | 新功能 | Gemini Daily Brief / Alexa+ 主动提醒交通/降价/日程。需定时任务 + 用户上下文推理 | 建议: `tokio-cron-scheduler` |
-| 🟢 P3 | 多模态（语音+屏幕+视频） | 新功能 | Gemini 2.5 / GPT-Realtime / Siri AI 均支持摄像头/屏幕输入。chobits 当前纯语音 | 建议: `webrtc-rs` (v0.17.x) |
-| 🟢 P3 | 跨设备连续性 | 新功能 | Alexa+: Echo→手机→电脑无缝切换对话上下文。需 session 状态同步机制 | — (需自定义：SQLite + WS delta 同步) |
-| 🟢 P3 | Speaker Diarization | `api/src/listener/` | 说话人分离，多人场景下区分不同用户。sherpa-onnx 已支持（ECAPA-TDNN + AHC 聚类） | 已有: `sherpa-onnx` / 建议: `polyvoice` |
-| 🟢 P3 | 声音克隆 | `api/src/tts/` | 参考项目 xinnan-tech 支持火山引擎语音克隆；joey-zhou 支持按角色声音克隆。MatchaTTS 已支持 reference audio，需暴露配置接口 | 建议: `sherpa-onnx` (speaker embedding) |
-| 🟢 P3 | AEC 服务端降噪 | `api/src/ws/default_listener.rs` | joey-zhou 已实现 WebRTC AEC3 服务端回声消除（含噪声抑制 + 高通滤波 + 自适应增益）。chobits 仅客户端 AEC | 建议: `aec3` — 纯 Rust WebRTC AEC3 |
-| 🟢 P3 | WebRTC 实时音视频 | 新功能 | 参考项目 dairoot/xiaozhi-webrtc 实现 WebRTC 低延迟 + Live2D + 多模态视觉 + MCP。chobits 当前仅 WS 协议 | 建议: `webrtc-rs` (v0.17.x) |
-| 🟢 P3 | 音频标准化集成 | `api/src/util/compressor.rs` → 管道 | `adaptive_normalize()` 已实现但未集成到 TTS 输出管道 | — |
-| 🟢 P3 | Live2D 头像 | 客户端功能 | 参考项目 Android 客户端（TOM88812）已实现：多模型切换 + 实时动画 + 自定义角色 + 情绪模式。chobits Flutter 客户端可参考 | 建议: `live2d-cubism-core-sys` + `flutter_rust_bridge` |
-| 🟢 P3 | 具身 AI / GPIO | 新功能 | 参考项目 py-xiaozhi 已实现：树莓派/Jetson/STM32 直接控制硬件（电机/传感器/LED），摄像头视觉理解。垂直场景，非通用语音助手核心 | 建议: `rppal` (树莓派) / `gpio-cdev` |
-| 🟢 P3 | UGC 角色市场 | 新功能 | 参考项目 Character.AI 有 1000万+ 用户创建角色；Doubao 智能体平台支持无代码创建 AI 角色。chobits 可支持用户自定义 AI 人格 + 声音 + 背景故事 | — |
-| 🟢 P3 | Session 导出/删除 | `api/src/record/` | Session 仅可查看，不可导出或删除 | — |
-| 🟢 P3 | describe O(n) | `api/src/llm/model/qwen3/mod.rs` | 实时构建全消息历史 | — |
-| 🟢 P3 | TTS 循环克隆 | `api/src/tts/` | `Arc<str>` vs `String` 克隆风暴 | — |
-| 🟢 P3 | 双重序列化 | `api/src/record/recorder.rs` | record 路径双重 JSON 序列化 | — |
-| 🟢 P3 | Matter/Thread 协议 | 新功能 | 智能家居 Hub 标准协议（Matter 1.3+Thread 1.4），实现跨平台设备兼容（Apple/Google/Amazon/Samsung）。ESP32 已有 Thread 支持，需集成 Matter SDK | 建议: `rs-matter` — 唯一生产级 Rust Matter 实现 |
-| 🟢 P3 | 引导式推理对话 | 新功能 | 教育 AI（作业帮/有道）的引导模式：不直接给答案，逐步引导用户思考。适合儿童/学习场景，需 LLM prompt 工程 + 对话状态管理 | — |
 
 ## 基础设施
 
@@ -157,6 +181,10 @@ weight = 204
 | Step-Audio-TTS-3B 集成 | 阶跃星辰开源中文 TTS（Apache 2.0、情绪控制、方言支持），是否作为服务端 TTS 候选？需评估 GPU 需求和延迟 | 建议: `reqwest` → StepFun API |
 | 环境监听架构 | 医疗 AI 的被动监听模式（非唤醒词），chobits 是否支持？隐私如何保障？参考 Nabla（不存储原始音频）架构 | — |
 | Matter 协议支持 | 智能家居 Hub 标准协议（Matter 1.3+Thread 1.4），ESP32 已有 Thread 支持。chobits 是否需要完整 Matter SDK 集成以实现跨平台设备兼容？ | 建议: `rs-matter` |
+| Proactive 主动建议 | Gemini Daily Brief / Alexa+ 主动提醒交通/降价/日程。需定时任务 + 用户上下文推理 | 建议: `tokio-cron-scheduler` |
+| 跨设备连续性 | Alexa+: Echo→手机→电脑无缝切换对话上下文。需 session 状态同步机制 | — (需自定义：SQLite + WS delta 同步) |
+| UGC 角色市场 | 参考项目 Character.AI 有 1000万+ 用户创建角色；Doubao 智能体平台支持无代码创建 AI 角色。chobits 可支持用户自定义 AI 人格 + 声音 + 背景故事 | — |
+| 多模态（语音+屏幕+视频） | Gemini 2.5 / GPT-Realtime / Siri AI 均支持摄像头/屏幕输入。chobits 当前纯语音 | 建议: `webrtc-rs` (v0.17.x) |
 
 ---
 

@@ -11,7 +11,7 @@ use service::chobits::mcp::McpRegistry;
 use tokio::sync::{Mutex, mpsc::channel};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, Level, error, span, trace};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Clone)]
 pub struct ChiiCore {
@@ -72,7 +72,6 @@ impl ChiiCore {
         let temperature = self.temperature;
         let max_tokens = self.max_tokens;
         let max_prompt_len = self.max_prompt_len;
-        let span = span!(parent:None,Level::DEBUG, "chii_core", session_id=%session_id.unwrap_or_default());
         tokio::spawn(async move {
             if cancel.is_cancelled() {
                 return;
@@ -118,7 +117,15 @@ impl ChiiCore {
                     if cancel.is_cancelled() {
                         return Err(anyhow::anyhow!("cancelled"));
                     }
+                    let mut loop_count = 0u32;
                     while has_next_step {
+                        loop_count += 1;
+                        info!(
+                            component = "CHII_CORE", event = "loop_iteration",
+                            session_id = ?session_id,
+                            iteration = loop_count,
+                            "LLM complete loop iteration"
+                        );
                         if cancel.is_cancelled() {
                             break;
                         }
@@ -145,6 +152,12 @@ impl ChiiCore {
                             }
                             match event {
                                 Ok(CompletionEvent::Text(text)) => {
+                                    debug!(
+                                        component = "CHII_CORE", event = "text_event",
+                                        session_id = ?session_id,
+                                        text_len = text.len(),
+                                        "text event received"
+                                    );
                                     text_collector.push_str(&text);
                                     let sentence_list = splitter.accept_text(&text);
                                     for sentence in sentence_list {
@@ -156,16 +169,34 @@ impl ChiiCore {
                                     name,
                                     arguments,
                                 }) => {
+                                    info!(
+                                        component = "CHII_CORE", event = "tool_call",
+                                        session_id = ?session_id,
+                                        tool_name = %name,
+                                        "tool call received"
+                                    );
                                     assistant_events.push(CompletionEvent::ToolCall {
                                         id,
                                         name,
                                         arguments,
                                     });
                                 }
-                                Ok(CompletionEvent::Reasoning(_)) => {
-                                    // skip
+                                Ok(CompletionEvent::Reasoning(text)) => {
+                                    debug!(
+                                        component = "CHII_CORE", event = "reasoning_event",
+                                        session_id = ?session_id,
+                                        text_len = text.len(),
+                                        "reasoning event received"
+                                    );
+                                    assistant_events.push(CompletionEvent::Reasoning(text));
                                 }
                                 Ok(CompletionEvent::Final { .. }) => {
+                                    info!(
+                                        component = "CHII_CORE", event = "final_event",
+                                        session_id = ?session_id,
+                                        text_collector_len = text_collector.len(),
+                                        "final event received"
+                                    );
                                     if !text_collector.is_empty() {
                                         let sentence_list = splitter.accept_final();
                                         for sentence in sentence_list {
@@ -177,10 +208,10 @@ impl ChiiCore {
                                     }
                                 }
                                 Ok(CompletionEvent::Error(e)) => {
-                                    error!(error = %e, "LLM stream event error");
+                                    error!(component = "CHII_CORE", event = "llm_stream_event_error", error = %e, "LLM stream event error");
                                 }
                                 Err(e) => {
-                                    error!(error = %e, "LLM stream error");
+                                    error!(component = "CHII_CORE", event = "llm_stream_error", error = %e, "LLM stream error");
                                     let _ = tx.send(Err(ModelError::Chat(e.to_string()))).await;
                                 }
                             }
@@ -226,6 +257,13 @@ impl ChiiCore {
                                             .await
                                         {
                                             Ok(result) => {
+                                                info!(
+                                                    component = "CHII_CORE", event = "tool_result",
+                                                    session_id = ?session_id,
+                                                    tool_name = %name,
+                                                    result_len = result.len(),
+                                                    "tool call result received"
+                                                );
                                                 let history = clone_history.clone();
                                                 let mut history = history.lock().await;
                                                 history
@@ -240,7 +278,13 @@ impl ChiiCore {
                                                 drop(history);
                                             }
                                             Err(e) => {
-                                                error!(error = %e, "tool call error");
+                                                error!(
+                                                    component = "CHII_CORE", event = "tool_error",
+                                                    session_id = ?session_id,
+                                                    tool_name = %name,
+                                                    error = %e,
+                                                    "tool call failed"
+                                                );
                                                 let _ = tx
                                                     .send(Err(ModelError::Chat(e.to_string())))
                                                     .await;
@@ -248,15 +292,37 @@ impl ChiiCore {
                                         }
                                     }
                                 }
+                                CompletionEvent::Reasoning(text) => {
+                                    let history = clone_history.clone();
+                                    let mut history = history.lock().await;
+                                    history
+                                        .chat_history
+                                        .push(Message {
+                                            role: Role::Assistant,
+                                            parts: vec![ContentPart::Reasoning(text.clone())],
+                                        });
+                                    drop(history);
+                                }
                                 _ => {}
                             }
+                        }
+                        if text_collector.is_empty() && !has_tool_call {
+                            warn!(
+                                component = "CHII_CORE", event = "llm_no_usable_output",
+                                session_id = ?session_id,
+                                "LLM completed with no usable output"
+                            );
+                            let _ = tx
+                                .send(Err(ModelError::Chat(
+                                    "LLM completed with no usable output".to_string(),
+                                )))
+                                .await;
                         }
                         has_next_step = has_tool_call;
                     }
                     drop(tx);
                     anyhow::Ok(())
                 }
-                .instrument(span)
                 .await;
             match result {
                 Ok(_) => drop(tx_main),
