@@ -3,8 +3,8 @@ title = "TODO"
 weight = 204
 
 [extra]
-translated_at = "2026-07-10T15:30:00+08:00"
-source_file_hash = "f8d049863ce0f2969da161a0bd91cb2049cfdc9c"
+translated_at = "2026-07-21T12:00:00+08:00"
+source_file_hash = "f989e93695e3fd13cdeb309516276ec782d84bc2"
 +++
 
 # TODO
@@ -185,6 +185,10 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | Step-Audio-TTS-3B integration | StepFun open-source Chinese TTS (Apache 2.0, emotion control, dialect support) — candidate for server TTS? Evaluate GPU requirements and latency | Suggest: `reqwest` → StepFun API |
 | Ambient listening architecture | Medical AI passive listening mode (non-wake-word). Should chobits support this? How to ensure privacy? Reference Nabla (no raw audio storage) architecture | — |
 | Matter protocol support | Smart home Hub standard protocol (Matter 1.3+Thread 1.4). ESP32 already has Thread support. Should chobits integrate full Matter SDK for cross-platform device compatibility? | Suggest: `rs-matter` |
+| Proactive suggestions | Gemini Daily Brief / Alexa+ proactive reminders for traffic/deals/calendar. Needs scheduled tasks + user context reasoning | Suggest: `tokio-cron-scheduler` |
+| Cross-device continuity | Alexa+: seamless Echo→phone→computer conversation context switching. Needs session state sync mechanism | — (custom: SQLite + WS delta sync) |
+| UGC character marketplace | Reference projects Character.AI has 10M+ user-created characters; Doubao agent platform supports no-code AI character creation. chobits could support user-defined AI persona + voice + backstory | — |
+| Multimodal (voice+screen+video) | Gemini 2.5 / GPT-Realtime / Siri AI all support camera/screen input. chobits currently voice-only | Suggest: `webrtc-rs` (v0.17.x) |
 
 ---
 
@@ -402,5 +406,5 @@ ESP32 (Edge)                   Server (chobits)
 |-------|---------|--------|
 | 🔴 P0 | Must fix immediately | Compile errors, no auth, incomplete data |
 | 🟡 P1 | Should fix | Race conditions, memory leaks, security risks, missing core features |
-| ⚪ P2 | Feature gaps | Incomplete protocols, insufficient configurability |
+| ⚠️ P2 | Feature gaps | Incomplete protocols, insufficient configurability |
 | 🟢 P3 | Optimization | Performance, code quality, non-core features |
