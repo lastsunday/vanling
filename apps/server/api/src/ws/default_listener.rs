@@ -9,13 +9,18 @@ use service::chobits::message::hello::AudioParam;
 use service::chobits::vad::Vad;
 use tokio::sync::Mutex;
 
-const PREFIX_SAMPLES_MAX: usize = 4800;
+const PREFIX_SAMPLES_MAX: usize = 9600;
 
 const MAX_OPUS_FRAME_MS: u64 = 120;
 
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
 
 const MIN_SPEECH_ONLY_SAMPLES: usize = 3200;
+
+/// After VAD declares silence (is_speech()=false), wait this long before
+/// triggering ASR. Combined with VAD's internal min_silence_duration (~550ms),
+/// total silence before ASR ≈ 750ms, vs the previous fixed 1200ms timeout.
+const VAD_SILENCE_CONFIRM_MS: i64 = 200;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ListenerState {
@@ -33,6 +38,7 @@ pub struct DefaultListener {
     state: ListenerState,
     silence_voice_timeout: Option<i64>,
     latest_speaking_time: Option<i64>,
+    vad_silent_since: Option<i64>,
     client_input_sample_rate: u32,
     prefix_buffer: Vec<f32>,
     prefix_flushed: bool,
@@ -62,6 +68,7 @@ impl DefaultListener {
             state: ListenerState::Idle,
             silence_voice_timeout,
             latest_speaking_time: None,
+            vad_silent_since: None,
             client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             prefix_flushed: false,
@@ -129,10 +136,20 @@ impl DefaultListener {
     }
 
     fn check_silence_timeout(&self) -> bool {
-        match (self.silence_voice_timeout, self.latest_speaking_time) {
-            (Some(timeout), Some(last)) => Local::now().timestamp_millis() - last >= timeout,
-            _ => false,
+        let now = Local::now().timestamp_millis();
+        // Primary: fixed timeout from last speech frame (safety net)
+        if let (Some(timeout), Some(last)) = (self.silence_voice_timeout, self.latest_speaking_time)
+            && now - last >= timeout
+        {
+            return true;
         }
+        // Early: VAD declared silence + short confirmation window
+        if let Some(silent_since) = self.vad_silent_since
+            && now - silent_since >= VAD_SILENCE_CONFIRM_MS
+        {
+            return true;
+        }
+        false
     }
 
     fn accumulate_audio(&mut self, data: &[u8]) {
@@ -180,8 +197,12 @@ impl DefaultListener {
             if self.vad.is_speech() {
                 self.state = ListenerState::Listening { is_speech: true };
                 self.latest_speaking_time = Some(Local::now().timestamp_millis());
+                self.vad_silent_since = None;
             } else {
                 self.prefix_flushed = false;
+                if was_speech {
+                    self.vad_silent_since = Some(Local::now().timestamp_millis());
+                }
             }
 
             if !was_speech && matches!(self.state, ListenerState::Listening { is_speech: true }) {
@@ -209,6 +230,7 @@ impl DefaultListener {
     fn internal_reset(&mut self) {
         self.state = ListenerState::Idle;
         self.latest_speaking_time = None;
+        self.vad_silent_since = None;
         self.temp_voice_data.clear();
         self.voice_data.clear();
         self.vad.clear();

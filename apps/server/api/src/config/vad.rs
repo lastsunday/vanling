@@ -29,10 +29,10 @@ impl Default for VadConfig {
             variant: Default::default(),
             path: Default::default(),
             num_threads: Default::default(),
-            threshold: Some(0.6),
-            deactivation_threshold: Some(0.5),
+            threshold: Some(0.4),
+            deactivation_threshold: Some(0.2),
             min_silence_duration: Some(550.0),
-            min_speech_duration: Some(300.0),
+            min_speech_duration: Some(150.0),
         }
     }
 }

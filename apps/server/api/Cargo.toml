@@ -96,6 +96,7 @@ sherpa-onnx = { workspace = true }
 # asr + tts end
 # vad start
 earshot = { workspace = true }
+nnnoiseless = { workspace = true }
 # vad end
 # tts start
 rubato = { workspace = true }
