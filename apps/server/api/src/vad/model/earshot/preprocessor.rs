@@ -111,6 +111,9 @@ impl RnnoisePreprocessor {
                     .with_extra(format!("Downsample failed: {e}"))
             })?;
 
+        for s in self.decimated_buffer.iter_mut() {
+            *s = s.clamp(-1.0, 1.0);
+        }
         out.copy_from_slice(&self.decimated_buffer);
 
         Ok(())

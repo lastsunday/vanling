@@ -111,6 +111,9 @@ impl Vad for VadEarshot {
             let mut denoised = [0.0f32; INPUT_FRAME_16KHZ];
             self.preprocessor.process(&input_16k, &mut denoised)?;
 
+            for s in denoised.iter_mut() {
+                *s = s.clamp(-1.0, 1.0);
+            }
             self.denoised_buffer.extend(denoised);
         }
 
