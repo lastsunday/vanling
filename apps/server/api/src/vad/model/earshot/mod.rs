@@ -48,6 +48,7 @@ impl VadEarshot {
 
 impl VadEarshot {
     fn clear_state(&mut self) {
+        self.detector.reset();
         self.is_speech = false;
         self.current_silence_duration = 0.0;
         self.prediction_list.clear();
@@ -63,9 +64,14 @@ impl Vad for VadEarshot {
             if score >= self.threshold {
                 self.prediction_list.push(score);
                 self.speech_duration_ms += (samples.len() as f32 / sample_rate as f32) * 1000.0;
+                self.current_silence_duration = 0.0;
             } else {
-                self.prediction_list.clear();
-                self.speech_duration_ms = 0.0;
+                self.current_silence_duration +=
+                    (samples.len() as f32 / sample_rate as f32) * 1000.0;
+                if self.current_silence_duration > 80.0 {
+                    self.prediction_list.clear();
+                    self.speech_duration_ms = 0.0;
+                }
             }
 
             if self.prediction_list.len() >= 10

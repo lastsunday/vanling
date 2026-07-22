@@ -12,6 +12,7 @@ async fn test_state_machine() -> anyhow::Result<()> {
     let config = VadConfig {
         threshold: Some(0.5),
         deactivation_threshold: Some(0.5),
+        min_silence_duration: Some(1000.0),
         ..Default::default()
     };
     let mut vad = VadEarshot::new(&config)?;
