@@ -15,6 +15,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "415ed64958754dbe991900f3940677e6a7eefb4d7367afd70d642677b0c7d19d"
 
 [[package]]
+name = "acoustix"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bf875c04d0fa8d02fe67f6ea0d7786f6ecd8b4c5ab4ef431140f6ce1183b83f"
+dependencies = [
+ "hound",
+ "num-complex",
+ "rustfft",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "actix-codec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -321,6 +333,7 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "accelerate-src",
+ "acoustix",
  "anyhow",
  "async-trait",
  "axum",
@@ -363,6 +376,7 @@ dependencies = [
  "ruma-client",
  "rust-i18n",
  "sea-orm",
+ "sentencex",
  "serde",
  "serde-aux",
  "serde_json",
@@ -8101,6 +8115,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
 
 [[package]]
+name = "sentencex"
+version = "0.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ef207c77a4b55c22b65da3ce09b1f8a375d4f780af2cb1d5b3998032d1dee31"
+dependencies = [
+ "clap 4.6.1",
+ "memchr",
+ "regex",
+ "rustc-hash",
+ "serde",
+ "strum 0.28.0",
+]
+
+[[package]]
 name = "sentry"
 version = "0.48.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9034,6 +9062,9 @@ name = "strum"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
+]
 
 [[package]]
 name = "strum_macros"

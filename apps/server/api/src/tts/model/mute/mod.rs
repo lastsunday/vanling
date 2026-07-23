@@ -30,8 +30,8 @@ impl Tts for TtsMute {
                     break;
                 }
                 let packet = TtsPacket {
-                    audio: vec![],
-                    text,
+                    text: text.into(),
+                    ..Default::default()
                 };
                 if tx.send(Ok(packet)).await.is_err() {
                     break;

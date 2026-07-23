@@ -93,6 +93,7 @@ rig-core = { workspace = true }
 # llm end
 # asr + tts start
 sherpa-onnx = { workspace = true }
+sentencex = { workspace = true }
 # asr + tts end
 # vad start
 earshot = { workspace = true }
@@ -130,6 +131,7 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true, features = ["postgres", "gitea"] }
 wavers = { workspace = true }
 tracing-test = { workspace = true }
+acoustix = { workspace = true }
 
 [build-dependencies]
 # llm start

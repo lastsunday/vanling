@@ -63,6 +63,11 @@ pub struct TtsAudioDiagnostics {
     pub rtf: f64,
     pub std_duration_secs: f64,
     pub std_diff_secs: f64,
+    pub glitch_count: usize,
+    pub clipping_count: usize,
+    pub crest_factor_db: f64,
+    pub energy_variance: f64,
+    pub spectral_centroid_hz: f64,
 }
 
 impl TtsAudioDiagnostics {
@@ -179,7 +184,8 @@ impl fmt::Display for TtsAudioDiagnostics {
         write!(
             f,
             "Audio:scr={:.0}({}) Perf:scr={:.0}({}) Timing:scr={:.0}({}) | \
-             sh={:.2}%({}) dr={:.1}dB({}) rtf={:.2} gen={:.1}s dur={:.2}s(std={:.1}s{:+.0}%) {}",
+             sh={:.2}%({}) dr={:.1}dB({}) rtf={:.2} gen={:.1}s dur={:.2}s(std={:.1}s{:+.0}%) \
+             glitch={} clip={} cf={:.1}dB ev={:.4} sc={:.0}Hz {}",
             self.audio_score(),
             self.audio_grade(),
             self.performance_score(),
@@ -195,6 +201,11 @@ impl fmt::Display for TtsAudioDiagnostics {
             self.duration_secs,
             self.std_duration_secs,
             dev_pct,
+            self.glitch_count,
+            self.clipping_count,
+            self.crest_factor_db,
+            self.energy_variance,
+            self.spectral_centroid_hz,
             self.verdict(),
         )
     }
@@ -244,6 +255,55 @@ pub fn analyze_audio(
         }
     };
 
+    // acoustix quality metrics
+    let glitch_count = acoustix::advanced::detect_glitches(samples, 0.95).len();
+    let clipping_count = acoustix::advanced::detect_clipping(samples, 0.999, 4);
+    let crest_factor_db = acoustix::advanced::crest_factor(samples).unwrap_or(0.0) as f64;
+
+    // Inter-frame energy variance: low variance indicates crossfade smearing
+    let frame_size = (sample_rate as f32 * 0.020) as usize; // 20ms frames
+    let energy_var = if samples.len() >= frame_size * 2 {
+        let energies: Vec<f32> = samples
+            .chunks(frame_size)
+            .map(|chunk| chunk.iter().map(|s| s * s).sum::<f32>() / chunk.len() as f32)
+            .collect();
+        let mean = energies.iter().sum::<f32>() / energies.len() as f32;
+        energies.iter().map(|e| (*e - mean).powi(2)).sum::<f32>() / energies.len() as f32
+    } else {
+        0.0
+    };
+
+    // Spectral centroid: low value indicates high-frequency loss (electronic noise symptom)
+    let fft_size = 1024.min(samples.len());
+    let spectral_centroid = if fft_size >= 256 {
+        let window: Vec<f32> = samples[..fft_size].to_vec();
+        let mut mag_sum = 0.0f32;
+        let mut weighted_sum = 0.0f32;
+        // Simple DFT magnitude estimation via autocorrelation-like approach
+        let half = fft_size / 2;
+        for k in 1..half {
+            let freq = k as f32 * sample_rate as f32 / fft_size as f32;
+            // Compute magnitude of k-th bin via Goertzel-like inner product
+            let mut real = 0.0f32;
+            let mut imag = 0.0f32;
+            for (n, &s) in window.iter().enumerate() {
+                let angle = 2.0 * std::f32::consts::PI * k as f32 * n as f32 / fft_size as f32;
+                real += s * angle.cos();
+                imag -= s * angle.sin();
+            }
+            let mag = (real * real + imag * imag).sqrt();
+            mag_sum += mag;
+            weighted_sum += freq * mag;
+        }
+        if mag_sum > 1e-10 {
+            weighted_sum / mag_sum
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
     TtsAudioDiagnostics {
         num_samples: samples.len(),
         duration_secs: samples.len() as f64 / sample_rate as f64,
@@ -253,6 +313,11 @@ pub fn analyze_audio(
         rtf: gen_elapsed.as_secs_f64() / (samples.len() as f64 / sample_rate as f64),
         std_duration_secs,
         std_diff_secs: samples.len() as f64 / sample_rate as f64 - std_duration_secs,
+        glitch_count,
+        clipping_count,
+        crest_factor_db,
+        energy_variance: energy_var as f64,
+        spectral_centroid_hz: spectral_centroid as f64,
     }
 }
 
@@ -415,7 +480,36 @@ pub async fn run_tts_test(
     }
     anyhow::ensure!(decoded.len() > 1000, "Decoded audio too short");
     let std_dur = estimate_std_duration(TEST_TTS_TEXT);
-    info!("{}", analyze_audio(&decoded, 16000, gen_elapsed, std_dur));
+    let diag = analyze_audio(&decoded, 16000, gen_elapsed, std_dur);
+    info!("{diag}");
+
+    // acoustix quality assertions
+    assert!(
+        diag.glitch_count <= decoded.len() / 16000,
+        "Too many glitches: {} (max ~1/sec), audio likely has clicks",
+        diag.glitch_count
+    );
+    assert_eq!(
+        diag.clipping_count, 0,
+        "Clipping detected — normalization may be broken"
+    );
+    assert!(
+        diag.crest_factor_db > 3.0,
+        "Crest factor too low ({:.1} dB) — audio may be flat/compressed",
+        diag.crest_factor_db
+    );
+    // Energy variance: crossfade smearing reduces frame-to-frame energy variation
+    assert!(
+        diag.energy_variance > 1e-8,
+        "Energy variance too low ({:.6}) — audio may be smearing from crossfade artifacts",
+        diag.energy_variance
+    );
+    // Spectral centroid: electronic noise typically shifts energy to low frequencies
+    assert!(
+        diag.spectral_centroid_hz > 200.0,
+        "Spectral centroid too low ({:.0} Hz) — high-frequency loss, possible electronic artifacts",
+        diag.spectral_centroid_hz
+    );
 
     std::fs::create_dir_all("./test_data")?;
     let _ = wavers::write(wav, &decoded, 16000, 1);

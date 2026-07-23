@@ -85,7 +85,7 @@ async fn test_tts_mute() -> anyhow::Result<()> {
     while let Some(data) = tts_stream.next().await {
         match data {
             Ok(data) => {
-                assert_eq!(data.text, TEST_TTS_TEXT);
+                assert_eq!(data.text.as_ref(), TEST_TTS_TEXT);
                 audio.append(&mut data.audio.to_vec());
             }
             Err(e) => {

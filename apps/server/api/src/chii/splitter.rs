@@ -17,31 +17,39 @@ impl Splitter {
     pub fn accept_text(&mut self, text: &str) -> Vec<String> {
         let mut result = Vec::new();
         self.text_collector.push_str(&filter(text));
-        let break_char = ["。", "！", "？", "!", "?"];
-        let break_char_array_str = break_char.concat();
-        let regex = regex::Regex::new(&format!(
-            "([^{}]*[{}])([\\s\\S]*)",
-            break_char_array_str, break_char_array_str
-        ))
-        .unwrap();
-        let regex_detect = regex::Regex::new(&format!("[{}]", break_char_array_str)).unwrap();
-        let clone_text_collector = self.text_collector.clone();
-        let mut source = clone_text_collector.as_str();
-        while regex_detect.is_match(source) {
-            let captures_result = regex.captures(source);
-            match captures_result {
-                Some(c) => {
-                    let (_full, [sentence, other]) = c.extract();
-                    result.push(sentence.to_string());
-                    source = other;
-                }
-                None => {
-                    break;
-                }
-            }
+
+        let sentences = sentencex::segment("en", &self.text_collector);
+
+        if sentences.is_empty() {
+            return result;
         }
+
+        let mut byte_offset = 0;
+        let collector_len = self.text_collector.len();
+        let last_sentence = sentences.last().unwrap();
+        let last_sentence_end = last_sentence.as_ptr() as usize
+            - self.text_collector.as_ptr() as usize
+            + last_sentence.len();
+
+        for sentence in &sentences {
+            let sentence_start = sentence.as_ptr() as usize - self.text_collector.as_ptr() as usize;
+            let sentence_end = sentence_start + sentence.len();
+
+            if sentence_end >= last_sentence_end {
+                break;
+            }
+
+            let s = self.text_collector[sentence_start..sentence_end].to_string();
+            if !s.trim().is_empty() {
+                result.push(s);
+            }
+            byte_offset = sentence_end;
+        }
+
+        let remaining = self.text_collector[byte_offset..collector_len].to_string();
         self.text_collector.clear();
-        self.text_collector.push_str(source);
+        self.text_collector.push_str(&remaining);
+
         result
     }
 
@@ -87,50 +95,79 @@ pub fn filter(text: &str) -> String {
 mod tests {
     use tracing_test::traced_test;
 
-    use super::filter;
+    use super::Splitter;
 
-    #[tokio::test]
+    #[test]
     #[traced_test]
-    /// cargo test --package api --lib -- chat::splitter::tests::test_break_char --show-output
-    async fn test_break_char() {
-        let break_char = ["。", "！", "？", "!", "?"];
-        let break_char_array_str = break_char.concat();
-        let regex_str = format!("[{}]", break_char_array_str);
-        let regex = regex::Regex::new(&regex_str).unwrap();
-        let is_match = regex.is_match(r#"Hello World!1.2.3!"#);
-        assert!(is_match);
-        let is_match = regex.is_match(r#"Hello World1.2.3"#);
-        assert!(!is_match);
-        let is_match = regex.is_match(r#""#);
-        assert!(!is_match);
+    fn test_splitter_abbreviation_not_split() {
+        let mut splitter = Splitter::new();
+        let r1 = splitter.accept_text("Dr. Smith said hello.");
+        let r2 = splitter.accept_final();
+        let all: Vec<&str> = r1
+            .iter()
+            .chain(r2.iter())
+            .flat_map(|s| s.split('\n'))
+            .collect();
+        let joined = all.join("");
+        assert!(
+            joined.contains("Dr. Smith"),
+            "should not split on abbreviation 'Dr.': {joined:?}"
+        );
     }
 
-    #[tokio::test]
+    #[test]
     #[traced_test]
-    /// cargo test --package api --lib -- chat::splitter::tests::test_split_sentence --show-output
-    async fn test_split_sentence() {
-        let break_char = ["。", "！", "？", "!", "?"];
-        let break_char_array_str = break_char.concat();
-        let regex = regex::Regex::new(&format!(
-            "([^{}]*[{}])([\\s\\S]*)",
-            break_char_array_str, break_char_array_str
-        ))
-        .unwrap();
-        let (_full, [sentence, other]) = regex
-            .captures(r#"Hello World!1.2.3!456"#)
-            .map(|caps| caps.extract())
-            .unwrap();
-        assert_eq!("Hello World!", sentence);
-        assert_eq!("1.2.3!456", other);
-        let result = regex.captures(r#""#);
-        assert!(result.is_none());
+    fn test_splitter_chinese_sentences() {
+        let mut splitter = Splitter::new();
+        let r1 = splitter.accept_text("你好世界。今天天气不错！");
+        let r2 = splitter.accept_final();
+        let all: Vec<String> = r1.into_iter().chain(r2.into_iter()).collect();
+        let count = all.len();
+        assert!(count >= 2, "should split Chinese sentences: {all:?}");
     }
 
-    #[tokio::test]
+    #[test]
     #[traced_test]
-    /// cargo test --package api --lib -- chat::splitter::tests::test_filter --show-output
-    async fn test_filter() {
-        let result = filter("1+1=2");
-        assert_eq!(result, "1+1=2");
+    fn test_splitter_english_sentences() {
+        let mut splitter = Splitter::new();
+        let r1 = splitter.accept_text("Hello world. How are you? I am fine!");
+        let r2 = splitter.accept_final();
+        let all: Vec<String> = r1.into_iter().chain(r2.into_iter()).collect();
+        let count = all.len();
+        assert!(count >= 3, "should split English sentences: {all:?}");
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_splitter_mixed_content() {
+        let mut splitter = Splitter::new();
+        let r1 = splitter.accept_text("2024年5月11号，拨打110。");
+        let r2 = splitter.accept_final();
+        let all: Vec<String> = r1.into_iter().chain(r2.into_iter()).collect();
+        assert!(!all.is_empty(), "should produce output from mixed content");
+        let joined = all.join("");
+        assert!(joined.contains("2024"), "should preserve content: {joined}");
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_splitter_empty() {
+        let mut splitter = Splitter::new();
+        let r1 = splitter.accept_text("");
+        let r2 = splitter.accept_final();
+        assert!(r1.is_empty());
+        assert!(r2.is_empty());
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_splitter_streaming_accumulation() {
+        let mut splitter = Splitter::new();
+        let r1 = splitter.accept_text("你好");
+        assert!(r1.is_empty(), "partial text should not yield sentences");
+        let r2 = splitter.accept_text("世界。");
+        let r3 = splitter.accept_final();
+        let all: Vec<String> = r2.into_iter().chain(r3.into_iter()).collect();
+        assert!(!all.is_empty(), "should yield after full sentence arrives");
     }
 }

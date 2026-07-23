@@ -210,6 +210,7 @@ impl Round {
 
             let mut tts_output = tts_output;
             let mut llm_error_detected = false;
+            let mut tts_sentence_active = false;
             loop {
                 tokio::select! {
                     result = tokio::time::timeout(TTS_TIMEOUT, tts_output.next()) => {
@@ -223,39 +224,44 @@ impl Round {
                                     let emotion = analyze_emotion(&text);
                                     let audio_data = packet.audio;
                                     let audio_len: usize = audio_data.iter().map(|a| a.len()).sum();
-                                    sentence_count += 1;
-                                    tracing::debug!(
-                                        component = "ROUND", event = "sentence",
-                                        session_id = %session_id, round_id = %round_id,
-                                        sentence = sentence_count, text = %text, emotion, audio_bytes = audio_len,
-                                        "sentence"
-                                    );
+
                                     let tts_state_c = tts_state_clone.clone();
                                     let stop_by_tts = stop_me.clone();
 
-                                    let mut llm_msg = LlmMessage::new(
-                                        Some(session_id.to_string()),
-                                        Some(emotion.to_string()),
-                                        Some(EMOJI_MAP.get(emotion).map_or("😶", |v| v).to_string()),
-                                    );
-                                    llm_msg.full_text = Some(text.clone());
-                                    if send(FrameResult::LLMResult(llm_msg)).is_err() {
-                                        status = RoundStatus::Error;
-                                        stop_me.store(true, Ordering::Relaxed);
-                                        break;
-                                    }
+                                    if packet.is_first {
+                                        sentence_count += 1;
+                                        tracing::debug!(
+                                            component = "ROUND", event = "sentence",
+                                            session_id = %session_id, round_id = %round_id,
+                                            sentence = sentence_count, text = %text, emotion, audio_bytes = audio_len,
+                                            "sentence"
+                                        );
 
-                                    change_state(&tts_state_c, TtsState::SentenceStart).await;
-                                    if send(FrameResult::TTSResult(TtsMessage::new(
-                                        Some(session_id.to_string()),
-                                        Some(TtsState::SentenceStart),
-                                        Some(text.to_string()),
-                                    )))
-                                    .is_err()
-                                    {
-                                        status = RoundStatus::Error;
-                                        stop_me.store(true, Ordering::Relaxed);
-                                        break;
+                                        let mut llm_msg = LlmMessage::new(
+                                            Some(session_id.to_string()),
+                                            Some(emotion.to_string()),
+                                            Some(EMOJI_MAP.get(emotion).map_or("😶", |v| v).to_string()),
+                                        );
+                                        llm_msg.full_text = Some(text.to_string());
+                                        if send(FrameResult::LLMResult(llm_msg)).is_err() {
+                                            status = RoundStatus::Error;
+                                            stop_me.store(true, Ordering::Relaxed);
+                                            break;
+                                        }
+
+                                        change_state(&tts_state_c, TtsState::SentenceStart).await;
+                                        if send(FrameResult::TTSResult(TtsMessage::new(
+                                            Some(session_id.to_string()),
+                                            Some(TtsState::SentenceStart),
+                                            Some(text.to_string()),
+                                        )))
+                                        .is_err()
+                                        {
+                                            status = RoundStatus::Error;
+                                            stop_me.store(true, Ordering::Relaxed);
+                                            break;
+                                        }
+                                        tts_sentence_active = true;
                                     }
 
                                     for packet_data in audio_data.into_iter() {
@@ -272,17 +278,20 @@ impl Round {
                                         }
                                     }
 
-                                    change_state(&tts_state_c, TtsState::SentenceEnd).await;
-                                    if send(FrameResult::TTSResult(TtsMessage::new(
-                                        Some(session_id.to_string()),
-                                        Some(TtsState::SentenceEnd),
-                                        None,
-                                    )))
-                                    .is_err()
-                                    {
-                                        status = RoundStatus::Error;
-                                        stop_me.store(true, Ordering::Relaxed);
-                                        break;
+                                    if packet.is_last && tts_sentence_active {
+                                        change_state(&tts_state_c, TtsState::SentenceEnd).await;
+                                        if send(FrameResult::TTSResult(TtsMessage::new(
+                                            Some(session_id.to_string()),
+                                            Some(TtsState::SentenceEnd),
+                                            None,
+                                        )))
+                                        .is_err()
+                                        {
+                                            status = RoundStatus::Error;
+                                            stop_me.store(true, Ordering::Relaxed);
+                                            break;
+                                        }
+                                        tts_sentence_active = false;
                                     }
                                 }
                                 Err(e) => {

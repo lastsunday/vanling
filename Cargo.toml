@@ -117,6 +117,8 @@ nnnoiseless = "0.5.2"
 # vad end
 # tts + asr start
 sherpa-onnx = "1.13.3"
+sentencex = "0.1.30"
+acoustix = "0.2.0"
 # tts + asr end
 # mcp start
 rmcp = "2.2.0"
