@@ -21,6 +21,10 @@ use crate::config::audio::AudioConfig;
 use crate::config::tts::TtsConfig;
 use crate::tts::StreamingOpusEncoder;
 
+const RESAMPLER_CHUNK_SIZE: usize = 4096;
+const RESAMPLER_SUB_CHUNKS: usize = 1;
+const RESAMPLER_CHANNELS: usize = 1;
+
 pub struct TtsMatcha {
     tts: Arc<OfflineTts>,
     output_sample_rate: u32,
@@ -250,7 +254,6 @@ impl Tts for TtsMatcha {
 
                 let (sample_tx, sample_rx) = mpsc::channel::<Vec<f32>>(64);
 
-                // Spawn blocking task for sherpa-onnx generation with callback
                 let gen_handle = tokio::task::spawn_blocking(move || {
                     let gen_config = GenerationConfig {
                         speed,
@@ -271,18 +274,16 @@ impl Tts for TtsMatcha {
 
                 let pcm_sample_rate = tts.sample_rate() as u32;
                 let needs_resample = pcm_sample_rate != encode_sr;
-                let chunk_size = 4096;
                 let tts_sentence_start = Instant::now();
 
-                // Create resampler once per sentence to preserve internal overlap state
                 let mut resampler = if needs_resample {
                     Some(
                         Fft::<f32>::new(
                             pcm_sample_rate as usize,
                             encode_sr as usize,
-                            chunk_size,
-                            1,
-                            1,
+                            RESAMPLER_CHUNK_SIZE,
+                            RESAMPLER_SUB_CHUNKS,
+                            RESAMPLER_CHANNELS,
                             FixedSync::Input,
                         )
                         .expect("Failed to create resampler"),
@@ -308,7 +309,6 @@ impl Tts for TtsMatcha {
                     }
                 };
 
-                // Streaming: resample → encode → send as PCM arrives from callback
                 let mut resampler_buf: Vec<f32> = Vec::new();
                 let mut sample_rx = sample_rx;
                 let mut first_frame_instant: Option<Instant> = None;
@@ -320,12 +320,12 @@ impl Tts for TtsMatcha {
                         break;
                     }
 
-                    // Resample and push to encoder, sending frames immediately
                     let resampled = if let Some(resampler) = resampler.as_mut() {
                         resampler_buf.extend_from_slice(&pcm_samples);
                         let mut all_resampled = Vec::new();
-                        while resampler_buf.len() >= chunk_size {
-                            let chunk: Vec<f32> = resampler_buf.drain(..chunk_size).collect();
+                        while resampler_buf.len() >= RESAMPLER_CHUNK_SIZE {
+                            let chunk: Vec<f32> =
+                                resampler_buf.drain(..RESAMPLER_CHUNK_SIZE).collect();
                             let r = process_with_resampler(resampler, &chunk, 1);
                             all_resampled.extend_from_slice(&r);
                         }
@@ -337,7 +337,6 @@ impl Tts for TtsMatcha {
                     total_samples += resampled.len();
                     let opus_frames = encoder.push_samples(&resampled);
 
-                    // Send frames immediately
                     for frame in &opus_frames {
                         if first_frame_instant.is_none() {
                             first_frame_instant = Some(Instant::now());
@@ -359,7 +358,6 @@ impl Tts for TtsMatcha {
                     }
                 }
 
-                // Flush remaining resampler buffer
                 if let Some(resampler) = resampler.as_mut()
                     && !resampler_buf.is_empty()
                 {
@@ -390,7 +388,6 @@ impl Tts for TtsMatcha {
 
                 let gen_time = tts_sentence_start.elapsed();
 
-                // Flush encoder — fade-out the tail
                 let flush_frames = encoder.flush();
                 for (i, frame) in flush_frames.iter().enumerate() {
                     if first_frame_instant.is_none() {
@@ -479,9 +476,6 @@ impl Tts for TtsMatcha {
     }
 }
 
-/// Process a chunk through an existing resampler, preserving internal overlap state.
-/// Uses `process_into_buffer` directly to avoid the delay-trimming bug in
-/// `process_all_into_buffer` (which inserts silence when input_len == chunk_size).
 fn process_with_resampler(resampler: &mut Fft<f32>, chunk: &[f32], channels: usize) -> Vec<f32> {
     if chunk.is_empty() {
         return Vec::new();
@@ -504,36 +498,6 @@ fn process_with_resampler(resampler: &mut Fft<f32>, chunk: &[f32], channels: usi
     };
     let (_nbr_in, nbr_out) = resampler
         .process_into_buffer(&input, &mut output, Some(&indexing))
-        .expect("Resampling failed");
-    output_data[0][..nbr_out].to_vec()
-}
-
-/// Resample a single chunk of mono PCM samples (creates a fresh resampler each call).
-/// Kept for test helper compatibility; production code should use `process_with_resampler`.
-#[allow(dead_code)]
-fn resample_chunk(chunk: &[f32], from_rate: usize, to_rate: usize, channels: usize) -> Vec<f32> {
-    if from_rate == to_rate || chunk.is_empty() {
-        return chunk.to_vec();
-    }
-    let chunk_size = chunk.len();
-    let mut resampler = Fft::<f32>::new(
-        from_rate,
-        to_rate,
-        chunk_size,
-        channels,
-        1,
-        FixedSync::Input,
-    )
-    .expect("Failed to create resampler");
-    let input_data = vec![chunk.to_vec()];
-    let input = SequentialSliceOfVecs::new(&input_data, channels, chunk_size)
-        .expect("Failed to create input adapter");
-    let output_len = resampler.process_all_needed_output_len(chunk_size);
-    let mut output_data = vec![vec![0.0f32; output_len]; channels];
-    let mut output = SequentialSliceOfVecs::new_mut(&mut output_data, channels, output_len)
-        .expect("Failed to create output adapter");
-    let (_, nbr_out) = resampler
-        .process_all_into_buffer(&input, &mut output, chunk_size, None)
         .expect("Resampling failed");
     output_data[0][..nbr_out].to_vec()
 }

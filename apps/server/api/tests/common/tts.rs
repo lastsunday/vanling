@@ -378,7 +378,7 @@ pub fn opus_pipeline(samples: &[f32], sample_rate: i32, encode_sr: u32) -> Vec<f
             sample_rate as usize,
             encode_sr as usize,
             chunk_size,
-            2,
+            1,
             1,
             rubato::FixedSync::Input,
         )
@@ -417,7 +417,7 @@ pub fn opus_pipeline(samples: &[f32], sample_rate: i32, encode_sr: u32) -> Vec<f
         let end = std::cmp::min(start + packet_size, pcm.len());
         let mut frame: Vec<f32> = pcm[start..end].to_vec();
         frame.resize(packet_size, 0.0);
-        let mut buf = vec![0u8; 4000];
+        let mut buf = vec![0u8; packet_size * 4];
         let written = encoder.encode_float(&frame, &mut buf).unwrap();
         buf.truncate(written);
         packets.push(buf);
