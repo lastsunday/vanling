@@ -1504,11 +1504,27 @@ fn asr_model_info(model: &AsrModel) -> Option<(String, String, String)> {
         }
         let stem = file_entry.path().file_stem()?.to_str()?.to_owned();
         let default_variant = entry["default_variant"].as_str()?.to_owned();
-        let archive_path = entry["variants"][&default_variant]["archives"][0]["path"].as_str()?;
-        let base = std::path::Path::new(archive_path)
-            .parent()?
-            .to_str()?
-            .to_owned();
+        let sample_path = entry["variants"][&default_variant]["archives"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|a| a["path"].as_str())
+            .or_else(|| {
+                entry["variants"][&default_variant]["files"]
+                    .as_array()
+                    .and_then(|f| f.first())
+                    .and_then(|f| f["path"].as_str())
+            })?;
+        let is_archive = entry["variants"][&default_variant]["archives"]
+            .as_array()
+            .and_then(|a| a.first())
+            .is_some();
+        let path = std::path::Path::new(sample_path);
+        let base = if is_archive {
+            path.parent()?
+        } else {
+            path.parent()?.parent()?
+        };
+        let base = base.to_str()?.to_owned();
         let base_path = format!("{base}/");
         return Some((default_variant, base_path, stem));
     }

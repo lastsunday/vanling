@@ -30,6 +30,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::routing::get;
+use axum::serve::ListenerExt;
 use bytesize::ByteSize;
 use either::Either;
 use framework::config::auth::AuthConfig;
@@ -212,7 +213,11 @@ pub async fn start_app(
         Either::Left(value) => value.to_string(),
         Either::Right(values) => values.first().expect("addrs is empty").to_string(),
     };
-    let listener = TcpListener::bind(format!("{addr}:{port}")).await?;
+    let listener = TcpListener::bind(format!("{addr}:{port}")).await?.tap_io(|tcp_stream| {
+        if let Err(e) = tcp_stream.set_nodelay(true) {
+            tracing::warn!(component = "WS", event = "tcp_nodelay_failed", error = %e, "failed to set TCP_NODELAY");
+        }
+    });
     tracing::info!("listening on {addr}:{port}");
     let app = NormalizePathLayer::trim_trailing_slash().layer(app);
     axum::serve(

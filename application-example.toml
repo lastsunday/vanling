@@ -159,11 +159,11 @@
 #
 #tts_options = {}
 
-# Available values: paraformer, sense_voice, void.
+# Available values: xasr, sense_voice, void.
 #
 # Automatic Speech Recognition model to use.
 #
-#asr_model = paraformer
+#asr_model = x_asr
 
 # Path to the ASR model file or directory.
 #

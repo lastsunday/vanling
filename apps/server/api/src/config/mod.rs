@@ -261,7 +261,7 @@ pub struct Config {
 
     /// Automatic Speech Recognition model to use.
     ///
-    /// default: paraformer
+    /// default: x_asr
     #[serde(default = "default_asr_model")]
     pub asr_model: Option<AsrModel>,
 
@@ -549,7 +549,7 @@ fn default_tts_path() -> Option<String> {
 }
 
 fn default_asr_model() -> Option<AsrModel> {
-    Some(AsrModel::Paraformer)
+    Some(AsrModel::XAsr)
 }
 
 fn default_asr_path() -> Option<String> {
@@ -868,7 +868,7 @@ pub enum VadModel {
 #[serde(rename_all = "snake_case")]
 pub enum AsrModel {
     #[default]
-    Paraformer,
+    XAsr,
     SenseVoice,
     Void,
 }

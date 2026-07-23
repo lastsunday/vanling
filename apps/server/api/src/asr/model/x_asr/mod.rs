@@ -2,28 +2,31 @@ use async_trait::async_trait;
 use framework::error::AppError;
 use service::chobits::asr::{Asr, AsrStream, RecognizerResult};
 use sherpa_onnx::{
-    OnlineParaformerModelConfig, OnlineRecognizer, OnlineRecognizerConfig, OnlineStream,
+    OnlineRecognizer, OnlineRecognizerConfig, OnlineStream, OnlineTransducerModelConfig,
 };
 use std::sync::Arc;
 
+use super::auto_discover_onnx;
 use crate::common::ModelError;
 
-pub struct AsrParaformer {
+pub struct AsrXAsr {
     recognizer: Arc<OnlineRecognizer>,
 }
 
-pub struct ParaformerStream {
+pub struct XAsrStream {
     recognizer: Arc<OnlineRecognizer>,
     stream: OnlineStream,
     sample_rate: i32,
 }
 
-impl AsrParaformer {
+impl AsrXAsr {
     pub fn new(path: &str) -> Result<Self, ModelError> {
         let encoder = auto_discover_onnx(path, "encoder")
             .ok_or_else(|| ModelError::ModelFileNotFound(format!("encoder.onnx in {path}")))?;
         let decoder = auto_discover_onnx(path, "decoder")
             .ok_or_else(|| ModelError::ModelFileNotFound(format!("decoder.onnx in {path}")))?;
+        let joiner = auto_discover_onnx(path, "joiner")
+            .ok_or_else(|| ModelError::ModelFileNotFound(format!("joiner.onnx in {path}")))?;
         let tokens_path = format!("{path}tokens.txt");
         if !std::path::Path::new(&tokens_path).exists() {
             return Err(ModelError::ModelFileNotFound(format!(
@@ -32,27 +35,30 @@ impl AsrParaformer {
         }
 
         let mut config = OnlineRecognizerConfig::default();
-        config.model_config.paraformer = OnlineParaformerModelConfig {
+        config.model_config.transducer = OnlineTransducerModelConfig {
             encoder: Some(encoder),
             decoder: Some(decoder),
+            joiner: Some(joiner),
         };
+        config.feat_config.sample_rate = 16000;
+        config.feat_config.feature_dim = 80;
         config.model_config.tokens = Some(tokens_path);
-        config.model_config.num_threads = 2;
+        config.model_config.num_threads = 4;
         config.model_config.provider = Some("cpu".into());
+        config.model_config.model_type = Some("zipformer2".into());
         config.model_config.debug = false;
         config.enable_endpoint = true;
         config.decoding_method = Some("greedy_search".into());
 
-        let recognizer = OnlineRecognizer::create(&config).ok_or_else(|| {
-            ModelError::Asr("failed to create Paraformer OnlineRecognizer".into())
-        })?;
+        let recognizer = OnlineRecognizer::create(&config)
+            .ok_or_else(|| ModelError::Asr("failed to create X-ASR OnlineRecognizer".into()))?;
         Ok(Self {
             recognizer: Arc::new(recognizer),
         })
     }
 }
 
-impl AsrStream for ParaformerStream {
+impl AsrStream for XAsrStream {
     fn accept_waveform(&self, samples: &[f32]) {
         self.stream.accept_waveform(self.sample_rate, samples);
     }
@@ -76,6 +82,8 @@ impl AsrStream for ParaformerStream {
 
     fn finish(&self) -> Option<RecognizerResult> {
         if !self.recognizer.is_endpoint(&self.stream) {
+            let padding = vec![0.0f32; 4800]; // 300ms silence at 16kHz
+            self.stream.accept_waveform(16000, &padding);
             self.stream.input_finished();
             while self.recognizer.is_ready(&self.stream) {
                 self.recognizer.decode(&self.stream);
@@ -95,10 +103,10 @@ impl AsrStream for ParaformerStream {
 }
 
 #[async_trait]
-impl Asr for AsrParaformer {
+impl Asr for AsrXAsr {
     fn create_stream(&self) -> Box<dyn AsrStream> {
         let stream = self.recognizer.create_stream();
-        Box::new(ParaformerStream {
+        Box::new(XAsrStream {
             recognizer: self.recognizer.clone(),
             stream,
             sample_rate: 16000,
@@ -112,37 +120,18 @@ impl Asr for AsrParaformer {
     ) -> Result<RecognizerResult, AppError> {
         let stream = self.recognizer.create_stream();
         stream.accept_waveform(sample_rate as i32, samples);
+        let padding = vec![0.0f32; 4800]; // 300ms silence at 16kHz
+        stream.accept_waveform(sample_rate as i32, &padding);
         stream.input_finished();
         while self.recognizer.is_ready(&stream) {
             self.recognizer.decode(&stream);
         }
         self.recognizer
             .get_result(&stream)
-            .ok_or_else(|| ModelError::Asr("Paraformer returned no result".into()).into())
+            .ok_or_else(|| ModelError::Asr("X-ASR returned no result".into()).into())
             .map(|r| RecognizerResult {
                 text: r.text,
                 prob: 1.0,
             })
     }
-}
-
-fn auto_discover_onnx(dir: &str, prefix: &str) -> Option<String> {
-    let p = std::path::Path::new(dir);
-    std::fs::read_dir(p).ok().and_then(|mut entries| {
-        entries.find_map(|entry| {
-            entry.ok().and_then(|e| {
-                let path = e.path();
-                if path.extension().is_some_and(|ext| ext == "onnx")
-                    && path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .is_some_and(|stem| stem.contains(prefix))
-                {
-                    path.to_str().map(|s| s.to_string())
-                } else {
-                    None
-                }
-            })
-        })
-    })
 }

@@ -1,0 +1,29 @@
+{
+  "config": {
+    "category": "asr",
+    "model": "x_asr"
+  },
+  "default_variant": "default",
+  "variants": {
+    "default": {
+      "files": [
+        {
+          "path": "asr/model/x_asr/default/encoder-160ms.onnx",
+          "url": "https://huggingface.co/GilgameshWind/X-ASR-zh-en/resolve/main/deployment/models/chunk-160ms-model/encoder-160ms.onnx"
+        },
+        {
+          "path": "asr/model/x_asr/default/decoder-160ms.onnx",
+          "url": "https://huggingface.co/GilgameshWind/X-ASR-zh-en/resolve/main/deployment/models/chunk-160ms-model/decoder-160ms.onnx"
+        },
+        {
+          "path": "asr/model/x_asr/default/joiner-160ms.onnx",
+          "url": "https://huggingface.co/GilgameshWind/X-ASR-zh-en/resolve/main/deployment/models/chunk-160ms-model/joiner-160ms.onnx"
+        },
+        {
+          "path": "asr/model/x_asr/default/tokens.txt",
+          "url": "https://huggingface.co/GilgameshWind/X-ASR-zh-en/resolve/main/deployment/models/chunk-160ms-model/tokens.txt"
+        }
+      ]
+    }
+  }
+}

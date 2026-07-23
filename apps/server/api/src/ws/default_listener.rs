@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::Local;
 use service::chobits::asr::Asr;
 use service::chobits::asr::AsrStream;
-use service::chobits::asr::RecognizerResult;
 use service::chobits::listener::{ListenInput, Listener, TurnOutput, TurnResult};
 use service::chobits::message::hello::AudioParam;
 use service::chobits::vad::Vad;
@@ -38,10 +38,10 @@ pub struct DefaultListener {
     vad_silent_since: Option<i64>,
     client_input_sample_rate: u32,
     prefix_buffer: Vec<f32>,
-    prefix_flushed: bool,
     last_partial: Option<String>,
     queue: VecDeque<TurnOutput>,
     asr_pending: bool,
+    audio_sample_count: u64,
 }
 
 impl DefaultListener {
@@ -65,19 +65,29 @@ impl DefaultListener {
             vad_silent_since: None,
             client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
-            prefix_flushed: false,
             last_partial: None,
             queue: VecDeque::new(),
             asr_pending: false,
+            audio_sample_count: 0,
         }
     }
 
     fn finish_stream(&mut self, skip_empty_check: bool) -> Option<TurnResult> {
-        let stream = self.stream.take()?;
+        let stream = self.stream.as_ref()?;
+        let t0 = Instant::now();
         let result = stream.finish();
         self.stream = None;
-        let RecognizerResult { text, prob } = result?;
-        if !skip_empty_check && text.trim().is_empty() {
+        self.audio_sample_count = 0;
+
+        let result = result?;
+        tracing::info!(
+            component = "ASR", event = "asr_stream_finish",
+            session_id = %self.session_id,
+            finish_ms = t0.elapsed().as_millis(),
+            text_len = result.text.len(),
+            "asr: stream finish"
+        );
+        if !skip_empty_check && result.text.trim().is_empty() {
             tracing::debug!(
                 component = "ASR", event = "asr_empty",
                 session_id = %self.session_id,
@@ -86,8 +96,8 @@ impl DefaultListener {
             return None;
         }
         Some(TurnResult {
-            text,
-            prob,
+            text: result.text,
+            prob: result.prob,
             voice_data: Vec::new(),
         })
     }
@@ -107,7 +117,7 @@ impl DefaultListener {
         false
     }
 
-    fn process_audio(&mut self, data: &[u8]) {
+    fn decode_opus(&self, data: &[u8]) -> Option<(Vec<f32>, usize)> {
         let frame_size =
             ((self.client_input_sample_rate as u64 * MAX_OPUS_FRAME_MS) / 1000) as usize;
         let mut samples = vec![0f32; frame_size];
@@ -125,18 +135,29 @@ impl DefaultListener {
                     error = %e,
                     "opus decode error"
                 );
-                return;
+                return None;
             }
         };
         for s in samples[..len].iter_mut() {
             *s = s.clamp(-1.0, 1.0);
         }
+        Some((samples, len))
+    }
+
+    fn process_audio(&mut self, data: &[u8]) {
+        let Some((samples, len)) = self.decode_opus(data) else {
+            return;
+        };
+
+        if self.stream.is_none() {
+            self.audio_sample_count = 0;
+        }
+        self.audio_sample_count += len as u64;
 
         let window_size = self.vad.window_size();
         let mut pos = 0;
         while pos < len {
-            let remaining = len - pos;
-            let chunk = if remaining < window_size {
+            let chunk = if len - pos < window_size {
                 &samples[pos..len]
             } else {
                 &samples[pos..pos + window_size]
@@ -161,21 +182,17 @@ impl DefaultListener {
                 self.latest_speaking_time = Some(Local::now().timestamp_millis());
                 self.vad_silent_since = None;
 
-                // First speech frame: create stream and flush prefix buffer
                 if self.stream.is_none() {
                     let new_stream = self.asr.create_stream();
                     new_stream.accept_waveform(&self.prefix_buffer);
                     self.prefix_buffer = Vec::with_capacity(PREFIX_SAMPLES_MAX);
-                    self.prefix_flushed = true;
                     self.stream = Some(new_stream);
                 }
 
-                // Feed audio to ASR stream
                 if let Some(ref s) = self.stream {
                     s.accept_waveform(chunk);
                     s.decode();
 
-                    // Check for partial transcript updates
                     if let Some(partial) = s.get_partial()
                         && self.last_partial.as_deref() != Some(&partial)
                     {
@@ -183,7 +200,6 @@ impl DefaultListener {
                         self.queue.push_back(TurnOutput::PartialTranscript(partial));
                     }
 
-                    // Check for endpoint detection
                     if s.is_endpoint() {
                         tracing::debug!(
                             component = "ASR", event = "endpoint_detected",
@@ -193,11 +209,8 @@ impl DefaultListener {
                         self.asr_pending = true;
                     }
                 }
-            } else {
-                self.prefix_flushed = false;
-                if was_speech {
-                    self.vad_silent_since = Some(Local::now().timestamp_millis());
-                }
+            } else if was_speech {
+                self.vad_silent_since = Some(Local::now().timestamp_millis());
             }
 
             if !was_speech && is_speech {
@@ -211,34 +224,32 @@ impl DefaultListener {
         }
     }
 
-    fn internal_reset(&mut self) {
+    fn reset_state(&mut self, full: bool) {
         self.state = ListenerState::Idle;
         self.latest_speaking_time = None;
         self.vad_silent_since = None;
-        self.vad.clear();
-        self.prefix_buffer.clear();
-        self.prefix_flushed = false;
+        if full {
+            self.vad.clear();
+            self.prefix_buffer.clear();
+        }
         self.last_partial = None;
         self.asr_pending = false;
         self.stream = None;
+        self.audio_sample_count = 0;
     }
 
-    fn soft_reset(&mut self) {
-        self.state = ListenerState::Idle;
-        self.latest_speaking_time = None;
-        self.vad_silent_since = None;
-        self.prefix_flushed = false;
-        self.last_partial = None;
-        self.asr_pending = false;
-        self.stream = None;
-    }
-
-    fn finish_turn(&mut self) -> Vec<TurnOutput> {
+    async fn finish_turn(&mut self) -> Vec<TurnOutput> {
+        tracing::info!(
+            component = "ASR", event = "finish_turn",
+            session_id = %self.session_id,
+            audio_ms = self.audio_sample_count / 16,
+            "asr: finish turn"
+        );
         let result = self.finish_stream(false);
         if result.is_some() {
-            self.internal_reset();
+            self.reset_state(true);
         } else {
-            self.soft_reset();
+            self.reset_state(false);
         }
         let mut outputs: Vec<TurnOutput> = self.queue.drain(..).collect();
         if let Some(result) = result {
@@ -259,7 +270,7 @@ impl Listener for DefaultListener {
                     text_len = text.len(),
                     "listener: text input"
                 );
-                self.internal_reset();
+                self.reset_state(true);
                 self.queue.push_back(TurnOutput::TurnComplete(TurnResult {
                     text,
                     prob: 1.0,
@@ -292,7 +303,7 @@ impl Listener for DefaultListener {
     async fn drain_outputs(&mut self) -> Vec<TurnOutput> {
         if self.asr_pending {
             self.asr_pending = false;
-            return self.finish_turn();
+            return self.finish_turn().await;
         }
 
         if matches!(self.state, ListenerState::Listening { is_speech: true })
@@ -300,7 +311,7 @@ impl Listener for DefaultListener {
             && !self.asr_pending
             && self.stream.is_some()
         {
-            return self.finish_turn();
+            return self.finish_turn().await;
         }
 
         self.queue.drain(..).collect()
@@ -310,13 +321,13 @@ impl Listener for DefaultListener {
         let pending: Vec<TurnOutput> = self.queue.drain(..).collect();
         for event in pending {
             if let TurnOutput::TurnComplete(result) = event {
-                self.internal_reset();
+                self.reset_state(true);
                 return Some(result);
             }
         }
 
         let result = self.finish_stream(true);
-        self.internal_reset();
+        self.reset_state(true);
         result
     }
 
@@ -331,7 +342,7 @@ impl Listener for DefaultListener {
     }
 
     async fn reset(&mut self, silence_voice_timeout: Option<i64>) {
-        self.internal_reset();
+        self.reset_state(true);
         self.silence_voice_timeout = silence_voice_timeout;
         self.queue.clear();
     }
