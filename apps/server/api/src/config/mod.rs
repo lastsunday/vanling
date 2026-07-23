@@ -161,6 +161,8 @@ pub struct Config {
     pub vad_path: Option<String>,
 
     /// Variant of the VAD model to load.
+    ///
+    /// default: auto-detected
     #[serde(default)]
     pub vad_variant: Option<String>,
 
@@ -228,25 +230,32 @@ pub struct Config {
     #[serde(default)]
     pub tts_reference_variant: Option<String>,
 
-    /// override the auto-derived prompt text from manifest
+    /// Override the auto-derived prompt text from manifest.
+    ///
+    /// default: auto-derived
     #[serde(default)]
     pub tts_reference_prompt_text: Option<String>,
 
-    /// override the auto-derived prompt wav path from manifest
+    /// Override the auto-derived prompt wav path from manifest.
+    ///
+    /// default: auto-derived
     #[serde(default)]
     pub tts_reference_prompt_wav_path: Option<String>,
 
-    /// TTS 模型特有配置
-    /// MatchaTTS 模型支持以下选项：
-    ///   - num_threads:      线程数 (默认 2)
-    ///   - noise_scale:     生成噪声参数 (默认 0.667)
-    ///   - length_scale:    语速缩放 (默认 auto-detected from model manifest)
-    ///   - speed:           播放速度 (默认 1.0)
-    ///   - debug:           是否输出调试信息 (默认 false)
-    ///   - dict_dir:        发音字典目录路径 (可选)
-    ///   - data_dir:        espeak-ng 数据目录路径 (可选)
-    ///   - acoustic_model:  声学模型 .onnx 文件路径 (自动发现 model-steps-3.onnx)
-    ///   - vocoder:         声码器 .onnx 文件路径 (自动发现 vocos-22khz-univ.onnx / vocos-16khz-univ.onnx)
+    /// TTS model-specific options as a JSON object.
+    ///
+    /// For MatchaTTS:
+    ///   - num_threads:     inference threads (default 2)
+    ///   - noise_scale:     generation noise parameter (default 0.667)
+    ///   - length_scale:    speed scaling (default auto-detected)
+    ///   - speed:           playback speed (default 1.0)
+    ///   - debug:           debug output (default false)
+    ///   - dict_dir:        pronunciation dictionary directory
+    ///   - data_dir:        espeak-ng data directory
+    ///   - acoustic_model:  onnx path (auto-discovered)
+    ///   - vocoder:         onnx path (auto-discovered)
+    ///
+    /// default: {}
     #[serde(default)]
     pub tts_options: Option<serde_json::Value>,
 
@@ -263,6 +272,8 @@ pub struct Config {
     pub asr_path: Option<String>,
 
     /// Variant of the ASR model to load.
+    ///
+    /// default: auto-detected from model manifest
     #[serde(default)]
     pub asr_variant: Option<String>,
 
