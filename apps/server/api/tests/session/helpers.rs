@@ -127,7 +127,7 @@ pub async fn create_session() -> Result<
                 model: Some(VadModel::Earshot),
                 ..Default::default()
             })),
-            Arc::new(Mutex::new(AsrManager::create_model(&AsrConfig {
+            Arc::from(AsrManager::create_model(&AsrConfig {
                 model: Some(AsrModel::SenseVoice),
                 path: Some(
                     workspace_root()
@@ -136,7 +136,7 @@ pub async fn create_session() -> Result<
                         .into_owned(),
                 ),
                 variant: None,
-            }))),
+            })),
             Some(1200),
         )))
         .with_chii(chii)
@@ -218,10 +218,10 @@ pub async fn create_mini_session_with_timeout(
                 model: Some(VadModel::Earshot),
                 ..Default::default()
             })),
-            Arc::new(Mutex::new(AsrManager::create_model(&AsrConfig {
+            Arc::from(AsrManager::create_model(&AsrConfig {
                 model: Some(AsrModel::Void),
                 ..Default::default()
-            }))),
+            })),
             Some(1200),
         )))
         .with_chii(chii)

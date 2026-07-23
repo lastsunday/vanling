@@ -150,7 +150,7 @@ where
         .with_listener(Box::new(DefaultListener::new(
             ctx.session_id.clone(),
             VadManager::create_model(&ctx.vad_config),
-            AsrManager::global().default().clone(),
+            AsrManager::global().default(),
             ctx.session_config.silence_voice_timeout,
         )))
         .with_chii(Arc::new(

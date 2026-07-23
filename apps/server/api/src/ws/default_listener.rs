@@ -4,10 +4,11 @@ use std::sync::{Arc, Mutex as StdMutex};
 use async_trait::async_trait;
 use chrono::Local;
 use service::chobits::asr::Asr;
+use service::chobits::asr::AsrStream;
+use service::chobits::asr::RecognizerResult;
 use service::chobits::listener::{ListenInput, Listener, TurnOutput, TurnResult};
 use service::chobits::message::hello::AudioParam;
 use service::chobits::vad::Vad;
-use tokio::sync::Mutex;
 
 const PREFIX_SAMPLES_MAX: usize = 9600;
 
@@ -15,11 +16,8 @@ const MAX_OPUS_FRAME_MS: u64 = 120;
 
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
 
-const MIN_SPEECH_ONLY_SAMPLES: usize = 3200;
-
 /// After VAD declares silence (is_speech()=false), wait this long before
-/// triggering ASR. Combined with VAD's internal min_silence_duration (~550ms),
-/// total silence before ASR ≈ 750ms, vs the previous fixed 1200ms timeout.
+/// triggering ASR finish.
 const VAD_SILENCE_CONFIRM_MS: i64 = 200;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -30,10 +28,9 @@ enum ListenerState {
 
 pub struct DefaultListener {
     session_id: String,
-    temp_voice_data: Vec<f32>,
-    voice_data: Vec<f32>,
     vad: Box<dyn Vad>,
-    asr: Arc<Mutex<Box<dyn Asr>>>,
+    asr: Arc<dyn Asr>,
+    stream: Option<Box<dyn AsrStream>>,
     decoder: StdMutex<ropus::Decoder>,
     state: ListenerState,
     silence_voice_timeout: Option<i64>,
@@ -42,9 +39,7 @@ pub struct DefaultListener {
     client_input_sample_rate: u32,
     prefix_buffer: Vec<f32>,
     prefix_flushed: bool,
-    total_pcm: Vec<f32>,
-    pending_text: Option<String>,
-    speech_only_samples: usize,
+    last_partial: Option<String>,
     queue: VecDeque<TurnOutput>,
     asr_pending: bool,
 }
@@ -53,15 +48,14 @@ impl DefaultListener {
     pub fn new(
         session_id: String,
         vad: Box<dyn Vad>,
-        asr: Arc<Mutex<Box<dyn Asr>>>,
+        asr: Arc<dyn Asr>,
         silence_voice_timeout: Option<i64>,
     ) -> Self {
         Self {
             session_id,
             vad,
             asr,
-            temp_voice_data: Vec::new(),
-            voice_data: Vec::new(),
+            stream: None,
             decoder: StdMutex::new(
                 ropus::Decoder::new(DEFAULT_SAMPLE_RATE, ropus::Channels::Mono).unwrap(),
             ),
@@ -72,78 +66,39 @@ impl DefaultListener {
             client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             prefix_flushed: false,
-            total_pcm: Vec::new(),
-            pending_text: None,
-            speech_only_samples: 0,
+            last_partial: None,
             queue: VecDeque::new(),
             asr_pending: false,
         }
     }
 
-    async fn run_asr(&mut self) -> Option<TurnResult> {
-        let voice_data = core::mem::take(&mut self.voice_data);
-        let speech_only = self.speech_only_samples;
-        self.speech_only_samples = 0;
-
-        if voice_data.is_empty() || speech_only < MIN_SPEECH_ONLY_SAMPLES {
+    fn finish_stream(&mut self, skip_empty_check: bool) -> Option<TurnResult> {
+        let stream = self.stream.take()?;
+        let result = stream.finish();
+        self.stream = None;
+        let RecognizerResult { text, prob } = result?;
+        if !skip_empty_check && text.trim().is_empty() {
             tracing::debug!(
-                component = "ASR", event = "speech_too_short",
+                component = "ASR", event = "asr_empty",
                 session_id = %self.session_id,
-                speech_only,
-                voice_data_len = voice_data.len(),
-                "asr: speech too short, skipping"
+                "asr: empty text, skipping"
             );
             return None;
         }
-
-        let mut asr = self.asr.lock().await;
-        tracing::debug!(
-            component = "ASR", event = "asr_start",
-            session_id = %self.session_id,
-            speech_only_samples = speech_only,
-            "asr start"
-        );
-        let result = asr
-            .transcribe(self.client_input_sample_rate, &voice_data)
-            .await;
-
-        match result {
-            Ok(transcript) => {
-                let text = transcript.text;
-                tracing::debug!(
-                    component = "ASR", event = "asr_complete",
-                    session_id = %self.session_id,
-                    text = %text,
-                    prob = transcript.prob,
-                    "asr complete"
-                );
-                Some(TurnResult {
-                    text,
-                    prob: transcript.prob,
-                    voice_data,
-                })
-            }
-            Err(e) => {
-                tracing::warn!(
-                    component = "ASR", event = "asr_failed",
-                    session_id = %self.session_id,
-                    error = %e,
-                    "asr failed"
-                );
-                None
-            }
-        }
+        Some(TurnResult {
+            text,
+            prob,
+            voice_data: Vec::new(),
+        })
     }
 
     fn check_silence_timeout(&self) -> bool {
         let now = Local::now().timestamp_millis();
-        // Primary: fixed timeout from last speech frame (safety net)
         if let (Some(timeout), Some(last)) = (self.silence_voice_timeout, self.latest_speaking_time)
             && now - last >= timeout
         {
             return true;
         }
-        // Early: VAD declared silence + short confirmation window
         if let Some(silent_since) = self.vad_silent_since
             && now - silent_since >= VAD_SILENCE_CONFIRM_MS
         {
@@ -152,7 +107,7 @@ impl DefaultListener {
         false
     }
 
-    fn accumulate_audio(&mut self, data: &[u8]) {
+    fn process_audio(&mut self, data: &[u8]) {
         let frame_size =
             ((self.client_input_sample_rate as u64 * MAX_OPUS_FRAME_MS) / 1000) as usize;
         let mut samples = vec![0f32; frame_size];
@@ -176,28 +131,68 @@ impl DefaultListener {
         for s in samples[..len].iter_mut() {
             *s = s.clamp(-1.0, 1.0);
         }
-        self.total_pcm.extend_from_slice(&samples[..len]);
-        self.temp_voice_data.append(&mut samples[..len].to_vec());
 
         let window_size = self.vad.window_size();
-        while self.temp_voice_data.len() > window_size {
-            let window: Vec<f32> = self.temp_voice_data.drain(..window_size).collect();
+        let mut pos = 0;
+        while pos < len {
+            let remaining = len - pos;
+            let chunk = if remaining < window_size {
+                &samples[pos..len]
+            } else {
+                &samples[pos..pos + window_size]
+            };
+            pos += chunk.len();
 
-            self.prefix_buffer.extend(&window);
+            self.prefix_buffer.extend_from_slice(chunk);
             if self.prefix_buffer.len() > PREFIX_SAMPLES_MAX {
                 let excess = self.prefix_buffer.len() - PREFIX_SAMPLES_MAX;
                 self.prefix_buffer.drain(..excess);
             }
 
-            if self.vad.accept_waveform(&window).is_err() {
+            if self.vad.accept_waveform(chunk).is_err() {
                 return;
             }
 
             let was_speech = matches!(self.state, ListenerState::Listening { is_speech: true });
-            if self.vad.is_speech() {
+            let is_speech = self.vad.is_speech();
+
+            if is_speech {
                 self.state = ListenerState::Listening { is_speech: true };
                 self.latest_speaking_time = Some(Local::now().timestamp_millis());
                 self.vad_silent_since = None;
+
+                // First speech frame: create stream and flush prefix buffer
+                if self.stream.is_none() {
+                    let new_stream = self.asr.create_stream();
+                    new_stream.accept_waveform(&self.prefix_buffer);
+                    self.prefix_buffer = Vec::with_capacity(PREFIX_SAMPLES_MAX);
+                    self.prefix_flushed = true;
+                    self.stream = Some(new_stream);
+                }
+
+                // Feed audio to ASR stream
+                if let Some(ref s) = self.stream {
+                    s.accept_waveform(chunk);
+                    s.decode();
+
+                    // Check for partial transcript updates
+                    if let Some(partial) = s.get_partial()
+                        && self.last_partial.as_deref() != Some(&partial)
+                    {
+                        self.last_partial = Some(partial.clone());
+                        self.queue.push_back(TurnOutput::PartialTranscript(partial));
+                    }
+
+                    // Check for endpoint detection
+                    if s.is_endpoint() {
+                        tracing::debug!(
+                            component = "ASR", event = "endpoint_detected",
+                            session_id = %self.session_id,
+                            "asr endpoint detected"
+                        );
+                        self.asr_pending = true;
+                    }
+                }
             } else {
                 self.prefix_flushed = false;
                 if was_speech {
@@ -205,24 +200,13 @@ impl DefaultListener {
                 }
             }
 
-            if !was_speech && matches!(self.state, ListenerState::Listening { is_speech: true }) {
+            if !was_speech && is_speech {
                 tracing::debug!(
                     component = "VAD", event = "speech_started",
                     session_id = %self.session_id,
                     "listener: speech started"
                 );
                 self.queue.push_back(TurnOutput::SpeechStarted);
-            }
-
-            if let ListenerState::Listening { is_speech: true } = self.state {
-                if !self.prefix_flushed {
-                    self.voice_data.append(&mut self.prefix_buffer);
-                    self.prefix_buffer = Vec::with_capacity(PREFIX_SAMPLES_MAX);
-                    self.prefix_flushed = true;
-                } else {
-                    self.voice_data.extend_from_slice(&window);
-                    self.speech_only_samples += window.len();
-                }
             }
         }
     }
@@ -231,14 +215,36 @@ impl DefaultListener {
         self.state = ListenerState::Idle;
         self.latest_speaking_time = None;
         self.vad_silent_since = None;
-        self.temp_voice_data.clear();
-        self.voice_data.clear();
         self.vad.clear();
         self.prefix_buffer.clear();
         self.prefix_flushed = false;
-        self.speech_only_samples = 0;
-        self.pending_text = None;
+        self.last_partial = None;
         self.asr_pending = false;
+        self.stream = None;
+    }
+
+    fn soft_reset(&mut self) {
+        self.state = ListenerState::Idle;
+        self.latest_speaking_time = None;
+        self.vad_silent_since = None;
+        self.prefix_flushed = false;
+        self.last_partial = None;
+        self.asr_pending = false;
+        self.stream = None;
+    }
+
+    fn finish_turn(&mut self) -> Vec<TurnOutput> {
+        let result = self.finish_stream(false);
+        if result.is_some() {
+            self.internal_reset();
+        } else {
+            self.soft_reset();
+        }
+        let mut outputs: Vec<TurnOutput> = self.queue.drain(..).collect();
+        if let Some(result) = result {
+            outputs.push(TurnOutput::TurnComplete(result));
+        }
+        outputs
     }
 }
 
@@ -261,14 +267,15 @@ impl Listener for DefaultListener {
                 }));
             }
             ListenInput::Audio(data) => {
-                if self.state == ListenerState::Idle {
+                if matches!(self.state, ListenerState::Idle) {
                     self.state = ListenerState::Listening { is_speech: false };
                 }
                 if let ListenerState::Listening { .. } = self.state {
-                    self.accumulate_audio(&data);
+                    self.process_audio(&data);
 
                     if let ListenerState::Listening { is_speech: true } = self.state
                         && self.check_silence_timeout()
+                        && !self.asr_pending
                     {
                         tracing::debug!(
                             component = "VAD", event = "silence_timeout",
@@ -285,25 +292,15 @@ impl Listener for DefaultListener {
     async fn drain_outputs(&mut self) -> Vec<TurnOutput> {
         if self.asr_pending {
             self.asr_pending = false;
-            let result = self.run_asr().await;
-            self.internal_reset();
-            let mut outputs: Vec<TurnOutput> = self.queue.drain(..).collect();
-            if let Some(result) = result {
-                outputs.push(TurnOutput::TurnComplete(result));
-            }
-            return outputs;
+            return self.finish_turn();
         }
 
         if matches!(self.state, ListenerState::Listening { is_speech: true })
             && self.check_silence_timeout()
+            && !self.asr_pending
+            && self.stream.is_some()
         {
-            let result = self.run_asr().await;
-            self.internal_reset();
-            let mut outputs: Vec<TurnOutput> = self.queue.drain(..).collect();
-            if let Some(result) = result {
-                outputs.push(TurnOutput::TurnComplete(result));
-            }
-            return outputs;
+            return self.finish_turn();
         }
 
         self.queue.drain(..).collect()
@@ -318,7 +315,7 @@ impl Listener for DefaultListener {
             }
         }
 
-        let result = self.run_asr().await;
+        let result = self.finish_stream(true);
         self.internal_reset();
         result
     }
@@ -336,7 +333,6 @@ impl Listener for DefaultListener {
     async fn reset(&mut self, silence_voice_timeout: Option<i64>) {
         self.internal_reset();
         self.silence_voice_timeout = silence_voice_timeout;
-        self.total_pcm.clear();
         self.queue.clear();
     }
 }

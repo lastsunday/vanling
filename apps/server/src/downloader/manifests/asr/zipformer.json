@@ -1,0 +1,61 @@
+{
+  "config": {
+    "category": "asr",
+    "model": "zipformer"
+  },
+  "default_variant": "default",
+  "variants": {
+    "default": {
+      "archives": [
+        {
+          "extract": [
+            {
+              "path": "encoder-epoch-99-avg-1.int8.onnx",
+              "target": "encoder.int8.onnx"
+            },
+            {
+              "path": "decoder-epoch-99-avg-1.onnx",
+              "target": "decoder.onnx"
+            },
+            {
+              "path": "joiner-epoch-99-avg-1.onnx",
+              "target": "joiner.onnx"
+            },
+            {
+              "path": "tokens.txt",
+              "target": "tokens.txt"
+            }
+          ],
+          "path": "asr/model/zipformer/default/",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2"
+        }
+      ]
+    },
+    "zh-xlarge-int8": {
+      "archives": [
+        {
+          "extract": [
+            {
+              "path": "encoder.int8.onnx",
+              "target": "encoder.int8.onnx"
+            },
+            {
+              "path": "decoder.onnx",
+              "target": "decoder.onnx"
+            },
+            {
+              "path": "joiner.int8.onnx",
+              "target": "joiner.int8.onnx"
+            },
+            {
+              "path": "tokens.txt",
+              "target": "tokens.txt"
+            }
+          ],
+          "path": "asr/model/zipformer/zh-xlarge-int8/",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-xlarge-int8-2025-06-30.tar.bz2"
+        }
+      ]
+    }
+  }
+}

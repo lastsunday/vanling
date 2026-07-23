@@ -18,6 +18,7 @@ pub struct TurnResult {
 #[derive(Debug, Clone)]
 pub enum TurnOutput {
     SpeechStarted,
+    PartialTranscript(String),
     TurnComplete(TurnResult),
 }
 

@@ -1,14 +1,19 @@
 use async_trait::async_trait;
 use framework::error::AppError;
-use service::chobits::asr::{Asr, RecognizerResult};
+use service::chobits::asr::{Asr, AsrStream, RecognizerResult};
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::common::ModelError;
 
 pub struct AsrSenseVoice {
-    recognizer: Arc<Mutex<OfflineRecognizer>>,
+    recognizer: Arc<OfflineRecognizer>,
+}
+
+pub struct SenseVoiceStream {
+    recognizer: Arc<OfflineRecognizer>,
+    samples: Mutex<Vec<f32>>,
+    sample_rate: i32,
 }
 
 impl AsrSenseVoice {
@@ -35,32 +40,71 @@ impl AsrSenseVoice {
         let recognizer = OfflineRecognizer::create(&config)
             .ok_or_else(|| ModelError::Asr("failed to create SenseVoice recognizer".into()))?;
         Ok(Self {
-            recognizer: Arc::new(Mutex::new(recognizer)),
+            recognizer: Arc::new(recognizer),
         })
+    }
+}
+
+impl AsrStream for SenseVoiceStream {
+    fn accept_waveform(&self, samples: &[f32]) {
+        self.samples.lock().unwrap().extend_from_slice(samples);
+    }
+
+    fn decode(&self) {}
+
+    fn is_endpoint(&self) -> bool {
+        false
+    }
+
+    fn get_partial(&self) -> Option<String> {
+        None
+    }
+
+    fn finish(&self) -> Option<RecognizerResult> {
+        let samples = self.samples.lock().unwrap().clone();
+        if samples.is_empty() {
+            return None;
+        }
+        let stream = self.recognizer.create_stream();
+        stream.accept_waveform(self.sample_rate, &samples);
+        self.recognizer.decode(&stream);
+        stream.get_result().map(|r| RecognizerResult {
+            text: r.text,
+            prob: 1.0,
+        })
+    }
+
+    fn reset(&self) {
+        self.samples.lock().unwrap().clear();
     }
 }
 
 #[async_trait]
 impl Asr for AsrSenseVoice {
+    fn create_stream(&self) -> Box<dyn AsrStream> {
+        Box::new(SenseVoiceStream {
+            recognizer: self.recognizer.clone(),
+            samples: Mutex::new(Vec::new()),
+            sample_rate: 16000,
+        })
+    }
+
     async fn transcribe(
-        &mut self,
+        &self,
         sample_rate: u32,
         samples: &[f32],
     ) -> Result<RecognizerResult, AppError> {
-        let recognizer = self.recognizer.clone();
-        let recognizer = &mut *recognizer.lock().await;
-        let stream = recognizer.create_stream();
+        let stream = self.recognizer.create_stream();
         stream.accept_waveform(sample_rate as i32, samples);
-        recognizer.decode(&stream);
-        let result = stream
+        self.recognizer.decode(&stream);
+        stream
             .get_result()
             .ok_or_else(|| ModelError::Asr("SenseVoice returned no result".into()))
-            .map_err(AppError::from)?;
-
-        Ok(RecognizerResult {
-            text: result.text,
-            prob: 1.0,
-        })
+            .map_err(AppError::from)
+            .map(|r| RecognizerResult {
+                text: r.text,
+                prob: 1.0,
+            })
     }
 }
 

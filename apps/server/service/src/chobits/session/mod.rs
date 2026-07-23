@@ -270,11 +270,21 @@ impl Session {
                 }
                 _ = tick.tick() => {
                     for event in self.listener.drain_outputs().await {
-                        if let TurnOutput::TurnComplete(result) = event
-                            && let Phase::Listening(param) = &self.phase
-                            && param.is_voice_break_detect
-                        {
-                            self.on_turn_complete(result, &param.clone()).await;
+                        match event {
+                            TurnOutput::PartialTranscript(text) => {
+                                tracing::debug!(
+                                    component = "ASR", event = "partial",
+                                    session_id = %self.id, text = %text,
+                                    "partial transcript"
+                                );
+                            }
+                            TurnOutput::TurnComplete(result)
+                                if let Phase::Listening(param) = &self.phase
+                                    && param.is_voice_break_detect =>
+                            {
+                                self.on_turn_complete(result, &param.clone()).await;
+                            }
+                            _ => {}
                         }
                     }
 
@@ -586,6 +596,13 @@ impl Session {
                                     );
                                 }
                             }
+                        }
+                        TurnOutput::PartialTranscript(text) => {
+                            tracing::debug!(
+                                component = "ASR", event = "partial",
+                                session_id = %self.id, text = %text,
+                                "partial transcript"
+                            );
                         }
                         TurnOutput::TurnComplete(result) => {
                             if param.is_voice_break_detect {

@@ -10,12 +10,11 @@ mod common;
 use common::vad::*;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing_test::traced_test;
 
 fn make_listener() -> DefaultListener {
     let vad = Box::new(VadEarshot::new(&VadConfig::default()).unwrap()) as Box<dyn Vad>;
-    let asr = Arc::new(Mutex::new(Box::new(AsrVoid::new().unwrap()) as Box<dyn Asr>));
+    let asr: Arc<dyn Asr> = Arc::new(AsrVoid::new().unwrap());
     DefaultListener::new("test".to_string(), vad, asr, Some(1200))
 }
 
@@ -44,12 +43,10 @@ async fn feed_all(listener: &mut DefaultListener, packets: &[Vec<u8>]) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Prefix buffer is flushed into voice_data on first speech detection.
+// 1. Prefix buffer content is fed into ASR stream on first speech detection.
 //
 //   Feeds ~2s silence (prefix fills to 4800 samples max) then real speech.
-//   Flush forces ASR and returns TurnResult with voice_data.
-//   Verifies voice_data length is at least 4800, proving the ring buffer
-//   was drained on the first is_speech() frame.
+//   Flush triggers stream finish and returns a TurnResult.
 // ---------------------------------------------------------------------------
 #[tokio::test]
 #[traced_test]
@@ -64,45 +61,23 @@ async fn test_prefix_included_in_first_speech() -> anyhow::Result<()> {
     feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
 
     let result = listener.flush().await;
-    let voice_data = result.map(|r| r.voice_data).unwrap_or_default();
+    assert!(result.is_some(), "flush should return a TurnResult");
+    let turn = result.unwrap();
+    assert_eq!("void", turn.text);
     assert!(
-        voice_data.len() >= 4800,
-        "voice_data should include the 4800-sample prefix, got {}",
-        voice_data.len()
+        turn.voice_data.is_empty(),
+        "voice_data is empty in streaming mode"
     );
 
     Ok(())
 }
 
 // ---------------------------------------------------------------------------
-// 2. Voice data grows monotonically — feeding more speech before flush never
-//    shrinks or corrupts previously accumulated audio.
-// ---------------------------------------------------------------------------
-#[tokio::test]
-#[traced_test]
-async fn test_voice_data_grows_monotonically() -> anyhow::Result<()> {
-    let mut listener = make_listener();
-
-    let (speech_pcm, sr) = read_wav(&resource_path("speech_a.wav").to_string_lossy());
-    assert_eq!(sr, 16000);
-    feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
-    let result1 = listener.flush().await;
-    let len1 = result1.map(|r| r.voice_data.len()).unwrap_or(0);
-    assert!(len1 > 0, "voice_data should have content after speech");
-
-    feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
-    let result2 = listener.flush().await;
-    let len2 = result2.map(|r| r.voice_data.len()).unwrap_or(0);
-    assert!(
-        len2 > 0,
-        "voice_data should have content after more speech; len2={len2}"
-    );
-
-    Ok(())
-}
+// 2. [removed] Voice data accumulation test no longer applies in streaming mode.
+//    Audio is fed directly to the ASR stream, not accumulated as voice_data.
 
 // ---------------------------------------------------------------------------
-// 3. Reset clears everything — voice_data, state, prefix buffer.
+// 3. Reset clears everything — state, prefix buffer, stream.
 // ---------------------------------------------------------------------------
 #[tokio::test]
 #[traced_test]
@@ -113,22 +88,18 @@ async fn test_reset_clears_everything() -> anyhow::Result<()> {
     assert_eq!(sr, 16000);
     feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
     let result = listener.flush().await;
-    assert!(
-        result.is_some(),
-        "voice_data should have speech content before reset",
-    );
+    assert!(result.is_some(), "should have result before reset");
 
     listener.reset(None).await;
     let after = listener.flush().await;
-    assert!(after.is_none(), "voice_data should be empty after reset");
+    assert!(after.is_none(), "should be empty after reset");
 
+    // After reset, new speech should produce a result
     feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
-    let result = listener.flush().await;
-    let after_reset = result.map(|r| r.voice_data.len()).unwrap_or(0);
+    let after_reset = listener.flush().await;
     assert!(
-        after_reset >= 4800,
-        "new prefix should be built after reset; got {}",
-        after_reset,
+        after_reset.is_some(),
+        "new speech should produce result after reset",
     );
 
     Ok(())

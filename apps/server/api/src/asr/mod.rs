@@ -1,22 +1,21 @@
 pub mod model;
 
 use crate::{
-    asr::model::{sense_voice::AsrSenseVoice, void::AsrVoid},
+    asr::model::{sense_voice::AsrSenseVoice, void::AsrVoid, zipformer::AsrZipformer},
     config::{AsrModel, asr::AsrConfig},
 };
 use service::chobits::asr::Asr;
 use std::sync::{Arc, OnceLock};
-use tokio::sync::Mutex;
 
 static INSTANCE: OnceLock<AsrManager> = OnceLock::new();
 
 pub struct AsrManager {
-    default_instance: Arc<Mutex<Box<dyn Asr>>>,
+    default_instance: Arc<dyn Asr>,
     pub config: Arc<AsrConfig>,
 }
 
 impl AsrManager {
-    pub fn new(default_instance: Arc<Mutex<Box<dyn Asr>>>, config: Arc<AsrConfig>) -> Self {
+    pub fn new(default_instance: Arc<dyn Asr>, config: Arc<AsrConfig>) -> Self {
         Self {
             default_instance,
             config,
@@ -24,16 +23,14 @@ impl AsrManager {
     }
 
     pub async fn init(config: Arc<AsrConfig>) -> &'static Self {
-        INSTANCE.get_or_init(|| -> Self {
-            Self::new(Arc::new(Mutex::new(Self::create_model(&config))), config)
-        })
+        INSTANCE.get_or_init(|| -> Self { Self::new(Self::create_model(&config).into(), config) })
     }
 
     pub fn global() -> &'static AsrManager {
         INSTANCE.get().unwrap()
     }
 
-    pub fn default(&self) -> Arc<Mutex<Box<dyn Asr>>> {
+    pub fn default(&self) -> Arc<dyn Asr> {
         self.default_instance.clone()
     }
 
@@ -44,6 +41,10 @@ impl AsrManager {
             AsrModel::SenseVoice => {
                 let path = config.path.clone().expect("asr path is empty");
                 Box::new(AsrSenseVoice::new(&path).unwrap())
+            }
+            AsrModel::Zipformer => {
+                let path = config.path.clone().expect("asr path is empty");
+                Box::new(AsrZipformer::new(&path).unwrap())
             }
         }
     }
