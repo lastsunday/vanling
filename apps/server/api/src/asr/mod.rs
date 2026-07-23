@@ -1,7 +1,7 @@
 pub mod model;
 
 use crate::{
-    asr::model::{sense_voice::AsrSenseVoice, void::AsrVoid, zipformer::AsrZipformer},
+    asr::model::{paraformer::AsrParaformer, sense_voice::AsrSenseVoice, void::AsrVoid},
     config::{AsrModel, asr::AsrConfig},
 };
 use service::chobits::asr::Asr;
@@ -42,9 +42,9 @@ impl AsrManager {
                 let path = config.path.clone().expect("asr path is empty");
                 Box::new(AsrSenseVoice::new(&path).unwrap())
             }
-            AsrModel::Zipformer => {
+            AsrModel::Paraformer => {
                 let path = config.path.clone().expect("asr path is empty");
-                Box::new(AsrZipformer::new(&path).unwrap())
+                Box::new(AsrParaformer::new(&path).unwrap())
             }
         }
     }

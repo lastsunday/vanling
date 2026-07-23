@@ -159,11 +159,11 @@
 #
 #tts_options = {}
 
-# Available values: zipformer, sense_voice, void.
+# Available values: paraformer, sense_voice, void.
 #
 # Automatic Speech Recognition model to use.
 #
-#asr_model = zipformer
+#asr_model = paraformer
 
 # Path to the ASR model file or directory.
 #

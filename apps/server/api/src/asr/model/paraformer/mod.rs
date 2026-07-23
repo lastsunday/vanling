@@ -2,30 +2,28 @@ use async_trait::async_trait;
 use framework::error::AppError;
 use service::chobits::asr::{Asr, AsrStream, RecognizerResult};
 use sherpa_onnx::{
-    OnlineRecognizer, OnlineRecognizerConfig, OnlineStream, OnlineTransducerModelConfig,
+    OnlineParaformerModelConfig, OnlineRecognizer, OnlineRecognizerConfig, OnlineStream,
 };
 use std::sync::Arc;
 
 use crate::common::ModelError;
 
-pub struct AsrZipformer {
+pub struct AsrParaformer {
     recognizer: Arc<OnlineRecognizer>,
 }
 
-pub struct ZipformerStream {
+pub struct ParaformerStream {
     recognizer: Arc<OnlineRecognizer>,
     stream: OnlineStream,
     sample_rate: i32,
 }
 
-impl AsrZipformer {
+impl AsrParaformer {
     pub fn new(path: &str) -> Result<Self, ModelError> {
         let encoder = auto_discover_onnx(path, "encoder")
             .ok_or_else(|| ModelError::ModelFileNotFound(format!("encoder.onnx in {path}")))?;
         let decoder = auto_discover_onnx(path, "decoder")
             .ok_or_else(|| ModelError::ModelFileNotFound(format!("decoder.onnx in {path}")))?;
-        let joiner = auto_discover_onnx(path, "joiner")
-            .ok_or_else(|| ModelError::ModelFileNotFound(format!("joiner.onnx in {path}")))?;
         let tokens_path = format!("{path}tokens.txt");
         if !std::path::Path::new(&tokens_path).exists() {
             return Err(ModelError::ModelFileNotFound(format!(
@@ -34,10 +32,9 @@ impl AsrZipformer {
         }
 
         let mut config = OnlineRecognizerConfig::default();
-        config.model_config.transducer = OnlineTransducerModelConfig {
+        config.model_config.paraformer = OnlineParaformerModelConfig {
             encoder: Some(encoder),
             decoder: Some(decoder),
-            joiner: Some(joiner),
         };
         config.model_config.tokens = Some(tokens_path);
         config.model_config.num_threads = 2;
@@ -46,15 +43,16 @@ impl AsrZipformer {
         config.enable_endpoint = true;
         config.decoding_method = Some("greedy_search".into());
 
-        let recognizer = OnlineRecognizer::create(&config)
-            .ok_or_else(|| ModelError::Asr("failed to create Zipformer OnlineRecognizer".into()))?;
+        let recognizer = OnlineRecognizer::create(&config).ok_or_else(|| {
+            ModelError::Asr("failed to create Paraformer OnlineRecognizer".into())
+        })?;
         Ok(Self {
             recognizer: Arc::new(recognizer),
         })
     }
 }
 
-impl AsrStream for ZipformerStream {
+impl AsrStream for ParaformerStream {
     fn accept_waveform(&self, samples: &[f32]) {
         self.stream.accept_waveform(self.sample_rate, samples);
     }
@@ -97,10 +95,10 @@ impl AsrStream for ZipformerStream {
 }
 
 #[async_trait]
-impl Asr for AsrZipformer {
+impl Asr for AsrParaformer {
     fn create_stream(&self) -> Box<dyn AsrStream> {
         let stream = self.recognizer.create_stream();
-        Box::new(ZipformerStream {
+        Box::new(ParaformerStream {
             recognizer: self.recognizer.clone(),
             stream,
             sample_rate: 16000,
@@ -120,7 +118,7 @@ impl Asr for AsrZipformer {
         }
         self.recognizer
             .get_result(&stream)
-            .ok_or_else(|| ModelError::Asr("Zipformer returned no result".into()).into())
+            .ok_or_else(|| ModelError::Asr("Paraformer returned no result".into()).into())
             .map(|r| RecognizerResult {
                 text: r.text,
                 prob: 1.0,

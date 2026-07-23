@@ -44,14 +44,14 @@ async fn test_asr_model_void_stream() {
 
 #[tokio::test]
 #[traced_test]
-async fn test_asr_model_zipformer_transcribe() {
+async fn test_asr_model_paraformer_transcribe() {
     let model_path = ws_root()
-        .join("data/asr/model/zipformer/default/")
+        .join("data/asr/model/paraformer/default/")
         .to_string_lossy()
         .into_owned();
 
     let model = AsrManager::create_model(&AsrConfig {
-        model: Some(AsrModel::Zipformer),
+        model: Some(AsrModel::Paraformer),
         path: Some(model_path),
         ..Default::default()
     });
@@ -72,21 +72,21 @@ async fn test_asr_model_zipformer_transcribe() {
     );
     assert!(result.prob > 0.0);
     tracing::info!(
-        "[ZIPFERMER transcribe] {} | ASR 诊断: {diag}",
+        "[PARAFORMER transcribe] {} | ASR 诊断: {diag}",
         result.text.trim()
     );
 }
 
 #[tokio::test]
 #[traced_test]
-async fn test_asr_model_zipformer_streaming() {
+async fn test_asr_model_paraformer_streaming() {
     let model_path = ws_root()
-        .join("data/asr/model/zipformer/default/")
+        .join("data/asr/model/paraformer/default/")
         .to_string_lossy()
         .into_owned();
 
     let model = AsrManager::create_model(&AsrConfig {
-        model: Some(AsrModel::Zipformer),
+        model: Some(AsrModel::Paraformer),
         path: Some(model_path),
         ..Default::default()
     });
@@ -123,7 +123,7 @@ async fn test_asr_model_zipformer_streaming() {
         "Streaming should produce at least one partial result (got {partial_count})"
     );
     tracing::info!(
-        "[ZIPFERMER stream] {} | partial={} last_partial=[{}] final=[{}] | ASR 诊断: {diag}",
+        "[PARAFORMER stream] {} | partial={} last_partial=[{}] final=[{}] | ASR 诊断: {diag}",
         result.text.trim(),
         partial_count,
         last_partial.trim(),
