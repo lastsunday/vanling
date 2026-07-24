@@ -8,9 +8,8 @@ mod tests {
     #[traced_test]
     async fn test_chat_sentence() {
         let mut splitter = Splitter::new();
-        // Feed text as one token
-        let sentences = splitter.accept_token("Hello,World!My name is");
-        // The entire string is > 30 chars, so it should be emitted as first chunk
+        // Token ending with word boundary triggers first-chunk emission
+        let sentences = splitter.accept_token("Hello,World!");
         assert!(!sentences.is_empty(), "should emit first chunk");
 
         let sentences = splitter.accept_token("lastsunday。I like rust。I want a chobits ");

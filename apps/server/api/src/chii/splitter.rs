@@ -154,7 +154,6 @@ fn regex() -> &'static Vec<Regex> {
     static REGEX: OnceLock<Vec<Regex>> = OnceLock::new();
     REGEX.get_or_init(|| {
         vec![
-            Regex::new(r"\n").unwrap(),
             Regex::new(r"```.*?```").unwrap(),
             Regex::new(r"^#+\s*").unwrap(),
             Regex::new(r"(\*\*|__)(.*?)\1").unwrap(),
@@ -163,12 +162,71 @@ fn regex() -> &'static Vec<Regex> {
             Regex::new(r"\[(.*?)\]\(.*?\)").unwrap(),
             Regex::new(r"^\s*>+\s*").unwrap(),
             Regex::new(r"\$\$.*?\$\$").unwrap(),
+            Regex::new(r"<[^>]+>").unwrap(),
+            Regex::new(r"[\u{1F1E6}-\u{1F1FF}\u{1F600}-\u{1F64F}\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]").unwrap(),
+            Regex::new(r"([。！？，；：])\1+").unwrap(),
         ]
     })
 }
 
+fn newline_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\n+").unwrap())
+}
+
+fn normalize_typography(text: &str) -> String {
+    let text: String = text
+        .chars()
+        .map(|c| {
+            let code = c as u32;
+            match code {
+                0xFF10..=0xFF19 | 0xFF21..=0xFF3A | 0xFF41..=0xFF5A => {
+                    char::from_u32(code - 0xFEE0).unwrap_or(c)
+                }
+                0x3000 => ' ',
+                _ => c,
+            }
+        })
+        .collect();
+    text.replace(['\u{201C}', '\u{201D}'], "\"")
+        .replace(['\u{2018}', '\u{2019}'], "'")
+        .replace('\u{2014}', "——")
+        .replace('\u{2013}', "-")
+        .replace('\u{2026}', "...")
+        .replace('\u{00A0}', " ")
+}
+
+fn strip_invisible(text: &str) -> String {
+    text.chars()
+        .filter(|c| {
+            let code = *c as u32;
+            if matches!(c, '\n' | '\r' | '\t') {
+                return true;
+            }
+            if code <= 0x1F || (0x7F..=0x9F).contains(&code) {
+                return false;
+            }
+            !matches!(code,
+                0x200B..=0x200F |
+                0x202A..=0x202E |
+                0x2060..=0x2064 |
+                0x2066..=0x2069 |
+                0xFEFF |
+                0x00AD |
+                0x061C |
+                0x180B..=0x180E |
+                0x034F |
+                0xE0000..=0xE007F
+            )
+        })
+        .collect()
+}
+
 fn filter(text: &str) -> String {
     let mut content = text.to_string();
+    content = normalize_typography(&content);
+    content = strip_invisible(&content);
+    content = newline_re().replace_all(&content, "。").to_string();
     for r in regex() {
         content = r.replace_all(&content, "").to_string();
     }
