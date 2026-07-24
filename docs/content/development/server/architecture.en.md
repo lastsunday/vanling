@@ -2,8 +2,8 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "85d87fc42f1c1098fbed5f5855fee12cf2b0ac03"
-translated_at = "2026-07-21T00:00:00Z"
+source_file_hash = "19c70f289c3d5f9c5bb6c6c7ad97c5232b492991"
+translated_at = "2026-07-24T00:00:00Z"
 +++
 
 # Core Architecture
@@ -143,7 +143,7 @@ The Listener (`service/src/chobits/listener.rs` trait, implemented by `api/src/w
 
 1. Receives audio data (`ListenInput::Audio`)
 2. VAD detects speech activity (Earshot Silero VAD)
-3. Silence timeout triggers ASR transcription (SenseVoice sherpa-onnx)
+3. Silence timeout triggers ASR transcription (XAsr sherpa-onnx)
 4. Returns `ListenResult::Text` or `ListenResult::Audio { text, prob }`
 
 ## Input and Output Filters

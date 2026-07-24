@@ -1536,7 +1536,7 @@ pub fn default_asr_variant(model: &AsrModel) -> Option<String> {
     asr_model_info(model).map(|(v, _, _)| v)
 }
 
-/// Returns the base storage path for an ASR model (e.g. "asr/model/sense_voice/").
+/// Returns the base storage path for an ASR model (e.g. "asr/model/x_asr/").
 /// Derived from the default variant's archive path in the manifest.
 pub fn asr_base_path(model: &AsrModel) -> Option<String> {
     asr_model_info(model).map(|(_, b, _)| b)

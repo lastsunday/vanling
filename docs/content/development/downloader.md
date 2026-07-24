@@ -49,14 +49,14 @@ Manifest JSON 位于 `apps/server/src/downloader/manifests/{category}/`，编译
 
 ```json
 {
-  "config": { "category": "asr", "model": "sense_voice" },
+  "config": { "category": "asr", "model": "x_asr" },
   "default_variant": "default",
   "variants": {
     "default": {
       "archives": [
         {
           "url": "https://huggingface.co/.../sense-voice-zh-en-ja-ko-yue-2025-03-19.tar.bz2",
-          "path": "asr/model/sense_voice/default/",
+          "path": "asr/model/x_asr/default/",
           "sha256": "abc123..."
         }
       ]
@@ -73,7 +73,7 @@ Manifest JSON 位于 `apps/server/src/downloader/manifests/{category}/`，编译
 
 支持的压缩格式：`.tar.gz`, `.tar.bz2`, `.zip`。下载后自动解压到 `path` 目录。
 
-当前使用 `archives` 的 manifest：`asr/sense_voice.json`、`llm/qwen3.json`、`reference/audio.json`。仅 `tts/matcha.json` 使用 `files` 格式。
+当前使用 `archives` 的 manifest：`llm/qwen3.json`、`reference/audio.json`。仅 `tts/matcha.json` 使用 `files` 格式。
 
 ### 路径推导规则
 
@@ -107,7 +107,7 @@ chobits downloader install [category] [model] [variant] [options]
 | 参数 | 说明 |
 |------|------|
 | `category` | 分类：`tts`, `asr`, `llm`, `vad`, `reference`；缺省为全部 |
-| `model` | 模型名，如 `qwen3`, `matcha`, `sense_voice` |
+| `model` | 模型名，如 `qwen3`, `matcha`, `x_asr` |
 | `variant` | 变体名，如 `0.5b`, `1.7b`, `tiny`, `default` |
 | `--data-dir <path>` | 数据目录，默认 `data` |
 | `--quiet` | 静默模式，不输出进度 |
@@ -257,7 +257,7 @@ moon run server:download-all-and-checksums # 下载所有模型并更新 SHA
 | 配置字段 | 可选值 | 下载目标 |
 |----------|--------|----------|
 | `tts_model` | `matcha_tts` / `mute` | `mute` 跳过 |
-| `asr_model` | `sense_voice` / `void` | `void` 跳过 |
+| `asr_model` | `x_asr` / `void` | `void` 跳过 |
 | `llm_provider` | `local_qwen3` / `local_echo` | `local_echo` 跳过 |
 | `vad_model` | `earshot` / `void` | 均跳过（earshot 内嵌，void no-op） |
 
@@ -272,7 +272,7 @@ moon run server:download-all-and-checksums # 下载所有模型并更新 SHA
 | 模块 | 默认模型 | 说明 |
 |------|----------|------|
 | TTS | MatchaTts（`matcha-icefall-zh-en`） | 下载 `matcha` |
-| ASR | SenseVoice（默认变体） | 下载 `sense_voice` |
+| ASR | XAsr（默认变体） | 下载 `x_asr` |
 | LLM | Qwen3（默认变体） | 下载 `qwen3` |
 | VAD | Earshot | 内嵌权重，不下载 |
 

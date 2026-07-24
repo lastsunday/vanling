@@ -25,7 +25,7 @@ apps/server/
 │       ├── ota.rs            # OTA 固件升级
 │       ├── ws/               # WebSocket 处理器（核心实时管道）
 │       ├── chii/             # ChiiCore：LLM + MCP 编排
-│       ├── asr/              # ASR Manager + 模型（SenseVoice）
+│       ├── asr/              # ASR Manager + 模型（XAsr）
 │       ├── tts/              # TTS Manager + 模型（MatchaTTS）
 │       ├── vad/              # VAD Manager + 模型（Earshot）
 │       ├── llm/              # LLM Manager + 模型（Qwen3 / Echo）
@@ -82,7 +82,7 @@ Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilt
 | 数据库 | `database_url` | `sqlite://db.sqlite?mode=rwc` | SQLite 或 PostgreSQL URL |
 | 认证 | `auth_access_token_secret` | `QLjJTeVblAlM47de` | JWT 签名密钥 |
 | TTS | `tts_model` | `matcha_tts` | 模型选择 |
-| ASR | `asr_model` | `sense_voice` | 模型选择 |
+| ASR | `asr_model` | `x_asr` | 模型选择 |
 | LLM | `llm_provider` | `local_qwen3` | 模型选择 |
 | VAD | `vad_model` | `earshot` | 模型选择 |
 | Session | `silence_voice_timeout` | `1200` | 静默超时 (ms) |
@@ -124,7 +124,7 @@ moon run server:run -- downloader wizard --data-dir ../../data
 
 | 模型 | 内存 | 文件大小 | 语言 | CER (TTS 闭环) |
 |------|------|---------|------|---------------|
-| SenseVoice (sherpa-onnx) | ~600MB | 228MB | 中/英/日/韩/粤 | 0.00%(A) |
+| XAsr (sherpa-onnx) | ~600MB | ~50MB | 中/英 | — |
 | Void | 0 | 0 | — | —（测试用） |
 
 ### TTS

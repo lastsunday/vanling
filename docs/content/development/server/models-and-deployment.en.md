@@ -2,8 +2,8 @@
 title = "Models and Deployment"
 weight = 203
 [extra]
-source_file_hash = "8e111c371f16c6783c31d566b6569d301a0a0ffd"
-translated_at = "2026-07-11T00:00:00Z"
+source_file_hash = "fe7c06b870dcf7764fb3f45f6691de527e982d23"
+translated_at = "2026-07-24T00:00:00Z"
 +++
 
 # Models and Deployment
@@ -28,7 +28,7 @@ apps/server/
 │       ├── ota.rs            # OTA firmware update
 │       ├── ws/               # WebSocket handler (core real-time pipeline)
 │       ├── chii/             # ChiiCore: LLM + MCP orchestration
-│       ├── asr/              # ASR Manager + model (SenseVoice)
+│       ├── asr/              # ASR Manager + model (XAsr)
 │       ├── tts/              # TTS Manager + model (MatchaTTS)
 │       ├── vad/              # VAD Manager + model (Earshot)
 │       ├── llm/              # LLM Manager + model (Qwen3 / Echo)
@@ -85,7 +85,7 @@ Configuration uses [figment](https://docs.rs/figment) with layered loading, lowe
 | Database | `database_url` | `sqlite://db.sqlite?mode=rwc` | SQLite or PostgreSQL URL |
 | Auth | `auth_access_token_secret` | `QLjJTeVblAlM47de` | JWT signing secret |
 | TTS | `tts_model` | `matcha_tts` | Model selection |
-| ASR | `asr_model` | `sense_voice` | Model selection |
+| ASR | `asr_model` | `x_asr` | Model selection |
 | LLM | `llm_provider` | `local_qwen3` | Model selection |
 | VAD | `vad_model` | `earshot` | Model selection |
 | Session | `silence_voice_timeout` | `1200` | Silence timeout (ms) |
@@ -127,7 +127,7 @@ moon run server:run -- downloader wizard --data-dir ../../data
 
 | Model | Memory | File Size | Language | CER (TTS loopback) |
 |-------|--------|-----------|----------|-------------------|
-| SenseVoice (sherpa-onnx) | ~600MB | 228MB | zh/en/ja/ko/yue | 0.00%(A) |
+| XAsr (sherpa-onnx) | ~600MB | ~50MB | zh/en | — |
 | Void | 0 | 0 | — | — (testing) |
 
 ### TTS

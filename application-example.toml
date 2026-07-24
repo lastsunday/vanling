@@ -159,7 +159,7 @@
 #
 #tts_options = {}
 
-# Available values: xasr, sense_voice, void.
+# Available values: xasr, void.
 #
 # Automatic Speech Recognition model to use.
 #

@@ -82,7 +82,7 @@ cargo test --workspace
 1. tts(sherpa-rs(KokoroTts))
 1. opus(opus)
 1. vad(sherpa-rs(Vad))
-1. asr(sherpa-rs(SenseVoiceRecognizer))
+1. asr(sherpa-rs(XAsrRecognizer))
 
 ### Websocket handle flow
 

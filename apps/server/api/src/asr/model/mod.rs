@@ -1,4 +1,3 @@
-pub mod sense_voice;
 pub mod void;
 pub mod x_asr;
 

@@ -274,9 +274,12 @@ pub fn analyze_audio(
     };
 
     // Spectral centroid: low value indicates high-frequency loss (electronic noise symptom)
-    let fft_size = 1024.min(samples.len());
+    // Skip leading silence to avoid computing on near-zero samples
+    let skip = (sample_rate as usize / 10).min(samples.len().saturating_sub(256));
+    let analysis_start = skip;
+    let fft_size = 1024.min(samples.len() - analysis_start);
     let spectral_centroid = if fft_size >= 256 {
-        let window: Vec<f32> = samples[..fft_size].to_vec();
+        let window: Vec<f32> = samples[analysis_start..analysis_start + fft_size].to_vec();
         let mut mag_sum = 0.0f32;
         let mut weighted_sum = 0.0f32;
         // Simple DFT magnitude estimation via autocorrelation-like approach

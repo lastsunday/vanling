@@ -81,7 +81,7 @@ tasks:
       cache: false
 
   dev-lite:
-    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''sense_voice''" -O "tts_model=''matcha_tts''" -O "llm_provider=''local_echo''"'
+    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''x_asr''" -O "tts_model=''matcha_tts''" -O "llm_provider=''local_echo''"'
     deps:
       - ~:build
     options:

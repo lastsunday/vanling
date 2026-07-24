@@ -140,7 +140,7 @@ Listener（`service/src/chobits/listener.rs` trait，`api/src/ws/default_listene
 
 1. 接收音频数据（`ListenInput::Audio`）
 2. VAD 检测语音活动（Earshot Silero VAD）
-3. 静默超时触发 ASR 转录（SenseVoice sherpa-onnx）
+3. 静默超时触发 ASR 转录（XAsr sherpa-onnx）
 4. 返回 `ListenResult::Text` 或 `ListenResult::Audio { text, prob }`
 
 ## 输入输出过滤器

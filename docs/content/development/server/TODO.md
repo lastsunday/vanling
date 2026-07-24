@@ -34,7 +34,7 @@ weight = 204
 | 🟡 P1 | ASR Settle 延迟 + Speculative Reopen | `api/src/ws/default_listener.rs` | **当前瓶颈**：VAD silence 后立即 ASR，可能丢失尾部音素；无 turn reopen 机制。**方案**：(1) 分层提交：silence→等 120ms 让最后中间结果到达→标点检查→`.?!` 立即提交，无标点额外等 700ms trailing-off（vui tiered_commit 实测：干净句子 420ms，trailing off 1120ms）；(2) Speculative Reopen：参考 HF speech-to-speech 的 SpeculativeTurnTracker，64ms 静默即软结束开始 ASR/LLM，turn 保持 reopenable 1s，用户重新说话→revision+1 丢弃旧工作。**防止误提交**：用户说"嗯...其实..."时不会过早触发回复 | 参考: vui `voice_turn.py:696-771`; HF speech-to-speech `speculative_turns.py` | |
 | ⚠️ P2 | 填充词/犹豫检测 | `api/src/ws/default_listener.rs` | ASR 输出 `uh/um/呃/嗯` 等填充词 + 短音频（<3s）→ 丢弃不触发 LLM。**方案**：(1) 轻量：ASR 后处理检查末尾填充词（vui `_ends_with_filler`，支持 `uh/um/uhhh/ummm` 变体）；(2) 音频级：desert-ant-labs `uhm` 项目，DistilHuBERT 分类器，iPhone 169-296x realtime，6 类无需 ASR；(3) 训练级：disfluency LoRA 微调 whisper-large-v3-turbo，75% filler 召回率。chobits 推荐方案 (1)，与分层轮次检测的 Layer 4 结合 | 参考: vui `_ends_with_filler` `voice_turn.py:25-35`; desert-ant-labs/uhm; disfluency LoRA | |
 | ⚠️ P2 | VAD 采样率 | `api/src/vad/` | 硬编码 16kHz，非 16kHz 输入无声失败 | — | |
-| ⚠️ P2 | ASR | `api/src/asr/` | SenseVoice (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | 已有: `sherpa-onnx` | |
+| ⚠️ P2 | ASR | `api/src/asr/` | XAsr (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | 已有: `sherpa-onnx` | |
 | ⚠️ P2 | 环境监听模式 | 新功能 | 医疗 AI（Nuance DAX/Nabla）的被动监听模式：非唤醒词触发，持续监听环境音频，主动响应用户需求。需隐私架构（Nabla 模式：不存储原始音频）。适合家庭/办公场景 | — | |
 | 🟢 P3 | Speaker Diarization | `api/src/listener/` | 说话人分离，多人场景下区分不同用户。sherpa-onnx 已支持（ECAPA-TDNN + AHC 聚类） | 已有: `sherpa-onnx` / 建议: `polyvoice` | |
 | 🟢 P3 | AEC 服务端降噪 | `api/src/ws/default_listener.rs` | joey-zhou 已实现 WebRTC AEC3 服务端回声消除（含噪声抑制 + 高通滤波 + 自适应增益）。chobits 仅客户端 AEC | 建议: `aec3` — 纯 Rust WebRTC AEC3 | |

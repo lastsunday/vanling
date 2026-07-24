@@ -2,8 +2,8 @@
 title = "ASR Speech Recognition"
 weight = 402
 [extra]
-source_file_hash = "9c2482713d8febed978b63651db96d84523c1e26"
-translated_at = "2026-07-11T00:00:00Z"
+source_file_hash = "679d5e50c8c56055f2112dce383ea3f4d118023b"
+translated_at = "2026-07-24T00:00:00Z"
 +++
 
 # ASR Speech Recognition
@@ -41,23 +41,17 @@ All models share `RecognizerResult { text: String, prob: f32 }` as output.
 
 | Model | Config Name | Model File | Size | Languages | Architecture |
 |-------|-------------|------------|------|-----------|-------------|
-| **SenseVoice** | `sense_voice` | `model.int8.onnx` | 228MB | zh/en/ja/ko/yue | OfflineSenseVoice |
+| **XAsr** | `x_asr` | `model.int8.onnx` | 228MB | zh/en/ja/ko/yue | OfflineXAsr |
 | **Void** | `void` | None (no-op) | 0 | — | — |
 
 All models come from <https://github.com/k2-fsa/sherpa-onnx>, managed via downloader manifests.
-
-### Downloader Manifests
-
-| Manifest | Model |
-|----------|-------|
-| `manifests/asr/sense_voice.json` | SenseVoice |
 
 ```shell
 # Download the currently configured ASR model
 moon run server:downloader -- asr
 
 # Download a specific ASR model
-moon run server:downloader -- asr sense_voice
+moon run server:downloader -- asr x_asr
 ```
 
 ## Performance Benchmarks
@@ -66,13 +60,13 @@ Test conditions: debug mode, MatchaTTS generates ~11.84s Chinese-English mixed a
 
 | Model | CER | WER | RTF | ASR Time | Accuracy | Performance | Total | Verdict |
 |-------|-----|-----|-----|---------|---------|-------------|-------|---------|
-| **SenseVoice** | **0.00%(A)** | 0.00% | 0.110 | 1.3s | 100% | 89.0% | 96.7% | ✅ Suitable for daily use |
+| **XAsr** | **0.00%(A)** | 0.00% | 0.110 | 1.3s | 100% | 89.0% | 96.7% | ✅ Suitable for daily use |
 
-**Conclusion: Only SenseVoice currently meets usable quality; it is the default model.**
+**Conclusion: Only XAsr currently meets usable quality; it is the default model.**
 
 | Observation | Description |
 |-------------|-------------|
-| SenseVoice accuracy | TTS loopback CER is 0% — perfect recognition of synthetic speech |
+| XAsr accuracy | TTS loopback CER is 0% — perfect recognition of synthetic speech |
 | Performance | RTF < 0.12 (debug mode), faster in release mode |
 
 ### TTS-ASR Loopback Test
@@ -81,7 +75,7 @@ Synthesize `TEST_TTS_TEXT` via MatchaTTS, then feed into ASR for transcription, 
 
 | Test Name | ASR Model | Threshold |
 |-----------|-----------|-----------|
-| `test_tts_asr_loopback` | SenseVoice | CER < 6% (actual 0%) |
+| `test_tts_asr_loopback` | XAsr | CER < 6% (actual 0%) |
 
 **TTS generation time**: ~6.1-6.2s (debug) → equivalent to RTF=0.52 (TTS generation + ASR transcription)
 
@@ -125,21 +119,21 @@ CER=XX.X%(X) WER=XX.X% Acc=XX.X% Perf=XX.X% Total=XX.X% | RTF=X.XXX ASR=X.Xs Aud
 
 | Test File | Test Name | Model | Assertion |
 |-----------|-----------|-------|-----------|
-| `asr_test.rs` | `test_asr` | SenseVoice | None (diagnostic) |
+| `asr_test.rs` | `test_asr` | XAsr | None (diagnostic) |
 | `asr_test.rs` | `test_asr_model_void` | Void | text=="" prob==1.0 |
-| `asr_test.rs` | `test_asr_with_reference_audio` | SenseVoice | Contains expected substrings (zh/en/yue) |
-| `asr_test.rs` | `test_tts_asr_loopback` | SenseVoice | CER < 6% |
+| `asr_test.rs` | `test_asr_with_reference_audio` | XAsr | Contains expected substrings (zh/en/yue) |
+| `asr_test.rs` | `test_tts_asr_loopback` | XAsr | CER < 6% |
 
 ### Session Integration Tests
 
 | Test Name | ASR Role | Description |
 |-----------|----------|-------------|
-| `test_asr_voice_input_manual` | SenseVoice + Echo LLM | Send JFK WAV audio, assert STT text exact match |
-| `test_chat_flow_listen_auto` | SenseVoice (full pipeline) | VAD detects speech end → ASR → LLM → TTS |
-| `test_chat_flow_listen_realtime` | SenseVoice (full pipeline) | Real-time mode, send audio + Detect text |
+| `test_asr_voice_input_manual` | XAsr + Echo LLM | Send JFK WAV audio, assert STT text exact match |
+| `test_chat_flow_listen_auto` | XAsr (full pipeline) | VAD detects speech end → ASR → LLM → TTS |
+| `test_chat_flow_listen_realtime` | XAsr (full pipeline) | Real-time mode, send audio + Detect text |
 | `test_chat_flow_listen_realtime_silent_voice_connection_timeout` | Void (disconnect test) | Silence timeout disconnect, no real ASR needed |
-| `test_chat_flow_handle_text_message` | SenseVoice (full pipeline) | Text input → LLM → TTS |
-| `test_chat_flow_handle_text_message_multiple_time` | SenseVoice (full pipeline) | 19 rounds of text conversation |
+| `test_chat_flow_handle_text_message` | XAsr (full pipeline) | Text input → LLM → TTS |
+| `test_chat_flow_handle_text_message_multiple_time` | XAsr (full pipeline) | 19 rounds of text conversation |
 | `test_chat_flow_break` | Void (interruption test) | Interrupt and resume, no real ASR needed |
 
 ### Test Commands
@@ -148,7 +142,7 @@ CER=XX.X%(X) WER=XX.X% Acc=XX.X% Perf=XX.X% Total=XX.X% | RTF=X.XXX ASR=X.Xs Aud
 # Void model test (no model file needed, not ignored)
 cargo test --package api --test asr_test -- test_asr_model_void --nocapture
 
-# SenseVoice basic transcription
+# XAsr basic transcription
 cargo test --package api --test asr_test -- test_asr --ignored --nocapture
 
 # Reference audio test
@@ -178,7 +172,7 @@ cargo test --package api --test asr_test -- --ignored --nocapture
 | File | Role |
 |------|------|
 | `apps/server/api/src/asr/mod.rs` | Asr trait, Manager, RecognizerResult |
-| `apps/server/api/src/asr/model/sense_voice/mod.rs` | SenseVoice model implementation |
+| `apps/server/api/src/asr/model/x_asr/mod.rs` | XAsr model implementation |
 | `apps/server/api/src/asr/model/void/mod.rs` | Void no-op model |
 | `apps/server/api/src/config/asr.rs` | AsrConfig struct |
 | `apps/server/api/src/config/mod.rs` | AsrModel enum |

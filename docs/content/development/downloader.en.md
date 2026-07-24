@@ -2,8 +2,8 @@
 title = "Model Downloader"
 weight = 500
 [extra]
-source_file_hash = "de3f94e63a4a7edefc2fecc44eb6840b883a6b9a"
-translated_at = "2026-07-11T00:00:00Z"
+source_file_hash = "cfebcc88a2cf387596815951a7cd6cc80511d1ec"
+translated_at = "2026-07-24T00:00:00Z"
 +++
 
 # Model Downloader
@@ -52,14 +52,14 @@ In addition to `files`, manifests also support an `archives` field for downloadi
 
 ```json
 {
-  "config": { "category": "asr", "model": "sense_voice" },
+  "config": { "category": "asr", "model": "x_asr" },
   "default_variant": "default",
   "variants": {
     "default": {
       "archives": [
         {
           "url": "https://huggingface.co/.../sense-voice-zh-en-ja-ko-yue-2025-03-19.tar.bz2",
-          "path": "asr/model/sense_voice/default/",
+          "path": "asr/model/x_asr/default/",
           "sha256": "abc123..."
         }
       ]
@@ -76,7 +76,7 @@ In addition to `files`, manifests also support an `archives` field for downloadi
 
 Supported archive formats: `.tar.gz`, `.tar.bz2`, `.zip`. After download, they are automatically extracted to the `path` directory.
 
-Manifests currently using `archives`: `asr/sense_voice.json`, `llm/qwen3.json`, `reference/audio.json`. Only `tts/matcha.json` uses the `files` format.
+Manifests currently using `archives`: `llm/qwen3.json`, `reference/audio.json`. Only `tts/matcha.json` uses the `files` format.
 
 ### Path Derivation Rules
 
@@ -110,7 +110,7 @@ chobits downloader install [category] [model] [variant] [options]
 | Argument | Description |
 |----------|-------------|
 | `category` | Category: `tts`, `asr`, `llm`, `vad`, `reference`; defaults to all |
-| `model` | Model name, e.g., `qwen3`, `matcha`, `sense_voice` |
+| `model` | Model name, e.g., `qwen3`, `matcha`, `x_asr` |
 | `variant` | Variant name, e.g., `0.5b`, `1.7b`, `tiny`, `default` |
 | `--data-dir <path>` | Data directory, defaults to `data` |
 | `--quiet` | Silent mode, suppress progress output |
@@ -260,7 +260,7 @@ Reads the `*_model` / `*_variant` fields from `application.toml` and converts th
 | Config Field | Possible Values | Download Target |
 |-------------|----------------|-----------------|
 | `tts_model` | `matcha_tts` / `mute` | `mute` skipped |
-| `asr_model` | `sense_voice` / `void` | `void` skipped |
+| `asr_model` | `x_asr` / `void` | `void` skipped |
 | `llm_provider` | `local_qwen3` / `local_echo` | `local_echo` skipped |
 | `vad_model` | `earshot` / `void` | Both skipped (earshot embedded, void no-op) |
 
@@ -275,7 +275,7 @@ Without a config file, `AppConfig` defaults are used:
 | Module | Default Model | Description |
 |--------|--------------|-------------|
 | TTS | MatchaTts (`matcha-icefall-zh-en`) | Downloads `matcha` |
-| ASR | SenseVoice (default variant) | Downloads `sense_voice` |
+| ASR | XAsr (default variant) | Downloads `x_asr` |
 | LLM | Qwen3 (default variant) | Downloads `qwen3` |
 | VAD | Earshot | Embedded weights, no download |
 

@@ -38,23 +38,17 @@ pub trait Asr: Send + Sync {
 
 | 模型 | 配置名 | 模型文件 | 大小 | 语言 | 架构 |
 |------|--------|---------|------|------|------|
-| **SenseVoice** | `sense_voice` | `model.int8.onnx` | 228MB | 中/英/日/韩/粤 | OfflineSenseVoice |
+| **XAsr** | `x_asr` | `model.int8.onnx` | 228MB | 中/英/日/韩/粤 | OfflineXAsr |
 | **Void** | `void` | 无 (no-op) | 0 | — | — |
 
 所有模型均来自 <https://github.com/k2-fsa/sherpa-onnx>，通过下载器 manifest 管理。
-
-### Downloader Manifests
-
-| Manifest | 模型 |
-|----------|------|
-| `manifests/asr/sense_voice.json` | SenseVoice |
 
 ```shell
 # 下载当前配置的 ASR 模型
 moon run server:downloader -- asr
 
 # 下载指定 ASR 模型
-moon run server:downloader -- asr sense_voice
+moon run server:downloader -- asr x_asr
 ```
 
 ## 性能基准
@@ -63,13 +57,13 @@ moon run server:downloader -- asr sense_voice
 
 | 模型 | CER | WER | RTF | ASR 耗时 | 准确性 | 性能分 | 总分 | 判定 |
 |------|-----|-----|-----|---------|--------|--------|------|------|
-| **SenseVoice** | **0.00%(A)** | 0.00% | 0.110 | 1.3s | 100% | 89.0% | 96.7% | ✅ 适合日常 |
+| **XAsr** | **0.00%(A)** | 0.00% | 0.110 | 1.3s | 100% | 89.0% | 96.7% | ✅ 适合日常 |
 
-**结论：当前仅 SenseVoice 达到可用水平，为默认模型。**
+**结论：当前仅 XAsr 达到可用水平，为默认模型。**
 
 | 观察 | 说明 |
 |------|------|
-| SenseVoice 精度 | TTS 闭环 CER 为 0%——对合成语音完美识别 |
+| XAsr 精度 | TTS 闭环 CER 为 0%——对合成语音完美识别 |
 | 性能 | RTF < 0.12（debug 模式），release 模式更快 |
 
 ### TTS-ASR 闭环测试
@@ -78,7 +72,7 @@ moon run server:downloader -- asr sense_voice
 
 | 测试名 | ASR 模型 | 阈值 |
 |--------|---------|------|
-| `test_tts_asr_loopback` | SenseVoice | CER < 6% (实测 0%) |
+| `test_tts_asr_loopback` | XAsr | CER < 6% (实测 0%) |
 
 **TTS 生成耗时**：~6.1-6.2s (debug) → 相当于 RTF=0.52（TTS 生成 + ASR 转录）
 
@@ -122,21 +116,21 @@ CER=XX.X%(X) WER=XX.X% Acc=XX.X% Perf=XX.X% Total=XX.X% | RTF=X.XXX ASR=X.Xs Aud
 
 | 测试文件 | 测试名 | 模型 | 断言 |
 |---------|--------|------|------|
-| `asr_test.rs` | `test_asr` | SenseVoice | 无 (诊断) |
+| `asr_test.rs` | `test_asr` | XAsr | 无 (诊断) |
 | `asr_test.rs` | `test_asr_model_void` | Void | text=="" prob==1.0 |
-| `asr_test.rs` | `test_asr_with_reference_audio` | SenseVoice | 含预期子串 (zh/en/yue) |
-| `asr_test.rs` | `test_tts_asr_loopback` | SenseVoice | CER < 6% |
+| `asr_test.rs` | `test_asr_with_reference_audio` | XAsr | 含预期子串 (zh/en/yue) |
+| `asr_test.rs` | `test_tts_asr_loopback` | XAsr | CER < 6% |
 
 ### Session 集成测试
 
 | 测试名 | ASR 角色 | 说明 |
 |--------|---------|------|
-| `test_asr_voice_input_manual` | SenseVoice + Echo LLM | 发送 JFK WAV 音频，断言 STT 文本精确匹配 |
-| `test_chat_flow_listen_auto` | SenseVoice (全管道) | VAD 判断语音结束 → ASR → LLM → TTS |
-| `test_chat_flow_listen_realtime` | SenseVoice (全管道) | 实时模式，发送音频 + Detect 文本 |
+| `test_asr_voice_input_manual` | XAsr + Echo LLM | 发送 JFK WAV 音频，断言 STT 文本精确匹配 |
+| `test_chat_flow_listen_auto` | XAsr (全管道) | VAD 判断语音结束 → ASR → LLM → TTS |
+| `test_chat_flow_listen_realtime` | XAsr (全管道) | 实时模式，发送音频 + Detect 文本 |
 | `test_chat_flow_listen_realtime_silent_voice_connection_timeout` | Void (断开测试) | 静默超时断开，无需真实 ASR |
-| `test_chat_flow_handle_text_message` | SenseVoice (全管道) | 文本输入 → LLM → TTS |
-| `test_chat_flow_handle_text_message_multiple_time` | SenseVoice (全管道) | 19 轮文本对话 |
+| `test_chat_flow_handle_text_message` | XAsr (全管道) | 文本输入 → LLM → TTS |
+| `test_chat_flow_handle_text_message_multiple_time` | XAsr (全管道) | 19 轮文本对话 |
 | `test_chat_flow_break` | Void (中断测试) | 中断恢复，无需真实 ASR |
 
 ### 测试命令
@@ -145,7 +139,7 @@ CER=XX.X%(X) WER=XX.X% Acc=XX.X% Perf=XX.X% Total=XX.X% | RTF=X.XXX ASR=X.Xs Aud
 # Void 模型测试（无需模型文件，非 ignore）
 cargo test --package api --test asr_test -- test_asr_model_void --nocapture
 
-# SenseVoice 基础转录
+# XAsr 基础转录
 cargo test --package api --test asr_test -- test_asr --ignored --nocapture
 
 # 参考音频测试
@@ -175,7 +169,7 @@ cargo test --package api --test asr_test -- --ignored --nocapture
 | 文件 | 作用 |
 |------|------|
 | `apps/server/api/src/asr/mod.rs` | Asr trait、Manager、RecognizerResult |
-| `apps/server/api/src/asr/model/sense_voice/mod.rs` | SenseVoice 模型实现 |
+| `apps/server/api/src/asr/model/x_asr/mod.rs` | XAsr 模型实现 |
 | `apps/server/api/src/asr/model/void/mod.rs` | Void no-op 模型 |
 | `apps/server/api/src/config/asr.rs` | AsrConfig 结构体 |
 | `apps/server/api/src/config/mod.rs` | AsrModel 枚举 |

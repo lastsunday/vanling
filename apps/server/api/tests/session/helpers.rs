@@ -128,10 +128,10 @@ pub async fn create_session() -> Result<
                 ..Default::default()
             })),
             Arc::from(AsrManager::create_model(&AsrConfig {
-                model: Some(AsrModel::SenseVoice),
+                model: Some(AsrModel::XAsr),
                 path: Some(
                     workspace_root()
-                        .join("data/asr/model/sense_voice/default/")
+                        .join("data/asr/model/x_asr/default/")
                         .to_string_lossy()
                         .into_owned(),
                 ),

@@ -3,8 +3,8 @@ title = "TODO"
 weight = 204
 
 [extra]
-translated_at = "2026-07-24T00:00:00+08:00"
-source_file_hash = "d457521d5a54064e45b6a08d2f3560aa1e9cc85c"
+translated_at = "2026-07-24T00:00:00Z"
+source_file_hash = "0da34af898713ad8f2258459e9b931db52ae232e"
 +++
 
 # TODO
@@ -38,7 +38,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | 🟡 P1 | ASR Settle Latency + Speculative Reopen | `api/src/ws/default_listener.rs` | **Current bottleneck**: VAD silence triggers immediate ASR — may lose trailing phonemes; no turn reopen mechanism. **Plan**: (1) Tiered commit: silence→wait 120ms for last interim→punctuation check→`.?!` commits immediately, no punctuation adds 700ms trailing-off (vui tiered_commit: clean ~420ms, trailing ~1120ms); (2) Speculative Reopen: reference HF speech-to-speech SpeculativeTurnTracker — 64ms silence soft-commits to start ASR/LLM, turn stays reopenable 1s, user resumes→revision+1 discards stale work. Prevents premature commits when user says "um... actually..." | Ref: vui `voice_turn.py:696-771`; HF speech-to-speech `speculative_turns.py` | |
 | ⚠️ P2 | Filler Word / Hesitation Detection | `api/src/ws/default_listener.rs` | ASR outputs `uh/um/呃/嗯` filler words + short audio (<3s) → discard without triggering LLM. **Approaches**: (1) Lightweight: post-ASR check for trailing fillers (vui `_ends_with_filler`, supports uh/um/uhhh/ummm variants); (2) Audio-level: desert-ant-labs `uhm` project, DistilHuBERT classifier, 169-296x realtime on iPhone, 6 classes, no ASR needed; (3) Training-level: disfluency LoRA on whisper-large-v3-turbo, 75% filler recall. chobits recommends approach (1), integrated with Layer 4 of tiered turn detection | Ref: vui `_ends_with_filler` `voice_turn.py:25-35`; desert-ant-labs/uhm; disfluency LoRA | |
 | ⚠️ P2 | VAD Sample Rate | `api/src/vad/` | Hardcoded 16kHz — silent failure on non-16kHz input | — | |
-| ⚠️ P2 | ASR | `api/src/asr/` | SenseVoice (sherpa-onnx), lacks `Sync` trait, 16kHz mono only | Existing: `sherpa-onnx` | |
+| ⚠️ P2 | ASR | `api/src/asr/` | XAsr (sherpa-onnx), lacks `Sync` trait, 16kHz mono only | Existing: `sherpa-onnx` | |
 | ⚠️ P2 | Ambient Listening Mode | New feature | Medical AI (Nuance DAX/Nabla) passive listening mode: non-wake-word triggered, continuously listens to ambient audio, proactively responds to user needs. Needs privacy architecture (Nabla model: no raw audio storage). Suitable for home/office scenarios | — | |
 | 🟢 P3 | Speaker Diarization | `api/src/listener/` | Multi-speaker separation in multi-user scenarios. sherpa-onnx already supports (ECAPA-TDNN + AHC clustering) | Existing: `sherpa-onnx` / Suggest: `polyvoice` | |
 | 🟢 P3 | AEC Server-side Noise Reduction | `api/src/ws/default_listener.rs` → pipeline | joey-zhou already implements WebRTC AEC3 server-side echo cancellation (with noise suppression + high-pass filter + adaptive gain). chobits has only client-side AEC | Suggest: `aec3` — pure Rust WebRTC AEC3 | |

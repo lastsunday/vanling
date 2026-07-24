@@ -869,7 +869,6 @@ pub enum VadModel {
 pub enum AsrModel {
     #[default]
     XAsr,
-    SenseVoice,
     Void,
 }
 
