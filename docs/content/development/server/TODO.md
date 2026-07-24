@@ -62,14 +62,14 @@ weight = 204
 |------|------|------|------|------|------|
 | 🟡 P1 | Piper/Kokoro TTS 集成 | `api/src/tts/` | 开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 建议: `sherpa-onnx` (Piper ONNX 模型) | |
 | 🟡 P1 | 两阶段流式 TTS 架构 | `api/src/chii/splitter.rs` + `round.rs` + `api/src/tts/mod.rs` | **当前瓶颈**：Splitter 严格按 `。！？!?` 拆分，无子句拆分；MatchaTTS `generate_with_config` 一次性生成整句音频（callback 参数为 `None`，sherpa-onnx 实际支持流式 callback）。arxiv 2603.05413 实测流水线并行 TTFA 755ms（vs 串行 26.5s → 17x 改善）。**两阶段架构**（参考 Qwen3-TTS-streaming）：Phase 1 token 级首包 — LLM 第一个 token 到达即触发 TTS，快速出首包（3-5 词），降低 TTFA；Phase 2 句子级稳态 — 后续 15-20 词或 break_chars 兜底，吞吐优先。TTS 改用 callback 模式边生成边 Opus 编码边发送，取消时 callback 返回 false 中断。核心原则：延迟从 `STT+LLM+TTS` 变为 `max(STT,LLM,TTS)` | 参考: Qwen3-TTS-streaming 两阶段架构; vui `engine.py:73` `chunk_words`; arxiv 2603.05413; sherpa-onnx callback API | ✅已完成 2026-07-23 |
-| 🟡 P1 | 音频 Hold Buffer + Fade-out | `api/src/tts/` | TTS 输出音频尾部 abrupt cutoff 产生 click。最后 N 帧（~240ms）缓存，尾部 200ms 做线性淡出消除杂音，参考 vui `tts_worker.py:713-783` 的 hold buffer + fade-out 实现 | 参考: vui `tts_worker.py:713-783` | |
+| 🟡 P1 | 音频 Hold Buffer + Fade-out | `api/src/tts/` | TTS 输出音频尾部 abrupt cutoff 产生 click。最后 N 帧（~240ms）缓存，尾部 200ms 做线性淡出消除杂音，参考 vui `tts_worker.py:713-783` 的 hold buffer + fade-out 实现 | 参考: vui `tts_worker.py:713-783` | ✅已完成 2026-07-23（fade-out 已实现，hold buffer 未实现） |
 | 🟡 P1 | 多语言 TTS | `api/src/tts/` | 当前仅单语言 TTS voice。ESP32 客户端已支持 25+ 语言 ASR，TTS 侧需匹配 | 建议: `sherpa-onnx` (Piper/VITS ONNX 模型) | |
 | 🟡 P1 | Quick Reply 预回复 | 新功能 | LLM 推理期间先播放"我在"/"来了"等短语，降低感知延迟。参考项目黑客365 Go 版已实现，UX 关键，实现简单 | — | |
 | 🟡 P1 | 动态 TTS 声音切换 | 新功能 | 基于声纹识别自动切换不同 TTS 音色。参考项目黑客365 Go 版已实现（sherpa-onnx 声纹 + per-speaker TTS voice），声纹识别的自然延伸 | 已有: `sherpa-onnx` (声纹+TTS 切换) | |
-| 🟡 P1 | Hann Crossfade 防 click | `api/src/tts/mod.rs` | **当前问题**：TTS chunk 边界产生 click/pop 杂音。**方案**：Hann 窗 crossfade（512 samples @ 16kHz = 32ms），首包 fade-in、末包 fade-out、中间 crossfade。参考 Qwen3-TTS-streaming 项目（89 stars），业界标准做法。Overlap trimming 流程：crossfade 当前 HEAD 与前一个 TAIL → 保存完整 chunk → trim END before emission。实现位置：`StreamingOpusEncoder` 内部维护 `prev_tail: Vec<f32>`，每次 encode 时 crossfade | 参考: Qwen3-TTS-streaming `overlap_samples=512`; open-unified-tts 30-50ms crossfade | |
-| 🟡 P1 | 首包静音裁剪 + 40ms preroll | `api/src/tts/mod.rs` | **当前问题**：TTS 输出首包有 leading silence，增加感知延迟。**方案**：1% amplitude threshold 检测首包静音，裁剪后保留 40ms preroll（软起音避免 abrupt start）。参考 speech-to-speech 项目 `trim_silence()`。预期减少感知延迟 50-200ms。实现位置：`TtsMatcha::stream()` 中 Opus 编码前增加 `trim_leading_silence()` 步骤 | 参考: speech-to-speech `trim_silence()`; Dupdub TTS latency optimization | |
-| 🟡 P1 | Splitter 升级：sentencex 集成 | `api/src/chii/splitter.rs` | **当前问题**：Splitter 仅按 `。！？!?` 简单正则分割，无缩写处理（"Dr." "Mr." 被错误断句）、无 context lookahead（"$29." 被错误断句）、无 minimum sentence length。**方案**：使用 `sentencex` crate（Wikimedia，136 stars，MIT），支持 200+ 语言包括中文，手工编译缩写列表，英文 Golden Rule Set F1=100.00（NLTK 仅 72.33）。`cargo add sentencex` 即可集成。替换现有 `Splitter` 的正则逻辑 | 建议: `sentencex` — Rust 纯实现，Wikimedia 维护 | |
-| 🟡 P1 | TTFA/RTF 性能测量 | `api/src/tts/mod.rs` | **当前问题**：无 TTS 性能可观测性。**方案**：记录每请求 TTFA（time-to-first-audio）和 RTF（real-time-factor），持久化原始样本计算 P50/P90/P95 百分位。P95 决定 silence_timeout 配置。实现：在 `TtsMatcha::stream()` 中记录 `Instant::now()` 到首次 Opus 帧输出的时间差 | 参考: Dupdub TTS latency optimization; Sherlock Calls P95 monitoring | |
+| 🟡 P1 | Hann Crossfade 防 click | `api/src/tts/mod.rs` | **当前问题**：TTS chunk 边界产生 click/pop 杂音。**方案**：Hann 窗 crossfade（512 samples @ 16kHz = 32ms），首包 fade-in、末包 fade-out、中间 crossfade。参考 Qwen3-TTS-streaming 项目（89 stars），业界标准做法。Overlap trimming 流程：crossfade 当前 HEAD 与前一个 TAIL → 保存完整 chunk → trim END before emission。实现位置：`StreamingOpusEncoder` 内部维护 `prev_tail: Vec<f32>`，每次 encode 时 crossfade | 参考: Qwen3-TTS-streaming `overlap_samples=512`; open-unified-tts 30-50ms crossfade | ❌丢弃 2026-07-23 — 输入 PCM 连续，无需 crossfade |
+| 🟡 P1 | 首包静音裁剪 + 40ms preroll | `api/src/tts/mod.rs` | **当前问题**：TTS 输出首包有 leading silence，增加感知延迟。**方案**：1% amplitude threshold 检测首包静音，裁剪后保留 40ms preroll（软起音避免 abrupt start）。参考 speech-to-speech 项目 `trim_silence()`。预期减少感知延迟 50-200ms。实现位置：`TtsMatcha::stream()` 中 Opus 编码前增加 `trim_leading_silence()` 步骤 | 参考: speech-to-speech `trim_silence()`; Dupdub TTS latency optimization | ❌丢弃 2026-07-23 — 与流式架构不兼容 |
+| 🟡 P1 | Splitter 升级：sentencex 集成 | `api/src/chii/splitter.rs` | **当前问题**：Splitter 仅按 `。！？!?` 简单正则分割，无缩写处理（"Dr." "Mr." 被错误断句）、无 context lookahead（"$29." 被错误断句）、无 minimum sentence length。**方案**：使用 `sentencex` crate（Wikimedia，136 stars，MIT），支持 200+ 语言包括中文，手工编译缩写列表，英文 Golden Rule Set F1=100.00（NLTK 仅 72.33）。`cargo add sentencex` 即可集成。替换现有 `Splitter` 的正则逻辑 | 建议: `sentencex` — Rust 纯实现，Wikimedia 维护 | ✅已完成 2026-07-23 |
+| 🟡 P1 | TTFA/RTF 性能测量 | `api/src/tts/mod.rs` | **当前问题**：无 TTS 性能可观测性。**方案**：记录每请求 TTFA（time-to-first-audio）和 RTF（real-time-factor），持久化原始样本计算 P50/P90/P95 百分位。P95 决定 silence_timeout 配置。实现：在 `TtsMatcha::stream()` 中记录 `Instant::now()` 到首次 Opus 帧输出的时间差 | 参考: Dupdub TTS latency optimization; Sherlock Calls P95 monitoring | ✅已完成 2026-07-23 |
 | 🟡 P1 | Opus-to-PCM 解码预缓冲 | `service/src/chobits/session/round.rs` | **当前问题**：客户端收到 Opus 帧后立即解码播放，无预缓冲。网络抖动导致播放卡顿。**方案**：服务端或客户端增加 Opus→PCM 解码层，预缓冲 N 帧（~200ms）后再播放，平滑网络抖动影响。参考 speech-to-speech 项目 leftover sample carry 机制。ESP32 端可利用 Opus decoder 已有实现；WS 端需评估是否在服务端预解码（增加带宽但降低客户端复杂度） | 参考: speech-to-speech `leftover_samples` carry; sherpa-onnx Opus decoder | |
 | ⚠️ P2 | 句间静音优化 | `api/src/tts/` | TTS 句间固定静音。改为按标点类型动态调整：逗号 0.3s，句号 0.6s，其他 0.3s，让对话节奏更自然 | 参考: RealtimeVoiceChat `ENGINE_SILENCES` `audio_module.py:22-26` | |
 | ⚠️ P2 | 对话韵律 TTS | 新功能 | 参考项目 Sesame CSM（Apache 2.0 开源）生成呼吸/犹豫/笑声等对话韵律，让语音更像真人。Cartesia Sonic 3.5 使用 SSM 架构实现 <90ms TTS 延迟 | 建议: `csm.rs` — Rust Sesame CSM (AGPL-3.0) | |
@@ -399,6 +399,15 @@ ESP32 (边缘)                    服务器 (chobits)
 | [百川智能](https://github.com/baichuan-inc) | 医疗垂直 LLM、3B 现金储备 | 垂直行业深耕模式 |
 
 ---
+
+## 状态说明
+
+| 状态 | 含义 |
+|------|------|
+| （空） | 未完成 |
+| ✅已完成 YYYY-MM-DD | 已完成，附完成日期 |
+| ⚠️搁置 — 原因 | 暂时搁置，附原因说明 |
+| ❌丢弃 — 原因 | 不再推进，附原因说明 |
 
 ## 优先级说明
 
