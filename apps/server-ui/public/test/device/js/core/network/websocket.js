@@ -125,6 +125,9 @@ export class WebSocketHandler {
       log('服务器开始发送语音', 'info');
       this.currentSessionId = message.session_id;
       this.isRemoteSpeaking = true;
+      // 新请求到来，清空上一轮残留音频
+      const audioPlayer = getAudioPlayer();
+      audioPlayer.clearAllAudio();
       if (this.onSessionStateChange) {
         this.onSessionStateChange(true);
       }
@@ -136,12 +139,8 @@ export class WebSocketHandler {
     } else if (message.state === 'sentence_end') {
       log(`语音段结束: ${message.text}`, 'info');
     } else if (message.state === 'stop') {
-      log('服务器语音传输结束，清空所有音频缓冲', 'info');
-
-      // 清空所有音频缓冲并停止播放
-      const audioPlayer = getAudioPlayer();
-      audioPlayer.clearAllAudio();
-
+      log('服务器语音传输结束，等待音频自然播完', 'info');
+      // 不清空，让 StreamingContext 自然排空剩余音频
       this.isRemoteSpeaking = false;
       if (this.onRecordButtonStateChange) {
         this.onRecordButtonStateChange(false);
