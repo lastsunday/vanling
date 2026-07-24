@@ -46,8 +46,8 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | LLM 线程安全 | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on`，未 `catch_unwind`，panic 静默崩溃 | — | |
-| 🔴 P0 | LLM Echo 线程 | `api/src/llm/model/echo/mod.rs` | 同上 | — | |
+| 🔴 P0 | LLM 线程安全 | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on`，未 `catch_unwind`，panic 静默崩溃 | — | ✅已完成 2026-07-24 |
+| 🔴 P0 | LLM Echo 线程 | `api/src/llm/model/echo/mod.rs` | 同上 | — | ✅已完成 2026-07-24 |
 | 🟡 P1 | 情绪识别完善 | `api/src/llm/model/` (analyze_emotion) | 当前 stub 返回 "happy"。行业方案：音频特征 (wav2vec2 SER) + 文本情感 (GoEmotions) 双通道融合，用于调整 TTS 语气和回复风格 | 已有: `sherpa-onnx` (SER 模型) | |
 | 🟡 P1 | 个性化记忆/长期偏好 | 新功能 | 当前仅 chat history，无长期偏好存储。参考项目 xinnan-tech 有 PowerMem（用户画像 + 艾宾浩斯遗忘曲线 + 向量检索）；joey-zhou 有 3 种记忆模式（window/summary/long + 图检索） | 建议: `qdrant` + `rig-core` — 向量 DB + RAG 框架 | |
 | 🟡 P1 | RAG 知识库 | MCP 或内置模块 | 参考项目 xinnan-tech 集成 RAGFlow；joey-zhou 有 EmbeddingModelFactory + 图检索。当前 MCP 框架可接入但无内置向量检索 | 已有: `rig-core` (10+ 向量存储后端) | |
@@ -97,7 +97,7 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | stop_round 竞态 | `service/src/chobits/session/round.rs` | `llm_tts_handle` 与 `stop_round` 之间缺少同步，可能 use-after-cancel | — | |
+| 🔴 P0 | stop_round 竞态 | `service/src/chobits/session/round.rs` | `llm_tts_handle` 与 `stop_round` 之间缺少同步，可能 use-after-cancel | — | ✅已完成 2026-07-24 |
 | 🟡 P1 | Continued Conversation | `service/src/chobits/session/` | 回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持 | — | |
 | 🟡 P1 | 时钟溢出 | `service/src/chobits/session/mod.rs` | `Local::now()` 非单调，减法可溢出 | 已有: `jiff` (单调时钟) | |
 | 🟡 P1 | 设备管理 | 新功能 | 无设备注册/绑定/列表，OTA 激活后无设备持久化。参考项目有完整设备生命周期管理（注册/状态/配置/OTA/批量操作） | 已有: `sea-orm` | |
@@ -115,12 +115,12 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | Signal 宏 | `framework/src/signal.rs` | 使用不存在的 `debug_error!` 宏，非 unix 编译失败 | — | |
+| 🔴 P0 | Signal 宏 | `framework/src/signal.rs` | 使用不存在的 `debug_error!` 宏，非 unix 编译失败 | — | ✅已完成 2026-07-24 |
 | 🟡 P1 | email 约束 | `migration/src/m20241230_000001_init.rs` | entity 标注 `#[sea_orm(unique)]`，迁移未实现 UNIQUE | 已有: `sea-orm` (migration fix) | |
 | 🟡 P1 | 外键约束 | `migration/src/m20241230_000001_init.rs` | 缺少 FK: `round.session_id`、`round_data.round_id`、`frame.round_id` | 已有: `sea-orm` (migration fix) | |
 | 🟡 P1 | MCP 锁顺序 | `api/src/mcp/mcp_host.rs` | UnionMcpHost device/server 锁顺序 ABBA，可能死锁 | — | |
 | 🟡 P1 | 优雅关闭顺序 | `framework/src/signal.rs` + `apps/server` | 各模块关闭顺序缺失 | — | |
-| 🟡 P1 | Panic 处理 | `framework/src/panic.rs` | `eprintln!` 而非 `tracing::error!`，绕过 Sentry | 已有: `tracing` | |
+| 🟡 P1 | Panic 处理 | `framework/src/panic.rs` | `eprintln!` 而非 `tracing::error!`，绕过 Sentry | 已有: `tracing` | ✅已完成 2026-07-24 |
 | 🟡 P1 | Runtime 竞态 | `framework/src/runtime.rs` | `OnceLock` 初始化存在竞态 | — | |
 | 🟢 P3 | 时间戳自动填充 | `entity/src/config.rs` | `Config` 实体缺失 `ActiveModelBehavior`，时间戳未自动填充 | 已有: `sea-orm` | |
 | 🟢 P3 | MCP 错误处理 | `api/src/mcp/` | 不完善 | 已有: `rmcp` | |

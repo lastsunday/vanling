@@ -4,7 +4,7 @@ weight = 204
 
 [extra]
 translated_at = "2026-07-24T00:00:00Z"
-source_file_hash = "3ece52d2e141fc77bdc92be06319ed1029a9d87a"
+source_file_hash = "821cbb5d8e43a17f3f9017d2dba6fc43cc37f19e"
 +++
 
 # TODO
@@ -50,8 +50,8 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🔴 P0 | LLM Thread Safety | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on` without `catch_unwind` — silent panic crash | — | |
-| 🔴 P0 | LLM Echo Thread | `api/src/llm/model/echo/mod.rs` | Same as above | — | |
+| 🔴 P0 | LLM Thread Safety | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on` without `catch_unwind` — silent panic crash | — | ✅Completed 2026-07-24 |
+| 🔴 P0 | LLM Echo Thread | `api/src/llm/model/echo/mod.rs` | Same as above | — | ✅Completed 2026-07-24 |
 | 🟡 P1 | Emotion Recognition Completion | `api/src/llm/model/` (analyze_emotion) | Currently stub returning "happy". Industry approach: dual-channel fusion of audio features (wav2vec2 SER) + text sentiment (GoEmotions), used to adjust TTS tone and response style | Existing: `sherpa-onnx` (SER models) | |
 | 🟡 P1 | Personalized Memory / Long-term Preferences | New feature | Currently only chat history — no long-term preference storage. Reference project xinnan-tech has PowerMem (user profiles + Ebbinghaus forgetting curve + vector retrieval); joey-zhou has 3 memory modes (window/summary/long + graph retrieval) | Suggest: `qdrant` + `rig-core` — vector DB + RAG framework | |
 | 🟡 P1 | RAG Knowledge Base | MCP or built-in module | Reference project xinnan-tech integrates RAGFlow; joey-zhou has EmbeddingModelFactory + graph retrieval. Current MCP framework can integrate but has no built-in vector retrieval | Existing: `rig-core` (10+ vector storage backends) | |
@@ -101,7 +101,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🔴 P0 | stop_round Race Condition | `service/src/chobits/session/round.rs` | `llm_tts_handle` and `stop_round` lack synchronization — possible use-after-cancel | — | |
+| 🔴 P0 | stop_round Race Condition | `service/src/chobits/session/round.rs` | `llm_tts_handle` and `stop_round` lack synchronization — possible use-after-cancel | — | ✅Completed 2026-07-24 |
 | 🟡 P1 | Continued Conversation | `service/src/chobits/session/` | After a reply, the microphone should stay open briefly to allow follow-up without wake word. Supported by Gemini / Alexa+ | — | |
 | 🟡 P1 | Clock Overflow | `service/src/chobits/session/mod.rs` | `Local::now()` is non-monotonic — subtraction can overflow | Existing: `jiff` (monotonic clock) | |
 | 🟡 P1 | Device Management | New feature | No device registration/binding/listing. After OTA activation, devices are not persisted. Reference projects have full device lifecycle (registration/state/config/OTA/bulk operations) | Existing: `sea-orm` | |
@@ -119,12 +119,12 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🔴 P0 | Signal Macro | `framework/src/signal.rs` | Uses non-existent `debug_error!` macro — fails to compile on non-unix | — | |
+| 🔴 P0 | Signal Macro | `framework/src/signal.rs` | Uses non-existent `debug_error!` macro — fails to compile on non-unix | — | ✅Completed 2026-07-24 |
 | 🟡 P1 | email Constraint | `migration/src/m20241230_000001_init.rs` | Entity has `#[sea_orm(unique)]` but migration doesn't implement UNIQUE | Existing: `sea-orm` (migration fix) | |
 | 🟡 P1 | FK Constraints | `migration/src/m20241230_000001_init.rs` | Missing FKs: `round.session_id`, `round_data.round_id`, `frame.round_id` | Existing: `sea-orm` (migration fix) | |
 | 🟡 P1 | MCP Lock Ordering | `api/src/mcp/mcp_host.rs` | UnionMcpHost device/server lock order ABBA — potential deadlock | — | |
 | 🟡 P1 | Graceful Shutdown Order | `framework/src/signal.rs` + `apps/server` | Missing shutdown sequence across modules | — | |
-| 🟡 P1 | Panic Handling | `framework/src/panic.rs` | Uses `eprintln!` instead of `tracing::error!` — bypasses Sentry | Existing: `tracing` | |
+| 🟡 P1 | Panic Handling | `framework/src/panic.rs` | Uses `eprintln!` instead of `tracing::error!` — bypasses Sentry | Existing: `tracing` | ✅Completed 2026-07-24 |
 | 🟡 P1 | Runtime Race Condition | `framework/src/runtime.rs` | `OnceLock` initialization has race condition | — | |
 | 🟢 P3 | Timestamp Auto-fill | `entity/src/config.rs` | `Config` entity missing `ActiveModelBehavior` — timestamps not auto-filled | Existing: `sea-orm` | |
 | 🟢 P3 | MCP Error Handling | `api/src/mcp/` | Incomplete | Existing: `rmcp` | |

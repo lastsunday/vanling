@@ -294,15 +294,30 @@ impl Llm for LlmQwen {
         let device = self.device.clone();
         let (tx, rx) = channel::<Result<CompletionEvent, AppError>>(10);
         let rt_handle = tokio::runtime::Handle::current();
+        let tx_err = tx.clone();
         tokio::task::spawn_blocking(move || {
-            rt_handle.block_on(async {
-                if let Err(e) = handle(&request, tokenizer, model, device, tx.clone(), cancel).await
-                    && let Err(e) = tx.send(Err(e)).await
-                {
-                    error!(error = %e, "chat llm error send error");
-                };
-                drop(tx);
-            });
+            use std::panic::{AssertUnwindSafe, catch_unwind};
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                rt_handle.block_on(async {
+                    if let Err(e) =
+                        handle(&request, tokenizer, model, device, tx.clone(), cancel).await
+                        && let Err(e) = tx.send(Err(e)).await
+                    {
+                        error!(error = %e, "chat llm error send error");
+                    };
+                    drop(tx);
+                });
+            }));
+            if let Err(panic) = result {
+                let msg = panic
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+                    .or_else(|| panic.downcast_ref::<&str>().copied())
+                    .unwrap_or("unknown panic");
+                error!(error = %msg, "llm qwen3 task panicked");
+                let _ =
+                    tx_err.blocking_send(Err(AppError::from(anyhow::anyhow!("llm panic: {msg}"))));
+            }
         });
         Box::pin(ReceiverStream::new(rx))
     }

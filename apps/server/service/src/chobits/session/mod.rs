@@ -406,7 +406,28 @@ impl Session {
         if let Some(round) = &mut self.running_round {
             tracing::debug!(component = "SESSION", event = "round_stopped", session_id = %self.id, round_id = %round.id, %reason, "round stopped");
             round.stop().await;
-            round.join_handle.take();
+            if let Some(handle) = round.join_handle.take() {
+                let round_id = &round.id;
+                match tokio::time::timeout(Duration::from_secs(5), handle).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        if e.is_panic() {
+                            tracing::error!(
+                                component = "SESSION", event = "round_task_panic",
+                                session_id = %self.id, round_id = %round_id,
+                                "round task panicked"
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        tracing::warn!(
+                            component = "SESSION", event = "round_task_timeout",
+                            session_id = %self.id, round_id = %round_id,
+                            "round task did not finish within timeout, proceeding"
+                        );
+                    }
+                }
+            }
         }
     }
 

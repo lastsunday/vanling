@@ -22,9 +22,12 @@ pub fn init() {
             .name()
             .map_or_else(|| "<unnamed>".to_owned(), ToOwned::to_owned);
 
-        eprintln!(
-            "\nthread '{thread_name}' panicked{location_str}: \
-			 {message}\n\nBacktrace:\n{backtrace}"
+        tracing::error!(
+            thread = %thread_name,
+            location = %location_str,
+            message = %message,
+            backtrace = %backtrace,
+            "thread panicked"
         );
 
         default_hook(info);
