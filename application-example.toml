@@ -17,11 +17,11 @@
 
 # Server hostname displayed to clients.
 #
-#server_name = localhost.localdomain
+#server_name = "localhost.localdomain"
 
 # Base data directory for model files. All model paths are relative to this.
 #
-#data_dir = data
+#data_dir = "data"
 
 # The default address (IPv4 or IPv6)  will listen on.
 #
@@ -29,7 +29,7 @@
 # be "0.0.0.0".
 #
 #
-#address = 127.0.0.1
+#address = "127.0.0.1"
 
 # The port(s) will listen on.
 #
@@ -40,11 +40,11 @@
 
 # Database connection URL.
 #
-#database_url = sqlite://db.sqlite?mode=rwc
+#database_url = "sqlite://db.sqlite?mode=rwc"
 
 # Secret key for signing JWT access tokens.
 #
-#auth_access_token_secret = QLjJTeVblAlM47de
+#auth_access_token_secret = "QLjJTeVblAlM47de"
 
 # Access token expiry duration in seconds.
 #
@@ -52,7 +52,7 @@
 
 # Secret key for signing JWT refresh tokens.
 #
-#auth_refresh_token_secret = N8lI0uitNzJl6vYK
+#auth_refresh_token_secret = "N8lI0uitNzJl6vYK"
 
 # Refresh token expiry duration in seconds.
 #
@@ -60,37 +60,37 @@
 
 # JWT audience claim.
 #
-#auth_audience = audience
+#auth_audience = "audience"
 
 # JWT issuer claim.
 #
-#auth_issuer = issuer
+#auth_issuer = "issuer"
 
 # OAuth 2.0 client ID.
 #
-#auth_client_id = d1aicsr57dijo7h963ig
+#auth_client_id = "d1aicsr57dijo7h963ig"
 
 # OAuth 2.0 client secret.
 #
-#auth_client_secret = ujTgh2lEQYy0PXhK
+#auth_client_secret = "ujTgh2lEQYy0PXhK"
 
 # WebSocket URL scheme (ws or wss).
 #
-#ws_schema = ws
+#ws_schema = "ws"
 
 # Available values: void, earshot.
 #
 # Voice Activity Detection model to use.
 #
-#vad_model = earshot
+#vad_model = "earshot"
 
 # Path to the VAD model file or directory.
 #
-#vad_path = auto-derived from model+variant
+#vad_path = "auto-derived from model+variant"
 
 # Variant of the VAD model to load.
 #
-#vad_variant = auto-detected
+#vad_variant = "auto-detected"
 
 # Number of threads for VAD inference.
 #
@@ -118,11 +118,11 @@
 #
 # Text-to-Speech model to use.
 #
-#tts_model = matcha_tts
+#tts_model = "matcha_tts"
 
 # Path to the TTS model file or directory.
 #
-#tts_path = auto-derived from model manifest
+#tts_path = "auto-derived from model manifest"
 
 # Variant override for the active TTS model.
 #
@@ -130,19 +130,19 @@
 # This is useful for switching between different model variants without
 # changing the model type.
 #
-#tts_variant = auto-detected from model manifest
+#tts_variant = "auto-detected from model manifest"
 
 # Variant override for the TTS reference audio.
 #
-#tts_reference_variant = auto-detected from model manifest
+#tts_reference_variant = "auto-detected from model manifest"
 
 # Override the auto-derived prompt text from manifest.
 #
-#tts_reference_prompt_text = auto-derived
+#tts_reference_prompt_text = "auto-derived"
 
 # Override the auto-derived prompt wav path from manifest.
 #
-#tts_reference_prompt_wav_path = auto-derived
+#tts_reference_prompt_wav_path = "auto-derived"
 
 # TTS model-specific options as a JSON object.
 #
@@ -163,26 +163,26 @@
 #
 # Automatic Speech Recognition model to use.
 #
-#asr_model = x_asr
+#asr_model = "x_asr"
 
 # Path to the ASR model file or directory.
 #
-#asr_path = auto-derived from model+variant
+#asr_path = "auto-derived from model+variant"
 
 # Variant of the ASR model to load.
 #
-#asr_variant = auto-detected from model manifest
+#asr_variant = "auto-detected from model manifest"
 
 # Available values: local_qwen3, local_echo, remote_open_ai_compatible.
 #
 # LLM provider to use.
 #
-#llm_provider = local_qwen3
+#llm_provider = "local_qwen3"
 
 # Path to the local LLM model file or directory.
 # Only used with local providers (local_qwen3, local_echo).
 #
-#llm_path = auto-derived from model+variant
+#llm_path = "auto-derived from model+variant"
 
 # Model variant for the local LLM.
 # Only used with local providers (local_qwen3, local_echo).
@@ -192,7 +192,7 @@
 # Base URL for the remote OpenAI-compatible API.
 # Only used with remote_open_ai_compatible provider.
 #
-#llm_api_url = http://localhost:11434
+#llm_api_url = "http://localhost:11434/v1/"
 
 # API key for remote OpenAI-compatible providers.
 # Leave empty for local-only setups.
@@ -202,7 +202,7 @@
 # Remote model identifier sent to the API.
 # Only used with remote_open_ai_compatible provider.
 #
-#llm_model = qwen3.5:4b
+#llm_model = "qwen3.5:4b"
 
 # Output audio sample rate in Hz.
 #
@@ -226,7 +226,7 @@
 
 # System prompt for the LLM.
 #
-#session_system_prompt = "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。如果用户询问的内容为空，则请求用户描述清楚。",
+#session_system_prompt = "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、标点符号。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
 
 # Maximum number of prompt tokens.
 #
@@ -247,15 +247,15 @@
 
 # Matrix client application name.
 #
-#matrix_client_name = chobits
+#matrix_client_name = "chobits"
 
 # Matrix homeserver URL.
 #
-#matrix_homeserver = http://127.0.0.1:8008
+#matrix_homeserver = "http://127.0.0.1:8008"
 
 # Matrix client user ID.
 #
-#matrix_client_username = @chobits:localhost.localdomain
+#matrix_client_username = "@chobits:localhost.localdomain"
 
 # Matrix client password.
 #
@@ -267,11 +267,11 @@
 
 # Console log level (trace, debug, info, warn, error)
 #
-#log_console_level = info
+#log_console_level = "info"
 
 # Console log format (text, json, compact, pretty)
 #
-#log_console_format = text
+#log_console_format = "text"
 
 # Enable file logging
 #
@@ -279,19 +279,19 @@
 
 # File log level (trace, debug, info, warn, error)
 #
-#log_file_level = info
+#log_file_level = "info"
 
 # File log format (text, json, compact, pretty)
 #
-#log_file_format = json
+#log_file_format = "json"
 
 # File log directory
 #
-#log_file_directory = ./logs
+#log_file_directory = "./logs"
 
 # File log name prefix
 #
-#log_file_name = server
+#log_file_name = "server"
 
 # Max log files to retain
 #
@@ -299,7 +299,7 @@
 
 # Log rotation (daily, hourly, never)
 #
-#log_file_rotation = daily
+#log_file_rotation = "daily"
 
 # Enable tracing-flame profiling output
 #
@@ -307,7 +307,7 @@
 
 # Flame graph output directory
 #
-#log_flame_directory = ./flame
+#log_flame_directory = "./flame"
 
 # Enable tokio-console
 #

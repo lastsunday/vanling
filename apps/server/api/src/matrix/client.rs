@@ -230,6 +230,7 @@ impl Bot {
                     .with_session_id(Some(id.clone()))
                     .with_model(LlmManager::global().default())
                     .with_mcp_registry(mcp_registry)
+                    .with_preamble(self.session_config.system_prompt.clone())
                     .build(),
             );
 

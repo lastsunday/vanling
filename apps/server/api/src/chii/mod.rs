@@ -369,6 +369,7 @@ pub struct ChiiCoreBuilder {
     session_id: Option<String>,
     model: Option<Arc<dyn Llm>>,
     mcp_registry: Option<Arc<Mutex<McpRegistry>>>,
+    preamble: Option<String>,
 }
 
 impl ChiiCoreBuilder {
@@ -391,6 +392,11 @@ impl ChiiCoreBuilder {
         self
     }
 
+    pub fn with_preamble(mut self, preamble: Option<String>) -> ChiiCoreBuilder {
+        self.preamble = preamble;
+        self
+    }
+
     pub fn build(self) -> ChiiCore {
         ChiiCore {
             session_id: self.session_id,
@@ -399,7 +405,7 @@ impl ChiiCoreBuilder {
             max_tokens: None,
             max_prompt_len: Some(6000),
             history: Arc::new(Mutex::new(History {
-                preamble: None,
+                preamble: self.preamble,
                 chat_history: vec![],
             })),
             mcp_registry: self.mcp_registry,

@@ -59,13 +59,13 @@ const DEPRECATED_KEYS: &[&str] = &[];
 pub struct Config {
     /// Server hostname displayed to clients.
     ///
-    /// default: localhost.localdomain
+    /// default: "localhost.localdomain"
     #[serde(default = "default_server_name")]
     pub server_name: String,
 
     /// Base data directory for model files. All model paths are relative to this.
     ///
-    /// default: data
+    /// default: "data"
     #[serde(default = "default_data_dir")]
     pub data_dir: Option<String>,
 
@@ -75,7 +75,7 @@ pub struct Config {
     /// be "0.0.0.0".
     ///
     ///
-    /// default: 127.0.0.1
+    /// default: "127.0.0.1"
     #[serde(default = "default_address")]
     pub address: ListeningAddr,
 
@@ -90,13 +90,13 @@ pub struct Config {
 
     /// Database connection URL.
     ///
-    /// default: sqlite://db.sqlite?mode=rwc
+    /// default: "sqlite://db.sqlite?mode=rwc"
     #[serde(default = "default_database_url")]
     pub database_url: Option<String>,
 
     /// Secret key for signing JWT access tokens.
     ///
-    /// default: QLjJTeVblAlM47de
+    /// default: "QLjJTeVblAlM47de"
     #[serde(default = "default_auth_access_token_secret")]
     pub auth_access_token_secret: Option<String>,
 
@@ -108,7 +108,7 @@ pub struct Config {
 
     /// Secret key for signing JWT refresh tokens.
     ///
-    /// default: N8lI0uitNzJl6vYK
+    /// default: "N8lI0uitNzJl6vYK"
     #[serde(default = "default_auth_refresh_token_secret")]
     pub auth_refresh_token_secret: Option<String>,
 
@@ -120,49 +120,49 @@ pub struct Config {
 
     /// JWT audience claim.
     ///
-    /// default: audience
+    /// default: "audience"
     #[serde(default = "default_auth_audience")]
     pub auth_audience: Option<String>,
 
     /// JWT issuer claim.
     ///
-    /// default: issuer
+    /// default: "issuer"
     #[serde(default = "default_auth_issuer")]
     pub auth_issuer: Option<String>,
 
     /// OAuth 2.0 client ID.
     ///
-    /// default: d1aicsr57dijo7h963ig
+    /// default: "d1aicsr57dijo7h963ig"
     #[serde(default = "default_auth_client_id")]
     pub auth_client_id: Option<String>,
 
     /// OAuth 2.0 client secret.
     ///
-    /// default: ujTgh2lEQYy0PXhK
+    /// default: "ujTgh2lEQYy0PXhK"
     #[serde(default = "default_auth_client_secret")]
     pub auth_client_secret: Option<String>,
 
     /// WebSocket URL scheme (ws or wss).
     ///
-    /// default: ws
+    /// default: "ws"
     #[serde(default = "default_ws_schema")]
     pub ws_schema: Option<String>,
 
     /// Voice Activity Detection model to use.
     ///
-    /// default: earshot
+    /// default: "earshot"
     #[serde(default = "default_vad_model")]
     pub vad_model: Option<VadModel>,
 
     /// Path to the VAD model file or directory.
     ///
-    /// default: auto-derived from model+variant
+    /// default: "auto-derived from model+variant"
     #[serde(default = "default_vad_path")]
     pub vad_path: Option<String>,
 
     /// Variant of the VAD model to load.
     ///
-    /// default: auto-detected
+    /// default: "auto-detected"
     #[serde(default)]
     pub vad_variant: Option<String>,
 
@@ -204,13 +204,13 @@ pub struct Config {
 
     /// Text-to-Speech model to use.
     ///
-    /// default: matcha_tts
+    /// default: "matcha_tts"
     #[serde(default = "default_tts_model")]
     pub tts_model: Option<TtsModel>,
 
     /// Path to the TTS model file or directory.
     ///
-    /// default: auto-derived from model manifest
+    /// default: "auto-derived from model manifest"
     #[serde(default = "default_tts_path")]
     pub tts_path: Option<String>,
 
@@ -220,25 +220,25 @@ pub struct Config {
     /// This is useful for switching between different model variants without
     /// changing the model type.
     ///
-    /// default: auto-detected from model manifest
+    /// default: "auto-detected from model manifest"
     #[serde(default)]
     pub tts_variant: Option<String>,
 
     /// Variant override for the TTS reference audio.
     ///
-    /// default: auto-detected from model manifest
+    /// default: "auto-detected from model manifest"
     #[serde(default)]
     pub tts_reference_variant: Option<String>,
 
     /// Override the auto-derived prompt text from manifest.
     ///
-    /// default: auto-derived
+    /// default: "auto-derived"
     #[serde(default)]
     pub tts_reference_prompt_text: Option<String>,
 
     /// Override the auto-derived prompt wav path from manifest.
     ///
-    /// default: auto-derived
+    /// default: "auto-derived"
     #[serde(default)]
     pub tts_reference_prompt_wav_path: Option<String>,
 
@@ -261,32 +261,32 @@ pub struct Config {
 
     /// Automatic Speech Recognition model to use.
     ///
-    /// default: x_asr
+    /// default: "x_asr"
     #[serde(default = "default_asr_model")]
     pub asr_model: Option<AsrModel>,
 
     /// Path to the ASR model file or directory.
     ///
-    /// default: auto-derived from model+variant
+    /// default: "auto-derived from model+variant"
     #[serde(default = "default_asr_path")]
     pub asr_path: Option<String>,
 
     /// Variant of the ASR model to load.
     ///
-    /// default: auto-detected from model manifest
+    /// default: "auto-detected from model manifest"
     #[serde(default)]
     pub asr_variant: Option<String>,
 
     /// LLM provider to use.
     ///
-    /// default: local_qwen3
+    /// default: "local_qwen3"
     #[serde(default = "default_llm_provider")]
     pub llm_provider: Option<LlmProvider>,
 
     /// Path to the local LLM model file or directory.
     /// Only used with local providers (local_qwen3, local_echo).
     ///
-    /// default: auto-derived from model+variant
+    /// default: "auto-derived from model+variant"
     #[serde(default = "default_llm_path")]
     pub llm_path: Option<String>,
 
@@ -298,7 +298,7 @@ pub struct Config {
     /// Base URL for the remote OpenAI-compatible API.
     /// Only used with remote_open_ai_compatible provider.
     ///
-    /// default: http://localhost:11434
+    /// default: "http://localhost:11434/v1/"
     #[serde(default = "default_llm_api_url")]
     pub llm_api_url: Option<String>,
 
@@ -313,7 +313,7 @@ pub struct Config {
     /// Remote model identifier sent to the API.
     /// Only used with remote_open_ai_compatible provider.
     ///
-    /// default: qwen3.5:4b
+    /// default: "qwen3.5:4b"
     #[serde(default = "default_llm_model")]
     pub llm_model: Option<String>,
 
@@ -349,7 +349,7 @@ pub struct Config {
 
     /// System prompt for the LLM.
     ///
-    /// default: "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。如果用户询问的内容为空，则请求用户描述清楚。",
+    /// default: "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、标点符号。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
     #[serde(default = "default_session_system_prompt")]
     pub session_system_prompt: Option<String>,
 
@@ -380,19 +380,19 @@ pub struct Config {
 
     /// Matrix client application name.
     ///
-    /// default: chobits
+    /// default: "chobits"
     #[serde(default = "default_matrix_client_name")]
     pub matrix_client_name: Option<String>,
 
     /// Matrix homeserver URL.
     ///
-    /// default: http://127.0.0.1:8008
+    /// default: "http://127.0.0.1:8008"
     #[serde(default = "default_matrix_homeserver")]
     pub matrix_homeserver: Option<String>,
 
     /// Matrix client user ID.
     ///
-    /// default: @chobits:localhost.localdomain
+    /// default: "@chobits:localhost.localdomain"
     #[serde(default = "default_matrix_client_username")]
     pub matrix_client_username: Option<String>,
 
@@ -410,13 +410,13 @@ pub struct Config {
 
     /// Console log level (trace, debug, info, warn, error)
     ///
-    /// default: info
+    /// default: "info"
     #[serde(default = "default_log_console_level")]
     pub log_console_level: Option<String>,
 
     /// Console log format (text, json, compact, pretty)
     ///
-    /// default: text
+    /// default: "text"
     #[serde(default = "default_log_console_format")]
     pub log_console_format: Option<String>,
 
@@ -428,25 +428,25 @@ pub struct Config {
 
     /// File log level (trace, debug, info, warn, error)
     ///
-    /// default: info
+    /// default: "info"
     #[serde(default = "default_log_file_level")]
     pub log_file_level: Option<String>,
 
     /// File log format (text, json, compact, pretty)
     ///
-    /// default: json
+    /// default: "json"
     #[serde(default = "default_log_file_format")]
     pub log_file_format: Option<String>,
 
     /// File log directory
     ///
-    /// default: ./logs
+    /// default: "./logs"
     #[serde(default = "default_log_file_directory")]
     pub log_file_directory: Option<String>,
 
     /// File log name prefix
     ///
-    /// default: server
+    /// default: "server"
     #[serde(default = "default_log_file_name")]
     pub log_file_name: Option<String>,
 
@@ -458,7 +458,7 @@ pub struct Config {
 
     /// Log rotation (daily, hourly, never)
     ///
-    /// default: daily
+    /// default: "daily"
     #[serde(default = "default_log_file_rotation")]
     pub log_file_rotation: Option<String>,
 
@@ -470,7 +470,7 @@ pub struct Config {
 
     /// Flame graph output directory
     ///
-    /// default: ./flame
+    /// default: "./flame"
     #[serde(default = "default_log_flame_directory")]
     pub log_flame_directory: Option<String>,
 
@@ -565,7 +565,7 @@ fn default_llm_path() -> Option<String> {
 }
 
 fn default_llm_api_url() -> Option<String> {
-    Some("http://localhost:11434".into())
+    Some("http://localhost:11434/v1".into())
 }
 
 fn default_llm_api_key() -> Option<String> {
@@ -598,7 +598,7 @@ fn default_session_silence_voice_timeout() -> Option<i64> {
 
 fn default_session_system_prompt() -> Option<String> {
     Some(String::from(
-        "你是一个语音助手，所有回答必须用中文（不允许这些内容：emoji，表情符，特殊符号，标点符号，Markdown，特殊制表符等）口述，简短，精确，除非是询问原因，过程，否则不解释。如果用户询问的内容为空，则请求用户描述清楚。",
+        "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、标点符号。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
     ))
 }
 

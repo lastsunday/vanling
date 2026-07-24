@@ -158,6 +158,7 @@ where
                 .with_session_id(Some(ctx.session_id.clone()))
                 .with_model(LlmManager::global().default())
                 .with_mcp_registry(mcp_ctx.registry)
+                .with_preamble(ctx.session_config.system_prompt.clone())
                 .build(),
         ))
         .with_tts(TtsManager::global().default())
