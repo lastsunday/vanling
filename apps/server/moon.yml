@@ -34,7 +34,7 @@ tasks:
 
   test-download-resources:
     script: |
-      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet asr sense_voice default && \
+      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet asr x_asr default && \
       cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet tts matcha matcha-icefall-zh-en && \
       cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet llm qwen3 0.6b
     deps:
