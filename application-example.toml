@@ -226,7 +226,7 @@
 
 # System prompt for the LLM.
 #
-#session_system_prompt = "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、标点符号。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
+#session_system_prompt = "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、英文标点符号。可以使用中文标点符号（。！？，；：）用于句子分隔。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
 
 # Maximum number of prompt tokens.
 #

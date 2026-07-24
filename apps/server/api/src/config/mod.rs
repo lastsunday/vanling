@@ -349,7 +349,7 @@ pub struct Config {
 
     /// System prompt for the LLM.
     ///
-    /// default: "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、标点符号。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
+    /// default: "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、英文标点符号。可以使用中文标点符号（。！？，；：）用于句子分隔。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
     #[serde(default = "default_session_system_prompt")]
     pub session_system_prompt: Option<String>,
 
@@ -598,7 +598,7 @@ fn default_session_silence_voice_timeout() -> Option<i64> {
 
 fn default_session_system_prompt() -> Option<String> {
     Some(String::from(
-        "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、标点符号。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
+        "你是一个语音对话助手。所有回答必须使用中文口述，简短精确。禁止使用 Markdown、emoji、特殊符号、英文标点符号。可以使用中文标点符号（。！？，；：）用于句子分隔。除非被追问原因或过程，否则只给结论。如果用户输入为空，请求用户描述清楚。",
     ))
 }
 

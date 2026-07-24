@@ -159,7 +159,9 @@ impl ChiiCore {
                                         "text event received"
                                     );
                                     text_collector.push_str(&text);
-                                    let sentence_list = splitter.accept_text(&text);
+
+                                    // Single entry point: accept tokens
+                                    let sentence_list = splitter.accept_token(&text);
                                     for sentence in sentence_list {
                                         tx.send(Ok(sentence)).await?;
                                     }

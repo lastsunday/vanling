@@ -531,7 +531,7 @@ impl Session {
                 self.phase = Phase::Listening(ListeningParam {
                     can_barge_in: *barge_in,
                     is_voice_break_detect: *is_voice_break_detect,
-                    ..param.clone()
+                    is_wake: false,
                 });
             }
             Frame::ListenStop => match self.listener.flush().await {

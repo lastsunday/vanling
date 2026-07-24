@@ -295,7 +295,7 @@ async fn handle_response(
                 info!("{:?}", text);
                 text_collector.push_str(&text);
                 if let Some(tx) = &tx {
-                    let sentence_list = splitter.accept_text(&text);
+                    let sentence_list = splitter.accept_token(&text);
                     for sentence in sentence_list {
                         tx.send(Ok(sentence)).await?;
                     }
