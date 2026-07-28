@@ -3,8 +3,8 @@ title = "Design Discussions"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "26d3e4b544bfec917e7f92be1c05709c4ce6ebe6"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "7285f4d349ba4ca2531f5e96638558f7f92643f6"
+translated_at = "2026-07-28T18:00:00Z"
 +++
 
 # Discussions
