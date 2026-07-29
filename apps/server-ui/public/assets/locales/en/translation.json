@@ -10,7 +10,8 @@
     "menu": {
       "dashboard": "Dashboard",
       "sessions": "Sessions",
-      "devices": "Devices"
+      "devices": "Devices",
+      "language": "Language"
     },
     "confirm_logout": "Confirm logout?",
     "password_not_equal": "Password not equal",

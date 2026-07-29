@@ -10,7 +10,8 @@
     "menu": {
       "dashboard": "仪表板",
       "sessions": "会话列表",
-      "devices": "设备管理"
+      "devices": "设备管理",
+      "language": "语言"
     },
     "confirm_logout": "确认登出？",
     "password_not_equal": "密码不一致",

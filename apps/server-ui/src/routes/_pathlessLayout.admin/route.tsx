@@ -1,16 +1,17 @@
-import { getUser, resetPassword } from '@/api';
+import { getUser, getVersion, resetPassword } from '@/api';
 import { UserResult } from '@/data/user-result';
-import { AppShell, AppShellHeader, AppShellNavbar, AppShellMain, Burger, Button, Group, Modal, PasswordInput, Text } from '@mantine/core';
+import { AppShell, AppShellNavbar, AppShellMain, Burger, Button, Divider, Group, Menu, MenuDropdown, MenuItem, MenuTarget, Modal, PasswordInput, ScrollArea, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { createFileRoute, Outlet, redirect, useRouter, useRouterState } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import logo from '../../assets/logo.svg';
 import { useAuth } from '../../hooks/auth';
 import { UserButton } from '../../widget/UserButton/UserButton';
 import classes from './route.module.css';
 import { useTranslation } from 'react-i18next';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import i18n from '@/i18n/config';
 
 export const Route = createFileRoute('/_pathlessLayout/admin')({
   beforeLoad: ({ context, location }) => {
@@ -52,6 +53,12 @@ function RouteComponent() {
     { link: '/admin/devices', key: 'devices', label: t('admin.menu.devices'), icon: "i-mdi:devices" },
   ];
 
+  const { data: version } = useQuery({
+    queryKey: ['version'],
+    queryFn: getVersion,
+    staleTime: Infinity,
+  });
+
   useEffect(() => {
     init();
   }, [])
@@ -76,6 +83,7 @@ function RouteComponent() {
         event.preventDefault();
         setActive(item.label);
         navigate({ to: item.link as any });
+        toggle();
       }}
     >
       <div className={`${item.icon} ${classes.linkIcon}`} />
@@ -128,44 +136,57 @@ function RouteComponent() {
 
   return (
     <AppShell
-      header={{ height: 60 }}
       navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       padding="md"
     >
-      <AppShellHeader>
-        <Group h="100%" px="md">
-          <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-          <img className={classes.logo} src={logo}></img>
-          <Text>{t('title')}</Text>
-        </Group>
-      </AppShellHeader>
       <AppShellNavbar p="md">
         <nav className={classes.navbar}>
-          <div className={classes.section}>
-            <UserButton className="w-full" name={user?.name ?? ''} image='' email='' />
-          </div>
-          <div className={classes.navbarMain}>
-            {links}
+          <div className={classes.header}>
+            <Group justify="space-between" wrap="nowrap">
+              <Group gap="xs" wrap="nowrap">
+                <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+                <img className={classes.logo} src={logo} />
+              </Group>
+              <div>
+                <Text size="sm" fw={600}>{t('title')}</Text>
+                <Text size="xs" c="dimmed">{t('version')}: {version ?? '...'}</Text>
+              </div>
+            </Group>
           </div>
 
+          <ScrollArea className={classes.links}>
+            <div className={classes.linksInner}>
+              {links}
+            </div>
+          </ScrollArea>
+
           <div className={classes.footer}>
-            <LanguageSwitcher></LanguageSwitcher>
-            <a className={classes.link} onClick={openPassword}>
-              <div className="i-mdi:password size-5 mr-2"></div>
-              <span>{t('admin.update_password')}</span>
-            </a>
-            <a href="#" className={classes.link} onClick={
-              (event) => {
-                event.preventDefault();
-                handleLogout();
-              }}>
-              <div className="i-material-symbols:logout size-5 mr-2"></div>
-              <span>{t('logout')}</span>
-            </a>
+            <Menu>
+              <MenuTarget>
+                <UserButton className="w-full" name={user?.name ?? ''} image='' email='' />
+              </MenuTarget>
+              <MenuDropdown>
+                <Menu.Sub>
+                  <Menu.Sub.Target>
+                    <Menu.Sub.Item leftSection={<div className="i-mdi:translate" />}>{t('admin.menu.language')}</Menu.Sub.Item>
+                  </Menu.Sub.Target>
+                  <Menu.Sub.Dropdown>
+                    <MenuItem onClick={() => i18n.changeLanguage('zh')}>简体中文</MenuItem>
+                    <MenuItem onClick={() => i18n.changeLanguage('en')}>English</MenuItem>
+                  </Menu.Sub.Dropdown>
+                </Menu.Sub>
+                <Divider />
+                <MenuItem leftSection={<div className="i-mdi:password" />} onClick={openPassword}>{t('admin.update_password')}</MenuItem>
+                <MenuItem leftSection={<div className="i-material-symbols:logout" />} onClick={handleLogout}>{t('logout')}</MenuItem>
+              </MenuDropdown>
+            </Menu>
           </div>
         </nav>
       </AppShellNavbar>
       <AppShellMain>
+        <Group hiddenFrom="sm" mb="md">
+          <Burger opened={opened} onClick={toggle} size="sm" />
+        </Group>
         <Outlet />
       </AppShellMain>
       <Modal opened={openedPassword} onClose={closePassword} title={t('admin.update_password')}>
