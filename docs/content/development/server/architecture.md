@@ -218,7 +218,8 @@ main.rs
 | `/chobits/{version}` | `ws/` | WebSocket 端点（Xiaozhi 协议） |
 | `/mcp` | `mcp/` | MCP Streamable HTTP 服务 |
 | `/api/auth/*` | `auth/` | 登录 / Token 刷新 |
-| `/api/ota*` | `ota/` | OTA 固件升级 |
+| `/api/ota*` | `ota/` | OTA 协议（设备注册、激活验证） |
+| `/api/devices/*` | `device/` | 设备管理（列表/激活/禁用/删除） |
 | `/api/record/*` | `record/` | 会话录制查询 |
 | `/docs` | — | OpenAPI Scalar UI |
 

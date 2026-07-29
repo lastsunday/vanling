@@ -23,6 +23,7 @@ apps/server/
 │       ├── auth.rs           # 认证路由（login / refresh / reset_password）
 │       ├── index.rs          # Health / Version 端点
 │       ├── ota.rs            # OTA 固件升级
+│       ├── device.rs         # 设备管理（admin CRUD）
 │       ├── ws/               # WebSocket 处理器（核心实时管道）
 │       ├── chii/             # ChiiCore：LLM + MCP 编排
 │       ├── asr/              # ASR Manager + 模型（XAsr）

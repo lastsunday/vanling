@@ -3,7 +3,7 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "b98b2e8a955c63623bcf017c59214d8c94564346"
+source_file_hash = "1a73a8fe156cccad9353f871204863eb3ddc0a6e"
 translated_at = "2026-07-28T00:00:00Z"
 +++
 
@@ -153,7 +153,7 @@ Column reference:
 
 | Status | Test | Item   | Description                               | Link |
 | ------ | ---- | ------ | ----------------------------------------- | ---- |
-| ❌     | ❌   | OTA v1 | Basic device activation/bind, stub       |      |
+| ✅     | ✅   | OTA v1 | Activation code verification + device info persisted |      |
 | ❌     | ❌   | OTA v2 | Full activation flow (with challenge verification), not implemented |  |
 
 #### Nostr Binding
@@ -272,7 +272,7 @@ Column reference:
 | ✅     | ✅   | GET /api/auth/user             | Returns current user info                      |      |
 | ❌     | ❌   | Rate Limiting                  | Login throttling / brute force protection not implemented |  |
 | ❌     | ❌   | Invite Code system             | Registration invite code generation/verification not implemented |  |
-| ❌     | ❌   | Device management CRUD         | Device registration/binding/lists not implemented |  |
+| ✅     | ❌   | Device management CRUD         | List/activate/disable/delete endpoints implemented |  |
 
 ### Admin UI
 
@@ -301,22 +301,3 @@ Column reference:
 | ❌     | ❌   | Runtime race condition  | OnceLock initialization has race condition                        |      |
 | ❌     | ❌   | Timestamp auto-fill     | Config entity missing ActiveModelBehavior                         |      |
 
-### Testing
-
-| Status | Test | Item              | Description                                         | Link |
-| ------ | ---- | ----------------- | --------------------------------------------------- | ---- |
-| ✅     | —    | Auth integration  | Login/access_token/reset_password/user endpoints    |      |
-| ✅     | —    | OTA auth          | OTA v1, OTA activate/register                       |      |
-| ✅     | —    | WS frame protocol | hello/listen/abort/mcp/voice → STT/LLM/TTS/Audio/Error |  |
-| ✅     | —    | MCP client        | rmcp handshake + tool request/response              |      |
-| ✅     | —    | Session lifecycle | StreamLifecycle (create → turn → stop) + Solo (echo test) |  |
-| ✅     | —    | Round lifecycle   | Shadow → Running → Barge-in + Epoch filtering       |      |
-| ✅     | —    | VAD               | Earshot start/stop + frame-level voice detection    |      |
-| ✅     | —    | ASR               | XAsr model inference, 16kHz mono                    |      |
-| ✅     | —    | TTS               | MatchaTTS Opus + two-stage streaming                |      |
-| ✅     | —    | LLM               | Qwen3 candle streaming generation                   |      |
-| ✅     | —    | Splitter          | sentencex Chinese/English sentence segmentation     |      |
-| ✅     | —    | Recorder (input)  | Frame data persistence to database                  |      |
-| ✅     | —    | Recorder (output) | Frame/round data persistence to database            |      |
-| ✅     | —    | McpRouter         | Frame::Mcp → McpSession routing                    |      |
-| ✅     | —    | McpRegistry       | Tool registration/aggregation + device/external client |  |

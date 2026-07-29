@@ -4,7 +4,7 @@ weight = 204
 
 [extra]
 translated_at = "2026-07-24T00:00:00Z"
-source_file_hash = "821cbb5d8e43a17f3f9017d2dba6fc43cc37f19e"
+source_file_hash = "8f8bddf98a980aeeb742cdd8e7fc2de77053a6a1"
 +++
 
 # TODO
@@ -22,7 +22,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | 🟡 P1 | Rate Limiting | `api/src/auth.rs` | No login rate limiting or brute-force protection | Suggest: `tower-governor` + `governor` — GCRA algorithm | |
 | 🟡 P1 | Refresh Revocation | `api/src/auth.rs` | No refresh token revocation mechanism — logout only clears client-side | Existing: `redis-rs` + `sea-orm` | |
 | 🟡 P1 | Token Logging | `api/src/auth.rs` | Access tokens logged in plaintext in tracing spans | Existing: `tracing` | |
-| 🟡 P1 | OTA Device Activation | `api/src/ota.rs` | `activate` endpoint is a stub returning "success" without verifying devices. Device info not persisted to DB | — | |
+| 🟡 P1 | OTA Device Activation | `api/src/ota.rs` + `api/src/device.rs` | Device registration + activation verification + admin CRUD implemented. OTA v2 still pending | — | |
 | 🟡 P1 | MCP Authentication | `api/src/mcp/mod.rs` | `/mcp` endpoint auth is commented out | Existing: `rmcp` | |
 
 ## Voice Input & Processing

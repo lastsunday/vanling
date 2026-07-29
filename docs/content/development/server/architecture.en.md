@@ -2,7 +2,7 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "19c70f289c3d5f9c5bb6c6c7ad97c5232b492991"
+source_file_hash = "f863a1cdf10aa6bf8546aa06db649f2b9922f6fd"
 translated_at = "2026-07-24T00:00:00Z"
 +++
 
@@ -221,7 +221,8 @@ main.rs
 | `/chobits/{version}` | `ws/` | WebSocket endpoint (Xiaozhi protocol) |
 | `/mcp` | `mcp/` | MCP Streamable HTTP service |
 | `/api/auth/*` | `auth/` | Login / Token refresh |
-| `/api/ota*` | `ota/` | OTA firmware update |
+| `/api/ota*` | `ota/` | OTA protocol (device registration, activation verification) |
+| `/api/devices/*` | `device/` | Device management (list/activate/disable/delete) |
 | `/api/record/*` | `record/` | Session recording queries |
 | `/docs` | — | OpenAPI Scalar UI |
 

@@ -2,7 +2,7 @@
 title = "Models and Deployment"
 weight = 203
 [extra]
-source_file_hash = "fe7c06b870dcf7764fb3f45f6691de527e982d23"
+source_file_hash = "f2355b3553a198a4d94eadfd32fb815de42fdb8c"
 translated_at = "2026-07-24T00:00:00Z"
 +++
 
@@ -26,6 +26,7 @@ apps/server/
 │       ├── auth.rs           # Auth routes (login / refresh / reset_password)
 │       ├── index.rs          # Health / Version endpoints
 │       ├── ota.rs            # OTA firmware update
+│       ├── device.rs         # Device management (admin CRUD)
 │       ├── ws/               # WebSocket handler (core real-time pipeline)
 │       ├── chii/             # ChiiCore: LLM + MCP orchestration
 │       ├── asr/              # ASR Manager + model (XAsr)

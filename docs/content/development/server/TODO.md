@@ -18,7 +18,7 @@ weight = 204
 | 🟡 P1 | Rate Limiting | `api/src/auth.rs` | 无登录限流/暴力破解防护 | 建议: `tower-governor` + `governor` — GCRA 算法 | |
 | 🟡 P1 | Refresh 吊销 | `api/src/auth.rs` | refresh token 无吊销机制，logout 仅客户端清除 | 已有: `redis-rs` + `sea-orm` | |
 | 🟡 P1 | Token 日志 | `api/src/auth.rs` | access token 明文记录在 tracing span | 已有: `tracing` | |
-| 🟡 P1 | OTA 设备激活 | `api/src/ota.rs` | `activate` 端点为 stub，返回 "success" 但不验证设备，设备信息未存 DB | — | |
+| 🟡 P1 | OTA 设备激活 | `api/src/ota.rs` + `api/src/device.rs` | 设备注册 + 激活验证 + admin CRUD 已实现，OTA v2 仍待完成 | — | |
 | 🟡 P1 | MCP 认证 | `api/src/mcp/mod.rs` | `/mcp` 端点认证被注释掉 | 已有: `rmcp` | |
 
 ## 语音输入与处理
