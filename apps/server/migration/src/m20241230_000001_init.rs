@@ -103,6 +103,35 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Device::Table)
+                    .if_not_exists()
+                    .col(string_uniq(Device::Id))
+                    .col(string_uniq(Device::DeviceId))
+                    .col(string_null(Device::ClientId))
+                    .col(string_null(Device::UserAgent))
+                    .col(string_null(Device::MacAddress))
+                    .col(string_null(Device::ChipModelName))
+                    .col(string_null(Device::ApplicationName))
+                    .col(string(Device::ApplicationVersion))
+                    .col(string(Device::BoardType))
+                    .col(string_null(Device::BoardName))
+                    .col(boolean(Device::Activated))
+                    .col(boolean(Device::Disabled).default(false))
+                    .col(string_null(Device::ActivationCode))
+                    .col(timestamp_with_time_zone_null(
+                        Device::ActivationCodeExpiresAt,
+                    ))
+                    .col(string_null(Device::UserId))
+                    .col(timestamp_with_time_zone_null(Device::LastOnlineDatetime))
+                    .col(timestamp_with_time_zone_null(Device::CreateDatetime))
+                    .col(timestamp_with_time_zone_null(Device::UpdateDatetime))
+                    .primary_key(Index::create().name("pk-device-id").col(Device::Id))
+                    .to_owned(),
+            )
+            .await?;
         let root_user = user::ActiveModel {
             account: Set("root".to_string()),
             password: Set(
@@ -132,6 +161,9 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(Config::Table).to_owned())
             .await?;
         manager
+            .drop_table(Table::drop().table(Device::Table).to_owned())
+            .await?;
+        manager
             .drop_table(Table::drop().table(User::Table).to_owned())
             .await?;
         Ok(())
@@ -156,6 +188,30 @@ enum User {
     Password,
     Email,
     Enable,
+    CreateDatetime,
+    UpdateDatetime,
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(DeriveIden)]
+enum Device {
+    Table,
+    Id,
+    DeviceId,
+    ClientId,
+    UserAgent,
+    MacAddress,
+    ChipModelName,
+    ApplicationName,
+    ApplicationVersion,
+    BoardType,
+    BoardName,
+    Activated,
+    Disabled,
+    ActivationCode,
+    ActivationCodeExpiresAt,
+    UserId,
+    LastOnlineDatetime,
     CreateDatetime,
     UpdateDatetime,
 }

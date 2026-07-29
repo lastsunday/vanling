@@ -15,17 +15,26 @@ static JWT_INSTANCE: OnceLock<Jwt> = OnceLock::new();
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Principal {
     pub id: String,
-    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    pub token_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Claims {
+struct Claims {
     jti: String,
     sub: String,
     aud: String,
     iss: String,
     iat: u64,
     exp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_id: Option<String>,
+    token_type: String,
 }
 
 pub struct Jwt {
@@ -103,16 +112,32 @@ impl Jwt {
         }
     }
 
-    pub fn access_token_encode(&self, principal: Principal) -> anyhow::Result<String> {
+    fn principal_to_claims(&self, principal: &Principal, expires_in: Duration) -> Claims {
         let current_timestamp = get_current_timestamp();
-        let claims = Claims {
+        Claims {
             jti: xid::new().to_string(),
-            sub: format!("{}:{}", principal.id, principal.name),
+            sub: principal.id.clone(),
             aud: self.audience.clone(),
             iss: self.issuer.clone(),
             iat: current_timestamp,
-            exp: current_timestamp.saturating_add(self.access_token_expires_in.as_secs()),
-        };
+            exp: current_timestamp.saturating_add(expires_in.as_secs()),
+            name: principal.name.clone(),
+            device_id: principal.device_id.clone(),
+            token_type: principal.token_type.clone(),
+        }
+    }
+
+    fn claims_to_principal(claims: &Claims) -> Principal {
+        Principal {
+            id: claims.sub.clone(),
+            name: claims.name.clone(),
+            device_id: claims.device_id.clone(),
+            token_type: claims.token_type.clone(),
+        }
+    }
+
+    pub fn access_token_encode(&self, principal: &Principal) -> anyhow::Result<String> {
+        let claims = self.principal_to_claims(principal, self.access_token_expires_in);
         Ok(encode(
             &self.header,
             &claims,
@@ -127,25 +152,11 @@ impl Jwt {
             &self.access_token_validation,
         )?
         .claims;
-
-        let mut parts = claims.sub.splitn(2, ':');
-        let principal = Principal {
-            id: parts.next().unwrap().to_string(),
-            name: parts.next().unwrap().to_string(),
-        };
-        Ok(principal)
+        Ok(Self::claims_to_principal(&claims))
     }
 
-    pub fn refresh_token_encode(&self, principal: Principal) -> anyhow::Result<String> {
-        let current_timestamp = get_current_timestamp();
-        let claims = Claims {
-            jti: xid::new().to_string(),
-            sub: format!("{}:{}", principal.id, principal.name),
-            aud: self.audience.clone(),
-            iss: self.issuer.clone(),
-            iat: current_timestamp,
-            exp: current_timestamp.saturating_add(self.refresh_token_expires_in.as_secs()),
-        };
+    pub fn refresh_token_encode(&self, principal: &Principal) -> anyhow::Result<String> {
+        let claims = self.principal_to_claims(principal, self.refresh_token_expires_in);
         Ok(encode(
             &self.header,
             &claims,
@@ -160,13 +171,7 @@ impl Jwt {
             &self.refresh_token_validation,
         )?
         .claims;
-
-        let mut parts = claims.sub.splitn(2, ':');
-        let principal = Principal {
-            id: parts.next().unwrap().to_string(),
-            name: parts.next().unwrap().to_string(),
-        };
-        Ok(principal)
+        Ok(Self::claims_to_principal(&claims))
     }
 
     pub fn access_token_expires_in(&self) -> u64 {

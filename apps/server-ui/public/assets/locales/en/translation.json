@@ -9,7 +9,8 @@
     "title": "Admin Page",
     "menu": {
       "dashboard": "Dashboard",
-      "sessions": "Sessions"
+      "sessions": "Sessions",
+      "devices": "Devices"
     },
     "confirm_logout": "Confirm logout?",
     "password_not_equal": "Password not equal",
@@ -46,6 +47,63 @@
   "version_unknown": "Unknown",
   "loading": "Loading",
   "logout": "Logout",
+  "devices": {
+    "title": "Devices",
+    "search": "Search devices",
+    "search_btn": "Search",
+    "activate_btn": "Activate Device",
+    "activate_title": "Activate Device",
+    "activate_hint": "Enter the activation code shown on the device screen",
+    "activate_placeholder": "Enter activation code",
+    "cancel": "Cancel",
+    "confirm": "Activate",
+    "no_devices": "No devices",
+    "table": {
+      "device_id": "Device ID",
+      "board_type": "Board Type",
+      "mac_address": "MAC Address",
+      "activation_code": "Activation Code",
+      "firmware_version": "Firmware Version",
+      "status": "Status",
+      "last_online": "Last Online",
+      "created": "Created"
+    },
+    "status": {
+      "activated": "Activated",
+      "pending": "Pending",
+      "disabled": "Disabled"
+    },
+    "stat": {
+      "total": "Total Devices",
+      "activated": "Activated",
+      "pending": "Pending",
+      "disabled": "Disabled"
+    },
+    "filter_all": "All",
+    "filter_pending": "Pending",
+    "filter_activated": "Activated",
+    "filter_disabled": "Disabled",
+    "view_detail": "View Detail",
+    "activate_by_id_btn": "Activate",
+    "disable_btn": "Disable",
+    "enable_btn": "Enable",
+    "delete_btn": "Delete",
+    "copy": "Copy",
+    "copied": "Copied",
+    "detail_title": "Device Detail",
+    "detail": {
+      "client_id": "Client ID",
+      "board_name": "Board Name",
+      "chip_model": "Chip Model",
+      "activation_code_expires_at": "Activation Code Expires",
+      "user_agent": "User Agent"
+    },
+    "confirm_btn": "Confirm",
+    "actions": "Actions",
+    "delete_confirmation": "Are you sure you want to delete device {{id}}? This action cannot be undone.",
+    "disable_confirmation": "Are you sure you want to disable device {{id}}?",
+    "enable_confirmation": "Are you sure you want to enable device {{id}}?"
+  },
   "sessions": {
     "title": "Sessions",
     "search": "Search Session ID",

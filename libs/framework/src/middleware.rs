@@ -52,10 +52,10 @@ impl AsyncAuthorizeRequest<Body> for JwtAuth {
                 })
                 .transpose()?
                 .ok_or(err!(AuthErrorCode::AuthHeaderMissing))?;
-            let pricipal = jwt
+            let principal = jwt
                 .access_token_decode(token)
                 .map_err(|_| err!(AuthErrorCode::TokenInvalid))?;
-            request.extensions_mut().insert(pricipal);
+            request.extensions_mut().insert(principal);
             Ok(request)
         })
     }

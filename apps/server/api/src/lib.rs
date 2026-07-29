@@ -1,16 +1,17 @@
 pub use framework::error;
 
+pub mod activation_pool;
 pub mod asr;
 pub mod auth;
 pub mod chii;
 pub mod common;
 pub mod config;
+pub mod device;
 pub mod index;
 pub mod llm;
 pub mod matrix;
 pub mod mcp;
 pub mod ota;
-pub mod ota_data;
 pub mod record;
 pub mod server;
 pub mod tts;
@@ -40,7 +41,11 @@ use framework::error::{
 use framework::trace::LatencyOnResponse;
 use futures::future::join_all;
 use migration::MigratorTrait;
+use sea_orm::ColumnTrait;
 use sea_orm::DatabaseConnection;
+use sea_orm::EntityTrait;
+use sea_orm::QueryFilter;
+use sea_orm::QuerySelect;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_http::compression::CompressionLayer;
@@ -106,16 +111,15 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         llm_config,
         matrix_config,
     } = params;
-    // auth
     Jwt::init(auth_config.clone());
-    // database init
     let database_url = database_config.url.as_ref().expect("database url is empty");
     let conn: sea_orm::DatabaseConnection =
         framework::database::establish_connection(database_url).await?;
     conn.ping().await?;
     tracing::info!("Database connected successfully");
-    // database schema init or upgrade
     migration::Migrator::up(&conn, None).await?;
+    let used_codes = load_used_codes(&conn).await?;
+    activation_pool::ActivationPool::init(&used_codes);
     tracing::info!("init tts manager");
     TtsManager::init(tts_config, audio_config.clone()).await?;
     tracing::info!("init tts manager successfully");
@@ -205,9 +209,7 @@ pub async fn start_app(
         Either::Left(value) => value,
         Either::Right(values) => values.first().expect("port is empty"),
     };
-    // router
     let (app, ct) = create_router(state, ct);
-    // app start
     tracing::info!("app start");
     let addr = match addrs {
         Either::Left(value) => value.to_string(),
@@ -251,6 +253,7 @@ pub fn create_router(
     api_router = setup_index(api_router);
     api_router = setup_auth(api_router, state.clone());
     api_router = setup_ota(api_router, state.clone());
+    api_router = setup_device(api_router, state.clone());
     api_router = setup_record(api_router, state.clone());
     api_router = setup_ws(api_router, state.clone());
     api_router = setup_mcp(api_router, state.clone(), cancellation_token.child_token());
@@ -319,6 +322,10 @@ pub fn setup_ota(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
     api_setup(router, ota::create_routes(state))
 }
 
+pub fn setup_device(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
+    api_setup(router, device::create_routes(state))
+}
+
 pub fn setup_record(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
     api_setup(router, record::create_routes(state))
 }
@@ -363,6 +370,24 @@ pub fn setup_web(router: Router) -> Router {
                 .route("/{*file}", get(web::test_handler))
                 .route_layer(CompressionLayer::new()),
         )
+}
+
+async fn load_used_codes(conn: &DatabaseConnection) -> Result<Vec<u32>, sea_orm::DbErr> {
+    entity::device::Entity::find()
+        .select_only()
+        .column(entity::device::Column::ActivationCode)
+        .filter(entity::device::Column::Activated.eq(false))
+        .filter(entity::device::Column::ActivationCode.is_not_null())
+        .filter(
+            entity::device::Column::ActivationCodeExpiresAt.gt(chrono::Local::now().fixed_offset()),
+        )
+        .all(conn)
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .filter_map(|d: entity::device::Model| d.activation_code?.parse::<u32>().ok())
+                .collect()
+        })
 }
 
 #[derive(Clone, Debug, Default)]

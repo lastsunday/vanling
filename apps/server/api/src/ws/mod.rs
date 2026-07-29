@@ -7,12 +7,15 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use axum::{
     RequestPartsExt, debug_handler,
     extract::{ConnectInfo, FromRequestParts, Path, State, WebSocketUpgrade, ws::Message},
-    http::{HeaderMap, StatusCode, request::Parts},
+    http::{HeaderMap, HeaderValue, StatusCode, Uri, header, request::Parts},
     response::{IntoResponse, Response},
 };
 use axum_extra::{TypedHeader, headers};
-use framework::id::gen_id;
 use framework::prelude::error as error_code;
+use framework::{
+    auth::{Jwt, Principal},
+    id::gen_id,
+};
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use service::chobits::frame::{Frame, FrameResult, OutputMessage};
 use service::chobits::session::{self, SessionBuilder};
@@ -51,6 +54,32 @@ pub fn create_routes(state: AppState) -> OpenApiRouter {
         .with_state(state)
 }
 
+fn extract_bearer_from_query(query: Option<&str>) -> Option<HeaderValue> {
+    let query = query?;
+    for pair in query.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        if parts.next()? == "authorization" {
+            let value = parts.next()?;
+            return HeaderValue::from_str(&value.replace('+', " ")).ok();
+        }
+    }
+    None
+}
+
+pub fn verify_device_token(headers: &HeaderMap) -> Result<Principal, Box<Response>> {
+    let Some(principal) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .and_then(|token| Jwt::global().access_token_decode(token).ok())
+    else {
+        return Err(Box::new(
+            (StatusCode::UNAUTHORIZED, "unauthorized").into_response(),
+        ));
+    };
+    Ok(principal)
+}
+
 #[debug_handler]
 #[tracing::instrument(name="ws",skip_all,fields(ip = %addr))]
 #[utoipa::path(get,
@@ -65,10 +94,11 @@ pub fn create_routes(state: AppState) -> OpenApiRouter {
     )
 )]
 async fn ws_handler(
+    uri: Uri,
     _version: Version,
     ws: WebSocketUpgrade,
     _user_agent: Option<TypedHeader<headers::UserAgent>>,
-    _headers: HeaderMap,
+    mut headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(AppState {
         conn,
@@ -78,12 +108,24 @@ async fn ws_handler(
         audio_config,
         ..
     }): State<AppState>,
-) -> impl IntoResponse {
+) -> Response {
+    // Browser WebSocket API can't set custom headers; fallback to query param
+    if !headers.contains_key(header::AUTHORIZATION)
+        && let Some(val) = extract_bearer_from_query(uri.query())
+    {
+        headers.insert(header::AUTHORIZATION, val);
+    }
+
+    let Ok(principal) = verify_device_token(&headers) else {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    };
+
     ws.on_upgrade(move |socket| {
         let (write, read) = socket.split();
         handle_socket(
             SocketContext {
                 session_id: gen_id(),
+                device_id: principal.device_id,
                 conn,
                 session_config,
                 mcp_config,
@@ -94,10 +136,12 @@ async fn ws_handler(
             read,
         )
     })
+    .into_response()
 }
 
 pub(crate) struct SocketContext {
     session_id: String,
+    device_id: Option<String>,
     conn: sea_orm::DatabaseConnection,
     session_config: Arc<SessionConfig>,
     mcp_config: Arc<McpConfig>,
@@ -141,7 +185,7 @@ where
     W: Sink<Message> + Unpin + Send + 'static,
     R: Stream<Item = Result<Message, axum::Error>> + Unpin + Send + 'static,
 {
-    tracing::info!(component = "WS", event = "session_started", session_id = %ctx.session_id, "session started");
+    tracing::info!(component = "WS", event = "session_started", session_id = %ctx.session_id, device_id = ?ctx.device_id, "session started");
 
     let mcp_ctx = setup_mcp_session(ctx.session_id.clone(), &ctx.mcp_config).await;
 

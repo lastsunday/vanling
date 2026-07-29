@@ -11,7 +11,7 @@ use core::option::Option;
 use cucumber::then;
 use cucumber::when;
 use cucumber::{World, given};
-use framework::auth::Jwt;
+use framework::auth::{Jwt, Principal};
 use framework::config::auth::AuthConfig;
 use futures::FutureExt;
 use serde_json::json;
@@ -25,8 +25,6 @@ use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 
 use axum::{Router, http::StatusCode};
-
-use crate::common::get_string_from_value;
 
 const OTA_API_URL: &str = "/api/ota";
 
@@ -52,8 +50,19 @@ async fn prepare_connect_info(world: &mut TestWorld) {
     world.user_agent = String::from("cube-1.54tft-wifi/1.0.1");
 }
 
-#[when(expr = "所有者进行连接信息查询")]
-async fn query_connect_info(world: &mut TestWorld) {
+#[given("设备已激活")]
+async fn device_activated(world: &mut TestWorld) {
+    register_device(world).await;
+    activate_device_via_admin(world).await;
+}
+
+#[when("管理员通过激活码激活设备")]
+async fn admin_activate_device(world: &mut TestWorld) {
+    activate_device_via_admin(world).await;
+    query_connect_info_impl(world).await;
+}
+
+async fn register_device(world: &mut TestWorld) {
     let builder = Request::builder()
         .method("POST")
         .uri(OTA_API_URL)
@@ -69,14 +78,117 @@ async fn query_connect_info(world: &mut TestWorld) {
         .unwrap();
     let response = world.app.clone().unwrap().oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+
+    let data = response_to_json(response).await;
+    if let Some(activation) = data.get("activation") {
+        if let Some(code) = activation.get("code").and_then(|v| v.as_str()) {
+            world.activation_code = code.to_string();
+        }
+    }
+}
+
+async fn activate_device_via_admin(world: &mut TestWorld) {
+    let admin_principal = Principal {
+        id: String::from("admin"),
+        name: Some(String::from("admin")),
+        device_id: None,
+        token_type: String::from("user"),
+    };
+    let admin_token = Jwt::global().access_token_encode(&admin_principal).unwrap();
+
+    let body = json!({ "activation_code": world.activation_code });
+    let builder = Request::builder()
+        .method("POST")
+        .uri("/api/ota/admin/activate")
+        .header(http::header::HOST, String::from("127.0.0.1:3000"))
+        .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+        .header(
+            http::header::AUTHORIZATION,
+            format!("Bearer {}", admin_token),
+        );
+    let request = builder
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+    let response = world.app.clone().unwrap().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    world.activation_code.clear();
+}
+
+#[when(expr = "所有者进行连接信息查询")]
+async fn query_connect_info(world: &mut TestWorld) {
+    query_connect_info_impl(world).await;
+}
+
+async fn query_connect_info_impl(world: &mut TestWorld) {
+    let builder = Request::builder()
+        .method("POST")
+        .uri(OTA_API_URL)
+        .header(http::header::HOST, String::from("127.0.0.1:3000"))
+        .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
+        .header("Device-Id", world.device_id.clone())
+        .header("Client-Id", world.client_id.clone())
+        .header("User-Agent", world.user_agent.clone());
+    let request = builder
+        .body(Body::from(
+            serde_json::to_string(&world.prepare_connect_info_value).unwrap(),
+        ))
+        .unwrap();
+    let app = world.app.clone().expect("app should be set");
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
     let data = &response_to_json(response).await;
-    let websocket = data.get("websocket").unwrap();
-    world.ws_url = get_string_from_value(websocket, "url");
+    let websocket = data
+        .get("websocket")
+        .expect("response should have websocket field");
+    world.ws_url = websocket
+        .get("url")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    world.ws_token = websocket
+        .get("token")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let activation = data.get("activation");
+    if let Some(act) = activation {
+        if let Some(code) = act.get("code").and_then(|v| v.as_str()) {
+            world.activation_code = code.to_string();
+        }
+        if let Some(msg) = act.get("message").and_then(|v| v.as_str()) {
+            world.activation_message = msg.to_string();
+        }
+    }
 }
 
 #[then(expr = "所有者获得连接地址")]
 async fn get_connect_info(world: &mut TestWorld) {
-    assert_eq!("ws://127.0.0.1:3000/chobits/v1", world.ws_url)
+    assert_eq!("ws://127.0.0.1:3000/chobits/v1", world.ws_url);
+    assert!(
+        !world.activation_code.is_empty(),
+        "new device should have activation code"
+    );
+    assert!(
+        !world.activation_message.is_empty(),
+        "new device should have activation message"
+    );
+    assert!(
+        world.ws_token.is_empty(),
+        "new device should have empty token"
+    );
+}
+
+#[then(expr = "所有者获得连接地址和令牌")]
+async fn get_connect_info_with_token(world: &mut TestWorld) {
+    assert_eq!("ws://127.0.0.1:3000/chobits/v1", world.ws_url);
+    assert!(
+        !world.ws_token.is_empty(),
+        "activated device should have token"
+    );
+    assert!(
+        world.activation_code.is_empty(),
+        "activated device should have no activation code"
+    );
 }
 
 #[derive(Debug, Default, World)]
@@ -86,6 +198,9 @@ pub struct TestWorld {
     client_id: String,
     user_agent: String,
     ws_url: String,
+    ws_token: String,
+    activation_code: String,
+    activation_message: String,
     container: Option<ContainerAsync<Postgres>>,
     app: Option<Router>,
     state: Option<AppState>,

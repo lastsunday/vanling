@@ -78,11 +78,13 @@ async fn login(
     }
     let principal = Principal {
         id: user.id,
-        name: user.account,
+        name: Some(user.account),
+        device_id: None,
+        token_type: String::from("user"),
     };
-    let access_token = Jwt::global().access_token_encode(principal.clone())?;
+    let access_token = Jwt::global().access_token_encode(&principal)?;
     let expires_in = Jwt::global().access_token_expires_in();
-    let refresh_token = Jwt::global().refresh_token_encode(principal.clone())?;
+    let refresh_token = Jwt::global().refresh_token_encode(&principal)?;
     let refresh_token_expires_in = Jwt::global().refresh_token_expires_in();
     tracing::info!("Login success");
     Ok(ApiResponse::success(Some(LoginResult {
@@ -137,9 +139,9 @@ async fn access_token(
             tracing::warn!(ip = %addr, error = %e, "token refresh failed: invalid refresh token");
             e
         })?;
-        let access_token = Jwt::global().access_token_encode(refresh_token_principal.clone())?;
+        let access_token = Jwt::global().access_token_encode(&refresh_token_principal)?;
         let expires_in = Jwt::global().access_token_expires_in();
-        let refresh_token = Jwt::global().refresh_token_encode(refresh_token_principal.clone())?;
+        let refresh_token = Jwt::global().refresh_token_encode(&refresh_token_principal)?;
         let refresh_token_expires_in = Jwt::global().refresh_token_expires_in();
         tracing::info!("Login success");
         Ok(ApiResponse::success(Some(LoginResult {

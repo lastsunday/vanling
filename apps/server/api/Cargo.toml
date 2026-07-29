@@ -66,6 +66,7 @@ utoipa-scalar = { workspace = true, features = ["axum"] }
 serde_json = { workspace = true }
 serde-aux = { workspace = true }
 chrono = { workspace = true }
+rand = "0.8"
 rust-i18n = { workspace = true }
 futures-util = { workspace = true, features = ["sink", "std"] }
 futures-channel = { workspace = true }

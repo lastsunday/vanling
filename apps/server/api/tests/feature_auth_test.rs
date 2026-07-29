@@ -83,9 +83,11 @@ async fn get_access_token(world: &mut TestWorld) {
 async fn give_root_access_token(world: &mut TestWorld) {
     let principal = Principal {
         id: String::from("testid"),
-        name: String::from("root"),
+        name: Some(String::from("root")),
+        device_id: None,
+        token_type: String::from("user"),
     };
-    let access_token = Jwt::global().access_token_encode(principal).unwrap();
+    let access_token = Jwt::global().access_token_encode(&principal).unwrap();
     world.access_token = access_token;
 }
 
@@ -111,9 +113,11 @@ async fn root_user_info(world: &mut TestWorld) {
 async fn give_root_refresh_token(world: &mut TestWorld) {
     let principal = Principal {
         id: String::from("testid"),
-        name: String::from("root"),
+        name: Some(String::from("root")),
+        device_id: None,
+        token_type: String::from("user"),
     };
-    let refresh_token = Jwt::global().refresh_token_encode(principal).unwrap();
+    let refresh_token = Jwt::global().refresh_token_encode(&principal).unwrap();
     world.refresh_token = refresh_token;
 }
 
@@ -159,9 +163,11 @@ async fn give_root_access_token_and_user_info(world: &mut TestWorld, step: &Step
         .unwrap();
     let principal = Principal {
         id: user.unwrap().id,
-        name: result.first().unwrap().account.clone(),
+        name: Some(result.first().unwrap().account.clone()),
+        device_id: None,
+        token_type: String::from("user"),
     };
-    let access_token = Jwt::global().access_token_encode(principal).unwrap();
+    let access_token = Jwt::global().access_token_encode(&principal).unwrap();
     world.access_token = access_token;
 }
 

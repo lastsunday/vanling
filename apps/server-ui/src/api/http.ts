@@ -85,6 +85,25 @@ export async function postJson<T>(url: string, obj: object): Promise<T> {
   }
 }
 
+export async function delJson<T = void>(url: string): Promise<T> {
+  const { status, data } = await instance.delete(url);
+  if (status == HttpStatusCode.Ok || status == HttpStatusCode.BadRequest) {
+    if (data) {
+      const code = data.code;
+      if (code == 0) {
+        return data.data;
+      } else {
+        const message = data.message;
+        throw `[${code}] ${message}`;
+      }
+    } else {
+      throw 'invalid data is null';
+    }
+  } else {
+    throw `invalid status code = ${status}`;
+  }
+}
+
 export async function getJson<T>(url: string, params?: Record<string, unknown>): Promise<T> {
   const { status, data } = await instance.get(url, { params });
   if (status == HttpStatusCode.Ok || status == HttpStatusCode.BadRequest) {

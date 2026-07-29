@@ -59,12 +59,23 @@
                     </button>
                 </h2>
                 <div class="connection-controls">
-                    <input type="text" id="otaUrl" value="http://127.0.0.1:3000/api/ota/"
+                    <input type="text" id="otaUrl" value="http://127.0.0.1:3000/api/ota"
                         placeholder="OTA服务器地址，如：http://127.0.0.1:3000/api/ota/" />
                     <input type="text" id="serverUrl" value="" readonly disabled placeholder="点击连接按钮后，自动从OTA接口获取" />
                 </div>
             </div>
 
+            <!-- 激活码显示区域 -->
+            <div class="section" id="activationContainer" style="display: none;">
+                <h2>设备激活</h2>
+                <div class="activation-panel">
+                    <p>设备未激活，请使用以下激活码在服务器端完成激活：</p>
+                    <div class="activation-code" id="activationCodeDisplay">------</div>
+                    <p style="font-size: 13px; color: #666; margin-top: 8px;">
+                        激活后刷新页面重新连接即可
+                    </p>
+                </div>
+            </div>
         </div>
 
         <div class="section">

@@ -3,6 +3,7 @@
 pub mod prelude;
 
 pub mod config;
+pub mod device;
 pub mod frame;
 pub mod round;
 pub mod round_data;

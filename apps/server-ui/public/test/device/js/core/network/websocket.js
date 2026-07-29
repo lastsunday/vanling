@@ -1,4 +1,3 @@
-// WebSocket消息处理模块
 import { log } from '../../utils/logger.js';
 import { addMessage } from '../../ui/dom-helper.js';
 import { webSocketConnect } from './ota-connector.js';
@@ -7,7 +6,6 @@ import { getAudioPlayer } from '../audio/player.js';
 import { getAudioRecorder } from '../audio/recorder.js';
 import { getMcpTools, executeMcpTool, setWebSocket as setMcpWebSocket } from '../mcp/tools.js';
 
-// WebSocket处理器类
 export class WebSocketHandler {
   constructor() {
     this.websocket = null;
@@ -19,7 +17,6 @@ export class WebSocketHandler {
     this.isRemoteSpeaking = false;
   }
 
-  // 发送hello握手消息
   async sendHelloMessage() {
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) return false;
 
@@ -43,7 +40,6 @@ export class WebSocketHandler {
       return new Promise(resolve => {
         const timeout = setTimeout(() => {
           log('等待hello响应超时', 'error');
-          log('提示: 请尝试点击"测试认证"按钮进行连接排查', 'info');
           resolve(false);
         }, 5000);
 
@@ -57,7 +53,6 @@ export class WebSocketHandler {
               resolve(true);
             }
           } catch (e) {
-            // 忽略非JSON消息
           }
         };
 
@@ -69,9 +64,7 @@ export class WebSocketHandler {
     }
   }
 
-  // 处理文本消息
   handleTextMessage(message) {
-    // 检查是否是错误消息（有code字段但没有type字段）
     if (message.code !== undefined && message.type === undefined) {
       this.handleErrorMessage(message);
       return;
@@ -89,17 +82,13 @@ export class WebSocketHandler {
     } else if (message.type === 'llm') {
       log(`大模型回复: ${message.text}`, 'info');
 
-      // 如果包含表情，更新sessionStatus表情
       if (message.text && /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u.test(message.text)) {
-        // 提取表情符号
         const emojiMatch = message.text.match(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/u);
         if (emojiMatch && this.onSessionEmotionChange) {
           this.onSessionEmotionChange(emojiMatch[0]);
         }
       }
 
-      // 只有当文本不仅仅是表情时，才添加到对话中
-      // 移除文本中的表情后检查是否还有内容
       const textWithoutEmoji = message.text ? message.text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim() : '';
       if (textWithoutEmoji) {
         addMessage(message.text);
@@ -112,20 +101,17 @@ export class WebSocketHandler {
     }
   }
 
-  // 处理错误消息
   handleErrorMessage(message) {
     const { code, message: errorMsg } = message;
     log(`服务器错误 [${code}]: ${errorMsg}`, 'error');
     addMessage(`错误 [${code}]: ${errorMsg}`);
   }
 
-  // 处理TTS消息
   handleTTSMessage(message) {
     if (message.state === 'start') {
       log('服务器开始发送语音', 'info');
       this.currentSessionId = message.session_id;
       this.isRemoteSpeaking = true;
-      // 新请求到来，清空上一轮残留音频
       const audioPlayer = getAudioPlayer();
       audioPlayer.clearAllAudio();
       if (this.onSessionStateChange) {
@@ -140,7 +126,6 @@ export class WebSocketHandler {
       log(`语音段结束: ${message.text}`, 'info');
     } else if (message.state === 'stop') {
       log('服务器语音传输结束，等待音频自然播完', 'info');
-      // 不清空，让 StreamingContext 自然排空剩余音频
       this.isRemoteSpeaking = false;
       if (this.onRecordButtonStateChange) {
         this.onRecordButtonStateChange(false);
@@ -151,7 +136,6 @@ export class WebSocketHandler {
     }
   }
 
-  // 处理MCP消息
   handleMCPMessage(message) {
     const payload = message.payload || {};
     log(`服务器下发: ${JSON.stringify(message)}`, 'info');
@@ -214,11 +198,11 @@ export class WebSocketHandler {
           "result": {
             "protocolVersion": "2025-06-18",
             "capabilities": {
-              "tools": {} // 这里的 tools 似乎不列出详细信息，需要 tools/list
+              "tools": {}
             },
             "serverInfo": {
-              "name": config.deviceName, // 设备名称 (BOARD_NAME)
-              "version": "1.0.0" // 设备固件版本
+              "name": config.deviceName,
+              "version": "1.0.0"
             }
           }
         }
@@ -230,7 +214,6 @@ export class WebSocketHandler {
     }
   }
 
-  // 处理二进制消息
   async handleBinaryMessage(data) {
     try {
       let arrayBuffer;
@@ -253,27 +236,22 @@ export class WebSocketHandler {
     }
   }
 
-  // 连接WebSocket服务器
-  async connect() {
+  async connect(otaResult) {
     const config = getConfig();
-    log('正在检查OTA状态...', 'info');
+    log('正在连接WebSocket...', 'info');
     saveConnectionUrls();
 
     try {
-      const otaUrl = document.getElementById('otaUrl').value.trim();
-      const ws = await webSocketConnect(otaUrl, config);
-      if (ws === undefined) {
+      const ws = await webSocketConnect(otaResult);
+      if (!ws) {
         return false;
       }
       this.websocket = ws;
 
-      // 设置接收二进制数据的类型为ArrayBuffer
       this.websocket.binaryType = 'arraybuffer';
 
-      // 设置 MCP 模块的 WebSocket 实例
       setMcpWebSocket(this.websocket);
 
-      // 设置录音器的WebSocket
       const audioRecorder = getAudioRecorder();
       audioRecorder.setWebSocket(this.websocket);
 
@@ -289,7 +267,6 @@ export class WebSocketHandler {
     }
   }
 
-  // 设置事件处理器
   setupEventHandlers() {
     this.websocket.onopen = async () => {
       const url = document.getElementById('serverUrl').value;
@@ -299,7 +276,6 @@ export class WebSocketHandler {
         this.onConnectionStateChange(true);
       }
 
-      // 连接成功后，默认状态为聆听中
       this.isRemoteSpeaking = false;
       if (this.onSessionStateChange) {
         this.onSessionStateChange(false);
@@ -344,7 +320,6 @@ export class WebSocketHandler {
     };
   }
 
-  // 断开连接
   disconnect() {
     if (!this.websocket) return;
 
@@ -353,14 +328,12 @@ export class WebSocketHandler {
     audioRecorder.stop();
   }
 
-  // 发送文本消息
   sendTextMessage(text) {
     if (text === '' || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
       return false;
     }
 
     try {
-      // 如果对方正在说话，先发送打断消息
       if (this.isRemoteSpeaking && this.currentSessionId) {
         const abortMessage = {
           session_id: this.currentSessionId,
@@ -387,18 +360,15 @@ export class WebSocketHandler {
     }
   }
 
-  // 获取WebSocket实例
   getWebSocket() {
     return this.websocket;
   }
 
-  // 检查是否已连接
   isConnected() {
     return this.websocket && this.websocket.readyState === WebSocket.OPEN;
   }
 }
 
-// 创建单例
 let wsHandlerInstance = null;
 
 export function getWebSocketHandler() {

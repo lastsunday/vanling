@@ -1,6 +1,6 @@
-// 配置管理模块
+let otaToken = '';
+let activationCode = '';
 
-// 生成随机MAC地址
 function generateRandomMac() {
     const hexDigits = '0123456789ABCDEF';
     let mac = '';
@@ -13,14 +13,12 @@ function generateRandomMac() {
     return mac;
 }
 
-// 加载配置
 export function loadConfig() {
     const deviceMacInput = document.getElementById('deviceMac');
     const deviceNameInput = document.getElementById('deviceName');
     const clientIdInput = document.getElementById('clientId');
     const otaUrlInput = document.getElementById('otaUrl');
 
-    // 从localStorage加载MAC地址，如果没有则生成新的
     let savedMac = localStorage.getItem('xz_tester_deviceMac');
     if (!savedMac) {
         savedMac = generateRandomMac();
@@ -28,7 +26,6 @@ export function loadConfig() {
     }
     deviceMacInput.value = savedMac;
 
-    // 从localStorage加载其他配置
     const savedDeviceName = localStorage.getItem('xz_tester_deviceName');
     if (savedDeviceName) {
         deviceNameInput.value = savedDeviceName;
@@ -43,9 +40,10 @@ export function loadConfig() {
     if (savedOtaUrl) {
         otaUrlInput.value = savedOtaUrl;
     }
+
+    otaToken = localStorage.getItem('xz_tester_otaToken') || '';
 }
 
-// 保存配置
 export function saveConfig() {
     const deviceMacInput = document.getElementById('deviceMac');
     const deviceNameInput = document.getElementById('deviceName');
@@ -56,18 +54,35 @@ export function saveConfig() {
     localStorage.setItem('xz_tester_clientId', clientIdInput.value);
 }
 
-// 获取配置值
+export function saveOtaResult(result) {
+    if (result.websocket && result.websocket.token) {
+        otaToken = result.websocket.token;
+        localStorage.setItem('xz_tester_otaToken', otaToken);
+    }
+    if (result.activation && result.activation.code) {
+        activationCode = result.activation.code;
+    }
+}
+
+export function getOtaToken() {
+    return otaToken;
+}
+
+export function getActivationCode() {
+    return activationCode;
+}
+
 export function getConfig() {
     const deviceMac = document.getElementById('deviceMac').value.trim();
     return {
-        deviceId: deviceMac,  // 使用MAC地址作为deviceId
+        deviceId: deviceMac,
         deviceName: document.getElementById('deviceName').value.trim(),
         deviceMac: deviceMac,
-        clientId: document.getElementById('clientId').value.trim()
+        clientId: document.getElementById('clientId').value.trim(),
+        token: otaToken,
     };
 }
 
-// 保存连接URL
 export function saveConnectionUrls() {
     const otaUrl = document.getElementById('otaUrl').value.trim();
     const wsUrl = document.getElementById('serverUrl').value.trim();
