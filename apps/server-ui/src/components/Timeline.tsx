@@ -748,8 +748,9 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
       )}
 
       {sorted.length > 0 && (
-        <Stack gap={4} mt={8}>
-          {sorted.map((d, i) => {
+        <Box style={{ maxHeight: 480, overflowY: 'auto', marginTop: 8 }}>
+          <Stack gap={4}>
+            {sorted.map((d, i) => {
             const label = t(`sessions.step.${d.data_type}`);
             const meta = d.metadata;
             const procMs = meta?.duration_ms as number | undefined;
@@ -764,9 +765,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
               headerText = `${dataPart}${proc ? `｜${proc}` : ''}`;
             } else {
               const txt = d.text
-                ? d.text.length <= 10
-                  ? `"${d.text}"`
-                  : `"${d.text.slice(0, 10)}..."(${t('sessions.timeline.char_count', { count: d.text.length })})`
+                ? `(${t('sessions.timeline.char_count', { count: d.text.length })})`
                 : '✓';
               const proc = procMs != null ? `⏱${(procMs / 1000).toFixed(procMs < 1000 ? 1 : 0)}s` : '';
               const modeTag = d.metadata?.mode === 'wake' ? ` [${t('sessions.mode.wake')}]` : '';
@@ -792,6 +791,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
             );
           })}
         </Stack>
+        </Box>
       )}
 
       {frameList.length > 0 && (

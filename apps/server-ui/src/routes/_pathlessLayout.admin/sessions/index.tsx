@@ -1,20 +1,20 @@
 import { listSessions } from '@/api';
 import { SessionDetail } from '@/components/SessionDetail';
-import type { SessionListItem } from '@/data/session';
+import type { SessionListItem, TurnSummary } from '@/data/session';
 import {
   Button,
-  Grid,
   Group,
+  Modal,
   Pagination,
   Paper,
   Select,
-  Stack,
   Table,
   Text,
   TextInput,
   Title,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
+import { useDisclosure } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import dayjs from 'dayjs';
@@ -25,18 +25,37 @@ export const Route = createFileRoute('/_pathlessLayout/admin/sessions/')({
   component: RouteComponent,
 });
 
-function getSessionTitle(session: SessionListItem): string {
-  const firstTurn = session.turns[0];
-  if (firstTurn) {
-    for (const step of firstTurn.steps) {
-      if (step.has_data && step.text) {
+function getSessionSummary(session: SessionListItem): string {
+  for (const turn of session.turns) {
+    const hasWake = turn.steps.some((s) => s.mode === 'wake');
+    if (hasWake) continue;
+    for (const step of turn.steps) {
+      if (step.has_data && step.text && (step.step === 'asr' || step.step === 'text')) {
         return step.text.length > 40
           ? step.text.slice(0, 40) + '...'
           : step.text;
       }
     }
   }
-  return '#' + session.session_id.slice(-8);
+  return session.session_id;
+}
+
+function formatDeviceId(id: string | null): string {
+  return id ?? '-';
+}
+
+function getTurnDuration(turn: TurnSummary): number {
+  if (turn.steps.length === 0) return 0;
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  for (const step of turn.steps) {
+    const start = step.duration_ms ?? 0;
+    const dur = step.step === 'input_audio' || step.step === 'tts'
+      ? (step.audio_duration_ms ?? 0) : 0;
+    minStart = Math.min(minStart, start);
+    maxEnd = Math.max(maxEnd, start + dur);
+  }
+  return maxEnd > minStart ? maxEnd - minStart : 0;
 }
 
 function formatDuration(ms: number): string {
@@ -60,11 +79,13 @@ function RouteComponent() {
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<string>('desc');
+  const [searchKey, setSearchKey] = useState(0);
 
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
+  const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sessions', page, search, dateFrom, dateTo, sortOrder],
+    queryKey: ['sessions', page, search, dateFrom, dateTo, sortOrder, searchKey],
     queryFn: () =>
       listSessions({
         page,
@@ -81,10 +102,12 @@ function RouteComponent() {
     setSearch(searchInput);
     setDateFrom(dateFromInput);
     setDateTo(dateToInput);
+    setSearchKey(k => k + 1);
   };
 
-  const handleSelectSession = (sessionId: string) => {
-    setSelectedSessionId((prev) => (prev === sessionId ? null : sessionId));
+  const openDetailModal = (sessionId: string) => {
+    setDetailSessionId(sessionId);
+    openDetail();
   };
 
   const sortOptions = [
@@ -94,163 +117,145 @@ function RouteComponent() {
 
   return (
     <>
-      <Title mb="lg">{t('sessions.title')}</Title>
+      <Group justify="space-between" mb="lg">
+        <Title>{t('sessions.title')}</Title>
+        <Group>
+          <TextInput
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.currentTarget.value)}
+            placeholder={t('sessions.search')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSearch();
+            }}
+          />
+          <Button onClick={handleSearch}>{t('sessions.search_btn')}</Button>
+        </Group>
+      </Group>
 
-      <Grid>
-        <Grid.Col span={{ base: 12, md: 5 }}>
-          <Stack>
-            <Paper withBorder shadow="sm" p="md" radius="md">
-              <Stack>
-                <Group gap="sm">
-                  <TextInput
-                    placeholder={t('sessions.search')}
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSearch();
-                    }}
-                    style={{ flex: 1 }}
-                  />
-                  <Button onClick={handleSearch}>{t('sessions.search_btn')}</Button>
-                </Group>
+      <Paper withBorder shadow="sm" p="md" radius="md" mb="md">
+        <Group grow>
+          <DateTimePicker
+            placeholder={t('sessions.date_from')}
+            value={dateFromInput}
+            onChange={setDateFromInput}
+            clearable
+            valueFormat="YYYY-MM-DD HH:mm"
+          />
+          <DateTimePicker
+            placeholder={t('sessions.date_to')}
+            value={dateToInput}
+            onChange={setDateToInput}
+            clearable
+            valueFormat="YYYY-MM-DD HH:mm"
+          />
+          <Select
+            data={sortOptions}
+            value={sortOrder}
+            onChange={(val) => {
+              if (!val) return;
+              setSortOrder(val);
+              setPage(1);
+            }}
+          />
+        </Group>
+      </Paper>
 
-                <Group grow>
-                  <DateTimePicker
-                    placeholder={t('sessions.date_from')}
-                    value={dateFromInput}
-                    onChange={setDateFromInput}
-                    clearable
-                    valueFormat="YYYY-MM-DD HH:mm"
-                  />
-                  <DateTimePicker
-                    placeholder={t('sessions.date_to')}
-                    value={dateToInput}
-                    onChange={setDateToInput}
-                    clearable
-                    valueFormat="YYYY-MM-DD HH:mm"
-                  />
-                  <Select
-                    data={sortOptions}
-                    value={sortOrder}
-                    onChange={(val) => {
-                      if (!val) return;
-                      setSortOrder(val);
-                      setPage(1);
-                    }}
-                  />
-                </Group>
-              </Stack>
-            </Paper>
+      {isLoading && (
+        <Text ta="center" py="xl">
+          {t('loading')}
+        </Text>
+      )}
 
-            {isLoading && (
-              <Text ta="center" py="xl">
-                {t('loading')}
-              </Text>
-            )}
+      {data && data.items.length > 0 && (
+        <Paper withBorder shadow="sm" radius="md" style={{ overflow: 'hidden' }}>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t('sessions.table.session_id')}</Table.Th>
+                <Table.Th>{t('sessions.table.device_id')}</Table.Th>
+                <Table.Th>{t('sessions.table.summary')}</Table.Th>
+                <Table.Th>{t('sessions.table.time')}</Table.Th>
+                <Table.Th ta="right">{t('sessions.table.turns')}</Table.Th>
+                <Table.Th ta="right">{t('sessions.table.duration')}</Table.Th>
+                <Table.Th>{t('sessions.table.actions')}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {data.items.map((session) => {
+                const totalMs = session.turns.reduce((sum, turn) => sum + getTurnDuration(turn), 0);
+                const summary = getSessionSummary(session);
+                return (
+                  <Table.Tr
+                    key={session.session_id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => openDetailModal(session.session_id)}
+                  >
+                    <Table.Td>
+                      <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                        {session.session_id}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>
+                        {formatDeviceId(session.device_id)}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" truncate="end" style={{ maxWidth: 240 }} title={summary}>
+                        {summary}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                        {session.create_datetime
+                          ? dayjs(session.create_datetime).format('YYYY-MM-DD HH:mm')
+                          : ''}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" ta="right">{session.turn_count}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" ta="right">{formatDuration(totalMs)}</Text>
+                    </Table.Td>
+                    <Table.Td onClick={(e) => e.stopPropagation()}>
+                      <Button size="xs" variant="subtle" onClick={() => openDetailModal(session.session_id)}>
+                        {t('sessions.detail.title')}
+                      </Button>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      )}
 
-            {data && data.items.length > 0 && (
-              <Paper withBorder shadow="sm" radius="md" style={{ overflow: 'hidden' }}>
-                <Table>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th style={{ width: 170, whiteSpace: 'nowrap' }}>{t('sessions.table.time')}</Table.Th>
-                      <Table.Th>{t('sessions.table.summary')}</Table.Th>
-                      <Table.Th style={{ width: 50, whiteSpace: 'nowrap' }}>{t('sessions.table.turns')}</Table.Th>
-                      <Table.Th style={{ width: 70, whiteSpace: 'nowrap' }}>{t('sessions.table.duration')}</Table.Th>
-                      <Table.Th style={{ width: 50, whiteSpace: 'nowrap' }}>{t('sessions.table.actions')}</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {data.items.map((session) => {
-                      const totalMs = session.turns.reduce(
-                        (sum, turn) => sum + turn.steps.reduce((s, st) => s + (st.duration_ms ?? 0), 0),
-                        0,
-                      );
-                      const isSelected = selectedSessionId === session.session_id;
-                      return (
-                        <Table.Tr
-                          key={session.session_id}
-                          onClick={() => handleSelectSession(session.session_id)}
-                          style={{
-                            cursor: 'pointer',
-                            borderLeft: isSelected ? '3px solid var(--mantine-color-blue-5)' : '3px solid transparent',
-                            background: isSelected ? 'var(--mantine-color-blue-0)' : undefined,
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = 'var(--mantine-color-gray-0)';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isSelected) e.currentTarget.style.background = '';
-                          }}
-                        >
-                          <Table.Td>
-                            <Text
-                              size="sm"
-                              style={{ whiteSpace: 'nowrap' }}
-                              title={session.create_datetime ? dayjs(session.create_datetime).format('YYYY-MM-DD HH:mm:ss') : undefined}
-                            >
-                              {session.create_datetime
-                                ? dayjs(session.create_datetime).format('YYYY-MM-DD HH:mm')
-                                : ''}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm" truncate="end" style={{ maxWidth: 200 }} title={getSessionTitle(session)}>
-                              {getSessionTitle(session)}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm">{session.turn_count}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Text size="sm">{formatDuration(totalMs)}</Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Button
-                              variant="subtle"
-                              size="compact-xs"
-                              onClick={(e) => { e.stopPropagation(); handleSelectSession(session.session_id); }}
-                              px={4}
-                            >
-                              👁
-                            </Button>
-                          </Table.Td>
-                        </Table.Tr>
-                      );
-                    })}
-                  </Table.Tbody>
-                </Table>
-              </Paper>
-            )}
+      {data && data.items.length === 0 && (
+        <Text ta="center" py="xl" c="dimmed">
+          {t('sessions.select_hint')}
+        </Text>
+      )}
 
-            {data && data.items.length === 0 && (
-              <Text ta="center" py="xl" c="dimmed">
-                {t('sessions.select_hint')}
-              </Text>
-            )}
+      {data && data.total > data.page_size && (
+        <Group justify="center" mt="md">
+          <Pagination
+            total={Math.ceil(data.total / data.page_size)}
+            value={page}
+            onChange={setPage}
+          />
+        </Group>
+      )}
 
-            {data && data.total > data.page_size && (
-              <Group justify="center">
-                <Pagination
-                  total={Math.ceil(data.total / data.page_size)}
-                  value={page}
-                  onChange={setPage}
-                />
-              </Group>
-            )}
-          </Stack>
-        </Grid.Col>
-
-        <Grid.Col span={{ base: 12, md: 7 }}>
-          {selectedSessionId ? (
-            <SessionDetail sessionId={selectedSessionId} />
-          ) : (
-            <Paper withBorder shadow="sm" p="xl" radius="md" style={{ textAlign: 'center' }}>
-              <Text c="dimmed">{t('sessions.select_hint')}</Text>
-            </Paper>
-          )}
-        </Grid.Col>
-      </Grid>
+      <Modal
+        opened={detailOpened}
+        onClose={closeDetail}
+        title={t('sessions.detail.title')}
+        size="80%"
+        centered
+      >
+        {detailSessionId && <SessionDetail sessionId={detailSessionId} />}
+      </Modal>
     </>
   );
 }

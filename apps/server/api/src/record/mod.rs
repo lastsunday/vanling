@@ -125,6 +125,7 @@ pub struct TurnSummary {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SessionListItem {
     pub session_id: String,
+    pub device_id: Option<String>,
     pub create_datetime: Option<DateTime<Utc>>,
     pub update_datetime: Option<DateTime<Utc>>,
     pub turn_count: i64,
@@ -229,6 +230,7 @@ async fn list_sessions(
 
             SessionListItem {
                 session_id: s.id,
+                device_id: s.device_id,
                 create_datetime: to_utc(s.create_datetime),
                 update_datetime: to_utc(s.update_datetime),
                 turn_count,

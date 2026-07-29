@@ -10,6 +10,7 @@ use crate::schema::date_time_with_time_zone_or_null_schema;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
+    pub device_id: Option<String>,
     #[schema(schema_with = date_time_with_time_zone_or_null_schema)]
     pub create_datetime: Option<DateTimeWithTimeZone>,
     #[schema(schema_with = date_time_with_time_zone_or_null_schema)]

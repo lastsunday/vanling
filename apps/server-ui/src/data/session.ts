@@ -16,6 +16,7 @@ export interface TurnSummary {
 
 export interface SessionListItem {
   session_id: string;
+  device_id: string | null;
   create_datetime: string | null;
   update_datetime: string | null;
   turn_count: number;

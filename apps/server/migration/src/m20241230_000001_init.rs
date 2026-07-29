@@ -46,6 +46,7 @@ impl MigrationTrait for Migration {
                     .table(Session::Table)
                     .if_not_exists()
                     .col(string_uniq(Session::Id))
+                    .col(string_null(Session::DeviceId))
                     .col(timestamp_with_time_zone_null(Session::CreateDatetime))
                     .col(timestamp_with_time_zone_null(Session::UpdateDatetime))
                     .primary_key(Index::create().name("pk-session-id").col(Session::Id))
@@ -220,6 +221,7 @@ enum Device {
 enum Session {
     Table,
     Id,
+    DeviceId,
     CreateDatetime,
     UpdateDatetime,
 }

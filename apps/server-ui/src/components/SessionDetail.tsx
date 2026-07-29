@@ -36,68 +36,65 @@ const barHexColors: Record<string, string> = {
   tts: '#fa5252',
 };
 
-function stepValueMs(s: TurnStep): number | null {
-  if (s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts') {
-    return s.audio_duration_ms;
-  }
-  return s.duration_ms;
-}
-
 function RoundSummary({ steps }: { steps: TurnStep[] }) {
   const { t } = useTranslation();
-  const valid = steps.filter((s) => {
-    const v = stepValueMs(s);
-    return v != null && s.has_data;
+
+  const sorted = steps
+    .filter((s) => s.has_data && s.duration_ms != null)
+    .sort((a, b) => (a.duration_ms ?? 0) - (b.duration_ms ?? 0));
+
+  const stepDurations = sorted.map((s, i) => {
+    let actualMs: number;
+    if (s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts') {
+      actualMs = s.audio_duration_ms ?? 0;
+    } else {
+      const next = sorted[i + 1];
+      actualMs = next ? Math.max(0, (next.duration_ms ?? 0) - (s.duration_ms ?? 0)) : 0;
+    }
+    return { step: s, elapsedMs: s.duration_ms ?? 0, actualMs };
   });
+
+  const valid = stepDurations.filter((s) => s.actualMs > 0);
   if (valid.length === 0) return null;
 
-  const processSteps = steps.filter((s) =>
-    s.step !== 'input_audio' && s.step !== 'input_audio_tail' && s.step !== 'text'
-    && s.has_data && s.duration_ms != null && s.duration_ms >= 0,
+  const procSteps = stepDurations.filter(
+    (s) => s.step.step !== 'input_audio' && s.step.step !== 'input_audio_tail' && s.step.step !== 'text' && s.actualMs > 0,
   );
-  const totalProcessMs = processSteps.reduce((sum, s) => sum + s.duration_ms!, 0);
+  const totalProcMs = procSteps.reduce((sum, s) => sum + s.actualMs, 0);
 
-  const runSteps = steps.filter((s) =>
-    s.step !== 'text' && s.has_data,
-  ).filter((s) => {
-    const v = s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts'
-      ? s.audio_duration_ms : s.duration_ms;
-    return v != null && v >= 0;
-  });
-  const totalRunMs = runSteps.reduce((sum, s) => {
-    return sum + (s.step === 'input_audio' || s.step === 'input_audio_tail' || s.step === 'tts'
-      ? (s.audio_duration_ms ?? 0) : (s.duration_ms ?? 0));
-  }, 0);
+  const runSteps = stepDurations.filter(
+    (s) => s.step.step !== 'text' && s.actualMs > 0,
+  );
+  const totalRunMs = runSteps.reduce((sum, s) => sum + s.actualMs, 0);
 
   return (
     <>
       <Group gap={4} pl="lg" wrap="wrap">
         {valid.map((s, i) => {
-          const v = stepValueMs(s)!;
-          const proc = s.duration_ms != null
-            ? `⏱${(s.duration_ms / 1000).toFixed(s.duration_ms < 1000 ? 1 : 0)}s`
+          const label = t(`sessions.step.${s.step.step}`);
+          const dur = `${(s.actualMs / 1000).toFixed(s.actualMs < 1000 ? 1 : 0)}s`;
+          const procTime = s.step.step === 'llm' || s.step.step === 'asr'
+            ? ` ⏱${dur}`
             : '';
-          const label = t(`sessions.step.${s.step}`);
-          const dur = `${(v / 1000).toFixed(v < 1000 ? 1 : 0)}s`;
 
           let badgeText: string;
-          if (s.step === 'input_audio' || s.step === 'input_audio_tail') {
+          if (s.step.step === 'input_audio' || s.step.step === 'input_audio_tail') {
             badgeText = `${label} ${dur}`;
-          } else if (s.step === 'tts') {
-            badgeText = `${label} ${dur}${proc ? ' ' + proc : ''}`;
+          } else if (s.step.step === 'tts') {
+            badgeText = `${label} ${dur}`;
           } else {
-            const txt = s.text
-              ? ` "${s.text.slice(0, 20)}${s.text.length > 20 ? '...' : ''}"`
+            const txt = s.step.text
+              ? ` "${s.step.text.slice(0, 20)}${s.step.text.length > 20 ? '...' : ''}"`
               : '';
-            const modeTag = s.mode === 'wake' ? ` [${t('sessions.mode.wake')}]` : '';
-            badgeText = `${label}${modeTag}${txt}${proc ? ' ' + proc : ''}`;
+            const modeTag = s.step.mode === 'wake' ? ` [${t('sessions.mode.wake')}]` : '';
+            badgeText = `${label}${modeTag}${txt}${procTime}`;
           }
 
           return (
-            <Group key={s.step} gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Group key={s.step.step} gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
               {i > 0 && <Text c="dimmed" size="xs">→</Text>}
               <Badge
-                color={stepColors[s.step] ?? 'gray'}
+                color={stepColors[s.step.step] ?? 'gray'}
                 variant="light"
                 size="sm"
                 style={{ textTransform: 'none', fontWeight: 400, fontSize: 10 }}
@@ -108,19 +105,19 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
           );
         })}
       </Group>
-      {totalProcessMs > 0 && (
+      {totalProcMs > 0 && (
         <>
           <Box mt={4} mb={6} ml="lg" style={{ borderTop: '1px dashed var(--mantine-color-gray-3)' }} />
           <Box ml="lg">
             <Group gap={8} mb={2} wrap="nowrap">
               <Text style={{ width: 56, flexShrink: 0 }} c="dimmed" size="xs">{t('sessions.latency_waterfall')}</Text>
               <Box style={{ display: 'flex', flex: 1, height: 14, borderRadius: 3, overflow: 'hidden', background: 'var(--mantine-color-gray-1)' }}>
-                {processSteps.map((s) => {
-                  const pct = totalProcessMs > 0 ? ((s.duration_ms ?? 0) / totalProcessMs) * 100 : 0;
+                {procSteps.map((s) => {
+                  const pct = totalProcMs > 0 ? (s.actualMs / totalProcMs) * 100 : 0;
                   return (
                     <Box
-                      key={s.step}
-                      style={{ width: `${Math.max(pct, 0)}%`, height: '100%', background: barHexColors[s.step] ?? '#868e96', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      key={s.step.step}
+                      style={{ width: `${Math.max(pct, 0)}%`, height: '100%', background: barHexColors[s.step.step] ?? '#868e96', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
                       {pct >= 15 && (
                         <Text size="xs" c="white" fw={600} style={{ lineHeight: '14px', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
@@ -132,20 +129,18 @@ function RoundSummary({ steps }: { steps: TurnStep[] }) {
                 })}
               </Box>
               <Text size="xs" fw={600} style={{ whiteSpace: 'nowrap' }}>
-                {(totalProcessMs / 1000).toFixed(totalProcessMs < 1000 ? 1 : 0)}s
+                {(totalProcMs / 1000).toFixed(totalProcMs < 1000 ? 1 : 0)}s
               </Text>
             </Group>
             <Group gap={8} wrap="nowrap">
               <Text style={{ width: 56, flexShrink: 0 }} c="dimmed" size="xs">{t('sessions.runtime')}</Text>
               <Box style={{ display: 'flex', flex: 1, height: 14, borderRadius: 3, overflow: 'hidden', background: 'var(--mantine-color-gray-1)' }}>
                 {runSteps.map((s) => {
-                  const v = s.step === 'input_audio' || s.step === 'tts'
-                    ? (s.audio_duration_ms ?? 0) : (s.duration_ms ?? 0);
-                  const pct = totalRunMs > 0 ? (v / totalRunMs) * 100 : 0;
+                  const pct = totalRunMs > 0 ? (s.actualMs / totalRunMs) * 100 : 0;
                   return (
                     <Box
-                      key={s.step}
-                      style={{ width: `${Math.max(pct, 0)}%`, height: '100%', background: barHexColors[s.step] ?? '#868e96', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      key={s.step.step}
+                      style={{ width: `${Math.max(pct, 0)}%`, height: '100%', background: barHexColors[s.step.step] ?? '#868e96', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                     >
                       {pct >= 15 && (
                         <Text size="xs" c="white" fw={600} style={{ lineHeight: '14px', textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}>
@@ -228,10 +223,19 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     }, 0);
   };
 
-  const totalMs = rounds.reduce(
-    (sum, r) => sum + r.steps.reduce((s, st) => s + (st.duration_ms ?? 0), 0),
-    0,
-  );
+  const totalMs = rounds.reduce((sum, r) => {
+    if (r.steps.length === 0) return sum;
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const step of r.steps) {
+      const start = step.duration_ms ?? 0;
+      const dur = step.step === 'input_audio' || step.step === 'tts'
+        ? (step.audio_duration_ms ?? 0) : 0;
+      minStart = Math.min(minStart, start);
+      maxEnd = Math.max(maxEnd, start + dur);
+    }
+    return sum + (maxEnd > minStart ? maxEnd - minStart : 0);
+  }, 0);
 
   const allDataReady = rounds.length > 0
     && roundDataQueries.every((q) => q.data !== undefined);

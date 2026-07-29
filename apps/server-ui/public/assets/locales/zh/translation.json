@@ -115,7 +115,11 @@
     "turn_count": "共 {{count}} 轮",
     "show_all": "显示全部 {{count}} 条",
     "collapse": "收起",
-    "select_hint": "选择一个会话查看详情",
+    "select_hint": "暂无会话记录",
+    "latency_waterfall": "处理耗时",
+    "bottleneck": "瓶颈",
+    "runtime": "运行时间",
+    "round_label": "第 {{number}} 轮",
     "detail": {
       "title": "会话详情",
       "session_id": "会话 ID",
@@ -123,13 +127,7 @@
       "updated": "更新时间",
       "turn_count": "共 {{count}} 轮",
       "play": "播放",
-      "back": "返回列表"
-    },
-    "latency_waterfall": "处理耗时",
-    "bottleneck": "瓶颈",
-    "runtime": "运行时间",
-    "round_label": "第 {{number}} 轮",
-    "detail": {
+      "back": "返回列表",
       "copy": "复制"
     },
     "step": {
@@ -141,6 +139,8 @@
       "tts": "语音合成"
     },
     "table": {
+"session_id": "会话编号",
+"device_id": "设备编号",
       "time": "时间",
       "summary": "摘要",
       "turns": "轮次",

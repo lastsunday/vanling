@@ -154,6 +154,7 @@ struct InputParams {
 
 pub struct Recorder {
     conn: DatabaseConnection,
+    device_id: Option<String>,
     entries: Arc<Mutex<Vec<RecordEntry>>>,
     round_info: Arc<Mutex<Option<RoundInfo>>>,
     known_sessions: Arc<Mutex<HashSet<String>>>,
@@ -167,9 +168,10 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    pub fn new(conn: DatabaseConnection) -> Self {
+    pub fn new(conn: DatabaseConnection, device_id: Option<String>) -> Self {
         Self {
             conn,
+            device_id,
             entries: Arc::new(Mutex::new(Vec::new())),
             round_info: Arc::new(Mutex::new(None)),
             known_sessions: Arc::new(Mutex::new(HashSet::new())),
@@ -290,9 +292,11 @@ impl Recorder {
         {
             let conn = self.conn.clone();
             let sid = session_id.to_string();
+            let device_id = self.device_id.clone();
             tokio::spawn(async move {
                 let _ = session::ActiveModel {
                     id: Set(sid),
+                    device_id: Set(device_id),
                     ..Default::default()
                 }
                 .insert(&conn)

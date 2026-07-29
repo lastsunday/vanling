@@ -210,7 +210,7 @@ where
         .with_audio_config(ctx.to_audio_config())
         .build();
 
-    let recorder = Arc::new(Recorder::new(ctx.conn.clone()));
+    let recorder = Arc::new(Recorder::new(ctx.conn.clone(), ctx.device_id.clone()));
     let cancel = CancellationToken::new();
 
     let input_filters: Vec<Box<dyn InputFilter>> = vec![

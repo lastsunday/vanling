@@ -115,7 +115,11 @@
     "turn_count": "{{count}} turns",
     "show_all": "Show all {{count}}",
     "collapse": "Collapse",
-    "select_hint": "Select a session to view details",
+    "select_hint": "No sessions found",
+    "latency_waterfall": "Latency Waterfall",
+    "bottleneck": "Bottleneck",
+    "runtime": "Runtime",
+    "round_label": "Round {{number}}",
     "detail": {
       "title": "Session Detail",
       "session_id": "Session ID",
@@ -123,13 +127,7 @@
       "updated": "Updated",
       "turn_count": "{{count}} turns",
       "play": "Play",
-      "back": "Back to List"
-    },
-    "latency_waterfall": "Latency Waterfall",
-    "bottleneck": "Bottleneck",
-    "runtime": "Runtime",
-    "round_label": "Round {{number}}",
-    "detail": {
+      "back": "Back to List",
       "copy": "Copy"
     },
     "step": {
@@ -141,6 +139,8 @@
       "tts": "Speech Synthesis"
     },
     "table": {
+"session_id": "Session #",
+"device_id": "Device #",
       "time": "Time",
       "summary": "Summary",
       "turns": "Turns",
