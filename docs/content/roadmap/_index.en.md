@@ -3,7 +3,7 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "ad72f4f635e9da18614e320817d82137c038a4b0"
+source_file_hash = "8210eb3d816c3ffe0c972feb0480c1d35b9fbe14"
 translated_at = "2026-07-30T00:00:00Z"
 +++
 
@@ -132,7 +132,9 @@ Column reference:
 
 | Status | Test | Item   | Description                                               | Link |
 | ------ | ---- | ------ | --------------------------------------------------------- | ---- |
-| ⚠️     | ✅   | OTA v1 | Basic device auth, returns ws_url+token (current token is empty) |  |
+| ✅     | ✅   | OTA v1 | Basic device auth, returns ws_url+token (real JWT for activated, empty otherwise) |  |
+| ❌     | ❌   | Firmware distribution | OTA returns version: "0.0.1" + url: null, no actual firmware download link |  |
+| ❌     | ❌   | MQTT support | OTA returns mqtt: null, MQTT protocol not implemented |  |
 | ❌     | ❌   | OTA v2 | Full auth + device info report + firmware distribution (returns static data) |  |
 
 #### Nostr Authentication
@@ -275,7 +277,7 @@ Column reference:
 | ✅     | ❌   | GET /api/stats/latency        | Latency percentile data (P50/P90/P99 etc.)     |      |
 | ❌     | ❌   | Rate Limiting                  | Login throttling / brute force protection not implemented |  |
 | ❌     | ❌   | Invite Code system             | Registration invite code generation/verification not implemented |  |
-| ✅     | ❌   | Device management CRUD         | List/activate/disable/delete endpoints implemented |  |
+| ✅     | ❌   | Device management CRUD         | List/activate (by code/by ID)/disable/enable/delete endpoints implemented (no detail) |  |
 
 ### Admin UI
 
@@ -301,6 +303,6 @@ Column reference:
 | ------ | ---- | -------------------- | ------------------------------------------------------------------- | ---- |
 | ❌     | ❌   | email UNIQUE constraint | entity has unique annotation, migration not implemented           |      |
 | ❌     | ❌   | Graceful shutdown order | Shutdown ordering missing across modules                          |      |
-| ❌     | ❌   | Runtime race condition  | OnceLock initialization has race condition                        |      |
+| ✅     | —    | Runtime race condition  | build() runs synchronously, set() happens-before any worker thread, no race |      |
 | ❌     | ❌   | Timestamp auto-fill     | Config entity missing ActiveModelBehavior                         |      |
 
