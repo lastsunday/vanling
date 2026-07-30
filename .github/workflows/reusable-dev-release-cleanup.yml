@@ -30,16 +30,38 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Clean GitHub releases and tags
+      - name: Clean old GitHub releases and tags
         run: |
           KEEP=${{ inputs.keep }}
           TAG_PREFIX="${{ inputs.tag-prefix }}"
-          gh api --paginate "/repos/${GITHUB_REPOSITORY}/git/refs/tags" \
-            --jq '.[].ref' | grep "^refs/tags/${TAG_PREFIX}" | sort -V | head -n -${KEEP} | while read ref; do
-            tag="${ref#refs/tags/}"
-            echo "Cleaning: $tag"
-            gh release delete "$tag" --yes || true
-            gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/git/refs/${ref#refs/}" || true
+
+          releases_json=$(gh api --paginate \
+            "/repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[] | {id, tag_name, draft, created_at}' 2>/dev/null \
+            | jq -s --arg p "$TAG_PREFIX" \
+              '[.[] | select(.tag_name | startswith($p))] | sort_by(.created_at) | reverse'
+          ) || echo "[]"
+
+          total=$(echo "$releases_json" | jq 'length' 2>/dev/null || echo 0)
+          echo "Found ${total} releases matching ${TAG_PREFIX}"
+
+          if [ "$total" -le "$KEEP" ]; then
+            echo "All releases within retention limit (keep=${KEEP})"
+            exit 0
+          fi
+
+          echo "Keeping ${KEEP}, cleaning $((total - KEEP)) releases..."
+          echo "$releases_json" | jq -r '.['"${KEEP}"':][] | "\(.id) \(.tag_name) \(.draft)"' | \
+          while read id tag_name is_draft; do
+            echo "Cleaning: ${tag_name} (id=${id})"
+            if [ "$is_draft" = "true" ]; then
+              gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/releases/${id}" || true
+            else
+              gh release delete "$tag_name" --yes 2>/dev/null || \
+                gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/releases/${id}" || true
+            fi
+            gh api -X DELETE \
+              "/repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag_name}" 2>/dev/null || true
           done
 
       - name: Clean old Docker Hub dev images

@@ -5,7 +5,7 @@ usage() {
   cat <<EOF
 Usage: $0 --prefix <prefix> [--keep <N>] [--dry-run]
 
-Clean up old GitHub releases and tags matching a given prefix.
+Clean up old GitHub releases (including drafts) and tags matching a given prefix.
 
 Options:
   --prefix PREFIX   Tag prefix (e.g. dev-server-, dev-app-)
@@ -45,38 +45,43 @@ if ! gh auth status &>/dev/null; then
   exit 1
 fi
 
-echo "Fetching all tags matching '${PREFIX}'..."
+REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 
-tags=$(gh api --paginate "/repos/${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}/git/refs/tags" \
-  --jq '.[].ref' | grep "^refs/tags/${PREFIX}" | sort -V || true)
+echo "Fetching all releases matching '${PREFIX}'..."
 
-tag_count=$(echo "$tags" | grep -c . || true)
-echo "Found ${tag_count} tags"
+releases_json=$(gh api --paginate \
+  "/repos/${REPO}/releases" \
+  --jq '.[] | {id, tag_name, draft, created_at}' 2>/dev/null \
+  | jq -s --arg p "$PREFIX" \
+    '[.[] | select(.tag_name | startswith($p))] | sort_by(.created_at) | reverse'
+) || echo "[]"
 
-if [ "$tag_count" -le "$KEEP" ]; then
-  echo "All tags within retention limit (keep=${KEEP}), nothing to clean"
+total=$(echo "$releases_json" | jq 'length' 2>/dev/null || echo 0)
+echo "Found ${total} releases matching ${PREFIX}"
+
+if [ "$total" -le "$KEEP" ]; then
+  echo "All releases within retention limit (keep=${KEEP})"
   exit 0
 fi
 
-tags_to_delete=$(echo "$tags" | head -n -"${KEEP}")
-
-echo "Tags/releases to delete:"
-echo "$tags_to_delete" | while read ref; do
-  tag="${ref#refs/tags/}"
-  echo "  $tag"
-done
+echo "Releases to delete ($((total - KEEP)) oldest):"
+echo "$releases_json" | jq -r '.['"${KEEP}"':][] | "  \(.tag_name) (draft=\(.draft))"'
 
 if [ "$DRY_RUN" = true ]; then
   echo "Dry-run mode, skipping actual deletion"
   exit 0
 fi
 
-echo "$tags_to_delete" | while read ref; do
-  tag="${ref#refs/tags/}"
-  echo "Deleting release: $tag"
-  gh release delete "$tag" --yes || echo "  (release not found, skipping)"
-  echo "Deleting tag: $tag"
-  gh api -X DELETE "/repos/${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}/git/refs/${ref#refs/}" || echo "  (tag not found, skipping)"
+echo "$releases_json" | jq -r '.['"${KEEP}"':][] | "\(.id) \(.tag_name) \(.draft)"' | \
+while read id tag_name is_draft; do
+  echo "Deleting: ${tag_name} (id=${id})"
+  if [ "$is_draft" = "true" ]; then
+    gh api -X DELETE "/repos/${REPO}/releases/${id}" || echo "  (release delete failed)"
+  else
+    gh release delete "$tag_name" --yes 2>/dev/null || \
+      gh api -X DELETE "/repos/${REPO}/releases/${id}" || echo "  (release delete failed)"
+  fi
+  gh api -X DELETE "/repos/${REPO}/git/refs/tags/${tag_name}" 2>/dev/null || echo "  (tag not found)"
 done
 
 echo "Cleanup complete"
