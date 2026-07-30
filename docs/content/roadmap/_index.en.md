@@ -3,7 +3,7 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "8210eb3d816c3ffe0c972feb0480c1d35b9fbe14"
+source_file_hash = "486b80831e91c9d623d3ebd8af65b0fa80347595"
 translated_at = "2026-07-30T00:00:00Z"
 +++
 
@@ -147,7 +147,7 @@ Column reference:
 
 | Status | Test | Item               | Description                       | Link |
 | ------ | ---- | ------------------ | --------------------------------- | ---- |
-| ❌     | ❌   | Bearer Token verify | Not implemented, all WS connections unauthenticated |  |
+| ✅     | ✅   | Bearer Token verify | Authorization header + query param fallback, JWT decode verification |  |
 
 ### Activate & Bind
 

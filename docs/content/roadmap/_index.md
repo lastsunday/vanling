@@ -144,7 +144,7 @@ sort_by = "weight"
 
 | 状态 | 测试 | 项目              | 描述                       | 链接 |
 | ---- | ---- | ----------------- | -------------------------- | ---- |
-| ❌   | ❌   | Bearer Token 验证 | 未实现，所有 WS 连接免认证 |      |
+| ✅   | ✅   | Bearer Token 验证 | Authorization header + query param fallback，JWT 解码验证 |      |
 
 ### Activate&Bind
 
