@@ -5,7 +5,7 @@ tasks:
   bump:
     script: |
       bash ../../scripts/bump.sh \
-        "chobits-app" \
+        "vanling-app" \
         "pubspec.yaml" \
         "apps/app/**"
     options:

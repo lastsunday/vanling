@@ -42,7 +42,7 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKER_PASSWORD }}
-          IMAGE_NAME: chobits
+          IMAGE_NAME: vanling
           KEEP: ${{ inputs.keep }}
         run: |
           set -euo pipefail
@@ -141,7 +141,7 @@ jobs:
       - name: Clean old ghcr.io dev images
         if: ${{ !inputs.dry-run }}
         env:
-          PACKAGE_NAME: chobits
+          PACKAGE_NAME: vanling
           KEEP: ${{ inputs.keep }}
         run: |
           set -euo pipefail

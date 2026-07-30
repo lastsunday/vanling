@@ -9,12 +9,12 @@ weight = 200
 
 ## 会话概览
 
-chobits 服务端使用 **Session + Round** 模型管理对话：
+vanling 服务端使用 **Session + Round** 模型管理对话：
 
 - **Session**：一次 WebSocket 连接的生命周期。管理连接、认证、状态转换。
 - **Round**：每轮对话（用户发言 → 服务端响应）。一个 Session 包含多个 Round。
 
-Session 在 `service/src/chobits/session/mod.rs` 中定义，不绑定具体传输协议（WebSocket / Matrix 等），通过 `Frame` 枚举与外界通信。
+Session 在 `service/src/ling/session/mod.rs` 中定义，不绑定具体传输协议（WebSocket / Matrix 等），通过 `Frame` 枚举与外界通信。
 
 ## 数据流
 
@@ -81,7 +81,7 @@ LLM 推理 + TTS 合成 + 音频流式输出。
 
 ## Round 生命周期
 
-Round 在 `service/src/chobits/session/round.rs` 中实现，管理单轮对话的 LLM 推理和 TTS 合成。
+Round 在 `service/src/ling/session/round.rs` 中实现，管理单轮对话的 LLM 推理和 TTS 合成。
 
 ### 双 Round 模式
 
@@ -105,7 +105,7 @@ Shadow Round    Running Round
 
 ```
 ChatParam → Round
-  ├── Chii.ask() → LLM 流式输出
+  ├── Ling.ask() → LLM 流式输出
   │     ├── LLMResult (文本片段)
   │     └── ToolCall (→ MCP → LLM)
   └── Tts.stream() → 音频帧
@@ -115,12 +115,12 @@ ChatParam → Round
 
 Round 的 LLM 和 TTS 并行执行流式输出，通过 OutputMessage 发送。
 
-## ChiiCore
+## LingCore
 
-ChiiCore（`api/src/chii/`）是 LLM + MCP 的编排层。
+LingCore（`api/src/ling_core/`）是 LLM + MCP 的编排层。
 
 ```
-ChiiCore
+LingCore
   ├── HistoryManager (消息历史管理 / 截断)
   ├── LlmClient (Qwen3 / Echo)
   ├── McpRegistry (MCP 工具聚合)
@@ -136,7 +136,7 @@ ChiiCore
 
 ## Listener
 
-Listener（`service/src/chobits/listener.rs` trait，`api/src/ws/default_listener.rs` 实现）编排 VAD + ASR：
+Listener（`service/src/ling/listener.rs` trait，`api/src/ws/default_listener.rs` 实现）编排 VAD + ASR：
 
 1. 接收音频数据（`ListenInput::Audio`）
 2. VAD 检测语音活动（Earshot Silero VAD）
@@ -180,7 +180,7 @@ Session 通过 Builder 模式构造：
 SessionBuilder::new()
     .with_id(session_id)
     .with_listener(DefaultListener::new(vad, asr))
-    .with_chii(ChiiCoreBuilder::new(llm, mcp_registry).build())
+    .with_ling(LingCoreBuilder::new(llm, mcp_registry).build())
     .with_tts(TtsManager::default())
     .with_config(session_config)
     .with_audio_config(audio_config)
@@ -215,7 +215,7 @@ main.rs
 
 | 路径 | 模块 | 说明 |
 |------|------|------|
-| `/chobits/{version}` | `ws/` | WebSocket 端点（Xiaozhi 协议） |
+| `/vanling/{version}` | `ws/` | WebSocket 端点（Xiaozhi 协议） |
 | `/mcp` | `mcp/` | MCP Streamable HTTP 服务 |
 | `/api/auth/*` | `auth/` | 登录 / Token 刷新 |
 | `/api/ota*` | `ota/` | OTA 协议（设备注册、激活验证） |

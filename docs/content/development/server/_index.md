@@ -6,7 +6,7 @@ sort_by = "weight"
 
 # 服务端
 
-chobits 服务端基于 Rust + axum 构建，实现 Xiaozhi 智能音箱协议，提供实时语音对话能力。
+vanling 服务端基于 Rust + axum 构建，实现 Xiaozhi 智能音箱协议，提供实时语音对话能力。
 
 本小节包含以下文档：
 

@@ -14,7 +14,7 @@ tasks:
       - "public"
 
   build-gh:
-    command: "zola build --base-url https://lastsunday.github.io/chobits --output-dir public-gh"
+    command: "zola build --base-url https://lastsunday.github.io/vanling --output-dir public-gh"
     inputs:
       - "content/**/*"
       - "templates/**/*"

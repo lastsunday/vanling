@@ -25,7 +25,7 @@ apps/server/
 │       ├── ota.rs            # OTA 固件升级
 │       ├── device.rs         # 设备管理（admin CRUD）
 │       ├── ws/               # WebSocket 处理器（核心实时管道）
-│       ├── chii/             # ChiiCore：LLM + MCP 编排
+│       ├── ling_core/        # LingCore：LLM + MCP 编排
 │       ├── asr/              # ASR Manager + 模型（XAsr）
 │       ├── tts/              # TTS Manager + 模型（MatchaTTS）
 │       ├── vad/              # VAD Manager + 模型（Earshot）
@@ -35,11 +35,11 @@ apps/server/
 │       ├── matrix/           # Matrix 聊天集成
 │       └── common/           # 共享辅助（device selection、errors）
 ├── service/                  # 业务逻辑层（trait 定义 + Session 状态机）
-│   └── src/chobits/
+│   └── src/ling/
 │       ├── session/          # Session 状态机 + Round 生命周期
 │       ├── frame.rs          # Frame / FrameResult / OutputMessage
 │       ├── listener.rs       # Listener trait（VAD + ASR 编排）
-│       ├── chii.rs           # Chii trait（LLM + MCP 编排）
+│       ├── core.rs           # Ling trait（LLM + MCP 编排）
 │       ├── asr.rs / tts.rs / vad.rs  # AI trait 定义
 │       ├── llm/              # Llm trait + ChatMessage / ToolDef
 │       ├── mcp/              # McpClient trait + McpRegistry
@@ -65,9 +65,9 @@ Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilt
 
 配置使用 [figment](https://docs.rs/figment) 分层加载，优先级从低到高：
 
-1. `CHOBITS_CONFIG` 环境变量指向的 TOML 文件
+1. `VANLING_CONFIG` 环境变量指向的 TOML 文件
 2. CLI `--config` 指定路径（可多个，会合并）
-3. `CHOBITS_` 前缀环境变量（`CHOBITS_LLM_MODEL` 等）
+3. `VANLING_` 前缀环境变量（`VANLING_LLM_MODEL` 等）
 4. CLI `-O key=value` 覆盖
 
 ### 热重载
@@ -94,11 +94,11 @@ Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilt
 
 ## Downloader 系统
 
-`chobits downloader` 子命令提供模型资产下载能力：
+`vanling-server downloader` 子命令提供模型资产下载能力：
 
 - **Manifest 驱动**：模型定义在 `src/downloader/manifests/` 下的 TOML 文件中，包含 URL、变体、checksum
 - **分类安装**：`--category tts|asr|llm|vad|reference`
-- **交互式向导**：`chobits downloader wizard` 引导式安装
+- **交互式向导**：`vanling-server downloader wizard` 引导式安装
 - **镜像支持**：`--mirror hf-mirror.com` 为国内用户加速
 - **校验**：自动 SHA256 校验下载文件
 - **路径派生**：安装后的路径通过 `derive_tts_path` / `derive_asr_path` / `derive_llm_path` 自动注入配置

@@ -14,7 +14,7 @@ use rmcp::{
         StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
-use service::chobits::frame::{FrameResult, OutputMessage};
+use service::ling::frame::{FrameResult, OutputMessage};
 use tracing_test::traced_test;
 use utoipa_axum::router::OpenApiRouter;
 

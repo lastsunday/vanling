@@ -136,7 +136,7 @@ class MyApp extends StatelessWidget {
               return ApplyTextOptions(
                 child: MaterialApp.router(
                   routerConfig: _router,
-                  title: 'Chobits',
+                  title: 'Vanling',
                   themeMode: options.themeMode,
                   theme: AppThemeData.lightThemeData.copyWith(
                     platform: options.platform,

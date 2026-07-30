@@ -3,13 +3,13 @@ title = "Development Documentation"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "5a85a9a5251b4e9a32d4e12f92f54960423471d4"
-translated_at = "2026-07-28T18:00:00Z"
+source_file_hash = "7ae3aa29f9a85a62adec5d8320f895a0a37dee4b"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # Development Documentation
 
-Development guides for the Chobits server and related projects.
+Development guides for the Vanling server and related projects.
 
 ## [Server](@/development/server/architecture.en.md)
 

@@ -52,7 +52,7 @@ pub struct ServeArgs {
     #[arg(
 		long,
 		hide(true),
-		env = "CHOBITS_RUNTIME_WORKER_AFFINITY",
+		env = "VANLING_RUNTIME_WORKER_AFFINITY",
 		action = ArgAction::Set,
 		num_args = 0..=1,
 		require_equals(false),
@@ -66,7 +66,7 @@ pub struct ServeArgs {
     #[arg(
 		long,
 		hide(true),
-		env = "CHOBITS_RUNTIME_GC_ON_PARK",
+		env = "VANLING_RUNTIME_GC_ON_PARK",
 		action = ArgAction::Set,
 		num_args = 0..=1,
 		require_equals(false),
@@ -82,7 +82,7 @@ pub struct ServeArgs {
     #[arg(
 		long,
 		hide(true),
-		env = "CHOBITS_RUNTIME_GC_MUZZY",
+		env = "VANLING_RUNTIME_GC_MUZZY",
 		action = ArgAction::Set,
 		num_args = 0..=1,
 		require_equals(false),
@@ -100,7 +100,7 @@ impl ServeArgs {
             worker_affinity: self.worker_affinity,
             gc_on_park: self.gc_on_park,
             gc_muzzy: self.gc_muzzy,
-            worker_name: "chobits:worker",
+            worker_name: "vanling:worker",
             worker_min: 2,
             worker_keepalive: 36,
             max_blocking_threads: 1024,

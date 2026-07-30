@@ -1,4 +1,4 @@
-# chobits-server
+# vanling-server
 
 ## Development
 
@@ -86,7 +86,7 @@ cargo test --workspace
 
 ### Websocket handle flow
 
-1. http api/ota -> ws chobits/v1
+1. http api/ota -> ws vanling/v1
 2. ws.on_upgrade
    1. socket split write and read
       1. read

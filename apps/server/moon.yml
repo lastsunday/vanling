@@ -5,7 +5,7 @@ tasks:
   bump:
     script: |
       bash ../../scripts/bump.sh \
-        "chobits-server" \
+        "vanling-server" \
         "Cargo.toml" \
         "apps/server/**" \
         "apps/server-ui/**"
@@ -16,16 +16,16 @@ tasks:
     command: 'cargo fmt --check'
 
   check:
-    command: 'cargo check --package chobits-server'
+    command: 'cargo check --package vanling-server'
 
   build:
-    command: 'cargo build --package chobits-server'
-    outputs: ['/target/debug/chobits-server']
+    command: 'cargo build --package vanling-server'
+    outputs: ['/target/debug/vanling-server']
     deps:
       - ~:check
 
   build-release:
-    command: 'cargo build --release --package chobits-server'
+    command: 'cargo build --release --package vanling-server'
 
   lint:
     command: 'cargo clippy --workspace -- -D warnings'
@@ -34,22 +34,22 @@ tasks:
 
   test-download-resources:
     script: |
-      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet asr x_asr default && \
-      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet tts matcha matcha-icefall-zh-en && \
-      cargo run --package chobits-server -- downloader install --data-dir ../../data --quiet llm qwen3 0.6b
+      cargo run --package vanling-server -- downloader install --data-dir ../../data --quiet asr x_asr default && \
+      cargo run --package vanling-server -- downloader install --data-dir ../../data --quiet tts matcha matcha-icefall-zh-en && \
+      cargo run --package vanling-server -- downloader install --data-dir ../../data --quiet llm qwen3 0.6b
     deps:
       - ~:build
     options:
       cache: false
 
   test:
-    command: 'cargo test --package chobits-server --package api'
+    command: 'cargo test --package vanling-server --package api'
     deps:
       - ~:build
       - ~:test-download-resources
 
   test-pg:
-    command: 'cargo test --package chobits-server --package api'
+    command: 'cargo test --package vanling-server --package api'
     env:
       TEST_DATABASE: 'pg'
     deps:
@@ -57,7 +57,7 @@ tasks:
       - ~:test-download-resources
 
   run:
-    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" --config=application.toml'
+    command: 'cargo run --package vanling-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" --config=application.toml'
     deps:
       - ~:build
     options:
@@ -65,7 +65,7 @@ tasks:
       cache: false
 
   dev:
-    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" --config=application-dev.toml'
+    command: 'cargo run --package vanling-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" --config=application-dev.toml'
     deps:
       - ~:build
     options:
@@ -73,7 +73,7 @@ tasks:
       cache: false
 
   dev-minimal:
-    command: 'cargo run --package chobits-server -- -O "vad_model=''void''" -O "asr_model=''void''" -O "tts_model=''mute''" -O "llm_provider=''local_echo''"'
+    command: 'cargo run --package vanling-server -- -O "vad_model=''void''" -O "asr_model=''void''" -O "tts_model=''mute''" -O "llm_provider=''local_echo''"'
     deps:
       - ~:build
     options:
@@ -81,7 +81,7 @@ tasks:
       cache: false
 
   dev-lite:
-    command: 'cargo run --package chobits-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''x_asr''" -O "tts_model=''matcha_tts''" -O "llm_provider=''local_echo''"'
+    command: 'cargo run --package vanling-server -- -O "address=''0.0.0.0''" -O "data_dir=''../../data''" -O "vad_model=''earshot''" -O "asr_model=''x_asr''" -O "tts_model=''matcha_tts''" -O "llm_provider=''local_echo''"'
     deps:
       - ~:build
     options:
@@ -89,7 +89,7 @@ tasks:
       cache: false
 
   downloader:
-    command: 'cargo run --package chobits-server -- downloader'
+    command: 'cargo run --package vanling-server -- downloader'
     deps:
       - ~:build
     options:
@@ -97,7 +97,7 @@ tasks:
       runInCI: false
 
   downloader-install:
-    command: 'cargo run --package chobits-server -- downloader install --data-dir ../../data'
+    command: 'cargo run --package vanling-server -- downloader install --data-dir ../../data'
     deps:
       - ~:build
     options:
@@ -110,7 +110,7 @@ tasks:
       runInCI: false
 
   downloader-list:
-    command: 'cargo run --package chobits-server -- downloader list'
+    command: 'cargo run --package vanling-server -- downloader list'
     deps:
       - ~:build
     options:
@@ -119,8 +119,8 @@ tasks:
 
   downloader-all-and-checksums:
     script: |
-      cargo run --package chobits-server -- downloader install --all --data-dir ../../data && \
-      cargo run --package chobits-server -- downloader update-checksums --data-dir ../../data
+      cargo run --package vanling-server -- downloader install --all --data-dir ../../data && \
+      cargo run --package vanling-server -- downloader update-checksums --data-dir ../../data
     deps:
       - ~:build
     options:

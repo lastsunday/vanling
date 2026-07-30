@@ -5,7 +5,7 @@ use self::model::mute::TtsMute;
 use crate::config;
 use crate::config::audio::AudioConfig;
 use crate::config::tts::TtsConfig;
-use service::chobits::tts::Tts;
+use service::ling::tts::Tts;
 use std::sync::{Arc, OnceLock};
 
 const OPUS_MAX_PACKET_MULTIPLIER: usize = 4;

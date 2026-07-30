@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use framework::error::AppError;
-use service::chobits::asr::{Asr, AsrStream, RecognizerResult};
+use service::ling::asr::{Asr, AsrStream, RecognizerResult};
 use sherpa_onnx::{
     OnlineRecognizer, OnlineRecognizerConfig, OnlineStream, OnlineTransducerModelConfig,
 };

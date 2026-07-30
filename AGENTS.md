@@ -1,6 +1,6 @@
 # AGENTS.md
 
-专用于 chobits仓库的 AI 代理指令。优先遵循以下原则（降序）：
+专用于 vanling 仓库的 AI 代理指令。优先遵循以下原则（降序）：
 
 1. 保持代码库一致性（风格、模式、架构）
 2. 首选已有的 crate/packages，不引入新依赖
@@ -68,7 +68,7 @@
 1. `rg <pattern> --type rust` / `rg <pattern> --type ts` 搜索代码库
 2. 搜索网络主流方案再动手
 3. 查看同类模块测试文件了解预期行为
-4. 阅读 trait 定义（`service/src/chobits/`）
+4. 阅读 trait 定义（`service/src/ling/`）
 5. 检查 `docs/content/development/server/` 架构文档
 6. 分支实验 + `cargo check`
 
@@ -89,6 +89,6 @@
 
 > 详见 `docs/content/development/server/architecture.md`
 
-`Client → WS → Auth → Session → [VAD] → [ASR] → [ChiiCore (LLM + MCP)] → [TTS] → Client`
+`Client → WS → Auth → Session → [VAD] → [ASR] → [LingCore (LLM + MCP)] → [TTS] → Client`
 
 要点：Xiaozhi 协议 / Manager + OnceLock 单例 / Config 原子指针 + 本地缓存 / Session + RoundLoop

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::chobits::message::hello::AudioParam;
+use crate::ling::message::hello::AudioParam;
 
 #[derive(Debug, Clone)]
 pub enum ListenInput {

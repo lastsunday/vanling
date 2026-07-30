@@ -5,13 +5,13 @@ use api::ws::filter::{FilterCtx, OutputFilter, RecorderOutputFilter};
 use framework::error::AppError;
 use framework::error::critical_code::CriticalErrorCode;
 use rmcp::model::{JsonRpcRequest, Request, RequestId};
-use service::chobits::frame::{FrameResult, OutputMessage};
-use service::chobits::message::audio::AudioMessage;
-use service::chobits::message::hello::HelloMessage;
-use service::chobits::message::llm::LlmMessage;
-use service::chobits::message::mcp::McpRequest;
-use service::chobits::message::stt::SttMessage;
-use service::chobits::message::tts::{TtsMessage, TtsState};
+use service::ling::frame::{FrameResult, OutputMessage};
+use service::ling::message::audio::AudioMessage;
+use service::ling::message::hello::HelloMessage;
+use service::ling::message::llm::LlmMessage;
+use service::ling::message::mcp::McpRequest;
+use service::ling::message::stt::SttMessage;
+use service::ling::message::tts::{TtsMessage, TtsState};
 
 fn make_msg(round_id: Option<&str>, payload: FrameResult) -> OutputMessage {
     OutputMessage {
@@ -26,7 +26,7 @@ async fn make_recorder() -> Arc<Recorder> {
     let conn = framework::database::establish_connection("sqlite::memory:")
         .await
         .expect("create memory db");
-    Arc::new(Recorder::new(conn))
+    Arc::new(Recorder::new(conn, None))
 }
 
 async fn process(filter: &RecorderOutputFilter, msg: OutputMessage) {
@@ -470,7 +470,7 @@ async fn test_pre_round_frames_elapsed_us_non_negative() {
         .await
         .expect("create memory db");
     Migrator::up(&conn, None).await.expect("run migration");
-    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let recorder = Arc::new(Recorder::new(conn.clone(), None));
     let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
 
     // 1. start_round 之前记录帧
@@ -535,7 +535,7 @@ async fn test_multi_sentence_tts_round_data() {
         .await
         .expect("create memory db");
     Migrator::up(&conn, None).await.expect("run migration");
-    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let recorder = Arc::new(Recorder::new(conn.clone(), None));
     let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
     let rid = "multi-tts-round";
 
@@ -693,7 +693,7 @@ async fn test_single_sentence_tts_round_data() {
         .await
         .expect("create memory db");
     Migrator::up(&conn, None).await.expect("run migration");
-    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let recorder = Arc::new(Recorder::new(conn.clone(), None));
     let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
     let rid = "single-tts-round";
 
@@ -789,7 +789,7 @@ async fn test_tts_round_data_no_audio() {
         .await
         .expect("create memory db");
     Migrator::up(&conn, None).await.expect("run migration");
-    let recorder = Arc::new(Recorder::new(conn.clone()));
+    let recorder = Arc::new(Recorder::new(conn.clone(), None));
     let filter = RecorderOutputFilter::new(Some(recorder.clone()), "test".into());
     let rid = "no-audio-tts-round";
 

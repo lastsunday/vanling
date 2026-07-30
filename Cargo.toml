@@ -14,9 +14,9 @@ edition = "2024"
 authors = ["lastsunday"]
 
 [workspace.dependencies]
-chobits-build-metadata = { package = "chobits_build_metadata", path = "libs/build-metadata", default-features = false }
-chobits-macros = { package = "chobits_macros", path = "libs/macros", default-features = false }
-chobits-framework-macros = { package = "framework-macros", path = "libs/framework/macros", default-features = false }
+vanling-build-metadata = { package = "vanling_build_metadata", path = "libs/build-metadata", default-features = false }
+vanling-macros = { package = "vanling_macros", path = "libs/macros", default-features = false }
+vanling-framework-macros = { package = "framework-macros", path = "libs/framework/macros", default-features = false }
 clap = "4.6.1"
 axum = "0.8.9"
 axum-extra = "0.12.6"

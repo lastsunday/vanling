@@ -3,7 +3,7 @@ use framework::error::AppError;
 use futures::Stream;
 use rubato::audioadapter_buffers::direct::SequentialSliceOfVecs;
 use rubato::{Fft, FixedSync, Indexing, Resampler};
-use service::chobits::tts::{Tts, TtsPacket};
+use service::ling::tts::{Tts, TtsPacket};
 use sherpa_onnx::{
     GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsMatchaModelConfig,
     OfflineTtsModelConfig,

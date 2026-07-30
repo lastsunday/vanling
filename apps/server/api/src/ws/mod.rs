@@ -17,8 +17,8 @@ use framework::{
     id::gen_id,
 };
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use service::chobits::frame::{Frame, FrameResult, OutputMessage};
-use service::chobits::session::{self, SessionBuilder};
+use service::ling::frame::{Frame, FrameResult, OutputMessage};
+use service::ling::session::{self, SessionBuilder};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::StreamMap;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -43,7 +43,7 @@ use crate::{
         mcp_session::{McpRouterFilter, setup_mcp_session},
         protocol_translator::ProtocolTranslator,
     },
-    {chii::ChiiCoreBuilder, llm::LlmManager},
+    {ling_core::LingCoreBuilder, llm::LlmManager},
 };
 
 const TAG: &str = "ws";
@@ -83,7 +83,7 @@ pub fn verify_device_token(headers: &HeaderMap) -> Result<Principal, Box<Respons
 #[debug_handler]
 #[tracing::instrument(name="ws",skip_all,fields(ip = %addr))]
 #[utoipa::path(get,
-    path = "/chobits/{version}",
+    path = "/vanling/{version}",
     tag=TAG,
     security(()),
     params(
@@ -197,8 +197,8 @@ where
             AsrManager::global().default(),
             ctx.session_config.silence_voice_timeout,
         )))
-        .with_chii(Arc::new(
-            ChiiCoreBuilder::new()
+        .with_ling(Arc::new(
+            LingCoreBuilder::new()
                 .with_session_id(Some(ctx.session_id.clone()))
                 .with_model(LlmManager::global().default())
                 .with_mcp_registry(mcp_ctx.registry)

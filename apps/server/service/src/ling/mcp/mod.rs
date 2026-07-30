@@ -5,7 +5,7 @@ pub use registry::*;
 use async_trait::async_trait;
 use framework::error::AppError;
 
-pub use crate::chobits::llm::ToolDef;
+pub use crate::ling::llm::ToolDef;
 
 #[async_trait]
 pub trait McpClient: Send + Sync {

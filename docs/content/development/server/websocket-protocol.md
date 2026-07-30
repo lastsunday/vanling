@@ -5,7 +5,7 @@ weight = 202
 
 # WebSocket 通信协议
 
-本协议基于 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 与 chobits 服务端的实际实现整理。
+本协议基于 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 与 vanling 服务端的实际实现整理。
 
 ---
 

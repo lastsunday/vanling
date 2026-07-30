@@ -345,7 +345,6 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
- "chobits_macros",
  "chrono",
  "config",
  "cucumber",
@@ -404,6 +403,7 @@ dependencies = [
  "utoipa-axum",
  "utoipa-scalar",
  "validator",
+ "vanling_macros",
  "wavers",
  "web",
  "xid",
@@ -1693,61 +1693,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "chobits-server"
-version = "0.1.0"
-dependencies = [
- "accelerate-src",
- "anyhow",
- "api",
- "async-trait",
- "bindgen_cuda",
- "bzip2 0.6.1",
- "candle-core",
- "candle-nn",
- "candle-transformers",
- "clap 4.6.1",
- "color-eyre",
- "dialoguer",
- "figment",
- "framework",
- "futures-util",
- "hex",
- "include_dir",
- "indicatif",
- "intel-mkl-src",
- "jiff",
- "mockito",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tar",
- "tokenizers 0.23.1",
- "tokio",
- "toml 1.1.2+spec-1.1.0",
- "tracing",
- "tracing-error",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "chobits_build_metadata"
-version = "0.1.0"
-dependencies = [
- "built",
-]
-
-[[package]]
-name = "chobits_macros"
-version = "0.1.0"
-dependencies = [
- "itertools 0.15.0",
- "proc-macro2",
- "quote",
- "syn 2.0.118",
 ]
 
 [[package]]
@@ -3405,7 +3350,6 @@ dependencies = [
  "axum-valid",
  "backtrace",
  "bcrypt",
- "chobits_build_metadata",
  "console-subscriber",
  "core_affinity",
  "framework-macros",
@@ -3436,6 +3380,7 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "validator",
+ "vanling_build_metadata",
  "xid",
 ]
 
@@ -10580,6 +10525,61 @@ name = "value-bag"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ba6f5989077681266825251a52748b8c1d8a4ad098cc37e440103d0ea717fc0"
+
+[[package]]
+name = "vanling-server"
+version = "0.1.0"
+dependencies = [
+ "accelerate-src",
+ "anyhow",
+ "api",
+ "async-trait",
+ "bindgen_cuda",
+ "bzip2 0.6.1",
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "clap 4.6.1",
+ "color-eyre",
+ "dialoguer",
+ "figment",
+ "framework",
+ "futures-util",
+ "hex",
+ "include_dir",
+ "indicatif",
+ "intel-mkl-src",
+ "jiff",
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tar",
+ "tokenizers 0.23.1",
+ "tokio",
+ "toml 1.1.2+spec-1.1.0",
+ "tracing",
+ "tracing-error",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "vanling_build_metadata"
+version = "0.1.0"
+dependencies = [
+ "built",
+]
+
+[[package]]
+name = "vanling_macros"
+version = "0.1.0"
+dependencies = [
+ "itertools 0.15.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
 
 [[package]]
 name = "vcpkg"

@@ -9,7 +9,7 @@ use std::{
     },
 };
 
-use chobits_macros::implement;
+use vanling_macros::implement;
 
 use super::Config;
 

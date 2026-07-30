@@ -163,7 +163,7 @@ async fn query_connect_info_impl(world: &mut TestWorld) {
 
 #[then(expr = "所有者获得连接地址")]
 async fn get_connect_info(world: &mut TestWorld) {
-    assert_eq!("ws://127.0.0.1:3000/chobits/v1", world.ws_url);
+    assert_eq!("ws://127.0.0.1:3000/vanling/v1", world.ws_url);
     assert!(
         !world.activation_code.is_empty(),
         "new device should have activation code"
@@ -180,7 +180,7 @@ async fn get_connect_info(world: &mut TestWorld) {
 
 #[then(expr = "所有者获得连接地址和令牌")]
 async fn get_connect_info_with_token(world: &mut TestWorld) {
-    assert_eq!("ws://127.0.0.1:3000/chobits/v1", world.ws_url);
+    assert_eq!("ws://127.0.0.1:3000/vanling/v1", world.ws_url);
     assert!(
         !world.ws_token.is_empty(),
         "activated device should have token"

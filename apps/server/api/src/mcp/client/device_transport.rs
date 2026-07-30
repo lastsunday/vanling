@@ -8,7 +8,7 @@ use rmcp::{
     transport::Transport,
 };
 use serde_json::Value;
-use service::chobits::{
+use service::ling::{
     frame::{FrameResult, OutputMessage},
     message::mcp::McpRequest,
 };

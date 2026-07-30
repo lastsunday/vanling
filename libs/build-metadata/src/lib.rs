@@ -7,10 +7,10 @@ pub static GIT_COMMIT_HASH: Option<&str> = option_env!("GIT_COMMIT_HASH");
 pub static GIT_COMMIT_HASH_SHORT: Option<&str> = option_env!("GIT_COMMIT_HASH_SHORT");
 
 // this would be a lot better if Option::or was const.
-pub static VERSION_EXTRA: Option<&str> = if let v @ Some(_) = option_env!("CHOBITS_VERSION_EXTRA") {
+pub static VERSION_EXTRA: Option<&str> = if let v @ Some(_) = option_env!("VANLING_VERSION_EXTRA") {
     v
 } else {
-    option_env!("CHOBITS_VERSION_EXTRA")
+    option_env!("VANLING_VERSION_EXTRA")
 };
 
 #[must_use]

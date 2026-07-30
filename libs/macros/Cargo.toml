@@ -1,10 +1,10 @@
 [package]
-name = "chobits_macros"
+name = "vanling_macros"
 edition.workspace = true
 version.workspace = true
 
 [lib]
-name = "chobits_macros"
+name = "vanling_macros"
 path = "src/mod.rs"
 proc-macro = true
 

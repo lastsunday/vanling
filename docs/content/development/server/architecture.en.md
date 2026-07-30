@@ -2,22 +2,22 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "f863a1cdf10aa6bf8546aa06db649f2b9922f6fd"
-translated_at = "2026-07-24T00:00:00Z"
+source_file_hash = "209b5587775a27b77e394d0f05062b7f87adcb4b"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # Core Architecture
 
-> **Note**: This is an overview-layer document reflecting the author's mental model of the system. See the [documentation style guide](@/discussions/documentation-style.md) for context.
+> **Note**: This is an overview-layer document reflecting the author's mental model of the system. See the [documentation style guide](@/discussions/documentation-style.en.md) for context.
 
 ## Session Overview
 
-chobits server manages conversations using the **Session + Round** model:
+vanling server manages conversations using the **Session + Round** model:
 
 - **Session**: The lifecycle of a single WebSocket connection. Manages connection, auth, state transitions.
 - **Round**: Each turn of conversation (user speaks → server responds). A Session contains multiple Rounds.
 
-The Session is defined in `service/src/chobits/session/mod.rs`, and is transport-agnostic — it communicates via the `Frame` enum.
+The Session is defined in `service/src/ling/session/mod.rs`, and is not tied to a specific transport protocol (WebSocket / Matrix, etc.) — it communicates via the `Frame` enum.
 
 ## Data Flow
 
@@ -84,7 +84,7 @@ LLM inference + TTS synthesis + streaming audio output.
 
 ## Round Lifecycle
 
-Rounds are implemented in `service/src/chobits/session/round.rs`, managing LLM inference and TTS synthesis for a single dialogue turn.
+Rounds are implemented in `service/src/ling/session/round.rs`, managing LLM inference and TTS synthesis for a single dialogue turn.
 
 ### Dual Round Model
 
@@ -108,7 +108,7 @@ This design allows seamless BargeIn handling — new requests start preparing im
 
 ```
 ChatParam → Round
-  ├── Chii.ask() → LLM streaming output
+  ├── Ling.ask() → LLM streaming output
   │     ├── LLMResult (text chunks)
   │     └── ToolCall (→ MCP → LLM)
   └── Tts.stream() → audio frames
@@ -118,12 +118,12 @@ ChatParam → Round
 
 Round runs LLM and TTS in parallel, streaming output through OutputMessages.
 
-## ChiiCore
+## LingCore
 
-ChiiCore (`api/src/chii/`) is the LLM + MCP orchestration layer.
+LingCore (`api/src/ling_core/`) is the LLM + MCP orchestration layer.
 
 ```
-ChiiCore
+LingCore
   ├── HistoryManager (message history management / truncation)
   ├── LlmClient (Qwen3 / Echo)
   ├── McpRegistry (MCP tool aggregation)
@@ -139,7 +139,7 @@ Pipeline:
 
 ## Listener
 
-The Listener (`service/src/chobits/listener.rs` trait, implemented by `api/src/ws/default_listener.rs`) orchestrates VAD + ASR:
+The Listener (`service/src/ling/listener.rs` trait, implemented by `api/src/ws/default_listener.rs`) orchestrates VAD + ASR:
 
 1. Receives audio data (`ListenInput::Audio`)
 2. VAD detects speech activity (Earshot Silero VAD)
@@ -183,7 +183,7 @@ Sessions are constructed using the Builder pattern:
 SessionBuilder::new()
     .with_id(session_id)
     .with_listener(DefaultListener::new(vad, asr))
-    .with_chii(ChiiCoreBuilder::new(llm, mcp_registry).build())
+    .with_ling(LingCoreBuilder::new(llm, mcp_registry).build())
     .with_tts(TtsManager::default())
     .with_config(session_config)
     .with_audio_config(audio_config)
@@ -218,7 +218,7 @@ main.rs
 
 | Path | Module | Description |
 |------|--------|-------------|
-| `/chobits/{version}` | `ws/` | WebSocket endpoint (Xiaozhi protocol) |
+| `/vanling/{version}` | `ws/` | WebSocket endpoint (Xiaozhi protocol) |
 | `/mcp` | `mcp/` | MCP Streamable HTTP service |
 | `/api/auth/*` | `auth/` | Login / Token refresh |
 | `/api/ota*` | `ota/` | OTA protocol (device registration, activation verification) |

@@ -1,16 +1,16 @@
-# Chobits
+# Vanling
 
 > [!WARNING]
 > This project is being developed,all the things is not stable.
 
-[![CI](https://github.com/lastsunday/chobits/actions/workflows/ci.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/ci.yml)
-[![app-dev-release](https://github.com/lastsunday/chobits/actions/workflows/app-dev-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/app-dev-release.yml)
-[![app-release](https://github.com/lastsunday/chobits/actions/workflows/app-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/app-release.yml)
-[![server-dev-release](https://github.com/lastsunday/chobits/actions/workflows/server-dev-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/server-dev-release.yml)
-[![server-release](https://github.com/lastsunday/chobits/actions/workflows/server-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/server-release.yml)
+[![CI](https://github.com/lastsunday/vanling/actions/workflows/ci.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/ci.yml)
+[![app-dev-release](https://github.com/lastsunday/vanling/actions/workflows/app-dev-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/app-dev-release.yml)
+[![app-release](https://github.com/lastsunday/vanling/actions/workflows/app-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/app-release.yml)
+[![server-dev-release](https://github.com/lastsunday/vanling/actions/workflows/server-dev-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/server-dev-release.yml)
+[![server-release](https://github.com/lastsunday/vanling/actions/workflows/server-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/server-release.yml)
 
-[![GitHub Release](https://img.shields.io/github/v/release/lastsunday/chobits)](https://github.com/lastsunday/chobits/releases)
-[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/lastsunday/chobits/tags)
+[![GitHub Release](https://img.shields.io/github/v/release/lastsunday/vanling)](https://github.com/lastsunday/vanling/releases)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/lastsunday/vanling/tags)
 
 ## Purpose
 
@@ -31,7 +31,7 @@ To make an self contained chatbot(self host all component,eg: llm,tts etc..), li
 - [ ] Deploy: bin(WIP),docker(WIP)
 - [ ] Compatible devices
   1. [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)(WIP)
-  1. chobits(cross platform app,create by flutter)(WIP)
+  1. vanling (cross platform app,create by flutter)(WIP)
 
 ## Documentation
 
@@ -48,7 +48,7 @@ You can find user development documentation on [here](./docs/src/development/REA
 ```shell
 pnpm i
 moon run server-ui:build
-chobits-server download
+vanling-server download
 # using cuda: moon run server:run --features cuda
 moon run server:run
 ```
@@ -62,7 +62,7 @@ moon run server:run
   - ota url
     <http://127.0.0.1:3000/api/ota/>
   - ws url
-    <ws://127.0.0.1:3000/chobits/v1/>
+    <ws://127.0.0.1:3000/vanling/v1/>
 
 #### apps/server-ui
 

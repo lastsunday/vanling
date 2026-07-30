@@ -14,8 +14,8 @@ use candle_transformers::generation::{LogitsProcessor, Sampling};
 use framework::error::AppError;
 use futures::Stream;
 use quantized::ModelWeights as Qwen3Model;
-use service::chobits::llm::TokenConverter;
-use service::chobits::llm::{
+use service::ling::llm::TokenConverter;
+use service::ling::llm::{
     CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role, ToolDef,
 };
 use std::pin::Pin;
@@ -337,7 +337,7 @@ impl Llm for LlmQwen {
 
 #[cfg(test)]
 mod tests {
-    use service::chobits::llm::{CompletionRequest, ContentPart, Message, Role, ToolDef};
+    use service::ling::llm::{CompletionRequest, ContentPart, Message, Role, ToolDef};
     use tracing_test::traced_test;
 
     use crate::llm::model::qwen3::convert_request_to_prompt;

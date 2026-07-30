@@ -2,8 +2,8 @@
 title = "Quick Start"
 weight = 100
 [extra]
-source_file_hash = "86f88208c332b87ff7a3d0cf955ba8419ff62aa9"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "bfc4b9739d583df4b7d613e57a790f743d096394"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # Quick Start
@@ -15,7 +15,7 @@ translated_at = "2026-06-28T18:00:00Z"
 ```shell
 pnpm i
 moon run server-ui:build
-chobits-server download
+vanling-server download
 # using cuda: moon run server:run --features cuda
 moon run server:run
 ```
@@ -29,7 +29,7 @@ moon run server:run
   - OTA address
     <http://127.0.0.1:3000/api/ota/>
   - WebSocket address
-    <ws://127.0.0.1:3000/chobits/v1/>
+    <ws://127.0.0.1:3000/vanling/v1/>
 
 #### Admin Panel
 

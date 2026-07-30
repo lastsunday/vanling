@@ -6,7 +6,7 @@ sort_by = "weight"
 
 # 开发文档
 
-Chobits 服务端和相关项目的开发指南。
+Vanling 服务端和相关项目的开发指南。
 
 ## [服务端](@/development/server/architecture.md)
 

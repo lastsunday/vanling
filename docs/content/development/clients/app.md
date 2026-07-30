@@ -36,7 +36,7 @@ flutter doctor
 5. 运行 `flutter doctor` 确认环境就绪
 
 > [!WARNING]
-> App 尚未实现 chobits 业务功能，当前仅为基础框架。
+> App 尚未实现 vanling 业务功能，当前仅为基础框架。
 
 ## 框架
 

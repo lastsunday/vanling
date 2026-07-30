@@ -13,7 +13,6 @@ pub mod vad;
 pub mod ws;
 
 use anyhow::Error;
-use chobits_macros::config_example_generator;
 use either::Either::{self, Left, Right};
 use figment::{
     Figment,
@@ -25,12 +24,13 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     result::Result,
 };
+use vanling_macros::config_example_generator;
 
 pub use self::{check::check, manager::Manager};
 
 const DEPRECATED_KEYS: &[&str] = &[];
 
-/// All the config options for chobits.
+/// All the config options for vanling.
 #[allow(clippy::struct_excessive_bools)]
 #[allow(rustdoc::broken_intra_doc_links, rustdoc::bare_urls)]
 #[derive(Clone, Debug, Deserialize)]
@@ -38,7 +38,7 @@ const DEPRECATED_KEYS: &[&str] = &[];
     filename = "application-example.toml",
     section = "global",
     undocumented = "# This item is undocumented. Please contribute documentation for it.",
-    header = r#"### chobits Configuration
+    header = r#"### vanling Configuration
 ###
 ### THIS FILE IS GENERATED. CHANGES/CONTRIBUTIONS IN THE REPO WILL BE
 ### OVERWRITTEN!
@@ -380,7 +380,7 @@ pub struct Config {
 
     /// Matrix client application name.
     ///
-    /// default: "chobits"
+    /// default: "vanling"
     #[serde(default = "default_matrix_client_name")]
     pub matrix_client_name: Option<String>,
 
@@ -392,7 +392,7 @@ pub struct Config {
 
     /// Matrix client user ID.
     ///
-    /// default: "@chobits:localhost.localdomain"
+    /// default: "@vanling:localhost.localdomain"
     #[serde(default = "default_matrix_client_username")]
     pub matrix_client_username: Option<String>,
 
@@ -658,7 +658,7 @@ fn default_matrix_enable() -> Option<bool> {
 }
 
 fn default_matrix_client_name() -> Option<String> {
-    Some(String::from("chobits"))
+    Some(String::from("vanling"))
 }
 
 fn default_matrix_homeserver() -> Option<String> {
@@ -666,7 +666,7 @@ fn default_matrix_homeserver() -> Option<String> {
 }
 
 fn default_matrix_client_username() -> Option<String> {
-    Some(String::from("@chobits:localhost.localdomain"))
+    Some(String::from("@vanling:localhost.localdomain"))
 }
 
 fn default_matrix_client_password() -> Option<String> {
@@ -728,14 +728,14 @@ fn default_log_tokio_console_enabled() -> Option<bool> {
 impl Config {
     /// Pre-initialize config
     pub fn load(paths: &[PathBuf]) -> std::result::Result<Figment, Error> {
-        let envs = [Env::var("CHOBITS_CONFIG")];
+        let envs = [Env::var("VANLING_CONFIG")];
         let mut config = envs
             .into_iter()
             .flatten()
             .map(Toml::file)
             .chain(paths.iter().cloned().map(Toml::file))
             .fold(Figment::new(), |config, file| config.merge(file.nested()))
-            .merge(Env::prefixed("CHOBITS_").global().split("__"));
+            .merge(Env::prefixed("VANLING_").global().split("__"));
 
         config = config.join(("config_paths", paths));
 

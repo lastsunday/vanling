@@ -12,14 +12,14 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::chobits::chii::{Chii, Input, OutputBlock};
-use crate::chobits::frame::{FrameResult, OutputMessage};
-use crate::chobits::message::audio::AudioMessage;
-use crate::chobits::message::llm::LlmMessage;
-use crate::chobits::message::stt::SttMessage;
-use crate::chobits::message::tts::{TtsMessage, TtsState};
-use crate::chobits::session::SessionErrorCode;
-use crate::chobits::tts::Tts;
+use crate::ling::core::{Input, Ling, OutputBlock};
+use crate::ling::frame::{FrameResult, OutputMessage};
+use crate::ling::message::audio::AudioMessage;
+use crate::ling::message::llm::LlmMessage;
+use crate::ling::message::stt::SttMessage;
+use crate::ling::message::tts::{TtsMessage, TtsState};
+use crate::ling::session::SessionErrorCode;
+use crate::ling::tts::Tts;
 
 use framework::err;
 
@@ -76,7 +76,7 @@ pub struct Round {
     output_tx: UnboundedSender<OutputMessage>,
     pub epoch: u64,
     stop: Arc<AtomicBool>,
-    chii: Arc<dyn Chii>,
+    ling: Arc<dyn Ling>,
     tts: Arc<dyn Tts>,
     pub tts_state: Arc<Mutex<Option<TtsState>>>,
     pub cancel: CancellationToken,
@@ -100,7 +100,7 @@ impl Round {
         id: String,
         output_tx: UnboundedSender<OutputMessage>,
         epoch: u64,
-        chii: Arc<dyn Chii>,
+        ling: Arc<dyn Ling>,
         tts: Arc<dyn Tts>,
         cancel: CancellationToken,
     ) -> Self {
@@ -110,7 +110,7 @@ impl Round {
             output_tx,
             epoch,
             stop: Arc::new(AtomicBool::new(false)),
-            chii,
+            ling,
             tts,
             tts_state: Arc::new(Mutex::new(None)),
             cancel,
@@ -134,7 +134,7 @@ impl Round {
         let round_id = self.id.clone();
         let stop_me = self.stop.clone();
         let session_id = self.parent_id.clone();
-        let chii = self.chii.clone();
+        let ling = self.ling.clone();
         let tts = self.tts.clone();
         let tts_state_clone = self.tts_state.clone();
         let cancel = self.cancel.clone();
@@ -168,11 +168,11 @@ impl Round {
             tracing::debug!(component = "ROUND", event = "stt_result_sent", session_id = %session_id, round_id = %round_id, "stt result sent");
 
             tracing::debug!(component = "ROUND", event = "llm_start", session_id = %session_id, round_id = %round_id, "llm start");
-            let chii_stream = chii.ask(Input::text(text), cancel.clone()).await;
+            let ling_stream = ling.ask(Input::text(text), cancel.clone()).await;
             let sid = session_id.clone();
             let rid = round_id.clone();
             let (llm_err_tx, mut llm_err_rx) = watch::channel::<Option<String>>(None);
-            let chat_text_stream = chii_stream.filter_map(move |r| {
+            let chat_text_stream = ling_stream.filter_map(move |r| {
                 let sid = sid.clone();
                 let rid = rid.clone();
                 let llm_err_tx = llm_err_tx.clone();

@@ -943,8 +943,8 @@ struct ModelInfo {
     variants: Vec<String>,
 }
 
-fn find_config_inner(chobits_config: Option<String>) -> Option<PathBuf> {
-    if let Some(path) = chobits_config {
+fn find_config_inner(vanling_config: Option<String>) -> Option<PathBuf> {
+    if let Some(path) = vanling_config {
         let p = PathBuf::from(&path);
         if p.exists() {
             return Some(p);
@@ -959,7 +959,7 @@ fn find_config_inner(chobits_config: Option<String>) -> Option<PathBuf> {
 }
 
 fn find_config() -> Option<PathBuf> {
-    find_config_inner(std::env::var("CHOBITS_CONFIG").ok())
+    find_config_inner(std::env::var("VANLING_CONFIG").ok())
 }
 
 fn load_selections(path: &Path) -> HashMap<String, String> {

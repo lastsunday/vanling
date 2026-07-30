@@ -3,8 +3,8 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "1a73a8fe156cccad9353f871204863eb3ddc0a6e"
-translated_at = "2026-07-28T00:00:00Z"
+source_file_hash = "42954b4d5a9f8af99ab103f11cf5a9971298533b"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 ## Overview
@@ -63,7 +63,7 @@ translated_at = "2026-07-28T00:00:00Z"
    │  └────────────────┘       │                       │   ║       │
    │                           ▼                       │   ║       │
    │  ┌──────────────────────────────────────────────┐ │   ║       │
-   │  │Chii Core│                            │       │ │   ║       │
+   │  │Ling Core│                            │       │ │   ║       │
    │  │─────────┘                            ▼       │ │   ║       │
    │  │  ┌────────┐─────┐       ┌────┐──────────┐    │ │   ║       │
    │  │  │Splitter│     │       │LLM │          │    │◄════╝       │
@@ -208,7 +208,7 @@ Column reference:
 | ✅     | —    | stop_round race condition | Fixed, 5s timeout fallback                 |      |
 | ✅     | ✅   | AudioPacer              | Rate-limits audio output by output_frame_duration |  |
 
-#### ChiiCore
+#### LingCore
 
 | Status | Test | Item                  | Description                                   | Link |
 | ------ | ---- | --------------------- | --------------------------------------------- | ---- |

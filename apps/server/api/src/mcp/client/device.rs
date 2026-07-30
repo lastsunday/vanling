@@ -7,7 +7,7 @@ use rmcp::{
     model::{CallToolRequestParams, ContentBlock},
     service::RunningService,
 };
-use service::chobits::{llm::ToolDef, mcp::McpClient};
+use service::ling::{llm::ToolDef, mcp::McpClient};
 
 use super::device_transport::DeviceMcpTransport;
 

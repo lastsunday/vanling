@@ -1,7 +1,7 @@
 mod common;
 use api::vad::model::earshot::VadEarshot;
 use common::vad::*;
-use service::chobits::vad::Vad;
+use service::ling::vad::Vad;
 use tracing_test::traced_test;
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-### chobits Configuration
+### vanling Configuration
 ###
 ### THIS FILE IS GENERATED. CHANGES/CONTRIBUTIONS IN THE REPO WILL BE
 ### OVERWRITTEN!
@@ -247,7 +247,7 @@
 
 # Matrix client application name.
 #
-#matrix_client_name = "chobits"
+#matrix_client_name = "vanling"
 
 # Matrix homeserver URL.
 #
@@ -255,7 +255,7 @@
 
 # Matrix client user ID.
 #
-#matrix_client_username = "@chobits:localhost.localdomain"
+#matrix_client_username = "@vanling:localhost.localdomain"
 
 # Matrix client password.
 #

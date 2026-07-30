@@ -3,15 +3,15 @@ title = "TODO"
 weight = 204
 
 [extra]
-translated_at = "2026-07-24T00:00:00Z"
-source_file_hash = "8f8bddf98a980aeeb742cdd8e7fc2de77053a6a1"
+translated_at = "2026-07-30T00:00:00Z"
+source_file_hash = "0d56f60f4877f3f0c2bcdb6511a84009bf73dcbf"
 +++
 
 # TODO
 
-> **⚠️ Note: This is an exploratory feature document. It references industry standards (Alexa+, Gemini, Siri AI) and reference project implementations (xiaozhi-esp32-server, xiaozhi-esp32-server-java, xiaozhi-server-go). Most items will NOT be implemented — this serves as a reference for chobits positioning and trade-offs. Actual development priorities follow the project Roadmap.**
+> **⚠️ Note: This is an exploratory feature document. It references industry standards (Alexa+, Gemini, Siri AI) and reference project implementations (xiaozhi-esp32-server, xiaozhi-esp32-server-java, xiaozhi-server-go). Most items will NOT be implemented — this serves as a reference for vanling positioning and trade-offs. Actual development priorities follow the project Roadmap.**
 
-A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://github.com/anomalyco/chobits/blob/main/AGENTS.md) for development conventions.
+A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://github.com/anomalyco/vanling/blob/main/AGENTS.md) for development conventions.
 
 ## Security & Authentication
 
@@ -33,16 +33,16 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | 🟡 P1 | Speaker Identification (Voiceprint) | New feature | Reference project xinnan-tech implements this (3D-Speaker model). Processed in parallel with ASR to identify speaker identity and pass to LLM for personalized replies. sherpa-onnx already supports speaker identification (ECAPA-TDNN/WeSpeaker) — no new dependencies needed. hacker365 Go version uses Qdrant vector DB + dynamic TTS voice switching for a more mature architecture. Needs: register/manage/identify workflow + DB storage for voiceprint vectors + LLM context injection | Existing: `sherpa-onnx` (ECAPA-TDNN/WeSpeaker) | |
 | 🟡 P1 | Opus Division by Zero | `api/src/ws/default_listener.rs` | Divide by zero when channels=0 / sample_rate=0 | — | |
 | 🟡 P1 | Audio Hot-path Cloning | `api/src/ws/default_listener.rs` | `data.to_vec()` called every 20ms — frequent cloning | — | |
-| 🟡 P1 | Semantic VAD | New feature | **4-layer architecture** replacing pure VAD: Layer 1 Silero VAD (<1ms/frame) → Layer 2 duration check (min_silence_ms) → Layer 3 punctuation/semantic completeness (`.?!` commits immediately, no punctuation extends window) → Layer 4 filler detection (uh/um extends reopen). LiveKit Turn Detector v1.0 (2026.06) achieves 9.9% false-cutoff at 300ms budget (vs Deepgram 12.9%); OpenAI uses `silence_duration_ms=500` + `prefix_padding_ms=300` for server VAD. arxiv 2606.13450 shows endpoint anticipation 2.56s in advance, reducing 505ms avg latency. chobits currently only has Layer 1 (Earshot Silero) | Suggest: LiveKit `v1-mini` (quantized, CPU-capable); OpenAI config pattern; arxiv 2606.13450 | |
+| 🟡 P1 | Semantic VAD | New feature | **4-layer architecture** replacing pure VAD: Layer 1 Silero VAD (<1ms/frame) → Layer 2 duration check (min_silence_ms) → Layer 3 punctuation/semantic completeness (`.?!` commits immediately, no punctuation extends window) → Layer 4 filler detection (uh/um extends reopen). LiveKit Turn Detector v1.0 (2026.06) achieves 9.9% false-cutoff at 300ms budget (vs Deepgram 12.9%); OpenAI uses `silence_duration_ms=500` + `prefix_padding_ms=300` for server VAD. arxiv 2606.13450 shows endpoint anticipation 2.56s in advance, reducing 505ms avg latency. vanling currently only has Layer 1 (Earshot Silero) | Suggest: LiveKit `v1-mini` (quantized, CPU-capable); OpenAI config pattern; arxiv 2606.13450 | |
 | 🟡 P1 | Dynamic VAD Parameters | `api/src/ws/default_listener.rs` + `vad/` | **Current bottleneck**: VAD parameters fixed at config time, `silence_voice_timeout=1200ms` hardcoded. OpenAI Realtime configures `threshold=0.5` + `prefix_padding_ms=300` + `silence_duration_ms=500`; LiveKit supports `update_options()` runtime updates. **Plan**: After assistant finishes → shorten silence to 300ms (fast reply); during long user speech → extend max_speech_ms; energy pre-filter skips VAD inference on silent frames (saves CPU). vui modifies `stop_secs` via command queue, speech-to-speech has RuntimeConfig | Ref: vui `asr_worker.py:198-206`; speech-to-speech `RuntimeConfig`; OpenAI `server_vad` config | |
 | 🟡 P1 | ASR Settle Latency + Speculative Reopen | `api/src/ws/default_listener.rs` | **Current bottleneck**: VAD silence triggers immediate ASR — may lose trailing phonemes; no turn reopen mechanism. **Plan**: (1) Tiered commit: silence→wait 120ms for last interim→punctuation check→`.?!` commits immediately, no punctuation adds 700ms trailing-off (vui tiered_commit: clean ~420ms, trailing ~1120ms); (2) Speculative Reopen: reference HF speech-to-speech SpeculativeTurnTracker — 64ms silence soft-commits to start ASR/LLM, turn stays reopenable 1s, user resumes→revision+1 discards stale work. Prevents premature commits when user says "um... actually..." | Ref: vui `voice_turn.py:696-771`; HF speech-to-speech `speculative_turns.py` | |
-| ⚠️ P2 | Filler Word / Hesitation Detection | `api/src/ws/default_listener.rs` | ASR outputs `uh/um/呃/嗯` filler words + short audio (<3s) → discard without triggering LLM. **Approaches**: (1) Lightweight: post-ASR check for trailing fillers (vui `_ends_with_filler`, supports uh/um/uhhh/ummm variants); (2) Audio-level: desert-ant-labs `uhm` project, DistilHuBERT classifier, 169-296x realtime on iPhone, 6 classes, no ASR needed; (3) Training-level: disfluency LoRA on whisper-large-v3-turbo, 75% filler recall. chobits recommends approach (1), integrated with Layer 4 of tiered turn detection | Ref: vui `_ends_with_filler` `voice_turn.py:25-35`; desert-ant-labs/uhm; disfluency LoRA | |
+| ⚠️ P2 | Filler Word / Hesitation Detection | `api/src/ws/default_listener.rs` | ASR outputs `uh/um/呃/嗯` filler words + short audio (<3s) → discard without triggering LLM. **Approaches**: (1) Lightweight: post-ASR check for trailing fillers (vui `_ends_with_filler`, supports uh/um/uhhh/ummm variants); (2) Audio-level: desert-ant-labs `uhm` project, DistilHuBERT classifier, 169-296x realtime on iPhone, 6 classes, no ASR needed; (3) Training-level: disfluency LoRA on whisper-large-v3-turbo, 75% filler recall. vanling recommends approach (1), integrated with Layer 4 of tiered turn detection | Ref: vui `_ends_with_filler` `voice_turn.py:25-35`; desert-ant-labs/uhm; disfluency LoRA | |
 | ⚠️ P2 | VAD Sample Rate | `api/src/vad/` | Hardcoded 16kHz — silent failure on non-16kHz input | — | |
 | ⚠️ P2 | ASR | `api/src/asr/` | XAsr (sherpa-onnx), lacks `Sync` trait, 16kHz mono only | Existing: `sherpa-onnx` | |
 | ⚠️ P2 | Ambient Listening Mode | New feature | Medical AI (Nuance DAX/Nabla) passive listening mode: non-wake-word triggered, continuously listens to ambient audio, proactively responds to user needs. Needs privacy architecture (Nabla model: no raw audio storage). Suitable for home/office scenarios | — | |
 | 🟢 P3 | Speaker Diarization | `api/src/listener/` | Multi-speaker separation in multi-user scenarios. sherpa-onnx already supports (ECAPA-TDNN + AHC clustering) | Existing: `sherpa-onnx` / Suggest: `polyvoice` | |
-| 🟢 P3 | AEC Server-side Noise Reduction | `api/src/ws/default_listener.rs` → pipeline | joey-zhou already implements WebRTC AEC3 server-side echo cancellation (with noise suppression + high-pass filter + adaptive gain). chobits has only client-side AEC | Suggest: `aec3` — pure Rust WebRTC AEC3 | |
-| 🟢 P3 | WebRTC Real-time Audio/Video | New feature | Reference project dairoot/xiaozhi-webrtc implements WebRTC low-latency + Live2D + multimodal vision + MCP. chobits currently WS-only | Suggest: `webrtc-rs` (v0.17.x) | |
+| 🟢 P3 | AEC Server-side Noise Reduction | `api/src/ws/default_listener.rs` | joey-zhou already implements WebRTC AEC3 server-side echo cancellation (with noise suppression + high-pass filter + adaptive gain). vanling has only client-side AEC | Suggest: `aec3` — pure Rust WebRTC AEC3 | |
+| 🟢 P3 | WebRTC Real-time Audio/Video | New feature | Reference project dairoot/xiaozhi-webrtc implements WebRTC low-latency + Live2D + multimodal vision + MCP. vanling currently WS-only | Suggest: `webrtc-rs` (v0.17.x) | |
 | 🟢 P3 | Audio Normalization Integration | `api/src/util/compressor.rs` → pipeline | `adaptive_normalize()` implemented but not integrated into TTS output pipeline | — | |
 | 🟢 P3 | Guided Reasoning Conversation | New feature | Education AI (Zuoyebang/Youdao) guided mode: doesn't give answers directly, gradually guides user to think. Suitable for children/learning scenarios, needs LLM prompt engineering + conversation state management | — | |
 
@@ -55,7 +55,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | 🟡 P1 | Emotion Recognition Completion | `api/src/llm/model/` (analyze_emotion) | Currently stub returning "happy". Industry approach: dual-channel fusion of audio features (wav2vec2 SER) + text sentiment (GoEmotions), used to adjust TTS tone and response style | Existing: `sherpa-onnx` (SER models) | |
 | 🟡 P1 | Personalized Memory / Long-term Preferences | New feature | Currently only chat history — no long-term preference storage. Reference project xinnan-tech has PowerMem (user profiles + Ebbinghaus forgetting curve + vector retrieval); joey-zhou has 3 memory modes (window/summary/long + graph retrieval) | Suggest: `qdrant` + `rig-core` — vector DB + RAG framework | |
 | 🟡 P1 | RAG Knowledge Base | MCP or built-in module | Reference project xinnan-tech integrates RAGFlow; joey-zhou has EmbeddingModelFactory + graph retrieval. Current MCP framework can integrate but has no built-in vector retrieval | Existing: `rig-core` (10+ vector storage backends) | |
-| 🟡 P1 | Intent Recognition | New feature | Reference project xinnan-tech supports 3 modes: function_call (recommended), intent_llm (dedicated LLM), nointent. chobits currently has no independent intent layer | Existing: `rmcp` (function_call) | |
+| 🟡 P1 | Intent Recognition | New feature | Reference project xinnan-tech supports 3 modes: function_call (recommended), intent_llm (dedicated LLM), nointent. vanling currently has no independent intent layer | Existing: `rmcp` (function_call) | |
 | 🟡 P1 | LLM History Blocking | `api/src/llm/model/qwen3/mod.rs` | DB write blocks full thread | — | |
 | ⚠️ P2 | Agent Task Orchestration | New feature | Reference Alexa+ self-executing Uber/OpenTable/Grubhub; Rabbit R1 LAM large action model; Doubao autonomous task decomposition. LLM + MCP tool chain enables autonomous task execution | Existing: `rig-core` (Agent/Chain/Router) | |
 | 🟢 P3 | describe O(n) | `api/src/llm/model/qwen3/mod.rs` | Real-time full message history construction | — | |
@@ -65,16 +65,16 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
 | 🟡 P1 | Piper/Kokoro TTS Integration | `api/src/tts/` | Open-source TTS alternatives: Piper (20M params/MIT/CPU 55ms latency/30+ languages) and Kokoro (82M/Apache 2.0/CPU realtime/54 voices). Can replace or supplement current MatchaTTS. Piper ideal for edge deployment, Kokoro is best quality/size ratio | Suggest: `sherpa-onnx` (Piper ONNX models) | |
-| 🟡 P1 | Two-phase Streaming TTS Architecture | `api/src/chii/splitter.rs` + `round.rs` + `api/src/tts/mod.rs` | **Current bottleneck**: Splitter strictly splits on `。！？!?` only — no sub-sentence splitting; MatchaTTS `generate_with_config` generates all audio for a sentence at once (callback param is `None`, but sherpa-onnx supports streaming callback). arxiv 2603.05413 measured pipeline parallelism TTFA at 755ms (vs 26.5s sequential → 17x improvement). **Two-phase architecture** (ref: Qwen3-TTS-streaming): Phase 1 token-level first chunk — trigger TTS on first LLM token arrival, yield fast first chunk (3-5 words) to minimize TTFA; Phase 2 sentence-level steady state — subsequent 15-20 words or break_chars fallback, throughput-optimized. TTS → callback mode generating while encoding Opus and sending, cancel returns false to interrupt. Key principle: latency shifts from `STT+LLM+TTS` to `max(STT,LLM,TTS)` | Ref: Qwen3-TTS-streaming two-phase architecture; vui `engine.py:73` `chunk_words`; arxiv 2603.05413; sherpa-onnx callback API | ✅Completed 2026-07-23 |
+| 🟡 P1 | Two-phase Streaming TTS Architecture | `api/src/ling_core/splitter.rs` + `round.rs` + `api/src/tts/mod.rs` | **Current bottleneck**: Splitter strictly splits on `。！？!?` only — no sub-sentence splitting; MatchaTTS `generate_with_config` generates all audio for a sentence at once (callback param is `None`, but sherpa-onnx supports streaming callback). arxiv 2603.05413 measured pipeline parallelism TTFA at 755ms (vs 26.5s sequential → 17x improvement). **Two-phase architecture** (ref: Qwen3-TTS-streaming): Phase 1 token-level first chunk — trigger TTS on first LLM token arrival, yield fast first chunk (3-5 words) to minimize TTFA; Phase 2 sentence-level steady state — subsequent 15-20 words or break_chars fallback, throughput-optimized. TTS → callback mode generating while encoding Opus and sending, cancel returns false to interrupt. Key principle: latency shifts from `STT+LLM+TTS` to `max(STT,LLM,TTS)` | Ref: Qwen3-TTS-streaming two-phase architecture; vui `engine.py:73` `chunk_words`; arxiv 2603.05413; sherpa-onnx callback API | ✅Completed 2026-07-23 |
 | 🟡 P1 | Audio Hold Buffer + Fade-out | `api/src/tts/` | TTS output audio tail has abrupt cutoff causing clicks. Buffer last N frames (~240ms), apply 200ms linear fade-out to eliminate artifacts. Reference vui `tts_worker.py:713-783` hold buffer + fade-out implementation | Ref: vui `tts_worker.py:713-783` | ✅Completed 2026-07-23 (fade-out implemented; hold buffer not implemented) |
 | 🟡 P1 | Multi-language TTS | `api/src/tts/` | Currently single-language TTS voice. ESP32 client already supports 25+ ASR languages — TTS side needs to match | Suggest: `sherpa-onnx` (Piper/VITS ONNX models) | |
 | 🟡 P1 | Quick Reply Pre-response | New feature | Play "I'm here" / "Coming" short phrases during LLM inference to reduce perceived latency. Reference project hacker365 Go version implements this. Critical UX, simple to implement | — | |
 | 🟡 P1 | Dynamic TTS Voice Switching | New feature | Auto-switch TTS voice based on speaker identification. Reference project hacker365 Go version implements this (sherpa-onnx voiceprint + per-speaker TTS voice). Natural extension of voiceprint recognition | Existing: `sherpa-onnx` (voiceprint + TTS switching) | |
 | 🟡 P1 | Hann Crossfade Anti-click | `api/src/tts/mod.rs` | **Current issue**: TTS chunk boundaries produce click/pop artifacts. **Solution**: Hann window crossfade (512 samples @ 16kHz = 32ms), first packet fade-in, last packet fade-out, mid-packets crossfade. Reference Qwen3-TTS-streaming project (89 stars), industry standard approach. Overlap trimming flow: crossfade current HEAD with previous TAIL → save full chunk → trim END before emission. Implementation: `StreamingOpusEncoder` maintains `prev_tail: Vec<f32>`, crossfade on each encode | Ref: Qwen3-TTS-streaming `overlap_samples=512`; open-unified-tts 30-50ms crossfade | ❌Discarded 2026-07-23 — Input PCM is continuous, crossfade unnecessary |
 | 🟡 P1 | Leading Silence Trimming + 40ms Preroll | `api/src/tts/mod.rs` | **Current issue**: TTS output first packet has leading silence, increasing perceived latency. **Solution**: 1% amplitude threshold detects leading silence, trim then keep 40ms preroll (soft start avoids abrupt onset). Reference speech-to-speech project `trim_silence()`. Expected 50-200ms perceived latency reduction. Implementation: add `trim_leading_silence()` step before Opus encoding in `TtsMatcha::stream()` | Ref: speech-to-speech `trim_silence()`; Dupdub TTS latency optimization | ❌Discarded 2026-07-23 — Incompatible with streaming architecture |
-| 🟡 P1 | Splitter Upgrade: sentencex Integration | `api/src/chii/splitter.rs` | **Current issue**: Splitter only splits on `。！？!?` regex — no abbreviation handling ("Dr." "Mr." incorrectly split), no context lookahead ("$29." incorrectly split), no minimum sentence length. **Solution**: Use `sentencex` crate (Wikimedia, 136 stars, MIT), supports 200+ languages including Chinese, hand-compiled abbreviation lists, English Golden Rule Set F1=100.00 (NLTK only 72.33). `cargo add sentencex` to integrate. Replace existing `Splitter` regex logic | Suggest: `sentencex` — pure Rust, Wikimedia maintained | ✅Completed 2026-07-23 |
+| 🟡 P1 | Splitter Upgrade: sentencex Integration | `api/src/ling_core/splitter.rs` | **Current issue**: Splitter only splits on `。！？!?` regex — no abbreviation handling ("Dr." "Mr." incorrectly split), no context lookahead ("$29." incorrectly split), no minimum sentence length. **Solution**: Use `sentencex` crate (Wikimedia, 136 stars, MIT), supports 200+ languages including Chinese, hand-compiled abbreviation lists, English Golden Rule Set F1=100.00 (NLTK only 72.33). `cargo add sentencex` to integrate. Replace existing `Splitter` regex logic | Suggest: `sentencex` — pure Rust, Wikimedia maintained | ✅Completed 2026-07-23 |
 | 🟡 P1 | TTFA/RTF Performance Metrics | `api/src/tts/mod.rs` | **Current issue**: No TTS performance observability. **Solution**: Record per-request TTFA (time-to-first-audio) and RTF (real-time-factor), persist raw samples to compute P50/P90/P95 percentiles. P95 determines silence_timeout config. Implementation: record `Instant::now()` to first Opus frame output in `TtsMatcha::stream()` | Ref: Dupdub TTS latency optimization; Sherlock Calls P95 monitoring | ✅Completed 2026-07-23 |
-| 🟡 P1 | Opus-to-PCM Decoder Pre-buffering | `service/src/chobits/session/round.rs` | **Current issue**: Client decodes and plays Opus frames immediately on receipt, no pre-buffering. Network jitter causes playback stutter. **Solution**: Add Opus→PCM decode layer on server or client, pre-buffer N frames (~200ms) before playback to smooth network jitter. Reference speech-to-speech leftover sample carry mechanism. ESP32 side can leverage existing Opus decoder; WS side needs evaluation of server-side decode (increased bandwidth but reduced client complexity) | Ref: speech-to-speech `leftover_samples` carry; sherpa-onnx Opus decoder | |
+| 🟡 P1 | Opus-to-PCM Decoder Pre-buffering | `service/src/ling/session/round.rs` | **Current issue**: Client decodes and plays Opus frames immediately on receipt, no pre-buffering. Network jitter causes playback stutter. **Solution**: Add Opus→PCM decode layer on server or client, pre-buffer N frames (~200ms) before playback to smooth network jitter. Reference speech-to-speech leftover sample carry mechanism. ESP32 side can leverage existing Opus decoder; WS side needs evaluation of server-side decode (increased bandwidth but reduced client complexity) | Ref: speech-to-speech `leftover_samples` carry; sherpa-onnx Opus decoder | |
 | ⚠️ P2 | Inter-sentence Silence Optimization | `api/src/tts/` | TTS uses fixed silence between sentences. Change to dynamic adjustment by punctuation type: comma 0.3s, period 0.6s, other 0.3s — more natural conversation rhythm | Ref: RealtimeVoiceChat `ENGINE_SILENCES` `audio_module.py:22-26` | |
 | ⚠️ P2 | Conversational Prosody TTS | New feature | Reference project Sesame CSM (Apache 2.0 open-source) generates breathing/hesitation/laughter prosody, making speech more human-like. Cartesia Sonic 3.5 uses SSM architecture for <90ms TTS latency | Suggest: `csm.rs` — Rust Sesame CSM (AGPL-3.0) | |
 | ⚠️ P2 | Emotion-adaptive Intonation | New feature | Reference project Hume AI EVI detects 600+ emotion tags (hesitation/sarcasm/relief), adaptively adjusting TTS tone. MiniMax Speech-2.8 supports 7 emotions + 0-100% intensity + insertion tags `(laughs)` `(sighs)` | Suggest: `voirs-emotion` — multi-dimensional emotion control | |
@@ -90,20 +90,20 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | 🟡 P1 | Music Playback | MCP tool or standalone | Reference project xinnan-tech has `play_music.py` + `hass_play_music.py`; joey-zhou has `MusicPlayer` with LRC lyrics sync. Industry standard | Suggest: `rodio` — cross-platform audio playback | |
 | 🟡 P1 | Timer/Reminders/Alarms | MCP tool or standalone | Industry standard ("Alexa, set a timer"). Currently no timing/reminder mechanism at all | Suggest: `tokio-cron-scheduler` — async Tokio cron | |
 | ⚠️ P2 | MCP Authentication | `api/src/mcp/mod.rs` | `/mcp` endpoint auth is commented out | Existing: `rmcp` | |
-| ⚠️ P2 | Plugin System | New feature | Reference project xinnan-tech has 13 built-in plugins + hot-reload. chobits has no plugin architecture — feature extensions require modifying core code | Suggest: `wasmtime` — WASI P2 + Component Model | |
-| ⚠️ P2 | MCP Market / Tool Marketplace | New feature | Reference project hacker365 Go version implements MCP tool "app store": aggregates multiple third-party markets (e.g. ModelScope), one-click import of remote MCP services + hot-reload. chobits currently has no MCP tool discovery/aggregation mechanism | Existing: `rmcp` | |
-| ⚠️ P2 | MCP Debug Console | New feature | Reference project hacker365 Go version has Agent/Device-level MCP remote debugging: web console generates per-agent independent MCP endpoints, real-time call testing, per-agent tool filtering. chobits currently has no MCP debugging tools | Existing: `rmcp` | |
-| ⚠️ P2 | MCP Tool Aggregation | New feature | Reference projects xiaozhi-mcp / yuexianga/xiaozhi-mcp provide pre-built tool libraries (DingTalk/QQ/system monitor/WebPilot/math), ready to use out of the box. chobits has no built-in MCP tool packs | Existing: `rmcp` | |
-| ⚠️ P2 | MQTT Gateway | New feature | Reference projects xinnan-tech/xiaozhi-mqtt-gateway implement MQTT+UDP → WS bridging: distributed deployment + dynamic load balancing + HMAC auth + MCP command dispatch. chobits currently only supports WS protocol | Suggest: `rumqttc` — pure Rust, tokio native | |
-| ⚠️ P2 | Configuration Wizard + E2E Testing | New feature | Reference project hacker365 Go version has first-run wizard (OTA/VAD/ASR/LLM/TTS step-by-step config) + per-component latency tests + visualization charts. chobits currently has no deployment wizard | — | |
+| ⚠️ P2 | Plugin System | New feature | Reference project xinnan-tech has 13 built-in plugins + hot-reload. vanling has no plugin architecture — feature extensions require modifying core code | Suggest: `wasmtime` — WASI P2 + Component Model | |
+| ⚠️ P2 | MCP Market / Tool Marketplace | New feature | Reference project hacker365 Go version implements MCP tool "app store": aggregates multiple third-party markets (e.g. ModelScope), one-click import of remote MCP services + hot-reload. vanling currently has no MCP tool discovery/aggregation mechanism | Existing: `rmcp` | |
+| ⚠️ P2 | MCP Debug Console | New feature | Reference project hacker365 Go version has Agent/Device-level MCP remote debugging: web console generates per-agent independent MCP endpoints, real-time call testing, per-agent tool filtering. vanling currently has no MCP debugging tools | Existing: `rmcp` | |
+| ⚠️ P2 | MCP Tool Aggregation | New feature | Reference projects xiaozhi-mcp / yuexianga/xiaozhi-mcp provide pre-built tool libraries (DingTalk/QQ/system monitor/WebPilot/math), ready to use out of the box. vanling has no built-in MCP tool packs | Existing: `rmcp` | |
+| ⚠️ P2 | MQTT Gateway | New feature | Reference projects xinnan-tech/xiaozhi-mqtt-gateway implement MQTT+UDP → WS bridging: distributed deployment + dynamic load balancing + HMAC auth + MCP command dispatch. vanling currently only supports WS protocol | Suggest: `rumqttc` — pure Rust, tokio native | |
+| ⚠️ P2 | Configuration Wizard + E2E Testing | New feature | Reference project hacker365 Go version has first-run wizard (OTA/VAD/ASR/LLM/TTS step-by-step config) + per-component latency tests + visualization charts. vanling currently has no deployment wizard | — | |
 
 ## Session & Device
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🔴 P0 | stop_round Race Condition | `service/src/chobits/session/round.rs` | `llm_tts_handle` and `stop_round` lack synchronization — possible use-after-cancel | — | ✅Completed 2026-07-24 |
-| 🟡 P1 | Continued Conversation | `service/src/chobits/session/` | After a reply, the microphone should stay open briefly to allow follow-up without wake word. Supported by Gemini / Alexa+ | — | |
-| 🟡 P1 | Clock Overflow | `service/src/chobits/session/mod.rs` | `Local::now()` is non-monotonic — subtraction can overflow | Existing: `jiff` (monotonic clock) | |
+| 🔴 P0 | stop_round Race Condition | `service/src/ling/session/round.rs` | `llm_tts_handle` and `stop_round` lack synchronization — possible use-after-cancel | — | ✅Completed 2026-07-24 |
+| 🟡 P1 | Continued Conversation | `service/src/ling/session/` | After a reply, the microphone should stay open briefly to allow follow-up without wake word. Supported by Gemini / Alexa+ | — | |
+| 🟡 P1 | Clock Overflow | `service/src/ling/session/mod.rs` | `Local::now()` is non-monotonic — subtraction can overflow | Existing: `jiff` (monotonic clock) | |
 | 🟡 P1 | Device Management | New feature | No device registration/binding/listing. After OTA activation, devices are not persisted. Reference projects have full device lifecycle (registration/state/config/OTA/bulk operations) | Existing: `sea-orm` | |
 | 🟡 P1 | Recorder No Limit | `api/src/record/recorder.rs` | `Vec<RecordEntry>` has no size limit — unbounded memory growth under high concurrency | — | |
 | 🟢 P3 | Session Export/Delete | `api/src/record/` | Sessions can only be viewed — no export or deletion | — | |
@@ -113,7 +113,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
 | ⚠️ P2 | Message Types | `api/src/ws/frame.rs` | Missing `system`, `alert`, `custom`, `wake_word` message types (vs xiaozhi-esp32 spec) | — | |
-| ⚠️ P2 | Multi ASR/TTS Provider | `api/src/asr/` + `api/src/tts/` | Reference project xinnan-tech supports 12 ASR + 18+ TTS providers (including free EdgeTTS); joey-zhou has 7 STT + 8 TTS. chobits has only 1 ASR + 1 TTS | Existing: `sherpa-onnx` (multi-model switching) | |
+| ⚠️ P2 | Multi ASR/TTS Provider | `api/src/asr/` + `api/src/tts/` | Reference project xinnan-tech supports 12 ASR + 18+ TTS providers (including free EdgeTTS); joey-zhou has 7 STT + 8 TTS. vanling has only 1 ASR + 1 TTS | Existing: `sherpa-onnx` (multi-model switching) | |
 
 ## Infrastructure
 
@@ -135,9 +135,9 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 |------|------|------|------|------|------|
 | 🟡 P1 | Dashboard Page | `routes/_pathlessLayout.admin/index.tsx` | Shell only — renders "Hello" with no stats/monitoring content | Existing: `@mantine/core` v9 + `@tanstack/react-query` | |
 | 🟡 P1 | User CRUD Admin UI | New page | No user list/create/delete/role management interface | Existing: `@mantine/core` v9 | |
-| 🟡 P1 | Multi-user/RBAC Management | New feature | Reference project busy-worker Java admin platform has token usage monitoring + conversation duration + device activity + data visualization + RBAC. chobits Dashboard should include these | Existing: `@mantine/core` v9 | |
+| 🟡 P1 | Multi-user/RBAC Management | New feature | Reference project busy-worker Java admin platform has token usage monitoring + conversation duration + device activity + data visualization + RBAC. vanling Dashboard should include these | Existing: `@mantine/core` v9 | |
 | 🟢 P3 | System Monitoring | New page | No server health/connection count/resource usage/error rate dashboard | Existing: `@mantine/core` v9 + `@tanstack/react-query` | |
-| 🟢 P3 | MCP Dashboard | New feature | Reference project xiaozhi-mcphub has React frontend: multi-endpoint management + tool sync + group access control + logs. chobits MCP management reference | Existing: `@mantine/core` v9 | |
+| 🟢 P3 | MCP Dashboard | New feature | Reference project xiaozhi-mcphub has React frontend: multi-endpoint management + tool sync + group access control + logs. vanling MCP management reference | Existing: `@mantine/core` v9 | |
 
 ## Mobile (apps/app)
 
@@ -165,42 +165,42 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | Item | Description | Open Source / Libraries | Status |
 |------|------|------|------|
 | Speaker ID approach | 3D-Speaker (used by xinnan-tech) vs sherpa-onnx speaker ID (already in tech stack) vs pyannote. sherpa-onnx is best: no new deps, supports ECAPA-TDNN/WeSpeaker/CAM++ models | Existing: `sherpa-onnx` | |
-| Plugin architecture | xinnan-tech has 13 built-in plugins + hot-reload. Does chobits need a similar mechanism, or is MCP sufficient for extensions? | Suggest: `wasmtime` — WASI sandbox + Component Model | |
-| Multi-provider strategy | Reference projects support 12+ ASR / 18+ TTS providers. Does chobits need multi-provider architecture, or stay lean? | Suggest: trait abstraction (`AsrProvider`/`TtsProvider`) | |
+| Plugin architecture | xinnan-tech has 13 built-in plugins + hot-reload. Does vanling need a similar mechanism, or is MCP sufficient for extensions? | Suggest: `wasmtime` — WASI sandbox + Component Model | |
+| Multi-provider strategy | Reference projects support 12+ ASR / 18+ TTS providers. Does vanling need multi-provider architecture, or stay lean? | Suggest: trait abstraction (`AsrProvider`/`TtsProvider`) | |
 | Music playback | Industry standard (Spotify/Apple Music integration). Need to determine approach: MCP tool calling external API / built-in audio playback / TTS extension | Suggest: `rodio` | |
-| ESP32 CI/CD | Separate project (xiaozhi-esp32), outside this repo's scope. chobits provides WS + OTA interfaces as backend only | — | |
+| ESP32 CI/CD | Separate project (xiaozhi-esp32), outside this repo's scope. vanling provides WS + OTA interfaces as backend only | — | |
 | Token persistent storage | Consider DB table for refresh tokens to support multi-device management | Existing: `sea-orm` + `redis-rs` | |
-| Smart Home integration | Alexa+ / Google Home core capability. Reference projects have 3 HA integration methods. Need to evaluate chobits positioning as hub | Existing: `rmcp` (HA MCP) | |
+| Smart Home integration | Alexa+ / Google Home core capability. Reference projects have 3 HA integration methods. Need to evaluate vanling positioning as hub | Existing: `rmcp` (HA MCP) | |
 | Agentic capabilities | Alexa+ "Experts" / Gemini Spark 24/7 agents can autonomously browse web/forms/orders. LLM + MCP tool chain has foundation — evaluate implementation depth | Existing: `rig-core` | |
 | Voice emotion TTS | Gemini 2.5 / Cartesia Sonic-3 support adjusting TTS tone based on emotion. Need to evaluate if MatchaTTS supports style/prosody control | Suggest: `voirs-emotion` | |
-| Local privacy processing | Industry trend: Echo/Fire devices moving toward local processing. chobits already has local Qwen3 — can expand to local ASR/TTS full chain | Existing: `sherpa-onnx` + `candle` | |
-| Vision capability | Reference project xinnan-tech supports VLLM (GLM-4V/Qwen-VL) photo recognition. Does chobits need vision capability? | Suggest: `reqwest` → Ollama/vLLM | |
-| MCP Market architecture | Reference project hacker365 Go version implements MCP tool "app store" (multi-market aggregation + hot-reload). Does chobits need MCP tool discovery/aggregation? | Existing: `rmcp` | |
-| Dynamic TTS voice switching | Reference project hacker365 Go version auto-switches TTS voice based on speaker ID. How should chobits link voiceprint recognition to TTS? | Existing: `sherpa-onnx` | |
-| Configuration wizard | Reference project hacker365 Go version has first-run wizard + full-chain latency tests. Should chobits add a deployment wizard to lower adoption barrier? | — | |
-| MQTT gateway architecture | Distributed deployment needs MQTT+UDP bridging + dynamic load balancing (reference xinnan-tech/xiaozhi-mqtt-gateway). Does chobits need an MQTT gateway layer? | Suggest: `rumqttc` | |
-| MCP tool aggregation strategy | Reference projects have pre-built tool libraries (DingTalk/QQ/system monitor/WebPilot/math). Should chobits include built-in MCP tool packs? | Existing: `rmcp` | |
-| End-to-end S2S architecture | OpenAI/Hume/Sesame use single model for audio in/out (not cascaded STT→LLM→TTS). Should chobits evolve beyond cascaded approach? | Suggest: `csm.rs` (AGPL-3.0) or `moshi` (Apache 2.0) | |
-| Semantic VAD approach | OpenAI's model-level turn-taking vs traditional VAD — how should chobits implement smarter interruption/turn-taking? | Suggest: `wavekat-vad` | |
-| Conversational prosody TTS | Sesame CSM open-source model (Apache 2.0) can add breathing/hesitation/laughter. Should chobits TTS integrate prosody? | Suggest: `csm.rs` (AGPL-3.0) | |
-| Privacy strategy | Always-listening devices need privacy architecture (Bee: no audio storage / Omi: local processing). How should chobits balance features with privacy? | Existing: `sherpa-onnx` (full-chain local) | |
-| SSM architecture TTS | Cartesia uses State Space Model instead of Transformer for <90ms TTS. Should chobits TTS consider SSM architecture? | — (no Rust implementation) | |
+| Local privacy processing | Industry trend: Echo/Fire devices moving toward local processing. vanling already has local Qwen3 — can expand to local ASR/TTS full chain | Existing: `sherpa-onnx` + `candle` | |
+| Vision capability | Reference project xinnan-tech supports VLLM (GLM-4V/Qwen-VL) photo recognition. Does vanling need vision capability? | Suggest: `reqwest` → Ollama/vLLM | |
+| MCP Market architecture | Reference project hacker365 Go version implements MCP tool "app store" (multi-market aggregation + hot-reload). Does vanling need MCP tool discovery/aggregation? | Existing: `rmcp` | |
+| Dynamic TTS voice switching | Reference project hacker365 Go version auto-switches TTS voice based on speaker ID. How should vanling link voiceprint recognition to TTS? | Existing: `sherpa-onnx` | |
+| Configuration wizard | Reference project hacker365 Go version has first-run wizard + full-chain latency tests. Should vanling add a deployment wizard to lower adoption barrier? | — | |
+| MQTT gateway architecture | Distributed deployment needs MQTT+UDP bridging + dynamic load balancing (reference xinnan-tech/xiaozhi-mqtt-gateway). Does vanling need an MQTT gateway layer? | Suggest: `rumqttc` | |
+| MCP tool aggregation strategy | Reference projects have pre-built tool libraries (DingTalk/QQ/system monitor/WebPilot/math). Should vanling include built-in MCP tool packs? | Existing: `rmcp` | |
+| End-to-end S2S architecture | OpenAI/Hume/Sesame use single model for audio in/out (not cascaded STT→LLM→TTS). Should vanling evolve beyond cascaded approach? | Suggest: `csm.rs` (AGPL-3.0) or `moshi` (Apache 2.0) | |
+| Semantic VAD approach | OpenAI's model-level turn-taking vs traditional VAD — how should vanling implement smarter interruption/turn-taking? | Suggest: `wavekat-vad` | |
+| Conversational prosody TTS | Sesame CSM open-source model (Apache 2.0) can add breathing/hesitation/laughter. Should vanling TTS integrate prosody? | Suggest: `csm.rs` (AGPL-3.0) | |
+| Privacy strategy | Always-listening devices need privacy architecture (Bee: no audio storage / Omi: local processing). How should vanling balance features with privacy? | Existing: `sherpa-onnx` (full-chain local) | |
+| SSM architecture TTS | Cartesia uses State Space Model instead of Transformer for <90ms TTS. Should vanling TTS consider SSM architecture? | — (no Rust implementation) | |
 | Piper/Kokoro evaluation | Open-source TTS models Piper (20M params/MIT) and Kokoro (82M/Apache 2.0) — suitable to replace or supplement current MatchaTTS? Piper for edge deployment, Kokoro for best quality/size ratio | Suggest: `sherpa-onnx` (Piper ONNX) | |
 | Step-Audio-TTS-3B integration | StepFun open-source Chinese TTS (Apache 2.0, emotion control, dialect support) — candidate for server TTS? Evaluate GPU requirements and latency | Suggest: `reqwest` → StepFun API | |
-| Ambient listening architecture | Medical AI passive listening mode (non-wake-word). Should chobits support this? How to ensure privacy? Reference Nabla (no raw audio storage) architecture | — | |
-| Matter protocol support | Smart home Hub standard protocol (Matter 1.3+Thread 1.4). ESP32 already has Thread support. Should chobits integrate full Matter SDK for cross-platform device compatibility? | Suggest: `rs-matter` | |
+| Ambient listening architecture | Medical AI passive listening mode (non-wake-word). Should vanling support this? How to ensure privacy? Reference Nabla (no raw audio storage) architecture | — | |
+| Matter protocol support | Smart home Hub standard protocol (Matter 1.3+Thread 1.4). ESP32 already has Thread support. Should vanling integrate full Matter SDK for cross-platform device compatibility? | Suggest: `rs-matter` | |
 | Proactive suggestions | Gemini Daily Brief / Alexa+ proactive reminders for traffic/deals/calendar. Needs scheduled tasks + user context reasoning | Suggest: `tokio-cron-scheduler` | |
 | Cross-device continuity | Alexa+: seamless Echo→phone→computer conversation context switching. Needs session state sync mechanism | — (custom: SQLite + WS delta sync) | |
-| UGC character marketplace | Reference projects Character.AI has 10M+ user-created characters; Doubao agent platform supports no-code AI character creation. chobits could support user-defined AI persona + voice + backstory | — | |
-| Multimodal (voice+screen+video) | Gemini 2.5 / GPT-Realtime / Siri AI all support camera/screen input. chobits currently voice-only | Suggest: `webrtc-rs` (v0.17.x) | |
+| UGC character marketplace | Reference projects Character.AI has 10M+ user-created characters; Doubao agent platform supports no-code AI character creation. vanling could support user-defined AI persona + voice + backstory | — | |
+| Multimodal (voice+screen+video) | Gemini 2.5 / GPT-Realtime / Siri AI all support camera/screen input. vanling currently voice-only | Suggest: `webrtc-rs` (v0.17.x) | |
 
 ---
 
 ## Appendix B: Open Source Voice Models
 
-> Open-source TTS/voice models, sorted by quality/size/license. chobits can integrate directly.
+> Open-source TTS/voice models, sorted by quality/size/license. vanling can integrate directly.
 
-| Model | Params | License | Latency | Voice Cloning | Best for chobits |
+| Model | Params | License | Latency | Voice Cloning | Best for vanling |
 |-------|--------|---------|---------|---------------|-----------------|
 | [Piper](https://github.com/rhasspy/piper) | ~20M | MIT | 55ms (10s audio) | No | ★★★★★ CPU run, 30+ languages, edge deployment first choice |
 | [Kokoro v1.0](https://github.com/hexgrad/kokoro) | 82M | Apache 2.0 | CPU realtime | No (KokoClone extension supports) | ★★★★★ Best quality/size ratio, 54 voices |
@@ -213,7 +213,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 ### Recommended Architecture
 
 ```
-ESP32 (Edge)                   Server (chobits)
+ESP32 (Edge)                   Server (vanling)
 ┌──────────┐               ┌─────────────────────┐
 │ VAD      │               │ ASR: sherpa-onnx     │
 │ Piper/   │◄── WebSocket ─│ LLM: Qwen3 candle    │
@@ -231,11 +231,11 @@ ESP32 (Edge)                   Server (chobits)
 
 ## Appendix: Reference Projects
 
-> Key reference projects for chobits positioning and trade-off decisions, organized by category.
+> Key reference projects for vanling positioning and trade-off decisions, organized by category.
 
 ### Backend Services (Alternative Implementations)
 
-| Project | Language | Stars | Value for chobits |
+| Project | Language | Stars | Value for vanling |
 |---------|----------|-------|-------------------|
 | [xinnan-tech/xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) | Python | 10k+ | Full-featured reference: 12 ASR + 18 TTS + 13 plugins + PowerMem + RAGFlow + VLLM |
 | [joey-zhou/xiaozhi-esp32-server-java](https://github.com/joey-zhou/xiaozhi-esp32-server-java) | Java | 1.3k | DDD architecture + WebRTC AEC3 + 3 memory modes + RBAC + A/B device coordination |
@@ -311,11 +311,11 @@ ESP32 (Edge)                   Server (chobits)
 
 ### Commercial Products Reference
 
-> Key technologies and UX patterns from closed-source commercial products, for chobits trade-off reference.
+> Key technologies and UX patterns from closed-source commercial products, for vanling trade-off reference.
 
 #### Voice AI Platforms
 
-| Product | Key Technologies | Value for chobits |
+| Product | Key Technologies | Value for vanling |
 |---------|-----------------|-------------------|
 | OpenAI Realtime | E2E S2S, semantic VAD, WebRTC, ~232ms latency | Semantic VAD is gold standard for turn-taking/interruption; WebRTC transport architecture reference |
 | Cartesia Sonic 3.5 | SSM architecture TTS, <90ms latency, 3-second voice cloning | SSM is new TTS direction, faster than Transformer |
@@ -327,7 +327,7 @@ ESP32 (Edge)                   Server (chobits)
 
 #### Voice AI Infrastructure
 
-| Product | Key Technologies | Value for chobits |
+| Product | Key Technologies | Value for vanling |
 |---------|-----------------|-------------------|
 | LiveKit / Pipecat | Open-source SFU architecture, 50+ AI model integration, OpenAI ChatGPT backbone | Voice AI infrastructure standard, can use as transport layer |
 | Retell AI | ~600ms E2E (no tuning), proprietary turn detection model, BYO-LLM | Turn detection is key differentiator |
@@ -335,9 +335,9 @@ ESP32 (Edge)                   Server (chobits)
 
 #### Smart Speakers / Phone Assistants
 
-| Product | Key Technologies | Value for chobits |
+| Product | Key Technologies | Value for vanling |
 |---------|-----------------|-------------------|
-| Amazon Alexa+ | Autonomous task execution (Uber/OpenTable/Grubhub), model-agnostic routing, cross-device continuity | Agent chain execution pattern; chobits can implement via MCP |
+| Amazon Alexa+ | Autonomous task execution (Uber/OpenTable/Grubhub), model-agnostic routing, cross-device continuity | Agent chain execution pattern; vanling can implement via MCP |
 | Google Gemini for Home | Natural language automation creation ("Ask Home"), AI camera understanding | "Describe automation" UX pattern |
 | Xiaomi Super Xiaoai | Speaker ID for family members, AI call answering, dynamic bubble visual feedback | Multi-member voiceprint + family features |
 | Xiaodu | Bluetooth Mesh local gateway, offline control, voice personality persistence | Local gateway architecture; voice personality as emotional bond |
@@ -347,7 +347,7 @@ ESP32 (Edge)                   Server (chobits)
 
 #### AI Wearables
 
-| Product | Key Technologies | Value for chobits |
+| Product | Key Technologies | Value for vanling |
 |---------|-----------------|-------------------|
 | Meta Ray-Ban | 76% market share, audio-first, visual perception, 7+ language real-time translation | Audio-first + visual perception is success model |
 | Omi (open-source) | $89, MIT license, 250+ community apps, local recording + cloud sync | Closest open-source wearable reference |
@@ -357,7 +357,7 @@ ESP32 (Edge)                   Server (chobits)
 
 #### AI Companion Apps
 
-| Product | Key Technologies | Value for chobits |
+| Product | Key Technologies | Value for vanling |
 |---------|-----------------|-------------------|
 | Character.AI | 10M+ user characters, Lorebook worldview, PipSqueak 2 model | UGC character marketplace + persistent persona mode |
 | Replika 2.0 | Cross-month memory reconstruction, proactive reminders, AR experience, video calls | Proactive memory-driven suggestions is powerful UX |
@@ -366,7 +366,7 @@ ESP32 (Edge)                   Server (chobits)
 
 #### Key Industry Trends
 
-| Trend | Representative Products | chobits Opportunity |
+| Trend | Representative Products | vanling Opportunity |
 |-------|------------------------|---------------------|
 | Semantic VAD | OpenAI (model-level turn-taking) | Smarter interruption than pure VAD |
 | Conversational Prosody | Sesame CSM (breathing/hesitation/laughter) | More natural TTS |
@@ -380,9 +380,9 @@ ESP32 (Edge)                   Server (chobits)
 
 #### Vertical Industry Voice
 
-> Voice AI solutions in automotive, healthcare, education, translation and other verticals, for chobits vertical scenario reference.
+> Voice AI solutions in automotive, healthcare, education, translation and other verticals, for vanling vertical scenario reference.
 
-| Industry | Representative Products | Key Technologies | Value for chobits |
+| Industry | Representative Products | Key Technologies | Value for vanling |
 |----------|------------------------|------------------|-------------------|
 | Automotive Voice | NIO NOMI, Xpeng Tianji, SoundHound | Edge offline processing, 14 emotion tones, RAG vehicle manual, Speech-to-Meaning | Edge offline is key; emotion tone customization; RAG reference |
 | Healthcare Voice | Nuance DAX, Nabla, Abridge, Suki AI | Ambient clinical documentation, privacy-first (no data storage), HIPAA compliant, guided reasoning | Passive listening mode; privacy-first architecture; guided conversation |
@@ -392,9 +392,9 @@ ESP32 (Edge)                   Server (chobits)
 
 #### Chinese AI Startups (2025-2026)
 
-> Voice AI technologies from China's "AI Six Tigers" and emerging companies, for chobits technology selection reference.
+> Voice AI technologies from China's "AI Six Tigers" and emerging companies, for vanling technology selection reference.
 
-| Company | Key Technologies | Value for chobits |
+| Company | Key Technologies | Value for vanling |
 |---------|-----------------|-------------------|
 | [StepFun](https://github.com/stepfun-ai) | Step-Audio 2 (130B S2S), Step-Audio-TTS-3B, Apache 2.0 open-source, emotion control + dialects | **Most relevant**: best open-source voice AI, usable directly |
 | [Zhipu AI](https://github.com/THUDM) | GLM-4V vision model, 85% revenue from local deployment, HK IPO | Local deployment business model reference; vision capability |

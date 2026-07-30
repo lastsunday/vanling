@@ -16,7 +16,7 @@ on:
         default: false
   push:
     tags:
-      - "chobits-server@*"
+      - "vanling-server@*"
 
 jobs:
   prepare:
@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Set VERSION
         id: set-version
-        run: echo "VERSION=${GITHUB_REF_NAME#chobits-server@}" >> "$GITHUB_OUTPUT"
+        run: echo "VERSION=${GITHUB_REF_NAME#vanling-server@}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare

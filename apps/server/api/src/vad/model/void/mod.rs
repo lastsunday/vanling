@@ -1,5 +1,5 @@
 use framework::error::AppError;
-use service::chobits::vad::Vad;
+use service::ling::vad::Vad;
 
 #[derive(Clone)]
 pub struct VadVoid {}

@@ -3,13 +3,13 @@ title = "Server"
 weight = 100
 sort_by = "weight"
 [extra]
-source_file_hash = "b0592080629b50cfbda700c13183980cb189140e"
-translated_at = "2026-07-09T21:00:00Z"
+source_file_hash = "275f5a764ca89ff21dd58ab655e7352cd1aafa86"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # Server
 
-chobits server is built with Rust + axum, implementing the Xiaozhi smart speaker protocol with real-time voice conversation capabilities.
+vanling server is built with Rust + axum, implementing the Xiaozhi smart speaker protocol with real-time voice conversation capabilities.
 
 This section contains the following documents:
 

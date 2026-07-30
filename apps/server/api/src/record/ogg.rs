@@ -15,7 +15,7 @@ fn build_opus_head(channels: u8, sample_rate: u32) -> Vec<u8> {
 }
 
 fn build_opus_tags() -> Vec<u8> {
-    let vendor = "chobits";
+    let vendor = "vanling";
     let mut tags = Vec::new();
     tags.extend_from_slice(b"OpusTags");
     tags.extend_from_slice(&(vendor.len() as u32).to_le_bytes());

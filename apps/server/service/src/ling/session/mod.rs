@@ -7,14 +7,14 @@ use std::time::Instant;
 use tokio::select;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use crate::chobits::chii::Chii;
-use crate::chobits::frame::{Frame, InputMode};
-use crate::chobits::frame::{FrameResult, OutputMessage};
-use crate::chobits::listener::{ListenInput, Listener, TurnOutput};
-use crate::chobits::message::hello::{AudioParam, HelloMessage};
-use crate::chobits::message::tts::TtsState;
-use crate::chobits::message::{AudioFormat, Transport};
-use crate::chobits::tts::Tts;
+use crate::ling::core::Ling;
+use crate::ling::frame::{Frame, InputMode};
+use crate::ling::frame::{FrameResult, OutputMessage};
+use crate::ling::listener::{ListenInput, Listener, TurnOutput};
+use crate::ling::message::hello::{AudioParam, HelloMessage};
+use crate::ling::message::tts::TtsState;
+use crate::ling::message::{AudioFormat, Transport};
+use crate::ling::tts::Tts;
 
 use framework::prelude::error;
 
@@ -143,7 +143,7 @@ impl std::fmt::Display for Phase {
 pub struct SessionBuilder {
     id: Option<String>,
     listener: Option<Box<dyn Listener>>,
-    chii: Option<Arc<dyn Chii>>,
+    ling: Option<Arc<dyn Ling>>,
     tts: Option<Arc<dyn Tts>>,
     config: Option<SessionConfig>,
     audio_config: Option<AudioConfig>,
@@ -164,8 +164,8 @@ impl SessionBuilder {
         self
     }
 
-    pub fn with_chii(mut self, chii: Arc<dyn Chii>) -> Self {
-        self.chii = Some(chii);
+    pub fn with_ling(mut self, ling: Arc<dyn Ling>) -> Self {
+        self.ling = Some(ling);
         self
     }
 
@@ -209,7 +209,7 @@ impl SessionBuilder {
             config,
             audio_config,
             listener: self.listener.expect("listener is required"),
-            chii: self.chii.expect("chii is required"),
+            ling: self.ling.expect("ling is required"),
             tts: self.tts.expect("tts is required"),
         };
 
@@ -241,7 +241,7 @@ pub struct Session {
     config: SessionConfig,
     audio_config: AudioConfig,
 
-    chii: Arc<dyn Chii>,
+    ling: Arc<dyn Ling>,
     tts: Arc<dyn Tts>,
     listener: Box<dyn Listener>,
 }
@@ -394,7 +394,7 @@ impl Session {
             round_id,
             tx,
             epoch,
-            self.chii.clone(),
+            self.ling.clone(),
             self.tts.clone(),
             cancel,
         ));
@@ -483,7 +483,7 @@ impl Session {
 
     async fn on_turn_complete(
         &mut self,
-        result: crate::chobits::listener::TurnResult,
+        result: crate::ling::listener::TurnResult,
         param: &ListeningParam,
     ) {
         self.phase = Phase::Speaking(SpeakingParam {
@@ -517,8 +517,8 @@ impl Session {
         }
         let audio_config = &self.audio_config;
         let data = HelloMessage {
-            message: crate::chobits::message::Message {
-                mtype: crate::chobits::message::Type::Hello,
+            message: crate::ling::message::Message {
+                mtype: crate::ling::message::Type::Hello,
             },
             transport: Some(Transport::Websocket),
             audio_params: Some(AudioParam {

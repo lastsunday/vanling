@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use service::chobits::frame::{Frame, FrameResult, InputMode};
-use service::chobits::message::{hello::HelloMessage, tts::TtsState};
+use service::ling::frame::{Frame, FrameResult, InputMode};
+use service::ling::message::{hello::HelloMessage, tts::TtsState};
 use tracing_test::traced_test;
 
 use crate::common::tear_down;

@@ -73,13 +73,13 @@ jobs:
           ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
 
       - name: Package Android APK
-        run: cp ${{ env.APP_DIR }}/build/app/outputs/flutter-apk/app-release.apk "chobits-${{ inputs.version }}-android.apk"
+        run: cp ${{ env.APP_DIR }}/build/app/outputs/flutter-apk/app-release.apk "vanling-${{ inputs.version }}-android.apk"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chobits-${{ inputs.version }}-android
-          path: chobits-*-android.apk
+          name: vanling-${{ inputs.version }}-android
+          path: vanling-*-android.apk
           retention-days: 7
 
   build-web:
@@ -112,13 +112,13 @@ jobs:
           MOON_LOG: error
 
       - name: Package Web build
-        run: cp -r ${{ env.APP_DIR }}/build/web "chobits-${{ inputs.version }}-web"
+        run: cp -r ${{ env.APP_DIR }}/build/web "vanling-${{ inputs.version }}-web"
 
       - name: Upload Web build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chobits-${{ inputs.version }}-web
-          path: chobits-*-web/
+          name: vanling-${{ inputs.version }}-web
+          path: vanling-*-web/
           retention-days: 7
 
   build-linux:
@@ -151,13 +151,13 @@ jobs:
           MOON_LOG: error
 
       - name: Package Linux build
-        run: cp -r ${{ env.APP_DIR }}/build/linux/x64/release/bundle "chobits-${{ inputs.version }}-linux"
+        run: cp -r ${{ env.APP_DIR }}/build/linux/x64/release/bundle "vanling-${{ inputs.version }}-linux"
 
       - name: Upload Linux build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chobits-${{ inputs.version }}-linux
-          path: chobits-*-linux/
+          name: vanling-${{ inputs.version }}-linux
+          path: vanling-*-linux/
           retention-days: 7
 
   build-ios:
@@ -204,14 +204,14 @@ jobs:
         run: |
           mkdir -p Payload
           cp -r ${{ env.APP_DIR }}/build/ios/iphoneos/Runner.app Payload/
-          zip -r "chobits-${{ inputs.version }}-ios.ipa" Payload/
+          zip -r "vanling-${{ inputs.version }}-ios.ipa" Payload/
           rm -rf Payload
 
       - name: Upload iOS IPA
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chobits-${{ inputs.version }}-ios
-          path: chobits-*-ios.ipa
+          name: vanling-${{ inputs.version }}-ios
+          path: vanling-*-ios.ipa
           retention-days: 7
 
   build-macos:
@@ -255,13 +255,13 @@ jobs:
           MOON_LOG: error
 
       - name: Package macOS build
-        run: cp -r ${{ env.APP_DIR }}/build/macos/Build/Products/Release/app.app "chobits-${{ inputs.version }}-macos.app"
+        run: cp -r ${{ env.APP_DIR }}/build/macos/Build/Products/Release/app.app "vanling-${{ inputs.version }}-macos.app"
 
       - name: Upload macOS build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chobits-${{ inputs.version }}-macos
-          path: chobits-*-macos.app/
+          name: vanling-${{ inputs.version }}-macos
+          path: vanling-*-macos.app/
           retention-days: 7
 
   build-windows:
@@ -302,13 +302,13 @@ jobs:
 
       - name: Package Windows build
         shell: bash
-        run: cp -r ${{ env.APP_DIR }}/build/windows/x64/runner/Release "chobits-${{ inputs.version }}-windows"
+        run: cp -r ${{ env.APP_DIR }}/build/windows/x64/runner/Release "vanling-${{ inputs.version }}-windows"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chobits-${{ inputs.version }}-windows
-          path: chobits-*-windows/
+          name: vanling-${{ inputs.version }}-windows
+          path: vanling-*-windows/
           retention-days: 7
 
   create-release:
@@ -344,7 +344,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: release-artifacts
-          pattern: chobits-${{ inputs.version }}-*
+          pattern: vanling-${{ inputs.version }}-*
           merge-multiple: true
 
       - uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b

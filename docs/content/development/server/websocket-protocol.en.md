@@ -2,13 +2,13 @@
 title = "WebSocket Communication Protocol"
 weight = 202
 [extra]
-source_file_hash = "73e5a6d714284e61888d82d0e6673fe6f43fdf78"
-translated_at = "2026-07-09T21:00:00Z"
+source_file_hash = "ace9667629e55063364c4428f21419f4b8bc2b7a"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # WebSocket Communication Protocol
 
-This protocol is compiled based on the actual implementation of [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) and the chobits server.
+This protocol is compiled based on the actual implementation of [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) and the vanling server.
 
 ---
 

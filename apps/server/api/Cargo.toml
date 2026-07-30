@@ -15,7 +15,7 @@ migration = { path = "../migration" }
 service = { path = "../service" }
 framework = { path = "../../../libs/framework" }
 web = { path = "../web" }
-chobits-macros = { workspace = true }
+vanling-macros = { workspace = true }
 
 axum = { workspace = true, features = ["macros", "ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }

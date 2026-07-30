@@ -1,11 +1,11 @@
 {
-  "name": "chobits",
-  "short_name": "chobits",
+  "name": "vanling",
+  "short_name": "vanling",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0175C2",
   "theme_color": "#0175C2",
-  "description": "chobits",
+  "description": "vanling",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "icons": [

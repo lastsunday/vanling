@@ -1,20 +1,20 @@
 +++
-title = "Chobits"
+title = "Vanling"
 +++
 
-# Chobits
+# Vanling
 
 > [!WARNING]
 > This project is being developed,all the things is not stable.
 
-[![CI](https://github.com/lastsunday/chobits/actions/workflows/ci.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/ci.yml)
-[![app-dev-release](https://github.com/lastsunday/chobits/actions/workflows/app-dev-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/app-dev-release.yml)
-[![app-release](https://github.com/lastsunday/chobits/actions/workflows/app-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/app-release.yml)
-[![server-dev-release](https://github.com/lastsunday/chobits/actions/workflows/server-dev-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/server-dev-release.yml)
-[![server-release](https://github.com/lastsunday/chobits/actions/workflows/server-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/server-release.yml)
+[![CI](https://github.com/lastsunday/vanling/actions/workflows/ci.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/ci.yml)
+[![app-dev-release](https://github.com/lastsunday/vanling/actions/workflows/app-dev-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/app-dev-release.yml)
+[![app-release](https://github.com/lastsunday/vanling/actions/workflows/app-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/app-release.yml)
+[![server-dev-release](https://github.com/lastsunday/vanling/actions/workflows/server-dev-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/server-dev-release.yml)
+[![server-release](https://github.com/lastsunday/vanling/actions/workflows/server-release.yml/badge.svg)](https://github.com/lastsunday/vanling/actions/workflows/server-release.yml)
 
-[![GitHub Release](https://img.shields.io/github/v/release/lastsunday/chobits)](https://github.com/lastsunday/chobits/releases)
-[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/lastsunday/chobits/tags)
+[![GitHub Release](https://img.shields.io/github/v/release/lastsunday/vanling)](https://github.com/lastsunday/vanling/releases)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/lastsunday/vanling/tags)
 
 ## 目的
 
@@ -49,7 +49,7 @@ title = "Chobits"
 - [ ] 部署：二进制（开发中）、Docker（开发中）
 - [ ] 兼容设备
   1. [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)（开发中）
-  1. chobits（Flutter 跨平台 App，开发中）
+  1. vanling（Flutter 跨平台 App，开发中）
 
 ## 系统要求
 

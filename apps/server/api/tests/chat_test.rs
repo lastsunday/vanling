@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use api::chii::Splitter;
+    use api::ling_core::Splitter;
     use tracing::info;
     use tracing_test::traced_test;
 
@@ -12,7 +12,7 @@ mod tests {
         let sentences = splitter.accept_token("Hello,World!");
         assert!(!sentences.is_empty(), "should emit first chunk");
 
-        let sentences = splitter.accept_token("lastsunday。I like rust。I want a chobits ");
+        let sentences = splitter.accept_token("lastsunday。I like rust。I want a vanling ");
         // Should split at 。 boundaries
         let total_sentences: usize = sentences.len();
 

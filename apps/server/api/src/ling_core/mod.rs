@@ -6,15 +6,15 @@ use std::{collections::VecDeque, sync::Arc};
 use crate::common::ModelError;
 use futures::Stream;
 use futures::StreamExt;
-use service::chobits::llm::{CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role};
-use service::chobits::mcp::McpRegistry;
+use service::ling::llm::{CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role};
+use service::ling::mcp::McpRegistry;
 use tokio::sync::{Mutex, mpsc::channel};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
 #[derive(Clone)]
-pub struct ChiiCore {
+pub struct LingCore {
     session_id: Option<String>,
     model: Arc<dyn Llm>,
     temperature: Option<f64>,
@@ -33,9 +33,9 @@ pub struct History {
     pub chat_history: Vec<Message>,
 }
 
-impl ChiiCore {
-    pub fn builder() -> ChiiCoreBuilder {
-        ChiiCoreBuilder::new()
+impl LingCore {
+    pub fn builder() -> LingCoreBuilder {
+        LingCoreBuilder::new()
     }
 
     pub fn with_history(mut self, history: Arc<Mutex<History>>) -> Self {
@@ -121,7 +121,7 @@ impl ChiiCore {
                     while has_next_step {
                         loop_count += 1;
                         debug!(
-                            component = "CHII", event = "loop_iteration",
+                            component = "LING", event = "loop_iteration",
                             session_id = ?session_id,
                             iteration = loop_count,
                             "LLM complete loop iteration"
@@ -153,7 +153,7 @@ impl ChiiCore {
                             match event {
                                 Ok(CompletionEvent::Text(text)) => {
                                     trace!(
-                                        component = "CHII", event = "text_event",
+                                        component = "LING", event = "text_event",
                                         session_id = ?session_id,
                                         text_len = text.len(),
                                         "text event received"
@@ -172,7 +172,7 @@ impl ChiiCore {
                                     arguments,
                                 }) => {
                                     info!(
-                                        component = "CHII", event = "tool_call",
+                                        component = "LING", event = "tool_call",
                                         session_id = ?session_id,
                                         tool_name = %name,
                                         "tool call received"
@@ -185,7 +185,7 @@ impl ChiiCore {
                                 }
                                 Ok(CompletionEvent::Reasoning(text)) => {
                                     debug!(
-                                        component = "CHII", event = "reasoning_event",
+                                        component = "LING", event = "reasoning_event",
                                         session_id = ?session_id,
                                         text_len = text.len(),
                                         "reasoning event received"
@@ -194,7 +194,7 @@ impl ChiiCore {
                                 }
                                 Ok(CompletionEvent::Final { .. }) => {
                                 debug!(
-                                    component = "CHII", event = "final_event",
+                                    component = "LING", event = "final_event",
                                     session_id = ?session_id,
                                     text_collector_len = text_collector.len(),
                                     "final event received"
@@ -210,10 +210,10 @@ impl ChiiCore {
                                     }
                                 }
                                 Ok(CompletionEvent::Error(e)) => {
-                                    error!(component = "CHII", event = "llm_stream_event_error", error = %e, "LLM stream event error");
+                                    error!(component = "LING", event = "llm_stream_event_error", error = %e, "LLM stream event error");
                                 }
                                 Err(e) => {
-                                    error!(component = "CHII", event = "llm_stream_error", error = %e, "LLM stream error");
+                                    error!(component = "LING", event = "llm_stream_error", error = %e, "LLM stream error");
                                     let _ = tx.send(Err(ModelError::Chat(e.to_string()))).await;
                                 }
                             }
@@ -260,7 +260,7 @@ impl ChiiCore {
                                         {
                                             Ok(result) => {
                                                 info!(
-                                                    component = "CHII", event = "tool_result",
+                                                    component = "LING", event = "tool_result",
                                                     session_id = ?session_id,
                                                     tool_name = %name,
                                                     result_len = result.len(),
@@ -281,7 +281,7 @@ impl ChiiCore {
                                             }
                                             Err(e) => {
                                                 error!(
-                                                    component = "CHII", event = "tool_error",
+                                                    component = "LING", event = "tool_error",
                                                     session_id = ?session_id,
                                                     tool_name = %name,
                                                     error = %e,
@@ -310,7 +310,7 @@ impl ChiiCore {
                         }
                         if text_collector.is_empty() && !has_tool_call {
                             warn!(
-                                component = "CHII", event = "llm_no_usable_output",
+                                component = "LING", event = "llm_no_usable_output",
                                 session_id = ?session_id,
                                 "LLM completed with no usable output"
                             );
@@ -340,11 +340,11 @@ impl ChiiCore {
 
 use async_trait::async_trait;
 use framework::error::AppError;
-use service::chobits::chii::{Chii, ContentBlock, Input, OutputBlock};
+use service::ling::core::{ContentBlock, Input, Ling, OutputBlock};
 use std::pin::Pin;
 
 #[async_trait]
-impl Chii for ChiiCore {
+impl Ling for LingCore {
     async fn ask(
         &self,
         input: Input,
@@ -367,40 +367,40 @@ impl Chii for ChiiCore {
 }
 
 #[derive(Default)]
-pub struct ChiiCoreBuilder {
+pub struct LingCoreBuilder {
     session_id: Option<String>,
     model: Option<Arc<dyn Llm>>,
     mcp_registry: Option<Arc<Mutex<McpRegistry>>>,
     preamble: Option<String>,
 }
 
-impl ChiiCoreBuilder {
+impl LingCoreBuilder {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn with_session_id(mut self, session_id: Option<String>) -> ChiiCoreBuilder {
+    pub fn with_session_id(mut self, session_id: Option<String>) -> LingCoreBuilder {
         self.session_id = session_id;
         self
     }
 
-    pub fn with_model(mut self, model: Arc<dyn Llm>) -> ChiiCoreBuilder {
+    pub fn with_model(mut self, model: Arc<dyn Llm>) -> LingCoreBuilder {
         self.model = Some(model);
         self
     }
 
-    pub fn with_mcp_registry(mut self, mcp_registry: Arc<Mutex<McpRegistry>>) -> ChiiCoreBuilder {
+    pub fn with_mcp_registry(mut self, mcp_registry: Arc<Mutex<McpRegistry>>) -> LingCoreBuilder {
         self.mcp_registry = Some(mcp_registry);
         self
     }
 
-    pub fn with_preamble(mut self, preamble: Option<String>) -> ChiiCoreBuilder {
+    pub fn with_preamble(mut self, preamble: Option<String>) -> LingCoreBuilder {
         self.preamble = preamble;
         self
     }
 
-    pub fn build(self) -> ChiiCore {
-        ChiiCore {
+    pub fn build(self) -> LingCore {
+        LingCore {
             session_id: self.session_id,
             model: self.model.expect("model is required"),
             temperature: None,

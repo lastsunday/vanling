@@ -4,7 +4,7 @@ use crate::config::{self, llm::LlmConfig};
 use crate::llm::model::{echo::Echo, openai_compatible::OpenAiCompatible, qwen3::LlmQwen};
 use std::sync::{Arc, OnceLock};
 
-pub use service::chobits::llm::Llm;
+pub use service::ling::llm::Llm;
 
 static INSTANCE: OnceLock<LlmManager> = OnceLock::new();
 

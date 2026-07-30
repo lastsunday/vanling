@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use api::config::vad::VadConfig;
 use api::vad::model::earshot::VadEarshot;
 use earshot::Detector;
-use service::chobits::vad::Vad;
+use service::ling::vad::Vad;
 use tracing::info;
 use tracing_test::traced_test;
 

@@ -4,7 +4,7 @@ use crate::{
     asr::model::{void::AsrVoid, x_asr::AsrXAsr},
     config::{AsrModel, asr::AsrConfig},
 };
-use service::chobits::asr::Asr;
+use service::ling::asr::Asr;
 use std::sync::{Arc, OnceLock};
 
 static INSTANCE: OnceLock<AsrManager> = OnceLock::new();

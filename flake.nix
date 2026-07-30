@@ -1,5 +1,5 @@
 {
-  description = "chobits monorepo development environment";
+  description = "vanling monorepo development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/3e41b24abd260e8f71dbe2f5737d24122f972158";
@@ -192,15 +192,15 @@
 
         # Build workspace dependencies once for reuse across packages
         cargoArtifacts = craneLib.buildDepsOnly (commonCraneArgs // {
-          pname = "chobits-workspace-deps";
+          pname = "vanling-workspace-deps";
         });
 
-        # Build chobits-server binary
-        chobits-server = craneLib.buildPackage (commonCraneArgs // {
+        # Build vanling-server binary
+        vanling-server = craneLib.buildPackage (commonCraneArgs // {
           inherit cargoArtifacts;
-          pname = "chobits-server";
+          pname = "vanling-server";
           version = "dev";
-          cargoBuildFlags = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+          cargoBuildFlags = [ "--package" "vanling-server" "--bin" "vanling-server" ];
         });
 
         # Crane library for arm64 cross-compilation
@@ -232,26 +232,26 @@
 
         # Build arm64 dependencies once for reuse
         cargoArtifactsArm64 = craneLibArm64.buildDepsOnly (commonCraneArgsArm64 // {
-          pname = "chobits-workspace-deps-arm64";
+          pname = "vanling-workspace-deps-arm64";
         });
 
         # Build arm64 binary
-        chobits-server-arm64 = craneLibArm64.buildPackage (commonCraneArgsArm64 // {
+        vanling-server-arm64 = craneLibArm64.buildPackage (commonCraneArgsArm64 // {
           inherit cargoArtifactsArm64;
-          pname = "chobits-server";
+          pname = "vanling-server";
           version = "dev";
-          cargoBuildFlags = [ "--package" "chobits-server" "--bin" "chobits-server" ];
+          cargoBuildFlags = [ "--package" "vanling-server" "--bin" "vanling-server" ];
         });
 
         # ── Docker images ─────────────────────────────────────────────────
         mkDockerImage = { dockerPkgs, binary, arch, label }:
           dockerPkgs.dockerTools.buildImage {
-            name = "chobits";
+            name = "vanling";
             tag = "dev-${label}";
             copyToRoot = [ binary ];
             architecture = arch;
             config = {
-              Cmd = [ "/bin/chobits-server" ];
+              Cmd = [ "/bin/vanling-server" ];
               WorkingDir = "/app";
               ExposedPorts = { "3000/tcp" = {}; };
             };
@@ -259,16 +259,16 @@
 
       in {
         packages = {
-          inherit moon chobits-server chobits-server-arm64;
+          inherit moon vanling-server vanling-server-arm64;
           docker-amd64 = mkDockerImage {
             dockerPkgs = pkgs;
-            binary = chobits-server;
+            binary = vanling-server;
             arch = "amd64";
             label = "amd64";
           };
           docker-arm64 = mkDockerImage {
             dockerPkgs = pkgsArm64;
-            binary = chobits-server-arm64;
+            binary = vanling-server-arm64;
             arch = "arm64";
             label = "arm64";
           };
@@ -346,7 +346,7 @@
 
               # Auto-install Flutter version pinned in .fvmrc
               if [ -f .fvmrc ] && command -v fvm &>/dev/null; then
-                if [ "''${CHOBITS_DEBUG:-0}" = "1" ]; then
+                if [ "''${VANLING_DEBUG:-0}" = "1" ]; then
                   echo "  [fvm] pwd=$(pwd) HOME=$HOME"
                   echo "  [fvm] .fvmrc: $(cat .fvmrc)"
                   echo "  [fvm] .fvm/ exists: $([ -d .fvm ] && echo yes || echo no)"
@@ -357,7 +357,7 @@
                 fi
                 fvm install
                 fvm use --force
-                if [ "''${CHOBITS_DEBUG:-0}" = "1" ]; then
+                if [ "''${VANLING_DEBUG:-0}" = "1" ]; then
                   echo "  [fvm] After fvm use, .fvm/ contents:"
                   ls -la .fvm/ 2>&1 | sed 's/^/    /'
                   if [ -L .fvm/flutter_sdk ]; then
@@ -371,7 +371,7 @@
 
               if [ -f .fvmrc ] && [ -L .fvm/flutter_sdk ] && [ -d .fvm/flutter_sdk ]; then
                 export PATH="$(pwd)/.fvm/flutter_sdk/bin:$PATH"
-                if [ "''${CHOBITS_DEBUG:-0}" = "1" ] && [ -x "$(pwd)/.fvm/flutter_sdk/bin/flutter" ]; then
+                if [ "''${VANLING_DEBUG:-0}" = "1" ] && [ -x "$(pwd)/.fvm/flutter_sdk/bin/flutter" ]; then
                   echo "  [fvm] Flutter SDK: $(readlink -f .fvm/flutter_sdk 2>/dev/null || readlink .fvm/flutter_sdk)"
                 fi
               elif [ -f .fvmrc ]; then
@@ -403,7 +403,7 @@
                 echo "  [linux-deps] LIBRARY_PATH: ''$(echo $LIBRARY_PATH | cut -c1-200)..."
               fi
 
-              echo "✦ chobits devShell (${system})"
+              echo "✦ vanling devShell (${system})"
               echo "  Rust:    $(rustc --version)"
               echo "  Moon:    $(moon --version)"
               echo "  Node:    $(node --version)"
@@ -417,7 +417,7 @@
           };
 
           # Local-only cross-compilation shell for x86_64-unknown-linux-gnu (static)
-          # CI uses `nix build .#chobits-server` instead
+          # CI uses `nix build .#vanling-server` instead
           gnu64 = pkgs.mkShell {
             packages = [
               rustToolchain
@@ -440,7 +440,7 @@
               export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${if pkgs.stdenv.isLinux then "${pkgs.glibc.static}/lib" else ""}"
 
               export CARGO_BUILD_RUSTC_WRAPPER=sccache
-              echo "✦ chobits gnu64 static-compilation shell"
+              echo "✦ vanling gnu64 static-compilation shell"
               echo "  Target: x86_64-unknown-linux-gnu"
               echo "  CC: $CC_x86_64_unknown_linux_gnu"
               echo "  CXX: $CXX_x86_64_unknown_linux_gnu"
@@ -448,7 +448,7 @@
           };
 
           # Local-only cross-compilation shell for aarch64-unknown-linux-gnu (static)
-          # CI uses `nix build .#chobits-server-arm64` instead
+          # CI uses `nix build .#vanling-server-arm64` instead
           gnu64-arm64 = pkgsArm64.mkShell {
             packages = [
               rustToolchain
@@ -472,7 +472,7 @@
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${if pkgsArm64.stdenv.isLinux then "${pkgsArm64.glibc.static}/lib -L ${pkgsArm64.stdenv.cc.cc.lib}/lib" else ""}"
 
               export CARGO_BUILD_RUSTC_WRAPPER=sccache
-              echo "✦ chobits gnu64-arm64 cross-compilation shell"
+              echo "✦ vanling gnu64-arm64 cross-compilation shell"
               echo "  Target: aarch64-unknown-linux-gnu"
               echo "  CC: $CC_aarch64_unknown_linux_gnu"
               echo "  CXX: $CXX_aarch64_unknown_linux_gnu"

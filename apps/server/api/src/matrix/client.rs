@@ -18,7 +18,7 @@ use ruma::{
     presence::PresenceState,
     serde::Raw,
 };
-use service::chobits::{
+use service::ling::{
     frame::{Frame, FrameResult, InputMode},
     mcp::McpRegistry,
     message::{hello::HelloMessage, tts::TtsState},
@@ -39,7 +39,7 @@ use crate::{
     tts::TtsManager,
     vad::VadManager,
     ws::default_listener::DefaultListener,
-    {chii::ChiiCoreBuilder, llm::LlmManager},
+    {ling_core::LingCoreBuilder, llm::LlmManager},
 };
 
 pub async fn start(
@@ -225,8 +225,8 @@ impl Bot {
                 }
             }
 
-            let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
-                ChiiCoreBuilder::new()
+            let ling: Arc<dyn service::ling::core::Ling> = Arc::new(
+                LingCoreBuilder::new()
                     .with_session_id(Some(id.clone()))
                     .with_model(LlmManager::global().default())
                     .with_mcp_registry(mcp_registry)
@@ -234,7 +234,7 @@ impl Bot {
                     .build(),
             );
 
-            let tts: Arc<dyn service::chobits::tts::Tts> = TtsManager::global().default();
+            let tts: Arc<dyn service::ling::tts::Tts> = TtsManager::global().default();
 
             let session_config = ServiceSessionConfig {
                 system_prompt: self.session_config.system_prompt.clone(),
@@ -260,7 +260,7 @@ impl Bot {
                     .expect("output frame duration is empty"),
             };
 
-            let session_ctx = service::chobits::session::SessionBuilder::new()
+            let session_ctx = service::ling::session::SessionBuilder::new()
                 .with_id(id.clone())
                 .with_listener(Box::new(DefaultListener::new(
                     id.clone(),
@@ -268,7 +268,7 @@ impl Bot {
                     AsrManager::global().default().clone(),
                     self.session_config.silence_voice_timeout,
                 )))
-                .with_chii(chii)
+                .with_ling(ling)
                 .with_tts(tts)
                 .with_config(session_config)
                 .with_audio_config(audio_config)

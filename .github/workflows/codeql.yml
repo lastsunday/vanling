@@ -67,11 +67,11 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
-      # chobits-server excluded: requires SHERPA_ONNX_LIB_DIR (sherpa-onnx prebuilt libs)
+      # vanling-server excluded: requires SHERPA_ONNX_LIB_DIR (sherpa-onnx prebuilt libs)
       # only available via Nix buildRustPackage, not the devShell
       - name: Build Rust
         if: matrix.language == 'rust'
-        run: nix develop --command cargo build --workspace --exclude chobits-server --verbose
+        run: nix develop --command cargo build --workspace --exclude vanling-server --verbose
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1

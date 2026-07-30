@@ -5,7 +5,7 @@ use framework::error::AppError;
 use std::sync::Arc;
 
 use super::McpClient;
-use crate::chobits::llm::ToolDef;
+use crate::ling::llm::ToolDef;
 
 pub struct McpRegistry {
     pub session_id: Option<String>,

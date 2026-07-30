@@ -4,11 +4,11 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use chrono::Local;
-use service::chobits::asr::Asr;
-use service::chobits::asr::AsrStream;
-use service::chobits::listener::{ListenInput, Listener, TurnOutput, TurnResult};
-use service::chobits::message::hello::AudioParam;
-use service::chobits::vad::Vad;
+use service::ling::asr::Asr;
+use service::ling::asr::AsrStream;
+use service::ling::listener::{ListenInput, Listener, TurnOutput, TurnResult};
+use service::ling::message::hello::AudioParam;
+use service::ling::vad::Vad;
 
 const PREFIX_SAMPLES_MAX: usize = 9600;
 

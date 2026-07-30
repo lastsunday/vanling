@@ -2,7 +2,7 @@ use crate::common::ModelError;
 use async_trait::async_trait;
 use framework::error::AppError;
 use futures::Stream;
-use service::chobits::llm::{CompletionEvent, CompletionRequest, ContentPart, Llm};
+use service::ling::llm::{CompletionEvent, CompletionRequest, ContentPart, Llm};
 use std::pin::Pin;
 use tokio::sync::mpsc::channel;
 use tokio_stream::wrappers::ReceiverStream;
@@ -53,11 +53,11 @@ impl Llm for Echo {
         0
     }
 
-    fn calculate_tools_prompt_len(&self, _tools: &[service::chobits::llm::ToolDef]) -> u64 {
+    fn calculate_tools_prompt_len(&self, _tools: &[service::ling::llm::ToolDef]) -> u64 {
         0
     }
 
-    fn calculate_message_prompt_len(&self, _message: &service::chobits::llm::Message) -> u64 {
+    fn calculate_message_prompt_len(&self, _message: &service::ling::llm::Message) -> u64 {
         0
     }
 }

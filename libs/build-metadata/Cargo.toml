@@ -1,5 +1,5 @@
 [package]
-name = "chobits_build_metadata"
+name = "vanling_build_metadata"
 edition.workspace = true
 version.workspace = true
 

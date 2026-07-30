@@ -2,16 +2,14 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use api::{
-    chii::Splitter,
     common::ModelError,
     config::{LlmProvider, llm::LlmConfig},
+    ling_core::Splitter,
     llm::LlmManager,
 };
 use framework::error::AppError;
 use futures::{Stream, StreamExt};
-use service::chobits::llm::{
-    CompletionEvent, CompletionRequest, ContentPart, Message, Role, ToolDef,
-};
+use service::ling::llm::{CompletionEvent, CompletionRequest, ContentPart, Message, Role, ToolDef};
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tracing::info;

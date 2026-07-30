@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use chobits_server::run;
+use vanling_server::run;
 
 fn main() -> Result<(), Box<dyn Error>> {
     run()

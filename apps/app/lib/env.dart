@@ -43,7 +43,7 @@ class Env {
 
   // 开发环境
   static final EnvConfig _devConfig = EnvConfig(
-    appcastURL: "https://github.com/lastsunday/chobits/version.xml",
+    appcastURL: "https://github.com/lastsunday/vanling/version.xml",
     loginFeatureEnable: true,
     oauthUrl: "",
     oauthClientId: "",
@@ -56,7 +56,7 @@ class Env {
   );
   // 发布环境
   static final EnvConfig _prodConfig = EnvConfig(
-    appcastURL: "https://github.com/lastsunday/chobits/version.xml",
+    appcastURL: "https://github.com/lastsunday/vanling/version.xml",
     oauthUrl: "",
     logLevel: Level.INFO,
     authorizationHeader: "Authorization",

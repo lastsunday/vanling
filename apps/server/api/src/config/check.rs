@@ -8,7 +8,7 @@ use crate::Config;
 #[allow(clippy::cognitive_complexity)]
 pub fn check(config: &Config) -> Result<(), anyhow::Error> {
     if cfg!(debug_assertions) {
-        warn!("Note: chobits was built without optimisations (i.e. debug build)");
+        warn!("Note: vanling was built without optimisations (i.e. debug build)");
     }
 
     warn_deprecated(config);
@@ -41,7 +41,7 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
                 error!(
                     "You are detected using Docker with a loopback/localhost listening \
 						 address of {addr}. If you are using a reverse proxy on the host and \
-						 require communication to chobits in the Docker container via \
+						 require communication to vanling in the Docker container via \
 						 NAT-based networking, this will NOT work. Please change this to \
 						 \"0.0.0.0\". If this is expected, you can ignore.",
                 );
@@ -49,7 +49,7 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
                 error!(
                     "You are detected using Podman with a loopback/localhost listening \
 						 address of {addr}. If you are using a reverse proxy on the host and \
-						 require communication to chobits in the Podman container via \
+						 require communication to vanling in the Podman container via \
 						 NAT-based networking, this will NOT work. Please change this to \
 						 \"0.0.0.0\". If this is expected, you can ignore.",
                 );
@@ -75,7 +75,7 @@ fn warn_deprecated(config: &Config) {
 
     if was_deprecated {
         warn!(
-            "Read chobits config documentation and check your \
+            "Read vanling config documentation and check your \
 			 configuration if any new configuration parameters should be adjusted"
         );
     }
@@ -89,7 +89,7 @@ fn warn_unknown_key(config: &Config) {
         |key| "config".to_owned().ne(key.to_owned()), /* "config" is expected */
     ) {
         warn!(
-            "Config parameter \"{}\" is unknown to chobits, ignoring.",
+            "Config parameter \"{}\" is unknown to vanling, ignoring.",
             key
         );
     }

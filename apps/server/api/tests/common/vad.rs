@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow;
 use api::config::vad::VadConfig;
-use service::chobits::vad::Vad;
+use service::ling::vad::Vad;
 
 pub const SAMPLE_RATE: u32 = 16000;
 pub const WINDOW_SIZE: usize = 256;

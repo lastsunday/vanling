@@ -2,8 +2,8 @@
 title = "Models and Deployment"
 weight = 203
 [extra]
-source_file_hash = "f2355b3553a198a4d94eadfd32fb815de42fdb8c"
-translated_at = "2026-07-24T00:00:00Z"
+source_file_hash = "2636170d3eab82a7a1783a10c34761b346bc3be5"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # Models and Deployment
@@ -28,7 +28,7 @@ apps/server/
 │       ├── ota.rs            # OTA firmware update
 │       ├── device.rs         # Device management (admin CRUD)
 │       ├── ws/               # WebSocket handler (core real-time pipeline)
-│       ├── chii/             # ChiiCore: LLM + MCP orchestration
+│       ├── ling_core/        # LingCore: LLM + MCP orchestration
 │       ├── asr/              # ASR Manager + model (XAsr)
 │       ├── tts/              # TTS Manager + model (MatchaTTS)
 │       ├── vad/              # VAD Manager + model (Earshot)
@@ -38,15 +38,15 @@ apps/server/
 │       ├── matrix/           # Matrix chat integration
 │       └── common/           # Shared helpers (device selection, errors)
 ├── service/                  # Business logic layer (trait definitions + Session state machine)
-│   └── src/chobits/
+│   └── src/ling/
 │       ├── session/          # Session state machine + Round lifecycle
 │       ├── frame.rs          # Frame / FrameResult / OutputMessage
 │       ├── listener.rs       # Listener trait (VAD + ASR orchestration)
-│       ├── chii.rs           # Chii trait (LLM + MCP orchestration)
+│       ├── core.rs           # Ling trait (LLM + MCP orchestration)
 │       ├── asr.rs / tts.rs / vad.rs  # AI trait definitions
 │       ├── llm/              # Llm trait + ChatMessage / ToolDef
 │       ├── mcp/              # McpClient trait + McpRegistry
-│       └── message/          # Wire protocol message definitions
+│       └── message/          # Wire protocol message definitions (Hello / Abort / Audio / LLM / TTS, etc.)
 ├── entity/                   # Sea-ORM Entities (user / session / round / round_data / frame / config)
 ├── migration/                # Database migrations
 └── web/                      # Static file serving (SPA)
@@ -68,9 +68,9 @@ See [Dialogue Flow](@/development/server/dialogue-flow.en.md).
 
 Configuration uses [figment](https://docs.rs/figment) with layered loading, lowest to highest priority:
 
-1. TOML file pointed to by `CHOBITS_CONFIG` env var
+1. TOML file pointed to by `VANLING_CONFIG` env var
 2. CLI `--config` paths (multiple, merged)
-3. `CHOBITS_` prefixed environment variables (e.g., `CHOBITS_LLM_MODEL`)
+3. `VANLING_` prefixed environment variables (e.g., `VANLING_LLM_MODEL`)
 4. CLI `-O key=value` overrides
 
 ### Hot Reload
@@ -97,11 +97,11 @@ See `application-example.toml` for the full configuration reference.
 
 ## Downloader System
 
-The `chobits downloader` subcommand provides model asset downloading:
+The `vanling-server downloader` subcommand provides model asset downloading:
 
 - **Manifest-driven**: Model definitions in `src/downloader/manifests/` TOML files with URLs, variants, checksums
 - **Category installation**: `--category tts|asr|llm|vad|reference`
-- **Interactive wizard**: `chobits downloader wizard` for guided installation
+- **Interactive wizard**: `vanling-server downloader wizard` for guided installation
 - **Mirror support**: `--mirror hf-mirror.com` for users in China
 - **Verification**: Automatic SHA256 checksum verification
 - **Path derivation**: Installed paths auto-injected via `derive_tts_path` / `derive_asr_path` / `derive_llm_path`

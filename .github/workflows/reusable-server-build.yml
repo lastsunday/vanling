@@ -28,8 +28,8 @@ env:
   ROOT_DIR: apps/server/
   REGISTRY: ghcr.io
   USER_NAME: lastsunday
-  IMAGE_NAME: chobits
-  BIN_NAME: chobits-server
+  IMAGE_NAME: vanling
+  BIN_NAME: vanling-server
 
 jobs:
   build-ui:
@@ -98,7 +98,7 @@ jobs:
             models-
 
       - name: Build binary (amd64)
-        run: nix build .#chobits-server --quiet
+        run: nix build .#vanling-server --quiet
 
       - name: Copy binary (amd64)
         run: |
@@ -106,7 +106,7 @@ jobs:
           cp result/bin/${{ env.BIN_NAME }} "${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64"
 
       - name: Build binary (arm64)
-        run: nix build .#chobits-server-arm64 --quiet
+        run: nix build .#vanling-server-arm64 --quiet
 
       - name: Copy binary (arm64)
         run: |
@@ -147,17 +147,17 @@ jobs:
       - name: Add data layer to images
         run: |
           # amd64
-          docker create --name temp-amd64 chobits:dev-amd64
+          docker create --name temp-amd64 vanling:dev-amd64
           docker cp ./data temp-amd64:/app/data
           docker cp ./download-report.json temp-amd64:/app/data/ 2>/dev/null || true
-          docker commit temp-amd64 chobits:dev-amd64-data
+          docker commit temp-amd64 vanling:dev-amd64-data
           docker rm temp-amd64
 
           # arm64
-          docker create --name temp-arm64 chobits:dev-arm64
+          docker create --name temp-arm64 vanling:dev-arm64
           docker cp ./data temp-arm64:/app/data
           docker cp ./download-report.json temp-arm64:/app/data/ 2>/dev/null || true
-          docker commit temp-arm64 chobits:dev-arm64-data
+          docker commit temp-arm64 vanling:dev-arm64-data
           docker rm temp-arm64
 
       - name: Login to Docker Hub
@@ -196,9 +196,9 @@ jobs:
         run: |
           TAGS=$(echo "${{ steps.meta.outputs.tags }}" | tr '\n' ' ')
           for tag in $TAGS; do
-            docker tag chobits:dev-amd64-data "$tag-amd64"
+            docker tag vanling:dev-amd64-data "$tag-amd64"
             docker push "$tag-amd64"
-            docker tag chobits:dev-arm64-data "$tag-arm64"
+            docker tag vanling:dev-arm64-data "$tag-arm64"
             docker push "$tag-arm64"
 
             docker buildx imagetools create -t "$tag" "$tag-amd64" "$tag-arm64" \

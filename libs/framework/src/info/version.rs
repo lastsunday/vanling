@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-static BRANDING: &str = "chobits";
+static BRANDING: &str = "vanling";
 static SEMANTIC: &str = env!("CARGO_PKG_VERSION");
 
 static VERSION: OnceLock<String> = OnceLock::new();
@@ -27,7 +27,7 @@ fn init_user_agent() -> String {
 }
 
 fn init_version() -> String {
-    chobits_build_metadata::version_tag().map_or_else(
+    vanling_build_metadata::version_tag().map_or_else(
         || SEMANTIC.to_owned(),
         |extra| format!("{SEMANTIC} ({extra})"),
     )

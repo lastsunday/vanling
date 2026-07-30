@@ -414,7 +414,7 @@ async fn ota(
     let iana_identifier = tz.iana_name().context("get iana name failure")?;
 
     let ws_url = format!(
-        "{}://{}/chobits/v1",
+        "{}://{}/vanling/v1",
         ws_config.schema.as_ref().expect("ws schema is empty"),
         address
     );

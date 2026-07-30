@@ -2,8 +2,8 @@
 title = "App Client"
 weight = 300
 [extra]
-source_file_hash = "52d986968906e788ff51158861be1c854bff54dd"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "4a38b7e72e07577d721ed55a0fbd49a57c84808b"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # App Client
@@ -39,7 +39,7 @@ flutter doctor
 5. Run `flutter doctor` to verify the environment is ready
 
 > [!WARNING]
-> The App does not yet implement chobits business functionality; it is currently a basic framework.
+> The App does not yet implement vanling business functionality; it is currently a basic framework.
 
 ## Framework
 

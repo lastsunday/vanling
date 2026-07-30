@@ -1,1 +1,1 @@
-pub use service::chobits::session::SessionConfig;
+pub use service::ling::session::SessionConfig;

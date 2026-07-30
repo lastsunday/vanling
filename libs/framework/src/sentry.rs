@@ -6,7 +6,6 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use chobits_build_metadata as build;
 use sentry::{
     Breadcrumb, ClientOptions, Level,
     types::{
@@ -14,6 +13,7 @@ use sentry::{
         protocol::v7::{Context, Event},
     },
 };
+use vanling_build_metadata as build;
 
 use crate::info;
 

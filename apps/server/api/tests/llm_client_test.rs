@@ -1,6 +1,6 @@
 use api::{
-    chii::{ChatRequest, ChiiCoreBuilder, History},
     config::{LlmProvider, llm::LlmConfig},
+    ling_core::{ChatRequest, History, LingCoreBuilder},
     llm::{Llm, LlmManager},
     mcp::client::external::ExternalMcpClient,
     setup_mcp,
@@ -8,7 +8,7 @@ use api::{
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
-use service::chobits::{
+use service::ling::{
     llm::{ContentPart, Message, Role},
     mcp::McpRegistry,
 };
@@ -39,7 +39,7 @@ fn create_model() -> Arc<dyn Llm> {
 #[tokio::test]
 #[traced_test]
 async fn test_chat_echo() {
-    let client = ChiiCoreBuilder::new()
+    let client = LingCoreBuilder::new()
         .with_model(LlmManager::create_model(&LlmConfig {
             provider: Some(LlmProvider::LocalEcho),
             ..Default::default()
@@ -83,7 +83,7 @@ async fn test_chat_simple() {
         preamble: Some(system_prompt),
         chat_history: vec![],
     }));
-    let client = ChiiCoreBuilder::new()
+    let client = LingCoreBuilder::new()
         .with_model(model)
         .build()
         .with_history(hisotry);
@@ -120,7 +120,7 @@ async fn test_short_question() {
         preamble: Some(system_prompt),
         chat_history: vec![],
     }));
-    let client = ChiiCoreBuilder::new()
+    let client = LingCoreBuilder::new()
         .with_model(model)
         .build()
         .with_history(history);
@@ -159,7 +159,7 @@ async fn test_english_question() {
         preamble: Some(system_prompt),
         chat_history: vec![],
     }));
-    let client = ChiiCoreBuilder::new()
+    let client = LingCoreBuilder::new()
         .with_model(model)
         .build()
         .with_history(history);
@@ -205,7 +205,7 @@ async fn test_chat_history() {
             },
         ],
     }));
-    let client = ChiiCoreBuilder::new()
+    let client = LingCoreBuilder::new()
         .with_model(model)
         .build()
         .with_history(history);
@@ -258,7 +258,7 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
         .add_client(Arc::new(external_client))
         .await;
 
-    let client = ChiiCoreBuilder::new()
+    let client = LingCoreBuilder::new()
         .with_model(model)
         .with_mcp_registry(mcp_registry)
         .build();

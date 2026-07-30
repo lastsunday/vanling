@@ -9,8 +9,8 @@ use rmcp::{
     service::RunningService,
     transport::IntoTransport,
 };
-use service::chobits::llm::ToolDef;
-use service::chobits::mcp::McpClient;
+use service::ling::llm::ToolDef;
+use service::ling::mcp::McpClient;
 
 pub struct ExternalMcpClient {
     client: RunningService<RoleClient, InitializeRequestParams>,

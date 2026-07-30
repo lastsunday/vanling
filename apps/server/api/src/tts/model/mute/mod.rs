@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use framework::error::AppError;
 use futures::Stream;
-use service::chobits::tts::{Tts, TtsPacket};
+use service::ling::tts::{Tts, TtsPacket};
 use std::pin::Pin;
 use tokio::sync::mpsc::channel;
 use tokio_stream::StreamExt;

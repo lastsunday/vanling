@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json;
-use service::chobits::frame::{Frame, OutputMessage};
+use service::ling::frame::{Frame, OutputMessage};
 use tokio::sync::Mutex;
 
 use crate::config::mcp::McpConfig;
@@ -14,7 +14,7 @@ use crate::ws::filter::{FilterAction, FilterCtx, InputFilter};
 pub(crate) use rmcp::model::ServerJsonRpcMessage;
 
 pub(crate) struct McpContext {
-    pub registry: Arc<Mutex<service::chobits::mcp::McpRegistry>>,
+    pub registry: Arc<Mutex<service::ling::mcp::McpRegistry>>,
     pub input_tx: tokio::sync::mpsc::Sender<ServerJsonRpcMessage>,
     pub output_rx: tokio::sync::mpsc::UnboundedReceiver<OutputMessage>,
 }
@@ -23,7 +23,7 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
     let (mcp_input_tx, mcp_input_rx) = tokio::sync::mpsc::channel::<ServerJsonRpcMessage>(64);
     let (mcp_output_tx, mcp_output_rx) = tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
 
-    let registry = Arc::new(Mutex::new(service::chobits::mcp::McpRegistry::new(Some(
+    let registry = Arc::new(Mutex::new(service::ling::mcp::McpRegistry::new(Some(
         session_id.clone(),
     ))));
 
@@ -53,7 +53,7 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
     tokio::spawn(async move {
         match DeviceMcpClient::new(transport).await {
             Ok(client) => {
-                let client: Arc<dyn service::chobits::mcp::McpClient> = Arc::new(client);
+                let client: Arc<dyn service::ling::mcp::McpClient> = Arc::new(client);
                 let mut reg = mcp_registry.lock().await;
                 reg.add_client(client).await;
                 tracing::debug!(

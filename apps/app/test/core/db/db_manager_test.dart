@@ -14,7 +14,7 @@ void main() {
     // Change the default factory. On iOS/Android, if not using `sqlite_flutter_lib` you can forget
     // this step, it will use the sqlite version available on the system.
     databaseFactory = databaseFactoryFfi;
-    final dbPath = Directory.systemTemp.createTempSync('chobits_test_');
+    final dbPath = Directory.systemTemp.createTempSync('vanling_test_');
     DbManager.instance().init([ChangelogV1()], dbPath.path, 'test.db');
     await DbManager.instance().open();
     var result = await DbManager.instance().findOne(

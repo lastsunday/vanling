@@ -1,8 +1,8 @@
 use axum::extract::ws::Message;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use service::chobits::frame::{Frame, FrameResult, InputMode};
-use service::chobits::message::{
+use service::ling::frame::{Frame, FrameResult, InputMode};
+use service::ling::message::{
     abort::AbortMessage, close::CloseMessage, hello::HelloMessage, mcp::McpMessage,
 };
 use tracing::warn;

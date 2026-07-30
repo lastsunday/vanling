@@ -12,7 +12,7 @@ weight = 100
 ```shell
 pnpm i
 moon run server-ui:build
-chobits-server download
+vanling-server download
 # using cuda: moon run server:run --features cuda
 moon run server:run
 ```
@@ -26,7 +26,7 @@ moon run server:run
   - OTA 地址
     <http://127.0.0.1:3000/api/ota/>
   - WebSocket 地址
-    <ws://127.0.0.1:3000/chobits/v1/>
+    <ws://127.0.0.1:3000/vanling/v1/>
 
 #### 管理后台
 

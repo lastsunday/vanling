@@ -1,6 +1,6 @@
 base_url = "/"
-title = "Chobits"
-description = "Chobits 文档"
+title = "Vanling"
+description = "Vanling 文档"
 default_language = "zh"
 build_search_index = false
 compile_sass = true
@@ -15,11 +15,11 @@ theme = "catppuccin-latte"
 style = "class"
 
 [extra]
-repo_url = "https://github.com/lastsunday/chobits"
+repo_url = "https://github.com/lastsunday/vanling"
 
 [languages.en]
 build_search_index = false
-title = "Chobits"
+title = "Vanling"
 
 [languages.en.translations]
-description = "Chobits Documentation"
+description = "Vanling Documentation"

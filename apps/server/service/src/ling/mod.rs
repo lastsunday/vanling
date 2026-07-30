@@ -1,5 +1,5 @@
 pub mod asr;
-pub mod chii;
+pub mod core;
 pub mod frame;
 pub mod listener;
 pub mod llm;

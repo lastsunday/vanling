@@ -1,4 +1,4 @@
-use chobits_framework_macros::error;
+use vanling_framework_macros::error;
 
 #[error]
 pub enum ThirdPartyErrorCode {

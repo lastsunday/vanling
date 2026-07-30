@@ -14,7 +14,7 @@ use rig_core::{
     providers::openai::CompletionsClient,
     streaming::StreamedAssistantContent,
 };
-use service::chobits::llm::{
+use service::ling::llm::{
     CompletionEvent, CompletionRequest, ContentPart, Llm, Message, Role, ToolDef,
 };
 use std::pin::Pin;

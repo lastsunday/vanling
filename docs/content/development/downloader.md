@@ -5,7 +5,7 @@ weight = 500
 
 # 模型下载器
 
-`chobits downloader` 子系统负责 AI 模型文件的下载与管理。所有模型元数据以 JSON manifest 形式编译到二进制中，运行时无外部依赖。
+`vanling-server downloader` 子系统负责 AI 模型文件的下载与管理。所有模型元数据以 JSON manifest 形式编译到二进制中，运行时无外部依赖。
 
 ## 目录结构
 
@@ -86,7 +86,7 @@ Manifest JSON 位于 `apps/server/src/downloader/manifests/{category}/`，编译
 ### 下载器
 
 ```shell
-chobits downloader <COMMAND>
+vanling-server downloader <COMMAND>
 ```
 
 | 子命令 | 说明 |
@@ -96,12 +96,12 @@ chobits downloader <COMMAND>
 | `list` | 列出所有可用模型及其变体 |
 | `update-checksums` | 计算已下载文件的 SHA256 并写回 manifest JSON |
 
-运行 `chobits downloader`（无子命令）时，自动显示帮助信息。
+运行 `vanling-server downloader`（无子命令）时，自动显示帮助信息。
 
 #### install
 
 ```shell
-chobits downloader install [category] [model] [variant] [options]
+vanling-server downloader install [category] [model] [variant] [options]
 ```
 
 | 参数 | 说明 |
@@ -120,28 +120,28 @@ chobits downloader install [category] [model] [variant] [options]
 
 ```shell
 # 下载当前配置（自动查找 application.toml）所需的模型
-chobits downloader install
+vanling-server downloader install
 
 # 下载当前配置所需模型，仅限 tts 分类
-chobits downloader install tts
+vanling-server downloader install tts
 
 # 无配置文件时，使用默认配置（MatchaTts + Qwen3×2）
-chobits downloader install
+vanling-server downloader install
 
 # 显式指定配置文件
-chobits downloader install --config my-config.toml
+vanling-server downloader install --config my-config.toml
 
 # 使用自定义镜像
-chobits downloader install --mirror https://my-mirror.example.com
+vanling-server downloader install --mirror https://my-mirror.example.com
 
 # 下载所有 manifests 中的所有文件（忽略配置文件）
-chobits downloader install --all
+vanling-server downloader install --all
 ```
 
 #### wizard
 
 ```shell
-chobits downloader wizard [options]
+vanling-server downloader wizard [options]
 ```
 
 | 参数 | 说明 |
@@ -152,7 +152,7 @@ chobits downloader wizard [options]
 #### update-checksums
 
 ```shell
-chobits downloader update-checksums [options]
+vanling-server downloader update-checksums [options]
 ```
 
 | 参数 | 说明 |
@@ -164,16 +164,16 @@ chobits downloader update-checksums [options]
 
 ```shell
 # 更新默认数据目录中的文件 SHA
-chobits downloader update-checksums
+vanling-server downloader update-checksums
 
 # 指定数据目录
-chobits downloader update-checksums --data-dir /path/to/models
+vanling-server downloader update-checksums --data-dir /path/to/models
 ```
 
 ### 列出模型
 
 ```shell
-chobits downloader list [category] [--json]
+vanling-server downloader list [category] [--json]
 ```
 
 以树形结构列出所有可用模型及其变体：
@@ -187,7 +187,7 @@ tts
 **Moon tasks：**
 
 ```shell
-moon run server:downloader                # 等价于 chobits downloader install
+moon run server:downloader                # 等价于 vanling-server downloader install
 moon run server:downloader -- vad         # 仅下载 VAD
 moon run server:downloader -- tts matcha  # 仅下载 TTS Matcha
 moon run server:downloader-list           # 列出所有可用模型
@@ -265,7 +265,7 @@ moon run server:download-all-and-checksums # 下载所有模型并更新 SHA
 
 `downloader` 命令与服务器共享同一套配置查找逻辑：
 
-- `CHOBITS_CONFIG` 环境变量 → 当前目录 `application.toml` → 兜底 `application.toml`
+- `VANLING_CONFIG` 环境变量 → 当前目录 `application.toml` → 兜底 `application.toml`
 
 无配置文件时，使用 `AppConfig` 的默认值：
 
@@ -302,7 +302,7 @@ moon run server:download-all-and-checksums # 下载所有模型并更新 SHA
 
 ## 交互式向导
 
-`chobits downloader wizard` 提供交互式选择流程：
+`vanling-server downloader wizard` 提供交互式选择流程：
 
 1. **查找配置**：定位 `application.toml`，读取已有选择
 2. **展示目录**：按分类列出所有可用模型及其变体

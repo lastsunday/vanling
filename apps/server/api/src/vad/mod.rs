@@ -3,7 +3,7 @@ use crate::config::VadModel;
 use crate::config::vad::VadConfig;
 use crate::vad::model::earshot::VadEarshot;
 use crate::vad::model::void::VadVoid;
-use service::chobits::vad::Vad;
+use service::ling::vad::Vad;
 use std::sync::{Arc, OnceLock};
 
 static VAD_INSTANCE: OnceLock<VadManager> = OnceLock::new();

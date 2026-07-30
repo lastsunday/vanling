@@ -25,7 +25,7 @@ pub enum OutputBlock {
 }
 
 #[async_trait]
-pub trait Chii: Send + Sync {
+pub trait Ling: Send + Sync {
     async fn ask(
         &self,
         input: Input,

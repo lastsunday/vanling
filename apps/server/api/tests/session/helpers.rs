@@ -10,13 +10,13 @@ use api::{
     tts::TtsManager,
     vad::VadManager,
     ws::default_listener::DefaultListener,
-    {chii::ChiiCoreBuilder, llm::LlmManager},
+    {ling_core::LingCoreBuilder, llm::LlmManager},
 };
 use framework::id::gen_id;
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
-use service::chobits::{
+use service::ling::{
     frame::{Frame, FrameResult, OutputMessage},
     mcp::McpRegistry,
     message::tts::{TtsMessage, TtsState},
@@ -56,7 +56,7 @@ use crate::common::{router_client::RouterClient, setup_database, tts::tts_stream
 /// Uses Void VAD/ASR + Echo LLM + Matcha TTS.
 pub async fn create_session() -> Result<
     (
-        service::chobits::session::Session,
+        service::ling::session::Session,
         mpsc::UnboundedSender<Frame>,
         mpsc::UnboundedReceiver<OutputMessage>,
         Option<ContainerAsync<Postgres>>,
@@ -90,8 +90,8 @@ pub async fn create_session() -> Result<
         output_frame_duration: Some(20_u64),
     });
 
-    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
-        ChiiCoreBuilder::new()
+    let ling: Arc<dyn service::ling::core::Ling> = Arc::new(
+        LingCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
                 provider: Some(LlmProvider::LocalEcho),
@@ -101,7 +101,7 @@ pub async fn create_session() -> Result<
             .build(),
     );
 
-    let tts: Arc<dyn service::chobits::tts::Tts> = Arc::from(
+    let tts: Arc<dyn service::ling::tts::Tts> = Arc::from(
         TtsManager::create_model(
             &TtsConfig {
                 model: Some(TtsModel::MatchaTts),
@@ -139,7 +139,7 @@ pub async fn create_session() -> Result<
             })),
             Some(1200),
         )))
-        .with_chii(chii)
+        .with_ling(ling)
         .with_tts(tts)
         .with_config(ServiceSessionConfig {
             close_connection_no_activity_time: Some(3000),
@@ -181,8 +181,8 @@ pub async fn create_mini_session_with_timeout(
     let session_id = gen_id();
     let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
 
-    let chii: Arc<dyn service::chobits::chii::Chii> = Arc::new(
-        ChiiCoreBuilder::new()
+    let ling: Arc<dyn service::ling::core::Ling> = Arc::new(
+        LingCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
                 provider: Some(LlmProvider::LocalEcho),
@@ -198,7 +198,7 @@ pub async fn create_mini_session_with_timeout(
         output_frame_duration: Some(20_u64),
     });
 
-    let tts: Arc<dyn service::chobits::tts::Tts> = Arc::from(
+    let tts: Arc<dyn service::ling::tts::Tts> = Arc::from(
         TtsManager::create_model(
             &TtsConfig {
                 model: Some(TtsModel::Mute),
@@ -224,7 +224,7 @@ pub async fn create_mini_session_with_timeout(
             })),
             Some(1200),
         )))
-        .with_chii(chii)
+        .with_ling(ling)
         .with_tts(tts)
         .with_config(ServiceSessionConfig {
             close_connection_no_activity_time: Some(close_connection_no_activity_time_ms),

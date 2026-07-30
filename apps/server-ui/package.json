@@ -1,5 +1,5 @@
 {
-  "name": "@chobits/server-ui",
+  "name": "@vanling/server-ui",
   "private": true,
   "scripts": {
     "dev": "vite",

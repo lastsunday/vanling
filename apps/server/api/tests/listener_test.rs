@@ -2,9 +2,9 @@ use api::asr::model::void::AsrVoid;
 use api::config::vad::VadConfig;
 use api::vad::model::earshot::VadEarshot;
 use api::ws::default_listener::DefaultListener;
-use service::chobits::asr::Asr;
-use service::chobits::listener::{ListenInput, Listener, TurnOutput};
-use service::chobits::vad::Vad;
+use service::ling::asr::Asr;
+use service::ling::listener::{ListenInput, Listener, TurnOutput};
+use service::ling::vad::Vad;
 
 mod common;
 use common::vad::*;

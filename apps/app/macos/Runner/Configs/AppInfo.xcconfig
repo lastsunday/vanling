@@ -8,7 +8,7 @@
 PRODUCT_NAME = app
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.github.lastsunday.chobits.app
+PRODUCT_BUNDLE_IDENTIFIER = com.github.lastsunday.vanling.app
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2025 com.github.lastsunday. All rights reserved.

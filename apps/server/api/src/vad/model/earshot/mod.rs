@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use earshot::Detector;
 use framework::error::AppError;
-use service::chobits::vad::Vad;
+use service::ling::vad::Vad;
 
 use crate::config::vad::VadConfig;
 

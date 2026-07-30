@@ -2,13 +2,13 @@
 title = "Model Downloader"
 weight = 500
 [extra]
-source_file_hash = "cfebcc88a2cf387596815951a7cd6cc80511d1ec"
-translated_at = "2026-07-24T00:00:00Z"
+source_file_hash = "94fef3d37385474a7a0eaf295ac6159d89f069c8"
+translated_at = "2026-07-30T00:00:00Z"
 +++
 
 # Model Downloader
 
-The `chobits downloader` subsystem handles downloading and managing AI model files. All model metadata is compiled into the binary as JSON manifests, with no runtime external dependencies.
+The `vanling-server downloader` subsystem handles downloading and managing AI model files. All model metadata is compiled into the binary as JSON manifests, with no runtime external dependencies.
 
 ## Directory Structure
 
@@ -89,7 +89,7 @@ The `*_path` config items (e.g., `tts_path`) are now optional. When omitted, the
 ### Downloader
 
 ```shell
-chobits downloader <COMMAND>
+vanling-server downloader <COMMAND>
 ```
 
 | Subcommand | Description |
@@ -99,12 +99,12 @@ chobits downloader <COMMAND>
 | `list` | List all available models and their variants |
 | `update-checksums` | Compute SHA256 of downloaded files and write back to manifest JSON |
 
-Running `chobits downloader` (without subcommands) automatically displays help information.
+Running `vanling-server downloader` (without subcommands) automatically displays help information.
 
 #### install
 
 ```shell
-chobits downloader install [category] [model] [variant] [options]
+vanling-server downloader install [category] [model] [variant] [options]
 ```
 
 | Argument | Description |
@@ -123,28 +123,28 @@ chobits downloader install [category] [model] [variant] [options]
 
 ```shell
 # Download models required by the current config (auto-discovers application.toml)
-chobits downloader install
+vanling-server downloader install
 
 # Download models required by current config, tts category only
-chobits downloader install tts
+vanling-server downloader install tts
 
 # Without config file, use defaults (MatchaTts + Qwen3×2)
-chobits downloader install
+vanling-server downloader install
 
 # Explicitly specify config file
-chobits downloader install --config my-config.toml
+vanling-server downloader install --config my-config.toml
 
 # Use custom mirror
-chobits downloader install --mirror https://my-mirror.example.com
+vanling-server downloader install --mirror https://my-mirror.example.com
 
 # Download all files from all manifests (ignores config file)
-chobits downloader install --all
+vanling-server downloader install --all
 ```
 
 #### wizard
 
 ```shell
-chobits downloader wizard [options]
+vanling-server downloader wizard [options]
 ```
 
 | Argument | Description |
@@ -155,7 +155,7 @@ chobits downloader wizard [options]
 #### update-checksums
 
 ```shell
-chobits downloader update-checksums [options]
+vanling-server downloader update-checksums [options]
 ```
 
 | Argument | Description |
@@ -167,16 +167,16 @@ Scans downloaded files in `data_dir`, computes SHA256, and writes back to manife
 
 ```shell
 # Update SHA for files in the default data directory
-chobits downloader update-checksums
+vanling-server downloader update-checksums
 
 # Specify a data directory
-chobits downloader update-checksums --data-dir /path/to/models
+vanling-server downloader update-checksums --data-dir /path/to/models
 ```
 
 ### List Models
 
 ```shell
-chobits downloader list [category] [--json]
+vanling-server downloader list [category] [--json]
 ```
 
 Lists all available models and their variants in a tree structure:
@@ -190,7 +190,7 @@ tts
 **Moon tasks:**
 
 ```shell
-moon run server:downloader                # Equivalent to chobits downloader install
+moon run server:downloader                # Equivalent to vanling-server downloader install
 moon run server:downloader -- vad         # Download only VAD
 moon run server:downloader -- tts matcha  # Download only TTS Matcha
 moon run server:downloader-list           # List all available models
@@ -268,7 +268,7 @@ Reads the `*_model` / `*_variant` fields from `application.toml` and converts th
 
 The `downloader` command shares the same config discovery logic as the server:
 
-- `CHOBITS_CONFIG` environment variable → `application.toml` in current directory → fallback `application.toml`
+- `VANLING_CONFIG` environment variable → `application.toml` in current directory → fallback `application.toml`
 
 Without a config file, `AppConfig` defaults are used:
 
@@ -305,7 +305,7 @@ Matching rule: exact match by `path` field. Overrides `url`, optionally override
 
 ## Interactive Wizard
 
-`chobits downloader wizard` provides an interactive selection flow:
+`vanling-server downloader wizard` provides an interactive selection flow:
 
 1. **Find config**: Locate `application.toml`, read existing selections
 2. **Show catalog**: List all available models and their variants by category
