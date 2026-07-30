@@ -8,4 +8,6 @@ minimumReleaseAgeExclude:
   - '@iconify/json@2.2.498'
   - i18next@26.3.6
   - react-i18next@17.0.9
+  - seroval@1.6.0
+  - seroval-plugins@1.6.0
   - vite@8.1.4
