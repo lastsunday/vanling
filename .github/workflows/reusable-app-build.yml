@@ -112,13 +112,13 @@ jobs:
           MOON_LOG: error
 
       - name: Package Web build
-        run: cp -r ${{ env.APP_DIR }}/build/web "vanling-${{ inputs.version }}-web"
+        run: tar czf "vanling-${{ inputs.version }}-web.tar.gz" -C ${{ env.APP_DIR }}/build/web .
 
       - name: Upload Web build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: vanling-${{ inputs.version }}-web
-          path: vanling-*-web/
+          path: vanling-*-web.tar.gz
           retention-days: 7
 
   build-linux:
@@ -151,13 +151,13 @@ jobs:
           MOON_LOG: error
 
       - name: Package Linux build
-        run: cp -r ${{ env.APP_DIR }}/build/linux/x64/release/bundle "vanling-${{ inputs.version }}-linux"
+        run: tar czf "vanling-${{ inputs.version }}-linux.tar.gz" -C ${{ env.APP_DIR }}/build/linux/x64/release/bundle .
 
       - name: Upload Linux build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: vanling-${{ inputs.version }}-linux
-          path: vanling-*-linux/
+          path: vanling-*-linux.tar.gz
           retention-days: 7
 
   build-ios:
@@ -255,13 +255,13 @@ jobs:
           MOON_LOG: error
 
       - name: Package macOS build
-        run: cp -r ${{ env.APP_DIR }}/build/macos/Build/Products/Release/app.app "vanling-${{ inputs.version }}-macos.app"
+        run: tar czf "vanling-${{ inputs.version }}-macos.tar.gz" -C ${{ env.APP_DIR }}/build/macos/Build/Products/Release/app.app .
 
       - name: Upload macOS build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: vanling-${{ inputs.version }}-macos
-          path: vanling-*-macos.app/
+          path: vanling-*-macos.tar.gz
           retention-days: 7
 
   build-windows:
@@ -302,13 +302,15 @@ jobs:
 
       - name: Package Windows build
         shell: bash
-        run: cp -r ${{ env.APP_DIR }}/build/windows/x64/runner/Release "vanling-${{ inputs.version }}-windows"
+        run: |
+          cd "${{ env.APP_DIR }}/build/windows/x64/runner/Release" && \
+          zip -r "$GITHUB_WORKSPACE/vanling-${{ inputs.version }}-windows.zip" .
 
       - name: Upload Windows build
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: vanling-${{ inputs.version }}-windows
-          path: vanling-*-windows/
+          path: vanling-*-windows.zip
           retention-days: 7
 
   create-release:
