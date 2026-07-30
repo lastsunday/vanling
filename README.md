@@ -3,7 +3,14 @@
 > [!WARNING]
 > This project is being developed,all the things is not stable.
 
-[![build-server](https://github.com/lastsunday/chobits/actions/workflows/build-server.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/build-server.yml)[![docker](https://img.shields.io/github/v/release/lastsunday/chobits?logo=docker)](https://github.com/lastsunday/chobits/releases)
+[![CI](https://github.com/lastsunday/chobits/actions/workflows/ci.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/ci.yml)
+[![app-dev-release](https://github.com/lastsunday/chobits/actions/workflows/app-dev-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/app-dev-release.yml)
+[![app-release](https://github.com/lastsunday/chobits/actions/workflows/app-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/app-release.yml)
+[![server-dev-release](https://github.com/lastsunday/chobits/actions/workflows/server-dev-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/server-dev-release.yml)
+[![server-release](https://github.com/lastsunday/chobits/actions/workflows/server-release.yml/badge.svg)](https://github.com/lastsunday/chobits/actions/workflows/server-release.yml)
+
+[![GitHub Release](https://img.shields.io/github/v/release/lastsunday/chobits)](https://github.com/lastsunday/chobits/releases)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](https://hub.docker.com/r/lastsunday/chobits/tags)
 
 ## Purpose
 
