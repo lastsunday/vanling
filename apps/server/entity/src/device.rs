@@ -12,10 +12,10 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     #[sea_orm(unique)]
-    pub device_id: String,
+    pub uid: String,
     pub client_id: Option<String>,
-    pub user_agent: Option<String>,
     pub mac_address: Option<String>,
+    pub user_agent: Option<String>,
     pub chip_model_name: Option<String>,
     pub application_name: Option<String>,
     pub application_version: String,

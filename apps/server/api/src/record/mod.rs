@@ -164,7 +164,11 @@ async fn list_sessions(
 
     let query = Session::find()
         .apply_if(params.search, |query, q| {
-            query.filter(session::Column::Id.contains(&q))
+            query.filter(
+                sea_orm::Condition::any()
+                    .add(session::Column::Id.contains(&q))
+                    .add(session::Column::DeviceId.contains(&q)),
+            )
         })
         .apply_if(params.date_from, |query, dt| {
             if let Ok(d) = dt.parse::<DateTime<Utc>>() {

@@ -333,7 +333,7 @@ async fn ota(
         .unwrap_or_else(|| device_id.to_owned());
 
     let existing = Device::find()
-        .filter(device::Column::DeviceId.eq(device_id))
+        .filter(device::Column::Uid.eq(device_id))
         .one(&conn)
         .await?;
 
@@ -343,7 +343,7 @@ async fn ota(
             return Err(err!(OtaErrorCode::DeviceDisabled));
         }
 
-        let device_id_owned = device.device_id.clone();
+        let device_id_owned = device.id.clone();
         let board_type = device.board_type.clone();
         let activated = device.activated;
         let mut activation_code = device.activation_code.clone();
@@ -382,8 +382,8 @@ async fn ota(
         let code_num = ActivationPool::global().lock().unwrap().draw();
         let code = format!("{:06}", code_num);
 
-        device::ActiveModel {
-            device_id: Set(device_id.to_owned()),
+        let new_device = device::ActiveModel {
+            uid: Set(device_id.to_owned()),
             client_id: Set(Some(client_id.to_owned())),
             user_agent: Set(Some(user_agent.to_owned())),
             mac_address: Set(Some(device_mac.clone())),
@@ -402,7 +402,7 @@ async fn ota(
         .insert(&conn)
         .await?;
 
-        (device_id.to_owned(), board_type, false, Some(code))
+        (new_device.id.clone(), board_type, false, Some(code))
     };
 
     let address = match host.port() {
@@ -423,7 +423,6 @@ async fn ota(
         let token = Jwt::global().access_token_encode(&Principal {
             id: device_id_owned.clone(),
             name: Some(board_type.clone()),
-            device_id: Some(device_mac.clone()),
             token_type: String::from("device"),
         })?;
         Websocket { url: ws_url, token }
@@ -477,7 +476,7 @@ async fn activate(
         .map_err(|_| err!(OtaErrorCode::LackDeviceId))?;
 
     let device = Device::find()
-        .filter(device::Column::DeviceId.eq(device_id))
+        .filter(device::Column::Uid.eq(device_id))
         .one(&conn)
         .await?
         .ok_or_else(|| {

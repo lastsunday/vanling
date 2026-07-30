@@ -48,6 +48,41 @@
   "version_unknown": "Unknown",
   "loading": "Loading",
   "logout": "Logout",
+  "dashboard": {
+    "title": "Dashboard",
+    "stat": {
+      "total_devices": "Total Devices",
+      "activated": "Activated",
+      "pending": "Pending",
+      "disabled": "Disabled",
+      "online": "Online",
+      "sessions_today": "Sessions Today"
+    },
+    "recent_sessions": "Recent Sessions",
+    "no_sessions": "No sessions",
+    "trends": "Usage Trends",
+    "latency": "Step Latency",
+    "no_latency_data": "No latency data",
+    "table": {
+      "session_id": "Session #",
+      "device_id": "Device #",
+      "device_uid": "UID",
+      "board_type": "Board Type",
+      "board_name": "Device Name",
+      "chip_model": "Chip Model",
+      "time": "Time",
+      "turns": "Turns",
+      "step": "Step",
+      "avg_ms": "Avg (ms)",
+      "min_ms": "Min (ms)",
+      "max_ms": "Max (ms)"
+    },
+    "chart": {
+      "sessions": "Sessions",
+      "rounds": "Rounds",
+      "avg_ms": "Avg (ms)"
+    }
+  },
   "devices": {
     "title": "Devices",
     "search": "Search devices",
@@ -60,8 +95,12 @@
     "confirm": "Activate",
     "no_devices": "No devices",
     "table": {
-      "device_id": "Device ID",
+      "uid": "Device ID",
+      "device_uid": "UID",
       "board_type": "Board Type",
+      "chip_model": "Chip Model",
+      "board_name": "Device Name",
+      "client_id": "Client ID",
       "mac_address": "MAC Address",
       "activation_code": "Activation Code",
       "firmware_version": "Firmware Version",
@@ -93,6 +132,7 @@
     "copied": "Copied",
     "detail_title": "Device Detail",
     "detail": {
+      "device_uid": "UID",
       "client_id": "Client ID",
       "board_name": "Board Name",
       "chip_model": "Chip Model",
@@ -107,7 +147,7 @@
   },
   "sessions": {
     "title": "Sessions",
-    "search": "Search Session ID",
+    "search": "Search Session ID or Device ID",
     "search_btn": "Search",
     "date_from": "From",
     "date_to": "To",

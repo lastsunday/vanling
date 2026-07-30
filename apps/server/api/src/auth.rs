@@ -79,7 +79,6 @@ async fn login(
     let principal = Principal {
         id: user.id,
         name: Some(user.account),
-        device_id: None,
         token_type: String::from("user"),
     };
     let access_token = Jwt::global().access_token_encode(&principal)?;

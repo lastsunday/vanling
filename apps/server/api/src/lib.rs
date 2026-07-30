@@ -14,6 +14,7 @@ pub mod mcp;
 pub mod ota;
 pub mod record;
 pub mod server;
+pub mod stats;
 pub mod tts;
 pub mod util;
 pub mod vad;
@@ -255,6 +256,7 @@ pub fn create_router(
     api_router = setup_ota(api_router, state.clone());
     api_router = setup_device(api_router, state.clone());
     api_router = setup_record(api_router, state.clone());
+    api_router = setup_stats(api_router, state.clone());
     api_router = setup_ws(api_router, state.clone());
     api_router = setup_mcp(api_router, state.clone(), cancellation_token.child_token());
     let (mut app, api) = api_router.split_for_parts();
@@ -328,6 +330,10 @@ pub fn setup_device(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
 
 pub fn setup_record(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
     api_setup(router, record::create_routes(state))
+}
+
+pub fn setup_stats(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
+    api_setup(router, stats::create_routes(state))
 }
 
 fn api_setup(router: OpenApiRouter, api_router: OpenApiRouter) -> OpenApiRouter {

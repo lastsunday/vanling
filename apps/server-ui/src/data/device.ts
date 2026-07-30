@@ -1,6 +1,6 @@
 export interface DeviceResult {
   id: string;
-  device_id: string;
+  uid: string;
   client_id: string | null;
   user_agent: string | null;
   mac_address: string | null;
@@ -20,7 +20,7 @@ export interface DeviceResult {
 }
 
 export interface ActivateResult {
-  device_id: string;
+  uid: string;
   board_type: string;
   board_name: string | null;
   activated: boolean;

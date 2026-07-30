@@ -87,9 +87,9 @@ function RouteComponent() {
     if (!confirmTarget) return;
     const { device, action } = confirmTarget;
     try {
-      if (action === 'disable') await disableDevice(device.device_id);
-      else if (action === 'enable') await enableDevice(device.device_id);
-      else if (action === 'delete') await deleteDevice(device.device_id);
+      if (action === 'disable') await disableDevice(device.uid);
+      else if (action === 'enable') await enableDevice(device.uid);
+      else if (action === 'delete') await deleteDevice(device.uid);
       setConfirmTarget(null);
       queryClient.invalidateQueries({ queryKey: ['devices'] });
     } catch (e) {
@@ -111,10 +111,10 @@ function RouteComponent() {
 
   const confirmMessage = confirmTarget
     ? confirmTarget.action === 'delete'
-      ? t('devices.delete_confirmation', { id: confirmTarget.device.device_id })
+      ? t('devices.delete_confirmation', { id: confirmTarget.device.uid })
       : confirmTarget.action === 'disable'
-        ? t('devices.disable_confirmation', { id: confirmTarget.device.device_id })
-        : t('devices.enable_confirmation', { id: confirmTarget.device.device_id })
+        ? t('devices.disable_confirmation', { id: confirmTarget.device.uid })
+        : t('devices.enable_confirmation', { id: confirmTarget.device.uid })
     : '';
 
   return (
@@ -233,9 +233,11 @@ function RouteComponent() {
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>{t('devices.table.device_id')}</Table.Th>
+                <Table.Th>{t('devices.table.uid')}</Table.Th>
+                <Table.Th>{t('devices.table.device_uid')}</Table.Th>
                 <Table.Th>{t('devices.table.board_type')}</Table.Th>
-                <Table.Th>{t('devices.table.mac_address')}</Table.Th>
+                <Table.Th>{t('devices.table.chip_model')}</Table.Th>
+                <Table.Th>{t('devices.table.board_name')}</Table.Th>
                 <Table.Th>{t('devices.table.activation_code')}</Table.Th>
                 <Table.Th>{t('devices.table.firmware_version')}</Table.Th>
                 <Table.Th>{t('devices.table.status')}</Table.Th>
@@ -252,16 +254,22 @@ function RouteComponent() {
                 >
                   <Table.Td>
                     <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>
-                      {device.device_id}
+                      {device.id}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                      {device.uid}
                     </Text>
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm">{device.board_type}</Text>
                   </Table.Td>
                   <Table.Td>
-                    <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>
-                      {device.mac_address || '-'}
-                    </Text>
+                    <Text size="sm">{device.chip_model_name || '-'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm">{device.board_name || '-'}</Text>
                   </Table.Td>
                   <Table.Td>
                     {!device.activated && device.activation_code ? (
@@ -305,7 +313,7 @@ function RouteComponent() {
                   <Table.Td onClick={(e) => e.stopPropagation()}>
                     <Group gap={4}>
                       {!device.activated && !device.disabled && (
-                        <Button size="xs" variant="light" onClick={() => handleActivateById(device.device_id)}>
+                        <Button size="xs" variant="light" onClick={() => handleActivateById(device.uid)}>
                           {t('devices.activate_by_id_btn')}
                         </Button>
                       )}
@@ -353,8 +361,12 @@ function RouteComponent() {
         {detailDevice && (
           <Stack>
             <Group>
-              <Text fw={500} w={120}>{t('devices.table.device_id')}</Text>
-              <Text size="sm" style={{ fontFamily: 'monospace' }}>{detailDevice.device_id}</Text>
+              <Text fw={500} w={120}>{t('devices.table.uid')}</Text>
+              <Text size="sm" style={{ fontFamily: 'monospace' }}>{detailDevice.id}</Text>
+            </Group>
+            <Group>
+              <Text fw={500} w={120}>{t('devices.detail.device_uid')}</Text>
+              <Text size="sm" style={{ fontFamily: 'monospace' }}>{detailDevice.uid}</Text>
             </Group>
             <Group>
               <Text fw={500} w={120}>{t('devices.detail.client_id')}</Text>
@@ -437,7 +449,7 @@ function RouteComponent() {
             </Group>
             <Group justify="flex-end" mt="md">
               {!detailDevice.activated && !detailDevice.disabled && (
-                <Button variant="light" onClick={() => { closeDetail(); handleActivateById(detailDevice.device_id); }}>
+                <Button variant="light" onClick={() => { closeDetail(); handleActivateById(detailDevice.uid); }}>
                   {t('devices.activate_by_id_btn')}
                 </Button>
               )}

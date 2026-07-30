@@ -44,7 +44,7 @@ pub struct ActivateParam {
 
 #[derive(Debug, Serialize, ToSchema, Default)]
 pub struct ActivateResult {
-    pub device_id: String,
+    pub uid: String,
     pub board_type: String,
     pub board_name: Option<String>,
     pub activated: bool,
@@ -105,7 +105,9 @@ async fn devices(
         let pattern = format!("%{}%", search);
         query = query.filter(
             sea_orm::Condition::any()
-                .add(device::Column::DeviceId.like(&pattern))
+                .add(device::Column::Uid.like(&pattern))
+                .add(device::Column::Id.like(&pattern))
+                .add(device::Column::MacAddress.like(&pattern))
                 .add(device::Column::BoardType.like(&pattern))
                 .add(device::Column::BoardName.like(&pattern)),
         );
@@ -146,14 +148,14 @@ async fn activate(
         })?;
 
     if device.activated {
-        tracing::warn!(component = "OTA", event = "device_already_activated", device_id = %device.device_id, "admin activate failed: already activated");
+        tracing::warn!(component = "OTA", event = "device_already_activated", device_id = %device.uid, "admin activate failed: already activated");
         return Err(err!(OtaErrorCode::DeviceAlreadyActivated));
     }
 
     if let Some(exp) = device.activation_code_expires_at
         && exp <= now
     {
-        tracing::warn!(component = "OTA", event = "activation_code_expired", device_id = %device.device_id, "admin activate failed: code expired");
+        tracing::warn!(component = "OTA", event = "activation_code_expired", device_id = %device.uid, "admin activate failed: code expired");
         return Err(err!(OtaErrorCode::ActivationCodeExpired));
     }
 
@@ -163,11 +165,6 @@ async fn activate(
         ActivationPool::global().lock().unwrap().discard(code_num);
     }
 
-    let device_mac = device
-        .mac_address
-        .clone()
-        .unwrap_or_else(|| device.device_id.clone());
-
     let mut active: device::ActiveModel = device.clone().into();
     active.activated = Set(true);
     active.activation_code = Set(None);
@@ -176,16 +173,15 @@ async fn activate(
     active.update(&conn).await?;
 
     let token = Jwt::global().access_token_encode(&Principal {
-        id: device.device_id.clone(),
+        id: device.id.clone(),
         name: Some(device.board_type.clone()),
-        device_id: Some(device_mac),
         token_type: String::from("device"),
     })?;
 
-    tracing::info!(component = "OTA", event = "device_activated", device_id = %device.device_id, user_id = %principal.id, "device activated by admin");
+    tracing::info!(component = "OTA", event = "device_activated", device_id = %device.uid, user_id = %principal.id, "device activated by admin");
 
     Ok(ApiResponse::success(Some(ActivateResult {
-        device_id: device.device_id,
+        uid: device.uid,
         board_type: device.board_type,
         board_name: device.board_name,
         activated: true,
@@ -205,7 +201,7 @@ async fn activate_by_id(
     Path(device_id): Path<String>,
 ) -> AppResult<ApiResponse<ActivateResult>> {
     let device = Device::find()
-        .filter(device::Column::DeviceId.eq(&device_id))
+        .filter(device::Column::Uid.eq(&device_id))
         .one(&conn)
         .await?
         .ok_or_else(|| {
@@ -224,11 +220,6 @@ async fn activate_by_id(
         ActivationPool::global().lock().unwrap().discard(code_num);
     }
 
-    let device_mac = device
-        .mac_address
-        .clone()
-        .unwrap_or_else(|| device.device_id.clone());
-
     let mut active: device::ActiveModel = device.clone().into();
     active.activated = Set(true);
     active.activation_code = Set(None);
@@ -237,16 +228,15 @@ async fn activate_by_id(
     active.update(&conn).await?;
 
     let token = Jwt::global().access_token_encode(&Principal {
-        id: device.device_id.clone(),
+        id: device.id.clone(),
         name: Some(device.board_type.clone()),
-        device_id: Some(device_mac),
         token_type: String::from("device"),
     })?;
 
     tracing::info!(component = "OTA", event = "device_activated_by_id", device_id = %device_id, user_id = %principal.id, "device activated by admin via device_id");
 
     Ok(ApiResponse::success(Some(ActivateResult {
-        device_id: device.device_id,
+        uid: device.uid,
         board_type: device.board_type,
         board_name: device.board_name,
         activated: true,
@@ -266,7 +256,7 @@ async fn disable_device(
     Path(device_id): Path<String>,
 ) -> AppResult<ApiResponse<()>> {
     let device = Device::find()
-        .filter(device::Column::DeviceId.eq(&device_id))
+        .filter(device::Column::Uid.eq(&device_id))
         .one(&conn)
         .await?
         .ok_or_else(|| {
@@ -300,7 +290,7 @@ async fn enable_device(
     Path(device_id): Path<String>,
 ) -> AppResult<ApiResponse<()>> {
     let device = Device::find()
-        .filter(device::Column::DeviceId.eq(&device_id))
+        .filter(device::Column::Uid.eq(&device_id))
         .one(&conn)
         .await?
         .ok_or_else(|| {
@@ -334,7 +324,7 @@ async fn delete_device(
     Path(device_id): Path<String>,
 ) -> AppResult<ApiResponse<()>> {
     let device = Device::find()
-        .filter(device::Column::DeviceId.eq(&device_id))
+        .filter(device::Column::Uid.eq(&device_id))
         .one(&conn)
         .await?
         .ok_or_else(|| {

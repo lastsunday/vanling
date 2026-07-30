@@ -48,7 +48,6 @@ async fn test_accepts_valid_device_token() {
     let principal = Principal {
         id: String::from("test-device"),
         name: Some(String::from("test-board")),
-        device_id: Some(String::from("11:22:33:44:55:66")),
         token_type: String::from("device"),
     };
     let token = Jwt::global().access_token_encode(&principal).unwrap();
@@ -56,5 +55,4 @@ async fn test_accepts_valid_device_token() {
     assert!(result.is_ok());
     let p = result.unwrap();
     assert_eq!(p.id, "test-device");
-    assert_eq!(p.device_id.unwrap(), "11:22:33:44:55:66");
 }

@@ -266,8 +266,11 @@ sort_by = "weight"
 | ✅   | ✅   | POST /api/auth/login          | 账号密码认证，返回 access/refresh token |      |
 | ✅   | ✅   | POST /api/auth/access_token   | refresh token 换新                      |      |
 | ✅   | ✅   | POST /api/auth/reset_password | JWT 鉴权，旧密码验证                    |      |
-| ✅   | ✅   | GET /api/auth/user            | 返回当前用户信息                        |      |
-| ❌   | ❌   | Rate Limiting                 | 登录限流/暴力破解防护未实现             |      |
+| ✅   | ✅   | GET /api/auth/user             | 返回当前用户信息                        |      |
+| ✅   | ❌   | GET /api/stats/summary        | 概览统计（设备/会话/消息数/延迟均值）  |      |
+| ✅   | ❌   | GET /api/stats/trends         | 趋势数据（设备/会话/消息日趋势）       |      |
+| ✅   | ❌   | GET /api/stats/latency        | 延迟百分位数据（P50/P90/P99 等）       |      |
+| ❌   | ❌   | Rate Limiting                  | 登录限流/暴力破解防护未实现             |      |
 | ❌   | ❌   | Invite Code 系统              | 注册邀请码生成/验证未实现               |      |
 | ✅   | ❌   | 设备管理 CRUD                 | 列表/激活/禁用/删除端点已实现            |      |
 
@@ -275,7 +278,7 @@ sort_by = "weight"
 
 | 状态 | 测试 | 项目              | 描述                                          | 链接 |
 | ---- | ---- | ----------------- | --------------------------------------------- | ---- |
-| ❌   | ❌   | Dashboard 页面    | 空壳，仅渲染 "Hello"                          |      |
+| ✅   | ❌   | Dashboard 页面    | 6 个 StatCard、TrendsChart、LatencyChart、RecentSessionsTable、LatencyTable |      |
 | ✅   | ✅   | 会话列表/详情     | 搜索/日期过滤/分页/SessionDetail 组件         |      |
 | ❌   | ❌   | User CRUD 管理 UI | 用户列表/创建/删除/角色管理未实现             |      |
 | ❌   | ❌   | RBAC 管理         | Token 用量/对话时长/设备活跃度/权限角色未实现 |      |

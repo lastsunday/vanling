@@ -110,7 +110,7 @@ impl MigrationTrait for Migration {
                     .table(Device::Table)
                     .if_not_exists()
                     .col(string_uniq(Device::Id))
-                    .col(string_uniq(Device::DeviceId))
+                    .col(string_uniq(Device::Uid))
                     .col(string_null(Device::ClientId))
                     .col(string_null(Device::UserAgent))
                     .col(string_null(Device::MacAddress))
@@ -198,7 +198,7 @@ enum User {
 enum Device {
     Table,
     Id,
-    DeviceId,
+    Uid,
     ClientId,
     UserAgent,
     MacAddress,

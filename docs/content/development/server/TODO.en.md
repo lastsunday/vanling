@@ -4,7 +4,7 @@ weight = 204
 
 [extra]
 translated_at = "2026-07-30T00:00:00Z"
-source_file_hash = "0d56f60f4877f3f0c2bcdb6511a84009bf73dcbf"
+source_file_hash = "688df9a69c170c1c414cc37d6b17fa1817172a30"
 +++
 
 # TODO
@@ -104,7 +104,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 | 🔴 P0 | stop_round Race Condition | `service/src/ling/session/round.rs` | `llm_tts_handle` and `stop_round` lack synchronization — possible use-after-cancel | — | ✅Completed 2026-07-24 |
 | 🟡 P1 | Continued Conversation | `service/src/ling/session/` | After a reply, the microphone should stay open briefly to allow follow-up without wake word. Supported by Gemini / Alexa+ | — | |
 | 🟡 P1 | Clock Overflow | `service/src/ling/session/mod.rs` | `Local::now()` is non-monotonic — subtraction can overflow | Existing: `jiff` (monotonic clock) | |
-| 🟡 P1 | Device Management | New feature | No device registration/binding/listing. After OTA activation, devices are not persisted. Reference projects have full device lifecycle (registration/state/config/OTA/bulk operations) | Existing: `sea-orm` | |
+| 🟡 P1 | Device Management | `api/src/device.rs` | List/activate/disable/enable/delete/details | Existing: `sea-orm` | ✅Completed 2026-07-30 |
 | 🟡 P1 | Recorder No Limit | `api/src/record/recorder.rs` | `Vec<RecordEntry>` has no size limit — unbounded memory growth under high concurrency | — | |
 | 🟢 P3 | Session Export/Delete | `api/src/record/` | Sessions can only be viewed — no export or deletion | — | |
 
@@ -133,7 +133,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🟡 P1 | Dashboard Page | `routes/_pathlessLayout.admin/index.tsx` | Shell only — renders "Hello" with no stats/monitoring content | Existing: `@mantine/core` v9 + `@tanstack/react-query` | |
+| 🟡 P1 | Dashboard Page | `routes/_pathlessLayout.admin/index.tsx` | StatCard/TrendsChart/LatencyChart/RecentSessionsTable/LatencyTable | Existing: `@mantine/core` v9 + `@tanstack/react-query` | ✅Completed 2026-07-30 |
 | 🟡 P1 | User CRUD Admin UI | New page | No user list/create/delete/role management interface | Existing: `@mantine/core` v9 | |
 | 🟡 P1 | Multi-user/RBAC Management | New feature | Reference project busy-worker Java admin platform has token usage monitoring + conversation duration + device activity + data visualization + RBAC. vanling Dashboard should include these | Existing: `@mantine/core` v9 | |
 | 🟢 P3 | System Monitoring | New page | No server health/connection count/resource usage/error rate dashboard | Existing: `@mantine/core` v9 + `@tanstack/react-query` | |

@@ -3,7 +3,7 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "42954b4d5a9f8af99ab103f11cf5a9971298533b"
+source_file_hash = "ad72f4f635e9da18614e320817d82137c038a4b0"
 translated_at = "2026-07-30T00:00:00Z"
 +++
 
@@ -270,6 +270,9 @@ Column reference:
 | ✅     | ✅   | POST /api/auth/access_token    | Refresh token exchange                        |      |
 | ✅     | ✅   | POST /api/auth/reset_password  | JWT auth, old password verification            |      |
 | ✅     | ✅   | GET /api/auth/user             | Returns current user info                      |      |
+| ✅     | ❌   | GET /api/stats/summary        | Overview stats (devices/sessions/messages/latency avg) |  |
+| ✅     | ❌   | GET /api/stats/trends         | Trend data (daily device/session/message trends) |  |
+| ✅     | ❌   | GET /api/stats/latency        | Latency percentile data (P50/P90/P99 etc.)     |      |
 | ❌     | ❌   | Rate Limiting                  | Login throttling / brute force protection not implemented |  |
 | ❌     | ❌   | Invite Code system             | Registration invite code generation/verification not implemented |  |
 | ✅     | ❌   | Device management CRUD         | List/activate/disable/delete endpoints implemented |  |
@@ -278,7 +281,7 @@ Column reference:
 
 | Status | Test | Item               | Description                                          | Link |
 | ------ | ---- | ------------------ | ---------------------------------------------------- | ---- |
-| ❌     | ❌   | Dashboard page     | Shell, only renders "Hello"                          |      |
+| ✅     | ❌   | Dashboard page     | 6 StatCards, TrendsChart, LatencyChart, RecentSessionsTable, LatencyTable |      |
 | ✅     | ✅   | Session list/details | Search/date filter/pagination/SessionDetail component |  |
 | ❌     | ❌   | User CRUD UI       | User list/create/delete/role management not implemented |  |
 | ❌     | ❌   | RBAC management    | Token usage/conversation duration/device activity/permissions not implemented |  |

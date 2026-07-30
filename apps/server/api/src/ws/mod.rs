@@ -125,7 +125,7 @@ async fn ws_handler(
         handle_socket(
             SocketContext {
                 session_id: gen_id(),
-                device_id: principal.device_id,
+                device_id: Some(principal.id.clone()),
                 conn,
                 session_config,
                 mcp_config,

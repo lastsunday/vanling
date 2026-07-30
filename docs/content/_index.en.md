@@ -1,7 +1,7 @@
 +++
 title = "Vanling"
 [extra]
-source_file_hash = "430736727628e5e22cbc6bf5b56b774352e6240a"
+source_file_hash = "2d77c61365fb9981ee0a39128e90c3c415690075"
 translated_at = "2026-07-30T00:00:00Z"
 +++
 
@@ -35,7 +35,7 @@ translated_at = "2026-07-30T00:00:00Z"
 
 ### User Dashboard
 
-**_TODO_**
+6 StatCards, TrendsChart, LatencyChart, LatencyTable, RecentSessionsTable
 
 </details>
 
@@ -46,7 +46,7 @@ translated_at = "2026-07-30T00:00:00Z"
 - [x] Conversation: LLM
 - [x] MCP: Self-hosted/Remote Server MCP, Device MCP
 - [ ] Admin
-  1. Dashboard (in development)
+  1. Dashboard (implemented: StatCards/TrendsChart/Latency Analysis/Recent Sessions)
   1. Management console (in development)
   1. Web-based device simulator (in development)
 - [ ] Deployment: Binary (in development), Docker (in development)

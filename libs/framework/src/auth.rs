@@ -17,8 +17,6 @@ pub struct Principal {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device_id: Option<String>,
     pub token_type: String,
 }
 
@@ -32,8 +30,6 @@ struct Claims {
     exp: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    device_id: Option<String>,
     token_type: String,
 }
 
@@ -122,7 +118,6 @@ impl Jwt {
             iat: current_timestamp,
             exp: current_timestamp.saturating_add(expires_in.as_secs()),
             name: principal.name.clone(),
-            device_id: principal.device_id.clone(),
             token_type: principal.token_type.clone(),
         }
     }
@@ -131,7 +126,6 @@ impl Jwt {
         Principal {
             id: claims.sub.clone(),
             name: claims.name.clone(),
-            device_id: claims.device_id.clone(),
             token_type: claims.token_type.clone(),
         }
     }

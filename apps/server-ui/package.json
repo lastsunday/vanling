@@ -7,5 +7,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit --project tsconfig.app.json",
     "preview": "vite preview"
+  },
+  "dependencies": {
+    "recharts": "^2.15.4"
   }
 }

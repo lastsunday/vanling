@@ -100,7 +100,7 @@ weight = 204
 | 🔴 P0 | stop_round 竞态 | `service/src/ling/session/round.rs` | `llm_tts_handle` 与 `stop_round` 之间缺少同步，可能 use-after-cancel | — | ✅已完成 2026-07-24 |
 | 🟡 P1 | Continued Conversation | `service/src/ling/session/` | 回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持 | — | |
 | 🟡 P1 | 时钟溢出 | `service/src/ling/session/mod.rs` | `Local::now()` 非单调，减法可溢出 | 已有: `jiff` (单调时钟) | |
-| 🟡 P1 | 设备管理 | 新功能 | 无设备注册/绑定/列表，OTA 激活后无设备持久化。参考项目有完整设备生命周期管理（注册/状态/配置/OTA/批量操作） | 已有: `sea-orm` | |
+| 🟡 P1 | 设备管理 | `api/src/device.rs` | 列表/激活/禁用/启用/删除/详情 | 已有: `sea-orm` | ✅已完成 2026-07-30 |
 | 🟡 P1 | Recorder 无上限 | `api/src/record/recorder.rs` | `Vec<RecordEntry>` 无大小限制，高并发内存无限增长 | — | |
 | 🟢 P3 | Session 导出/删除 | `api/src/record/` | Session 仅可查看，不可导出或删除 | — | |
 
@@ -129,7 +129,7 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🟡 P1 | Dashboard 页 | `routes/_pathlessLayout.admin/index.tsx` | 空壳，仅渲染 "Hello"，无统计/监控内容 | 已有: `@mantine/core` v9 + `@tanstack/react-query` | |
+| 🟡 P1 | Dashboard 页 | `routes/_pathlessLayout.admin/index.tsx` | StatCard/TrendsChart/LatencyChart/RecentSessionsTable/LatencyTable | 已有: `@mantine/core` v9 + `@tanstack/react-query` | ✅已完成 2026-07-30 |
 | 🟡 P1 | User CRUD 管理 UI | 新页面 | 无用户列表/创建/删除/角色管理界面 | 已有: `@mantine/core` v9 | |
 | 🟡 P1 | 多用户/RBAC 管理 | 新功能 | 参考项目 busy-worker Java 管理平台有 Token 用量监控 + 对话时长 + 设备活跃度 + 数据可视化 + RBAC。vanling Dashboard 应包含 | 已有: `@mantine/core` v9 | |
 | 🟢 P3 | 系统监控 | 新页面 | 无服务器健康/连接数/资源使用/错误率仪表盘 | 已有: `@mantine/core` v9 + `@tanstack/react-query` | |

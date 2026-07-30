@@ -32,7 +32,7 @@ title = "Vanling"
 
 ### 用户仪表盘
 
-**_TODO_**
+6 个统计卡片（StatCard）、趋势图（TrendsChart）、延迟分析图（LatencyChart）、延迟详情表（LatencyTable）、最近会话表（RecentSessionsTable）
 
 </details>
 
@@ -43,7 +43,7 @@ title = "Vanling"
 - [x] 对话：LLM
 - [x] MCP：自托管/远程服务端 MCP、设备 MCP
 - [ ] 后台
-  1. 首页（开发中）
+  1. 首页（已实现：统计卡片/趋势图/延迟分析/最近会话）
   1. 管理控制台（开发中）
   1. 网页端设备模拟（开发中）
 - [ ] 部署：二进制（开发中）、Docker（开发中）
