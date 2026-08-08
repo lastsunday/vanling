@@ -46,9 +46,8 @@ pub async fn datetime() -> String {
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone, Validate, ToSchema)]
 pub struct TestQueryParam {
-    #[validate(nested)]
     #[serde(flatten)]
-    pub page: PageParam,
+    pub pagination: PageParam,
 }
 
 #[debug_handler]

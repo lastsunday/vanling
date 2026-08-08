@@ -8,5 +8,6 @@ pub mod frame;
 pub mod round;
 pub mod round_data;
 pub mod schema;
+pub mod security_event;
 pub mod session;
 pub mod user;

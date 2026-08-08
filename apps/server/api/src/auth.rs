@@ -15,6 +15,7 @@ use framework::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use validator::Validate;
@@ -64,16 +65,29 @@ async fn login(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     ValidJson(param): ValidJson<LoginParam>,
 ) -> AppResult<ApiResponse<LoginResult>> {
+    let account = param.account.clone();
     let user = User::find()
-        .filter(user::Column::Account.eq(&param.account))
+        .filter(user::Column::Account.eq(&account))
         .one(&conn)
         .await?
         .ok_or_else(|| {
-            tracing::warn!(account = %param.account, ip = %addr, "login failed: account not found");
+            tracing::warn!(
+                component = "AUTH",
+                event = "login_failed",
+                account = %account,
+                ip = %addr,
+                "login failed: account not found"
+            );
             err!(UserErrorCode::AccountNotFound)
         })?;
     if !verify(&param.password, &user.password)? {
-        tracing::warn!(account = %param.account, ip = %addr, "login failed: wrong password");
+        tracing::warn!(
+            component = "AUTH",
+            event = "login_failed",
+            account = %account,
+            ip = %addr,
+            "login failed: wrong password"
+        );
         return Err(err!(UserErrorCode::AccountNotFound));
     }
     let principal = Principal {

@@ -1,5 +1,5 @@
 import type { Frame } from "@/data/frame";
-import type { PaginatedData } from "@/data/round";
+import type { PageData } from "@/data/round";
 import type { RoundData } from "@/data/round-data";
 import type { SessionListItem, SessionRound } from "@/data/session";
 import { getJson, instance } from "./http";
@@ -11,7 +11,7 @@ export async function listSessions(params?: {
   sort_order?: 'asc' | 'desc';
   page?: number;
   page_size?: number;
-}): Promise<PaginatedData<SessionListItem>> {
+}): Promise<PageData<SessionListItem>> {
   return getJson("/api/record/sessions", params as Record<string, unknown>);
 }
 
@@ -31,12 +31,6 @@ export async function getAudioBlob(roundId: string, dataId: string): Promise<Blo
   return resp.data;
 }
 
-export async function listFrames(
-  roundId: string,
-  params?: { page?: number; page_size?: number },
-): Promise<PaginatedData<Frame>> {
-  return getJson(
-    `/api/record/rounds/${roundId}/frames`,
-    params as Record<string, unknown>,
-  );
+export async function listFrames(roundId: string): Promise<Frame[]> {
+  return getJson(`/api/record/rounds/${roundId}/frames`);
 }

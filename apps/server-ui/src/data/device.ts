@@ -1,3 +1,5 @@
+import type { PageData } from "./round";
+
 export interface DeviceResult {
   id: string;
   uid: string;
@@ -27,9 +29,4 @@ export interface ActivateResult {
   token: string;
 }
 
-export interface DeviceListResult {
-  items: DeviceResult[];
-  total: number;
-  page: number;
-  page_size: number;
-}
+export type DeviceListResult = PageData<DeviceResult>;

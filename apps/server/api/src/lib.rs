@@ -13,6 +13,7 @@ pub mod matrix;
 pub mod mcp;
 pub mod ota;
 pub mod record;
+pub mod security;
 pub mod server;
 pub mod stats;
 pub mod tts;
@@ -31,6 +32,7 @@ use axum::ServiceExt;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::Request;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::routing::get;
 use axum::serve::ListenerExt;
 use bytesize::ByteSize;
@@ -39,6 +41,7 @@ use framework::config::auth::AuthConfig;
 use framework::error::{
     AppError, AppResult, critical_code::CriticalErrorCode, framework_code::FrameworkErrorCode,
 };
+use framework::rate_limit::UsageRegistry;
 use framework::trace::LatencyOnResponse;
 use futures::future::join_all;
 use migration::MigratorTrait;
@@ -146,6 +149,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         audio_config: audio_config.clone(),
         auth_config: auth_config.clone(),
         ws_config: ws_config.clone(),
+        usage_registry: Arc::new(UsageRegistry::default()),
         cancellation_token: shutdown_token,
     };
     handles.push(tokio::spawn(async move {
@@ -216,7 +220,9 @@ pub async fn start_app(
         Either::Left(value) => value,
         Either::Right(values) => values.first().expect("port is empty"),
     };
+    let cleanup_conn = state.conn.clone();
     let (app, ct) = create_router(state, ct);
+    tokio::spawn(security::cleanup_loop(cleanup_conn, ct.clone()));
     tracing::info!("app start");
     let addr = match addrs {
         Either::Left(value) => value.to_string(),
@@ -268,7 +274,12 @@ pub fn create_router(
     api_router = setup_stats(api_router, state.clone());
     api_router = setup_ws(api_router, state.clone());
     api_router = setup_mcp(api_router, state.clone(), cancellation_token.child_token());
+    api_router = setup_security(api_router, state.clone());
     let (mut app, api) = api_router.split_for_parts();
+    app = app.layer(middleware::from_fn_with_state(
+        state,
+        security::security_middleware,
+    ));
     app = setup_web(app);
     app = setup_api_fallback(app);
     app = setup_default(app);
@@ -345,6 +356,10 @@ pub fn setup_stats(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
     api_setup(router, stats::create_routes(state))
 }
 
+pub fn setup_security(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
+    api_setup(router, security::create_routes(state))
+}
+
 fn api_setup(router: OpenApiRouter, api_router: OpenApiRouter) -> OpenApiRouter {
     router.nest("/api", api_router)
 }
@@ -414,5 +429,6 @@ pub struct AppState {
     pub audio_config: Arc<AudioConfig>,
     pub auth_config: Arc<AuthConfig>,
     pub ws_config: Arc<WsConfig>,
+    pub usage_registry: Arc<UsageRegistry>,
     pub cancellation_token: CancellationToken,
 }

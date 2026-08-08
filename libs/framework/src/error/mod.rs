@@ -173,6 +173,8 @@ impl AppError {
                                 CriticalErrorCode::ResourceNotFound.code() as i32,
                                 CriticalErrorCode::ResourceNotFound.message(),
                             )
+                        } else if code == FrameworkErrorCode::RateLimited.code() {
+                            (StatusCode::TOO_MANY_REQUESTS, code as i32, message.clone())
                         } else if code == FrameworkErrorCode::ValidationInvalid.code()
                             || code == FrameworkErrorCode::QueryInvalid.code()
                             || code == FrameworkErrorCode::PathInvalid.code()

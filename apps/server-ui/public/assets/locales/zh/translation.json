@@ -11,6 +11,7 @@
       "dashboard": "仪表板",
       "sessions": "会话列表",
       "devices": "设备管理",
+      "security": "安全事件",
       "language": "语言"
     },
     "confirm_logout": "确认登出？",
@@ -144,6 +145,27 @@
     "delete_confirmation": "确定删除设备 {{id}}？此操作不可撤销。",
     "disable_confirmation": "确定禁用设备 {{id}}？",
     "enable_confirmation": "确定启用设备 {{id}}？"
+  },
+  "security": {
+    "title": "安全事件",
+    "ip_placeholder": "按 IP 筛选",
+    "filter_all": "全部事件",
+    "no_events": "暂无安全事件",
+    "event_type": {
+      "rate_limited": "请求被限流",
+      "rate_limit_near": "接近限流阈值",
+      "auth_login_success": "登录成功",
+      "auth_login_failure": "登录失败"
+    },
+    "table": {
+      "time": "时间",
+      "event_type": "事件类型",
+      "ip": "IP",
+      "path": "路径",
+      "account": "账号",
+      "limit": "额度",
+      "retry_after": "重试等待"
+    }
   },
   "sessions": {
     "title": "会话列表",

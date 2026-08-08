@@ -51,6 +51,7 @@ function RouteComponent() {
     { link: '/admin', key: 'dashboard', label: t('admin.menu.dashboard'), icon: "i-mdi:monitor-dashboard" },
     { link: '/admin/sessions', key: 'sessions', label: t('admin.menu.sessions'), icon: "i-mdi:chat-processing" },
     { link: '/admin/devices', key: 'devices', label: t('admin.menu.devices'), icon: "i-mdi:devices" },
+    { link: '/admin/security', key: 'security', label: t('admin.menu.security'), icon: "i-mdi:shield-check" },
   ];
 
   const { data: version } = useQuery({

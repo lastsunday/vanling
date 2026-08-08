@@ -183,4 +183,8 @@ impl Jwt {
     pub fn global() -> &'static Jwt {
         JWT_INSTANCE.get().unwrap()
     }
+
+    pub fn try_global() -> Option<&'static Jwt> {
+        JWT_INSTANCE.get()
+    }
 }

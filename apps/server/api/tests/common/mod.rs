@@ -58,6 +58,7 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 ws_config: Arc::new(WsConfig {
                     ..Default::default()
                 }),
+                usage_registry: Arc::new(framework::rate_limit::UsageRegistry::default()),
                 cancellation_token: CancellationToken::new(),
             };
             (Some(container), state)
@@ -90,6 +91,7 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 ws_config: Arc::new(WsConfig {
                     ..Default::default()
                 }),
+                usage_registry: Arc::new(framework::rate_limit::UsageRegistry::default()),
                 cancellation_token: CancellationToken::new(),
             };
             (container, state)

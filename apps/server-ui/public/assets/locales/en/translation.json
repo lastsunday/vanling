@@ -11,6 +11,7 @@
       "dashboard": "Dashboard",
       "sessions": "Sessions",
       "devices": "Devices",
+      "security": "Security Events",
       "language": "Language"
     },
     "confirm_logout": "Confirm logout?",
@@ -144,6 +145,27 @@
     "delete_confirmation": "Are you sure you want to delete device {{id}}? This action cannot be undone.",
     "disable_confirmation": "Are you sure you want to disable device {{id}}?",
     "enable_confirmation": "Are you sure you want to enable device {{id}}?"
+  },
+  "security": {
+    "title": "Security Events",
+    "ip_placeholder": "Filter by IP",
+    "filter_all": "All events",
+    "no_events": "No security events",
+    "event_type": {
+      "rate_limited": "Rate Limited",
+      "rate_limit_near": "Near Rate Limit",
+      "auth_login_success": "Login Success",
+      "auth_login_failure": "Login Failure"
+    },
+    "table": {
+      "time": "Time",
+      "event_type": "Event Type",
+      "ip": "IP",
+      "path": "Path",
+      "account": "Account",
+      "limit": "Quota",
+      "retry_after": "Retry After"
+    }
   },
   "sessions": {
     "title": "Sessions",

@@ -5,11 +5,15 @@ pub mod serder;
 pub mod valid;
 
 use axum::response::IntoResponse;
+use sea_orm::{DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, Select};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-use validator::Validate;
+use utoipa::{IntoParams, ToSchema};
 
 pub use serder::{deserialize_number, empty_string_as_none};
+
+pub const DEFAULT_PAGE: u64 = 1;
+pub const DEFAULT_PAGE_SIZE: u64 = 20;
+pub const MAX_PAGE_SIZE: u64 = 100;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiResponse<T> {
@@ -47,35 +51,97 @@ impl<T: Serialize> IntoResponse for ApiResponse<T> {
     }
 }
 
-const DEFAULT_PAGE_NUM: u64 = 1;
-const DEFAULT_PAGE_SIZE: u64 = 10;
-
-#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Validate, ToSchema)]
-#[schema(example = json!({"num": DEFAULT_PAGE_NUM, "size": DEFAULT_PAGE_SIZE}))]
+/// 分页查询参数。页码从 1 开始，`page_size` 范围 1-100。
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq, Eq, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct PageParam {
-    #[serde(default = "default_page_num", deserialize_with = "deserialize_number")]
-    #[validate(range(min = 1, message = "page must more than 0"))]
-    pub num: u64,
-    #[serde(default = "default_page_size", deserialize_with = "deserialize_number")]
-    #[validate(range(min = 1, max = 1000, message = "size must between 0 and 1000"))]
-    pub size: u64,
+    /// 页码，从 1 开始
+    #[param(example = 1, default = 1)]
+    pub page: Option<u64>,
+    /// 每页条数，范围 1-100，默认 20
+    #[param(example = 20, default = 20)]
+    pub page_size: Option<u64>,
 }
 
-fn default_page_num() -> u64 {
-    DEFAULT_PAGE_NUM
-}
-fn default_page_size() -> u64 {
-    DEFAULT_PAGE_SIZE
+impl PageParam {
+    pub fn new(page: Option<u64>, page_size: Option<u64>) -> Self {
+        Self { page, page_size }
+    }
+
+    /// 归一化后的页码（最小 1）
+    pub fn page(&self) -> u64 {
+        self.page.unwrap_or(DEFAULT_PAGE).max(DEFAULT_PAGE)
+    }
+
+    /// 归一化后的每页条数（clamp 到 1-100）
+    pub fn page_size(&self) -> u64 {
+        self.page_size
+            .unwrap_or(DEFAULT_PAGE_SIZE)
+            .clamp(1, MAX_PAGE_SIZE)
+    }
+
+    /// 偏移量
+    pub fn offset(&self) -> u64 {
+        (self.page() - 1) * self.page_size()
+    }
 }
 
-#[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq, Eq, ToSchema)]
-pub struct ApiPageResult<T> {
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PageData<T> {
     pub items: Vec<T>,
     pub total: u64,
+    pub page: u64,
+    pub page_size: u64,
 }
 
-impl<T> ApiPageResult<T> {
-    pub fn new(items: Vec<T>, total: u64) -> Self {
-        Self { items, total }
+impl<T> PageData<T> {
+    pub fn new(items: Vec<T>, total: u64, pagination: &PageParam) -> Self {
+        Self {
+            items,
+            total,
+            page: pagination.page(),
+            page_size: pagination.page_size(),
+        }
+    }
+}
+
+/// 对查询执行分页，返回统一的分页结果。
+pub async fn paginate<M>(
+    query: Select<M>,
+    conn: &DatabaseConnection,
+    pagination: &PageParam,
+) -> Result<PageData<M::Model>, DbErr>
+where
+    M: EntityTrait,
+    M::Model: Send + Sync + 'static,
+{
+    let page_size = pagination.page_size();
+    let paginator = query.paginate(conn, page_size);
+    let items = paginator.fetch_page(pagination.page() - 1).await?;
+    let total = paginator.num_items().await?;
+    Ok(PageData::new(items, total, pagination))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_query_defaults() {
+        let p = PageParam::new(None, None);
+        assert_eq!(p.page(), DEFAULT_PAGE);
+        assert_eq!(p.page_size(), DEFAULT_PAGE_SIZE);
+        assert_eq!(p.offset(), 0);
+    }
+
+    #[test]
+    fn page_query_clamps() {
+        assert_eq!(PageParam::new(Some(0), Some(0)).page(), 1);
+        assert_eq!(PageParam::new(Some(0), Some(0)).page_size(), 1);
+        assert_eq!(
+            PageParam::new(Some(2), Some(101)).page_size(),
+            MAX_PAGE_SIZE
+        );
+        assert_eq!(PageParam::new(Some(3), Some(10)).offset(), 20);
     }
 }

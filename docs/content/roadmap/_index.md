@@ -251,7 +251,7 @@ sort_by = "weight"
 
 | 状态 | 测试 | 项目          | 描述                | 链接 |
 | ---- | ---- | ------------- | ------------------- | ---- |
-| ❌   | ❌   | /mcp 端点认证 | auth layer 被注释掉 |      |
+| ✅   | ✅   | /mcp 端点认证 | Bearer JWT 认证 + rmcp 默认 Host 校验 |      |
 
 ### Output Filter
 
@@ -272,7 +272,8 @@ sort_by = "weight"
 | ✅   | ❌   | GET /api/stats/summary        | 概览统计（设备/会话/消息数/延迟均值）  |      |
 | ✅   | ❌   | GET /api/stats/trends         | 趋势数据（设备/会话/消息日趋势）       |      |
 | ✅   | ❌   | GET /api/stats/latency        | 延迟百分位数据（P50/P90/P99 等）       |      |
-| ❌   | ❌   | Rate Limiting                  | 登录限流/暴力破解防护未实现             |      |
+| ✅   | ✅   | Rate Limiting                  | GitHub 风格资源桶：auth/ota per-IP 固定窗口（20/15min、30/min）+ core per-user（1000/h）+ X-RateLimit-* 响应头 + per-account 登录失败锁（5 次/15 分钟） |      |
+| ✅   | ✅   | GET /api/security/rate_limit   | 认证内省端点，返回 auth/ota/core 配额与实时用量，本身不消耗配额 |      |
 | ❌   | ❌   | Invite Code 系统              | 注册邀请码生成/验证未实现               |      |
 | ✅   | ❌   | 设备管理 CRUD                 | 列表/激活（按码/按ID）/禁用/启用/删除端点已实现（缺详情） |      |
 
@@ -282,6 +283,7 @@ sort_by = "weight"
 | ---- | ---- | ----------------- | --------------------------------------------- | ---- |
 | ✅   | ❌   | Dashboard 页面    | 6 个 StatCard、TrendsChart、LatencyChart、RecentSessionsTable、LatencyTable |      |
 | ✅   | ✅   | 会话列表/详情     | 搜索/日期过滤/分页/SessionDetail 组件         |      |
+| ✅   | ✅   | 安全事件监控      | 限流/登录成败事件落库 + 管理页查询（类型/IP 过滤 + 分页）+ 30 天自动清理 |      |
 | ❌   | ❌   | User CRUD 管理 UI | 用户列表/创建/删除/角色管理未实现             |      |
 | ❌   | ❌   | RBAC 管理         | Token 用量/对话时长/设备活跃度/权限角色未实现 |      |
 | ❌   | ❌   | MCP 仪表盘        | 多端点管理/工具同步/访问控制/日志未实现       |      |

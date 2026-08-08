@@ -143,10 +143,46 @@ impl MigrationTrait for Migration {
             ..Default::default()
         };
         root_user.insert(db).await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(SecurityEvent::Table)
+                    .if_not_exists()
+                    .col(string_uniq(SecurityEvent::Id))
+                    .col(ColumnDef::new(SecurityEvent::EventType).string().not_null())
+                    .col(string_null(SecurityEvent::Ip))
+                    .col(string_null(SecurityEvent::Path))
+                    .col(string_null(SecurityEvent::Account))
+                    .col(big_integer_null(SecurityEvent::RetryAfterMs))
+                    .col(big_integer_null(SecurityEvent::Limit))
+                    .col(big_integer_null(SecurityEvent::Remaining))
+                    .col(big_integer_null(SecurityEvent::WindowSecs))
+                    .col(timestamp_with_time_zone_null(SecurityEvent::CreateDatetime))
+                    .col(timestamp_with_time_zone_null(SecurityEvent::UpdateDatetime))
+                    .primary_key(
+                        Index::create()
+                            .name("pk-security-event-id")
+                            .col(SecurityEvent::Id),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-security-event-create-datetime")
+                    .table(SecurityEvent::Table)
+                    .col(SecurityEvent::CreateDatetime)
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(SecurityEvent::Table).to_owned())
+            .await?;
         manager
             .drop_table(Table::drop().table(Frame::Table).to_owned())
             .await?;
@@ -265,4 +301,20 @@ pub enum Frame {
     CreateDatetime,
     UpdateDatetime,
     ElapsedUs,
+}
+
+#[derive(DeriveIden)]
+enum SecurityEvent {
+    Table,
+    Id,
+    EventType,
+    Ip,
+    Path,
+    Account,
+    RetryAfterMs,
+    Limit,
+    Remaining,
+    WindowSecs,
+    CreateDatetime,
+    UpdateDatetime,
 }

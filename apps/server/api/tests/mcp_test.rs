@@ -3,6 +3,14 @@ use api::{
     mcp::client::{device::DeviceMcpClient, device_transport::DeviceMcpTransport},
     setup_mcp,
 };
+use axum::{
+    body::Body,
+    http::{Request, StatusCode, header},
+};
+use framework::{
+    auth::{Jwt, Principal},
+    config::auth::AuthConfig,
+};
 use rmcp::{
     ServiceExt as _rmcp_ServiceExt,
     model::{
@@ -15,6 +23,8 @@ use rmcp::{
     },
 };
 use service::ling::frame::{FrameResult, OutputMessage};
+use std::sync::Arc;
+use tower::ServiceExt;
 use tracing_test::traced_test;
 use utoipa_axum::router::OpenApiRouter;
 
@@ -22,6 +32,28 @@ mod common;
 use common::{setup_database, tear_down};
 
 use crate::common::router_client::RouterClient;
+
+fn jwt_config() -> AuthConfig {
+    AuthConfig {
+        access_token_secret: Some(String::from("test-secret")),
+        access_token_expires_in: Some(28800),
+        refresh_token_secret: Some(String::from("test-refresh-secret")),
+        refresh_token_expires_in: Some(15897600),
+        audience: Some(String::from("test-aud")),
+        issuer: Some(String::from("test-iss")),
+        ..Default::default()
+    }
+}
+
+fn admin_token() -> String {
+    Jwt::global()
+        .access_token_encode(&Principal {
+            id: String::from("test-admin"),
+            name: Some(String::from("root")),
+            token_type: String::from("user"),
+        })
+        .expect("encode admin token")
+}
 
 #[tokio::test]
 #[traced_test]
@@ -85,12 +117,15 @@ async fn test_device_mcp_transport_handshake() -> anyhow::Result<()> {
 #[traced_test]
 async fn test_administrator_mcp() -> anyhow::Result<()> {
     let (container, state) = setup_database().await;
+    Jwt::init(Arc::new(jwt_config()));
     let router = OpenApiRouter::new();
     let ct = tokio_util::sync::CancellationToken::new();
     let router = setup_mcp(router, state.clone(), ct.child_token())
         .split_for_parts()
         .0;
-    let config = StreamableHttpClientTransportConfig::with_uri("/mcp");
+    let token = admin_token();
+    let mut config = StreamableHttpClientTransportConfig::with_uri("/mcp");
+    config.auth_header = Some(token);
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, config);
     let client_info = InitializeRequestParams::new(
@@ -128,6 +163,39 @@ async fn test_administrator_mcp() -> anyhow::Result<()> {
     tracing::info!("Tool({tool_name}) result: {tool_result:#?}");
 
     client.cancel().await?;
+
+    let _ = &state.conn.close().await.unwrap();
+    tear_down(container).await;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_mcp_requires_auth() -> anyhow::Result<()> {
+    let (container, state) = setup_database().await;
+    Jwt::init(Arc::new(jwt_config()));
+    let router = OpenApiRouter::new();
+    let ct = tokio_util::sync::CancellationToken::new();
+    let router = setup_mcp(router, state.clone(), ct.child_token())
+        .split_for_parts()
+        .0;
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/mcp")
+                .method("POST")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::ACCEPT, "application/json, text/event-stream")
+                .header(header::HOST, "localhost")
+                .body(Body::from(
+                    r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .context("send unauthenticated mcp request")?;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
     let _ = &state.conn.close().await.unwrap();
     tear_down(container).await;

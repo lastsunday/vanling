@@ -5,12 +5,12 @@ use axum::{
 use entity::{device, prelude::*};
 use framework::{
     auth::{Jwt, Principal},
-    data::{ApiResponse, valid::ValidJson},
+    data::{ApiResponse, PageData, PageParam, paginate, valid::ValidJson},
     err,
     error::AppResult,
     middleware::get_auth_layer,
 };
-use sea_orm::{ActiveValue::Set, QueryOrder as _, QuerySelect as _, prelude::*};
+use sea_orm::{ActiveValue::Set, QueryOrder as _, prelude::*};
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use validator::Validate;
@@ -66,23 +66,13 @@ pub struct DeviceListParam {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema, Default)]
-pub struct DeviceListResult {
-    pub items: Vec<device::Model>,
-    pub total: u64,
-    pub page: u64,
-    pub page_size: u64,
-}
-
 #[debug_handler]
 #[utoipa::path(get, path = "/devices", tag = TAG, params(DeviceListParam))]
 async fn devices(
     State(AppState { conn, .. }): State<AppState>,
     Query(params): Query<DeviceListParam>,
-) -> AppResult<ApiResponse<DeviceListResult>> {
-    let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).clamp(1, 100);
-    let offset = (page - 1) * page_size;
+) -> AppResult<ApiResponse<PageData<device::Model>>> {
+    let pagination = PageParam::new(params.page, params.page_size);
 
     let mut query = Device::find();
 
@@ -113,20 +103,12 @@ async fn devices(
         );
     }
 
-    let total = query.clone().count(&conn).await? as u64;
-    let items = query
+    let query = query
         .order_by_desc(device::Column::CreateDatetime)
-        .offset(offset)
-        .limit(page_size)
-        .all(&conn)
-        .await?;
+        .order_by_desc(device::Column::Id);
+    let result = paginate(query, &conn, &pagination).await?;
 
-    Ok(ApiResponse::success(Some(DeviceListResult {
-        items,
-        total,
-        page,
-        page_size,
-    })))
+    Ok(ApiResponse::success(Some(result)))
 }
 
 #[debug_handler]

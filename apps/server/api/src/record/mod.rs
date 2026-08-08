@@ -9,8 +9,12 @@ use axum::{
     response::IntoResponse,
 };
 use chrono::{DateTime, Utc};
-use framework::{data::ApiResponse, error::AppResult, middleware::get_auth_layer};
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QueryTrait};
+use framework::{
+    data::{ApiResponse, PageData, PageParam, paginate},
+    error::AppResult,
+    middleware::get_auth_layer,
+};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QueryTrait};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -133,14 +137,6 @@ pub struct SessionListItem {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct SessionListResponse {
-    pub items: Vec<SessionListItem>,
-    pub total: u64,
-    pub page: u64,
-    pub page_size: u64,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
 pub struct SessionRound {
     pub round_id: String,
     pub create_datetime: Option<DateTime<Utc>>,
@@ -149,14 +145,13 @@ pub struct SessionRound {
 
 #[debug_handler]
 #[utoipa::path(get, path = "/record/sessions", tag = TAG, params(ListSessionsParams), responses(
-    (status = OK, body = ApiResponse<SessionListResponse>)
+    (status = OK, body = ApiResponse<PageData<SessionListItem>>)
 ))]
 async fn list_sessions(
     State(AppState { conn, .. }): State<AppState>,
     Query(params): Query<ListSessionsParams>,
-) -> AppResult<ApiResponse<SessionListResponse>> {
-    let page = params.page.unwrap_or(1).max(1);
-    let page_size = params.page_size.unwrap_or(20).min(100);
+) -> AppResult<ApiResponse<PageData<SessionListItem>>> {
+    let pagination = PageParam::new(params.page, params.page_size);
     let order = match params.sort_order.as_deref() {
         Some("asc") => sea_orm::Order::Asc,
         _ => sea_orm::Order::Desc,
@@ -185,10 +180,15 @@ async fn list_sessions(
             }
         });
 
-    let query = query.order_by(session::Column::CreateDatetime, order);
-    let paginator = query.paginate(&conn, page_size);
-    let items = paginator.fetch_page(page - 1).await?;
-    let total = paginator.num_items().await?;
+    let query = query
+        .order_by(session::Column::CreateDatetime, order.clone())
+        .order_by(session::Column::Id, order);
+    let PageData {
+        items,
+        total,
+        page,
+        page_size,
+    } = paginate(query, &conn, &pagination).await?;
 
     let session_ids: Vec<String> = items.iter().map(|s| s.id.clone()).collect();
     let rounds = if !session_ids.is_empty() {
@@ -243,7 +243,7 @@ async fn list_sessions(
         })
         .collect();
 
-    Ok(ApiResponse::success(Some(SessionListResponse {
+    Ok(ApiResponse::success(Some(PageData {
         items: response_items,
         total,
         page,
@@ -328,58 +328,18 @@ async fn get_round_data_blob(
     }
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct ListFramesParams {
-    pub page: Option<u64>,
-    pub page_size: Option<u64>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrameListResponse {
-    pub items: Vec<frame::Model>,
-    pub total: u64,
-    pub page: u64,
-    pub page_size: u64,
-}
-
 #[debug_handler]
-#[utoipa::path(get, path = "/record/rounds/{id}/frames", tag = TAG, params(ListFramesParams), responses(
-    (status = OK, body = ApiResponse<FrameListResponse>)
+#[utoipa::path(get, path = "/record/rounds/{id}/frames", tag = TAG, responses(
+    (status = OK, body = ApiResponse<Vec<frame::Model>>)
 ))]
 async fn list_frames(
     State(AppState { conn, .. }): State<AppState>,
     Path(id): Path<String>,
-    Query(params): Query<ListFramesParams>,
-) -> AppResult<ApiResponse<FrameListResponse>> {
-    let page_size = params.page_size.unwrap_or(0);
-    let page = if page_size == 0 {
-        let items = Frame::find()
-            .filter(frame::Column::RoundId.eq(&id))
-            .order_by_asc(frame::Column::Seq)
-            .all(&conn)
-            .await?;
-        let total = items.len() as u64;
-        return Ok(ApiResponse::success(Some(FrameListResponse {
-            items,
-            total,
-            page: 1,
-            page_size: total,
-        })));
-    } else {
-        params.page.unwrap_or(1).max(1)
-    };
-
-    let paginator = Frame::find()
+) -> AppResult<ApiResponse<Vec<frame::Model>>> {
+    let items = Frame::find()
         .filter(frame::Column::RoundId.eq(&id))
         .order_by_asc(frame::Column::Seq)
-        .paginate(&conn, page_size);
-    let items = paginator.fetch_page(page - 1).await?;
-    let total = paginator.num_items().await?;
-    Ok(ApiResponse::success(Some(FrameListResponse {
-        items,
-        total,
-        page,
-        page_size,
-    })))
+        .all(&conn)
+        .await?;
+    Ok(ApiResponse::success(Some(items)))
 }

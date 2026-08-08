@@ -5,6 +5,8 @@ use api::{
     mcp::client::external::ExternalMcpClient,
     setup_mcp,
 };
+use framework::auth::{Jwt, Principal};
+use framework::config::auth::AuthConfig;
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
@@ -239,12 +241,29 @@ async fn test_chat_history() {
 async fn test_chat_mcp() -> anyhow::Result<()> {
     let model = create_model();
     let (container, state) = setup_database().await;
+    Jwt::init(Arc::new(AuthConfig {
+        access_token_secret: Some(String::from("test-secret")),
+        access_token_expires_in: Some(28800),
+        refresh_token_secret: Some(String::from("test-refresh-secret")),
+        refresh_token_expires_in: Some(15897600),
+        audience: Some(String::from("test-aud")),
+        issuer: Some(String::from("test-iss")),
+        ..Default::default()
+    }));
+    let admin_token = Jwt::global()
+        .access_token_encode(&Principal {
+            id: String::from("test-admin"),
+            name: Some(String::from("root")),
+            token_type: String::from("user"),
+        })
+        .expect("encode admin token");
     let router = OpenApiRouter::new();
     let ct = tokio_util::sync::CancellationToken::new();
     let router = setup_mcp(router, state.clone(), ct.child_token())
         .split_for_parts()
         .0;
-    let config = StreamableHttpClientTransportConfig::with_uri("/mcp");
+    let mut config = StreamableHttpClientTransportConfig::with_uri("/mcp");
+    config.auth_header = Some(admin_token);
     let client = RouterClient { router };
     let transport = StreamableHttpClientTransport::with_client(client, config);
 

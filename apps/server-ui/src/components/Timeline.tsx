@@ -387,7 +387,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
 
     const ttsElapsedMs = ttsStep.metadata?.elapsed_ms as number | undefined;
     const ttsDurationMs = ttsStep.metadata?.audio_duration_ms as number | undefined;
-    const items = framesData?.items ?? [];
+    const items = framesData ?? [];
     if (ttsElapsedMs == null || ttsDurationMs == null || items.length === 0) return map;
 
     const baseMs = ttsElapsedMs - t0Ms;
@@ -405,17 +405,17 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
   }, [syncMode, ttsStep, t0Ms, framesData]);
 
   const frameList = useMemo(() => {
-    if (!framesData?.items.length) return [];
+    if (!framesData?.length) return [];
 
     const typeTotals: Record<string, number> = {};
-    for (const f of framesData.items) {
+    for (const f of framesData) {
       const detail = f.detail ?? 'unknown';
       typeTotals[detail] = (typeTotals[detail] || 0) + 1;
     }
 
     const seenTypes = new Set<string>();
     let lastAudioResultSeq = -1;
-    for (const f of framesData.items) {
+    for (const f of framesData) {
       if (f.detail === 'AudioResult') {
         lastAudioResultSeq = Math.max(lastAudioResultSeq, f.seq);
       }
@@ -423,7 +423,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
 
     const typeCounts: Record<string, number> = {};
     const t0 = t0Ms;
-    return framesData.items.map((f) => {
+    return framesData.map((f) => {
       const detail = f.detail ?? 'unknown';
       typeCounts[detail] = (typeCounts[detail] || 0) + 1;
       const typeIndex = typeCounts[detail];
@@ -470,12 +470,12 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
   }, [clips, frameList, t0Ms]);
 
   const frameMarkers = useMemo(() => {
-    if (!framesData?.items.length) return [];
+    if (!framesData?.length) return [];
 
     const result: Array<{ seq: number; dir: string; kind: string; detail: string | null; startMs: number; color: string }> = [];
     let filteredCount = 0;
     let nullElapsed = 0;
-    for (const f of framesData.items) {
+    for (const f of framesData) {
       if (f.elapsed_us == null) { nullElapsed++; continue; }
       const startMs = ttsSyncPositions.get(f.seq) ?? ((f.elapsed_us as number) / 1000 - t0Ms);
       if (startMs < 0 || startMs > totalDurationMs) { filteredCount++; continue; }

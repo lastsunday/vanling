@@ -5,5 +5,6 @@ pub use super::device::Entity as Device;
 pub use super::frame::Entity as Frame;
 pub use super::round::Entity as Round;
 pub use super::round_data::Entity as RoundData;
+pub use super::security_event::Entity as SecurityEvent;
 pub use super::session::Entity as Session;
 pub use super::user::Entity as User;

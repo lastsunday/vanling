@@ -12,6 +12,7 @@ pub mod middleware;
 pub mod panic;
 pub mod password;
 pub mod prelude;
+pub mod rate_limit;
 pub mod runtime;
 pub mod sentry;
 pub mod signal;

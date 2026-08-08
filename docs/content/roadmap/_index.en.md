@@ -3,8 +3,8 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "ba2f466357d397391a70971151d7732190186b0a"
-translated_at = "2026-08-08T09:29:26Z"
+source_file_hash = "c986a26a3f2338e85c7836c887a220bae7b4339b"
+translated_at = "2026-08-08T12:00:00Z"
 +++
 
 ## Overview
@@ -254,7 +254,7 @@ Column reference:
 
 | Status | Test | Item           | Description                | Link |
 | ------ | ---- | -------------- | -------------------------- | ---- |
-| ❌     | ❌   | /mcp endpoint auth | auth layer commented out |  |
+| ✅     | ✅   | /mcp endpoint auth | Bearer JWT auth + rmcp default Host validation |  |
 
 ### Output Filter
 
@@ -275,7 +275,8 @@ Column reference:
 | ✅     | ❌   | GET /api/stats/summary        | Overview stats (devices/sessions/messages/latency avg) |  |
 | ✅     | ❌   | GET /api/stats/trends         | Trend data (daily device/session/message trends) |  |
 | ✅     | ❌   | GET /api/stats/latency        | Latency percentile data (P50/P90/P99 etc.)     |      |
-| ❌     | ❌   | Rate Limiting                  | Login throttling / brute force protection not implemented |  |
+| ✅     | ✅   | Rate Limiting                  | GitHub-style buckets: auth/ota per-IP fixed window (20/15min, 30/min) + core per-user (1000/h) + X-RateLimit-* response headers + per-account login failure lockout (5/15min) |  |
+| ✅     | ✅   | GET /api/security/rate_limit   | Authenticated introspection endpoint returning auth/ota/core quotas and live usage; does not consume quota |  |
 | ❌     | ❌   | Invite Code system             | Registration invite code generation/verification not implemented |  |
 | ✅     | ❌   | Device management CRUD         | List/activate (by code/by ID)/disable/enable/delete endpoints implemented (no detail) |  |
 
@@ -285,6 +286,7 @@ Column reference:
 | ------ | ---- | ------------------ | ---------------------------------------------------- | ---- |
 | ✅     | ❌   | Dashboard page     | 6 StatCards, TrendsChart, LatencyChart, RecentSessionsTable, LatencyTable |      |
 | ✅     | ✅   | Session list/details | Search/date filter/pagination/SessionDetail component |  |
+| ✅     | ✅   | Security event monitoring | Rate-limit/login events persisted + admin page query (type/IP filter + pagination) + 30-day auto cleanup |  |
 | ❌     | ❌   | User CRUD UI       | User list/create/delete/role management not implemented |  |
 | ❌     | ❌   | RBAC management    | Token usage/conversation duration/device activity/permissions not implemented |  |
 | ❌     | ❌   | MCP dashboard      | Multi-endpoint management/tool sync/access control/logs not implemented |  |

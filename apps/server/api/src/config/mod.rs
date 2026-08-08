@@ -508,16 +508,20 @@ fn default_database_url() -> Option<String> {
     Some(String::from("sqlite://db.sqlite?mode=rwc"))
 }
 
+const DEFAULT_AUTH_ACCESS_TOKEN_SECRET: &str = "QLjJTeVblAlM47de";
+
 fn default_auth_access_token_secret() -> Option<String> {
-    Some(String::from("QLjJTeVblAlM47de"))
+    Some(String::from(DEFAULT_AUTH_ACCESS_TOKEN_SECRET))
 }
 
 fn default_auth_access_token_expires_in() -> Option<u64> {
     Some(28800)
 }
 
+const DEFAULT_AUTH_REFRESH_TOKEN_SECRET: &str = "N8lI0uitNzJl6vYK";
+
 fn default_auth_refresh_token_secret() -> Option<String> {
-    Some(String::from("N8lI0uitNzJl6vYK"))
+    Some(String::from(DEFAULT_AUTH_REFRESH_TOKEN_SECRET))
 }
 
 fn default_auth_refresh_token_expires_in() -> Option<u64> {
@@ -536,8 +540,49 @@ fn default_auth_client_id() -> Option<String> {
     Some(String::from("d1aicsr57dijo7h963ig"))
 }
 
+const DEFAULT_AUTH_CLIENT_SECRET: &str = "ujTgh2lEQYy0PXhK";
+
 fn default_auth_client_secret() -> Option<String> {
-    Some(String::from("ujTgh2lEQYy0PXhK"))
+    Some(String::from(DEFAULT_AUTH_CLIENT_SECRET))
+}
+
+fn warn_on_default_auth_secrets(config: &Config) {
+    if config
+        .auth_access_token_secret
+        .as_deref()
+        .is_some_and(|v| v == DEFAULT_AUTH_ACCESS_TOKEN_SECRET)
+    {
+        tracing::warn!(
+            component = "CONFIG",
+            event = "default_auth_secret",
+            secret = "access_token",
+            "auth access token secret is using a built-in default; set `auth.access_token_secret` before going live"
+        );
+    }
+    if config
+        .auth_refresh_token_secret
+        .as_deref()
+        .is_some_and(|v| v == DEFAULT_AUTH_REFRESH_TOKEN_SECRET)
+    {
+        tracing::warn!(
+            component = "CONFIG",
+            event = "default_auth_secret",
+            secret = "refresh_token",
+            "auth refresh token secret is using a built-in default; set `auth.refresh_token_secret` before going live"
+        );
+    }
+    if config
+        .auth_client_secret
+        .as_deref()
+        .is_some_and(|v| v == DEFAULT_AUTH_CLIENT_SECRET)
+    {
+        tracing::warn!(
+            component = "CONFIG",
+            event = "default_auth_secret",
+            secret = "client_secret",
+            "auth client secret is using a built-in default; set `auth.client_secret` before going live"
+        );
+    }
 }
 
 fn default_tts_model() -> Option<TtsModel> {
@@ -750,6 +795,8 @@ impl Config {
 
         // don't start if we're listening on both UNIX sockets and TCP at same time
         check::is_dual_listening(raw_config)?;
+
+        warn_on_default_auth_secrets(&config);
 
         Ok(config)
     }

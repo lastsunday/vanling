@@ -7,4 +7,5 @@ pub enum FrameworkErrorCode {
     PathInvalid = 301003,
     JsonInvalid = 301004,
     MethodNotAllowed = 301005,
+    RateLimited = 301006,
 }

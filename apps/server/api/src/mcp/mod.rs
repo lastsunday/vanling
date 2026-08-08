@@ -1,3 +1,4 @@
+use framework::middleware::get_auth_layer;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -13,13 +14,11 @@ pub fn create_routes(state: AppState, cancellation_token: CancellationToken) -> 
     let service = StreamableHttpService::new(
         || Ok(Administrator::new()),
         LocalSessionManager::default().into(),
-        StreamableHttpServerConfig::default()
-            .with_cancellation_token(cancellation_token)
-            .disable_allowed_hosts(),
+        StreamableHttpServerConfig::default().with_cancellation_token(cancellation_token),
     );
 
     OpenApiRouter::new()
         .nest_service("/mcp", service)
-        //.layer(get_auth_layer())
+        .layer(get_auth_layer())
         .with_state(state)
 }
