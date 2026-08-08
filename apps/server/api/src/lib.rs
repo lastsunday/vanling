@@ -95,6 +95,7 @@ pub struct StartParams {
     pub asr_config: Arc<AsrConfig>,
     pub llm_config: Arc<LlmConfig>,
     pub matrix_config: Arc<MatrixConfig>,
+    pub shutdown_token: CancellationToken,
 }
 
 pub async fn start(params: StartParams) -> anyhow::Result<()> {
@@ -111,6 +112,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         asr_config,
         llm_config,
         matrix_config,
+        shutdown_token,
     } = params;
     Jwt::init(auth_config.clone());
     let database_url = database_config.url.as_ref().expect("database url is empty");
@@ -133,8 +135,8 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
     tracing::info!("init llm manager");
     LlmManager::init(llm_config).await;
     tracing::info!("init llm manager successfully");
-    let ct = tokio_util::sync::CancellationToken::new();
-    let ct_for_app = ct.clone();
+    let ct_for_app = shutdown_token.clone();
+    let ct_for_matrix = shutdown_token.clone();
     let mut handles = Vec::new();
     let state = AppState {
         conn,
@@ -144,6 +146,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         audio_config: audio_config.clone(),
         auth_config: auth_config.clone(),
         ws_config: ws_config.clone(),
+        cancellation_token: shutdown_token,
     };
     handles.push(tokio::spawn(async move {
         if let Err(error) = start_app(server_config, state, ct_for_app).await {
@@ -158,6 +161,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
                 mcp_config,
                 vad_config,
                 audio_config,
+                ct_for_matrix,
             )
             .await
             {
@@ -176,6 +180,7 @@ pub async fn start_matrix_client(
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
     audio_config: Arc<AudioConfig>,
+    shutdown_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("matrix client start");
     matrix::client::start(
@@ -184,6 +189,7 @@ pub async fn start_matrix_client(
         mcp_config,
         vad_config,
         audio_config,
+        shutdown_token,
     )
     .await?;
     tracing::info!("matrix client end");
@@ -228,7 +234,10 @@ pub async fn start_app(
         ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(app),
     )
     .with_graceful_shutdown(async move {
-        tokio::signal::ctrl_c().await.unwrap();
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = ct.cancelled() => {}
+        }
         tracing::info!("shutting down...");
         ct.cancel();
     })
@@ -405,4 +414,5 @@ pub struct AppState {
     pub audio_config: Arc<AudioConfig>,
     pub auth_config: Arc<AuthConfig>,
     pub ws_config: Arc<WsConfig>,
+    pub cancellation_token: CancellationToken,
 }

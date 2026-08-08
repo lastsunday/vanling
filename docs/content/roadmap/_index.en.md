@@ -3,8 +3,8 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "486b80831e91c9d623d3ebd8af65b0fa80347595"
-translated_at = "2026-07-30T00:00:00Z"
+source_file_hash = "ba2f466357d397391a70971151d7732190186b0a"
+translated_at = "2026-08-08T09:29:26Z"
 +++
 
 ## Overview
@@ -301,8 +301,8 @@ Column reference:
 
 | Status | Test | Item                 | Description                                                         | Link |
 | ------ | ---- | -------------------- | ------------------------------------------------------------------- | ---- |
-| ❌     | ❌   | email UNIQUE constraint | entity has unique annotation, migration not implemented           |      |
-| ❌     | ❌   | Graceful shutdown order | Shutdown ordering missing across modules                          |      |
+| ✅     | ✅   | email UNIQUE constraint | user.email has UNIQUE constraint in migration (nullable, compatible with existing empty-email records) |      |
+| ✅     | ✅   | Graceful shutdown order | Server CancellationToken drives axum/WS/Matrix graceful shutdown in order |      |
 | ✅     | —    | Runtime race condition  | build() runs synchronously, set() happens-before any worker thread, no race |      |
-| ❌     | ❌   | Timestamp auto-fill     | Config entity missing ActiveModelBehavior                         |      |
+| ✅     | ✅   | Timestamp auto-fill     | Config entity implements before_save, create/update timestamps auto-filled |      |
 

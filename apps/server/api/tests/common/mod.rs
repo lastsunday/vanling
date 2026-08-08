@@ -17,6 +17,7 @@ use std::{str::FromStr, sync::Arc};
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
+use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
 pub mod asr;
@@ -57,6 +58,7 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 ws_config: Arc::new(WsConfig {
                     ..Default::default()
                 }),
+                cancellation_token: CancellationToken::new(),
             };
             (Some(container), state)
         }
@@ -88,6 +90,7 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 ws_config: Arc::new(WsConfig {
                     ..Default::default()
                 }),
+                cancellation_token: CancellationToken::new(),
             };
             (container, state)
         }

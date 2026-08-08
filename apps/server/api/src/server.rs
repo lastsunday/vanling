@@ -9,6 +9,7 @@ use std::{
 use std::{io, io::ErrorKind::Interrupted};
 
 use tokio::{runtime, sync::broadcast};
+use tokio_util::sync::CancellationToken;
 
 use crate::{config, config::Config};
 
@@ -40,6 +41,9 @@ pub struct Server {
 
     /// Reload/shutdown signal
     pub signal: broadcast::Sender<&'static str>,
+
+    /// Token cancelled on shutdown; single source of truth for graceful stop
+    shutdown: CancellationToken,
 }
 
 impl Server {
@@ -54,6 +58,7 @@ impl Server {
             restarting: AtomicBool::new(false),
             runtime: runtime.clone(),
             signal: broadcast::channel::<&'static str>(1).0,
+            shutdown: CancellationToken::new(),
         }
     }
 
@@ -87,6 +92,7 @@ impl Server {
             return Err(anyhow::anyhow!("Shutdown already in progress"));
         }
 
+        self.shutdown.cancel();
         self.signal("SIGTERM").inspect_err(|_| {
             self.stopping.store(false, Ordering::Release);
         })
@@ -102,9 +108,12 @@ impl Server {
 
     #[inline]
     pub async fn until_shutdown(self: &Arc<Self>) {
-        while self.running() {
-            self.signal.subscribe().recv().await.ok();
-        }
+        self.shutdown.cancelled().await;
+    }
+
+    #[inline]
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown.clone()
     }
 
     #[inline]

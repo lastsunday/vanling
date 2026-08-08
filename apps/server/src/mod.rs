@@ -270,6 +270,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         asr_config,
         llm_config,
         matrix_config,
+        shutdown_token: server.server.shutdown_token(),
     })
     .await?;
     info!("Exit runtime");

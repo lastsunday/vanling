@@ -27,6 +27,7 @@ use service::ling::{
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use crate::{
@@ -48,6 +49,7 @@ pub async fn start(
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
     audio_config: Arc<AudioConfig>,
+    shutdown_token: CancellationToken,
 ) -> Result<(), Box<dyn Error>> {
     let bot = Bot::build(
         matrix_config,
@@ -55,6 +57,7 @@ pub async fn start(
         mcp_config,
         vad_config,
         audio_config,
+        shutdown_token,
     )
     .await?;
     bot.run().await?;
@@ -75,6 +78,7 @@ struct Bot {
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
     audio_config: Arc<AudioConfig>,
+    shutdown: CancellationToken,
 }
 
 impl Bot {
@@ -86,6 +90,7 @@ impl Bot {
         mcp_config: Arc<McpConfig>,
         vad_config: Arc<VadConfig>,
         audio_config: Arc<AudioConfig>,
+        shutdown_token: CancellationToken,
     ) -> Result<Self, Box<dyn Error>> {
         let matrix_client = ruma_client::Client::builder()
             .homeserver_url(
@@ -120,6 +125,7 @@ impl Bot {
             audio_config,
             user_id,
             session_map: Arc::new(Mutex::new(HashMap::new())),
+            shutdown: shutdown_token,
         })
     }
 
@@ -152,29 +158,38 @@ impl Bot {
         ));
 
         info!("matrix client listening...");
-        while let Some(response) = sync_stream.try_next().await? {
-            let message_futures =
-                response
-                    .rooms
-                    .join
-                    .iter()
-                    .map(|(room_id, room_info)| async move {
-                        // Use a regular for loop for the messages within one room to handle them sequentially
-                        for e in &room_info.timeline.events {
-                            if let Err(err) = self.handle_message(e, room_id.to_owned()).await {
-                                error!("failed to respond to message: {err}");
-                            }
+        loop {
+            tokio::select! {
+                _ = self.shutdown.cancelled() => {
+                    info!("matrix client shutting down");
+                    break;
+                }
+                response = sync_stream.try_next() => {
+                    let Some(response) = response? else { break };
+                    let message_futures =
+                        response
+                            .rooms
+                            .join
+                            .iter()
+                            .map(|(room_id, room_info)| async move {
+                                // Use a regular for loop for the messages within one room to handle them sequentially
+                                for e in &room_info.timeline.events {
+                                    if let Err(err) = self.handle_message(e, room_id.to_owned()).await {
+                                        error!("failed to respond to message: {err}");
+                                    }
+                                }
+                            });
+
+                    let invite_futures = response.rooms.invite.into_keys().map(|room_id| async move {
+                        if let Err(err) = self.handle_invitations(room_id.clone()).await {
+                            error!("failed to accept invitation for room {room_id}: {err}");
                         }
                     });
 
-            let invite_futures = response.rooms.invite.into_keys().map(|room_id| async move {
-                if let Err(err) = self.handle_invitations(room_id.clone()).await {
-                    error!("failed to accept invitation for room {room_id}: {err}");
+                    // Handle messages from different rooms as well as invites concurrently
+                    join(join_all(message_futures), join_all(invite_futures)).await;
                 }
-            });
-
-            // Handle messages from different rooms as well as invites concurrently
-            join(join_all(message_futures), join_all(invite_futures)).await;
+            }
         }
 
         Ok(())

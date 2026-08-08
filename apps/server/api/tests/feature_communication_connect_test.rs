@@ -1,6 +1,8 @@
 use api::AppState;
+use api::activation_pool::ActivationPool;
 use api::config::ws::WsConfig;
 use api::setup_default;
+use api::setup_device;
 use api::setup_ota;
 use axum::body::Body;
 use axum::extract::Request;
@@ -80,10 +82,10 @@ async fn register_device(world: &mut TestWorld) {
     assert_eq!(response.status(), StatusCode::OK);
 
     let data = response_to_json(response).await;
-    if let Some(activation) = data.get("activation") {
-        if let Some(code) = activation.get("code").and_then(|v| v.as_str()) {
-            world.activation_code = code.to_string();
-        }
+    if let Some(activation) = data.get("activation")
+        && let Some(code) = activation.get("code").and_then(|v| v.as_str())
+    {
+        world.activation_code = code.to_string();
     }
 }
 
@@ -91,7 +93,6 @@ async fn activate_device_via_admin(world: &mut TestWorld) {
     let admin_principal = Principal {
         id: String::from("admin"),
         name: Some(String::from("admin")),
-        device_id: None,
         token_type: String::from("user"),
     };
     let admin_token = Jwt::global().access_token_encode(&admin_principal).unwrap();
@@ -99,7 +100,7 @@ async fn activate_device_via_admin(world: &mut TestWorld) {
     let body = json!({ "activation_code": world.activation_code });
     let builder = Request::builder()
         .method("POST")
-        .uri("/api/ota/admin/activate")
+        .uri("/api/devices/activate")
         .header(http::header::HOST, String::from("127.0.0.1:3000"))
         .header(http::header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())
         .header(
@@ -217,6 +218,7 @@ async fn main() {
                 });
                 world.container = container;
                 world.state = Some(state.clone());
+                ActivationPool::init(&[]);
                 Jwt::init(Arc::new(AuthConfig {
                     access_token_secret: Some(String::from("QLjJTeVblAlM47de")),
                     access_token_expires_in: Some(28800),
@@ -228,7 +230,9 @@ async fn main() {
                     client_secret: Some(String::from("ujTgh2lEQYy0PXhK")),
                 }));
                 let app = OpenApiRouter::new();
-                let app = setup_ota(app, state).split_for_parts().0;
+                let app = setup_device(setup_ota(app, state.clone()), state)
+                    .split_for_parts()
+                    .0;
                 let app = setup_default(app);
                 let app = app.layer(MockConnectInfo(SocketAddr::from(([0, 0, 0, 0], 1337))));
                 world.app = Some(app);

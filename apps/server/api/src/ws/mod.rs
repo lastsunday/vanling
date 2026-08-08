@@ -106,6 +106,7 @@ async fn ws_handler(
         mcp_config,
         vad_config,
         audio_config,
+        cancellation_token,
         ..
     }): State<AppState>,
 ) -> Response {
@@ -131,6 +132,7 @@ async fn ws_handler(
                 mcp_config,
                 vad_config,
                 audio_config,
+                cancellation_token,
             },
             write,
             read,
@@ -147,6 +149,7 @@ pub(crate) struct SocketContext {
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
     audio_config: Arc<AudioConfig>,
+    cancellation_token: CancellationToken,
 }
 
 impl SocketContext {
@@ -211,7 +214,7 @@ where
         .build();
 
     let recorder = Arc::new(Recorder::new(ctx.conn.clone(), ctx.device_id.clone()));
-    let cancel = CancellationToken::new();
+    let cancel = ctx.cancellation_token.child_token();
 
     let input_filters: Vec<Box<dyn InputFilter>> = vec![
         Box::new(McpRouterFilter::new(mcp_ctx.input_tx)),

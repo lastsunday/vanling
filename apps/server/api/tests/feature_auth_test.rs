@@ -84,7 +84,6 @@ async fn give_root_access_token(world: &mut TestWorld) {
     let principal = Principal {
         id: String::from("testid"),
         name: Some(String::from("root")),
-        device_id: None,
         token_type: String::from("user"),
     };
     let access_token = Jwt::global().access_token_encode(&principal).unwrap();
@@ -114,7 +113,6 @@ async fn give_root_refresh_token(world: &mut TestWorld) {
     let principal = Principal {
         id: String::from("testid"),
         name: Some(String::from("root")),
-        device_id: None,
         token_type: String::from("user"),
     };
     let refresh_token = Jwt::global().refresh_token_encode(&principal).unwrap();
@@ -164,7 +162,6 @@ async fn give_root_access_token_and_user_info(world: &mut TestWorld, step: &Step
     let principal = Principal {
         id: user.unwrap().id,
         name: Some(result.first().unwrap().account.clone()),
-        device_id: None,
         token_type: String::from("user"),
     };
     let access_token = Jwt::global().access_token_encode(&principal).unwrap();

@@ -298,7 +298,7 @@ sort_by = "weight"
 
 | 状态 | 测试 | 项目              | 描述                                | 链接 |
 | ---- | ---- | ----------------- | ----------------------------------- | ---- |
-| ❌   | ❌   | email UNIQUE 约束 | entity 标注了 unique，迁移未实现    |      |
-| ❌   | ❌   | 优雅关闭顺序      | 各模块关闭顺序缺失                  |      |
+| ✅   | ✅   | email UNIQUE 约束 | user.email 迁移已加 UNIQUE 约束（nullable，适配已有空邮箱记录） |      |
+| ✅   | ✅   | 优雅关闭顺序      | Server CancellationToken 统一驱动 axum/WS/Matrix 按序优雅退出  |      |
 | ✅   | —    | Runtime 竞态      | build() 同步执行，set() happens-before 任何 worker 线程，无竞态 |      |
-| ❌   | ❌   | 时间戳自动填充    | Config 实体缺失 ActiveModelBehavior |      |
+| ✅   | ✅   | 时间戳自动填充    | Config 实体补齐 before_save，create/update 时间戳自动填充       |      |

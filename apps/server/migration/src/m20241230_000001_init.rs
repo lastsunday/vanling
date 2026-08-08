@@ -1,6 +1,7 @@
 use entity::*;
 use sea_orm::Set;
 use sea_orm::entity::*;
+use sea_orm::sea_query::ColumnDef;
 use sea_orm_migration::{async_trait::async_trait, prelude::*, schema::*};
 
 #[derive(DeriveMigrationName)]
@@ -32,7 +33,7 @@ impl MigrationTrait for Migration {
                     .col(string_uniq(User::Id))
                     .col(string_uniq(User::Account))
                     .col(string(User::Password))
-                    .col(string_null(User::Email))
+                    .col(ColumnDef::new(User::Email).string().null().unique_key())
                     .col(boolean(User::Enable))
                     .col(timestamp_with_time_zone_null(User::CreateDatetime))
                     .col(timestamp_with_time_zone_null(User::UpdateDatetime))
