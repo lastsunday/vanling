@@ -245,9 +245,9 @@ pub async fn security_middleware(
     if is_login && let Some(account) = login_account {
         if status.is_success() {
             login_fail_counter().clear(&account);
-            record_login_success(&conn, &account, &ip);
+            record_login_success(&conn, &account, &ip, &path);
         } else if status == StatusCode::BAD_REQUEST {
-            record_login_failure(&conn, &account, &ip);
+            record_login_failure(&conn, &account, &ip, &path);
         }
     }
 
@@ -347,24 +347,26 @@ fn apply_usage_headers(headers: &mut HeaderMap, resource: Resource, snapshot: Bu
     );
 }
 
-pub fn record_login_failure(conn: &DatabaseConnection, account: &str, ip: &str) {
+pub fn record_login_failure(conn: &DatabaseConnection, account: &str, ip: &str, path: &str) {
     record_event(
         conn,
         security_event::ActiveModel {
             event_type: Set(SecurityEventType::AuthLoginFailure),
             ip: Set(Some(ip.to_string())),
+            path: Set(Some(path.to_string())),
             account: Set(Some(account.to_string())),
             ..Default::default()
         },
     );
 }
 
-pub fn record_login_success(conn: &DatabaseConnection, account: &str, ip: &str) {
+pub fn record_login_success(conn: &DatabaseConnection, account: &str, ip: &str, path: &str) {
     record_event(
         conn,
         security_event::ActiveModel {
             event_type: Set(SecurityEventType::AuthLoginSuccess),
             ip: Set(Some(ip.to_string())),
+            path: Set(Some(path.to_string())),
             account: Set(Some(account.to_string())),
             ..Default::default()
         },

@@ -2,6 +2,7 @@ import { listSecurityEvents } from '@/api';
 import type { SecurityEvent, SecurityEventType } from '@/data/security';
 import {
   Badge,
+  Button,
   Group,
   Pagination,
   Paper,
@@ -47,15 +48,17 @@ function RouteComponent() {
   const [ipInput, setIpInput] = useState('');
   const [ipFilter, setIpFilter] = useState('');
   const [eventTypeFilter, setEventTypeFilter] = useState<string | null>(null);
+  const [searchKey, setSearchKey] = useState(0);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['security-events', page, eventTypeFilter, ipFilter],
+    queryKey: ['security-events', page, eventTypeFilter, ipFilter, searchKey],
     queryFn: () => listSecurityEvents(page, 20, eventTypeFilter ?? undefined, ipFilter || undefined),
   });
 
   const handleIpSearch = () => {
     setIpFilter(ipInput.trim());
     setPage(1);
+    setSearchKey(k => k + 1);
   };
 
   return (
@@ -71,21 +74,25 @@ function RouteComponent() {
               if (e.key === 'Enter') handleIpSearch();
             }}
           />
-          <Select
-            placeholder={t('security.filter_all')}
-            data={[
-              { value: '', label: t('security.filter_all') },
-              ...EVENT_TYPES.map((type) => ({ value: type, label: t(`security.event_type.${type}`) })),
-            ]}
-            value={eventTypeFilter}
-            onChange={(v) => {
-              setEventTypeFilter(v);
-              setPage(1);
-            }}
-            w={220}
-            clearable
-          />
+          <Button onClick={handleIpSearch}>{t('security.search_btn')}</Button>
         </Group>
+      </Group>
+
+      <Group mb="md">
+        <Select
+          placeholder={t('security.filter_all')}
+          data={[
+            { value: '', label: t('security.filter_all') },
+            ...EVENT_TYPES.map((type) => ({ value: type, label: t(`security.event_type.${type}`) })),
+          ]}
+          value={eventTypeFilter}
+          onChange={(v) => {
+            setEventTypeFilter(v);
+            setPage(1);
+          }}
+          w={220}
+          clearable
+        />
       </Group>
 
       {(isLoading || isFetching) && (

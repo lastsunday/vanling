@@ -149,6 +149,7 @@
   "security": {
     "title": "Security Events",
     "ip_placeholder": "Filter by IP",
+    "search_btn": "Search",
     "filter_all": "All events",
     "no_events": "No security events",
     "event_type": {

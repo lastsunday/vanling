@@ -149,6 +149,7 @@
   "security": {
     "title": "安全事件",
     "ip_placeholder": "按 IP 筛选",
+    "search_btn": "搜索",
     "filter_all": "全部事件",
     "no_events": "暂无安全事件",
     "event_type": {
