@@ -4,7 +4,7 @@ use axum::debug_handler;
 use axum::extract::State;
 use chrono::{DateTime, Days, Local, NaiveDate, Utc};
 use entity::prelude::*;
-use entity::{device, round_data, session};
+use entity::{device, round_data, security_event, session};
 use framework::{data::ApiResponse, error::AppResult, middleware::get_auth_layer};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Serialize;
@@ -34,6 +34,10 @@ pub struct DashboardSummary {
     pub total_sessions: u64,
     pub sessions_today: u64,
     pub total_rounds: u64,
+    pub security_events_today: u64,
+    pub security_events_7d: u64,
+    pub rate_limited_today: u64,
+    pub recent_security_events: Vec<security_event::Model>,
     pub server_version: String,
     pub server_time: String,
     pub recent_sessions: Vec<RecentSession>,
@@ -130,6 +134,29 @@ async fn summary(
 
     let total_rounds = Round::find().count(&conn).await?;
 
+    let security_events_today = SecurityEvent::find()
+        .filter(security_event::Column::CreateDatetime.gte(today_start.unwrap_or(now_local)))
+        .count(&conn)
+        .await? as u64;
+    let seven_days_ago = now_local - chrono::Duration::days(7);
+    let security_events_7d = SecurityEvent::find()
+        .filter(security_event::Column::CreateDatetime.gte(seven_days_ago))
+        .count(&conn)
+        .await? as u64;
+    let rate_limited_today = SecurityEvent::find()
+        .filter(security_event::Column::CreateDatetime.gte(today_start.unwrap_or(now_local)))
+        .filter(
+            security_event::Column::EventType.eq(security_event::SecurityEventType::RateLimited),
+        )
+        .count(&conn)
+        .await? as u64;
+    let recent_security_events = SecurityEvent::find()
+        .order_by_desc(security_event::Column::CreateDatetime)
+        .order_by_desc(security_event::Column::Id)
+        .limit(5)
+        .all(&conn)
+        .await?;
+
     let recent_sessions = load_recent_sessions(&conn).await?;
 
     Ok(ApiResponse::success(Some(DashboardSummary {
@@ -141,6 +168,10 @@ async fn summary(
         total_sessions,
         sessions_today,
         total_rounds,
+        security_events_today,
+        security_events_7d,
+        rate_limited_today,
+        recent_security_events,
         server_version: env!("CARGO_PKG_VERSION").to_string(),
         server_time: Local::now().to_rfc3339(),
         recent_sessions,

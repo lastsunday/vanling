@@ -74,6 +74,54 @@
 #
 #auth_client_secret = "ujTgh2lEQYy0PXhK"
 
+# Per-IP auth bucket request limit within the auth window.
+#
+#security_rate_limit_auth_limit = 20
+
+# Auth bucket window in seconds.
+#
+#security_rate_limit_auth_window_secs = 900
+
+# Per-IP OTA bucket request limit within the OTA window.
+#
+#security_rate_limit_ota_limit = 30
+
+# OTA bucket window in seconds.
+#
+#security_rate_limit_ota_window_secs = 60
+
+# Per-user core API bucket request limit within the core window.
+#
+#security_rate_limit_core_limit = 5000
+
+# Core bucket window in seconds.
+#
+#security_rate_limit_core_window_secs = 3600
+
+# Per-account login failures allowed within the lockout window.
+#
+#security_login_fail_limit = 5
+
+# Login failure lockout window in seconds.
+#
+#security_login_fail_window_secs = 900
+
+# Security event retention in days before the cleanup loop deletes them.
+#
+#security_event_retention_days = 30
+
+# Security retention cleanup interval in seconds.
+#
+#security_cleanup_interval_secs = 21600
+
+# Whether every `/api/*` request is persisted to the access log table.
+#
+#security_api_access_log_enabled = true
+
+# API access log retention in days before the cleanup loop deletes them.
+#
+#security_api_access_log_retention_days = 30
+
 # WebSocket URL scheme (ws or wss).
 #
 #ws_schema = "ws"

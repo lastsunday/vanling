@@ -7,9 +7,27 @@ export interface DashboardSummary {
   total_sessions: number
   sessions_today: number
   total_rounds: number
+  security_events_today: number
+  security_events_7d: number
+  rate_limited_today: number
+  recent_security_events: SecuritySummaryEvent[]
   server_version: string
   server_time: string
   recent_sessions: RecentSession[]
+}
+
+export interface SecuritySummaryEvent {
+  id: string
+  event_type: string
+  ip: string | null
+  path: string | null
+  account: string | null
+  retry_after_ms: number | null
+  limit: number | null
+  remaining: number | null
+  window_secs: number | null
+  create_datetime: string | null
+  update_datetime: string | null
 }
 
 export interface RecentSession {

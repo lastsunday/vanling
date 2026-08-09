@@ -11,7 +11,8 @@
       "dashboard": "Dashboard",
       "sessions": "Sessions",
       "devices": "Devices",
-      "security": "Security Events",
+      "security": "Security",
+      "access_logs": "Access Logs",
       "language": "Language"
     },
     "confirm_logout": "Confirm logout?",
@@ -57,9 +58,14 @@
       "pending": "Pending",
       "disabled": "Disabled",
       "online": "Online",
-      "sessions_today": "Sessions Today"
+      "sessions_today": "Sessions Today",
+      "security_events_today": "Security Events Today",
+      "security_events_7d": "Security Events (7d)",
+      "rate_limited_today": "Rate Limited Today"
     },
     "recent_sessions": "Recent Sessions",
+    "recent_security_events": "Recent Security Events",
+    "no_security_events": "No security events",
     "no_sessions": "No sessions",
     "trends": "Usage Trends",
     "latency": "Step Latency",
@@ -76,7 +82,11 @@
       "step": "Step",
       "avg_ms": "Avg (ms)",
       "min_ms": "Min (ms)",
-      "max_ms": "Max (ms)"
+      "max_ms": "Max (ms)",
+      "event_type": "Event Type",
+      "ip": "IP",
+      "path": "Path",
+      "account": "Account"
     },
     "chart": {
       "sessions": "Sessions",
@@ -147,25 +157,85 @@
     "enable_confirmation": "Are you sure you want to enable device {{id}}?"
   },
   "security": {
-    "title": "Security Events",
+    "title": "Security",
     "ip_placeholder": "Filter by IP",
+    "account_placeholder": "Account",
+    "path_placeholder": "Path",
     "search_btn": "Search",
     "filter_all": "All events",
     "no_events": "No security events",
+    "stats": {
+      "today_total": "Events Today",
+      "today_rate_limited": "Rate Limited Today",
+      "today_login_failure": "Login Failures Today",
+      "today_login_success": "Logins Today",
+      "total_events": "Total Events",
+      "top_ip_24h": "Top IP 24h",
+      "top_ips_title": "Top IPs (last 24h)",
+      "count": "Count"
+    },
+    "usage": {
+      "title": "Rate Limit Usage (runtime)",
+      "resource_auth": "Auth",
+      "resource_ota": "OTA",
+      "resource_core": "Core API",
+      "active_keys": "active keys",
+      "allowed": "allowed",
+      "limited": "limited",
+      "limit": "limit",
+      "window": "window",
+      "key": "Key",
+      "used": "Used",
+      "remaining": "Remaining",
+      "reset_after": "Reset",
+      "consumption": "Consumption",
+      "no_keys": "No active keys",
+      "block_rate": "Block rate",
+      "cumulative": "cumulative",
+      "show_more": "Show more active keys",
+      "show_less": "Show less"
+    },
     "event_type": {
       "rate_limited": "Rate Limited",
       "rate_limit_near": "Near Rate Limit",
       "auth_login_success": "Login Success",
       "auth_login_failure": "Login Failure"
     },
+    "time_range": {
+      "today": "Today",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "all": "All time"
+    },
     "table": {
       "time": "Time",
       "event_type": "Event Type",
       "ip": "IP",
       "path": "Path",
+      "principal_id": "Principal ID",
+      "name": "Name",
       "account": "Account",
       "limit": "Quota",
-      "retry_after": "Retry After"
+      "remaining": "Remaining",
+      "window": "Window",
+      "retry_after": "Retry After",
+      "method": "Method",
+      "status": "Status",
+      "duration": "Duration",
+      "response_size": "Response Size",
+      "request_id": "Request ID"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "usage": "Rate Limit Usage"
+    },
+    "access_log": {
+      "method_all": "All methods",
+      "path_placeholder": "Path",
+      "ip_placeholder": "IP",
+      "name_placeholder": "Name",
+      "status_placeholder": "Status",
+      "no_logs": "No access logs"
     }
   },
   "sessions": {

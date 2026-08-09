@@ -1,4 +1,5 @@
 import { activateDevice, activateDeviceById, deleteDevice, disableDevice, enableDevice, listDevices } from '@/api';
+import { SearchForm } from '@/components/SearchForm';
 import type { DeviceResult } from '@/data/device';
 import {
   ActionIcon,
@@ -121,18 +122,17 @@ function RouteComponent() {
     <>
       <Group justify="space-between" mb="lg">
         <Title>{t('devices.title')}</Title>
-        <Group>
+        <SearchForm
+          onSubmit={handleSearch}
+          submitLabel={t('devices.search_btn')}
+          extra={<Button type="button" onClick={open}>{t('devices.activate_btn')}</Button>}
+        >
           <TextInput
             value={searchInput}
             onChange={(e) => setSearchInput(e.currentTarget.value)}
             placeholder={t('devices.search')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSearch();
-            }}
           />
-          <Button onClick={handleSearch}>{t('devices.search_btn')}</Button>
-          <Button onClick={open}>{t('devices.activate_btn')}</Button>
-        </Group>
+        </SearchForm>
       </Group>
 
       <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} mb="lg">

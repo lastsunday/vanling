@@ -5,8 +5,8 @@ use std::{error::Error, sync::Arc, time::Duration};
 use anyhow::anyhow;
 use api::config::{
     AsrModel, asr::AsrConfig, audio::AudioConfig, database::DatabaseConfig, llm::LlmConfig,
-    matrix::MatrixConfig, mcp::McpConfig, server::ServerConfig, session::SessionConfig,
-    tts::TtsConfig, vad::VadConfig, ws::WsConfig,
+    matrix::MatrixConfig, mcp::McpConfig, security::SecurityConfig, server::ServerConfig,
+    session::SessionConfig, tts::TtsConfig, vad::VadConfig, ws::WsConfig,
 };
 use framework::config::auth::AuthConfig;
 use tracing::info;
@@ -138,6 +138,45 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         client_id: config.auth_client_id.to_owned(),
         client_secret: config.auth_client_secret.to_owned(),
     });
+    let security_config = {
+        let d = SecurityConfig::default();
+        Arc::new(SecurityConfig {
+            auth_limit: config
+                .security_rate_limit_auth_limit
+                .unwrap_or(d.auth_limit),
+            auth_window_secs: config
+                .security_rate_limit_auth_window_secs
+                .unwrap_or(d.auth_window_secs),
+            ota_limit: config.security_rate_limit_ota_limit.unwrap_or(d.ota_limit),
+            ota_window_secs: config
+                .security_rate_limit_ota_window_secs
+                .unwrap_or(d.ota_window_secs),
+            core_limit: config
+                .security_rate_limit_core_limit
+                .unwrap_or(d.core_limit),
+            core_window_secs: config
+                .security_rate_limit_core_window_secs
+                .unwrap_or(d.core_window_secs),
+            login_fail_limit: config
+                .security_login_fail_limit
+                .unwrap_or(d.login_fail_limit),
+            login_fail_window_secs: config
+                .security_login_fail_window_secs
+                .unwrap_or(d.login_fail_window_secs),
+            event_retention_days: config
+                .security_event_retention_days
+                .unwrap_or(d.event_retention_days),
+            cleanup_interval_secs: config
+                .security_cleanup_interval_secs
+                .unwrap_or(d.cleanup_interval_secs),
+            api_access_log_enabled: config
+                .security_api_access_log_enabled
+                .unwrap_or(d.api_access_log_enabled),
+            api_access_log_retention_days: config
+                .security_api_access_log_retention_days
+                .unwrap_or(d.api_access_log_retention_days),
+        })
+    };
     let ws_config = Arc::new(WsConfig {
         schema: config.ws_schema.to_owned(),
     });
@@ -265,6 +304,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         vad_config,
         audio_config,
         auth_config,
+        security_config,
         ws_config,
         tts_config,
         asr_config,

@@ -1,4 +1,5 @@
 import { listSessions } from '@/api';
+import { SearchForm } from '@/components/SearchForm';
 import { SessionDetail } from '@/components/SessionDetail';
 import type { SessionListItem, TurnSummary } from '@/data/session';
 import {
@@ -119,17 +120,13 @@ function RouteComponent() {
     <>
       <Group justify="space-between" mb="lg">
         <Title>{t('sessions.title')}</Title>
-        <Group>
+        <SearchForm onSubmit={handleSearch} submitLabel={t('sessions.search_btn')}>
           <TextInput
             value={searchInput}
             onChange={(e) => setSearchInput(e.currentTarget.value)}
             placeholder={t('sessions.search')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSearch();
-            }}
           />
-          <Button onClick={handleSearch}>{t('sessions.search_btn')}</Button>
-        </Group>
+        </SearchForm>
       </Group>
 
       <Paper withBorder shadow="sm" p="md" radius="md" mb="md">

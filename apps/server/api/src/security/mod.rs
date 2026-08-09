@@ -1,7 +1,12 @@
 use std::net::SocketAddr;
-use std::time::Duration;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
 use axum::{
+    body::Body,
     debug_handler,
     extract::{ConnectInfo, Extension, Query, Request, State, connect_info::MockConnectInfo},
     http::{HeaderMap, HeaderValue, StatusCode},
@@ -10,6 +15,7 @@ use axum::{
 };
 use chrono::Local;
 use entity::{
+    api_access_log,
     prelude::*,
     security_event::{self, SecurityEventType},
 };
@@ -22,9 +28,10 @@ use framework::{
         BucketSnapshot, RateLimitDecision, Resource, SlidingWindowConfig, SlidingWindowCounter,
     },
 };
+use http_body::Frame;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, QueryFilter, QueryOrder,
-    prelude::*,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -32,47 +39,52 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::AppState;
+use crate::config::security::SecurityConfig;
 
 const TAG: &str = "security";
 
-/// Per-account login failure lockout: 5 failures within 15 minutes.
-const LOGIN_FAIL_LIMIT: u32 = 5;
-const LOGIN_FAIL_WINDOW: Duration = Duration::from_secs(15 * 60);
-
-const RETENTION_DAYS: i64 = 30;
-const CLEANUP_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
-
-fn login_fail_counter() -> &'static SlidingWindowCounter {
+fn login_fail_counter(security: &SecurityConfig) -> &'static SlidingWindowCounter {
     static COUNTER: std::sync::OnceLock<SlidingWindowCounter> = std::sync::OnceLock::new();
     COUNTER.get_or_init(|| {
         SlidingWindowCounter::new(SlidingWindowConfig::new(
-            LOGIN_FAIL_LIMIT,
-            LOGIN_FAIL_WINDOW,
+            security.login_fail_limit,
+            Duration::from_secs(security.login_fail_window_secs),
         ))
     })
 }
 
-/// Resolves the rate-limit bucket (resource + identity key + account) for a
-/// request. Public auth/ota endpoints are keyed per-IP; authenticated `/api/*`
-/// endpoints are keyed per-user and only counted when the bearer token is
-/// valid. `GET /api/security/rate_limit` never counts against any bucket.
-fn resolve_bucket(
-    path: &str,
-    request: &Request,
-    ip: &str,
-) -> Option<(Resource, String, Option<String>)> {
+/// Resolved rate-limit bucket: resource + identity key for the usage registry,
+/// plus the authenticated principal identity and display name for the audit
+/// trail. Public auth/ota endpoints are keyed per-IP and carry no principal;
+/// authenticated `/api/*` endpoints are keyed per-user (`user:{id}`) with the
+/// principal fields recorded. `GET /api/security/rate_limit` never counts.
+struct BucketKey {
+    resource: Resource,
+    key: String,
+    principal_id: Option<String>,
+    name: Option<String>,
+}
+
+fn resolve_bucket(path: &str, ip: &str, principal: Option<&Principal>) -> Option<BucketKey> {
     match path {
-        "/api/auth/login" | "/api/auth/access_token" => {
-            Some((Resource::Auth, format!("ip:{ip}"), None))
-        }
-        "/api/ota" | "/api/ota/activate" => Some((Resource::Ota, format!("ip:{ip}"), None)),
+        "/api/auth/login" | "/api/auth/access_token" => Some(BucketKey {
+            resource: Resource::Auth,
+            key: format!("ip:{ip}"),
+            principal_id: None,
+            name: None,
+        }),
+        "/api/ota" | "/api/ota/activate" => Some(BucketKey {
+            resource: Resource::Ota,
+            key: format!("ip:{ip}"),
+            principal_id: None,
+            name: None,
+        }),
         "/api/security/rate_limit" => None,
-        _ if path.starts_with("/api/") => bearer_principal(request).map(|principal| {
-            (
-                Resource::Core,
-                format!("user:{}", principal.id),
-                Some(principal.id),
-            )
+        _ if path.starts_with("/api/") => principal.map(|p| BucketKey {
+            resource: Resource::Core,
+            key: format!("user:{}", p.id),
+            principal_id: Some(p.id.clone()),
+            name: p.name.clone(),
         }),
         _ => None,
     }
@@ -102,12 +114,142 @@ fn bearer_principal(request: &Request) -> Option<Principal> {
     Jwt::try_global()?.access_token_decode(token).ok()
 }
 
+/// Metadata captured at request entry and persisted once the response body has
+/// been fully streamed. Kept in memory while the response streams so that the
+/// recorded response size covers the whole payload.
+#[derive(Clone)]
+struct PendingAccessLog {
+    conn: DatabaseConnection,
+    request_id: String,
+    method: String,
+    path: String,
+    query: Option<String>,
+    ip: String,
+    principal_id: Option<String>,
+    name: Option<String>,
+    status: i32,
+    duration_ms: i64,
+    user_agent: Option<String>,
+}
+
+/// Wraps the response body, counting streamed bytes and persisting the access
+/// log once the stream completes. Recording at stream end guarantees the stored
+/// response size matches what the client actually received.
+struct CountedBody<B> {
+    inner: B,
+    pending: Arc<Mutex<Option<PendingAccessLog>>>,
+    size: Arc<AtomicU64>,
+    done: Arc<AtomicBool>,
+}
+
+impl<B> http_body::Body for CountedBody<B>
+where
+    B: http_body::Body + Unpin,
+    B::Data: AsRef<[u8]>,
+{
+    type Data = B::Data;
+    type Error = B::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let poll = Pin::new(&mut self.inner).poll_frame(cx);
+        match &poll {
+            Poll::Ready(Some(Ok(frame))) => {
+                if let Some(data) = frame.data_ref() {
+                    self.size
+                        .fetch_add(data.as_ref().len() as u64, Ordering::Relaxed);
+                }
+            }
+            Poll::Ready(None) if !self.done.swap(true, Ordering::Relaxed) => {
+                let size = self.size.load(Ordering::Relaxed);
+                if let Some(log) = self.pending.lock().unwrap().take() {
+                    tokio::spawn(async move {
+                        insert_access_log(&log, size).await;
+                    });
+                }
+            }
+            _ => {}
+        }
+        poll
+    }
+}
+
+async fn insert_access_log(log: &PendingAccessLog, response_size: u64) {
+    let conn = log.conn.clone();
+    let model = api_access_log::ActiveModel {
+        request_id: Set(log.request_id.clone()),
+        method: Set(log.method.clone()),
+        path: Set(log.path.clone()),
+        query: Set(log.query.clone()),
+        ip: Set(Some(log.ip.clone())),
+        principal_id: Set(log.principal_id.clone()),
+        name: Set(log.name.clone()),
+        status: Set(log.status),
+        duration_ms: Set(log.duration_ms),
+        response_size: Set(Some(response_size as i64)),
+        user_agent: Set(log.user_agent.clone()),
+        ..Default::default()
+    };
+    if let Err(e) = model.insert(&conn).await {
+        tracing::warn!(
+            component = "ACCESS",
+            event = "record_access_log_failed",
+            request_id = %log.request_id,
+            path = %log.path,
+            error = %e,
+            "failed to persist api access log"
+        );
+    }
+}
+
+/// Fills in the response status/duration and swaps in the counting body. Any
+/// response body (including the rate-limited early returns) can be passed.
+fn finish_access_log(
+    access_log: Option<PendingAccessLog>,
+    started: Instant,
+    response: Response,
+) -> Response {
+    let mut log = match access_log {
+        Some(log) => log,
+        None => return response,
+    };
+    log.status = response.status().as_u16() as i32;
+    log.duration_ms = started.elapsed().as_millis() as i64;
+    tracing::info!(
+        component = "ACCESS",
+        event = "access_log",
+        request_id = %log.request_id,
+        method = %log.method,
+        path = %log.path,
+        ip = %log.ip,
+        principal_id = %log.principal_id.as_deref().unwrap_or("-"),
+        name = %log.name.as_deref().unwrap_or("-"),
+        status = log.status,
+        duration_ms = log.duration_ms,
+        "api request access logged"
+    );
+    let pending = Arc::new(Mutex::new(Some(log)));
+    let size = Arc::new(AtomicU64::new(0));
+    let done = Arc::new(AtomicBool::new(false));
+    response.map(move |body| {
+        Body::new(CountedBody {
+            inner: body,
+            pending: pending.clone(),
+            size: size.clone(),
+            done: done.clone(),
+        })
+    })
+}
+
 /// Unified security middleware: applies GitHub-style per-bucket rate limits,
 /// the per-account login failure lockout, response usage headers and login
 /// outcome audit events.
 pub async fn security_middleware(
     State(AppState {
         conn,
+        security_config,
         usage_registry,
         ..
     }): State<AppState>,
@@ -117,18 +259,43 @@ pub async fn security_middleware(
     let path = request.uri().path().to_string();
     let ip = extract_ip(&request);
     let is_login = path == "/api/auth/login";
+    let principal = bearer_principal(&request);
 
-    let bucket = resolve_bucket(&path, &request, &ip);
+    let mut access_log = if security_config.api_access_log_enabled && path.starts_with("/api/") {
+        Some(PendingAccessLog {
+            conn: conn.clone(),
+            request_id: xid::new().to_string(),
+            method: request.method().as_str().to_string(),
+            path: path.clone(),
+            query: request.uri().query().map(String::from),
+            ip: ip.clone(),
+            principal_id: principal.as_ref().map(|p| p.id.clone()),
+            name: principal.as_ref().and_then(|p| p.name.clone()),
+            status: 0,
+            duration_ms: 0,
+            user_agent: request
+                .headers()
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|value| value.to_str().ok())
+                .map(String::from),
+        })
+    } else {
+        None
+    };
+    let access_started = Instant::now();
+
+    let bucket = resolve_bucket(&path, &ip, principal.as_ref());
 
     let allowed_bucket = match &bucket {
-        Some((resource, key, account)) => match usage_registry.check(*resource, key) {
+        Some(bucket) => match usage_registry.check(bucket.resource, &bucket.key) {
             RateLimitDecision::Limited { limit, retry_after } => {
                 tracing::warn!(
                     component = "RATELIMIT",
                     event = "rate_limited",
                     ip = %ip,
                     path = %path,
-                    account = %account.as_deref().unwrap_or("-"),
+                    principal_id = %bucket.principal_id.as_deref().unwrap_or("-"),
+                    name = %bucket.name.as_deref().unwrap_or("-"),
                     retry_after_ms = retry_after.as_millis() as i64,
                     limit = limit as i64,
                     "request rate limited"
@@ -139,18 +306,23 @@ pub async fn security_middleware(
                         SecurityEventType::RateLimited,
                         &ip,
                         &path,
-                        account.as_deref(),
+                        bucket.principal_id.as_deref(),
+                        bucket.name.as_deref(),
                         LimitInfo {
                             retry_after,
                             limit,
                             remaining: 0,
-                            window_secs: usage_registry.window_secs(*resource),
+                            window_secs: usage_registry.window_secs(bucket.resource),
                         },
                     ),
                 );
-                return build_limited_response(*resource, limit, 0, retry_after);
+                return finish_access_log(
+                    access_log,
+                    access_started,
+                    build_limited_response(bucket.resource, limit, 0, retry_after),
+                );
             }
-            RateLimitDecision::Allowed { .. } => usage_registry.peek(*resource, key),
+            RateLimitDecision::Allowed { .. } => usage_registry.peek(bucket.resource, &bucket.key),
         },
         None => None,
     };
@@ -174,7 +346,10 @@ pub async fn security_middleware(
         let request = Request::from_parts(parts, axum::body::Body::from(bytes));
         if let Some(ref account) = account {
             login_account = Some(account.clone());
-            if let Err(e) = login_fail_counter().record(account) {
+            if let Some(log) = access_log.as_mut() {
+                log.name = Some(account.clone());
+            }
+            if let Err(e) = login_fail_counter(&security_config).record(account) {
                 tracing::warn!(
                     component = "RATELIMIT",
                     event = "rate_limited",
@@ -182,7 +357,7 @@ pub async fn security_middleware(
                     ip = %ip,
                     path = %path,
                     retry_after_ms = e.retry_after.as_millis() as i64,
-                    limit = LOGIN_FAIL_LIMIT as i64,
+                    limit = security_config.login_fail_limit as i64,
                     "account temporarily locked after repeated login failures"
                 );
                 record_event(
@@ -191,16 +366,26 @@ pub async fn security_middleware(
                         SecurityEventType::RateLimited,
                         &ip,
                         &path,
+                        None,
                         Some(account),
                         LimitInfo {
                             retry_after: e.retry_after,
-                            limit: LOGIN_FAIL_LIMIT,
+                            limit: security_config.login_fail_limit,
                             remaining: 0,
-                            window_secs: LOGIN_FAIL_WINDOW.as_secs(),
+                            window_secs: security_config.login_fail_window_secs,
                         },
                     ),
                 );
-                return build_limited_response(Resource::Auth, LOGIN_FAIL_LIMIT, 0, e.retry_after);
+                return finish_access_log(
+                    access_log,
+                    access_started,
+                    build_limited_response(
+                        Resource::Auth,
+                        security_config.login_fail_limit,
+                        0,
+                        e.retry_after,
+                    ),
+                );
             }
         }
         request
@@ -212,8 +397,8 @@ pub async fn security_middleware(
     let status = response.status();
     let mut response = response;
 
-    if let (Some((resource, _, _)), Some(snapshot)) = (&bucket, allowed_bucket) {
-        apply_usage_headers(response.headers_mut(), *resource, snapshot);
+    if let (Some(bucket), Some(snapshot)) = (&bucket, allowed_bucket) {
+        apply_usage_headers(response.headers_mut(), bucket.resource, snapshot);
         if snapshot.remaining <= 1 {
             tracing::info!(
                 component = "RATELIMIT",
@@ -230,12 +415,13 @@ pub async fn security_middleware(
                     SecurityEventType::RateLimitNear,
                     &ip,
                     &path,
-                    None,
+                    bucket.principal_id.as_deref(),
+                    bucket.name.as_deref(),
                     LimitInfo {
                         retry_after: snapshot.reset_after,
                         limit: snapshot.limit,
                         remaining: snapshot.remaining,
-                        window_secs: usage_registry.window_secs(*resource),
+                        window_secs: usage_registry.window_secs(bucket.resource),
                     },
                 ),
             );
@@ -244,14 +430,14 @@ pub async fn security_middleware(
 
     if is_login && let Some(account) = login_account {
         if status.is_success() {
-            login_fail_counter().clear(&account);
+            login_fail_counter(&security_config).clear(&account);
             record_login_success(&conn, &account, &ip, &path);
         } else if status == StatusCode::BAD_REQUEST {
             record_login_failure(&conn, &account, &ip, &path);
         }
     }
 
-    response
+    finish_access_log(access_log, access_started, response)
 }
 
 struct LimitInfo {
@@ -265,6 +451,7 @@ fn rate_limited_model(
     event_type: SecurityEventType,
     ip: &str,
     path: &str,
+    principal_id: Option<&str>,
     account: Option<&str>,
     info: LimitInfo,
 ) -> security_event::ActiveModel {
@@ -272,6 +459,7 @@ fn rate_limited_model(
         event_type: Set(event_type),
         ip: Set(Some(ip.to_string())),
         path: Set(Some(path.to_string())),
+        principal_id: Set(principal_id.map(String::from)),
         account: Set(account.map(String::from)),
         retry_after_ms: Set(Some(info.retry_after.as_millis() as i64)),
         limit: Set(Some(info.limit as i64)),
@@ -393,6 +581,14 @@ pub struct SecurityEventListParams {
     pub event_type: Option<SecurityEventType>,
     /// IP 模糊匹配
     pub ip: Option<String>,
+    /// 账号模糊匹配
+    pub account: Option<String>,
+    /// 路径模糊匹配
+    pub path: Option<String>,
+    /// 起始时间（含），RFC3339，如 2026-08-01T00:00:00+08:00
+    pub start: Option<String>,
+    /// 结束时间（不含），RFC3339
+    pub end: Option<String>,
 }
 
 #[debug_handler]
@@ -413,6 +609,26 @@ async fn list_events(
     if let Some(ref ip) = params.ip {
         query = query.filter(security_event::Column::Ip.like(format!("%{ip}%")));
     }
+    if let Some(ref account) = params.account {
+        query = query.filter(security_event::Column::Account.like(format!("%{account}%")));
+    }
+    if let Some(ref path) = params.path {
+        query = query.filter(security_event::Column::Path.like(format!("%{path}%")));
+    }
+    if let Some(start) = params
+        .start
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+    {
+        query = query.filter(security_event::Column::CreateDatetime.gte(start));
+    }
+    if let Some(end) = params
+        .end
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+    {
+        query = query.filter(security_event::Column::CreateDatetime.lt(end));
+    }
 
     let query = query
         .order_by_desc(security_event::Column::CreateDatetime)
@@ -420,6 +636,156 @@ async fn list_events(
     let result = paginate(query, &conn, &pagination).await?;
 
     Ok(ApiResponse::success(Some(result)))
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct AccessLogListParams {
+    #[param(example = "1")]
+    pub page: Option<u64>,
+    #[param(example = "20")]
+    pub page_size: Option<u64>,
+    /// HTTP 方法：GET / POST / PUT / DELETE
+    pub method: Option<String>,
+    /// 路径模糊匹配
+    pub path: Option<String>,
+    /// IP 模糊匹配
+    pub ip: Option<String>,
+    /// 身份名称（用户登录名 / 设备类型）
+    pub name: Option<String>,
+    /// 状态码
+    pub status: Option<i32>,
+}
+
+#[debug_handler]
+#[utoipa::path(get, path = "/security/access_logs", tag = TAG, params(AccessLogListParams), responses(
+    (status=OK,body=ApiResponse<PageData<api_access_log::Model>>)
+))]
+async fn list_access_logs(
+    State(AppState { conn, .. }): State<AppState>,
+    Query(params): Query<AccessLogListParams>,
+) -> AppResult<ApiResponse<PageData<api_access_log::Model>>> {
+    let pagination = PageParam::new(params.page, params.page_size);
+
+    let mut query = ApiAccessLog::find();
+
+    if let Some(ref method) = params.method {
+        query = query.filter(api_access_log::Column::Method.eq(method));
+    }
+    if let Some(ref path) = params.path {
+        query = query.filter(api_access_log::Column::Path.like(format!("%{path}%")));
+    }
+    if let Some(ref ip) = params.ip {
+        query = query.filter(api_access_log::Column::Ip.like(format!("%{ip}%")));
+    }
+    if let Some(ref name) = params.name {
+        query = query.filter(api_access_log::Column::Name.eq(name));
+    }
+    if let Some(status) = params.status {
+        query = query.filter(api_access_log::Column::Status.eq(status));
+    }
+
+    let query = query
+        .order_by_desc(api_access_log::Column::CreateDatetime)
+        .order_by_desc(api_access_log::Column::Id);
+    let result = paginate(query, &conn, &pagination).await?;
+
+    Ok(ApiResponse::success(Some(result)))
+}
+
+#[derive(Debug, Serialize, ToSchema, Default)]
+pub struct EventTypeCounts {
+    pub rate_limited: i64,
+    pub rate_limit_near: i64,
+    pub auth_login_success: i64,
+    pub auth_login_failure: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EventIpHit {
+    pub ip: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SecurityEventStats {
+    pub today: EventTypeCounts,
+    pub last_7d: EventTypeCounts,
+    pub total: EventTypeCounts,
+    pub top_ips_last_24h: Vec<EventIpHit>,
+}
+
+async fn count_by_type_since(
+    conn: &DatabaseConnection,
+    cutoff: Option<chrono::DateTime<chrono::FixedOffset>>,
+) -> AppResult<EventTypeCounts> {
+    let mut query = SecurityEvent::find()
+        .select_only()
+        .column(security_event::Column::EventType)
+        .column_as(security_event::Column::Id.count(), "count")
+        .group_by(security_event::Column::EventType);
+    if let Some(cutoff) = cutoff {
+        query = query.filter(security_event::Column::CreateDatetime.gte(cutoff));
+    }
+    let rows: Vec<(SecurityEventType, i64)> = query
+        .into_tuple::<(SecurityEventType, i64)>()
+        .all(conn)
+        .await?;
+    let mut counts = EventTypeCounts::default();
+    for (event_type, count) in rows {
+        match event_type {
+            SecurityEventType::RateLimited => counts.rate_limited = count,
+            SecurityEventType::RateLimitNear => counts.rate_limit_near = count,
+            SecurityEventType::AuthLoginSuccess => counts.auth_login_success = count,
+            SecurityEventType::AuthLoginFailure => counts.auth_login_failure = count,
+        }
+    }
+    Ok(counts)
+}
+
+#[debug_handler]
+#[utoipa::path(get, path = "/security/stats", tag = TAG, responses(
+    (status=OK,body=ApiResponse<SecurityEventStats>)
+))]
+async fn event_stats(
+    State(AppState { conn, .. }): State<AppState>,
+) -> AppResult<ApiResponse<SecurityEventStats>> {
+    let now = Local::now().fixed_offset();
+    let today_start = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .map(|d| d.and_local_timezone(Local).unwrap())
+        .map(|d| d.fixed_offset());
+    let seven_days_ago = now - chrono::Duration::days(7);
+    let twenty_four_hours_ago = now - chrono::Duration::hours(24);
+
+    let today = count_by_type_since(&conn, today_start).await?;
+    let last_7d = count_by_type_since(&conn, Some(seven_days_ago)).await?;
+    let total = count_by_type_since(&conn, None).await?;
+
+    let top_ips = SecurityEvent::find()
+        .select_only()
+        .column_as(security_event::Column::Ip, "ip")
+        .column_as(security_event::Column::Id.count(), "count")
+        .filter(security_event::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .filter(security_event::Column::Ip.is_not_null())
+        .group_by(security_event::Column::Ip)
+        .order_by_desc(security_event::Column::Id.count())
+        .limit(10)
+        .into_tuple::<(String, i64)>()
+        .all(&conn)
+        .await?;
+    let top_ips_last_24h = top_ips
+        .into_iter()
+        .map(|(ip, count)| EventIpHit { ip, count })
+        .collect();
+
+    Ok(ApiResponse::success(Some(SecurityEventStats {
+        today,
+        last_7d,
+        total,
+        top_ips_last_24h,
+    })))
 }
 
 #[derive(Debug, Serialize, ToSchema, Default)]
@@ -479,17 +845,92 @@ async fn rate_limit(
     })))
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ResourceUsageInfo {
+    pub limit: u32,
+    pub window_secs: u64,
+    pub active_keys: usize,
+    pub allowed: u64,
+    pub limited: u64,
+    pub top_keys: Vec<BucketUsageInfo>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BucketUsageInfo {
+    pub key: String,
+    pub used: u32,
+    pub remaining: u32,
+    pub reset_after_secs: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UsageStatsResult {
+    pub auth: ResourceUsageInfo,
+    pub ota: ResourceUsageInfo,
+    pub core: ResourceUsageInfo,
+}
+
+fn resource_usage_info(usage: &framework::rate_limit::ResourceUsage) -> ResourceUsageInfo {
+    ResourceUsageInfo {
+        limit: usage.limit,
+        window_secs: usage.window_secs,
+        active_keys: usage.active_keys,
+        allowed: usage.allowed,
+        limited: usage.limited,
+        top_keys: usage
+            .top_keys
+            .iter()
+            .map(|(key, snapshot)| BucketUsageInfo {
+                key: key.clone(),
+                used: snapshot.used,
+                remaining: snapshot.remaining,
+                reset_after_secs: snapshot.reset_after.as_secs(),
+            })
+            .collect(),
+    }
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct UsageStatsParams {
+    /// 每个资源返回的 top keys 数量上限，默认 10。
+    #[param(example = "10", maximum = 200, default = 10)]
+    pub top_n: Option<usize>,
+}
+
+#[debug_handler]
+#[utoipa::path(get, path = "/security/usage_stats", tag = TAG, params(UsageStatsParams), responses(
+    (status=OK,body=ApiResponse<UsageStatsResult>)
+))]
+async fn usage_stats(
+    State(AppState { usage_registry, .. }): State<AppState>,
+    Query(params): Query<UsageStatsParams>,
+) -> AppResult<ApiResponse<UsageStatsResult>> {
+    let top_n = params.top_n.unwrap_or(10).clamp(1, 200);
+    let stats = usage_registry.usage_stats(top_n);
+    Ok(ApiResponse::success(Some(UsageStatsResult {
+        auth: resource_usage_info(&stats.auth),
+        ota: resource_usage_info(&stats.ota),
+        core: resource_usage_info(&stats.core),
+    })))
+}
+
 pub fn create_routes(state: AppState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_events))
+        .routes(routes!(list_access_logs))
+        .routes(routes!(event_stats))
+        .routes(routes!(usage_stats))
         .routes(routes!(rate_limit))
         .route_layer(get_auth_layer())
         .with_state(state)
 }
 
 /// Deletes security events older than the retention window.
-async fn cleanup_old_events(conn: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
-    let cutoff = Local::now().fixed_offset() - chrono::Duration::days(RETENTION_DAYS);
+async fn cleanup_old_events(
+    conn: &DatabaseConnection,
+    retention_days: i64,
+) -> Result<u64, sea_orm::DbErr> {
+    let cutoff = Local::now().fixed_offset() - chrono::Duration::days(retention_days);
     SecurityEvent::delete_many()
         .filter(security_event::Column::CreateDatetime.lt(cutoff))
         .exec(conn)
@@ -497,9 +938,29 @@ async fn cleanup_old_events(conn: &DatabaseConnection) -> Result<u64, sea_orm::D
         .map(|result| result.rows_affected)
 }
 
-/// Background retention task for the append-only security event table.
-pub async fn cleanup_loop(conn: DatabaseConnection, ct: CancellationToken) {
-    let mut interval = tokio::time::interval(CLEANUP_INTERVAL);
+/// Deletes access logs older than the retention window.
+async fn cleanup_old_access_logs(
+    conn: &DatabaseConnection,
+    retention_days: i64,
+) -> Result<u64, sea_orm::DbErr> {
+    let cutoff = Local::now().fixed_offset() - chrono::Duration::days(retention_days);
+    ApiAccessLog::delete_many()
+        .filter(api_access_log::Column::CreateDatetime.lt(cutoff))
+        .exec(conn)
+        .await
+        .map(|result| result.rows_affected)
+}
+
+/// Background retention task for the append-only security event and access
+/// log tables.
+pub async fn cleanup_loop(
+    conn: DatabaseConnection,
+    ct: CancellationToken,
+    retention_days: i64,
+    access_retention_days: i64,
+    interval_secs: u64,
+) {
+    let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
     loop {
         tokio::select! {
             _ = ct.cancelled() => {
@@ -507,9 +968,13 @@ pub async fn cleanup_loop(conn: DatabaseConnection, ct: CancellationToken) {
                 break;
             }
             _ = interval.tick() => {
-                match cleanup_old_events(&conn).await {
+                match cleanup_old_events(&conn, retention_days).await {
                     Ok(deleted) => tracing::info!(component = "SECURITY", event = "cleanup_done", deleted = deleted, "security event cleanup done"),
                     Err(e) => tracing::warn!(component = "SECURITY", event = "cleanup_failed", error = %e, "security event cleanup failed"),
+                }
+                match cleanup_old_access_logs(&conn, access_retention_days).await {
+                    Ok(deleted) => tracing::info!(component = "ACCESS", event = "access_log_cleanup_done", deleted = deleted, "api access log cleanup done"),
+                    Err(e) => tracing::warn!(component = "ACCESS", event = "access_log_cleanup_failed", error = %e, "api access log cleanup failed"),
                 }
             }
         }

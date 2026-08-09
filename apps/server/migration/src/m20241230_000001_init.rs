@@ -152,6 +152,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(SecurityEvent::EventType).string().not_null())
                     .col(string_null(SecurityEvent::Ip))
                     .col(string_null(SecurityEvent::Path))
+                    .col(string_null(SecurityEvent::PrincipalId))
                     .col(string_null(SecurityEvent::Account))
                     .col(big_integer_null(SecurityEvent::RetryAfterMs))
                     .col(big_integer_null(SecurityEvent::Limit))
@@ -176,10 +177,49 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(ApiAccessLog::Table)
+                    .if_not_exists()
+                    .col(string_uniq(ApiAccessLog::Id))
+                    .col(string(ApiAccessLog::RequestId))
+                    .col(string(ApiAccessLog::Method))
+                    .col(string(ApiAccessLog::Path))
+                    .col(string_null(ApiAccessLog::Query))
+                    .col(string_null(ApiAccessLog::Ip))
+                    .col(string_null(ApiAccessLog::PrincipalId))
+                    .col(string_null(ApiAccessLog::Name))
+                    .col(integer(ApiAccessLog::Status))
+                    .col(big_integer(ApiAccessLog::DurationMs))
+                    .col(big_integer_null(ApiAccessLog::ResponseSize))
+                    .col(string_null(ApiAccessLog::UserAgent))
+                    .col(timestamp_with_time_zone_null(ApiAccessLog::CreateDatetime))
+                    .col(timestamp_with_time_zone_null(ApiAccessLog::UpdateDatetime))
+                    .primary_key(
+                        Index::create()
+                            .name("pk-api-access-log-id")
+                            .col(ApiAccessLog::Id),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx-api-access-log-create-datetime")
+                    .table(ApiAccessLog::Table)
+                    .col(ApiAccessLog::CreateDatetime)
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(ApiAccessLog::Table).to_owned())
+            .await?;
         manager
             .drop_table(Table::drop().table(SecurityEvent::Table).to_owned())
             .await?;
@@ -310,11 +350,31 @@ enum SecurityEvent {
     EventType,
     Ip,
     Path,
+    PrincipalId,
     Account,
     RetryAfterMs,
     Limit,
     Remaining,
     WindowSecs,
+    CreateDatetime,
+    UpdateDatetime,
+}
+
+#[derive(DeriveIden)]
+enum ApiAccessLog {
+    Table,
+    Id,
+    RequestId,
+    Method,
+    Path,
+    Query,
+    Ip,
+    PrincipalId,
+    Name,
+    Status,
+    DurationMs,
+    ResponseSize,
+    UserAgent,
     CreateDatetime,
     UpdateDatetime,
 }

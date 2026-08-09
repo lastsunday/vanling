@@ -1,5 +1,5 @@
 import { getLatency, getSummary, getTrends } from '@/api/stats'
-import type { RecentSession, StepLatency, TrendPoint } from '@/data/stats'
+import type { RecentSession, SecuritySummaryEvent, StepLatency, TrendPoint } from '@/data/stats'
 import {
   Area,
   AreaChart,
@@ -13,6 +13,7 @@ import {
   YAxis,
 } from 'recharts'
 import {
+  Badge,
   Box,
   Card,
   Group,
@@ -64,6 +65,21 @@ function RouteComponent() {
         <StatCard label={t('dashboard.stat.online')} value={summary?.online_devices} loading={summaryLoading} color="blue" icon="i-mdi:signal" />
         <StatCard label={t('dashboard.stat.sessions_today')} value={summary?.sessions_today} loading={summaryLoading} color="violet" icon="i-mdi:chat-processing" />
       </SimpleGrid>
+
+      <SimpleGrid cols={{ base: 1, sm: 3, lg: 3 }} mb="lg">
+        <StatCard label={t('dashboard.stat.security_events_today')} value={summary?.security_events_today} loading={summaryLoading} color="orange" icon="i-mdi:shield-alert" />
+        <StatCard label={t('dashboard.stat.security_events_7d')} value={summary?.security_events_7d} loading={summaryLoading} color="violet" icon="i-mdi:shield-alert-outline" />
+        <StatCard label={t('dashboard.stat.rate_limited_today')} value={summary?.rate_limited_today} loading={summaryLoading} color="red" icon="i-mdi:shield-off" />
+      </SimpleGrid>
+
+      <Card withBorder padding="lg" radius="md" mb="lg">
+        <Text fw={500} mb="md">{t('dashboard.recent_security_events')}</Text>
+        {summaryLoading ? (
+          <Skeleton height={180} />
+        ) : (
+          <RecentSecurityEventsTable events={summary?.recent_security_events ?? []} />
+        )}
+      </Card>
 
       <Card withBorder padding="lg" radius="md" mb="lg">
         <Text fw={500} mb="md">{t('dashboard.recent_sessions')}</Text>
@@ -182,6 +198,64 @@ function RecentSessionsTable({ sessions }: { sessions: RecentSession[] }) {
       </Table.Tbody>
     </Table>
   )
+}
+
+function RecentSecurityEventsTable({ events }: { events: SecuritySummaryEvent[] }) {
+  const { t } = useTranslation()
+  if (events.length === 0) return <Text c="dimmed" ta="center">{t('dashboard.no_security_events')}</Text>
+
+  return (
+    <Table>
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>{t('dashboard.table.time')}</Table.Th>
+          <Table.Th>{t('dashboard.table.event_type')}</Table.Th>
+          <Table.Th>{t('dashboard.table.ip')}</Table.Th>
+          <Table.Th>{t('dashboard.table.path')}</Table.Th>
+          <Table.Th>{t('dashboard.table.account')}</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {events.map((e) => (
+          <Table.Tr key={e.id}>
+            <Table.Td>
+              <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                {e.create_datetime ? dayjs(e.create_datetime).format('MM-DD HH:mm:ss') : '-'}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <SecurityEventBadge eventType={e.event_type} />
+            </Table.Td>
+            <Table.Td>
+              <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                {e.ip ?? '-'}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <Text size="sm" style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                {e.path ?? '-'}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <Text size="sm">{e.account ?? '-'}</Text>
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  )
+}
+
+function SecurityEventBadge({ eventType }: { eventType: string }) {
+  const { t } = useTranslation()
+  const color = eventType === 'rate_limited'
+    ? 'red'
+    : eventType === 'rate_limit_near'
+      ? 'orange'
+      : eventType === 'auth_login_success'
+        ? 'green'
+        : 'yellow'
+  return <Badge color={color} variant="light">{t(`security.event_type.${eventType}`)}</Badge>
 }
 
 function TrendsChart({ data }: { data: TrendPoint[] }) {

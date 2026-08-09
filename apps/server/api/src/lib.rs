@@ -76,6 +76,7 @@ use crate::config::database::DatabaseConfig;
 use crate::config::llm::LlmConfig;
 use crate::config::matrix::MatrixConfig;
 use crate::config::mcp::McpConfig;
+use crate::config::security::SecurityConfig;
 use crate::config::server::ServerConfig;
 use crate::config::session::SessionConfig;
 use crate::config::tts::TtsConfig;
@@ -93,6 +94,7 @@ pub struct StartParams {
     pub vad_config: Arc<VadConfig>,
     pub audio_config: Arc<AudioConfig>,
     pub auth_config: Arc<AuthConfig>,
+    pub security_config: Arc<SecurityConfig>,
     pub ws_config: Arc<WsConfig>,
     pub tts_config: Arc<TtsConfig>,
     pub asr_config: Arc<AsrConfig>,
@@ -110,6 +112,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         vad_config,
         audio_config,
         auth_config,
+        security_config,
         ws_config,
         tts_config,
         asr_config,
@@ -148,8 +151,9 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         vad_config: vad_config.clone(),
         audio_config: audio_config.clone(),
         auth_config: auth_config.clone(),
+        security_config: security_config.clone(),
         ws_config: ws_config.clone(),
-        usage_registry: Arc::new(UsageRegistry::default()),
+        usage_registry: Arc::new(UsageRegistry::new(security_config.to_usage_config())),
         cancellation_token: shutdown_token,
     };
     handles.push(tokio::spawn(async move {
@@ -221,8 +225,17 @@ pub async fn start_app(
         Either::Right(values) => values.first().expect("port is empty"),
     };
     let cleanup_conn = state.conn.clone();
+    let event_retention_days = state.security_config.event_retention_days;
+    let access_retention_days = state.security_config.api_access_log_retention_days;
+    let cleanup_interval_secs = state.security_config.cleanup_interval_secs;
     let (app, ct) = create_router(state, ct);
-    tokio::spawn(security::cleanup_loop(cleanup_conn, ct.clone()));
+    tokio::spawn(security::cleanup_loop(
+        cleanup_conn,
+        ct.clone(),
+        event_retention_days,
+        access_retention_days,
+        cleanup_interval_secs,
+    ));
     tracing::info!("app start");
     let addr = match addrs {
         Either::Left(value) => value.to_string(),
@@ -428,6 +441,7 @@ pub struct AppState {
     pub vad_config: Arc<VadConfig>,
     pub audio_config: Arc<AudioConfig>,
     pub auth_config: Arc<AuthConfig>,
+    pub security_config: Arc<SecurityConfig>,
     pub ws_config: Arc<WsConfig>,
     pub usage_registry: Arc<UsageRegistry>,
     pub cancellation_token: CancellationToken,

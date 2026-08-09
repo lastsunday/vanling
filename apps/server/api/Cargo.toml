@@ -120,12 +120,13 @@ ruma-client = { workspace = true, features = [
   "reqwest-rustls",
 ] }
 # matrix end
+http-body-util = { workspace = true }
+http-body = { workspace = true }
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
 cucumber = { workspace = true, features = ["tracing", "output-json"] }
 futures = { workspace = true }
-http-body-util = { workspace = true }
 mime = { workspace = true }
 sse-stream = { workspace = true }
 testcontainers = { workspace = true }

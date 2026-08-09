@@ -11,7 +11,8 @@
       "dashboard": "仪表板",
       "sessions": "会话列表",
       "devices": "设备管理",
-      "security": "安全事件",
+      "security": "安全",
+      "access_logs": "访问日志",
       "language": "语言"
     },
     "confirm_logout": "确认登出？",
@@ -57,9 +58,14 @@
       "pending": "待激活",
       "disabled": "已禁用",
       "online": "在线",
-      "sessions_today": "今日会话"
+      "sessions_today": "今日会话",
+      "security_events_today": "今日安全事件",
+      "security_events_7d": "近7天安全事件",
+      "rate_limited_today": "今日限流"
     },
     "recent_sessions": "最近会话",
+    "recent_security_events": "最近安全事件",
+    "no_security_events": "暂无安全事件",
     "no_sessions": "暂无会话",
     "trends": "使用趋势",
     "latency": "步骤延迟",
@@ -76,7 +82,11 @@
       "step": "步骤",
       "avg_ms": "平均 (ms)",
       "min_ms": "最小 (ms)",
-      "max_ms": "最大 (ms)"
+      "max_ms": "最大 (ms)",
+      "event_type": "事件类型",
+      "ip": "IP",
+      "path": "路径",
+      "account": "账号"
     },
     "chart": {
       "sessions": "会话数",
@@ -147,25 +157,85 @@
     "enable_confirmation": "确定启用设备 {{id}}？"
   },
   "security": {
-    "title": "安全事件",
+    "title": "安全",
     "ip_placeholder": "按 IP 筛选",
+    "account_placeholder": "按账号筛选",
+    "path_placeholder": "按路径筛选",
     "search_btn": "搜索",
     "filter_all": "全部事件",
     "no_events": "暂无安全事件",
+    "stats": {
+      "today_total": "今日事件",
+      "today_rate_limited": "今日限流",
+      "today_login_failure": "今日登录失败",
+      "today_login_success": "今日登录成功",
+      "total_events": "累计事件",
+      "top_ip_24h": "24h Top IP",
+      "top_ips_title": "近 24 小时 Top IP",
+      "count": "次数"
+    },
+    "usage": {
+      "title": "限流用量（运行期）",
+      "resource_auth": "认证接口",
+      "resource_ota": "OTA 接口",
+      "resource_core": "核心 API",
+      "active_keys": "活跃键",
+      "allowed": "放行",
+      "limited": "拦截",
+      "limit": "限额",
+      "window": "窗口",
+      "key": "键",
+      "used": "已用",
+      "remaining": "剩余",
+      "reset_after": "重置",
+      "consumption": "消耗",
+      "no_keys": "暂无活跃键",
+      "block_rate": "拦截率",
+      "cumulative": "累计",
+      "show_more": "显示更多活跃键",
+      "show_less": "收起"
+    },
     "event_type": {
       "rate_limited": "请求被限流",
       "rate_limit_near": "接近限流阈值",
       "auth_login_success": "登录成功",
       "auth_login_failure": "登录失败"
     },
+    "time_range": {
+      "today": "今天",
+      "7d": "最近 7 天",
+      "30d": "最近 30 天",
+      "all": "全部时间"
+    },
     "table": {
       "time": "时间",
       "event_type": "事件类型",
       "ip": "IP",
       "path": "路径",
+      "principal_id": "身份编号",
+      "name": "身份名称",
       "account": "账号",
       "limit": "额度",
-      "retry_after": "重试等待"
+      "remaining": "剩余额度",
+      "window": "窗口",
+      "retry_after": "重试等待",
+      "method": "方法",
+      "status": "状态码",
+      "duration": "耗时",
+      "response_size": "响应大小",
+      "request_id": "请求编号"
+    },
+    "tabs": {
+      "overview": "概览",
+      "usage": "限流用量"
+    },
+    "access_log": {
+      "method_all": "全部方法",
+      "path_placeholder": "路径",
+      "ip_placeholder": "IP",
+      "name_placeholder": "身份名称",
+      "status_placeholder": "状态码",
+      "no_logs": "暂无访问日志"
     }
   },
   "sessions": {

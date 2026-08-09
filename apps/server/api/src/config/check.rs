@@ -20,6 +20,8 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
         ));
     }
 
+    check_security_config(config)?;
+
     config.get_bind_addrs().iter().for_each(|addr| {
         if addr.ip().is_loopback() {
             info!(
@@ -56,6 +58,62 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
             }
         }
     });
+    Ok(())
+}
+
+/// Validates that configured security limits and windows are positive.
+fn check_security_config(config: &Config) -> Result<(), anyhow::Error> {
+    let limits: [(&str, Option<u32>); 4] = [
+        (
+            "security_rate_limit_auth_limit",
+            config.security_rate_limit_auth_limit,
+        ),
+        (
+            "security_rate_limit_ota_limit",
+            config.security_rate_limit_ota_limit,
+        ),
+        (
+            "security_rate_limit_core_limit",
+            config.security_rate_limit_core_limit,
+        ),
+        (
+            "security_login_fail_limit",
+            config.security_login_fail_limit,
+        ),
+    ];
+    for (name, value) in limits {
+        if value.is_some_and(|v| v == 0) {
+            return Err(anyhow::anyhow!("config {name} must be greater than 0"));
+        }
+    }
+
+    let windows: [(&str, Option<u64>); 5] = [
+        (
+            "security_rate_limit_auth_window_secs",
+            config.security_rate_limit_auth_window_secs,
+        ),
+        (
+            "security_rate_limit_ota_window_secs",
+            config.security_rate_limit_ota_window_secs,
+        ),
+        (
+            "security_rate_limit_core_window_secs",
+            config.security_rate_limit_core_window_secs,
+        ),
+        (
+            "security_login_fail_window_secs",
+            config.security_login_fail_window_secs,
+        ),
+        (
+            "security_cleanup_interval_secs",
+            config.security_cleanup_interval_secs,
+        ),
+    ];
+    for (name, value) in windows {
+        if value.is_some_and(|v| v == 0) {
+            return Err(anyhow::anyhow!("config {name} must be greater than 0"));
+        }
+    }
     Ok(())
 }
 

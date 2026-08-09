@@ -16,6 +16,7 @@ import { Route as PathlessLayoutAdminIndexRouteImport } from './routes/_pathless
 import { Route as PathlessLayoutAdminSessionsIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/index'
 import { Route as PathlessLayoutAdminSecurityIndexRouteImport } from './routes/_pathlessLayout.admin/security/index'
 import { Route as PathlessLayoutAdminDevicesIndexRouteImport } from './routes/_pathlessLayout.admin/devices/index'
+import { Route as PathlessLayoutAdminAccessLogsIndexRouteImport } from './routes/_pathlessLayout.admin/access-logs/index'
 import { Route as PathlessLayoutAdminSessionsIdIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/$id/index'
 
 const LoginRoute = LoginRouteImport.update({
@@ -58,6 +59,12 @@ const PathlessLayoutAdminDevicesIndexRoute =
     path: '/devices/',
     getParentRoute: () => PathlessLayoutAdminRouteRoute,
   } as any)
+const PathlessLayoutAdminAccessLogsIndexRoute =
+  PathlessLayoutAdminAccessLogsIndexRouteImport.update({
+    id: '/access-logs/',
+    path: '/access-logs/',
+    getParentRoute: () => PathlessLayoutAdminRouteRoute,
+  } as any)
 const PathlessLayoutAdminSessionsIdIndexRoute =
   PathlessLayoutAdminSessionsIdIndexRouteImport.update({
     id: '/sessions/$id/',
@@ -70,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof PathlessLayoutAdminRouteRouteWithChildren
   '/': typeof PathlessLayoutIndexRoute
   '/admin/': typeof PathlessLayoutAdminIndexRoute
+  '/admin/access-logs/': typeof PathlessLayoutAdminAccessLogsIndexRoute
   '/admin/devices/': typeof PathlessLayoutAdminDevicesIndexRoute
   '/admin/security/': typeof PathlessLayoutAdminSecurityIndexRoute
   '/admin/sessions/': typeof PathlessLayoutAdminSessionsIndexRoute
@@ -79,6 +87,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof PathlessLayoutIndexRoute
   '/admin': typeof PathlessLayoutAdminIndexRoute
+  '/admin/access-logs': typeof PathlessLayoutAdminAccessLogsIndexRoute
   '/admin/devices': typeof PathlessLayoutAdminDevicesIndexRoute
   '/admin/security': typeof PathlessLayoutAdminSecurityIndexRoute
   '/admin/sessions': typeof PathlessLayoutAdminSessionsIndexRoute
@@ -90,6 +99,7 @@ export interface FileRoutesById {
   '/_pathlessLayout/admin': typeof PathlessLayoutAdminRouteRouteWithChildren
   '/_pathlessLayout/': typeof PathlessLayoutIndexRoute
   '/_pathlessLayout/admin/': typeof PathlessLayoutAdminIndexRoute
+  '/_pathlessLayout/admin/access-logs/': typeof PathlessLayoutAdminAccessLogsIndexRoute
   '/_pathlessLayout/admin/devices/': typeof PathlessLayoutAdminDevicesIndexRoute
   '/_pathlessLayout/admin/security/': typeof PathlessLayoutAdminSecurityIndexRoute
   '/_pathlessLayout/admin/sessions/': typeof PathlessLayoutAdminSessionsIndexRoute
@@ -102,6 +112,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/'
     | '/admin/'
+    | '/admin/access-logs/'
     | '/admin/devices/'
     | '/admin/security/'
     | '/admin/sessions/'
@@ -111,6 +122,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/'
     | '/admin'
+    | '/admin/access-logs'
     | '/admin/devices'
     | '/admin/security'
     | '/admin/sessions'
@@ -121,6 +133,7 @@ export interface FileRouteTypes {
     | '/_pathlessLayout/admin'
     | '/_pathlessLayout/'
     | '/_pathlessLayout/admin/'
+    | '/_pathlessLayout/admin/access-logs/'
     | '/_pathlessLayout/admin/devices/'
     | '/_pathlessLayout/admin/security/'
     | '/_pathlessLayout/admin/sessions/'
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PathlessLayoutAdminDevicesIndexRouteImport
       parentRoute: typeof PathlessLayoutAdminRouteRoute
     }
+    '/_pathlessLayout/admin/access-logs/': {
+      id: '/_pathlessLayout/admin/access-logs/'
+      path: '/access-logs'
+      fullPath: '/admin/access-logs/'
+      preLoaderRoute: typeof PathlessLayoutAdminAccessLogsIndexRouteImport
+      parentRoute: typeof PathlessLayoutAdminRouteRoute
+    }
     '/_pathlessLayout/admin/sessions/$id/': {
       id: '/_pathlessLayout/admin/sessions/$id/'
       path: '/sessions/$id'
@@ -196,6 +216,7 @@ declare module '@tanstack/react-router' {
 
 interface PathlessLayoutAdminRouteRouteChildren {
   PathlessLayoutAdminIndexRoute: typeof PathlessLayoutAdminIndexRoute
+  PathlessLayoutAdminAccessLogsIndexRoute: typeof PathlessLayoutAdminAccessLogsIndexRoute
   PathlessLayoutAdminDevicesIndexRoute: typeof PathlessLayoutAdminDevicesIndexRoute
   PathlessLayoutAdminSecurityIndexRoute: typeof PathlessLayoutAdminSecurityIndexRoute
   PathlessLayoutAdminSessionsIndexRoute: typeof PathlessLayoutAdminSessionsIndexRoute
@@ -205,6 +226,8 @@ interface PathlessLayoutAdminRouteRouteChildren {
 const PathlessLayoutAdminRouteRouteChildren: PathlessLayoutAdminRouteRouteChildren =
   {
     PathlessLayoutAdminIndexRoute: PathlessLayoutAdminIndexRoute,
+    PathlessLayoutAdminAccessLogsIndexRoute:
+      PathlessLayoutAdminAccessLogsIndexRoute,
     PathlessLayoutAdminDevicesIndexRoute: PathlessLayoutAdminDevicesIndexRoute,
     PathlessLayoutAdminSecurityIndexRoute:
       PathlessLayoutAdminSecurityIndexRoute,

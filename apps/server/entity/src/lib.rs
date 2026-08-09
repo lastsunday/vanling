@@ -2,6 +2,7 @@
 
 pub mod prelude;
 
+pub mod api_access_log;
 pub mod config;
 pub mod device;
 pub mod frame;

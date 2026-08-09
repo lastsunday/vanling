@@ -1,5 +1,6 @@
 use api::config::audio::AudioConfig;
 use api::config::mcp::McpConfig;
+use api::config::security::SecurityConfig;
 use api::config::vad::VadConfig;
 use api::config::ws::WsConfig;
 use api::{AppState, config::session::SessionConfig};
@@ -13,6 +14,8 @@ use framework::config::auth::AuthConfig;
 use http_body_util::BodyExt;
 use migration::MigratorTrait;
 use serde_json::Value;
+use std::future::Future;
+use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
 use testcontainers::ContainerAsync;
 use testcontainers::runners::AsyncRunner;
@@ -55,6 +58,7 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 auth_config: Arc::new(AuthConfig {
                     ..Default::default()
                 }),
+                security_config: Arc::new(SecurityConfig::default()),
                 ws_config: Arc::new(WsConfig {
                     ..Default::default()
                 }),
@@ -88,6 +92,7 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 auth_config: Arc::new(AuthConfig {
                     ..Default::default()
                 }),
+                security_config: Arc::new(SecurityConfig::default()),
                 ws_config: Arc::new(WsConfig {
                     ..Default::default()
                 }),
@@ -103,6 +108,32 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
 pub async fn tear_down(container: Option<ContainerAsync<Postgres>>) {
     if let Some(container) = container {
         container.rm().await.unwrap();
+    }
+}
+
+/// Polls `check` every `interval` until it returns `true` or `timeout`
+/// elapses. Replaces fixed sleeps for asserting on records persisted by
+/// fire-and-forget background tasks (e.g. security events, access logs).
+#[allow(dead_code)]
+pub async fn wait_until<F, Fut>(
+    timeout: Duration,
+    interval: Duration,
+    reason: &str,
+    mut check: F,
+) -> Result<(), String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if check().await {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!("timed out waiting for {reason}"));
+        }
+        tokio::time::sleep(interval).await;
     }
 }
 

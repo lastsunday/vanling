@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Maximum number of tracked keys before eviction kicks in.
@@ -91,6 +92,25 @@ impl UsageConfig {
     }
 }
 
+/// Per-resource runtime usage snapshot for the [`UsageRegistry`].
+#[derive(Debug, Clone)]
+pub struct ResourceUsage {
+    pub limit: u32,
+    pub window_secs: u64,
+    pub active_keys: usize,
+    pub allowed: u64,
+    pub limited: u64,
+    pub top_keys: Vec<(String, BucketSnapshot)>,
+}
+
+/// Runtime usage snapshot across all three resources.
+#[derive(Debug, Clone)]
+pub struct UsageStats {
+    pub auth: ResourceUsage,
+    pub ota: ResourceUsage,
+    pub core: ResourceUsage,
+}
+
 /// In-memory rate-limit buckets for the three GitHub-style resources.
 #[derive(Debug)]
 pub struct UsageRegistry {
@@ -132,6 +152,28 @@ impl UsageRegistry {
         self.config_for(resource).window.as_secs()
     }
 
+    /// Returns runtime usage snapshots for all three resources, with up to
+    /// `top_n` keys per resource.
+    pub fn usage_stats(&self, top_n: usize) -> UsageStats {
+        UsageStats {
+            auth: self.resource_usage(Resource::Auth, top_n),
+            ota: self.resource_usage(Resource::Ota, top_n),
+            core: self.resource_usage(Resource::Core, top_n),
+        }
+    }
+
+    fn resource_usage(&self, resource: Resource, top_n: usize) -> ResourceUsage {
+        let limiter = self.limiter(resource);
+        ResourceUsage {
+            limit: self.limit(resource),
+            window_secs: self.window_secs(resource),
+            active_keys: limiter.active_keys(),
+            allowed: limiter.allowed(),
+            limited: limiter.limited(),
+            top_keys: limiter.top_keys(top_n),
+        }
+    }
+
     fn limiter(&self, resource: Resource) -> &FixedWindowLimiter {
         match resource {
             Resource::Auth => &self.auth,
@@ -160,6 +202,8 @@ struct FixedWindowInner {
 pub struct FixedWindowLimiter {
     inner: Mutex<FixedWindowInner>,
     config: FixedWindowConfig,
+    allowed: AtomicU64,
+    limited: AtomicU64,
 }
 
 impl FixedWindowLimiter {
@@ -169,6 +213,8 @@ impl FixedWindowLimiter {
                 buckets: HashMap::new(),
             }),
             config,
+            allowed: AtomicU64::new(0),
+            limited: AtomicU64::new(0),
         }
     }
 
@@ -190,6 +236,7 @@ impl FixedWindowLimiter {
                 .window
                 .saturating_sub(now.duration_since(entry.0));
             if entry.1 >= self.config.limit {
+                self.limited.fetch_add(1, Ordering::Relaxed);
                 return RateLimitDecision::Limited {
                     limit: self.config.limit,
                     retry_after: reset_after.max(Duration::from_secs(1)),
@@ -198,12 +245,66 @@ impl FixedWindowLimiter {
             entry.1 += 1;
             (self.config.limit - entry.1, reset_after)
         };
+        self.allowed.fetch_add(1, Ordering::Relaxed);
         self.evict_if_needed(&mut inner, now);
         RateLimitDecision::Allowed {
             limit: self.config.limit,
             remaining,
             reset_after,
         }
+    }
+
+    /// Total number of allowed requests since the limiter was created.
+    pub fn allowed(&self) -> u64 {
+        self.allowed.load(Ordering::Relaxed)
+    }
+
+    /// Total number of rejected (rate-limited) requests since creation.
+    pub fn limited(&self) -> u64 {
+        self.limited.load(Ordering::Relaxed)
+    }
+
+    /// Number of distinct keys with an active bucket in the current window.
+    pub fn active_keys(&self) -> usize {
+        let now = Instant::now();
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner
+            .buckets
+            .retain(|_, (start, _)| now.duration_since(*start) < self.config.window);
+        inner.buckets.len()
+    }
+
+    /// Up to `n` highest-usage keys sorted by consumed quota descending.
+    pub fn top_keys(&self, n: usize) -> Vec<(String, BucketSnapshot)> {
+        let now = Instant::now();
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        inner
+            .buckets
+            .retain(|_, (start, _)| now.duration_since(*start) < self.config.window);
+        let mut snapshots: Vec<(String, BucketSnapshot)> = inner
+            .buckets
+            .iter()
+            .map(|(key, (start, used))| {
+                let remaining = self.config.limit.saturating_sub(*used);
+                let reset_after = self
+                    .config
+                    .window
+                    .saturating_sub(now.duration_since(*start))
+                    .max(Duration::from_secs(1));
+                (
+                    key.clone(),
+                    BucketSnapshot {
+                        limit: self.config.limit,
+                        used: *used,
+                        remaining,
+                        reset_after,
+                    },
+                )
+            })
+            .collect();
+        snapshots.sort_by_key(|(_, s)| std::cmp::Reverse(s.used));
+        snapshots.truncate(n);
+        snapshots
     }
 
     /// Returns the current usage snapshot for `key` without recording a
@@ -420,6 +521,51 @@ mod tests {
             .peek(Resource::Core, "user:a")
             .expect("bucket exists");
         assert_eq!(snapshot.used, 1);
+    }
+
+    #[test]
+    fn usage_registry_exposes_counters_and_top_keys() {
+        let registry = UsageRegistry::new(UsageConfig::new(
+            FixedWindowConfig::new(2, Duration::from_millis(60_000)),
+            FixedWindowConfig::new(3, Duration::from_millis(60_000)),
+            FixedWindowConfig::new(4, Duration::from_millis(60_000)),
+        ));
+        registry.check(Resource::Auth, "ip:1");
+        registry.check(Resource::Auth, "ip:1");
+        registry.check(Resource::Auth, "ip:1");
+        registry.check(Resource::Auth, "ip:2");
+        registry.check(Resource::Ota, "ip:9");
+        registry.check(Resource::Ota, "ip:9");
+        registry.check(Resource::Ota, "ip:9");
+        registry.check(Resource::Ota, "ip:9");
+
+        let stats = registry.usage_stats(10);
+        assert_eq!(stats.auth.limit, 2);
+        assert_eq!(stats.auth.allowed, 3);
+        assert_eq!(stats.auth.limited, 1);
+        assert_eq!(stats.auth.active_keys, 2);
+        let top = &stats.auth.top_keys;
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0].0, "ip:1");
+        assert_eq!(top[0].1.used, 2);
+        assert_eq!(stats.ota.limited, 1);
+        assert_eq!(stats.ota.allowed, 3);
+        assert_eq!(stats.core.allowed, 0);
+        assert_eq!(stats.core.limited, 0);
+    }
+
+    #[test]
+    fn usage_stats_respects_top_n() {
+        let registry = UsageRegistry::new(UsageConfig::new(
+            FixedWindowConfig::new(100, Duration::from_millis(60_000)),
+            FixedWindowConfig::new(100, Duration::from_millis(60_000)),
+            FixedWindowConfig::new(100, Duration::from_millis(60_000)),
+        ));
+        for i in 0..5 {
+            registry.check(Resource::Auth, &format!("ip:{i}"));
+        }
+        assert_eq!(registry.usage_stats(2).auth.top_keys.len(), 2);
+        assert_eq!(registry.usage_stats(10).auth.top_keys.len(), 5);
     }
 
     #[test]

@@ -6,6 +6,7 @@ pub mod llm;
 pub mod manager;
 pub mod matrix;
 pub mod mcp;
+pub mod security;
 pub mod server;
 pub mod session;
 pub mod tts;
@@ -141,6 +142,78 @@ pub struct Config {
     /// default: "ujTgh2lEQYy0PXhK"
     #[serde(default = "default_auth_client_secret")]
     pub auth_client_secret: Option<String>,
+
+    /// Per-IP auth bucket request limit within the auth window.
+    ///
+    /// default: 20
+    #[serde(default = "default_security_rate_limit_auth_limit")]
+    pub security_rate_limit_auth_limit: Option<u32>,
+
+    /// Auth bucket window in seconds.
+    ///
+    /// default: 900
+    #[serde(default = "default_security_rate_limit_auth_window_secs")]
+    pub security_rate_limit_auth_window_secs: Option<u64>,
+
+    /// Per-IP OTA bucket request limit within the OTA window.
+    ///
+    /// default: 30
+    #[serde(default = "default_security_rate_limit_ota_limit")]
+    pub security_rate_limit_ota_limit: Option<u32>,
+
+    /// OTA bucket window in seconds.
+    ///
+    /// default: 60
+    #[serde(default = "default_security_rate_limit_ota_window_secs")]
+    pub security_rate_limit_ota_window_secs: Option<u64>,
+
+    /// Per-user core API bucket request limit within the core window.
+    ///
+    /// default: 5000
+    #[serde(default = "default_security_rate_limit_core_limit")]
+    pub security_rate_limit_core_limit: Option<u32>,
+
+    /// Core bucket window in seconds.
+    ///
+    /// default: 3600
+    #[serde(default = "default_security_rate_limit_core_window_secs")]
+    pub security_rate_limit_core_window_secs: Option<u64>,
+
+    /// Per-account login failures allowed within the lockout window.
+    ///
+    /// default: 5
+    #[serde(default = "default_security_login_fail_limit")]
+    pub security_login_fail_limit: Option<u32>,
+
+    /// Login failure lockout window in seconds.
+    ///
+    /// default: 900
+    #[serde(default = "default_security_login_fail_window_secs")]
+    pub security_login_fail_window_secs: Option<u64>,
+
+    /// Security event retention in days before the cleanup loop deletes them.
+    ///
+    /// default: 30
+    #[serde(default = "default_security_event_retention_days")]
+    pub security_event_retention_days: Option<i64>,
+
+    /// Security retention cleanup interval in seconds.
+    ///
+    /// default: 21600
+    #[serde(default = "default_security_cleanup_interval_secs")]
+    pub security_cleanup_interval_secs: Option<u64>,
+
+    /// Whether every `/api/*` request is persisted to the access log table.
+    ///
+    /// default: true
+    #[serde(default = "default_security_api_access_log_enabled")]
+    pub security_api_access_log_enabled: Option<bool>,
+
+    /// API access log retention in days before the cleanup loop deletes them.
+    ///
+    /// default: 30
+    #[serde(default = "default_security_api_access_log_retention_days")]
+    pub security_api_access_log_retention_days: Option<i64>,
 
     /// WebSocket URL scheme (ws or wss).
     ///
@@ -544,6 +617,54 @@ const DEFAULT_AUTH_CLIENT_SECRET: &str = "ujTgh2lEQYy0PXhK";
 
 fn default_auth_client_secret() -> Option<String> {
     Some(String::from(DEFAULT_AUTH_CLIENT_SECRET))
+}
+
+fn default_security_rate_limit_auth_limit() -> Option<u32> {
+    Some(20)
+}
+
+fn default_security_rate_limit_auth_window_secs() -> Option<u64> {
+    Some(900)
+}
+
+fn default_security_rate_limit_ota_limit() -> Option<u32> {
+    Some(30)
+}
+
+fn default_security_rate_limit_ota_window_secs() -> Option<u64> {
+    Some(60)
+}
+
+fn default_security_rate_limit_core_limit() -> Option<u32> {
+    Some(5000)
+}
+
+fn default_security_rate_limit_core_window_secs() -> Option<u64> {
+    Some(3600)
+}
+
+fn default_security_login_fail_limit() -> Option<u32> {
+    Some(5)
+}
+
+fn default_security_login_fail_window_secs() -> Option<u64> {
+    Some(900)
+}
+
+fn default_security_event_retention_days() -> Option<i64> {
+    Some(30)
+}
+
+fn default_security_cleanup_interval_secs() -> Option<u64> {
+    Some(6 * 60 * 60)
+}
+
+fn default_security_api_access_log_enabled() -> Option<bool> {
+    Some(true)
+}
+
+fn default_security_api_access_log_retention_days() -> Option<i64> {
+    Some(30)
 }
 
 fn warn_on_default_auth_secrets(config: &Config) {
