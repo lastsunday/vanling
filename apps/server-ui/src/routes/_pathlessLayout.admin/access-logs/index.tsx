@@ -83,50 +83,48 @@ function AccessLogsSection() {
 
   return (
     <>
-      <SearchForm
-        onSubmit={handleSearch}
-        submitLabel={t('security.search_btn')}
-        groupProps={{ mb: 'md', align: 'end', wrap: 'wrap' }}
-      >
-        <Select
-          placeholder={t('security.access_log.method_all')}
-          data={METHOD_OPTIONS.map((m) => ({ value: m, label: m }))}
-          value={draft.method || null}
-          onChange={(v) => setDraftValue('method', v ?? '')}
-          clearable
-          w={120}
-        />
-        <TextInput
-          value={draft.path}
-          onChange={(e) => setDraftValue('path', e.currentTarget.value)}
-          placeholder={t('security.access_log.path_placeholder')}
-          w={180}
-        />
-        <TextInput
-          value={draft.ip}
-          onChange={(e) => setDraftValue('ip', e.currentTarget.value)}
-          placeholder={t('security.access_log.ip_placeholder')}
-          w={160}
-        />
-        <TextInput
-          value={draft.name}
-          onChange={(e) => setDraftValue('name', e.currentTarget.value)}
-          placeholder={t('security.access_log.name_placeholder')}
-          w={160}
-        />
-        <TextInput
-          value={draft.principal_id}
-          onChange={(e) => setDraftValue('principal_id', e.currentTarget.value)}
-          placeholder={t('security.access_log.principal_id_placeholder')}
-          w={180}
-        />
-        <TextInput
-          value={draft.status}
-          onChange={(e) => setDraftValue('status', e.currentTarget.value)}
-          placeholder={t('security.access_log.status_placeholder')}
-          w={110}
-        />
-      </SearchForm>
+      <Group justify="space-between" mb="lg">
+        <Title>{t('admin.menu.access_logs')}</Title>
+        <SearchForm onSubmit={handleSearch} submitLabel={t('security.search_btn')}>
+          <TextInput
+            value={draft.principal_id}
+            onChange={(e) => setDraftValue('principal_id', e.currentTarget.value)}
+            placeholder={t('security.access_log.principal_id_placeholder')}
+          />
+        </SearchForm>
+      </Group>
+
+      <Paper withBorder shadow="sm" p="md" radius="md" mb="md">
+        <Group grow>
+          <Select
+            placeholder={t('security.access_log.method_all')}
+            data={METHOD_OPTIONS.map((m) => ({ value: m, label: m }))}
+            value={draft.method || null}
+            onChange={(v) => setDraftValue('method', v ?? '')}
+            clearable
+          />
+          <TextInput
+            value={draft.path}
+            onChange={(e) => setDraftValue('path', e.currentTarget.value)}
+            placeholder={t('security.access_log.path_placeholder')}
+          />
+          <TextInput
+            value={draft.ip}
+            onChange={(e) => setDraftValue('ip', e.currentTarget.value)}
+            placeholder={t('security.access_log.ip_placeholder')}
+          />
+          <TextInput
+            value={draft.name}
+            onChange={(e) => setDraftValue('name', e.currentTarget.value)}
+            placeholder={t('security.access_log.name_placeholder')}
+          />
+          <TextInput
+            value={draft.status}
+            onChange={(e) => setDraftValue('status', e.currentTarget.value)}
+            placeholder={t('security.access_log.status_placeholder')}
+          />
+        </Group>
+      </Paper>
 
       {(isLoading || isFetching) && (
         <Text ta="center" py="xl">
@@ -223,11 +221,5 @@ function AccessLogsSection() {
 }
 
 function RouteComponent() {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Title mb="lg">{t('admin.menu.access_logs')}</Title>
-      <AccessLogsSection />
-    </>
-  );
+  return <AccessLogsSection />;
 }
