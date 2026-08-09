@@ -1,4 +1,5 @@
 import { activateDevice, activateDeviceById, deleteDevice, disableDevice, enableDevice, listDevices } from '@/api';
+import { DataPagination, usePersistedPageSize } from '@/components/DataPagination';
 import { SearchForm } from '@/components/SearchForm';
 import type { DeviceResult } from '@/data/device';
 import {
@@ -9,7 +10,6 @@ import {
   CopyButton,
   Group,
   Modal,
-  Pagination,
   Paper,
   Select,
   SimpleGrid,
@@ -36,6 +36,7 @@ function RouteComponent() {
   const queryClient = useQueryClient();
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePersistedPageSize();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [searchKey, setSearchKey] = useState(0);
@@ -49,14 +50,19 @@ function RouteComponent() {
   const [confirmTarget, setConfirmTarget] = useState<{ device: DeviceResult; action: 'disable' | 'enable' | 'delete' } | null>(null);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['devices', page, search, statusFilter, searchKey],
-    queryFn: () => listDevices(page, 20, search, statusFilter === 'all' ? undefined : statusFilter ?? undefined),
+    queryKey: ['devices', page, pageSize, search, statusFilter, searchKey],
+    queryFn: () => listDevices(page, pageSize, search, statusFilter === 'all' ? undefined : statusFilter ?? undefined),
   });
 
   const handleSearch = () => {
     setSearch(searchInput);
     setPage(1);
     setSearchKey(k => k + 1);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setPage(1);
   };
 
   const handleActivate = async () => {
@@ -347,14 +353,14 @@ function RouteComponent() {
         </Text>
       )}
 
-      {data && data.total > data.page_size && (
-        <Group justify="center" mt="md">
-          <Pagination
-            total={Math.ceil(data.total / data.page_size)}
-            value={page}
-            onChange={setPage}
-          />
-        </Group>
+      {data && data.total > 0 && (
+        <DataPagination
+          page={page}
+          pageSize={pageSize}
+          total={data.total}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       )}
 
       <Modal opened={detailOpened} onClose={closeDetail} title={t('devices.detail_title')} size="lg" centered>

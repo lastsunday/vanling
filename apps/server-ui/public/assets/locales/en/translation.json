@@ -50,6 +50,10 @@
   "version_unknown": "Unknown",
   "loading": "Loading",
   "logout": "Logout",
+  "pagination": {
+    "total_info": "Showing {{start}}-{{end}} of {{count}}",
+    "per_page": "Per page"
+  },
   "dashboard": {
     "title": "Dashboard",
     "stat": {

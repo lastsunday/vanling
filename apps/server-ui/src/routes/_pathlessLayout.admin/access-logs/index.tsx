@@ -1,10 +1,10 @@
 import { listAccessLogs } from '@/api';
+import { DataPagination, usePersistedPageSize } from '@/components/DataPagination';
 import { SearchForm } from '@/components/SearchForm';
 import type { ApiAccessLog } from '@/data/security';
 import {
   Badge,
   Group,
-  Pagination,
   Paper,
   Select,
   Table,
@@ -38,6 +38,7 @@ function formatSize(bytes: number): string {
 function AccessLogsSection() {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePersistedPageSize();
   const [draft, setDraft] = useState({
     method: '',
     path: '',
@@ -57,11 +58,11 @@ function AccessLogsSection() {
   const [searchKey, setSearchKey] = useState(0);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['security-access-logs', page, filters, searchKey],
+    queryKey: ['security-access-logs', page, pageSize, filters, searchKey],
     queryFn: () =>
       listAccessLogs(
         page,
-        20,
+        pageSize,
         filters.method || undefined,
         filters.path || undefined,
         filters.ip || undefined,
@@ -79,6 +80,11 @@ function AccessLogsSection() {
 
   const setDraftValue = (key: keyof typeof draft, value: string) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setPage(1);
   };
 
   return (
@@ -207,14 +213,14 @@ function AccessLogsSection() {
         </Text>
       )}
 
-      {data && data.total > data.page_size && (
-        <Group justify="center" mt="md">
-          <Pagination
-            total={Math.ceil(data.total / data.page_size)}
-            value={page}
-            onChange={setPage}
-          />
-        </Group>
+      {data && data.total > 0 && (
+        <DataPagination
+          page={page}
+          pageSize={pageSize}
+          total={data.total}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       )}
     </>
   );

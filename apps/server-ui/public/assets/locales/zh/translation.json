@@ -50,6 +50,10 @@
   "version_unknown": "未知",
   "loading": "加载中",
   "logout": "登出",
+  "pagination": {
+    "total_info": "第 {{start}}-{{end}} 条，共 {{count}} 条",
+    "per_page": "每页"
+  },
   "dashboard": {
     "title": "仪表盘",
     "stat": {

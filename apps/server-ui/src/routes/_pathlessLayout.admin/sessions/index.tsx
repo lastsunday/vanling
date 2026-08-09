@@ -1,4 +1,5 @@
 import { listSessions } from '@/api';
+import { DataPagination, usePersistedPageSize } from '@/components/DataPagination';
 import { SearchForm } from '@/components/SearchForm';
 import { SessionDetail } from '@/components/SessionDetail';
 import type { SessionListItem, TurnSummary } from '@/data/session';
@@ -6,7 +7,6 @@ import {
   Button,
   Group,
   Modal,
-  Pagination,
   Paper,
   Select,
   Table,
@@ -73,6 +73,7 @@ function RouteComponent() {
   const { t } = useTranslation();
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePersistedPageSize();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [dateFromInput, setDateFromInput] = useState<string | null>(null);
@@ -86,11 +87,11 @@ function RouteComponent() {
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['sessions', page, search, dateFrom, dateTo, sortOrder, searchKey],
+    queryKey: ['sessions', page, pageSize, search, dateFrom, dateTo, sortOrder, searchKey],
     queryFn: () =>
       listSessions({
         page,
-        page_size: 20,
+        page_size: pageSize,
         ...(search ? { search } : {}),
         ...(dateFrom ? { date_from: dayjs(dateFrom).toISOString() } : {}),
         ...(dateTo ? { date_to: dayjs(dateTo).toISOString() } : {}),
@@ -104,6 +105,11 @@ function RouteComponent() {
     setDateFrom(dateFromInput);
     setDateTo(dateToInput);
     setSearchKey(k => k + 1);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setPage(1);
   };
 
   const openDetailModal = (sessionId: string) => {
@@ -234,14 +240,14 @@ function RouteComponent() {
         </Text>
       )}
 
-      {data && data.total > data.page_size && (
-        <Group justify="center" mt="md">
-          <Pagination
-            total={Math.ceil(data.total / data.page_size)}
-            value={page}
-            onChange={setPage}
-          />
-        </Group>
+      {data && data.total > 0 && (
+        <DataPagination
+          page={page}
+          pageSize={pageSize}
+          total={data.total}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
       )}
 
       <Modal
