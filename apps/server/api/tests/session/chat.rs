@@ -328,6 +328,11 @@ async fn test_chat_flow_listen_realtime() -> anyhow::Result<()> {
                         FrameResult::TTSResult(msg) if msg.state == Some(TtsState::SentenceEnd) => {
                             break;
                         }
+                        // Barge-in stops the round mid-sentence; a new round's
+                        // STTResult follows the Stop frame.
+                        FrameResult::TTSResult(msg) if msg.state == Some(TtsState::Stop) => {
+                            break;
+                        }
                         FrameResult::STTResult(..) => {
                             has_interrupt_stt = true;
                             break;
