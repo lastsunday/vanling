@@ -108,7 +108,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         barge_in_lockout_ms: config.session_barge_in_lockout_ms.to_owned(),
     });
     let mcp_config = Arc::new(McpConfig {
-        uri_list: config.mcp_uri_list.to_owned(),
+        server_list: config.mcp_server_list.to_owned().unwrap_or_default(),
     });
     let vad_config = Arc::new(VadConfig {
         model: config.vad_model.to_owned(),
@@ -141,22 +141,10 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
     let security_config = {
         let d = SecurityConfig::default();
         Arc::new(SecurityConfig {
-            auth_limit: config
-                .security_rate_limit_auth_limit
-                .unwrap_or(d.auth_limit),
-            auth_window_secs: config
-                .security_rate_limit_auth_window_secs
-                .unwrap_or(d.auth_window_secs),
-            ota_limit: config.security_rate_limit_ota_limit.unwrap_or(d.ota_limit),
-            ota_window_secs: config
-                .security_rate_limit_ota_window_secs
-                .unwrap_or(d.ota_window_secs),
-            core_limit: config
-                .security_rate_limit_core_limit
-                .unwrap_or(d.core_limit),
-            core_window_secs: config
-                .security_rate_limit_core_window_secs
-                .unwrap_or(d.core_window_secs),
+            rate_limit_resources: config
+                .security_rate_limit_resources
+                .clone()
+                .unwrap_or_else(|| d.rate_limit_resources.clone()),
             login_fail_limit: config
                 .security_login_fail_limit
                 .unwrap_or(d.login_fail_limit),
@@ -175,6 +163,10 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
             api_access_log_retention_days: config
                 .security_api_access_log_retention_days
                 .unwrap_or(d.api_access_log_retention_days),
+            access_log_path_prefixes: config
+                .security_api_access_log_path_prefixes
+                .clone()
+                .unwrap_or_else(|| d.access_log_path_prefixes.clone()),
         })
     };
     let ws_config = Arc::new(WsConfig {

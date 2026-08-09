@@ -158,11 +158,19 @@ function UsageSection() {
     refetchInterval: 30_000,
   });
 
-  const resources: { key: string; label: string; info?: ResourceUsageInfo }[] = [
-    { key: 'auth', label: t('security.usage.resource_auth'), info: data?.auth },
-    { key: 'ota', label: t('security.usage.resource_ota'), info: data?.ota },
-    { key: 'core', label: t('security.usage.resource_core'), info: data?.core },
-  ];
+  const knownLabels: Record<string, string> = {
+    auth: t('security.usage.resource_auth'),
+    ota: t('security.usage.resource_ota'),
+    mcp: t('security.usage.resource_mcp'),
+    core: t('security.usage.resource_core'),
+  };
+  const resources: { key: string; label: string; info?: ResourceUsageInfo }[] = (
+    data?.resources ?? []
+  ).map((info) => ({
+    key: info.name,
+    label: knownLabels[info.name] ?? info.name,
+    info,
+  }));
 
   const mayHaveMore = data
     ? resources.some(({ info }) => (info?.top_keys.length ?? 0) === (showAllKeys ? 100 : 10))

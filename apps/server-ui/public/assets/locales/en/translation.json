@@ -178,6 +178,7 @@
       "title": "Rate Limit Usage (runtime)",
       "resource_auth": "Auth",
       "resource_ota": "OTA",
+      "resource_mcp": "MCP",
       "resource_core": "Core API",
       "active_keys": "active keys",
       "allowed": "allowed",
@@ -234,6 +235,7 @@
       "path_placeholder": "Path",
       "ip_placeholder": "IP",
       "name_placeholder": "Name",
+      "principal_id_placeholder": "Principal ID",
       "status_placeholder": "Status",
       "no_logs": "No access logs"
     }

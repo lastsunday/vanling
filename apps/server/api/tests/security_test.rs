@@ -1,12 +1,18 @@
 mod common;
 
 use api::create_router;
-use axum::{Router, extract::connect_info::MockConnectInfo, http::StatusCode};
+use axum::{
+    Router,
+    body::Body,
+    extract::connect_info::MockConnectInfo,
+    http::{Request, Response, StatusCode},
+};
 use framework::{
-    auth::Jwt,
+    auth::{Jwt, Principal},
     config::auth::AuthConfig,
     rate_limit::{FixedWindowConfig, UsageConfig, UsageRegistry},
 };
+use http_body_util::BodyExt;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,10 +20,11 @@ use std::time::Duration;
 use testcontainers::ContainerAsync;
 use testcontainers_modules::postgres::Postgres;
 use tokio_util::sync::CancellationToken;
+use tower::ServiceExt;
 
 use common::{
-    get_json, get_json_paging_result_items, get_json_with_token, post_json, response_to_json,
-    setup_database, tear_down, wait_until,
+    get_json, get_json_paging_result_items, get_json_with_token, post_json, post_json_without_body,
+    response_to_json, setup_database, tear_down, wait_until,
 };
 
 const LOGIN_FAIL_LIMIT: u32 = 5;
@@ -321,11 +328,20 @@ async fn test_per_account_login_lockout() {
 async fn test_per_user_core_rate_limit_returns_429() {
     let (container, mut state) = setup_database().await;
     Jwt::init(Arc::new(auth_config()));
-    state.usage_registry = Arc::new(UsageRegistry::new(UsageConfig::new(
-        FixedWindowConfig::new(PER_IP_LIMIT, Duration::from_secs(15 * 60)),
-        FixedWindowConfig::new(30, Duration::from_secs(60)),
-        FixedWindowConfig::new(3, Duration::from_secs(60 * 60)),
-    )));
+    state.usage_registry = Arc::new(UsageRegistry::new(UsageConfig::new(vec![
+        (
+            "auth".to_string(),
+            FixedWindowConfig::new(PER_IP_LIMIT, Duration::from_secs(15 * 60)),
+        ),
+        (
+            "ota".to_string(),
+            FixedWindowConfig::new(30, Duration::from_secs(60)),
+        ),
+        (
+            "core".to_string(),
+            FixedWindowConfig::new(3, Duration::from_secs(60 * 60)),
+        ),
+    ])));
     let (app, _ct) = create_router(state, CancellationToken::new());
     let app = app.layer(MockConnectInfo(SocketAddr::from(([10, 0, 0, 2], 1337))));
     let token = admin_token();
@@ -392,12 +408,26 @@ async fn test_rate_limit_introspection_does_not_consume_quota() {
         get_json_with_token(app.clone(), "/api/security/rate_limit", Some(token.clone())).await;
     assert_eq!(response.status(), StatusCode::OK);
     let value = response_to_json(response).await;
-    let resources = &value["data"]["resources"];
-    assert_eq!(resources["auth"]["limit"], 20);
-    assert_eq!(resources["ota"]["limit"], 30);
-    assert_eq!(resources["core"]["limit"], 1000);
-    assert_eq!(resources["core"]["used"], 0);
-    assert!(resources["core"]["reset"].as_i64().is_some());
+    let resources = value["data"]["resources"]
+        .as_array()
+        .expect("resources array");
+    let find = |name: &str| {
+        resources
+            .iter()
+            .find(|resource| resource["name"] == name)
+            .unwrap_or_else(|| panic!("resource {name} present"))
+    };
+    let auth = find("auth");
+    assert_eq!(auth["limit"], 20);
+    let ota = find("ota");
+    assert_eq!(ota["limit"], 30);
+    let mcp = find("mcp");
+    assert_eq!(mcp["limit"], 1000);
+    assert_eq!(mcp["used"], 0);
+    let core = find("core");
+    assert_eq!(core["limit"], 1000);
+    assert_eq!(core["used"], 0);
+    assert!(core["reset"].as_i64().is_some());
 
     let response =
         get_json_with_token(app.clone(), "/api/security/events", Some(token.clone())).await;
@@ -406,13 +436,25 @@ async fn test_rate_limit_introspection_does_not_consume_quota() {
     let response =
         get_json_with_token(app.clone(), "/api/security/rate_limit", Some(token.clone())).await;
     let value = response_to_json(response).await;
-    let core = &value["data"]["resources"]["core"];
+    let resources = value["data"]["resources"]
+        .as_array()
+        .expect("resources array");
+    let core = resources
+        .iter()
+        .find(|resource| resource["name"] == "core")
+        .expect("core present");
     assert_eq!(core["used"], 1);
 
     let response =
         get_json_with_token(app.clone(), "/api/security/rate_limit", Some(token.clone())).await;
     let value = response_to_json(response).await;
-    let core = &value["data"]["resources"]["core"];
+    let resources = value["data"]["resources"]
+        .as_array()
+        .expect("resources array");
+    let core = resources
+        .iter()
+        .find(|resource| resource["name"] == "core")
+        .expect("core present");
     assert_eq!(core["used"], 1, "introspection must not consume quota");
 
     tear_down(container).await;
@@ -449,6 +491,10 @@ async fn test_access_logs_recorded_and_queryable() {
     assert_eq!(success.status(), StatusCode::OK);
     response_to_json(success).await;
 
+    let mcp = post_json_without_body(app.clone(), "/mcp").await;
+    assert_eq!(mcp.status(), StatusCode::UNAUTHORIZED);
+    mcp.into_body().collect().await.unwrap();
+
     let events =
         get_json_with_token(app.clone(), "/api/security/events", Some(token.clone())).await;
     assert_eq!(events.status(), StatusCode::OK);
@@ -477,7 +523,9 @@ async fn test_access_logs_recorded_and_queryable() {
                     && item["path"] == "/api/security/events"
                     && item["name"] == "root"
                     && item["principal_id"] == "test-admin"
-            })
+            }) && items
+                .iter()
+                .any(|item| item["method"] == "POST" && item["path"] == "/mcp")
         },
     )
     .await
@@ -505,6 +553,11 @@ async fn test_access_logs_recorded_and_queryable() {
     assert!(
         items
             .iter()
+            .any(|item| item["method"] == "POST" && item["path"] == "/mcp")
+    );
+    assert!(
+        items
+            .iter()
             .all(|item| item["duration_ms"].as_i64().is_some())
     );
 
@@ -520,15 +573,30 @@ async fn test_access_logs_recorded_and_queryable() {
     assert!(items.iter().all(|item| item["method"] == "GET"));
 
     let response = get_json_with_token(
-        app,
+        app.clone(),
         "/api/security/access_logs?path=%2Fapi%2Fauth%2Flogin",
-        Some(token),
+        Some(token.clone()),
     )
     .await;
     let value = response_to_json(response).await;
     let items = get_json_paging_result_items(&value);
     assert!(!items.is_empty());
     assert!(items.iter().all(|item| item["path"] == "/api/auth/login"));
+
+    let response = get_json_with_token(
+        app,
+        "/api/security/access_logs?principal_id=test-admin",
+        Some(token),
+    )
+    .await;
+    let value = response_to_json(response).await;
+    let items = get_json_paging_result_items(&value);
+    assert!(!items.is_empty());
+    assert!(
+        items
+            .iter()
+            .all(|item| item["principal_id"] == "test-admin")
+    );
 
     tear_down(container).await;
 }
@@ -537,11 +605,20 @@ async fn test_access_logs_recorded_and_queryable() {
 async fn test_usage_stats_reports_allowed_and_limited() {
     let (container, mut state) = setup_database().await;
     Jwt::init(Arc::new(auth_config()));
-    state.usage_registry = Arc::new(UsageRegistry::new(UsageConfig::new(
-        FixedWindowConfig::new(3, Duration::from_secs(15 * 60)),
-        FixedWindowConfig::new(30, Duration::from_secs(60)),
-        FixedWindowConfig::new(1000, Duration::from_secs(60 * 60)),
-    )));
+    state.usage_registry = Arc::new(UsageRegistry::new(UsageConfig::new(vec![
+        (
+            "auth".to_string(),
+            FixedWindowConfig::new(3, Duration::from_secs(15 * 60)),
+        ),
+        (
+            "ota".to_string(),
+            FixedWindowConfig::new(30, Duration::from_secs(60)),
+        ),
+        (
+            "core".to_string(),
+            FixedWindowConfig::new(1000, Duration::from_secs(60 * 60)),
+        ),
+    ])));
     let (app, _ct) = create_router(state, CancellationToken::new());
     let app = app.layer(MockConnectInfo(SocketAddr::from(([10, 0, 0, 3], 1337))));
     let token = admin_token();
@@ -578,10 +655,94 @@ async fn test_usage_stats_reports_allowed_and_limited() {
     .await;
     assert_eq!(response.status(), StatusCode::OK);
     let value = response_to_json(response).await;
-    let auth = &value["data"]["auth"];
+    let resources = value["data"]["resources"]
+        .as_array()
+        .expect("resources array");
+    let auth = resources
+        .iter()
+        .find(|resource| resource["name"] == "auth")
+        .expect("auth present");
     assert_eq!(auth["allowed"], 3);
     assert_eq!(auth["limited"], 1);
     assert_eq!(auth["active_keys"], 1);
+
+    tear_down(container).await;
+}
+
+async fn post_mcp(app: Router, token: &str) -> Response<Body> {
+    let request = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .header(
+            axum::http::header::ACCEPT,
+            "application/json, text/event-stream",
+        )
+        .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::from(
+            r#"{"jsonrpc":"2.0","id":1,"method":"unknown_method","params":{}}"#,
+        ))
+        .unwrap();
+    app.oneshot(request).await.unwrap()
+}
+
+async fn drain(response: Response<Body>) {
+    tokio::time::timeout(Duration::from_secs(5), response.into_body().collect())
+        .await
+        .expect("response body must finish")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_mcp_rate_limited_per_principal() {
+    let (container, mut state) = setup_database().await;
+    Jwt::init(Arc::new(auth_config()));
+    state.usage_registry = Arc::new(UsageRegistry::new(UsageConfig::new(vec![
+        (
+            "auth".to_string(),
+            FixedWindowConfig::new(20, Duration::from_secs(15 * 60)),
+        ),
+        (
+            "ota".to_string(),
+            FixedWindowConfig::new(30, Duration::from_secs(60)),
+        ),
+        (
+            "mcp".to_string(),
+            FixedWindowConfig::new(3, Duration::from_secs(60 * 60)),
+        ),
+        (
+            "core".to_string(),
+            FixedWindowConfig::new(1000, Duration::from_secs(60 * 60)),
+        ),
+    ])));
+    let (app, _ct) = create_router(state, CancellationToken::new());
+    let app = app.layer(MockConnectInfo(SocketAddr::from(([10, 0, 0, 5], 1337))));
+
+    let token = Jwt::global()
+        .access_token_encode(&Principal {
+            id: String::from("rate-limit-device"),
+            name: Some(String::from("probe")),
+            token_type: String::from("mcp"),
+        })
+        .expect("encode mcp token");
+
+    for i in 0..3 {
+        let response = post_mcp(app.clone(), &token).await;
+        assert_ne!(
+            response.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "request {i} should be allowed"
+        );
+        drain(response).await;
+    }
+
+    let response = post_mcp(app, &token).await;
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        response.headers().get("x-ratelimit-resource").unwrap(),
+        "mcp"
+    );
+    drain(response).await;
 
     tear_down(container).await;
 }

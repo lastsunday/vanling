@@ -24,9 +24,7 @@ use framework::{
     data::{ApiResponse, PageData, PageParam, paginate},
     error::{AppResult, framework_code::FrameworkErrorCode},
     middleware::get_auth_layer,
-    rate_limit::{
-        BucketSnapshot, RateLimitDecision, Resource, SlidingWindowConfig, SlidingWindowCounter,
-    },
+    rate_limit::{BucketSnapshot, RateLimitDecision, SlidingWindowConfig, SlidingWindowCounter},
 };
 use http_body::Frame;
 use sea_orm::{
@@ -39,7 +37,7 @@ use utoipa::{IntoParams, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::AppState;
-use crate::config::security::SecurityConfig;
+use crate::config::security::{RateLimitKeyBy, RateLimitMatcher, SecurityConfig};
 
 const TAG: &str = "security";
 
@@ -53,41 +51,49 @@ fn login_fail_counter(security: &SecurityConfig) -> &'static SlidingWindowCounte
     })
 }
 
-/// Resolved rate-limit bucket: resource + identity key for the usage registry,
-/// plus the authenticated principal identity and display name for the audit
-/// trail. Public auth/ota endpoints are keyed per-IP and carry no principal;
-/// authenticated `/api/*` endpoints are keyed per-user (`user:{id}`) with the
-/// principal fields recorded. `GET /api/security/rate_limit` never counts.
+/// Resolved rate-limit bucket: resource name + identity key for the usage
+/// registry, plus the authenticated principal identity and display name for the
+/// audit trail. Public auth/ota endpoints are keyed per-IP and carry no
+/// principal; authenticated `/api/*` endpoints are keyed per-user
+/// (`user:{id}`) with the principal fields recorded. `GET
+/// /api/security/rate_limit` never counts.
 struct BucketKey {
-    resource: Resource,
+    resource: String,
     key: String,
     principal_id: Option<String>,
     name: Option<String>,
 }
 
-fn resolve_bucket(path: &str, ip: &str, principal: Option<&Principal>) -> Option<BucketKey> {
-    match path {
-        "/api/auth/login" | "/api/auth/access_token" => Some(BucketKey {
-            resource: Resource::Auth,
-            key: format!("ip:{ip}"),
-            principal_id: None,
-            name: None,
-        }),
-        "/api/ota" | "/api/ota/activate" => Some(BucketKey {
-            resource: Resource::Ota,
-            key: format!("ip:{ip}"),
-            principal_id: None,
-            name: None,
-        }),
-        "/api/security/rate_limit" => None,
-        _ if path.starts_with("/api/") => principal.map(|p| BucketKey {
-            resource: Resource::Core,
-            key: format!("user:{}", p.id),
-            principal_id: Some(p.id.clone()),
-            name: p.name.clone(),
-        }),
-        _ => None,
+fn resolve_bucket(
+    path: &str,
+    ip: &str,
+    principal: Option<&Principal>,
+    matchers: &[RateLimitMatcher],
+) -> Option<BucketKey> {
+    if path == "/api/security/rate_limit" {
+        return None;
     }
+    let matcher = matchers.iter().find(|matcher| matcher.matches(path))?;
+    if !matcher.count {
+        return None;
+    }
+    let (key, principal_id, name) = match matcher.key_by {
+        RateLimitKeyBy::Ip => (format!("ip:{ip}"), None, None),
+        RateLimitKeyBy::Principal => {
+            let principal = principal?;
+            (
+                format!("user:{}", principal.id),
+                Some(principal.id.clone()),
+                principal.name.clone(),
+            )
+        }
+    };
+    Some(BucketKey {
+        resource: matcher.name.clone(),
+        key,
+        principal_id,
+        name,
+    })
 }
 
 fn extract_ip(request: &Request) -> String {
@@ -251,6 +257,7 @@ pub async fn security_middleware(
         conn,
         security_config,
         usage_registry,
+        rate_limit_matchers,
         ..
     }): State<AppState>,
     request: Request,
@@ -261,7 +268,12 @@ pub async fn security_middleware(
     let is_login = path == "/api/auth/login";
     let principal = bearer_principal(&request);
 
-    let mut access_log = if security_config.api_access_log_enabled && path.starts_with("/api/") {
+    let mut access_log = if security_config.api_access_log_enabled
+        && security_config
+            .access_log_path_prefixes
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+    {
         Some(PendingAccessLog {
             conn: conn.clone(),
             request_id: xid::new().to_string(),
@@ -284,11 +296,11 @@ pub async fn security_middleware(
     };
     let access_started = Instant::now();
 
-    let bucket = resolve_bucket(&path, &ip, principal.as_ref());
+    let bucket = resolve_bucket(&path, &ip, principal.as_ref(), &rate_limit_matchers);
 
     let allowed_bucket = match &bucket {
-        Some(bucket) => match usage_registry.check(bucket.resource, &bucket.key) {
-            RateLimitDecision::Limited { limit, retry_after } => {
+        Some(bucket) => match usage_registry.check(&bucket.resource, &bucket.key) {
+            Some(RateLimitDecision::Limited { limit, retry_after }) => {
                 tracing::warn!(
                     component = "RATELIMIT",
                     event = "rate_limited",
@@ -312,17 +324,20 @@ pub async fn security_middleware(
                             retry_after,
                             limit,
                             remaining: 0,
-                            window_secs: usage_registry.window_secs(bucket.resource),
+                            window_secs: usage_registry.window_secs(&bucket.resource).unwrap_or(0),
                         },
                     ),
                 );
                 return finish_access_log(
                     access_log,
                     access_started,
-                    build_limited_response(bucket.resource, limit, 0, retry_after),
+                    build_limited_response(&bucket.resource, limit, 0, retry_after),
                 );
             }
-            RateLimitDecision::Allowed { .. } => usage_registry.peek(bucket.resource, &bucket.key),
+            Some(RateLimitDecision::Allowed { .. }) => {
+                usage_registry.peek(&bucket.resource, &bucket.key)
+            }
+            None => None,
         },
         None => None,
     };
@@ -376,11 +391,16 @@ pub async fn security_middleware(
                         },
                     ),
                 );
+                let resource = rate_limit_matchers
+                    .iter()
+                    .find(|matcher| matcher.matches("/api/auth/login"))
+                    .map(|matcher| matcher.name.clone())
+                    .unwrap_or_else(|| String::from("auth"));
                 return finish_access_log(
                     access_log,
                     access_started,
                     build_limited_response(
-                        Resource::Auth,
+                        &resource,
                         security_config.login_fail_limit,
                         0,
                         e.retry_after,
@@ -398,7 +418,7 @@ pub async fn security_middleware(
     let mut response = response;
 
     if let (Some(bucket), Some(snapshot)) = (&bucket, allowed_bucket) {
-        apply_usage_headers(response.headers_mut(), bucket.resource, snapshot);
+        apply_usage_headers(response.headers_mut(), &bucket.resource, snapshot);
         if snapshot.remaining <= 1 {
             tracing::info!(
                 component = "RATELIMIT",
@@ -421,7 +441,7 @@ pub async fn security_middleware(
                         retry_after: snapshot.reset_after,
                         limit: snapshot.limit,
                         remaining: snapshot.remaining,
-                        window_secs: usage_registry.window_secs(bucket.resource),
+                        window_secs: usage_registry.window_secs(&bucket.resource).unwrap_or(0),
                     },
                 ),
             );
@@ -470,7 +490,7 @@ fn rate_limited_model(
 }
 
 fn build_limited_response(
-    resource: Resource,
+    resource: &str,
     limit: u32,
     remaining: u32,
     retry_after: Duration,
@@ -506,12 +526,12 @@ fn build_limited_response(
     );
     headers.insert(
         "x-ratelimit-resource",
-        HeaderValue::from_str(resource.as_str()).expect("resource is valid"),
+        HeaderValue::from_str(resource).expect("resource is valid"),
     );
     response
 }
 
-fn apply_usage_headers(headers: &mut HeaderMap, resource: Resource, snapshot: BucketSnapshot) {
+fn apply_usage_headers(headers: &mut HeaderMap, resource: &str, snapshot: BucketSnapshot) {
     let reset = Local::now().timestamp() + snapshot.reset_after.as_secs() as i64;
     headers.insert(
         "x-ratelimit-limit",
@@ -531,7 +551,7 @@ fn apply_usage_headers(headers: &mut HeaderMap, resource: Resource, snapshot: Bu
     );
     headers.insert(
         "x-ratelimit-resource",
-        HeaderValue::from_str(resource.as_str()).expect("resource is valid"),
+        HeaderValue::from_str(resource).expect("resource is valid"),
     );
 }
 
@@ -653,6 +673,8 @@ pub struct AccessLogListParams {
     pub ip: Option<String>,
     /// 身份名称（用户登录名 / 设备类型）
     pub name: Option<String>,
+    /// 身份编号
+    pub principal_id: Option<String>,
     /// 状态码
     pub status: Option<i32>,
 }
@@ -680,6 +702,9 @@ async fn list_access_logs(
     }
     if let Some(ref name) = params.name {
         query = query.filter(api_access_log::Column::Name.eq(name));
+    }
+    if let Some(ref principal_id) = params.principal_id {
+        query = query.filter(api_access_log::Column::PrincipalId.eq(principal_id));
     }
     if let Some(status) = params.status {
         query = query.filter(api_access_log::Column::Status.eq(status));
@@ -788,24 +813,18 @@ async fn event_stats(
     })))
 }
 
-#[derive(Debug, Serialize, ToSchema, Default)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct RateLimitBucketInfo {
-    limit: u32,
-    used: u32,
-    remaining: u32,
-    reset: i64,
+    pub name: String,
+    pub limit: u32,
+    pub used: u32,
+    pub remaining: u32,
+    pub reset: i64,
 }
 
 #[derive(Debug, Serialize, ToSchema, Default)]
 pub struct RateLimitResult {
-    resources: RateLimitResources,
-}
-
-#[derive(Debug, Serialize, ToSchema, Default)]
-pub struct RateLimitResources {
-    auth: RateLimitBucketInfo,
-    ota: RateLimitBucketInfo,
-    core: RateLimitBucketInfo,
+    resources: Vec<RateLimitBucketInfo>,
 }
 
 #[debug_handler]
@@ -813,40 +832,48 @@ pub struct RateLimitResources {
     (status=OK,body=ApiResponse<RateLimitResult>)
 ))]
 async fn rate_limit(
-    State(AppState { usage_registry, .. }): State<AppState>,
+    State(AppState {
+        usage_registry,
+        rate_limit_matchers,
+        ..
+    }): State<AppState>,
     Extension(principal): Extension<Principal>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> AppResult<ApiResponse<RateLimitResult>> {
     let ip = addr.ip().to_string();
-    let bucket = |resource: Resource, key: String| {
-        let limit = usage_registry.limit(resource);
-        let window_secs = usage_registry.window_secs(resource);
-        match usage_registry.peek(resource, &key) {
+    let mut resources = Vec::with_capacity(rate_limit_matchers.len());
+    for matcher in rate_limit_matchers.iter() {
+        let key = match matcher.key_by {
+            RateLimitKeyBy::Ip => format!("ip:{ip}"),
+            RateLimitKeyBy::Principal => format!("user:{}", principal.id),
+        };
+        let limit = usage_registry.limit(&matcher.name).unwrap_or(matcher.limit);
+        let window_secs = usage_registry
+            .window_secs(&matcher.name)
+            .unwrap_or(matcher.window_secs);
+        resources.push(match usage_registry.peek(&matcher.name, &key) {
             Some(snapshot) => RateLimitBucketInfo {
-                limit,
+                name: matcher.name.clone(),
+                limit: snapshot.limit,
                 used: snapshot.used,
                 remaining: snapshot.remaining,
                 reset: Local::now().timestamp() + snapshot.reset_after.as_secs() as i64,
             },
             None => RateLimitBucketInfo {
+                name: matcher.name.clone(),
                 limit,
                 used: 0,
                 remaining: limit,
                 reset: Local::now().timestamp() + window_secs as i64,
             },
-        }
-    };
-    Ok(ApiResponse::success(Some(RateLimitResult {
-        resources: RateLimitResources {
-            auth: bucket(Resource::Auth, format!("ip:{ip}")),
-            ota: bucket(Resource::Ota, format!("ip:{ip}")),
-            core: bucket(Resource::Core, format!("user:{}", principal.id)),
-        },
-    })))
+        });
+    }
+    Ok(ApiResponse::success(Some(RateLimitResult { resources })))
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ResourceUsageInfo {
+    pub name: String,
     pub limit: u32,
     pub window_secs: u64,
     pub active_keys: usize,
@@ -863,15 +890,17 @@ pub struct BucketUsageInfo {
     pub reset_after_secs: u64,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, Default)]
 pub struct UsageStatsResult {
-    pub auth: ResourceUsageInfo,
-    pub ota: ResourceUsageInfo,
-    pub core: ResourceUsageInfo,
+    pub resources: Vec<ResourceUsageInfo>,
 }
 
-fn resource_usage_info(usage: &framework::rate_limit::ResourceUsage) -> ResourceUsageInfo {
+fn resource_usage_info(
+    name: String,
+    usage: &framework::rate_limit::ResourceUsage,
+) -> ResourceUsageInfo {
     ResourceUsageInfo {
+        name,
         limit: usage.limit,
         window_secs: usage.window_secs,
         active_keys: usage.active_keys,
@@ -908,9 +937,10 @@ async fn usage_stats(
     let top_n = params.top_n.unwrap_or(10).clamp(1, 200);
     let stats = usage_registry.usage_stats(top_n);
     Ok(ApiResponse::success(Some(UsageStatsResult {
-        auth: resource_usage_info(&stats.auth),
-        ota: resource_usage_info(&stats.ota),
-        core: resource_usage_info(&stats.core),
+        resources: stats
+            .into_iter()
+            .map(|(name, usage)| resource_usage_info(name, &usage))
+            .collect(),
     })))
 }
 

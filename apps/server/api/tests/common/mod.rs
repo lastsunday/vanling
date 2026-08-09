@@ -63,6 +63,11 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                     ..Default::default()
                 }),
                 usage_registry: Arc::new(framework::rate_limit::UsageRegistry::default()),
+                rate_limit_matchers: Arc::new(
+                    SecurityConfig::default()
+                        .compile_matchers()
+                        .expect("default matchers compile"),
+                ),
                 cancellation_token: CancellationToken::new(),
             };
             (Some(container), state)
@@ -97,6 +102,11 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                     ..Default::default()
                 }),
                 usage_registry: Arc::new(framework::rate_limit::UsageRegistry::default()),
+                rate_limit_matchers: Arc::new(
+                    SecurityConfig::default()
+                        .compile_matchers()
+                        .expect("default matchers compile"),
+                ),
                 cancellation_token: CancellationToken::new(),
             };
             (container, state)

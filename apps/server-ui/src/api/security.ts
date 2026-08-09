@@ -40,6 +40,7 @@ export async function listAccessLogs(
   path?: string,
   ip?: string,
   name?: string,
+  principalId?: string,
   status?: number,
 ): Promise<AccessLogListResult> {
   return getJson('/api/security/access_logs', {
@@ -49,6 +50,7 @@ export async function listAccessLogs(
     path: path || undefined,
     ip: ip || undefined,
     name: name || undefined,
+    principal_id: principalId || undefined,
     status,
   } as Record<string, unknown>)
 }

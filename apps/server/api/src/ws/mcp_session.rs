@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::config::mcp::McpConfig;
 use crate::mcp::client::{
     create_external_mcp_client, device::DeviceMcpClient, device_transport::DeviceMcpTransport,
+    resolve_mcp_auth_token,
 };
 use crate::ws::filter::{FilterAction, FilterCtx, InputFilter};
 
@@ -19,7 +20,11 @@ pub(crate) struct McpContext {
     pub output_rx: tokio::sync::mpsc::UnboundedReceiver<OutputMessage>,
 }
 
-pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig) -> McpContext {
+pub(crate) async fn setup_mcp_session(
+    session_id: String,
+    mcp_config: &McpConfig,
+    device_id: Option<String>,
+) -> McpContext {
     let (mcp_input_tx, mcp_input_rx) = tokio::sync::mpsc::channel::<ServerJsonRpcMessage>(64);
     let (mcp_output_tx, mcp_output_rx) = tokio::sync::mpsc::unbounded_channel::<OutputMessage>();
 
@@ -27,9 +32,14 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
         session_id.clone(),
     ))));
 
-    if let Some(uri_list) = &mcp_config.uri_list {
-        for uri in uri_list {
-            let external_mcp_client = create_external_mcp_client(uri.to_string()).await;
+    if !mcp_config.server_list.is_empty() {
+        for server in &mcp_config.server_list {
+            let subject_id = device_id.as_deref().unwrap_or(&session_id);
+            let external_mcp_client = create_external_mcp_client(
+                server.uri.clone(),
+                resolve_mcp_auth_token(server, subject_id),
+            )
+            .await;
             match external_mcp_client {
                 Ok(client) => {
                     registry.lock().await.add_client(Arc::new(client)).await;
@@ -38,7 +48,7 @@ pub(crate) async fn setup_mcp_session(session_id: String, mcp_config: &McpConfig
                     tracing::warn!(
                         component = "MCP", event = "mcp_server_init_failed",
                         session_id = %session_id,
-                        uri = %uri,
+                        uri = %server.uri,
                         error = %e,
                         "mcp server init failed"
                     );

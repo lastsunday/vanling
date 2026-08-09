@@ -74,29 +74,20 @@
 #
 #auth_client_secret = "ujTgh2lEQYy0PXhK"
 
-# Per-IP auth bucket request limit within the auth window.
+# Named rate-limit resources matched by regex route patterns.
 #
-#security_rate_limit_auth_limit = 20
-
-# Auth bucket window in seconds.
+# Each entry is a table with:
+# - `name`: unique resource name, surfaced via `x-ratelimit-resource`.
+# - `limit` / `window_secs`: quota within the window.
+# - `key_by`: `"ip"` (per peer address) or `"principal"` (per user).
+# - `paths`: regex patterns against the request path; the FIRST resource
+#   with a matching pattern owns the request, so list order is priority
+#   (specific resources must precede broad ones such as `^/api/`).
+# - `count`: optional, default `true`; `false` never records requests.
 #
-#security_rate_limit_auth_window_secs = 900
-
-# Per-IP OTA bucket request limit within the OTA window.
+# Invalid names, duplicate patterns and unparseable regexes abort startup.
 #
-#security_rate_limit_ota_limit = 30
-
-# OTA bucket window in seconds.
-#
-#security_rate_limit_ota_window_secs = 60
-
-# Per-user core API bucket request limit within the core window.
-#
-#security_rate_limit_core_limit = 5000
-
-# Core bucket window in seconds.
-#
-#security_rate_limit_core_window_secs = 3600
+#security_rate_limit_resources = [{ name = "auth", limit = 20, window_secs = 900, key_by = "ip", paths = ["^/api/auth/"] }, { name = "ota", limit = 30, window_secs = 60, key_by = "ip", paths = ["^/api/ota"] }, { name = "mcp", limit = 5000, window_secs = 3600, key_by = "principal", paths = ["^/mcp"] }, { name = "core", limit = 5000, window_secs = 3600, key_by = "principal", paths = ["^/api/"] }]
 
 # Per-account login failures allowed within the lockout window.
 #
@@ -114,13 +105,18 @@
 #
 #security_cleanup_interval_secs = 21600
 
-# Whether every `/api/*` request is persisted to the access log table.
+# Whether every request matching `security_api_access_log_path_prefixes`
+# is persisted to the access log table.
 #
 #security_api_access_log_enabled = true
 
 # API access log retention in days before the cleanup loop deletes them.
 #
 #security_api_access_log_retention_days = 30
+
+# Path prefixes whose requests are persisted to the access log table.
+#
+#security_api_access_log_path_prefixes = ["/api/", "/mcp"]
 
 # WebSocket URL scheme (ws or wss).
 #
@@ -285,9 +281,13 @@
 #
 #session_barge_in_lockout_ms = 250
 
-# List of MCP server URIs.
+# List of MCP server configurations. Each entry uses one of three auth modes:
+# - `self_signed = true`: server signs its own token for the local `/mcp`.
+# - `token`: static token for external servers. It is a bare token; the
+#   Streamable HTTP transport adds the `Bearer ` prefix itself.
+# - neither: no Authorization header is sent (open server).
 #
-#mcp_uri_list = ["http://127.0.0.1:3000/mcp"]
+#mcp_server_list = [{ uri = "http://127.0.0.1:3000/mcp", self_signed = true }]
 
 # Enable Matrix messaging integration.
 #

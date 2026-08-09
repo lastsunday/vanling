@@ -190,7 +190,12 @@ where
 {
     tracing::info!(component = "WS", event = "session_started", session_id = %ctx.session_id, device_id = ?ctx.device_id, "session started");
 
-    let mcp_ctx = setup_mcp_session(ctx.session_id.clone(), &ctx.mcp_config).await;
+    let mcp_ctx = setup_mcp_session(
+        ctx.session_id.clone(),
+        &ctx.mcp_config,
+        ctx.device_id.clone(),
+    )
+    .await;
 
     let session_ctx = SessionBuilder::new()
         .with_id(ctx.session_id.clone())

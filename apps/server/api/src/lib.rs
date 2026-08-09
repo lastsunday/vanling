@@ -76,7 +76,7 @@ use crate::config::database::DatabaseConfig;
 use crate::config::llm::LlmConfig;
 use crate::config::matrix::MatrixConfig;
 use crate::config::mcp::McpConfig;
-use crate::config::security::SecurityConfig;
+use crate::config::security::{RateLimitMatcher, SecurityConfig};
 use crate::config::server::ServerConfig;
 use crate::config::session::SessionConfig;
 use crate::config::tts::TtsConfig;
@@ -154,6 +154,11 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         security_config: security_config.clone(),
         ws_config: ws_config.clone(),
         usage_registry: Arc::new(UsageRegistry::new(security_config.to_usage_config())),
+        rate_limit_matchers: Arc::new(
+            security_config
+                .compile_matchers()
+                .expect("validated rate limit resource config"),
+        ),
         cancellation_token: shutdown_token,
     };
     handles.push(tokio::spawn(async move {
@@ -444,5 +449,6 @@ pub struct AppState {
     pub security_config: Arc<SecurityConfig>,
     pub ws_config: Arc<WsConfig>,
     pub usage_registry: Arc<UsageRegistry>,
+    pub rate_limit_matchers: Arc<Vec<RateLimitMatcher>>,
     pub cancellation_token: CancellationToken,
 }

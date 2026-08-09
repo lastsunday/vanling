@@ -45,50 +45,41 @@ pub struct BucketSnapshot {
     pub reset_after: Duration,
 }
 
-/// Rate-limit bucket resources exposed to clients via the
-/// `x-ratelimit-resource` header and `GET /api/security/rate_limit`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Resource {
-    Auth,
-    Ota,
-    Core,
-}
-
-impl Resource {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Resource::Auth => "auth",
-            Resource::Ota => "ota",
-            Resource::Core => "core",
-        }
-    }
-}
-
-/// Per-resource quota configuration for the [`UsageRegistry`].
-#[derive(Debug, Clone, Copy)]
+/// Rate-limit quota configuration for the [`UsageRegistry`].
+///
+/// Resource order is significant: matching, introspection and usage stats all
+/// follow the order of `resources`.
+#[derive(Debug, Clone)]
 pub struct UsageConfig {
-    pub auth: FixedWindowConfig,
-    pub ota: FixedWindowConfig,
-    pub core: FixedWindowConfig,
+    pub resources: Vec<(String, FixedWindowConfig)>,
 }
 
 impl Default for UsageConfig {
     fn default() -> Self {
-        Self {
-            auth: FixedWindowConfig::new(20, Duration::from_secs(15 * 60)),
-            ota: FixedWindowConfig::new(30, Duration::from_secs(60)),
-            core: FixedWindowConfig::new(1000, Duration::from_secs(60 * 60)),
-        }
+        Self::new(vec![
+            (
+                "auth".to_string(),
+                FixedWindowConfig::new(20, Duration::from_secs(15 * 60)),
+            ),
+            (
+                "ota".to_string(),
+                FixedWindowConfig::new(30, Duration::from_secs(60)),
+            ),
+            (
+                "mcp".to_string(),
+                FixedWindowConfig::new(1000, Duration::from_secs(60 * 60)),
+            ),
+            (
+                "core".to_string(),
+                FixedWindowConfig::new(1000, Duration::from_secs(60 * 60)),
+            ),
+        ])
     }
 }
 
 impl UsageConfig {
-    pub const fn new(
-        auth: FixedWindowConfig,
-        ota: FixedWindowConfig,
-        core: FixedWindowConfig,
-    ) -> Self {
-        Self { auth, ota, core }
+    pub fn new(resources: Vec<(String, FixedWindowConfig)>) -> Self {
+        Self { resources }
     }
 }
 
@@ -103,20 +94,10 @@ pub struct ResourceUsage {
     pub top_keys: Vec<(String, BucketSnapshot)>,
 }
 
-/// Runtime usage snapshot across all three resources.
-#[derive(Debug, Clone)]
-pub struct UsageStats {
-    pub auth: ResourceUsage,
-    pub ota: ResourceUsage,
-    pub core: ResourceUsage,
-}
-
-/// In-memory rate-limit buckets for the three GitHub-style resources.
+/// In-memory rate-limit buckets for a set of named resources.
 #[derive(Debug)]
 pub struct UsageRegistry {
-    auth: FixedWindowLimiter,
-    ota: FixedWindowLimiter,
-    core: FixedWindowLimiter,
+    limiters: HashMap<String, FixedWindowLimiter>,
     config: UsageConfig,
 }
 
@@ -128,66 +109,70 @@ impl Default for UsageRegistry {
 
 impl UsageRegistry {
     pub fn new(config: UsageConfig) -> Self {
-        Self {
-            auth: FixedWindowLimiter::new(config.auth),
-            ota: FixedWindowLimiter::new(config.ota),
-            core: FixedWindowLimiter::new(config.core),
-            config,
-        }
+        let limiters = config
+            .resources
+            .iter()
+            .map(|(name, cfg)| (name.clone(), FixedWindowLimiter::new(*cfg)))
+            .collect();
+        Self { limiters, config }
     }
 
-    pub fn check(&self, resource: Resource, key: &str) -> RateLimitDecision {
-        self.limiter(resource).check(key)
+    /// Records one request for `name`/`key`. Returns `None` when `name` is not
+    /// a configured resource.
+    pub fn check(&self, name: &str, key: &str) -> Option<RateLimitDecision> {
+        self.limiter(name).map(|limiter| limiter.check(key))
     }
 
-    pub fn peek(&self, resource: Resource, key: &str) -> Option<BucketSnapshot> {
-        self.limiter(resource).peek(key)
+    /// Returns the current usage snapshot for `name`/`key` without recording a
+    /// request. `None` when `name` is unknown or `key` has no active bucket.
+    pub fn peek(&self, name: &str, key: &str) -> Option<BucketSnapshot> {
+        self.limiter(name)?.peek(key)
     }
 
-    pub fn limit(&self, resource: Resource) -> u32 {
-        self.config_for(resource).limit
+    pub fn limit(&self, name: &str) -> Option<u32> {
+        self.config_for(name).map(|cfg| cfg.limit)
     }
 
-    pub fn window_secs(&self, resource: Resource) -> u64 {
-        self.config_for(resource).window.as_secs()
+    pub fn window_secs(&self, name: &str) -> Option<u64> {
+        self.config_for(name).map(|cfg| cfg.window.as_secs())
     }
 
-    /// Returns runtime usage snapshots for all three resources, with up to
-    /// `top_n` keys per resource.
-    pub fn usage_stats(&self, top_n: usize) -> UsageStats {
-        UsageStats {
-            auth: self.resource_usage(Resource::Auth, top_n),
-            ota: self.resource_usage(Resource::Ota, top_n),
-            core: self.resource_usage(Resource::Core, top_n),
-        }
+    /// Returns runtime usage snapshots for all configured resources in config
+    /// order, with up to `top_n` keys per resource.
+    pub fn usage_stats(&self, top_n: usize) -> Vec<(String, ResourceUsage)> {
+        self.config
+            .resources
+            .iter()
+            .filter_map(|(name, _)| {
+                let usage = self.resource_usage(name, top_n)?;
+                Some((name.clone(), usage))
+            })
+            .collect()
     }
 
-    fn resource_usage(&self, resource: Resource, top_n: usize) -> ResourceUsage {
-        let limiter = self.limiter(resource);
-        ResourceUsage {
-            limit: self.limit(resource),
-            window_secs: self.window_secs(resource),
+    fn resource_usage(&self, name: &str, top_n: usize) -> Option<ResourceUsage> {
+        let limiter = self.limiters.get(name)?;
+        let (_, cfg) = self.config.resources.iter().find(|(n, _)| n == name)?;
+        Some(ResourceUsage {
+            limit: cfg.limit,
+            window_secs: cfg.window.as_secs(),
             active_keys: limiter.active_keys(),
             allowed: limiter.allowed(),
             limited: limiter.limited(),
             top_keys: limiter.top_keys(top_n),
-        }
+        })
     }
 
-    fn limiter(&self, resource: Resource) -> &FixedWindowLimiter {
-        match resource {
-            Resource::Auth => &self.auth,
-            Resource::Ota => &self.ota,
-            Resource::Core => &self.core,
-        }
+    fn limiter(&self, name: &str) -> Option<&FixedWindowLimiter> {
+        self.limiters.get(name)
     }
 
-    fn config_for(&self, resource: Resource) -> FixedWindowConfig {
-        match resource {
-            Resource::Auth => self.config.auth,
-            Resource::Ota => self.config.ota,
-            Resource::Core => self.config.core,
-        }
+    fn config_for(&self, name: &str) -> Option<FixedWindowConfig> {
+        self.config
+            .resources
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, cfg)| *cfg)
     }
 }
 
@@ -492,80 +477,137 @@ mod tests {
     }
 
     #[test]
+    fn default_usage_registry_has_configured_resources() {
+        let registry = UsageRegistry::default();
+        assert_eq!(registry.limit("auth"), Some(20));
+        assert_eq!(registry.limit("ota"), Some(30));
+        assert_eq!(registry.limit("core"), Some(1000));
+        assert_eq!(registry.limit("mcp"), Some(1000));
+        assert_eq!(registry.limit("unknown"), None);
+        assert_eq!(registry.window_secs("unknown"), None);
+        assert!(registry.check("unknown", "key").is_none());
+    }
+
+    #[test]
     fn usage_registry_tracks_resources_independently() {
-        let registry = UsageRegistry::new(UsageConfig::new(
-            FixedWindowConfig::new(2, Duration::from_millis(60_000)),
-            FixedWindowConfig::new(3, Duration::from_millis(60_000)),
-            FixedWindowConfig::new(4, Duration::from_millis(60_000)),
+        let registry = UsageRegistry::new(UsageConfig::new(vec![
+            (
+                "auth".to_string(),
+                FixedWindowConfig::new(2, Duration::from_millis(60_000)),
+            ),
+            (
+                "ota".to_string(),
+                FixedWindowConfig::new(3, Duration::from_millis(60_000)),
+            ),
+            (
+                "core".to_string(),
+                FixedWindowConfig::new(4, Duration::from_millis(60_000)),
+            ),
+        ]));
+        assert!(matches!(
+            registry.check("auth", "ip:1"),
+            Some(RateLimitDecision::Allowed { remaining: 1, .. })
         ));
         assert!(matches!(
-            registry.check(Resource::Auth, "ip:1"),
-            RateLimitDecision::Allowed { remaining: 1, .. }
+            registry.check("auth", "ip:1"),
+            Some(RateLimitDecision::Allowed { remaining: 0, .. })
         ));
         assert!(matches!(
-            registry.check(Resource::Auth, "ip:1"),
-            RateLimitDecision::Allowed { remaining: 0, .. }
+            registry.check("auth", "ip:1"),
+            Some(RateLimitDecision::Limited { .. })
         ));
+        assert_eq!(registry.limit("ota"), Some(3));
+        assert_eq!(registry.window_secs("core"), Some(60));
+        assert!(registry.peek("core", "user:a").is_none());
         assert!(matches!(
-            registry.check(Resource::Auth, "ip:1"),
-            RateLimitDecision::Limited { .. }
+            registry.check("core", "user:a"),
+            Some(RateLimitDecision::Allowed { remaining: 3, .. })
         ));
-        assert_eq!(registry.limit(Resource::Ota), 3);
-        assert_eq!(registry.window_secs(Resource::Core), 60);
-        assert!(registry.peek(Resource::Core, "user:a").is_none());
-        assert!(matches!(
-            registry.check(Resource::Core, "user:a"),
-            RateLimitDecision::Allowed { remaining: 3, .. }
-        ));
-        let snapshot = registry
-            .peek(Resource::Core, "user:a")
-            .expect("bucket exists");
+        let snapshot = registry.peek("core", "user:a").expect("bucket exists");
         assert_eq!(snapshot.used, 1);
     }
 
     #[test]
     fn usage_registry_exposes_counters_and_top_keys() {
-        let registry = UsageRegistry::new(UsageConfig::new(
-            FixedWindowConfig::new(2, Duration::from_millis(60_000)),
-            FixedWindowConfig::new(3, Duration::from_millis(60_000)),
-            FixedWindowConfig::new(4, Duration::from_millis(60_000)),
-        ));
-        registry.check(Resource::Auth, "ip:1");
-        registry.check(Resource::Auth, "ip:1");
-        registry.check(Resource::Auth, "ip:1");
-        registry.check(Resource::Auth, "ip:2");
-        registry.check(Resource::Ota, "ip:9");
-        registry.check(Resource::Ota, "ip:9");
-        registry.check(Resource::Ota, "ip:9");
-        registry.check(Resource::Ota, "ip:9");
+        let registry = UsageRegistry::new(UsageConfig::new(vec![
+            (
+                "auth".to_string(),
+                FixedWindowConfig::new(2, Duration::from_millis(60_000)),
+            ),
+            (
+                "ota".to_string(),
+                FixedWindowConfig::new(3, Duration::from_millis(60_000)),
+            ),
+            (
+                "core".to_string(),
+                FixedWindowConfig::new(4, Duration::from_millis(60_000)),
+            ),
+        ]));
+        registry.check("auth", "ip:1");
+        registry.check("auth", "ip:1");
+        registry.check("auth", "ip:1");
+        registry.check("auth", "ip:2");
+        registry.check("ota", "ip:9");
+        registry.check("ota", "ip:9");
+        registry.check("ota", "ip:9");
+        registry.check("ota", "ip:9");
 
         let stats = registry.usage_stats(10);
-        assert_eq!(stats.auth.limit, 2);
-        assert_eq!(stats.auth.allowed, 3);
-        assert_eq!(stats.auth.limited, 1);
-        assert_eq!(stats.auth.active_keys, 2);
-        let top = &stats.auth.top_keys;
+        let auth = stats
+            .iter()
+            .find(|(name, _)| name == "auth")
+            .expect("auth present");
+        let ota = stats
+            .iter()
+            .find(|(name, _)| name == "ota")
+            .expect("ota present");
+        let core = stats
+            .iter()
+            .find(|(name, _)| name == "core")
+            .expect("core present");
+        assert_eq!(auth.1.limit, 2);
+        assert_eq!(auth.1.allowed, 3);
+        assert_eq!(auth.1.limited, 1);
+        assert_eq!(auth.1.active_keys, 2);
+        let top = &auth.1.top_keys;
         assert_eq!(top.len(), 2);
         assert_eq!(top[0].0, "ip:1");
         assert_eq!(top[0].1.used, 2);
-        assert_eq!(stats.ota.limited, 1);
-        assert_eq!(stats.ota.allowed, 3);
-        assert_eq!(stats.core.allowed, 0);
-        assert_eq!(stats.core.limited, 0);
+        assert_eq!(ota.1.limited, 1);
+        assert_eq!(ota.1.allowed, 3);
+        assert_eq!(core.1.allowed, 0);
+        assert_eq!(core.1.limited, 0);
     }
 
     #[test]
     fn usage_stats_respects_top_n() {
-        let registry = UsageRegistry::new(UsageConfig::new(
+        let registry = UsageRegistry::new(UsageConfig::new(vec![(
+            "auth".to_string(),
             FixedWindowConfig::new(100, Duration::from_millis(60_000)),
-            FixedWindowConfig::new(100, Duration::from_millis(60_000)),
-            FixedWindowConfig::new(100, Duration::from_millis(60_000)),
-        ));
+        )]));
         for i in 0..5 {
-            registry.check(Resource::Auth, &format!("ip:{i}"));
+            registry.check("auth", &format!("ip:{i}"));
         }
-        assert_eq!(registry.usage_stats(2).auth.top_keys.len(), 2);
-        assert_eq!(registry.usage_stats(10).auth.top_keys.len(), 5);
+        assert_eq!(
+            registry
+                .usage_stats(2)
+                .first()
+                .expect("auth present")
+                .1
+                .top_keys
+                .len(),
+            2
+        );
+        assert_eq!(
+            registry
+                .usage_stats(10)
+                .first()
+                .expect("auth present")
+                .1
+                .top_keys
+                .len(),
+            5
+        );
     }
 
     #[test]

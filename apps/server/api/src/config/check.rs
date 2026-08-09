@@ -3,6 +3,7 @@ use std::path::Path;
 use tracing::{debug, error, info, warn};
 
 use super::DEPRECATED_KEYS;
+use super::security::SecurityConfig;
 use crate::Config;
 
 #[allow(clippy::cognitive_complexity)]
@@ -61,45 +62,20 @@ pub fn check(config: &Config) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// Validates that configured security limits and windows are positive.
+/// Validates that configured security limits and windows are positive and that
+/// every rate-limit resource compiles.
 fn check_security_config(config: &Config) -> Result<(), anyhow::Error> {
-    let limits: [(&str, Option<u32>); 4] = [
-        (
-            "security_rate_limit_auth_limit",
-            config.security_rate_limit_auth_limit,
-        ),
-        (
-            "security_rate_limit_ota_limit",
-            config.security_rate_limit_ota_limit,
-        ),
-        (
-            "security_rate_limit_core_limit",
-            config.security_rate_limit_core_limit,
-        ),
-        (
-            "security_login_fail_limit",
-            config.security_login_fail_limit,
-        ),
-    ];
+    let limits: [(&str, Option<u32>); 1] = [(
+        "security_login_fail_limit",
+        config.security_login_fail_limit,
+    )];
     for (name, value) in limits {
         if value.is_some_and(|v| v == 0) {
             return Err(anyhow::anyhow!("config {name} must be greater than 0"));
         }
     }
 
-    let windows: [(&str, Option<u64>); 5] = [
-        (
-            "security_rate_limit_auth_window_secs",
-            config.security_rate_limit_auth_window_secs,
-        ),
-        (
-            "security_rate_limit_ota_window_secs",
-            config.security_rate_limit_ota_window_secs,
-        ),
-        (
-            "security_rate_limit_core_window_secs",
-            config.security_rate_limit_core_window_secs,
-        ),
+    let windows: [(&str, Option<u64>); 2] = [
         (
             "security_login_fail_window_secs",
             config.security_login_fail_window_secs,
@@ -114,6 +90,13 @@ fn check_security_config(config: &Config) -> Result<(), anyhow::Error> {
             return Err(anyhow::anyhow!("config {name} must be greater than 0"));
         }
     }
+
+    let mut security = SecurityConfig::default();
+    if let Some(resources) = config.security_rate_limit_resources.clone() {
+        security.rate_limit_resources = resources;
+    }
+    security.compile_matchers()?;
+
     Ok(())
 }
 

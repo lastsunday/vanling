@@ -1,6 +1,9 @@
 use anyhow::Context;
 use api::{
-    mcp::client::{device::DeviceMcpClient, device_transport::DeviceMcpTransport},
+    config::mcp::McpServerConfig,
+    mcp::client::{
+        device::DeviceMcpClient, device_transport::DeviceMcpTransport, resolve_mcp_auth_token,
+    },
     setup_mcp,
 };
 use axum::{
@@ -162,6 +165,55 @@ async fn test_administrator_mcp() -> anyhow::Result<()> {
         .await?;
     tracing::info!("Tool({tool_name}) result: {tool_result:#?}");
 
+    client.cancel().await?;
+
+    let _ = &state.conn.close().await.unwrap();
+    tear_down(container).await;
+
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_self_signed_token_authenticates_local_mcp() -> anyhow::Result<()> {
+    let (container, state) = setup_database().await;
+    Jwt::init(Arc::new(jwt_config()));
+    let router = OpenApiRouter::new();
+    let ct = tokio_util::sync::CancellationToken::new();
+    let router = setup_mcp(router, state.clone(), ct.child_token())
+        .split_for_parts()
+        .0;
+
+    let server = McpServerConfig {
+        uri: String::from("/mcp"),
+        token: None,
+        self_signed: true,
+    };
+    let subject_id = "test-device-id";
+    let token = resolve_mcp_auth_token(&server, subject_id).expect("self-signed token");
+    assert!(!token.contains("Bearer "), "token must be bare");
+
+    let principal = Jwt::global()
+        .access_token_decode(&token)
+        .expect("decode self-signed token");
+    assert_eq!(principal.id, subject_id);
+    assert_eq!(principal.token_type, "mcp");
+
+    let mut config = StreamableHttpClientTransportConfig::with_uri("/mcp");
+    config.auth_header = Some(token);
+    let client = RouterClient { router };
+    let transport = StreamableHttpClientTransport::with_client(client, config);
+    let client_info = InitializeRequestParams::new(
+        ClientCapabilities::default(),
+        Implementation::new("test self-signed client", "0.0.1"),
+    );
+    let client = client_info
+        .serve(transport)
+        .await
+        .inspect_err(|e| tracing::error!("client error: {:?}", e))?;
+
+    let tools = client.list_tools(Default::default()).await?;
+    tracing::info!("Available tools: {tools:#?}");
     client.cancel().await?;
 
     let _ = &state.conn.close().await.unwrap();

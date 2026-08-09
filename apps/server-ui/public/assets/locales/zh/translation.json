@@ -178,6 +178,7 @@
       "title": "限流用量（运行期）",
       "resource_auth": "认证接口",
       "resource_ota": "OTA 接口",
+      "resource_mcp": "MCP",
       "resource_core": "核心 API",
       "active_keys": "活跃键",
       "allowed": "放行",
@@ -234,6 +235,7 @@
       "path_placeholder": "路径",
       "ip_placeholder": "IP",
       "name_placeholder": "身份名称",
+      "principal_id_placeholder": "身份编号",
       "status_placeholder": "状态码",
       "no_logs": "暂无访问日志"
     }

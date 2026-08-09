@@ -36,7 +36,7 @@ use crate::{
         audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    mcp::client::create_external_mcp_client,
+    mcp::client::{create_external_mcp_client, resolve_mcp_auth_token},
     tts::TtsManager,
     vad::VadManager,
     ws::default_listener::DefaultListener,
@@ -221,10 +221,13 @@ impl Bot {
             // init session
             let id = gen_id();
             let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(id.clone()))));
-            let uri_list = self.mcp_config.uri_list.as_ref();
-            if let Some(uri_list) = uri_list {
-                for uri in uri_list {
-                    let external_mcp_client = create_external_mcp_client(uri.to_string()).await;
+            if !self.mcp_config.server_list.is_empty() {
+                for server in &self.mcp_config.server_list {
+                    let external_mcp_client = create_external_mcp_client(
+                        server.uri.clone(),
+                        resolve_mcp_auth_token(server, &id),
+                    )
+                    .await;
                     match external_mcp_client {
                         Ok(server_mcp_client) => {
                             mcp_registry

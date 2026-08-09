@@ -29,6 +29,9 @@ use vanling_macros::config_example_generator;
 
 pub use self::{check::check, manager::Manager};
 
+use self::mcp::McpServerConfig;
+use self::security::{RateLimitResourceConfig, SecurityConfig};
+
 const DEPRECATED_KEYS: &[&str] = &[];
 
 /// All the config options for vanling.
@@ -143,41 +146,22 @@ pub struct Config {
     #[serde(default = "default_auth_client_secret")]
     pub auth_client_secret: Option<String>,
 
-    /// Per-IP auth bucket request limit within the auth window.
+    /// Named rate-limit resources matched by regex route patterns.
     ///
-    /// default: 20
-    #[serde(default = "default_security_rate_limit_auth_limit")]
-    pub security_rate_limit_auth_limit: Option<u32>,
-
-    /// Auth bucket window in seconds.
+    /// Each entry is a table with:
+    /// - `name`: unique resource name, surfaced via `x-ratelimit-resource`.
+    /// - `limit` / `window_secs`: quota within the window.
+    /// - `key_by`: `"ip"` (per peer address) or `"principal"` (per user).
+    /// - `paths`: regex patterns against the request path; the FIRST resource
+    ///   with a matching pattern owns the request, so list order is priority
+    ///   (specific resources must precede broad ones such as `^/api/`).
+    /// - `count`: optional, default `true`; `false` never records requests.
     ///
-    /// default: 900
-    #[serde(default = "default_security_rate_limit_auth_window_secs")]
-    pub security_rate_limit_auth_window_secs: Option<u64>,
-
-    /// Per-IP OTA bucket request limit within the OTA window.
+    /// Invalid names, duplicate patterns and unparseable regexes abort startup.
     ///
-    /// default: 30
-    #[serde(default = "default_security_rate_limit_ota_limit")]
-    pub security_rate_limit_ota_limit: Option<u32>,
-
-    /// OTA bucket window in seconds.
-    ///
-    /// default: 60
-    #[serde(default = "default_security_rate_limit_ota_window_secs")]
-    pub security_rate_limit_ota_window_secs: Option<u64>,
-
-    /// Per-user core API bucket request limit within the core window.
-    ///
-    /// default: 5000
-    #[serde(default = "default_security_rate_limit_core_limit")]
-    pub security_rate_limit_core_limit: Option<u32>,
-
-    /// Core bucket window in seconds.
-    ///
-    /// default: 3600
-    #[serde(default = "default_security_rate_limit_core_window_secs")]
-    pub security_rate_limit_core_window_secs: Option<u64>,
+    /// default: [{ name = "auth", limit = 20, window_secs = 900, key_by = "ip", paths = ["^/api/auth/"] }, { name = "ota", limit = 30, window_secs = 60, key_by = "ip", paths = ["^/api/ota"] }, { name = "mcp", limit = 5000, window_secs = 3600, key_by = "principal", paths = ["^/mcp"] }, { name = "core", limit = 5000, window_secs = 3600, key_by = "principal", paths = ["^/api/"] }]
+    #[serde(default = "default_security_rate_limit_resources")]
+    pub security_rate_limit_resources: Option<Vec<RateLimitResourceConfig>>,
 
     /// Per-account login failures allowed within the lockout window.
     ///
@@ -203,7 +187,8 @@ pub struct Config {
     #[serde(default = "default_security_cleanup_interval_secs")]
     pub security_cleanup_interval_secs: Option<u64>,
 
-    /// Whether every `/api/*` request is persisted to the access log table.
+    /// Whether every request matching `security_api_access_log_path_prefixes`
+    /// is persisted to the access log table.
     ///
     /// default: true
     #[serde(default = "default_security_api_access_log_enabled")]
@@ -214,6 +199,12 @@ pub struct Config {
     /// default: 30
     #[serde(default = "default_security_api_access_log_retention_days")]
     pub security_api_access_log_retention_days: Option<i64>,
+
+    /// Path prefixes whose requests are persisted to the access log table.
+    ///
+    /// default: ["/api/", "/mcp"]
+    #[serde(default = "default_security_api_access_log_path_prefixes")]
+    pub security_api_access_log_path_prefixes: Option<Vec<String>>,
 
     /// WebSocket URL scheme (ws or wss).
     ///
@@ -439,11 +430,15 @@ pub struct Config {
     #[serde(default = "default_session_barge_in_lockout_ms")]
     pub session_barge_in_lockout_ms: Option<u64>,
 
-    /// List of MCP server URIs.
+    /// List of MCP server configurations. Each entry uses one of three auth modes:
+    /// - `self_signed = true`: server signs its own token for the local `/mcp`.
+    /// - `token`: static token for external servers. It is a bare token; the
+    ///   Streamable HTTP transport adds the `Bearer ` prefix itself.
+    /// - neither: no Authorization header is sent (open server).
     ///
-    /// default: ["http://127.0.0.1:3000/mcp"]
-    #[serde(default = "default_mcp_uri_list")]
-    pub mcp_uri_list: Option<Vec<String>>,
+    /// default: [{ uri = "http://127.0.0.1:3000/mcp", self_signed = true }]
+    #[serde(default = "default_mcp_server_list")]
+    pub mcp_server_list: Option<Vec<McpServerConfig>>,
 
     /// Enable Matrix messaging integration.
     ///
@@ -619,28 +614,8 @@ fn default_auth_client_secret() -> Option<String> {
     Some(String::from(DEFAULT_AUTH_CLIENT_SECRET))
 }
 
-fn default_security_rate_limit_auth_limit() -> Option<u32> {
-    Some(20)
-}
-
-fn default_security_rate_limit_auth_window_secs() -> Option<u64> {
-    Some(900)
-}
-
-fn default_security_rate_limit_ota_limit() -> Option<u32> {
-    Some(30)
-}
-
-fn default_security_rate_limit_ota_window_secs() -> Option<u64> {
-    Some(60)
-}
-
-fn default_security_rate_limit_core_limit() -> Option<u32> {
-    Some(5000)
-}
-
-fn default_security_rate_limit_core_window_secs() -> Option<u64> {
-    Some(3600)
+fn default_security_rate_limit_resources() -> Option<Vec<RateLimitResourceConfig>> {
+    Some(SecurityConfig::default().rate_limit_resources)
 }
 
 fn default_security_login_fail_limit() -> Option<u32> {
@@ -665,6 +640,10 @@ fn default_security_api_access_log_enabled() -> Option<bool> {
 
 fn default_security_api_access_log_retention_days() -> Option<i64> {
     Some(30)
+}
+
+fn default_security_api_access_log_path_prefixes() -> Option<Vec<String>> {
+    Some(vec!["/api/".to_string(), "/mcp".to_string()])
 }
 
 fn warn_on_default_auth_secrets(config: &Config) {
@@ -783,8 +762,12 @@ fn default_session_barge_in_lockout_ms() -> Option<u64> {
     Some(250)
 }
 
-fn default_mcp_uri_list() -> Option<Vec<String>> {
-    Some(vec![String::from("http://127.0.0.1:3000/mcp")])
+fn default_mcp_server_list() -> Option<Vec<McpServerConfig>> {
+    Some(vec![McpServerConfig {
+        uri: String::from("http://127.0.0.1:3000/mcp"),
+        token: None,
+        self_signed: true,
+    }])
 }
 
 fn default_ws_schema() -> Option<String> {

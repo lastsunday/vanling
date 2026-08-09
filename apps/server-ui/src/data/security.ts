@@ -50,6 +50,7 @@ export interface BucketUsageInfo {
 }
 
 export interface ResourceUsageInfo {
+  name: string
   limit: number
   window_secs: number
   active_keys: number
@@ -59,9 +60,7 @@ export interface ResourceUsageInfo {
 }
 
 export interface UsageStatsResult {
-  auth: ResourceUsageInfo
-  ota: ResourceUsageInfo
-  core: ResourceUsageInfo
+  resources: ResourceUsageInfo[]
 }
 
 export interface ApiAccessLog {

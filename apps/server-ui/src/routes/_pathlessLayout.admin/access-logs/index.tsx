@@ -38,12 +38,20 @@ function formatSize(bytes: number): string {
 function AccessLogsSection() {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
-  const [draft, setDraft] = useState({ method: '', path: '', ip: '', name: '', status: '' });
+  const [draft, setDraft] = useState({
+    method: '',
+    path: '',
+    ip: '',
+    name: '',
+    principal_id: '',
+    status: '',
+  });
   const [filters, setFilters] = useState({
     method: '',
     path: '',
     ip: '',
     name: '',
+    principal_id: '',
     status: '',
   });
   const [searchKey, setSearchKey] = useState(0);
@@ -58,6 +66,7 @@ function AccessLogsSection() {
         filters.path || undefined,
         filters.ip || undefined,
         filters.name || undefined,
+        filters.principal_id || undefined,
         filters.status ? Number(filters.status) : undefined,
       ),
   });
@@ -104,6 +113,12 @@ function AccessLogsSection() {
           onChange={(e) => setDraftValue('name', e.currentTarget.value)}
           placeholder={t('security.access_log.name_placeholder')}
           w={160}
+        />
+        <TextInput
+          value={draft.principal_id}
+          onChange={(e) => setDraftValue('principal_id', e.currentTarget.value)}
+          placeholder={t('security.access_log.principal_id_placeholder')}
+          w={180}
         />
         <TextInput
           value={draft.status}
