@@ -1,4 +1,4 @@
-import type { AccessLogListResult, SecurityEventListResult, SecurityEventStats, UsageStatsResult } from '@/data/security'
+import type { AccessLogListResult, AccessLogStats, SecurityEventListResult, SecurityEventStats, UsageStatsResult } from '@/data/security'
 import { getJson } from './http'
 
 export async function listSecurityEvents(
@@ -31,6 +31,10 @@ export async function getSecurityUsageStats(topN?: number): Promise<UsageStatsRe
   return getJson('/api/security/usage_stats', {
     top_n: topN || undefined,
   } as Record<string, unknown>)
+}
+
+export async function getAccessLogStats(): Promise<AccessLogStats> {
+  return getJson('/api/security/access_logs/stats')
 }
 
 export async function listAccessLogs(

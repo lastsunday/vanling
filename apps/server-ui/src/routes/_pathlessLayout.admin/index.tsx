@@ -1,5 +1,5 @@
 import { getLatency, getSummary, getTrends } from '@/api/stats'
-import type { RecentSession, SecuritySummaryEvent, StepLatency, TrendPoint } from '@/data/stats'
+import type { ApiNameCount, RecentSession, SecuritySummaryEvent, StepLatency, TrendPoint } from '@/data/stats'
 import {
   Area,
   AreaChart,
@@ -72,6 +72,14 @@ function RouteComponent() {
         <StatCard label={t('dashboard.stat.rate_limited_today')} value={summary?.rate_limited_today} loading={summaryLoading} color="red" icon="i-mdi:shield-off" />
       </SimpleGrid>
 
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }} mb="lg">
+        <StatCard label={t('dashboard.stat.api_requests_today')} value={summary?.api_requests_today} loading={summaryLoading} color="blue" icon="i-mdi:api" />
+        <StatCard label={t('dashboard.stat.api_requests_24h')} value={summary?.api_requests_24h} loading={summaryLoading} color="cyan" icon="i-mdi:server-network" />
+        <StatCard label={t('dashboard.stat.api_p95_duration')} value={summary?.api_p95_duration_24h_ms} loading={summaryLoading} color="grape" icon="i-mdi:clock-fast" />
+        <StatCard label={t('dashboard.stat.api_4xx')} value={summary?.api_4xx_24h} loading={summaryLoading} color="orange" icon="i-mdi:alert-circle-outline" />
+        <StatCard label={t('dashboard.stat.api_5xx')} value={summary?.api_5xx_24h} loading={summaryLoading} color="red" icon="i-mdi:alert-octagon-outline" />
+      </SimpleGrid>
+
       <Card withBorder padding="lg" radius="md" mb="lg">
         <Text fw={500} mb="md">{t('dashboard.recent_security_events')}</Text>
         {summaryLoading ? (
@@ -94,6 +102,15 @@ function RouteComponent() {
         <Text fw={500} mb="md">{t('dashboard.trends')}</Text>
         {trends ? (
           <TrendsChart data={trends.daily} />
+        ) : (
+          <Skeleton height={200} />
+        )}
+      </Card>
+
+      <Card withBorder padding="lg" radius="md" mb="lg">
+        <Text fw={500} mb="md">{t('dashboard.chart.top_paths')}</Text>
+        {summary ? (
+          <TopApiPathsCard data={summary.api_top_paths} />
         ) : (
           <Skeleton height={200} />
         )}
@@ -264,6 +281,7 @@ function TrendsChart({ data }: { data: TrendPoint[] }) {
     date: d.date.slice(5),
     sessions: d.sessions,
     rounds: d.rounds,
+    requests: d.requests,
   }))
 
   return (
@@ -278,6 +296,10 @@ function TrendsChart({ data }: { data: TrendPoint[] }) {
             <stop offset="5%" stopColor="var(--mantine-color-teal-6)" stopOpacity={0.3} />
             <stop offset="95%" stopColor="var(--mantine-color-teal-6)" stopOpacity={0} />
           </linearGradient>
+          <linearGradient id="requestsGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="var(--mantine-color-orange-6)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="var(--mantine-color-orange-6)" stopOpacity={0} />
+          </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="date" fontSize={12} />
@@ -286,13 +308,31 @@ function TrendsChart({ data }: { data: TrendPoint[] }) {
         <Legend />
         <Area type="monotone" dataKey="sessions" stroke="var(--mantine-color-blue-6)" fill="url(#sessionsGrad)" name={t('dashboard.chart.sessions')} />
         <Area type="monotone" dataKey="rounds" stroke="var(--mantine-color-teal-6)" fill="url(#roundsGrad)" name={t('dashboard.chart.rounds')} />
+        <Area type="monotone" dataKey="requests" stroke="var(--mantine-color-orange-6)" fill="url(#requestsGrad)" name={t('dashboard.chart.requests')} />
       </AreaChart>
     </ResponsiveContainer>
   )
 }
 
-const STEP_LABELS: Record<string, string> = {
-  asr: 'ASR',
+function TopApiPathsCard({ data }: { data: ApiNameCount[] }) {
+  const { t } = useTranslation()
+  if (data.length === 0) {
+    return <Text c="dimmed" ta="center">{t('dashboard.chart.no_data')}</Text>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <BarChart data={data} layout="vertical">
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis type="number" fontSize={12} allowDecimals={false} />
+        <YAxis type="category" dataKey="name" width={150} fontSize={12} />
+        <Tooltip />
+        <Bar dataKey="count" fill="var(--mantine-color-orange-6)" name={t('dashboard.chart.requests')} radius={[0, 4, 4, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+const STEP_LABELS: Record<string, string> = {  asr: 'ASR',
   llm: 'LLM',
   tts: 'TTS',
   input_audio: 'Audio In',
@@ -315,13 +355,14 @@ function LatencyChart({ data }: { data: StepLatency[] }) {
 
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <BarChart data={chartData}>
+      <BarChart data={chartData} layout="vertical">
         <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="step" fontSize={12} />
-        <YAxis fontSize={12} />
+        <XAxis type="number" fontSize={12} allowDecimals={false} />
+        <YAxis type="category" dataKey="step" width={90} fontSize={12} />
         <Tooltip />
         <Legend />
-        <Bar dataKey="avg" fill="var(--mantine-color-indigo-6)" name={t('dashboard.chart.avg_ms')} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="avg" fill="var(--mantine-color-indigo-6)" name={t('dashboard.chart.avg_ms')} radius={[0, 4, 4, 0]} />
+        <Bar dataKey="max" fill="var(--mantine-color-pink-6)" name={t('dashboard.chart.max_ms')} radius={[0, 4, 4, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )

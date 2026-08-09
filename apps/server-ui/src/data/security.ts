@@ -81,3 +81,41 @@ export interface ApiAccessLog {
 }
 
 export type AccessLogListResult = PageData<ApiAccessLog>
+
+export interface AccessLogHourlyPoint {
+  hour: string
+  total: number
+  count_2xx: number
+  count_3xx: number
+  count_4xx: number
+  count_5xx: number
+  avg_ms: number
+  p95_ms: number
+}
+
+export interface AccessLogNameCount {
+  name: string
+  count: number
+}
+
+export interface AccessLogPrincipalCount {
+  id: string
+  name: string | null
+  count: number
+}
+
+export interface AccessLogStats {
+  total: number
+  today: number
+  last_24h: number
+  avg_duration_24h_ms: number
+  p95_duration_24h_ms: number
+  error_4xx_24h: number
+  error_5xx_24h: number
+  requests_by_hour: AccessLogHourlyPoint[]
+  status_classes: AccessLogNameCount[]
+  top_methods: AccessLogNameCount[]
+  top_paths: AccessLogNameCount[]
+  top_ips: AccessLogNameCount[]
+  top_principals: AccessLogPrincipalCount[]
+}

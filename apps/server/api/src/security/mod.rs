@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -13,7 +14,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use chrono::Local;
+use chrono::{Local, Timelike};
 use entity::{
     api_access_log,
     prelude::*,
@@ -28,8 +29,8 @@ use framework::{
 };
 use http_body::Frame;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -718,6 +719,334 @@ async fn list_access_logs(
     Ok(ApiResponse::success(Some(result)))
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AccessLogNameCount {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AccessLogPrincipalCount {
+    pub id: String,
+    pub name: Option<String>,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AccessLogHourlyPoint {
+    pub hour: String,
+    pub total: i64,
+    pub count_2xx: i64,
+    pub count_3xx: i64,
+    pub count_4xx: i64,
+    pub count_5xx: i64,
+    pub avg_ms: f64,
+    pub p95_ms: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AccessLogStats {
+    pub total: i64,
+    pub today: i64,
+    pub last_24h: i64,
+    pub avg_duration_24h_ms: f64,
+    pub p95_duration_24h_ms: i64,
+    pub error_4xx_24h: i64,
+    pub error_5xx_24h: i64,
+    pub requests_by_hour: Vec<AccessLogHourlyPoint>,
+    pub status_classes: Vec<AccessLogNameCount>,
+    pub top_methods: Vec<AccessLogNameCount>,
+    pub top_paths: Vec<AccessLogNameCount>,
+    pub top_ips: Vec<AccessLogNameCount>,
+    pub top_principals: Vec<AccessLogPrincipalCount>,
+}
+
+fn status_class(status: i32) -> &'static str {
+    match status / 100 {
+        2 => "2xx",
+        3 => "3xx",
+        4 => "4xx",
+        5 => "5xx",
+        _ => "other",
+    }
+}
+
+fn percentile(sorted: &[i64], p: f64) -> i64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let index = ((sorted.len() - 1) as f64 * p).round() as usize;
+    sorted[index]
+}
+
+fn hour_label(dt: chrono::DateTime<chrono::FixedOffset>) -> String {
+    dt.with_timezone(&Local).format("%m-%d %H:00").to_string()
+}
+
+/// Top-N values for a non-null access log column within the given cutoff.
+async fn top_access_log_dimension(
+    conn: &DatabaseConnection,
+    cutoff: chrono::DateTime<chrono::FixedOffset>,
+    column: api_access_log::Column,
+    limit: u64,
+) -> AppResult<Vec<AccessLogNameCount>> {
+    let rows: Vec<(String, i64)> = ApiAccessLog::find()
+        .select_only()
+        .column_as(column, "name")
+        .column_as(api_access_log::Column::Id.count(), "count")
+        .filter(api_access_log::Column::CreateDatetime.gte(cutoff))
+        .group_by(column)
+        .order_by_desc(api_access_log::Column::Id.count())
+        .limit(limit)
+        .into_tuple()
+        .all(conn)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(name, count)| AccessLogNameCount { name, count })
+        .collect())
+}
+
+/// Top-N values for a nullable access log column (nulls excluded) within cutoff.
+async fn top_access_log_dimension_nullable(
+    conn: &DatabaseConnection,
+    cutoff: chrono::DateTime<chrono::FixedOffset>,
+    column: api_access_log::Column,
+    limit: u64,
+) -> AppResult<Vec<AccessLogNameCount>> {
+    let rows: Vec<(Option<String>, i64)> = ApiAccessLog::find()
+        .select_only()
+        .column_as(column, "name")
+        .column_as(api_access_log::Column::Id.count(), "count")
+        .filter(api_access_log::Column::CreateDatetime.gte(cutoff))
+        .filter(column.is_not_null())
+        .group_by(column)
+        .order_by_desc(api_access_log::Column::Id.count())
+        .limit(limit)
+        .into_tuple()
+        .all(conn)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(name, count)| name.map(|name| AccessLogNameCount { name, count }))
+        .collect())
+}
+
+#[debug_handler]
+#[utoipa::path(get, path = "/security/access_logs/stats", tag = TAG, responses(
+    (status=OK,body=ApiResponse<AccessLogStats>)
+))]
+async fn access_log_stats(
+    State(AppState { conn, .. }): State<AppState>,
+) -> AppResult<ApiResponse<AccessLogStats>> {
+    let now = Local::now().fixed_offset();
+    let today_start = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .map(|d| d.and_local_timezone(Local).unwrap())
+        .map(|d| d.fixed_offset());
+    let twenty_four_hours_ago = now - chrono::Duration::hours(24);
+
+    let total = ApiAccessLog::find().count(&conn).await? as i64;
+    let today = match today_start {
+        Some(ts) => {
+            ApiAccessLog::find()
+                .filter(api_access_log::Column::CreateDatetime.gte(ts))
+                .count(&conn)
+                .await? as i64
+        }
+        None => 0,
+    };
+    let last_24h = ApiAccessLog::find()
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .count(&conn)
+        .await? as i64;
+    let error_4xx_24h = ApiAccessLog::find()
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .filter(api_access_log::Column::Status.gte(400))
+        .filter(api_access_log::Column::Status.lte(499))
+        .count(&conn)
+        .await? as i64;
+    let error_5xx_24h = ApiAccessLog::find()
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .filter(api_access_log::Column::Status.gte(500))
+        .filter(api_access_log::Column::Status.lte(599))
+        .count(&conn)
+        .await? as i64;
+
+    let rows: Vec<(Option<chrono::DateTime<chrono::FixedOffset>>, i32, i64)> = ApiAccessLog::find()
+        .select_only()
+        .column(api_access_log::Column::CreateDatetime)
+        .column(api_access_log::Column::Status)
+        .column(api_access_log::Column::DurationMs)
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .into_tuple()
+        .all(&conn)
+        .await?;
+
+    let cur_hour = now
+        .with_minute(0)
+        .and_then(|d| d.with_second(0))
+        .and_then(|d| d.with_nanosecond(0))
+        .unwrap();
+    let mut buckets: Vec<AccessLogHourlyPoint> = (0..24)
+        .map(|i| AccessLogHourlyPoint {
+            hour: hour_label(cur_hour - chrono::Duration::hours(23 - i as i64)),
+            total: 0,
+            count_2xx: 0,
+            count_3xx: 0,
+            count_4xx: 0,
+            count_5xx: 0,
+            avg_ms: 0.0,
+            p95_ms: 0,
+        })
+        .collect();
+    let mut durations_by_bucket: Vec<Vec<i64>> = vec![Vec::new(); 24];
+
+    for (dt, status, duration_ms) in &rows {
+        let Some(dt) = dt else {
+            continue;
+        };
+        let hour = dt
+            .with_minute(0)
+            .and_then(|d| d.with_second(0))
+            .and_then(|d| d.with_nanosecond(0))
+            .unwrap();
+        let diff = (cur_hour - hour).num_hours();
+        if !(0..=23).contains(&diff) {
+            continue;
+        }
+        let idx = 23 - diff as usize;
+        buckets[idx].total += 1;
+        match status_class(*status) {
+            "2xx" => buckets[idx].count_2xx += 1,
+            "3xx" => buckets[idx].count_3xx += 1,
+            "4xx" => buckets[idx].count_4xx += 1,
+            "5xx" => buckets[idx].count_5xx += 1,
+            _ => {}
+        }
+        durations_by_bucket[idx].push(*duration_ms);
+    }
+
+    let mut all_durations = Vec::with_capacity(rows.len());
+    for (_, _, duration_ms) in &rows {
+        all_durations.push(*duration_ms);
+    }
+    all_durations.sort_unstable();
+    let avg_duration_24h_ms = if all_durations.is_empty() {
+        0.0
+    } else {
+        all_durations.iter().sum::<i64>() as f64 / all_durations.len() as f64
+    };
+    let p95_duration_24h_ms = percentile(&all_durations, 0.95);
+
+    for i in 0..24 {
+        durations_by_bucket[i].sort_unstable();
+        let durs = &durations_by_bucket[i];
+        buckets[i].p95_ms = percentile(durs, 0.95);
+        buckets[i].avg_ms = if durs.is_empty() {
+            0.0
+        } else {
+            durs.iter().sum::<i64>() as f64 / durs.len() as f64
+        };
+    }
+
+    let status_rows: Vec<(i32, i64)> = ApiAccessLog::find()
+        .select_only()
+        .column_as(api_access_log::Column::Status, "status")
+        .column_as(api_access_log::Column::Id.count(), "count")
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .group_by(api_access_log::Column::Status)
+        .into_tuple()
+        .all(&conn)
+        .await?;
+    let mut status_by_class: HashMap<&'static str, i64> = HashMap::new();
+    for (status, count) in status_rows {
+        *status_by_class.entry(status_class(status)).or_default() += count;
+    }
+    let mut status_classes: Vec<AccessLogNameCount> = status_by_class
+        .into_iter()
+        .map(|(class, count)| AccessLogNameCount {
+            name: class.to_string(),
+            count,
+        })
+        .collect();
+    status_classes.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let top_methods = top_access_log_dimension(
+        &conn,
+        twenty_four_hours_ago,
+        api_access_log::Column::Method,
+        10,
+    )
+    .await?;
+    let top_paths = top_access_log_dimension(
+        &conn,
+        twenty_four_hours_ago,
+        api_access_log::Column::Path,
+        10,
+    )
+    .await?;
+    let top_ips = top_access_log_dimension_nullable(
+        &conn,
+        twenty_four_hours_ago,
+        api_access_log::Column::Ip,
+        10,
+    )
+    .await?;
+    let top_principals = top_access_log_dimension_nullable(
+        &conn,
+        twenty_four_hours_ago,
+        api_access_log::Column::PrincipalId,
+        10,
+    )
+    .await?;
+    let principal_ids: Vec<String> = top_principals.iter().map(|p| p.name.clone()).collect();
+    let mut name_by_id: HashMap<String, String> = HashMap::new();
+    if !principal_ids.is_empty() {
+        let principal_names: Vec<(String, String)> = ApiAccessLog::find()
+            .select_only()
+            .column(api_access_log::Column::PrincipalId)
+            .column(api_access_log::Column::Name)
+            .filter(api_access_log::Column::PrincipalId.is_in(principal_ids))
+            .filter(api_access_log::Column::Name.is_not_null())
+            .into_tuple()
+            .all(&conn)
+            .await?;
+        for (principal_id, name) in principal_names {
+            name_by_id.entry(principal_id).or_insert(name);
+        }
+    }
+    let top_principals: Vec<AccessLogPrincipalCount> = top_principals
+        .into_iter()
+        .map(|hit| {
+            let id = hit.name;
+            let name = name_by_id.get(&id).cloned();
+            AccessLogPrincipalCount {
+                id,
+                name,
+                count: hit.count,
+            }
+        })
+        .collect();
+
+    Ok(ApiResponse::success(Some(AccessLogStats {
+        total,
+        today,
+        last_24h,
+        avg_duration_24h_ms,
+        p95_duration_24h_ms,
+        error_4xx_24h,
+        error_5xx_24h,
+        requests_by_hour: buckets,
+        status_classes,
+        top_methods,
+        top_paths,
+        top_ips,
+        top_principals,
+    })))
+}
+
 #[derive(Debug, Serialize, ToSchema, Default)]
 pub struct EventTypeCounts {
     pub rate_limited: i64,
@@ -948,6 +1277,7 @@ pub fn create_routes(state: AppState) -> OpenApiRouter {
     OpenApiRouter::new()
         .routes(routes!(list_events))
         .routes(routes!(list_access_logs))
+        .routes(routes!(access_log_stats))
         .routes(routes!(event_stats))
         .routes(routes!(usage_stats))
         .routes(routes!(rate_limit))

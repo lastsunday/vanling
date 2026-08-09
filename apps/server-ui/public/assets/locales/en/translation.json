@@ -65,7 +65,12 @@
       "sessions_today": "Sessions Today",
       "security_events_today": "Security Events Today",
       "security_events_7d": "Security Events (7d)",
-      "rate_limited_today": "Rate Limited Today"
+      "rate_limited_today": "Rate Limited Today",
+      "api_requests_today": "API Requests Today",
+      "api_requests_24h": "API Requests (24h)",
+      "api_p95_duration": "API P95 Latency (ms)",
+      "api_4xx": "API 4xx (24h)",
+      "api_5xx": "API 5xx (24h)"
     },
     "recent_sessions": "Recent Sessions",
     "recent_security_events": "Recent Security Events",
@@ -95,7 +100,11 @@
     "chart": {
       "sessions": "Sessions",
       "rounds": "Rounds",
-      "avg_ms": "Avg (ms)"
+      "avg_ms": "Avg (ms)",
+      "requests": "API Requests",
+      "top_paths": "Top API Paths",
+      "no_data": "No data",
+      "max_ms": "Max (ms)"
     }
   },
   "devices": {
@@ -241,7 +250,30 @@
       "name_placeholder": "Name",
       "principal_id_placeholder": "Principal ID",
       "status_placeholder": "Status",
-      "no_logs": "No access logs"
+      "no_logs": "No access logs",
+      "stat": {
+        "today": "Today",
+        "last_24h": "Last 24h",
+        "avg_duration": "Avg Duration (24h)",
+        "p95_duration": "P95 Duration (24h)"
+      },
+      "chart": {
+        "requests_by_hour": "Requests by Hour (24h)",
+        "status_distribution": "Status Distribution",
+        "latency_trend": "Latency Trend (24h)",
+        "top_paths": "Top 10 Paths",
+        "top_principals": "Top Principals",
+        "top_ips": "Top IPs",
+        "avg": "Avg",
+        "p95": "P95",
+        "count": "Count",
+        "name": "Name",
+        "empty": "No data"
+      },
+      "tabs": {
+        "logs": "Logs",
+        "analytics": "Analytics"
+      }
     }
   },
   "sessions": {
@@ -279,8 +311,8 @@
       "tts": "Speech Synthesis"
     },
     "table": {
-"session_id": "Session #",
-"device_id": "Device #",
+      "session_id": "Session #",
+      "device_id": "Device #",
       "time": "Time",
       "summary": "Summary",
       "turns": "Turns",

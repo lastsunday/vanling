@@ -602,6 +602,104 @@ async fn test_access_logs_recorded_and_queryable() {
 }
 
 #[tokio::test]
+async fn test_access_log_stats_requires_auth() {
+    let (app, container) = build_app().await;
+    let response = get_json(app, "/api/security/access_logs/stats").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    tear_down(container).await;
+}
+
+#[tokio::test]
+async fn test_access_log_stats_reports_counts_and_breakdowns() {
+    let (app, container) = build_app().await;
+    let token = admin_token();
+
+    let failed = post_json(
+        app.clone(),
+        "/api/auth/login",
+        &json!({"account": "access-log-stats-probe", "password": "WrongPass1"}),
+    )
+    .await;
+    assert!(failed.status().is_client_error());
+    response_to_json(failed).await;
+
+    let success = post_json(
+        app.clone(),
+        "/api/auth/login",
+        &json!({"account": "root", "password": "Change_Me"}),
+    )
+    .await;
+    assert_eq!(success.status(), StatusCode::OK);
+    response_to_json(success).await;
+
+    let mcp = post_json_without_body(app.clone(), "/mcp").await;
+    assert_eq!(mcp.status(), StatusCode::UNAUTHORIZED);
+    mcp.into_body().collect().await.unwrap();
+
+    wait_until(
+        Duration::from_secs(5),
+        Duration::from_millis(50),
+        "access log stats reflect traffic",
+        || async {
+            let response = get_json_with_token(
+                app.clone(),
+                "/api/security/access_logs/stats",
+                Some(token.clone()),
+            )
+            .await;
+            let value = response_to_json(response).await;
+            value["data"]["last_24h"].as_i64().unwrap_or(0) > 0
+        },
+    )
+    .await
+    .expect("access log stats reflect traffic");
+
+    let response = get_json_with_token(app, "/api/security/access_logs/stats", Some(token)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let value = response_to_json(response).await;
+    let data = &value["data"];
+
+    assert!(data["total"].as_i64().unwrap_or(0) > 0);
+    assert!(data["today"].as_i64().unwrap_or(0) > 0);
+    assert!(data["last_24h"].as_i64().unwrap_or(0) > 0);
+    assert!(data["error_4xx_24h"].as_i64().unwrap_or(0) >= 1);
+    assert!(data["p95_duration_24h_ms"].as_i64().is_some());
+
+    let hours = data["requests_by_hour"].as_array().unwrap();
+    assert_eq!(hours.len(), 24);
+    assert!(hours.iter().any(|p| p["total"].as_i64().unwrap_or(0) > 0));
+
+    let classes = data["status_classes"].as_array().unwrap();
+    assert!(
+        classes
+            .iter()
+            .any(|c| c["name"] == "2xx" && c["count"].as_i64().unwrap_or(0) > 0)
+    );
+    assert!(
+        classes
+            .iter()
+            .any(|c| c["name"] == "4xx" && c["count"].as_i64().unwrap_or(0) > 0)
+    );
+
+    let paths = data["top_paths"].as_array().unwrap();
+    assert!(paths.iter().any(|p| p["name"] == "/api/auth/login"));
+    assert!(paths.iter().any(|p| p["name"] == "/mcp"));
+
+    let methods = data["top_methods"].as_array().unwrap();
+    assert!(methods.iter().any(|m| m["name"] == "POST"));
+
+    let principals = data["top_principals"].as_array().unwrap();
+    assert!(
+        principals
+            .iter()
+            .any(|p| p["id"] == "test-admin" && p["name"] == "root"),
+        "authenticated stats requests should appear as test-admin (root) in top_principals"
+    );
+
+    tear_down(container).await;
+}
+
+#[tokio::test]
 async fn test_usage_stats_reports_allowed_and_limited() {
     let (container, mut state) = setup_database().await;
     Jwt::init(Arc::new(auth_config()));
@@ -769,6 +867,7 @@ async fn test_dashboard_summary_includes_security_metrics() {
                 get_json_with_token(app.clone(), "/api/stats/summary", Some(token.clone())).await;
             let value = response_to_json(response).await;
             value["data"]["security_events_today"].as_u64().unwrap_or(0) > 0
+                && value["data"]["api_requests_today"].as_u64().unwrap_or(0) > 0
         },
     )
     .await
@@ -782,6 +881,78 @@ async fn test_dashboard_summary_includes_security_metrics() {
     assert!(data["security_events_7d"].as_u64().is_some());
     assert!(data["rate_limited_today"].as_u64().is_some());
     assert!(data["recent_security_events"].is_array());
+
+    assert!(
+        data["api_requests_today"].as_u64().unwrap_or(0) > 0,
+        "failed login request should be counted in api_requests_today"
+    );
+    assert!(
+        data["api_requests_24h"].as_u64().unwrap_or(0) > 0,
+        "failed login request should be counted in api_requests_24h"
+    );
+    assert!(data["api_p95_duration_24h_ms"].as_i64().is_some());
+    assert!(
+        data["api_4xx_24h"].as_u64().unwrap_or(0) > 0,
+        "401 failed login should be counted in api_4xx_24h"
+    );
+    assert!(data["api_5xx_24h"].as_u64().is_some());
+    let top_paths = data["api_top_paths"].as_array().unwrap();
+    assert!(
+        top_paths.iter().any(|p| p["name"] == "/api/auth/login"),
+        "failed login path should appear in api_top_paths"
+    );
+
+    tear_down(container).await;
+}
+
+#[tokio::test]
+async fn test_dashboard_trends_includes_api_requests() {
+    let (app, container) = build_app().await;
+    let token = admin_token();
+
+    let failed = post_json(
+        app.clone(),
+        "/api/auth/login",
+        &json!({"account": "trends-probe", "password": "WrongPass1"}),
+    )
+    .await;
+    response_to_json(failed).await;
+
+    wait_until(
+        Duration::from_secs(5),
+        Duration::from_millis(50),
+        "api request visible in dashboard trends",
+        || async {
+            let response =
+                get_json_with_token(app.clone(), "/api/stats/trends", Some(token.clone())).await;
+            let value = response_to_json(response).await;
+            value["data"]["daily"]
+                .as_array()
+                .and_then(|daily| daily.last())
+                .map(|last| last["requests"].as_i64().unwrap_or(0) > 0)
+                .unwrap_or(false)
+        },
+    )
+    .await
+    .expect("api request visible in dashboard trends");
+
+    let response = get_json_with_token(app.clone(), "/api/stats/trends", Some(token)).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let value = response_to_json(response).await;
+    let data = &value["data"];
+    let daily = data["daily"].as_array().unwrap();
+    assert_eq!(daily.len(), 14, "trends should cover the last 14 days");
+    let today_row = daily.last().unwrap();
+    assert!(
+        today_row["requests"].as_i64().unwrap_or(0) > 0,
+        "today's requests should be reflected in the last trend row"
+    );
+    assert!(today_row["sessions"].is_i64());
+    assert!(today_row["rounds"].is_i64());
+    assert!(
+        daily.iter().all(|d| d["requests"].is_i64()),
+        "every trend row should carry a requests field"
+    );
 
     tear_down(container).await;
 }

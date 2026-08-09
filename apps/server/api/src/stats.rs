@@ -4,9 +4,12 @@ use axum::debug_handler;
 use axum::extract::State;
 use chrono::{DateTime, Days, Local, NaiveDate, Utc};
 use entity::prelude::*;
-use entity::{device, round_data, security_event, session};
+use entity::{api_access_log, device, round_data, security_event, session};
 use framework::{data::ApiResponse, error::AppResult, middleware::get_auth_layer};
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect,
+};
 use serde::Serialize;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -37,10 +40,22 @@ pub struct DashboardSummary {
     pub security_events_today: u64,
     pub security_events_7d: u64,
     pub rate_limited_today: u64,
+    pub api_requests_today: u64,
+    pub api_requests_24h: u64,
+    pub api_p95_duration_24h_ms: i64,
+    pub api_4xx_24h: u64,
+    pub api_5xx_24h: u64,
+    pub api_top_paths: Vec<ApiNameCount>,
     pub recent_security_events: Vec<security_event::Model>,
     pub server_version: String,
     pub server_time: String,
     pub recent_sessions: Vec<RecentSession>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApiNameCount {
+    pub name: String,
+    pub count: i64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -60,6 +75,7 @@ pub struct DailyTrend {
     pub date: String,
     pub sessions: i64,
     pub rounds: i64,
+    pub requests: i64,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -83,6 +99,95 @@ pub struct DashboardLatency {
 
 fn to_utc(dt: Option<DateTime<chrono::FixedOffset>>) -> Option<DateTime<Utc>> {
     dt.map(|d| d.with_timezone(&Utc))
+}
+
+#[derive(Debug)]
+struct ApiTraffic {
+    requests_today: u64,
+    requests_24h: u64,
+    p95_duration_24h_ms: i64,
+    errors_4xx_24h: u64,
+    errors_5xx_24h: u64,
+    top_paths: Vec<ApiNameCount>,
+}
+
+async fn load_api_traffic(conn: &DatabaseConnection) -> AppResult<ApiTraffic> {
+    let now = Local::now().fixed_offset();
+    let today_start = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .map(|d| d.and_local_timezone(Local).unwrap())
+        .map(|d| d.fixed_offset());
+    let twenty_four_hours_ago = now - chrono::Duration::hours(24);
+
+    let requests_today = match today_start {
+        Some(ts) => {
+            ApiAccessLog::find()
+                .filter(api_access_log::Column::CreateDatetime.gte(ts))
+                .count(conn)
+                .await? as u64
+        }
+        None => 0,
+    };
+    let requests_24h = ApiAccessLog::find()
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .count(conn)
+        .await? as u64;
+    let errors_4xx_24h = ApiAccessLog::find()
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .filter(api_access_log::Column::Status.gte(400))
+        .filter(api_access_log::Column::Status.lte(499))
+        .count(conn)
+        .await? as u64;
+    let errors_5xx_24h = ApiAccessLog::find()
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .filter(api_access_log::Column::Status.gte(500))
+        .filter(api_access_log::Column::Status.lte(599))
+        .count(conn)
+        .await? as u64;
+
+    let durations: Vec<i64> = ApiAccessLog::find()
+        .select_only()
+        .column(api_access_log::Column::DurationMs)
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .into_tuple::<(i64,)>()
+        .all(conn)
+        .await?
+        .into_iter()
+        .map(|(d,)| d)
+        .collect();
+    let mut sorted = durations;
+    sorted.sort_unstable();
+    let p95_duration_24h_ms = if sorted.is_empty() {
+        0
+    } else {
+        let index = ((sorted.len() - 1) as f64 * 0.95).round() as usize;
+        sorted[index]
+    };
+
+    let top_paths: Vec<ApiNameCount> = ApiAccessLog::find()
+        .select_only()
+        .column_as(api_access_log::Column::Path, "name")
+        .column_as(api_access_log::Column::Id.count(), "count")
+        .filter(api_access_log::Column::CreateDatetime.gte(twenty_four_hours_ago))
+        .group_by(api_access_log::Column::Path)
+        .order_by_desc(api_access_log::Column::Id.count())
+        .limit(10)
+        .into_tuple::<(String, i64)>()
+        .all(conn)
+        .await?
+        .into_iter()
+        .map(|(name, count)| ApiNameCount { name, count })
+        .collect();
+
+    Ok(ApiTraffic {
+        requests_today,
+        requests_24h,
+        p95_duration_24h_ms,
+        errors_4xx_24h,
+        errors_5xx_24h,
+        top_paths,
+    })
 }
 
 #[debug_handler]
@@ -158,6 +263,7 @@ async fn summary(
         .await?;
 
     let recent_sessions = load_recent_sessions(&conn).await?;
+    let api = load_api_traffic(&conn).await?;
 
     Ok(ApiResponse::success(Some(DashboardSummary {
         total_devices,
@@ -171,6 +277,12 @@ async fn summary(
         security_events_today,
         security_events_7d,
         rate_limited_today,
+        api_requests_today: api.requests_today,
+        api_requests_24h: api.requests_24h,
+        api_p95_duration_24h_ms: api.p95_duration_24h_ms,
+        api_4xx_24h: api.errors_4xx_24h,
+        api_5xx_24h: api.errors_5xx_24h,
+        api_top_paths: api.top_paths,
         recent_security_events,
         server_version: env!("CARGO_PKG_VERSION").to_string(),
         server_time: Local::now().to_rfc3339(),
@@ -245,6 +357,14 @@ async fn trends(
                 .all(&conn)
                 .await?;
 
+            let log_rows: Vec<(Option<DateTime<chrono::FixedOffset>>,)> = ApiAccessLog::find()
+                .select_only()
+                .column(api_access_log::Column::CreateDatetime)
+                .filter(api_access_log::Column::CreateDatetime.gte(threshold))
+                .into_tuple()
+                .all(&conn)
+                .await?;
+
             let mut sessions_by_day: HashMap<NaiveDate, i64> = HashMap::new();
             for s in &sessions {
                 if let Some(dt) = s.create_datetime {
@@ -259,12 +379,20 @@ async fn trends(
                 }
             }
 
+            let mut requests_by_day: HashMap<NaiveDate, i64> = HashMap::new();
+            for (dt,) in &log_rows {
+                if let Some(dt) = dt {
+                    *requests_by_day.entry(dt.date_naive()).or_default() += 1;
+                }
+            }
+
             date_range
                 .into_iter()
                 .map(|d| DailyTrend {
                     date: d.format("%Y-%m-%d").to_string(),
                     sessions: sessions_by_day.get(&d).copied().unwrap_or(0),
                     rounds: rounds_by_day.get(&d).copied().unwrap_or(0),
+                    requests: requests_by_day.get(&d).copied().unwrap_or(0),
                 })
                 .collect()
         }

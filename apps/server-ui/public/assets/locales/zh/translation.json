@@ -65,7 +65,12 @@
       "sessions_today": "今日会话",
       "security_events_today": "今日安全事件",
       "security_events_7d": "近7天安全事件",
-      "rate_limited_today": "今日限流"
+      "rate_limited_today": "今日限流",
+      "api_requests_today": "今日 API 请求",
+      "api_requests_24h": "24h API 请求",
+      "api_p95_duration": "API p95 延迟 (ms)",
+      "api_4xx": "API 4xx (24h)",
+      "api_5xx": "API 5xx (24h)"
     },
     "recent_sessions": "最近会话",
     "recent_security_events": "最近安全事件",
@@ -95,7 +100,11 @@
     "chart": {
       "sessions": "会话数",
       "rounds": "轮次数",
-      "avg_ms": "平均耗时 (ms)"
+      "avg_ms": "平均耗时 (ms)",
+      "requests": "API 请求",
+      "top_paths": "Top API 端点",
+      "no_data": "暂无数据",
+      "max_ms": "最大耗时 (ms)"
     }
   },
   "devices": {
@@ -241,7 +250,30 @@
       "name_placeholder": "身份名称",
       "principal_id_placeholder": "身份编号",
       "status_placeholder": "状态码",
-      "no_logs": "暂无访问日志"
+      "no_logs": "暂无访问日志",
+      "stat": {
+        "today": "今日请求",
+        "last_24h": "24h 请求",
+        "avg_duration": "平均耗时 (24h)",
+        "p95_duration": "p95 耗时 (24h)"
+      },
+      "chart": {
+        "requests_by_hour": "请求量趋势 (24h)",
+        "status_distribution": "状态码分布",
+        "latency_trend": "延迟趋势 (24h)",
+        "top_paths": "Top 10 端点",
+        "top_principals": "Top 消费者",
+        "top_ips": "Top IP",
+        "avg": "平均",
+        "p95": "p95",
+        "count": "次数",
+        "name": "名称",
+        "empty": "暂无数据"
+      },
+      "tabs": {
+        "logs": "访问日志",
+        "analytics": "分析"
+      }
     }
   },
   "sessions": {
@@ -279,8 +311,8 @@
       "tts": "语音合成"
     },
     "table": {
-"session_id": "会话编号",
-"device_id": "设备编号",
+      "session_id": "会话编号",
+      "device_id": "设备编号",
       "time": "时间",
       "summary": "摘要",
       "turns": "轮次",

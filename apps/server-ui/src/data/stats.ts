@@ -10,6 +10,12 @@ export interface DashboardSummary {
   security_events_today: number
   security_events_7d: number
   rate_limited_today: number
+  api_requests_today: number
+  api_requests_24h: number
+  api_p95_duration_24h_ms: number
+  api_4xx_24h: number
+  api_5xx_24h: number
+  api_top_paths: ApiNameCount[]
   recent_security_events: SecuritySummaryEvent[]
   server_version: string
   server_time: string
@@ -41,10 +47,16 @@ export interface RecentSession {
   turn_count: number
 }
 
+export interface ApiNameCount {
+  name: string
+  count: number
+}
+
 export interface TrendPoint {
   date: string
   sessions: number
   rounds: number
+  requests: number
 }
 
 export interface DashboardTrends {
