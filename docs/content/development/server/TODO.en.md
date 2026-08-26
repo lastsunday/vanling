@@ -17,7 +17,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🔴 P0 | WS Authentication | `api/src/ws/mod.rs` | WS handler has zero auth — all connections are unauthenticated | Suggest: `axum-jwt-auth` — JWT middleware with JWKS caching | |
+| 🔴 P0 | WS Authentication | `api/src/ws/mod.rs` | WS handler verifies Bearer Token (JWT) inline at upgrade time. Supports Authorization header + query param fallback for browser WebSocket API | Suggest: `axum-jwt-auth` — JWT middleware with JWKS caching | ✅Completed 2026-08-26 |
 | 🔴 P0 | Invite Code System | New feature | No invite code generation/verification/admin. No access control on new user registration | Suggest: `nanoid` — short, URL-safe ID generator | |
 | 🟡 P1 | Rate Limiting | `api/src/auth.rs` | No login rate limiting or brute-force protection | Suggest: `tower-governor` + `governor` — GCRA algorithm | |
 | 🟡 P1 | Refresh Revocation | `api/src/auth.rs` | No refresh token revocation mechanism — logout only clears client-side | Existing: `redis-rs` + `sea-orm` | |
@@ -150,7 +150,7 @@ A categorized backlog of TODO items. Before fixing, read [AGENTS.md](https://git
 
 | Priority | Item | Location | Description | Open Source / Libraries | Status |
 |------|------|------|------|------|------|
-| 🔴 P0 | WS Auth Tests | `apps/server/api/tests/` | WS endpoint has zero auth — no corresponding tests | Existing: `axum` test utils + `reqwest` | |
+| 🔴 P0 | WS Auth Tests | `apps/server/api/tests/` | WS endpoint auth tests (unit tests + Upgrade integration tests) | Existing: `axum` test utils + `reqwest` | ✅Completed 2026-08-26 |
 | 🔴 P0 | Wake Word Tests | `apps/server/api/tests/` | Wake word message handling has no tests — need protocol parsing + session wake flow coverage | Existing: `axum` test utils | |
 | 🟡 P1 | Auto Mode + AEC Tests | `apps/server/api/tests/session/` | Auto mode (barge_in=false) with/without AEC scenarios lack dedicated tests | Existing: `axum` test utils | |
 | 🟡 P1 | Button Talk Tests | `apps/server/api/tests/session/` | Manual mode (push-to-talk) lacks end-to-end tests | Existing: `axum` test utils | |

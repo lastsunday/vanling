@@ -13,7 +13,7 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | WS 认证 | `api/src/ws/mod.rs` | WS handler 未应用认证层，所有 WS 连接未认证 | 建议: `axum-jwt-auth` — JWT 中间件，JWKS 缓存 | |
+| 🔴 P0 | WS 认证 | `api/src/ws/mod.rs` | WS handler 在 Upgrade 阶段 inline 验证 Bearer Token（JWT），支持 Authorization header + query param 浏览器回退 | 建议: `axum-jwt-auth` — JWT 中间件，JWKS 缓存 | ✅已完成 2026-08-26 |
 | 🔴 P0 | Invite Code 系统 | 新功能 | 无邀请码生成/验证/管理，新用户注册无控制 | 建议: `nanoid` — 短 URL 安全 ID 生成器 | |
 | 🟡 P1 | Rate Limiting | `api/src/auth.rs` | 无登录限流/暴力破解防护 | 建议: `tower-governor` + `governor` — GCRA 算法 | |
 | 🟡 P1 | Refresh 吊销 | `api/src/auth.rs` | refresh token 无吊销机制，logout 仅客户端清除 | 已有: `redis-rs` + `sea-orm` | |
@@ -146,7 +146,7 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | WS 认证测试 | `apps/server/api/tests/` | WS 端点零认证，无对应测试 | 已有: `axum` test utils + `reqwest` | |
+| 🔴 P0 | WS 认证测试 | `apps/server/api/tests/` | WS 端点认证测试（单元测试 + Upgrade 集成测试） | 已有: `axum` test utils + `reqwest` | ✅已完成 2026-08-26 |
 | 🔴 P0 | Wake Word 测试 | `apps/server/api/tests/` | Wake word 消息处理无测试，需验证协议解析和 session 唤醒流程 | 已有: `axum` test utils | |
 | 🟡 P1 | Auto 模式 + AEC 测试 | `apps/server/api/tests/session/` | Auto 模式（barge_in=false）在有/无 AEC 场景下无专门测试 | 已有: `axum` test utils | |
 | 🟡 P1 | Button Talk 测试 | `apps/server/api/tests/session/` | Manual 模式（push-to-talk）缺少端到端测试 | 已有: `axum` test utils | |
