@@ -133,7 +133,7 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true, features = ["postgres", "gitea"] }
 wavers = { workspace = true }
 tracing-test = { workspace = true }
-acoustix = { workspace = true }
+oximedia-audio-analysis = { workspace = true }
 
 [build-dependencies]
 # llm start

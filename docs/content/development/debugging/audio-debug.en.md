@@ -2,8 +2,8 @@
 title = "Audio Debugging"
 weight = 401
 [extra]
-source_file_hash = "505c117f90b1c01a82892819af4d59add6b7812b"
-translated_at = "2026-06-28T18:00:00Z"
+source_file_hash = "2d852ff6fd8d7a2282dedb19f9a1875e4f1b865c"
+translated_at = "2026-08-26T00:00:00Z"
 +++
 
 # Audio Debugging
@@ -286,10 +286,25 @@ Based on percentage deviation from standard duration `|actual - std| / std`:
 ### Output Format
 
 ```
-Audio:scr=30(D) Perf:scr=84(B) Timing:scr=74(B) | sh=18.07%(F) dr=25.9dB(A) rtf=0.26 gen=2.8s dur=10.60s(std=14.1s-25%) Marginal...
+Audio:scr=30(D) Perf:scr=84(B) Timing:scr=74(B) | sh=18.07%(F) dr=25.9dB(A) rtf=0.26 gen=2.8s dur=10.60s(std=14.1s-25%) glitch=3 clip=0 cf=14.2dB ev=0.0012 sc=1850Hz sf=0.08 sr=4200Hz zcr=0.12 dc=0.0003 snr=28.5dB lead=0ms trail=0ms Marginal...
 ```
 
 Three sections at a glance: Audio→P, Performance→G, Timing→G, raw metrics after `|`.
+
+**Extended diagnostic fields:**
+
+| Field | Description |
+|-------|-------------|
+| `cf` | Crest factor in dB (peak-to-RMS ratio, higher = more dynamic) |
+| `ev` | Energy variance across 20ms frames (low = crossfade smearing) |
+| `sc` | Spectral centroid in Hz (center of mass, speech ~1500–3000 Hz) |
+| `sf` | Spectral flatness (0–1, higher = more noise-like) |
+| `sr` | Spectral rolloff in Hz (85% energy threshold) |
+| `zcr` | Zero-crossing rate (crossings per sample, speech ~0.05–0.15) |
+| `dc` | DC offset (should be near 0.0, non-zero = bias) |
+| `snr` | Estimated signal-to-noise ratio in dB (higher = cleaner) |
+| `lead` | Leading silence in ms |
+| `trail` | Trailing silence in ms |
 
 ### Parameter Tuning Tests
 

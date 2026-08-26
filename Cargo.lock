@@ -15,18 +15,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "415ed64958754dbe991900f3940677e6a7eefb4d7367afd70d642677b0c7d19d"
 
 [[package]]
-name = "acoustix"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bf875c04d0fa8d02fe67f6ea0d7786f6ecd8b4c5ab4ef431140f6ce1183b83f"
-dependencies = [
- "hound",
- "num-complex",
- "rustfft",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "actix-codec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,7 +321,6 @@ name = "api"
 version = "0.1.0"
 dependencies = [
  "accelerate-src",
- "acoustix",
  "anyhow",
  "async-trait",
  "axum",
@@ -367,6 +354,7 @@ dependencies = [
  "mime",
  "nnnoiseless",
  "ogg",
+ "oximedia-audio-analysis",
  "rand 0.8.6",
  "regex",
  "rig-core",
@@ -3301,7 +3289,7 @@ checksum = "5e139bc46ca777eb5efaf62df0ab8cc5fd400866427e56c68b22e414e53bd3be"
 dependencies = [
  "futures-core",
  "futures-sink",
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -4024,6 +4012,11 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash",
+]
 
 [[package]]
 name = "hashlink"
@@ -4936,7 +4929,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -5341,7 +5334,7 @@ dependencies = [
  "httparse",
  "memchr",
  "mime",
- "spin",
+ "spin 0.9.8",
  "version_check",
 ]
 
@@ -6065,6 +6058,100 @@ name = "owo-colors"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
+
+[[package]]
+name = "oxifft"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d47858f0ced62828f8e665439079356e975cc0cc40c41d2202aeebd05a4b915"
+dependencies = [
+ "hashbrown 0.17.1",
+ "libm",
+ "num-complex",
+ "num-traits",
+ "oxifft-codegen",
+ "rayon",
+ "serde",
+ "serde_json",
+ "spin 0.12.3",
+]
+
+[[package]]
+name = "oxifft-codegen"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3737a4347877da5f55154b93e892f924f90f0779b202453006e383ab444af7be"
+dependencies = [
+ "oxifft-codegen-impl",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
+name = "oxifft-codegen-impl"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffadf182af87eba316b6761993d74072a6e54ff86efa9611fb0712ea619045cb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
+name = "oximedia-audio"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "840c0117bc15e9ffab8baed84bd82b5328528ff7ea517ea110fe71927dbeb533"
+dependencies = [
+ "bytes",
+ "oxifft",
+ "oximedia-core",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "oximedia-audio-analysis"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10984a4f336df23087738efe6096d91a35bc2fe3aee6a4360dfeb278feb8bc8b"
+dependencies = [
+ "oxifft",
+ "oximedia-audio",
+ "oximedia-core",
+ "oximedia-mir",
+ "rayon",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "oximedia-core"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f2d8bde14f183cb87532586e5302646c0ba4ae9e6cb5cc49cb48a565d18f832"
+dependencies = [
+ "bitflags 2.13.0",
+ "crossbeam-deque",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "oximedia-mir"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30730f01388870c7694b578273396f1c4ec4a331245eabe4ca1ea4d40bf4888e"
+dependencies = [
+ "bitflags 2.13.0",
+ "oxifft",
+ "oximedia-audio",
+ "oximedia-core",
+ "rayon",
+ "serde",
+ "thiserror 2.0.18",
+]
 
 [[package]]
 name = "p256"
@@ -8711,6 +8798,12 @@ checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
 ]
+
+[[package]]
+name = "spin"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0134f9043ed38b087ac4f7d4af44c79e2c9e5094421fe3164f435ce585953b10"
 
 [[package]]
 name = "spki"

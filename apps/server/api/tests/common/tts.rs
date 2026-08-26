@@ -7,6 +7,7 @@ use std::thread;
 
 use api::config::{audio::AudioConfig, tts::TtsConfig};
 use futures::{Stream, executor::block_on};
+use oximedia_audio_analysis::{AnalysisConfig, AudioAnalyzer};
 use tokio::sync::mpsc::channel;
 use tokio_stream::{StreamExt, wrappers::ReceiverStream};
 use tracing::info;
@@ -68,6 +69,13 @@ pub struct TtsAudioDiagnostics {
     pub crest_factor_db: f64,
     pub energy_variance: f64,
     pub spectral_centroid_hz: f64,
+    pub spectral_flatness: f64,
+    pub spectral_rolloff_hz: f64,
+    pub zero_crossing_rate: f64,
+    pub dc_offset: f64,
+    pub snr_db: f64,
+    pub leading_silence_ms: f64,
+    pub trailing_silence_ms: f64,
 }
 
 impl TtsAudioDiagnostics {
@@ -185,7 +193,8 @@ impl fmt::Display for TtsAudioDiagnostics {
             f,
             "Audio:scr={:.0}({}) Perf:scr={:.0}({}) Timing:scr={:.0}({}) | \
              sh={:.2}%({}) dr={:.1}dB({}) rtf={:.2} gen={:.1}s dur={:.2}s(std={:.1}s{:+.0}%) \
-             glitch={} clip={} cf={:.1}dB ev={:.4} sc={:.0}Hz {}",
+             glitch={} clip={} cf={:.1}dB ev={:.4} sc={:.0}Hz sf={:.4} sr={:.0}Hz \
+             zcr={:.4} dc={:.5} snr={:.1}dB lead={:.0}ms trail={:.0}ms {}",
             self.audio_score(),
             self.audio_grade(),
             self.performance_score(),
@@ -206,6 +215,13 @@ impl fmt::Display for TtsAudioDiagnostics {
             self.crest_factor_db,
             self.energy_variance,
             self.spectral_centroid_hz,
+            self.spectral_flatness,
+            self.spectral_rolloff_hz,
+            self.zero_crossing_rate,
+            self.dc_offset,
+            self.snr_db,
+            self.leading_silence_ms,
+            self.trailing_silence_ms,
             self.verdict(),
         )
     }
@@ -255,13 +271,7 @@ pub fn analyze_audio(
         }
     };
 
-    // acoustix quality metrics
-    let glitch_count = acoustix::advanced::detect_glitches(samples, 0.95).len();
-    let clipping_count = acoustix::advanced::detect_clipping(samples, 0.999, 4);
-    let crest_factor_db = acoustix::advanced::crest_factor(samples).unwrap_or(0.0) as f64;
-
-    // Inter-frame energy variance: low variance indicates crossfade smearing
-    let frame_size = (sample_rate as f32 * 0.020) as usize; // 20ms frames
+    let frame_size = (sample_rate as f32 * 0.020) as usize;
     let energy_var = if samples.len() >= frame_size * 2 {
         let energies: Vec<f32> = samples
             .chunks(frame_size)
@@ -273,33 +283,110 @@ pub fn analyze_audio(
         0.0
     };
 
-    // Spectral centroid: low value indicates high-frequency loss (electronic noise symptom)
-    // Skip leading silence to avoid computing on near-zero samples
-    let skip = (sample_rate as usize / 10).min(samples.len().saturating_sub(256));
-    let analysis_start = skip;
-    let fft_size = 1024.min(samples.len() - analysis_start);
-    let spectral_centroid = if fft_size >= 256 {
-        let window: Vec<f32> = samples[analysis_start..analysis_start + fft_size].to_vec();
-        let mut mag_sum = 0.0f32;
-        let mut weighted_sum = 0.0f32;
-        // Simple DFT magnitude estimation via autocorrelation-like approach
-        let half = fft_size / 2;
-        for k in 1..half {
-            let freq = k as f32 * sample_rate as f32 / fft_size as f32;
-            // Compute magnitude of k-th bin via Goertzel-like inner product
-            let mut real = 0.0f32;
-            let mut imag = 0.0f32;
-            for (n, &s) in window.iter().enumerate() {
-                let angle = 2.0 * std::f32::consts::PI * k as f32 * n as f32 / fft_size as f32;
-                real += s * angle.cos();
-                imag -= s * angle.sin();
-            }
-            let mag = (real * real + imag * imag).sqrt();
-            mag_sum += mag;
-            weighted_sum += freq * mag;
+    let sr_f = sample_rate as f32;
+    let config = AnalysisConfig::default();
+    let analyzer = AudioAnalyzer::new(config);
+    let result = analyzer.analyze(samples, sr_f).unwrap_or_else(|_| {
+        use oximedia_audio_analysis::*;
+        AnalysisResult {
+            spectral: spectral::SpectralFeatures {
+                centroid: 0.0,
+                flatness: 0.0,
+                crest: 0.0,
+                bandwidth: 0.0,
+                rolloff: 0.0,
+                flux: 0.0,
+                magnitude_spectrum: vec![],
+            },
+            pitch: pitch::PitchResult {
+                estimates: vec![],
+                confidences: vec![],
+                mean_f0: 0.0,
+                voicing_rate: 0.0,
+            },
+            formants: formant::FormantResult {
+                formants: vec![],
+                lpc_coefficients: vec![],
+            },
+            dynamics: dynamics::DynamicsResult {
+                peak: 0.0,
+                rms: 0.0,
+                crest: 0.0,
+                dynamic_range_db: 0.0,
+                loudness_variation: 0.0,
+                rms_over_time: vec![],
+            },
+            transients: transient::TransientResult {
+                transient_times: vec![],
+                onset_strength: vec![],
+                num_transients: 0,
+                avg_strength: 0.0,
+            },
+            voice: None,
         }
-        if mag_sum > 1e-10 {
-            weighted_sum / mag_sum
+    });
+
+    let spectral_centroid_hz = result.spectral.centroid as f64;
+    let spectral_flatness = result.spectral.flatness as f64;
+    let spectral_rolloff_hz = result.spectral.rolloff as f64;
+
+    let crest_factor_db = result.dynamics.crest as f64;
+    let _ = dynamic_range_db;
+
+    let clipping_result =
+        oximedia_audio_analysis::distortion::clipping::detect_clipping(samples, 0.999);
+    let clipping_count = clipping_result.clipped_samples;
+
+    let glitch_count = result.transients.num_transients;
+
+    let zcr = oximedia_audio_analysis::energy::zero_crossing_rate(samples);
+
+    let dc_offset = if samples.is_empty() {
+        0.0
+    } else {
+        let sum: f64 = samples.iter().map(|&s| s as f64).sum();
+        sum / samples.len() as f64
+    };
+
+    let noise_samples = (sample_rate as usize / 10).min(samples.len());
+    let signal_start = noise_samples;
+    let signal_end = samples.len();
+    let snr_db = if signal_start < signal_end {
+        let noise_power: f64 = samples[..noise_samples]
+            .iter()
+            .map(|&s| (s as f64).powi(2))
+            .sum::<f64>()
+            / noise_samples.max(1) as f64;
+        let signal_len = signal_end - signal_start;
+        let signal_power: f64 = samples[signal_start..signal_end]
+            .iter()
+            .map(|&s| (s as f64).powi(2))
+            .sum::<f64>()
+            / signal_len.max(1) as f64;
+        if noise_power > 1e-20 {
+            10.0 * (signal_power / noise_power).log10()
+        } else {
+            100.0 // effectively infinite SNR
+        }
+    } else {
+        0.0
+    };
+
+    let silence_regions =
+        oximedia_audio_analysis::energy::detect_silence_regions(samples, sample_rate, -40.0, 20);
+    let leading_silence_ms = if let Some(&(start, end)) = silence_regions.first() {
+        if start == 0 {
+            end as f64 / sample_rate as f64 * 1000.0
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+    let trailing_silence_ms = if let Some(&(start, end)) = silence_regions.last() {
+        let total_samples = samples.len();
+        if end >= total_samples - sample_rate as usize / 100 {
+            (total_samples - start) as f64 / sample_rate as f64 * 1000.0
         } else {
             0.0
         }
@@ -320,11 +407,16 @@ pub fn analyze_audio(
         clipping_count,
         crest_factor_db,
         energy_variance: energy_var as f64,
-        spectral_centroid_hz: spectral_centroid as f64,
+        spectral_centroid_hz,
+        spectral_flatness,
+        spectral_rolloff_hz,
+        zero_crossing_rate: zcr as f64,
+        dc_offset,
+        snr_db,
+        leading_silence_ms,
+        trailing_silence_ms,
     }
 }
-
-// --- Shared TTS test helpers ---
 
 /// Monorepo root path (3 levels up from `CARGO_MANIFEST_DIR`).
 pub fn ws_root() -> &'static std::path::PathBuf {
@@ -486,7 +578,6 @@ pub async fn run_tts_test(
     let diag = analyze_audio(&decoded, 16000, gen_elapsed, std_dur);
     info!("{diag}");
 
-    // acoustix quality assertions
     assert!(
         diag.glitch_count <= decoded.len() / 16000,
         "Too many glitches: {} (max ~1/sec), audio likely has clicks",
@@ -501,17 +592,25 @@ pub async fn run_tts_test(
         "Crest factor too low ({:.1} dB) — audio may be flat/compressed",
         diag.crest_factor_db
     );
-    // Energy variance: crossfade smearing reduces frame-to-frame energy variation
     assert!(
         diag.energy_variance > 1e-8,
         "Energy variance too low ({:.6}) — audio may be smearing from crossfade artifacts",
         diag.energy_variance
     );
-    // Spectral centroid: electronic noise typically shifts energy to low frequencies
     assert!(
         diag.spectral_centroid_hz > 200.0,
         "Spectral centroid too low ({:.0} Hz) — high-frequency loss, possible electronic artifacts",
         diag.spectral_centroid_hz
+    );
+    assert!(
+        diag.spectral_flatness < 0.5,
+        "Spectral flatness too high ({:.4}) — audio may be noise-like rather than speech",
+        diag.spectral_flatness
+    );
+    assert!(
+        diag.dc_offset.abs() < 0.01,
+        "DC offset too high ({:.5}) — possible DC bias in output",
+        diag.dc_offset
     );
 
     std::fs::create_dir_all("./test_data")?;
