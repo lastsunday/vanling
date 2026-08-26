@@ -143,6 +143,24 @@ Listener（`service/src/ling/listener.rs` trait，`api/src/ws/default_listener.r
 3. 静默超时触发 ASR 转录（XAsr sherpa-onnx）
 4. 返回 `ListenResult::Text` 或 `ListenResult::Audio { text, prob }`
 
+### 静默判定：基于音频时间而非墙钟
+
+Listener 用已消费的音频样本数（`silent_samples`）度量静默时长，而非 `Local::now()` 墙钟：
+
+- `spoken: bool` — VAD 是否曾检测到语音（对应旧 `latest_speaking_time` 的 Option 语义）
+- `silent_samples: u64` — 语音结束后累计的静音样本数，语音帧时清零（对应旧 `vad_silent_since` 的转换盖章）
+
+两个阈值共享同一计数器：
+
+| 阈值 | 默认值 | 条件 |
+|---|---|---|
+| `silence_voice_timeout` | 1200ms | `spoken && silent_samples ≥ timeout·sample_rate/1000` |
+| `VAD_SILENCE_CONFIRM_MS` | 200ms | `silent_samples ≥ 200·sample_rate/1000` |
+
+**为什么不用墙钟**：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。
+
+**分层设计**：Listener 层（音频时间）管回合终止判定；Session 层（`close_connection_no_activity_time`，墙钟）管连接空闲断开。与 OpenAI Realtime（`silence_duration_ms` 音频级 + `idle_timeout_ms` 墙钟级）和 Pipecat（`stop_secs` 音频帧计数 + `user_turn_stop_timeout` 墙钟兜底）的分层一致。
+
 ## 输入输出过滤器
 
 ### InputFilter trait

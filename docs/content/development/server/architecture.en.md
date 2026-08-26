@@ -2,8 +2,8 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "209b5587775a27b77e394d0f05062b7f87adcb4b"
-translated_at = "2026-07-30T00:00:00Z"
+source_file_hash = "37ecfc352ffee3be006c25a7ca7f6344dcf62bcc"
+translated_at = "2026-08-26T00:00:00Z"
 +++
 
 # Core Architecture
@@ -145,6 +145,24 @@ The Listener (`service/src/ling/listener.rs` trait, implemented by `api/src/ws/d
 2. VAD detects speech activity (Earshot Silero VAD)
 3. Silence timeout triggers ASR transcription (XAsr sherpa-onnx)
 4. Returns `ListenResult::Text` or `ListenResult::Audio { text, prob }`
+
+### Silence Detection: Audio-Time Based, Not Wall Clock
+
+The Listener measures silence using consumed audio samples (`silent_samples`) instead of `Local::now()` wall clock:
+
+- `spoken: bool` — whether VAD has ever detected speech (replaces the `Option` semantics of the old `latest_speaking_time`)
+- `silent_samples: u64` — silent audio sample count accumulated after speech ends, zeroed on each speech frame (replaces the old `vad_silent_since` transition stamp)
+
+Two thresholds share a single counter:
+
+| Threshold | Default | Condition |
+|---|---|---|
+| `silence_voice_timeout` | 1200ms | `spoken && silent_samples >= timeout * sample_rate / 1000` |
+| `VAD_SILENCE_CONFIRM_MS` | 200ms | `silent_samples >= 200 * sample_rate / 1000` |
+
+**Why not wall clock**: In tests and CI, audio can be injected instantaneously (no real-time pacing), decoupling wall clock from audio stream time. This caused premature turn finishing on slow machines under fast injection. Audio-sample counting makes the trigger depend only on decoded content, independent of consumption speed.
+
+**Layered design**: The Listener layer (audio time) governs turn-end detection; the Session layer (`close_connection_no_activity_time`, wall clock) governs connection idle disconnect. This matches the OpenAI Realtime (`silence_duration_ms` audio-level + `idle_timeout_ms` wall-clock-level) and Pipecat (`stop_secs` frame-counted + `user_turn_stop_timeout` wall-clock backstop) layered patterns.
 
 ## Input and Output Filters
 

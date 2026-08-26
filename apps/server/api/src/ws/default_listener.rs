@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use chrono::Local;
 use service::ling::asr::Asr;
 use service::ling::asr::AsrStream;
 use service::ling::listener::{ListenInput, Listener, TurnOutput, TurnResult};
@@ -16,9 +15,9 @@ const MAX_OPUS_FRAME_MS: u64 = 120;
 
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
 
-/// After VAD declares silence (is_speech()=false), wait this long before
-/// triggering ASR finish.
-const VAD_SILENCE_CONFIRM_MS: i64 = 200;
+/// Silent audio (ms, counted from consumed samples rather than wall clock)
+/// required after VAD reports non-speech before triggering ASR finish.
+const VAD_SILENCE_CONFIRM_MS: u64 = 200;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ListenerState {
@@ -34,8 +33,8 @@ pub struct DefaultListener {
     decoder: StdMutex<ropus::Decoder>,
     state: ListenerState,
     silence_voice_timeout: Option<i64>,
-    latest_speaking_time: Option<i64>,
-    vad_silent_since: Option<i64>,
+    spoken: bool,
+    silent_samples: u64,
     client_input_sample_rate: u32,
     prefix_buffer: Vec<f32>,
     last_partial: Option<String>,
@@ -61,8 +60,8 @@ impl DefaultListener {
             ),
             state: ListenerState::Idle,
             silence_voice_timeout,
-            latest_speaking_time: None,
-            vad_silent_since: None,
+            spoken: false,
+            silent_samples: 0,
             client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             last_partial: None,
@@ -102,19 +101,20 @@ impl DefaultListener {
         })
     }
 
+    fn ms_to_samples(&self, ms: i64) -> u64 {
+        ms as u64 * u64::from(self.client_input_sample_rate) / 1000
+    }
+
     fn check_silence_timeout(&self) -> bool {
-        let now = Local::now().timestamp_millis();
-        if let (Some(timeout), Some(last)) = (self.silence_voice_timeout, self.latest_speaking_time)
-            && now - last >= timeout
+        if !self.spoken {
+            return false;
+        }
+        if let Some(timeout) = self.silence_voice_timeout
+            && self.silent_samples >= self.ms_to_samples(timeout)
         {
             return true;
         }
-        if let Some(silent_since) = self.vad_silent_since
-            && now - silent_since >= VAD_SILENCE_CONFIRM_MS
-        {
-            return true;
-        }
-        false
+        self.silent_samples >= self.ms_to_samples(VAD_SILENCE_CONFIRM_MS as i64)
     }
 
     fn decode_opus(&self, data: &[u8]) -> Option<(Vec<f32>, usize)> {
@@ -179,8 +179,8 @@ impl DefaultListener {
 
             if is_speech {
                 self.state = ListenerState::Listening { is_speech: true };
-                self.latest_speaking_time = Some(Local::now().timestamp_millis());
-                self.vad_silent_since = None;
+                self.spoken = true;
+                self.silent_samples = 0;
 
                 if self.stream.is_none() {
                     let new_stream = self.asr.create_stream();
@@ -209,8 +209,8 @@ impl DefaultListener {
                         self.asr_pending = true;
                     }
                 }
-            } else if was_speech {
-                self.vad_silent_since = Some(Local::now().timestamp_millis());
+            } else if self.spoken {
+                self.silent_samples += chunk.len() as u64;
             }
 
             if !was_speech && is_speech {
@@ -226,8 +226,8 @@ impl DefaultListener {
 
     fn reset_state(&mut self, full: bool) {
         self.state = ListenerState::Idle;
-        self.latest_speaking_time = None;
-        self.vad_silent_since = None;
+        self.spoken = false;
+        self.silent_samples = 0;
         if full {
             self.vad.clear();
             self.prefix_buffer.clear();

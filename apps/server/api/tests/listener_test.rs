@@ -138,7 +138,7 @@ async fn test_speech_started_event() -> anyhow::Result<()> {
     let mut listener = make_listener();
 
     // Silence first (no speech)
-    let silence = vec![0.0f32; 16000 * 1];
+    let silence = vec![0.0f32; 16000];
     feed_all(&mut listener, &encode_opus(&silence)).await;
     let outputs = listener.drain_outputs().await;
     assert!(
@@ -169,25 +169,79 @@ async fn test_speech_started_event() -> anyhow::Result<()> {
 #[traced_test]
 async fn test_silence_timeout_triggers_turn_complete() -> anyhow::Result<()> {
     let mut listener = make_listener();
+    listener.reset(Some(100)).await; // 100ms audio-silence timeout
 
-    // Speech with short silence timeout
     let (speech_pcm, sr) = read_wav(&resource_path("speech_a.wav").to_string_lossy());
     assert_eq!(sr, 16000);
     feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
 
-    // No flush — drain_outputs should detect silence timeout after ~1200ms
-    // Use a short timeout for testing
-    listener.reset(Some(100)).await; // 100ms timeout
-    let (speech_pcm, _sr) = read_wav(&resource_path("speech_a.wav").to_string_lossy());
-    feed_all(&mut listener, &encode_opus(&speech_pcm)).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // +300ms silence crosses the threshold instantly.
+    let silence = vec![0.0f32; 16000 * 3 / 10];
+    feed_all(&mut listener, &encode_opus(&silence)).await;
 
     let outputs = listener.drain_outputs().await;
     assert!(
         outputs
             .iter()
             .any(|o| matches!(o, TurnOutput::TurnComplete(_))),
-        "silence timeout should produce TurnComplete"
+        "audio silence timeout should produce TurnComplete"
+    );
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 7. Turn finishing is driven by consumed audio time, not wall clock —
+//    no finish while active speech is consumed, exactly one after the
+//    clip's own decay. (Earshot ignores hard zeros after speech, hence
+//    the full-clip feed.)
+// ---------------------------------------------------------------------------
+#[tokio::test]
+#[traced_test]
+async fn test_turn_finish_is_audio_time_driven() -> anyhow::Result<()> {
+    let mut listener = make_listener();
+    listener.reset(None).await;
+
+    let (speech_pcm, sr) = read_wav(&resource_path("speech_a.wav").to_string_lossy());
+    assert_eq!(sr, 16000);
+    let packets = encode_opus(&speech_pcm);
+
+    let speech_end_pkt = (2600 * 16000 / 1000) / 320;
+    for pkt in &packets[..speech_end_pkt] {
+        listener.accept(ListenInput::Audio(pkt.clone())).await;
+        let outputs = listener.drain_outputs().await;
+        assert!(
+            !outputs
+                .iter()
+                .any(|o| matches!(o, TurnOutput::TurnComplete(_))),
+            "turn must not finish while active speech is being consumed"
+        );
+    }
+
+    // Rest of clip + margin: decay finishes the turn exactly once.
+    let mut finished = 0;
+    for pkt in &packets[speech_end_pkt..] {
+        listener.accept(ListenInput::Audio(pkt.clone())).await;
+        finished += listener
+            .drain_outputs()
+            .await
+            .iter()
+            .filter(|o| matches!(o, TurnOutput::TurnComplete(_)))
+            .count();
+    }
+    let margin = vec![0.0f32; 16000 * 2 / 5];
+    for pkt in encode_opus(&margin) {
+        listener.accept(ListenInput::Audio(pkt)).await;
+        finished += listener
+            .drain_outputs()
+            .await
+            .iter()
+            .filter(|o| matches!(o, TurnOutput::TurnComplete(_)))
+            .count();
+    }
+    assert_eq!(
+        finished, 1,
+        "clip decay should finish the turn exactly once"
     );
 
     Ok(())

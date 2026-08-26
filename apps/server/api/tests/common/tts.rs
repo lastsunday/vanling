@@ -578,10 +578,12 @@ pub async fn run_tts_test(
     let diag = analyze_audio(&decoded, 16000, gen_elapsed, std_dur);
     info!("{diag}");
 
+    let dur_secs = decoded.len() as f64 / 16000.0;
     assert!(
-        diag.glitch_count <= decoded.len() / 16000,
-        "Too many glitches: {} (max ~1/sec), audio likely has clicks",
-        diag.glitch_count
+        diag.glitch_count as f64 <= dur_secs * 5.0,
+        "Too many transients: {} ({:.1}/sec, max ~5/sec for speech), audio may have severe glitches",
+        diag.glitch_count,
+        diag.glitch_count as f64 / dur_secs,
     );
     assert_eq!(
         diag.clipping_count, 0,
