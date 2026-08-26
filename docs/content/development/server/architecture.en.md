@@ -2,7 +2,7 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "37ecfc352ffee3be006c25a7ca7f6344dcf62bcc"
+source_file_hash = "6bf284d3679b362456f2ef38c7a753bb68f75562"
 translated_at = "2026-08-26T00:00:00Z"
 +++
 
@@ -146,12 +146,16 @@ The Listener (`service/src/ling/listener.rs` trait, implemented by `api/src/ws/d
 3. Silence timeout triggers ASR transcription (XAsr sherpa-onnx)
 4. Returns `ListenResult::Text` or `ListenResult::Audio { text, prob }`
 
-### Silence Detection: Audio-Time Based, Not Wall Clock
+### Silence Detection: Audio-Time + Transport Stall
 
-The Listener measures silence using consumed audio samples (`silent_samples`) instead of `Local::now()` wall clock:
+The Listener uses two independent mechanisms to determine turn completion:
 
-- `spoken: bool` — whether VAD has ever detected speech (replaces the `Option` semantics of the old `latest_speaking_time`)
-- `silent_samples: u64` — silent audio sample count accumulated after speech ends, zeroed on each speech frame (replaces the old `vad_silent_since` transition stamp)
+#### 1. Audio-Time Silence Detection (`silent_samples`)
+
+Measures silence using consumed audio samples instead of `Local::now()` wall clock:
+
+- `spoken: bool` — whether VAD has ever detected speech
+- `silent_samples: u64` — silent audio sample count accumulated after speech ends, zeroed on each speech frame
 
 Two thresholds share a single counter:
 
@@ -160,9 +164,20 @@ Two thresholds share a single counter:
 | `silence_voice_timeout` | 1200ms | `spoken && silent_samples >= timeout * sample_rate / 1000` |
 | `VAD_SILENCE_CONFIRM_MS` | 200ms | `silent_samples >= 200 * sample_rate / 1000` |
 
-**Why not wall clock**: In tests and CI, audio can be injected instantaneously (no real-time pacing), decoupling wall clock from audio stream time. This caused premature turn finishing on slow machines under fast injection. Audio-sample counting makes the trigger depend only on decoded content, independent of consumption speed.
+#### 2. Transport Stall Detection (`last_audio_received`)
 
-**Layered design**: The Listener layer (audio time) governs turn-end detection; the Session layer (`close_connection_no_activity_time`, wall clock) governs connection idle disconnect. This matches the OpenAI Realtime (`silence_duration_ms` audio-level + `idle_timeout_ms` wall-clock-level) and Pipecat (`stop_secs` frame-counted + `user_turn_stop_timeout` wall-clock backstop) layered patterns.
+When the client stops sending audio, `process_audio()` is no longer called and `silent_samples` cannot grow. A wall-clock fallback is needed:
+
+- `last_audio_received: Instant` — timestamp of the last received audio packet
+- Checked in `drain_outputs()`: if `spoken && last_audio_received.elapsed() >= silence_voice_timeout`, the transport is considered stalled and `finish_turn()` is called immediately
+
+This detection is independent of VAD — even if VAD still reports `is_speech: true` (e.g., Earshot not deactivating on trailing zeros), the turn finishes when audio packets stop arriving and the timeout elapses.
+
+**Why not wall clock for silence detection**: In tests and CI, audio can be injected instantaneously (no real-time pacing), decoupling wall clock from audio stream time. This caused premature turn finishing on slow machines under fast injection. Audio-sample counting makes the trigger depend only on decoded content, independent of consumption speed.
+
+**Why wall clock for transport stall**: Audio-time counting can only tally samples that actually arrive. When the client stops sending audio entirely, there are no samples to count, so a wall-clock fallback is necessary to detect the stalled transport.
+
+**Layered design**: The Listener layer (audio-time silence + wall-clock transport stall) governs turn-end detection; the Session layer (`close_connection_no_activity_time`, wall clock) governs connection idle disconnect. This matches the OpenAI Realtime (`silence_duration_ms` audio-level + `idle_timeout_ms` wall-clock-level) and TurnEndpointClock (audio-time turn ending + wall-clock stall reporting) layered patterns.
 
 ## Input and Output Filters
 

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use service::ling::asr::Asr;
@@ -35,6 +35,7 @@ pub struct DefaultListener {
     silence_voice_timeout: Option<i64>,
     spoken: bool,
     silent_samples: u64,
+    last_audio_received: Instant,
     client_input_sample_rate: u32,
     prefix_buffer: Vec<f32>,
     last_partial: Option<String>,
@@ -62,6 +63,7 @@ impl DefaultListener {
             silence_voice_timeout,
             spoken: false,
             silent_samples: 0,
+            last_audio_received: Instant::now(),
             client_input_sample_rate: DEFAULT_SAMPLE_RATE,
             prefix_buffer: Vec::with_capacity(PREFIX_SAMPLES_MAX),
             last_partial: None,
@@ -148,6 +150,7 @@ impl DefaultListener {
         let Some((samples, len)) = self.decode_opus(data) else {
             return;
         };
+        self.last_audio_received = Instant::now();
 
         if self.stream.is_none() {
             self.audio_sample_count = 0;
@@ -228,6 +231,7 @@ impl DefaultListener {
         self.state = ListenerState::Idle;
         self.spoken = false;
         self.silent_samples = 0;
+        self.last_audio_received = Instant::now();
         if full {
             self.vad.clear();
             self.prefix_buffer.clear();
@@ -303,6 +307,21 @@ impl Listener for DefaultListener {
     async fn drain_outputs(&mut self) -> Vec<TurnOutput> {
         if self.asr_pending {
             self.asr_pending = false;
+            return self.finish_turn().await;
+        }
+
+        if let Some(timeout) = self.silence_voice_timeout
+            && self.spoken
+            && self.stream.is_some()
+            && !self.asr_pending
+            && self.last_audio_received.elapsed() >= Duration::from_millis(timeout as u64)
+        {
+            tracing::debug!(
+                component = "LISTENER", event = "transport_stall",
+                session_id = %self.session_id,
+                idle_ms = self.last_audio_received.elapsed().as_millis(),
+                "listener: transport stall, no audio received"
+            );
             return self.finish_turn().await;
         }
 

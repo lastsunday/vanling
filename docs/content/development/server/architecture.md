@@ -143,12 +143,16 @@ Listener（`service/src/ling/listener.rs` trait，`api/src/ws/default_listener.r
 3. 静默超时触发 ASR 转录（XAsr sherpa-onnx）
 4. 返回 `ListenResult::Text` 或 `ListenResult::Audio { text, prob }`
 
-### 静默判定：基于音频时间而非墙钟
+### 静默判定：音频时间 + 传输停滞检测
 
-Listener 用已消费的音频样本数（`silent_samples`）度量静默时长，而非 `Local::now()` 墙钟：
+Listener 用两套独立机制判定回合终止：
 
-- `spoken: bool` — VAD 是否曾检测到语音（对应旧 `latest_speaking_time` 的 Option 语义）
-- `silent_samples: u64` — 语音结束后累计的静音样本数，语音帧时清零（对应旧 `vad_silent_since` 的转换盖章）
+#### 1. 音频时间静默检测（`silent_samples`）
+
+用已消费的音频样本数度量静默时长，而非 `Local::now()` 墙钟：
+
+- `spoken: bool` — VAD 是否曾检测到语音
+- `silent_samples: u64` — 语音结束后累计的静音样本数，语音帧时清零
 
 两个阈值共享同一计数器：
 
@@ -157,9 +161,20 @@ Listener 用已消费的音频样本数（`silent_samples`）度量静默时长�
 | `silence_voice_timeout` | 1200ms | `spoken && silent_samples ≥ timeout·sample_rate/1000` |
 | `VAD_SILENCE_CONFIRM_MS` | 200ms | `silent_samples ≥ 200·sample_rate/1000` |
 
-**为什么不用墙钟**：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。
+#### 2. 传输停滞检测（`last_audio_received`）
 
-**分层设计**：Listener 层（音频时间）管回合终止判定；Session 层（`close_connection_no_activity_time`，墙钟）管连接空闲断开。与 OpenAI Realtime（`silence_duration_ms` 音频级 + `idle_timeout_ms` 墙钟级）和 Pipecat（`stop_secs` 音频帧计数 + `user_turn_stop_timeout` 墙钟兜底）的分层一致。
+当客户端停止发送音频时，`process_audio()` 不再被调用，`silent_samples` 无法增长。此时需要墙上时钟兜底：
+
+- `last_audio_received: Instant` — 上次收到音频包的时间戳
+- 在 `drain_outputs()` 中检查：若 `spoken && last_audio_received.elapsed() ≥ silence_voice_timeout`，说明传输已断，直接 `finish_turn()`
+
+此检测与 VAD 无关——即使 VAD 仍报 `is_speech: true`（如 Earshot 在尾部零值上不退激活），只要音频包停止到达且超时，即判定传输停滞。
+
+**为什么不用墙钟做静默判定**：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。
+
+**为什么需要墙钟做传输停滞检测**：音频时间计数只能统计已到达的样本。当客户端完全停止发送音频后，没有样本可计数，必须用墙上时钟检测流断。
+
+**分层设计**：Listener 层（音频时间静默 + 墙钟传输停滞）管回合终止判定；Session 层（`close_connection_no_activity_time`，墙钟）管连接空闲断开。与 OpenAI Realtime（`silence_duration_ms` 音频级 + `idle_timeout_ms` 墙钟级）和 TurnEndpointClock（音频时间 turn 结束 + 墙钟 stall 报告）的分层一致。
 
 ## 输入输出过滤器
 
