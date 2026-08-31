@@ -137,7 +137,7 @@ If the button is pressed but no speech is captured (VAD detects no speech, the b
 
 Low-latency mode. VAD detection directly triggers audio streaming without waiting for silence timeout before starting LLM inference and TTS streaming output. Suitable for real-time devices like ESP32.
 
-### Empty-Input Behavior
+### Empty-Input Behavior {#empty-input-behavior}
 
 Empty input (no valid speech) is classified and graded by the hub (Session) — `Wake`/`AutoSpoke`/`Silence`
 follow Rule of three (max 3), while `Manual` is event-driven and prompts on every keypress; the generation
