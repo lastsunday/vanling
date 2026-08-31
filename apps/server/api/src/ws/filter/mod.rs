@@ -1,7 +1,7 @@
 pub mod recorder;
 
 use async_trait::async_trait;
-use service::ling::frame::{Frame, OutputMessage};
+use service::frame::{Frame, OutputMessage};
 
 pub struct FilterCtx {
     pub session_id: String,

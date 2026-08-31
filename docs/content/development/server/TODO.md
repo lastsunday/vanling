@@ -33,8 +33,8 @@ weight = 204
 | 🟡 P1 | 动态 VAD 参数 | `api/src/ws/default_listener.rs` + `vad/` | **当前瓶颈**：VAD 参数在配置时固定，`silence_voice_timeout=1200ms` 固定。OpenAI Realtime 用 `threshold=0.5` + `prefix_padding_ms=300` + `silence_duration_ms=500` 配置，LiveKit 支持 `update_options()` 运行时修改。**方案**：助理刚说完→缩短 silence 到 300ms（快速回复）；用户长发言→延长 max_speech_ms；能量预过滤静音帧跳过 VAD 推理（省 CPU）。vui 通过命令队列实时修改 `stop_secs`，speech-to-speech 有 RuntimeConfig | 参考: vui `asr_worker.py:198-206`; speech-to-speech `RuntimeConfig`; OpenAI `server_vad` 配置 | |
 | 🟡 P1 | ASR Settle 延迟 + Speculative Reopen | `api/src/ws/default_listener.rs` | **当前瓶颈**：VAD silence 后立即 ASR，可能丢失尾部音素；无 turn reopen 机制。**方案**：(1) 分层提交：silence→等 120ms 让最后中间结果到达→标点检查→`.?!` 立即提交，无标点额外等 700ms trailing-off（vui tiered_commit 实测：干净句子 420ms，trailing off 1120ms）；(2) Speculative Reopen：参考 HF speech-to-speech 的 SpeculativeTurnTracker，64ms 静默即软结束开始 ASR/LLM，turn 保持 reopenable 1s，用户重新说话→revision+1 丢弃旧工作。**防止误提交**：用户说"嗯...其实..."时不会过早触发回复 | 参考: vui `voice_turn.py:696-771`; HF speech-to-speech `speculative_turns.py` | |
 | ⚠️ P2 | 填充词/犹豫检测 | `api/src/ws/default_listener.rs` | ASR 输出 `uh/um/呃/嗯` 等填充词 + 短音频（<3s）→ 丢弃不触发 LLM。**方案**：(1) 轻量：ASR 后处理检查末尾填充词（vui `_ends_with_filler`，支持 `uh/um/uhhh/ummm` 变体）；(2) 音频级：desert-ant-labs `uhm` 项目，DistilHuBERT 分类器，iPhone 169-296x realtime，6 类无需 ASR；(3) 训练级：disfluency LoRA 微调 whisper-large-v3-turbo，75% filler 召回率。vanling 推荐方案 (1)，与分层轮次检测的 Layer 4 结合 | 参考: vui `_ends_with_filler` `voice_turn.py:25-35`; desert-ant-labs/uhm; disfluency LoRA | |
-| ⚠️ P2 | VAD 采样率 | `api/src/vad/` | 硬编码 16kHz，非 16kHz 输入无声失败 | — | |
-| ⚠️ P2 | ASR | `api/src/asr/` | XAsr (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | 已有: `sherpa-onnx` | |
+| ⚠️ P2 | VAD 采样率 | `api/src/component/vad/` | 硬编码 16kHz，非 16kHz 输入无声失败 | — | |
+| ⚠️ P2 | ASR | `api/src/component/asr/` | XAsr (sherpa-onnx)，无 `Sync` trait，仅 16kHz 单声道 | 已有: `sherpa-onnx` | |
 | ⚠️ P2 | 环境监听模式 | 新功能 | 医疗 AI（Nuance DAX/Nabla）的被动监听模式：非唤醒词触发，持续监听环境音频，主动响应用户需求。需隐私架构（Nabla 模式：不存储原始音频）。适合家庭/办公场景 | — | |
 | 🟢 P3 | Speaker Diarization | `api/src/listener/` | 说话人分离，多人场景下区分不同用户。sherpa-onnx 已支持（ECAPA-TDNN + AHC 聚类） | 已有: `sherpa-onnx` / 建议: `polyvoice` | |
 | 🟢 P3 | AEC 服务端降噪 | `api/src/ws/default_listener.rs` | joey-zhou 已实现 WebRTC AEC3 服务端回声消除（含噪声抑制 + 高通滤波 + 自适应增益）。vanling 仅客户端 AEC | 建议: `aec3` — 纯 Rust WebRTC AEC3 | |
@@ -46,36 +46,36 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | LLM 线程安全 | `api/src/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on`，未 `catch_unwind`，panic 静默崩溃 | — | ✅已完成 2026-07-24 |
-| 🔴 P0 | LLM Echo 线程 | `api/src/llm/model/echo/mod.rs` | 同上 | — | ✅已完成 2026-07-24 |
-| 🟡 P1 | 情绪识别完善 | `api/src/llm/model/` (analyze_emotion) | 当前 stub 返回 "happy"。行业方案：音频特征 (wav2vec2 SER) + 文本情感 (GoEmotions) 双通道融合，用于调整 TTS 语气和回复风格 | 已有: `sherpa-onnx` (SER 模型) | |
+| 🔴 P0 | LLM 线程安全 | `api/src/component/llm/model/qwen3/mod.rs` | `thread::spawn` + `block_on`，未 `catch_unwind`，panic 静默崩溃 | — | ✅已完成 2026-07-24 |
+| 🔴 P0 | LLM Echo 线程 | `api/src/component/llm/model/echo/mod.rs` | 同上 | — | ✅已完成 2026-07-24 |
+| 🟡 P1 | 情绪识别完善 | `api/src/component/llm/model/` (analyze_emotion) | 当前 stub 返回 "happy"。行业方案：音频特征 (wav2vec2 SER) + 文本情感 (GoEmotions) 双通道融合，用于调整 TTS 语气和回复风格 | 已有: `sherpa-onnx` (SER 模型) | |
 | 🟡 P1 | 个性化记忆/长期偏好 | 新功能 | 当前仅 chat history，无长期偏好存储。参考项目 xinnan-tech 有 PowerMem（用户画像 + 艾宾浩斯遗忘曲线 + 向量检索）；joey-zhou 有 3 种记忆模式（window/summary/long + 图检索） | 建议: `qdrant` + `rig-core` — 向量 DB + RAG 框架 | |
 | 🟡 P1 | RAG 知识库 | MCP 或内置模块 | 参考项目 xinnan-tech 集成 RAGFlow；joey-zhou 有 EmbeddingModelFactory + 图检索。当前 MCP 框架可接入但无内置向量检索 | 已有: `rig-core` (10+ 向量存储后端) | |
 | 🟡 P1 | Intent 识别 | 新功能 | 参考项目 xinnan-tech 支持 3 种模式：function_call（推荐）、intent_llm（专用 LLM）、nointent。当前 vanling 无独立 intent 层 | 已有: `rmcp` (function_call) | |
-| 🟡 P1 | LLM 历史阻塞 | `api/src/llm/model/qwen3/mod.rs` | DB 落盘导致完整线程阻塞 | — | |
+| 🟡 P1 | LLM 历史阻塞 | `api/src/component/llm/model/qwen3/mod.rs` | DB 落盘导致完整线程阻塞 | — | |
 | ⚠️ P2 | Agent 任务编排 | 新功能 | 参考项目 Alexa+ 自主执行 Uber/OpenTable/Grubhub；Rabbit R1 LAM 大动作模型；Doubao 超能模式自主分解复杂任务。LLM + MCP 工具链实现自主任务执行 | 已有: `rig-core` (Agent/Chain/Router) | |
-| 🟢 P3 | describe O(n) | `api/src/llm/model/qwen3/mod.rs` | 实时构建全消息历史 | — | |
+| 🟢 P3 | describe O(n) | `api/src/component/llm/model/qwen3/mod.rs` | 实时构建全消息历史 | — | |
 
 ## 语音合成 (TTS)
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🟡 P1 | Piper/Kokoro TTS 集成 | `api/src/tts/` | 开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 建议: `sherpa-onnx` (Piper ONNX 模型) | |
-| 🟡 P1 | 两阶段流式 TTS 架构 | `api/src/ling_core/splitter.rs` + `round.rs` + `api/src/tts/mod.rs` | **当前瓶颈**：Splitter 严格按 `。！？!?` 拆分，无子句拆分；MatchaTTS `generate_with_config` 一次性生成整句音频（callback 参数为 `None`，sherpa-onnx 实际支持流式 callback）。arxiv 2603.05413 实测流水线并行 TTFA 755ms（vs 串行 26.5s → 17x 改善）。**两阶段架构**（参考 Qwen3-TTS-streaming）：Phase 1 token 级首包 — LLM 第一个 token 到达即触发 TTS，快速出首包（3-5 词），降低 TTFA；Phase 2 句子级稳态 — 后续 15-20 词或 break_chars 兜底，吞吐优先。TTS 改用 callback 模式边生成边 Opus 编码边发送，取消时 callback 返回 false 中断。核心原则：延迟从 `STT+LLM+TTS` 变为 `max(STT,LLM,TTS)` | 参考: Qwen3-TTS-streaming 两阶段架构; vui `engine.py:73` `chunk_words`; arxiv 2603.05413; sherpa-onnx callback API | ✅已完成 2026-07-23 |
-| 🟡 P1 | 音频 Hold Buffer + Fade-out | `api/src/tts/` | TTS 输出音频尾部 abrupt cutoff 产生 click。最后 N 帧（~240ms）缓存，尾部 200ms 做线性淡出消除杂音，参考 vui `tts_worker.py:713-783` 的 hold buffer + fade-out 实现 | 参考: vui `tts_worker.py:713-783` | ✅已完成 2026-07-23（fade-out 已实现，hold buffer 未实现） |
-| 🟡 P1 | 多语言 TTS | `api/src/tts/` | 当前仅单语言 TTS voice。ESP32 客户端已支持 25+ 语言 ASR，TTS 侧需匹配 | 建议: `sherpa-onnx` (Piper/VITS ONNX 模型) | |
+| 🟡 P1 | Piper/Kokoro TTS 集成 | `api/src/component/tts/` | 开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 建议: `sherpa-onnx` (Piper ONNX 模型) | |
+| 🟡 P1 | 两阶段流式 TTS 架构 | `api/src/component/ling/splitter.rs` + `round.rs` + `api/src/component/tts/mod.rs` | **当前瓶颈**：Splitter 严格按 `。！？!?` 拆分，无子句拆分；MatchaTTS `generate_with_config` 一次性生成整句音频（callback 参数为 `None`，sherpa-onnx 实际支持流式 callback）。arxiv 2603.05413 实测流水线并行 TTFA 755ms（vs 串行 26.5s → 17x 改善）。**两阶段架构**（参考 Qwen3-TTS-streaming）：Phase 1 token 级首包 — LLM 第一个 token 到达即触发 TTS，快速出首包（3-5 词），降低 TTFA；Phase 2 句子级稳态 — 后续 15-20 词或 break_chars 兜底，吞吐优先。TTS 改用 callback 模式边生成边 Opus 编码边发送，取消时 callback 返回 false 中断。核心原则：延迟从 `STT+LLM+TTS` 变为 `max(STT,LLM,TTS)` | 参考: Qwen3-TTS-streaming 两阶段架构; vui `engine.py:73` `chunk_words`; arxiv 2603.05413; sherpa-onnx callback API | ✅已完成 2026-07-23 |
+| 🟡 P1 | 音频 Hold Buffer + Fade-out | `api/src/component/tts/` | TTS 输出音频尾部 abrupt cutoff 产生 click。最后 N 帧（~240ms）缓存，尾部 200ms 做线性淡出消除杂音，参考 vui `tts_worker.py:713-783` 的 hold buffer + fade-out 实现 | 参考: vui `tts_worker.py:713-783` | ✅已完成 2026-07-23（fade-out 已实现，hold buffer 未实现） |
+| 🟡 P1 | 多语言 TTS | `api/src/component/tts/` | 当前仅单语言 TTS voice。ESP32 客户端已支持 25+ 语言 ASR，TTS 侧需匹配 | 建议: `sherpa-onnx` (Piper/VITS ONNX 模型) | |
 | 🟡 P1 | Quick Reply 预回复 | 新功能 | LLM 推理期间先播放"我在"/"来了"等短语，降低感知延迟。参考项目黑客365 Go 版已实现，UX 关键，实现简单 | — | |
 | 🟡 P1 | 动态 TTS 声音切换 | 新功能 | 基于声纹识别自动切换不同 TTS 音色。参考项目黑客365 Go 版已实现（sherpa-onnx 声纹 + per-speaker TTS voice），声纹识别的自然延伸 | 已有: `sherpa-onnx` (声纹+TTS 切换) | |
-| 🟡 P1 | Hann Crossfade 防 click | `api/src/tts/mod.rs` | **当前问题**：TTS chunk 边界产生 click/pop 杂音。**方案**：Hann 窗 crossfade（512 samples @ 16kHz = 32ms），首包 fade-in、末包 fade-out、中间 crossfade。参考 Qwen3-TTS-streaming 项目（89 stars），业界标准做法。Overlap trimming 流程：crossfade 当前 HEAD 与前一个 TAIL → 保存完整 chunk → trim END before emission。实现位置：`StreamingOpusEncoder` 内部维护 `prev_tail: Vec<f32>`，每次 encode 时 crossfade | 参考: Qwen3-TTS-streaming `overlap_samples=512`; open-unified-tts 30-50ms crossfade | ❌丢弃 2026-07-23 — 输入 PCM 连续，无需 crossfade |
-| 🟡 P1 | 首包静音裁剪 + 40ms preroll | `api/src/tts/mod.rs` | **当前问题**：TTS 输出首包有 leading silence，增加感知延迟。**方案**：1% amplitude threshold 检测首包静音，裁剪后保留 40ms preroll（软起音避免 abrupt start）。参考 speech-to-speech 项目 `trim_silence()`。预期减少感知延迟 50-200ms。实现位置：`TtsMatcha::stream()` 中 Opus 编码前增加 `trim_leading_silence()` 步骤 | 参考: speech-to-speech `trim_silence()`; Dupdub TTS latency optimization | ❌丢弃 2026-07-23 — 与流式架构不兼容 |
-| 🟡 P1 | Splitter 升级：sentencex 集成 | `api/src/ling_core/splitter.rs` | **当前问题**：Splitter 仅按 `。！？!?` 简单正则分割，无缩写处理（"Dr." "Mr." 被错误断句）、无 context lookahead（"$29." 被错误断句）、无 minimum sentence length。**方案**：使用 `sentencex` crate（Wikimedia，136 stars，MIT），支持 200+ 语言包括中文，手工编译缩写列表，英文 Golden Rule Set F1=100.00（NLTK 仅 72.33）。`cargo add sentencex` 即可集成。替换现有 `Splitter` 的正则逻辑 | 建议: `sentencex` — Rust 纯实现，Wikimedia 维护 | ✅已完成 2026-07-23 |
-| 🟡 P1 | TTFA/RTF 性能测量 | `api/src/tts/mod.rs` | **当前问题**：无 TTS 性能可观测性。**方案**：记录每请求 TTFA（time-to-first-audio）和 RTF（real-time-factor），持久化原始样本计算 P50/P90/P95 百分位。P95 决定 silence_timeout 配置。实现：在 `TtsMatcha::stream()` 中记录 `Instant::now()` 到首次 Opus 帧输出的时间差 | 参考: Dupdub TTS latency optimization; Sherlock Calls P95 monitoring | ✅已完成 2026-07-23 |
-| 🟡 P1 | Opus-to-PCM 解码预缓冲 | `service/src/ling/session/round.rs` | **当前问题**：客户端收到 Opus 帧后立即解码播放，无预缓冲。网络抖动导致播放卡顿。**方案**：服务端或客户端增加 Opus→PCM 解码层，预缓冲 N 帧（~200ms）后再播放，平滑网络抖动影响。参考 speech-to-speech 项目 leftover sample carry 机制。ESP32 端可利用 Opus decoder 已有实现；WS 端需评估是否在服务端预解码（增加带宽但降低客户端复杂度） | 参考: speech-to-speech `leftover_samples` carry; sherpa-onnx Opus decoder | |
-| ⚠️ P2 | 句间静音优化 | `api/src/tts/` | TTS 句间固定静音。改为按标点类型动态调整：逗号 0.3s，句号 0.6s，其他 0.3s，让对话节奏更自然 | 参考: RealtimeVoiceChat `ENGINE_SILENCES` `audio_module.py:22-26` | |
+| 🟡 P1 | Hann Crossfade 防 click | `api/src/component/tts/mod.rs` | **当前问题**：TTS chunk 边界产生 click/pop 杂音。**方案**：Hann 窗 crossfade（512 samples @ 16kHz = 32ms），首包 fade-in、末包 fade-out、中间 crossfade。参考 Qwen3-TTS-streaming 项目（89 stars），业界标准做法。Overlap trimming 流程：crossfade 当前 HEAD 与前一个 TAIL → 保存完整 chunk → trim END before emission。实现位置：`StreamingOpusEncoder` 内部维护 `prev_tail: Vec<f32>`，每次 encode 时 crossfade | 参考: Qwen3-TTS-streaming `overlap_samples=512`; open-unified-tts 30-50ms crossfade | ❌丢弃 2026-07-23 — 输入 PCM 连续，无需 crossfade |
+| 🟡 P1 | 首包静音裁剪 + 40ms preroll | `api/src/component/tts/mod.rs` | **当前问题**：TTS 输出首包有 leading silence，增加感知延迟。**方案**：1% amplitude threshold 检测首包静音，裁剪后保留 40ms preroll（软起音避免 abrupt start）。参考 speech-to-speech 项目 `trim_silence()`。预期减少感知延迟 50-200ms。实现位置：`TtsMatcha::stream()` 中 Opus 编码前增加 `trim_leading_silence()` 步骤 | 参考: speech-to-speech `trim_silence()`; Dupdub TTS latency optimization | ❌丢弃 2026-07-23 — 与流式架构不兼容 |
+| 🟡 P1 | Splitter 升级：sentencex 集成 | `api/src/component/ling/splitter.rs` | **当前问题**：Splitter 仅按 `。！？!?` 简单正则分割，无缩写处理（"Dr." "Mr." 被错误断句）、无 context lookahead（"$29." 被错误断句）、无 minimum sentence length。**方案**：使用 `sentencex` crate（Wikimedia，136 stars，MIT），支持 200+ 语言包括中文，手工编译缩写列表，英文 Golden Rule Set F1=100.00（NLTK 仅 72.33）。`cargo add sentencex` 即可集成。替换现有 `Splitter` 的正则逻辑 | 建议: `sentencex` — Rust 纯实现，Wikimedia 维护 | ✅已完成 2026-07-23 |
+| 🟡 P1 | TTFA/RTF 性能测量 | `api/src/component/tts/mod.rs` | **当前问题**：无 TTS 性能可观测性。**方案**：记录每请求 TTFA（time-to-first-audio）和 RTF（real-time-factor），持久化原始样本计算 P50/P90/P95 百分位。P95 决定 silence_timeout 配置。实现：在 `TtsMatcha::stream()` 中记录 `Instant::now()` 到首次 Opus 帧输出的时间差 | 参考: Dupdub TTS latency optimization; Sherlock Calls P95 monitoring | ✅已完成 2026-07-23 |
+| 🟡 P1 | Opus-to-PCM 解码预缓冲 | `service/src/session/round.rs` | **当前问题**：客户端收到 Opus 帧后立即解码播放，无预缓冲。网络抖动导致播放卡顿。**方案**：服务端或客户端增加 Opus→PCM 解码层，预缓冲 N 帧（~200ms）后再播放，平滑网络抖动影响。参考 speech-to-speech 项目 leftover sample carry 机制。ESP32 端可利用 Opus decoder 已有实现；WS 端需评估是否在服务端预解码（增加带宽但降低客户端复杂度） | 参考: speech-to-speech `leftover_samples` carry; sherpa-onnx Opus decoder | |
+| ⚠️ P2 | 句间静音优化 | `api/src/component/tts/` | TTS 句间固定静音。改为按标点类型动态调整：逗号 0.3s，句号 0.6s，其他 0.3s，让对话节奏更自然 | 参考: RealtimeVoiceChat `ENGINE_SILENCES` `audio_module.py:22-26` | |
 | ⚠️ P2 | 对话韵律 TTS | 新功能 | 参考项目 Sesame CSM（Apache 2.0 开源）生成呼吸/犹豫/笑声等对话韵律，让语音更像真人。Cartesia Sonic 3.5 使用 SSM 架构实现 <90ms TTS 延迟 | 建议: `csm.rs` — Rust Sesame CSM (AGPL-3.0) | |
 | ⚠️ P2 | 情绪自适应语调 | 新功能 | 参考项目 Hume AI EVI 检测 600+ 情感标签（犹豫/讽刺/宽慰），自适应调整 TTS 语气。MiniMax Speech-2.8 支持 7 种情绪 + 0-100% 强度控制 + 插入标签 `(laughs)` `(sighs)` | 建议: `voirs-emotion` — 多维情绪控制 | |
-| 🟢 P3 | 声音克隆 | `api/src/tts/` | 参考项目 xinnan-tech 支持火山引擎语音克隆；joey-zhou 支持按角色声音克隆。MatchaTTS 已支持 reference audio，需暴露配置接口 | 建议: `sherpa-onnx` (speaker embedding) | |
-| 🟢 P3 | TTS 循环克隆 | `api/src/tts/` | `Arc<str>` vs `String` 克隆风暴 | — | |
+| 🟢 P3 | 声音克隆 | `api/src/component/tts/` | 参考项目 xinnan-tech 支持火山引擎语音克隆；joey-zhou 支持按角色声音克隆。MatchaTTS 已支持 reference audio，需暴露配置接口 | 建议: `sherpa-onnx` (speaker embedding) | |
+| 🟢 P3 | TTS 循环克隆 | `api/src/component/tts/` | `Arc<str>` vs `String` 克隆风暴 | — | |
 
 ## 工具与集成
 
@@ -97,9 +97,9 @@ weight = 204
 
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
-| 🔴 P0 | stop_round 竞态 | `service/src/ling/session/round.rs` | `llm_tts_handle` 与 `stop_round` 之间缺少同步，可能 use-after-cancel | — | ✅已完成 2026-07-24 |
-| 🟡 P1 | Continued Conversation | `service/src/ling/session/` | 回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持 | — | |
-| 🟡 P1 | 时钟溢出 | `service/src/ling/session/mod.rs` | `Local::now()` 非单调，减法可溢出 | 已有: `jiff` (单调时钟) | |
+| 🔴 P0 | stop_round 竞态 | `service/src/session/round.rs` | `llm_tts_handle` 与 `stop_round` 之间缺少同步，可能 use-after-cancel | — | ✅已完成 2026-07-24 |
+| 🟡 P1 | Continued Conversation | `service/src/session/` | 回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持 | — | |
+| 🟡 P1 | 时钟溢出 | `service/src/session/mod.rs` | `Local::now()` 非单调，减法可溢出 | 已有: `jiff` (单调时钟) | |
 | 🟡 P1 | 设备管理 | `api/src/device.rs` | 列表/激活/禁用/启用/删除/详情 | 已有: `sea-orm` | ✅已完成 2026-07-30 |
 | 🟡 P1 | Recorder 无上限 | `api/src/record/recorder.rs` | `Vec<RecordEntry>` 无大小限制，高并发内存无限增长 | — | |
 | 🟢 P3 | Session 导出/删除 | `api/src/record/` | Session 仅可查看，不可导出或删除 | — | |
@@ -109,7 +109,7 @@ weight = 204
 | 优先级 | 项目 | 位置 | 描述 | 开源方案/类库 | 状态 |
 |------|------|------|------|------|------|
 | ⚠️ P2 | 消息类型 | `api/src/ws/frame.rs` | 缺失 `system`、`alert`、`custom`、`wake_word` 消息类型（对比 xiaozhi-esp32 规范） | — | |
-| ⚠️ P2 | 多 ASR/TTS Provider | `api/src/asr/` + `api/src/tts/` | 参考项目 xinnan-tech 支持 12 ASR + 18+ TTS provider（含免费 EdgeTTS）；joey-zhou 有 7 STT + 8 TTS。vanling 仅 1 ASR + 1 TTS | 已有: `sherpa-onnx` (多模型切换) | |
+| ⚠️ P2 | 多 ASR/TTS Provider | `api/src/component/asr/` + `api/src/component/tts/` | 参考项目 xinnan-tech 支持 12 ASR + 18+ TTS provider（含免费 EdgeTTS）；joey-zhou 有 7 STT + 8 TTS。vanling 仅 1 ASR + 1 TTS | 已有: `sherpa-onnx` (多模型切换) | |
 
 ## 基础设施
 

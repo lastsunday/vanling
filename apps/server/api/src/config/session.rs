@@ -1,1 +1,1 @@
-pub use service::ling::session::SessionConfig;
+pub use service::session::SessionConfig;

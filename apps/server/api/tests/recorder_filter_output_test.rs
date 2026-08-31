@@ -5,13 +5,13 @@ use api::ws::filter::{FilterCtx, OutputFilter, RecorderOutputFilter};
 use framework::error::AppError;
 use framework::error::critical_code::CriticalErrorCode;
 use rmcp::model::{JsonRpcRequest, Request, RequestId};
-use service::ling::frame::{FrameResult, OutputMessage};
-use service::ling::message::audio::AudioMessage;
-use service::ling::message::hello::HelloMessage;
-use service::ling::message::llm::LlmMessage;
-use service::ling::message::mcp::McpRequest;
-use service::ling::message::stt::SttMessage;
-use service::ling::message::tts::{TtsMessage, TtsState};
+use service::frame::{FrameResult, OutputMessage};
+use service::message::audio::AudioMessage;
+use service::message::hello::HelloMessage;
+use service::message::llm::LlmMessage;
+use service::message::mcp::McpRequest;
+use service::message::stt::SttMessage;
+use service::message::tts::{TtsMessage, TtsState};
 
 fn make_msg(round_id: Option<&str>, payload: FrameResult) -> OutputMessage {
     OutputMessage {
@@ -514,7 +514,7 @@ async fn test_pre_round_frames_elapsed_us_non_negative() {
     assert!(!frames.is_empty(), "frames should have been flushed");
     for f in &frames {
         assert!(
-            f.elapsed_us.map_or(true, |v| v >= 0),
+            f.elapsed_us.is_none_or(|v| v >= 0),
             "frame seq={} dir={} detail={:?} has negative elapsed_us={:?}",
             f.seq,
             f.dir,

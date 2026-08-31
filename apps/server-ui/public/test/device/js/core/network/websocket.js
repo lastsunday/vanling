@@ -31,6 +31,12 @@ export class WebSocketHandler {
         token: config.token,
         features: {
           mcp: true
+        },
+        audio_params: {
+          format: 'opus',
+          sample_rate: getAudioRecorder().getSampleRate(),
+          channels: 1,
+          frame_duration: 20
         }
       };
 

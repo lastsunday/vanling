@@ -2,8 +2,8 @@
 title = "Models and Deployment"
 weight = 203
 [extra]
-source_file_hash = "2636170d3eab82a7a1783a10c34761b346bc3be5"
-translated_at = "2026-07-30T00:00:00Z"
+source_file_hash = "2060981544dc4698ac844c7f5b563872ccc6e6ce"
+translated_at = "2026-08-31T00:00:00Z"
 +++
 
 # Models and Deployment
@@ -27,26 +27,29 @@ apps/server/
 │       ├── index.rs          # Health / Version endpoints
 │       ├── ota.rs            # OTA firmware update
 │       ├── device.rs         # Device management (admin CRUD)
-│       ├── ws/               # WebSocket handler (core real-time pipeline)
-│       ├── ling_core/        # LingCore: LLM + MCP orchestration
-│       ├── asr/              # ASR Manager + model (XAsr)
-│       ├── tts/              # TTS Manager + model (MatchaTTS)
-│       ├── vad/              # VAD Manager + model (Earshot)
-│       ├── llm/              # LLM Manager + model (Qwen3 / Echo)
-│       ├── mcp/              # MCP Server + Client (rmcp Streamable HTTP)
+│       ├── ws/               # WebSocket handler (core real-time pipeline + filter)
+│       ├── component/        # AI engine implementations (Manager + model)
+│       │   ├── asr/          # ASR Manager + model (XAsr)
+│       │   ├── tts/          # TTS Manager + model (MatchaTTS)
+│       │   ├── vad/          # VAD Manager + model (Earshot)
+│       │   ├── llm/          # LLM Manager + model (Qwen3 / Echo)
+│       │   ├── mcp/          # MCP Server + Client (rmcp Streamable HTTP)
+│       │   └── ling/         # LingCore: LLM + MCP orchestration (implements the Ling trait)
 │       ├── record/           # Session recording REST API
 │       ├── matrix/           # Matrix chat integration
 │       └── common/           # Shared helpers (device selection, errors)
-├── service/                  # Business logic layer (trait definitions + Session state machine)
-│   └── src/ling/
-│       ├── session/          # Session state machine + Round lifecycle
+├── service/                  # Business logic layer (trait definitions + orchestration framework)
+│   └── src/
+│       ├── component/        # Engine contracts (traits + protocol types)
+│       │   ├── asr.rs / tts.rs / vad.rs
+│       │   ├── llm/          # Llm trait + ChatMessage / ToolDef
+│       │   └── mcp/          # McpClient trait + McpRegistry
+│       ├── ling/             # Ling trait (decision engine)
+│       ├── pipeline/         # Node / NodeChain / PipelineEvent (outer node chain) + nodes/
+│       ├── session/          # Session state machine + Round lifecycle (incl. TurnEvent)
+│       ├── message/          # Wire protocol message definitions (Hello / Abort / Audio / LLM / TTS, etc.)
 │       ├── frame.rs          # Frame / FrameResult / OutputMessage
-│       ├── listener.rs       # Listener trait (VAD + ASR orchestration)
-│       ├── core.rs           # Ling trait (LLM + MCP orchestration)
-│       ├── asr.rs / tts.rs / vad.rs  # AI trait definitions
-│       ├── llm/              # Llm trait + ChatMessage / ToolDef
-│       ├── mcp/              # McpClient trait + McpRegistry
-│       └── message/          # Wire protocol message definitions (Hello / Abort / Audio / LLM / TTS, etc.)
+│       └── types.rs          # Shared types (EmptyKind / Sentence / Input / OutputBlock)
 ├── entity/                   # Sea-ORM Entities (user / session / round / round_data / frame / config)
 ├── migration/                # Database migrations
 └── web/                      # Static file serving (SPA)

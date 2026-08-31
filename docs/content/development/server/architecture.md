@@ -14,7 +14,7 @@ vanling 服务端使用 **Session + Round** 模型管理对话：
 - **Session**：一次 WebSocket 连接的生命周期。管理连接、认证、状态转换。
 - **Round**：每轮对话（用户发言 → 服务端响应）。一个 Session 包含多个 Round。
 
-Session 在 `service/src/ling/session/mod.rs` 中定义，不绑定具体传输协议（WebSocket / Matrix 等），通过 `Frame` 枚举与外界通信。
+Session 在 `service/src/session/mod.rs` 中定义，不绑定具体传输协议（WebSocket / Matrix 等），通过 `Frame` 枚举与外界通信。
 
 ## 数据流
 
@@ -41,47 +41,39 @@ Client → WebSocket
 
 ## Session 状态机
 
-Session 有四种阶段（`Phase`）：
+Session 有三个阶段（`Phase`）：
 
 ```
-Idle → Ready → Listening → Speaking → Ready → ...
-                ↑              │
-                └── BargeIn ───┘
+Idle → Listening ⇄ Speaking
+             ↑       │
+             └─ BargeIn ┘
 ```
 
 ### Idle
 
 初始状态，等待客户端发送 `Hello`。
 
-- 收到 `Frame::Hello` → 回复 Hello 响应（包含 `session_id`、`audio_params`），迁移至 **Ready**
+- 收到 `Frame::Hello` → 回复 Hello 响应（`session_id`、`audio_params` 由构建时 `capabilities()` look up `AudioSpec` 决定），迁移至 **Listening**
 - 自动创建第一个 Shadow Round
-
-### Ready
-
-等待用户输入。可接收：
-
-- `Frame::ListenStart` → 开始监听，迁移至 **Listening**。如果已有 Running Round 则 BargeIn 中断
-- `Frame::Input { text }` → 文本输入，升级 Shadow Round，迁移至 **Speaking**
-- `Frame::Voice { data }` → 音频数据，转发给 Listener（VAD 处理）
 
 ### Listening
 
-接收音频数据，VAD 检测语音边界。
+监听输入。
 
-- `Frame::Voice { data }` → 传给 Listener（VAD 判断是否在说话）
-- `Frame::ListenStop` → 结束监听，从 Listener 取 ASR 结果，升级 Shadow Round，迁移至 **Speaking**
-- 静默超时 → 自动触发 ListenStop 等效逻辑
+- `Frame::Voice { data }` → 转发为 `PipelineEvent::AudioFrame` 到 Shadow Round 链首（VAD 在链内检测语音边界）
+- `Frame::Input { text, mode }` → 文本输入（`mode=Wake` 标记唤醒语境），投喂 `TurnText`；Shadow Round 升级为 Running，迁移至 **Speaking**
+- `Frame::ListenStart` → 已有 Running Round 则 BargeIn 中断；更新监听参数（barge-in / 断音检测）
+- `Frame::ListenStop` → 向链投喂 `FinishTurn`；空输入（无有效语音）由 Session 辨别类型（`EmptyKind`）分级提示：manual 无人声注入 `Prompt{Manual, count}` 触发"没听清"引导语；auto 说了但 ASR 空为 `AutoSpoke`、完全静默为 `Silence`、回复后连续监听为 `Continuing`（静默不提示）——详见 `pipeline-redesign.md`「静音 / 空输入判别」子章节
 
 ### Speaking
 
-LLM 推理 + TTS 合成 + 音频流式输出。
+表达阶段：TurnComplete 后 Shadow Round 升级为 Running Round 自动合成 TTS 并流式输出，同时新建下一轮 Shadow Round 监听。
 
-- 向 Running Round 发送 Command::Chat，触发 LLM → TTS 管道
-- 完成后自动回到 **Ready** 等待下一轮
+- 表达结束自动回到 **Listening** 等待下一轮输入
 
 ## Round 生命周期
 
-Round 在 `service/src/ling/session/round.rs` 中实现，管理单轮对话的 LLM 推理和 TTS 合成。
+Round 在 `service/src/session/round.rs` 中实现，管理单轮对话的 LLM 推理和 TTS 合成。
 
 ### 双 Round 模式
 
@@ -103,78 +95,68 @@ Shadow Round    Running Round
 
 ### Round 内部流程
 
+Round 拥有单条节点链，并以内层观察者身份订阅广播统一消费：
+
 ```
-ChatParam → Round
-  ├── Ling.ask() → LLM 流式输出
-  │     ├── LLMResult (文本片段)
-  │     └── ToolCall (→ MCP → LLM)
-  └── Tts.stream() → 音频帧
-        ├── TTSResult (状态事件)
-        └── AudioResult (Opus 编码音频)
+Session │
+        ↓ (RoundEvent: SpeechStarted / TurnComplete / EmptyTurn / SpokenEnd)
+Round 拥有 NodeChain (opus→vad→asr→turn→ling→tts)
+  ├── VAD/ASR 产 TurnText → TurnNode 关回合为 TurnComplete → 发 STT + 通知 Session 升级
+  ├── Ling 文案 → TTS 产 AudioOut（逐句转发：SentenceStart / Audio / SentenceEnd）
+  └── 内层广播统一处理：TTS 状态机 / barge-in（含 lockout）/ 超时 / tail Err
+        ↓ (OutputMessage)
+     客户端
 ```
 
-Round 的 LLM 和 TTS 并行执行流式输出，通过 OutputMessage 发送。
+Round 通过 `OutputMessage` 输出；Session 只做生命周期决策（shadow→running 升级 / 相位 / 打断），不再轮询链。
 
 ## LingCore
 
-LingCore（`api/src/ling_core/`）是 LLM + MCP 的编排层。
+LingCore（`api/src/component/ling/mod.rs`）实现 `Ling` trait，是 LLM + MCP + 历史的编排层，产出逐句 `TextChunk`：
 
 ```
 LingCore
-  ├── HistoryManager (消息历史管理 / 截断)
-  ├── LlmClient (Qwen3 / Echo)
-  ├── McpRegistry (MCP 工具聚合)
-  └── TextSplitter (LLM 输出 → 句子分割 → TTS)
+  ├── model       (Arc<dyn Llm>：Qwen3 / Echo)
+  ├── history     (消息历史 / 截断)
+  ├── mcp_registry (MCP 工具聚合)
+  └── splitter     (LLM 输出 → 句子 → TTS)
 ```
 
 流程：
 
-1. 用户文本 → HistoryManager 构建 ChatHistory
-2. LlmClient.stream() → LLM 流式响应
-3. 若 LLM 返回 ToolCall → McpRegistry.call_tool() → 结果回喂 LLM
-4. LLM 文本 → TextSplitter 分句 → TTS
+1. LLM 流式响应 → 若返回 ToolCall → mcp 工具调用 → 结果回喂 LLM
+2. 文本按 `Sentence` 分割，逐句产出 `TextChunk { text, emotion }` → TTS 节点
 
-## Listener
+## 回合终止判定：静默确认 + 传输停滞
 
-Listener（`service/src/ling/listener.rs` trait，`api/src/ws/default_listener.rs` 实现）编排 VAD + ASR：
+回合终止判定位于 **AsrNode（音频时间静默确认）** 与 **Session（墙钟传输停滞）** 两层；
+两者均只对 `streaming=true`（`auto`/`realtime`）生效，**按键录音（`manual`，`ListenMode{streaming:false}`）不实时识别**，
+仅缓冲整段音频，待设备 `listen(stop)` 投喂 `FinishTurn` 时一次性识别（见 [`dialogue-flow.md`](@/development/server/dialogue-flow.md)）。
 
-1. 接收音频数据（`ListenInput::Audio`）
-2. VAD 检测语音活动（Earshot Silero VAD）
-3. 静默超时触发 ASR 转录（XAsr sherpa-onnx）
-4. 返回 `ListenResult::Text` 或 `ListenResult::Audio { text, prob }`
+### 1. 音频时间静默确认（AsrNode）
 
-### 静默判定：音频时间 + 传输停滞检测
-
-Listener 用两套独立机制判定回合终止：
-
-#### 1. 音频时间静默检测（`silent_samples`）
-
-用已消费的音频样本数度量静默时长，而非 `Local::now()` 墙钟：
+`AsrNode`（`service/src/pipeline/nodes/asr_node.rs`）以**已消费的音频样本数**度量静默时长，而非 `Local::now()` 墙钟：
 
 - `spoken: bool` — VAD 是否曾检测到语音
-- `silent_samples: u64` — 语音结束后累计的静音样本数，语音帧时清零
+- `silence_samples: u64` — 语音结束后累计的静音样本数，语音帧时清零
+- `SILENCE_CONFIRM_MS`（200ms）— `streaming && spoken && !speech_active && 静音样本 ≥ 阈值·sample_rate/1000` → 立即 `finish()` 本轮
+- `streaming: bool` — 由 `ListenMode{streaming}`（`listen(start)` 时注入）切换。`false`（manual）时**仍逐帧喂流预解码**（`accept_waveform`+`decode`），但抑制 `PartialTranscript` 发射与静音确认；`FinishTurn` 走同一 `finish_stream()`，只 drain 残留帧，近瞬成文——把解码摊到按住期间，避免 stop 后冷启动整段识别
 
-两个阈值共享同一计数器：
+finish 三态：有效输入 → `TurnText`；有流但空文本 → `EmptyInput`（触发提示语）；无流 → `Nothing`。
+manual 复用同三态，唯其**无流（VAD 未检到语音）时 `finish_stream` 返回 `Nothing`**——
+由 Session 空输入逻辑（`EmptyKind::Manual`）唯一驱动提示语，避免与链内 `EmptyInput` 双触发。
 
-| 阈值 | 默认值 | 条件 |
-|---|---|---|
-| `silence_voice_timeout` | 1200ms | `spoken && silent_samples ≥ timeout·sample_rate/1000` |
-| `VAD_SILENCE_CONFIRM_MS` | 200ms | `silent_samples ≥ 200·sample_rate/1000` |
+### 2. 传输停滞检测（Session）
 
-#### 2. 传输停滞检测（`last_audio_received`）
+当客户端停止发送音频时，`silence_samples` 无法增长，用墙上时钟兜底：`check_transport_stall()`
+（`session/mod.rs`）在 `spoken` 仍活动且 `last_audio_received.elapsed() ≥ silence_voice_timeout`（1200ms）时向链投喂 `FinishTurn` 强制收尾。
+**manual 模式跳过该检测**（Listening 且 `is_voice_break_detect == false` 时直接返回）——设备的 stop 是唯一回合边界，绝不因静默超时"抢答"。
 
-当客户端停止发送音频时，`process_audio()` 不再被调用，`silent_samples` 无法增长。此时需要墙上时钟兜底：
-
-- `last_audio_received: Instant` — 上次收到音频包的时间戳
-- 在 `drain_outputs()` 中检查：若 `spoken && last_audio_received.elapsed() ≥ silence_voice_timeout`，说明传输已断，直接 `finish_turn()`
-
-此检测与 VAD 无关——即使 VAD 仍报 `is_speech: true`（如 Earshot 在尾部零值上不退激活），只要音频包停止到达且超时，即判定传输停滞。
-
-**为什么不用墙钟做静默判定**：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。
+**为什么不用墙钟做静默确认**：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。
 
 **为什么需要墙钟做传输停滞检测**：音频时间计数只能统计已到达的样本。当客户端完全停止发送音频后，没有样本可计数，必须用墙上时钟检测流断。
 
-**分层设计**：Listener 层（音频时间静默 + 墙钟传输停滞）管回合终止判定；Session 层（`close_connection_no_activity_time`，墙钟）管连接空闲断开。与 OpenAI Realtime（`silence_duration_ms` 音频级 + `idle_timeout_ms` 墙钟级）和 TurnEndpointClock（音频时间 turn 结束 + 墙钟 stall 报告）的分层一致。
+与 OpenAI Realtime（`silence_duration_ms` 音频级 + `idle_timeout_ms` 墙钟级）分层一致。
 
 ## 输入输出过滤器
 
@@ -207,18 +189,18 @@ trait OutputFilter: Send + Sync {
 
 ## SessionBuilder
 
-Session 通过 Builder 模式构造：
+Session 通过 Builder 模式构造，注入**裸节点原型集合**（api 站点按配置动态组链，决定链的阶段/顺序）：
 
 ```rust
 SessionBuilder::new()
     .with_id(session_id)
-    .with_listener(DefaultListener::new(vad, asr))
-    .with_ling(LingCoreBuilder::new(llm, mcp_registry).build())
-    .with_tts(TtsManager::default())
+    .with_node_templates(templates)   // Vec<Arc<dyn Node>>：opus→vad→asr→turn→ling→tts
     .with_config(session_config)
-    .with_audio_config(audio_config)
     .build()  // 返回 SessionContext
 ```
+
+`build()` 时从模板 `capabilities()`（`downcast_ref::<AudioSpec>()`）look up 下行音频能力：无 TTS 节点则握手不声明
+`audio_params`（无下行语音能力、不构造 pacer）。已删除的旧参数：`with_listener` / `with_ling` / `with_tts` / `with_audio_config`。
 
 `SessionContext` 包含：
 - `session`：Session 实例
@@ -275,7 +257,7 @@ Session 在主循环中通过空闲时间戳实现无活动超时：
 
 - `idle_since: Option<Instant>` 记录进入空闲的时间点，非空闲时重置为 `None`
 - `close_connection_no_activity_time`（默认 30s）无活动超时断连
-- `silence_voice_timeout`（默认 1200ms）VAD 静默判定
+- `silence_voice_timeout`（默认 1200ms）传输停滞判定（speaking 中长时间无音频 → `FinishTurn` 强制收尾）
 
 ## 中断（BargeIn）
 

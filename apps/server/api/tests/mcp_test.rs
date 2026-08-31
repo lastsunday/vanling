@@ -1,9 +1,9 @@
 use anyhow::Context;
 use api::{
-    config::mcp::McpServerConfig,
-    mcp::client::{
+    component::mcp::client::{
         device::DeviceMcpClient, device_transport::DeviceMcpTransport, resolve_mcp_auth_token,
     },
+    config::mcp::McpServerConfig,
     setup_mcp,
 };
 use axum::{
@@ -25,7 +25,7 @@ use rmcp::{
         StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
-use service::ling::frame::{FrameResult, OutputMessage};
+use service::frame::{FrameResult, OutputMessage};
 use std::sync::Arc;
 use tower::ServiceExt;
 use tracing_test::traced_test;

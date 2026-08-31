@@ -1,16 +1,16 @@
 use api::{
     AppState,
-    asr::AsrManager,
+    component::asr::AsrManager,
+    component::ling::LingCoreBuilder,
+    component::llm::LlmManager,
+    component::mcp::client::external::ExternalMcpClient,
+    component::tts::TtsManager,
+    component::vad::pool::VadPool,
     config::{
         AsrModel, LlmProvider, TtsModel, VadModel, asr::AsrConfig, audio::AudioConfig,
         llm::LlmConfig, tts::TtsConfig, vad::VadConfig,
     },
-    mcp::client::external::ExternalMcpClient,
     setup_mcp,
-    tts::TtsManager,
-    vad::VadManager,
-    ws::default_listener::DefaultListener,
-    {ling_core::LingCoreBuilder, llm::LlmManager},
 };
 use framework::auth::{Jwt, Principal};
 use framework::config::auth::AuthConfig;
@@ -18,14 +18,11 @@ use framework::id::gen_id;
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
-use service::ling::{
-    frame::{Frame, FrameResult, OutputMessage},
-    mcp::McpRegistry,
-    message::tts::{TtsMessage, TtsState},
-    session::{
-        AudioConfig as ServiceAudioConfig, SessionBuilder, SessionConfig as ServiceSessionConfig,
-    },
-};
+use service::component::mcp::McpRegistry;
+use service::frame::{Frame, FrameResult, OutputMessage};
+use service::message::tts::{TtsMessage, TtsState};
+use service::pipeline::{AsrNode, LingNode, OpusDecodeNode, TtsNode, TurnNode, VadNode};
+use service::session::{SessionBuilder, SessionConfig as ServiceSessionConfig};
 
 use futures::StreamExt;
 use std::{
@@ -58,7 +55,7 @@ use crate::common::{router_client::RouterClient, setup_database, tts::tts_stream
 /// Uses Void VAD/ASR + Echo LLM + Matcha TTS.
 pub async fn create_session() -> Result<
     (
-        service::ling::session::Session,
+        service::session::Session,
         mpsc::UnboundedSender<Frame>,
         mpsc::UnboundedReceiver<OutputMessage>,
         Option<ContainerAsync<Postgres>>,
@@ -109,7 +106,7 @@ pub async fn create_session() -> Result<
         output_frame_duration: Some(20_u64),
     });
 
-    let ling: Arc<dyn service::ling::core::Ling> = Arc::new(
+    let ling: Arc<dyn service::ling::Ling> = Arc::new(
         LingCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
@@ -120,7 +117,7 @@ pub async fn create_session() -> Result<
             .build(),
     );
 
-    let tts: Arc<dyn service::ling::tts::Tts> = Arc::from(
+    let tts: Arc<dyn service::component::tts::Tts> = Arc::from(
         TtsManager::create_model(
             &TtsConfig {
                 model: Some(TtsModel::MatchaTts),
@@ -138,15 +135,14 @@ pub async fn create_session() -> Result<
         .unwrap(),
     );
 
-    let session_ctx = SessionBuilder::new()
-        .with_id(session_id.clone())
-        .with_listener(Box::new(DefaultListener::new(
-            session_id.clone(),
-            VadManager::create_model(&Arc::new(VadConfig {
-                model: Some(VadModel::Earshot),
-                ..Default::default()
-            })),
-            Arc::from(AsrManager::create_model(&AsrConfig {
+    let templates: Vec<Arc<dyn service::pipeline::Node>> = vec![
+        Arc::new(OpusDecodeNode::new()) as Arc<dyn service::pipeline::Node>,
+        Arc::new(VadNode::new(Arc::new(VadPool::new(Arc::new(VadConfig {
+            model: Some(VadModel::Earshot),
+            ..Default::default()
+        }))))) as Arc<dyn service::pipeline::Node>,
+        Arc::new(AsrNode::new(Arc::from(AsrManager::create_model(
+            &AsrConfig {
                 model: Some(AsrModel::XAsr),
                 path: Some(
                     workspace_root()
@@ -155,24 +151,20 @@ pub async fn create_session() -> Result<
                         .into_owned(),
                 ),
                 variant: None,
-            })),
-            Some(1200),
-        )))
-        .with_ling(ling)
-        .with_tts(tts)
+            },
+        )))) as Arc<dyn service::pipeline::Node>,
+        Arc::new(TurnNode::new()) as Arc<dyn service::pipeline::Node>,
+        Arc::new(LingNode::new(ling)) as Arc<dyn service::pipeline::Node>,
+        Arc::new(TtsNode::new(tts)) as Arc<dyn service::pipeline::Node>,
+    ];
+
+    let session_ctx = SessionBuilder::new()
+        .with_id(session_id.clone())
+        .with_node_templates(templates)
         .with_config(ServiceSessionConfig {
             close_connection_no_activity_time: Some(3000),
             silence_voice_timeout: Some(1200),
-            system_prompt: Some(String::from(
-                "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
-            )),
-            max_prompt_len: Some(6000),
             barge_in_lockout_ms: Some(250),
-        })
-        .with_audio_config(ServiceAudioConfig {
-            output_sample_rate: 16000,
-            output_channel: 1,
-            output_frame_duration: 20,
         })
         .build();
     Ok((
@@ -191,6 +183,55 @@ pub async fn create_mini_session_channel() -> (
     create_mini_session_with_timeout(3000).await
 }
 
+/// 无 TTS 模板的会话通道。模板只含听段节点（opus→vad→asr→turn），
+/// 无 `TtsNode` ⇒ `audio_spec` 为 `None` ⇒ 握手 `audio_params: None`（不声明下行语音能力）。
+pub async fn create_no_tts_session_channel() -> (
+    mpsc::UnboundedSender<Frame>,
+    mpsc::UnboundedReceiver<OutputMessage>,
+) {
+    let session_id = gen_id();
+    let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
+
+    let ling: Arc<dyn service::ling::Ling> = Arc::new(
+        LingCoreBuilder::new()
+            .with_session_id(Some(session_id.clone()))
+            .with_model(LlmManager::create_model(&LlmConfig {
+                provider: Some(LlmProvider::LocalEcho),
+                ..Default::default()
+            }))
+            .with_mcp_registry(mcp_registry)
+            .build(),
+    );
+
+    let templates: Vec<Arc<dyn service::pipeline::Node>> = vec![
+        Arc::new(OpusDecodeNode::new()) as Arc<dyn service::pipeline::Node>,
+        Arc::new(VadNode::new(Arc::new(VadPool::new(Arc::new(VadConfig {
+            model: Some(VadModel::Earshot),
+            ..Default::default()
+        }))))) as Arc<dyn service::pipeline::Node>,
+        Arc::new(AsrNode::new(Arc::from(AsrManager::create_model(
+            &AsrConfig {
+                model: Some(AsrModel::Void),
+                ..Default::default()
+            },
+        )))) as Arc<dyn service::pipeline::Node>,
+        Arc::new(TurnNode::new()) as Arc<dyn service::pipeline::Node>,
+        Arc::new(LingNode::new(ling)) as Arc<dyn service::pipeline::Node>,
+    ];
+
+    let session_ctx = SessionBuilder::new()
+        .with_id(session_id.clone())
+        .with_node_templates(templates)
+        .with_config(ServiceSessionConfig {
+            close_connection_no_activity_time: Some(3000),
+            silence_voice_timeout: Some(1200),
+            barge_in_lockout_ms: Some(250),
+        })
+        .build();
+    tokio::spawn(session_ctx.session.start());
+    (session_ctx.input_tx, session_ctx.output_rx)
+}
+
 pub async fn create_mini_session_with_timeout(
     close_connection_no_activity_time_ms: i64,
 ) -> (
@@ -200,7 +241,7 @@ pub async fn create_mini_session_with_timeout(
     let session_id = gen_id();
     let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(Some(session_id.clone()))));
 
-    let ling: Arc<dyn service::ling::core::Ling> = Arc::new(
+    let ling: Arc<dyn service::ling::Ling> = Arc::new(
         LingCoreBuilder::new()
             .with_session_id(Some(session_id.clone()))
             .with_model(LlmManager::create_model(&LlmConfig {
@@ -217,7 +258,7 @@ pub async fn create_mini_session_with_timeout(
         output_frame_duration: Some(20_u64),
     });
 
-    let tts: Arc<dyn service::ling::tts::Tts> = Arc::from(
+    let tts: Arc<dyn service::component::tts::Tts> = Arc::from(
         TtsManager::create_model(
             &TtsConfig {
                 model: Some(TtsModel::Mute),
@@ -229,35 +270,30 @@ pub async fn create_mini_session_with_timeout(
         .unwrap(),
     );
 
-    let session_ctx = SessionBuilder::new()
-        .with_id(session_id.clone())
-        .with_listener(Box::new(DefaultListener::new(
-            session_id.clone(),
-            VadManager::create_model(&Arc::new(VadConfig {
-                model: Some(VadModel::Earshot),
-                ..Default::default()
-            })),
-            Arc::from(AsrManager::create_model(&AsrConfig {
+    let templates: Vec<Arc<dyn service::pipeline::Node>> = vec![
+        Arc::new(OpusDecodeNode::new()) as Arc<dyn service::pipeline::Node>,
+        Arc::new(VadNode::new(Arc::new(VadPool::new(Arc::new(VadConfig {
+            model: Some(VadModel::Earshot),
+            ..Default::default()
+        }))))) as Arc<dyn service::pipeline::Node>,
+        Arc::new(AsrNode::new(Arc::from(AsrManager::create_model(
+            &AsrConfig {
                 model: Some(AsrModel::Void),
                 ..Default::default()
-            })),
-            Some(1200),
-        )))
-        .with_ling(ling)
-        .with_tts(tts)
+            },
+        )))) as Arc<dyn service::pipeline::Node>,
+        Arc::new(TurnNode::new()) as Arc<dyn service::pipeline::Node>,
+        Arc::new(LingNode::new(ling)) as Arc<dyn service::pipeline::Node>,
+        Arc::new(TtsNode::new(tts)) as Arc<dyn service::pipeline::Node>,
+    ];
+
+    let session_ctx = SessionBuilder::new()
+        .with_id(session_id.clone())
+        .with_node_templates(templates)
         .with_config(ServiceSessionConfig {
             close_connection_no_activity_time: Some(close_connection_no_activity_time_ms),
             silence_voice_timeout: Some(1200),
-            system_prompt: Some(String::from(
-                "你是一个助手，所有回答必须使用纯文本自然语言，禁止使用任何Markdown符号如#、-、*等。",
-            )),
-            max_prompt_len: Some(3000),
             barge_in_lockout_ms: Some(250),
-        })
-        .with_audio_config(ServiceAudioConfig {
-            output_sample_rate: 16000,
-            output_channel: 1,
-            output_frame_duration: 20,
         })
         .build();
     tokio::spawn(session_ctx.session.start());
@@ -308,6 +344,54 @@ pub async fn get_tts_audio(text: &str) -> Vec<Vec<u8>> {
         all_audio.extend(packet.unwrap().audio);
     }
     all_audio
+}
+
+/// 把 16k opus 音频重采样到目标采样率，重新编码为 opus 帧（每帧 20ms）。
+/// 用于模拟客户端声明非 16k 上行采样率（浏览器 AudioContext 常见 48k）时，
+/// 上行仍是真实语音（XAsr 可识别），从而覆盖 opus 节点重采样路径。
+pub fn resample_opus_audio(audio: &[Vec<u8>], target_rate: u32) -> Vec<Vec<u8>> {
+    const SRC_RATE: u32 = 16000;
+    let mut decoder =
+        ropus::Decoder::new(SRC_RATE, ropus::Channels::Mono).expect("build opus decoder");
+    let max_frame = (SRC_RATE as usize * 120) / 1000;
+    let mut src_pcm: Vec<f32> = Vec::new();
+    for frame in audio {
+        let mut samples = vec![0f32; max_frame];
+        let len = decoder
+            .decode_float(frame, &mut samples, ropus::DecodeMode::Normal)
+            .expect("decode 16k opus");
+        src_pcm.extend_from_slice(&samples[..len]);
+    }
+    let ratio = target_rate as f64 / SRC_RATE as f64;
+    let mut dst_pcm: Vec<f32> = Vec::with_capacity((src_pcm.len() as f64 * ratio) as usize);
+    for n in 0..((src_pcm.len() as f64 * ratio) as usize) {
+        let f = n as f64 / ratio;
+        let i0 = f.floor() as usize;
+        let i1 = (i0 + 1).min(src_pcm.len().saturating_sub(1));
+        let frac = f - i0 as f64;
+        dst_pcm.push(src_pcm[i0] * (1.0 - frac as f32) + src_pcm[i1] * frac as f32);
+    }
+    let frame_samples = (target_rate as usize * 20) / 1000;
+    let mut encoder = ropus::Encoder::builder(
+        target_rate,
+        ropus::Channels::Mono,
+        ropus::Application::Audio,
+    )
+    .build()
+    .expect("build opus encoder");
+    let mut out = vec![0u8; 4000];
+    dst_pcm
+        .chunks(frame_samples)
+        .map(|chunk| {
+            let mut pcm = vec![0i16; frame_samples];
+            for (i, s) in pcm.iter_mut().enumerate() {
+                let v = chunk.get(i).copied().unwrap_or(0.0);
+                *s = (v.clamp(-1.0, 1.0) * 32767.0) as i16;
+            }
+            let n = encoder.encode(&pcm, &mut out).expect("encode opus frame");
+            out[..n].to_vec()
+        })
+        .collect()
 }
 
 /// Default timeout for recv operations.

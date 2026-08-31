@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
+use api::component::vad::model::earshot::VadEarshot;
 use api::config::vad::VadConfig;
-use api::vad::model::earshot::VadEarshot;
 use earshot::Detector;
-use service::ling::vad::Vad;
+use service::component::vad::Vad;
 use tracing::info;
 use tracing_test::traced_test;
 

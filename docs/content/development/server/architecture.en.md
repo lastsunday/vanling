@@ -2,8 +2,8 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "6bf284d3679b362456f2ef38c7a753bb68f75562"
-translated_at = "2026-08-26T00:00:00Z"
+source_file_hash = "87da0d6865242832fa74d0204f273eb7309da048"
+translated_at = "2026-08-31T00:00:00Z"
 +++
 
 # Core Architecture
@@ -17,7 +17,7 @@ vanling server manages conversations using the **Session + Round** model:
 - **Session**: The lifecycle of a single WebSocket connection. Manages connection, auth, state transitions.
 - **Round**: Each turn of conversation (user speaks → server responds). A Session contains multiple Rounds.
 
-The Session is defined in `service/src/ling/session/mod.rs`, and is not tied to a specific transport protocol (WebSocket / Matrix, etc.) — it communicates via the `Frame` enum.
+The Session is defined in `service/src/session/mod.rs`, and is not tied to a specific transport protocol (WebSocket / Matrix, etc.) — it communicates via the `Frame` enum.
 
 ## Data Flow
 
@@ -44,47 +44,39 @@ Client → WebSocket
 
 ## Session State Machine
 
-The Session has four phases (`Phase`):
+The Session has three phases (`Phase`):
 
 ```
-Idle → Ready → Listening → Speaking → Ready → ...
-                ↑              │
-                └── BargeIn ───┘
+Idle → Listening ⇄ Speaking
+             ↑       │
+             └─ BargeIn ┘
 ```
 
 ### Idle
 
 Initial state, waits for `Hello` from client.
 
-- Receives `Frame::Hello` → replies with Hello response (includes `session_id`, `audio_params`), transitions to **Ready**
+- Receives `Frame::Hello` → replies with Hello response (`session_id`; `audio_params` decided by the `capabilities()` look-up (`downcast_ref::<AudioSpec>()`) at build time), transitions to **Listening**
 - Automatically creates first Shadow Round
-
-### Ready
-
-Waiting for user input. Can accept:
-
-- `Frame::ListenStart` → start listening, transitions to **Listening**. If a Running Round exists, BargeIn interrupts it
-- `Frame::Input { text }` → text input, upgrades Shadow Round, transitions to **Speaking**
-- `Frame::Voice { data }` → audio data, forwards to Listener (VAD processing)
 
 ### Listening
 
-Receiving audio data, VAD detects speech boundaries.
+Listening for input.
 
-- `Frame::Voice { data }` → passes to Listener (VAD determines if speaking)
-- `Frame::ListenStop` → stop listening, retrieves ASR result from Listener, upgrades Shadow Round, transitions to **Speaking**
-- Silence timeout → triggers the equivalent of ListenStop automatically
+- `Frame::Voice { data }` → forwarded as `PipelineEvent::AudioFrame` to the chain head of the Shadow Round (VAD detects speech boundaries inside the chain)
+- `Frame::Input { text, mode }` → text input (`mode=Wake` marks wake context), feeds `TurnText`; Shadow Round upgrades to Running, transitions to **Speaking**
+- `Frame::ListenStart` → if a Running Round exists, BargeIn interrupts it; updates listen parameters (barge-in / voice-break detection)
+- `Frame::ListenStop` → feeds `FinishTurn` to the chain; empty input (no valid speech) is classified by the Session into an `EmptyKind` and graded: manual no-voice injects `Prompt{Manual, count}` to trigger a "didn't catch that" guide; auto spoke-but-empty is `AutoSpoke`, total silence is `Silence`, and continued listening after a reply is `Continuing` (silent, no prompt) — see the "Silence / No-Input Discrimination" subsection in `pipeline-redesign.en.md`
 
 ### Speaking
 
-LLM inference + TTS synthesis + streaming audio output.
+Expression phase: on TurnComplete the Shadow Round upgrades to Running and auto-synthesizes TTS with streaming output, while a new Shadow Round is created for continued listening.
 
-- Sends Command::Chat to Running Round, triggering LLM → TTS pipeline
-- Returns to **Ready** automatically when complete
+- Returns to **Listening** automatically when the expression completes
 
 ## Round Lifecycle
 
-Rounds are implemented in `service/src/ling/session/round.rs`, managing LLM inference and TTS synthesis for a single dialogue turn.
+Rounds are implemented in `service/src/session/round.rs`, managing LLM inference and TTS synthesis for a single dialogue turn.
 
 ### Dual Round Model
 
@@ -106,78 +98,65 @@ This design allows seamless BargeIn handling — new requests start preparing im
 
 ### Round Internal Flow
 
+A Round owns a single node chain and, as the inner observer, subscribes to the broadcast to consume it uniformly:
+
 ```
-ChatParam → Round
-  ├── Ling.ask() → LLM streaming output
-  │     ├── LLMResult (text chunks)
-  │     └── ToolCall (→ MCP → LLM)
-  └── Tts.stream() → audio frames
-        ├── TTSResult (state events)
-        └── AudioResult (Opus encoded audio)
+Session │
+        ↓ (RoundEvent: SpeechStarted / TurnComplete / EmptyTurn / SpokenEnd)
+Round owns a NodeChain (opus→vad→asr→turn→ling→tts)
+  ├── VAD/ASR produce TurnText → TurnNode closes the turn as TurnComplete → sends STT + notifies Session to upgrade
+  ├── Ling text → TTS produces AudioOut (per-sentence forwarding: SentenceStart / Audio / SentenceEnd)
+  └── Inner broadcast handles uniformly: TTS state machine / barge-in (with lockout) / timeout / tail Err
+        ↓ (OutputMessage)
+     Client
 ```
 
-Round runs LLM and TTS in parallel, streaming output through OutputMessages.
+A Round outputs via `OutputMessage`; the Session only makes lifecycle decisions (shadow→running upgrade / phase / interruption) and no longer polls the chain.
 
 ## LingCore
 
-LingCore (`api/src/ling_core/`) is the LLM + MCP orchestration layer.
+LingCore (`api/src/component/ling/mod.rs`) implements the `Ling` trait and is the LLM + MCP + history orchestration layer, producing per-sentence `TextChunk`s:
 
 ```
 LingCore
-  ├── HistoryManager (message history management / truncation)
-  ├── LlmClient (Qwen3 / Echo)
-  ├── McpRegistry (MCP tool aggregation)
-  └── TextSplitter (LLM output → sentence splitting → TTS)
+  ├── model          (Arc<dyn Llm>: Qwen3 / Echo)
+  ├── history        (message history / truncation)
+  ├── mcp_registry   (MCP tool aggregation)
+  └── splitter       (LLM output → sentence → TTS)
 ```
 
 Pipeline:
 
-1. User text → HistoryManager builds ChatHistory
-2. LlmClient.stream() → LLM streaming response
-3. If LLM returns ToolCall → McpRegistry.call_tool() → result fed back to LLM
-4. LLM text → TextSplitter → sentence chunks → TTS
+1. LLM streaming response → if it returns a ToolCall → mcp tool call → result fed back to LLM
+2. Text is split by `Sentence`, emitted per sentence as `TextChunk { text, emotion }` → TTS node
 
-## Listener
+## Turn-End Detection: Silence Confirm + Transport Stall
 
-The Listener (`service/src/ling/listener.rs` trait, implemented by `api/src/ws/default_listener.rs`) orchestrates VAD + ASR:
+Turn-end detection lives in **AsrNode (audio-time silence confirm)** and **Session (wall-clock transport stall)**.
+Both apply only when `streaming=true` (`auto`/`realtime`); **manual push-to-talk (`ListenMode{streaming:false}`) never answers early** — it pre-decodes the stream frame-by-frame while the button is held but emits nothing, and commits the recognition only when the device sends `listen(stop)` (which feeds `FinishTurn`). See [`dialogue-flow.en.md`](@/development/server/dialogue-flow.en.md).
 
-1. Receives audio data (`ListenInput::Audio`)
-2. VAD detects speech activity (Earshot Silero VAD)
-3. Silence timeout triggers ASR transcription (XAsr sherpa-onnx)
-4. Returns `ListenResult::Text` or `ListenResult::Audio { text, prob }`
+### 1. Audio-Time Silence Confirm (AsrNode)
 
-### Silence Detection: Audio-Time + Transport Stall
-
-The Listener uses two independent mechanisms to determine turn completion:
-
-#### 1. Audio-Time Silence Detection (`silent_samples`)
-
-Measures silence using consumed audio samples instead of `Local::now()` wall clock:
+`AsrNode` (`service/src/pipeline/nodes/asr_node.rs`) measures the silence duration using **consumed audio sample count** instead of `Local::now()` wall clock:
 
 - `spoken: bool` — whether VAD has ever detected speech
-- `silent_samples: u64` — silent audio sample count accumulated after speech ends, zeroed on each speech frame
+- `silence_samples: u64` — silent audio sample count accumulated after speech ends, zeroed on each speech frame
+- `SILENCE_CONFIRM_MS` (200ms) — `streaming && spoken && !speech_active && silence_samples >= threshold * sample_rate / 1000` → `finish()` the current round immediately
+- `streaming: bool` — toggled by `ListenMode{streaming}` (injected on `listen(start)`). When `false` (manual), the node **still feeds the stream frame-by-frame to pre-decode** (`accept_waveform` + `decode`) but suppresses `PartialTranscript` emission and silence confirm; `FinishTurn` runs the same `finish_stream()`, only draining tail frames for a near-instant result — decoding cost is spread across the hold instead of a cold whole-clip decode after stop
 
-Two thresholds share a single counter:
+Three finish outcomes: valid input → `TurnText`; stream but empty text → `EmptyInput` (triggers a prompt); no stream → `Nothing`.
+Manual reuses the same three outcomes; with no stream (VAD never detected speech) `finish_stream` returns `Nothing`, letting the Session's empty-input logic (`EmptyKind::Manual`) be the single driver of the prompt — avoiding a double-trigger with the in-chain `EmptyInput`.
 
-| Threshold | Default | Condition |
-|---|---|---|
-| `silence_voice_timeout` | 1200ms | `spoken && silent_samples >= timeout * sample_rate / 1000` |
-| `VAD_SILENCE_CONFIRM_MS` | 200ms | `silent_samples >= 200 * sample_rate / 1000` |
+### 2. Transport Stall Detection (Session)
 
-#### 2. Transport Stall Detection (`last_audio_received`)
+When the client stops sending audio, `silence_samples` cannot grow, so a wall-clock fallback is needed: `check_transport_stall()` (`session/mod.rs`) feeds `FinishTurn` to the chain to force a wrap-up when `spoken` is still active and `last_audio_received.elapsed() >= silence_voice_timeout` (1200ms).
+**Manual mode skips this check** (returns early when Listening and `is_voice_break_detect == false`) — the device's `stop` is the sole turn boundary, so the server never "jumps in" on silence timeout.
 
-When the client stops sending audio, `process_audio()` is no longer called and `silent_samples` cannot grow. A wall-clock fallback is needed:
-
-- `last_audio_received: Instant` — timestamp of the last received audio packet
-- Checked in `drain_outputs()`: if `spoken && last_audio_received.elapsed() >= silence_voice_timeout`, the transport is considered stalled and `finish_turn()` is called immediately
-
-This detection is independent of VAD — even if VAD still reports `is_speech: true` (e.g., Earshot not deactivating on trailing zeros), the turn finishes when audio packets stop arriving and the timeout elapses.
-
-**Why not wall clock for silence detection**: In tests and CI, audio can be injected instantaneously (no real-time pacing), decoupling wall clock from audio stream time. This caused premature turn finishing on slow machines under fast injection. Audio-sample counting makes the trigger depend only on decoded content, independent of consumption speed.
+**Why not wall clock for silence confirm**: In tests and CI, audio can be injected instantaneously (no real-time pacing), decoupling wall clock from audio stream time, which caused premature turn finishing on slow machines under fast injection. Audio-sample counting makes the trigger depend only on decoded content, independent of consumption speed.
 
 **Why wall clock for transport stall**: Audio-time counting can only tally samples that actually arrive. When the client stops sending audio entirely, there are no samples to count, so a wall-clock fallback is necessary to detect the stalled transport.
 
-**Layered design**: The Listener layer (audio-time silence + wall-clock transport stall) governs turn-end detection; the Session layer (`close_connection_no_activity_time`, wall clock) governs connection idle disconnect. This matches the OpenAI Realtime (`silence_duration_ms` audio-level + `idle_timeout_ms` wall-clock-level) and TurnEndpointClock (audio-time turn ending + wall-clock stall reporting) layered patterns.
+This matches the OpenAI Realtime (`silence_duration_ms` audio-level + `idle_timeout_ms` wall-clock-level) layered pattern.
 
 ## Input and Output Filters
 
@@ -210,18 +189,17 @@ Built-in filters:
 
 ## SessionBuilder
 
-Sessions are constructed using the Builder pattern:
+Sessions are constructed using the Builder pattern, injecting a **raw node prototype collection** (the api site assembles the chain dynamically per config, deciding the chain's stages/order):
 
 ```rust
 SessionBuilder::new()
     .with_id(session_id)
-    .with_listener(DefaultListener::new(vad, asr))
-    .with_ling(LingCoreBuilder::new(llm, mcp_registry).build())
-    .with_tts(TtsManager::default())
+    .with_node_templates(templates)   // Vec<Arc<dyn Node>>: opus→vad→asr→turn→ling→tts
     .with_config(session_config)
-    .with_audio_config(audio_config)
     .build()  // returns SessionContext
 ```
+
+`build()` looks up the downlink audio capability via `capabilities()` (`downcast_ref::<AudioSpec>()`): without a TTS node, the handshake does not declare `audio_params` (no downlink voice capability, no pacer constructed). Removed old parameters: `with_listener` / `with_ling` / `with_tts` / `with_audio_config`.
 
 `SessionContext` contains:
 - `session`: The Session instance
@@ -278,7 +256,7 @@ Sessions implement no-activity timeout via idle timestamp tracking in the main l
 
 - `idle_since: Option<Instant>` records when the session became idle; reset to `None` on activity
 - `close_connection_no_activity_time` (default 30s): no-activity disconnect timeout
-- `silence_voice_timeout` (default 1200ms): VAD silence detection
+- `silence_voice_timeout` (default 1200ms): transport-stall detection (long time without audio while speaking → `FinishTurn` forces a wrap-up)
 
 ## Interruption (BargeIn)
 

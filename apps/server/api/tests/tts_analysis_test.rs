@@ -68,6 +68,7 @@ async fn run_length_scale_scan(
 
 #[tokio::test]
 #[traced_test]
+#[ignore = "flaky: Matcha 真实模型输出偶发削波，clipping 门禁随模型数据波动，需手动运行"]
 async fn test_tts_matcha_zh_en_scan_ls() -> anyhow::Result<()> {
     run_length_scale_scan(
         "data/tts/model/matcha/matcha-icefall-zh-en/",

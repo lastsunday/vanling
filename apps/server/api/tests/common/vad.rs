@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow;
 use api::config::vad::VadConfig;
-use service::ling::vad::Vad;
+use service::component::vad::Vad;
 
 pub const SAMPLE_RATE: u32 = 16000;
 pub const WINDOW_SIZE: usize = 256;
@@ -68,9 +68,7 @@ pub fn frame_labels(
         }
         let frame_start = (start * sr as f64 / hop as f64) as usize;
         let frame_end = (end * sr as f64 / hop as f64) as usize;
-        for f in frame_start..frame_end.min(n_frames) {
-            labels[f] = true;
-        }
+        labels[frame_start..frame_end.min(n_frames)].fill(true);
     }
     labels
 }

@@ -2,8 +2,8 @@
 title = "WebSocket Communication Protocol"
 weight = 202
 [extra]
-source_file_hash = "ace9667629e55063364c4428f21419f4b8bc2b7a"
-translated_at = "2026-07-30T00:00:00Z"
+source_file_hash = "d1b45503f388651df4991ff98149cfb78123e77a"
+translated_at = "2026-08-30T00:00:00Z"
 +++
 
 # WebSocket Communication Protocol
@@ -223,6 +223,18 @@ stateDiagram
   Speaking --> Idle: tts stop (auto/manual)
   Listening --> Idle: Timeout/Disconnect
 ```
+
+### Empty Input (per mode)
+
+Empty input (no valid speech) is classified and graded by the hub (Session) — `Wake`/`AutoSpoke`/`Silence` follow Rule of three (max 3); `Manual` is event-driven and prompts on every keypress. Classification is based on mode + previous turn.
+
+- **manual no voice** (`!is_voice_break_detect` and no speech detected) → `Manual`: plays 1 guiding prompt on each keypress, then back to listening-wait
+- **no speech after wake word** → `Wake`: guiding prompt ("what can I help you with?"), escalating
+- **auto spoke but ASR empty** (VAD triggered but text empty) → `AutoSpoke`: "didn't catch that, please repeat" → example → graceful close
+- **auto/realtime total silence** (VAD not triggered, ASR no stream) → `Silence`: gentle guide with no blame, escalating
+- **realtime continued listening after reply** → `Continuing`: silent wait, no repeated prompting
+
+The hub re-injects the `Prompt{kind, count}` conversation act after observing empty input; LLM/Echo (NLG) renders it. `Continuing` stays silent; `GiveUp` returns to idle.
 
 ---
 

@@ -2,6 +2,7 @@ pub mod asr;
 pub mod audio;
 pub mod check;
 pub mod database;
+pub mod ling;
 pub mod llm;
 pub mod manager;
 pub mod matrix;
@@ -411,11 +412,11 @@ pub struct Config {
     #[serde(default = "default_session_silence_voice_timeout")]
     pub session_silence_voice_timeout: Option<i64>,
 
-    /// System prompt for the LLM.
+    /// Default system prompt (persona) injected into each Ling instance.
     ///
     /// default: "你是一个知识丰富的语音对话助手，用亲切自然的语气与用户交流。回答必须有实质内容，直接提供有价值的信息。避免只问不答——先给出信息，再视情况补充。必须使用中文口述。禁止使用 Markdown、emoji、特殊符号、HTML 标签、英文标点符号。必须使用中文标点符号（。！？，；：）分隔句子，每句话末尾必须带句号、问号或感叹号。禁止使用换行符代替标点来分隔内容。所有数字必须用中文书写（二十三而不是23），日期用中文（七月二十四日）。如果用户输入为空，请求用户描述清楚。",
-    #[serde(default = "default_session_system_prompt")]
-    pub session_system_prompt: Option<String>,
+    #[serde(default = "default_ling_system_prompt")]
+    pub ling_system_prompt: Option<String>,
 
     /// Maximum number of prompt tokens.
     ///
@@ -741,7 +742,7 @@ fn default_session_silence_voice_timeout() -> Option<i64> {
     Some(1200)
 }
 
-fn default_session_system_prompt() -> Option<String> {
+fn default_ling_system_prompt() -> Option<String> {
     Some(String::from(
         "你是一个知识丰富的语音对话助手，用亲切自然的语气与用户交流。\
 回答必须有实质内容，直接提供有价值的信息。\
@@ -750,7 +751,8 @@ fn default_session_system_prompt() -> Option<String> {
 必须使用中文标点符号（。！？，；：）分隔句子，每句话末尾必须带句号、问号或感叹号。\
 禁止使用换行符代替标点来分隔内容。\
 所有数字必须用中文书写（二十三而不是23），日期用中文（七月二十四日）。\
-如果用户输入为空，请求用户描述清楚。",
+如果用户输入为空，请求用户描述清楚。\
+在输出文本中，使用 [emotion:标签] 标记情感。可用标签：happy, sad, angry, surprised, shocked, confused, neutral, loving, shy, smug, thinking, embarrassed, sad_smile, sad_tear, mouth_open, helpless, tears, speaking, listening, waiting。",
     ))
 }
 

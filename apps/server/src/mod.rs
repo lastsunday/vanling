@@ -4,9 +4,9 @@ use std::{error::Error, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use api::config::{
-    AsrModel, asr::AsrConfig, audio::AudioConfig, database::DatabaseConfig, llm::LlmConfig,
-    matrix::MatrixConfig, mcp::McpConfig, security::SecurityConfig, server::ServerConfig,
-    session::SessionConfig, tts::TtsConfig, vad::VadConfig, ws::WsConfig,
+    AsrModel, asr::AsrConfig, audio::AudioConfig, database::DatabaseConfig, ling::LingConfig,
+    llm::LlmConfig, matrix::MatrixConfig, mcp::McpConfig, security::SecurityConfig,
+    server::ServerConfig, session::SessionConfig, tts::TtsConfig, vad::VadConfig, ws::WsConfig,
 };
 use framework::config::auth::AuthConfig;
 use tracing::info;
@@ -103,9 +103,10 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
             .session_close_connection_no_activity_time
             .to_owned(),
         silence_voice_timeout: config.session_silence_voice_timeout.to_owned(),
-        system_prompt: config.session_system_prompt.to_owned(),
-        max_prompt_len: config.session_max_prompt_len.to_owned(),
         barge_in_lockout_ms: config.session_barge_in_lockout_ms.to_owned(),
+    });
+    let ling_config = Arc::new(LingConfig {
+        system_prompt: config.ling_system_prompt.to_owned(),
     });
     let mcp_config = Arc::new(McpConfig {
         server_list: config.mcp_server_list.to_owned().unwrap_or_default(),
@@ -292,6 +293,7 @@ async fn async_main(server: &Arc<Server>) -> Result<(), anyhow::Error> {
         server_config,
         database_config,
         session_config,
+        ling_config,
         mcp_config,
         vad_config,
         audio_config,

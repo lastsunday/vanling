@@ -25,7 +25,7 @@ pub static TEST_TTS_TEXT_WEIGHT: LazyLock<f64> = LazyLock::new(|| {
             0xC0..=0x024F => 1.0,
             0x20 | 0x3000 => 0.2,
             0x21..=0x2F | 0x3A..=0x40 | 0x5B..=0x60 | 0x7B..=0x7E | 0x3001..=0x303F => 0.5,
-            0x3040..=0x309F | 0x30A0..=0x30FF => 2.5,
+            0x3040..=0x30FF => 2.5,
             0xAC00..=0xD7AF | 0x1100..=0x11FF => 2.2,
             0x3400..=0x4DBF | 0x4E00..=0x9FFF => 3.0,
             _ => 1.0,
@@ -44,7 +44,7 @@ pub fn estimate_std_duration(text: &str) -> f64 {
             0xC0..=0x024F => 1.0,
             0x20 | 0x3000 => 0.2,
             0x21..=0x2F | 0x3A..=0x40 | 0x5B..=0x60 | 0x7B..=0x7E | 0x3001..=0x303F => 0.5,
-            0x3040..=0x309F | 0x30A0..=0x30FF => 2.5,
+            0x3040..=0x30FF => 2.5,
             0xAC00..=0xD7AF | 0x1100..=0x11FF => 2.2,
             0x3400..=0x4DBF | 0x4E00..=0x9FFF => 3.0,
             _ => 1.0,
@@ -500,7 +500,7 @@ pub fn opus_pipeline(samples: &[f32], sample_rate: i32, encode_sr: u32) -> Vec<f
     } else {
         ropus::Channels::Mono
     };
-    let mut encoder = ropus::Encoder::builder(sr as u32, opus_channels, ropus::Application::Audio)
+    let mut encoder = ropus::Encoder::builder(sr, opus_channels, ropus::Application::Audio)
         .build()
         .expect("Failed to create Opus encoder");
     let frame_dur = 20u64;
@@ -518,7 +518,7 @@ pub fn opus_pipeline(samples: &[f32], sample_rate: i32, encode_sr: u32) -> Vec<f
         packets.push(buf);
     }
 
-    let mut decoder = ropus::Decoder::new(sr as u32, opus_channels).unwrap();
+    let mut decoder = ropus::Decoder::new(sr, opus_channels).unwrap();
     let mut decoded = Vec::new();
     for pkt in &packets {
         let mut samples = vec![0f32; packet_size];
@@ -535,7 +535,6 @@ pub fn test_audio_config() -> AudioConfig {
         output_sample_rate: Some(16000),
         output_channel: Some(1),
         output_frame_duration: Some(20),
-        ..Default::default()
     }
 }
 
@@ -545,7 +544,7 @@ pub async fn run_tts_test(
     audio_config: &AudioConfig,
     wav: &str,
 ) -> anyhow::Result<()> {
-    let tts = api::tts::TtsManager::create_model(tts_config, audio_config).await?;
+    let tts = api::component::tts::TtsManager::create_model(tts_config, audio_config).await?;
     let text_stream = tts_stream(String::from(TEST_TTS_TEXT));
     let cancel = tokio_util::sync::CancellationToken::new();
     let mut tts_stream = tts.stream(Box::pin(text_stream), cancel).await;

@@ -18,12 +18,11 @@ use ruma::{
     presence::PresenceState,
     serde::Raw,
 };
-use service::ling::{
-    frame::{Frame, FrameResult, InputMode},
-    mcp::McpRegistry,
-    message::{hello::HelloMessage, tts::TtsState},
-    session::{AudioConfig as ServiceAudioConfig, SessionConfig as ServiceSessionConfig},
-};
+use service::component::mcp::McpRegistry;
+use service::frame::{Frame, FrameResult, InputMode};
+use service::message::{hello::HelloMessage, tts::TtsState};
+use service::pipeline::{AsrNode, LingNode, OpusDecodeNode, TtsNode, TurnNode, VadNode};
+use service::session::SessionConfig as ServiceSessionConfig;
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt as _;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -31,32 +30,32 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use crate::{
-    asr::AsrManager,
+    component::asr::AsrManager,
+    component::ling::LingCoreBuilder,
+    component::llm::LlmManager,
+    component::mcp::client::{create_external_mcp_client, resolve_mcp_auth_token},
+    component::tts::TtsManager,
+    component::vad::pool::VadPool,
     config::{
-        audio::AudioConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
+        ling::LingConfig, matrix::MatrixConfig, mcp::McpConfig, session::SessionConfig,
         vad::VadConfig,
     },
-    mcp::client::{create_external_mcp_client, resolve_mcp_auth_token},
-    tts::TtsManager,
-    vad::VadManager,
-    ws::default_listener::DefaultListener,
-    {ling_core::LingCoreBuilder, llm::LlmManager},
 };
 
 pub async fn start(
     matrix_config: Arc<MatrixConfig>,
     session_config: Arc<SessionConfig>,
+    ling_config: Arc<LingConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
-    audio_config: Arc<AudioConfig>,
     shutdown_token: CancellationToken,
 ) -> Result<(), Box<dyn Error>> {
     let bot = Bot::build(
         matrix_config,
         session_config,
+        ling_config,
         mcp_config,
         vad_config,
-        audio_config,
         shutdown_token,
     )
     .await?;
@@ -75,9 +74,9 @@ struct Bot {
     user_id: OwnedUserId,
     session_map: Arc<Mutex<HashMap<String, tokio::sync::mpsc::UnboundedSender<Frame>>>>,
     session_config: Arc<SessionConfig>,
+    ling_config: Arc<LingConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
-    audio_config: Arc<AudioConfig>,
     shutdown: CancellationToken,
 }
 
@@ -87,9 +86,9 @@ impl Bot {
     async fn build(
         matrix_config: Arc<MatrixConfig>,
         session_config: Arc<SessionConfig>,
+        ling_config: Arc<LingConfig>,
         mcp_config: Arc<McpConfig>,
         vad_config: Arc<VadConfig>,
-        audio_config: Arc<AudioConfig>,
         shutdown_token: CancellationToken,
     ) -> Result<Self, Box<dyn Error>> {
         let matrix_client = ruma_client::Client::builder()
@@ -120,9 +119,9 @@ impl Bot {
         Ok(Self {
             matrix_client,
             session_config,
+            ling_config,
             mcp_config,
             vad_config,
-            audio_config,
             user_id,
             session_map: Arc::new(Mutex::new(HashMap::new())),
             shutdown: shutdown_token,
@@ -243,53 +242,41 @@ impl Bot {
                 }
             }
 
-            let ling: Arc<dyn service::ling::core::Ling> = Arc::new(
+            let ling: Arc<dyn service::ling::Ling> = Arc::new(
                 LingCoreBuilder::new()
                     .with_session_id(Some(id.clone()))
                     .with_model(LlmManager::global().default())
                     .with_mcp_registry(mcp_registry)
-                    .with_preamble(self.session_config.system_prompt.clone())
+                    .with_preamble(self.ling_config.system_prompt.clone())
                     .build(),
             );
 
-            let tts: Arc<dyn service::ling::tts::Tts> = TtsManager::global().default();
+            let tts: Arc<dyn service::component::tts::Tts> = TtsManager::global().default();
 
             let session_config = ServiceSessionConfig {
-                system_prompt: self.session_config.system_prompt.clone(),
-                max_prompt_len: self.session_config.max_prompt_len,
                 silence_voice_timeout: self.session_config.silence_voice_timeout,
                 close_connection_no_activity_time: self
                     .session_config
                     .close_connection_no_activity_time,
                 barge_in_lockout_ms: self.session_config.barge_in_lockout_ms,
             };
-            let audio_config = ServiceAudioConfig {
-                output_sample_rate: self
-                    .audio_config
-                    .output_sample_rate
-                    .expect("output sample rate is empty"),
-                output_channel: self
-                    .audio_config
-                    .output_channel
-                    .expect("output channel is empty"),
-                output_frame_duration: self
-                    .audio_config
-                    .output_frame_duration
-                    .expect("output frame duration is empty"),
-            };
 
-            let session_ctx = service::ling::session::SessionBuilder::new()
+            let templates: Vec<Arc<dyn service::pipeline::Node>> = vec![
+                Arc::new(OpusDecodeNode::new()) as Arc<dyn service::pipeline::Node>,
+                Arc::new(VadNode::new(Arc::new(VadPool::new(
+                    self.vad_config.clone(),
+                )))) as Arc<dyn service::pipeline::Node>,
+                Arc::new(AsrNode::new(AsrManager::global().default().clone()))
+                    as Arc<dyn service::pipeline::Node>,
+                Arc::new(TurnNode::new()) as Arc<dyn service::pipeline::Node>,
+                Arc::new(LingNode::new(ling)) as Arc<dyn service::pipeline::Node>,
+                Arc::new(TtsNode::new(tts)) as Arc<dyn service::pipeline::Node>,
+            ];
+
+            let session_ctx = service::session::SessionBuilder::new()
                 .with_id(id.clone())
-                .with_listener(Box::new(DefaultListener::new(
-                    id.clone(),
-                    VadManager::create_model(&self.vad_config),
-                    AsrManager::global().default().clone(),
-                    self.session_config.silence_voice_timeout,
-                )))
-                .with_ling(ling)
-                .with_tts(tts)
+                .with_node_templates(templates)
                 .with_config(session_config)
-                .with_audio_config(audio_config)
                 .build();
             tokio::spawn(session_ctx.session.start());
             let mut output = UnboundedReceiverStream::new(session_ctx.output_rx);

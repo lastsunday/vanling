@@ -1,4 +1,3 @@
-pub mod default_listener;
 pub mod filter;
 pub mod mcp_session;
 pub mod protocol_translator;
@@ -11,14 +10,14 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use axum_extra::{TypedHeader, headers};
-use framework::prelude::error as error_code;
 use framework::{
     auth::{Jwt, Principal},
     id::gen_id,
 };
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
-use service::ling::frame::{Frame, FrameResult, OutputMessage};
-use service::ling::session::{self, SessionBuilder};
+use service::frame::{Frame, FrameResult, OutputMessage};
+use service::pipeline::Node;
+use service::session::{self, SessionBuilder};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_stream::StreamMap;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -27,15 +26,18 @@ use tokio_util::sync::CancellationToken;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
+use service::pipeline::{AsrNode, LingNode, OpusDecodeNode, TtsNode, TurnNode, VadNode};
+
 use crate::{
     AppState,
-    asr::AsrManager,
-    config::{audio::AudioConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
+    component::asr::AsrManager,
+    component::ling::LingCoreBuilder,
+    component::llm::LlmManager,
+    component::tts::TtsManager,
+    component::vad::pool::VadPool,
+    config::{ling::LingConfig, mcp::McpConfig, session::SessionConfig, vad::VadConfig},
     record::recorder::Recorder,
-    tts::TtsManager,
-    vad::VadManager,
     ws::{
-        default_listener::DefaultListener,
         filter::{
             FilterCtx, FilterStep, InputFilter, OutputFilter, RecorderInputFilter,
             RecorderOutputFilter, run_input_filters, run_output_filters,
@@ -43,7 +45,6 @@ use crate::{
         mcp_session::{McpRouterFilter, setup_mcp_session},
         protocol_translator::ProtocolTranslator,
     },
-    {ling_core::LingCoreBuilder, llm::LlmManager},
 };
 
 const TAG: &str = "ws";
@@ -81,7 +82,6 @@ pub fn verify_device_token(headers: &HeaderMap) -> Result<Principal, Box<Respons
 }
 
 #[debug_handler]
-#[tracing::instrument(name="ws",skip_all,fields(ip = %addr))]
 #[utoipa::path(get,
     path = "/vanling/{version}",
     tag=TAG,
@@ -99,13 +99,13 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
     _user_agent: Option<TypedHeader<headers::UserAgent>>,
     mut headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    ConnectInfo(_addr): ConnectInfo<SocketAddr>,
     State(AppState {
         conn,
         session_config,
+        ling_config,
         mcp_config,
         vad_config,
-        audio_config,
         cancellation_token,
         ..
     }): State<AppState>,
@@ -129,9 +129,9 @@ async fn ws_handler(
                 device_id: Some(principal.id.clone()),
                 conn,
                 session_config,
+                ling_config,
                 mcp_config,
                 vad_config,
-                audio_config,
                 cancellation_token,
             },
             write,
@@ -146,39 +146,20 @@ pub(crate) struct SocketContext {
     device_id: Option<String>,
     conn: sea_orm::DatabaseConnection,
     session_config: Arc<SessionConfig>,
+    ling_config: Arc<LingConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
-    audio_config: Arc<AudioConfig>,
     cancellation_token: CancellationToken,
 }
 
 impl SocketContext {
     fn to_session_config(&self) -> session::SessionConfig {
         session::SessionConfig {
-            system_prompt: self.session_config.system_prompt.clone(),
-            max_prompt_len: self.session_config.max_prompt_len,
             silence_voice_timeout: self.session_config.silence_voice_timeout,
             close_connection_no_activity_time: self
                 .session_config
                 .close_connection_no_activity_time,
             barge_in_lockout_ms: self.session_config.barge_in_lockout_ms,
-        }
-    }
-
-    fn to_audio_config(&self) -> session::AudioConfig {
-        session::AudioConfig {
-            output_sample_rate: self
-                .audio_config
-                .output_sample_rate
-                .expect("output sample rate is empty"),
-            output_channel: self
-                .audio_config
-                .output_channel
-                .expect("output channel is empty"),
-            output_frame_duration: self
-                .audio_config
-                .output_frame_duration
-                .expect("output frame duration is empty"),
         }
     }
 }
@@ -197,25 +178,28 @@ where
     )
     .await;
 
+    let ling = Arc::new(
+        LingCoreBuilder::new()
+            .with_session_id(Some(ctx.session_id.clone()))
+            .with_model(LlmManager::global().default())
+            .with_mcp_registry(mcp_ctx.registry)
+            .with_preamble(ctx.ling_config.system_prompt.clone())
+            .build(),
+    );
+    let tts = TtsManager::global().default();
+    let templates: Vec<Arc<dyn Node>> = vec![
+        Arc::new(OpusDecodeNode::new()) as Arc<dyn Node>,
+        Arc::new(VadNode::new(Arc::new(VadPool::new(ctx.vad_config.clone())))) as Arc<dyn Node>,
+        Arc::new(AsrNode::new(AsrManager::global().default())) as Arc<dyn Node>,
+        Arc::new(TurnNode::new()) as Arc<dyn Node>,
+        Arc::new(LingNode::new(ling)) as Arc<dyn Node>,
+        Arc::new(TtsNode::new(tts)) as Arc<dyn Node>,
+    ];
+
     let session_ctx = SessionBuilder::new()
         .with_id(ctx.session_id.clone())
-        .with_listener(Box::new(DefaultListener::new(
-            ctx.session_id.clone(),
-            VadManager::create_model(&ctx.vad_config),
-            AsrManager::global().default(),
-            ctx.session_config.silence_voice_timeout,
-        )))
-        .with_ling(Arc::new(
-            LingCoreBuilder::new()
-                .with_session_id(Some(ctx.session_id.clone()))
-                .with_model(LlmManager::global().default())
-                .with_mcp_registry(mcp_ctx.registry)
-                .with_preamble(ctx.session_config.system_prompt.clone())
-                .build(),
-        ))
-        .with_tts(TtsManager::global().default())
+        .with_node_templates(templates)
         .with_config(ctx.to_session_config())
-        .with_audio_config(ctx.to_audio_config())
         .build();
 
     let recorder = Arc::new(Recorder::new(ctx.conn.clone(), ctx.device_id.clone()));
@@ -387,14 +371,4 @@ where
             _ => Err((StatusCode::NOT_FOUND, "unknown version").into_response()),
         }
     }
-}
-
-#[error_code]
-pub enum WsErrorCode {
-    ListenFailure = 504001,
-    TtsEncode = 504002,
-    TtsText = 504003,
-    AsrFailure = 504004,
-    LlmFailure = 504005,
-    InternalError = 504006,
 }

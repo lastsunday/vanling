@@ -1,7 +1,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use api::asr::AsrManager;
+use api::component::asr::AsrManager;
+use api::component::llm::LlmManager;
+use api::component::tts::TtsManager;
+use api::component::vad::VadManager;
 use api::config::AsrModel;
 use api::config::LlmProvider;
 use api::config::TtsModel;
@@ -11,10 +14,7 @@ use api::config::audio::AudioConfig;
 use api::config::llm::LlmConfig;
 use api::config::tts::TtsConfig;
 use api::config::vad::VadConfig;
-use api::llm::LlmManager;
 use api::setup_ws;
-use api::tts::TtsManager;
-use api::vad::VadManager;
 use api::ws::verify_device_token;
 use axum::extract::connect_info::MockConnectInfo;
 use framework::auth::{Jwt, Principal};

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use api::ling_core::Splitter;
+    use api::component::ling::Splitter;
     use tracing::info;
     use tracing_test::traced_test;
 
@@ -33,7 +33,7 @@ mod tests {
         assert_eq!(0, sentences.len());
         let sentences = splitter.accept_final();
         for msg in sentences.iter() {
-            info!("{}", msg);
+            info!("{}", msg.text);
         }
     }
 }

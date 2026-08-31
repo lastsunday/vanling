@@ -1,5 +1,5 @@
 use api::{
-    asr::AsrManager,
+    component::asr::AsrManager,
     config::{AsrModel, asr::AsrConfig},
 };
 

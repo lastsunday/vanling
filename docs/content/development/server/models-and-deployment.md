@@ -24,26 +24,29 @@ apps/server/
 │       ├── index.rs          # Health / Version 端点
 │       ├── ota.rs            # OTA 固件升级
 │       ├── device.rs         # 设备管理（admin CRUD）
-│       ├── ws/               # WebSocket 处理器（核心实时管道）
-│       ├── ling_core/        # LingCore：LLM + MCP 编排
-│       ├── asr/              # ASR Manager + 模型（XAsr）
-│       ├── tts/              # TTS Manager + 模型（MatchaTTS）
-│       ├── vad/              # VAD Manager + 模型（Earshot）
-│       ├── llm/              # LLM Manager + 模型（Qwen3 / Echo）
-│       ├── mcp/              # MCP Server + Client（rmcp Streamable HTTP）
+│       ├── ws/               # WebSocket 处理器（核心实时管道 + filter）
+│       ├── component/        # AI 引擎实现（Manager + 模型）
+│       │   ├── asr/          # ASR Manager + 模型（XAsr）
+│       │   ├── tts/          # TTS Manager + 模型（MatchaTTS）
+│       │   ├── vad/          # VAD Manager + 模型（Earshot）
+│       │   ├── llm/          # LLM Manager + 模型（Qwen3 / Echo）
+│       │   ├── mcp/          # MCP Server + Client（rmcp Streamable HTTP）
+│       │   └── ling/         # LingCore：LLM + MCP 编排（实现 Ling trait）
 │       ├── record/           # 会话录制 REST API
 │       ├── matrix/           # Matrix 聊天集成
 │       └── common/           # 共享辅助（device selection、errors）
-├── service/                  # 业务逻辑层（trait 定义 + Session 状态机）
-│   └── src/ling/
-│       ├── session/          # Session 状态机 + Round 生命周期
+├── service/                  # 业务逻辑层（trait 定义 + 编排框架）
+│   └── src/
+│       ├── component/        # 引擎契约（trait + 协议类型）
+│       │   ├── asr.rs / tts.rs / vad.rs
+│       │   ├── llm/          # Llm trait + ChatMessage / ToolDef
+│       │   └── mcp/          # McpClient trait + McpRegistry
+│       ├── ling/             # Ling trait（决策引擎）
+│       ├── pipeline/         # Node / NodeChain / PipelineEvent（外层节点链）+ nodes/
+│       ├── session/          # Session 状态机 + Round 生命周期（含 TurnEvent）
+│       ├── message/          # 线协议消息定义（Hello / Abort / Audio / LLM / TTS 等）
 │       ├── frame.rs          # Frame / FrameResult / OutputMessage
-│       ├── listener.rs       # Listener trait（VAD + ASR 编排）
-│       ├── core.rs           # Ling trait（LLM + MCP 编排）
-│       ├── asr.rs / tts.rs / vad.rs  # AI trait 定义
-│       ├── llm/              # Llm trait + ChatMessage / ToolDef
-│       ├── mcp/              # McpClient trait + McpRegistry
-│       └── message/          # 线协议消息定义（Hello / Abort / Audio / LLM / TTS 等）
+│       └── types.rs          # 共享类型（EmptyKind / Sentence / Input / OutputBlock）
 ├── entity/                   # Sea-ORM Entity（user / session / round / round_data / frame / config）
 ├── migration/                # 数据库迁移
 └── web/                      # 静态文件服务（SPA）

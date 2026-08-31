@@ -221,6 +221,18 @@ stateDiagram
   Listening --> Idle: 超时/断开
 ```
 
+### 空输入（各模式）
+
+空输入（无有效语音）由中枢（Session）辨别类型并分级提示（`Wake`/`AutoSpoke`/`Silence` 遵循 Rule of three 最多 3 次；`Manual` 事件驱动每次按键都提示）。判别依据：模式 + 前一 turn。
+
+- **manual 无人声**（`!is_voice_break_detect` 且未检出语音）→ `Manual`：每次按键播 1 次引导提示语，之后回到监听等待
+- **唤醒词后未说话** → `Wake`：引导式提示（"想让我帮你做什么？"），逐次升级
+- **auto 说了但 ASR 空**（VAD 触发但文本空）→ `AutoSpoke`："没听清，请重说" → 给示例 → 优雅收尾
+- **auto/realtime 完全静默**（VAD 未触发，ASR 无流）→ `Silence`：温柔引导不指责，逐次升级
+- **realtime 回复后连续监听** → `Continuing`：静默等待，不反复提示
+
+中枢观察空输入后重新注入 `Prompt{kind, count}` 对话 Act，由 LLM/Echo（NLG）渲染提示语；`Continuing` 走静默、`GiveUp` 回 idle。
+
 ---
 
 ## 附录 A：消息字段参考

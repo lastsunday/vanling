@@ -1,4 +1,5 @@
 use api::config::audio::AudioConfig;
+use api::config::ling::LingConfig;
 use api::config::mcp::McpConfig;
 use api::config::security::SecurityConfig;
 use api::config::vad::VadConfig;
@@ -46,6 +47,9 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
                 session_config: Arc::new(SessionConfig {
                     ..Default::default()
                 }),
+                ling_config: Arc::new(LingConfig {
+                    ..Default::default()
+                }),
                 mcp_config: Arc::new(McpConfig {
                     ..Default::default()
                 }),
@@ -83,6 +87,9 @@ pub async fn setup_database() -> (Option<ContainerAsync<Postgres>>, AppState) {
             let state = AppState {
                 conn,
                 session_config: Arc::new(SessionConfig {
+                    ..Default::default()
+                }),
+                ling_config: Arc::new(LingConfig {
                     ..Default::default()
                 }),
                 mcp_config: Arc::new(McpConfig {

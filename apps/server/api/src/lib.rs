@@ -1,24 +1,19 @@
 pub use framework::error;
 
 pub mod activation_pool;
-pub mod asr;
 pub mod auth;
 pub mod common;
+pub mod component;
 pub mod config;
 pub mod device;
 pub mod index;
-pub mod ling_core;
-pub mod llm;
 pub mod matrix;
-pub mod mcp;
 pub mod ota;
 pub mod record;
 pub mod security;
 pub mod server;
 pub mod stats;
-pub mod tts;
 pub mod util;
-pub mod vad;
 pub mod ws;
 
 use std::net::SocketAddr;
@@ -68,11 +63,15 @@ use utoipa_scalar::{Scalar, Servable as ScalarServable};
 
 use framework::auth::Jwt;
 
-use crate::asr::AsrManager;
+use crate::component::asr::AsrManager;
+use crate::component::llm::LlmManager;
+use crate::component::tts::TtsManager;
+use crate::component::vad::VadManager;
 use crate::config::Config;
 use crate::config::asr::AsrConfig;
 use crate::config::audio::AudioConfig;
 use crate::config::database::DatabaseConfig;
+use crate::config::ling::LingConfig;
 use crate::config::llm::LlmConfig;
 use crate::config::matrix::MatrixConfig;
 use crate::config::mcp::McpConfig;
@@ -82,14 +81,12 @@ use crate::config::session::SessionConfig;
 use crate::config::tts::TtsConfig;
 use crate::config::vad::VadConfig;
 use crate::config::ws::WsConfig;
-use crate::llm::LlmManager;
-use crate::tts::TtsManager;
-use crate::vad::VadManager;
 
 pub struct StartParams {
     pub server_config: Arc<ServerConfig>,
     pub database_config: Arc<DatabaseConfig>,
     pub session_config: Arc<SessionConfig>,
+    pub ling_config: Arc<LingConfig>,
     pub mcp_config: Arc<McpConfig>,
     pub vad_config: Arc<VadConfig>,
     pub audio_config: Arc<AudioConfig>,
@@ -108,6 +105,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
         server_config,
         database_config,
         session_config,
+        ling_config,
         mcp_config,
         vad_config,
         audio_config,
@@ -147,6 +145,7 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
     let state = AppState {
         conn,
         session_config: session_config.clone(),
+        ling_config: ling_config.clone(),
         mcp_config: mcp_config.clone(),
         vad_config: vad_config.clone(),
         audio_config: audio_config.clone(),
@@ -171,9 +170,9 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
             if let Err(error) = start_matrix_client(
                 matrix_config,
                 session_config,
+                ling_config,
                 mcp_config,
                 vad_config,
-                audio_config,
                 ct_for_matrix,
             )
             .await
@@ -190,18 +189,18 @@ pub async fn start(params: StartParams) -> anyhow::Result<()> {
 pub async fn start_matrix_client(
     matrix_config: Arc<MatrixConfig>,
     session_config: Arc<SessionConfig>,
+    ling_config: Arc<LingConfig>,
     mcp_config: Arc<McpConfig>,
     vad_config: Arc<VadConfig>,
-    audio_config: Arc<AudioConfig>,
     shutdown_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("matrix client start");
     matrix::client::start(
         matrix_config,
         session_config,
+        ling_config,
         mcp_config,
         vad_config,
-        audio_config,
         shutdown_token,
     )
     .await?;
@@ -351,7 +350,7 @@ pub fn setup_mcp(
     state: AppState,
     cancellation_token: CancellationToken,
 ) -> OpenApiRouter {
-    router.merge(mcp::create_routes(state, cancellation_token))
+    router.merge(component::mcp::create_routes(state, cancellation_token))
 }
 
 pub fn setup_auth(router: OpenApiRouter, state: AppState) -> OpenApiRouter {
@@ -442,6 +441,7 @@ async fn load_used_codes(conn: &DatabaseConnection) -> Result<Vec<u32>, sea_orm:
 pub struct AppState {
     pub conn: DatabaseConnection,
     pub session_config: Arc<SessionConfig>,
+    pub ling_config: Arc<LingConfig>,
     pub mcp_config: Arc<McpConfig>,
     pub vad_config: Arc<VadConfig>,
     pub audio_config: Arc<AudioConfig>,

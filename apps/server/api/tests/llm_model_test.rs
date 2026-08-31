@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use api::{
     common::ModelError,
+    component::ling::Splitter,
+    component::llm::LlmManager,
     config::{LlmProvider, llm::LlmConfig},
-    ling_core::Splitter,
-    llm::LlmManager,
 };
 use framework::{
     auth::{Jwt, Principal},
@@ -13,7 +13,10 @@ use framework::{
     error::AppError,
 };
 use futures::{Stream, StreamExt};
-use service::ling::llm::{CompletionEvent, CompletionRequest, ContentPart, Message, Role, ToolDef};
+use service::component::llm::{
+    CompletionEvent, CompletionRequest, ContentPart, InputState, Message, Role, ToolDef,
+};
+use service::types::EmptyKind;
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -67,7 +70,7 @@ async fn test_llm_model_echo() -> anyhow::Result<()> {
         max_tokens: None,
     };
     let cancel = CancellationToken::new();
-    let mut stream = model.stream(request, cancel).await;
+    let mut stream = model.stream(request, InputState::Normal, cancel).await;
     let event = stream.next().await;
     let event = event.expect("has value")?;
     let msg = match event {
@@ -75,6 +78,113 @@ async fn test_llm_model_echo() -> anyhow::Result<()> {
         _ => panic!("expected Text event, got {:?}", event),
     };
     assert_eq!("Hello", msg);
+    Ok(())
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_llm_model_echo_empty_input_returns_prompt() -> anyhow::Result<()> {
+    let model = LlmManager::create_model(&LlmConfig {
+        provider: Some(LlmProvider::LocalEcho),
+        ..Default::default()
+    });
+    let request = CompletionRequest {
+        preamble: None,
+        messages: vec![Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text("should not be echoed".to_string())],
+        }],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+    };
+    let cancel = CancellationToken::new();
+    let mut stream = model
+        .stream(
+            request.clone(),
+            InputState::Empty {
+                kind: EmptyKind::Manual,
+                count: 1,
+            },
+            cancel,
+        )
+        .await;
+    let mut texts = String::new();
+    while let Some(event) = stream.next().await {
+        if let CompletionEvent::Text(text) = event? {
+            texts.push_str(&text);
+        }
+    }
+    assert_eq!("请再说一遍，我没有听清。", texts);
+    Ok(())
+}
+
+/// 契约：Echo 按语境 + 次数返回分级固定句（Rule of three）。
+#[tokio::test]
+#[traced_test]
+async fn test_llm_model_echo_empty_input_grades_by_kind_and_count() -> anyhow::Result<()> {
+    let model = LlmManager::create_model(&LlmConfig {
+        provider: Some(LlmProvider::LocalEcho),
+        ..Default::default()
+    });
+    let request = CompletionRequest {
+        preamble: None,
+        messages: vec![Message {
+            role: Role::User,
+            parts: vec![ContentPart::Text("x".to_string())],
+        }],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+    };
+
+    let cases: Vec<(EmptyKind, u32, Option<&str>)> = vec![
+        (EmptyKind::Wake, 1, Some("想让我帮你做什么呢？")),
+        (
+            EmptyKind::Wake,
+            2,
+            Some("你可以告诉我你的需求，比如播放音乐或设置提醒。"),
+        ),
+        (
+            EmptyKind::AutoSpoke,
+            1,
+            Some("抱歉，我没听清，可以再说一次吗？"),
+        ),
+        (
+            EmptyKind::AutoSpoke,
+            2,
+            Some("没能听清，请换个说法或说得慢一些。"),
+        ),
+        (EmptyKind::Silence, 1, Some("我一直在听，你可以尽管说。")),
+        (EmptyKind::Silence, 2, Some("请开口告诉我你想做什么。")),
+        (EmptyKind::Manual, 1, Some("请再说一遍，我没有听清。")),
+        // 连续监听：静默等待，不产出提示文字。
+        (EmptyKind::Continuing, 1, None),
+    ];
+
+    for (kind, count, expected) in cases {
+        let mut stream = model
+            .stream(
+                request.clone(),
+                InputState::Empty { kind, count },
+                CancellationToken::new(),
+            )
+            .await;
+        let mut texts = String::new();
+        while let Some(event) = stream.next().await {
+            if let CompletionEvent::Text(text) = event? {
+                texts.push_str(&text);
+            }
+        }
+        if let Some(exp) = expected {
+            assert_eq!(texts, exp, "kind={kind:?} count={count} 应返回「{exp}」");
+        } else {
+            assert!(
+                texts.is_empty(),
+                "kind={kind:?} count={count} 连续监听应静默，got「{texts}」"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -240,7 +350,9 @@ async fn test_chat_mcp(text: &str) -> anyhow::Result<()> {
             temperature: Some(0.8),
             max_tokens: Some(999),
         };
-        let stream = model.stream(request, cancel.child_token()).await;
+        let stream = model
+            .stream(request, InputState::Normal, cancel.child_token())
+            .await;
 
         let new_messages = handle_response(stream, None).await?;
         has_next_step = false;
@@ -316,7 +428,7 @@ async fn handle_response(
                 if let Some(tx) = &tx {
                     let sentence_list = splitter.accept_token(&text);
                     for sentence in sentence_list {
-                        tx.send(Ok(sentence)).await?;
+                        tx.send(Ok(sentence.text)).await?;
                     }
                 }
             }
@@ -352,7 +464,7 @@ async fn handle_response(
     if let Some(tx) = &tx {
         let sentence_list = splitter.accept_final();
         for sentence in sentence_list {
-            tx.send(Ok(sentence)).await?;
+            tx.send(Ok(sentence.text)).await?;
         }
     }
     if !text_collector.is_empty() {

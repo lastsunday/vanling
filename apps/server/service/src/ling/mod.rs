@@ -1,10 +1,16 @@
-pub mod asr;
-pub mod core;
-pub mod frame;
-pub mod listener;
-pub mod llm;
-pub mod mcp;
-pub mod message;
-pub mod session;
-pub mod tts;
-pub mod vad;
+use async_trait::async_trait;
+use framework::error::AppError;
+use futures::Stream;
+use std::pin::Pin;
+use tokio_util::sync::CancellationToken;
+
+use crate::types::{Input, OutputBlock};
+
+#[async_trait]
+pub trait Ling: Send + Sync {
+    async fn ask(
+        &self,
+        input: Input,
+        cancel: CancellationToken,
+    ) -> Pin<Box<dyn Stream<Item = Result<OutputBlock, AppError>> + Send + 'static>>;
+}

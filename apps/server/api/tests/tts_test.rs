@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use api::{
+    component::tts::TtsManager,
     config::{TtsModel, audio::AudioConfig, tts::TtsConfig},
-    tts::TtsManager,
 };
 use tokio_stream::StreamExt;
 use tracing::info;

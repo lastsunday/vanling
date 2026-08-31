@@ -436,6 +436,17 @@ export class AudioRecorder {
     getAnalyser() {
         return this.analyser;
     }
+
+    // 当前上行 Opus 编码采样率（编码器初始化后即真实 AudioContext sampleRate）
+    getSampleRate() {
+        if (this.opusEncoder) {
+            return this.opusEncoder.sampleRate;
+        }
+        if (this.audioContext) {
+            return this.audioContext.sampleRate;
+        }
+        return 16000;
+    }
 }
 
 // 创建单例

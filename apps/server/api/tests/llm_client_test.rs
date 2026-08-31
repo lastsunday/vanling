@@ -1,8 +1,8 @@
 use api::{
+    component::ling::{ChatRequest, History, LingCoreBuilder},
+    component::llm::{Llm, LlmManager},
+    component::mcp::client::external::ExternalMcpClient,
     config::{LlmProvider, llm::LlmConfig},
-    ling_core::{ChatRequest, History, LingCoreBuilder},
-    llm::{Llm, LlmManager},
-    mcp::client::external::ExternalMcpClient,
     setup_mcp,
 };
 use framework::auth::{Jwt, Principal};
@@ -10,10 +10,10 @@ use framework::config::auth::AuthConfig;
 use rmcp::transport::{
     StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig,
 };
-use service::ling::{
-    llm::{ContentPart, Message, Role},
-    mcp::McpRegistry,
-};
+use service::component::llm::{ContentPart, InputState, Message, Role};
+use service::component::mcp::McpRegistry;
+use service::ling::Ling;
+use service::types::{EmptyKind, Input, OutputBlock};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_stream::StreamExt;
@@ -58,6 +58,7 @@ async fn test_chat_echo() {
                 parts: vec![ContentPart::Text(r#"Hello"#.to_string())],
             },
         },
+        InputState::Normal,
         CancellationToken::new(),
     );
     let mut result = Vec::new();
@@ -71,8 +72,41 @@ async fn test_chat_echo() {
             }
         }
     }
-    let result: String = result.into_iter().collect();
+    let result: String = result.into_iter().map(|s| s.text).collect();
     assert_eq!(r#"Hello"#, result);
+}
+
+#[tokio::test]
+#[traced_test]
+async fn test_chat_echo_empty_input_returns_prompt() {
+    let client = LingCoreBuilder::new()
+        .with_model(LlmManager::create_model(&LlmConfig {
+            provider: Some(LlmProvider::LocalEcho),
+            ..Default::default()
+        }))
+        .build()
+        .with_history(Arc::new(Mutex::new(History {
+            preamble: None,
+            chat_history: vec![],
+        })));
+    let mut output = client
+        .ask(
+            Input::Empty {
+                kind: EmptyKind::Manual,
+                count: 1,
+            },
+            CancellationToken::new(),
+        )
+        .await;
+    let mut result = String::new();
+    while let Some(block) = output.next().await {
+        match block {
+            Ok(OutputBlock::Sentence(sentence)) => result.push_str(&sentence.text),
+            Ok(OutputBlock::Text(t)) => result.push_str(&t),
+            Err(e) => error!("{}", e.to_string()),
+        }
+    }
+    assert_eq!("请再说一遍，我没有听清。", result);
 }
 
 #[tokio::test]
@@ -95,7 +129,7 @@ async fn test_chat_simple() {
             parts: vec![ContentPart::Text(r#"静夜思的内容"#.to_string())],
         },
     };
-    let mut output = client.complete(request, CancellationToken::new());
+    let mut output = client.complete(request, InputState::Normal, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -107,7 +141,7 @@ async fn test_chat_simple() {
             }
         }
     }
-    let result: String = result.into_iter().collect();
+    let result: String = result.into_iter().map(|s| s.text).collect();
     info!("{}", result);
     assert_ne!(0, result.len());
 }
@@ -132,7 +166,7 @@ async fn test_short_question() {
             parts: vec![ContentPart::Text(r#"1+1="#.to_string())],
         },
     };
-    let mut output = client.complete(request, CancellationToken::new());
+    let mut output = client.complete(request, InputState::Normal, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -144,7 +178,7 @@ async fn test_short_question() {
             }
         }
     }
-    let result: String = result.into_iter().collect();
+    let result: String = result.into_iter().map(|s| s.text).collect();
     info!("{}", result);
     assert_ne!(0, result.len());
 }
@@ -171,7 +205,7 @@ async fn test_english_question() {
             parts: vec![ContentPart::Text(r#"Who is Albert Einstein"#.to_string())],
         },
     };
-    let mut output = client.complete(request, CancellationToken::new());
+    let mut output = client.complete(request, InputState::Normal, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -183,7 +217,7 @@ async fn test_english_question() {
             }
         }
     }
-    let result: String = result.into_iter().collect();
+    let result: String = result.into_iter().map(|s| s.text).collect();
     info!("{}", result);
     assert_ne!(0, result.len());
 }
@@ -217,7 +251,7 @@ async fn test_chat_history() {
             parts: vec![ContentPart::Text(r#"小小的电话号码是多少"#.to_string())],
         },
     };
-    let mut output = client.complete(request, CancellationToken::new());
+    let mut output = client.complete(request, InputState::Normal, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -229,7 +263,7 @@ async fn test_chat_history() {
             }
         }
     }
-    let result: String = result.into_iter().collect();
+    let result: String = result.into_iter().map(|s| s.text).collect();
     assert_ne!(0, result.len());
     info!("{}", result);
     assert!(result.contains("12349876"));
@@ -287,7 +321,7 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
             parts: vec![ContentPart::Text(r#"现在几点"#.to_string())],
         },
     };
-    let mut output = client.complete(request, CancellationToken::new());
+    let mut output = client.complete(request, InputState::Normal, CancellationToken::new());
     let mut result = Vec::new();
     while let Some(text) = output.next().await {
         match text {
@@ -299,7 +333,7 @@ async fn test_chat_mcp() -> anyhow::Result<()> {
             }
         }
     }
-    let result: String = result.into_iter().collect();
+    let result: String = result.into_iter().map(|s| s.text).collect();
     assert_ne!(0, result.len());
     info!("{}", result);
 
