@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/server/todo">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link active">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link active leaf">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/server/todo/#TODO">TODO</a></li>
+    
+  </ul>
+  
+  <h1 id="TODO">TODO</h1>
+<blockquote>
+<p><strong>⚠️ 说明：本文档为功能探索性梳理，参考了行业标准（Alexa+、Gemini、Siri AI）和参考项目实现（xiaozhi-esp32-server、xiaozhi-esp32-server-java、xiaozhi-server-go）。大部分条目不会全部实现，仅作为 vanling 定位和取舍的参考依据。实际开发优先级以项目 Roadmap 为准。</strong></p>
+</blockquote>
+<p>按功能模块分类的待办事项清单。修复前请阅读 <a rel="external" href="https://github.com/anomalyco/vanling/blob/main/AGENTS.md">AGENTS.md</a> 了解开发规范。</p>
+<h2 id="安全_&amp;_认证">安全 &amp; 认证</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>WS 认证</td><td><code>api/src/ws/mod.rs</code></td><td>WS handler 在 Upgrade 阶段 inline 验证 Bearer Token（JWT），支持 Authorization header + query param 浏览器回退</td><td>建议: <code>axum-jwt-auth</code> — JWT 中间件，JWKS 缓存</td><td>✅已完成 2026-08-26</td></tr>
+<tr><td>🔴 P0</td><td>Invite Code 系统</td><td>新功能</td><td>无邀请码生成/验证/管理，新用户注册无控制</td><td>建议: <code>nanoid</code> — 短 URL 安全 ID 生成器</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Rate Limiting</td><td><code>api/src/auth.rs</code></td><td>无登录限流/暴力破解防护</td><td>建议: <code>tower-governor</code> + <code>governor</code> — GCRA 算法</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Refresh 吊销</td><td><code>api/src/auth.rs</code></td><td>refresh token 无吊销机制，logout 仅客户端清除</td><td>已有: <code>redis-rs</code> + <code>sea-orm</code></td><td></td></tr>
+<tr><td>🟡 P1</td><td>Token 日志</td><td><code>api/src/auth.rs</code></td><td>access token 明文记录在 tracing span</td><td>已有: <code>tracing</code></td><td></td></tr>
+<tr><td>🟡 P1</td><td>OTA 设备激活</td><td><code>api/src/ota.rs</code> + <code>api/src/device.rs</code></td><td>设备注册 + 激活验证 + admin CRUD 已实现，OTA v2 仍待完成</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>MCP 认证</td><td><code>api/src/mcp/mod.rs</code></td><td><code>/mcp</code> 端点认证被注释掉</td><td>已有: <code>rmcp</code></td><td></td></tr>
+</tbody></table>
+<h2 id="语音输入与处理">语音输入与处理</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>Wake Word 支持</td><td><code>api/src/ws/</code> + 协议层</td><td>ESP32 客户端已有 ESP-SR 离线唤醒，服务端需处理 <code>wake_word</code> 消息类型，当前协议无此字段。行业标配（Echo/Google/Xiaozhi 均有），响应延迟 &lt;200ms</td><td>— (ESP32 端 ESP-SR，服务端仅协议解析)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>声纹识别 (Voiceprint)</td><td>新功能</td><td>参考项目 xinnan-tech 已实现（3D-Speaker 模型），与 ASR 并行处理，识别说话人身份传递给 LLM 实现个性化回复。sherpa-onnx 已支持 speaker identification（ECAPA-TDNN/WeSpeaker），无需新依赖。黑客365 Go 版使用 Qdrant 向量库 + 动态 TTS 声音切换，架构更成熟。需：注册/管理/识别流程 + DB 存储声纹向量 + LLM 上下文注入</td><td>已有: <code>sherpa-onnx</code> (ECAPA-TDNN/WeSpeaker)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Opus 除零</td><td><code>api/src/ws/default_listener.rs</code></td><td>channels=0 / sample_rate=0 时除零</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>音频热路径克隆</td><td><code>api/src/ws/default_listener.rs</code></td><td>每 20ms <code>data.to_vec()</code> 频繁克隆</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>分层轮次检测</td><td>新功能</td><td>4 层架构替代纯 VAD：Layer 1 Silero VAD（&lt;1ms/帧）→ Layer 2 持续时间检查（min_silence_ms）→ Layer 3 标点/语义完整性（<code>.?!</code> 立即提交，无标点延长窗口）→ Layer 4 填充词检测（uh/um 延长 reopen）。LiveKit Turn Detector v1.0（2026.06）实测 300ms 延迟下 9.9% 误切率（vs Deepgram 12.9%）；OpenAI 用 <code>silence_duration_ms=500</code> + <code>prefix_padding_ms=300</code> 配置服务端 VAD。当前 vanling 仅 Layer 1（Earshot Silero），缺少语义层。arxiv 2606.13450 展示可提前 2.56s 预测端点，减少 505ms 平均延迟</td><td>建议: LiveKit <code>v1-mini</code>（量化版 CPU 可推理）; OpenAI 配置模式; arxiv 2606.13450 Endpoint Anticipation</td><td></td></tr>
+<tr><td>🟡 P1</td><td>动态 VAD 参数</td><td><code>api/src/ws/default_listener.rs</code> + <code>vad/</code></td><td><strong>当前瓶颈</strong>：VAD 参数在配置时固定，<code>silence_voice_timeout=1200ms</code> 固定。OpenAI Realtime 用 <code>threshold=0.5</code> + <code>prefix_padding_ms=300</code> + <code>silence_duration_ms=500</code> 配置，LiveKit 支持 <code>update_options()</code> 运行时修改。<strong>方案</strong>：助理刚说完→缩短 silence 到 300ms（快速回复）；用户长发言→延长 max_speech_ms；能量预过滤静音帧跳过 VAD 推理（省 CPU）。vui 通过命令队列实时修改 <code>stop_secs</code>，speech-to-speech 有 RuntimeConfig</td><td>参考: vui <code>asr_worker.py:198-206</code>; speech-to-speech <code>RuntimeConfig</code>; OpenAI <code>server_vad</code> 配置</td><td></td></tr>
+<tr><td>🟡 P1</td><td>ASR Settle 延迟 + Speculative Reopen</td><td><code>api/src/ws/default_listener.rs</code></td><td><strong>当前瓶颈</strong>：VAD silence 后立即 ASR，可能丢失尾部音素；无 turn reopen 机制。<strong>方案</strong>：(1) 分层提交：silence→等 120ms 让最后中间结果到达→标点检查→<code>.?!</code> 立即提交，无标点额外等 700ms trailing-off（vui tiered_commit 实测：干净句子 420ms，trailing off 1120ms）；(2) Speculative Reopen：参考 HF speech-to-speech 的 SpeculativeTurnTracker，64ms 静默即软结束开始 ASR/LLM，turn 保持 reopenable 1s，用户重新说话→revision+1 丢弃旧工作。<strong>防止误提交</strong>：用户说"嗯...其实..."时不会过早触发回复</td><td>参考: vui <code>voice_turn.py:696-771</code>; HF speech-to-speech <code>speculative_turns.py</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>填充词/犹豫检测</td><td><code>api/src/ws/default_listener.rs</code></td><td>ASR 输出 <code>uh/um/呃/嗯</code> 等填充词 + 短音频（&lt;3s）→ 丢弃不触发 LLM。<strong>方案</strong>：(1) 轻量：ASR 后处理检查末尾填充词（vui <code>_ends_with_filler</code>，支持 <code>uh/um/uhhh/ummm</code> 变体）；(2) 音频级：desert-ant-labs <code>uhm</code> 项目，DistilHuBERT 分类器，iPhone 169-296x realtime，6 类无需 ASR；(3) 训练级：disfluency LoRA 微调 whisper-large-v3-turbo，75% filler 召回率。vanling 推荐方案 (1)，与分层轮次检测的 Layer 4 结合</td><td>参考: vui <code>_ends_with_filler</code> <code>voice_turn.py:25-35</code>; desert-ant-labs/uhm; disfluency LoRA</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>VAD 采样率</td><td><code>api/src/component/vad/</code></td><td>硬编码 16kHz，非 16kHz 输入无声失败</td><td>—</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>ASR</td><td><code>api/src/component/asr/</code></td><td>XAsr (sherpa-onnx)，无 <code>Sync</code> trait，仅 16kHz 单声道</td><td>已有: <code>sherpa-onnx</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>环境监听模式</td><td>新功能</td><td>医疗 AI（Nuance DAX/Nabla）的被动监听模式：非唤醒词触发，持续监听环境音频，主动响应用户需求。需隐私架构（Nabla 模式：不存储原始音频）。适合家庭/办公场景</td><td>—</td><td></td></tr>
+<tr><td>🟢 P3</td><td>Speaker Diarization</td><td><code>api/src/listener/</code></td><td>说话人分离，多人场景下区分不同用户。sherpa-onnx 已支持（ECAPA-TDNN + AHC 聚类）</td><td>已有: <code>sherpa-onnx</code> / 建议: <code>polyvoice</code></td><td></td></tr>
+<tr><td>🟢 P3</td><td>AEC 服务端降噪</td><td><code>api/src/ws/default_listener.rs</code></td><td>joey-zhou 已实现 WebRTC AEC3 服务端回声消除（含噪声抑制 + 高通滤波 + 自适应增益）。vanling 仅客户端 AEC</td><td>建议: <code>aec3</code> — 纯 Rust WebRTC AEC3</td><td></td></tr>
+<tr><td>🟢 P3</td><td>WebRTC 实时音视频</td><td>新功能</td><td>参考项目 dairoot/xiaozhi-webrtc 实现 WebRTC 低延迟 + Live2D + 多模态视觉 + MCP。vanling 当前仅 WS 协议</td><td>建议: <code>webrtc-rs</code> (v0.17.x)</td><td></td></tr>
+<tr><td>🟢 P3</td><td>音频标准化集成</td><td><code>api/src/util/compressor.rs</code> → 管道</td><td><code>adaptive_normalize()</code> 已实现但未集成到 TTS 输出管道</td><td>—</td><td></td></tr>
+<tr><td>🟢 P3</td><td>引导式推理对话</td><td>新功能</td><td>教育 AI（作业帮/有道）的引导模式：不直接给答案，逐步引导用户思考。适合儿童/学习场景，需 LLM prompt 工程 + 对话状态管理</td><td>—</td><td></td></tr>
+</tbody></table>
+<h2 id="语言模型与推理">语言模型与推理</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>LLM 线程安全</td><td><code>api/src/component/llm/model/qwen3/mod.rs</code></td><td><code>thread::spawn</code> + <code>block_on</code>，未 <code>catch_unwind</code>，panic 静默崩溃</td><td>—</td><td>✅已完成 2026-07-24</td></tr>
+<tr><td>🔴 P0</td><td>LLM Echo 线程</td><td><code>api/src/component/llm/model/echo/mod.rs</code></td><td>同上</td><td>—</td><td>✅已完成 2026-07-24</td></tr>
+<tr><td>🟡 P1</td><td>情绪识别完善</td><td><code>api/src/component/llm/model/</code> (analyze_emotion)</td><td>当前 stub 返回 "happy"。行业方案：音频特征 (wav2vec2 SER) + 文本情感 (GoEmotions) 双通道融合，用于调整 TTS 语气和回复风格</td><td>已有: <code>sherpa-onnx</code> (SER 模型)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>个性化记忆/长期偏好</td><td>新功能</td><td>当前仅 chat history，无长期偏好存储。参考项目 xinnan-tech 有 PowerMem（用户画像 + 艾宾浩斯遗忘曲线 + 向量检索）；joey-zhou 有 3 种记忆模式（window/summary/long + 图检索）</td><td>建议: <code>qdrant</code> + <code>rig-core</code> — 向量 DB + RAG 框架</td><td></td></tr>
+<tr><td>🟡 P1</td><td>RAG 知识库</td><td>MCP 或内置模块</td><td>参考项目 xinnan-tech 集成 RAGFlow；joey-zhou 有 EmbeddingModelFactory + 图检索。当前 MCP 框架可接入但无内置向量检索</td><td>已有: <code>rig-core</code> (10+ 向量存储后端)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Intent 识别</td><td>新功能</td><td>参考项目 xinnan-tech 支持 3 种模式：function_call（推荐）、intent_llm（专用 LLM）、nointent。当前 vanling 无独立 intent 层</td><td>已有: <code>rmcp</code> (function_call)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>LLM 历史阻塞</td><td><code>api/src/component/llm/model/qwen3/mod.rs</code></td><td>DB 落盘导致完整线程阻塞</td><td>—</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>Agent 任务编排</td><td>新功能</td><td>参考项目 Alexa+ 自主执行 Uber/OpenTable/Grubhub；Rabbit R1 LAM 大动作模型；Doubao 超能模式自主分解复杂任务。LLM + MCP 工具链实现自主任务执行</td><td>已有: <code>rig-core</code> (Agent/Chain/Router)</td><td></td></tr>
+<tr><td>🟢 P3</td><td>describe O(n)</td><td><code>api/src/component/llm/model/qwen3/mod.rs</code></td><td>实时构建全消息历史</td><td>—</td><td></td></tr>
+</tbody></table>
+<h2 id="语音合成_(TTS)">语音合成 (TTS)</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🟡 P1</td><td>Piper/Kokoro TTS 集成</td><td><code>api/src/component/tts/</code></td><td>开源 TTS 替代方案：Piper（20M 参数/MIT/CPU 55ms 延迟/30+ 语言）和 Kokoro（82M/Apache 2.0/CPU 实时/54 声音）。可替换或补充当前 MatchaTTS，Piper 适合边缘部署，Kokoro 是最佳质量/体积比</td><td>建议: <code>sherpa-onnx</code> (Piper ONNX 模型)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>两阶段流式 TTS 架构</td><td><code>api/src/component/ling/splitter.rs</code> + <code>round.rs</code> + <code>api/src/component/tts/mod.rs</code></td><td><strong>当前瓶颈</strong>：Splitter 严格按 <code>。！？!?</code> 拆分，无子句拆分；MatchaTTS <code>generate_with_config</code> 一次性生成整句音频（callback 参数为 <code>None</code>，sherpa-onnx 实际支持流式 callback）。arxiv 2603.05413 实测流水线并行 TTFA 755ms（vs 串行 26.5s → 17x 改善）。<strong>两阶段架构</strong>（参考 Qwen3-TTS-streaming）：Phase 1 token 级首包 — LLM 第一个 token 到达即触发 TTS，快速出首包（3-5 词），降低 TTFA；Phase 2 句子级稳态 — 后续 15-20 词或 break_chars 兜底，吞吐优先。TTS 改用 callback 模式边生成边 Opus 编码边发送，取消时 callback 返回 false 中断。核心原则：延迟从 <code>STT+LLM+TTS</code> 变为 <code>max(STT,LLM,TTS)</code></td><td>参考: Qwen3-TTS-streaming 两阶段架构; vui <code>engine.py:73</code> <code>chunk_words</code>; arxiv 2603.05413; sherpa-onnx callback API</td><td>✅已完成 2026-07-23</td></tr>
+<tr><td>🟡 P1</td><td>音频 Hold Buffer + Fade-out</td><td><code>api/src/component/tts/</code></td><td>TTS 输出音频尾部 abrupt cutoff 产生 click。最后 N 帧（~240ms）缓存，尾部 200ms 做线性淡出消除杂音，参考 vui <code>tts_worker.py:713-783</code> 的 hold buffer + fade-out 实现</td><td>参考: vui <code>tts_worker.py:713-783</code></td><td>✅已完成 2026-07-23（fade-out 已实现，hold buffer 未实现）</td></tr>
+<tr><td>🟡 P1</td><td>多语言 TTS</td><td><code>api/src/component/tts/</code></td><td>当前仅单语言 TTS voice。ESP32 客户端已支持 25+ 语言 ASR，TTS 侧需匹配</td><td>建议: <code>sherpa-onnx</code> (Piper/VITS ONNX 模型)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Quick Reply 预回复</td><td>新功能</td><td>LLM 推理期间先播放"我在"/"来了"等短语，降低感知延迟。参考项目黑客365 Go 版已实现，UX 关键，实现简单</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>动态 TTS 声音切换</td><td>新功能</td><td>基于声纹识别自动切换不同 TTS 音色。参考项目黑客365 Go 版已实现（sherpa-onnx 声纹 + per-speaker TTS voice），声纹识别的自然延伸</td><td>已有: <code>sherpa-onnx</code> (声纹+TTS 切换)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Hann Crossfade 防 click</td><td><code>api/src/component/tts/mod.rs</code></td><td><strong>当前问题</strong>：TTS chunk 边界产生 click/pop 杂音。<strong>方案</strong>：Hann 窗 crossfade（512 samples @ 16kHz = 32ms），首包 fade-in、末包 fade-out、中间 crossfade。参考 Qwen3-TTS-streaming 项目（89 stars），业界标准做法。Overlap trimming 流程：crossfade 当前 HEAD 与前一个 TAIL → 保存完整 chunk → trim END before emission。实现位置：<code>StreamingOpusEncoder</code> 内部维护 <code>prev_tail: Vec&lt;f32&gt;</code>，每次 encode 时 crossfade</td><td>参考: Qwen3-TTS-streaming <code>overlap_samples=512</code>; open-unified-tts 30-50ms crossfade</td><td>❌丢弃 2026-07-23 — 输入 PCM 连续，无需 crossfade</td></tr>
+<tr><td>🟡 P1</td><td>首包静音裁剪 + 40ms preroll</td><td><code>api/src/component/tts/mod.rs</code></td><td><strong>当前问题</strong>：TTS 输出首包有 leading silence，增加感知延迟。<strong>方案</strong>：1% amplitude threshold 检测首包静音，裁剪后保留 40ms preroll（软起音避免 abrupt start）。参考 speech-to-speech 项目 <code>trim_silence()</code>。预期减少感知延迟 50-200ms。实现位置：<code>TtsMatcha::stream()</code> 中 Opus 编码前增加 <code>trim_leading_silence()</code> 步骤</td><td>参考: speech-to-speech <code>trim_silence()</code>; Dupdub TTS latency optimization</td><td>❌丢弃 2026-07-23 — 与流式架构不兼容</td></tr>
+<tr><td>🟡 P1</td><td>Splitter 升级：sentencex 集成</td><td><code>api/src/component/ling/splitter.rs</code></td><td><strong>当前问题</strong>：Splitter 仅按 <code>。！？!?</code> 简单正则分割，无缩写处理（"Dr." "Mr." 被错误断句）、无 context lookahead（"$29." 被错误断句）、无 minimum sentence length。<strong>方案</strong>：使用 <code>sentencex</code> crate（Wikimedia，136 stars，MIT），支持 200+ 语言包括中文，手工编译缩写列表，英文 Golden Rule Set F1=100.00（NLTK 仅 72.33）。<code>cargo add sentencex</code> 即可集成。替换现有 <code>Splitter</code> 的正则逻辑</td><td>建议: <code>sentencex</code> — Rust 纯实现，Wikimedia 维护</td><td>✅已完成 2026-07-23</td></tr>
+<tr><td>🟡 P1</td><td>TTFA/RTF 性能测量</td><td><code>api/src/component/tts/mod.rs</code></td><td><strong>当前问题</strong>：无 TTS 性能可观测性。<strong>方案</strong>：记录每请求 TTFA（time-to-first-audio）和 RTF（real-time-factor），持久化原始样本计算 P50/P90/P95 百分位。P95 决定 silence_timeout 配置。实现：在 <code>TtsMatcha::stream()</code> 中记录 <code>Instant::now()</code> 到首次 Opus 帧输出的时间差</td><td>参考: Dupdub TTS latency optimization; Sherlock Calls P95 monitoring</td><td>✅已完成 2026-07-23</td></tr>
+<tr><td>🟡 P1</td><td>Opus-to-PCM 解码预缓冲</td><td><code>service/src/session/round.rs</code></td><td><strong>当前问题</strong>：客户端收到 Opus 帧后立即解码播放，无预缓冲。网络抖动导致播放卡顿。<strong>方案</strong>：服务端或客户端增加 Opus→PCM 解码层，预缓冲 N 帧（~200ms）后再播放，平滑网络抖动影响。参考 speech-to-speech 项目 leftover sample carry 机制。ESP32 端可利用 Opus decoder 已有实现；WS 端需评估是否在服务端预解码（增加带宽但降低客户端复杂度）</td><td>参考: speech-to-speech <code>leftover_samples</code> carry; sherpa-onnx Opus decoder</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>句间静音优化</td><td><code>api/src/component/tts/</code></td><td>TTS 句间固定静音。改为按标点类型动态调整：逗号 0.3s，句号 0.6s，其他 0.3s，让对话节奏更自然</td><td>参考: RealtimeVoiceChat <code>ENGINE_SILENCES</code> <code>audio_module.py:22-26</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>对话韵律 TTS</td><td>新功能</td><td>参考项目 Sesame CSM（Apache 2.0 开源）生成呼吸/犹豫/笑声等对话韵律，让语音更像真人。Cartesia Sonic 3.5 使用 SSM 架构实现 &lt;90ms TTS 延迟</td><td>建议: <code>csm.rs</code> — Rust Sesame CSM (AGPL-3.0)</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>情绪自适应语调</td><td>新功能</td><td>参考项目 Hume AI EVI 检测 600+ 情感标签（犹豫/讽刺/宽慰），自适应调整 TTS 语气。MiniMax Speech-2.8 支持 7 种情绪 + 0-100% 强度控制 + 插入标签 <code>(laughs)</code> <code>(sighs)</code></td><td>建议: <code>voirs-emotion</code> — 多维情绪控制</td><td></td></tr>
+<tr><td>🟢 P3</td><td>声音克隆</td><td><code>api/src/component/tts/</code></td><td>参考项目 xinnan-tech 支持火山引擎语音克隆；joey-zhou 支持按角色声音克隆。MatchaTTS 已支持 reference audio，需暴露配置接口</td><td>建议: <code>sherpa-onnx</code> (speaker embedding)</td><td></td></tr>
+<tr><td>🟢 P3</td><td>TTS 循环克隆</td><td><code>api/src/component/tts/</code></td><td><code>Arc&lt;str&gt;</code> vs <code>String</code> 克隆风暴</td><td>—</td><td></td></tr>
+</tbody></table>
+<h2 id="工具与集成">工具与集成</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🟡 P1</td><td>家居集成 (Home Assistant)</td><td>MCP 或独立模块</td><td>参考项目 xinnan-tech 有 3 种 HA 集成方式（社区插件/HA 作为 LLM 工具/HA MCP Server）。智能家居是语音助手核心场景</td><td>已有: <code>rmcp</code> (HA MCP Server)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>设备间通话</td><td>MCP tool 或独立功能</td><td>参考项目 xinnan-tech 有 <code>call_device.py</code>，ESP32 设备间可像电话一样互相呼叫，需 MQTT gateway + 通讯录管理</td><td>建议: <code>rumqttc</code> — 纯 Rust MQTT 客户端</td><td></td></tr>
+<tr><td>🟡 P1</td><td>音乐播放</td><td>MCP tool 或独立功能</td><td>参考项目 xinnan-tech 有 <code>play_music.py</code> + <code>hass_play_music.py</code>；joey-zhou 有 <code>MusicPlayer</code> 支持 LRC 歌词同步。行业标配</td><td>建议: <code>rodio</code> — 跨平台音频播放</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Timer/提醒/闹钟</td><td>MCP tool 或独立功能</td><td>行业标配（"Alexa, set a timer"），当前无任何定时/提醒机制</td><td>建议: <code>tokio-cron-scheduler</code> — Tokio 异步 cron</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>MCP 认证</td><td><code>api/src/mcp/mod.rs</code></td><td><code>/mcp</code> 端点认证被注释掉</td><td>已有: <code>rmcp</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>插件系统</td><td>新功能</td><td>参考项目 xinnan-tech 有 13 个内置插件 + 热加载机制。vanling 无插件架构，功能扩展需修改核心代码</td><td>建议: <code>wasmtime</code> — WASI P2 + Component Model</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>MCP Market / 工具市场</td><td>新功能</td><td>参考项目黑客365 Go 版实现 MCP 工具"应用商店"：聚合多第三方市场（如 ModelScope），一键导入远程 MCP 服务 + 热加载。vanling 当前无 MCP 工具发现/聚合机制</td><td>已有: <code>rmcp</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>MCP 调试控制台</td><td>新功能</td><td>参考项目黑客365 Go 版有 Agent/Device 维度 MCP 远程调试：Web 控制台生成每 Agent 独立 MCP 端点，实时调用测试，支持 per-agent 工具过滤。vanling 当前无 MCP 调试工具</td><td>已有: <code>rmcp</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>MCP 工具聚合</td><td>新功能</td><td>参考项目 xiaozhi-mcp / yuexianga/xiaozhi-mcp 提供预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算），开箱即用。vanling 无内置 MCP 工具包</td><td>已有: <code>rmcp</code></td><td></td></tr>
+<tr><td>⚠️ P2</td><td>MQTT 网关</td><td>新功能</td><td>参考项目 xinnan-tech/xiaozhi-mqtt-gateway 实现 MQTT+UDP → WS 桥接：分布式部署 + 动态负载均衡 + HMAC 认证 + MCP 命令下发。vanling 当前仅 WS 单协议</td><td>建议: <code>rumqttc</code> — 纯 Rust，tokio 原生</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>配置向导+全链路测试</td><td>新功能</td><td>参考项目黑客365 Go 版有首次运行向导（OTA/VAD/ASR/LLM/TTS 逐步配置）+ 每组件延迟测试 + 可视化图表。vanling 当前无部署向导</td><td>—</td><td></td></tr>
+</tbody></table>
+<h2 id="会话与设备">会话与设备</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>stop_round 竞态</td><td><code>service/src/session/round.rs</code></td><td><code>llm_tts_handle</code> 与 <code>stop_round</code> 之间缺少同步，可能 use-after-cancel</td><td>—</td><td>✅已完成 2026-07-24</td></tr>
+<tr><td>🟡 P1</td><td>Continued Conversation</td><td><code>service/src/session/</code></td><td>回复后麦克风应短暂保持开放，允许用户免唤醒词追问。Gemini / Alexa+ 均支持</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>时钟溢出</td><td><code>service/src/session/mod.rs</code></td><td><code>Local::now()</code> 非单调，减法可溢出</td><td>已有: <code>jiff</code> (单调时钟)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>设备管理</td><td><code>api/src/device.rs</code></td><td>列表/激活/禁用/启用/删除/详情</td><td>已有: <code>sea-orm</code></td><td>✅已完成 2026-07-30</td></tr>
+<tr><td>🟡 P1</td><td>Recorder 无上限</td><td><code>api/src/record/recorder.rs</code></td><td><code>Vec&lt;RecordEntry&gt;</code> 无大小限制，高并发内存无限增长</td><td>—</td><td></td></tr>
+<tr><td>🟢 P3</td><td>Session 导出/删除</td><td><code>api/src/record/</code></td><td>Session 仅可查看，不可导出或删除</td><td>—</td><td></td></tr>
+</tbody></table>
+<h2 id="协议与传输">协议与传输</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>⚠️ P2</td><td>消息类型</td><td><code>api/src/ws/frame.rs</code></td><td>缺失 <code>system</code>、<code>alert</code>、<code>custom</code>、<code>wake_word</code> 消息类型（对比 xiaozhi-esp32 规范）</td><td>—</td><td></td></tr>
+<tr><td>⚠️ P2</td><td>多 ASR/TTS Provider</td><td><code>api/src/component/asr/</code> + <code>api/src/component/tts/</code></td><td>参考项目 xinnan-tech 支持 12 ASR + 18+ TTS provider（含免费 EdgeTTS）；joey-zhou 有 7 STT + 8 TTS。vanling 仅 1 ASR + 1 TTS</td><td>已有: <code>sherpa-onnx</code> (多模型切换)</td><td></td></tr>
+</tbody></table>
+<h2 id="基础设施">基础设施</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>Signal 宏</td><td><code>framework/src/signal.rs</code></td><td>使用不存在的 <code>debug_error!</code> 宏，非 unix 编译失败</td><td>—</td><td>✅已完成 2026-07-24</td></tr>
+<tr><td>🟡 P1</td><td>email 约束</td><td><code>migration/src/m20241230_000001_init.rs</code></td><td>entity 标注 <code>#[sea_orm(unique)]</code>，迁移未实现 UNIQUE</td><td>已有: <code>sea-orm</code> (migration fix)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>外键约束</td><td><code>migration/src/m20241230_000001_init.rs</code></td><td>缺少 FK: <code>round.session_id</code>、<code>round_data.round_id</code>、<code>frame.round_id</code></td><td>已有: <code>sea-orm</code> (migration fix)</td><td></td></tr>
+<tr><td>🟡 P1</td><td>MCP 锁顺序</td><td><code>api/src/mcp/mcp_host.rs</code></td><td>UnionMcpHost device/server 锁顺序 ABBA，可能死锁</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>优雅关闭顺序</td><td><code>framework/src/signal.rs</code> + <code>apps/server</code></td><td>各模块关闭顺序缺失</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Panic 处理</td><td><code>framework/src/panic.rs</code></td><td><code>eprintln!</code> 而非 <code>tracing::error!</code>，绕过 Sentry</td><td>已有: <code>tracing</code></td><td>✅已完成 2026-07-24</td></tr>
+<tr><td>🟡 P1</td><td>Runtime 竞态</td><td><code>framework/src/runtime.rs</code></td><td><code>OnceLock</code> 初始化存在竞态</td><td>—</td><td></td></tr>
+<tr><td>🟢 P3</td><td>时间戳自动填充</td><td><code>entity/src/config.rs</code></td><td><code>Config</code> 实体缺失 <code>ActiveModelBehavior</code>，时间戳未自动填充</td><td>已有: <code>sea-orm</code></td><td></td></tr>
+<tr><td>🟢 P3</td><td>MCP 错误处理</td><td><code>api/src/mcp/</code></td><td>不完善</td><td>已有: <code>rmcp</code></td><td></td></tr>
+</tbody></table>
+<h2 id="前端_(apps/server-ui)">前端 (apps/server-ui)</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🟡 P1</td><td>Dashboard 页</td><td><code>routes/_pathlessLayout.admin/index.tsx</code></td><td>StatCard/TrendsChart/LatencyChart/RecentSessionsTable/LatencyTable</td><td>已有: <code>@mantine/core</code> v9 + <code>@tanstack/react-query</code></td><td>✅已完成 2026-07-30</td></tr>
+<tr><td>🟡 P1</td><td>User CRUD 管理 UI</td><td>新页面</td><td>无用户列表/创建/删除/角色管理界面</td><td>已有: <code>@mantine/core</code> v9</td><td></td></tr>
+<tr><td>🟡 P1</td><td>多用户/RBAC 管理</td><td>新功能</td><td>参考项目 busy-worker Java 管理平台有 Token 用量监控 + 对话时长 + 设备活跃度 + 数据可视化 + RBAC。vanling Dashboard 应包含</td><td>已有: <code>@mantine/core</code> v9</td><td></td></tr>
+<tr><td>🟢 P3</td><td>系统监控</td><td>新页面</td><td>无服务器健康/连接数/资源使用/错误率仪表盘</td><td>已有: <code>@mantine/core</code> v9 + <code>@tanstack/react-query</code></td><td></td></tr>
+<tr><td>🟢 P3</td><td>MCP 仪表盘</td><td>新功能</td><td>参考项目 xiaozhi-mcphub 有 React 前端：多端点管理 + 工具同步 + 群组访问控制 + 日志。vanling MCP 管理参考</td><td>已有: <code>@mantine/core</code> v9</td><td></td></tr>
+</tbody></table>
+<h2 id="移动端_(apps/app)">移动端 (apps/app)</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🟡 P1</td><td>Flutter WS 集成</td><td><code>apps/app/</code></td><td>Flutter app 存在脚手架但未集成 WS + 认证</td><td>建议: <code>web_socket_channel</code></td><td></td></tr>
+<tr><td>🟡 P1</td><td>App CI/CD</td><td><code>.github/workflows/</code></td><td>无 iOS/Android 构建/签名/发布流水线</td><td>GitHub Actions</td><td></td></tr>
+</tbody></table>
+<h2 id="测试">测试</h2>
+<table><thead><tr><th>优先级</th><th>项目</th><th>位置</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>WS 认证测试</td><td><code>apps/server/api/tests/</code></td><td>WS 端点认证测试（单元测试 + Upgrade 集成测试）</td><td>已有: <code>axum</code> test utils + <code>reqwest</code></td><td>✅已完成 2026-08-26</td></tr>
+<tr><td>🔴 P0</td><td>Wake Word 测试</td><td><code>apps/server/api/tests/</code></td><td>Wake word 消息处理无测试，需验证协议解析和 session 唤醒流程</td><td>已有: <code>axum</code> test utils</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Auto 模式 + AEC 测试</td><td><code>apps/server/api/tests/session/</code></td><td>Auto 模式（barge_in=false）在有/无 AEC 场景下无专门测试</td><td>已有: <code>axum</code> test utils</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Button Talk 测试</td><td><code>apps/server/api/tests/session/</code></td><td>Manual 模式（push-to-talk）缺少端到端测试</td><td>已有: <code>axum</code> test utils</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Continued Conversation 测试</td><td><code>apps/server/api/tests/session/</code></td><td>回复后麦克风保持开放的追问流程无测试</td><td>已有: <code>axum</code> test utils</td><td></td></tr>
+<tr><td>🟡 P1</td><td>Rate Limiting 测试</td><td><code>apps/server/api/tests/</code></td><td>登录限流功能不存在，无测试</td><td>已有: <code>axum</code> test utils</td><td></td></tr>
+<tr><td>🟡 P1</td><td>情绪识别测试</td><td><code>apps/server/api/tests/</code></td><td>analyze_emotion stub 无测试覆盖</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>声纹识别测试</td><td><code>apps/server/api/tests/</code></td><td>声纹注册/识别/LLM 注入流程无测试</td><td>—</td><td></td></tr>
+<tr><td>🟡 P1</td><td>音乐播放测试</td><td><code>apps/server/api/tests/</code></td><td>音乐播放功能无测试</td><td>已有: <code>axum</code> test utils</td><td></td></tr>
+</tbody></table>
+<h2 id="待确认_/_探索">待确认 / 探索</h2>
+<table><thead><tr><th>项目</th><th>描述</th><th>开源方案/类库</th><th>状态</th></tr></thead><tbody>
+<tr><td>声纹方案选择</td><td>3D-Speaker (xinnan-tech 使用) vs sherpa-onnx speaker ID (已在技术栈中) vs pyannote。sherpa-onnx 最佳：无需新依赖，支持 ECAPA-TDNN/WeSpeaker/CAM++ 多种模型</td><td>已有: <code>sherpa-onnx</code></td><td></td></tr>
+<tr><td>插件架构设计</td><td>xinnan-tech 有 13 内置插件 + 热加载。vanling 是否需要类似机制，还是通过 MCP 扩展即可？</td><td>建议: <code>wasmtime</code> — WASI 沙箱 + Component Model</td><td></td></tr>
+<tr><td>多 Provider 扩展策略</td><td>参考项目支持 12+ ASR / 18+ TTS provider。vanling 是否需要多 provider 架构，还是保持精简？</td><td>建议: trait 抽象 (<code>AsrProvider</code>/<code>TtsProvider</code>)</td><td></td></tr>
+<tr><td>音乐播放</td><td>行业标配（Spotify/Apple Music 集成），需确认实现方式：MCP tool 调用外部 API / 内置音频播放 / TTS 扩展</td><td>建议: <code>rodio</code></td><td></td></tr>
+<tr><td>ESP32 CI/CD</td><td>独立项目 (xiaozhi-esp32)，非本仓库范围，vanling 作为后端提供 WS + OTA 接口即可</td><td>—</td><td></td></tr>
+<tr><td>Token 持久化存储</td><td>考虑用 DB 表存储 refresh token 支持多设备管理</td><td>已有: <code>sea-orm</code> + <code>redis-rs</code></td><td></td></tr>
+<tr><td>Smart Home 集成</td><td>Alexa+ / Google Home 核心能力。参考项目有 3 种 HA 集成方式，需评估 vanling 作为 hub 的定位</td><td>已有: <code>rmcp</code> (HA MCP)</td><td></td></tr>
+<tr><td>Agentic 能力</td><td>Alexa+ "Experts" / Gemini Spark 24/7 代理，可自主浏览网页/填表/下单。LLM + MCP 工具调用已有基础，需评估实现深度</td><td>已有: <code>rig-core</code></td><td></td></tr>
+<tr><td>语音情感 TTS</td><td>Gemini 2.5 / Cartesia Sonic-3 支持根据情绪调整 TTS 语气。MatchaTTS 需评估是否支持 style/prosody 控制</td><td>建议: <code>voirs-emotion</code></td><td></td></tr>
+<tr><td>本地隐私处理</td><td>行业趋势：Echo/Fire 设备向本地处理迁移。vanling 已有 local Qwen3，可扩展 local ASR/TTS 全链路</td><td>已有: <code>sherpa-onnx</code> + <code>candle</code></td><td></td></tr>
+<tr><td>视觉能力</td><td>参考项目 xinnan-tech 支持 VLLM（GLM-4V/Qwen-VL）拍照识物。vanling 是否需要视觉能力？</td><td>建议: <code>reqwest</code> → Ollama/vLLM</td><td></td></tr>
+<tr><td>MCP Market 架构设计</td><td>参考项目黑客365 Go 版实现 MCP 工具"应用商店"（聚合多市场+热加载）。vanling 是否需要 MCP 工具发现/聚合机制？</td><td>已有: <code>rmcp</code></td><td></td></tr>
+<tr><td>动态 TTS 声音切换方案</td><td>参考项目黑客365 Go 版基于声纹识别自动切换 TTS 音色。vanling 声纹识别后如何联动 TTS？</td><td>已有: <code>sherpa-onnx</code></td><td></td></tr>
+<tr><td>配置向导设计</td><td>参考项目黑客365 Go 版有首次运行向导 + 全链路延迟测试。vanling 是否需要部署向导降低使用门槛？</td><td>—</td><td></td></tr>
+<tr><td>MQTT 网关架构</td><td>分布式部署需要 MQTT+UDP 桥接 + 动态负载均衡（参考 xinnan-tech/xiaozhi-mqtt-gateway）。vanling 是否需要 MQTT 网关层？</td><td>建议: <code>rumqttc</code></td><td></td></tr>
+<tr><td>MCP 工具聚合策略</td><td>参考项目有预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算等），vanling 是否需要内置 MCP 工具包？</td><td>已有: <code>rmcp</code></td><td></td></tr>
+<tr><td>端到端 S2S 架构</td><td>OpenAI/Hume/Sesame 使用单模型处理音频输入输出（非级联 STT→LLM→TTS），vanling 当前级联方案是否需要演进？</td><td>建议: <code>csm.rs</code> (AGPL-3.0) 或 <code>moshi</code> (Apache 2.0)</td><td></td></tr>
+<tr><td>语义 VAD 实现方案</td><td>OpenAI 的模型级轮替检测 vs 传统 VAD，vanling 如何实现更智能的中断/轮替判断？</td><td>建议: <code>wavekat-vad</code></td><td></td></tr>
+<tr><td>对话韵律 TTS</td><td>Sesame CSM 开源模型（Apache 2.0）可直接使用，vanling TTS 是否集成呼吸/犹豫/笑声等韵律？</td><td>建议: <code>csm.rs</code> (AGPL-3.0)</td><td></td></tr>
+<tr><td>隐私策略设计</td><td>Always-listening 设备的隐私架构（Bee 无音频存储 / Omi 本地处理），vanling 如何平衡功能与隐私？</td><td>已有: <code>sherpa-onnx</code> (全链路本地)</td><td></td></tr>
+<tr><td>SSM 架构 TTS</td><td>Cartesia 使用 State Space Model 替代 Transformer 实现 &lt;90ms TTS，vanling TTS 是否考虑 SSM 架构？</td><td>— (无 Rust 实现)</td><td></td></tr>
+<tr><td>Piper/Kokoro 评估</td><td>开源 TTS 模型 Piper（20M 参数/MIT）和 Kokoro（82M/Apache 2.0）是否适合替换或补充当前 MatchaTTS？Piper 适合边缘部署，Kokoro 是最佳质量/体积比</td><td>建议: <code>sherpa-onnx</code> (Piper ONNX)</td><td></td></tr>
+<tr><td>Step-Audio-TTS-3B 集成</td><td>阶跃星辰开源中文 TTS（Apache 2.0、情绪控制、方言支持），是否作为服务端 TTS 候选？需评估 GPU 需求和延迟</td><td>建议: <code>reqwest</code> → StepFun API</td><td></td></tr>
+<tr><td>环境监听架构</td><td>医疗 AI 的被动监听模式（非唤醒词），vanling 是否支持？隐私如何保障？参考 Nabla（不存储原始音频）架构</td><td>—</td><td></td></tr>
+<tr><td>Matter 协议支持</td><td>智能家居 Hub 标准协议（Matter 1.3+Thread 1.4），ESP32 已有 Thread 支持。vanling 是否需要完整 Matter SDK 集成以实现跨平台设备兼容？</td><td>建议: <code>rs-matter</code></td><td></td></tr>
+<tr><td>Proactive 主动建议</td><td>Gemini Daily Brief / Alexa+ 主动提醒交通/降价/日程。需定时任务 + 用户上下文推理</td><td>建议: <code>tokio-cron-scheduler</code></td><td></td></tr>
+<tr><td>跨设备连续性</td><td>Alexa+: Echo→手机→电脑无缝切换对话上下文。需 session 状态同步机制</td><td>— (需自定义：SQLite + WS delta 同步)</td><td></td></tr>
+<tr><td>UGC 角色市场</td><td>参考项目 Character.AI 有 1000万+ 用户创建角色；Doubao 智能体平台支持无代码创建 AI 角色。vanling 可支持用户自定义 AI 人格 + 声音 + 背景故事</td><td>—</td><td></td></tr>
+<tr><td>多模态（语音+屏幕+视频）</td><td>Gemini 2.5 / GPT-Realtime / Siri AI 均支持摄像头/屏幕输入。vanling 当前纯语音</td><td>建议: <code>webrtc-rs</code> (v0.17.x)</td><td></td></tr>
+</tbody></table>
+<hr />
+<h2 id="附录_B：开源语音模型">附录 B：开源语音模型</h2>
+<blockquote>
+<p>开源 TTS/语音模型，按质量/体积/许可证排序。vanling 可直接集成。</p>
+</blockquote>
+<table><thead><tr><th>模型</th><th>参数量</th><th>许可证</th><th>延迟</th><th>声音克隆</th><th>适合 vanling</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/rhasspy/piper">Piper</a></td><td>~20M</td><td>MIT</td><td>55ms（10s 音频）</td><td>否</td><td>★★★★★ CPU 运行，30+ 语言，边缘部署首选</td></tr>
+<tr><td><a rel="external" href="https://github.com/hexgrad/kokoro">Kokoro v1.0</a></td><td>82M</td><td>Apache 2.0</td><td>CPU 实时</td><td>否（KokoClone 扩展支持）</td><td>★★★★★ 最佳质量/体积比，54 声音</td></tr>
+<tr><td><a rel="external" href="https://github.com/stepfun-ai/Step-Audio-TTS-3B">Step-Audio-TTS-3B</a></td><td>3B</td><td>Apache 2.0</td><td>需 GPU</td><td>是</td><td>★★★★ 最佳中文语音质量+情绪控制+方言</td></tr>
+<tr><td><a rel="external" href="https://github.com/coqui-ai/TTS">Coqui XTTS v2</a></td><td>467M</td><td>CPML（非商用）</td><td>&lt;200ms</td><td>是（6s 样本）</td><td>★★★★ 最佳克隆，17 语言，但许可证限制</td></tr>
+<tr><td><a rel="external" href="https://github.com/SWivid/F5-TTS">F5-TTS</a></td><td>335M</td><td>CC-BY-NC</td><td>需 GPU</td><td>是（零样本）</td><td>★★★ 克隆质量优秀，中英混杂，但非商用</td></tr>
+<tr><td><a rel="external" href="https://github.com/canopylabs-ai/orpheus-tts">Orpheus TTS</a></td><td>3B</td><td>—</td><td>需 GPU</td><td>否</td><td>★★★ Llama 骨干，风格控制</td></tr>
+<tr><td><a rel="external" href="https://github.com/suno-ai/bark">Bark (Suno)</a></td><td>—</td><td>MIT</td><td>0.8x（太慢）</td><td>否</td><td>★★ 表现力强（笑声/叹气/音乐），但实时性差</td></tr>
+</tbody></table>
+<h3 id="推荐架构">推荐架构</h3>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>ESP32 (边缘)                    服务器 (vanling)</span></span>
+<span class="giallo-l"><span>┌──────────┐                ┌─────────────────────┐</span></span>
+<span class="giallo-l"><span>│ VAD      │                │ ASR: sherpa-onnx     │</span></span>
+<span class="giallo-l"><span>│ Piper/   │◄── WebSocket ──│ LLM: Qwen3 candle    │</span></span>
+<span class="giallo-l"><span>│ Kokoro   │                │ TTS: Kokoro/         │</span></span>
+<span class="giallo-l"><span>│ (本地    │                │ Step-Audio-TTS-3B    │</span></span>
+<span class="giallo-l"><span>│  TTS)    │                └─────────────────────┘</span></span>
+<span class="giallo-l"><span>└──────────┘</span></span></code></pre>
+<ul>
+<li><strong>Piper 或 Kokoro</strong> 用于 ESP32 边缘 TTS（轻量、快速、CPU 运行）</li>
+<li><strong>Kokoro</strong> 用于服务端 TTS（最佳质量/体积比，Apache 2.0）</li>
+<li><strong>Step-Audio-TTS-3B</strong> 用于服务端高质量中文语音（情绪控制、方言支持）</li>
+</ul>
+<hr />
+<h2 id="附录：相关项目">附录：相关项目</h2>
+<blockquote>
+<p>以下是 vanling 定位和功能取舍的主要参考项目，按类别组织。</p>
+</blockquote>
+<h3 id="后端服务（替代实现）">后端服务（替代实现）</h3>
+<table><thead><tr><th>项目</th><th>语言</th><th>Stars</th><th>对 vanling 的参考价值</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/xinnan-tech/xiaozhi-esp32-server">xinnan-tech/xiaozhi-esp32-server</a></td><td>Python</td><td>10k+</td><td>全功能参考：12 ASR + 18 TTS + 13 插件 + PowerMem + RAGFlow + VLLM</td></tr>
+<tr><td><a rel="external" href="https://github.com/joey-zhou/xiaozhi-esp32-server-java">joey-zhou/xiaozhi-esp32-server-java</a></td><td>Java</td><td>1.3k</td><td>DDD 架构 + WebRTC AEC3 + 3 记忆模式 + RBAC + A/B 设备协同</td></tr>
+<tr><td><a rel="external" href="https://github.com/AnimeAIChat/xiaozhi-server-go">AnimeAIChat/xiaozhi-server-go</a></td><td>Go</td><td>—</td><td>商用级：VLLM 图片安全 + Quick Reply + 角色系统 + UPX 压缩</td></tr>
+<tr><td><a rel="external" href="https://github.com/hackers365/xiaozhi-esp32-server-golang">hackers365/xiaozhi-esp32-server-golang</a></td><td>Go</td><td>—</td><td>MCP Market + OpenClaw + MCP Audio Server + 配置向导 + 动态 TTS</td></tr>
+<tr><td><a rel="external" href="https://github.com/78/xiaozhi">78/xiaozhi</a></td><td>—</td><td>772</td><td>原始官方版本（已弃用）</td></tr>
+<tr><td><a rel="external" href="https://github.com/mm7h/XiaoZhi.Net">mm7h/XiaoZhi.Net</a></td><td>C#</td><td>35</td><td>.NET 8 实现 + sherpa-onnx + 插件系统</td></tr>
+<tr><td><a rel="external" href="https://github.com/daxpot/xiaozhi-cpp-server">daxpot/xiaozhi-cpp-server</a></td><td>C++</td><td>32</td><td>C++20 协程架构 + EdgeTTS + Doubao</td></tr>
+<tr><td><a rel="external" href="https://github.com/Hyrsoft/xiaozhi_linux_rs">Hyrsoft/xiaozhi_linux_rs</a></td><td>Rust</td><td>47</td><td><strong>首个 Rust 客户端</strong>：ALSA + Opus + MCP 动态加载</td></tr>
+</tbody></table>
+<h3 id="客户端实现">客户端实现</h3>
+<table><thead><tr><th>项目</th><th>语言</th><th>Stars</th><th>参考价值</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/huangjunsen0406/py-xiaozhi">huangjunsen0406/py-xiaozhi</a></td><td>Python</td><td>3.4k</td><td>跨平台 AI 客户端：摄像头视觉 + GPIO + Live2D + MQTT</td></tr>
+<tr><td><a rel="external" href="https://github.com/TOM88812/xiaozhi-android-client">TOM88812/xiaozhi-android-client</a></td><td>Flutter</td><td>—</td><td>Live2D + Mood Mode + HTML 预览 + 思维链可视化</td></tr>
+<tr><td><a rel="external" href="https://github.com/shenjingnan/xiaozhi-client">shenjingnan/xiaozhi-client</a></td><td>TS</td><td>282</td><td>MCP CLI 桥接：聚合多 MCP 端点 → Cursor/Cherry Studio</td></tr>
+<tr><td><a rel="external" href="https://github.com/TOM88812/xiaozhi-web-client">TOM88812/xiaozhi-web-client</a></td><td>HTML</td><td>184</td><td>浏览器端语音对话：WebRTC + AudioWorklet + Opus</td></tr>
+<tr><td><a rel="external" href="https://github.com/SylarLi/xiaozhi-unity">SylarLi/xiaozhi-unity</a></td><td>C#</td><td>57</td><td>Unity3D + VRM 虚拟形象 + uLipSync + 米家控制</td></tr>
+<tr><td><a rel="external" href="https://github.com/coloz/xiaozhi-library">coloz/xiaozhi-library</a></td><td>Arduino</td><td>10+</td><td>Arduino 库：100+ 板型 + WS/MQTT 双协议 + LVGL + 20 语言</td></tr>
+</tbody></table>
+<h3 id="MCP_生态工具">MCP 生态工具</h3>
+<table><thead><tr><th>项目</th><th>语言</th><th>参考价值</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/xinnan-tech/mcp-endpoint-server">xinnan-tech/mcp-endpoint-server</a></td><td>Python</td><td>轻量 MCP 注册中心，WebSocket 协议，Docker 部署</td></tr>
+<tr><td><a rel="external" href="https://github.com/huangjunsen0406/xiaozhi-mcphub">huangjunsen0406/xiaozhi-mcphub</a></td><td>TS</td><td>企业级 MCP 管理：多端点 + 向量路由 + RBAC + React 仪表盘</td></tr>
+<tr><td><a rel="external" href="https://github.com/avxxoo/xiaozhi-mcp">avxxoo/xiaozhi-mcp</a></td><td>Python</td><td>MCP 工具聚合：钉钉/QQ/系统监控/WebPilot/数学计算</td></tr>
+<tr><td><a rel="external" href="https://github.com/yuexianga/xiaozhi-mcp">yuexianga/xiaozhi-mcp</a></td><td>Python</td><td>18 工具 MCP 服务器：文件/Telegram/系统/Git/邮件/截图</td></tr>
+<tr><td><a rel="external" href="https://pypi.org/project/mcp2xiaozhi/">mcp2xiaozhi</a></td><td>Python</td><td>通用 MCP 桥接：stdio/SSE/HTTP → WS，PyPI 包</td></tr>
+<tr><td><a rel="external" href="https://github.com/ZhongZiTongXue/xiaozhi-MCPTools">ZhongZiTongXue/xiaozhi-MCPTools</a></td><td>VB6</td><td>GUI MCP 部署：25+ 开放 API 工具 + 音乐播放</td></tr>
+<tr><td><a rel="external" href="https://github.com/johz-chen/mcp-bridge">johz-chen/mcp-bridge</a></td><td>Rust</td><td>Rust MCP 桥接：WS/MQTT + 进程管理 + 心跳</td></tr>
+<tr><td><a rel="external" href="https://github.com/dsw0000/xiaozhi-openclaw-plugin">dsw0000/xiaozhi-openclaw-plugin</a></td><td>JS</td><td>OpenClaw 双向通信：消息/设备控制/Agent 任务</td></tr>
+</tbody></table>
+<h3 id="Home_Assistant_集成">Home Assistant 集成</h3>
+<table><thead><tr><th>项目</th><th>语言</th><th>参考价值</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/RealDeco/xiaozhi-esphome">RealDeco/xiaozhi-esphome</a></td><td>ESPHome</td><td>767 星，15+ 设备支持，HA 语音卫星，无需 xiaozhi 服务器</td></tr>
+<tr><td><a rel="external" href="https://github.com/AleksSem/xiaozhi-assistant">AleksSem/xiaozhi-assistant</a></td><td>Python</td><td>最完整 HA 集成：Conversation Agent + STT/TTS + MCP + OTA</td></tr>
+<tr><td><a rel="external" href="https://github.com/c1pher-cn/ha-mcp-for-xiaozhi">c1pher-cn/ha-mcp-for-xiaozhi</a></td><td>Python</td><td>HA 直接作为 MCP Server：WebSocket + 多实体代理</td></tr>
+<tr><td><a rel="external" href="https://github.com/mac8005/xiaozhi-mcp-ha">mac8005/xiaozhi-mcp-ha</a></td><td>Python</td><td>HACS MCP 代理：SSE proxy + 自动重连</td></tr>
+</tbody></table>
+<h3 id="MQTT_网关">MQTT 网关</h3>
+<table><thead><tr><th>项目</th><th>语言</th><th>参考价值</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/xinnan-tech/xiaozhi-mqtt-gateway">xinnan-tech/xiaozhi-mqtt-gateway</a></td><td>Python</td><td>MQTT+UDP → WS 桥接：动态负载均衡 + HMAC 认证 + MCP 命令下发</td></tr>
+</tbody></table>
+<h3 id="嵌入式硬件适配">嵌入式硬件适配</h3>
+<table><thead><tr><th>项目</th><th>平台</th><th>参考价值</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/78/xiaozhi-sf32">78/xiaozhi-sf32</a></td><td>SiFli SF32</td><td>蓝牙 PAN 联网 + LCD + AEC + OTA</td></tr>
+<tr><td><a rel="external" href="https://github.com/100askTeam/xiaozhi-linux">100askTeam/xiaozhi-linux</a></td><td>嵌入式 Linux</td><td>NXP/Allwinner/Canaan/Rockchip/STM32 多 BSP</td></tr>
+<tr><td><a rel="external" href="https://github.com/QuecPython/solution-xiaozhiAI">QuecPython/solution-xiaozhiAI</a></td><td>Quectel 4G</td><td>4G 蜂窝模块 + 语音唤醒 + WebSocket</td></tr>
+<tr><td><a rel="external" href="https://github.com/D-Robotics/xiaozhi-in-rdk">D-Robotics/xiaozhi-in-rdk</a></td><td>Horizon RDK</td><td>地平线 RDK 开发板适配 + 边缘 AI 加速</td></tr>
+</tbody></table>
+<h3 id="部署工具">部署工具</h3>
+<table><thead><tr><th>项目</th><th>描述</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/haotianshouwang/xiaozhi-server-installer-docker.sh">haotianshouwang/xiaozhi-server-installer-docker.sh</a></td><td>一键 Docker 部署脚本 + 交互式配置 + 15+ API 支持</td></tr>
+<tr><td><a rel="external" href="https://hub.docker.com/r/jsntwdj/xiaozhi-esp32-server">jsntwdj/xiaozhi-esp32-server</a></td><td>ARM64 Docker 镜像（树莓派等）</td></tr>
+<tr><td><a rel="external" href="https://github.com/78/xiaozhi-assets-generator">78/xiaozhi-assets-generator</a></td><td>Web 资源生成器：自定义唤醒词/字体/表情/聊天背景</td></tr>
+</tbody></table>
+<h3 id="管理监控">管理监控</h3>
+<table><thead><tr><th>项目</th><th>描述</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/busy-worker/xiaozhi-esp32-server-java">busy-worker/xiaozhi-esp32-server-java</a></td><td>Java 管理平台：Token 用量 + 对话时长 + 设备活跃度 + 数据可视化</td></tr>
+<tr><td><a rel="external" href="https://github.com/joey-zhou/xiaozhi-concurrent">joey-zhou/xiaozhi-concurrent</a></td><td>WS 并发压测工具：指标仪表盘 + 自动性能报告</td></tr>
+</tbody></table>
+<h3 id="商业产品参考">商业产品参考</h3>
+<blockquote>
+<p>闭源商业产品的关键技术和 UX 模式，供 vanling 取舍参考。</p>
+</blockquote>
+<h4 id="语音_AI_平台">语音 AI 平台</h4>
+<table><thead><tr><th>产品</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td>OpenAI Realtime</td><td>端到端 S2S、语义 VAD、WebRTC、~232ms 延迟</td><td>语义 VAD 是轮替/中断金标准；WebRTC 传输架构可参考</td></tr>
+<tr><td>Cartesia Sonic 3.5</td><td>SSM 架构 TTS、&lt;90ms 延迟、3 秒声音克隆</td><td>SSM 是 TTS 新方向，比 Transformer 更快</td></tr>
+<tr><td>ElevenLabs</td><td>语音克隆（1-25 样本）、Expressive Mode、11.ai MCP 语音助手</td><td>语音 + MCP 集成模式；Agent coaching/evaluation</td></tr>
+<tr><td>MiniMax Speech-2.8</td><td>插入标签 <code>(laughs)</code> <code>(sighs)</code>、7 情绪 + 0-100% 强度、逐句情绪控制</td><td>简单实用的情绪表达方案，无需 SSML</td></tr>
+<tr><td>Inworld AI</td><td>15 秒声音克隆、文本描述生成声音、&lt;130ms TTS</td><td>最低门槛声音个性化</td></tr>
+<tr><td>Hume AI EVI</td><td>600+ 情感标签、情绪自适应语调、检测犹豫/讽刺/宽慰</td><td>情绪检测 + 自适应语调是关键差异化</td></tr>
+<tr><td>Sesame CSM</td><td>对话韵律（呼吸/犹豫/笑声）、开源 Apache 2.0</td><td>可直接使用的开源模型，让语音更像真人</td></tr>
+</tbody></table>
+<h4 id="语音_AI_基础设施">语音 AI 基础设施</h4>
+<table><thead><tr><th>产品</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td>LiveKit / Pipecat</td><td>开源 SFU 架构、50+ AI 模型集成、OpenAI ChatGPT 底层</td><td>语音 AI 基础设施标准，可用作传输层</td></tr>
+<tr><td>Retell AI</td><td>~600ms 端到端（免调优）、专有轮替模型、BYO-LLM</td><td>轮替检测是核心差异化</td></tr>
+<tr><td>Vapi</td><td>BYO-stack（自选 STT/LLM/TTS）、A/B 测试、1000+ 模板</td><td>可组合架构模式</td></tr>
+</tbody></table>
+<h4 id="智能音箱_/_手机助手">智能音箱 / 手机助手</h4>
+<table><thead><tr><th>产品</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td>Amazon Alexa+</td><td>自主任务执行（Uber/OpenTable/Grubhub）、模型无关路由、跨设备连续性</td><td>Agent 链式执行模式；vanling 可通过 MCP 实现</td></tr>
+<tr><td>Google Gemini for Home</td><td>自然语言创建自动化（"Ask Home"）、AI 摄像头理解</td><td>"描述自动化" UX 模式</td></tr>
+<tr><td>小米超级小爱</td><td>声纹识别家庭成员、AI 通话代接、灵动气泡视觉反馈</td><td>多成员声纹 + 家庭功能</td></tr>
+<tr><td>小度</td><td>蓝牙 Mesh 本地网关、无网控制、声音人格持久化</td><td>本地网关架构；声音人格是情感纽带</td></tr>
+<tr><td>天猫精灵</td><td>"1+3+N" 架构、空间智能体、边缘场景调度</td><td>空间智能体：从命令式到上下文感知</td></tr>
+<tr><td>讯飞星火</td><td>一句话声音克隆、74+ 方言、端到端语音翻译</td><td>一句话克隆是杀手级功能</td></tr>
+<tr><td>豆包</td><td>超能模式（自主任务分解）、100M+ DAU、Coze 智能体平台</td><td>Agent 任务分解 + UGC 角色平台</td></tr>
+</tbody></table>
+<h4 id="AI_可穿戴">AI 可穿戴</h4>
+<table><thead><tr><th>产品</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td>Meta Ray-Ban</td><td>76% 市场份额、音频优先、视觉感知、7+ 语言实时翻译</td><td>音频优先 + 视觉感知是成功模式</td></tr>
+<tr><td>Omi（开源）</td><td>$89、MIT 许可、250+ 社区 App、本地录制+云端同步</td><td>最接近的开源可穿戴参考</td></tr>
+<tr><td>Bee AI（Amazon）</td><td>$50、7 天电池、无音频存储隐私策略</td><td>低价 + 长续航 + 隐私优先</td></tr>
+<tr><td>Looki L1</td><td>30g 挂坠、12 小时电池、AI 环境感知 + 生活日志</td><td>最小形态 + 感知共鸣理念</td></tr>
+<tr><td>Limitless Pendant</td><td>始终监听、说话人分离、MCP 服务器集成、100+ 语言</td><td>环境上下文捕获 + MCP 集成模式</td></tr>
+</tbody></table>
+<h4 id="AI_陪伴应用">AI 陪伴应用</h4>
+<table><thead><tr><th>产品</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td>Character.AI</td><td>1000万+ 用户角色、Lorebook 世界观、PipSqueak 2 模型</td><td>UGC 角色市场 + 持久人格模式</td></tr>
+<tr><td>Replika 2.0</td><td>跨月记忆重建、主动提醒、AR 体验、视频通话</td><td>主动记忆驱动建议是强大 UX</td></tr>
+<tr><td>ChatGPT Voice</td><td>端到端音频模型、320ms 延迟、22 种神经 TTS 声音</td><td>消费级语音 AI 标杆</td></tr>
+<tr><td>Microsoft Copilot</td><td>Work IQ 持久记忆、Agent 365 治理、计算机使用代理</td><td>最成熟的企业级记忆系统</td></tr>
+</tbody></table>
+<h4 id="关键行业趋势">关键行业趋势</h4>
+<table><thead><tr><th>趋势</th><th>代表产品</th><th>vanling 机会</th></tr></thead><tbody>
+<tr><td>语义 VAD</td><td>OpenAI（模型级轮替检测）</td><td>比纯 VAD 更智能的中断处理</td></tr>
+<tr><td>对话韵律</td><td>Sesame CSM（呼吸/犹豫/笑声）</td><td>让 TTS 更自然</td></tr>
+<tr><td>端到端 S2S</td><td>OpenAI/Hume/Sesame</td><td>终极目标，当前级联更实际</td></tr>
+<tr><td>情绪自适应</td><td>Hume AI（检测→自适应语调）</td><td>语音助手关键差异化</td></tr>
+<tr><td>SSM 架构 TTS</td><td>Cartesia（State Space Model）</td><td>更快的 TTS 推理</td></tr>
+<tr><td>持久记忆</td><td>Work IQ / Replika / Character.AI</td><td>从 chat history 到长期记忆</td></tr>
+<tr><td>MCP 语音集成</td><td>OpenAI + MCP、ElevenLabs 11.ai</td><td>语音对话中调用工具</td></tr>
+<tr><td>声音克隆民主化</td><td>Cartesia 3 秒 / Inworld 15 秒 / MiniMax 10 秒</td><td>最低门槛声音个性化</td></tr>
+<tr><td>隐私优先</td><td>Bee（无音频存储）、Omi（本地处理）</td><td>Always-listening 的隐私策略</td></tr>
+</tbody></table>
+<h4 id="垂直行业语音">垂直行业语音</h4>
+<blockquote>
+<p>汽车、医疗、教育、翻译等垂直行业的语音 AI 方案，供 vanling 垂直场景参考。</p>
+</blockquote>
+<table><thead><tr><th>行业</th><th>代表产品</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td>汽车语音</td><td>NIO NOMI、小鹏天机、SoundHound</td><td>边缘离线处理、14 种情绪语调、RAG 车辆手册、Speech-to-Meaning</td><td>边缘离线是关键；情绪语调定制；RAG 参考</td></tr>
+<tr><td>医疗语音</td><td>Nuance DAX、Nabla、Abridge、Suki AI</td><td>环境临床记录、隐私优先（不存储数据）、HIPAA 合规、引导推理</td><td>被动监听模式；隐私优先架构；引导式对话</td></tr>
+<tr><td>教育语音</td><td>Duolingo Max、作业帮 P50、有道子曰</td><td>逐步引导推理、个性化学习路径、游戏化、实时发音纠正</td><td>引导式对话模式；游戏化驱动参与</td></tr>
+<tr><td>翻译设备</td><td>Pocketalk、Timekettle、Vasco</td><td>双麦降噪、&lt;1s 延迟、离线翻译包、专用硬件</td><td>双麦降噪+低延迟是关键；离线能力</td></tr>
+<tr><td>智能家居 Hub</td><td>Echo Hub、HomePod、SmartThings</td><td>Matter 1.3/Thread 1.4、离线语音（0.2-0.4s 本地）、预测性自动化</td><td>ESP32 作为隐私优先本地控制器</td></tr>
+</tbody></table>
+<h4 id="中国_AI_创业公司（2025-2026）">中国 AI 创业公司（2025-2026）</h4>
+<blockquote>
+<p>中国 AI 六小虎等新兴公司的语音 AI 技术，供 vanling 技术选型参考。</p>
+</blockquote>
+<table><thead><tr><th>公司</th><th>关键技术</th><th>对 vanling 的参考</th></tr></thead><tbody>
+<tr><td><a rel="external" href="https://github.com/stepfun-ai">阶跃星辰 StepFun</a></td><td>Step-Audio 2（130B S2S）、Step-Audio-TTS-3B、Apache 2.0 开源、情绪控制+方言</td><td><strong>最相关</strong>：最佳开源语音 AI，可直接使用</td></tr>
+<tr><td><a rel="external" href="https://github.com/THUDM">智谱 AI</a></td><td>GLM-4V 视觉模型、85% 收入来自本地部署、港股 IPO</td><td>本地部署商业模式参考；视觉能力</td></tr>
+<tr><td><a rel="external" href="https://github.com/MiniMaxAI">MiniMax</a></td><td>海螺 AI、星野、1.75 万亿周 Token 调用量、Speech-2.8</td><td>消费级 AI 产品运营参考；情绪 TTS</td></tr>
+<tr><td><a rel="external" href="https://github.com/MoonshotAI">月之暗面 Kimi</a></td><td>Kimi K2.5 + Kimi Claw、估值 3 个月从 $4.3B→$18B</td><td>超长上下文 + 语音 AI 结合</td></tr>
+<tr><td><a rel="external" href="https://github.com/baichuan-inc">百川智能</a></td><td>医疗垂直 LLM、3B 现金储备</td><td>垂直行业深耕模式</td></tr>
+</tbody></table>
+<hr />
+<h2 id="状态说明">状态说明</h2>
+<table><thead><tr><th>状态</th><th>含义</th></tr></thead><tbody>
+<tr><td>（空）</td><td>未完成</td></tr>
+<tr><td>✅已完成 YYYY-MM-DD</td><td>已完成，附完成日期</td></tr>
+<tr><td>⚠️搁置 — 原因</td><td>暂时搁置，附原因说明</td></tr>
+<tr><td>❌丢弃 — 原因</td><td>不再推进，附原因说明</td></tr>
+</tbody></table>
+<h2 id="优先级说明">优先级说明</h2>
+<table><thead><tr><th>等级</th><th>含义</th><th>行动</th></tr></thead><tbody>
+<tr><td>🔴 P0</td><td>必须立即修复</td><td>编译错误、无认证、数据不完整</td></tr>
+<tr><td>🟡 P1</td><td>应该修复</td><td>竞态、内存泄漏、安全风险、核心功能缺失</td></tr>
+<tr><td>⚠️ P2</td><td>功能缺失</td><td>协议不完整、配置化不足</td></tr>
+<tr><td>🟢 P3</td><td>优化</td><td>性能、代码质量、非核心功能</td></tr>
+</tbody></table>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

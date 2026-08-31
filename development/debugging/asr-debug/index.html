@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/debugging/asr-debug">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link active">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link active leaf">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/debugging/asr-debug/#ASR_语音识别">ASR 语音识别</a></li>
+    
+  </ul>
+  
+  <h1 id="ASR_语音识别">ASR 语音识别</h1>
+<h2 id="架构">架构</h2>
+<p>ASR 模块位于 <code>apps/server/api/src/asr/</code>，使用 <strong>Manager 单例模式</strong>管理模型实例，底层集成 <strong>sherpa-onnx</strong> 的 <code>OfflineRecognizer</code>。</p>
+<h3 id="Manager_模式">Manager 模式</h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-entity z-name z-type">AsrManager</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">init</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">config</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">.</span><span class="z-keyword">await</span><span class="z-punctuation">;</span><span class="z-punctuation z-definition z-comment z-comment">                             // 应用启动时初始化</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust z-storage z-modifier">let mut</span><span class="z-source"> model</span><span class="z-keyword z-operator"> =</span><span class="z-entity z-name z-type"> AsrManager</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">global</span><span class="z-punctuation">()</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">default</span><span class="z-punctuation">()</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">lock</span><span class="z-punctuation">()</span><span class="z-keyword z-operator">.</span><span class="z-keyword">await</span><span class="z-punctuation">;</span><span class="z-punctuation z-definition z-comment z-comment"> // 获取 Arc&lt;Mutex&lt;Box&lt;dyn Asr&gt;&gt;&gt;</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">let</span><span class="z-source"> result</span><span class="z-keyword z-operator"> =</span><span class="z-source"> model</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">transcribe</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">sample_rate</span><span class="z-punctuation">,</span><span class="z-keyword z-operator"> &amp;</span><span class="z-variable z-other z-rust">samples</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">.</span><span class="z-keyword">await</span><span class="z-punctuation">;</span></span></code></pre>
+<p>初始化在 <code>api/src/lib.rs:121</code>，消费点在 <code>ws/session/listener.rs:238</code>（WebSocket 实时语音）和 <code>matrix/client.rs</code>（Matrix 协议）。</p>
+<h3 id="Asr_trait">Asr trait</h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">#</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">async_trait</span><span class="z-punctuation">]</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub trait</span><span class="z-entity z-name z-type"> Asr</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> transcribe</span><span class="z-punctuation">(</span></span>
+<span class="giallo-l"><span class="z-keyword z-operator">        &amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-variable z-other z-rust">        sample_rate</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> u32</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-variable z-other z-rust">        samples</span><span class="z-keyword z-operator">: &amp;</span><span class="z-punctuation">[</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation">],</span></span>
+<span class="giallo-l"><span class="z-punctuation">    )</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Result</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">RecognizerResult</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> ModelError</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>所有模型共享 <code>RecognizerResult { text: String, prob: f32 }</code> 作为输出。</p>
+<h2 id="模型一览">模型一览</h2>
+<table><thead><tr><th>模型</th><th>配置名</th><th>模型文件</th><th>大小</th><th>语言</th><th>架构</th></tr></thead><tbody>
+<tr><td><strong>XAsr</strong></td><td><code>x_asr</code></td><td><code>model.int8.onnx</code></td><td>228MB</td><td>中/英/日/韩/粤</td><td>OfflineXAsr</td></tr>
+<tr><td><strong>Void</strong></td><td><code>void</code></td><td>无 (no-op)</td><td>0</td><td>—</td><td>—</td></tr>
+</tbody></table>
+<p>所有模型均来自 <a rel="external" href="https://github.com/k2-fsa/sherpa-onnx">https://github.com/k2-fsa/sherpa-onnx</a>，通过下载器 manifest 管理。</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 下载当前配置的 ASR 模型</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader -- asr</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 下载指定 ASR 模型</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader -- asr x_asr</span></span></code></pre><h2 id="性能基准">性能基准</h2>
+<p>测试条件：debug 模式，MatchaTTS 生成 ~11.84s 中英混合音频，回环送入 ASR 转录。</p>
+<table><thead><tr><th>模型</th><th>CER</th><th>WER</th><th>RTF</th><th>ASR 耗时</th><th>准确性</th><th>性能分</th><th>总分</th><th>判定</th></tr></thead><tbody>
+<tr><td><strong>XAsr</strong></td><td><strong>0.00%(A)</strong></td><td>0.00%</td><td>0.110</td><td>1.3s</td><td>100%</td><td>89.0%</td><td>96.7%</td><td>✅ 适合日常</td></tr>
+</tbody></table>
+<p><strong>结论：当前仅 XAsr 达到可用水平，为默认模型。</strong></p>
+<table><thead><tr><th>观察</th><th>说明</th></tr></thead><tbody>
+<tr><td>XAsr 精度</td><td>TTS 闭环 CER 为 0%——对合成语音完美识别</td></tr>
+<tr><td>性能</td><td>RTF &lt; 0.12（debug 模式），release 模式更快</td></tr>
+</tbody></table>
+<h3 id="TTS-ASR_闭环测试">TTS-ASR 闭环测试</h3>
+<p>将 <code>TEST_TTS_TEXT</code> 通过 MatchaTTS 合成语音，再送入 ASR 转录，计算 CER/WER：</p>
+<table><thead><tr><th>测试名</th><th>ASR 模型</th><th>阈值</th></tr></thead><tbody>
+<tr><td><code>test_tts_asr_loopback</code></td><td>XAsr</td><td>CER &lt; 6% (实测 0%)</td></tr>
+</tbody></table>
+<p><strong>TTS 生成耗时</strong>：~6.1-6.2s (debug) → 相当于 RTF=0.52（TTS 生成 + ASR 转录）</p>
+<h2 id="测试框架">测试框架</h2>
+<h3 id="诊断指标_(common/asr.rs)">诊断指标 (<code>common/asr.rs</code>)</h3>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>CER=XX.X%(X) WER=XX.X% Acc=XX.X% Perf=XX.X% Total=XX.X% | RTF=X.XXX ASR=X.Xs Audio=X.XXs &lt;verdict&gt;</span></span></code></pre><table><thead><tr><th>指标</th><th>计算方式</th></tr></thead><tbody>
+<tr><td><strong>CER</strong></td><td>字符级 Levenshtein distance / 参考文本长度</td></tr>
+<tr><td><strong>WER</strong></td><td>词级 Levenshtein distance / 参考词数</td></tr>
+<tr><td><strong>RTF</strong></td><td>ASR 耗时 / 音频时长</td></tr>
+<tr><td><strong>Accuracy</strong></td><td>1.0 - CER</td></tr>
+<tr><td><strong>Score</strong></td><td>Accuracy × 70 + (1 - min(RTF,1)) × 30</td></tr>
+</tbody></table>
+<h3 id="CER_等级">CER 等级</h3>
+<table><thead><tr><th>等级</th><th>范围</th><th>含义</th></tr></thead><tbody>
+<tr><td>A</td><td>&lt; 3%</td><td>极佳</td></tr>
+<tr><td>B</td><td>3–6%</td><td>良好</td></tr>
+<tr><td>C</td><td>6–10%</td><td>一般</td></tr>
+<tr><td>D</td><td>10–20%</td><td>较差</td></tr>
+<tr><td>F</td><td>≥ 20%</td><td>不可用</td></tr>
+</tbody></table>
+<h3 id="RTF_等级">RTF 等级</h3>
+<table><thead><tr><th>等级</th><th>范围</th><th>含义</th></tr></thead><tbody>
+<tr><td>A</td><td>&lt; 0.05</td><td>极快</td></tr>
+<tr><td>B</td><td>0.05–0.10</td><td>快</td></tr>
+<tr><td>C</td><td>0.10–0.20</td><td>正常</td></tr>
+<tr><td>D</td><td>0.20–0.50</td><td>慢</td></tr>
+<tr><td>F</td><td>≥ 0.50</td><td>不可用</td></tr>
+</tbody></table>
+<h2 id="全部测试">全部测试</h2>
+<table><thead><tr><th>测试文件</th><th>测试名</th><th>模型</th><th>断言</th></tr></thead><tbody>
+<tr><td><code>asr_test.rs</code></td><td><code>test_asr</code></td><td>XAsr</td><td>无 (诊断)</td></tr>
+<tr><td><code>asr_test.rs</code></td><td><code>test_asr_model_void</code></td><td>Void</td><td>text=="" prob==1.0</td></tr>
+<tr><td><code>asr_test.rs</code></td><td><code>test_asr_with_reference_audio</code></td><td>XAsr</td><td>含预期子串 (zh/en/yue)</td></tr>
+<tr><td><code>asr_test.rs</code></td><td><code>test_tts_asr_loopback</code></td><td>XAsr</td><td>CER &lt; 6%</td></tr>
+</tbody></table>
+<h3 id="Session_集成测试">Session 集成测试</h3>
+<table><thead><tr><th>测试名</th><th>ASR 角色</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>test_asr_voice_input_manual</code></td><td>XAsr + Echo LLM</td><td>发送 JFK WAV 音频，断言 STT 文本精确匹配</td></tr>
+<tr><td><code>test_chat_flow_listen_auto</code></td><td>XAsr (全管道)</td><td>VAD 判断语音结束 → ASR → LLM → TTS</td></tr>
+<tr><td><code>test_chat_flow_listen_realtime</code></td><td>XAsr (全管道)</td><td>实时模式，发送音频 + Detect 文本</td></tr>
+<tr><td><code>test_chat_flow_listen_realtime_silent_voice_connection_timeout</code></td><td>Void (断开测试)</td><td>静默超时断开，无需真实 ASR</td></tr>
+<tr><td><code>test_chat_flow_handle_text_message</code></td><td>XAsr (全管道)</td><td>文本输入 → LLM → TTS</td></tr>
+<tr><td><code>test_chat_flow_handle_text_message_multiple_time</code></td><td>XAsr (全管道)</td><td>19 轮文本对话</td></tr>
+<tr><td><code>test_chat_flow_break</code></td><td>Void (中断测试)</td><td>中断恢复，无需真实 ASR</td></tr>
+</tbody></table>
+<h3 id="测试命令">测试命令</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># Void 模型测试（无需模型文件，非 ignore）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test --package api --test asr_test -- test_asr_model_void --nocapture</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># XAsr 基础转录</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test --package api --test asr_test -- test_asr --ignored --nocapture</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 参考音频测试</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test --package api --test asr_test -- test_asr_with_reference_audio --ignored --nocapture</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># TTS-ASR 闭环测试</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test --package api --test asr_test -- test_tts_asr_loopback --ignored --nocapture</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># release 模式（更快）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test --package api --test asr_test --release -- test_asr --ignored --nocapture</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 全部 ASR 测试</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test --package api --test asr_test -- --ignored --nocapture</span></span></code></pre><h2 id="新增_ASR_模型">新增 ASR 模型</h2>
+<ol>
+<li><strong>创建 manifest</strong>：<code>apps/server/src/downloader/manifests/asr/&lt;model&gt;.json</code></li>
+<li><strong>实现 model module</strong>：<code>apps/server/api/src/asr/model/&lt;model&gt;/mod.rs</code>，实现 <code>Asr</code> trait</li>
+<li><strong>注册模型</strong>：<code>api/src/asr/model/mod.rs</code> 添加 <code>pub mod &lt;model&gt;</code></li>
+<li><strong>添加枚举变体</strong>：<code>api/src/config/mod.rs</code> 的 <code>AsrModel</code> enum 添加 <code>&lt;Model&gt;</code></li>
+<li><strong>注册 Manager</strong>：<code>api/src/asr/mod.rs</code> 的 <code>create_model()</code> 添加 match arm</li>
+<li><strong>添加测试</strong>：<code>api/tests/asr_test.rs</code> 添加参考音频和闭环测试</li>
+</ol>
+<h2 id="关键文件">关键文件</h2>
+<table><thead><tr><th>文件</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>apps/server/api/src/asr/mod.rs</code></td><td>Asr trait、Manager、RecognizerResult</td></tr>
+<tr><td><code>apps/server/api/src/asr/model/x_asr/mod.rs</code></td><td>XAsr 模型实现</td></tr>
+<tr><td><code>apps/server/api/src/asr/model/void/mod.rs</code></td><td>Void no-op 模型</td></tr>
+<tr><td><code>apps/server/api/src/config/asr.rs</code></td><td>AsrConfig 结构体</td></tr>
+<tr><td><code>apps/server/api/src/config/mod.rs</code></td><td>AsrModel 枚举</td></tr>
+<tr><td><code>apps/server/src/downloader/manifests/asr/</code></td><td>下载 manifest</td></tr>
+<tr><td><code>apps/server/api/tests/asr_test.rs</code></td><td>3 个 ASR 集成测试</td></tr>
+<tr><td><code>apps/server/api/tests/common/asr.rs</code></td><td>AsrDiagnostics 诊断系统</td></tr>
+<tr><td><code>apps/server/api/tests/session/asr.rs</code></td><td>Session 集成 ASR 测试</td></tr>
+</tbody></table>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

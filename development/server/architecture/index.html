@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/server/architecture">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link active">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link active leaf">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/server/architecture/#核心架构">核心架构</a></li>
+    
+  </ul>
+  
+  <h1 id="核心架构">核心架构</h1>
+<blockquote>
+<p><strong>注意</strong>：此为概览层文档，反映作者对系统架构的理解。详见<a href="https://lastsunday.github.io/vanling/discussions/documentation-style/">文档风格指南</a>。</p>
+</blockquote>
+<h2 id="会话概览">会话概览</h2>
+<p>vanling 服务端使用 <strong>Session + Round</strong> 模型管理对话：</p>
+<ul>
+<li><strong>Session</strong>：一次 WebSocket 连接的生命周期。管理连接、认证、状态转换。</li>
+<li><strong>Round</strong>：每轮对话（用户发言 → 服务端响应）。一个 Session 包含多个 Round。</li>
+</ul>
+<p>Session 在 <code>service/src/session/mod.rs</code> 中定义，不绑定具体传输协议（WebSocket / Matrix 等），通过 <code>Frame</code> 枚举与外界通信。</p>
+<h2 id="数据流">数据流</h2>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Client → WebSocket</span></span>
+<span class="giallo-l"><span>            ↓ (Message)</span></span>
+<span class="giallo-l"><span>         ProtocolTranslator</span></span>
+<span class="giallo-l"><span>            ↓ (Frame)</span></span>
+<span class="giallo-l"><span>         InputFilters [McpRouterFilter, RecorderInputFilter]</span></span>
+<span class="giallo-l"><span>            ↓ (Frame)</span></span>
+<span class="giallo-l"><span>         Session (state machine)</span></span>
+<span class="giallo-l"><span>            ↓ (OutputMessage)</span></span>
+<span class="giallo-l"><span>         OutputFilters [RecorderOutputFilter]</span></span>
+<span class="giallo-l"><span>            ↓ (OutputMessage)</span></span>
+<span class="giallo-l"><span>         ProtocolTranslator</span></span>
+<span class="giallo-l"><span>            ↓ (Message)</span></span>
+<span class="giallo-l"><span>         WebSocket → Client</span></span></code></pre>
+<ul>
+<li><strong>ProtocolTranslator</strong>：<code>api/src/ws/protocol_translator.rs</code>，在 WebSocket Message 和内部 Frame 之间转换。</li>
+<li><strong>InputFilters</strong>：对入站 Frame 做预处理，如截获 MCP 消息路由到 DeviceMcpSession。</li>
+<li><strong>OutputFilters</strong>：对出站 OutputMessage 做后处理，如录像。</li>
+<li><strong>Session</strong>：核心状态机，处理 Frame 并产出 OutputMessage。</li>
+</ul>
+<h2 id="Session_状态机">Session 状态机</h2>
+<p>Session 有三个阶段（<code>Phase</code>）：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Idle → Listening ⇄ Speaking</span></span>
+<span class="giallo-l"><span>             ↑       │</span></span>
+<span class="giallo-l"><span>             └─ BargeIn ┘</span></span></code></pre><h3 id="Idle">Idle</h3>
+<p>初始状态，等待客户端发送 <code>Hello</code>。</p>
+<ul>
+<li>收到 <code>Frame::Hello</code> → 回复 Hello 响应（<code>session_id</code>、<code>audio_params</code> 由构建时 <code>capabilities()</code> look up <code>AudioSpec</code> 决定），迁移至 <strong>Listening</strong></li>
+<li>自动创建第一个 Shadow Round</li>
+</ul>
+<h3 id="Listening">Listening</h3>
+<p>监听输入。</p>
+<ul>
+<li><code>Frame::Voice { data }</code> → 转发为 <code>PipelineEvent::AudioFrame</code> 到 Shadow Round 链首（VAD 在链内检测语音边界）</li>
+<li><code>Frame::Input { text, mode }</code> → 文本输入（<code>mode=Wake</code> 标记唤醒语境），投喂 <code>TurnText</code>；Shadow Round 升级为 Running，迁移至 <strong>Speaking</strong></li>
+<li><code>Frame::ListenStart</code> → 已有 Running Round 则 BargeIn 中断；更新监听参数（barge-in / 断音检测）</li>
+<li><code>Frame::ListenStop</code> → 向链投喂 <code>FinishTurn</code>；空输入（无有效语音）由 Session 辨别类型（<code>EmptyKind</code>）分级提示：manual 无人声注入 <code>Prompt{Manual, count}</code> 触发"没听清"引导语；auto 说了但 ASR 空为 <code>AutoSpoke</code>、完全静默为 <code>Silence</code>、回复后连续监听为 <code>Continuing</code>（静默不提示）——详见 <code>pipeline-redesign.md</code>「静音 / 空输入判别」子章节</li>
+</ul>
+<h3 id="Speaking">Speaking</h3>
+<p>表达阶段：TurnComplete 后 Shadow Round 升级为 Running Round 自动合成 TTS 并流式输出，同时新建下一轮 Shadow Round 监听。</p>
+<ul>
+<li>表达结束自动回到 <strong>Listening</strong> 等待下一轮输入</li>
+</ul>
+<h2 id="Round_生命周期">Round 生命周期</h2>
+<p>Round 在 <code>service/src/session/round.rs</code> 中实现，管理单轮对话的 LLM 推理和 TTS 合成。</p>
+<h3 id="双_Round_模式">双 Round 模式</h3>
+<p>Session 同时维护两个 Round：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Shadow Round    Running Round</span></span>
+<span class="giallo-l"><span>    │               │</span></span>
+<span class="giallo-l"><span>    │ (准备中)       │ (正在执行)</span></span>
+<span class="giallo-l"><span>    │               │</span></span>
+<span class="giallo-l"><span>    └── upgrade ──→ │ (新版本替换旧版本)</span></span></code></pre>
+<ul>
+<li><strong>Shadow Round</strong>：新请求到达时预先创建，等待升级为 Running Round</li>
+<li><strong>Running Round</strong>：当前正在执行的 Round（LLM + TTS 管道）</li>
+<li><strong>Upgrade</strong>：Shadow Round 就绪后升级为 Running Round，旧 Running Round 被取消</li>
+</ul>
+<p>这种设计允许无缝处理 BargeIn——新请求可以立刻开始准备，不阻塞当前处理。</p>
+<h3 id="Round_内部流程">Round 内部流程</h3>
+<p>Round 拥有单条节点链，并以内层观察者身份订阅广播统一消费：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Session │</span></span>
+<span class="giallo-l"><span>        ↓ (RoundEvent: SpeechStarted / TurnComplete / EmptyTurn / SpokenEnd)</span></span>
+<span class="giallo-l"><span>Round 拥有 NodeChain (opus→vad→asr→turn→ling→tts)</span></span>
+<span class="giallo-l"><span>  ├── VAD/ASR 产 TurnText → TurnNode 关回合为 TurnComplete → 发 STT + 通知 Session 升级</span></span>
+<span class="giallo-l"><span>  ├── Ling 文案 → TTS 产 AudioOut（逐句转发：SentenceStart / Audio / SentenceEnd）</span></span>
+<span class="giallo-l"><span>  └── 内层广播统一处理：TTS 状态机 / barge-in（含 lockout）/ 超时 / tail Err</span></span>
+<span class="giallo-l"><span>        ↓ (OutputMessage)</span></span>
+<span class="giallo-l"><span>     客户端</span></span></code></pre>
+<p>Round 通过 <code>OutputMessage</code> 输出；Session 只做生命周期决策（shadow→running 升级 / 相位 / 打断），不再轮询链。</p>
+<h2 id="LingCore">LingCore</h2>
+<p>LingCore（<code>api/src/component/ling/mod.rs</code>）实现 <code>Ling</code> trait，是 LLM + MCP + 历史的编排层，产出逐句 <code>TextChunk</code>：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>LingCore</span></span>
+<span class="giallo-l"><span>  ├── model       (Arc&lt;dyn Llm&gt;：Qwen3 / Echo)</span></span>
+<span class="giallo-l"><span>  ├── history     (消息历史 / 截断)</span></span>
+<span class="giallo-l"><span>  ├── mcp_registry (MCP 工具聚合)</span></span>
+<span class="giallo-l"><span>  └── splitter     (LLM 输出 → 句子 → TTS)</span></span></code></pre>
+<p>流程：</p>
+<ol>
+<li>LLM 流式响应 → 若返回 ToolCall → mcp 工具调用 → 结果回喂 LLM</li>
+<li>文本按 <code>Sentence</code> 分割，逐句产出 <code>TextChunk { text, emotion }</code> → TTS 节点</li>
+</ol>
+<h2 id="回合终止判定：静默确认_+_传输停滞">回合终止判定：静默确认 + 传输停滞</h2>
+<p>回合终止判定位于 <strong>AsrNode（音频时间静默确认）</strong> 与 <strong>Session（墙钟传输停滞）</strong> 两层；
+两者均只对 <code>streaming=true</code>（<code>auto</code>/<code>realtime</code>）生效，<strong>按键录音（<code>manual</code>，<code>ListenMode{streaming:false}</code>）不实时识别</strong>，
+仅缓冲整段音频，待设备 <code>listen(stop)</code> 投喂 <code>FinishTurn</code> 时一次性识别（见 <a href="https://lastsunday.github.io/vanling/development/server/dialogue-flow/"><code>dialogue-flow.md</code></a>）。</p>
+<h3 id="1._音频时间静默确认（AsrNode）">1. 音频时间静默确认（AsrNode）</h3>
+<p><code>AsrNode</code>（<code>service/src/pipeline/nodes/asr_node.rs</code>）以<strong>已消费的音频样本数</strong>度量静默时长，而非 <code>Local::now()</code> 墙钟：</p>
+<ul>
+<li><code>spoken: bool</code> — VAD 是否曾检测到语音</li>
+<li><code>silence_samples: u64</code> — 语音结束后累计的静音样本数，语音帧时清零</li>
+<li><code>SILENCE_CONFIRM_MS</code>（200ms）— <code>streaming &amp;&amp; spoken &amp;&amp; !speech_active &amp;&amp; 静音样本 ≥ 阈值·sample_rate/1000</code> → 立即 <code>finish()</code> 本轮</li>
+<li><code>streaming: bool</code> — 由 <code>ListenMode{streaming}</code>（<code>listen(start)</code> 时注入）切换。<code>false</code>（manual）时<strong>仍逐帧喂流预解码</strong>（<code>accept_waveform</code>+<code>decode</code>），但抑制 <code>PartialTranscript</code> 发射与静音确认；<code>FinishTurn</code> 走同一 <code>finish_stream()</code>，只 drain 残留帧，近瞬成文——把解码摊到按住期间，避免 stop 后冷启动整段识别</li>
+</ul>
+<p>finish 三态：有效输入 → <code>TurnText</code>；有流但空文本 → <code>EmptyInput</code>（触发提示语）；无流 → <code>Nothing</code>。
+manual 复用同三态，唯其<strong>无流（VAD 未检到语音）时 <code>finish_stream</code> 返回 <code>Nothing</code></strong>——
+由 Session 空输入逻辑（<code>EmptyKind::Manual</code>）唯一驱动提示语，避免与链内 <code>EmptyInput</code> 双触发。</p>
+<h3 id="2._传输停滞检测（Session）">2. 传输停滞检测（Session）</h3>
+<p>当客户端停止发送音频时，<code>silence_samples</code> 无法增长，用墙上时钟兜底：<code>check_transport_stall()</code>
+（<code>session/mod.rs</code>）在 <code>spoken</code> 仍活动且 <code>last_audio_received.elapsed() ≥ silence_voice_timeout</code>（1200ms）时向链投喂 <code>FinishTurn</code> 强制收尾。
+<strong>manual 模式跳过该检测</strong>（Listening 且 <code>is_voice_break_detect == false</code> 时直接返回）——设备的 stop 是唯一回合边界，绝不因静默超时"抢答"。</p>
+<p><strong>为什么不用墙钟做静默确认</strong>：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。</p>
+<p><strong>为什么需要墙钟做传输停滞检测</strong>：音频时间计数只能统计已到达的样本。当客户端完全停止发送音频后，没有样本可计数，必须用墙上时钟检测流断。</p>
+<p>与 OpenAI Realtime（<code>silence_duration_ms</code> 音频级 + <code>idle_timeout_ms</code> 墙钟级）分层一致。</p>
+<h2 id="输入输出过滤器">输入输出过滤器</h2>
+<h3 id="InputFilter_trait">InputFilter trait</h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">#</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">async_trait</span><span class="z-punctuation">]</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">trait</span><span class="z-entity z-name z-type"> InputFilter</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> process</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> ctx</span><span class="z-keyword z-operator">: &amp;</span><span class="z-entity z-name z-type">FilterCtx</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> frame</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Frame</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> FilterAction</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Frame</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>返回 <code>FilterAction::Continue(frame)</code> 继续传递，<code>FilterAction::Consumed</code> 拦截，或 <code>FilterAction::Break</code> 中断管道。</p>
+<p>内置过滤器：</p>
+<ul>
+<li><strong>McpRouterFilter</strong>：截获客户端的 MCP 消息，路由到 DeviceMcpSession</li>
+<li><strong>RecorderInputFilter</strong>：记录入站帧</li>
+</ul>
+<h3 id="OutputFilter_trait">OutputFilter trait</h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">#</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">async_trait</span><span class="z-punctuation">]</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">trait</span><span class="z-entity z-name z-type"> OutputFilter</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> process</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> ctx</span><span class="z-keyword z-operator">: &amp;</span><span class="z-entity z-name z-type">FilterCtx</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> msg</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> OutputMessage</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> FilterAction</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">OutputMessage</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>内置过滤器：</p>
+<ul>
+<li><strong>RecorderOutputFilter</strong>：记录出站帧</li>
+</ul>
+<h2 id="SessionBuilder">SessionBuilder</h2>
+<p>Session 通过 Builder 模式构造，注入<strong>裸节点原型集合</strong>（api 站点按配置动态组链，决定链的阶段/顺序）：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-entity z-name z-type">SessionBuilder</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">new</span><span class="z-punctuation">()</span></span>
+<span class="giallo-l"><span class="z-keyword z-operator">    .</span><span class="z-entity z-name z-function">with_id</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">session_id</span><span class="z-punctuation">)</span></span>
+<span class="giallo-l"><span class="z-keyword z-operator">    .</span><span class="z-entity z-name z-function">with_node_templates</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">templates</span><span class="z-punctuation">)</span><span class="z-punctuation z-definition z-comment z-comment">   // Vec&lt;Arc&lt;dyn Node&gt;&gt;：opus→vad→asr→turn→ling→tts</span></span>
+<span class="giallo-l"><span class="z-keyword z-operator">    .</span><span class="z-entity z-name z-function">with_config</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">session_config</span><span class="z-punctuation">)</span></span>
+<span class="giallo-l"><span class="z-keyword z-operator">    .</span><span class="z-entity z-name z-function">build</span><span class="z-punctuation">()</span><span class="z-punctuation z-definition z-comment z-comment">  // 返回 SessionContext</span></span></code></pre>
+<p><code>build()</code> 时从模板 <code>capabilities()</code>（<code>downcast_ref::&lt;AudioSpec&gt;()</code>）look up 下行音频能力：无 TTS 节点则握手不声明
+<code>audio_params</code>（无下行语音能力、不构造 pacer）。已删除的旧参数：<code>with_listener</code> / <code>with_ling</code> / <code>with_tts</code> / <code>with_audio_config</code>。</p>
+<p><code>SessionContext</code> 包含：</p>
+<ul>
+<li><code>session</code>：Session 实例</li>
+<li><code>input_tx</code>：向 Session 发送 Frame 的通道</li>
+<li><code>output_rx</code>：从 Session 接收 OutputMessage 的通道</li>
+</ul>
+<h2 id="启动流程">启动流程</h2>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>main.rs</span></span>
+<span class="giallo-l"><span>  → run()</span></span>
+<span class="giallo-l"><span>    → Server::new(args)           // 加载配置、初始化日志</span></span>
+<span class="giallo-l"><span>    → async_main(&amp;server)</span></span>
+<span class="giallo-l"><span>      → api::start(StartParams)</span></span>
+<span class="giallo-l"><span>        → Jwt::init()             // JWT 验证初始化</span></span>
+<span class="giallo-l"><span>        → 数据库连接 + 迁移</span></span>
+<span class="giallo-l"><span>        → TtsManager::init()      // OnceLock 单例</span></span>
+<span class="giallo-l"><span>        → VadManager::init()</span></span>
+<span class="giallo-l"><span>        → AsrManager::init()</span></span>
+<span class="giallo-l"><span>        → LlmManager::init()</span></span>
+<span class="giallo-l"><span>        → create_router()         // 注册 HTTP 路由</span></span>
+<span class="giallo-l"><span>        → axum::serve()           // 启动 HTTP 服务</span></span>
+<span class="giallo-l"><span>        → (可选) Matrix Client</span></span></code></pre><h3 id="路由结构">路由结构</h3>
+<table><thead><tr><th>路径</th><th>模块</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>/vanling/{version}</code></td><td><code>ws/</code></td><td>WebSocket 端点（Xiaozhi 协议）</td></tr>
+<tr><td><code>/mcp</code></td><td><code>mcp/</code></td><td>MCP Streamable HTTP 服务</td></tr>
+<tr><td><code>/api/auth/*</code></td><td><code>auth/</code></td><td>登录 / Token 刷新</td></tr>
+<tr><td><code>/api/ota*</code></td><td><code>ota/</code></td><td>OTA 协议（设备注册、激活验证）</td></tr>
+<tr><td><code>/api/devices/*</code></td><td><code>device/</code></td><td>设备管理（列表/激活/禁用/删除）</td></tr>
+<tr><td><code>/api/record/*</code></td><td><code>record/</code></td><td>会话录制查询</td></tr>
+<tr><td><code>/docs</code></td><td>—</td><td>OpenAPI Scalar UI</td></tr>
+</tbody></table>
+<h3 id="AI_Manager_模式">AI Manager 模式</h3>
+<p>所有 AI 模块使用 <strong>Manager + OnceLock</strong> 单例模式：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-entity z-name z-type">TtsManager</span><span class="z-punctuation"> (</span><span class="z-entity z-name z-type">OnceLock</span><span class="z-punctuation">)</span></span>
+<span class="giallo-l"><span class="z-source">  ├── </span><span class="z-entity z-name z-function">init</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">config</span><span class="z-punctuation">)</span><span class="z-source"> → </span><span class="z-entity z-name z-function">create_model</span><span class="z-punctuation">()</span><span class="z-source"> → 存入 </span><span class="z-constant z-other z-caps z-rust">INSTANCE</span></span>
+<span class="giallo-l"><span class="z-source">  ├── </span><span class="z-entity z-name z-function">default</span><span class="z-punctuation">()</span><span class="z-source"> → </span><span class="z-entity z-name z-type">Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Tts</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span></span>
+<span class="giallo-l"><span class="z-source">  └── </span><span class="z-entity z-name z-function">global</span><span class="z-punctuation">()</span><span class="z-source"> → </span><span class="z-keyword z-operator">&amp;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">static</span><span class="z-entity z-name z-type"> TtsManager</span></span></code></pre>
+<p>模型枚举通过配置选择，启动时创建对应实现并缓存。</p>
+<h2 id="会话活动超时">会话活动超时</h2>
+<p>Session 在主循环中通过空闲时间戳实现无活动超时：</p>
+<ul>
+<li><code>idle_since: Option&lt;Instant&gt;</code> 记录进入空闲的时间点，非空闲时重置为 <code>None</code></li>
+<li><code>close_connection_no_activity_time</code>（默认 30s）无活动超时断连</li>
+<li><code>silence_voice_timeout</code>（默认 1200ms）传输停滞判定（speaking 中长时间无音频 → <code>FinishTurn</code> 强制收尾）</li>
+</ul>
+<h2 id="中断（BargeIn）">中断（BargeIn）</h2>
+<p>用户可打断 TTS 播放：</p>
+<ol>
+<li>客户端发送 <code>Abort</code> 帧或新的 <code>ListenStart</code></li>
+<li>Session 收到后调用 <code>stop_round(RoundStopReason::BargeIn)</code></li>
+<li>当前 Running Round 被取消</li>
+<li>Epoch 递增，后续过期的 OutputMessage 被丢弃</li>
+<li>新 Shadow Round 升级为 Running Round</li>
+</ol>
+<h2 id="日志与可观测性">日志与可观测性</h2>
+<h3 id="输出格式">输出格式</h3>
+<p>日志以结构化格式输出：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>2026-07-20T08:58:12.870289Z DEBUG [&lt;SESSION&gt; asr result] component=&quot;session&quot; event=&quot;asr_result&quot; session_id=... text=Yeah.</span></span></code></pre>
+<ul>
+<li>括号对 <code>[&lt;COMPONENT&gt; message]</code> 之间为纯人类可读文本</li>
+<li>其后为 <code>key=value</code> 结构化字段，可被机器解析</li>
+<li>组件名大写：<code>SESSION</code>、<code>VAD</code>、<code>ROUND</code>、<code>LISTENER</code>、<code>ASR</code>、<code>MCP</code>、<code>WS</code></li>
+</ul>
+<h3 id="结构化字段约定">结构化字段约定</h3>
+<table><thead><tr><th>字段</th><th>用途</th><th>示例</th></tr></thead><tbody>
+<tr><td><code>component</code></td><td>组件名</td><td><code>session</code>、<code>vad</code>、<code>ws</code></td></tr>
+<tr><td><code>event</code></td><td>事件名</td><td><code>asr_result</code>、<code>voice_received</code>、<code>round_upgraded</code></td></tr>
+<tr><td><code>session_id</code></td><td>会话 ID</td><td>—</td></tr>
+<tr><td><code>reason</code></td><td>原因</td><td><code>timeout</code>、<code>barge_in</code></td></tr>
+</tbody></table>
+<h3 id="输出目标">输出目标</h3>
+<ul>
+<li><strong>Console</strong>（text/compact）：<code>[&lt;COMPONENT&gt; msg]</code> 格式 + <code>FmtSpan::NONE</code></li>
+<li><strong>File</strong>（JSON）：完整结构化日志 + <code>FmtSpan::CLOSE</code></li>
+<li><strong>Pretty</strong> / <strong>Json</strong>：不使用 bracket 前缀</li>
+</ul>
+<h3 id="日志级别指南">日志级别指南</h3>
+<table><thead><tr><th>级别</th><th>用途</th></tr></thead><tbody>
+<tr><td><code>error!</code></td><td>不可恢复错误、连接中断、ASR/TTS 失败</td></tr>
+<tr><td><code>warn!</code></td><td>异常但可恢复的情况</td></tr>
+<tr><td><code>info!</code></td><td>关键流程（session 开始/结束、round 升级）</td></tr>
+<tr><td><code>debug!</code></td><td>详细事件（ASR 结果、VAD 状态变更）</td></tr>
+<tr><td><code>trace!</code></td><td>数据帧内容、调试用细节</td></tr>
+</tbody></table>
+<p>禁止 <code>println!()</code> / <code>eprintln!()</code>。</p>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

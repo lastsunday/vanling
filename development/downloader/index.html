@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/downloader">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link active leaf">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/downloader/#模型下载器">模型下载器</a></li>
+    
+  </ul>
+  
+  <h1 id="模型下载器">模型下载器</h1>
+<p><code>vanling-server downloader</code> 子系统负责 AI 模型文件的下载与管理。所有模型元数据以 JSON manifest 形式编译到二进制中，运行时无外部依赖。</p>
+<h2 id="目录结构">目录结构</h2>
+<p>Manifest JSON 位于 <code>apps/server/src/downloader/manifests/{category}/</code>，编译时通过 <code>include_dir!</code> 嵌入二进制。</p>
+<h2 id="Manifest_文件格式">Manifest 文件格式</h2>
+<p>每个 JSON 文件描述一个模型的所有变体与文件清单。</p>
+<pre class="giallo z-code"><code data-lang="json"><span class="giallo-l"><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">config</span><span class="z-punctuation">&quot;: { &quot;</span><span class="z-support z-type z-property-name z-json">category</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;tts&quot;</span><span class="z-punctuation">, &quot;</span><span class="z-support z-type z-property-name z-json">model</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;matcha&quot;</span><span class="z-punctuation"> },</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">default_variant</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;matcha-icefall-zh-en&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">variants</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">matcha-icefall-zh-en</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">      &quot;</span><span class="z-support z-type z-property-name z-json">files</span><span class="z-punctuation">&quot;: [</span></span>
+<span class="giallo-l"><span class="z-punctuation">        {</span></span>
+<span class="giallo-l"><span class="z-punctuation">          &quot;</span><span class="z-support z-type z-property-name z-json">url</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;https://huggingface.co/.../model.onnx&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">          &quot;</span><span class="z-support z-type z-property-name z-json">path</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;tts/model/matcha/matcha-icefall-zh-en/model.onnx&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">          &quot;</span><span class="z-support z-type z-property-name z-json">sha256</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-language z-json"> null</span></span>
+<span class="giallo-l"><span class="z-punctuation">        }</span></span>
+<span class="giallo-l"><span class="z-punctuation">      ]</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-punctuation">  }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>config.category</code></td><td>string</td><td>分类名，与配置文件中的 <code>{cat}_model</code> 对应</td></tr>
+<tr><td><code>config.model</code></td><td>string</td><td>模型名，与配置文件中的 <code>{cat}_model</code> 的值对应</td></tr>
+<tr><td><code>default_variant</code></td><td>string / null</td><td>默认变体，<code>--variant</code> 和配置均未指定时使用</td></tr>
+<tr><td><code>variants</code></td><td>object</td><td>变体名 → 文件列表</td></tr>
+<tr><td><code>files[].url</code></td><td>string</td><td>Hugging Face 或其它源的下载 URL</td></tr>
+<tr><td><code>files[].path</code></td><td>string</td><td>相对数据目录的存储路径</td></tr>
+<tr><td><code>files[].sha256</code></td><td>string / null</td><td>可选的 SHA256 校验值，<code>null</code> 表示跳过校验</td></tr>
+</tbody></table>
+<h3 id="archives_格式">archives 格式</h3>
+<p>除 <code>files</code> 外，manifest 也支持 <code>archives</code> 字段，用于下载并解压压缩包。3/4 的 manifest 使用此格式：</p>
+<pre class="giallo z-code"><code data-lang="json"><span class="giallo-l"><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">config</span><span class="z-punctuation">&quot;: { &quot;</span><span class="z-support z-type z-property-name z-json">category</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;asr&quot;</span><span class="z-punctuation">, &quot;</span><span class="z-support z-type z-property-name z-json">model</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;x_asr&quot;</span><span class="z-punctuation"> },</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">default_variant</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;default&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">variants</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">default</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">      &quot;</span><span class="z-support z-type z-property-name z-json">archives</span><span class="z-punctuation">&quot;: [</span></span>
+<span class="giallo-l"><span class="z-punctuation">        {</span></span>
+<span class="giallo-l"><span class="z-punctuation">          &quot;</span><span class="z-support z-type z-property-name z-json">url</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;https://huggingface.co/.../sense-voice-zh-en-ja-ko-yue-2025-03-19.tar.bz2&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">          &quot;</span><span class="z-support z-type z-property-name z-json">path</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;asr/model/x_asr/default/&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">          &quot;</span><span class="z-support z-type z-property-name z-json">sha256</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;abc123...&quot;</span></span>
+<span class="giallo-l"><span class="z-punctuation">        }</span></span>
+<span class="giallo-l"><span class="z-punctuation">      ]</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-punctuation">  }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>archives[].url</code></td><td>string</td><td>压缩包下载 URL</td></tr>
+<tr><td><code>archives[].path</code></td><td>string</td><td>解压目标目录</td></tr>
+<tr><td><code>archives[].sha256</code></td><td>string / null</td><td>可选的 SHA256 校验值</td></tr>
+</tbody></table>
+<p>支持的压缩格式：<code>.tar.gz</code>, <code>.tar.bz2</code>, <code>.zip</code>。下载后自动解压到 <code>path</code> 目录。</p>
+<p>当前使用 <code>archives</code> 的 manifest：<code>llm/qwen3.json</code>、<code>reference/audio.json</code>。仅 <code>tts/matcha.json</code> 使用 <code>files</code> 格式。</p>
+<h3 id="路径推导规则">路径推导规则</h3>
+<p><code>path</code> 字段统一使用 <code>{category}/model/{model}/{variant}/{file}</code> 格式，全小写。例如 TTS Matcha 的配置文件路径为 <code>tts/model/matcha/matcha-icefall-zh-en/model.onnx</code>。</p>
+<p>配置中的 <code>*_path</code> 项（如 <code>tts_path</code>）现在为可选项。当缺省时，系统根据 <code>{model}+{variant}</code> 自动推导路径。</p>
+<h2 id="CLI_命令">CLI 命令</h2>
+<h3 id="下载器">下载器</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">COMMAN</span><span class="z-source">D</span><span class="z-keyword z-operator">&gt;</span></span></code></pre><table><thead><tr><th>子命令</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>install</code></td><td>下载 AI 模型到本地数据目录</td></tr>
+<tr><td><code>wizard</code></td><td>交互式向导模式</td></tr>
+<tr><td><code>list</code></td><td>列出所有可用模型及其变体</td></tr>
+<tr><td><code>update-checksums</code></td><td>计算已下载文件的 SHA256 并写回 manifest JSON</td></tr>
+</tbody></table>
+<p>运行 <code>vanling-server downloader</code>（无子命令）时，自动显示帮助信息。</p>
+<h4 id="install">install</h4>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install</span><span class="z-source"> [category] </span><span class="z-punctuation">[</span><span class="z-source">model</span><span class="z-punctuation">] [</span><span class="z-source">variant</span><span class="z-punctuation">] [</span><span class="z-source">options</span><span class="z-punctuation">]</span></span></code></pre><table><thead><tr><th>参数</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>category</code></td><td>分类：<code>tts</code>, <code>asr</code>, <code>llm</code>, <code>vad</code>, <code>reference</code>；缺省为全部</td></tr>
+<tr><td><code>model</code></td><td>模型名，如 <code>qwen3</code>, <code>matcha</code>, <code>x_asr</code></td></tr>
+<tr><td><code>variant</code></td><td>变体名，如 <code>0.5b</code>, <code>1.7b</code>, <code>tiny</code>, <code>default</code></td></tr>
+<tr><td><code>--data-dir &lt;path&gt;</code></td><td>数据目录，默认 <code>data</code></td></tr>
+<tr><td><code>--quiet</code></td><td>静默模式，不输出进度</td></tr>
+<tr><td><code>--mirror &lt;url&gt;</code></td><td>自定义镜像域名，可多次指定，替换内置的 <code>hf-mirror.com</code></td></tr>
+<tr><td><code>--override &lt;path&gt;</code></td><td>覆盖文件路径或 URL，JSON 格式</td></tr>
+<tr><td><code>--all</code></td><td>下载所有 manifests 中的所有文件（忽略配置文件）</td></tr>
+<tr><td><code>-c, --config &lt;path&gt;</code></td><td>显式指定配置文件（可选），缺省时自动查找 <code>application.toml</code></td></tr>
+</tbody></table>
+<p><strong>示例：</strong></p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 下载当前配置（自动查找 application.toml）所需的模型</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 下载当前配置所需模型，仅限 tts 分类</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install tts</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 无配置文件时，使用默认配置（MatchaTts + Qwen3×2）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 显式指定配置文件</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install --config my-config.toml</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 使用自定义镜像</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install --mirror https://my-mirror.example.com</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 下载所有 manifests 中的所有文件（忽略配置文件）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader install --all</span></span></code></pre><h4 id="wizard">wizard</h4>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader wizard</span><span class="z-source"> [options]</span></span></code></pre><table><thead><tr><th>参数</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>--data-dir &lt;path&gt;</code></td><td>数据目录，默认 <code>data</code></td></tr>
+<tr><td><code>--quiet</code></td><td>静默模式，不输出进度</td></tr>
+</tbody></table>
+<h4 id="update-checksums">update-checksums</h4>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader update-checksums</span><span class="z-source"> [options]</span></span></code></pre><table><thead><tr><th>参数</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>--data-dir &lt;path&gt;</code></td><td>数据目录，默认 <code>data</code></td></tr>
+<tr><td><code>--quiet</code></td><td>静默模式，不输出进度</td></tr>
+</tbody></table>
+<p>扫描 <code>data_dir</code> 中已下载的文件，计算 SHA256 并写回 manifest JSON。优先读取 <code>download-report.json</code> 中缓存的 SHA，避免重新读取大文件。</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 更新默认数据目录中的文件 SHA</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader update-checksums</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 指定数据目录</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader update-checksums --data-dir /path/to/models</span></span></code></pre><h3 id="列出模型">列出模型</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">vanling-server</span><span class="z-string"> downloader list</span><span class="z-source"> [category] </span><span class="z-punctuation">[</span><span class="z-source">--json</span><span class="z-punctuation">]</span></span></code></pre>
+<p>以树形结构列出所有可用模型及其变体：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>tts</span></span>
+<span class="giallo-l"><span>  └── matcha</span></span>
+<span class="giallo-l"><span>      └── matcha-icefall-zh-en (default)</span></span></code></pre>
+<p><strong>Moon tasks：</strong></p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader</span><span class="z-punctuation z-definition z-comment z-comment">                # 等价于 vanling-server downloader install</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader -- vad</span><span class="z-punctuation z-definition z-comment z-comment">         # 仅下载 VAD</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader -- tts matcha</span><span class="z-punctuation z-definition z-comment z-comment">  # 仅下载 TTS Matcha</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader-list</span><span class="z-punctuation z-definition z-comment z-comment">           # 列出所有可用模型</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader-list -- --json</span><span class="z-punctuation z-definition z-comment z-comment"> # JSON 格式输出</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:download-all-and-checksums</span><span class="z-punctuation z-definition z-comment z-comment"> # 下载所有模型并更新 SHA</span></span></code></pre><h2 id="下载工作流">下载工作流</h2>
+<h3 id="请求方式">请求方式</h3>
+<p>基于 <code>reqwest</code> + <code>rustls-tls</code>，无需链接 OpenSSL，纯 Rust TLS 栈。不依赖 <code>hf-hub</code> 库。</p>
+<h3 id="镜像回退">镜像回退</h3>
+<p>对于 Hugging Face URL，自动添加镜像候选：</p>
+<ol>
+<li>原始 URL</li>
+<li>在 domain 处替换为镜像域名（默认 <code>hf-mirror.com</code>）</li>
+</ol>
+<p>镜像列表可通过 <code>--mirror</code> 参数完全替换。非 <code>huggingface.co</code> 的 URL 不经过镜像处理。</p>
+<h3 id="并发控制">并发控制</h3>
+<p>通过 <code>tokio::sync::Semaphore</code> 限制最多 <strong>4</strong> 个并发下载，使用 <code>JoinSet</code> 有序收集结果。</p>
+<h3 id="下载流程">下载流程</h3>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>客户端 → 检查本地文件（SHA256 匹配则跳过）</span></span>
+<span class="giallo-l"><span>       → 创建父目录</span></span>
+<span class="giallo-l"><span>       → 生成候选 URL 列表（原始 + 镜像）</span></span>
+<span class="giallo-l"><span>       → 依次尝试候选 URL（.tmp 文件写入）</span></span>
+<span class="giallo-l"><span>       → SHA256 校验</span></span>
+<span class="giallo-l"><span>       → 原子重命名 .tmp → 目标文件</span></span>
+<span class="giallo-l"><span>       → 返回 (大小, SHA256)</span></span></code></pre><h3 id="缓存与校验">缓存与校验</h3>
+<ul>
+<li>本地文件存在时，计算其 SHA256：
+<ul>
+<li>匹配 → 跳过（缓存命中）</li>
+<li>不匹配 → 删除后重新下载</li>
+</ul>
+</li>
+<li><code>sha256: null</code> 表示跳过校验</li>
+<li><code>downloader update-checksums</code> 将已下载文件的真实 SHA256 写回 manifest 文件</li>
+</ul>
+<h3 id="下载报告">下载报告</h3>
+<p>每次下载完成后，在数据目录生成 <code>download-report.json</code>，包含完成时间、基础路径和每个文件的状态。<code>update-checksums</code> 优先读取此报告中的 SHA 缓存，避免重新读取大文件：</p>
+<pre class="giallo z-code"><code data-lang="json"><span class="giallo-l"><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">completed_at</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;2026-06-16T12:00:00Z&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">base_dir</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;data&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">files</span><span class="z-punctuation">&quot;: [</span></span>
+<span class="giallo-l"><span class="z-punctuation">    { &quot;</span><span class="z-support z-type z-property-name z-json">path</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;tts/model/matcha/matcha-icefall-zh-en/vocos-16khz-univ.onnx&quot;</span><span class="z-punctuation">, &quot;</span><span class="z-support z-type z-property-name z-json">size</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 1024</span><span class="z-punctuation">, &quot;</span><span class="z-support z-type z-property-name z-json">sha256</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;abc...&quot;</span><span class="z-punctuation">, &quot;</span><span class="z-support z-type z-property-name z-json">status</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;downloaded&quot;</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"><span class="z-punctuation">  ]</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><h2 id="配置集成">配置集成</h2>
+<h3 id="config_to_targets">config_to_targets</h3>
+<p>读取 <code>application.toml</code> 中的 <code>*_model</code> / <code>*_variant</code> 字段，将其转换为下载目标列表。各模型枚举的对应关系：</p>
+<table><thead><tr><th>配置字段</th><th>可选值</th><th>下载目标</th></tr></thead><tbody>
+<tr><td><code>tts_model</code></td><td><code>matcha_tts</code> / <code>mute</code></td><td><code>mute</code> 跳过</td></tr>
+<tr><td><code>asr_model</code></td><td><code>x_asr</code> / <code>void</code></td><td><code>void</code> 跳过</td></tr>
+<tr><td><code>llm_provider</code></td><td><code>local_qwen3</code> / <code>local_echo</code></td><td><code>local_echo</code> 跳过</td></tr>
+<tr><td><code>vad_model</code></td><td><code>earshot</code> / <code>void</code></td><td>均跳过（earshot 内嵌，void no-op）</td></tr>
+</tbody></table>
+<h3 id="config_文件查找">config 文件查找</h3>
+<p><code>downloader</code> 命令与服务器共享同一套配置查找逻辑：</p>
+<ul>
+<li><code>VANLING_CONFIG</code> 环境变量 → 当前目录 <code>application.toml</code> → 兜底 <code>application.toml</code></li>
+</ul>
+<p>无配置文件时，使用 <code>AppConfig</code> 的默认值：</p>
+<table><thead><tr><th>模块</th><th>默认模型</th><th>说明</th></tr></thead><tbody>
+<tr><td>TTS</td><td>MatchaTts（<code>matcha-icefall-zh-en</code>）</td><td>下载 <code>matcha</code></td></tr>
+<tr><td>ASR</td><td>XAsr（默认变体）</td><td>下载 <code>x_asr</code></td></tr>
+<tr><td>LLM</td><td>Qwen3（默认变体）</td><td>下载 <code>qwen3</code></td></tr>
+<tr><td>VAD</td><td>Earshot</td><td>内嵌权重，不下载</td></tr>
+</tbody></table>
+<h3 id="load_selections_/_upsert_config">load_selections / upsert_config</h3>
+<ul>
+<li><code>load_selections</code>：解析 <code>application.toml</code> 的 <code>[global]</code> 段，提取 <code>*_model</code> / <code>*_variant</code> / <code>*_path</code> 键值对</li>
+<li><code>upsert_config</code>：将新的选择写入 <code>application.toml</code>，保留非 <code>[global]</code> 段</li>
+</ul>
+<h2 id="Override_系统">Override 系统</h2>
+<p><code>--override</code> 接受一个本地文件路径或 HTTP URL，JSON 格式：</p>
+<pre class="giallo z-code"><code data-lang="json"><span class="giallo-l"><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">tts/model/matcha/matcha-icefall-zh-en/model.onnx</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">url</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;http://localhost:8080/model.onnx&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">sha256</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;abc123...&quot;</span></span>
+<span class="giallo-l"><span class="z-punctuation">  },</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">llm/model/qwen3/0.6b/model.gguf</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">url</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;http://localhost:8080/model.gguf&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">sha256</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-language z-json"> null</span></span>
+<span class="giallo-l"><span class="z-punctuation">  }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>匹配规则：按 <code>path</code> 字段精确匹配。覆盖 <code>url</code>，可选覆盖 <code>sha256</code>（<code>null</code> 表示不校验）。</p>
+<h2 id="交互式向导">交互式向导</h2>
+<p><code>vanling-server downloader wizard</code> 提供交互式选择流程：</p>
+<ol>
+<li><strong>查找配置</strong>：定位 <code>application.toml</code>，读取已有选择</li>
+<li><strong>展示目录</strong>：按分类列出所有可用模型及其变体</li>
+<li><strong>循环选择</strong>：方向键选择分类 → 方向键选择模型 → 方向键选择变体</li>
+<li><strong>预览</strong>：显示最终选择集及对应的配置项</li>
+<li><strong>写入配置</strong>：将选择写入 <code>application.toml</code></li>
+<li><strong>自动下载</strong>：按分类顺序逐一执行下载</li>
+</ol>
+<p>分类列表最后一项为 <code>done</code>，选择后结束循环。所有交互使用方向键导航、Enter 确认。</p>
+<h2 id="架构决策">架构决策</h2>
+<table><thead><tr><th>决策</th><th>选择</th><th>理由</th></tr></thead><tbody>
+<tr><td>TLS 栈</td><td>rustls</td><td>纯 Rust，无需链接 OpenSSL，消除构建瓶颈</td></tr>
+<tr><td>运行时依赖</td><td>无</td><td>Manifest 通过 <code>include_dir!</code> 编译时嵌入，二进制自包含</td></tr>
+<tr><td>模型发现</td><td>JSON manifest</td><td>灵活可扩展，新增模型只需添加 JSON 文件</td></tr>
+<tr><td>下载库</td><td>reqwest</td><td>功能齐全，支持流式下载、代理、TLS</td></tr>
+<tr><td>并发控制</td><td>Semaphore + JoinSet</td><td>简洁的异步并发模式</td></tr>
+<tr><td>缓存策略</td><td>SHA256 校验</td><td>避免重复下载，保证数据完整性</td></tr>
+<tr><td>路径推导</td><td>自动 fallback</td><td><code>*_path</code> 可缺省，减少配置量</td></tr>
+</tbody></table>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

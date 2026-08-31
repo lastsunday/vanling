@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/server/websocket-protocol">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link active">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link active leaf">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/server/websocket-protocol/#WebSocket_通信协议">WebSocket 通信协议</a></li>
+    
+  </ul>
+  
+  <h1 id="WebSocket_通信协议">WebSocket 通信协议</h1>
+<p>本协议基于 <a rel="external" href="https://github.com/78/xiaozhi-esp32">xiaozhi-esp32</a> 与 vanling 服务端的实际实现整理。</p>
+<hr />
+<h2 id="1._Protocol_Overview">1. Protocol Overview</h2>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>connect</span></span>
+<span class="giallo-l"><span>  request</span></span>
+<span class="giallo-l"><span>    hello</span></span>
+<span class="giallo-l"><span>  response</span></span>
+<span class="giallo-l"><span>    hello</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>listen</span></span>
+<span class="giallo-l"><span>  Auto / Realtime</span></span>
+<span class="giallo-l"><span>    request</span></span>
+<span class="giallo-l"><span>      [audio]                                // 唤醒词音频</span></span>
+<span class="giallo-l"><span>      detect-text                            // {&quot;text&quot;:&quot;Hi XiaoZhi&quot;}</span></span>
+<span class="giallo-l"><span>      &lt;vad&gt;</span></span>
+<span class="giallo-l"><span>        //asr</span></span>
+<span class="giallo-l"><span>        //llm</span></span>
+<span class="giallo-l"><span>          &lt;mcp&gt;</span></span>
+<span class="giallo-l"><span>    response</span></span>
+<span class="giallo-l"><span>      &lt;tts&gt;                                  // 问候</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>    request</span></span>
+<span class="giallo-l"><span>      listen_start                           // {&quot;mode&quot;:&quot;auto&quot;}</span></span>
+<span class="giallo-l"><span>      [audio]                                // 对话音频</span></span>
+<span class="giallo-l"><span>        &lt;vad&gt;</span></span>
+<span class="giallo-l"><span>        //asr</span></span>
+<span class="giallo-l"><span>        //llm</span></span>
+<span class="giallo-l"><span>          &lt;mcp&gt;</span></span>
+<span class="giallo-l"><span>    response</span></span>
+<span class="giallo-l"><span>      &lt;tts&gt;                                  // auto: 播放后回到 idle</span></span>
+<span class="giallo-l"><span>                                             // realtime: 播放后继续监听</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  Manual</span></span>
+<span class="giallo-l"><span>    request</span></span>
+<span class="giallo-l"><span>      listen_start                           // {&quot;mode&quot;:&quot;manual&quot;}</span></span>
+<span class="giallo-l"><span>      [audio]                                // 录音</span></span>
+<span class="giallo-l"><span>        //asr</span></span>
+<span class="giallo-l"><span>        //llm</span></span>
+<span class="giallo-l"><span>          &lt;mcp&gt;</span></span>
+<span class="giallo-l"><span>      listen_stop</span></span>
+<span class="giallo-l"><span>    response</span></span>
+<span class="giallo-l"><span>      &lt;tts&gt;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  Text</span></span>
+<span class="giallo-l"><span>    request</span></span>
+<span class="giallo-l"><span>      text                                   // {&quot;text&quot;:&quot;你好&quot;}</span></span>
+<span class="giallo-l"><span>        //llm</span></span>
+<span class="giallo-l"><span>          &lt;mcp&gt;</span></span>
+<span class="giallo-l"><span>    response</span></span>
+<span class="giallo-l"><span>      &lt;tts&gt;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>abort                                        // 打断 TTS</span></span>
+<span class="giallo-l"><span>  request</span></span>
+<span class="giallo-l"><span>    abort</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>---</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>vad                                          // 服务端内部</span></span>
+<span class="giallo-l"><span>  vad pass</span></span>
+<span class="giallo-l"><span>    //silent checking stop</span></span>
+<span class="giallo-l"><span>    //to asr</span></span>
+<span class="giallo-l"><span>  vad ignore</span></span>
+<span class="giallo-l"><span>    abort</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>tts                                          // 服务端 → 客户端</span></span>
+<span class="giallo-l"><span>  response</span></span>
+<span class="giallo-l"><span>    start</span></span>
+<span class="giallo-l"><span>      llm                                    // {&quot;emotion&quot;:&quot;happy&quot;}</span></span>
+<span class="giallo-l"><span>      sentence_start</span></span>
+<span class="giallo-l"><span>      [audio]</span></span>
+<span class="giallo-l"><span>      sentence_end</span></span>
+<span class="giallo-l"><span>    stop</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>mcp                                          // tools/call</span></span>
+<span class="giallo-l"><span>  request</span></span>
+<span class="giallo-l"><span>    tool_call</span></span>
+<span class="giallo-l"><span>  response</span></span>
+<span class="giallo-l"><span>    tool_result</span></span></code></pre>
+<hr />
+<h2 id="2._连接建立">2. 连接建立</h2>
+<h3 id="2.1_WebSocket_Headers">2.1 WebSocket Headers</h3>
+<table><thead><tr><th>Header</th><th>必选</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Authorization</code></td><td>否</td><td><code>Bearer &lt;token&gt;</code></td></tr>
+<tr><td><code>Protocol-Version</code></td><td>是</td><td>二进制协议版本，目前为 <code>1</code></td></tr>
+<tr><td><code>Device-Id</code></td><td>是</td><td>MAC 地址</td></tr>
+<tr><td><code>Client-Id</code></td><td>是</td><td>UUID v4</td></tr>
+</tbody></table>
+<h3 id="2.2_Hello">2.2 Hello</h3>
+<p>客户端 → 服务端：</p>
+<pre class="giallo z-code"><code data-lang="json"><span class="giallo-l"><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">type</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;hello&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">version</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 1</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">transport</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;websocket&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">audio_params</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">format</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;opus&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">sample_rate</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 16000</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">channels</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 1</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">frame_duration</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 60</span></span>
+<span class="giallo-l"><span class="z-punctuation">  },</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">features</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">mcp</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-language z-json"> true</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">aec</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-language z-json"> true</span></span>
+<span class="giallo-l"><span class="z-punctuation">  }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>服务端 → 客户端：</p>
+<pre class="giallo z-code"><code data-lang="json"><span class="giallo-l"><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">type</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;hello&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">transport</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;websocket&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">session_id</span><span class="z-punctuation">&quot;:</span><span class="z-punctuation z-definition z-string z-string"> &quot;xxx&quot;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">  &quot;</span><span class="z-support z-type z-property-name z-json">audio_params</span><span class="z-punctuation">&quot;: {</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">sample_rate</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 24000</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">    &quot;</span><span class="z-support z-type z-property-name z-json">frame_duration</span><span class="z-punctuation">&quot;:</span><span class="z-constant z-numeric"> 60</span></span>
+<span class="giallo-l"><span class="z-punctuation">  }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p><code>transport</code> 为<strong>必选</strong>，缺失或不匹配 <code>"websocket"</code> 时客户端会断开连接。<code>session_id</code> 为会话标识，后续所有消息中携带。<code>audio_params</code> 方向独立：客户端 Hello 表示上行参数（设备→服务端），服务端 Hello 表示下行参数（服务端→设备）。</p>
+<hr />
+<h2 id="3._会话时序">3. 会话时序</h2>
+<h3 id="Auto_模式">Auto 模式</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>  participant C as Client</span></span>
+<span class="giallo-l"><span>  participant S as Server</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  Note over C,S: Phase 1: 唤醒 → 问候</span></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: [Opus 音频] (唤醒词)</span></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: listen_detect</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;S: VAD → ASR → LLL → MCP(可选)</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: llm</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts sentence_start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: [Opus 音频] (TTS)</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts stop</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  Note over C,S: Phase 2: 对话</span></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: listen_start (mode=auto)</span></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: [Opus 音频] (对话)</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;S: VAD → 静音超时 → ASR → LLM → MCP(可选)</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: llm</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts sentence_start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: [Opus 音频]</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts stop</span></span>
+<span class="giallo-l"><span>  Note over C: 回到 idle (auto)&lt;br/&gt;继续监听 (realtime)</span></span></code></pre><h3 id="Manual_模式">Manual 模式</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>  participant C as Client</span></span>
+<span class="giallo-l"><span>  participant S as Server</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: listen_start (mode=manual)</span></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: [Opus 音频] (录音)</span></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: listen_stop</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;S: ASR → LLM → MCP(可选)</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: llm</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts sentence_start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: [Opus 音频]</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts stop</span></span></code></pre><h3 id="文本模式">文本模式</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>  participant C as Client</span></span>
+<span class="giallo-l"><span>  participant S as Server</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  C-&gt;&gt;S: text ({&quot;text&quot;:&quot;你好&quot;})</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;S: LLM → MCP(可选)</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: llm</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts sentence_start</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: [Opus 音频]</span></span>
+<span class="giallo-l"><span>  S-&gt;&gt;C: tts stop</span></span></code></pre><h3 id="状态机">状态机</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>stateDiagram</span></span>
+<span class="giallo-l"><span>  Idle --&gt; Connecting: 唤醒/按键</span></span>
+<span class="giallo-l"><span>  Connecting --&gt; ListenDetect: hello 完成</span></span>
+<span class="giallo-l"><span>  ListenDetect --&gt; Listening: listen_start</span></span>
+<span class="giallo-l"><span>  ListenDetect --&gt; Listening: detect (唤醒)</span></span>
+<span class="giallo-l"><span>  Listening --&gt; Speaking: tts start</span></span>
+<span class="giallo-l"><span>  Speaking --&gt; Listening: tts stop (realtime)</span></span>
+<span class="giallo-l"><span>  Speaking --&gt; Idle: tts stop (auto/manual)</span></span>
+<span class="giallo-l"><span>  Listening --&gt; Idle: 超时/断开</span></span></code></pre><h3 id="空输入（各模式）">空输入（各模式）</h3>
+<p>空输入（无有效语音）由中枢（Session）辨别类型并分级提示（<code>Wake</code>/<code>AutoSpoke</code>/<code>Silence</code> 遵循 Rule of three 最多 3 次；<code>Manual</code> 事件驱动每次按键都提示）。判别依据：模式 + 前一 turn。</p>
+<ul>
+<li><strong>manual 无人声</strong>（<code>!is_voice_break_detect</code> 且未检出语音）→ <code>Manual</code>：每次按键播 1 次引导提示语，之后回到监听等待</li>
+<li><strong>唤醒词后未说话</strong> → <code>Wake</code>：引导式提示（"想让我帮你做什么？"），逐次升级</li>
+<li><strong>auto 说了但 ASR 空</strong>（VAD 触发但文本空）→ <code>AutoSpoke</code>："没听清，请重说" → 给示例 → 优雅收尾</li>
+<li><strong>auto/realtime 完全静默</strong>（VAD 未触发，ASR 无流）→ <code>Silence</code>：温柔引导不指责，逐次升级</li>
+<li><strong>realtime 回复后连续监听</strong> → <code>Continuing</code>：静默等待，不反复提示</li>
+</ul>
+<p>中枢观察空输入后重新注入 <code>Prompt{kind, count}</code> 对话 Act，由 LLM/Echo（NLG）渲染提示语；<code>Continuing</code> 走静默、<code>GiveUp</code> 回 idle。</p>
+<hr />
+<h2 id="附录_A：消息字段参考">附录 A：消息字段参考</h2>
+<p>A.1 客户端 → 服务端</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>type:hello</span></span>
+<span class="giallo-l"><span>  version: int              必选</span></span>
+<span class="giallo-l"><span>  transport: &quot;websocket&quot;    必选</span></span>
+<span class="giallo-l"><span>  audio_params: {}</span></span>
+<span class="giallo-l"><span>    format: &quot;opus&quot;</span></span>
+<span class="giallo-l"><span>    sample_rate: 16000</span></span>
+<span class="giallo-l"><span>    channels: 1</span></span>
+<span class="giallo-l"><span>    frame_duration: 60      单位 ms</span></span>
+<span class="giallo-l"><span>  features: {}</span></span>
+<span class="giallo-l"><span>    mcp: bool</span></span>
+<span class="giallo-l"><span>    aec: bool</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:listen, state:detect</span></span>
+<span class="giallo-l"><span>  session_id: string        必选</span></span>
+<span class="giallo-l"><span>  text: string              唤醒词原文，如 &quot;Hi XiaoZhi&quot;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:listen, state:start</span></span>
+<span class="giallo-l"><span>  session_id: string        必选</span></span>
+<span class="giallo-l"><span>  mode: &quot;auto&quot;|&quot;manual&quot;     必选</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:listen, state:stop</span></span>
+<span class="giallo-l"><span>  session_id: string        必选</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:text</span></span>
+<span class="giallo-l"><span>  session_id: string        必选</span></span>
+<span class="giallo-l"><span>  text: string              必选，用户输入文本</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:abort</span></span>
+<span class="giallo-l"><span>  session_id: string        必选</span></span>
+<span class="giallo-l"><span>  reason: string            可选，&quot;wake_word_detected&quot;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp, payload.method:&quot;initialize&quot;</span></span>
+<span class="giallo-l"><span>  payload: {}</span></span>
+<span class="giallo-l"><span>    jsonrpc: &quot;2.0&quot;          必选</span></span>
+<span class="giallo-l"><span>    method: &quot;initialize&quot;    必选</span></span>
+<span class="giallo-l"><span>    params: {}</span></span>
+<span class="giallo-l"><span>      capabilities: {}</span></span>
+<span class="giallo-l"><span>    id: int                 必选，请求标识</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp, payload.method:&quot;tools/list&quot;</span></span>
+<span class="giallo-l"><span>  payload: {}</span></span>
+<span class="giallo-l"><span>    jsonrpc: &quot;2.0&quot;          必选</span></span>
+<span class="giallo-l"><span>    method: &quot;tools/list&quot;    必选</span></span>
+<span class="giallo-l"><span>    params: {}</span></span>
+<span class="giallo-l"><span>      cursor: string        可选，分页游标</span></span>
+<span class="giallo-l"><span>    id: int                 必选</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp, payload.method:&quot;tools/call&quot;</span></span>
+<span class="giallo-l"><span>  payload: {}</span></span>
+<span class="giallo-l"><span>    jsonrpc: &quot;2.0&quot;          必选</span></span>
+<span class="giallo-l"><span>    method: &quot;tools/call&quot;    必选</span></span>
+<span class="giallo-l"><span>    params: {}</span></span>
+<span class="giallo-l"><span>      name: string          必选，工具名</span></span>
+<span class="giallo-l"><span>      arguments: {}         可选，工具参数</span></span>
+<span class="giallo-l"><span>    id: int                 必选</span></span></code></pre>
+<p>A.2 服务端 → 客户端</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>type:hello</span></span>
+<span class="giallo-l"><span>  transport: &quot;websocket&quot;    必选</span></span>
+<span class="giallo-l"><span>  session_id: string        必选</span></span>
+<span class="giallo-l"><span>  audio_params: {}</span></span>
+<span class="giallo-l"><span>    sample_rate: int        可选，默认 24000</span></span>
+<span class="giallo-l"><span>    frame_duration: int     可选，默认 60</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:stt</span></span>
+<span class="giallo-l"><span>  session_id: string</span></span>
+<span class="giallo-l"><span>  text: string              ASR 识别结果</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:llm</span></span>
+<span class="giallo-l"><span>  session_id: string</span></span>
+<span class="giallo-l"><span>  emotion: string           &quot;happy&quot;|&quot;sad&quot;|&quot;neutral&quot;|...</span></span>
+<span class="giallo-l"><span>  text: string              LLM 输出文本片段（流式）</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:tts, state:start</span></span>
+<span class="giallo-l"><span>  session_id: string</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:tts, state:sentence_start</span></span>
+<span class="giallo-l"><span>  session_id: string</span></span>
+<span class="giallo-l"><span>  text: string              当前句子文本</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:tts, state:sentence_end</span></span>
+<span class="giallo-l"><span>  session_id: string</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:tts, state:stop</span></span>
+<span class="giallo-l"><span>  session_id: string</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:system</span></span>
+<span class="giallo-l"><span>  command: &quot;reboot&quot;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp</span></span>
+<span class="giallo-l"><span>  payload: {}</span></span>
+<span class="giallo-l"><span>    jsonrpc: &quot;2.0&quot;</span></span>
+<span class="giallo-l"><span>    id: int                 对应请求 id</span></span>
+<span class="giallo-l"><span>    result: {}              成功时</span></span>
+<span class="giallo-l"><span>    error: {}               失败时</span></span>
+<span class="giallo-l"><span>      code: int</span></span>
+<span class="giallo-l"><span>      message: string</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp, response to &quot;initialize&quot;</span></span>
+<span class="giallo-l"><span>  payload.result: {}</span></span>
+<span class="giallo-l"><span>    protocolVersion: string</span></span>
+<span class="giallo-l"><span>    capabilities: {}</span></span>
+<span class="giallo-l"><span>    serverInfo: {}</span></span>
+<span class="giallo-l"><span>      name: string</span></span>
+<span class="giallo-l"><span>      version: string</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp, response to &quot;tools/list&quot;</span></span>
+<span class="giallo-l"><span>  payload.result: {}</span></span>
+<span class="giallo-l"><span>    tools: []</span></span>
+<span class="giallo-l"><span>      name: string</span></span>
+<span class="giallo-l"><span>      description: string</span></span>
+<span class="giallo-l"><span>      inputSchema: {}</span></span>
+<span class="giallo-l"><span>    nextCursor: string      可选</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>type:mcp, response to &quot;tools/call&quot;</span></span>
+<span class="giallo-l"><span>  payload.result: {}        成功时</span></span>
+<span class="giallo-l"><span>    content: []</span></span>
+<span class="giallo-l"><span>      type: &quot;text&quot;</span></span>
+<span class="giallo-l"><span>      text: string</span></span>
+<span class="giallo-l"><span>    isError: false</span></span>
+<span class="giallo-l"><span>  payload.error: {}         失败时</span></span>
+<span class="giallo-l"><span>    code: int</span></span>
+<span class="giallo-l"><span>    message: string</span></span></code></pre>
+<hr />
+<h2 id="附录_B：二进制协议">附录 B：二进制协议</h2>
+<p>Opus 编码音频通过 WebSocket 二进制帧传输。版本号由 <code>Protocol-Version</code> Header 声明。</p>
+<h3 id="版本_1（默认）">版本 1（默认）</h3>
+<p>裸 Opus 数据，无头部。</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>[Opus 数据]</span></span></code></pre><h3 id="版本_2">版本 2</h3>
+<p>16 字节头部 + Opus 数据（所有多字节字段使用网络字节序）。</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>struct BinaryProtocol2 {</span></span>
+<span class="giallo-l"><span>    uint16_t version;        // 协议版本</span></span>
+<span class="giallo-l"><span>    uint16_t type;           // 0=OPUS, 1=JSON</span></span>
+<span class="giallo-l"><span>    uint32_t reserved;</span></span>
+<span class="giallo-l"><span>    uint32_t timestamp;      // 时间戳(ms)，用于服务端 AEC</span></span>
+<span class="giallo-l"><span>    uint32_t payload_size;</span></span>
+<span class="giallo-l"><span>    uint8_t  payload[];</span></span>
+<span class="giallo-l"><span>};</span></span></code></pre><h3 id="版本_3">版本 3</h3>
+<p>4 字节头部 + Opus 数据。</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>struct BinaryProtocol3 {</span></span>
+<span class="giallo-l"><span>    uint8_t  type;           // 0=OPUS</span></span>
+<span class="giallo-l"><span>    uint8_t  reserved;</span></span>
+<span class="giallo-l"><span>    uint16_t payload_size;</span></span>
+<span class="giallo-l"><span>    uint8_t  payload[];</span></span>
+<span class="giallo-l"><span>};</span></span></code></pre>
+<hr />
+<h2 id="附录_C：变更">附录 C：变更</h2>
+<table><thead><tr><th>日期</th><th>说明</th></tr></thead><tbody>
+<tr><td>2026-06</td><td>重新整理。概览/时序/字段参考分层。新增 <code>type:text</code>，去掉 <code>realtime</code> 独立模式，<code>detect</code> 仅用于唤醒</td></tr>
+</tbody></table>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

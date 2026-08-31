@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/clients/app">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link active">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link active leaf">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/clients/app/#客户端">客户端</a></li>
+    
+  </ul>
+  
+  <h1 id="客户端">客户端</h1>
+<h2 id="环境要求">环境要求</h2>
+<h3 id="前置依赖">前置依赖</h3>
+<table><thead><tr><th>工具</th><th>说明</th><th>安装方式</th></tr></thead><tbody>
+<tr><td>Xcode</td><td>iOS/macOS 构建</td><td>App Store 下载，运行 <code>sudo xcode-select --switch /Applications/Xcode.app</code></td></tr>
+<tr><td>Android Studio</td><td>Android SDK 管理</td><td><a rel="external" href="https://developer.android.com/studio">官网下载</a>，首次启动时安装 SDK（API 34/35）</td></tr>
+<tr><td>Chrome</td><td>Web 调试</td><td>已安装则 <code>flutter run -d chrome</code> 可用</td></tr>
+</tbody></table>
+<h3 id="Nix_开发环境">Nix 开发环境</h3>
+<p>进入项目根目录后直接用 <code>nix develop</code>，Flutter 工具链已包含在内：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">nix</span><span class="z-string"> develop</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">flutter</span><span class="z-string"> test</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">flutter</span><span class="z-string"> analyze</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">flutter</span><span class="z-string"> build apk</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">flutter</span><span class="z-string"> doctor</span></span></code></pre><h3 id="首次使用">首次使用</h3>
+<ol>
+<li>安装前置依赖（Xcode、Android Studio、Chrome）</li>
+<li>进入 Nix shell：<code>nix develop</code></li>
+<li>接受 Android 许可证：<code>flutter doctor --android-licenses</code></li>
+<li>安装项目依赖：<code>flutter pub get</code></li>
+<li>运行 <code>flutter doctor</code> 确认环境就绪</li>
+</ol>
+<blockquote>
+<p>[!WARNING]
+App 尚未实现 vanling 业务功能，当前仅为基础框架。</p>
+</blockquote>
+<h2 id="框架">框架</h2>
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+主题框架</li>
+<li><input disabled="" type="checkbox" checked=""/>
+自适应布局
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+桌面端判断</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+文字缩放</li>
+<li><input disabled="" type="checkbox" checked=""/>
+国际化</li>
+<li><input disabled="" type="checkbox" checked=""/>
+网络层
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+Dio</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+数据库
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+Sqlite</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+工具
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+唯一 ID
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+nanoid2</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+事件总线</li>
+<li><input disabled="" type="checkbox" checked=""/>
+自动升级
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+Android</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"/>
+日志
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+轮转日志文件（不含 Web 环境）</li>
+<li><input disabled="" type="checkbox"/>
+导出/上传日志文件</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"/>
+发布
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+Android</li>
+<li><input disabled="" type="checkbox"/>
+iOS</li>
+<li><input disabled="" type="checkbox"/>
+Windows
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+exe（免安装）</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"/>
+Linux</li>
+<li><input disabled="" type="checkbox"/>
+macOS</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Web</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""/>
+环境配置
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+开发环境</li>
+<li><input disabled="" type="checkbox" checked=""/>
+生产环境</li>
+</ul>
+</li>
+</ul>
+<h2 id="进阶">进阶</h2>
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+认证
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+Spring-authorization-server</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"/>
+用户信息</li>
+</ul>
+<h2 id="开发流程">开发流程</h2>
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+变更日志</li>
+<li><input disabled="" type="checkbox"/>
+CI
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+构建</li>
+<li><input disabled="" type="checkbox"/>
+代码质量</li>
+<li><input disabled="" type="checkbox"/>
+测试</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"/>
+测试
+<ul>
+<li><input disabled="" type="checkbox" checked=""/>
+单元测试（示例）</li>
+<li><input disabled="" type="checkbox" checked=""/>
+Widget 测试（示例）</li>
+<li><input disabled="" type="checkbox"/>
+集成测试</li>
+</ul>
+</li>
+</ul>
+<h2 id="编码">编码</h2>
+<h3 id="Database_Versioning">Database Versioning</h3>
+<blockquote>
+<p>lib\modules\app\app_store.dart</p>
+</blockquote>
+<pre class="giallo z-code"><code data-lang="dart"><span class="giallo-l"><span class="z-comment">//DB init</span></span>
+<span class="giallo-l"><span class="z-support z-class">DbManager</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">instance</span><span class="z-source">()</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">init</span><span class="z-source">([</span><span class="z-support z-class">ChangeLogV1</span><span class="z-source">()])</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-support z-class">Database</span><span class="z-source"> db </span><span class="z-keyword z-operator">=</span><span class="z-keyword"> await</span><span class="z-support z-class"> DbManager</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">instance</span><span class="z-source">()</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">open</span><span class="z-source">()</span><span class="z-punctuation">;</span></span></code></pre><h3 id="Database_Record_To_View_Model">Database Record To View Model</h3>
+<blockquote>
+<p>Example</p>
+</blockquote>
+<pre class="giallo z-code"><code data-lang="dart"><span class="giallo-l"><span class="z-keyword">class</span><span class="z-support z-class"> MemoMapper</span><span class="z-source">{</span></span>
+<span class="giallo-l"><span class="z-storage z-modifier">    static</span><span class="z-support z-class"> Future</span><span class="z-source">&lt;</span><span class="z-support z-class">List</span><span class="z-source">&lt;</span><span class="z-support z-class">MemoEntity</span><span class="z-source">&gt;&gt;</span><span class="z-entity z-name z-function"> selectAll</span><span class="z-source">() </span><span class="z-keyword">async</span><span class="z-source"> {</span></span>
+<span class="giallo-l"><span class="z-support z-class">        List</span><span class="z-source">&lt;</span><span class="z-support z-class">Map</span><span class="z-source">&lt;</span><span class="z-support z-class">String</span><span class="z-source">,</span><span class="z-support z-class"> dynamic</span><span class="z-source">&gt;&gt; findResult </span><span class="z-keyword z-operator">=</span></span>
+<span class="giallo-l"><span class="z-keyword">            await</span><span class="z-support z-class"> DbManager</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">instance</span><span class="z-source">()</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">find</span><span class="z-source">(</span><span class="z-support z-class">MemoEntity</span><span class="z-punctuation">.</span><span class="z-source">tableName)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">        return</span><span class="z-support z-class"> Future</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">value</span><span class="z-source">(findResult</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">map</span><span class="z-source">((e) </span><span class="z-keyword z-operator">=&gt;</span><span class="z-support z-class"> MemoEntity</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">fromJson</span><span class="z-source">(e))</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">toList</span><span class="z-source">())</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"><span class="z-source">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword">class</span><span class="z-support z-class"> AppStore</span><span class="z-source">{</span></span>
+<span class="giallo-l"><span class="z-support z-class">    Future</span><span class="z-source">&lt;</span><span class="z-support z-class">List</span><span class="z-source">&lt;</span><span class="z-support z-class">MemoModel</span><span class="z-source">&gt;&gt;</span><span class="z-entity z-name z-function"> getMemoList</span><span class="z-source">() </span><span class="z-keyword">async</span><span class="z-source"> {</span></span>
+<span class="giallo-l"><span class="z-support z-class">        List</span><span class="z-source">&lt;</span><span class="z-support z-class">MemoEntity</span><span class="z-source">&gt; memoEntityList </span><span class="z-keyword z-operator">=</span><span class="z-keyword"> await</span><span class="z-support z-class"> MemoMapper</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">selectAll</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">        return</span><span class="z-support z-class"> Future</span><span class="z-source">(() </span><span class="z-keyword z-operator">=&gt;</span></span>
+<span class="giallo-l"><span class="z-source">            memoEntityList</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">map</span><span class="z-source">((e) </span><span class="z-keyword z-operator">=&gt;</span><span class="z-support z-class"> MemoModel</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">fromJson</span><span class="z-source">(e</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">toJson</span><span class="z-source">()))</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">toList</span><span class="z-source">())</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">      }</span></span>
+<span class="giallo-l"><span class="z-source">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword">class</span><span class="z-support z-class"> _MemoPageState</span><span class="z-source">{</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type">    void</span><span class="z-entity z-name z-function"> initState</span><span class="z-source">() {</span></span>
+<span class="giallo-l"><span class="z-source">        super</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">initState</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-support z-class">        Provider</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">of</span><span class="z-source">&lt;</span><span class="z-support z-class">AppStore</span><span class="z-source">&gt;(context</span><span class="z-punctuation">,</span><span class="z-source"> listen</span><span class="z-keyword z-operator">:</span><span class="z-constant z-language"> false</span><span class="z-source">)</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">getMemoList</span><span class="z-source">()</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">then</span><span class="z-source">((value) {</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">          setState</span><span class="z-source">(() {</span></span>
+<span class="giallo-l"><span class="z-source">            memoModelList </span><span class="z-keyword z-operator">=</span><span class="z-source"> value</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">          })</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">        })</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">      }</span></span>
+<span class="giallo-l"><span class="z-source">}</span></span></code></pre><h3 id="Pagging(Pull_refresh_and_load_more)">Pagging(Pull refresh and load more)</h3>
+<blockquote>
+<p>Example</p>
+</blockquote>
+<pre class="giallo z-code"><code data-lang="dart"><span class="giallo-l"><span class="z-keyword">class</span><span class="z-support z-class"> _MemoPageState</span><span class="z-keyword"> extends</span><span class="z-support z-class"> State</span><span class="z-source">&lt;</span><span class="z-support z-class">MemoPage</span><span class="z-source">&gt; {</span></span>
+<span class="giallo-l"><span class="z-support z-class">  List</span><span class="z-source">&lt;</span><span class="z-support z-class">MemoModel</span><span class="z-source">&gt; _memoModelList </span><span class="z-keyword z-operator">=</span><span class="z-source"> []</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-storage z-modifier">  late</span><span class="z-support z-class"> EasyRefreshController</span><span class="z-source"> _controller</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-storage z-modifier">  late</span><span class="z-support z-class"> int</span><span class="z-source"> _pageNum</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-storage z-modifier">  late</span><span class="z-support z-class"> int</span><span class="z-source"> _pageSize</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-storage z-modifier">  late</span><span class="z-support z-class"> int</span><span class="z-source"> _total</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type z-annotation">  @override</span></span>
+<span class="giallo-l"><span class="z-storage z-type">  void</span><span class="z-entity z-name z-function"> initState</span><span class="z-source">() {</span></span>
+<span class="giallo-l"><span class="z-source">    super</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">initState</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    resetPageInfo</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    _controller </span><span class="z-keyword z-operator">=</span><span class="z-support z-class"> EasyRefreshController</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-source">      controlFinishRefresh</span><span class="z-keyword z-operator">:</span><span class="z-constant z-language"> true</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">      controlFinishLoad</span><span class="z-keyword z-operator">:</span><span class="z-constant z-language"> true</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">    )</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type z-annotation">  @override</span></span>
+<span class="giallo-l"><span class="z-storage z-type">  void</span><span class="z-entity z-name z-function"> dispose</span><span class="z-source">() {</span></span>
+<span class="giallo-l"><span class="z-source">    _controller</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">dispose</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    super</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">dispose</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type">  void</span><span class="z-entity z-name z-function"> resetPageInfo</span><span class="z-source">() {</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    setState</span><span class="z-source">(() {</span></span>
+<span class="giallo-l"><span class="z-source">      _pageNum </span><span class="z-keyword z-operator">=</span><span class="z-constant z-numeric"> 1</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">      _pageSize </span><span class="z-keyword z-operator">=</span><span class="z-constant z-numeric"> 10</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">      _total </span><span class="z-keyword z-operator">=</span><span class="z-constant z-numeric"> 0</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">      _memoModelList </span><span class="z-keyword z-operator">=</span><span class="z-source"> []</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    })</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-support z-class">  Future</span><span class="z-source">&lt;</span><span class="z-support z-class">PageResult</span><span class="z-source">&gt;</span><span class="z-entity z-name z-function"> _loadData</span><span class="z-source">() </span><span class="z-keyword">async</span><span class="z-source"> {</span></span>
+<span class="giallo-l"><span class="z-storage z-type">    var</span><span class="z-source"> result </span><span class="z-keyword z-operator">=</span><span class="z-keyword"> await</span><span class="z-support z-class"> Provider</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">of</span><span class="z-source">&lt;</span><span class="z-support z-class">AppStore</span><span class="z-source">&gt;(context</span><span class="z-punctuation">,</span><span class="z-source"> listen</span><span class="z-keyword z-operator">:</span><span class="z-constant z-language"> false</span><span class="z-source">)</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">pageMemo</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-support z-class">        PageParam</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-source">            pageNum</span><span class="z-keyword z-operator">:</span><span class="z-source"> _pageNum</span><span class="z-punctuation">,</span><span class="z-source"> pageSize</span><span class="z-keyword z-operator">:</span><span class="z-source"> _pageSize</span><span class="z-punctuation">,</span><span class="z-source"> orderBy</span><span class="z-keyword z-operator">:</span><span class="z-string"> &quot; datetime desc&quot;</span><span class="z-source">))</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    if</span><span class="z-source"> (</span><span class="z-keyword z-operator">!</span><span class="z-source">mounted) {</span></span>
+<span class="giallo-l"><span class="z-keyword">      return</span><span class="z-support z-class"> Future</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">value</span><span class="z-source">(result)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    }</span></span>
+<span class="giallo-l"><span class="z-source">    _memoModelList</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">addAll</span><span class="z-source">(result</span><span class="z-punctuation">.</span><span class="z-source">rows)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    _total </span><span class="z-keyword z-operator">=</span><span class="z-source"> result</span><span class="z-punctuation">.</span><span class="z-source">total</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-support z-class">    LogHelper</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">debug</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-string">        &quot;[Memo] loadData pageNum = $</span><span class="z-variable z-parameter">_pageNum</span><span class="z-string">,pageSize = $</span><span class="z-variable z-parameter">_pageSize</span><span class="z-string">,total = $</span><span class="z-variable z-parameter">_total</span><span class="z-string">&quot;</span><span class="z-source">)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    return</span><span class="z-support z-class"> Future</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">value</span><span class="z-source">(result)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type">  void</span><span class="z-entity z-name z-function"> _refreshList</span><span class="z-source">() </span><span class="z-keyword">async</span><span class="z-source"> {</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    resetPageInfo</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    await</span><span class="z-entity z-name z-function"> _loadData</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    setState</span><span class="z-source">(() {})</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    _controller</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">finishRefresh</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    _controller</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">resetFooter</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type">  void</span><span class="z-entity z-name z-function"> _loadList</span><span class="z-source">() </span><span class="z-keyword">async</span><span class="z-source"> {</span></span>
+<span class="giallo-l"><span class="z-source">    _pageNum</span><span class="z-keyword z-operator">++</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-support z-class">    PageResult</span><span class="z-source"> result </span><span class="z-keyword z-operator">=</span><span class="z-keyword"> await</span><span class="z-entity z-name z-function"> _loadData</span><span class="z-source">()</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    setState</span><span class="z-source">(() {})</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    if</span><span class="z-source"> (result</span><span class="z-punctuation">.</span><span class="z-source">hasNext) {</span></span>
+<span class="giallo-l"><span class="z-source">      _controller</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">finishLoad</span><span class="z-source">(</span><span class="z-support z-class">IndicatorResult</span><span class="z-punctuation">.</span><span class="z-source">success)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    } </span><span class="z-keyword">else</span><span class="z-source"> {</span></span>
+<span class="giallo-l"><span class="z-source">      _controller</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">finishLoad</span><span class="z-source">(</span><span class="z-support z-class">IndicatorResult</span><span class="z-punctuation">.</span><span class="z-source">noMore)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">    }</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-storage z-type z-annotation">  @override</span></span>
+<span class="giallo-l"><span class="z-support z-class">  Widget</span><span class="z-entity z-name z-function"> build</span><span class="z-source">(</span><span class="z-support z-class">BuildContext</span><span class="z-source"> context) {</span></span>
+<span class="giallo-l"><span class="z-keyword">    return</span><span class="z-support z-class"> Scaffold</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-source">        body</span><span class="z-keyword z-operator">:</span><span class="z-support z-class"> EasyRefresh</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-source">            refreshOnStart</span><span class="z-keyword z-operator">:</span><span class="z-constant z-language"> true</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">            controller</span><span class="z-keyword z-operator">:</span><span class="z-source"> _controller</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">            header</span><span class="z-keyword z-operator">:</span><span class="z-support z-class"> RefreshHeader</span><span class="z-source">(context)</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">            footer</span><span class="z-keyword z-operator">:</span><span class="z-support z-class"> RefreshFooter</span><span class="z-source">(context)</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">            onRefresh</span><span class="z-keyword z-operator">:</span><span class="z-source"> _refreshList</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">            onLoad</span><span class="z-keyword z-operator">:</span><span class="z-source"> _loadList</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">            child</span><span class="z-keyword z-operator">:</span><span class="z-support z-class"> CustomScrollView</span><span class="z-source">(slivers</span><span class="z-keyword z-operator">:</span><span class="z-source"> [</span></span>
+<span class="giallo-l"><span class="z-support z-class">              SliverGrid</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-source">                delegate</span><span class="z-keyword z-operator">:</span><span class="z-support z-class"> SliverChildBuilderDelegate</span><span class="z-source">((context</span><span class="z-punctuation">,</span><span class="z-source"> index) {</span></span>
+<span class="giallo-l"><span class="z-keyword">                  return</span><span class="z-entity z-name z-function"> _createMemoItem</span><span class="z-source">(_memoModelList[index])</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">                }</span><span class="z-punctuation">,</span><span class="z-source"> childCount</span><span class="z-keyword z-operator">:</span><span class="z-source"> _memoModelList</span><span class="z-punctuation">.</span><span class="z-source">length)</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">                gridDelegate</span><span class="z-keyword z-operator">:</span><span class="z-storage z-modifier"> const</span><span class="z-support z-class"> SliverGridDelegateWithMaxCrossAxisExtent</span><span class="z-source">(</span></span>
+<span class="giallo-l"><span class="z-source">                    maxCrossAxisExtent</span><span class="z-keyword z-operator">:</span><span class="z-constant z-numeric"> 210</span><span class="z-source">)</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">              )</span></span>
+<span class="giallo-l"><span class="z-source">            ]))</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">        floatingActionButton</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-function"> _getFloatingActionButton</span><span class="z-source">())</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-source">  }</span></span>
+<span class="giallo-l"><span class="z-source">}</span></span></code></pre><h3 id="HttpRequest">HttpRequest</h3>
+<pre class="giallo z-code"><code data-lang="dart"><span class="giallo-l"><span class="z-support z-class">Response</span><span class="z-source"> result </span><span class="z-keyword z-operator">=</span><span class="z-keyword"> await</span><span class="z-support z-class"> HttpClient</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">instance</span><span class="z-source">()</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">get</span><span class="z-source">(</span><span class="z-string">&quot;/&quot;</span><span class="z-source">)</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-support z-class">LogHelper</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">info</span><span class="z-source">(result</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">body</span><span class="z-source">()</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">toString</span><span class="z-source">())</span><span class="z-punctuation">;</span></span></code></pre><h2 id="JSON_模型生成">JSON 模型生成</h2>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">dart</span><span class="z-string"> run build_runner build</span></span></code></pre><h2 id="发布">发布</h2>
+<h3 id="Android">Android</h3>
+<blockquote>
+<p><a rel="external" href="https://docs.flutter.dev/deployment/android">构建和发布 Android 应用 | Flutter</a></p>
+</blockquote>
+<ol>
+<li>
+<p>创建密钥库</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">keytool</span><span class="z-string"> -genkey -v -keystore .</span><span class="z-constant z-character z-escape">\a</span><span class="z-string">ndroid-app-keystore.jks -storetype JKS -keyalg RSA -keysize</span><span class="z-constant z-numeric"> 2048</span><span class="z-string"> -validity</span><span class="z-constant z-numeric"> 10000</span><span class="z-string"> -alias android-app</span></span></code></pre></li>
+<li>
+<p>创建 <code>[project]/android/key.properties</code> 并引用密钥库</p>
+<pre class="giallo z-code"><code data-lang="ini"><span class="giallo-l"><span class="z-keyword z-other z-definition z-ini">storePassword</span><span class="z-punctuation z-separator z-key-value">=</span><span class="z-source">&lt;上一步的密码&gt;</span></span>
+<span class="giallo-l"><span class="z-keyword z-other z-definition z-ini">keyPassword</span><span class="z-punctuation z-separator z-key-value">=</span><span class="z-source">&lt;上一步的密码&gt;</span></span>
+<span class="giallo-l"><span class="z-keyword z-other z-definition z-ini">keyAlias</span><span class="z-punctuation z-separator z-key-value">=</span><span class="z-source">android-app</span></span>
+<span class="giallo-l"><span class="z-keyword z-other z-definition z-ini">storeFile</span><span class="z-punctuation z-separator z-key-value">=</span><span class="z-source">&lt;密钥库文件路径&gt;</span></span></code></pre></li>
+<li>
+<p>执行发布命令（以生产环境为例）</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">flutter</span><span class="z-string"> build apk --dart-define=DART_DEFINE_APP_ENV=prod</span></span></code></pre></li>
+</ol>
+<h2 id="提交规范">提交规范</h2>
+<blockquote>
+<p><a rel="external" href="https://www.conventionalcommits.org/zh-hans/v1.0.0/">https://www.conventionalcommits.org/zh-hans/v1.0.0/</a></p>
+</blockquote>
+<h2 id="Web_端_Sqlite3">Web 端 Sqlite3</h2>
+<blockquote>
+<p>sqflite_common_ffi_web</p>
+</blockquote>
+<h3 id="安装二进制文件">安装二进制文件</h3>
+<p>需将 <a rel="external" href="https://github.com/simolus3/sqlite3.dart/releases">sqlite3.wasm</a> 及相关 worker 文件放入 web 目录：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">dart</span><span class="z-string"> run sqflite_common_ffi_web:setup</span></span></code></pre>
+<p>会在 web 目录下创建：</p>
+<ul>
+<li><code>sqlite3.wasm</code></li>
+<li><code>sqflite_sw.js</code></li>
+</ul>
+<p>更新 sqlite3 版本后需使用 <code>--force</code> 重新安装：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">dart</span><span class="z-string"> run sqflite_common_ffi_web:setup --force</span></span></code></pre><h2 id="离线地图">离线地图</h2>
+<ol>
+<li>使用 QGIS 生成 XYZ 瓦片：工具箱 → 生成 XYZ 瓦片（目录）</li>
+<li>生成 <code>pubspec.yaml</code> 资源路径</li>
+</ol>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">ls</span><span class="z-string"> -R assets</span><span class="z-keyword z-operator"> |</span><span class="z-entity z-name z-function"> grep</span><span class="z-punctuation z-definition z-string z-string"> &#39;:&#39;</span></span></code></pre><h2 id="坐标系">坐标系</h2>
+<ol>
+<li>服务端使用 WGS84 格式存储坐标</li>
+<li>客户端使用高德地图（GCJ-02 坐标系）</li>
+<li>使用 <a rel="external" href="https://pub-web.flutter-io.cn/packages/coordtransform_dart">coordtransform_dart</a> 进行坐标转换</li>
+</ol>
+<h2 id="常见问题">常见问题</h2>
+<p>Q1. setState() or markNeedsBuild() called during build</p>
+<blockquote>
+<p><a rel="external" href="https://fluttercorner.com/setstate-or-markneedsbuild-called-during-build-a-vertical-renderflex-overflowed/">https://fluttercorner.com/setstate-or-markneedsbuild-called-during-build-a-vertical-renderflex-overflowed/</a></p>
+</blockquote>
+<p>解决方案：使用回调函数延迟 setState 调用</p>
+<pre class="giallo z-code"><code data-lang="dart"><span class="giallo-l"><span class="z-support z-class">WidgetsBinding</span><span class="z-punctuation">.</span><span class="z-source">instance</span><span class="z-punctuation">.</span><span class="z-entity z-name z-function">addPostFrameCallback</span><span class="z-source">((_){</span></span>
+<span class="giallo-l"><span class="z-comment">  // 你的代码</span></span>
+<span class="giallo-l"><span class="z-source">})</span><span class="z-punctuation">;</span></span></code></pre><h2 id="其他">其他</h2>
+<ol>
+<li>pod install 速度慢</li>
+</ol>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-support z-function z-builtin">cd</span><span class="z-string"> ./ios/</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 如有代理，取消下面注释</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 all_proxy=socks5://127.0.0.1:7890</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">pod</span><span class="z-string"> install --verbose</span></span></code></pre><h2 id="相关项目">相关项目</h2>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

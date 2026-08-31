@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/debugging/vad-listener">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link active">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link active leaf">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/debugging/vad-listener/#VAD_与_Listener">VAD 与 Listener</a></li>
+    
+  </ul>
+  
+  <h1 id="VAD_与_Listener">VAD 与 Listener</h1>
+<h2 id="架构概述">架构概述</h2>
+<p>语音活动检测（VAD）和音频监听器（Listener）是语音交互管线的起点。两者分工明确：</p>
+<ul>
+<li><strong>VAD</strong>：纯决策引擎，只回答"当前帧是否有语音"，不管理任何音频缓冲区</li>
+<li><strong>Listener</strong>：音频管道管理器，负责 Opus 解码、VAD 窗口循环、音频积累和状态管理</li>
+</ul>
+<p>VAD 模块位于 <code>apps/server/api/src/vad/</code>（Vad trait + VadManager + model/），Listener 位于 <code>apps/server/api/src/ws/session/listener.rs</code>，会话记录位于 <code>apps/server/api/src/record/</code>。</p>
+<h3 id="处理流程">处理流程</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>    participant Device as Device</span></span>
+<span class="giallo-l"><span>    participant Listener as DefaultListener</span></span>
+<span class="giallo-l"><span>    participant VAD as Vad</span></span>
+<span class="giallo-l"><span>    participant ASR as Asr</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>    Device -&gt;&gt; Listener: Opus 音频包</span></span>
+<span class="giallo-l"><span>    Listener -&gt;&gt; Listener: Opus 解码 → PCM</span></span>
+<span class="giallo-l"><span>    Listener -&gt;&gt; Listener: 追加到 temp_voice_data</span></span>
+<span class="giallo-l"><span>    loop 每个 256-sample 窗口</span></span>
+<span class="giallo-l"><span>        Listener -&gt;&gt; Listener: 从 temp_voice_data 取出窗口</span></span>
+<span class="giallo-l"><span>        Listener -&gt;&gt; Listener: 推入 prefix_buffer（ring buffer）</span></span>
+<span class="giallo-l"><span>        Listener -&gt;&gt; VAD: accept_waveform(&amp;window)</span></span>
+<span class="giallo-l"><span>        VAD -&gt;&gt; VAD: Silero VAD 预测分数</span></span>
+<span class="giallo-l"><span>        VAD --&gt;&gt; Listener: 返回 score</span></span>
+<span class="giallo-l"><span>        Listener -&gt;&gt; Listener: is_speech()?</span></span>
+<span class="giallo-l"><span>        alt 首次检测到语音</span></span>
+<span class="giallo-l"><span>            Listener -&gt;&gt; Listener: 将 prefix_buffer 刷入 voice_data</span></span>
+<span class="giallo-l"><span>        else 连续语音帧</span></span>
+<span class="giallo-l"><span>            Listener -&gt;&gt; Listener: 将当前窗口追加到 voice_data</span></span>
+<span class="giallo-l"><span>        else 非语音帧</span></span>
+<span class="giallo-l"><span>            Listener -&gt;&gt; Listener: prefix_flushed = false</span></span>
+<span class="giallo-l"><span>        end</span></span>
+<span class="giallo-l"><span>    end</span></span>
+<span class="giallo-l"><span>    Listener -&gt;&gt; Listener: 检查静默超时</span></span>
+<span class="giallo-l"><span>    alt 超时</span></span>
+<span class="giallo-l"><span>        Listener -&gt;&gt; Listener: 切换到 End 状态</span></span>
+<span class="giallo-l"><span>        Listener -&gt;&gt; ASR: 转录 voice_data</span></span>
+<span class="giallo-l"><span>    end</span></span></code></pre><h2 id="VAD_模块">VAD 模块</h2>
+<h3 id="Vad_trait">Vad trait</h3>
+<p>定义在 <code>apps/server/api/src/vad/mod.rs</code>：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub trait</span><span class="z-entity z-name z-type"> Vad</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// Feed audio frame (window_size samples). Returns speech probability [0, 1].</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> accept_waveform</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> samples</span><span class="z-keyword z-operator">: &amp;</span><span class="z-punctuation">[</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation">])</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Result</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> ModelError</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// Whether the state machine currently considers speech active.</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> is_speech</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> bool</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// Reset all internal state.</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> clear</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// Number of samples expected per frame.</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> window_size</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type z-numeric z-rust"> usize</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><table><thead><tr><th>方法</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>accept_waveform</code></td><td>送入一帧 PCM 数据，返回语音分数 [0, 1]，VAD 内部维护状态机</td></tr>
+<tr><td><code>is_speech</code></td><td>根据内部状态（分数、持续静默时间等）判断当前是否处于语音状态</td></tr>
+<tr><td><code>clear</code></td><td>重置 VAD 内部状态，用于一轮对话结束后清理</td></tr>
+<tr><td><code>window_size</code></td><td>期望的输入帧大小（单位：sample）</td></tr>
+</tbody></table>
+<p><strong>设计原则</strong>：VAD 只做决策，不存储音频样本。旧版设计中 VAD 内部持有 <code>samples</code>、<code>front()</code>、<code>pop()</code> 等音频缓冲区方法，新版将其全部移除，音频累积统一由 Listener 管理。</p>
+<h3 id="模型实现">模型实现</h3>
+<table><thead><tr><th>模型</th><th>配置名</th><th>窗口大小</th><th>说明</th></tr></thead><tbody>
+<tr><td><strong>VadEarshot</strong></td><td><code>earshot</code></td><td>256 samples (16ms)</td><td>基于 Silero VAD，权重嵌入二进制，无外部依赖</td></tr>
+<tr><td><strong>VadVoid</strong></td><td><code>void</code></td><td>512 samples</td><td>固定返回 <code>is_speech() = true</code>，用于测试</td></tr>
+</tbody></table>
+<h4 id="VadEarshot">VadEarshot</h4>
+<p>底层使用 <a rel="external" href="https://crates.io/crates/earshot">earshot</a> 库，内嵌 Silero VAD 模型权重（<code>include_bytes!</code>），机器学习特征计算完全在纯 Rust 中完成，无需 ONNX 运行时。</p>
+<p>噪声门逻辑：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// 从非语音切换到语音需要连续 5 帧分数 &gt;= threshold</span></span>
+<span class="giallo-l"><span class="z-keyword">if</span><span class="z-keyword z-operator"> !</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-keyword z-operator">.</span><span class="z-source">is_speech </span><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-keyword">    if</span><span class="z-source"> score</span><span class="z-keyword z-operator"> &gt;=</span><span class="z-source"> threshold</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">        self</span><span class="z-keyword z-operator">.</span><span class="z-source">prediction_list</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">push</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">score</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span><span class="z-keyword"> else</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">        self</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">clear</span><span class="z-punctuation">();</span><span class="z-punctuation z-definition z-comment z-comment">              // 任何一帧低于阈值就重置</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-keyword">    if</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-keyword z-operator">.</span><span class="z-source">prediction_list</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">len</span><span class="z-punctuation">()</span><span class="z-keyword z-operator"> &gt;=</span><span class="z-constant z-numeric"> 5</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">        self</span><span class="z-keyword z-operator">.</span><span class="z-source">is_speech </span><span class="z-keyword z-operator">=</span><span class="z-constant z-language"> true</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// 语音状态下累积静默时间，超过 min_silence_duration 后切回非语音</span></span>
+<span class="giallo-l"><span class="z-keyword">if</span><span class="z-source"> score</span><span class="z-keyword z-operator"> &gt;=</span><span class="z-source"> threshold</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">    self</span><span class="z-keyword z-operator">.</span><span class="z-source">current_silence_duration </span><span class="z-keyword z-operator">=</span><span class="z-constant z-numeric"> 0</span><span class="z-punctuation">.</span><span class="z-constant z-numeric">0</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span><span class="z-keyword"> else</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">    self</span><span class="z-keyword z-operator">.</span><span class="z-source">current_silence_duration </span><span class="z-keyword z-operator">+=</span><span class="z-source"> frame_duration_ms</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    if</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-keyword z-operator">.</span><span class="z-source">current_silence_duration</span><span class="z-keyword z-operator"> &gt;</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-keyword z-operator">.</span><span class="z-source">min_silence_duration </span><span class="z-punctuation">{</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">        self</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">clear</span><span class="z-punctuation">();</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><h4 id="VadVoid">VadVoid</h4>
+<p>固定返回 <code>is_speech() = true</code>、<code>accept_waveform</code> 返回分数 1.0。用于集成测试中跳过 VAD 决策，直接验证 Listener 和 ASR 管道。</p>
+<h3 id="配置">配置</h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">#</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">derive</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">Debug</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> Deserialize</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> Clone</span><span class="z-punctuation">)]</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> VadConfig</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> model</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">VadModel</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">            // earshot / void</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> variant</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">String</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> path</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">String</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> num_threads</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">i32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> threshold</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">             // 语音阈值，默认 0.5</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> min_silence_duration</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">  // 静默判定超时（ms），默认 1000</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><pre class="giallo z-code"><code data-lang="toml"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># application.toml（由 flake 环境变量自动注入）</span></span>
+<span class="giallo-l"><span class="z-source">vad_model</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;earshot&quot;</span></span>
+<span class="giallo-l"><span class="z-source">vad_threshold</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-constant z-numeric"> 0.5</span></span>
+<span class="giallo-l"><span class="z-source">vad_min_silence_duration</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-constant z-numeric"> 1000.0</span></span></code></pre><table><thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>threshold</code></td><td><code>0.5</code></td><td>VAD 语音判定阈值，越低越敏感。阈值扫描结果见<a href="https://lastsunday.github.io/vanling/development/debugging/vad-listener/#%E6%B5%8B%E8%AF%95%E7%AD%96%E7%95%A5">测试</a></td></tr>
+<tr><td><code>min_silence_duration</code></td><td><code>1000</code></td><td>语音结束判定：连续静默超过此值（ms）才认为语音结束</td></tr>
+</tbody></table>
+<h3 id="Manager_模式">Manager 模式</h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// 初始化（应用启动时调用一次）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">VadManager</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">init</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">config</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">.</span><span class="z-keyword">await</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// 使用（create_model 为静态方法，无需 global()）</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">let</span><span class="z-source"> vad</span><span class="z-keyword z-operator"> =</span><span class="z-entity z-name z-type"> VadManager</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">create_model</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-entity z-name z-type">VadConfig</span><span class="z-punctuation"> {</span><span class="z-keyword z-operator"> ...</span><span class="z-punctuation"> });</span><span class="z-punctuation z-definition z-comment z-comment">  // Box&lt;dyn Vad&gt;</span></span>
+<span class="giallo-l"><span class="z-source">vad</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">accept_waveform</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-other z-rust">samples</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">?</span><span class="z-punctuation">;</span></span></code></pre><h2 id="Listener_模块">Listener 模块</h2>
+<h3 id="Listener_trait">Listener trait</h3>
+<p>定义在 <code>apps/server/api/src/ws/session/listener.rs</code>：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">#</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">async_trait</span><span class="z-punctuation">]</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub trait</span><span class="z-entity z-name z-type"> Listener</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> accept</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> input</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> ListenInput</span><span class="z-punctuation">);</span><span class="z-punctuation z-definition z-comment z-comment">                          // 处理 Opus 包或文本</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> set_state</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> state</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> ListenState</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> get_state</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> ListenState</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> reset</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> silence_voice_timeout</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">i64</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> set_sender</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> tx</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> UnboundedSender</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">OutputMessage</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> take_voice</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span><span class="z-punctuation z-definition z-comment z-comment">                              // 提取语音数据（不触发 ASR）</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> take_result</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-punctuation"> (</span><span class="z-entity z-name z-type">Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> Result</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">ListenResult</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> ModelError</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">);</span><span class="z-punctuation z-definition z-comment z-comment"> // ASR 转录</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> clone_asr</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Mutex</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Asr</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;&gt;&gt;</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    async fn</span><span class="z-entity z-name z-function"> get_raw_pcm</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span><span class="z-punctuation z-definition z-comment z-comment">                             // 调试/测试用</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><h3 id="状态机">状态机</h3>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Idle ──(首次 listen())──▶ Listening(false)</span></span>
+<span class="giallo-l"><span>                             │</span></span>
+<span class="giallo-l"><span>                   (VAD 检测到语音)</span></span>
+<span class="giallo-l"><span>                             ▼</span></span>
+<span class="giallo-l"><span>                        Listening(true)</span></span>
+<span class="giallo-l"><span>                             │</span></span>
+<span class="giallo-l"><span>                   (静默超时到达)</span></span>
+<span class="giallo-l"><span>                             ▼</span></span>
+<span class="giallo-l"><span>                           End</span></span>
+<span class="giallo-l"><span>                             │</span></span>
+<span class="giallo-l"><span>                       (reset())</span></span>
+<span class="giallo-l"><span>                             ▼</span></span>
+<span class="giallo-l"><span>                           Idle</span></span></code></pre><table><thead><tr><th>状态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Idle</code></td><td>初始状态，等待第一帧音频</td></tr>
+<tr><td><code>Listening(false)</code></td><td>正在接收音频，VAD 尚未确认语音</td></tr>
+<tr><td><code>Listening(true)</code></td><td>正在接收音频，已检测到语音</td></tr>
+<tr><td><code>End</code></td><td>静默超时，会话结束，准备转录</td></tr>
+</tbody></table>
+<h3 id="DefaultListener">DefaultListener</h3>
+<h4 id="数据结构">数据结构</h4>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> DefaultListener</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-source">    temp_voice_data</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                // Opus 解码后的 PCM 暂存区</span></span>
+<span class="giallo-l"><span class="z-source">    voice_data</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                     // 累积的语音 PCM（最终送 ASR）</span></span>
+<span class="giallo-l"><span class="z-source">    vad</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Vad</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">    asr</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Mutex</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Asr</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">    decoder</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> StdMutex</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-source">opus</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-type">Decoder</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> state</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> ListenState</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">    silence_voice_timeout</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">i64</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">       // 单位 ms</span></span>
+<span class="giallo-l"><span class="z-source">    latest_speaking_time</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">i64</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">    audio_config</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">AudioConfig</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-source">    error_tx</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">UnboundedSender</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">OutputMessage</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    // 前缀缓冲（300ms ring buffer）</span></span>
+<span class="giallo-l"><span class="z-source">    prefix_buffer</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                  // 最大 4800 samples</span></span>
+<span class="giallo-l"><span class="z-source">    prefix_flushed</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> bool</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                     // 当前轮次是否已刷入</span></span>
+<span class="giallo-l"><span class="z-source">    total_pcm</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                      // 调试用累积 PCM</span></span>
+<span class="giallo-l"><span class="z-source">    pending_text</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">String</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">             // 文本输入暂存</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><h4 id="accept()_循环">accept() 循环</h4>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>ListenInput</span></span>
+<span class="giallo-l"><span>  │</span></span>
+<span class="giallo-l"><span>  ├── Text(text) → pending_text = Some(text)</span></span>
+<span class="giallo-l"><span>  │</span></span>
+<span class="giallo-l"><span>  └── Audio(opus_packet)</span></span>
+<span class="giallo-l"><span>        │</span></span>
+<span class="giallo-l"><span>        ▼</span></span>
+<span class="giallo-l"><span>      OpusDecoder.decode_float() → PCM f32</span></span>
+<span class="giallo-l"><span>        │</span></span>
+<span class="giallo-l"><span>        ▼</span></span>
+<span class="giallo-l"><span>      追加到 temp_voice_data</span></span>
+<span class="giallo-l"><span>        │</span></span>
+<span class="giallo-l"><span>        ▼</span></span>
+<span class="giallo-l"><span>      while temp_voice_data.len() &gt; window_size:</span></span>
+<span class="giallo-l"><span>        │</span></span>
+<span class="giallo-l"><span>        ├─ drain window_size samples → window</span></span>
+<span class="giallo-l"><span>        ├─ prefix_buffer.extend(&amp;window)</span></span>
+<span class="giallo-l"><span>        ├─ trim prefix_buffer to ≤4800</span></span>
+<span class="giallo-l"><span>        ├─ VAD.accept_waveform(&amp;window)  (同步)</span></span>
+<span class="giallo-l"><span>        │</span></span>
+<span class="giallo-l"><span>        └─ if VAD.is_speech():</span></span>
+<span class="giallo-l"><span>        │      state = Listening(true)</span></span>
+<span class="giallo-l"><span>        │      if !prefix_flushed:</span></span>
+<span class="giallo-l"><span>        │          voice_data += prefix_buffer (300ms 前缀)</span></span>
+<span class="giallo-l"><span>        │          prefix_flushed = true</span></span>
+<span class="giallo-l"><span>        │          prefix_buffer = Vec::new()</span></span>
+<span class="giallo-l"><span>        │      else:</span></span>
+<span class="giallo-l"><span>        │          voice_data += window (仅当前帧)</span></span>
+<span class="giallo-l"><span>        │   else:</span></span>
+<span class="giallo-l"><span>        │      prefix_flushed = false</span></span>
+<span class="giallo-l"><span>        │</span></span>
+<span class="giallo-l"><span>        ▼</span></span>
+<span class="giallo-l"><span>      检查静默超时</span></span></code></pre><h4 id="前缀缓冲设计">前缀缓冲设计</h4>
+<p><strong>目的</strong>：VAD 不能零延迟检测语音起始。当 VAD 报告 <code>is_speech = true</code> 时，说话人实际已经开始发声 ~5-16 帧（80-256ms）。如果没有前缀缓冲，voice_data 会丢失语音起始部分。</p>
+<p><strong>实现</strong>：</p>
+<ul>
+<li>大小：<code>PREFIX_SAMPLES_MAX = 4800</code>（300ms × 16000Hz）</li>
+<li>机制：每个 VAD 窗口都追加到 <code>prefix_buffer</code>，超出部分从头部裁剪（ring buffer）</li>
+<li>首次 <code>is_speech()</code> 时，整个 <code>prefix_buffer</code> 被移到 <code>voice_data</code> 作为前缀</li>
+<li>后续连续语音帧只追加当前窗口，不重复刷前缀</li>
+<li>非语音帧重置 <code>prefix_flushed = false</code>，保证下一轮语音有新的前缀</li>
+<li><code>reset()</code> 时清空前缀缓冲和标志位</li>
+</ul>
+<h4 id="静默超时">静默超时</h4>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">if let</span><span class="z-punctuation"> (</span><span class="z-entity z-name z-type">Some</span><span class="z-punctuation">(</span><span class="z-source">timeout</span><span class="z-punctuation">),</span><span class="z-entity z-name z-type"> Some</span><span class="z-punctuation">(</span><span class="z-source">last_speech</span><span class="z-punctuation">))</span><span class="z-keyword z-operator"> =</span><span class="z-punctuation"> (</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-keyword z-operator">.</span><span class="z-source">silence_voice_timeout</span><span class="z-punctuation">,</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-keyword z-operator">.</span><span class="z-source">latest_speaking_time</span><span class="z-punctuation">) {</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">    let</span><span class="z-source"> elapsed</span><span class="z-keyword z-operator"> =</span><span class="z-entity z-name z-type"> Local</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">now</span><span class="z-punctuation">()</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">timestamp_millis</span><span class="z-punctuation">()</span><span class="z-keyword z-operator"> -</span><span class="z-source"> last_speech</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    if</span><span class="z-source"> elapsed</span><span class="z-keyword z-operator"> &gt;=</span><span class="z-source"> timeout</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-variable z-language z-self z-rust">        self</span><span class="z-keyword z-operator">.</span><span class="z-source">state </span><span class="z-keyword z-operator">=</span><span class="z-entity z-name z-type"> ListenState</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-type">End</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<ul>
+<li><code>latest_speaking_time</code> 在每个 <code>is_speech()</code> 帧更新</li>
+<li>静默超时到达后 state 变为 <code>End</code>，由 Session 调用 <code>take_result()</code> 触发 ASR 转录</li>
+</ul>
+<h2 id="测试策略">测试策略</h2>
+<h3 id="VAD_层测试">VAD 层测试</h3>
+<p><code>tests/vad_test.rs</code> — 功能验证：</p>
+<ul>
+<li>语音 → 沉默 → 语音 三轮状态切换</li>
+<li>验证 <code>is_speech()</code> 正确跟随音频内容变化</li>
+</ul>
+<p><code>tests/vad_analysis_test.rs</code> — 精度评估（<code>#[ignore]</code>，需 TEN-vad 测试集）：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>=== Summary (threshold=0.5) ===</span></span>
+<span class="giallo-l"><span>frames   correct  TP       FP       TN       FN       Precision    Recall       F1</span></span>
+<span class="giallo-l"><span>4418     3815     3218     508      597      95       0.8637       0.9713       0.9143</span></span></code></pre><table><thead><tr><th>阈值</th><th>精确率</th><th>召回率</th><th>F1</th></tr></thead><tbody>
+<tr><td>0.50</td><td>0.864</td><td><strong>0.971</strong></td><td>0.914</td></tr>
+<tr><td>0.70</td><td><strong>0.930</strong></td><td>0.925</td><td><strong>0.928</strong></td></tr>
+</tbody></table>
+<p>当前默认阈值 <code>0.50</code> 偏向召回率（减少漏切语音），适合"不要切断说话"的生产需求。</p>
+<h3 id="Listener_层测试">Listener 层测试</h3>
+<p><code>tests/listener_test.rs</code> — 5 个白盒测试：</p>
+<table><thead><tr><th>测试</th><th>场景</th></tr></thead><tbody>
+<tr><td><code>test_prefix_included_in_first_speech</code></td><td>静默 2s → 语音，验证 voice_data ≥ 4800</td></tr>
+<tr><td><code>test_voice_data_grows_monotonically</code></td><td>两轮连续语音，数据只增不减</td></tr>
+<tr><td><code>test_prefix_fresh_after_silence</code></td><td>轮次间 3s 静默后前缀重新填充</td></tr>
+<tr><td><code>test_reset_clears_everything</code></td><td>Reset 后 voice_data 为空，再填充有新的前缀</td></tr>
+<tr><td><code>test_silence_only_no_end_state</code></td><td>纯静音未设超时，永不进入 End</td></tr>
+</tbody></table>
+<h3 id="集成测试">集成测试</h3>
+<p><code>tests/session/</code> — 完整管道集成测试（<code>#[ignore]</code>，需真实模型文件）：</p>
+<ul>
+<li><code>test_chat_flow_hello</code>：Void VAD + Void ASR + Echo LLM + Mute TTS</li>
+<li><code>test_chat_flow_listen_manual</code>：Opus 编码/解码 + VAD + Void ASR</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>
