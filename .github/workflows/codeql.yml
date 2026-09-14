@@ -74,7 +74,7 @@ jobs:
         run: nix develop --command cargo build --workspace --exclude vanling-server --verbose
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        uses: github/codeql-action/autobuild@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         if: matrix.language != 'rust'
 
       - name: Perform CodeQL Analysis
