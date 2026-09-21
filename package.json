@@ -44,7 +44,7 @@
     "@unocss/preset-uno": "66.7.5",
     "@vitejs/plugin-react": "6.0.3",
     "@vitejs/plugin-react-oxc": "0.4.3",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "5.0.0",
     "@vitest/ui": "4.1.10",
     "autoprefixer": "10.5.2",
     "eslint": "10.6.0",
