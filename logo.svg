@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256px" height="256px" xmlns:bx="https://boxy-svg.com">
+  <defs>
+    <path id="path-0" d="M 145.88424217488267 89.58582235425041 L 182.1134983309181 116.15441954711756" style="fill: none;"/>
+    <bx:grid x="0" y="0" width="100" height="105.072" divisions="1"/>
+  </defs>
+  <g transform="matrix(14.231699, 0, 0, 13.269686, -1912.203735, -545.152832)" style="">
+    <path style="fill: none; stroke: rgb(0, 0, 0); stroke-width: 1; transform-origin: 146.669px 50.678px;" d="M 152.217 46.882 C 150.052 46.574 146.355 45.349 143.909 42.397 C 143.829 42.3 142.579 41.583 142.3 41.861 C 140.997 43.165 143.641 45.613 143.641 45.613 C 143.641 45.613 141.644 45.198 141.496 45.346 C 139.9 46.937 143.909 49.098 143.909 49.098 C 143.909 49.098 141.373 49.757 141.228 49.902 C 140.617 50.514 143.324 51.309 143.641 51.778 C 144.512 53.069 144.587 53.886 145.974 56.087 C 146.989 57.697 148.974 59.705 152.217 59.55"/>
+    <line style="fill: none; stroke: rgb(0, 0, 0); stroke-width: 0.5px; transform-origin: 143.477px 58.322px;" x1="139.781" y1="59.322" x2="147.173" y2="59.322"/>
+    <line style="fill: none; stroke: rgb(0, 0, 0); stroke-width: 0.5px;" x1="137.315" y1="56.835" x2="144.707" y2="56.835"/>
+    <line style="fill: none; stroke: rgb(0, 0, 0); stroke-width: 0.5px;" x1="134.605" y1="54.495" x2="143.605" y2="54.495"/>
+  </g>
+</svg>
