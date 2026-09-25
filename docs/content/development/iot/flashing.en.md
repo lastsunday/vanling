@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "3027e22a58607a89565b8d4336273d26144bf3a4"
-translated_at = "2026-09-11T00:00:00Z"
+source_file_hash = "10f57b94a030435c8eba595f4cecbff89e5a715a"
+translated_at = "2026-09-23T04:30:00Z"
 +++
 
 # Firmware Installation
@@ -34,6 +34,8 @@ moon run iot:image-s3        # lckfb-szpi-esp32s3 only
 ```
 
 > s3 builds dispatch via `scripts/iot-xtensa.sh`: a fully installed espup `esp` 1.95.0.0 toolchain (CI/release) compiles natively; otherwise the `espressif/idf-rust:esp32s3_1.95.0.0` container is used locally (macOS Intel). Both use the same toolchain version, so artifacts are byte-identical.
+
+> Dependency cache: container builds resolve `-Z build-std` against the esp toolchain's own `library/Cargo.lock` (e.g. memchr 2.7.6, which differs from the project `Cargo.lock`). When the offline cache is incomplete, the first build boots online once automatically (see `bootstrapping once online`); later builds stay `--offline` and byte-identical, so no manual pre-warming is needed.
 
 `iot:image` pulls the per-board `build-*` tasks and writes artifacts to the repo-root `dist/`, with names identical to the CI ones:
 

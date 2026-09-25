@@ -2,8 +2,8 @@
 title = "Cargo Feature Criteria and Cohesion"
 weight = 10
 [extra]
-source_file_hash = "ca843a85fe32b9d5f493d4dca98257820f8c8d42"
-translated_at = "2026-09-11T00:00:00Z"
+source_file_hash = "2cc0dea6f66a1a58ee1699ca14e1e05c96797221"
+translated_at = "2026-09-12T11:59:13Z"
 +++
 
 # Cargo Feature Criteria and Cohesion
@@ -60,12 +60,12 @@ Cargo features are **additive** (union; enabling one must not disable another) a
 
 ```
 iot-core     — no [features]
-iot-bsp-esp  — component features (button / pca9557 / ws2812 / st7789 / display-light)
+iot-bsp-esp  — component features (button / ft6336 / pca9557 / ws2812 / st7789 / display-light)
                board features (esp32c6-devkitc-1 / lckfb-szpi-esp32s3) = component aggregate
 iot-app      — esp32c6 (chip alias) / esp32c6-devkitc-1 (default) / lckfb-szpi-esp32s3
 ```
 
 - **Component features are a module axis**: one feature = one component module (gated once at the `mod` declaration in `components/`; off means the file does not exist). Board features only aggregate the components their wiring needs, with no loose dependencies. Empty features (e.g. `button = []`) are legalized by module endorsement (rule 1/6 "module endorsement"); they are not the pure cfg switches removed earlier.
-- **Two-axis naming** (rule 6 "distinct roots" in practice): the hardware axis uses chip/board product names as roots (`esp32c6`, `esp32s3`, `esp32c6-devkitc-1`, `lckfb-szpi-esp32s3`); the module axis uses bare component names (`button`, `pca9557`, `st7789`, `ws2812`, `display-light`). Mutually-exclusive vs additive semantics are clear from the name alone; no `cmp-`/`board-`/`chip-` prefix; only consider a prefix after a real collision (e.g. a board name that equals a component name).
+- **Two-axis naming** (rule 6 "distinct roots" in practice): the hardware axis uses chip/board product names as roots (`esp32c6`, `esp32s3`, `esp32c6-devkitc-1`, `lckfb-szpi-esp32s3`); the module axis uses bare component names (`button`, `ft6336`, `pca9557`, `st7789`, `ws2812`, `display-light`). Mutually-exclusive vs additive semantics are clear from the name alone; no `cmp-`/`board-`/`chip-` prefix; only consider a prefix after a real collision (e.g. a board name that equals a component name).
 - **Board features are the hardware axis**: mutually exclusive, exactly one at a time, set by the physical board; `iot-core` still has zero cfg, with capabilities injected via traits at the composition point (board wiring).
 - CI uses a fixed `--no-default-features --features <board>`, building the fully-featured firmware for that board. Any future capability/behavior-axis soft feature must satisfy the four criteria plus the six rules again, and add matrix validation.

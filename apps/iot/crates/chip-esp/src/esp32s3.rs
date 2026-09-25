@@ -6,8 +6,11 @@ pub fn chip_init() -> Peripherals {
     esp_hal::init(esp_hal::Config::default())
 }
 
+/// Initializes the chip's log output at Info level, prefixing every line with
+/// an uptime `hh:mm:ss.mmm` timestamp (see [`crate::logging`]).
 pub fn init_logging() {
-    esp_println::logger::init_logger(log::LevelFilter::Info);
+    log::set_logger(&crate::logging::LOGGER).expect("logger already set");
+    log::set_max_level(log::LevelFilter::Info);
 }
 
 pub fn start_rtos(timer: impl esp_rtos::TimerSource, int0: FROM_CPU_INTR0<'static>) {

@@ -57,12 +57,12 @@ Cargo feature 是**加法语义**（union，开启一个不应关闭另一个）
 
 ```
 iot-core     — 无 [features]
-iot-bsp-esp  — 元件 feature（button / pca9557 / ws2812 / st7789 / display-light）
+iot-bsp-esp  — 元件 feature（button / ft6336 / pca9557 / ws2812 / st7789 / display-light）
                板 feature（esp32c6-devkitc-1 / lckfb-szpi-esp32s3）＝ 元件聚合
 iot-app      — esp32c6（chip 别名）/ esp32c6-devkitc-1（default）/ lckfb-szpi-esp32s3
 ```
 
 - **元件 feature 是模块轴**：一个 feature = 一个元件模块（`components/` 里 `mod` 处门控一次、off 即文件不存在），板 feature 只聚合接线所需的元件，不散装依赖。空 feature（如 `button = []`）靠模块背书合法化（判据 rule 1/6 的「模块背书」），不属于当初删除的纯 cfg 开关。
-- **两轴命名判别**（rule 6「不同词根」的落地）：硬件轴用芯片/板产品名作词根（`esp32c6`、`esp32s3`、`esp32c6-devkitc-1`、`lckfb-szpi-esp32s3`），模块轴用元件裸名（`button`、`pca9557`、`st7789`、`ws2812`、`display-light`）。二者从名称即可分明互斥/加法语义，不加 `cmp-`/`board-`/`chip-` 前缀；真撞名后（如「板名恰等于元件名」）才考虑前缀。
+- **两轴命名判别**（rule 6「不同词根」的落地）：硬件轴用芯片/板产品名作词根（`esp32c6`、`esp32s3`、`esp32c6-devkitc-1`、`lckfb-szpi-esp32s3`），模块轴用元件裸名（`button`、`ft6336`、`pca9557`、`st7789`、`ws2812`、`display-light`）。二者从名称即可分明互斥/加法语义，不加 `cmp-`/`board-`/`chip-` 前缀；真撞名后（如「板名恰等于元件名」）才考虑前缀。
 - **板 feature 是硬件轴**：互斥，一次只开一个，由物理板型决定；`iot-core` 仍零 cfg，能力经组合点（板接线）经 trait 注入。
 - CI 固定 `--no-default-features --features <board>`，构建的即该板全功能固件。将来引入任何能力/行为轴软 feature，都必须重新满足四判据 + 六规则，并补齐矩阵验证。

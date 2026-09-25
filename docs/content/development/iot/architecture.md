@@ -10,8 +10,8 @@ weight = 20
 `iot-core(纯逻辑) → iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(单任务二进制)`
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
-- **bsp-esp 内部分两层元件**：`components/`（实际元件 = 芯片驱动，参数化总线/引脚，不认板，如 `button`/`pca9557`/`st7789`/`ws2812`）与 `virtual_components/`（抽象元件 = 组装实际元件成的虚拟器件，如 `DisplayLight` 把 ST7789 面板适配成 `RgbLight`）；板模块只做选引脚 + 装配，元件本身跨板通用
-- **元件独立 feature**：每个元件一个 feature（`button`/`pca9557`/`ws2812`/`st7789`/`display-light`，在 `components/` 的 `mod` 处门控一次、off 即文件不存在）；板 feature = 元件聚合清单（见 `features.md` 模块轴）
+- **bsp-esp 内部分两层元件**：`components/`（实际元件 = 芯片驱动，参数化总线/引脚，不认板，如 `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`）与 `virtual_components/`（抽象元件 = 组装实际元件成的虚拟器件，如 `DisplayLight` 把 ST7789 面板适配成 `RgbLight`）；板模块只做选引脚 + 装配，元件本身跨板通用
+- **元件独立 feature**：每个元件一个 feature（`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`display-light`，在 `components/` 的 `mod` 处门控一次、off 即文件不存在）；板 feature = 元件聚合清单（见 `features.md` 模块轴）
 - **iot-chip-esp**：芯片初始化/日志/RTOS/panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`（esp-hal/esp-rtos 在 app 仅 feature 门控供入口解析）
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名 + run 分发；每板一个 `#[cfg(feature)]` 分支
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash/RAM 容量走链接与分区，不进类型系统

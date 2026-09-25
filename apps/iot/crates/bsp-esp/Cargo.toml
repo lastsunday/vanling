@@ -9,16 +9,19 @@ default = ["esp32c6-devkitc-1"]
 # feature below is the aggregate of the wiring it needs.
 backlight = []
 button = []
-pca9557 = []
+pca9557 = ["dep:embedded-hal"]
+ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
 ws2812 = ["dep:esp-hal-smartled", "dep:smart-leds"]
 st7789 = ["dep:embedded-hal", "dep:mipidsi"]
 # Virtual components: assembled from real components.
 display-light = ["st7789"]
 esp32c6-devkitc-1 = ["button", "ws2812"]
-lckfb-szpi-esp32s3 = ["button", "pca9557", "st7789", "display-light", "backlight"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "st7789", "display-light", "backlight", "ft6336"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }
+embassy-embedded-hal = { workspace = true, optional = true }
+embassy-sync = { workspace = true, optional = true }
 esp-hal = { workspace = true }
 esp-hal-smartled = { workspace = true, optional = true }
 smart-leds = { workspace = true, optional = true }

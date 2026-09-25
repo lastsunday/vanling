@@ -32,6 +32,8 @@ moon run iot:image-s3        # 仅 lckfb-szpi-esp32s3
 
 > s3 的 Xtensa 构建经 `scripts/iot-xtensa.sh` 按环境分发：espup `esp` 1.95.0.0 工具链齐备（CI/发布）时原生编译；否则本地自动回退 `espressif/idf-rust:esp32s3_1.95.0.0` 容器（macOS Intel）。同版本工具链，产物字节一致。
 
+> 依赖缓存：容器按 `-Z build-std` 解析 esp 工具链自带的 `library/Cargo.lock`（含 memchr 2.7.6 等与项目 `Cargo.lock` 不同的版本）。离线缓存不全时，首次构建会自动在线引导补齐一次（日志提示 `bootstrapping once online`），此后构建保持 `--offline`、字节一致，无需手工预热。
+
 `iot:image` 依赖各板的 `build-*` 任务，产物写入仓库根 `dist/`，命名与 CI 逐字符一致：
 
 | 产物        | 命名                                              |

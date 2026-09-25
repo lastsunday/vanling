@@ -1,3 +1,4 @@
+use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::light::RgbLight;
 use alloc::vec::Vec;
@@ -5,17 +6,21 @@ use alloc::vec::Vec;
 /// A hardware board instance. Implemented per board in the bsp crate.
 pub trait Board: Sized {}
 
-/// Board exposing a light channel (an RGB light surface).
+/// Board exposing light channels (RGB light surfaces).
 ///
 /// A channel may drive several pixels wired in the same chain (e.g. a WS2812
-/// strip); boards with distinct light kinds add further `HasXxx` traits.
+/// strip); a board with several distinct surfaces returns them all in wiring
+/// order, each with its own instance the app binds to its own renderer. The
+/// sink bound keeps panel surfaces able to overlay diagnostics while plain
+/// strips ignore the snapshot.
 pub trait HasLight: Board {
-    /// Owned light surface; `'static` so it can live behind a boxed renderer
+    /// Owned light surfaces; `'static` so they can live behind a boxed renderer
     /// in the render task for the board's lifetime.
-    type Light: RgbLight + 'static;
+    type Light: RgbLight + DiagnosticsSink + 'static;
 
-    /// Take the board's light. Returns `None` when not wired or already taken.
-    fn take_light(&mut self) -> Option<Self::Light>;
+    /// Take the board's light surfaces. Returns `None` when none are wired or
+    /// they were already taken.
+    fn take_lights(&mut self) -> Option<Vec<Self::Light>>;
 }
 
 /// Board providing the input sources for the input pipeline.
@@ -42,6 +47,8 @@ mod tests {
         fn set_fill(&mut self, _fill: Fill, _color: Rgb) {}
     }
 
+    impl DiagnosticsSink for FakeLight {}
+
     struct FakeButton;
 
     impl Button for FakeButton {
@@ -51,7 +58,7 @@ mod tests {
     }
 
     struct FakeBoard {
-        light: Option<FakeLight>,
+        lights: Option<Vec<FakeLight>>,
         input: Option<Vec<PollEntry>>,
     }
 
@@ -60,8 +67,8 @@ mod tests {
     impl HasLight for FakeBoard {
         type Light = FakeLight;
 
-        fn take_light(&mut self) -> Option<Self::Light> {
-            self.light.take()
+        fn take_lights(&mut self) -> Option<Vec<Self::Light>> {
+            self.lights.take()
         }
     }
 
@@ -72,21 +79,37 @@ mod tests {
     }
 
     #[test]
-    fn has_light_delivers_the_board_light_once() {
+    fn has_light_delivers_every_surface_then_none() {
         let mut board = FakeBoard {
-            light: Some(FakeLight),
+            lights: Some(vec![FakeLight, FakeLight]),
             input: None,
         };
-        let mut light = board.take_light().expect("light present");
-        light.set_rgb(Rgb(1, 2, 3));
-        assert!(board.take_light().is_none(), "taken exactly once");
+        let lights = board.take_lights().expect("lights present");
+        assert_eq!(lights.len(), 2, "both surfaces in wiring order");
+        let mut only = lights.into_iter();
+        only.next().unwrap().set_rgb(Rgb(1, 2, 3));
+        only.next().unwrap().set_rgb(Rgb(3, 2, 1));
+        assert!(board.take_lights().is_none(), "taken exactly once");
+    }
+
+    #[test]
+    fn has_light_delivers_a_single_surface_once() {
+        let mut board = FakeBoard {
+            lights: Some(vec![FakeLight]),
+            input: None,
+        };
+        let mut lights = board.take_lights().expect("lights present");
+        assert_eq!(lights.len(), 1);
+        lights.get_mut(0).unwrap().set_rgb(Rgb(1, 2, 3));
+        assert!(board.take_lights().is_none(), "taken exactly once");
     }
 
     #[test]
     fn has_input_delivers_sources_then_none() {
         let mut board = FakeBoard {
-            light: None,
+            lights: None,
             input: Some(vec![PollEntry::new(
+                0,
                 Box::new(ButtonScanner::new(FakeButton)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,

@@ -2,6 +2,7 @@
 
 extern crate alloc;
 
+pub mod diagnostics;
 pub mod drivers;
 pub mod intent;
 pub mod render;

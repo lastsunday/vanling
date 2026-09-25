@@ -1,14 +1,16 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::input::{IntentBus, StateWatch};
+use crate::input::IntentBus;
 use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Timer};
+use iot_core::diagnostics::DiagnosticsSink;
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, backlight_level, group_hue, hsv_to_rgb, should_repaint, smooth_brightness,
 };
+use iot_core::intent::Intent;
 use iot_core::render::{
     Activity, LightAppearance, RenderController, Renderer, Slot, SlotAppearance,
 };
@@ -74,9 +76,13 @@ impl Render {
             activity: Activity::Idle,
             renderer,
         };
-        // Catch a fresh renderer up with the surface before the next diff.
-        if let Some(appearance) = self.controller.current(entry.renderer.slot()) {
-            entry.activity = entry.renderer.on_appearance(appearance, now_ms);
+        // Catch a fresh renderer up with the surface before the next diff:
+        // every slot it subscribes to is synced in one shot.
+        let slots: Vec<Slot> = entry.renderer.slots().to_vec();
+        for slot in slots {
+            if let Some(appearance) = self.controller.current(slot) {
+                entry.activity = entry.renderer.on_appearance(appearance, now_ms);
+            }
         }
         self.renderers.push(entry);
         token
@@ -90,29 +96,19 @@ impl Render {
 
     /// One frame: reconcile `state` against the controller, fan changes out to
     /// matching renderers, then step time-driven animations. Returns `true`
-    /// while any renderer still animates. `on_change` fires once per changed
-    /// frame.
-    pub fn tick(
-        &mut self,
-        bus: &RenderBus,
-        state: &DeviceState,
-        now_ms: u32,
-        mut on_change: impl FnMut(&DeviceState),
-    ) -> bool {
+    /// while any renderer still animates.
+    pub fn tick(&mut self, bus: &RenderBus, state: &DeviceState, now_ms: u32) -> bool {
         self.drain_bus(bus, now_ms);
         let controller = &mut self.controller;
         let entries = &mut self.renderers;
-        let changed = controller.reconcile(state, |appearance| {
+        controller.reconcile(state, |appearance| {
             let slot = appearance.slot();
             for entry in entries.iter_mut() {
-                if entry.renderer.slot() == slot {
+                if entry.renderer.slots().contains(&slot) {
                     entry.activity = entry.renderer.on_appearance(appearance, now_ms);
                 }
             }
         });
-        if changed {
-            on_change(state);
-        }
         let mut any = false;
         for entry in self.renderers.iter_mut() {
             if entry.activity == Activity::TimeDriven {
@@ -143,20 +139,26 @@ impl Default for Render {
     }
 }
 
-/// Renderer for a physical light surface: the WS2812 strip on the DevKitC-1
+/// Renderer for one physical light surface: the WS2812 strip on the DevKitC-1
 /// or the ST7789 panel (with its LEDC backlight) on the S3 board. Breathing is
 /// time-driven: the render layer steps it every tick to produce frames from
-/// the schedule.
-pub struct LightRenderer<R: RgbLight> {
+/// the schedule. A surface subscribes to its own light slot plus the
+/// device-level diagnostics, forwarding the snapshot to the light bus it
+/// sinks (the panel overlays the digits; a plain strip ignores them).
+pub struct LightRenderer<R: RgbLight + DiagnosticsSink> {
+    instance: u8,
     light: R,
+    slots: [Slot; 2],
     last: Option<Rgb>,
     breath: Option<Breath>,
 }
 
-impl<R: RgbLight> LightRenderer<R> {
-    pub fn new(light: R) -> Self {
+impl<R: RgbLight + DiagnosticsSink> LightRenderer<R> {
+    pub fn new(instance: u8, light: R) -> Self {
         Self {
+            instance,
             light,
+            slots: [Slot::Light(instance), Slot::Diagnostics],
             last: None,
             breath: None,
         }
@@ -185,29 +187,47 @@ impl<R: RgbLight> LightRenderer<R> {
     }
 }
 
-impl<R: RgbLight> Renderer for LightRenderer<R> {
-    fn slot(&self) -> Slot {
-        Slot::Light
+impl<R: RgbLight + DiagnosticsSink> Renderer for LightRenderer<R> {
+    fn slots(&self) -> &[Slot] {
+        &self.slots
     }
 
     fn on_appearance(&mut self, appearance: SlotAppearance, now_ms: u32) -> Activity {
         match appearance {
-            SlotAppearance::Light(LightAppearance::Off) => {
-                self.breath = None;
-                self.drive(Fill::Uniform, Rgb(0, 0, 0));
-                self.light.set_backlight(0);
-                Activity::Idle
+            // A diagnostics bump must not disturb the animation cadence: keep the
+            // breathing activity, and let panel surfaces repaint the digits.
+            SlotAppearance::Diagnostics(diagnostics) => {
+                self.light.consume(&diagnostics);
+                if self.breath.is_some() {
+                    Activity::TimeDriven
+                } else {
+                    Activity::Idle
+                }
             }
-            SlotAppearance::Light(LightAppearance::Color(color)) => {
-                self.breath = None;
-                self.drive(Fill::Uniform, color);
-                self.light.set_backlight(100);
-                Activity::Idle
-            }
-            SlotAppearance::Light(LightAppearance::Breathing(breath)) => {
-                self.breath = Some(breath);
-                self.draw(now_ms, breath);
-                Activity::TimeDriven
+            SlotAppearance::Light {
+                instance,
+                appearance,
+            } => {
+                debug_assert_eq!(instance, self.instance);
+                match appearance {
+                    LightAppearance::Off => {
+                        self.breath = None;
+                        self.drive(Fill::Uniform, Rgb(0, 0, 0));
+                        self.light.set_backlight(0);
+                        Activity::Idle
+                    }
+                    LightAppearance::Color(color) => {
+                        self.breath = None;
+                        self.drive(Fill::Uniform, color);
+                        self.light.set_backlight(100);
+                        Activity::Idle
+                    }
+                    LightAppearance::Breathing(breath) => {
+                        self.breath = Some(breath);
+                        self.draw(now_ms, breath);
+                        Activity::TimeDriven
+                    }
+                }
             }
         }
     }
@@ -251,12 +271,12 @@ fn backlight_for(now_ms: u32, breath: Breath) -> u8 {
     )
 }
 
-/// Render loop: drains intents into the manager, broadcasts state-on-change,
-/// and parks on the intent/render buses once the surface settles instead of
-/// busy-stepping.
+/// Render loop: drains the management pipe, interpreting operation intents
+/// against the manager (the pipeline context) and applying business intents
+/// wholesale, and parks on the intent/render buses once the surface settles
+/// instead of busy-stepping.
 pub async fn render_loop(
     intent_bus: &'static IntentBus,
-    device_state: &'static StateWatch,
     render_bus: &'static RenderBus,
     mut render: Render,
     mut manager: DeviceManager,
@@ -265,11 +285,22 @@ pub async fn render_loop(
     let mut next_frame: Instant = Instant::now();
     loop {
         while let Ok(intent) = intent_bus.try_receive() {
-            manager.apply_intent(intent);
+            match intent {
+                // An operation is interpreted against the freshest owner of
+                // the device state: record its diagnostics, translate the
+                // business meaning, and apply the target — the one place the
+                // two planes meet.
+                Intent::Operation(op) => {
+                    manager.apply_operation(op);
+                    let business = iot_core::intent::translate(&op, &manager.state());
+                    manager.apply_business(business);
+                }
+                // A producer that already speaks business (e.g. a network
+                // drive) goes straight to the state.
+                Intent::Business(business) => manager.apply_business(business),
+            }
         }
-        let active = render.tick(render_bus, &manager.state(), elapsed_ms, |state| {
-            device_state.sender().send(state.clone());
-        });
+        let active = render.tick(render_bus, &manager.state(), elapsed_ms);
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
         if active {
             // Absolute deadline: work between frames never piles drift onto

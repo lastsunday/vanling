@@ -57,13 +57,38 @@ run_native() {
   "$ESP_DIR/bin/cargo" "$@"
 }
 
+# Runs cargo offline in the pinned image: both the project Cargo.lock and the
+# esp toolchain's own std-lock fix the exact versions, so artifact bytes are
+# reproducible. On a fresh machine the shared cache lacks crates that the
+# -Z build-std std-lock needs (e.g. memchr 2.7.6); that offline-only failure is
+# detected and retried once online, which downloads the same pinned versions
+# cargo already resolved — subsequent builds stay offline and byte-identical.
 run_docker() {
+  local log status
+  log="$(mktemp "${TMPDIR:-/tmp}/iot-xtensa.XXXXXX")"
+  set +e
   docker run --rm \
     -v "$PROJECT:/project" \
     -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
     -w /project \
     "$IMAGE" \
     bash -lc 'source /home/esp/export-esp.sh && cargo --offline "$@"' \
+    bash "$@" 2>&1 | tee "$log"
+  status=${PIPESTATUS[0]}
+  set -e
+  if [ "$status" -eq 0 ] ||
+     ! rg -q 'but --offline was specified' "$log"; then
+    rm -f "$log"
+    return "$status"
+  fi
+  rm -f "$log"
+  echo "[iot-xtensa] offline cache incomplete; bootstrapping once online (subsequent builds stay offline)" >&2
+  docker run --rm \
+    -v "$PROJECT:/project" \
+    -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
+    -w /project \
+    "$IMAGE" \
+    bash -lc 'source /home/esp/export-esp.sh && cargo "$@"' \
     bash "$@"
 }
 

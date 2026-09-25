@@ -63,8 +63,8 @@ impl BoardTrait for Board<'static> {}
 impl iot_core::drivers::board::HasLight for Board<'static> {
     type Light = Ws2812RgbLed<'static, { buffer_size::<RGB8>(LEDS) }>;
 
-    fn take_light(&mut self) -> Option<Self::Light> {
-        self.light.take()
+    fn take_lights(&mut self) -> Option<Vec<Self::Light>> {
+        self.light.take().map(|light| vec![light])
     }
 }
 
@@ -72,6 +72,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
     fn take_input(&mut self) -> Option<Vec<PollEntry>> {
         self.button.take().map(|button| {
             vec![PollEntry::new(
+                0,
                 Box::new(ButtonScanner::new(button)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,

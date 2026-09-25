@@ -2,6 +2,8 @@
 
 use esp_backtrace as _;
 
+pub(crate) mod logging;
+
 #[cfg(feature = "esp32c6")]
 pub(crate) mod esp32c6;
 

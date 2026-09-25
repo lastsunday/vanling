@@ -2,8 +2,8 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "07d5519b877b9efd0cd9844b0262e399ecf879d5"
-translated_at = "2026-09-11T00:00:00Z"
+source_file_hash = "5d65f19706c9b7844f90a1012f6a7fe1e444f0c1"
+translated_at = "2026-09-12T11:59:13Z"
 +++
 
 # Layering and Composition
