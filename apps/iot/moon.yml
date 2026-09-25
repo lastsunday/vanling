@@ -21,6 +21,12 @@ tasks:
     command: 'cargo check -p iot-app --bin vanling --target $CARGO_ESP_TARGET'
     inputs:
       - '$CARGO_ESP_TARGET'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'moon.yml'
+      - '.cargo/config.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
     deps:
       - ~:format
 
@@ -28,6 +34,12 @@ tasks:
     command: 'cargo build --release -p iot-app --bin vanling --target $CARGO_ESP_TARGET'
     inputs:
       - '$CARGO_ESP_TARGET'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'moon.yml'
+      - '.cargo/config.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
     outputs:
       - 'target/$CARGO_ESP_TARGET/release/vanling'
     deps:
@@ -42,6 +54,12 @@ tasks:
     command: 'cargo clippy -p iot-app --bin vanling --target $CARGO_ESP_TARGET -- -D warnings'
     inputs:
       - '$CARGO_ESP_TARGET'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'moon.yml'
+      - '.cargo/config.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
     deps:
       - ~:check
 
@@ -82,6 +100,12 @@ tasks:
     command: 'cargo check -p iot-app --bin vanling --target $CARGO_ESP_TARGET'
     inputs:
       - '$CARGO_ESP_TARGET'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'moon.yml'
+      - '.cargo/config.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
     env:
       CARGO_ESP_TARGET: 'riscv32imac-unknown-none-elf'
 
@@ -89,6 +113,12 @@ tasks:
     command: 'cargo build --release -p iot-app --bin vanling --target $CARGO_ESP_TARGET'
     inputs:
       - '$CARGO_ESP_TARGET'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'moon.yml'
+      - '.cargo/config.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
     outputs:
       - 'target/$CARGO_ESP_TARGET/release/vanling'
     env:

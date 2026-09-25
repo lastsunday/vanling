@@ -2,6 +2,14 @@ use crate::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagno
 use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
 use crate::state::{Breath, DeviceState, LightState};
 
+/// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing,
+/// `2` solid. The panel overlay renders from this snapshot, so the codes are a
+/// shared contract between the core diff and the bsp surface — never literals
+/// mirrored in two crates.
+pub const MODE_OFF: u8 = 0;
+pub const MODE_BREATH: u8 = 1;
+pub const MODE_SOLID: u8 = 2;
+
 /// A device slot the render layer knows about. Light slots are per instance:
 /// a board wiring several light surfaces subscribes one renderer per surface;
 /// diagnostics is device-level, delivered to every diagnostics subscriber.
@@ -60,13 +68,13 @@ pub fn light_appearance(state: LightState) -> LightAppearance {
 fn light_snapshot(state: LightState) -> LightSnapshot {
     match state {
         LightState::Off => LightSnapshot {
-            mode: 0,
+            mode: MODE_OFF,
             brightness: 0,
             hue: 0,
             breath: BreathSnapshot::default(),
         },
         LightState::Solid { color, brightness } => LightSnapshot {
-            mode: 2,
+            mode: MODE_SOLID,
             brightness,
             hue: rgb_hue(color),
             breath: BreathSnapshot::default(),
@@ -82,7 +90,7 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
             group,
             group_len,
         }) => LightSnapshot {
-            mode: 1,
+            mode: MODE_BREATH,
             brightness: max_brightness,
             hue: if group_len > 0 { group[0] } else { hue },
             breath: BreathSnapshot {
@@ -702,7 +710,7 @@ mod tests {
         assert_eq!(
             light_snapshot(LightState::Off),
             LightSnapshot {
-                mode: 0,
+                mode: MODE_OFF,
                 brightness: 0,
                 hue: 0,
                 breath: BreathSnapshot::default(),
@@ -714,7 +722,7 @@ mod tests {
                 brightness: 140,
             }),
             LightSnapshot {
-                mode: 2,
+                mode: MODE_SOLID,
                 brightness: 140,
                 hue: 0,
                 breath: BreathSnapshot::default(),
@@ -735,7 +743,7 @@ mod tests {
         let breath = light_snapshot(LightState::Breath(BOOT_BREATH));
         assert_eq!(
             (breath.mode, breath.brightness, breath.hue),
-            (1, 80, 16),
+            (MODE_BREATH, 80, 16),
             "a breathing light reports its ceiling and group head"
         );
         assert_eq!(

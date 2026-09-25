@@ -4,6 +4,7 @@ use iot_core::drivers::input::{FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIP
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, rgb_hue, scale_brightness, vertical_brightness,
 };
+use iot_core::render::{MODE_BREATH, MODE_SOLID};
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;
@@ -36,11 +37,6 @@ const LEFT_VALUE_X: usize = OVERLAY_X + 4 * (FONT_W + OVERLAY_GAP);
 /// one vertical line. The widest entry (`LO HI 140 255`) still fits the
 /// 240-column panel.
 const RIGHT_VALUE_X: usize = 174;
-
-/// Light-mode codes mirroring the core snapshot (`render::light_snapshot`):
-/// `0` off, `1` breathing, `2` solid.
-const MODE_BREATH: u8 = 1;
-const MODE_SOLID: u8 = 2;
 
 /// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes) in
 /// column-major order, bit 0 of each byte the top row — the classic

@@ -48,7 +48,7 @@ find_merged() {
       -name '*esp32c6*-merged.bin' -type f 2>/dev/null \
       | sort -r | head -1)
   }
-  [ -n "$found" ] || { echo "[iot-emu] no merged.bin found (run moon run iot:image-c6-emu)" >&2; exit 1; }
+  [ -n "$found" ] || { echo "[iot-emu] no merged.bin found (run moon run iot:build-c6-emu)" >&2; exit 1; }
   echo "$(cd "$(dirname "$found")" && pwd)/$(basename "$found")"
 }
 

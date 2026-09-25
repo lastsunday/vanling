@@ -24,12 +24,12 @@ if [ -n "${APP_VERSION:-}" ]; then
   if [ "$APP_VERSION" = "release" ]; then
     version=$(extract_version "$manifest")
     [ -z "$version" ] && { echo "Failed to extract version from $manifest" >&2; exit 1; }
-    echo "$version"
   else
-    echo "$APP_VERSION"
+    version="$APP_VERSION"
   fi
+  echo "$version"
   if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "DEV_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+    echo "DEV_VERSION=$version" >> "$GITHUB_ENV"
   fi
   exit 0
 fi
