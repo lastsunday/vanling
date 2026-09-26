@@ -16,12 +16,18 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::run;
-use iot_core::drivers::board::{Board as BoardTrait, HasInput, HasLight};
+use iot_core::diagnostics::Diagnostics;
+use iot_core::drivers::board::{Board as BoardTrait, HasInput, HasLight, HasMotion};
 use iot_core::drivers::input::{
-    BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator, PollEntry,
+    BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry,
 };
 use iot_core::drivers::light::{Fill, Rgb, RgbLight};
+use iot_core::drivers::motion::{
+    MOTION_SCAN_MS, MotionCapabilities, MotionError, MotionEvents, MotionInput, MotionReading,
+    MotionSample, MotionScale, MotionSource,
+};
 use iot_core::intent::PALETTE;
+use iot_core::state::DisplayPage;
 
 /// Recorded paint operations per surface, so the smoke can assert what `run`
 /// drew and on which instance.
@@ -30,6 +36,20 @@ static PAINTED: Mutex<Vec<(u8, Fill, Rgb)>> = Mutex::new(Vec::new());
 /// Firmware-visible press states, flipped by the smoke scenario: one per
 /// button, matching the wiring-order sources the board assembles.
 static PRESSED: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
+static PAGES: Mutex<Vec<DisplayPage>> = Mutex::new(Vec::new());
+
+struct HostMotion;
+
+const HOST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
+
+impl MotionSource for HostMotion {
+    fn sample(&mut self, _now_ms: u64) -> Result<Option<MotionReading>, MotionError> {
+        Ok(Some(MotionReading {
+            sample: MotionSample::from_raw([1, 2, 3], [4, 5, 6], HOST_SCALE, 3, 0),
+            hardware: MotionEvents::new(),
+        }))
+    }
+}
 
 struct HostButton(u8);
 
@@ -49,13 +69,16 @@ impl RgbLight for HostLight {
     fn set_backlight(&mut self, _level_pct: u8) {}
 }
 
-// A plain light has no digits to overlay; the default no-op sink keeps the
-// surface usable as a diagnostic-free light.
-impl iot_core::diagnostics::DiagnosticsSink for HostLight {}
+impl iot_core::diagnostics::DiagnosticsSink for HostLight {
+    fn consume(&mut self, diagnostics: &Diagnostics) {
+        PAGES.lock().unwrap().push(diagnostics.page);
+    }
+}
 
 struct HostBoard {
     lights: Option<Vec<HostLight>>,
     input: Option<Vec<PollEntry>>,
+    motion: Option<PollEntry>,
 }
 
 impl HostBoard {
@@ -76,6 +99,12 @@ impl HostBoard {
                     BUTTON_SCAN_MS,
                 ),
             ]),
+            motion: Some(PollEntry::new(
+                2,
+                Box::new(MotionInput::new(HostMotion)),
+                Box::new(PassThrough),
+                MOTION_SCAN_MS,
+            )),
         }
     }
 }
@@ -93,6 +122,16 @@ impl HasLight for HostBoard {
 impl HasInput for HostBoard {
     fn take_input(&mut self) -> Option<Vec<PollEntry>> {
         self.input.take()
+    }
+}
+
+impl HasMotion for HostBoard {
+    fn take_motion(&mut self) -> Option<PollEntry> {
+        self.motion.take()
+    }
+
+    fn motion_capabilities(&self) -> MotionCapabilities {
+        MotionCapabilities::TELEMETRY
     }
 }
 
@@ -124,6 +163,10 @@ fn paints_on(instance: u8) -> usize {
         .iter()
         .filter(|&&(i, _, _)| i == instance)
         .count()
+}
+
+fn page_seen(page: DisplayPage) -> bool {
+    PAGES.lock().unwrap().contains(&page)
 }
 
 #[embassy_executor::main]
@@ -184,6 +227,23 @@ async fn scenario() {
         colors_on(0),
         rest0,
         "button 1 must not touch surface 0's solid color"
+    );
+
+    for _ in 0..3 {
+        PRESSED[0].store(true, Ordering::SeqCst);
+        Timer::after(Duration::from_millis(80)).await;
+        PRESSED[0].store(false, Ordering::SeqCst);
+        Timer::after(Duration::from_millis(50)).await;
+    }
+
+    let mut attempts = 0;
+    while !page_seen(DisplayPage::Attitude) && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        page_seen(DisplayPage::Attitude),
+        "triple click did not reach the motion-enabled page"
     );
 
     std::process::exit(0);

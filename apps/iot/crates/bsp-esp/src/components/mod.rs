@@ -6,6 +6,8 @@ pub mod button;
 pub mod ft6336;
 #[cfg(feature = "pca9557")]
 pub mod pca9557;
+#[cfg(feature = "qmi8658")]
+pub mod qmi8658;
 #[cfg(feature = "st7789")]
 pub mod st7789;
 #[cfg(feature = "ws2812")]

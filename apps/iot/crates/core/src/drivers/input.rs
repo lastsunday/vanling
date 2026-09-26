@@ -1,5 +1,7 @@
 use alloc::boxed::Box;
 
+use super::motion::MotionBatch;
+
 /// Active-low contract for a physical button: returns `true` when pressed.
 pub trait Button {
     fn is_pressed(&self) -> bool;
@@ -10,13 +12,14 @@ pub trait Button {
 pub enum ButtonEvent {
     Click,
     DoubleClick,
+    TripleClick,
     LongPress,
 }
 
 /// A discrete touch gesture folded from the raw contact stream by
 /// [`TouchGestures`]. Contact gestures carry a stable per-finger `id` plus the
-/// gesture origin and classifier-measured hold; two-point gestures (double-tap,
-/// swipe) add the trailing `end_x`/`end_y`; a swipe adds its dominant octant
+/// gesture origin and classifier-measured hold; multi-point gestures (triple-tap,
+/// double-tap, swipe) add the trailing `end_x`/`end_y`; a swipe adds its dominant octant
 /// and Euclidean travel; `Ghost` is a coordinate-less input-path anomaly pulse
 /// (rejected phantom, or a driver I2C failure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +37,14 @@ pub enum GestureEvent {
         held_ms: u16,
     },
     DoubleTap {
+        id: u8,
+        x: u16,
+        y: u16,
+        end_x: u16,
+        end_y: u16,
+        held_ms: u16,
+    },
+    TripleTap {
         id: u8,
         x: u16,
         y: u16,
@@ -101,6 +112,10 @@ pub enum InputEvent {
     /// the chip's engine against the software classifier. Purely diagnostic;
     /// never folds into a light-mode transition.
     ChipGesture(u8),
+    /// One motion poll: the raw telemetry every consumer may read, plus the
+    /// semantics the poll raised after arbitration. Both travel together —
+    /// the semantic plane feeds intent, the data plane feeds diagnostics.
+    Motion(MotionBatch),
 }
 
 pub const BUTTON_SCAN_MS: u64 = 10;
@@ -114,10 +129,27 @@ pub const INPUT_BASE_MS: u64 = 5;
 /// [`SWIPE_MIN_DISTANCE_PX`].
 pub const LONG_PRESS_MS: u64 = 600;
 
-/// How long a first click stays pending while the driver waits for a second
-/// click. Must be well below `LONG_PRESS_MS` so a held press classifies
-/// cleanly instead of being buffered as the first half of a double click.
-pub const DOUBLE_CLICK_WINDOW_MS: u64 = 300;
+/// How long a click sequence stays pending while the driver waits for the next click.
+pub const DOUBLE_CLICK_WINDOW_MS: u64 = 400;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClickConfig {
+    pub window_ms: u64,
+}
+
+impl ClickConfig {
+    pub const fn new(window_ms: u64) -> Self {
+        Self { window_ms }
+    }
+}
+
+impl Default for ClickConfig {
+    fn default() -> Self {
+        Self {
+            window_ms: DOUBLE_CLICK_WINDOW_MS,
+        }
+    }
+}
 
 /// Minimum press travel ever observed (px, Euclidean) that reads as a
 /// [`GestureEvent::Swipe`] — a quarter of the 240-px panel, so a tap's drift
@@ -142,9 +174,9 @@ pub const PHANTOM_RADIUS_PX: u16 = 60;
 pub const PHANTOM_WINDOW_MS: u64 = TOUCH_SCAN_MS;
 
 /// Farthest a second short lift may sit from the chambered first tap and still
-/// pair into a [`GestureEvent::DoubleTap`]; deliberately above
-/// [`PHANTOM_RADIUS_PX`] so a real double tap and a phantom echo never rule in
-/// the same way.
+/// pair into a [`GestureEvent::DoubleTap`] or [`GestureEvent::TripleTap`];
+/// deliberately above [`PHANTOM_RADIUS_PX`] so a real tap sequence and a
+/// phantom echo never rule in the same way.
 pub const PENDING_PAIR_PX: u16 = 100;
 
 /// How many fingers the touch path tracks side-by-side: the FT6336
@@ -158,8 +190,9 @@ pub const MAX_TRACKED_POINTS: usize = 2;
 pub const FINGER_NONE: u8 = 0;
 pub const FINGER_TAP: u8 = 1;
 pub const FINGER_DOUBLE_TAP: u8 = 2;
-pub const FINGER_LONG_PRESS: u8 = 3;
-pub const FINGER_SWIPE: u8 = 4;
+pub const FINGER_TRIPLE_TAP: u8 = 3;
+pub const FINGER_LONG_PRESS: u8 = 4;
+pub const FINGER_SWIPE: u8 = 5;
 
 /// The gesture one tracked finger last resolved, so the overlay can answer per
 /// finger what it did: `kind` the `FINGER_*` code, `dir` the swipe's
@@ -350,6 +383,25 @@ fn pair_close(x0: u16, y0: u16, x1: u16, y1: u16) -> bool {
     sq_dist(x0, y0, x1, y1) <= u32::from(PENDING_PAIR_PX) * u32::from(PENDING_PAIR_PX)
 }
 
+fn pending_event(pending: PendingTap) -> InputEvent {
+    match pending.second_at_ms {
+        Some(_) => InputEvent::Gesture(GestureEvent::DoubleTap {
+            id: pending.owner_id,
+            x: pending.x,
+            y: pending.y,
+            end_x: pending.second_x,
+            end_y: pending.second_y,
+            held_ms: pending.second_held_ms,
+        }),
+        None => InputEvent::Gesture(GestureEvent::Tap {
+            id: pending.owner_id,
+            x: pending.x,
+            y: pending.y,
+            held_ms: pending.held_ms,
+        }),
+    }
+}
+
 /// Floor of the square root of a `u32` via Newton iteration. Integer-only so
 /// the classifier runs on the same fixed-point policy as the rest of `no_std`.
 fn isqrt_u32(n: u32) -> u32 {
@@ -379,7 +431,7 @@ pub trait EventAggregator {
     fn feed(&mut self, event: InputEvent, now_ms: u64) -> Option<InputEvent>;
 
     /// Advance the aggregator's clock without a raw sample, so time-held
-    /// gestures (e.g. a pending double-click window) can expire deterministically
+    /// gestures (e.g. a pending click window) can expire deterministically
     /// even when the source stays quiet. Default: no time-sensitivity.
     fn tick(&mut self, _now_ms: u64) -> Option<InputEvent> {
         None
@@ -396,8 +448,8 @@ impl EventAggregator for PassThrough {
 }
 
 /// Folds per-finger touch into `Press` down-edges, deferred `Tap`, in-window
-/// `DoubleTap` (paired by position alone — hardware hands the second physical
-/// tap a fresh tracker id), `Swipe` when a press ever travelled
+/// `DoubleTap`/`TripleTap` (paired by position alone — hardware hands each
+/// physical tap a fresh tracker id), `Swipe` when a press ever travelled
 /// [`SWIPE_MIN_DISTANCE_PX`] (measured to the farthest published point, since
 /// the coarse panel leaves the release stale), and lone `LongPress`. A second
 /// contact landing within [`PHANTOM_WINDOW_MS`]/[`PHANTOM_RADIUS_PX`] of a
@@ -412,10 +464,11 @@ impl EventAggregator for PassThrough {
 pub struct TouchGestures {
     /// One state machine per finger slot, keyed by the tracker `id`.
     fingers: [FingerState; MAX_TOUCH_POINTS],
-    /// A short lift awaiting its second tap, paired by
+    /// A short lift awaiting its next tap, paired by
     /// [`DOUBLE_CLICK_WINDOW_MS`]/[`PENDING_PAIR_PX`] — never by id, which
     /// hardware reuses across taps.
     chamber: Option<PendingTap>,
+    config: ClickConfig,
     /// Previous sample contained a phantom rejection; a run pulses once.
     ghosted: bool,
     /// Gestures a prior sample resolved beyond the single-event channel; FIFO.
@@ -455,23 +508,32 @@ impl FingerState {
     }
 }
 
-/// A short-lift tap parked until its double-click window closes, carrying the
+/// A short-lift tap parked until its click window closes, carrying the
 /// finger that parked it so a lone release reports at its own position/id even
 /// after the slot was freed for a newer finger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PendingTap {
     owner_id: u8,
     first_at_ms: u64,
+    second_at_ms: Option<u64>,
     x: u16,
     y: u16,
     held_ms: u16,
+    second_x: u16,
+    second_y: u16,
+    second_held_ms: u16,
 }
 
 impl TouchGestures {
     pub fn new() -> Self {
+        Self::with_config(ClickConfig::default())
+    }
+
+    pub fn with_config(config: ClickConfig) -> Self {
         Self {
             fingers: [FingerState::free(); MAX_TOUCH_POINTS],
             chamber: None,
+            config,
             ghosted: false,
             queued: [None, None],
         }
@@ -643,8 +705,6 @@ impl TouchGestures {
         }
     }
 
-    /// Resolve a finger's lift into its gesture (or park its tap in the
-    /// chamber), then free its slot.
     fn resolve_release(
         &mut self,
         slot: usize,
@@ -652,8 +712,6 @@ impl TouchGestures {
         now_ms: u64,
         sibling_lift: bool,
     ) -> Option<InputEvent> {
-        // Snapshot what the lift needs before the chamber helper borrows
-        // `&mut self` again below.
         let (id, down_x, down_y, held, held_ms, farthest) = {
             let f = &mut self.fingers[slot];
             let id = f.id?;
@@ -661,18 +719,14 @@ impl TouchGestures {
             let down_at = f.down_at_ms.take()?;
             let held = now_ms.saturating_sub(down_at);
             let held_ms = u16::try_from(held.min(u64::from(u16::MAX))).unwrap_or(u16::MAX);
-            // The release snapshot is one more observation: fold its travel in
-            // so a slide crossing the threshold on its final publication still
-            // reads as a swipe.
             let far = travel_px(f.down_x, f.down_y, point.x, point.y);
             if f.farthest.is_none_or(|(d, _, _)| far > d) {
                 f.farthest = Some((far, point.x, point.y));
             }
             Some((id, f.down_x, f.down_y, held, held_ms, f.farthest))
         }?;
-        let free_slot = |slots: &mut [FingerState; MAX_TOUCH_POINTS]| slots[slot].id = None;
-        // A lift ever observed at [`SWIPE_MIN_DISTANCE_PX`] is a swipe and
-        // closes this finger's cadence.
+        self.fingers[slot].id = None;
+
         if let Some((distance_px, end_x, end_y)) = farthest
             && distance_px >= SWIPE_MIN_DISTANCE_PX
         {
@@ -681,7 +735,6 @@ impl TouchGestures {
                 i32::from(end_y) - i32::from(down_y),
             );
             self.close_own_chamber(id, down_x, down_y);
-            free_slot(&mut self.fingers);
             return Some(InputEvent::Gesture(GestureEvent::Swipe {
                 id,
                 direction,
@@ -694,11 +747,7 @@ impl TouchGestures {
             }));
         }
         if held >= LONG_PRESS_MS && !sibling_lift && !self.fingers.iter().any(|f| f.pressed) {
-            // A lone, stationary press is a long-press; "lone" is read at this
-            // lift's own resolution, so a live sibling or same-sample lift
-            // (the parked mirror/companion) bars it.
             self.close_own_chamber(id, down_x, down_y);
-            free_slot(&mut self.fingers);
             return Some(InputEvent::Gesture(GestureEvent::LongPress {
                 id,
                 x: down_x,
@@ -706,27 +755,20 @@ impl TouchGestures {
                 held_ms,
             }));
         }
-        // A short lift is a tap candidate, paired by window and proximity
-        // alone; a faraway concurrent finger flushes the chamber as a lone tap
-        // and parks in its place.
-        match self.chamber.take() {
+
+        let pending = self.chamber.take();
+        match pending {
             None => {
-                self.chamber = Some(PendingTap {
-                    owner_id: id,
-                    first_at_ms: now_ms,
-                    x: point.x,
-                    y: point.y,
-                    held_ms,
-                });
-                free_slot(&mut self.fingers);
+                self.park_tap(id, now_ms, point.x, point.y, held_ms);
                 None
             }
             Some(pending)
-                if now_ms.saturating_sub(pending.first_at_ms) <= DOUBLE_CLICK_WINDOW_MS
-                    && pair_close(pending.x, pending.y, point.x, point.y) =>
+                if pair_close(pending.x, pending.y, point.x, point.y)
+                    && pending.second_at_ms.is_some_and(|second| {
+                        now_ms.saturating_sub(second) <= self.config.window_ms
+                    }) =>
             {
-                free_slot(&mut self.fingers);
-                Some(InputEvent::Gesture(GestureEvent::DoubleTap {
+                Some(InputEvent::Gesture(GestureEvent::TripleTap {
                     id,
                     x: pending.x,
                     y: pending.y,
@@ -735,38 +777,47 @@ impl TouchGestures {
                     held_ms,
                 }))
             }
-            // The chamber outlived its window (a poll-cadence gap) or this
-            // lift is a different finger elsewhere: release the chamber alone
-            // and park this lift as its successor.
-            Some(pending) => {
+            Some(pending)
+                if pair_close(pending.x, pending.y, point.x, point.y)
+                    && pending.second_at_ms.is_none()
+                    && now_ms.saturating_sub(pending.first_at_ms) <= self.config.window_ms =>
+            {
                 self.chamber = Some(PendingTap {
-                    owner_id: id,
-                    first_at_ms: now_ms,
-                    x: point.x,
-                    y: point.y,
-                    held_ms,
+                    second_at_ms: Some(now_ms),
+                    second_x: point.x,
+                    second_y: point.y,
+                    second_held_ms: held_ms,
+                    ..pending
                 });
-                free_slot(&mut self.fingers);
-                Some(InputEvent::Gesture(GestureEvent::Tap {
-                    id: pending.owner_id,
-                    x: pending.x,
-                    y: pending.y,
-                    held_ms: pending.held_ms,
-                }))
+                None
+            }
+            Some(pending) => {
+                self.park_tap(id, now_ms, point.x, point.y, held_ms);
+                Some(pending_event(pending))
             }
         }
     }
 
-    /// A resolved swipe/long-press ends the cadence this finger started, so
-    /// the *next* tap must not pair with the abandoned one. A faraway other
-    /// finger's swipe leaves the chamber standing.
+    fn park_tap(&mut self, id: u8, now_ms: u64, x: u16, y: u16, held_ms: u16) {
+        self.chamber = Some(PendingTap {
+            owner_id: id,
+            first_at_ms: now_ms,
+            second_at_ms: None,
+            x,
+            y,
+            held_ms,
+            second_x: x,
+            second_y: y,
+            second_held_ms: held_ms,
+        });
+    }
+
     fn close_own_chamber(&mut self, id: u8, x: u16, y: u16) {
-        if let Some(pending) = self.chamber {
-            let owner = pending.owner_id == id;
-            let same_spot = pair_close(pending.x, pending.y, x, y);
-            if owner || same_spot {
-                self.chamber = None;
-            }
+        if let Some(pending) = self.chamber
+            && (pending.owner_id == id || pair_close(pending.x, pending.y, x, y))
+        {
+            self.chamber = None;
+            self.queue_event(pending_event(pending));
         }
     }
 }
@@ -790,35 +841,88 @@ impl EventAggregator for TouchGestures {
     }
 
     fn tick(&mut self, now_ms: u64) -> Option<InputEvent> {
-        // A chambered tap whose window outlived it releases as a lone tap.
         let mut expired = [None; 4];
-        if let Some(pending) = self.chamber
-            && now_ms.saturating_sub(pending.first_at_ms) > DOUBLE_CLICK_WINDOW_MS
-        {
-            self.chamber = None;
-            expired[0] = Some(InputEvent::Gesture(GestureEvent::Tap {
-                id: pending.owner_id,
-                x: pending.x,
-                y: pending.y,
-                held_ms: pending.held_ms,
-            }));
+        if let Some(pending) = self.chamber {
+            let since = pending.second_at_ms.unwrap_or(pending.first_at_ms);
+            if now_ms.saturating_sub(since) > self.config.window_ms {
+                self.chamber = None;
+                expired[0] = Some(pending_event(pending));
+            }
         }
         self.forward(&mut expired, None)
     }
 }
 
-/// Coalesces two clicks within [`DOUBLE_CLICK_WINDOW_MS`] into a single
-/// `DoubleClick`, holding a lone first click until the window closes before
-/// releasing it as `Click`. A `LongPress` or any non-click event flushes the
-/// pending click immediately.
+pub type ClickAggregator = DoubleClickAggregator;
+
 pub struct DoubleClickAggregator {
+    config: ClickConfig,
     first_click_at_ms: Option<u64>,
+    second_click_at_ms: Option<u64>,
+    queued: [Option<InputEvent>; 2],
 }
 
 impl DoubleClickAggregator {
     pub const fn new() -> Self {
+        Self::with_config(ClickConfig {
+            window_ms: DOUBLE_CLICK_WINDOW_MS,
+        })
+    }
+
+    pub const fn with_config(config: ClickConfig) -> Self {
         Self {
+            config,
             first_click_at_ms: None,
+            second_click_at_ms: None,
+            queued: [None, None],
+        }
+    }
+
+    pub const fn config(&self) -> ClickConfig {
+        self.config
+    }
+
+    fn pending_event(&self) -> Option<InputEvent> {
+        self.first_click_at_ms?;
+        Some(InputEvent::Button(if self.second_click_at_ms.is_some() {
+            ButtonEvent::DoubleClick
+        } else {
+            ButtonEvent::Click
+        }))
+    }
+
+    fn clear_pending(&mut self) {
+        self.first_click_at_ms = None;
+        self.second_click_at_ms = None;
+    }
+
+    fn queue_event(&mut self, event: InputEvent) {
+        if self.queued[0].is_none() {
+            self.queued[0] = Some(event);
+        } else if self.queued[1].is_none() {
+            self.queued[1] = Some(event);
+        } else {
+            self.queued[0] = self.queued[1].take();
+            self.queued[1] = Some(event);
+        }
+    }
+
+    fn pop_event(&mut self) -> Option<InputEvent> {
+        let first = self.queued[0].take();
+        self.queued[0] = self.queued[1].take();
+        first
+    }
+
+    fn expire(&mut self, now_ms: u64) {
+        let deadline = self.second_click_at_ms.or(self.first_click_at_ms);
+        let Some(deadline) = deadline else {
+            return;
+        };
+        if now_ms.saturating_sub(deadline) > self.config.window_ms
+            && let Some(event) = self.pending_event()
+        {
+            self.clear_pending();
+            self.queue_event(event);
         }
     }
 }
@@ -831,39 +935,51 @@ impl Default for DoubleClickAggregator {
 
 impl EventAggregator for DoubleClickAggregator {
     fn feed(&mut self, event: InputEvent, now_ms: u64) -> Option<InputEvent> {
-        match event {
+        self.expire(now_ms);
+        let generated = match event {
             InputEvent::Button(ButtonEvent::Click) => match self.first_click_at_ms {
                 None => {
                     self.first_click_at_ms = Some(now_ms);
                     None
                 }
-                Some(first) if now_ms.saturating_sub(first) <= DOUBLE_CLICK_WINDOW_MS => {
-                    self.first_click_at_ms = None;
-                    Some(InputEvent::Button(ButtonEvent::DoubleClick))
+                Some(_) if self.second_click_at_ms.is_some() => {
+                    if now_ms.saturating_sub(self.second_click_at_ms.unwrap_or(now_ms))
+                        <= self.config.window_ms
+                    {
+                        self.clear_pending();
+                        Some(InputEvent::Button(ButtonEvent::TripleClick))
+                    } else {
+                        self.first_click_at_ms = Some(now_ms);
+                        Some(InputEvent::Button(ButtonEvent::DoubleClick))
+                    }
                 }
-                // The pending click outlived the window without a tick (e.g. a
-                // cadence gap); release it now and buffer this one as the new
-                // first click.
-                Some(_) => {
-                    self.first_click_at_ms = Some(now_ms);
-                    Some(InputEvent::Button(ButtonEvent::Click))
+                Some(first) => {
+                    if now_ms.saturating_sub(first) <= self.config.window_ms {
+                        self.second_click_at_ms = Some(now_ms);
+                        None
+                    } else {
+                        self.first_click_at_ms = Some(now_ms);
+                        Some(InputEvent::Button(ButtonEvent::Click))
+                    }
                 }
             },
             _ => {
-                self.first_click_at_ms = None;
+                if let Some(pending) = self.pending_event() {
+                    self.clear_pending();
+                    self.queue_event(pending);
+                }
                 Some(event)
             }
+        };
+        if let Some(event) = generated {
+            self.queue_event(event);
         }
+        self.pop_event()
     }
 
     fn tick(&mut self, now_ms: u64) -> Option<InputEvent> {
-        match self.first_click_at_ms {
-            Some(first) if now_ms.saturating_sub(first) > DOUBLE_CLICK_WINDOW_MS => {
-                self.first_click_at_ms = None;
-                Some(InputEvent::Button(ButtonEvent::Click))
-            }
-            _ => None,
-        }
+        self.expire(now_ms);
+        self.pop_event()
     }
 }
 
@@ -1276,14 +1392,18 @@ mod tests {
         #[test]
         fn double_click_buffers_pairs_and_flushes() {
             let click = InputEvent::Button(ButtonEvent::Click);
-            // A first click parks; a second inside the window pairs.
             let mut agg = DoubleClickAggregator::new();
             assert_eq!(agg.feed(click, 100), None, "first click buffers");
             assert_eq!(
                 agg.feed(click, 100 + DOUBLE_CLICK_WINDOW_MS),
+                None,
+                "the second click waits for a possible third"
+            );
+            assert_eq!(
+                agg.tick(100 + 2 * DOUBLE_CLICK_WINDOW_MS + 1),
                 Some(InputEvent::Button(ButtonEvent::DoubleClick))
             );
-            // A lone click waits out the window, then the tick flushes it.
+
             let mut agg = DoubleClickAggregator::new();
             assert_eq!(agg.feed(click, 100), None);
             assert_eq!(
@@ -1296,8 +1416,7 @@ mod tests {
                 Some(InputEvent::Button(ButtonEvent::Click)),
                 "the tick past the window releases the lone click"
             );
-            // A stale first click outlives an unticked gap: the new click
-            // flushes it as a lone Click and parks itself as the new first.
+
             let mut agg = DoubleClickAggregator::new();
             assert_eq!(agg.feed(click, 100), None);
             assert_eq!(
@@ -1310,12 +1429,34 @@ mod tests {
                 Some(InputEvent::Button(ButtonEvent::Click)),
                 "the new buffer expires as a lone click"
             );
-            // A long-press between two clicks flushes the pending first click.
+
             let mut agg = DoubleClickAggregator::new();
             let long = InputEvent::Button(ButtonEvent::LongPress);
             assert_eq!(agg.feed(click, 100), None);
-            assert_eq!(agg.feed(long, 100 + DOUBLE_CLICK_WINDOW_MS - 1), Some(long));
-            assert_eq!(agg.tick(100 + 2 * DOUBLE_CLICK_WINDOW_MS), None);
+            assert_eq!(
+                agg.feed(long, 100 + DOUBLE_CLICK_WINDOW_MS - 1),
+                Some(InputEvent::Button(ButtonEvent::Click))
+            );
+            assert_eq!(agg.tick(100 + 2 * DOUBLE_CLICK_WINDOW_MS), Some(long));
+        }
+
+        #[test]
+        fn triple_click_uses_the_same_window_and_restarts_afterwards() {
+            let click = InputEvent::Button(ButtonEvent::Click);
+            let mut agg = DoubleClickAggregator::with_config(ClickConfig::new(400));
+            assert_eq!(agg.feed(click, 0), None);
+            assert_eq!(agg.feed(click, 400), None);
+            assert_eq!(
+                agg.feed(click, 800),
+                Some(InputEvent::Button(ButtonEvent::TripleClick))
+            );
+            assert_eq!(agg.feed(click, 1_200), None);
+            assert_eq!(agg.feed(click, 1_600), None);
+            assert_eq!(
+                agg.feed(click, 2_000),
+                Some(InputEvent::Button(ButtonEvent::TripleClick))
+            );
+            assert_eq!(agg.config(), ClickConfig::new(400));
         }
 
         #[test]
@@ -1375,8 +1516,7 @@ mod tests {
             assert!(entry.poll(30).is_none());
             assert!(entry.poll(40).is_none());
             assert!(entry.poll(50).is_none());
-            // Second click: pressed 60-80, released 90-100 → confirmed at 110,
-            // still inside the window of the first one (t=50).
+            // Second click: pressed 60-80, released 90-100 → confirmed at 110.
             for ms in [60, 70, 80] {
                 pressed.set(true);
                 assert!(entry.poll(ms).is_none());
@@ -1384,8 +1524,9 @@ mod tests {
             pressed.set(false);
             assert!(entry.poll(90).is_none());
             assert!(entry.poll(100).is_none());
+            assert!(entry.poll(110).is_none());
             assert_eq!(
-                entry.poll(110),
+                entry.poll(511),
                 Some(InputEvent::Button(ButtonEvent::DoubleClick))
             );
         }
@@ -1619,7 +1760,7 @@ mod tests {
                 Some(touch(TouchStatus::Release, 10, 10))
             );
             assert_eq!(
-                agg.tick(316),
+                agg.tick(416),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
@@ -1643,7 +1784,7 @@ mod tests {
                 Some(touch(TouchStatus::Release, 10, 10))
             );
             assert_eq!(
-                agg.tick(311),
+                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
@@ -1684,11 +1825,11 @@ mod tests {
                 "a lift that parks a pending tap still forwards the raw snapshot"
             );
             assert!(
-                agg.tick(310).is_none(),
+                agg.tick(410).is_none(),
                 "the window stays open at exactly 300ms"
             );
             assert_eq!(
-                agg.tick(311),
+                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 120,
@@ -1712,7 +1853,7 @@ mod tests {
                 Some(touch_contacts_dirty(TouchStatus::Release, 10, 10))
             );
             assert_eq!(
-                agg.tick(311),
+                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
@@ -1739,7 +1880,7 @@ mod tests {
                     "gap {gap}: the short lift defers its tap"
                 );
                 assert_eq!(
-                    agg.tick(gap + 311),
+                    agg.tick(gap + 411),
                     Some(InputEvent::Gesture(GestureEvent::Tap {
                         id: 0,
                         x: 100,
@@ -1990,9 +2131,6 @@ mod tests {
 
         #[test]
         fn in_window_lifts_pair_into_a_double_tap() {
-            // Two short lifts in the same spot inside the window pair into a
-            // double-tap — keyed by proximity, never by id, since hardware
-            // hands the second physical tap a fresh tracker id.
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Down, 12, 40, 60)], 1), 0),
@@ -2018,17 +2156,22 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 7, 45, 65)], 1), 100),
+                Some(sample(&[(TouchStatus::Release, 7, 45, 65)], 1)),
+                "the second lift parks for a possible third"
+            );
+            assert_eq!(
+                agg.tick(502),
                 Some(InputEvent::Gesture(GestureEvent::DoubleTap {
-                    id: 7,
+                    id: 12,
                     x: 40,
                     y: 60,
                     end_x: 45,
                     end_y: 65,
                     held_ms: 10
                 })),
-                "the same-spot lift pairs by position, not by id"
+                "the same-spot pair is keyed by position, not by id"
             );
-            // The same id works too, mirroring the button's double-click.
+
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(touch(TouchStatus::Down, 10, 10), 0),
@@ -2052,6 +2195,10 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 40, 30), 170),
+                Some(touch(TouchStatus::Release, 40, 30))
+            );
+            assert_eq!(
+                agg.tick(571),
                 Some(InputEvent::Gesture(GestureEvent::DoubleTap {
                     id: 0,
                     x: 10,
@@ -2065,10 +2212,7 @@ mod tests {
 
         #[test]
         fn double_tap_gap_sweeps_the_chamber_window() {
-            // Two short lifts separated by ≤ DOUBLE_CLICK_WINDOW_MS (300, the
-            // inclusive boundary) pair; one past it releases as two taps, in
-            // lift order.
-            for gap in [200_u64, 290, 300] {
+            for gap in [200_u64, 290, 400] {
                 let mut agg = TouchGestures::new();
                 assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
                 assert_eq!(
@@ -2076,9 +2220,13 @@ mod tests {
                     Some(touch(TouchStatus::Release, 10, 10))
                 );
                 assert!(agg.feed(touch(TouchStatus::Down, 20, 20), gap).is_some());
+                assert_eq!(
+                    agg.feed(touch(TouchStatus::Release, 20, 20), gap + 10),
+                    Some(touch(TouchStatus::Release, 20, 20))
+                );
                 assert!(
                     matches!(
-                        agg.feed(touch(TouchStatus::Release, 20, 20), gap + 10),
+                        agg.tick(gap + 411),
                         Some(InputEvent::Gesture(GestureEvent::DoubleTap {
                             id: 0,
                             x: 10,
@@ -2088,12 +2236,8 @@ mod tests {
                     ),
                     "gap {gap}: the second lift inside the window pairs"
                 );
-                assert!(
-                    agg.tick(400).is_none(),
-                    "gap {gap}: nothing remains pending after the pair"
-                );
             }
-            for gap in [301_u64, 400, 599] {
+            for gap in [401_u64, 500, 599] {
                 let mut agg = TouchGestures::new();
                 assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
                 assert_eq!(
@@ -2115,7 +2259,7 @@ mod tests {
                 );
                 assert!(
                     matches!(
-                        agg.tick(gap + 311),
+                        agg.tick(gap + 412),
                         Some(InputEvent::Gesture(GestureEvent::Tap { id: 0, x: 20, .. }))
                     ),
                     "gap {gap}: the new tap parks and expires via tick"
@@ -2136,7 +2280,7 @@ mod tests {
                 Some(touch(TouchStatus::Release, 10, 10))
             );
             assert_eq!(
-                agg.tick(311),
+                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
@@ -2150,7 +2294,7 @@ mod tests {
                 Some(touch(TouchStatus::Release, 20, 20))
             );
             assert_eq!(
-                agg.tick(711),
+                agg.tick(811),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 20,
@@ -2161,9 +2305,7 @@ mod tests {
         }
 
         #[test]
-        fn an_end_gesture_discards_the_pending_tap() {
-            // Tap once, then slide: the swipe wins and drops the pending tap
-            // instead of double-pairing with it.
+        fn an_end_gesture_preserves_the_pending_tap() {
             let mut agg = TouchGestures::new();
             assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
             assert_eq!(
@@ -2173,6 +2315,15 @@ mod tests {
             assert!(agg.feed(touch(TouchStatus::Down, 10, 200), 400).is_some());
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 100), 480),
+                Some(InputEvent::Gesture(GestureEvent::Tap {
+                    id: 0,
+                    x: 10,
+                    y: 10,
+                    held_ms: 10
+                }))
+            );
+            assert_eq!(
+                agg.tick(481),
                 Some(InputEvent::Gesture(GestureEvent::Swipe {
                     id: 0,
                     direction: SwipeDirection::Up,
@@ -2184,12 +2335,8 @@ mod tests {
                     distance_px: 100,
                 }))
             );
-            assert!(
-                agg.tick(800).is_none(),
-                "the swipe dropped the first tap's pending window"
-            );
-            // The same suite, ending in a long-press: the pending tap is
-            // dropped too.
+            assert!(agg.tick(800).is_none());
+
             let mut agg = TouchGestures::new();
             assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
             assert_eq!(
@@ -2199,6 +2346,15 @@ mod tests {
             assert!(agg.feed(touch(TouchStatus::Down, 20, 20), 400).is_some());
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 20, 20), 1000),
+                Some(InputEvent::Gesture(GestureEvent::Tap {
+                    id: 0,
+                    x: 10,
+                    y: 10,
+                    held_ms: 10
+                }))
+            );
+            assert_eq!(
+                agg.tick(1000),
                 Some(InputEvent::Gesture(GestureEvent::LongPress {
                     id: 0,
                     x: 20,
@@ -2206,10 +2362,7 @@ mod tests {
                     held_ms: 600
                 }))
             );
-            assert!(
-                agg.tick(1300).is_none(),
-                "the long-press dropped the pending tap instead of double-pairing"
-            );
+            assert!(agg.tick(1300).is_none());
         }
 
         #[test]
@@ -2252,7 +2405,7 @@ mod tests {
                 Some(sample(&[(TouchStatus::Release, 0, 100, 100)], 1)),
             );
             assert_eq!(
-                agg.tick(331),
+                agg.tick(431),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 100,
@@ -2377,7 +2530,7 @@ mod tests {
                 Some(sample(&[(TouchStatus::Release, 1, 150, 200)], 1)),
             );
             assert_eq!(
-                agg.tick(401),
+                agg.tick(502),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 1,
                     x: 150,
@@ -2412,9 +2565,9 @@ mod tests {
                 })),
                 "the faraway finger flushes the chambered tap as its own lone Tap"
             );
-            assert_eq!(agg.tick(311), None);
+            assert_eq!(agg.tick(411), None);
             assert_eq!(
-                agg.tick(321),
+                agg.tick(421),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 1,
                     x: 150,

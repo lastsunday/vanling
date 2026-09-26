@@ -1,10 +1,18 @@
 use crate::drivers::input::{
-    FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FingerLast, GestureEvent,
-    InputEvent, MAX_TRACKED_POINTS, MOVE_DEADBAND_PX, SwipeDirection, TouchEvent, TouchStatus,
-    direction_between,
+    FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP, FingerLast,
+    GestureEvent, InputEvent, MAX_TRACKED_POINTS, MOVE_DEADBAND_PX, SwipeDirection, TouchEvent,
+    TouchStatus, direction_between,
 };
 use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
+use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use crate::intent::{BusinessIntent, OperationIntent};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DisplayPage {
+    #[default]
+    Ambient,
+    Attitude,
+}
 
 /// A live contact slot: the tracker `id` that owns it plus where it last
 /// landed, in framebuffer space.
@@ -21,9 +29,17 @@ pub struct LivePoint {
 /// readout beside the per-surface lights in the same snapshot.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceState {
-    /// Independent state of every light surface a device carries, in board
-    /// wiring order.
     pub lights: [LightState; MAX_LIGHTS],
+    pub page: DisplayPage,
+    pub motion_enabled: bool,
+    pub motion: Option<MotionSample>,
+    /// How many times each semantic has been raised, arbitrated across the
+    /// hardware engines and the core-side classifiers. Diagnostic only: the
+    /// business mapping is not wired yet, so nothing here moves a light.
+    pub motion_counts: MotionCounts,
+    /// What this board's motion stack declares, so a readout can tell a
+    /// semantic it cannot report apart from one whose threshold never fires.
+    pub motion_caps: MotionCapabilities,
     /// Most recent touch snapshot, mirroring the lights' absolute-target
     /// contract: the render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -56,6 +72,7 @@ pub struct DeviceState {
     /// Double-tap tally, bumped per resolved double-tap in the operation
     /// plane regardless of whether the business side moved a light.
     pub double_tap_count: u8,
+    pub triple_tap_count: u8,
     /// Long-press tally, bumped per resolved long-press in the operation
     /// plane regardless of whether the business side moved a light.
     pub long_press_count: u8,
@@ -178,9 +195,18 @@ impl DeviceManager {
     pub const BACKLIGHT_FLOOR_PCT: u8 = 12;
 
     pub const fn new() -> Self {
+        Self::with_motion(false, MotionCapabilities::EMPTY)
+    }
+
+    pub const fn with_motion(motion_enabled: bool, motion_caps: MotionCapabilities) -> Self {
         Self {
             state: DeviceState {
                 lights: [LightState::boot(); MAX_LIGHTS],
+                page: DisplayPage::Ambient,
+                motion_enabled,
+                motion: None,
+                motion_counts: MotionCounts::ZERO,
+                motion_caps,
                 touch: None,
                 touch_points: [None; MAX_TRACKED_POINTS],
                 live_dir: [0; MAX_TRACKED_POINTS],
@@ -191,6 +217,7 @@ impl DeviceManager {
                 tap_count: 0,
                 press_count: 0,
                 double_tap_count: 0,
+                triple_tap_count: 0,
                 long_press_count: 0,
                 ghost_count: 0,
                 swipe_count: 0,
@@ -276,6 +303,29 @@ impl DeviceManager {
                     },
                 );
             }
+            InputEvent::Gesture(GestureEvent::TripleTap {
+                id,
+                x,
+                y,
+                end_x,
+                end_y,
+                held_ms,
+            }) => {
+                self.state.triple_tap_count = self.tally_gesture(
+                    self.state.triple_tap_count,
+                    GestureRecord {
+                        id,
+                        last: FingerLast {
+                            kind: FINGER_TRIPLE_TAP,
+                            dir: 0,
+                            value: held_ms,
+                        },
+                        held_ms,
+                        origin: (x, y),
+                        end: Some((end_x, end_y)),
+                    },
+                );
+            }
             // A long-press tallies separately from the button's mode cycle;
             // the wake/cycle business move is resolved by the interpreter,
             // never here.
@@ -328,6 +378,18 @@ impl DeviceManager {
             InputEvent::ChipGesture(id) => {
                 self.state.chip_gesture_id = id;
             }
+            InputEvent::Motion(batch) => {
+                if self.state.motion_enabled {
+                    self.state.motion = Some(batch.sample);
+                    // Every semantic in the batch counts, not just the one a
+                    // single-value readout would have kept: a shake and the
+                    // tilt it causes travel together, and dropping either would
+                    // under-report what the recognizer actually raised.
+                    for event in batch.events.iter() {
+                        self.state.motion_counts.bump(event);
+                    }
+                }
+            }
             // A raw snapshot folds its points into the live slots (upsert on
             // down/contact, free on release) before storing the frame.
             InputEvent::Touch(event) => {
@@ -372,6 +434,14 @@ impl DeviceManager {
             BusinessIntent::Invalid => {}
             BusinessIntent::SetLight { instance, state } => {
                 self.apply_to(usize::from(instance), state)
+            }
+            BusinessIntent::TogglePage => {
+                if self.state.motion_enabled {
+                    self.state.page = match self.state.page {
+                        DisplayPage::Ambient => DisplayPage::Attitude,
+                        DisplayPage::Attitude => DisplayPage::Ambient,
+                    };
+                }
             }
         }
     }
@@ -462,6 +532,14 @@ impl DeviceManager {
     pub fn touch_state(&self) -> Option<TouchEvent> {
         self.state.touch
     }
+
+    pub fn motion_state(&self) -> Option<MotionSample> {
+        self.state.motion
+    }
+
+    pub fn motion_counts_state(&self) -> MotionCounts {
+        self.state.motion_counts
+    }
 }
 
 impl Default for DeviceManager {
@@ -474,7 +552,10 @@ impl Default for DeviceManager {
 mod tests {
     use super::*;
     use crate::drivers::input::{MAX_TOUCH_POINTS, TouchEvent, TouchPoint, TouchStatus};
+    use crate::drivers::motion::MotionScale;
     use crate::intent::translate;
+
+    const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
 
     const BREATH: LightState = LightState::Breath(Breath {
         period_ms: 3_000,
@@ -503,6 +584,17 @@ mod tests {
 
     fn double_tap() -> OperationIntent {
         op(InputEvent::Gesture(GestureEvent::DoubleTap {
+            id: 0,
+            x: 1,
+            y: 2,
+            end_x: 1,
+            end_y: 2,
+            held_ms: 0,
+        }))
+    }
+
+    fn triple_tap() -> OperationIntent {
+        op(InputEvent::Gesture(GestureEvent::TripleTap {
             id: 0,
             x: 1,
             y: 2,
@@ -569,6 +661,7 @@ mod tests {
             assert_eq!(state.tap_count, 0);
             assert_eq!(state.press_count, 0);
             assert_eq!(state.double_tap_count, 0);
+            assert_eq!(state.triple_tap_count, 0);
             assert_eq!(state.long_press_count, 0);
             assert_eq!(state.ghost_count, 0);
             assert_eq!(state.swipe_count, 0);
@@ -578,6 +671,188 @@ mod tests {
             assert_eq!(state.last_swipe, None);
             assert_eq!(state.last_gesture_origin, None);
             assert_eq!(state.last_gesture_end, None);
+        }
+    }
+
+    mod motion {
+        use super::*;
+        use crate::drivers::motion::{MotionBatch, MotionEvent, MotionEvents, TiltDir};
+
+        /// Every semantic a product may declare, so a case can assert one
+        /// bucket moved without restating the other thirteen.
+        const ALL_CAPS: MotionCapabilities = MotionCapabilities::TAP
+            .union(MotionCapabilities::STEP)
+            .union(MotionCapabilities::STILL)
+            .union(MotionCapabilities::MOVING)
+            .union(MotionCapabilities::ACTIVITY)
+            .union(MotionCapabilities::TILT)
+            .union(MotionCapabilities::SHAKE)
+            .union(MotionCapabilities::LIFT_PLACE)
+            .union(MotionCapabilities::POSTURE);
+
+        fn sample() -> MotionSample {
+            MotionSample::from_raw([1, 2, 3], [4, 5, 6], TEST_SCALE, 3, 0)
+        }
+
+        fn poll(manager: &mut DeviceManager, events: &[MotionEvent]) {
+            let mut batch = MotionEvents::new();
+            for &event in events {
+                batch.push(event);
+            }
+            manager.apply_operation(op(InputEvent::Motion(MotionBatch {
+                sample: sample(),
+                events: batch,
+            })));
+        }
+
+        fn apply_page(manager: &mut DeviceManager, operation: OperationIntent) {
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        /// Reads one bucket, so a case names the field it means instead of
+        /// repeating the struct type in every closure.
+        type Bucket = fn(&MotionCounts) -> u16;
+
+        #[test]
+        fn triple_tap_switches_only_on_motion_enabled_boards() {
+            let mut disabled = DeviceManager::new();
+            apply_page(&mut disabled, triple_tap());
+            assert_eq!(disabled.state().page, DisplayPage::Ambient);
+            assert_eq!(disabled.state().triple_tap_count, 1);
+
+            let mut enabled = DeviceManager::with_motion(true, ALL_CAPS);
+            apply_page(&mut enabled, triple_tap());
+            assert_eq!(enabled.state().page, DisplayPage::Attitude);
+            apply_page(&mut enabled, triple_tap());
+            assert_eq!(enabled.state().page, DisplayPage::Ambient);
+            assert_eq!(enabled.state().triple_tap_count, 2);
+        }
+
+        #[test]
+        fn motion_samples_are_kept_only_when_motion_is_enabled() {
+            let mut disabled = DeviceManager::new();
+            disabled.apply_operation(op(InputEvent::Motion(MotionBatch::new(sample()))));
+            assert_eq!(disabled.motion_state(), None);
+            assert_eq!(disabled.motion_counts_state(), MotionCounts::default());
+
+            let mut enabled = DeviceManager::with_motion(true, ALL_CAPS);
+            enabled.apply_operation(op(InputEvent::Motion(MotionBatch::new(sample()))));
+            assert_eq!(enabled.motion_state(), Some(sample()));
+            assert_eq!(
+                enabled.motion_counts_state(),
+                MotionCounts::default(),
+                "a silent poll records no semantic"
+            );
+        }
+
+        #[test]
+        fn every_semantic_files_under_its_own_bucket() {
+            // The tap engine's knock count and the four tilt directions both
+            // split one enum into several buckets, so a case that only proves
+            // "something counted" would miss a crossed wire between them.
+            let cases: [(MotionEvent, Bucket); 14] = [
+                (MotionEvent::Tap { count: 1 }, |c| c.taps),
+                (MotionEvent::Tap { count: 2 }, |c| c.double_taps),
+                (MotionEvent::Tap { count: 3 }, |c| c.triple_taps),
+                (MotionEvent::Still, |c| c.still),
+                (MotionEvent::Moving, |c| c.moving),
+                (MotionEvent::Activity, |c| c.activity),
+                (MotionEvent::Step, |c| c.steps),
+                (MotionEvent::TiltEnter(TiltDir::Left), |c| c.tilt_enters),
+                (MotionEvent::TiltExit(TiltDir::Left), |c| c.tilt_exits),
+                (MotionEvent::Shake, |c| c.shakes),
+                (MotionEvent::Lift, |c| c.lifts),
+                (MotionEvent::Place, |c| c.places),
+                (MotionEvent::Portrait, |c| c.portraits),
+                (MotionEvent::Landscape, |c| c.landscapes),
+            ];
+            for (event, bucket) in cases {
+                let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+                poll(&mut manager, &[event]);
+                let counts = manager.motion_counts_state();
+                assert_eq!(bucket(&counts), 1, "{event:?} counted once");
+                let others: u16 = cases
+                    .iter()
+                    .filter(|(other, _)| *other != event)
+                    .map(|(_, bucket)| bucket(&counts))
+                    .sum();
+                assert_eq!(others, 0, "{event:?} touched no other bucket");
+            }
+        }
+
+        #[test]
+        fn one_poll_counts_every_semantic_it_carried() {
+            // Arbitration keeps at most one event per family, but the families
+            // coexist: a shake and the tilt it causes ride the same batch and
+            // both happened, so counting only the highest-priority one would
+            // hide the tilt from the tally.
+            let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+            poll(
+                &mut manager,
+                &[
+                    MotionEvent::Shake,
+                    MotionEvent::TiltEnter(TiltDir::Left),
+                    MotionEvent::Still,
+                ],
+            );
+            let counts = manager.motion_counts_state();
+            assert_eq!(counts.shakes, 1);
+            assert_eq!(counts.tilt_enters, 1);
+            assert_eq!(counts.still, 1);
+        }
+
+        #[test]
+        fn repeated_polls_accumulate_and_then_saturate() {
+            let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+            poll(&mut manager, &[MotionEvent::Place]);
+            poll(&mut manager, &[MotionEvent::Place]);
+            poll(&mut manager, &[MotionEvent::Place]);
+            assert_eq!(manager.motion_counts_state().places, 3);
+
+            let mut saturated = MotionCounts {
+                places: u16::MAX,
+                ..MotionCounts::default()
+            };
+            saturated.bump(MotionEvent::Place);
+            assert_eq!(
+                saturated.places,
+                u16::MAX,
+                "a counter that wrapped would under-report a long session"
+            );
+        }
+
+        #[test]
+        fn a_board_without_a_motion_source_counts_nothing() {
+            let mut manager = DeviceManager::new();
+            poll(
+                &mut manager,
+                &[MotionEvent::Shake, MotionEvent::Tap { count: 1 }],
+            );
+            assert_eq!(manager.motion_counts_state(), MotionCounts::default());
+            assert_eq!(manager.state().motion_caps, MotionCapabilities::EMPTY);
+        }
+
+        #[test]
+        fn a_knock_and_a_finger_tap_are_recorded_as_separate_acts() {
+            // Same word, different planes: the panel reports a finger on glass
+            // while the accelerometer under it reports the enclosure moving.
+            // Arbitration runs within a plane, so neither cancels the other.
+            let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+            manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Tap {
+                id: 0,
+                x: 20,
+                y: 30,
+                held_ms: 40,
+            })));
+            poll(&mut manager, &[MotionEvent::Tap { count: 1 }]);
+            assert_eq!(manager.state().tap_count, 1, "the finger tap still tallies");
+            assert_eq!(
+                manager.motion_counts_state().taps,
+                1,
+                "the knock is not folded into the finger tap"
+            );
         }
     }
 

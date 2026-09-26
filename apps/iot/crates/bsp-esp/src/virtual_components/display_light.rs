@@ -1,10 +1,14 @@
 use alloc::vec::Vec;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
-use iot_core::drivers::input::{FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
+use iot_core::drivers::input::{
+    FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP,
+};
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, rgb_hue, scale_brightness, vertical_brightness,
 };
+use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::render::{MODE_BREATH, MODE_SOLID};
+use iot_core::state::DisplayPage;
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;
@@ -13,9 +17,9 @@ use crate::components::st7789::St7789;
 const REPAINT_STEP: u8 = 12;
 
 /// Debug overlay toggle. A compile-time switch (not a Cargo feature): the
-/// diagnostics digit rows and last-touch coordinates are a field/development aid, so
-/// production builds keep them dark by setting this to `false`. Counting in
-/// core is cheap and unconditional; only the panel paint is gated.
+/// ambient diagnostics rows and last-touch coordinates are a field/development
+/// aid, so production builds keep them dark by setting this to `false`. The
+/// attitude page remains visible in either mode.
 const DEBUG_DIAGNOSTICS: bool = true;
 
 /// Left edge of the diagnostics rows, in panel columns.
@@ -37,6 +41,9 @@ const LEFT_VALUE_X: usize = OVERLAY_X + 4 * (FONT_W + OVERLAY_GAP);
 /// one vertical line. The widest entry (`LO HI 140 255`) still fits the
 /// 240-column panel.
 const RIGHT_VALUE_X: usize = 174;
+/// Stand-in value for a semantic the board does not declare, matching the
+/// `ERR`/`WAIT` sentinels the attitude page already uses for missing data.
+const NOT_AVAILABLE: &[u8] = b"N/A";
 
 /// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes) in
 /// column-major order, bit 0 of each byte the top row — the classic
@@ -87,9 +94,9 @@ pub struct DisplayLight {
     frame: Vec<u8>,
     screen_color: Option<(Fill, Rgb)>,
     backlight: Backlight,
-    /// Diagnostic overlay payload: touch counters and readout (see [`Diagnostics`]),
-    /// shown when [`DEBUG_DIAGNOSTICS`] is on. A bump repaints via [`Self::paint`],
-    /// which the `screen_color` guard would otherwise skip.
+    /// Diagnostic overlay payload: touch counters, light mode, and motion (see
+    /// [`Diagnostics`]). A bump repaints via [`Self::paint`], which the
+    /// `screen_color` guard would otherwise skip.
     diagnostics: Diagnostics,
 }
 
@@ -133,15 +140,14 @@ impl RgbLight for DisplayLight {
 
 impl DiagnosticsSink for DisplayLight {
     fn consume(&mut self, diagnostics: &Diagnostics) {
-        if !DEBUG_DIAGNOSTICS {
-            return;
-        }
         if self.diagnostics == *diagnostics {
             return;
         }
+        let page_changed = self.diagnostics.page != diagnostics.page;
         self.diagnostics = *diagnostics;
-        // The light color may not have moved (bump at rest), so bypass the
-        // `screen_color` guard and repaint the current surface onto the frame.
+        if !DEBUG_DIAGNOSTICS && self.diagnostics.page != DisplayPage::Attitude && !page_changed {
+            return;
+        }
         if let Some((fill, color)) = self.screen_color {
             self.paint(fill, color);
         }
@@ -181,7 +187,11 @@ impl DisplayLight {
         } else {
             (mine.brightness, mine.hue)
         };
-        self.stamp_diagnostics(width, usize::from(height), live);
+        if self.diagnostics.page == DisplayPage::Attitude {
+            self.stamp_attitude(width, usize::from(height));
+        } else if DEBUG_DIAGNOSTICS {
+            self.stamp_diagnostics(width, usize::from(height), live);
+        }
 
         if let Err(e) = self.panel.write_frame(&self.frame) {
             log::error!("[DISPLAY] frame write failed: {e:?}");
@@ -189,9 +199,9 @@ impl DisplayLight {
     }
 
     /// Overdraws the corner as two columns of inverted-pixel rows, visible on
-    /// any fill. Touch column: the `GST`/`2F`/`PRS`/`TAP`/`DBL`/`LNG`/`SWP`
+    /// any fill. Touch column: the `GST`/`2F`/`PRS`/`TAP`/`DBL`/`3T`/`LNG`/`SWP`
     /// counters, `DIR` (last swipe arrow+distance), per-finger `P0*`/`P1*`
-    /// rows (live coords, gesture digit `1`–`4` with value, live arrow),
+    /// rows (live coords, gesture digit `1`–`5` with value, live arrow),
     /// `XY`/`XY2` (last origin/trailing point), `CHP` (raw `GESTURE_ID`) and
     /// `FRM` (applied-frame heartbeat — a frozen `FRM` under a held finger
     /// tells "no frames arrived" from "coordinates did not move"). Mode column:
@@ -203,12 +213,13 @@ impl DisplayLight {
         let light = self.diagnostics.lights[usize::from(self.instance)];
         let mut buf = [0u8; 6];
 
-        let counters: [(&[u8], u16); 7] = [
+        let counters: [(&[u8], u16); 8] = [
             (b"GST".as_slice(), u16::from(touch.ghost)),
             (b"2F".as_slice(), u16::from(touch.two_finger_runs)),
             (b"PRS".as_slice(), u16::from(touch.presses)),
             (b"TAP".as_slice(), u16::from(touch.taps)),
             (b"DBL".as_slice(), u16::from(touch.double_taps)),
+            (b"3T".as_slice(), u16::from(touch.triple_taps)),
             (b"LNG".as_slice(), u16::from(touch.long_presses)),
             (b"SWP".as_slice(), u16::from(touch.swipes)),
         ];
@@ -220,15 +231,15 @@ impl DisplayLight {
         dir[0] = direction_arrow(touch.last_swipe_dir);
         dir[1] = b' ';
         let nd = write_u16(touch.last_swipe_dist, &mut dir, 2);
-        self.stamp_left(b"DIR", &dir[..nd], 7, width, height);
+        self.stamp_left(b"DIR", &dir[..nd], 8, width, height);
 
         let mut ref_buf = [0u8; 8];
         let origin = format_pair(touch.last_gesture_origin, &mut ref_buf);
-        self.stamp_left(b"XY", origin, 8, width, height);
+        self.stamp_left(b"XY", origin, 9, width, height);
 
         let mut end_buf = [0u8; 8];
         let end = format_pair(touch.last_gesture_end, &mut end_buf);
-        self.stamp_left(b"XY2", end, 9, width, height);
+        self.stamp_left(b"XY2", end, 10, width, height);
 
         /// Overlay row label quartet for one finger slot: coordinate, resolved
         /// gesture digit, its value, and the live movement arrow.
@@ -241,7 +252,7 @@ impl DisplayLight {
         for (slot, (xy_label, gesture_label, value_label, dir_label)) in
             SLOT_ROWS.iter().enumerate()
         {
-            let base = 10 + 4 * slot;
+            let base = 11 + 4 * slot;
             let mut xy = [0u8; 8];
             let n = match touch.points[slot] {
                 Some((x, y)) => {
@@ -280,7 +291,7 @@ impl DisplayLight {
         self.stamp_left(
             b"CHP",
             format_u16(u16::from(touch.chip_gesture_id), &mut buf),
-            18,
+            19,
             width,
             height,
         );
@@ -288,7 +299,7 @@ impl DisplayLight {
         self.stamp_left(
             b"FRM",
             format_u16(touch.frames, &mut buf),
-            19,
+            20,
             width,
             height,
         );
@@ -373,6 +384,206 @@ impl DisplayLight {
         }
     }
 
+    /// Overdraws the corner as two columns of inverted-pixel rows. Left column:
+    /// the raw and scaled motion readout — `A0`–`A2` raw accelerometer,
+    /// `M0`–`M2` milli-g, `G0`–`G2` raw gyroscope, `D0`–`D2` deci-dps, `R0`–`R2`
+    /// tilt, `ST` engine status — or `ERR`/`WAIT`/`READ` when the source has
+    /// produced nothing or a read failed. Right column: one row per semantic
+    /// holding how many times it has fired since boot, `N/A` where the board
+    /// declares no such capability.
+    fn stamp_attitude(&mut self, width: usize, height: usize) {
+        let top = OVERLAY_Y;
+        self.stamp_text(b"ATTITUDE", OVERLAY_X, top, width, height);
+        let Some(sample) = self.diagnostics.motion else {
+            self.stamp_left(b"ERR", b"WAIT", 2, width, height);
+            return;
+        };
+        if !sample.valid {
+            self.stamp_left(b"ERR", b"READ", 2, width, height);
+            return;
+        }
+
+        for axis in 0..3 {
+            let mut buf = [0u8; 12];
+            let raw_accel = format_i32(i32::from(sample.raw_accel[axis]), &mut buf);
+            self.stamp_left(
+                match axis {
+                    0 => b"A0",
+                    1 => b"A1",
+                    _ => b"A2",
+                },
+                raw_accel,
+                axis + 1,
+                width,
+                height,
+            );
+        }
+        for axis in 0..3 {
+            let mut buf = [0u8; 12];
+            let accel_mg = format_i32(sample.accel_mg[axis], &mut buf);
+            self.stamp_left(
+                match axis {
+                    0 => b"M0",
+                    1 => b"M1",
+                    _ => b"M2",
+                },
+                accel_mg,
+                axis + 4,
+                width,
+                height,
+            );
+        }
+        for axis in 0..3 {
+            let mut buf = [0u8; 12];
+            let raw_gyro = format_i32(i32::from(sample.raw_gyro[axis]), &mut buf);
+            self.stamp_left(
+                match axis {
+                    0 => b"G0",
+                    1 => b"G1",
+                    _ => b"G2",
+                },
+                raw_gyro,
+                axis + 7,
+                width,
+                height,
+            );
+        }
+        for axis in 0..3 {
+            let mut buf = [0u8; 12];
+            let gyro_dps = format_tenths(sample.gyro_dps_x10[axis], &mut buf);
+            self.stamp_left(
+                match axis {
+                    0 => b"D0",
+                    1 => b"D1",
+                    _ => b"D2",
+                },
+                gyro_dps,
+                axis + 10,
+                width,
+                height,
+            );
+        }
+        for axis in 0..3 {
+            let mut buf = [0u8; 12];
+            let tilt = format_tenths(i32::from(sample.tilt_deg_x10[axis]), &mut buf);
+            self.stamp_left(
+                match axis {
+                    0 => b"R0",
+                    1 => b"R1",
+                    _ => b"R2",
+                },
+                tilt,
+                axis + 13,
+                width,
+                height,
+            );
+        }
+        self.stamp_left(
+            b"ST",
+            format_u16(u16::from(sample.status), &mut [0; 6]),
+            16,
+            width,
+            height,
+        );
+        // What the recognizer's own estimators had left over, which is what
+        // the thresholds actually decide on. The raw axes above cannot show
+        // that, because a settled reading is near zero by definition and a
+        // threshold has to be read off the device rather than inferred from
+        // another flash. `LR` is how far the measured magnitude sits from one
+        // g, the still band the lift/place pair measures; `SR` is the shake
+        // estimate's leftover, taken as a length; `TR` is the same for the tap
+        // peak bar, the root of the squared gravity-removed residual.
+        self.stamp_left(
+            b"LR",
+            format_i32(sample.gravity_deviation_mg, &mut [0; 12]),
+            17,
+            width,
+            height,
+        );
+        self.stamp_left(
+            b"SR",
+            format_i32(sample.shake_residual_mg, &mut [0; 12]),
+            18,
+            width,
+            height,
+        );
+        self.stamp_left(
+            b"TR",
+            format_i32(sample.tap_residual_mg, &mut [0; 12]),
+            19,
+            width,
+            height,
+        );
+        let counts = self.diagnostics.motion_counts;
+        let caps = self.diagnostics.motion_caps;
+        // The right column is free on this page, so it carries a count per
+        // semantic rather than the latest one. Every row is always drawn: a
+        // semantic this board never declares shows `N/A`, which keeps "the
+        // stack cannot report it" visually distinct from "its threshold never
+        // fires" — the distinction a threshold sweep is reading for.
+        let rows: [(&[u8], MotionCapabilities, u16); 14] = [
+            (b"TAP".as_slice(), MotionCapabilities::TAP, counts.taps),
+            (
+                b"2T".as_slice(),
+                MotionCapabilities::TAP,
+                counts.double_taps,
+            ),
+            (
+                b"3T".as_slice(),
+                MotionCapabilities::TAP,
+                counts.triple_taps,
+            ),
+            (b"STL".as_slice(), MotionCapabilities::STILL, counts.still),
+            (b"MOV".as_slice(), MotionCapabilities::MOVING, counts.moving),
+            (
+                b"ACT".as_slice(),
+                MotionCapabilities::ACTIVITY,
+                counts.activity,
+            ),
+            (b"STP".as_slice(), MotionCapabilities::STEP, counts.steps),
+            (
+                b"TIN".as_slice(),
+                MotionCapabilities::TILT,
+                counts.tilt_enters,
+            ),
+            (
+                b"TOX".as_slice(),
+                MotionCapabilities::TILT,
+                counts.tilt_exits,
+            ),
+            (b"SHK".as_slice(), MotionCapabilities::SHAKE, counts.shakes),
+            (
+                b"LFT".as_slice(),
+                MotionCapabilities::LIFT_PLACE,
+                counts.lifts,
+            ),
+            (
+                b"PLC".as_slice(),
+                MotionCapabilities::LIFT_PLACE,
+                counts.places,
+            ),
+            (
+                b"PRT".as_slice(),
+                MotionCapabilities::POSTURE,
+                counts.portraits,
+            ),
+            (
+                b"LND".as_slice(),
+                MotionCapabilities::POSTURE,
+                counts.landscapes,
+            ),
+        ];
+        let mut buf = [0u8; 6];
+        for (row, (label, capability, count)) in rows.into_iter().enumerate() {
+            let value: &[u8] = if caps.contains(capability) {
+                format_u16(count, &mut buf)
+            } else {
+                NOT_AVAILABLE
+            };
+            self.stamp_right(value, label, row, width, height);
+        }
+    }
+
     /// Writes one touch-column row: label at [`OVERLAY_X`], one space glyph,
     /// then the value at [`LEFT_VALUE_X`].
     fn stamp_left(&mut self, label: &[u8], value: &[u8], row: usize, width: usize, height: usize) {
@@ -438,6 +649,58 @@ impl DisplayLight {
 
 /// Decimal ASCII digits of `value` (no leading zeros) written into the start
 /// of `buf`, returned as the filled prefix.
+fn format_i32(value: i32, buf: &mut [u8; 12]) -> &[u8] {
+    let negative = value < 0;
+    let magnitude = if negative {
+        -(value as i64) as u64
+    } else {
+        value as u64
+    };
+    let mut n = 0;
+    if negative {
+        buf[n] = b'-';
+        n += 1;
+    }
+    n = write_u64(magnitude, buf, n);
+    &buf[..n]
+}
+
+fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
+    let negative = value < 0;
+    let magnitude = if negative {
+        -(value as i64) as u64
+    } else {
+        value as u64
+    };
+    let mut n = 0;
+    if negative {
+        buf[n] = b'-';
+        n += 1;
+    }
+    n = write_u64(magnitude / 10, buf, n);
+    buf[n] = b'.';
+    buf[n + 1] = b'0' + (magnitude % 10) as u8;
+    &buf[..n + 2]
+}
+
+fn write_u64(mut value: u64, buf: &mut [u8], mut n: usize) -> usize {
+    let mut tmp = [0u8; 20];
+    let mut len = 0;
+    loop {
+        tmp[len] = b'0' + (value % 10) as u8;
+        len += 1;
+        value /= 10;
+        if value == 0 {
+            break;
+        }
+    }
+    for &digit in tmp[..len].iter().rev() {
+        buf[n] = digit;
+        n += 1;
+    }
+    n
+}
+
 fn format_u16(value: u16, buf: &mut [u8; 6]) -> &[u8] {
     let n = write_u16(value, buf, 0);
     &buf[..n]
@@ -509,15 +772,16 @@ fn direction_arrow(dir: u8) -> u8 {
 }
 
 /// Single-digit glyph of a finger's last resolved gesture, matching the
-/// core `FINGER_*` codes (`1` tap, `2` double-tap, `3` long-press, `4`
-/// swipe) so the per-finger rows and the on-panel digit gradient agree; a
-/// dash before the slot ever resolves one.
+/// core `FINGER_*` codes (`1` tap, `2` double-tap, `3` triple-tap, `4`
+/// long-press, `5` swipe) so the per-finger rows and the on-panel digit
+/// gradient agree; a dash before the slot ever resolves one.
 fn gesture_glyph(kind: u8) -> u8 {
     match kind {
         FINGER_TAP => b'1',
         FINGER_DOUBLE_TAP => b'2',
-        FINGER_LONG_PRESS => b'3',
-        FINGER_SWIPE => b'4',
+        FINGER_TRIPLE_TAP => b'3',
+        FINGER_LONG_PRESS => b'4',
+        FINGER_SWIPE => b'5',
         _ => b'-',
     }
 }

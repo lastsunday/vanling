@@ -115,6 +115,7 @@ fn light_diagnostics(state: &DeviceState) -> Diagnostics {
             taps: state.tap_count,
             presses: state.press_count,
             double_taps: state.double_tap_count,
+            triple_taps: state.triple_tap_count,
             long_presses: state.long_press_count,
             ghost: state.ghost_count,
             swipes: state.swipe_count,
@@ -131,6 +132,11 @@ fn light_diagnostics(state: &DeviceState) -> Diagnostics {
             held_ms: state.touch_held_ms,
         },
         lights: state.lights.map(light_snapshot),
+        page: state.page,
+        motion_enabled: state.motion_enabled,
+        motion: state.motion,
+        motion_counts: state.motion_counts,
+        motion_caps: state.motion_caps,
     }
 }
 

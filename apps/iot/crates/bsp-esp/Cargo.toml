@@ -7,24 +7,30 @@ edition.workspace = true
 default = ["esp32c6-devkitc-1"]
 # Real components: one feature per module (one axis, module-backed); a board
 # feature below is the aggregate of the wiring it needs.
-backlight = []
-button = []
+backlight = ["dep:esp-hal"]
+button = ["dep:esp-hal"]
 pca9557 = ["dep:embedded-hal"]
+qmi8658 = ["dep:embedded-hal"]
 ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
-ws2812 = ["dep:esp-hal-smartled", "dep:smart-leds"]
-st7789 = ["dep:embedded-hal", "dep:mipidsi"]
+ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
+st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # Virtual components: assembled from real components.
 display-light = ["st7789"]
 esp32c6-devkitc-1 = ["button", "ws2812"]
-lckfb-szpi-esp32s3 = ["button", "pca9557", "st7789", "display-light", "backlight", "ft6336"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }
 embassy-embedded-hal = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
-esp-hal = { workspace = true }
-esp-hal-smartled = { workspace = true, optional = true }
-smart-leds = { workspace = true, optional = true }
 iot-core = { workspace = true }
 log = { workspace = true }
 mipidsi = { workspace = true, optional = true }
+
+# The chip HAL only builds for a bare-metal target, so keeping it out of the
+# host build is what lets the pure `embedded_hal` components above be unit
+# tested on a workstation.
+[target.'cfg(target_os = "none")'.dependencies]
+esp-hal = { workspace = true, optional = true }
+esp-hal-smartled = { workspace = true, optional = true }
+smart-leds = { workspace = true, optional = true }

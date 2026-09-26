@@ -50,6 +50,13 @@ tasks:
     deps:
       - ~:check
 
+  test-bsp:
+    command: >-
+      cargo test -p iot-bsp-esp --no-default-features
+      --features qmi8658,pca9557
+    deps:
+      - ~:check
+
   lint:
     command: 'cargo clippy -p iot-app --bin vanling --target $CARGO_ESP_TARGET -- -D warnings'
     inputs:

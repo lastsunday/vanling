@@ -6,6 +6,7 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal_smartled::buffer_size;
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
+use iot_core::drivers::motion::MotionCapabilities;
 use smart_leds::RGB8;
 
 pub use crate::components::button::PullButton;
@@ -78,5 +79,15 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
                 BUTTON_SCAN_MS,
             )]
         })
+    }
+}
+
+impl iot_core::drivers::board::HasMotion for Board<'static> {
+    fn take_motion(&mut self) -> Option<PollEntry> {
+        None
+    }
+
+    fn motion_capabilities(&self) -> MotionCapabilities {
+        MotionCapabilities::EMPTY
     }
 }

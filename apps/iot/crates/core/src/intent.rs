@@ -109,7 +109,11 @@ pub enum BusinessIntent {
     /// pulse/read-back that is diagnostic-only by nature).
     Invalid,
     /// Set the `instance`-th light surface to an absolute target state.
-    SetLight { instance: u8, state: LightState },
+    SetLight {
+        instance: u8,
+        state: LightState,
+    },
+    TogglePage,
 }
 
 /// The management-pipe message: one pipe carries both planes. The operation
@@ -140,8 +144,9 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
     match op.event {
         // A click advances the color; `Off` has none, so it reads as no-op.
         InputEvent::Button(ButtonEvent::Click) => target_for(advance_color(light), slot),
-        // A double-click steps the mode's second dimension (period/brightness).
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
+        InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
+        InputEvent::Gesture(GestureEvent::TripleTap { .. }) => BusinessIntent::TogglePage,
         // Cycles the mode; always resolves, so any state is the way back on.
         InputEvent::Button(ButtonEvent::LongPress) => BusinessIntent::SetLight {
             instance: slot as u8,
@@ -152,7 +157,7 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         // An anomaly pulse tallies; no light move.
         InputEvent::Gesture(GestureEvent::Ghost) => BusinessIntent::Invalid,
         // A raw chip gesture is a diagnostic read-back; never moves the light.
-        InputEvent::ChipGesture(_) => BusinessIntent::Invalid,
+        InputEvent::ChipGesture(_) | InputEvent::Motion(_) => BusinessIntent::Invalid,
         // Classified touch gestures mirror the button moves in their own
         // tallying variants; the device-level panel always drives surface 0.
         InputEvent::Gesture(GestureEvent::Tap { .. }) => target_for(advance_color(light), 0),
@@ -373,6 +378,7 @@ mod tests {
         FingerLast, MAX_TOUCH_POINTS, MAX_TRACKED_POINTS, TouchEvent, TouchPoint, TouchStatus,
     };
     use crate::drivers::light::MAX_LIGHTS;
+    use crate::drivers::motion::{MotionCapabilities, MotionCounts};
 
     const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 
@@ -391,6 +397,11 @@ mod tests {
     fn state(light: LightState) -> DeviceState {
         DeviceState {
             lights: [light; MAX_LIGHTS],
+            page: crate::state::DisplayPage::Ambient,
+            motion_enabled: true,
+            motion: None,
+            motion_counts: MotionCounts::default(),
+            motion_caps: MotionCapabilities::EMPTY,
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -401,6 +412,7 @@ mod tests {
             tap_count: 0,
             press_count: 0,
             double_tap_count: 0,
+            triple_tap_count: 0,
             long_press_count: 0,
             ghost_count: 0,
             swipe_count: 0,
@@ -420,7 +432,7 @@ mod tests {
     fn target(event: InputEvent, current: LightState) -> Option<LightState> {
         match translate(&op(event), &state(current)) {
             BusinessIntent::SetLight { state, .. } => Some(state),
-            BusinessIntent::Invalid => None,
+            BusinessIntent::Invalid | BusinessIntent::TogglePage => None,
         }
     }
 

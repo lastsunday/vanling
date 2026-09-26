@@ -1,6 +1,7 @@
 //! Device-level diagnostics: one snapshot fuses every subsystem the device
-//! exposes — the touch-path readout plus one [`LightSnapshot`] per light
-//! surface — and fans out through pluggable [`DiagnosticsSink`]s.
+//! exposes — the touch-path readout, display page, motion sample, and one
+//! [`LightSnapshot`] per light surface — and fans out through pluggable
+//! [`DiagnosticsSink`]s.
 //!
 //! The data source stays the central `DeviceState` in `crate::state`; a sink
 //! only consumes, so the panel today (a `DisplayLight`) can be joined by
@@ -10,6 +11,8 @@
 
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use crate::drivers::light::MAX_LIGHTS;
+use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
+use crate::state::DisplayPage;
 
 /// Breathing mode's full dimension set carried by a light snapshot so the
 /// panel can print every parameter the mode exposes; all zero outside
@@ -49,6 +52,7 @@ pub struct TouchDiagnostics {
     pub taps: u8,
     pub presses: u8,
     pub double_taps: u8,
+    pub triple_taps: u8,
     pub long_presses: u8,
     pub ghost: u8,
     /// Live contact position each tracked slot last reported, framebuffer
@@ -82,13 +86,18 @@ pub struct TouchDiagnostics {
     pub chip_gesture_id: u8,
 }
 
-/// The on-surface diagnostics payload: touch-path counters/readout plus one
-/// [`LightSnapshot`] per light surface slot, fused so one diff carries both
-/// the corner digits and the mode each light a gesture moved.
+/// The on-surface diagnostics payload: touch-path counters/readout, display
+/// page, motion sample, and one [`LightSnapshot`] per light surface slot,
+/// fused so one diff carries the corner digits and the current page data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Diagnostics {
     pub touch: TouchDiagnostics,
     pub lights: [LightSnapshot; MAX_LIGHTS],
+    pub page: DisplayPage,
+    pub motion_enabled: bool,
+    pub motion: Option<MotionSample>,
+    pub motion_counts: MotionCounts,
+    pub motion_caps: MotionCapabilities,
 }
 
 /// Consumer of the device diagnostic snapshot. The screen surface implements

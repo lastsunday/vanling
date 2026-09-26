@@ -6,6 +6,7 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embedded_hal::spi::SpiBus;
 use esp_hal::Blocking;
+use esp_hal::delay::Delay;
 use esp_hal::gpio::{DriveMode, Level, Output, OutputConfig};
 use esp_hal::i2c::master as i2c_master;
 use esp_hal::ledc::channel as ledc_channel;
@@ -19,14 +20,16 @@ use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::input::{
-    BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry, TOUCH_SCAN_MS, TouchGestures,
-    TouchMap,
+    BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
+    TouchGestures, TouchMap,
 };
+use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
 use crate::components::ft6336::{FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
+use crate::components::qmi8658::{MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658};
 use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
 pub use crate::virtual_components::DisplayLight;
 
@@ -94,6 +97,7 @@ pub struct Board<'d> {
     light: Option<DisplayLight>,
     button: Option<PullButton<'d>>,
     touch: Option<Ft6336<SharedI2cDevice>>,
+    motion: Option<Qmi8658<SharedI2cDevice>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -185,6 +189,16 @@ impl Board<'static> {
             LCD_WIDTH,
             LCD_HEIGHT,
         );
+        let mut motion = Qmi8658::new(I2cDevice::new(bus), QMI8658_I2C_ADDR);
+        let mut delay = Delay::new();
+        // Motion is an optional sensor here, so a failure leaves the device
+        // running without it rather than failing the board. The driver does not
+        // retry on its own: a part that did not configure will not start
+        // reporting on its own either, and every later poll just repeats
+        // NotReady at a rate-limited log.
+        if let Err(error) = motion.init(&mut delay) {
+            log::warn!("[MOTION] QMI8658 unavailable, motion plane disabled: {error:?}");
+        }
         let timg0 = TimerGroup::new(TIMG0);
 
         Ok((
@@ -192,6 +206,7 @@ impl Board<'static> {
                 light: Some(light),
                 button: Some(button),
                 touch: Some(touch),
+                motion: Some(motion),
             },
             timg0,
             FROM_CPU_INTR0,
@@ -229,5 +244,22 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
             ));
         }
         (!entries.is_empty()).then_some(entries)
+    }
+}
+
+impl iot_core::drivers::board::HasMotion for Board<'static> {
+    fn take_motion(&mut self) -> Option<PollEntry> {
+        self.motion.take().map(|motion| {
+            PollEntry::new(
+                1,
+                Box::new(MotionInput::new(motion)),
+                Box::new(PassThrough),
+                MOTION_SCAN_MS,
+            )
+        })
+    }
+
+    fn motion_capabilities(&self) -> MotionCapabilities {
+        MOTION_CAPABILITIES
     }
 }

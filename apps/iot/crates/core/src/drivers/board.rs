@@ -1,6 +1,7 @@
 use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::light::RgbLight;
+use crate::drivers::motion::MotionCapabilities;
 use alloc::vec::Vec;
 
 /// A hardware board instance. Implemented per board in the bsp crate.
@@ -32,6 +33,16 @@ pub trait HasInput: Board {
     /// Take the board's input sources. Returns `None` when no input is wired
     /// or it was already taken.
     fn take_input(&mut self) -> Option<Vec<PollEntry>>;
+}
+
+pub trait HasMotion: Board {
+    fn take_motion(&mut self) -> Option<PollEntry>;
+
+    /// What this board's motion stack can report, driver engines plus core
+    /// classifier. Declared rather than switched: the data plane ships
+    /// unconditionally, so a capability the stack lacks is simply never raised.
+    /// A board with no accelerometer returns `MotionCapabilities::EMPTY`.
+    fn motion_capabilities(&self) -> MotionCapabilities;
 }
 
 #[cfg(test)]
