@@ -6,7 +6,8 @@ use iot_core::drivers::input::{
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, rgb_hue, scale_brightness, vertical_brightness,
 };
-use iot_core::drivers::motion::MotionCapabilities;
+use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
+use iot_core::horizon::{SCALE, horizon};
 use iot_core::render::{MODE_BREATH, MODE_SOLID};
 use iot_core::state::DisplayPage;
 
@@ -44,6 +45,14 @@ const RIGHT_VALUE_X: usize = 174;
 /// Stand-in value for a semantic the board does not declare, matching the
 /// `ERR`/`WAIT` sentinels the attitude page already uses for missing data.
 const NOT_AVAILABLE: &[u8] = b"N/A";
+
+/// Attitude dial center, in panel columns/rows. Anchored in the free
+/// bottom-right corner: below the mode column's last row (`y ≈ 184`) and
+/// right of the touch column's widest value (`x ≈ 145`), so a radius of
+/// [`HORIZON_R`] stays clear of both columns on the 240×320 panel.
+const HORIZON_CX: usize = 192;
+const HORIZON_CY: usize = 252;
+const HORIZON_R: usize = 40;
 
 /// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes) in
 /// column-major order, bit 0 of each byte the top row — the classic
@@ -402,6 +411,7 @@ impl DisplayLight {
             self.stamp_left(b"ERR", b"READ", 2, width, height);
             return;
         }
+        self.stamp_horizon(&sample, width, height);
 
         for axis in 0..3 {
             let mut buf = [0u8; 12];
@@ -592,6 +602,34 @@ impl DisplayLight {
         self.stamp_text(value, LEFT_VALUE_X, top, width, height);
     }
 
+    /// Overdraws the attitude dial — the inverted counterpart of `R0`–`R2` —
+    /// with ring, fixed wing/bank references, and a `-roll`/`pitch` horizon.
+    fn stamp_horizon(&mut self, sample: &MotionSample, width: usize, height: usize) {
+        let geo = horizon(sample.tilt_deg_x10[0], sample.tilt_deg_x10[1]);
+        let cx = HORIZON_CX as isize;
+        let cy = HORIZON_CY as isize;
+        let r = HORIZON_R as isize;
+
+        self.stamp_circle(cx, cy, r, width, height);
+
+        // Fixed airframe reference: top bank index and center wing bar.
+        self.stamp_line(cx - 4, cy - r + 2, cx + 4, cy - r + 2, width, height);
+        self.stamp_line(cx - 10, cy, cx + 10, cy, width, height);
+
+        // Horizon line tilted `-roll`, shifted by the pitch fraction of `r`.
+        let half_x = geo.unit.0 as isize * r / SCALE as isize;
+        let half_y = geo.unit.1 as isize * r / SCALE as isize;
+        let offset = geo.offset as isize * r / SCALE as isize;
+        self.stamp_line(
+            cx - half_x,
+            cy - half_y + offset,
+            cx + half_x,
+            cy + half_y + offset,
+            width,
+            height,
+        );
+    }
+
     /// Writes one mode-column row: value at [`RIGHT_VALUE_X`], the label
     /// right-aligned into the fixed five-glyph slot ending one space before
     /// it — so every label (`MOD` up to `LO HI`) floats right next to its
@@ -633,15 +671,84 @@ impl DisplayLight {
                 if bits & (1 << row) == 0 {
                     continue;
                 }
-                let x = left + col;
-                let y = top + row;
-                if x >= width || y >= height {
-                    continue;
-                }
-                let offset = (y * width + x) * 2;
-                let packed = u16::from_be_bytes([self.frame[offset], self.frame[offset + 1]]);
-                self.frame[offset..offset + 2]
-                    .copy_from_slice(&invert_rgb565(packed).to_be_bytes());
+                self.stamp_pixel(
+                    left as isize + col as isize,
+                    top as isize + row as isize,
+                    width,
+                    height,
+                );
+            }
+        }
+    }
+
+    /// Inverts one pixel: the shared ink for glyphs and the dial.
+    fn stamp_pixel(&mut self, x: isize, y: isize, width: usize, height: usize) {
+        if x < 0 || y < 0 || x as usize >= width || y as usize >= height {
+            return;
+        }
+        let offset = (y as usize * width + x as usize) * 2;
+        let packed = u16::from_be_bytes([self.frame[offset], self.frame[offset + 1]]);
+        self.frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
+    }
+
+    /// Inverts the straight run from `(x0, y0)` to `(x1, y1)` (Bresenham).
+    fn stamp_line(
+        &mut self,
+        x0: isize,
+        y0: isize,
+        x1: isize,
+        y1: isize,
+        width: usize,
+        height: usize,
+    ) {
+        let dx = (x1 - x0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let dy = -(y1 - y0).abs();
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+        let (mut x, mut y) = (x0, y0);
+        loop {
+            self.stamp_pixel(x, y, width, height);
+            if x == x1 && y == y1 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
+        }
+    }
+
+    /// Inverts the perimeter of the circle at `(cx, cy)` with radius `r`
+    /// (midpoint algorithm).
+    fn stamp_circle(&mut self, cx: isize, cy: isize, r: isize, width: usize, height: usize) {
+        let mut x = r;
+        let mut y = 0;
+        let mut err = 1 - r;
+        while x >= y {
+            for (dx, dy) in [
+                (x, y),
+                (-x, y),
+                (x, -y),
+                (-x, -y),
+                (y, x),
+                (-y, x),
+                (y, -x),
+                (-y, -x),
+            ] {
+                self.stamp_pixel(cx + dx, cy + dy, width, height);
+            }
+            y += 1;
+            if err <= 0 {
+                err += 2 * y + 1;
+            } else {
+                x -= 1;
+                err += 2 * (y - x) + 1;
             }
         }
     }
