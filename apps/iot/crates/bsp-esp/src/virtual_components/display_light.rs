@@ -8,14 +8,18 @@ use iot_core::drivers::light::{
 };
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::horizon::{SCALE, horizon};
-use iot_core::render::{MODE_BREATH, MODE_SOLID};
+use iot_core::render::{MODE_BREATH, MODE_SOLID, windowed_rate};
 use iot_core::state::DisplayPage;
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;
+use esp_hal::time::Instant;
 
 /// Minimum per-channel color delta that warrants a full-frame repaint.
 const REPAINT_STEP: u8 = 12;
+
+/// On-panel repaint-rate sampling window.
+const FPS_WINDOW_MS: u64 = 500;
 
 /// Debug overlay toggle. A compile-time switch (not a Cargo feature): the
 /// ambient diagnostics rows and last-touch coordinates are a field/development
@@ -53,6 +57,10 @@ const NOT_AVAILABLE: &[u8] = b"N/A";
 const HORIZON_CX: usize = 192;
 const HORIZON_CY: usize = 252;
 const HORIZON_R: usize = 40;
+
+/// Global FPS badge pinned to the panel's top-right edge on every page, the
+/// only strip no content uses; the value right-aligns to the panel edge.
+const FPS_Y: usize = 0;
 
 /// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes) in
 /// column-major order, bit 0 of each byte the top row — the classic
@@ -107,6 +115,10 @@ pub struct DisplayLight {
     /// [`Diagnostics`]). A bump repaints via [`Self::paint`], which the
     /// `screen_color` guard would otherwise skip.
     diagnostics: Diagnostics,
+    /// Panel repaint rate over the last window, `0` while nothing repaints.
+    fps: u8,
+    fps_frames: u32,
+    fps_anchor: Instant,
 }
 
 impl DisplayLight {
@@ -122,6 +134,9 @@ impl DisplayLight {
             screen_color: None,
             backlight,
             diagnostics: Diagnostics::default(),
+            fps: 0,
+            fps_frames: 0,
+            fps_anchor: Instant::now(),
         }
     }
 
@@ -201,9 +216,26 @@ impl DisplayLight {
         } else if DEBUG_DIAGNOSTICS {
             self.stamp_diagnostics(width, usize::from(height), live);
         }
+        if DEBUG_DIAGNOSTICS {
+            self.stamp_fps(width, usize::from(height));
+        }
 
         if let Err(e) = self.panel.write_frame(&self.frame) {
             log::error!("[DISPLAY] frame write failed: {e:?}");
+        }
+        self.sample_fps();
+    }
+
+    /// Samples the panel repaint rate into `fps`, resetting each window so a
+    /// silent panel decays toward `0`.
+    fn sample_fps(&mut self) {
+        self.fps_frames += 1;
+        let now = Instant::now();
+        let window = now - self.fps_anchor;
+        if window.as_millis() >= FPS_WINDOW_MS {
+            self.fps = windowed_rate(self.fps_frames, window.as_millis());
+            self.fps_frames = 0;
+            self.fps_anchor = now;
         }
     }
 
@@ -592,6 +624,23 @@ impl DisplayLight {
             };
             self.stamp_right(value, label, row, width, height);
         }
+    }
+
+    /// Overdraws the `FPS <rate>` badge in the corner, right-aligned so it stays
+    /// flush as the rate grows digits.
+    fn stamp_fps(&mut self, width: usize, height: usize) {
+        let buf = &mut [0u8; 6];
+        let digits = format_u16(u16::from(self.fps), buf);
+        let pitch = FONT_W + OVERLAY_GAP;
+        let value_left = width - digits.len() * pitch + OVERLAY_GAP;
+        self.stamp_text(
+            b"FPS",
+            value_left - (3 * FONT_W + 4 * OVERLAY_GAP),
+            FPS_Y,
+            width,
+            height,
+        );
+        self.stamp_text(digits, value_left, FPS_Y, width, height);
     }
 
     /// Writes one touch-column row: label at [`OVERLAY_X`], one space glyph,

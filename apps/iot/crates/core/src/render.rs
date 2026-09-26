@@ -237,6 +237,19 @@ impl Default for RenderController {
     }
 }
 
+/// Repaint rate (frames per second) over one window, `0` for an empty or
+/// degenerate window. Saturates at `u8::MAX` so a burst never wraps.
+pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {
+    if elapsed_ms == 0 {
+        return 0;
+    }
+    u64::from(frames)
+        .saturating_mul(1_000)
+        .checked_div(elapsed_ms)
+        .and_then(|rate| u8::try_from(rate).ok())
+        .unwrap_or(u8::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -799,5 +812,18 @@ mod tests {
             })),
             LightAppearance::Breathing(_)
         ));
+    }
+
+    #[test]
+    fn rate_scales_frames_over_the_window() {
+        assert_eq!(windowed_rate(13, 250), 52);
+        assert_eq!(windowed_rate(0, 250), 0);
+        assert_eq!(windowed_rate(5, 0), 0);
+    }
+
+    #[test]
+    fn overheated_rate_saturates_at_max() {
+        assert_eq!(windowed_rate(1_000, 1_000), u8::MAX);
+        assert_eq!(windowed_rate(u32::MAX, 1), u8::MAX);
     }
 }

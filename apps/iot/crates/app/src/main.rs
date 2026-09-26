@@ -34,7 +34,14 @@ async fn main(_spawner: Spawner) -> ! {
     iot_chip_esp::init_logging();
     log::info!("[IOT] boot ok");
 
-    let (board, timg0, from_cpu_intr) = Board::new(peripherals).expect("failed to init board");
+    // A transient boot NACK must not leave the screen black: reset and retry.
+    let (board, timg0, from_cpu_intr) = match Board::new(peripherals) {
+        Ok(startup) => startup,
+        Err(error) => {
+            log::error!("[IOT] board init failed, resetting: {error:?}");
+            esp_hal::system::software_reset();
+        }
+    };
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
     iot_app::run(board).await
@@ -54,7 +61,14 @@ async fn main(_spawner: Spawner) -> ! {
     iot_chip_esp::init_logging();
     log::info!("[IOT] boot ok");
 
-    let (board, timg0, from_cpu_intr) = Board::new(peripherals).expect("failed to init board");
+    // A transient boot NACK must not leave the screen black: reset and retry.
+    let (board, timg0, from_cpu_intr) = match Board::new(peripherals) {
+        Ok(startup) => startup,
+        Err(error) => {
+            log::error!("[IOT] board init failed, resetting: {error:?}");
+            esp_hal::system::software_reset();
+        }
+    };
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
     iot_app::run(board).await

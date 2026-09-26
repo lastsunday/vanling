@@ -405,6 +405,47 @@ impl<D: I2c> MotionSource for Qmi8658<D> {
     }
 }
 
+/// Minimum quiet time between poll-side re-init attempts, so a dead bus is not
+/// hammered at the plane cadence once polling is live.
+pub const MOTION_REINIT_MS: u64 = 1_000;
+
+/// Poll-side recovery when boot init did not complete: re-attempts `init` at
+/// [`MOTION_REINIT_MS`] cadence so a cold-boot NACK heals within the first
+/// seconds. Embedded-hal only, so host tests cover it with a mock bus/delay.
+pub struct RecoverableQmi<D, Del> {
+    inner: Qmi8658<D>,
+    delay: Del,
+    last_init_ms: u64,
+}
+
+impl<D, Del> RecoverableQmi<D, Del> {
+    pub const fn new(inner: Qmi8658<D>, delay: Del) -> Self {
+        Self {
+            inner,
+            delay,
+            last_init_ms: 0,
+        }
+    }
+}
+
+impl<D: I2c, Del: DelayNs> MotionSource for RecoverableQmi<D, Del> {
+    fn sample(&mut self, now_ms: u64) -> Result<Option<MotionReading>, MotionError> {
+        let first = self.inner.sample(now_ms);
+        if !matches!(first, Err(MotionError::NotReady)) {
+            return first;
+        }
+        if now_ms.wrapping_sub(self.last_init_ms) < MOTION_REINIT_MS {
+            return first;
+        }
+        self.last_init_ms = now_ms;
+        if self.inner.init(&mut self.delay).is_ok() {
+            self.inner.sample(now_ms)
+        } else {
+            first
+        }
+    }
+}
+
 fn integrate_yaw(current: i16, gyro_z_dps_x10: i32, elapsed_ms: u64) -> i16 {
     let delta = (i64::from(gyro_z_dps_x10) * elapsed_ms.min(1_000) as i64 / 1_000) as i32;
     let mut yaw = i32::from(current) + delta;
@@ -767,6 +808,92 @@ mod tests {
             MotionSource::sample(&mut driver, 0),
             Err(MotionError::NotReady)
         ));
+    }
+
+    #[test]
+    fn a_not_ready_poll_touches_nothing_until_the_reinit_window_elapses() {
+        let mut wrapped = RecoverableQmi::new(driver(MockI2c::new()), NoDelay);
+        for now_ms in [0, MOTION_REINIT_MS / 2] {
+            assert!(matches!(
+                MotionSource::sample(&mut wrapped, now_ms),
+                Err(MotionError::NotReady)
+            ));
+        }
+        assert!(
+            writes(&wrapped.inner.i2c.state.history).is_empty(),
+            "a poll before the reinit window must not touch the bus"
+        );
+    }
+
+    #[test]
+    fn a_not_ready_poll_reinit_succeeds_once_the_window_elapses() {
+        let mut wrapped = RecoverableQmi::new(driver(MockI2c::new()), NoDelay);
+        assert!(matches!(
+            MotionSource::sample(&mut wrapped, 0),
+            Err(MotionError::NotReady)
+        ));
+        let reading = MotionSource::sample(&mut wrapped, MOTION_REINIT_MS)
+            .expect("reinit read")
+            .expect("data ready");
+        assert!(
+            reading.sample.valid,
+            "a recovered part publishes a real frame, not a fault"
+        );
+        assert!(wrapped.inner.initialized);
+    }
+
+    #[test]
+    fn a_wedged_part_retries_only_once_per_window_and_heals() {
+        let init_attempts = |i2c: &MockI2c| {
+            i2c.state
+                .history
+                .iter()
+                .filter(|&&(reg, _)| reg == REG_RESET)
+                .count()
+        };
+        let mut i2c = MockI2c::new();
+        i2c.state.completes_reset = false;
+        let mut wrapped = RecoverableQmi::new(driver(i2c), NoDelay);
+
+        assert!(matches!(
+            MotionSource::sample(&mut wrapped, 0),
+            Err(MotionError::NotReady)
+        ));
+        assert_eq!(init_attempts(&wrapped.inner.i2c), 0);
+
+        assert!(matches!(
+            MotionSource::sample(&mut wrapped, MOTION_REINIT_MS),
+            Err(MotionError::NotReady)
+        ));
+        assert_eq!(
+            init_attempts(&wrapped.inner.i2c),
+            1,
+            "the first window boundary attempts a reinit"
+        );
+
+        assert!(matches!(
+            MotionSource::sample(&mut wrapped, MOTION_REINIT_MS + 500),
+            Err(MotionError::NotReady)
+        ));
+        assert_eq!(
+            init_attempts(&wrapped.inner.i2c),
+            1,
+            "a poll inside the window must not re-attempt"
+        );
+
+        assert!(matches!(
+            MotionSource::sample(&mut wrapped, MOTION_REINIT_MS * 2),
+            Err(MotionError::NotReady)
+        ));
+        assert_eq!(init_attempts(&wrapped.inner.i2c), 2);
+
+        // The part starts answering; the next window boundary recovers.
+        wrapped.inner.i2c.state.completes_reset = true;
+        wrapped.inner.i2c.state.registers[register(REG_RESET_FLAG)] = RESET_FLAG_READY;
+        let reading = MotionSource::sample(&mut wrapped, MOTION_REINIT_MS * 3)
+            .expect("recovered read")
+            .expect("data ready");
+        assert!(reading.sample.valid);
     }
 
     #[test]

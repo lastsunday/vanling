@@ -7,6 +7,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embedded_hal::spi::SpiBus;
 use esp_hal::Blocking;
 use esp_hal::delay::Delay;
+use esp_hal::dma::DmaBufError;
 use esp_hal::gpio::{DriveMode, Level, Output, OutputConfig};
 use esp_hal::i2c::master as i2c_master;
 use esp_hal::ledc::channel as ledc_channel;
@@ -18,6 +19,7 @@ use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals};
 use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{dma_rx_buffer, dma_tx_buffer};
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
@@ -29,7 +31,7 @@ use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
 use crate::components::ft6336::{FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
-use crate::components::qmi8658::{MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658};
+use crate::components::qmi8658::{MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi};
 use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
 pub use crate::virtual_components::DisplayLight;
 
@@ -38,6 +40,17 @@ const LCD_CS_BIT: u8 = 1 << 0;
 const DVP_PWDN_BIT: u8 = 1 << 2;
 const LCD_WIDTH: u16 = 240;
 const LCD_HEIGHT: u16 = 320;
+/// Boot-time retries for the PCA9557 config write: the bus's first transaction
+/// and the one most exposed to a still-settling NACK that would strand the board.
+const PCA9557_RETRY_ATTEMPTS: u8 = 5;
+const PCA9557_RETRY_MS: u32 = 20;
+/// Boot-side QMI8658 fast-path retries; a leftover failure keeps the plane wired
+/// and is healed by `RecoverableQmi` from the poll loop.
+const MOTION_RETRY_ATTEMPTS: u8 = 3;
+const MOTION_RETRY_MS: u32 = 10;
+/// DMA copy-buffer size; only flash-resident command tables are copied, the
+/// DRAM frame buffer is pushed in place.
+const SPI_DMA_BUF_BYTES: usize = 4096;
 /// Backlight PWM frequency: high enough to be flicker-free, low enough that
 /// the APB-derived divisor stays inside the LEDC timer range.
 const BACKLIGHT_PWM_HZ: u32 = 5_000;
@@ -69,6 +82,8 @@ pub enum BoardError {
     SpiConfig(spi_master::ConfigError),
     /// An SPI transfer (CS priming or panel init) failed.
     Spi(esp_hal::spi::Error),
+    /// DMA copy/descriptor buffer construction rejected.
+    Dma(DmaBufError),
     /// The panel rejected the requested window/size.
     DisplayConfig,
     /// The LEDC backlight timer rejected its PWM configuration.
@@ -89,6 +104,12 @@ impl From<St7789Error> for BoardError {
 impl From<I2cDeviceError<i2c_master::Error>> for BoardError {
     fn from(e: I2cDeviceError<i2c_master::Error>) -> Self {
         BoardError::I2c(e)
+    }
+}
+
+impl From<DmaBufError> for BoardError {
+    fn from(e: DmaBufError) -> Self {
+        BoardError::Dma(e)
     }
 }
 
@@ -123,6 +144,7 @@ impl Board<'static> {
             GPIO0,
             TIMG0,
             FROM_CPU_INTR0,
+            DMA_CH0,
             ..
         } = peripherals;
 
@@ -131,12 +153,28 @@ impl Board<'static> {
             .with_sda(GPIO1)
             .with_scl(GPIO2);
         let bus = I2C_BUS.init(Mutex::new(RefCell::new(i2c)));
+        let mut delay = Delay::new();
         let mut pca9557 = Pca9557::new(I2cDevice::new(bus), PCA9557_I2C_ADDR);
-        pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8)?;
+        let mut pca_error = None;
+        for attempt in 0..PCA9557_RETRY_ATTEMPTS {
+            match pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8) {
+                Ok(()) => break,
+                Err(error) => {
+                    pca_error = Some(error);
+                    if attempt + 1 < PCA9557_RETRY_ATTEMPTS {
+                        delay.delay_millis(PCA9557_RETRY_MS);
+                    }
+                }
+            }
+        }
+        if let Some(error) = pca_error {
+            return Err(BoardError::I2c(error));
+        }
 
-        // Configure the SPI/GPIO matrix while CS stays high: the IO_MUX remap
-        // glitches during Spi::new/Output::new must not reach the panel. The
-        // working legacy driver also asserted CS low only after all pin setup.
+        // Keep CS high while the SPI/GPIO IO_MUX glitch (#15703) settles. DMA
+        // pushes whole frames without the per-FIFO poll that caps the panel at
+        // ~17 fps; the copy buffers stage flash-resident command tables DMA
+        // cannot read in place.
         let mut block_spi = spi_master::Spi::new(
             SPI3,
             spi_master::Config::default()
@@ -145,14 +183,17 @@ impl Board<'static> {
         )
         .map_err(BoardError::SpiConfig)?
         .with_sck(GPIO41)
-        .with_mosi(GPIO40);
+        .with_mosi(GPIO40)
+        .with_dma(DMA_CH0)
+        .with_buffers(
+            dma_rx_buffer!(SPI_DMA_BUF_BYTES)?,
+            dma_tx_buffer!(SPI_DMA_BUF_BYTES)?,
+        );
 
         let dc = Output::new(GPIO39, Level::Low, OutputConfig::default());
 
-        // Consume the first SPI transfer while CS is still high: remapping the
-        // IO_MUX for these pins glitches on the very first transfer (esp-idf
-        // #15703), and the working legacy driver busied the bus in this window
-        // before pulling CS low. The panel ignores the byte since CS is high.
+        // Prime the bus before CS drops: the pins glitch on their first transfer
+        // (esp-idf #15703) and the panel ignores the byte while CS is high.
         SpiBus::write(&mut block_spi, &[0x01]).map_err(BoardError::Spi)?;
 
         pca9557.set_output(DVP_PWDN_BIT)?;
@@ -190,14 +231,20 @@ impl Board<'static> {
             LCD_HEIGHT,
         );
         let mut motion = Qmi8658::new(I2cDevice::new(bus), QMI8658_I2C_ADDR);
-        let mut delay = Delay::new();
-        // Motion is an optional sensor here, so a failure leaves the device
-        // running without it rather than failing the board. The driver does not
-        // retry on its own: a part that did not configure will not start
-        // reporting on its own either, and every later poll just repeats
-        // NotReady at a rate-limited log.
-        if let Err(error) = motion.init(&mut delay) {
-            log::warn!("[MOTION] QMI8658 unavailable, motion plane disabled: {error:?}");
+        let mut motion_error = None;
+        for attempt in 0..MOTION_RETRY_ATTEMPTS {
+            match motion.init(&mut delay) {
+                Ok(()) => break,
+                Err(error) => {
+                    motion_error = Some(error);
+                    if attempt + 1 < MOTION_RETRY_ATTEMPTS {
+                        delay.delay_millis(MOTION_RETRY_MS);
+                    }
+                }
+            }
+        }
+        if let Some(error) = motion_error {
+            log::warn!("[MOTION] QMI8658 init deferred, retrying from the first poll: {error:?}");
         }
         let timg0 = TimerGroup::new(TIMG0);
 
@@ -252,7 +299,7 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
         self.motion.take().map(|motion| {
             PollEntry::new(
                 1,
-                Box::new(MotionInput::new(motion)),
+                Box::new(MotionInput::new(RecoverableQmi::new(motion, Delay::new()))),
                 Box::new(PassThrough),
                 MOTION_SCAN_MS,
             )

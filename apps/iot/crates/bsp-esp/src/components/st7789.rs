@@ -56,11 +56,12 @@ impl DelayNs for NoDelay {
     fn delay_ns(&mut self, _ns: u32) {}
 }
 
-/// 4-wire SPI transport for mipidsi. esp-hal's blocking `Spi` is a `SpiBus`,
-/// not a shared-bus `SpiDevice`, so we adapt it directly to mipidsi's
-/// `Interface` trait to avoid pulling in a bus crate for a single client.
+/// 4-wire SPI transport for mipidsi. esp-hal's DMA-backed blocking `SpiDma`
+/// is a `SpiBus`, not a shared-bus `SpiDevice`, so we adapt it directly to
+/// mipidsi's `Interface` trait to avoid pulling in a bus crate for a single
+/// client.
 struct Spi4 {
-    spi: spi_master::Spi<'static, Blocking>,
+    spi: spi_master::SpiDma<'static, Blocking>,
     dc: Output<'static>,
     buffer: &'static mut [u8],
 }
@@ -169,7 +170,7 @@ pub struct St7789 {
 
 impl St7789 {
     pub fn new(
-        block_spi: spi_master::Spi<'static, Blocking>,
+        block_spi: spi_master::SpiDma<'static, Blocking>,
         dc: Output<'static>,
         width: u16,
         height: u16,
