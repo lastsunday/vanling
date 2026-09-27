@@ -3,7 +3,7 @@ title = "Motion Semantic Framework"
 weight = 250
 sort_by = "weight"
 [extra]
-source_file_hash = "d655694a26c3435e8d43c63aadbe510ac6bef68d"
+source_file_hash = "efce9f5de9c82d378c9e54ce34f69b9830231fc4"
 translated_at = "2026-09-26T00:00:00Z"
 +++
 
@@ -188,7 +188,7 @@ The attempt to put `Tap` on the silicon engine was carried to the end: **the ben
 - Next, a mirrored reference driver was used to verify the signal against the thresholds: inside the driver it mirrors the engine's per-axis Alpha mean and Gamma energy, and prints `sq` (the squared residual) and `pk` (the energy) to the bench. A real knock lands at **2.4–4.9 g²**, runs straight past the 0.8 g² `PeakMagThr`, and the energy then falls back below 0.4 g² — the signal, the threshold and the timing all hold.
 - The real variable is the state machine itself: **the power-on transient latches `STATUS1.TAP` in the set state** (from about 0.4 s after power-on it is permanently 0x02/0x42), `TAP_STATUS` is frozen at 0xB0 (`TAP_NUM = 0`, with the polarity/axis bits flipping over and over), and a real knock can no longer get into the register; while the driver only publishes a Tap event on a 0→1 rising edge, so a latched bit never falls and the publish path never fires. All three window lengths × both threshold tiers were tried one by one, and the blocker is not any parameter gate.
 
-Conclusion: the chip's tap engine is unreachable under this product's polling scheme. But the mirror also proved that the same math does hold on core's 20 ms stream — so the tap criterion is **moved back into the core recognizer** (see [Recognizer thresholds](#recognizer-thresholds)), and the driver drops the hardware engine and its parameters, keeping only No-Motion. The ODR stays at 896.8 Hz no longer for the tap, but for the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic.
+Conclusion: the chip's tap engine is unreachable under this product's polling scheme. But the mirror also proved that the same math does hold on core's 20 ms stream — so the tap criterion is **moved back into the core recognizer** (see [Recognizer thresholds](#Recognizer_thresholds)), and the driver drops the hardware engine and its parameters, keeping only No-Motion. The ODR stays at 896.8 Hz no longer for the tap, but for the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic.
 
 Checklist: knock once and watch `TAP` count 1 with `2T`/`3T` unmoved, while `TR` on that poll should jump to about 250–4800 mG (the peak-threshold square root of 250 as the floor, thousands to the ~4850 clip for a deliberate knock); knock twice quickly and `2T` counts 1, knock three times and `3T` counts 1; a pick-up-hold-place must not report `TAP`; after settling `STL` counts only 1 (no longer incrementing at frame rate); an ordinary lift/place (no need to swing it) counts `LFT` and `PLC` once each; at rest `LR` should sit at tens of mG.
 
@@ -200,7 +200,7 @@ Dispatch does delta suppression: a frame goes out only when the acceleration cha
 
 ## Diagnostic display
 
-The right column is a **cumulative count table per semantic** (labels and criteria in [Parameter lookup](#attitude-right-column)).
+The right column is a **cumulative count table per semantic** (labels and criteria in [Parameter lookup](#ATTITUDE_right_column)).
 
 `TAP`/`2T`/`3T` are triggered respectively by the count=1/2/3 of `Tap{count}`, and all of them are counted (the count caps at 3, so a gesture past the third strike is a triple tap). Once count=3 can be obtained too, `3T` is no longer permanently 0 as it was in the chip's era. `TIN`/`TOX` merge the enter/exit of all four directions into one count.
 
