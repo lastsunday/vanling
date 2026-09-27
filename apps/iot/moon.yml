@@ -53,7 +53,7 @@ tasks:
   test-bsp:
     command: >-
       cargo test -p iot-bsp-esp --no-default-features
-      --features qmi8658,pca9557
+      --features qmi8658,pca9557,es7210
     deps:
       - ~:check
 

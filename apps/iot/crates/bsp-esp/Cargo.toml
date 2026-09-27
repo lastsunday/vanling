@@ -11,13 +11,16 @@ backlight = ["dep:esp-hal"]
 button = ["dep:esp-hal"]
 pca9557 = ["dep:embedded-hal"]
 qmi8658 = ["dep:embedded-hal"]
+es7210 = ["dep:embedded-hal"]
 ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
 ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
 st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # Virtual components: assembled from real components.
 display-light = ["st7789"]
+# The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
+audio = ["es7210", "dep:esp-hal"]
 esp32c6-devkitc-1 = ["button", "ws2812"]
-lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }

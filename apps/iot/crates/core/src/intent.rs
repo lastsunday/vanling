@@ -1,6 +1,6 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::drivers::light::{GROUP_CAPACITY, Rgb};
-use crate::state::{Breath, DeviceManager, DeviceState, LightState};
+use crate::state::{Breath, DeviceManager, DeviceState, DisplayPage, LightState};
 
 /// Standard-color palette for solid mode, cycled by a single click or a
 /// horizontal swipe: seven hues spanning the wheel
@@ -114,12 +114,22 @@ pub enum BusinessIntent {
         state: LightState,
     },
     TogglePage,
+    /// Start or stop the capture behind the Audio page. Reached from a tap or
+    /// the button's click on that page, so whichever one-liner control the user
+    /// reaches for drives the recording, and neither shadows a gesture that
+    /// means something on the other pages.
+    ToggleRecord,
 }
 
 /// The management-pipe message: one pipe carries both planes. The operation
 /// plane's signals travel as `Operation` and are interpreted into a `Business`
 /// intent by the consumer that owns the device state; producers that already
 /// speak business (e.g. a network drive) send `Business` directly.
+///
+/// `Operation` is as wide as `InputEvent` for the same reason that enum is: it
+/// crosses the intent bus by value, so a capture envelope stays allocation-free
+/// and `Copy` at the cost of some padding on the smaller variants.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
     Operation(OperationIntent),
@@ -142,7 +152,13 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
     let slot = light_slot(current, op.source);
     let light = current.lights[slot];
     match op.event {
-        // A click advances the color; `Off` has none, so it reads as no-op.
+        // A click advances the color; `Off` has none, so it reads as no-op. On the
+        // Audio page the button is the record control instead, mirroring the tap
+        // below: the panel and the hardware button are the same one-liner verb
+        // there, and neither takes a gesture away from the other pages.
+        InputEvent::Button(ButtonEvent::Click) if current.page == DisplayPage::Audio => {
+            BusinessIntent::ToggleRecord
+        }
         InputEvent::Button(ButtonEvent::Click) => target_for(advance_color(light), slot),
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
         InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
@@ -156,11 +172,18 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         InputEvent::Gesture(GestureEvent::Press { .. }) => BusinessIntent::Invalid,
         // An anomaly pulse tallies; no light move.
         InputEvent::Gesture(GestureEvent::Ghost) => BusinessIntent::Invalid,
-        // A raw chip gesture is a diagnostic read-back; never moves the light.
-        InputEvent::ChipGesture(_) | InputEvent::Motion(_) => BusinessIntent::Invalid,
+        // A raw chip gesture and a capture poll are diagnostic read-backs; they
+        // never move a light and never drive the capture phase.
+        InputEvent::ChipGesture(_) | InputEvent::Motion(_) | InputEvent::Audio(_) => {
+            BusinessIntent::Invalid
+        }
         // Classified touch gestures mirror the button moves in their own
         // tallying variants; the device-level panel always drives surface 0.
-        InputEvent::Gesture(GestureEvent::Tap { .. }) => target_for(advance_color(light), 0),
+        InputEvent::Gesture(GestureEvent::Tap { .. }) if current.page != DisplayPage::Audio => {
+            target_for(advance_color(light), 0)
+        }
+        // On the Audio page a tap is the record control, not a color move.
+        InputEvent::Gesture(GestureEvent::Tap { .. }) => BusinessIntent::ToggleRecord,
         InputEvent::Gesture(GestureEvent::DoubleTap { .. }) => target_for(advance_step(light), 0),
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
             target_for(swipe(light, direction), 0)
@@ -374,11 +397,13 @@ fn retreat_color_group(breath: &Breath) -> ColorGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::drivers::audio::AudioSample;
     use crate::drivers::input::{
         FingerLast, MAX_TOUCH_POINTS, MAX_TRACKED_POINTS, TouchEvent, TouchPoint, TouchStatus,
     };
     use crate::drivers::light::MAX_LIGHTS;
     use crate::drivers::motion::{MotionCapabilities, MotionCounts};
+    use crate::state::AudioState;
 
     const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 
@@ -395,13 +420,19 @@ mod tests {
     };
 
     fn state(light: LightState) -> DeviceState {
+        state_on(DisplayPage::Ambient, light)
+    }
+
+    fn state_on(page: DisplayPage, light: LightState) -> DeviceState {
         DeviceState {
             lights: [light; MAX_LIGHTS],
-            page: crate::state::DisplayPage::Ambient,
+            page,
             motion_enabled: true,
             motion: None,
             motion_counts: MotionCounts::default(),
             motion_caps: MotionCapabilities::EMPTY,
+            audio_enabled: true,
+            audio: AudioState::default(),
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -430,9 +461,15 @@ mod tests {
     /// The `SetLight` target `translate` yields for surface 0, or `None` when
     /// the gesture is an `Invalid` no-op.
     fn target(event: InputEvent, current: LightState) -> Option<LightState> {
-        match translate(&op(event), &state(current)) {
+        target_in(event, &state(current))
+    }
+
+    fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightState> {
+        match translate(&op(event), current) {
             BusinessIntent::SetLight { state, .. } => Some(state),
-            BusinessIntent::Invalid | BusinessIntent::TogglePage => None,
+            BusinessIntent::Invalid | BusinessIntent::TogglePage | BusinessIntent::ToggleRecord => {
+                None
+            }
         }
     }
 
@@ -539,6 +576,38 @@ mod tests {
                         color: PALETTE[3],
                         brightness: 140,
                     },
+                }
+            );
+        }
+
+        #[test]
+        fn a_button_click_on_the_audio_page_records_and_elsewhere_moves_the_color() {
+            let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
+            assert_eq!(
+                translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_audio),
+                BusinessIntent::ToggleRecord,
+                "on the audio page the button is the record control, the same as the tap"
+            );
+            // Off that page the click still advances the color, so taking the
+            // record control on the Audio page costs no gesture anywhere else.
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Button(ButtonEvent::Click)),
+                    &state(DEFAULT_BREATH)
+                ),
+                BusinessIntent::SetLight {
+                    instance: 0,
+                    state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
+                }
+            );
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Button(ButtonEvent::Click)),
+                    &state_on(DisplayPage::Attitude, DEFAULT_BREATH)
+                ),
+                BusinessIntent::SetLight {
+                    instance: 0,
+                    state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
                 }
             );
         }
@@ -784,6 +853,40 @@ mod tests {
                     period_ms: 5_000,
                     ..BREATH_BASE
                 }))
+            );
+        }
+
+        #[test]
+        fn a_tap_on_the_audio_page_records_and_elsewhere_moves_the_color() {
+            let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
+            assert_eq!(
+                translate(&op(tap_gesture(0)), &on_audio),
+                BusinessIntent::ToggleRecord,
+                "on the audio page the tap is the record control"
+            );
+            // The same tap off that page is still the color move, so the
+            // record control never shadows an existing gesture.
+            assert_eq!(
+                translate(&op(tap_gesture(0)), &state(LightState::Off)),
+                BusinessIntent::Invalid
+            );
+            assert_eq!(
+                target_in(
+                    tap_gesture(0),
+                    &state_on(DisplayPage::Attitude, DEFAULT_BREATH)
+                ),
+                target(tap_gesture(0), DEFAULT_BREATH)
+            );
+        }
+
+        #[test]
+        fn a_capture_poll_carries_no_business_meaning() {
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Audio(AudioSample::default())),
+                    &state(DEFAULT_BREATH)
+                ),
+                BusinessIntent::Invalid
             );
         }
 

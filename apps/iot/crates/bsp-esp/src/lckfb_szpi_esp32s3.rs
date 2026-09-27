@@ -10,6 +10,7 @@ use esp_hal::delay::Delay;
 use esp_hal::dma::DmaBufError;
 use esp_hal::gpio::{DriveMode, Level, Output, OutputConfig};
 use esp_hal::i2c::master as i2c_master;
+use esp_hal::i2s::master as i2s_master;
 use esp_hal::ledc::channel as ledc_channel;
 use esp_hal::ledc::channel::ChannelIFace as _;
 use esp_hal::ledc::timer as ledc_timer;
@@ -20,7 +21,9 @@ use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_rx_buffer, dma_tx_buffer};
+use iot_core::drivers::audio::{AudioInput, CAPTURE_MS};
 use iot_core::drivers::board::Board as BoardTrait;
+use iot_core::drivers::board::HasAudio;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
     TouchGestures, TouchMap,
@@ -29,11 +32,14 @@ use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput}
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
+use crate::components::es7210::{ES7210_I2C_ADDR, Es7210};
 use crate::components::ft6336::{FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
 use crate::components::qmi8658::{MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi};
 use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
 pub use crate::virtual_components::DisplayLight;
+use crate::virtual_components::Es7210Rx;
+use crate::virtual_components::audio as capture;
 
 const PCA9557_I2C_ADDR: u8 = 0x19;
 const LCD_CS_BIT: u8 = 1 << 0;
@@ -90,6 +96,10 @@ pub enum BoardError {
     LedcTimer(ledc_timer::Error),
     /// The LEDC backlight channel rejected its configuration.
     LedcChannel(ledc_channel::Error),
+    /// The I2S master rejected its clock or format configuration.
+    I2sConfig(i2s_master::ConfigError),
+    /// The I2S capture transfer could not be started.
+    I2sStart(i2s_master::Error),
 }
 
 impl From<St7789Error> for BoardError {
@@ -119,6 +129,7 @@ pub struct Board<'d> {
     button: Option<PullButton<'d>>,
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
+    audio: Option<Es7210Rx>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -133,10 +144,15 @@ impl Board<'static> {
         #[allow(non_snake_case)]
         let Peripherals {
             I2C0,
+            I2S0,
             SPI3,
             LEDC,
             GPIO1,
             GPIO2,
+            GPIO12,
+            GPIO13,
+            GPIO14,
+            GPIO38,
             GPIO39,
             GPIO40,
             GPIO41,
@@ -145,6 +161,8 @@ impl Board<'static> {
             TIMG0,
             FROM_CPU_INTR0,
             DMA_CH0,
+            // The panel's SPI owns channel 0; capture gets the next one.
+            DMA_CH1,
             ..
         } = peripherals;
 
@@ -246,6 +264,34 @@ impl Board<'static> {
         if let Some(error) = motion_error {
             log::warn!("[MOTION] QMI8658 init deferred, retrying from the first poll: {error:?}");
         }
+
+        // ES7210 on I2C0 at 0x41, sharing the bus with the expander and the touch
+        // controller. Configured before the I2S starts so the codec is already
+        // listening when the clocks appear; a variant with no codec fitted keeps
+        // the rest of the plane alive and simply never shows the Audio page.
+        let mut es7210 = Es7210::new(I2cDevice::new(bus), ES7210_I2C_ADDR);
+        let audio = match es7210.init() {
+            Ok(()) => {
+                let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, capture::tdm_config())
+                    .map_err(BoardError::I2sConfig)?
+                    .with_mclk(GPIO38);
+                let rx = i2s
+                    .i2s_rx
+                    .with_bclk(GPIO14)
+                    .with_ws(GPIO13)
+                    .with_din(GPIO12)
+                    .build();
+                let transfer = rx
+                    .read(capture::stream())
+                    .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
+                Some(Es7210Rx::new(transfer))
+            }
+            Err(error) => {
+                log::warn!("[AUDIO] ES7210 not found, the Audio page stays dark: {error:?}");
+                None
+            }
+        };
+
         let timg0 = TimerGroup::new(TIMG0);
 
         Ok((
@@ -254,6 +300,7 @@ impl Board<'static> {
                 button: Some(button),
                 touch: Some(touch),
                 motion: Some(motion),
+                audio,
             },
             timg0,
             FROM_CPU_INTR0,
@@ -308,5 +355,18 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
 
     fn motion_capabilities(&self) -> MotionCapabilities {
         MOTION_CAPABILITIES
+    }
+}
+
+impl HasAudio for Board<'static> {
+    fn take_audio(&mut self) -> Option<PollEntry> {
+        self.audio.take().map(|audio| {
+            PollEntry::new(
+                2,
+                Box::new(AudioInput::new(audio)),
+                Box::new(PassThrough),
+                CAPTURE_MS,
+            )
+        })
     }
 }

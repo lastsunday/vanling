@@ -91,3 +91,9 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
         MotionCapabilities::EMPTY
     }
 }
+
+impl iot_core::drivers::board::HasAudio for Board<'static> {
+    fn take_audio(&mut self) -> Option<PollEntry> {
+        None
+    }
+}

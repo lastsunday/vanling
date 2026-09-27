@@ -45,6 +45,16 @@ pub trait HasMotion: Board {
     fn motion_capabilities(&self) -> MotionCapabilities;
 }
 
+/// Board providing an audio capture source.
+///
+/// Shaped like [`HasMotion`] because it is the same kind of wiring: the driver
+/// lives in the bsp crate behind the shared input interface, so the app only
+/// ever sees a ready-made [`PollEntry`] and never names a codec. A board with no
+/// microphone returns `None` and the Audio page simply never appears.
+pub trait HasAudio: Board {
+    fn take_audio(&mut self) -> Option<PollEntry>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

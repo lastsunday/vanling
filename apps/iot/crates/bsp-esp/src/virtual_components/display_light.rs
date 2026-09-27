@@ -1,5 +1,8 @@
 use alloc::vec::Vec;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
+use iot_core::drivers::audio::{
+    AudioEnvelope, COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height,
+};
 use iot_core::drivers::input::{
     FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP,
 };
@@ -9,7 +12,7 @@ use iot_core::drivers::light::{
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::horizon::{SCALE, horizon};
 use iot_core::render::{MODE_BREATH, MODE_SOLID, windowed_rate};
-use iot_core::state::DisplayPage;
+use iot_core::state::{AudioPhase, DisplayPage};
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;
@@ -58,14 +61,51 @@ const HORIZON_CX: usize = 192;
 const HORIZON_CY: usize = 252;
 const HORIZON_R: usize = 40;
 
+/// Sweep band on the Audio page, in panel rows: mirrored about [`WAVE_CY`], and
+/// starting below the six readout rows (the last ends at 93) so a full-scale
+/// column fills the band without being drawn through the readout.
+const WAVE_TOP: isize = 100;
+/// Centre line of the mirrored band, which is also the bottom of the scale: a
+/// mirrored bar measures *outward* from silence here, so 0 dBFS is at the band's
+/// two edges and the floor is the middle.
+const WAVE_CY: isize = 196;
+/// Rows the tallest column reaches up and down from [`WAVE_CY`]. Set to clear
+/// [`WAVE_TOP`] and leave room for the span label, not chosen: a logarithmic
+/// scale spends the rows it leaves free on under half a decibel each.
+const WAVE_HALF: isize = 96;
+
+/// Decibels per grid line, chosen so a line lands every 20 rows of the half band
+/// and the ten-octave window divides into whole steps: 96 rows per 60 dB is
+/// 1.6 rows per decibel, and twelve is 19.2 — close to a whole row either way,
+/// and a scale whose lines land off-pixel reads as a scale that is wrong.
+const GRID_DECIBELS: i16 = 12;
+
+/// Left column of the sweep, and its width in panel columns. The width is
+/// [`ENVELOPE_COLUMNS`] so one column is one pixel: a scale that resamples the
+/// envelope has to drop peaks, and dropping peaks on a peak meter means the
+/// meter misses the thing it exists to show.
+const SCAN_X: isize = 40;
+const SCAN_COLUMNS: isize = 200;
+
+/// Right edge the decibel ruler's labels are aligned to, and the tick that
+/// follows them. Together they fill the 30 columns left of the sweep, which is
+/// what a label plus its tick has to fit in.
+const RULER_RIGHT: isize = 29;
+const RULER_TICK_X: isize = 32;
+const RULER_TICK_COLUMNS: isize = 6;
+
+/// Rows below the band the window's own length is written at, so a sweep is read
+/// as "two seconds" rather than as an unbounded strip whose rate nobody can
+/// infer from a moving bar.
+const SPAN_Y: usize = 298;
+
 /// Global FPS badge pinned to the panel's top-right edge on every page, the
 /// only strip no content uses; the value right-aligns to the panel edge.
 const FPS_Y: usize = 0;
 
-/// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes) in
-/// column-major order, bit 0 of each byte the top row — the classic
-/// Adafruit GFX `glcdfont` layout, drawn the way the panel warms up (a byte
-/// is a pixel column). Indexing: `FONT[(ch - 0x20) * 5 ..][..5]`.
+/// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes), column-major,
+/// bit 0 the top row: the Adafruit GFX `glcdfont` layout, drawn the way the panel
+/// warms up. Indexing: `FONT[(ch - 0x20) * 5 ..][..5]`.
 ///
 /// Table transcribed from Adafruit GFX 1.x `glcdfont.c`, BSD-3-Clause:
 /// <https://github.com/adafruit/Adafruit-GFX-Library/blob/master/glcdfont.c>
@@ -169,7 +209,7 @@ impl DiagnosticsSink for DisplayLight {
         }
         let page_changed = self.diagnostics.page != diagnostics.page;
         self.diagnostics = *diagnostics;
-        if !DEBUG_DIAGNOSTICS && self.diagnostics.page != DisplayPage::Attitude && !page_changed {
+        if !DEBUG_DIAGNOSTICS && !Self::is_live_page(self.diagnostics.page) && !page_changed {
             return;
         }
         if let Some((fill, color)) = self.screen_color {
@@ -179,6 +219,13 @@ impl DiagnosticsSink for DisplayLight {
 }
 
 impl DisplayLight {
+    /// Whether a page's own content moves without any state changing — the
+    /// attitude dial follows the sensor, the Audio sweep follows the capture —
+    /// and so repaints on every snapshot instead of only on a diff.
+    fn is_live_page(page: DisplayPage) -> bool {
+        matches!(page, DisplayPage::Attitude | DisplayPage::Audio)
+    }
+
     /// Paints `fill`/`color`, stamps the diagnostics rows into the corner, and ships
     /// the frame. Always paints; callers guard for repaint skipping.
     fn paint(&mut self, fill: Fill, color: Rgb) {
@@ -213,6 +260,8 @@ impl DisplayLight {
         };
         if self.diagnostics.page == DisplayPage::Attitude {
             self.stamp_attitude(width, usize::from(height));
+        } else if self.diagnostics.page == DisplayPage::Audio {
+            self.stamp_audio(width, usize::from(height));
         } else if DEBUG_DIAGNOSTICS {
             self.stamp_diagnostics(width, usize::from(height), live);
         }
@@ -239,16 +288,11 @@ impl DisplayLight {
         }
     }
 
-    /// Overdraws the corner as two columns of inverted-pixel rows, visible on
-    /// any fill. Touch column: the `GST`/`2F`/`PRS`/`TAP`/`DBL`/`3T`/`LNG`/`SWP`
-    /// counters, `DIR` (last swipe arrow+distance), per-finger `P0*`/`P1*`
-    /// rows (live coords, gesture digit `1`–`5` with value, live arrow),
-    /// `XY`/`XY2` (last origin/trailing point), `CHP` (raw `GESTURE_ID`) and
-    /// `FRM` (applied-frame heartbeat — a frozen `FRM` under a held finger
-    /// tells "no frames arrived" from "coordinates did not move"). Mode column:
-    /// the active mode's own rows (`BRI`/`LO HI`/`PER`/`HUE`/`HPR`/`SPN`/
-    /// `GRP`/`SAT` breathing, `MOD`/`BRI`/`HUE` solid, `MOD` off); in breathing
-    /// `BRI`/`HUE` show the live instantaneous color, so the digits undulate.
+    /// Overdraws the corner as two columns of inverted-pixel rows. Touch column:
+    /// the gesture counters, `DIR`, per-finger `P0*`/`P1*`, `XY`/`XY2`, `CHP`, and
+    /// `FRM` — an applied-frame heartbeat, so a frozen `FRM` under a held finger
+    /// tells "no frames arrived" from "coordinates did not move". Mode column: the
+    /// active mode's own rows, breathing rows tracking the live color.
     fn stamp_diagnostics(&mut self, width: usize, height: usize, live: (u8, u8)) {
         let touch = self.diagnostics.touch;
         let light = self.diagnostics.lights[usize::from(self.instance)];
@@ -425,13 +469,11 @@ impl DisplayLight {
         }
     }
 
-    /// Overdraws the corner as two columns of inverted-pixel rows. Left column:
-    /// the raw and scaled motion readout — `A0`–`A2` raw accelerometer,
-    /// `M0`–`M2` milli-g, `G0`–`G2` raw gyroscope, `D0`–`D2` deci-dps, `R0`–`R2`
-    /// tilt, `ST` engine status — or `ERR`/`WAIT`/`READ` when the source has
-    /// produced nothing or a read failed. Right column: one row per semantic
-    /// holding how many times it has fired since boot, `N/A` where the board
-    /// declares no such capability.
+    /// Overdraws the corner as two columns of inverted-pixel rows: the motion
+    /// readout (`ERR`/`WAIT`/`READ` when the source has produced nothing or a read
+    /// failed) on the left, and one firing count per semantic on the right, `N/A`
+    /// where the board declares no such capability. Labels, fields and thresholds:
+    /// `docs/content/development/iot/motion.md`.
     fn stamp_attitude(&mut self, width: usize, height: usize) {
         let top = OVERLAY_Y;
         self.stamp_text(b"ATTITUDE", OVERLAY_X, top, width, height);
@@ -527,14 +569,9 @@ impl DisplayLight {
             width,
             height,
         );
-        // What the recognizer's own estimators had left over, which is what
-        // the thresholds actually decide on. The raw axes above cannot show
-        // that, because a settled reading is near zero by definition and a
-        // threshold has to be read off the device rather than inferred from
-        // another flash. `LR` is how far the measured magnitude sits from one
-        // g, the still band the lift/place pair measures; `SR` is the shake
-        // estimate's leftover, taken as a length; `TR` is the same for the tap
-        // peak bar, the root of the squared gravity-removed residual.
+        // What the recognizer's estimators decided on, which the raw axes cannot
+        // show: a settled reading is near zero by definition, so a threshold has
+        // to be read off the device.
         self.stamp_left(
             b"LR",
             format_i32(sample.gravity_deviation_mg, &mut [0; 12]),
@@ -558,11 +595,9 @@ impl DisplayLight {
         );
         let counts = self.diagnostics.motion_counts;
         let caps = self.diagnostics.motion_caps;
-        // The right column is free on this page, so it carries a count per
-        // semantic rather than the latest one. Every row is always drawn: a
-        // semantic this board never declares shows `N/A`, which keeps "the
-        // stack cannot report it" visually distinct from "its threshold never
-        // fires" — the distinction a threshold sweep is reading for.
+        // Every row is always drawn, so a semantic this board never declares
+        // shows `N/A`: "the stack cannot report it" has to stay distinct from
+        // "its threshold never fires".
         let rows: [(&[u8], MotionCapabilities, u16); 14] = [
             (b"TAP".as_slice(), MotionCapabilities::TAP, counts.taps),
             (
@@ -626,6 +661,215 @@ impl DisplayLight {
         }
     }
 
+    /// Overdraws the Audio page: the capture phase and its wall time, then the
+    /// envelope as a scope sweep, one mirrored bar per panel column. The phase
+    /// alone decides what is drawn, because the state layer already resolved which
+    /// envelope that is. Readouts, scale and their meanings:
+    /// `docs/content/development/iot/audio.md`.
+    fn stamp_audio(&mut self, width: usize, height: usize) {
+        let audio = self.diagnostics.audio;
+        self.stamp_text(b"AUDIO", OVERLAY_X, OVERLAY_Y, width, height);
+        self.stamp_left(
+            b"ST",
+            match audio.phase {
+                AudioPhase::Idle => b"IDLE",
+                AudioPhase::Recording => b"REC",
+                AudioPhase::Stopped => b"STOP",
+            },
+            1,
+            width,
+            height,
+        );
+        self.stamp_left(
+            b"MS",
+            format_i32(
+                i32::try_from(audio.elapsed_ms).unwrap_or(i32::MAX),
+                &mut [0u8; 12],
+            ),
+            2,
+            width,
+            height,
+        );
+        // The two levels, in decibels, because a level in LSB is a number only
+        // this code can read: is anything arriving, and is it a voice or a knock.
+        self.stamp_left(
+            b"PK",
+            format_i32(i32::from(dbfs(audio.envelope.loudest())), &mut [0u8; 12]),
+            3,
+            width,
+            height,
+        );
+        self.stamp_left(
+            b"RMS",
+            format_i32(
+                i32::from(dbfs(audio.envelope.loudest_rms())),
+                &mut [0u8; 12],
+            ),
+            4,
+            width,
+            height,
+        );
+        // What the sweep cannot say about itself. `COL` climbing with a peak that
+        // does not is a quiet room, and `COL` climbing under a −60 dBFS peak is
+        // a capture path that is not delivering samples at all.
+        self.stamp_left(
+            b"COL",
+            format_u16(u16::from(audio.envelope.committed()), &mut [0u8; 6]),
+            5,
+            width,
+            height,
+        );
+        // How many times the capture had to be re-armed: what separates a quiet
+        // room from a capture that keeps breaking, both of which draw a still
+        // line.
+        self.stamp_left(
+            b"RST",
+            format_u16(audio.restarts, &mut [0u8; 6]),
+            6,
+            width,
+            height,
+        );
+        // The unit, stated once at the level rows it applies to. Without it a
+        // bare −21 is a number, and a number on a meter is the objection this
+        // whole page is answering.
+        self.stamp_row_end(b"DBFS", 3, width, height);
+        self.stamp_row_end(b"DBFS", 4, width, height);
+        if audio.envelope.clipped() {
+            // A clip is an absolute statement about the whole window, not a level
+            // reading, so it says so in words and not only as a mark.
+            self.stamp_row_end(b"CLIP", 5, width, height);
+        }
+        if audio.phase == AudioPhase::Idle {
+            self.stamp_text(b"TAP TO REC", OVERLAY_X, WAVE_TOP as usize, width, height);
+            return;
+        }
+        self.stamp_sweep(&audio.envelope, width, height);
+    }
+
+    /// The meter: a logarithmic band with a scale, each column's sustained level
+    /// solid and its peak dithered outside that. Stamping inverts, so two levels
+    /// in one ink have to be made of *pattern* — an RMS stripe inside the peak bar
+    /// would be invisible, its pixels being the wide bar's pixels. Heights come
+    /// from [`scope_height`], so a bar and the number beside it cannot disagree.
+    fn stamp_sweep(&mut self, envelope: &AudioEnvelope, width: usize, height: usize) {
+        self.stamp_ruler(width, height);
+        let peaks = envelope.released_peaks();
+        let levels = envelope.rms_columns();
+        for column in 0..SCAN_COLUMNS as usize {
+            let x = SCAN_X + column as isize;
+            let peak = bar_rows(peaks[column]);
+            let level = bar_rows(levels[column]).min(peak);
+            // Solid to the sustained level: the part a listener would call the
+            // volume of the column.
+            for row in (WAVE_CY - level)..=(WAVE_CY + level) {
+                self.stamp_pixel(x, row, width, height);
+            }
+            // Dithered out to the peak: transient energy above the level, which
+            // has to stay visible without being mistaken for the level itself.
+            let mut shoulder = 0;
+            for row in (WAVE_CY - peak)..(WAVE_CY - level) {
+                if shoulder % 2 == 0 {
+                    self.stamp_pixel(x, row, width, height);
+                }
+                shoulder += 1;
+            }
+            shoulder = 0;
+            for row in (WAVE_CY + level + 1)..=(WAVE_CY + peak) {
+                if shoulder % 2 == 0 {
+                    self.stamp_pixel(x, row, width, height);
+                }
+                shoulder += 1;
+            }
+        }
+        self.stamp_centre_line(width, height);
+        self.stamp_peak_hold(&peaks, width, height);
+        self.stamp_clip_mark(envelope, width, height);
+        self.stamp_text(
+            format_span(&mut [0u8; 12]),
+            SCAN_X as usize,
+            SPAN_Y,
+            width,
+            height,
+        );
+    }
+
+    /// The scale the band is read against, and the labels that give it numbers.
+    /// Only the upper half is ruled: the band is mirrored, so ruling both would
+    /// double the ink to say the same thing twice.
+    fn stamp_ruler(&mut self, width: usize, height: usize) {
+        for decibels in (0..SCOPE_DECIBEL_FLOOR).step_by(GRID_DECIBELS as usize) {
+            let row = decibels_row(decibels);
+            self.stamp_rule(SCAN_X, row, SCAN_COLUMNS, width, height);
+        }
+        // The centre line is solid rather than dithered: it is the floor itself,
+        // the value every bar falls back to, and a reference the user has to
+        // squint at is not a reference.
+        self.stamp_rule(SCAN_X, WAVE_CY, SCAN_COLUMNS, width, height);
+        for decibels in [0, 24, 48, SCOPE_DECIBEL_FLOOR] {
+            let row = decibels_row(decibels);
+            let mut buf = [0u8; 12];
+            let label = format_decibels(decibels, &mut buf);
+            let top = (row as isize - FONT_H as isize / 2).max(0) as usize;
+            self.stamp_text_right(label, RULER_RIGHT, top, width, height);
+            self.stamp_rule(RULER_TICK_X, row, RULER_TICK_COLUMNS, width, height);
+        }
+    }
+
+    /// Dotted rule every other column, so a line across the band reads as a
+    /// reference behind the bars rather than as one of them.
+    fn stamp_rule(&mut self, x: isize, row: isize, columns: isize, width: usize, height: usize) {
+        for column in 0..columns {
+            if column % 2 == 0 {
+                self.stamp_pixel(x + column, row, width, height);
+            }
+        }
+    }
+
+    /// The floor, solid.
+    fn stamp_centre_line(&mut self, width: usize, height: usize) {
+        for column in 0..SCAN_COLUMNS {
+            self.stamp_pixel(SCAN_X + column, WAVE_CY, width, height);
+        }
+    }
+
+    /// A dash at the loudest column's own height, so the peak is located and not
+    /// merely levelled. The window *is* the hold: the oldest column still at that
+    /// level says how long it has been held, with no state of its own.
+    fn stamp_peak_hold(&mut self, bars: &[u16; ENVELOPE_COLUMNS], width: usize, height: usize) {
+        let loudest = bars.iter().copied().max().unwrap_or(0);
+        if scope_height(loudest) == 0 {
+            return;
+        }
+        let column = bars
+            .iter()
+            .position(|&bar| bar == loudest)
+            .expect("a maximum is in the window it came from");
+        let row = WAVE_CY - bar_rows(loudest);
+        for offset in 0..4 {
+            self.stamp_pixel(
+                SCAN_X + column as isize + offset as isize,
+                row,
+                width,
+                height,
+            );
+        }
+    }
+
+    /// A block at the top of the band on the column that clipped, while that
+    /// column is still in the window. The latch beside it says a clip happened;
+    /// this says where, and goes with the column it names.
+    fn stamp_clip_mark(&mut self, envelope: &AudioEnvelope, width: usize, height: usize) {
+        let Some(age) = envelope.clipped_age() else {
+            return;
+        };
+        let column = SCAN_COLUMNS - 1 - age as isize;
+        for offset in 0..3 {
+            for row in WAVE_TOP..(WAVE_TOP + 8) {
+                self.stamp_pixel(SCAN_X + column + offset, row, width, height);
+            }
+        }
+    }
+
     /// Overdraws the `FPS <rate>` badge in the corner, right-aligned so it stays
     /// flush as the rate grows digits.
     fn stamp_fps(&mut self, width: usize, height: usize) {
@@ -649,6 +893,15 @@ impl DisplayLight {
         let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
         self.stamp_text(label, OVERLAY_X, top, width, height);
         self.stamp_text(value, LEFT_VALUE_X, top, width, height);
+    }
+
+    /// Text flush to a diagnostics row's right edge, for the units and the clip
+    /// latch. Right-aligned rather than left-placed so text that changes width —
+    /// a level growing a digit, `CLIP` appearing and going — moves its left edge
+    /// and leaves the level reading beside it where the eye expects it.
+    fn stamp_row_end(&mut self, text: &[u8], row: usize, width: usize, height: usize) {
+        let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
+        self.stamp_text_right(text, width as isize - 1, top, width, height);
     }
 
     /// Overdraws the attitude dial — the inverted counterpart of `R0`–`R2` —
@@ -706,6 +959,21 @@ impl DisplayLight {
                 height,
             );
         }
+    }
+
+    /// `stamp_text` measured from the text's last column rather than its first,
+    /// so a value that grows a digit grows leftwards into empty space.
+    fn stamp_text_right(
+        &mut self,
+        text: &[u8],
+        right: isize,
+        top: usize,
+        width: usize,
+        height: usize,
+    ) {
+        let pitch = (FONT_W + OVERLAY_GAP) as isize;
+        let left = right + OVERLAY_GAP as isize - text.len() as isize * pitch;
+        self.stamp_text(text, left.max(0) as usize, top, width, height);
     }
 
     /// Overdraws one 5×7 `ch` at `left`/`top` with inverted pixels; bytes
@@ -801,6 +1069,47 @@ impl DisplayLight {
             }
         }
     }
+}
+
+/// The window's floor in decibels below full scale, which is the bottom of the
+/// Audio page's scale. Read back from the mapping rather than written here, so a
+/// band and its own ruler cannot end up describing different windows.
+const SCOPE_DECIBEL_FLOOR: i16 = SCOPE_FLOOR_DECIBELS as i16;
+
+/// Rows a level sits at, mirrored about [`WAVE_CY`]: the row the bar's edge
+/// lands on. The same [`scope_height`] the drawing is built from, at panel
+/// scale, so the ruler's lines and the bars' edges stay on the same decibels.
+fn bar_rows(peak_lsb: u16) -> isize {
+    WAVE_HALF * isize::from(scope_height(peak_lsb)) / isize::from(u8::MAX)
+}
+
+/// The row `decibels` below full scale falls on, above the centre line. Measured
+/// out from the *floor* rather than the rail, because the band is mirrored: the
+/// floor is the middle and 0 dBFS is the edge.
+fn decibels_row(decibels: i16) -> isize {
+    WAVE_CY - WAVE_HALF * (SCOPE_DECIBEL_FLOOR - decibels) as isize / SCOPE_DECIBEL_FLOOR as isize
+}
+
+/// A ruler label: decibels under full scale, signed, with the zero written bare
+/// because `-0` is not a level anyone says out loud.
+fn format_decibels(decibels: i16, buf: &mut [u8; 12]) -> &[u8] {
+    format_i32(i32::from(decibels), buf)
+}
+
+/// The sweep's own time span, in tenths of a second and a unit — `2.0S` for the
+/// window the envelope is drawn at. Computed rather than printed, because a
+/// hardcoded label goes on claiming two seconds through any later window.
+fn format_span(buf: &mut [u8; 12]) -> &[u8] {
+    let tenths = ENVELOPE_COLUMNS as u32 * COLUMN_MS as u32 / 100;
+    let mut whole = [0u8; 12];
+    let seconds = format_i32((tenths / 10) as i32, &mut whole);
+    buf[..seconds.len()].copy_from_slice(seconds);
+    let mut len = seconds.len();
+    for tail in [b'.', b'0' + (tenths % 10) as u8, b'S'] {
+        buf[len] = tail;
+        len += 1;
+    }
+    &buf[..len]
 }
 
 /// Decimal ASCII digits of `value` (no leading zeros) written into the start

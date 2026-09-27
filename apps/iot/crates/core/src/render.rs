@@ -1,6 +1,8 @@
-use crate::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
+use crate::diagnostics::{
+    AudioDiagnostics, BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics,
+};
 use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
-use crate::state::{Breath, DeviceState, LightState};
+use crate::state::{AudioPhase, Breath, DeviceState, LightState};
 
 /// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing,
 /// `2` solid. The panel overlay renders from this snapshot, so the codes are a
@@ -29,6 +31,11 @@ pub enum LightAppearance {
 }
 
 /// The intended appearance of every known slot, derived from [`DeviceState`].
+///
+/// `Diagnostics` rides by value for the same reason the audio envelope does in
+/// `InputEvent`: a fixed snapshot that a renderer forwards whole, with no
+/// allocation and no lifetime to thread through the diff.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotAppearance {
     /// The `instance`-th light surface's declared appearance.
@@ -137,6 +144,25 @@ fn light_diagnostics(state: &DeviceState) -> Diagnostics {
         motion: state.motion,
         motion_counts: state.motion_counts,
         motion_caps: state.motion_caps,
+        audio: audio_diagnostics(state),
+    }
+}
+
+/// Resolves which envelope the Audio page draws: a live capture follows the
+/// driver, a stopped one the latch taken when it stopped. An idle page carries
+/// the live envelope too but draws nothing off the phase, since the driver
+/// keeps folding samples in whether or not a capture is running. Done here so a
+/// sink reads one envelope and never re-implements the phase rule.
+fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
+    let shown = match state.audio.phase {
+        AudioPhase::Stopped => &state.audio.captured,
+        AudioPhase::Recording | AudioPhase::Idle => &state.audio.live,
+    };
+    AudioDiagnostics {
+        phase: state.audio.phase,
+        envelope: shown.envelope,
+        elapsed_ms: shown.elapsed_ms,
+        restarts: shown.restarts,
     }
 }
 
@@ -253,6 +279,10 @@ pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::drivers::audio::{AudioEnvelope, AudioSample};
+    use crate::drivers::input::InputEvent;
+    use crate::intent::{BusinessIntent, OperationIntent};
+    use crate::state::DeviceManager;
 
     const BOOT_BREATH: crate::state::Breath = crate::state::Breath {
         period_ms: 3_000,
@@ -284,6 +314,50 @@ mod tests {
     /// itself.
     fn diagnostics_for(light: LightState) -> Diagnostics {
         light_diagnostics(&state(light))
+    }
+
+    #[test]
+    fn the_audio_page_stamps_the_capture_the_phase_points_at() {
+        let mut manager = DeviceManager::new().with_audio(true);
+        let mut envelope = AudioEnvelope::default();
+        let mut samples = [0_i16; crate::drivers::audio::SAMPLES_PER_COLUMN as usize];
+        samples[0] = i16::MIN;
+        envelope.push(&samples);
+        let poll = AudioSample {
+            envelope,
+            elapsed_ms: 1_000,
+            restarts: 2,
+        };
+        manager.apply_operation(OperationIntent {
+            source: 0,
+            event: InputEvent::Audio(poll),
+        });
+        assert_eq!(
+            light_diagnostics(&manager.state()).audio.phase,
+            AudioPhase::Idle,
+            "polling alone never starts a capture"
+        );
+        manager.apply_business(BusinessIntent::ToggleRecord);
+        manager.apply_business(BusinessIntent::TogglePage);
+        let recording = light_diagnostics(&manager.state()).audio;
+        assert_eq!(recording.phase, AudioPhase::Recording);
+        assert_eq!(
+            recording.envelope, poll.envelope,
+            "a live capture draws live"
+        );
+        assert_eq!(
+            recording.restarts, 2,
+            "the repair count has to reach the panel, or a stalled capture that was \
+             recovered from still reads as a capture that simply went quiet"
+        );
+
+        manager.apply_business(BusinessIntent::ToggleRecord);
+        let stopped = light_diagnostics(&manager.state()).audio;
+        assert_eq!(stopped.phase, AudioPhase::Stopped);
+        assert_eq!(
+            stopped.envelope, poll.envelope,
+            "the latch stands in once the driver moves on"
+        );
     }
 
     #[test]

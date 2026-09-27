@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 
+use super::audio::AudioSample;
 use super::motion::MotionBatch;
 
 /// Active-low contract for a physical button: returns `true` when pressed.
@@ -102,6 +103,11 @@ impl SwipeDirection {
     }
 }
 
+/// The audio variant is a fixed-size peak envelope rather than a pointer:
+/// the whole point is that a poll crosses this enum by value with no
+/// allocation, and `Copy` is what lets the input channel and the render diff
+/// keep moving whole snapshots instead of references.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputEvent {
     Button(ButtonEvent),
@@ -116,6 +122,11 @@ pub enum InputEvent {
     /// semantics the poll raised after arbitration. Both travel together —
     /// the semantic plane feeds intent, the data plane feeds diagnostics.
     Motion(MotionBatch),
+    /// One capture poll: the peak envelope every consumer may read, plus how
+    /// long the capture has run. Purely a data plane — a capture raises no
+    /// semantics yet, so it resolves to no business intent and only feeds
+    /// diagnostics.
+    Audio(AudioSample),
 }
 
 pub const BUTTON_SCAN_MS: u64 = 10;

@@ -1,3 +1,4 @@
+use crate::drivers::audio::{AudioEnvelope, AudioSample};
 use crate::drivers::input::{
     FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP, FingerLast,
     GestureEvent, InputEvent, MAX_TRACKED_POINTS, MOVE_DEADBAND_PX, SwipeDirection, TouchEvent,
@@ -12,6 +13,26 @@ pub enum DisplayPage {
     #[default]
     Ambient,
     Attitude,
+    Audio,
+}
+
+impl DisplayPage {
+    /// The next page in cycle order, skipping pages the board cannot back.
+    ///
+    /// Self-healing: sitting on a page the wiring no longer supports falls
+    /// back to `Ambient` instead of stranding the cycle, and a board with
+    /// neither capability stays on `Ambient` as it did when the cycle was
+    /// motion-gated.
+    pub const fn next_page(&self, motion_enabled: bool, audio_enabled: bool) -> Self {
+        match (*self, motion_enabled, audio_enabled) {
+            (Self::Ambient, true, _) => Self::Attitude,
+            (Self::Ambient, false, true) => Self::Audio,
+            (Self::Ambient, false, false) => Self::Ambient,
+            (Self::Attitude, _, true) => Self::Audio,
+            (Self::Attitude, _, false) => Self::Ambient,
+            (Self::Audio, _, _) => Self::Ambient,
+        }
+    }
 }
 
 /// A live contact slot: the tracker `id` that owns it plus where it last
@@ -40,6 +61,11 @@ pub struct DeviceState {
     /// What this board's motion stack declares, so a readout can tell a
     /// semantic it cannot report apart from one whose threshold never fires.
     pub motion_caps: MotionCapabilities,
+    /// Whether this board wired a capture source. Gates the Audio page and the
+    /// capture poll's write, so a board without a microphone neither shows the
+    /// page nor stores the envelope.
+    pub audio_enabled: bool,
+    pub audio: AudioState,
     /// Most recent touch snapshot, mirroring the lights' absolute-target
     /// contract: the render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -154,6 +180,63 @@ impl Default for LightState {
     }
 }
 
+/// Capture phase the Audio page drives. The capture driver never stops — it
+/// keeps folding samples into its envelope — so a phase only decides which
+/// envelope the panel draws and whether the sweep follows the live one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AudioPhase {
+    /// Nothing captured yet: the panel draws no sweep, only the tap hint.
+    #[default]
+    Idle,
+    /// Capturing: the panel follows the live envelope.
+    Recording,
+    /// A capture that ran and stopped: the panel shows the latched envelope.
+    Stopped,
+}
+
+/// Capture state behind the Audio page. The envelopes are summaries from the
+/// driver, never samples, so this stays small enough to sit in the state and
+/// its derived diagnostics snapshot alike.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioState {
+    pub phase: AudioPhase,
+    /// The most recent capture poll, always current even while stopped — the
+    /// driver keeps running underneath, so resuming picks the sweep up wherever
+    /// it has moved to rather than where the previous capture left it.
+    pub live: AudioSample,
+    /// The poll latched when a capture stopped, so a stopped capture keeps
+    /// showing what it caught instead of following the still-running scope.
+    pub captured: AudioSample,
+}
+
+impl Default for AudioState {
+    fn default() -> Self {
+        Self::boot()
+    }
+}
+
+impl AudioState {
+    /// The state a board boots into: idle, with a blank envelope on both sides
+    /// so the Audio page draws a flat line until a capture runs.
+    pub const BOOT: Self = Self {
+        phase: AudioPhase::Idle,
+        live: AudioSample {
+            envelope: AudioEnvelope::ZERO,
+            elapsed_ms: 0,
+            restarts: 0,
+        },
+        captured: AudioSample {
+            envelope: AudioEnvelope::ZERO,
+            elapsed_ms: 0,
+            restarts: 0,
+        },
+    };
+
+    pub const fn boot() -> Self {
+        Self::BOOT
+    }
+}
+
 /// The per-lift data a resolved touch gesture carries into its tally: the
 /// slot's last [`FingerLast`], the hold and endpoints; the counter bump and
 /// target light are passed alongside.
@@ -207,6 +290,8 @@ impl DeviceManager {
                 motion: None,
                 motion_counts: MotionCounts::ZERO,
                 motion_caps,
+                audio_enabled: false,
+                audio: AudioState::boot(),
                 touch: None,
                 touch_points: [None; MAX_TRACKED_POINTS],
                 live_dir: [0; MAX_TRACKED_POINTS],
@@ -227,6 +312,15 @@ impl DeviceManager {
                 chip_gesture_id: 0,
             },
         }
+    }
+
+    /// Chains the audio capability onto [`Self::with_motion`], so a board
+    /// declares its capture source and the page that shows it in one place.
+    /// Kept separate because most boards have motion and no microphone, and
+    /// the app's composition point reads better as two explicit facts.
+    pub const fn with_audio(mut self, audio_enabled: bool) -> Self {
+        self.state.audio_enabled = audio_enabled;
+        self
     }
 
     /// Apply an absolute target to the `instance`-th light surface, clamped to
@@ -390,6 +484,14 @@ impl DeviceManager {
                     }
                 }
             }
+            // A capture poll is pure data plane: it refreshes the envelope the
+            // Audio page draws and raises no semantics, so the phase that
+            // decides start/stop is the business side of a tap.
+            InputEvent::Audio(sample) => {
+                if self.state.audio_enabled {
+                    self.state.audio.live = sample;
+                }
+            }
             // A raw snapshot folds its points into the live slots (upsert on
             // down/contact, free on release) before storing the frame.
             InputEvent::Touch(event) => {
@@ -436,10 +538,19 @@ impl DeviceManager {
                 self.apply_to(usize::from(instance), state)
             }
             BusinessIntent::TogglePage => {
-                if self.state.motion_enabled {
-                    self.state.page = match self.state.page {
-                        DisplayPage::Ambient => DisplayPage::Attitude,
-                        DisplayPage::Attitude => DisplayPage::Ambient,
+                self.state.page = self
+                    .state
+                    .page
+                    .next_page(self.state.motion_enabled, self.state.audio_enabled);
+            }
+            BusinessIntent::ToggleRecord => {
+                if self.state.audio_enabled {
+                    self.state.audio.phase = match self.state.audio.phase {
+                        AudioPhase::Recording => {
+                            self.state.audio.captured = self.state.audio.live;
+                            AudioPhase::Stopped
+                        }
+                        AudioPhase::Idle | AudioPhase::Stopped => AudioPhase::Recording,
                     };
                 }
             }
@@ -852,6 +963,173 @@ mod tests {
                 manager.motion_counts_state().taps,
                 1,
                 "the knock is not folded into the finger tap"
+            );
+        }
+    }
+
+    mod audio {
+        use super::*;
+        use crate::drivers::audio::SAMPLES_PER_COLUMN;
+        use crate::drivers::motion::MotionCapabilities;
+
+        const ALL_CAPS: MotionCapabilities = MotionCapabilities::TAP;
+
+        /// A capture poll carrying one loud column, so a test can tell which
+        /// envelope a latch came from.
+        fn loud(amplitude: i16) -> AudioSample {
+            let mut samples = [0_i16; SAMPLES_PER_COLUMN as usize];
+            samples[SAMPLES_PER_COLUMN as usize / 2] = amplitude;
+            let mut envelope = AudioEnvelope::default();
+            envelope.push(&samples);
+            AudioSample {
+                envelope,
+                elapsed_ms: 7,
+                restarts: 0,
+            }
+        }
+
+        fn apply(manager: &mut DeviceManager, operation: OperationIntent) {
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        /// A board with both capabilities cycles to the audio page in two
+        /// page turns, so the tests start from there and tap on it.
+        fn on_audio_page() -> DeviceManager {
+            let mut manager = DeviceManager::with_motion(true, ALL_CAPS).with_audio(true);
+            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Audio);
+            manager
+        }
+
+        /// Taps the page the manager is already on, leaving the page alone.
+        fn tap_in_place(manager: &mut DeviceManager) {
+            let page = manager.state().page;
+            apply(manager, tap());
+            assert_eq!(
+                manager.state().page,
+                page,
+                "a tap on audio records instead of paging"
+            );
+        }
+
+        #[test]
+        fn the_audio_page_only_appears_on_a_board_that_has_one() {
+            assert_eq!(
+                DisplayPage::Ambient.next_page(true, false),
+                DisplayPage::Attitude
+            );
+            assert_eq!(
+                DisplayPage::Attitude.next_page(true, false),
+                DisplayPage::Ambient,
+                "a board without audio skips the page"
+            );
+            assert_eq!(
+                DisplayPage::Ambient.next_page(false, true),
+                DisplayPage::Audio
+            );
+            assert_eq!(
+                DisplayPage::Attitude.next_page(true, true),
+                DisplayPage::Audio
+            );
+        }
+
+        #[test]
+        fn a_triple_tap_reaches_the_audio_page_and_back() {
+            let mut manager = DeviceManager::new().with_audio(true);
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Audio);
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Ambient);
+            assert_eq!(manager.state().triple_tap_count, 2);
+        }
+
+        #[test]
+        fn a_capture_poll_is_kept_only_when_audio_is_enabled() {
+            let mut disabled = DeviceManager::new();
+            disabled.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            assert_eq!(disabled.state().audio.live.envelope.committed(), 0);
+
+            let mut enabled = DeviceManager::new().with_audio(true);
+            enabled.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            assert_eq!(enabled.state().audio.live.envelope.committed(), 1);
+            assert_eq!(
+                enabled.state().audio.phase,
+                AudioPhase::Idle,
+                "not captured yet"
+            );
+        }
+
+        #[test]
+        fn a_tap_starts_and_stops_a_capture() {
+            let mut manager = on_audio_page();
+            tap_in_place(&mut manager);
+            assert_eq!(manager.state().audio.phase, AudioPhase::Recording);
+
+            manager.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            tap_in_place(&mut manager);
+            assert_eq!(manager.state().audio.phase, AudioPhase::Stopped);
+            assert_eq!(
+                manager.state().audio.captured.envelope.committed(),
+                1,
+                "the poll on record is latched for the panel"
+            );
+        }
+
+        #[test]
+        fn a_stopped_capture_keeps_what_it_caught() {
+            let mut manager = on_audio_page();
+            tap_in_place(&mut manager);
+            manager.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            tap_in_place(&mut manager);
+            let stopped = manager.state().audio.captured;
+
+            let polled_on = loud(20_000);
+            manager.apply_operation(op(InputEvent::Audio(polled_on)));
+            assert_eq!(
+                manager.state().audio.captured,
+                stopped,
+                "the driver keeps polling but a stopped capture is frozen"
+            );
+            assert_eq!(
+                manager.state().audio.live,
+                polled_on,
+                "live is the driver's latest poll, so resuming picks the scope up"
+            );
+        }
+
+        #[test]
+        fn a_tap_records_without_leaving_the_audio_page() {
+            let mut manager = on_audio_page();
+            apply(&mut manager, tap());
+            assert_eq!(manager.state().page, DisplayPage::Audio, "the page holds");
+            assert_eq!(manager.state().audio.phase, AudioPhase::Recording);
+        }
+
+        #[test]
+        fn a_tap_off_the_audio_page_is_a_color_move_and_never_records() {
+            let mut manager = on_audio_page();
+            let before = manager.state().lights[0];
+
+            manager.apply_business(BusinessIntent::TogglePage);
+            assert_eq!(
+                manager.state().page,
+                DisplayPage::Ambient,
+                "walked off audio"
+            );
+
+            apply(&mut manager, tap());
+            assert_eq!(
+                manager.state().audio.phase,
+                AudioPhase::Idle,
+                "never records"
+            );
+            assert_ne!(
+                manager.state().lights[0],
+                before,
+                "the tap moved the color instead"
             );
         }
     }

@@ -1,18 +1,14 @@
 //! Device-level diagnostics: one snapshot fuses every subsystem the device
-//! exposes — the touch-path readout, display page, motion sample, and one
-//! [`LightSnapshot`] per light surface — and fans out through pluggable
-//! [`DiagnosticsSink`]s.
-//!
-//! The data source stays the central `DeviceState` in `crate::state`; a sink
-//! only consumes, so the panel today (a `DisplayLight`) can be joined by
-//! log/HTTP/WebSocket sinks without touching the state layer. Sinks are told
-//! apart by their registration binding (render token / connection handle),
-//! never by an identity they carry.
+//! exposes — the touch-path readout, display page, motion sample, audio envelope
+//! and one [`LightSnapshot`] per light surface — and fans out through pluggable
+//! [`DiagnosticsSink`]s. The source stays the central `DeviceState` and a sink
+//! only consumes, so the panel today can be joined by log/HTTP/WebSocket sinks.
 
+use crate::drivers::audio::AudioEnvelope;
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use crate::drivers::light::MAX_LIGHTS;
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
-use crate::state::DisplayPage;
+use crate::state::{AudioPhase, DisplayPage};
 
 /// Breathing mode's full dimension set carried by a light snapshot so the
 /// panel can print every parameter the mode exposes; all zero outside
@@ -28,12 +24,11 @@ pub struct BreathSnapshot {
     pub saturation: u8,
 }
 
-/// The diagnostics' light snapshot — `(mode, brightness, hue)` plus the
-/// breathing dimensions — mirrors the primary hue/key material of one
-/// `state`'s light for the diagnostic digits: mode `0` off, `1` breathing,
-/// `2` solid; brightness is the solid level or the breath's ceiling; hue is
-/// the solid color or the breath's group head (the standalone hue when the
-/// group is empty).
+/// The diagnostics' light snapshot — `(mode, brightness, hue)` plus the breathing
+/// dimensions — mirrors the primary hue/key material of one `state`'s light for
+/// the diagnostic digits: mode `0` off, `1` breathing, `2` solid; brightness the
+/// solid level or the breath's ceiling; hue the solid color or the breath's group
+/// head.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LightSnapshot {
     pub mode: u8,
@@ -86,6 +81,19 @@ pub struct TouchDiagnostics {
     pub chip_gesture_id: u8,
 }
 
+/// Capture state stamped on the Audio page: the phase driving the panel plus
+/// the envelope it should draw. Which envelope that is is resolved in the
+/// state layer, so a sink never re-implements the phase rule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AudioDiagnostics {
+    pub phase: AudioPhase,
+    pub envelope: AudioEnvelope,
+    pub elapsed_ms: u32,
+    /// How many times the capture's DMA had to be re-armed. Zero on a capture
+    /// that has run without interruption.
+    pub restarts: u16,
+}
+
 /// The on-surface diagnostics payload: touch-path counters/readout, display
 /// page, motion sample, and one [`LightSnapshot`] per light surface slot,
 /// fused so one diff carries the corner digits and the current page data.
@@ -98,6 +106,7 @@ pub struct Diagnostics {
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,
+    pub audio: AudioDiagnostics,
 }
 
 /// Consumer of the device diagnostic snapshot. The screen surface implements
