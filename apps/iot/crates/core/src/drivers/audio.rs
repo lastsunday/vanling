@@ -2,7 +2,7 @@ use crate::drivers::input::{InputEvent, InputSource};
 
 mod weighting;
 
-use weighting::DbaMeter;
+use weighting::{AWeight, DbaMeter};
 
 /// The codec's frame rate: one I2S frame per this many nanoseconds, which is
 /// what the capture driver clocks the peripheral at and what a frame's worth of
@@ -179,22 +179,37 @@ pub fn released_peak(measured: u16, previous: u16) -> u16 {
 /// comparable with its datasheet numbers; the loudness scale belongs to the panel
 /// (see [`scope_height`]). The RMS of the same window rides beside the peak, and
 /// sliding rather than growing keeps the envelope a fixed-size `Copy`.
+///
+/// Every column also keeps its A-weighted twin ([`weighting`]): the raw columns
+/// stay the bench reading, the twin is the level a listener would call it, so a
+/// low-frequency codec floor draws as a flat line instead of a solid band.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioEnvelope {
     columns: [u16; ENVELOPE_COLUMNS],
+    /// The same peaks A-weighted, per column.
+    weighted_columns: [u16; ENVELOPE_COLUMNS],
     /// Root mean square of each column's samples, in LSB. Same window, same
     /// wrapping, same units — only the statistic differs.
     rms: [u16; ENVELOPE_COLUMNS],
+    /// The same RMS A-weighted, per column.
+    weighted_rms: [u16; ENVELOPE_COLUMNS],
     /// Index the next completed column writes to.
     cursor: u16,
     /// Columns of history available, clamped to [`ENVELOPE_COLUMNS`] so it
     /// answers "how much of the window is real" and stops counting once the
     /// first wrap has filled it.
     committed: u8,
-    /// Loudest sample in the window being filled.
+    /// Loudest sample in the window being filled. The clip latch reads this raw
+    /// value — a rail hit is about the codec, not the filter.
     peak: u16,
+    /// Loudest A-weighted sample in the window being filled.
+    weighted_peak: u16,
     /// Root mean square accumulator for the window being filled.
     sum_squares: u64,
+    /// A-weighted RMS accumulator for the window being filled.
+    weighted_sum_squares: u64,
+    /// The A-weighting filter the weighted columns are folded through.
+    weight: AWeight,
     /// Samples folded into the current window.
     filled: u16,
     /// Latched by any column that reached [`FULL_SCALE_LSB`]. A clip is an
@@ -221,11 +236,16 @@ impl AudioEnvelope {
     /// state layer needs it in a `const` context.
     pub const ZERO: Self = Self {
         columns: [0; ENVELOPE_COLUMNS],
+        weighted_columns: [0; ENVELOPE_COLUMNS],
         rms: [0; ENVELOPE_COLUMNS],
+        weighted_rms: [0; ENVELOPE_COLUMNS],
         cursor: 0,
         committed: 0,
         peak: 0,
+        weighted_peak: 0,
         sum_squares: 0,
+        weighted_sum_squares: 0,
+        weight: AWeight::new(),
         filled: 0,
         clipped: false,
         columns_since_clip: None,
@@ -241,6 +261,10 @@ impl AudioEnvelope {
             let square = u32::from(sample.unsigned_abs());
             self.peak = self.peak.max(square as u16);
             self.sum_squares += u64::from(square * square);
+            let weighted = self.weight.filter(sample);
+            let wsquare = u32::from(weighted.unsigned_abs());
+            self.weighted_peak = self.weighted_peak.max(wsquare as u16);
+            self.weighted_sum_squares += u64::from(wsquare * wsquare);
             self.filled += 1;
             if self.filled >= SAMPLES_PER_COLUMN {
                 self.close_column();
@@ -248,11 +272,15 @@ impl AudioEnvelope {
         }
     }
 
-    /// Commits the window being filled: one column of peak and one of RMS.
+    /// Commits the window being filled: one column of peak and one of RMS, raw
+    /// and A-weighted.
     fn close_column(&mut self) {
         let cursor = self.cursor as usize;
         self.columns[cursor] = self.peak;
         self.rms[cursor] = (self.sum_squares / u64::from(self.filled)).isqrt() as u16;
+        self.weighted_columns[cursor] = self.weighted_peak;
+        self.weighted_rms[cursor] =
+            (self.weighted_sum_squares / u64::from(self.filled)).isqrt() as u16;
         if self.peak >= FULL_SCALE_LSB {
             self.clipped = true;
             self.columns_since_clip = Some(0);
@@ -268,6 +296,8 @@ impl AudioEnvelope {
         self.committed = (self.committed + 1).min(ENVELOPE_COLUMNS as u8);
         self.peak = 0;
         self.sum_squares = 0;
+        self.weighted_peak = 0;
+        self.weighted_sum_squares = 0;
         self.filled = 0;
     }
 
@@ -277,10 +307,16 @@ impl AudioEnvelope {
         &self.columns
     }
 
-    /// One column by age, `0` being the oldest still in the window. Ages past
-    /// what has been committed read as silence, which is what a column that has
-    /// not been drawn yet should weigh.
-    fn column_by_age(&self, age: usize) -> u16 {
+    /// The whole A-weighted window, raw peaks through the filter, same layout as
+    /// [`columns`](Self::columns).
+    pub fn weighted_columns(&self) -> &[u16; ENVELOPE_COLUMNS] {
+        &self.weighted_columns
+    }
+
+    /// One column by age, `0` being the oldest still in the window, from whichever
+    /// column set the reader is drawing. Ages past what has been committed read
+    /// as silence, which is what a column that has not been drawn yet should weigh.
+    fn column_by_age_from(&self, source: &[u16; ENVELOPE_COLUMNS], age: usize) -> u16 {
         if age >= usize::from(self.committed) {
             return 0;
         }
@@ -289,7 +325,7 @@ impl AudioEnvelope {
         } else {
             0
         };
-        self.columns[(oldest + age) % ENVELOPE_COLUMNS]
+        source[(oldest + age) % ENVELOPE_COLUMNS]
     }
 
     /// The bar heights the panel draws, oldest column first, with the release
@@ -297,10 +333,19 @@ impl AudioEnvelope {
     /// from the window rather than accumulated alongside it, so a repaint that
     /// happens twice, or not at all, cannot change what a bar reads.
     pub fn released_peaks(&self) -> [u16; ENVELOPE_COLUMNS] {
+        self.released_from(&self.columns)
+    }
+
+    /// [`released_peaks`](Self::released_peaks) over the A-weighted columns.
+    pub fn weighted_released_peaks(&self) -> [u16; ENVELOPE_COLUMNS] {
+        self.released_from(&self.weighted_columns)
+    }
+
+    fn released_from(&self, source: &[u16; ENVELOPE_COLUMNS]) -> [u16; ENVELOPE_COLUMNS] {
         let mut out = [0_u16; ENVELOPE_COLUMNS];
         let mut previous = 0;
         for (age, bar) in out.iter_mut().enumerate() {
-            previous = released_peak(self.column_by_age(age), previous);
+            previous = released_peak(self.column_by_age_from(source, age), previous);
             *bar = previous;
         }
         out
@@ -309,6 +354,15 @@ impl AudioEnvelope {
     /// Each column's RMS in LSB, oldest first, for the inner bar that tells a
     /// sustained level from a lone transient.
     pub fn rms_columns(&self) -> [u16; ENVELOPE_COLUMNS] {
+        self.rms_by_age_from(&self.rms)
+    }
+
+    /// [`rms_columns`](Self::rms_columns) over the A-weighted RMS.
+    pub fn weighted_rms_columns(&self) -> [u16; ENVELOPE_COLUMNS] {
+        self.rms_by_age_from(&self.weighted_rms)
+    }
+
+    fn rms_by_age_from(&self, source: &[u16; ENVELOPE_COLUMNS]) -> [u16; ENVELOPE_COLUMNS] {
         let mut out = [0_u16; ENVELOPE_COLUMNS];
         for (age, level) in out.iter_mut().enumerate() {
             if age >= usize::from(self.committed) {
@@ -319,7 +373,7 @@ impl AudioEnvelope {
             } else {
                 0
             };
-            *level = self.rms[(oldest + age) % ENVELOPE_COLUMNS];
+            *level = source[(oldest + age) % ENVELOPE_COLUMNS];
         }
         out
     }
@@ -1207,6 +1261,59 @@ mod tests {
         }
         assert_eq!(envelope.committed(), 4);
         assert_eq!(envelope.floor_rms(), 0);
+        assert_eq!(
+            envelope.weighted_rms_columns()[3],
+            0,
+            "silence weights to silence"
+        );
+        assert_eq!(
+            envelope.weighted_released_peaks()[0],
+            0,
+            "and draws no weighted bar"
+        );
+    }
+
+    /// A few whole columns of a sine at `freq_hz`, in LSB.
+    fn tone_buffer(freq_hz: f64, amplitude: i32, samples: usize) -> Vec<i16> {
+        assert_eq!(samples % SAMPLES_PER_COLUMN as usize, 0, "whole columns");
+        let step = 2.0 * core::f64::consts::PI * freq_hz / f64::from(SAMPLE_RATE_HZ);
+        (0..samples)
+            .map(|i| (f64::from(amplitude) * (step * i as f64).sin()) as i16)
+            .collect()
+    }
+
+    /// A-weighting cuts 62.5 Hz by about 26 dB, so a low tone must not draw a
+    /// solid band even when it saturates the raw columns.
+    #[test]
+    fn a_low_tone_drives_the_raw_columns_but_not_the_weighted_twin() {
+        let low = tone_buffer(62.5, 12_000, SAMPLES_PER_COLUMN as usize * 4);
+        let mut envelope = AudioEnvelope::default();
+        envelope.push(&low);
+        let raw = envelope.rms_columns()[2];
+        let weighted = envelope.weighted_rms_columns()[2];
+        assert!(
+            weighted * 10 < raw,
+            "62.5 Hz read {weighted} LSB weighted against {raw} LSB raw"
+        );
+        assert!(
+            envelope.weighted_columns()[2] * 10 < envelope.columns()[2],
+            "the separation holds for the peaks as well"
+        );
+    }
+
+    /// A-weighting is unity at 1 kHz, so a mid-band tone reads the same through
+    /// both column sets.
+    #[test]
+    fn a_mid_band_tone_reads_the_same_through_both_columns() {
+        let mid = tone_buffer(1_000.0, 12_000, SAMPLES_PER_COLUMN as usize * 4);
+        let mut envelope = AudioEnvelope::default();
+        envelope.push(&mid);
+        let raw = envelope.rms_columns()[2];
+        let weighted = envelope.weighted_rms_columns()[2];
+        assert!(
+            (weighted as i32 - raw as i32).unsigned_abs() <= raw as u32 / 4,
+            "1 kHz read {weighted} LSB weighted against {raw} LSB raw"
+        );
     }
 
     #[test]

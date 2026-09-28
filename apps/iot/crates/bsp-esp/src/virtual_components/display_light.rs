@@ -739,15 +739,16 @@ impl DisplayLight {
         self.stamp_sweep(&audio.envelope, width, height);
     }
 
-    /// The meter: a logarithmic band with a scale, each column's sustained level
-    /// solid and its peak dithered outside that. Stamping inverts, so two levels
-    /// in one ink have to be made of *pattern* — an RMS stripe inside the peak bar
-    /// would be invisible, its pixels being the wide bar's pixels. Heights come
-    /// from [`scope_height`], so a bar and the number beside it cannot disagree.
+    /// The meter: a logarithmic band, each column's A-weighted sustained level
+    /// solid and its peak dithered outside it. The sweep uses the corner's own
+    /// filter, so a low-frequency codec floor draws quiet. Stamping inverts, so
+    /// two levels in one ink have to be *patterns*: a stripe inside the peak
+    /// bar would be invisible. Heights come from [`scope_height`], so the bars
+    /// land on the same decibel grid as the ruler.
     fn stamp_sweep(&mut self, envelope: &AudioEnvelope, width: usize, height: usize) {
         self.stamp_ruler(width, height);
-        let peaks = envelope.released_peaks();
-        let levels = envelope.rms_columns();
+        let peaks = envelope.weighted_released_peaks();
+        let levels = envelope.weighted_rms_columns();
         for column in 0..SCAN_COLUMNS as usize {
             let x = SCAN_X + column as isize;
             let peak = bar_rows(peaks[column]);

@@ -90,7 +90,7 @@ impl AWeight {
     /// zeros, gain-normalized so 0 dB lands on 1 kHz. Prewarping the 12.194 kHz
     /// pole pair keeps the mid-band shelf where IEC puts it instead of letting
     /// the transform's frequency-axis compression drag it below 10 kHz.
-    const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             hum_shelf: Biquad::new(
                 1_070_852_286,
@@ -114,7 +114,7 @@ impl AWeight {
     /// at [`STATE_FRACTION`] extra fractional bits and clamping the result back
     /// to the input's range. In-band the filter gains nothing, so the clamp only
     /// ever bites on a transient the meter is about to average over anyway.
-    fn filter(&mut self, sample: i16) -> i16 {
+    pub(crate) fn filter(&mut self, sample: i16) -> i16 {
         let out = self.midband.update(
             self.voice_shelf
                 .update(self.hum_shelf.update(i32::from(sample) << STATE_FRACTION)),

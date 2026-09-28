@@ -3,8 +3,8 @@ title = "Audio Metering Semantics"
 weight = 260
 sort_by = "weight"
 [extra]
-source_file_hash = "6f78c378ddda5199f898bc4090060b29eac983ad"
-translated_at = "2026-09-28T05:27:53Z"
+source_file_hash = "88898778e92d69b86cee8f1a97a5b989bb6d6676"
+translated_at = "2026-09-28T06:54:58Z"
 +++
 
 # Audio Metering Semantics
@@ -74,7 +74,7 @@ The conversion is integer addition rather than floating point: no `float` reache
 The top-right of the title row used to carry a static `+102dB`; it now shows a **live dB(A)** as `NN dBA`. It answers "how loud is this room right now", while `PK`/`RMS` remain the bench's unweighted meter — the two coexist and neither replaces the other.
 
 - **Where the number comes from**: the I2S samples pass a real A-weighting filter (IEC 61672), slow-tracked by a single exponential average (τ ≈ 1.4 s), and `level_lsb()` is then folded into dB(A) through `dbfs()` and `spl(·, SPL_OFFSET_DECIBELS)`. **The offset is still 102**: A-weighting is exactly 0 dB at 1 kHz, so the full-scale conversion is untouched.
-- **Why A**: the curve a person uses to judge "how loud" is A-weighting. A quiet room reads a notch below the unweighted column because A-weighting presses below 100 Hz by 19 dB or more, and the unweighted column's floor here is low-frequency codec noise the filter simply removes — the dBA cell falls toward the 12 dB SPL floor while `RMS` sits ~60 dB higher. The capture driver never stops, so this cell always tracks "now".
+- **Why A**: the curve a person uses to judge "how loud" is A-weighting. A quiet room reads a notch below the unweighted column because A-weighting presses below 100 Hz by 19 dB or more, and the unweighted column's floor here is low-frequency codec noise the filter simply removes — the dBA cell falls toward the 12 dB SPL floor while `RMS` sits ~60 dB higher. The capture driver never stops, so this cell always tracks "now". **The sweep is weighted the same way**: each column runs through the same filter before it is drawn, so the solid band rises with what is audible and collapses when the room quiets, instead of staying a thick slab on the codec's unweighted floor.
 - **Implementation** (core, no float): `drivers/audio/weighting.rs`. Three Q30 fixed-point bilinear biquads (prewarped, normalized at 1 kHz) cascade into the 6th-order A-weighting, ±0.7 dB in-band, with the output clamped back to i16. The signal rides the cascade at eight extra fractional bits (`STATE_FRACTION`): the highest-Q poles sit near the unit circle, and a state step wide enough to drop a signal's low bits would recycle that quantization error into a self-sustaining limit cycle — a quiet room read ~65 dBA no matter what it heard (reproduced on the host, `input RMS 19 LSB → filter out 489 LSB`), and scaling the *signal* up shrinks that amplifier by 2⁸ with no coefficient change. `DbaMeter` feeds the square of every sample into an exponential average (`METER_RELEASE_SHIFT = 16`, τ ≈ 1.37 s) and `level_lsb()` is its `isqrt`. The tests pin each frequency's gain to an exact integer copy of the module through the 384-point sine table rather than guessing against a floating-point expectation, and one asserts a quiet input reads quiet instead of feeding the poles.
 
 ### Scale and graphics
@@ -87,10 +87,10 @@ The top-right of the title row used to carry a static `+102dB`; it now shows a *
 | Centre line | Silence. Bars grow upward and downward from it, **mirrored** | `WAVE_CY` |
 | One column per 10 ms | Time width of a column | `COLUMN_MS` |
 | 200 columns | The whole window, 2.0 s | `ENVELOPE_COLUMNS` |
-| Solid core in a column | That column's RMS, i.e. perceived loudness | `loudest_rms()` |
-| Dithered shoulder in a column | The part of the peak above the RMS | `released_peaks()` |
-| Block at the top | The column where clipping happened | `FULL_SCALE_LSB` |
-| Short dash on the tallest bar | Peak hold: the window's tallest bar and where it sits | `loudest()` |
+| Solid core in a column | That column's **A-weighted** RMS, i.e. perceived loudness | `weighted_rms_columns()` |
+| Dithered shoulder in a column | The A-weighted peak above the A-weighted RMS | `weighted_released_peaks()` |
+| Block at the top | The column where clipping happened (latched on the raw peak) | `FULL_SCALE_LSB` |
+| Short dash on the tallest bar | Peak hold: the window's tallest drawn bar and where it sits | `weighted_released_peaks()` |
 | `2.0S` at bottom left | Window length, computed from the constants | `COLUMN_MS` × `ENVELOPE_COLUMNS` |
 | `TAP TO REC` | The only mark while `IDLE`; no sweep is drawn then | `AudioPhase::Idle` |
 
@@ -120,7 +120,7 @@ A meter's usual release is 16–20 dB/s, and it is deliberately **not** used her
 
 Reading the top bits of `log₂` is the usual trick, and the error it leaves behind is commonly called a quantization error. It is not: quantization is worth 1/16 of an octave (0.38 dB), while the **chord deviation** between a linear mantissa and true `log₂` approaches 0.5 dB half an octave up, which is **right at −20 dBFS** — the loudness of someone speaking. A bare chord reads −20 dBFS as −21.
 
-The 16-byte correction table (`LOG2_16_CHORD_ERROR`, indexed by the recovered mantissa) pulls the error across the whole scale inside 0.02 dB. What matters more is that `scope_height()` and `dbfs()` share one `log2_16()`, so a bar's height and the number next to it **cannot** contradict each other; the tests pin that down too, including the invariant that the tallest drawn bar's height is exactly the `PK` row — release only ever pulls a bar down, so the tallest bar can neither exceed the window's loudest peak nor be dragged below it.
+The 16-byte correction table (`LOG2_16_CHORD_ERROR`, indexed by the recovered mantissa) pulls the error across the whole scale inside 0.02 dB. What matters more is that `scope_height()` and `dbfs()` share one `log2_16()`, so a bar's height and the number next to it **cannot** contradict each other; the tests pin that down too, including the invariant that release only ever pulls a bar down, so the tallest bar is the column set's own maximum. The sweep is weighted as a whole, so its tallest bar no longer answers to the unweighted `PK` row — those are two different filters, and the `PK`/`RMS` rows and the sweep each only need to be self-consistent.
 
 `PK` and `RMS` matching at their window maximum is a steady state; a peak far above the RMS is a knock or a transient. The two are peers because a peak is a property of one sample while RMS is perceived loudness, which is why audio tools draw both tiers instead of choosing one.
 
