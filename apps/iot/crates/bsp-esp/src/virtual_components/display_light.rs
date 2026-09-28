@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::audio::{
-    AudioEnvelope, COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height,
+    AudioEnvelope, COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height, spl,
 };
 use iot_core::drivers::input::{
     FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP,
@@ -11,10 +11,14 @@ use iot_core::drivers::light::{
 };
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::horizon::{SCALE, horizon};
+use iot_core::overlay::{
+    FONT_W, LEFT_VALUE_X, LEVEL_UNIT_X, OVERLAY_GAP, OVERLAY_X, level_columns,
+};
 use iot_core::render::{MODE_BREATH, MODE_SOLID, windowed_rate};
 use iot_core::state::{AudioPhase, DisplayPage};
 
 use crate::components::backlight::Backlight;
+use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::components::st7789::St7789;
 use esp_hal::time::Instant;
 
@@ -30,20 +34,13 @@ const FPS_WINDOW_MS: u64 = 500;
 /// attitude page remains visible in either mode.
 const DEBUG_DIAGNOSTICS: bool = true;
 
-/// Left edge of the diagnostics rows, in panel columns.
-const OVERLAY_X: usize = 10;
 /// Top edge of the first diagnostics row, in panel rows.
 const OVERLAY_Y: usize = 8;
 /// Vertical gap between diagnostics rows.
 const OVERLAY_ROW_GAP: usize = 6;
-/// Horizontal gap between glyph columns.
-const OVERLAY_GAP: usize = 4;
-/// Glyph cell: rows, then columns, of the 5×7 [`FONT`].
+/// Rows of one glyph cell, matching the 5×7 [`FONT`] whose columns are
+/// [`FONT_W`] in `overlay.rs`.
 const FONT_H: usize = 7;
-const FONT_W: usize = 5;
-/// Value column of the touch/gesture column: a 3-glyph label slot plus one
-/// space glyph between label and value.
-const LEFT_VALUE_X: usize = OVERLAY_X + 4 * (FONT_W + OVERLAY_GAP);
 /// Value column of the mode column: its label right-aligns into the fixed
 /// five-glyph slot that ends one space before it, so every value starts on
 /// one vertical line. The widest entry (`LO HI 140 255`) still fits the
@@ -669,6 +666,20 @@ impl DisplayLight {
     fn stamp_audio(&mut self, width: usize, height: usize) {
         let audio = self.diagnostics.audio;
         self.stamp_text(b"AUDIO", OVERLAY_X, OVERLAY_Y, width, height);
+        // The corner readout is the number this page shows a human: the
+        // A-weighted sound level of the same capture, counted in the same
+        // decibels the SPL column uses, with its unit spelled out so a glance
+        // answers "is it loud?" without converting dBFS.
+        self.stamp_text_right(
+            format_dba(
+                spl(dbfs(audio.dba_lsb), SPL_OFFSET_DECIBELS),
+                &mut [0u8; 12],
+            ),
+            width as isize - 1,
+            OVERLAY_Y,
+            width,
+            height,
+        );
         self.stamp_left(
             b"ST",
             match audio.phase {
@@ -692,23 +703,8 @@ impl DisplayLight {
         );
         // The two levels, in decibels, because a level in LSB is a number only
         // this code can read: is anything arriving, and is it a voice or a knock.
-        self.stamp_left(
-            b"PK",
-            format_i32(i32::from(dbfs(audio.envelope.loudest())), &mut [0u8; 12]),
-            3,
-            width,
-            height,
-        );
-        self.stamp_left(
-            b"RMS",
-            format_i32(
-                i32::from(dbfs(audio.envelope.loudest_rms())),
-                &mut [0u8; 12],
-            ),
-            4,
-            width,
-            height,
-        );
+        self.stamp_level(b"PK", dbfs(audio.envelope.loudest()), 3, width, height);
+        self.stamp_level(b"RMS", dbfs(audio.envelope.loudest_rms()), 4, width, height);
         // What the sweep cannot say about itself. `COL` climbing with a peak that
         // does not is a quiet room, and `COL` climbing under a −60 dBFS peak is
         // a capture path that is not delivering samples at all.
@@ -729,15 +725,12 @@ impl DisplayLight {
             width,
             height,
         );
-        // The unit, stated once at the level rows it applies to. Without it a
-        // bare −21 is a number, and a number on a meter is the objection this
-        // whole page is answering.
-        self.stamp_row_end(b"DBFS", 3, width, height);
-        self.stamp_row_end(b"DBFS", 4, width, height);
+        // A clip is an absolute statement about the whole window, not a level
+        // reading, so it says so in words and not only as a mark. It takes the
+        // unit column `CLIP` sits in for the same reason: a latch that appears
+        // and clears must not push anything it appears next to.
         if audio.envelope.clipped() {
-            // A clip is an absolute statement about the whole window, not a level
-            // reading, so it says so in words and not only as a mark.
-            self.stamp_row_end(b"CLIP", 5, width, height);
+            self.stamp_unit(b"CLIP", 5, width, height);
         }
         if audio.phase == AudioPhase::Idle {
             self.stamp_text(b"TAP TO REC", OVERLAY_X, WAVE_TOP as usize, width, height);
@@ -895,13 +888,54 @@ impl DisplayLight {
         self.stamp_text(value, LEFT_VALUE_X, top, width, height);
     }
 
-    /// Text flush to a diagnostics row's right edge, for the units and the clip
-    /// latch. Right-aligned rather than left-placed so text that changes width —
-    /// a level growing a digit, `CLIP` appearing and going — moves its left edge
-    /// and leaves the level reading beside it where the eye expects it.
-    fn stamp_row_end(&mut self, text: &[u8], row: usize, width: usize, height: usize) {
+    /// Writes one Audio level row: the label, the level as dBFS, that reading's
+    /// unit, and the same instant of sound as a pressure level with its own unit.
+    ///
+    /// Both readings belong on one line because they measure the same thing from
+    /// two zeros, and a −21 that no one can judge against is the objection this
+    /// page exists to answer — dBFS says how much of the converter the signal
+    /// uses, dB SPL says how loud the room is, and only the second is a number
+    /// anybody compares with a noise complaint.
+    fn stamp_level(
+        &mut self,
+        label: &[u8],
+        decibels: i16,
+        row: usize,
+        width: usize,
+        height: usize,
+    ) {
         let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
-        self.stamp_text_right(text, width as isize - 1, top, width, height);
+        let columns = level_columns();
+        self.stamp_text(label, OVERLAY_X, top, width, height);
+        self.stamp_text(
+            format_i32(i32::from(decibels), &mut [0u8; 12]),
+            columns.value_x,
+            top,
+            width,
+            height,
+        );
+        self.stamp_text(b"DBFS", columns.unit_x, top, width, height);
+        self.stamp_text(
+            format_i32(
+                i32::from(spl(decibels, SPL_OFFSET_DECIBELS)),
+                &mut [0u8; 12],
+            ),
+            columns.spl_x,
+            top,
+            width,
+            height,
+        );
+        self.stamp_text(b"SPL", columns.spl_unit_x, top, width, height);
+    }
+
+    /// Writes a diagnostics row's unit at [`LEVEL_UNIT_X`]. Pinned to one column
+    /// rather than flushed right so a value that changes width — a level growing
+    /// a digit, `CLIP` appearing and clearing — cannot walk its unit sideways
+    /// out from under the row above it: the eye finds one vertical line for the
+    /// unit and never has to look for a second.
+    fn stamp_unit(&mut self, text: &[u8], row: usize, width: usize, height: usize) {
+        let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
+        self.stamp_text(text, LEVEL_UNIT_X, top, width, height);
     }
 
     /// Overdraws the attitude dial — the inverted counterpart of `R0`–`R2` —
@@ -950,15 +984,7 @@ impl DisplayLight {
     }
 
     fn stamp_text(&mut self, text: &[u8], left: usize, top: usize, width: usize, height: usize) {
-        for (glyph, &ch) in text.iter().enumerate() {
-            self.stamp_char(
-                ch,
-                left + glyph * (FONT_W + OVERLAY_GAP),
-                top,
-                width,
-                height,
-            );
-        }
+        stamp_text(&mut self.frame, text, left, top, width, height)
     }
 
     /// `stamp_text` measured from the text's last column rather than its first,
@@ -971,41 +997,14 @@ impl DisplayLight {
         width: usize,
         height: usize,
     ) {
-        let pitch = (FONT_W + OVERLAY_GAP) as isize;
-        let left = right + OVERLAY_GAP as isize - text.len() as isize * pitch;
-        self.stamp_text(text, left.max(0) as usize, top, width, height);
+        stamp_text_right(&mut self.frame, text, right, top, width, height)
     }
 
-    /// Overdraws one 5×7 `ch` at `left`/`top` with inverted pixels; bytes
-    /// outside the printable ASCII block draw nothing.
-    fn stamp_char(&mut self, ch: u8, left: usize, top: usize, width: usize, height: usize) {
-        if !(0x20..=0x7E).contains(&ch) {
-            return;
-        }
-        let base = usize::from(ch - 0x20) * FONT_W;
-        for (col, &bits) in FONT[base..base + FONT_W].iter().enumerate() {
-            for row in 0..FONT_H {
-                if bits & (1 << row) == 0 {
-                    continue;
-                }
-                self.stamp_pixel(
-                    left as isize + col as isize,
-                    top as isize + row as isize,
-                    width,
-                    height,
-                );
-            }
-        }
-    }
-
-    /// Inverts one pixel: the shared ink for glyphs and the dial.
+    /// Inverts one pixel: the shared ink for glyphs and the dial. The glyph and
+    /// text wrappers go straight to the free functions, since they have no state
+    /// of their own to fold the frame into.
     fn stamp_pixel(&mut self, x: isize, y: isize, width: usize, height: usize) {
-        if x < 0 || y < 0 || x as usize >= width || y as usize >= height {
-            return;
-        }
-        let offset = (y as usize * width + x as usize) * 2;
-        let packed = u16::from_be_bytes([self.frame[offset], self.frame[offset + 1]]);
-        self.frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
+        stamp_pixel(&mut self.frame, x, y, width, height)
     }
 
     /// Inverts the straight run from `(x0, y0)` to `(x1, y1)` (Bresenham).
@@ -1112,8 +1111,71 @@ fn format_span(buf: &mut [u8; 12]) -> &[u8] {
     &buf[..len]
 }
 
-/// Decimal ASCII digits of `value` (no leading zeros) written into the start
-/// of `buf`, returned as the filled prefix.
+/// Inverts one pixel of `frame`, the shared ink for glyphs and the dial. A
+/// function of the frame alone rather than a method, so that everything it
+/// builds can be stamped into a bare buffer and read back as pixels — the
+/// layout of a readout is otherwise only checkable on a panel.
+fn stamp_pixel(frame: &mut [u8], x: isize, y: isize, width: usize, height: usize) {
+    if x < 0 || y < 0 || x as usize >= width || y as usize >= height {
+        return;
+    }
+    let offset = (y as usize * width + x as usize) * 2;
+    let packed = u16::from_be_bytes([frame[offset], frame[offset + 1]]);
+    frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
+}
+
+/// Overdraws one 5×7 `ch` at `left`/`top` with inverted pixels; bytes outside
+/// the printable ASCII block draw nothing.
+fn stamp_char(frame: &mut [u8], ch: u8, left: usize, top: usize, width: usize, height: usize) {
+    if !(0x20..=0x7E).contains(&ch) {
+        return;
+    }
+    let base = usize::from(ch - 0x20) * FONT_W;
+    for (col, &bits) in FONT[base..base + FONT_W].iter().enumerate() {
+        for row in 0..FONT_H {
+            if bits & (1 << row) == 0 {
+                continue;
+            }
+            stamp_pixel(
+                frame,
+                left as isize + col as isize,
+                top as isize + row as isize,
+                width,
+                height,
+            );
+        }
+    }
+}
+
+/// Draws `text` left to right from `left` on one glyph pitch.
+fn stamp_text(frame: &mut [u8], text: &[u8], left: usize, top: usize, width: usize, height: usize) {
+    for (glyph, &ch) in text.iter().enumerate() {
+        stamp_char(
+            frame,
+            ch,
+            left + glyph * (FONT_W + OVERLAY_GAP),
+            top,
+            width,
+            height,
+        );
+    }
+}
+
+/// `stamp_text` measured from the text's last column rather than its first, so a
+/// value that grows a digit grows leftwards into empty space.
+fn stamp_text_right(
+    frame: &mut [u8],
+    text: &[u8],
+    right: isize,
+    top: usize,
+    width: usize,
+    height: usize,
+) {
+    let pitch = (FONT_W + OVERLAY_GAP) as isize;
+    let left = right + OVERLAY_GAP as isize - text.len() as isize * pitch;
+    stamp_text(frame, text, left.max(0) as usize, top, width, height);
+}
+
 fn format_i32(value: i32, buf: &mut [u8; 12]) -> &[u8] {
     let negative = value < 0;
     let magnitude = if negative {
@@ -1128,6 +1190,17 @@ fn format_i32(value: i32, buf: &mut [u8; 12]) -> &[u8] {
     }
     n = write_u64(magnitude, buf, n);
     &buf[..n]
+}
+
+/// A pressure level in decibels with its unit, as the corner readout: unlike a
+/// level row's `DBFS`/`SPL` halves, this one carries no sign — the A-weighted
+/// readout is clamped to the floor the envelope can even see, and a "−42 dBA"
+/// that can only be wrong is worse than a floor that says so indirectly.
+fn format_dba(decibels: i16, buf: &mut [u8; 12]) -> &[u8] {
+    let n = write_u64(u64::from(decibels.unsigned_abs()), buf, 0);
+    buf[n] = b' ';
+    buf[n + 1..n + 4].copy_from_slice(b"dBA");
+    &buf[..n + 4]
 }
 
 fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
@@ -1148,6 +1221,8 @@ fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
     &buf[..n + 2]
 }
 
+/// Decimal ASCII digits of `value` (no leading zeros) written into the start
+/// of `buf`, returned as the filled prefix.
 fn write_u64(mut value: u64, buf: &mut [u8], mut n: usize) -> usize {
     let mut tmp = [0u8; 20];
     let mut len = 0;

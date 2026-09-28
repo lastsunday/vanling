@@ -163,6 +163,7 @@ fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
         envelope: shown.envelope,
         elapsed_ms: shown.elapsed_ms,
         restarts: shown.restarts,
+        dba_lsb: shown.dba_lsb,
     }
 }
 
@@ -327,6 +328,7 @@ mod tests {
             envelope,
             elapsed_ms: 1_000,
             restarts: 2,
+            dba_lsb: 0,
         };
         manager.apply_operation(OperationIntent {
             source: 0,

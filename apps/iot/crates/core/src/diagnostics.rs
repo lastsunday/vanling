@@ -92,6 +92,10 @@ pub struct AudioDiagnostics {
     /// How many times the capture's DMA had to be re-armed. Zero on a capture
     /// that has run without interruption.
     pub restarts: u16,
+    /// A-weighted sound level of the shown capture, in LSB, slow-tracked.
+    /// Drives the `NN dBA` readout in the corner of the Audio page; 0 dBFS is
+    /// `SPL_OFFSET_DECIBELS` dB SPL there, see `docs/…/iot/audio.md`.
+    pub dba_lsb: u16,
 }
 
 /// The on-surface diagnostics payload: touch-path counters/readout, display

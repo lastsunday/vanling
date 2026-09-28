@@ -15,7 +15,7 @@ use iot_app::run;
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL,
-    SAMPLES_PER_COLUMN, dbfs,
+    SAMPLES_PER_COLUMN, SampleStream, dbfs,
 };
 use iot_core::drivers::board::{Board as BoardTrait, HasAudio, HasInput, HasLight, HasMotion};
 use iot_core::drivers::input::{
@@ -58,6 +58,12 @@ static AUDIO_RESTARTS: AtomicUsize = AtomicUsize::new(0);
 /// smoke would pass on a capture that measured nothing.
 static AUDIO_PEAK_DB: AtomicIsize = AtomicIsize::new(isize::MIN);
 
+/// The loudest A-weighted level any sink saw, so the smoke can prove the corner
+/// dB(A) readout is fed by the capture rather than hard-wired. Zero is exactly
+/// what a broken wiring looks like after at least one tone poll, so a plain
+/// "above zero" assert is a mean leash.
+static AUDIO_DBA_LSB: AtomicUsize = AtomicUsize::new(0);
+
 /// A loud constant capture. What matters to the smoke is that columns commit and
 /// travel, not what they hold — only that the level it holds is a level the panel
 /// can read back, so the metering path is proved to have survived the hop.
@@ -72,18 +78,38 @@ const HOST_POLL_SAMPLES: usize = SAMPLES_PER_COLUMN as usize * COLUMNS_PER_POLL 
 /// `RST` readout is wired to a real field rather than hard-wired to zero.
 const HOST_RESTARTS: u16 = 3;
 
+/// Half a period of the fake's 1 kHz tone: a 48-sample square wave at the 48 kHz
+/// capture rate, whose impulsive harmonics the A-weighting passes substantially,
+/// so the meter climbs and the smoke can see the level travel. A DC constant
+/// would be filtered to silence and prove nothing.
+const HOST_TONE_HALF_PERIOD: usize = 24;
+
 struct HostAudio {
     envelope: AudioEnvelope,
+    stream: SampleStream,
+    phase: usize,
 }
 
 impl AudioSource for HostAudio {
     fn sample(&mut self, now_ms: u64) -> AudioSample {
+        let mut bytes = [0u8; HOST_POLL_SAMPLES * 2];
+        for (i, pair) in bytes.chunks_exact_mut(2).enumerate() {
+            let sample = if (self.phase + i) % (2 * HOST_TONE_HALF_PERIOD) < HOST_TONE_HALF_PERIOD {
+                HOST_LOUD
+            } else {
+                -HOST_LOUD
+            };
+            pair.copy_from_slice(&sample.to_le_bytes());
+        }
+        self.phase = (self.phase + HOST_POLL_SAMPLES) % (2 * HOST_TONE_HALF_PERIOD);
         self.envelope.push(&[HOST_LOUD; HOST_POLL_SAMPLES]);
+        self.stream.push_bytes(&bytes);
         AUDIO_POLLS.fetch_add(1, Ordering::SeqCst);
         AudioSample {
             envelope: self.envelope,
             elapsed_ms: now_ms.min(u64::from(u32::MAX)) as u32,
             restarts: HOST_RESTARTS,
+            dba_lsb: self.stream.dba_lsb(),
         }
     }
 }
@@ -131,6 +157,7 @@ impl iot_core::diagnostics::DiagnosticsSink for HostLight {
             isize::from(dbfs(diagnostics.audio.envelope.loudest())),
             Ordering::SeqCst,
         );
+        AUDIO_DBA_LSB.fetch_max(usize::from(diagnostics.audio.dba_lsb), Ordering::SeqCst);
     }
 }
 
@@ -169,6 +196,8 @@ impl HostBoard {
                 3,
                 Box::new(AudioInput::new(HostAudio {
                     envelope: AudioEnvelope::ZERO,
+                    stream: SampleStream::new(),
+                    phase: 0,
                 })),
                 Box::new(PassThrough),
                 CAPTURE_MS,
@@ -358,6 +387,10 @@ async fn scenario() {
         AUDIO_PEAK_DB.load(Ordering::SeqCst),
         isize::from(dbfs(HOST_LOUD.unsigned_abs())),
         "the capture's level did not reach the panel as a decibel reading"
+    );
+    assert!(
+        AUDIO_DBA_LSB.load(Ordering::SeqCst) > 0,
+        "the capture's A-weighted level did not reach the panel's diagnostics"
     );
 
     std::process::exit(0);

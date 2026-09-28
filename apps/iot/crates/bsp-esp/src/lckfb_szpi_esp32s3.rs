@@ -129,7 +129,7 @@ pub struct Board<'d> {
     button: Option<PullButton<'d>>,
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
-    audio: Option<Es7210Rx>,
+    audio: Option<Es7210Rx<Es7210<SharedI2cDevice>>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -284,7 +284,11 @@ impl Board<'static> {
                 let transfer = rx
                     .read(capture::stream())
                     .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
-                Some(Es7210Rx::new(transfer))
+                // The codec goes with the transfer rather than being dropped
+                // here: the ring cannot be reconfigured, so anything that wants
+                // to move the input stage's corner after bring-up needs the part
+                // still to hand.
+                Some(Es7210Rx::new(transfer, es7210))
             }
             Err(error) => {
                 log::warn!("[AUDIO] ES7210 not found, the Audio page stays dark: {error:?}");

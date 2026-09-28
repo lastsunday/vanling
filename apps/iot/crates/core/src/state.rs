@@ -224,11 +224,13 @@ impl AudioState {
             envelope: AudioEnvelope::ZERO,
             elapsed_ms: 0,
             restarts: 0,
+            dba_lsb: 0,
         },
         captured: AudioSample {
             envelope: AudioEnvelope::ZERO,
             elapsed_ms: 0,
             restarts: 0,
+            dba_lsb: 0,
         },
     };
 
@@ -985,6 +987,7 @@ mod tests {
                 envelope,
                 elapsed_ms: 7,
                 restarts: 0,
+                dba_lsb: 0,
             }
         }
 

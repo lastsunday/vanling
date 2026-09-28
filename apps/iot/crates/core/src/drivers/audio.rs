@@ -1,5 +1,9 @@
 use crate::drivers::input::{InputEvent, InputSource};
 
+mod weighting;
+
+use weighting::DbaMeter;
+
 /// The codec's frame rate: one I2S frame per this many nanoseconds, which is
 /// what the capture driver clocks the peripheral at and what a frame's worth of
 /// samples is counted against.
@@ -58,27 +62,28 @@ const FULL_SCALE_LOG2_16: i32 = 16 * 15;
 pub const FULL_SCALE_LSB: u16 = 1 << 15;
 
 /// The quietest peak the scope draws a bar for, in the same 1/16-octave units:
-/// 2^5 = 32 LSB, which is −60 dBFS. A microphone at a conversational distance
-/// sits well above this, which is the point of measuring in decibels — a bar
-/// scaled linearly to full scale spends ordinary speech in the bottom two rows
-/// of the band and reads as a flat line.
-const SCOPE_FLOOR_LOG2_16: i32 = 16 * 5;
+/// 2^0 = 1 LSB, which is [`SCOPE_FLOOR_DECIBELS`] below the rail. A microphone
+/// at conversational distance sits far above this, which is the point of
+/// measuring in decibels — a bar scaled linearly to full scale spends ordinary
+/// speech in the bottom two rows of the band and reads as a flat line.
+const SCOPE_FLOOR_LOG2_16: i32 = 0;
 
-/// The drawn span, in those units: ten octaves, i.e. −60 dBFS to 0 dBFS.
+/// The drawn span, in those units: fifteen octaves, i.e. −90 dBFS to 0 dBFS.
 const SCOPE_SPAN_LOG2_16: i32 = FULL_SCALE_LOG2_16 - SCOPE_FLOOR_LOG2_16;
 
 /// The window's floor in decibels, which [`dbfs`] bottoms out at. Public because
 /// a scale has to be drawn as well as measured: a panel ruling lines at a floor
 /// of its own would describe a different window from the one the numbers came
-/// from.
-pub const SCOPE_FLOOR_DECIBELS: i32 = 60;
+/// from. Ninety decibels is the whole 16-bit range, so a genuinely quiet room —
+/// a microphone's own noise floor — lands at the bottom of the band, with the
+/// headroom above it left to the levels that share the scale.
+pub const SCOPE_FLOOR_DECIBELS: i32 = 90;
 
 /// One doubling of amplitude is this many units.
 const LOG2_16_PER_OCTAVE: i32 = 16;
 
-/// Milli-decibels one doubling of amplitude is worth: 20·log₁₀2, which is what
-/// the decibel is *defined* as. A rounding of this per octave is 0.018 dB, a
-/// fifth of the band across the whole ten-octave window.
+/// Milli-decibels one doubling of amplitude is worth: 20·log₁₀2 rounded, which
+/// is what the decibel is *defined* as.
 const MILLIDECIBELS_PER_OCTAVE: i64 = 6021;
 
 /// The same in the 1/16-octave units [`log2_16`] counts in.
@@ -92,14 +97,16 @@ const MANTISSA_BITS: u32 = 4;
 /// it belongs to: how much `log₂(1 + m/16)` sits *above* the chord through
 /// `m/16`, which is nearly half a decibel at the middle of every octave — worst
 /// at −20 dBFS, where speech lives. Sixteen bytes of it bring the whole scale
-/// inside 0.02 dB, and the same table serves the bar and the number.
+/// within a working tenth of a decibel, and the same table serves the bar and
+/// the number.
 const LOG2_16_CHORD_ERROR: [i8; 1 << MANTISSA_BITS] =
     [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0];
 
 /// A peak in LSB as 1/16ths of an octave above one LSB, so [`FULL_SCALE_LOG2_16`]
-/// lands on the rail and 32 LSB — the scope floor — lands on `16 × 5`. The
-/// single place the log scale is defined, so a bar's height and its decibel
-/// reading are the same number read two ways and cannot drift apart.
+/// lands on the rail and one LSB — the scope floor,
+/// [`SCOPE_FLOOR_LOG2_16`] — on zero. The single place the log scale is defined,
+/// so a bar's height and its decibel reading are the same number read two ways
+/// and cannot drift apart.
 fn log2_16(value: u16) -> i32 {
     if value == 0 {
         // Below the floor rather than at it, which is what silence is: it has to
@@ -136,20 +143,33 @@ pub fn dbfs(peak_lsb: u16) -> i16 {
     decibels.clamp(-SCOPE_FLOOR_DECIBELS, 0) as i16
 }
 
+/// A [`dbfs`] reading as a sound pressure level: the same decibel count with the
+/// microphone's own reference added back on, so 0 dBFS reads as whatever the
+/// hardware calls full scale instead of as a number only this code can judge.
+/// The offset is the only part that varies between setups, so it is a parameter
+/// rather than a constant here — a board knows its microphone and its gain, this
+/// module does not, and the two cannot be derived from the window either.
+pub fn spl(dbfs: i16, offset_decibels: i16) -> i16 {
+    dbfs + offset_decibels
+}
+
 /// How much of its height a bar may lose in one column, as a shift: 1/16 is
 /// 0.561 dB per column, 56 dB/s at [`COLUMN_MS`], set by the window rather than by
 /// meter convention — a needle-slow release leaves every transient 30 dB above the
-/// floor for the whole sweep. 1/16 crosses [`SCOPE_FLOOR_DECIBELS`] in just over
-/// half of [`ENVELOPE_COLUMNS`], and belongs to the column rate, so a dropped
-/// frame costs a column of history.
+/// floor for the whole sweep. 1/16 crosses [`SCOPE_FLOOR_DECIBELS`] in four-fifths
+/// of [`ENVELOPE_COLUMNS`], and belongs to the column rate, so a dropped frame
+/// costs a column of history.
 pub const RELEASE_SHIFT: u32 = 4;
 
 /// The peak a bar is drawn at this column: its own, or the one before it after
 /// one step of the release ballistics, whichever is higher. The falloff a meter
 /// shows is never the signal's own — tracking it exactly would be a waveform,
 /// and holding the bar a few columns is what makes a transient legible at all.
+/// The step is at least one LSB, so a fall can clear a ~15-LSB fixed point and
+/// a long silence reads as the bottom of the band rather than as a whisper the
+/// window keeps on remembering.
 pub fn released_peak(measured: u16, previous: u16) -> u16 {
-    let floor = previous.saturating_sub(previous >> RELEASE_SHIFT);
+    let floor = previous.saturating_sub((previous >> RELEASE_SHIFT).max(1));
     measured.max(floor)
 }
 
@@ -304,11 +324,10 @@ impl AudioEnvelope {
         out
     }
 
-    /// The loudest peak the window holds, in LSB — zero before anything is
-    /// committed, and zero for a window that only ever heard silence. A
-    /// readout's answer to "is anything arriving", which the column array cannot
-    /// give on its own: a capture that never commits and one that commits silence
-    /// draw an identically flat sweep. Also the peak-hold level.
+    /// The window's loudest peak in LSB, the peak-hold a readout shows; zero
+    /// until the first column commits. The column array alone cannot tell
+    /// "nothing has arrived" from "silence arrived": both draw the same flat
+    /// sweep.
     pub fn loudest(&self) -> u16 {
         self.columns[..usize::from(self.committed)]
             .iter()
@@ -317,14 +336,36 @@ impl AudioEnvelope {
             .unwrap_or(0)
     }
 
-    /// The loudest RMS the window holds, in LSB — the sustained level rather
-    /// than the peak, and what a panel reads as the loudness of a capture.
+    /// The window's loudest RMS column, in LSB — the sustained level a panel
+    /// reads as loudness. A maximum, so it is the wrong statistic for a floor:
+    /// [`floor_rms`](Self::floor_rms) answers that.
     pub fn loudest_rms(&self) -> u16 {
         self.rms_columns()[..usize::from(self.committed)]
             .iter()
             .copied()
             .max()
             .unwrap_or(0)
+    }
+
+    /// The window's median RMS column, in LSB — a floor rather than a peak.
+    ///
+    /// Median rather than a power mean on purpose: the mean is quadratic, so one
+    /// transient column at sixteen times the room's level drags it up with 256×
+    /// the energy, while the median ignores a lone loud column — and still moves
+    /// when a low-frequency corner shifts every column at once.
+    ///
+    /// Zero for a window that has committed nothing.
+    pub fn floor_rms(&self) -> u16 {
+        let committed = usize::from(self.committed);
+        if committed == 0 {
+            return 0;
+        }
+        // Sorted on a copy: the window is still the capture's, and a diagnostic
+        // that reordered it would change the very reading it came for. The copy
+        // is the same one `rms_columns` already hands out.
+        let mut window = self.rms_columns();
+        window[..committed].sort_unstable();
+        window[committed / 2]
     }
 
     /// Whether any column has reached full scale since this capture started.
@@ -360,10 +401,14 @@ const DECODE_BATCH: usize = 64;
 /// little-endian 16-bit samples, and a transfer boundary can fall between the two
 /// bytes of one sample. Beside the envelope rather than next to the codec, so the
 /// stitching is host-testable — the byte stream is the same whatever peripheral
-/// produced it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// produced it. The same samples also fold into the A-weighting meter, so a
+/// dBA readout and the scope agree on what the room did, not just where two
+/// windows happened to look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SampleStream {
     envelope: AudioEnvelope,
+    /// The A-weighted, slowly-averaged level riding along on [`push_bytes`](Self::push_bytes).
+    dba: DbaMeter,
     /// High byte of a sample whose low byte had not arrived yet.
     pending: Option<u8>,
 }
@@ -372,6 +417,7 @@ impl SampleStream {
     pub const fn new() -> Self {
         Self {
             envelope: AudioEnvelope::ZERO,
+            dba: DbaMeter::new(),
             pending: None,
         }
     }
@@ -386,13 +432,17 @@ impl SampleStream {
                 self.pending = Some(hi);
                 return;
             };
-            self.envelope.push(&[i16::from_le_bytes([hi, lo])]);
+            let sample = i16::from_le_bytes([hi, lo]);
+            self.dba.update(sample);
+            self.envelope.push(&[sample]);
             rest = tail;
         }
         let mut samples = [0_i16; DECODE_BATCH];
         let mut filled = 0;
         for pair in rest.chunks_exact(2) {
-            samples[filled] = i16::from_le_bytes([pair[0], pair[1]]);
+            let sample = i16::from_le_bytes([pair[0], pair[1]]);
+            samples[filled] = sample;
+            self.dba.update(sample);
             filled += 1;
             if filled == DECODE_BATCH {
                 self.envelope.push(&samples);
@@ -412,6 +462,19 @@ impl SampleStream {
     /// whether or not anything was loud.
     pub const fn envelope(&self) -> AudioEnvelope {
         self.envelope
+    }
+
+    /// The A-weighted level as an RMS in LSB, saturating after the sample the
+    /// meter last folded. Zero until the first bytes arrive, and it settles
+    /// back toward it after the room goes quiet — the fall itself is the meter.
+    pub const fn dba_lsb(&self) -> u16 {
+        self.dba.level_lsb()
+    }
+}
+
+impl Default for SampleStream {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -481,6 +544,10 @@ pub struct AudioSample {
     /// stopped. Read beside `committed`, which a stalled capture stops climbing
     /// while a silent one keeps climbing.
     pub restarts: u16,
+    /// The A-weighted level of the same capture, as an RMS in LSB. Carried
+    /// beside the envelope rather than derived from it, because an A-weighting
+    /// is a filter — it has to see the samples, not the squares a window kept.
+    pub dba_lsb: u16,
 }
 
 /// The capture plane a driver hands to core: whatever arrived since the last
@@ -514,6 +581,89 @@ impl<S: AudioSource> InputSource for AudioInput<S> {
     }
 }
 
+/// How long a corner change is given to settle before the envelope covering it
+/// is read. A DC-blocking filter's transient is a fraction of a millisecond, but
+/// the reading that matters is a level the room keeps producing, so the wait is
+/// set by the envelope rather than by the filter: three seconds is 150 capture
+/// polls, far more columns than [`ENVELOPE_COLUMNS`] holds, so the whole window
+/// behind the reading postdates the change.
+pub const CORNER_SETTLE_MS: u64 = 3_000;
+
+/// What a corner walk wants the capture to do on this poll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CornerStep {
+    /// Nothing yet: the corner written last is still settling.
+    Settling,
+    /// Write this corner code into the filter.
+    Write(u8),
+    /// The corner has been settled long enough; report the envelope's level as
+    /// this code's reading.
+    Read(u8),
+    /// Every code has been read. The caller puts its own corner back and stops
+    /// asking.
+    Done,
+}
+
+/// A one-shot walk of a filter's corner codes, so a board can report what each
+/// corner reads on the real room rather than which of them it expected to.
+///
+/// The sequencing is here and the corner codes are not, because the codes are a
+/// property of the part and the walk is arithmetic on a clock — so the walk can
+/// be exercised on the host, where the part's own driver is testable but this
+/// capture path is not (it is built from DMA types no host can name). It is
+/// driven one poll at a time by [`step`](Self::step) and holds no state the
+/// caller has to keep in step with it.
+#[derive(Debug, Clone, Copy)]
+pub struct CornerSweep {
+    /// How many codes the part has. A walk of none is finished on the first
+    /// step, so a part that reports no codes is walked harmlessly.
+    codes: u8,
+    /// The next code to write; reaching `codes` ends the walk.
+    next: u8,
+    /// The code written and not yet read, if any.
+    reading: Option<u8>,
+    /// When that code was written.
+    written_at_ms: u64,
+}
+
+impl CornerSweep {
+    /// A walk of `codes` corner codes, numbered from zero.
+    pub const fn new(codes: u8) -> Self {
+        Self {
+            codes,
+            next: 0,
+            reading: None,
+            written_at_ms: 0,
+        }
+    }
+
+    /// Advances the walk by one poll and says what to do. The caller writes on
+    /// [`Write`](CornerStep::Write), reports `envelope`'s level on
+    /// [`Read`](CornerStep::Read), and on [`Done`](CornerStep::Done) restores
+    /// the corner it started from and drops the walk — it never reports
+    /// [`Done`](CornerStep::Done) twice, so a caller that stops asking loses
+    /// nothing.
+    pub fn step(&mut self, now_ms: u64) -> CornerStep {
+        if let Some(code) = self.reading {
+            // Saturating, so a poll arriving with a clock that has gone backwards
+            // waits rather than reading a level the corner had not reached yet.
+            if now_ms.saturating_sub(self.written_at_ms) < CORNER_SETTLE_MS {
+                return CornerStep::Settling;
+            }
+            self.reading = None;
+            return CornerStep::Read(code);
+        }
+        if self.next >= self.codes {
+            return CornerStep::Done;
+        }
+        let code = self.next;
+        self.next += 1;
+        self.reading = Some(code);
+        self.written_at_ms = now_ms;
+        CornerStep::Write(code)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,6 +686,7 @@ mod tests {
                 envelope,
                 elapsed_ms: now_ms as u32,
                 restarts: self.restarts,
+                dba_lsb: 0,
             }
         }
     }
@@ -724,10 +875,10 @@ mod tests {
             scope_height(1_000) > u8::MAX / 6,
             "−30 dBFS still has to read as a bar"
         );
-        assert_eq!(scope_height(32), 0, "the −60 dBFS floor itself");
-        // 64 LSB is −54 dBFS, six decibels over a sixty-decibel window, so a
-        // tenth of the band: the floor is low enough to show a quiet room.
-        assert_eq!(scope_height(64), 25);
+        assert_eq!(scope_height(32), 85, "−60 dBFS, a third of the −90 dB band");
+        // 64 LSB is −54 dBFS, thirty-six decibels over a ninety-decibel window,
+        // so two-fifths of the band: the floor is low enough to show a quiet room.
+        assert_eq!(scope_height(64), 102);
     }
 
     #[test]
@@ -749,8 +900,8 @@ mod tests {
         // The reason a meter shows decibels: 3000 is a number only this code can
         // interpret. −21 dBFS is one every audio tool already reports.
         assert_eq!(dbfs(PEAK_FULL_SCALE), 0, "full scale is the rail");
-        assert_eq!(dbfs(0), -60, "silence reads the floor, not an infinity");
-        assert_eq!(dbfs(32), -60, "and so does the floor itself");
+        assert_eq!(dbfs(0), -90, "silence reads the floor, not an infinity");
+        assert_eq!(dbfs(1), -90, "and so does the floor itself");
         assert_eq!(dbfs(PEAK_FULL_SCALE / 10), -20, "a tenth of full scale");
         assert_eq!(dbfs(PEAK_FULL_SCALE / 2), -6, "half scale is −6 dB");
     }
@@ -766,7 +917,8 @@ mod tests {
             }
             // Height is linear in decibels, so a reading and a bar must agree to
             // within the two decibel steps a 1/16-octave mantissa can move.
-            let expected = (decibels + SCOPE_FLOOR_DECIBELS) * i32::from(u8::MAX) / 60;
+            let expected =
+                (decibels + SCOPE_FLOOR_DECIBELS) * i32::from(u8::MAX) / SCOPE_FLOOR_DECIBELS;
             let drawn = i32::from(scope_height(peak));
             assert!(
                 (drawn - expected).abs() <= 4,
@@ -787,6 +939,41 @@ mod tests {
             previous = reading;
         }
         assert_eq!(previous, 0, "and it ends at the rail");
+    }
+
+    #[test]
+    fn spl_is_dbfs_with_the_microphones_own_reference_back() {
+        // The two readings are the same signal counted from different zeros, so
+        // the offset has to be the whole of the difference: anything else in
+        // between means the two columns are no longer the same measurement. The
+        // offset is this board's own (`SPL_OFFSET_DECIBELS` in `bsp-esp`), restated
+        // here because the core cannot depend on the board that carries the part.
+        const ZTS6216: i16 = 102;
+        assert_eq!(spl(-40, ZTS6216), 62, "a −40 dBFS floor is 62 dB SPL");
+        assert_eq!(spl(0, ZTS6216), 102, "and the rail is the offset itself");
+        assert_eq!(
+            spl(-60, ZTS6216),
+            42,
+            "the window floor lands 42, inside the range a room occupies"
+        );
+    }
+
+    #[test]
+    fn spl_never_runs_backwards_as_the_signal_grows() {
+        // A level meter that fell as the room got louder would be a bug the
+        // reading alone would not reveal, so the same walk dBFS makes is made
+        // here rather than spot-checked at the ends.
+        const ZTS6216: i16 = 102;
+        let mut previous = i16::MIN;
+        for peak in (0..=PEAK_FULL_SCALE).step_by(31) {
+            let reading = spl(dbfs(peak), ZTS6216);
+            assert!(
+                reading >= previous,
+                "{peak} LSB read {reading} dB SPL, under the {previous} before it"
+            );
+            previous = reading;
+        }
+        assert_eq!(previous, 102, "and it ends at the microphone's full scale");
     }
 
     #[test]
@@ -924,6 +1111,105 @@ mod tests {
     }
 
     #[test]
+    fn the_floor_is_the_median_and_not_the_loudest_column() {
+        // Four columns: three at 1_000 and one at 10_000, so the loudest column
+        // is ten times the rest. A maximum reports 10_000; the floor must report
+        // 1_000, because the one loud column is an event and not the level.
+        let mut envelope = AudioEnvelope::default();
+        for amplitude in [1_000_i16, 1_000, 10_000, 1_000] {
+            envelope.push(&vec![amplitude; SAMPLES_PER_COLUMN as usize]);
+        }
+        assert_eq!(envelope.committed(), 4);
+        assert_eq!(envelope.loudest_rms(), 10_000, "the panel reads the event");
+        assert_eq!(envelope.floor_rms(), 1_000, "the floor is the middle");
+    }
+
+    #[test]
+    fn a_loud_column_cannot_move_the_floor_until_it_is_half_the_window() {
+        // The robustness the median is here for, and its exact limit: one loud
+        // column among eight is ignored outright, because the window's own middle
+        // does not change. Push past half the window and the floor has to follow,
+        // or it would report a level the room mostly is not producing.
+        let mut envelope = AudioEnvelope::default();
+        for _ in 0..8 {
+            envelope.push(&vec![1_000; SAMPLES_PER_COLUMN as usize]);
+        }
+        let baseline = envelope.floor_rms();
+        envelope.push(&vec![16_000; SAMPLES_PER_COLUMN as usize]);
+        assert_eq!(
+            envelope.loudest_rms(),
+            16_000,
+            "the panel's own reading does jump"
+        );
+        assert_eq!(
+            envelope.floor_rms(),
+            baseline,
+            "one loud column in nine moves nothing"
+        );
+
+        // Seven more makes it eight loud against eight quiet, and the median
+        // lands on the first loud column.
+        for _ in 0..7 {
+            envelope.push(&vec![16_000; SAMPLES_PER_COLUMN as usize]);
+        }
+        assert_eq!(envelope.committed(), 16);
+        assert_eq!(
+            envelope.floor_rms(),
+            16_000,
+            "once the loud columns are half the window, the floor is loud"
+        );
+    }
+
+    #[test]
+    fn the_floor_ignores_the_columns_the_capture_has_not_heard_yet() {
+        // `committed` saturates, so a window that is not yet full still has its
+        // uncommitted slots at zero. Taking the middle of the whole array rather
+        // than of the committed part would put those zeros in the middle and
+        // report a floor of nothing at all for the first two seconds of a
+        // capture — which is exactly the window the panel shows first.
+        let mut envelope = AudioEnvelope::default();
+        for _ in 0..3 {
+            envelope.push(&vec![9_000; SAMPLES_PER_COLUMN as usize]);
+        }
+        assert_eq!(envelope.committed(), 3);
+        assert_eq!(envelope.floor_rms(), 9_000, "the level of what was heard");
+        assert_eq!(envelope.loudest_rms(), 9_000, "and the loudest agrees here");
+    }
+
+    #[test]
+    fn a_uniform_window_has_a_floor_at_its_own_level() {
+        // Every column the same, so the median is that column: the floor of a
+        // steady room is the room.
+        let mut envelope = AudioEnvelope::default();
+        for _ in 0..5 {
+            envelope.push(&vec![2_000; SAMPLES_PER_COLUMN as usize]);
+        }
+        let floor = envelope.floor_rms();
+        assert!((1_990..=2_000).contains(&floor), "floor {floor}");
+    }
+
+    #[test]
+    fn a_window_that_has_committed_nothing_has_no_floor() {
+        let envelope = AudioEnvelope::default();
+        assert_eq!(envelope.committed(), 0);
+        assert_eq!(
+            envelope.floor_rms(),
+            0,
+            "nothing heard is nothing to take a middle of"
+        );
+    }
+
+    #[test]
+    fn a_window_of_silence_has_a_floor_of_zero() {
+        let mut envelope = AudioEnvelope::default();
+        for _ in 0..4 {
+            envelope.push(&vec![0; SAMPLES_PER_COLUMN as usize]);
+        }
+        assert_eq!(envelope.committed(), 4);
+        assert_eq!(envelope.floor_rms(), 0);
+    }
+
+    #[test]
     fn a_clip_mark_ages_out_with_the_column_it_points_at() {
         // Once the marked column has been overwritten there is nothing left to
         // point at, so the mark goes with it: a position in a window that no
@@ -962,9 +1248,10 @@ mod tests {
                 bars[age - 1]
             );
         }
-        assert!(
-            bars[ENVELOPE_COLUMNS - 1] > 0,
-            "and the tail has not quite fallen"
+        assert_eq!(
+            bars[ENVELOPE_COLUMNS - 1],
+            0,
+            "the tail has fallen to the floor by the window's far edge"
         );
     }
 
@@ -1199,5 +1486,132 @@ mod tests {
                 .iter()
                 .all(|&c| c == i16::MAX.unsigned_abs())
         );
+    }
+}
+
+#[cfg(test)]
+mod corner_sweep_tests {
+    use super::*;
+    use alloc::vec::Vec;
+
+    /// Runs the walk to completion the way a capture would, collecting what each
+    /// poll asked for.
+    fn walk(codes: u8, poll_ms: u64) -> Vec<CornerStep> {
+        let mut sweep = CornerSweep::new(codes);
+        let mut steps = Vec::new();
+        let mut now = 0;
+        loop {
+            let step = sweep.step(now);
+            let done = step == CornerStep::Done;
+            steps.push(step);
+            if done {
+                return steps;
+            }
+            now += poll_ms;
+        }
+    }
+
+    #[test]
+    fn every_code_is_written_and_read_in_order() {
+        let steps = walk(8, CAPTURE_MS);
+        let written: Vec<u8> = steps
+            .iter()
+            .filter_map(|s| match s {
+                CornerStep::Write(code) => Some(*code),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(written, alloc::vec![0, 1, 2, 3, 4, 5, 6, 7]);
+        let read: Vec<u8> = steps
+            .iter()
+            .filter_map(|s| match s {
+                CornerStep::Read(code) => Some(*code),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(read, alloc::vec![0, 1, 2, 3, 4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn a_code_is_read_only_after_it_has_settled() {
+        let mut sweep = CornerSweep::new(2);
+        assert_eq!(sweep.step(0), CornerStep::Write(0));
+        // One millisecond short of the settle is still settling, and keeps
+        // waiting across as many polls as it takes.
+        assert_eq!(sweep.step(1), CornerStep::Settling);
+        assert_eq!(sweep.step(CORNER_SETTLE_MS - 1), CornerStep::Settling);
+        assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Read(0));
+    }
+
+    #[test]
+    fn a_read_is_followed_by_the_next_code_not_another_read() {
+        let mut sweep = CornerSweep::new(3);
+        assert_eq!(sweep.step(0), CornerStep::Write(0));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Read(0));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Write(1));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS * 2), CornerStep::Read(1));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS * 2), CornerStep::Write(2));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS * 3), CornerStep::Read(2));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS * 3), CornerStep::Done);
+    }
+
+    #[test]
+    fn done_is_reported_once_and_never_repeats() {
+        let mut sweep = CornerSweep::new(1);
+        assert_eq!(sweep.step(0), CornerStep::Write(0));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Read(0));
+        assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Done);
+        assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Done);
+    }
+
+    #[test]
+    fn a_part_with_no_codes_finishes_on_the_first_poll() {
+        let mut sweep = CornerSweep::new(0);
+        assert_eq!(sweep.step(0), CornerStep::Done);
+    }
+
+    #[test]
+    fn a_clock_that_goes_backwards_waits_rather_than_reading_early() {
+        let mut sweep = CornerSweep::new(2);
+        assert_eq!(sweep.step(10_000), CornerStep::Write(0));
+        // `saturating_sub` makes this a settle time of zero, so it waits —
+        // reading here would report a level the corner had not reached. The read
+        // lands a full settle *after the write* still, not after the old clock.
+        assert_eq!(sweep.step(0), CornerStep::Settling);
+        assert_eq!(sweep.step(12_999), CornerStep::Settling);
+        assert_eq!(sweep.step(13_000), CornerStep::Read(0));
+    }
+
+    #[test]
+    fn every_read_follows_its_own_write_by_a_full_settle() {
+        // The whole point of the walk is that each reading is a settled room, so
+        // this is the property worth pinning: the gap between a code being
+        // written and being read is at least one settle window, measured on the
+        // poll clock rather than assumed from the step count.
+        let mut sweep = CornerSweep::new(8);
+        let mut now = 0;
+        let mut written_at: Option<u64> = None;
+        let mut reads = 0;
+        loop {
+            match sweep.step(now) {
+                CornerStep::Write(code) => {
+                    assert_eq!(code, reads, "codes are written in order");
+                    written_at = Some(now);
+                }
+                CornerStep::Read(code) => {
+                    assert_eq!(code, reads, "codes are read in order");
+                    let gap = now - written_at.expect("a code is written before it is read");
+                    assert!(
+                        gap >= CORNER_SETTLE_MS,
+                        "code {code} read after only {gap} ms"
+                    );
+                    reads += 1;
+                }
+                CornerStep::Done => break,
+                CornerStep::Settling => {}
+            }
+            now += CAPTURE_MS;
+        }
+        assert_eq!(reads, 8);
     }
 }

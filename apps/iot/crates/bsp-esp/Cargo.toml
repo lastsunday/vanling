@@ -16,7 +16,10 @@ ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
 ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
 st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # Virtual components: assembled from real components.
-display-light = ["st7789"]
+# The Audio page reports the codec's own levels, so it needs the calibration
+# that codec's gain and analog rail imply — which is why the driver is one of
+# its inputs and not only a thing the board wires up.
+display-light = ["st7789", "es7210"]
 # The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
 audio = ["es7210", "dep:esp-hal"]
 esp32c6-devkitc-1 = ["button", "ws2812"]

@@ -13,8 +13,30 @@ use esp_hal::i2s::master::I2sRxDmaTransfer;
 use esp_hal::i2s::master::{Channels, DataFormat, TdmConfig};
 use esp_hal::time::Rate;
 use iot_core::drivers::audio::{
-    AudioSample, AudioSource, BYTES_PER_POLL, CaptureWatchdog, SAMPLE_RATE_HZ, SampleStream,
+    AudioSample, AudioSource, BYTES_PER_POLL, CaptureWatchdog, CornerStep, CornerSweep,
+    SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
 };
+
+use crate::components::es7210::{HPF_CORNER, HPF_CORNER_CODES, HpfCorner, SPL_OFFSET_DECIBELS};
+
+/// One-shot corner walk at boot, a field aid for telling a room that is genuinely
+/// noisy from one that only sounds noisy below the filter's corner. A
+/// compile-time switch (not a Cargo feature) for the same reason the panel's
+/// debug rows are one: it measures rather than renders, so a production build
+/// turns it off by setting this to `false` and the walk — and the four register
+/// writes per code that come with it — leaves the binary entirely.
+///
+/// It walks every corner and returns to [`HPF_CORNER`], so it costs one boot's
+/// settling and nothing after: the walk drops itself when it is done.
+const HPF_CORNER_WALK: bool = true;
+
+/// Reports the envelope's floor and peak live, every [`CAL_LOG_MS`], for the
+/// one-shot anchoring of [`SPL_OFFSET_DECIBELS`] against a known source. A
+/// compile-time switch like [`HPF_CORNER_WALK`], off in production builds: flip
+/// it for a calibration session and the log — and the poll it costs — leaves
+/// the binary entirely once back off.
+const CAL_SPL_LOG: bool = false;
+const CAL_LOG_MS: u64 = 5_000;
 
 /// Bytes per DMA descriptor. A quarter of the poll period's worth of audio, so
 /// the descriptors hand data over at a granularity a 20 ms poll does not notice
@@ -57,8 +79,9 @@ pub type Capture = I2sRxDmaTransfer<'static, Blocking, DmaRxStreamBuf>;
 /// selects a slot with a TDM mask and leaves the peripheral's own mono mode off, so
 /// the frame is not shortened — a capture sized as one slot per frame fills a ring
 /// twice as fast as [`BYTES_PER_POLL`] assumes, and the symptom is a live-looking
-/// envelope over a DMA restarted every poll. Which slot MIC1 lands in only hardware
-/// confirms: flat through a shout means the part put it in the other slot.
+/// envelope over a DMA restarted every poll. Both slots carry the same stream —
+/// captured into separate envelopes they matched sample for sample — so the fold
+/// takes every slot and there is no second microphone to miss.
 pub fn tdm_config() -> TdmConfig {
     TdmConfig::new_tdm_philips()
         .with_sample_rate(Rate::from_hz(SAMPLE_RATE_HZ))
@@ -75,7 +98,12 @@ pub fn stream() -> DmaRxStreamBuf {
 ///
 /// Dropping it stops the transfer, so a board that takes the source out of
 /// `take_audio` and drops it also releases the peripheral.
-pub struct Es7210Rx {
+///
+/// `C` is the codec driver, held rather than dropped after bring-up: the ring
+/// alone cannot be reconfigured, and the corner walk needs the part to be
+/// reachable for the half minute it lasts. It is reached only through
+/// [`HpfCorner`], so no I2C or register detail reaches the capture.
+pub struct Es7210Rx<C> {
     /// `None` once a re-arm has failed — the one state a capture cannot come
     /// back from, since a re-arm that does not take has no ring to put back in
     /// the chain. An `Option` rather than a field the restart path can empty, so
@@ -90,19 +118,100 @@ pub struct Es7210Rx {
     backlogged: bool,
     /// Repairs made so far, reported to the panel beside the column count.
     restarts: u16,
+    /// The corner walk, while one is running. `None` once it is done or has been
+    /// abandoned, which is also the state a capture with the switch off is born
+    /// in.
+    walk: Option<CornerSweep>,
+    /// When the calibration log last ran, so it repeats on [`CAL_LOG_MS`] rather
+    /// than every poll.
+    last_cal_log_ms: u64,
+    /// The codec, held for the walk and for nothing else.
+    codec: C,
 }
 
-impl Es7210Rx {
+impl<C> Es7210Rx<C> {
     /// Takes a transfer armed on [`stream`]'s ring — the one the watchdog is
     /// sized against, so a ring built any other length would be judged by a
-    /// deadline that does not describe it.
-    pub const fn new(transfer: Capture) -> Self {
+    /// deadline that does not describe it — and the codec that captured it.
+    pub fn new(transfer: Capture, codec: C) -> Self {
+        if HPF_CORNER_WALK {
+            log::info!(
+                "[AUDIO] HPF corner walk starting: {HPF_CORNER_CODES} codes, \
+                 {} ms each, back on corner {HPF_CORNER} after",
+                iot_core::drivers::audio::CORNER_SETTLE_MS
+            );
+        }
         Self {
             transfer: Some(transfer),
             stream: SampleStream::new(),
             watchdog: CaptureWatchdog::new(STREAM_BYTES),
             backlogged: false,
             restarts: 0,
+            walk: HPF_CORNER_WALK.then_some(CornerSweep::new(HPF_CORNER_CODES)),
+            last_cal_log_ms: 0,
+            codec,
+        }
+    }
+
+    /// Advances the corner walk by one poll and reports what the envelope says
+    /// once a code has settled.
+    ///
+    /// Takes the walk out of `self` for the length of the step, because a step
+    /// both reads the walk and reaches the codec and the two are fields of the
+    /// same struct. A write that fails abandons the walk rather than retrying:
+    /// a codec that will not take a corner write is not going to take the next
+    /// one either, and a walk that limps on would report levels from a part in
+    /// a state nobody can name. Either way the corner goes back to
+    /// [`HPF_CORNER`] on the way out, so a walk that ends early cannot leave the
+    /// input stage more open than it found it.
+    fn step_walk(&mut self, now_ms: u64)
+    where
+        C: HpfCorner,
+        C::CornerError: core::fmt::Debug,
+    {
+        let Some(mut walk) = self.walk.take() else {
+            return;
+        };
+        let write = |codec: &mut C, corner: u8| match codec.set_hpf_corner(corner) {
+            Ok(()) => None,
+            Err(error) => Some(error),
+        };
+        let step = walk.step(now_ms);
+        self.walk = match step {
+            CornerStep::Settling => Some(walk),
+            CornerStep::Write(code) => match write(&mut self.codec, code) {
+                None => Some(walk),
+                Some(error) => {
+                    log::error!(
+                        "[AUDIO] HPF corner {code} would not write, walk abandoned: {error:?}"
+                    );
+                    None
+                }
+            },
+            CornerStep::Read(code) => {
+                // Two readings, because they answer different questions and the
+                // walk needs both. `loudest` is what the panel is drawing, so the
+                // walk can be read against the screen; `floor` is the median
+                // column, which a cough cannot lift, so it is the one that says
+                // whether the corner moved the room or whether a person did.
+                let envelope = self.stream.envelope();
+                log::info!(
+                    "[AUDIO] HPF corner {code} reads {} dBFS, floor {} dBFS",
+                    dbfs(envelope.loudest_rms()),
+                    dbfs(envelope.floor_rms())
+                );
+                Some(walk)
+            }
+            CornerStep::Done => None,
+        };
+        if self.walk.is_none() {
+            if let Some(error) = write(&mut self.codec, HPF_CORNER) {
+                log::error!(
+                    "[AUDIO] HPF corner {HPF_CORNER} would not restore after the walk: {error:?}"
+                );
+            } else {
+                log::info!("[AUDIO] HPF corner walk done, back on corner {HPF_CORNER}");
+            }
         }
     }
 
@@ -159,11 +268,16 @@ impl Es7210Rx {
             // late poll must not make the capture look shorter than it was.
             elapsed_ms: now_ms.min(u64::from(u32::MAX)) as u32,
             restarts: self.restarts,
+            dba_lsb: self.stream.dba_lsb(),
         }
     }
 }
 
-impl AudioSource for Es7210Rx {
+impl<C> AudioSource for Es7210Rx<C>
+where
+    C: HpfCorner,
+    C::CornerError: core::fmt::Debug,
+{
     fn sample(&mut self, now_ms: u64) -> AudioSample {
         let produced = match self.transfer.as_mut() {
             Some(transfer) => transfer.available_bytes(),
@@ -182,6 +296,18 @@ impl AudioSource for Es7210Rx {
         // to empty looks identical whether the DMA filled it or not.
         if self.watchdog.stalled(now_ms, produced) {
             self.restart(now_ms);
+        }
+        // After the drain, so a code's reading covers audio that arrived under
+        // the corner that was written for it.
+        self.step_walk(now_ms);
+        if CAL_SPL_LOG && now_ms.saturating_sub(self.last_cal_log_ms) >= CAL_LOG_MS {
+            self.last_cal_log_ms = now_ms;
+            let envelope = self.stream.envelope();
+            log::info!(
+                "[AUDIO] CAL floor {} dB SPL, rms {} dB SPL",
+                spl(dbfs(envelope.floor_rms()), SPL_OFFSET_DECIBELS),
+                spl(dbfs(envelope.loudest_rms()), SPL_OFFSET_DECIBELS),
+            );
         }
         self.summary(now_ms)
     }

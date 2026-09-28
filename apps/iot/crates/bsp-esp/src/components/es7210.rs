@@ -16,10 +16,10 @@ const REG_TIME_CONTROL0: u8 = 0x09;
 const REG_TIME_CONTROL1: u8 = 0x0A;
 const REG_SDP_INTERFACE1: u8 = 0x11;
 const REG_SDP_INTERFACE2: u8 = 0x12;
-const REG_ADC34_HPF2: u8 = 0x20;
-const REG_ADC34_HPF1: u8 = 0x21;
-const REG_ADC12_HPF1: u8 = 0x22;
-const REG_ADC12_HPF2: u8 = 0x23;
+const REG_ADC34_FILTER_CLEAR: u8 = 0x20;
+const REG_ADC34_FILTER_SET: u8 = 0x21;
+const REG_ADC12_FILTER_SET: u8 = 0x22;
+const REG_ADC12_FILTER_CLEAR: u8 = 0x23;
 const REG_ANALOG_POWER: u8 = 0x40;
 const REG_MIC12_BIAS: u8 = 0x41;
 const REG_MIC34_BIAS: u8 = 0x42;
@@ -69,14 +69,47 @@ const LRCK_DIVL_48K: u8 = 0x00;
 /// landing on the host as a part running at the wrong rate.
 const _: () = assert!(MCLK_HZ / SAMPLE_RATE_HZ == 256);
 
-/// Datasheet 4.6: the two DC-blocking filters' cutoffs. The ADC12 pair gets the
-/// voice-band corner this microphone path is tuned for; the ADC34 pair is
-/// configured symmetrically even though the board reads MIC1 alone, because a
-/// half-configured filter is not a documented state.
-const ADC12_HPF2: u8 = 0x2A;
-const ADC12_HPF1: u8 = 0x0A;
-const ADC34_HPF2: u8 = 0x0A;
-const ADC34_HPF1: u8 = 0x2A;
+/// Datasheet 4.6: each input pair's DC-blocking filter, in two registers whose
+/// values differ only in bit 5 — `0x0A ^ 0x2A == 0x20` — and whose low three
+/// bits are the same in both, so the corner is the only field the two share.
+///
+/// They are named for the bit they carry rather than for a stage order, because
+/// no public document supports one. The datasheet is "Everest Semiconductor
+/// Confidential" and defers the bit definitions to a user guide that is not
+/// distributed, and the two driver families disagree even on the names:
+/// `espressif/esp-bsp` calls `0x22` HPF2 where `esp-audio-dev` calls it HPF1. The
+/// write order below is therefore kept as the reference driver issues it — the
+/// bit-5-clear register first, then the bit-5-set one, for both pairs — rather
+/// than re-ordered to match a stage order nothing documents. Swapping the pair
+/// is not cosmetic: measured on this board it lifts the quiet-room floor from
+/// about −40 dBFS to −30 dBFS, leaving the input stage's DC offset standing, so
+/// the order is a field result as much as a reference one.
+///
+/// Both pairs carry the same two values, so one pair of constants serves both.
+const FILTER_CLEAR: u8 = 0x0A;
+const FILTER_SET: u8 = 0x2A;
+
+/// The low three bits of a filter register: the corner field the two values
+/// agree on. Bit 5 is deliberately outside the mask — its meaning is not
+/// published, so a walk over the corner leaves the undocumented bit exactly
+/// where the reference driver put it and varies only the field that is at least
+/// known to be shared.
+const FILTER_CORNER_MASK: u8 = 0x07;
+
+/// How many corner codes a filter register's corner field can take.
+pub const HPF_CORNER_CODES: u8 = 8;
+
+/// The corner the bring-up leaves configured. The baseline this board ships
+/// with, restated as a corner so a walk that wanders off it can be returned
+/// without rebuilding the register byte.
+pub const HPF_CORNER: u8 = FILTER_CLEAR & FILTER_CORNER_MASK;
+
+/// Pins the two things the walk depends on to the constants above: that the two
+/// values really do differ only in bit 5, and that they really do share a
+/// corner field. Either assumption failing here is a datasheet change, not a
+/// refactor, and must not be papered over by renaming.
+const _: () = assert!(FILTER_SET ^ FILTER_CLEAR == 0x20);
+const _: () = assert!(FILTER_SET & FILTER_CORNER_MASK == FILTER_CLEAR & FILTER_CORNER_MASK);
 
 /// Datasheet 4.5: analog power with the internal 5 kOhm VMID, vdda 3.3 V and the
 /// reference buffer on.
@@ -91,6 +124,29 @@ const GAIN_ENABLE: u8 = 0x10;
 const GAIN_FIELD: u8 = 0x0F;
 const GAIN_30DB: u8 = 0x0A;
 const MIC_POWER: u8 = 0x08;
+
+/// How far this microphone's full scale sits above 0 dB SPL, as the offset that
+/// turns a `dbfs` reading into a sound pressure level — 0 dBFS here is 102 dB
+/// SPL. Everything in it is a property of the parts on this board, which is why
+/// it lives beside the gain it depends on instead of in the core mapping that
+/// does the adding: a different capsule or a different PGA step moves this
+/// number and nothing else.
+///
+/// From the ES7210 datasheet: Analog Input Full Scale Input (differential P and
+/// N) = AVDD/3.3 Vrms, so at the 3.3 V analog rail [`ANALOG_POWER_RUN`] runs the
+/// converter's full scale is 1.0 Vrms, not the 2 Vrms the "headroom" argument
+/// would suggest. From the ZTS6216 datasheet: −38 dBV/Pa, with 0 dBV referenced
+/// to 1 Vrms, is 12.59 mV per pascal on the microphone pin. Through [`GAIN_30DB`]
+/// that is 397.8 mV per pascal at the converter, so 1.0 Vrms full scale is
+/// 2.51 Pa. Against the 20 µPa reference pressure that is 101.98 dB, the whole of
+/// the difference between the two readings the panel shows.
+///
+/// Anchored against normal speech at 30 cm on 2026-09-28: continuous reading
+/// found a 66 dB SPL floor and peaks to 80, where an unweighted meter puts
+/// conversational speech, so the datasheet value above stands within ±3 dB. To
+/// re-anchor the day a capsule or a gain step changes: set `CAL_SPL_LOG` in the
+/// capture driver and speak at the same distance again.
+pub const SPL_OFFSET_DECIBELS: i16 = 102;
 
 /// Datasheet 3.3: bits 1-0 of the serial-port register select the frame; 0b00 is
 /// standard I2S, which is what the host peripheral emits in Philips mode.
@@ -158,10 +214,10 @@ const BRING_UP_RESET: &[Step] = &[
     write(REG_CLOCK_OFF, CLOCK_OFF_BRINGUP),
     write(REG_TIME_CONTROL0, 0x30),
     write(REG_TIME_CONTROL1, 0x30),
-    write(REG_ADC12_HPF2, ADC12_HPF2),
-    write(REG_ADC12_HPF1, ADC12_HPF1),
-    write(REG_ADC34_HPF2, ADC34_HPF2),
-    write(REG_ADC34_HPF1, ADC34_HPF1),
+    write(REG_ADC12_FILTER_CLEAR, FILTER_CLEAR),
+    write(REG_ADC12_FILTER_SET, FILTER_SET),
+    write(REG_ADC34_FILTER_CLEAR, FILTER_CLEAR),
+    write(REG_ADC34_FILTER_SET, FILTER_SET),
 ];
 
 /// Slave mode, the analog rail, the microphone bias, and the 48 kHz clock table
@@ -225,6 +281,32 @@ pub enum Es7210Error<E> {
 impl<E> From<E> for Es7210Error<E> {
     fn from(error: E) -> Self {
         Self::Bus(error)
+    }
+}
+
+/// What a capture needs from a filter's driver to walk its corner, and nothing
+/// more. The walk itself is a capture's business — it owns the envelope the
+/// corner's effect is read from — so this is how little of the part has to cross
+/// that boundary: a way to move the corner, and nothing about I2C, the register
+/// map, or which of the two filter registers is which.
+pub trait HpfCorner {
+    /// What a corner write reports, named so a capture can log it without being
+    /// able to name a bus error type.
+    type CornerError;
+
+    /// Moves every input pair's corner to `corner`.
+    fn set_hpf_corner(&mut self, corner: u8) -> Result<(), Self::CornerError>;
+}
+
+impl<D: I2c> HpfCorner for Es7210<D> {
+    type CornerError = Es7210Error<D::Error>;
+
+    fn set_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
+        // Fully qualified, because the trait method and the inherent one this
+        // forwards to share a name and the inherent one wins resolution — a bare
+        // `self.set_hpf_corner` would be right by accident rather than by
+        // statement, and would look like recursion to whoever reads it next.
+        Es7210::set_hpf_corner(self, corner)
     }
 }
 
@@ -297,6 +379,29 @@ impl<D: I2c> Es7210<D> {
         self.i2c.read(self.addr, &mut value)?;
         Ok(value[0])
     }
+
+    /// Moves every input pair's DC-blocking corner to `corner`, leaving every
+    /// other bit of the register exactly as the part holds it.
+    ///
+    /// Read-modify-write rather than a whole register byte, because only the
+    /// low three bits are known to be the corner: the write cannot guess at bit
+    /// 5 or at anything a future datasheet might add, and it returns the part to
+    /// whatever state it was in for every field it did not mean to change. A
+    /// board can therefore walk the corner and come back to
+    /// [`HPF_CORNER`] without knowing the rest of the byte.
+    pub fn set_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
+        for reg in [
+            REG_ADC12_FILTER_CLEAR,
+            REG_ADC12_FILTER_SET,
+            REG_ADC34_FILTER_CLEAR,
+            REG_ADC34_FILTER_SET,
+        ] {
+            let current = self.read_reg(reg)?;
+            let value = (current & !FILTER_CORNER_MASK) | (corner & FILTER_CORNER_MASK);
+            self.i2c.write(self.addr, &[reg, value])?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -305,6 +410,7 @@ mod tests {
     use alloc::vec;
     use alloc::vec::Vec;
     use embedded_hal::i2c::{ErrorKind, ErrorType, NoAcknowledgeSource, Operation};
+    use iot_core::drivers::audio::SCOPE_FLOOR_DECIBELS;
 
     /// The fault the mock bus injects, in the vocabulary the embedded-hal trait
     /// defines rather than a bespoke type, so a test that asserts on it reads the
@@ -459,6 +565,153 @@ mod tests {
                 "0x{reg:02X} must not hold a live PGA"
             );
         }
+    }
+
+    #[test]
+    fn both_input_filter_pairs_carry_the_reference_values() {
+        // The two values differ only in bit 5, so a pair written the wrong way round
+        // is a part that looks configured and leaves its DC offset standing. Both
+        // pairs are checked against each other as well as against the reference
+        // driver, because MIC1 is on the ADC1/2 pair and reading the other pair
+        // would not notice that one going wrong.
+        let codec = settle();
+        for (set, clear) in [
+            (REG_ADC12_FILTER_SET, REG_ADC12_FILTER_CLEAR),
+            (REG_ADC34_FILTER_SET, REG_ADC34_FILTER_CLEAR),
+        ] {
+            assert_eq!(
+                codec.i2c.registers[set as usize], FILTER_SET,
+                "0x{set:02X} is the bit5-set register"
+            );
+            assert_eq!(
+                codec.i2c.registers[clear as usize], FILTER_CLEAR,
+                "0x{clear:02X} is the bit5-clear register"
+            );
+        }
+    }
+
+    #[test]
+    fn the_bring_up_leaves_the_documented_corner() {
+        let codec = settle();
+        for reg in [
+            REG_ADC12_FILTER_SET,
+            REG_ADC12_FILTER_CLEAR,
+            REG_ADC34_FILTER_SET,
+            REG_ADC34_FILTER_CLEAR,
+        ] {
+            assert_eq!(
+                codec.i2c.registers[reg as usize] & FILTER_CORNER_MASK,
+                HPF_CORNER,
+                "0x{reg:02X} must start on the corner a walk returns to"
+            );
+        }
+    }
+
+    #[test]
+    fn setting_a_corner_leaves_bit5_and_the_rest_of_the_register_alone() {
+        let mut codec = settle();
+        // Seed every register with bits outside the corner, so a whole-register
+        // write would be caught: bit 5 as the bring-up left it, and bits 7, 6 and
+        // 3 that only the part itself knows.
+        const SEED: u8 = 0xEA;
+        const UNTOUCHED: u8 = SEED & !FILTER_CORNER_MASK;
+        for reg in [
+            REG_ADC12_FILTER_SET,
+            REG_ADC12_FILTER_CLEAR,
+            REG_ADC34_FILTER_SET,
+            REG_ADC34_FILTER_CLEAR,
+        ] {
+            codec.i2c.registers[reg as usize] = SEED;
+        }
+        codec.set_hpf_corner(0x05).expect("corner");
+        for reg in [
+            REG_ADC12_FILTER_SET,
+            REG_ADC12_FILTER_CLEAR,
+            REG_ADC34_FILTER_SET,
+            REG_ADC34_FILTER_CLEAR,
+        ] {
+            let value = codec.i2c.registers[reg as usize];
+            assert_eq!(value & FILTER_CORNER_MASK, 0x05, "0x{reg:02X} corner moved");
+            assert_eq!(
+                value & !FILTER_CORNER_MASK,
+                UNTOUCHED,
+                "0x{reg:02X} kept its bits"
+            );
+        }
+    }
+
+    #[test]
+    fn a_corner_walk_returns_to_where_it_started() {
+        let mut codec = settle();
+        let before = [
+            REG_ADC12_FILTER_SET,
+            REG_ADC12_FILTER_CLEAR,
+            REG_ADC34_FILTER_SET,
+            REG_ADC34_FILTER_CLEAR,
+        ]
+        .map(|reg| codec.i2c.registers[reg as usize]);
+        for corner in 0..HPF_CORNER_CODES {
+            codec.set_hpf_corner(corner).expect("corner");
+            for reg in [
+                REG_ADC12_FILTER_SET,
+                REG_ADC12_FILTER_CLEAR,
+                REG_ADC34_FILTER_SET,
+                REG_ADC34_FILTER_CLEAR,
+            ] {
+                assert_eq!(
+                    codec.i2c.registers[reg as usize] & FILTER_CORNER_MASK,
+                    corner,
+                    "corner {corner} did not reach 0x{reg:02X}"
+                );
+            }
+        }
+        codec.set_hpf_corner(HPF_CORNER).expect("restore");
+        for (reg, value) in [
+            REG_ADC12_FILTER_SET,
+            REG_ADC12_FILTER_CLEAR,
+            REG_ADC34_FILTER_SET,
+            REG_ADC34_FILTER_CLEAR,
+        ]
+        .into_iter()
+        .zip(before)
+        {
+            assert_eq!(codec.i2c.registers[reg as usize], value, "0x{reg:02X}");
+        }
+    }
+
+    #[test]
+    fn a_corner_write_reports_a_bus_failure_at_every_register() {
+        // Four read-modify-writes, each two transfers plus a read, so the failure
+        // is placed by trace index and the walk is checked to give up on the
+        // register that faulted rather than carrying on to the next one.
+        for fail_at in 0..4 {
+            let mut i2c = MockI2c::new();
+            i2c.fail_at = Some(fail_at);
+            let mut codec = Es7210::new(i2c, ES7210_I2C_ADDR);
+            assert_eq!(
+                codec.set_hpf_corner(0x03),
+                Err(Es7210Error::Bus(NACK)),
+                "write {fail_at} of the walk is where the bus gave up"
+            );
+        }
+    }
+
+    #[test]
+    fn the_spl_offset_lands_the_window_where_a_room_is() {
+        // The offset is a datasheet derivation, so what it can be checked against
+        // is the range it maps onto: a window floor that read above a quiet room
+        // would clamp the reading the meter exists for, and a rail above a loud
+        // one would mean the number itself is wrong, not just that the capsule
+        // marking is imprecise.
+        let window_floor = i32::from(SPL_OFFSET_DECIBELS) - SCOPE_FLOOR_DECIBELS;
+        assert!(
+            window_floor < 30,
+            "the window floor reads {window_floor} dB SPL, above the quiet room it must show"
+        );
+        assert!(
+            SPL_OFFSET_DECIBELS <= 130,
+            "full scale reads {SPL_OFFSET_DECIBELS} dB SPL, above a shout"
+        );
     }
 
     #[test]

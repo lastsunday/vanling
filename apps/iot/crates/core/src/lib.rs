@@ -6,5 +6,6 @@ pub mod diagnostics;
 pub mod drivers;
 pub mod horizon;
 pub mod intent;
+pub mod overlay;
 pub mod render;
 pub mod state;
