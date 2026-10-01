@@ -19,8 +19,11 @@ st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # Virtual components: assembled from real components.
 # The Audio page reports the codec's own levels, so it needs the calibration
 # that codec's gain and analog rail imply — which is why the driver is one of
-# its inputs and not only a thing the board wires up.
-display-light = ["st7789", "es7210"]
+# its inputs and not only a thing the board wires up. The backlight is the
+# panel's own brightness channel, and this surface drives it to follow the
+# breathing envelope, so the component is named here rather than left to the
+# board aggregation that happens to enable it today.
+display-light = ["st7789", "es7210", "backlight"]
 # The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
 audio = ["es7210", "dep:esp-hal"]
 # The playback side: the DAC driver, and a ring in DMA memory for the

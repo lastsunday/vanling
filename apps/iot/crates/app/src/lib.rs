@@ -3,6 +3,7 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
+use core::sync::atomic::Ordering;
 
 use embassy_executor::SendSpawner;
 use embassy_futures::join::{join, join3, join4};
@@ -18,7 +19,9 @@ pub mod playback;
 pub mod render;
 
 use input::{INTENT_BUS, input_task};
-use playback::{PLAYBACK_BUS, control_loop, feed_task, share};
+use playback::{
+    FEED_LATE_MS, PLAYBACK_BUS, Shared, control_loop, feed_loop, feed_task, share, take_stats,
+};
 use render::{LightRenderer, RENDER_BUS, Render, render_loop};
 
 /// Where the feed loop runs, because the feed has a deadline the rest of the app can
@@ -146,45 +149,94 @@ where
     }
 }
 
-/// Playback isolation probe: the only task, feeding the speaker and nothing else.
+/// Playback isolation probe: the product's own feed loop, plus a walker that keeps a
+/// sound going so the loop has something to carry, and the product's own counters.
 ///
 /// See the `audio-probe` binary's own header for why this exists and what it cannot
 /// catch.
+///
+/// Sharing [`feed_loop`] rather than writing a second schedule is what makes the
+/// probe evidence about the product: same absolute deadline, same unconditional
+/// refill, same counters. A loop of its own would only report its own behaviour,
+/// and a subtle difference — feeding while a sound is on the ring rather than
+/// always — would make a green probe mean nothing.
 pub async fn run_audio_only<B>(mut board: B) -> !
 where
     B: HasPlayback,
 {
-    let Some(mut speaker) = board.take_playback() else {
+    let Some(speaker) = board.take_playback() else {
         log::error!("[PROBE] no speaker wired, nothing to drive");
         loop {
             Timer::after(Duration::from_secs(1)).await;
         }
     };
 
-    let mut sound = Sound::Chime;
-    let mut now_ms: u64 = 0;
-    let mut next_feed = Instant::now();
+    // The erased handle the product's playback task takes, so the probe drives
+    // that path rather than a concrete driver reached directly.
+    let shared = share(speaker as Box<dyn Speaker>);
+    // Both futures are `!`, so `join` returning at all is unreachable; parking keeps
+    // the signature honest rather than reaching for a panic the compiler can see
+    // is dead.
+    join(feed_loop(shared), walk_catalogue(shared)).await;
+    loop {
+        core::future::pending::<()>().await
+    }
+}
+
+/// Walks the sound catalogue for as long as the feed runs, alternating the two
+/// because they are built differently — a synthesised pair against a stored PCM —
+/// so a stall only one of them provokes cannot hide behind whichever was playing.
+///
+/// The catalogue order comes from [`Sound::next`] rather than a second `match`, so
+/// this walker and the product's page cannot disagree about what follows a sound,
+/// and it starts from [`Sound::ALL`]'s head rather than a literal.
+async fn walk_catalogue(shared: &'static Shared) -> ! {
+    let mut sound = Sound::ALL[0];
     let mut plays: u32 = 0;
+    let mut last_report = Instant::now();
 
     loop {
-        if let Err(error) = speaker.play(sound) {
-            log::error!("[PROBE] {sound:?} refused: {error:?}");
-        } else {
-            plays += 1;
-            log::info!("[PROBE] playing {sound:?}, play {plays}");
+        match shared.lock(|shared| shared.speaker.borrow_mut().play(sound)) {
+            Ok(()) => {
+                plays += 1;
+                log::info!("[PROBE] playing {sound:?}, play {plays}");
+            }
+            Err(error) => log::error!("[PROBE] {sound:?} refused: {error:?}"),
         }
-        sound = match sound {
-            Sound::Chime => Sound::Asset,
-            Sound::Asset => Sound::Chime,
-        };
+        sound = sound.next();
 
-        // Fed on the product's cadence and its absolute deadline, so what this
-        // loop reports is comparable with what the product's playback task
-        // reports rather than being a second, gentler schedule.
-        while speaker.feed(now_ms) {
-            next_feed += Duration::from_millis(FEED_MS.into());
-            now_ms = now_ms.wrapping_add(FEED_MS.into());
-            Timer::at(next_feed).await;
+        // Wait for this sound to finish, then take the next. The driver's report
+        // is the only statement of completion — `false` from `feed` means nothing
+        // in flight — so this reads the same flag the product's phase does rather
+        // than timing a sound out.
+        while !shared.lock(|shared| shared.done.swap(false, Ordering::Relaxed)) {
+            Timer::after(Duration::from_millis(FEED_MS.into())).await;
+        }
+
+        // The repair the feed found necessary, on the cooperative side as the
+        // product does it, so the probe covers that path instead of leaving it to
+        // the product build to discover.
+        if let Some(recovery) = shared.lock(|shared| shared.speaker.borrow_mut().recover()) {
+            log::info!(
+                "[PROBE] recovered the outgoing DMA, {} bytes free, sound was {}",
+                recovery.free_bytes,
+                if recovery.playing { "playing" } else { "idle" },
+            );
+        }
+
+        let now = Instant::now();
+        let window_ms = now.saturating_duration_since(last_report).as_millis();
+        if window_ms >= PROBE_REPORT_MS {
+            let (feeds, worst_gap_ms, late_gaps, worst_work_us) = take_stats(shared);
+            log::info!(
+                "[PROBE] {feeds} feeds in {window_ms} ms = {} mHz, worst gap {worst_gap_ms} ms, {late_gaps} gaps over {FEED_LATE_MS} ms, worst work {worst_work_us} us",
+                u64::from(feeds) * 1_000_000 / window_ms,
+            );
+            last_report = now;
         }
     }
 }
+
+/// Window the probe's cadence report closes on, matching the product's so the two
+/// lines can be read against each other.
+const PROBE_REPORT_MS: u64 = 2_000;

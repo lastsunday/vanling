@@ -6,7 +6,7 @@ set -euo pipefail
 # failed Action: an ELF copy plus a whole-flash merged image via
 # `espflash save-image --merge`, both tagged with the version from version.sh
 # (mirrors CI's APP_VERSION/dev version). Needs the release ELF, i.e.
-# `moon run iot:build-c6`/`iot:build-s3` first.
+# `moon run iot:build`/`iot:build-s3` first.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 version=$(bash "$ROOT/scripts/version.sh" "$ROOT/apps/iot/Cargo.toml")

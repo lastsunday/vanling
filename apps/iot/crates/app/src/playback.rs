@@ -38,10 +38,10 @@ pub static PLAYBACK_BUS: PlaybackBus = PlaybackBus::new();
 const CADENCE_REPORT_MS: u64 = 2_000;
 
 /// A feed gap longer than this is a hold-up rather than jitter — four [`FEED_MS`]
-/// slots back to back. Counted per window, and counted in the loop that measures
-/// the gap rather than the one that prints it, because the loop that measures it
-/// is the one that cannot afford to print.
-const FEED_LATE_MS: u64 = 20;
+/// slots back to back. Counted per window, and counted in the loop that measures the
+/// gap rather than the one that prints it, because the loop that measures it is the
+/// one that cannot afford to print.
+pub(crate) const FEED_LATE_MS: u64 = 20;
 
 /// What the feed loop has to publish for the control loop to report. Counters rather
 /// than lines: a UART write from the feed would hold it for the line's time, which is
@@ -68,11 +68,11 @@ pub struct FeedStats {
 pub struct Playback {
     /// Boxed so the trait object — not the board's driver type — is what both loops
     /// name, which is what lets the feed task be spawned.
-    speaker: RefCell<Box<dyn Speaker>>,
+    pub(crate) speaker: RefCell<Box<dyn Speaker>>,
     stats: FeedStats,
     /// Set by the feed on a tick where the driver reported nothing in flight. A
     /// flag rather than a send, because the feed cannot wait for room on a channel.
-    done: AtomicBool,
+    pub(crate) done: AtomicBool,
 }
 
 impl Playback {
@@ -98,7 +98,11 @@ pub fn share(speaker: Box<dyn Speaker>) -> &'static Shared {
 }
 
 /// Reads the feed loop's counters and resets them, for one window's report.
-fn take_stats(shared: &Shared) -> (u32, u32, u32, u32) {
+///
+/// `pub(crate)` because the playback probe reports the same four figures as the
+/// product, and a probe that published its own would be reporting a second
+/// schedule's behaviour rather than this one's.
+pub(crate) fn take_stats(shared: &Shared) -> (u32, u32, u32, u32) {
     shared.lock(|shared| {
         (
             shared.stats.feeds.swap(0, Ordering::Relaxed),

@@ -3,8 +3,8 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "49afa729fa864b844dc3660a4c382882f979fc8f"
-translated_at = "2026-10-01T07:37:04Z"
+source_file_hash = "dfd6b4c96468d6be0ca6e6f9795905823dadcbd8"
+translated_at = "2026-10-01T09:44:05Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -85,9 +85,11 @@ Implementation: the phase is an 8-bit fixed-point index into a 1024-entry static
 
 ### The lesson
 
-`audio-probe` stayed green throughout, because its feed runs under `SpeakerRunner::Inline` on the **cooperative** executor — where floating point is fine.
+`audio-probe` stayed green throughout, because its feed runs on the **cooperative** executor — where floating point is fine.
 
 **This class of bug only shows up on the interrupt executor.** The same is true of `HostSpeaker` in the host tests. Both the investigation and the regression test have to run in the real interrupt context.
+
+The probe joins its feed straight onto the main task (`run_audio_only`) rather than going through `SpeakerRunner` — that enum appears only in the product firmware. The conclusion stands; the mechanism is as above.
 
 ---
 

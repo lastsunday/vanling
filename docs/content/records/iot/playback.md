@@ -82,9 +82,11 @@ Tone::fill
 
 ### 教训
 
-`audio-probe` 这个诊断固件一直是绿的，因为它的 feed 用 `SpeakerRunner::Inline` 跑在**协作** executor 上——浮点在那里没问题。
+`audio-probe` 这个诊断固件一直是绿的，因为它的 feed 跑在**协作** executor 上——浮点在那里没问题。
 
 **这类 bug 只有中断 executor 才暴露。** 同理，`HostSpeaker` 在 host 测试里也永远碰不到。排查与回归都要放在真实的中断上下文里做。
+
+探针的 feed 直接 `join` 在主任务上（`run_audio_only`），并不经过 `SpeakerRunner`——那个枚举只在产品固件里出现。结论成立，机制如上。
 
 ---
 

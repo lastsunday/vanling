@@ -228,10 +228,11 @@ impl<C> Es8311Tx<C> {
     /// The repair half of a drain: rebuild the stream and report what the ring
     /// looked like when it was noticed.
     ///
-    /// On the cooperative side because the rebuild allocates and the log takes the
-    /// logger's lock; a feed that preempted a holder of either would deadlock with
-    /// no reset to clear it. Nothing is lost by the deferral — the ring is already
-    /// dry, so the stream is silent for a cadence either way.
+    /// On the cooperative side because the rebuild allocates, and because the
+    /// output channel does not serialise writers (see `logging.rs`), so a line
+    /// printed here would interleave with whatever a preempting writer had
+    /// half-sent. Nothing is lost by the deferral — the ring is already dry, so
+    /// the stream is silent for a cadence either way.
     fn recover_drained(&mut self, recovery: Recovery) {
         let sound = if recovery.playing { "playing" } else { "idle" };
         log::warn!(
@@ -280,10 +281,10 @@ where
     ///
     /// Called even when nothing is playing: the idle stream carrying the capture's clocks
     /// must be fed silence too. A drain is only *recorded* here — repairing needs an
-    /// allocation and the logger's lock, neither of which an interrupt may take (see
-    /// [`recover`](Self::recover)) — so the priming push is load-bearing for
-    /// [`restart`](Self::restart). A sound is done once its source is spent and the last
-    /// frames it queued have played out.
+    /// allocation an interrupt may not take, and prints its report on a channel that
+    /// does not serialise writers (see [`recover`](Self::recover)) — so the priming push
+    /// is load-bearing for [`restart`](Self::restart). A sound is done once its source
+    /// is spent and the last frames it queued have played out.
     fn feed(&mut self, now_ms: u64) -> bool {
         let drained = match self.transfer.as_mut() {
             Some(transfer) => {

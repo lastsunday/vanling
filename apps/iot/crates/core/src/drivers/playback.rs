@@ -611,11 +611,12 @@ pub trait Speaker: Send + 'static {
     /// necessary, and `None` when there was nothing to do.
     ///
     /// Split from `feed` because the repair is the opposite of what `feed` is
-    /// allowed to be: rebuilding a DMA ring allocates, and logging takes the
-    /// logger's lock. Both are fine on a cooperative executor and both deadlock
-    /// from an interrupt handler, which can be taken while a task is inside
-    /// either lock — the symptom being a board that stops responding without ever
-    /// resetting.
+    /// allowed to be: rebuilding a DMA ring allocates, and the log channel does
+    /// not serialise writers, so a line printed from a feed would interleave with
+    /// whatever the preempting task had half-sent. The allocation is the hard
+    /// constraint — a cooperative executor can allocate, an interrupt handler
+    /// cannot — and the output is the reason the repair reports from here rather
+    /// than from where it is noticed.
     ///
     /// So the app calls this from the cooperative side, next to the I2C calls it
     /// already keeps there.

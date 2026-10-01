@@ -6,6 +6,17 @@
 //! boot (no RTC on the boards — "now" is uptime). Output still goes through
 //! the esp-println stream. One static instance is shared by all tasks; records
 //! are formatted inline, never buffered.
+//!
+//! The stream does not serialise writers. `esp-println` wraps writes in a lock
+//! only under its `critical-section` feature, which this crate does not enable
+//! (`Cargo.toml`), so a line from the cooperative task can be interleaved by one
+//! from an interrupt executor. Every task here that must keep its timing
+//! therefore publishes counters and leaves the printing to the cooperative side
+//! — see `FeedStats`. A line is also flushed in 32-byte chunks, so it is not
+//! atomic even against a writer that does not interrupt.
+//!
+//! The HAL's `Instant` does not advance in light sleep, so the prefix
+//! under-counts if an image is ever slept.
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 

@@ -57,6 +57,16 @@ tasks:
     deps:
       - ~:check
 
+  # Every component feature compiled on its own, which is what features.md rule 5
+  # asks for and what no other task here checks: a board feature is by
+  # construction the union of what that board wires, so a component reaching for a
+  # part it does not name stays invisible until the day a board wires one and not
+  # the other.
+  check-features:
+    script: 'bash ../../scripts/iot-feature-check.sh'
+    options:
+      cache: false
+
   lint:
     command: 'cargo clippy -p iot-app --bin vanling --target $CARGO_ESP_TARGET -- -D warnings'
     inputs:
@@ -103,56 +113,34 @@ tasks:
       cache: false
       runInCI: false
 
-  check-c6:
-    command: 'cargo check -p iot-app --bin vanling --target $CARGO_ESP_TARGET'
-    inputs:
-      - '$CARGO_ESP_TARGET'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'moon.yml'
-      - '.cargo/config.toml'
-      - 'crates/**/*.rs'
-      - 'crates/**/Cargo.toml'
-    env:
-      CARGO_ESP_TARGET: 'riscv32imac-unknown-none-elf'
-
-  build-c6:
-    command: 'cargo build --release -p iot-app --bin vanling --target $CARGO_ESP_TARGET'
-    inputs:
-      - '$CARGO_ESP_TARGET'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'moon.yml'
-      - '.cargo/config.toml'
-      - 'crates/**/*.rs'
-      - 'crates/**/Cargo.toml'
-    outputs:
-      - 'target/$CARGO_ESP_TARGET/release/vanling'
-    env:
-      CARGO_ESP_TARGET: 'riscv32imac-unknown-none-elf'
-    deps:
-      - ~:check-c6
-
   # s3 (xtensa-esp32s3): dispatched by scripts/iot-xtensa.sh. Uses the espup
   # "esp" toolchain natively (pinned to 1.95.0.0) when fully installed
   # (CI/release); otherwise falls back to the espressif/idf-rust:esp32s3_1.95.0.0
   # container (macOS Intel, where esp-rs stopped shipping toolchains at v1.91+).
   # The esp nightly fork ships no prebuilt Xtensa rust-std, hence -Z build-std.
+  # Names both bins so the playback probe is type-checked on every run. Only
+  # `vanling` is linked by `build-s3`, but a probe nothing compiles can rot in
+  # place: it calls a board bring-up of its own (`new_audio_only`), and a change
+  # to `Board` or to `Speaker` would leave it failing to build with nobody
+  # noticing until the day it is needed on a bench.
   check-s3:
     script: |
-      bash ../../scripts/iot-xtensa.sh check -p iot-app --bin vanling \
+      bash ../../scripts/iot-xtensa.sh check -p iot-app \
+        --bin vanling --bin audio-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
 
   build-s3:
     script: |
-      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin vanling \
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app \
+        --bin vanling --bin audio-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/vanling'
+      - 'target/xtensa-esp32s3-none-elf/release/audio-probe'
     deps:
       - ~:check-s3
     options:
@@ -202,7 +190,7 @@ tasks:
   image-c6:
     script: 'bash ../../scripts/iot-image.sh esp32c6-devkitc-1'
     deps:
-      - ~:build-c6
+      - ~:build
     options:
       cache: false
       runInCI: false

@@ -1,13 +1,15 @@
 //! Playback isolation probe: speaker only, looping the catalogue forever.
 //!
-//! One future, no `DeviceManager`, no intent bus, no renderer, no capture poll — so a
-//! stall reported here belongs to the transmit path rather than to the shared executor
-//! the product build's three tasks contend for. It alternates the two sounds because
-//! they are built differently (a synthesised pair against a stored PCM), so a stall
-//! only one provokes cannot hide behind whichever was playing.
+//! One future for the feed, no `DeviceManager`, no intent bus, no renderer, no capture
+//! poll — so a stall reported here belongs to the transmit path rather than to the
+//! shared executor the product build's three tasks contend for. It alternates the two
+//! sounds because they are built differently (a synthesised pair against a stored
+//! PCM), so a stall only one provokes cannot hide behind whichever was playing.
 //!
-//! What it cannot catch is anything needing the interrupt executor: it feeds inline,
-//! so a fault that only appears there belongs to the product build.
+//! What it runs is the product's own feed loop and the product's own counters, so a
+//! number here and a number from the product describe the same schedule. What it
+//! cannot catch is anything needing the interrupt executor: it feeds inline, so a
+//! fault that only appears there belongs to the product build.
 
 #![no_std]
 #![no_main]
