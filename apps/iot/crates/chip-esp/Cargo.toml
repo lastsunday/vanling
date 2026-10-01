@@ -9,6 +9,7 @@ esp32c6 = []
 esp32s3 = []
 
 [dependencies]
+embassy-executor = { workspace = true }
 esp-backtrace = { workspace = true }
 esp-bootloader-esp-idf = { workspace = true }
 esp-hal = { workspace = true }

@@ -1,19 +1,14 @@
 //! A-weighting for the acoustic readout.
 //!
-//! The panel's scope and its dBFS rows see the capture exactly as the codec
-//! handed it over. That reading is unweighted, and a room that hums at 60 Hz
-//! scores its hum a lot higher on an unweighted meter than a phone-app dB(A)
-//! number the owner would recognize. This module turns the same stream into the
-//! IEC 61672-1 A-weighted level, so the corner readout can say "dBA" and mean a
-//! number anyone can compare with one generated elsewhere.
+//! The panel's scope and dBFS rows see the capture as the codec handed it over, and
+//! that is unweighted — so a room humming at 60 Hz scores far higher than a phone app's
+//! dB(A). This turns the same stream into the IEC 61672-1 A-weighted level, so the
+//! corner readout can say "dBA" and mean a number comparable with one from elsewhere.
 //!
-//! The filter is the textbook analog A-weighting — zeros at DC, poles at 20.6,
-//! 107.7 and 737.9 Hz plus two at 12.194 kHz—discretized with a prewarped
-//! bilinear transform at [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ). It is a fixed
-//! point IIR: there is no floating point in this crate's capture path, and a
-//! 240 MHz part has a whole frame of cycles to spare between polls, so the
-//! machine cost of an IIR is worth it against the alternative of a hard-coded
-//! offset that would read the same number at 100 Hz and 1 kHz.
+//! Textbook analog A-weighting (zeros at DC; poles at 20.6, 107.7, 737.9 Hz and two at
+//! 12.194 kHz), prewarped and bilinearly transformed at
+//! [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ), run as a fixed point IIR. Fixed point
+//! because there is no floating point in this crate's capture path.
 
 /// Fractional bits shared by every filter coefficient. One scale for all three
 /// sections, so a section needs no rescale between stages and the arithmetic is
@@ -132,29 +127,29 @@ const METER_RELEASE_SHIFT: u32 = 16;
 
 /// A continuously-running A-weighted sound level: the capture's samples through
 /// [`AWeight`], folded into a slow exponential average of squares. This is the
-/// "number the phone app shows" reading, distinct from the windowed peaks the
-/// scope and PK/RMS rows carry — those exist to show a sweep, this one to
-/// saturate on a spoken word and decay at a readable pace.
+/// "number the phone app shows" reading, distinct from the windowed peaks the scope
+/// and PK/RMS rows carry — those show a sweep, this saturates on a spoken word and
+/// decays at a readable pace.
+///
+/// The average folds the *already weighted* samples rather than running a second
+/// cascade over the same stream: identical coefficients and zero state could only
+/// ever agree, and running both doubled the per-sample cost of the capture path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DbaMeter {
-    weight: AWeight,
     avg_sq: u64,
 }
 
 impl DbaMeter {
     pub const fn new() -> Self {
-        Self {
-            weight: AWeight::new(),
-            avg_sq: 0,
-        }
+        Self { avg_sq: 0 }
     }
 
-    /// Folds one sample in. Cheap enough to be worth doing for every sample the
-    /// capture decodes, because the corner readout wants the same source the
-    /// scope gets, not a decimated copy of it.
-    pub fn update(&mut self, sample: i16) {
-        let weighted = i64::from(self.weight.filter(sample));
-        let square = weighted * weighted;
+    /// Folds one A-weighted sample in, as produced by [`AWeight::filter`]. Cheap
+    /// enough to be worth doing for every sample the capture decodes, because
+    /// the corner readout wants the same source the scope gets, not a decimated
+    /// copy of it.
+    pub fn update(&mut self, weighted: i16) {
+        let square = i64::from(weighted) * i64::from(weighted);
         let avg = self.avg_sq as i64 + ((square - self.avg_sq as i64) >> METER_RELEASE_SHIFT);
         self.avg_sq = avg as u64;
     }
@@ -181,6 +176,7 @@ impl Default for DbaMeter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::drivers::audio::AudioEnvelope;
 
     /// A full cycle of a 125 Hz sine at [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ),
     /// one 384-sample period at full scale, in 16-bit LSB. Every other test
@@ -316,11 +312,11 @@ mod tests {
     /// on its own, without the window ever being told the tone stopped.
     #[test]
     fn meter_rises_on_tone_and_settles_back_after() {
-        let mut meter = DbaMeter::new();
+        let mut envelope = AudioEnvelope::ZERO;
         for i in 0..262_144 {
-            meter.update(SINE_384[(i * 8) % 384]);
+            envelope.push(&[SINE_384[(i * 8) % 384]]);
         }
-        let peak = meter.level_lsb();
+        let peak = envelope.dba_lsb();
         // Steady 1 kHz tone at full scale: converged to the tone's RMS minus
         // the release constant still smoothing it, within five percent.
         assert!(
@@ -328,9 +324,9 @@ mod tests {
             "steady tone read {peak} LSB, expected near full-scale RMS"
         );
         for _ in 0..524_288 {
-            meter.update(0);
+            envelope.push(&[0]);
         }
-        let settled = meter.level_lsb();
+        let settled = envelope.dba_lsb();
         assert!(
             settled <= 2_000,
             "after silence the meter still read {settled} LSB"
@@ -343,14 +339,14 @@ mod tests {
     /// transient is the only thing left after the window, and it decays.
     #[test]
     fn meter_ignores_dc_input() {
-        let mut meter = DbaMeter::new();
+        let mut envelope = AudioEnvelope::ZERO;
         for _ in 0..262_144 {
-            meter.update(i16::MIN);
+            envelope.push(&[i16::MIN]);
         }
         assert!(
-            meter.level_lsb() <= 2_000,
+            envelope.dba_lsb() <= 2_000,
             "DC held the meter at {}",
-            meter.level_lsb()
+            envelope.dba_lsb()
         );
     }
 
@@ -400,15 +396,15 @@ mod tests {
         let n = 600_000;
         let mut dig = 0x1234_5678u32;
         let mut sum_sq: u64 = 0;
-        let mut meter = DbaMeter::new();
+        let mut envelope = AudioEnvelope::ZERO;
         for i in 0..n {
             dig = dig.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
             let sample = (((dig >> 16) as i32 % 65) - 32) as i16 + (i % 480 < 48) as i16;
             sum_sq += u64::from(sample.unsigned_abs()) * u64::from(sample.unsigned_abs());
-            meter.update(sample);
+            envelope.push(&[sample]);
         }
         let input_rms = ((sum_sq / n) as f64).sqrt();
-        let level = meter.level_lsb();
+        let level = envelope.dba_lsb();
         assert!(
             level <= 200,
             "input RMS {input_rms:.1} LSB read {level} LSB, a limit-cycle floor must not \

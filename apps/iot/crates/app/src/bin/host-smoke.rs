@@ -11,13 +11,15 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
-use iot_app::run;
+use iot_app::{SpeakerRunner, run};
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL,
     SAMPLES_PER_COLUMN, SampleStream, dbfs,
 };
-use iot_core::drivers::board::{Board as BoardTrait, HasAudio, HasInput, HasLight, HasMotion};
+use iot_core::drivers::board::{
+    Board as BoardTrait, HasAudio, HasInput, HasLight, HasMotion, HasPlayback,
+};
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry,
 };
@@ -26,8 +28,9 @@ use iot_core::drivers::motion::{
     MOTION_SCAN_MS, MotionCapabilities, MotionError, MotionEvents, MotionInput, MotionReading,
     MotionSample, MotionScale, MotionSource,
 };
+use iot_core::drivers::playback::{Recovery, Sound, Speaker, SpeakerFault};
 use iot_core::intent::PALETTE;
-use iot_core::state::DisplayPage;
+use iot_core::state::{DisplayPage, PlaybackPhase};
 
 /// Recorded paint operations per surface, so the smoke can assert what `run`
 /// drew and on which instance.
@@ -63,6 +66,32 @@ static AUDIO_PEAK_DB: AtomicIsize = AtomicIsize::new(isize::MIN);
 /// what a broken wiring looks like after at least one tone poll, so a plain
 /// "above zero" assert is a mean leash.
 static AUDIO_DBA_LSB: AtomicUsize = AtomicUsize::new(0);
+
+/// Sounds the fake speaker was asked to start, in order, so the smoke can
+/// assert which sound a tap reached the driver with — and that a tap the state
+/// dropped never arrived here.
+static PLAYED: Mutex<Vec<Sound>> = Mutex::new(Vec::new());
+
+/// Mute writes the fake speaker was asked to make, in order.
+static MUTED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
+
+/// The highest play count the panel's diagnostics reported, so the smoke can
+/// prove the tap reached the state layer as well as the driver.
+static PLAYBACK_PLAYS: AtomicUsize = AtomicUsize::new(0);
+
+/// The highest drop count any sink saw, so the smoke can prove a tap over a
+/// sounding one is absorbed by the state rather than restarting the sound.
+static PLAYBACK_DROPPED: AtomicUsize = AtomicUsize::new(0);
+
+/// Whether any sink ever saw the panel muted, so the smoke can prove the long
+/// press reached the state layer as well as the driver. Sticky, because the
+/// assert is about a latch having happened rather than about its current value.
+static PLAYBACK_EVER_MUTED: AtomicBool = AtomicBool::new(false);
+
+/// Playback phases the sinks saw, in order, so the smoke can assert the whole
+/// round trip — idle → playing → idle — and not merely a phase that once was
+/// playing.
+static PLAYBACK_PHASES: Mutex<Vec<PlaybackPhase>> = Mutex::new(Vec::new());
 
 /// A loud constant capture. What matters to the smoke is that columns commit and
 /// travel, not what they hold — only that the level it holds is a level the panel
@@ -127,6 +156,41 @@ impl MotionSource for HostMotion {
     }
 }
 
+/// How many feeds a fake sound lasts. A real one is fed for as long as it
+/// sounds; this is a fixed count, sized past a second so the smoke's second tap
+/// reliably lands inside the sound it is meant to be dropped by, and no longer
+/// than the smoke waits for the finish.
+const HOST_FEEDS: usize = 220;
+
+struct HostSpeaker {
+    feeds_left: usize,
+}
+
+impl Speaker for HostSpeaker {
+    fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault> {
+        PLAYED.lock().unwrap().push(sound);
+        self.feeds_left = HOST_FEEDS;
+        Ok(())
+    }
+
+    fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault> {
+        MUTED.lock().unwrap().push(muted);
+        Ok(())
+    }
+
+    fn feed(&mut self, _now_ms: u64) -> bool {
+        if self.feeds_left == 0 {
+            return false;
+        }
+        self.feeds_left -= 1;
+        true
+    }
+
+    fn recover(&mut self) -> Option<Recovery> {
+        None
+    }
+}
+
 struct HostButton(u8);
 
 impl Button for HostButton {
@@ -158,6 +222,15 @@ impl iot_core::diagnostics::DiagnosticsSink for HostLight {
             Ordering::SeqCst,
         );
         AUDIO_DBA_LSB.fetch_max(usize::from(diagnostics.audio.dba_lsb), Ordering::SeqCst);
+        PLAYBACK_PLAYS.fetch_max(usize::from(diagnostics.playback.plays), Ordering::SeqCst);
+        PLAYBACK_DROPPED.fetch_max(usize::from(diagnostics.playback.dropped), Ordering::SeqCst);
+        if diagnostics.playback.muted {
+            PLAYBACK_EVER_MUTED.store(true, Ordering::SeqCst);
+        }
+        PLAYBACK_PHASES
+            .lock()
+            .unwrap()
+            .push(diagnostics.playback.phase);
     }
 }
 
@@ -166,6 +239,7 @@ struct HostBoard {
     input: Option<Vec<PollEntry>>,
     motion: Option<PollEntry>,
     audio: Option<PollEntry>,
+    playback: Option<HostSpeaker>,
 }
 
 impl HostBoard {
@@ -202,6 +276,7 @@ impl HostBoard {
                 Box::new(PassThrough),
                 CAPTURE_MS,
             )),
+            playback: Some(HostSpeaker { feeds_left: 0 }),
         }
     }
 }
@@ -238,6 +313,14 @@ impl HasAudio for HostBoard {
     }
 }
 
+impl HasPlayback for HostBoard {
+    type Speaker = HostSpeaker;
+
+    fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {
+        self.playback.take().map(Box::new)
+    }
+}
+
 /// Three press/release pairs inside the multi-click window: the gesture that
 /// turns the page.
 async fn triple_click() {
@@ -247,6 +330,13 @@ async fn triple_click() {
         PRESSED[0].store(false, Ordering::SeqCst);
         Timer::after(Duration::from_millis(50)).await;
     }
+}
+
+/// One press/release pair, long enough for the scanner to debounce.
+async fn click(button: usize) {
+    PRESSED[button].store(true, Ordering::SeqCst);
+    Timer::after(Duration::from_millis(120)).await;
+    PRESSED[button].store(false, Ordering::SeqCst);
 }
 
 fn painted(instance: u8, color: Rgb) -> bool {
@@ -283,13 +373,38 @@ fn page_seen(page: DisplayPage) -> bool {
     PAGES.lock().unwrap().contains(&page)
 }
 
+fn phase_playing() -> bool {
+    PLAYBACK_PHASES
+        .lock()
+        .unwrap()
+        .contains(&PlaybackPhase::Playing)
+}
+
+/// Whether a sink saw the page return to idle *after* it was playing, which is
+/// the only way to tell a sound that ended from a page that was never started.
+fn phase_idle_after_playing() -> bool {
+    let phases = PLAYBACK_PHASES.lock().unwrap();
+    let mut playing = false;
+    for &phase in phases.iter() {
+        match phase {
+            PlaybackPhase::Playing => playing = true,
+            PlaybackPhase::Idle if playing => return true,
+            PlaybackPhase::Idle => {}
+        }
+    }
+    false
+}
+
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     // Boot the real composition: input task + render loop on a fake board.
     // `run` and the std executor never return, so the scenario verdicts by
     // terminating the process explicitly.
     let board = HostBoard::new();
-    match select(run(board), scenario()).await {
+    // Host has no interrupt executor to hand the feed's cadence to, and the
+    // scenarios assert against a loop they can observe, so the feed is joined
+    // onto this executor exactly as it was before the split.
+    match select(run(board, SpeakerRunner::Inline), scenario()).await {
         Either::First(never) => match never {},
         Either::Second(()) => {}
     }
@@ -391,6 +506,114 @@ async fn scenario() {
     assert!(
         AUDIO_DBA_LSB.load(Ordering::SeqCst) > 0,
         "the capture's A-weighted level did not reach the panel's diagnostics"
+    );
+
+    // 6. One more triple click reaches the speaker page, which exists only
+    //    because the composition picked the board's speaker up and told the
+    //    state layer so.
+    triple_click().await;
+
+    attempts = 0;
+    while !page_seen(DisplayPage::Speaker) && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        page_seen(DisplayPage::Speaker),
+        "the speaker-enabled page was never reached"
+    );
+
+    // 7. A click on the speaker page plays: the driver is asked for the sound
+    //    after the boot chime, and the panel reports the play.
+    click(1).await;
+
+    attempts = 0;
+    while !phase_playing() && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        phase_playing(),
+        "a tap on the speaker page never started a sound"
+    );
+    // The play is written onto the bus by the render pass and reaches the driver
+    // on the control pass, one cadence later — so `Playing` is observable before
+    // the driver has been asked. Wait for the driver's own record, which is what
+    // this assertion is actually about; the bound is the same generous one the
+    // phase waits above use, and it is far longer than a cadence.
+    attempts = 0;
+    while PLAYED.lock().unwrap().is_empty() && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert_eq!(
+        PLAYED.lock().unwrap().as_slice(),
+        &[Sound::Asset],
+        "a tap did not reach the driver with the asset sound"
+    );
+    assert_eq!(
+        PLAYBACK_PLAYS.load(Ordering::SeqCst),
+        1,
+        "the panel's play count did not follow the tap"
+    );
+
+    // 8. A second tap while the sound is still sounding is dropped: the state
+    //    counts it and the driver is left alone, so the sound is not restarted
+    //    under the listener.
+    click(1).await;
+
+    attempts = 0;
+    while PLAYBACK_DROPPED.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        PLAYBACK_DROPPED.load(Ordering::SeqCst) > 0,
+        "a tap over a sounding one was neither dropped nor played"
+    );
+    assert_eq!(
+        PLAYED.lock().unwrap().as_slice(),
+        &[Sound::Asset],
+        "a dropped tap still reached the driver"
+    );
+
+    // 9. The sound's own end comes back from the driver, and the page leaves
+    //    `Playing` on that word alone.
+    attempts = 0;
+    while !phase_idle_after_playing() && attempts < 500 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        phase_idle_after_playing(),
+        "the page never left Playing after the driver reported the sound done"
+    );
+
+    // 10. A long press latches the output quiet, on the driver and the panel.
+    PRESSED[0].store(true, Ordering::SeqCst);
+    Timer::after(Duration::from_millis(700)).await;
+    PRESSED[0].store(false, Ordering::SeqCst);
+
+    attempts = 0;
+    while !PLAYBACK_EVER_MUTED.load(Ordering::SeqCst) && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        PLAYBACK_EVER_MUTED.load(Ordering::SeqCst),
+        "a long press did not latch the speaker mute"
+    );
+    // Same one-cadence gap as above, in the other direction: the render pass
+    // records the latched mute, the control pass is what pushes it to the driver.
+    attempts = 0;
+    while MUTED.lock().unwrap().is_empty() && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert_eq!(
+        MUTED.lock().unwrap().as_slice(),
+        &[true],
+        "the mute did not reach the driver as a single latch"
     );
 
     std::process::exit(0);

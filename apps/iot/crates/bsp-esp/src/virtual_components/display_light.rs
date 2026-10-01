@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::audio::{
-    AudioEnvelope, COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height, spl,
+    COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height, spl,
 };
 use iot_core::drivers::input::{
     FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP,
@@ -10,23 +10,80 @@ use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, rgb_hue, scale_brightness, vertical_brightness,
 };
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
+use iot_core::drivers::playback::Sound;
 use iot_core::horizon::{SCALE, horizon};
 use iot_core::overlay::{
     FONT_W, LEFT_VALUE_X, LEVEL_UNIT_X, OVERLAY_GAP, OVERLAY_X, level_columns,
 };
-use iot_core::render::{MODE_BREATH, MODE_SOLID, windowed_rate};
-use iot_core::state::{AudioPhase, DisplayPage};
+use iot_core::render::{MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_rate};
+use iot_core::state::{AudioPhase, DisplayPage, PlaybackPhase};
 
 use crate::components::backlight::Backlight;
 use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::components::st7789::St7789;
-use esp_hal::time::Instant;
+use core::sync::atomic::{AtomicU32, Ordering};
+use esp_hal::time::{Duration, Instant};
+
+/// Last full-frame repaint taken by the panel, in milliseconds since boot.
+/// Shared across the diagnostics pushes so the repaint rate bound adds no width
+/// to the renderer state the main-task async machine holds across awaits.
+static DIAG_LAST_REPAINT_MS: AtomicU32 = AtomicU32::new(0);
+
+/// Deepest main-stack use observed so far, in bytes below the stack ceiling.
+/// A rendering path that can walk tens of kilobytes down the stack is the kind
+/// of thing that overflows silently after an innocent refactor, so the peak is
+/// measured rather than assumed; see [`note_stack_high_water`].
+static STACK_HIGH_WATER: AtomicU32 = AtomicU32::new(0);
+
+/// The main stack the rtos main task (and with it every cooperative task) runs
+/// on: ceiling minus guarded floor. Logged at bring-up so a stack-guard trip's
+/// cause — a paint that really reached the guard, versus a layout that shrank
+/// the stack — reads off one boot line instead of a bisect.
+fn main_stack_bytes() -> usize {
+    unsafe extern "C" {
+        static _stack_start: u8;
+        static _stack_end: u8;
+    }
+    core::ptr::addr_of!(_stack_start) as usize - core::ptr::addr_of!(_stack_end) as usize
+}
+
+/// This frame's address on the main stack, standing in for the stack pointer.
+/// A local sits at most a frame's own locals below `sp`, which is noise next to
+/// the kilobytes this measures, and reading it keeps the crate on stable: the
+/// honest `mov {0}, sp` needs `#![feature(asm_experimental_arch)]`, which this
+/// crate cannot take because it also builds for the host.
+fn frame_address() -> usize {
+    let probe = 0_u8;
+    core::ptr::addr_of!(probe) as usize
+}
+
+/// Records how far this frame sits below the stack ceiling, keeping the deepest
+/// value seen. Call it at the bottom of the deepest call chain worth knowing
+/// about: the peak is then the stack the chain needed, not the whole stack's
+/// size, and headroom is the difference.
+fn note_stack_high_water() {
+    let used = (main_stack_bytes() - (frame_address() - main_stack_floor())) as u32;
+    STACK_HIGH_WATER.fetch_max(used, Ordering::Relaxed);
+}
+
+/// The main stack's low address, the floor the ceiling is measured from.
+fn main_stack_floor() -> usize {
+    unsafe extern "C" {
+        static _stack_end: u8;
+    }
+    core::ptr::addr_of!(_stack_end) as usize
+}
 
 /// Minimum per-channel color delta that warrants a full-frame repaint.
 const REPAINT_STEP: u8 = 12;
 
 /// On-panel repaint-rate sampling window.
 const FPS_WINDOW_MS: u64 = 500;
+
+/// Frame-cost sampling window. The two costs are reported apart because they have
+/// opposite fixes: a slow render is CPU the shared executor does not get back,
+/// while a slow write is GDMA arbitration the playback DMA has to win.
+const COST_WINDOW_MS: u64 = 2_000;
 
 /// Debug overlay toggle. A compile-time switch (not a Cargo feature): the
 /// ambient diagnostics rows and last-touch coordinates are a field/development
@@ -156,6 +213,15 @@ pub struct DisplayLight {
     fps: u8,
     fps_frames: u32,
     fps_anchor: Instant,
+    /// Worst render and worst blocking-SPI cost seen in the current
+    /// [`COST_WINDOW_MS`] window, with the repaint count that produced them. The
+    /// count is the point as much as the peaks are: it is what says whether a
+    /// page predicate is actually holding the blocking duty cycle down, or only
+    /// appears to.
+    cost_frames: u32,
+    cost_anchor: Instant,
+    worst_render: Duration,
+    worst_write: Duration,
 }
 
 impl DisplayLight {
@@ -164,6 +230,7 @@ impl DisplayLight {
     pub fn new(instance: u8, panel: St7789, mut backlight: Backlight) -> Self {
         backlight.set_level_pct(100);
         log::info!("[DISPLAY] backlight raised");
+        log::info!("[DISPLAY] main stack {} B", main_stack_bytes());
         Self {
             instance,
             panel,
@@ -174,6 +241,10 @@ impl DisplayLight {
             fps: 0,
             fps_frames: 0,
             fps_anchor: Instant::now(),
+            cost_frames: 0,
+            cost_anchor: Instant::now(),
+            worst_render: Duration::ZERO,
+            worst_write: Duration::ZERO,
         }
     }
 
@@ -205,27 +276,44 @@ impl DiagnosticsSink for DisplayLight {
             return;
         }
         let page_changed = self.diagnostics.page != diagnostics.page;
+        // A page switch is drawn immediately; a diagnostics drift is only drawn
+        // when the page redraws it and the rate gate has opened. The gate exists
+        // because a repaint ships the whole 240×320 frame down one blocking SPI
+        // transfer, and without it the live pages (Audio follows the capture,
+        // Attitude the motion sample) hold the shared cooperative executor in a
+        // ~15 ms block every 20 ms snapshot — starving the playback feed and the
+        // capture poll, which then restart their DMAs (the `RST` counter climbs).
+        let now_ms = Instant::now().duration_since_epoch().as_millis() as u32;
+        let since_ms = now_ms.wrapping_sub(DIAG_LAST_REPAINT_MS.load(Ordering::Relaxed)) as u64;
+        let repaint = page_changed
+            || diag_repaint_due(
+                diagnostics.page,
+                &self.diagnostics,
+                diagnostics,
+                since_ms,
+                DEBUG_DIAGNOSTICS,
+            );
+        // The previous snapshot is read through `self` right up to the decision
+        // above rather than saved into a local. `Diagnostics` embeds a 1.6 KB
+        // audio envelope, so one by-value copy of it here was a large slice of
+        // the main stack this repaint path was already overflowing.
         self.diagnostics = *diagnostics;
-        if !DEBUG_DIAGNOSTICS && !Self::is_live_page(self.diagnostics.page) && !page_changed {
+        if !repaint {
             return;
         }
         if let Some((fill, color)) = self.screen_color {
+            note_stack_high_water();
             self.paint(fill, color);
+            DIAG_LAST_REPAINT_MS.store(now_ms, Ordering::Relaxed);
         }
     }
 }
 
 impl DisplayLight {
-    /// Whether a page's own content moves without any state changing — the
-    /// attitude dial follows the sensor, the Audio sweep follows the capture —
-    /// and so repaints on every snapshot instead of only on a diff.
-    fn is_live_page(page: DisplayPage) -> bool {
-        matches!(page, DisplayPage::Attitude | DisplayPage::Audio)
-    }
-
     /// Paints `fill`/`color`, stamps the diagnostics rows into the corner, and ships
     /// the frame. Always paints; callers guard for repaint skipping.
     fn paint(&mut self, fill: Fill, color: Rgb) {
+        let render_start = Instant::now();
         self.screen_color = Some((fill, color));
         self.frame.resize(self.frame_bytes(), 0);
 
@@ -259,6 +347,8 @@ impl DisplayLight {
             self.stamp_attitude(width, usize::from(height));
         } else if self.diagnostics.page == DisplayPage::Audio {
             self.stamp_audio(width, usize::from(height));
+        } else if self.diagnostics.page == DisplayPage::Speaker {
+            self.stamp_speaker(width, usize::from(height));
         } else if DEBUG_DIAGNOSTICS {
             self.stamp_diagnostics(width, usize::from(height), live);
         }
@@ -266,10 +356,58 @@ impl DisplayLight {
             self.stamp_fps(width, usize::from(height));
         }
 
+        // The render and the transfer are timed apart rather than together: this
+        // whole path runs on the one cooperative executor the playback feed and
+        // the capture poll share, and "the frame cost 20 ms" does not say whether
+        // the frame can be made cheaper or whether the SPI transfer has to yield
+        // the bus. Those need different fixes, so the log has to tell them apart.
+        let render = render_start.elapsed();
+        let write_start = Instant::now();
         if let Err(e) = self.panel.write_frame(&self.frame) {
             log::error!("[DISPLAY] frame write failed: {e:?}");
         }
+        self.sample_frame_cost(render, write_start.elapsed());
         self.sample_fps();
+    }
+
+    /// Folds one frame's two costs into the current window and reports the peaks
+    /// once the window closes. The repaint count carries as much weight as the
+    /// peaks do: a page whose predicate is holding the panel quiet makes this
+    /// report rare, and a low count next to a high playback feed rate is the
+    /// result the gate was added to reach. The playback task reports on its own
+    /// wall clock, so the two logs bracket the same window from either side.
+    fn sample_frame_cost(&mut self, render: Duration, write: Duration) {
+        self.cost_frames += 1;
+        if render > self.worst_render {
+            self.worst_render = render;
+        }
+        if write > self.worst_write {
+            self.worst_write = write;
+        }
+        let now = Instant::now();
+        let window = now - self.cost_anchor;
+        if window.as_millis() >= COST_WINDOW_MS {
+            log::info!(
+                "[DISPLAY] {} repaints in {} ms, worst render {} ms, worst write {} ms",
+                self.cost_frames,
+                window.as_millis(),
+                self.worst_render.as_millis(),
+                self.worst_write.as_millis(),
+            );
+            self.cost_frames = 0;
+            self.cost_anchor = now;
+            self.worst_render = Duration::ZERO;
+            self.worst_write = Duration::ZERO;
+        }
+    }
+
+    /// Reports the deepest main-stack use seen so far, once per repaint window.
+    /// Sampled here rather than at bring-up because the peak belongs to whichever
+    /// page drew deepest, and the Audio page's sweep is the frame that decides
+    /// whether the stack still fits.
+    fn report_stack_high_water(&self) {
+        let used = STACK_HIGH_WATER.load(Ordering::Relaxed) as usize;
+        log::info!("[DISPLAY] stack peak {used} B of {} B", main_stack_bytes());
     }
 
     /// Samples the panel repaint rate into `fps`, resetting each window so a
@@ -282,6 +420,7 @@ impl DisplayLight {
             self.fps = windowed_rate(self.fps_frames, window.as_millis());
             self.fps_frames = 0;
             self.fps_anchor = now;
+            self.report_stack_high_water();
         }
     }
 
@@ -664,7 +803,10 @@ impl DisplayLight {
     /// envelope that is. Readouts, scale and their meanings:
     /// `docs/content/development/iot/audio.md`.
     fn stamp_audio(&mut self, width: usize, height: usize) {
-        let audio = self.diagnostics.audio;
+        // The snapshot is read in place rather than copied into a local: the
+        // embedded `AudioEnvelope` is 1.6 KB, which on this stack was a large
+        // slice of what a repaint could afford. Reading through `self` in the
+        // arguments below keeps that borrowing honest without the copy.
         self.stamp_text(b"AUDIO", OVERLAY_X, OVERLAY_Y, width, height);
         // The corner readout is the number this page shows a human: the
         // A-weighted sound level of the same capture, counted in the same
@@ -672,7 +814,7 @@ impl DisplayLight {
         // answers "is it loud?" without converting dBFS.
         self.stamp_text_right(
             format_dba(
-                spl(dbfs(audio.dba_lsb), SPL_OFFSET_DECIBELS),
+                spl(dbfs(self.diagnostics.audio.dba_lsb), SPL_OFFSET_DECIBELS),
                 &mut [0u8; 12],
             ),
             width as isize - 1,
@@ -682,7 +824,7 @@ impl DisplayLight {
         );
         self.stamp_left(
             b"ST",
-            match audio.phase {
+            match self.diagnostics.audio.phase {
                 AudioPhase::Idle => b"IDLE",
                 AudioPhase::Recording => b"REC",
                 AudioPhase::Stopped => b"STOP",
@@ -694,7 +836,7 @@ impl DisplayLight {
         self.stamp_left(
             b"MS",
             format_i32(
-                i32::try_from(audio.elapsed_ms).unwrap_or(i32::MAX),
+                i32::try_from(self.diagnostics.audio.elapsed_ms).unwrap_or(i32::MAX),
                 &mut [0u8; 12],
             ),
             2,
@@ -703,14 +845,29 @@ impl DisplayLight {
         );
         // The two levels, in decibels, because a level in LSB is a number only
         // this code can read: is anything arriving, and is it a voice or a knock.
-        self.stamp_level(b"PK", dbfs(audio.envelope.loudest()), 3, width, height);
-        self.stamp_level(b"RMS", dbfs(audio.envelope.loudest_rms()), 4, width, height);
+        self.stamp_level(
+            b"PK",
+            dbfs(self.diagnostics.audio.envelope.loudest()),
+            3,
+            width,
+            height,
+        );
+        self.stamp_level(
+            b"RMS",
+            dbfs(self.diagnostics.audio.envelope.loudest_rms()),
+            4,
+            width,
+            height,
+        );
         // What the sweep cannot say about itself. `COL` climbing with a peak that
         // does not is a quiet room, and `COL` climbing under a −60 dBFS peak is
         // a capture path that is not delivering samples at all.
         self.stamp_left(
             b"COL",
-            format_u16(u16::from(audio.envelope.committed()), &mut [0u8; 6]),
+            format_u16(
+                u16::from(self.diagnostics.audio.envelope.committed()),
+                &mut [0u8; 6],
+            ),
             5,
             width,
             height,
@@ -720,7 +877,7 @@ impl DisplayLight {
         // line.
         self.stamp_left(
             b"RST",
-            format_u16(audio.restarts, &mut [0u8; 6]),
+            format_u16(self.diagnostics.audio.restarts, &mut [0u8; 6]),
             6,
             width,
             height,
@@ -729,14 +886,82 @@ impl DisplayLight {
         // reading, so it says so in words and not only as a mark. It takes the
         // unit column `CLIP` sits in for the same reason: a latch that appears
         // and clears must not push anything it appears next to.
-        if audio.envelope.clipped() {
+        if self.diagnostics.audio.envelope.clipped() {
             self.stamp_unit(b"CLIP", 5, width, height);
         }
-        if audio.phase == AudioPhase::Idle {
+        if self.diagnostics.audio.phase == AudioPhase::Idle {
             self.stamp_text(b"TAP TO REC", OVERLAY_X, WAVE_TOP as usize, width, height);
             return;
         }
-        self.stamp_sweep(&audio.envelope, width, height);
+        let envelope = &self.diagnostics.audio.envelope;
+        let peaks = envelope.weighted_released_peaks();
+        let levels = envelope.weighted_rms_columns();
+        let clip_age = envelope.clipped_age();
+        self.stamp_sweep(&peaks, &levels, clip_age, width, height);
+    }
+
+    /// Overdraws the Speaker page: the phase, the sound a tap would play, the
+    /// mute latch and the two tap tallies. Unlike the Audio page there is
+    /// nothing here to animate — a sound is a one-shot and the state layer owns
+    /// the whole of it — so the page is a readout plus its two gestures, spelled
+    /// out so neither has to be discovered.
+    fn stamp_speaker(&mut self, width: usize, height: usize) {
+        let playback = self.diagnostics.playback;
+        self.stamp_text(b"SPKR", OVERLAY_X, OVERLAY_Y, width, height);
+        self.stamp_left(
+            b"ST",
+            match playback.phase {
+                PlaybackPhase::Idle => b"IDLE",
+                PlaybackPhase::Playing => b"PLAY",
+            },
+            1,
+            width,
+            height,
+        );
+        // The sound is the page's one piece of state a tap changes, so it gets a
+        // row of its own: it is what the user is choosing between, and the
+        // catalogue it walks is a word, not a level.
+        self.stamp_left(
+            b"SRC",
+            match playback.sound {
+                Sound::Chime => b"CHIME",
+                Sound::Asset => b"ASSET",
+            },
+            2,
+            width,
+            height,
+        );
+        // A latch, so it reads as a state rather than as an event: `MUT` is only
+        // stamped when it is engaged, the same way `CLIP` appears.
+        if playback.muted {
+            self.stamp_unit(b"MUTE", 1, width, height);
+        }
+        // Plays and dropped taps as two numbers rather than one, because they
+        // answer different questions — "did it make a sound" and "did it hear me"
+        // — and a single combined tally could not tell a quiet speaker from a
+        // busy finger.
+        self.stamp_left(
+            b"PLY",
+            format_u16(playback.plays, &mut [0u8; 6]),
+            3,
+            width,
+            height,
+        );
+        self.stamp_left(
+            b"DRP",
+            format_u16(playback.dropped, &mut [0u8; 6]),
+            4,
+            width,
+            height,
+        );
+        self.stamp_text(b"TAP PLAY", OVERLAY_X, WAVE_TOP as usize, width, height);
+        self.stamp_text(
+            b"HOLD MUTE",
+            OVERLAY_X,
+            WAVE_TOP as usize + FONT_H + OVERLAY_ROW_GAP,
+            width,
+            height,
+        );
     }
 
     /// The meter: a logarithmic band, each column's A-weighted sustained level
@@ -745,10 +970,22 @@ impl DisplayLight {
     /// two levels in one ink have to be *patterns*: a stripe inside the peak
     /// bar would be invisible. Heights come from [`scope_height`], so the bars
     /// land on the same decibel grid as the ruler.
-    fn stamp_sweep(&mut self, envelope: &AudioEnvelope, width: usize, height: usize) {
+    ///
+    /// The columns and the clip age arrive as values rather than as a borrow of
+    /// the envelope: the envelope lives in the panel's own snapshot, so holding
+    /// it across the `&mut self` stamps would either copy 1.6 KB onto the stack
+    /// or fail to borrow. The two arrays are 400 B each and are the sweep's
+    /// working set either way.
+    fn stamp_sweep(
+        &mut self,
+        peaks: &[u16; ENVELOPE_COLUMNS],
+        levels: &[u16; ENVELOPE_COLUMNS],
+        clip_age: Option<usize>,
+        width: usize,
+        height: usize,
+    ) {
+        note_stack_high_water();
         self.stamp_ruler(width, height);
-        let peaks = envelope.weighted_released_peaks();
-        let levels = envelope.weighted_rms_columns();
         for column in 0..SCAN_COLUMNS as usize {
             let x = SCAN_X + column as isize;
             let peak = bar_rows(peaks[column]);
@@ -776,8 +1013,8 @@ impl DisplayLight {
             }
         }
         self.stamp_centre_line(width, height);
-        self.stamp_peak_hold(&peaks, width, height);
-        self.stamp_clip_mark(envelope, width, height);
+        self.stamp_peak_hold(peaks, width, height);
+        self.stamp_clip_mark(clip_age, width, height);
         self.stamp_text(
             format_span(&mut [0u8; 12]),
             SCAN_X as usize,
@@ -803,7 +1040,7 @@ impl DisplayLight {
             let row = decibels_row(decibels);
             let mut buf = [0u8; 12];
             let label = format_decibels(decibels, &mut buf);
-            let top = (row as isize - FONT_H as isize / 2).max(0) as usize;
+            let top = (row - FONT_H as isize / 2).max(0) as usize;
             self.stamp_text_right(label, RULER_RIGHT, top, width, height);
             self.stamp_rule(RULER_TICK_X, row, RULER_TICK_COLUMNS, width, height);
         }
@@ -852,8 +1089,8 @@ impl DisplayLight {
     /// A block at the top of the band on the column that clipped, while that
     /// column is still in the window. The latch beside it says a clip happened;
     /// this says where, and goes with the column it names.
-    fn stamp_clip_mark(&mut self, envelope: &AudioEnvelope, width: usize, height: usize) {
-        let Some(age) = envelope.clipped_age() else {
+    fn stamp_clip_mark(&mut self, clip_age: Option<usize>, width: usize, height: usize) {
+        let Some(age) = clip_age else {
             return;
         };
         let column = SCAN_COLUMNS - 1 - age as isize;

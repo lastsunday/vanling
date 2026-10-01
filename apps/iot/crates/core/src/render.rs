@@ -1,8 +1,10 @@
 use crate::diagnostics::{
-    AudioDiagnostics, BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics,
+    AudioDiagnostics, BreathSnapshot, Diagnostics, LightSnapshot, PlaybackDiagnostics,
+    TouchDiagnostics,
 };
 use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
-use crate::state::{AudioPhase, Breath, DeviceState, LightState};
+use crate::state::{AudioPhase, Breath, DeviceState, DisplayPage, LightState};
+use alloc::boxed::Box;
 
 /// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing,
 /// `2` solid. The panel overlay renders from this snapshot, so the codes are a
@@ -145,6 +147,7 @@ fn light_diagnostics(state: &DeviceState) -> Diagnostics {
         motion_counts: state.motion_counts,
         motion_caps: state.motion_caps,
         audio: audio_diagnostics(state),
+        playback: playback_diagnostics(state),
     }
 }
 
@@ -164,6 +167,62 @@ fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
         elapsed_ms: shown.elapsed_ms,
         restarts: shown.restarts,
         dba_lsb: shown.dba_lsb,
+    }
+}
+
+/// Minimum wall time between full-frame panel repaints driven by a diagnostics
+/// drift. A repaint ships the whole 240×320 frame down one blocking SPI
+/// transfer (on the order of 15 ms), so without a bound the live pages — the
+/// Audio sweep follows the capture, the attitude dial the motion sample —
+/// repaint every 20 ms snapshot and hold the shared cooperative executor in a
+/// ~15 ms block almost continuously, starving the playback feed and the
+/// capture poll past their ring runway.
+pub const DIAG_REPAINT_STEP_MS: u64 = 40;
+
+/// Whether a diagnostics drift warrants a full-frame repaint now. The rate gate
+/// bounds the blocking-SPI duty cycle, and each page predicate must cover exactly
+/// the diagnostics that page draws: the Audio page redraws on everything visible
+/// except the wall-time counter, the attitude dial on every snapshot, the Speaker
+/// page on the playback row it stamps, Ambient on the corner overlay when enabled.
+///
+/// A predicate must never widen to `true` on a drift it does not draw. The snapshot
+/// carries the live envelope, which keeps folding whether or not a capture runs, so a
+/// page that repaints on any drift ships a full 150 KiB frame every
+/// [`DIAG_REPAINT_STEP_MS`] forever — and that SPI duty cycle is what starves the
+/// playback feed and capture poll into restarting their DMAs.
+pub fn diag_repaint_due(
+    page: DisplayPage,
+    prev: &Diagnostics,
+    next: &Diagnostics,
+    since_ms: u64,
+    overlay: bool,
+) -> bool {
+    if since_ms < DIAG_REPAINT_STEP_MS {
+        return false;
+    }
+    match page {
+        DisplayPage::Audio => {
+            prev.audio.phase != next.audio.phase
+                || prev.audio.envelope != next.audio.envelope
+                || prev.audio.restarts != next.audio.restarts
+                || prev.audio.dba_lsb != next.audio.dba_lsb
+        }
+        DisplayPage::Attitude => true,
+        DisplayPage::Speaker => prev.playback != next.playback,
+        DisplayPage::Ambient => overlay,
+    }
+}
+
+/// Folds the Speaker page's playback state into a snapshot. Straight copy rather
+/// than a resolution like the audio one: the phase is the state layer's rule, and
+/// the page only has to print what the state already decided.
+fn playback_diagnostics(state: &DeviceState) -> PlaybackDiagnostics {
+    PlaybackDiagnostics {
+        phase: state.playback.phase,
+        sound: state.playback.sound,
+        muted: state.playback.muted,
+        plays: state.playback.plays,
+        dropped: state.playback.dropped,
     }
 }
 
@@ -198,7 +257,12 @@ pub trait Renderer {
 /// snapshots and reports only the appearances that changed, via a callback the
 /// render layer fans out to matching renderers. Allocation-free.
 pub struct RenderController {
-    last: Option<DeviceState>,
+    /// Boxed because `DeviceState` is several kilobytes and this snapshot sits
+    /// inside `Render`, which the app hands to its render task by value — so an
+    /// inline copy would be carried down that task's fixed stack frame on top of
+    /// the frame the render path's own call chain is already using. The box is
+    /// allocated once, when the state changes, not once per frame.
+    last: Option<Box<DeviceState>>,
 }
 
 impl RenderController {
@@ -214,7 +278,7 @@ impl RenderController {
         state: &DeviceState,
         mut notify: impl FnMut(SlotAppearance),
     ) -> bool {
-        let last = self.last.as_ref();
+        let last: Option<&DeviceState> = self.last.as_deref();
         let changed = match last {
             None => true,
             Some(last) => last != state,
@@ -237,7 +301,7 @@ impl RenderController {
                     });
                 }
             }
-            self.last = Some(state.clone());
+            self.last = Some(Box::new(state.clone()));
         }
         changed
     }
@@ -282,8 +346,9 @@ mod tests {
     use super::*;
     use crate::drivers::audio::{AudioEnvelope, AudioSample};
     use crate::drivers::input::InputEvent;
+    use crate::drivers::playback::Sound;
     use crate::intent::{BusinessIntent, OperationIntent};
-    use crate::state::DeviceManager;
+    use crate::state::{DeviceManager, PlaybackPhase};
 
     const BOOT_BREATH: crate::state::Breath = crate::state::Breath {
         period_ms: 3_000,
@@ -315,6 +380,164 @@ mod tests {
     /// itself.
     fn diagnostics_for(light: LightState) -> Diagnostics {
         light_diagnostics(&state(light))
+    }
+
+    fn live_envelope() -> AudioEnvelope {
+        let mut envelope = AudioEnvelope::default();
+        let mut samples = [0_i16; crate::drivers::audio::SAMPLES_PER_COLUMN as usize];
+        samples[0] = 0x7F;
+        envelope.push(&samples);
+        envelope
+    }
+
+    #[test]
+    fn diag_repaint_waits_out_the_step() {
+        let base = Diagnostics::default();
+        let mut moved = base;
+        moved.audio.phase = AudioPhase::Recording;
+        assert!(!diag_repaint_due(
+            DisplayPage::Audio,
+            &base,
+            &moved,
+            DIAG_REPAINT_STEP_MS - 1,
+            false
+        ));
+        assert!(diag_repaint_due(
+            DisplayPage::Audio,
+            &base,
+            &moved,
+            DIAG_REPAINT_STEP_MS,
+            false
+        ));
+    }
+
+    #[test]
+    fn diag_repaint_ignores_the_wall_time_counter() {
+        let base = Diagnostics::default();
+        let mut ticked = base;
+        ticked.audio.elapsed_ms = 1_234;
+        assert!(!diag_repaint_due(
+            DisplayPage::Audio,
+            &base,
+            &ticked,
+            DIAG_REPAINT_STEP_MS,
+            false
+        ));
+    }
+
+    #[test]
+    fn diag_repaint_audio_tracks_everything_else_it_draws() {
+        let base = Diagnostics::default();
+        let mut phase = base;
+        phase.audio.phase = AudioPhase::Recording;
+        let mut envelope = base;
+        envelope.audio.envelope = live_envelope();
+        let mut restarts = base;
+        restarts.audio.restarts = 3;
+        let mut level = base;
+        level.audio.dba_lsb = 0x8000;
+        for next in [phase, envelope, restarts, level] {
+            assert!(
+                diag_repaint_due(
+                    DisplayPage::Audio,
+                    &base,
+                    &next,
+                    DIAG_REPAINT_STEP_MS,
+                    false
+                ),
+                "an Audio drift the page draws must repaint"
+            );
+        }
+    }
+
+    #[test]
+    fn diag_repaint_attitude_follows_every_snapshot() {
+        let base = Diagnostics::default();
+        let mut ticked = base;
+        ticked.audio.elapsed_ms = 10;
+        assert!(!diag_repaint_due(
+            DisplayPage::Attitude,
+            &base,
+            &ticked,
+            DIAG_REPAINT_STEP_MS - 1,
+            false
+        ));
+        assert!(diag_repaint_due(
+            DisplayPage::Attitude,
+            &base,
+            &ticked,
+            DIAG_REPAINT_STEP_MS,
+            false
+        ));
+    }
+
+    #[test]
+    fn diag_repaint_ambient_only_for_the_overlay() {
+        let base = Diagnostics::default();
+        let mut ticked = base;
+        ticked.audio.phase = AudioPhase::Recording;
+        assert!(!diag_repaint_due(
+            DisplayPage::Ambient,
+            &base,
+            &ticked,
+            DIAG_REPAINT_STEP_MS,
+            false
+        ));
+        assert!(diag_repaint_due(
+            DisplayPage::Ambient,
+            &base,
+            &ticked,
+            DIAG_REPAINT_STEP_MS,
+            true
+        ));
+    }
+
+    #[test]
+    fn diag_repaint_speaker_tracks_the_row_it_stamps() {
+        let base = Diagnostics::default();
+        let mut playing = base;
+        playing.playback.phase = PlaybackPhase::Playing;
+        let mut source = base;
+        source.playback.sound = Sound::Asset;
+        let mut muted = base;
+        muted.playback.muted = true;
+        let mut played = base;
+        played.playback.plays = 7;
+        let mut dropped = base;
+        dropped.playback.dropped = 2;
+        for next in [playing, source, muted, played, dropped] {
+            assert!(
+                diag_repaint_due(
+                    DisplayPage::Speaker,
+                    &base,
+                    &next,
+                    DIAG_REPAINT_STEP_MS,
+                    false
+                ),
+                "a playback drift the Speaker page stamps must repaint even with the overlay off"
+            );
+        }
+    }
+
+    #[test]
+    fn diag_repaint_speaker_ignores_a_drift_it_does_not_draw() {
+        let base = Diagnostics::default();
+        // The envelope is live on every poll, so a Speaker-page predicate that
+        // accepted it would ship a full frame every step for the whole session.
+        let mut drifting = base;
+        drifting.audio.envelope = live_envelope();
+        for overlay in [false, true] {
+            assert!(
+                !diag_repaint_due(
+                    DisplayPage::Speaker,
+                    &base,
+                    &drifting,
+                    DIAG_REPAINT_STEP_MS,
+                    overlay
+                ),
+                "the Speaker page stamps no envelope, so the overlay flag must not re-open it"
+            );
+        }
     }
 
     #[test]

@@ -19,6 +19,12 @@ pub const SLOTS_PER_FRAME: u32 = 2;
 /// Bytes one 16-bit sample occupies, little-endian like the wire.
 pub const BYTES_PER_SAMPLE: u16 = 2;
 
+/// Bytes one whole I2S frame occupies on the wire: its slots, each one sample
+/// wide. The unit a playback ring is measured in, and the reason a mono source
+/// has to be widened before it reaches the DMA rather than sized for one slot —
+/// see `playback::interleave_mono`.
+pub const BYTES_PER_FRAME: usize = SLOTS_PER_FRAME as usize * BYTES_PER_SAMPLE as usize;
+
 /// Capture cadence: how often the input loop polls the capture, and so how much
 /// audio can be waiting when it gets there. A whole multiple of the input
 /// loop's base tick, like every other source's cadence.
@@ -210,6 +216,10 @@ pub struct AudioEnvelope {
     weighted_sum_squares: u64,
     /// The A-weighting filter the weighted columns are folded through.
     weight: AWeight,
+    /// The dBA number, riding the same weighted samples the weighted columns
+    /// are folded from. It lives here because that is where the one cascade
+    /// already runs — see [`DbaMeter`] for why it owns no filter of its own.
+    dba: DbaMeter,
     /// Samples folded into the current window.
     filled: u16,
     /// Latched by any column that reached [`FULL_SCALE_LSB`]. A clip is an
@@ -246,6 +256,7 @@ impl AudioEnvelope {
         sum_squares: 0,
         weighted_sum_squares: 0,
         weight: AWeight::new(),
+        dba: DbaMeter::new(),
         filled: 0,
         clipped: false,
         columns_since_clip: None,
@@ -262,6 +273,7 @@ impl AudioEnvelope {
             self.peak = self.peak.max(square as u16);
             self.sum_squares += u64::from(square * square);
             let weighted = self.weight.filter(sample);
+            self.dba.update(weighted);
             let wsquare = u32::from(weighted.unsigned_abs());
             self.weighted_peak = self.weighted_peak.max(wsquare as u16);
             self.weighted_sum_squares += u64::from(wsquare * wsquare);
@@ -299,6 +311,13 @@ impl AudioEnvelope {
         self.weighted_peak = 0;
         self.weighted_sum_squares = 0;
         self.filled = 0;
+    }
+
+    /// The A-weighted level as an RMS in LSB, saturating after the sample the
+    /// meter last folded. Zero until the first samples arrive, and it settles
+    /// back toward it after the room goes quiet — the fall itself is the meter.
+    pub const fn dba_lsb(&self) -> u16 {
+        self.dba.level_lsb()
     }
 
     /// The whole window, oldest column first. Columns past [`Self::committed`]
@@ -461,8 +480,6 @@ const DECODE_BATCH: usize = 64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SampleStream {
     envelope: AudioEnvelope,
-    /// The A-weighted, slowly-averaged level riding along on [`push_bytes`](Self::push_bytes).
-    dba: DbaMeter,
     /// High byte of a sample whose low byte had not arrived yet.
     pending: Option<u8>,
 }
@@ -471,7 +488,6 @@ impl SampleStream {
     pub const fn new() -> Self {
         Self {
             envelope: AudioEnvelope::ZERO,
-            dba: DbaMeter::new(),
             pending: None,
         }
     }
@@ -487,7 +503,6 @@ impl SampleStream {
                 return;
             };
             let sample = i16::from_le_bytes([hi, lo]);
-            self.dba.update(sample);
             self.envelope.push(&[sample]);
             rest = tail;
         }
@@ -496,7 +511,6 @@ impl SampleStream {
         for pair in rest.chunks_exact(2) {
             let sample = i16::from_le_bytes([pair[0], pair[1]]);
             samples[filled] = sample;
-            self.dba.update(sample);
             filled += 1;
             if filled == DECODE_BATCH {
                 self.envelope.push(&samples);
@@ -522,10 +536,9 @@ impl SampleStream {
     /// meter last folded. Zero until the first bytes arrive, and it settles
     /// back toward it after the room goes quiet — the fall itself is the meter.
     pub const fn dba_lsb(&self) -> u16 {
-        self.dba.level_lsb()
+        self.envelope.dba_lsb()
     }
 }
-
 impl Default for SampleStream {
     fn default() -> Self {
         Self::new()
@@ -581,6 +594,85 @@ impl CaptureWatchdog {
     /// that has just been re-armed and has not been polled since.
     pub fn note_progress(&mut self, now_ms: u64) {
         self.last_progress_ms = Some(now_ms);
+    }
+}
+
+/// Notices a capture whose input loop is not keeping up with the codec, by how
+/// deep the ring is rather than by whether anything was lost.
+///
+/// A healthy capture is not a ring that drains to nothing: the loop polls on a
+/// cadence of its own, so a poll that arrives on time finds about one poll's
+/// worth of audio waiting, and a loop that runs a fixed beat behind the wire
+/// settles a whole poll deeper than that for ever. So the depth that matters is
+/// not any particular number but where the ring sits between its steady state and
+/// its limit, and a warning has to sit clear of the steady state or it fires
+/// continuously and says nothing — which is what a line at two polls did, on a
+/// ring that holds three.
+///
+/// Levels are in [`BYTES_PER_POLL`] for the same reason [`ring_fill_ms`] is:
+/// a ring is drained on the poll, and the wire moves two slots a frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CaptureBacklog {
+    /// Depth at which a backlog is first called, above the steady state and
+    /// inside the ring: two and a half polls, so an input loop that has fallen a
+    /// poll and a half behind is reported while there is still half a poll of
+    /// ring left to absorb it.
+    warn_bytes: usize,
+    /// Depth at which the backlog is called over, back to the steady state's own
+    /// two polls, so a ring that dips to a normal depth counts as recovered.
+    clear_bytes: usize,
+    /// Whether the last depth reported was over the line, so a ring that stays
+    /// deep is reported once rather than on every poll.
+    backlogged: bool,
+}
+
+impl CaptureBacklog {
+    /// Judges a capture whose ring is `ring_bytes` long.
+    pub const fn new(ring_bytes: usize) -> Self {
+        // A ring that cannot hold the levels is not one this can judge, and the
+        // assert says so at compile time rather than warning about a backlog the
+        // ring has no room to have.
+        assert!(
+            ring_bytes >= BYTES_PER_POLL * 5 / 2,
+            "a ring has to hold a backlog's warn level and a poll of room"
+        );
+        Self {
+            warn_bytes: BYTES_PER_POLL * 5 / 2,
+            clear_bytes: BYTES_PER_POLL * 2,
+            backlogged: false,
+        }
+    }
+
+    /// The depth that opens a backlog, for a driver that has to describe it.
+    pub const fn warn_bytes(&self) -> usize {
+        self.warn_bytes
+    }
+
+    /// The depth that closes one.
+    pub const fn clear_bytes(&self) -> usize {
+        self.clear_bytes
+    }
+
+    /// Reports the depth a poll found, and gives back the depth only on the poll
+    /// that opens a backlog — a driver logs the one, not the state.
+    pub fn report(&mut self, produced_bytes: usize) -> Option<usize> {
+        if produced_bytes < self.warn_bytes {
+            if produced_bytes <= self.clear_bytes {
+                self.backlogged = false;
+            }
+            return None;
+        }
+        if self.backlogged {
+            return None;
+        }
+        self.backlogged = true;
+        Some(produced_bytes)
+    }
+
+    /// Whether a backlog is currently called, for a driver that reports state
+    /// rather than the moment it opened.
+    pub const fn backlogged(&self) -> bool {
+        self.backlogged
     }
 }
 
@@ -868,6 +960,86 @@ mod tests {
         let mut watchdog = CaptureWatchdog::new(RING_BYTES);
         assert!(!watchdog.stalled(500, 0), "the first poll only arms it");
         assert!(watchdog.stalled(600, 0), "and silence past that is a stall");
+    }
+
+    #[test]
+    fn the_depth_a_healthy_capture_settles_at_is_not_called_a_backlog() {
+        // The regression this rule exists for. A poll that arrives on time finds
+        // about one poll of audio waiting, and a loop running a fixed beat behind
+        // the wire settles a whole poll deeper than that for ever — so a line at
+        // two polls sits exactly on the steady state and fires on every poll, on
+        // a ring that holds three and was never filling. The depths below are
+        // what the panel actually reported while the ring stayed healthy.
+        let mut backlog = CaptureBacklog::new(RING_BYTES);
+        for produced in [7_708, 7_934, 8_188] {
+            assert_eq!(
+                backlog.report(produced),
+                None,
+                "a ring {produced} B deep is the steady state, not a backlog"
+            );
+            assert!(!backlog.backlogged());
+        }
+    }
+
+    #[test]
+    fn a_backlog_is_reported_once_and_stays_reported_until_the_ring_recovers() {
+        let mut backlog = CaptureBacklog::new(RING_BYTES);
+        let opened = backlog.report(BYTES_PER_POLL * 3);
+        assert_eq!(
+            opened,
+            Some(BYTES_PER_POLL * 3),
+            "the poll that opens a backlog gives its depth back to be logged"
+        );
+        assert!(backlog.backlogged());
+        assert_eq!(
+            backlog.report(BYTES_PER_POLL * 3),
+            None,
+            "a ring that stays deep is one backlog, not a new one every poll"
+        );
+        // Between the two levels the backlog stands: a ring dipping to just under
+        // the warn line has not recovered, it is still behind.
+        assert_eq!(backlog.report(BYTES_PER_POLL * 5 / 2 - 1), None);
+        assert!(backlog.backlogged());
+    }
+
+    #[test]
+    fn a_ring_back_at_its_steady_depth_has_recovered() {
+        let mut backlog = CaptureBacklog::new(RING_BYTES);
+        backlog.report(BYTES_PER_POLL * 3);
+        backlog.report(BYTES_PER_POLL * 2);
+        assert!(
+            !backlog.backlogged(),
+            "two polls is where a healthy loop sits, so the backlog is over"
+        );
+        assert_eq!(
+            backlog.report(BYTES_PER_POLL * 2),
+            None,
+            "and a ring that stays there does not re-open it"
+        );
+    }
+
+    #[test]
+    fn the_backlog_levels_sit_clear_of_the_steady_state_and_inside_the_ring() {
+        // Quoted rather than derived, because both numbers come from hardware
+        // that is not here: the steady state is what the panel reported, and the
+        // ring is what the driver sizes. A warn level at or under the steady
+        // state would warn continuously again, and a level with no ring left above
+        // it would warn too late to be worth anything.
+        let backlog = CaptureBacklog::new(RING_BYTES);
+        assert_eq!(backlog.warn_bytes(), 9_600);
+        assert_eq!(backlog.clear_bytes(), 7_680);
+        assert!(
+            backlog.warn_bytes() > 8_188,
+            "the deepest steady-state depth measured on hardware, 2.13 polls"
+        );
+        assert!(
+            RING_BYTES > backlog.warn_bytes(),
+            "and the ring has to hold the warn level with room to spare"
+        );
+        assert!(
+            backlog.clear_bytes() < backlog.warn_bytes(),
+            "the clear level is what stops a backlog being reported for ever"
+        );
     }
 
     fn full_scale() -> Vec<i16> {

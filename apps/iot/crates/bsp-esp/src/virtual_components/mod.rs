@@ -2,6 +2,10 @@
 pub mod audio;
 #[cfg(feature = "audio")]
 pub use audio::Es7210Rx;
+#[cfg(feature = "audio-out")]
+pub mod audio_out;
+#[cfg(feature = "audio-out")]
+pub use audio_out::Es8311Tx;
 #[cfg(feature = "display-light")]
 pub mod display_light;
 #[cfg(feature = "display-light")]

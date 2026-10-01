@@ -13,21 +13,19 @@ use esp_hal::i2s::master::I2sRxDmaTransfer;
 use esp_hal::i2s::master::{Channels, DataFormat, TdmConfig};
 use esp_hal::time::Rate;
 use iot_core::drivers::audio::{
-    AudioSample, AudioSource, BYTES_PER_POLL, CaptureWatchdog, CornerStep, CornerSweep,
-    SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
+    AudioSample, AudioSource, BYTES_PER_POLL, CaptureBacklog, CaptureWatchdog, CornerStep,
+    CornerSweep, SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
 };
 
 use crate::components::es7210::{HPF_CORNER, HPF_CORNER_CODES, HpfCorner, SPL_OFFSET_DECIBELS};
 
-/// One-shot corner walk at boot, a field aid for telling a room that is genuinely
-/// noisy from one that only sounds noisy below the filter's corner. A
-/// compile-time switch (not a Cargo feature) for the same reason the panel's
-/// debug rows are one: it measures rather than renders, so a production build
-/// turns it off by setting this to `false` and the walk — and the four register
-/// writes per code that come with it — leaves the binary entirely.
+/// One-shot corner walk at boot, a field aid for telling a genuinely noisy room from
+/// one that only sounds noisy below the filter's corner. A compile-time switch (not a
+/// Cargo feature) because it measures rather than renders: a production build sets it to
+/// `false` and the walk leaves the binary entirely.
 ///
-/// It walks every corner and returns to [`HPF_CORNER`], so it costs one boot's
-/// settling and nothing after: the walk drops itself when it is done.
+/// Walks every corner then returns to [`HPF_CORNER`], so it costs one boot's settling
+/// and nothing after.
 const HPF_CORNER_WALK: bool = true;
 
 /// Reports the envelope's floor and peak live, every [`CAL_LOG_MS`], for the
@@ -50,24 +48,21 @@ const CHUNK_BYTES: usize = 480;
 /// apart.
 const STREAM_BYTES: usize = BYTES_PER_POLL * 3;
 
-/// Warn once two poll periods are waiting. A poll that arrives on time finds
-/// about one period of audio waiting, so this is crossed only once the input loop
-/// is a whole poll behind — past that the loop is the thing falling behind, not
-/// the codec, and it is worth saying out loud.
-const BACKLOG_WARN_BYTES: usize = BYTES_PER_POLL * 2;
-
-/// Ring depth below which the backlog counts as cleared: one poll period, so a
-/// poll hovering on the line does not re-warn every 20 ms.
-const BACKLOG_CLEAR_BYTES: usize = BYTES_PER_POLL;
-
 /// The sizing rule the ring and the watchdog are both derived from, asserted
 /// because a board that gets it wrong finds out from a capture that looks alive
 /// and is not — the one symptom a diagnostic on this path cannot tell from a
-/// quiet room.
+/// quiet room. The backlog's levels are checked against the ring where they are
+/// defined, in [`CaptureBacklog::new`].
 const _: () = assert!(
     STREAM_BYTES >= BYTES_PER_POLL * 2,
     "the capture ring must hold two poll periods, or a late poll overruns it"
 );
+
+/// Bytes one drain may fold, so no single poll can hold the shared executor for
+/// a whole backlog. A poll's worth arrives every [`CAPTURE_MS`], so two periods
+/// of budget catches a backlog up at the rate it builds while capping the hold at
+/// half the period it runs in. See [`Es7210Rx::drain`](super::Es7210Rx::drain).
+const DRAIN_BYTES_PER_POLL: usize = BYTES_PER_POLL * 2;
 
 /// The transfer a capture runs on. Named so a board can hold one without naming
 /// a DMA buffer type, and so the `'static` the boxed capture source needs is
@@ -99,10 +94,9 @@ pub fn stream() -> DmaRxStreamBuf {
 /// Dropping it stops the transfer, so a board that takes the source out of
 /// `take_audio` and drops it also releases the peripheral.
 ///
-/// `C` is the codec driver, held rather than dropped after bring-up: the ring
-/// alone cannot be reconfigured, and the corner walk needs the part to be
-/// reachable for the half minute it lasts. It is reached only through
-/// [`HpfCorner`], so no I2C or register detail reaches the capture.
+/// `C` is held rather than dropped after bring-up: the corner walk needs the part
+/// reachable for the half minute it lasts. Reached only through [`HpfCorner`], so no
+/// I2C or register detail reaches the capture.
 pub struct Es7210Rx<C> {
     /// `None` once a re-arm has failed — the one state a capture cannot come
     /// back from, since a re-arm that does not take has no ring to put back in
@@ -113,9 +107,10 @@ pub struct Es7210Rx<C> {
     /// Notices the DMA stopping. The transfer cannot report it itself, so the
     /// capture is timed against the clock — see [`CaptureWatchdog`].
     watchdog: CaptureWatchdog,
-    /// Latches once a deep backlog has been reported, so a starved input loop
-    /// warns once instead of on every poll.
-    backlogged: bool,
+    /// Judges how deep the ring is, so a starved input loop warns once instead of
+    /// on every poll — and so the level it warns at is one the steady state
+    /// cannot reach. See [`CaptureBacklog`].
+    backlog: CaptureBacklog,
     /// Repairs made so far, reported to the panel beside the column count.
     restarts: u16,
     /// The corner walk, while one is running. `None` once it is done or has been
@@ -145,7 +140,7 @@ impl<C> Es7210Rx<C> {
             transfer: Some(transfer),
             stream: SampleStream::new(),
             watchdog: CaptureWatchdog::new(STREAM_BYTES),
-            backlogged: false,
+            backlog: CaptureBacklog::new(STREAM_BYTES),
             restarts: 0,
             walk: HPF_CORNER_WALK.then_some(CornerSweep::new(HPF_CORNER_CODES)),
             last_cal_log_ms: 0,
@@ -156,14 +151,11 @@ impl<C> Es7210Rx<C> {
     /// Advances the corner walk by one poll and reports what the envelope says
     /// once a code has settled.
     ///
-    /// Takes the walk out of `self` for the length of the step, because a step
-    /// both reads the walk and reaches the codec and the two are fields of the
-    /// same struct. A write that fails abandons the walk rather than retrying:
-    /// a codec that will not take a corner write is not going to take the next
-    /// one either, and a walk that limps on would report levels from a part in
-    /// a state nobody can name. Either way the corner goes back to
-    /// [`HPF_CORNER`] on the way out, so a walk that ends early cannot leave the
-    /// input stage more open than it found it.
+    /// Takes the walk out of `self` for the step, because a step both reads the walk and
+    /// reaches the codec — fields of the same struct. A failed write abandons the walk: a
+    /// codec that will not take a corner write will not take the next either, and a walk
+    /// that limps on would report levels from an unnameable state. Either way the corner
+    /// returns to [`HPF_CORNER`], so an early exit cannot leave the stage more open.
     fn step_walk(&mut self, now_ms: u64)
     where
         C: HpfCorner,
@@ -172,10 +164,7 @@ impl<C> Es7210Rx<C> {
         let Some(mut walk) = self.walk.take() else {
             return;
         };
-        let write = |codec: &mut C, corner: u8| match codec.set_hpf_corner(corner) {
-            Ok(()) => None,
-            Err(error) => Some(error),
-        };
+        let write = |codec: &mut C, corner: u8| codec.set_hpf_corner(corner).err();
         let step = walk.step(now_ms);
         self.walk = match step {
             CornerStep::Settling => Some(walk),
@@ -215,19 +204,26 @@ impl<C> Es7210Rx<C> {
         }
     }
 
-    /// Folds everything the DMA has finished into the envelope, in a loop rather
-    /// than one descriptor per poll so a late poll costs a column rather than a
-    /// widening gap. A partly filled descriptor is folded as it stands, the
-    /// trailing-byte carry in [`SampleStream`] making a mid-sample boundary free.
+    /// Folds what the DMA has finished into the envelope, in a bounded loop rather
+    /// than one descriptor per poll: a late poll costs a column, not a widening gap.
+    /// A partly filled descriptor folds as it stands, the trailing-byte carry in
+    /// [`SampleStream`] making a mid-sample boundary free.
+    ///
+    /// The bound is what keeps the capture from starving the machine: folding a sample
+    /// runs a sixth-order IIR, so draining a full [`STREAM_BYTES`] ring at once holds the
+    /// shared executor for tens of milliseconds — long enough for the playback ring to
+    /// empty underneath it. Two poll periods catches up while capping the hold.
     fn drain(&mut self) {
         let Some(transfer) = self.transfer.as_mut() else {
             return;
         };
-        while transfer.available_bytes() > 0 {
+        let mut budget = DRAIN_BYTES_PER_POLL;
+        while budget > 0 && transfer.available_bytes() > 0 {
             let descriptor = transfer.peek();
-            let len = descriptor.len();
-            self.stream.push_bytes(descriptor);
+            let len = descriptor.len().min(budget);
+            self.stream.push_bytes(&descriptor[..len]);
             transfer.consume(len);
+            budget -= len;
         }
     }
 
@@ -283,13 +279,10 @@ where
             Some(transfer) => transfer.available_bytes(),
             None => return self.summary(now_ms),
         };
-        if produced >= BACKLOG_WARN_BYTES && !self.backlogged {
+        if let Some(produced) = self.backlog.report(produced) {
             log::warn!(
                 "[AUDIO] capture ring {produced} B deep, the input loop is behind the codec"
             );
-            self.backlogged = true;
-        } else if produced <= BACKLOG_CLEAR_BYTES {
-            self.backlogged = false;
         }
         self.drain();
         // What arrived before the drain, not what is left after it: a ring drained

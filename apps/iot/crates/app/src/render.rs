@@ -2,9 +2,10 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::input::IntentBus;
+use crate::playback::{PlaybackBus, PlaybackCommand};
 use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::channel::{Channel, TrySendError};
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::diagnostics::DiagnosticsSink;
 use iot_core::drivers::light::{
@@ -14,7 +15,7 @@ use iot_core::intent::Intent;
 use iot_core::render::{
     Activity, LightAppearance, RenderController, Renderer, Slot, SlotAppearance,
 };
-use iot_core::state::{Breath, DeviceManager, DeviceState};
+use iot_core::state::{Breath, DeviceManager, DeviceState, PlaybackPhase, PlaybackState};
 
 /// Frame cadence of the render loop.
 pub const STEP_MS: u32 = 20;
@@ -139,12 +140,11 @@ impl Default for Render {
     }
 }
 
-/// Renderer for one physical light surface: the WS2812 strip on the DevKitC-1
-/// or the ST7789 panel (with its LEDC backlight) on the S3 board. Breathing is
-/// time-driven: the render layer steps it every tick to produce frames from
-/// the schedule. A surface subscribes to its own light slot plus the
-/// device-level diagnostics, forwarding the snapshot to the light bus it
-/// sinks (the panel overlays the digits; a plain strip ignores them).
+/// Renderer for one physical light surface: the WS2812 strip on the DevKitC-1 or the
+/// ST7789 panel (with its LEDC backlight) on the S3 board. Breathing is time-driven:
+/// the render layer steps it every tick to produce frames from the schedule. A surface
+/// subscribes to its own light slot plus the device-level diagnostics, forwarding the
+/// snapshot to the light bus it sinks.
 pub struct LightRenderer<R: RgbLight + DiagnosticsSink> {
     instance: u8,
     light: R,
@@ -176,10 +176,9 @@ impl<R: RgbLight + DiagnosticsSink> LightRenderer<R> {
         }
     }
 
-    /// Paint one breathing frame and the matching backlight level. `drive`
-    /// only rewrites panel RAM when the color moved at least `repaint_step`,
-    /// but the backlight tracks the envelope on every tick so the PWM ramps
-    /// smoothly.
+    /// Paint one breathing frame and the matching backlight level. `drive` only
+    /// rewrites panel RAM when the color moved at least `repaint_step`, but the
+    /// backlight tracks the envelope on every tick so the PWM ramps smoothly.
     fn draw(&mut self, now_ms: u32, breath: Breath) {
         let color = breath_frame(now_ms, breath);
         self.drive(Fill::Uniform, color);
@@ -271,18 +270,19 @@ fn backlight_for(now_ms: u32, breath: Breath) -> u8 {
     )
 }
 
-/// Render loop: drains the management pipe, interpreting operation intents
-/// against the manager (the pipeline context) and applying business intents
-/// wholesale, and parks on the intent/render buses once the surface settles
-/// instead of busy-stepping.
+/// Render loop: drains the management pipe, interpreting operation intents against the
+/// manager (the pipeline context) and applying business intents wholesale, and parks on
+/// the intent/render buses once the surface settles instead of busy-stepping.
 pub async fn render_loop(
     intent_bus: &'static IntentBus,
     render_bus: &'static RenderBus,
+    playback_bus: &'static PlaybackBus,
     mut render: Render,
-    mut manager: DeviceManager,
+    manager: &mut DeviceManager,
 ) -> ! {
     let mut elapsed_ms: u32 = 0;
     let mut next_frame: Instant = Instant::now();
+    let mut playback = PlaybackDispatch::new(manager.playback_state());
     loop {
         while let Ok(intent) = intent_bus.try_receive() {
             match intent {
@@ -299,6 +299,11 @@ pub async fn render_loop(
                 // drive) goes straight to the state.
                 Intent::Business(business) => manager.apply_business(business),
             }
+            // What travels to the driver is the diff against what the driver
+            // has been told, and not the intent: the state layer is what decides
+            // a tap was heard, so a command built from the intent alone would
+            // replay a sound it just dropped.
+            playback.dispatch(playback_bus, manager.playback_state());
         }
         let active = render.tick(render_bus, &manager.state(), elapsed_ms);
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
@@ -314,6 +319,68 @@ pub async fn render_loop(
             // Re-anchor so missed frames while parked do not replay as a burst
             // when the light resumes animating.
             next_frame = Instant::now();
+        }
+    }
+}
+
+/// What changed between two playback states, as the commands that would carry
+/// that change to the driver.
+///
+/// A diff rather than a translation because the state layer owns both rules: it
+/// knows a tap over a sounding one was dropped, and a command built from the
+/// intent would not. The finish needs no command — it is the driver reporting
+/// back, not the state asking — so it is not here.
+struct PlaybackDispatch {
+    phase: PlaybackPhase,
+    muted: bool,
+}
+
+impl PlaybackDispatch {
+    /// Starts from what the state already says, which on a board that has just
+    /// come up is a speaker nobody has asked to play anything on.
+    fn new(state: PlaybackState) -> Self {
+        Self {
+            phase: state.phase,
+            muted: state.muted,
+        }
+    }
+
+    /// Carries the difference to the driver, and reports nothing.
+    ///
+    /// A diff is taken against **what the driver has been told**, not against the
+    /// previous intent's state, because a full bus is the one case where those come
+    /// apart. A play dropped instead of queued would leave the page in `Playing`
+    /// with nothing that can ever finish it, so a change that does not fit stays
+    /// pending and is asked for again on the next pass.
+    fn dispatch(&mut self, bus: &PlaybackBus, after: PlaybackState) {
+        if after.muted != self.muted && queue(bus, PlaybackCommand::SetMuted(after.muted)) {
+            self.muted = after.muted;
+        }
+        match after.phase {
+            // The finish is the driver's word and the driver is the only thing
+            // that has it, so this record only ever follows the state out of
+            // `Playing`; starting a sound is this side's to ask for.
+            PlaybackPhase::Idle => self.phase = PlaybackPhase::Idle,
+            PlaybackPhase::Playing if self.phase != PlaybackPhase::Playing => {
+                if queue(bus, PlaybackCommand::Play(after.sound)) {
+                    self.phase = PlaybackPhase::Playing;
+                }
+            }
+            PlaybackPhase::Playing => {}
+        }
+    }
+}
+
+/// Queues a command, reporting whether it went in. The bus is never waited on:
+/// the render loop is the reader of the intent bus, and a `Play` that blocked
+/// here while the playback task was blocked reporting a finish into a full
+/// intent bus would be a cycle with no way out of it.
+fn queue(bus: &PlaybackBus, command: PlaybackCommand) -> bool {
+    match bus.try_send(command) {
+        Ok(()) => true,
+        Err(TrySendError::Full(command)) => {
+            log::error!("[PLAY] {command:?} had no room, asking again");
+            false
         }
     }
 }

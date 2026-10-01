@@ -12,6 +12,7 @@ button = ["dep:esp-hal"]
 pca9557 = ["dep:embedded-hal"]
 qmi8658 = ["dep:embedded-hal"]
 es7210 = ["dep:embedded-hal"]
+es8311 = ["dep:embedded-hal"]
 ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
 ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
 st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
@@ -22,8 +23,12 @@ st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 display-light = ["st7789", "es7210"]
 # The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
 audio = ["es7210", "dep:esp-hal"]
+# The playback side: the DAC driver, and a ring in DMA memory for the
+# transport. It does not depend on the capture, because a speaker with no
+# microphone is a real board and the other way round.
+audio-out = ["es8311", "dep:esp-hal"]
 esp32c6-devkitc-1 = ["button", "ws2812"]
-lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }

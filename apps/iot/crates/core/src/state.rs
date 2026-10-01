@@ -6,6 +6,7 @@ use crate::drivers::input::{
 };
 use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
+use crate::drivers::playback::Sound;
 use crate::intent::{BusinessIntent, OperationIntent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -14,6 +15,7 @@ pub enum DisplayPage {
     Ambient,
     Attitude,
     Audio,
+    Speaker,
 }
 
 impl DisplayPage {
@@ -23,14 +25,23 @@ impl DisplayPage {
     /// back to `Ambient` instead of stranding the cycle, and a board with
     /// neither capability stays on `Ambient` as it did when the cycle was
     /// motion-gated.
-    pub const fn next_page(&self, motion_enabled: bool, audio_enabled: bool) -> Self {
-        match (*self, motion_enabled, audio_enabled) {
-            (Self::Ambient, true, _) => Self::Attitude,
-            (Self::Ambient, false, true) => Self::Audio,
-            (Self::Ambient, false, false) => Self::Ambient,
-            (Self::Attitude, _, true) => Self::Audio,
-            (Self::Attitude, _, false) => Self::Ambient,
-            (Self::Audio, _, _) => Self::Ambient,
+    pub const fn next_page(
+        &self,
+        motion_enabled: bool,
+        audio_enabled: bool,
+        playback_enabled: bool,
+    ) -> Self {
+        match (*self, motion_enabled, audio_enabled, playback_enabled) {
+            (Self::Ambient, true, _, _) => Self::Attitude,
+            (Self::Ambient, false, true, _) => Self::Audio,
+            (Self::Ambient, false, false, true) => Self::Speaker,
+            (Self::Ambient, false, false, false) => Self::Ambient,
+            (Self::Attitude, _, true, _) => Self::Audio,
+            (Self::Attitude, _, false, true) => Self::Speaker,
+            (Self::Attitude, _, false, false) => Self::Ambient,
+            (Self::Audio, _, _, true) => Self::Speaker,
+            (Self::Audio, _, _, false) => Self::Ambient,
+            (Self::Speaker, _, _, _) => Self::Ambient,
         }
     }
 }
@@ -66,6 +77,11 @@ pub struct DeviceState {
     /// page nor stores the envelope.
     pub audio_enabled: bool,
     pub audio: AudioState,
+    /// Whether this board wired playback. Gates the Speaker page and every
+    /// playback move, the same way `audio_enabled` gates the Audio page — a
+    /// board with no speaker shows no page and counts no plays.
+    pub playback_enabled: bool,
+    pub playback: PlaybackState,
     /// Most recent touch snapshot, mirroring the lights' absolute-target
     /// contract: the render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -239,6 +255,63 @@ impl AudioState {
     }
 }
 
+/// Playback phase the Speaker page drives. A sound is a one-shot: the driver
+/// reports it finished, and only then is the next tap heard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PlaybackPhase {
+    /// Nothing sounding: the next tap starts the page's sound.
+    #[default]
+    Idle,
+    /// A sound is sounding. A tap in this phase is counted, not heard.
+    Playing,
+}
+
+/// Playback state behind the Speaker page.
+///
+/// Small enough to sit in the state and its diagnostics snapshot alike: the
+/// sounds themselves are the driver's, and this only records which one the page
+/// holds, whether the output is latched quiet, and what the taps did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaybackState {
+    pub phase: PlaybackPhase,
+    /// The sound a tap plays, and the page's `SRC` row. Advances on every
+    /// accepted tap, so the page shows what the *next* tap will play rather
+    /// than echoing the last one.
+    pub sound: Sound,
+    /// The output latch. Held here rather than in the driver so a codec that
+    /// resets itself cannot un-mute the speaker behind the panel's back.
+    pub muted: bool,
+    /// Sounds actually started; the panel's `PLY` row.
+    pub plays: u16,
+    /// Taps that arrived while a sound was sounding and were therefore not
+    /// heard; the panel's second `PLY` figure, so a busy finger is visible as a
+    /// number rather than as a sound that did not happen.
+    pub dropped: u16,
+}
+
+impl Default for PlaybackState {
+    fn default() -> Self {
+        Self::boot()
+    }
+}
+
+impl PlaybackState {
+    /// The state a board boots into: idle, on the first sound, audible. Mute
+    /// starts off because a boot that is silent would read as a dead speaker,
+    /// and the codec's own reset already leaves the DAC unmuted.
+    pub const BOOT: Self = Self {
+        phase: PlaybackPhase::Idle,
+        sound: Sound::Chime,
+        muted: false,
+        plays: 0,
+        dropped: 0,
+    };
+
+    pub const fn boot() -> Self {
+        Self::BOOT
+    }
+}
+
 /// The per-lift data a resolved touch gesture carries into its tally: the
 /// slot's last [`FingerLast`], the hold and endpoints; the counter bump and
 /// target light are passed alongside.
@@ -294,6 +367,8 @@ impl DeviceManager {
                 motion_caps,
                 audio_enabled: false,
                 audio: AudioState::boot(),
+                playback_enabled: false,
+                playback: PlaybackState::boot(),
                 touch: None,
                 touch_points: [None; MAX_TRACKED_POINTS],
                 live_dir: [0; MAX_TRACKED_POINTS],
@@ -322,6 +397,15 @@ impl DeviceManager {
     /// the app's composition point reads better as two explicit facts.
     pub const fn with_audio(mut self, audio_enabled: bool) -> Self {
         self.state.audio_enabled = audio_enabled;
+        self
+    }
+
+    /// Chains the playback capability on, so a board declares its speaker and
+    /// the page that shows it in one place — the same shape as
+    /// [`Self::with_audio`], and independent of it: a board can capture, play,
+    /// both or neither.
+    pub const fn with_playback(mut self, playback_enabled: bool) -> Self {
+        self.state.playback_enabled = playback_enabled;
         self
     }
 
@@ -540,10 +624,11 @@ impl DeviceManager {
                 self.apply_to(usize::from(instance), state)
             }
             BusinessIntent::TogglePage => {
-                self.state.page = self
-                    .state
-                    .page
-                    .next_page(self.state.motion_enabled, self.state.audio_enabled);
+                self.state.page = self.state.page.next_page(
+                    self.state.motion_enabled,
+                    self.state.audio_enabled,
+                    self.state.playback_enabled,
+                );
             }
             BusinessIntent::ToggleRecord => {
                 if self.state.audio_enabled {
@@ -554,6 +639,44 @@ impl DeviceManager {
                         }
                         AudioPhase::Idle | AudioPhase::Stopped => AudioPhase::Recording,
                     };
+                }
+            }
+            // Advances to the next sound and starts it. The phase is the whole
+            // rule: a sound is a one-shot, so a tap over a sounding one is
+            // tallied and dropped rather than cutting the current sound off —
+            // restarting mid-note is a click, and the count is what tells the
+            // user their taps were heard.
+            BusinessIntent::PlayNext => {
+                if self.state.playback_enabled {
+                    match self.state.playback.phase {
+                        PlaybackPhase::Playing => {
+                            self.state.playback.dropped =
+                                self.state.playback.dropped.saturating_add(1);
+                        }
+                        PlaybackPhase::Idle => {
+                            self.state.playback.sound = self.state.playback.sound.next();
+                            self.state.playback.phase = PlaybackPhase::Playing;
+                            self.state.playback.plays = self.state.playback.plays.saturating_add(1);
+                        }
+                    }
+                }
+            }
+            // A latch, not a moment: the long press flips it and the next press
+            // flips it back, so muting does not need a second gesture to undo
+            // and the page can show which way it stands.
+            BusinessIntent::ToggleMute => {
+                if self.state.playback_enabled {
+                    self.state.playback.muted = !self.state.playback.muted;
+                }
+            }
+            // The driver's own report that a sound ran out. Ignored unless one
+            // was sounding, so a late or duplicated report cannot knock the
+            // page out of phase with the driver.
+            BusinessIntent::PlaybackFinished => {
+                if self.state.playback_enabled
+                    && self.state.playback.phase == PlaybackPhase::Playing
+                {
+                    self.state.playback.phase = PlaybackPhase::Idle;
                 }
             }
         }
@@ -652,6 +775,12 @@ impl DeviceManager {
 
     pub fn motion_counts_state(&self) -> MotionCounts {
         self.state.motion_counts
+    }
+
+    /// Playback state, read by the render loop to draw the Speaker page and to
+    /// decide whether a play it just applied has to reach the driver.
+    pub fn playback_state(&self) -> PlaybackState {
+        self.state.playback
     }
 }
 
@@ -1021,20 +1150,20 @@ mod tests {
         #[test]
         fn the_audio_page_only_appears_on_a_board_that_has_one() {
             assert_eq!(
-                DisplayPage::Ambient.next_page(true, false),
+                DisplayPage::Ambient.next_page(true, false, false),
                 DisplayPage::Attitude
             );
             assert_eq!(
-                DisplayPage::Attitude.next_page(true, false),
+                DisplayPage::Attitude.next_page(true, false, false),
                 DisplayPage::Ambient,
                 "a board without audio skips the page"
             );
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, true),
+                DisplayPage::Ambient.next_page(false, true, false),
                 DisplayPage::Audio
             );
             assert_eq!(
-                DisplayPage::Attitude.next_page(true, true),
+                DisplayPage::Attitude.next_page(true, true, false),
                 DisplayPage::Audio
             );
         }
@@ -1162,6 +1291,223 @@ mod tests {
             // An invalid intent is a no-op.
             manager.apply_business(BusinessIntent::Invalid);
             assert_eq!(manager.light_state(), solid, "an invalid intent is a no-op");
+        }
+    }
+
+    mod playback {
+        use super::*;
+        use crate::drivers::playback::Sound;
+
+        /// A board with all three capabilities, parked on the Speaker page. Every
+        /// capability is on so a case can also assert the cycle, and the taps
+        /// are looped rather than counted so the helper does not have to be
+        /// rewritten when a page is added.
+        fn on_speaker() -> DeviceManager {
+            let mut manager = DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
+                .with_audio(true)
+                .with_playback(true);
+            for _ in 0..=3 {
+                if manager.state().page == DisplayPage::Speaker {
+                    break;
+                }
+                apply_page(&mut manager, triple_tap());
+            }
+            assert_eq!(manager.state().page, DisplayPage::Speaker);
+            manager
+        }
+
+        /// Applies one operation and the business intent it resolves to, the
+        /// way the render loop does.
+        fn apply_page(manager: &mut DeviceManager, operation: OperationIntent) {
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        /// The Speaker page's play verb, from the panel or the button.
+        fn play(manager: &mut DeviceManager) {
+            let before = manager.playback_state();
+            apply_page(manager, tap());
+            if before.phase == PlaybackPhase::Playing {
+                assert_eq!(
+                    manager.playback_state().sound,
+                    before.sound,
+                    "a dropped tap must not walk the catalogue"
+                );
+            } else {
+                assert_ne!(
+                    manager.playback_state().sound,
+                    before.sound,
+                    "a heard tap advances to the next sound"
+                );
+            }
+        }
+
+        fn mute(manager: &mut DeviceManager) {
+            let before = manager.playback_state().muted;
+            apply_page(manager, long_press());
+            assert_ne!(
+                manager.playback_state().muted,
+                before,
+                "the latch flips whichever way it stood"
+            );
+        }
+
+        #[test]
+        fn the_speaker_page_only_appears_on_a_board_that_has_one() {
+            assert_eq!(
+                DisplayPage::Ambient.next_page(true, false, true),
+                DisplayPage::Attitude
+            );
+            assert_eq!(
+                DisplayPage::Audio.next_page(true, true, true),
+                DisplayPage::Speaker
+            );
+            assert_eq!(
+                DisplayPage::Audio.next_page(true, true, false),
+                DisplayPage::Ambient,
+                "a board without a speaker skips the page"
+            );
+            assert_eq!(
+                DisplayPage::Ambient.next_page(false, false, true),
+                DisplayPage::Speaker
+            );
+            // Sitting on the Speaker page with the speaker gone falls back to
+            // Ambient rather than stranding the cycle.
+            assert_eq!(
+                DisplayPage::Speaker.next_page(true, true, false),
+                DisplayPage::Ambient
+            );
+        }
+
+        #[test]
+        fn a_full_lap_walks_every_page_and_returns_home() {
+            let mut manager = on_speaker();
+            let pages = [
+                DisplayPage::Ambient,
+                DisplayPage::Attitude,
+                DisplayPage::Audio,
+            ];
+            for expected in pages {
+                manager.apply_business(BusinessIntent::TogglePage);
+                assert_eq!(manager.state().page, expected);
+            }
+            manager.apply_business(BusinessIntent::TogglePage);
+            assert_eq!(manager.state().page, DisplayPage::Speaker, "and back round");
+        }
+
+        #[test]
+        fn a_tap_plays_the_next_sound_and_a_replay_is_counted_not_heard() {
+            let mut manager = on_speaker();
+            let boot = manager.playback_state();
+            assert_eq!(boot.phase, PlaybackPhase::Idle);
+            assert_eq!(boot.sound, Sound::Chime);
+            assert!(!boot.muted, "a boot that is silent reads as dead");
+
+            play(&mut manager);
+            let played = manager.playback_state();
+            assert_eq!(played.phase, PlaybackPhase::Playing);
+            assert_eq!(played.sound, Sound::Asset, "the tap advanced the catalogue");
+            assert_eq!(played.plays, 1);
+            assert_eq!(played.dropped, 0);
+
+            // A second tap over a sounding one is tallied, not heard: the sound
+            // does not restart, and the count is what tells the user the tap
+            // was heard.
+            play(&mut manager);
+            let dropped = manager.playback_state();
+            assert_eq!(
+                dropped.phase,
+                PlaybackPhase::Playing,
+                "still the same sound"
+            );
+            assert_eq!(dropped.sound, Sound::Asset, "and not the next one");
+            assert_eq!(dropped.plays, 1, "so no second sound started");
+            assert_eq!(dropped.dropped, 1);
+
+            // The driver's own report hands the page back, and only then is the
+            // next tap heard.
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
+            play(&mut manager);
+            let second = manager.playback_state();
+            assert_eq!(second.sound, Sound::Chime, "the catalogue wrapped");
+            assert_eq!(second.plays, 2);
+            assert_eq!(second.dropped, 1, "the dropped tally is kept across plays");
+        }
+
+        #[test]
+        fn a_finish_arriving_with_nothing_playing_is_ignored() {
+            // The driver owns the only way into Playing, so a report that
+            // arrives late — or twice — must not knock the page out of step with
+            // it and let the next tap be dropped.
+            let mut manager = on_speaker();
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
+            play(&mut manager);
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            assert_eq!(
+                manager.playback_state().phase,
+                PlaybackPhase::Idle,
+                "a second finish has nothing left to finish"
+            );
+        }
+
+        #[test]
+        fn the_mute_latch_stands_until_it_is_flipped_back() {
+            let mut manager = on_speaker();
+            mute(&mut manager);
+            assert!(manager.playback_state().muted);
+            // Muting does not stop a sound that is already sounding, and it does
+            // not gate the next one: the latch is the output's, not the page's.
+            play(&mut manager);
+            let muted = manager.playback_state();
+            assert!(muted.muted, "still latched while playing");
+            assert_eq!(muted.phase, PlaybackPhase::Playing, "a play still starts");
+            mute(&mut manager);
+            assert!(
+                !manager.playback_state().muted,
+                "and one press brings it back"
+            );
+        }
+
+        #[test]
+        fn muting_twice_does_not_cancel_itself_out() {
+            // Two presses are two flips, not a double-count: the point of a latch
+            // is that a second press is a deliberate unmute.
+            let mut manager = on_speaker();
+            mute(&mut manager);
+            mute(&mut manager);
+            assert!(!manager.playback_state().muted);
+        }
+
+        #[test]
+        fn a_board_without_a_speaker_plays_nothing() {
+            let mut manager = DeviceManager::new();
+            manager.apply_business(BusinessIntent::TogglePage);
+            assert_eq!(manager.state().page, DisplayPage::Ambient, "no page either");
+            manager.apply_business(BusinessIntent::PlayNext);
+            assert_eq!(manager.playback_state(), PlaybackState::boot());
+            manager.apply_business(BusinessIntent::ToggleMute);
+            assert!(
+                !manager.playback_state().muted,
+                "an unwired board's latch is nobody's business"
+            );
+        }
+
+        #[test]
+        fn the_tallies_saturate_rather_than_wrap() {
+            // A counter that wrapped would report a long session as having
+            // played nothing, and the panel would read `0` while sounds came out.
+            let mut manager = on_speaker();
+            manager.state.playback.plays = u16::MAX;
+            manager.state.playback.dropped = u16::MAX;
+            play(&mut manager);
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            let saturated = manager.playback_state();
+            assert_eq!(saturated.plays, u16::MAX);
+            assert_eq!(saturated.dropped, u16::MAX);
         }
     }
 

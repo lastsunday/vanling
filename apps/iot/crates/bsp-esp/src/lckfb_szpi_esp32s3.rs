@@ -16,14 +16,14 @@ use esp_hal::ledc::channel::ChannelIFace as _;
 use esp_hal::ledc::timer as ledc_timer;
 use esp_hal::ledc::timer::TimerIFace as _;
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
-use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals};
+use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, Peripherals};
 use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_rx_buffer, dma_tx_buffer};
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS};
 use iot_core::drivers::board::Board as BoardTrait;
-use iot_core::drivers::board::HasAudio;
+use iot_core::drivers::board::{HasAudio, HasPlayback};
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
     TouchGestures, TouchMap,
@@ -33,6 +33,7 @@ use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput}
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
 use crate::components::es7210::{ES7210_I2C_ADDR, Es7210};
+use crate::components::es8311::{ChipId, ES8311_I2C_ADDR, ES8311_I2C_ADDR_ALT, Es8311};
 use crate::components::ft6336::{FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
 use crate::components::qmi8658::{MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi};
@@ -40,10 +41,16 @@ use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
 pub use crate::virtual_components::DisplayLight;
 use crate::virtual_components::Es7210Rx;
 use crate::virtual_components::audio as capture;
+use crate::virtual_components::audio_out as playback;
 
 const PCA9557_I2C_ADDR: u8 = 0x19;
 const LCD_CS_BIT: u8 = 1 << 0;
 const DVP_PWDN_BIT: u8 = 1 << 2;
+/// Speaker amplifier enable, high active. Driven from the expander rather than a
+/// GPIO because the pin is the board's only spare: the amplifier sits between
+/// the DAC and the speaker and its own rail, and a board that boots with it
+/// driving would pop the speaker on every reset.
+const PA_EN_PIN: u8 = 1;
 const LCD_WIDTH: u16 = 240;
 const LCD_HEIGHT: u16 = 320;
 /// Boot-time retries for the PCA9557 config write: the bus's first transaction
@@ -130,13 +137,21 @@ pub struct Board<'d> {
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
     audio: Option<Es7210Rx<Es7210<SharedI2cDevice>>>,
+    speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
+///
+/// The two software interrupts are the two executors this board runs on.
+/// `FROM_CPU_INTR0` starts the cooperative scheduler every ordinary task shares;
+/// `FROM_CPU_INTR1` is handed back for the higher-priority executor the speaker's
+/// feed runs on, because the feed has a hard deadline that a cooperative task
+/// cannot be held to.
 pub type Startup<'a> = (
     Board<'a>,
     TimerGroup<'static, esp_hal::peripherals::TIMG0<'static>>,
     FROM_CPU_INTR0<'static>,
+    FROM_CPU_INTR1<'static>,
 );
 
 impl Board<'static> {
@@ -157,9 +172,13 @@ impl Board<'static> {
             GPIO40,
             GPIO41,
             GPIO42,
+            GPIO45,
             GPIO0,
             TIMG0,
             FROM_CPU_INTR0,
+            // Handed back so the app can run the speaker's feed on its own
+            // higher-priority executor; see `Startup`.
+            FROM_CPU_INTR1,
             DMA_CH0,
             // The panel's SPI owns channel 0; capture gets the next one.
             DMA_CH1,
@@ -270,30 +289,117 @@ impl Board<'static> {
         // listening when the clocks appear; a variant with no codec fitted keeps
         // the rest of the plane alive and simply never shows the Audio page.
         let mut es7210 = Es7210::new(I2cDevice::new(bus), ES7210_I2C_ADDR);
-        let audio = match es7210.init() {
-            Ok(()) => {
-                let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, capture::tdm_config())
-                    .map_err(BoardError::I2sConfig)?
-                    .with_mclk(GPIO38);
-                let rx = i2s
-                    .i2s_rx
-                    .with_bclk(GPIO14)
-                    .with_ws(GPIO13)
-                    .with_din(GPIO12)
-                    .build();
-                let transfer = rx
-                    .read(capture::stream())
-                    .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
-                // The codec goes with the transfer rather than being dropped
-                // here: the ring cannot be reconfigured, so anything that wants
-                // to move the input stage's corner after bring-up needs the part
-                // still to hand.
-                Some(Es7210Rx::new(transfer, es7210))
-            }
+        let capture_codec = match es7210.init() {
+            Ok(()) => Some(es7210),
             Err(error) => {
                 log::warn!("[AUDIO] ES7210 not found, the Audio page stays dark: {error:?}");
                 None
             }
+        };
+
+        // ES8311 on the same bus. Probed before it is brought up, and at both
+        // addresses: the part has a single address pin, so which one a board
+        // strapped it to is a property of the board and not of the driver. A
+        // board with no DAC fitted keeps the microphone, the panel and the
+        // button, and shows no Speaker page.
+        let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
+        let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
+        let speaker_codec = if es8311.chip_id().is_ok_and(ChipId::is_expected) {
+            es8311.init().ok().map(|()| es8311)
+        } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
+            es8311_alt.init().ok().map(|()| es8311_alt)
+        } else {
+            log::warn!("[SPEAKER] ES8311 not found, the Speaker page stays dark");
+            None
+        };
+
+        // One I2S, one pair of BCLK and WS pins, two codecs, so the pin pair is
+        // wired once in either layout and both codecs are timed from one divider
+        // — a microphone and a speaker a hertz apart is a capture and a chime
+        // that sound like two devices.
+        //
+        // The transmit unit is the one built with those pins and the capture
+        // takes them from inside the peripheral, and the direction is not
+        // interchangeable. The two units run in separate clock domains, so the
+        // unit that drives the pins is the clock the data on them is timed
+        // against, and the other has to be slaved to it (see
+        // [`playback::shared_tdm_config`]). Letting the capture drive them made
+        // the transmit unit shift its samples out on a divider the ES8311 was not
+        // being clocked by, which the bench heard as continuous crackle; giving
+        // the pins to the transmit unit instead leaves the capture sampling the
+        // ES7210 on a divider that is not the one clocking the part, which it
+        // answered with a flat full-scale reading and a dead waveform. Neither
+        // unit can be the clock owner on its own, so the transmit unit drives
+        // the pins and the capture is held in slave mode behind it.
+        let shared_clocks = speaker_codec.is_some();
+        let config = if shared_clocks {
+            playback::shared_tdm_config()
+        } else {
+            capture::tdm_config()
+        };
+        let (audio, speaker) = match (capture_codec, speaker_codec) {
+            (capture_codec, speaker_codec)
+                if capture_codec.is_some() || speaker_codec.is_some() =>
+            {
+                let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, config)
+                    .map_err(BoardError::I2sConfig)?
+                    .with_mclk(GPIO38);
+                let (tx, rx) = if shared_clocks {
+                    let tx = Some(
+                        i2s.i2s_tx
+                            .with_bclk(GPIO14)
+                            .with_ws(GPIO13)
+                            .with_dout(GPIO45)
+                            .build(),
+                    );
+                    let rx = i2s.i2s_rx.with_din(GPIO12).build();
+                    (tx, rx)
+                } else {
+                    (
+                        None,
+                        i2s.i2s_rx
+                            .with_bclk(GPIO14)
+                            .with_ws(GPIO13)
+                            .with_din(GPIO12)
+                            .build(),
+                    )
+                };
+                let audio = match capture_codec {
+                    // The codec goes with the transfer rather than being dropped
+                    // here: the ring cannot be reconfigured, so anything that
+                    // wants to move the input stage's corner after bring-up needs
+                    // the part still to hand.
+                    Some(codec) => {
+                        let transfer = rx
+                            .read(capture::stream())
+                            .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
+                        Some(Es7210Rx::new(transfer, codec))
+                    }
+                    None => None,
+                };
+                let speaker = match (tx, speaker_codec) {
+                    (Some(tx), Some(codec)) => {
+                        // The amplifier comes up after the DAC does, so the
+                        // speaker is never driven by a codec that has not been
+                        // programmed yet. Pin numbers, not masks, reach the
+                        // expander's read-modify-write.
+                        pca9557.set_output_bit(PA_EN_PIN, true)?;
+                        match playback::Es8311Tx::new(tx, codec) {
+                            Ok(speaker) => Some(Box::new(speaker)),
+                            // A stream the DMA refused cannot make a sound, so
+                            // the page is left off rather than offered a mute
+                            // that points at silence.
+                            Err(error) => {
+                                log::error!("[SPEAKER] stream would not start: {error:?}");
+                                None
+                            }
+                        }
+                    }
+                    _ => None,
+                };
+                (audio, speaker)
+            }
+            _ => (None, None),
         };
 
         let timg0 = TimerGroup::new(TIMG0);
@@ -305,9 +411,124 @@ impl Board<'static> {
                 touch: Some(touch),
                 motion: Some(motion),
                 audio,
+                speaker,
             },
             timg0,
             FROM_CPU_INTR0,
+            FROM_CPU_INTR1,
+        ))
+    }
+
+    /// Bring-up for the playback isolation probe: the DAC, its amplifier and the
+    /// transmit unit, and nothing else.
+    ///
+    /// The product build shares one BCLK/WS pair between both codecs, holding the
+    /// capture slaved to the transmit unit (see [`playback::shared_tdm_config`]),
+    /// so a probe that is to isolate the speaker from the capture has to cut that
+    /// coupling too. Here the transmit unit drives the same two pins itself and
+    /// the receive unit is never built — which it can be, because with no
+    /// microphone to slave there is nothing to slave, and the transmit unit is
+    /// already the clock master the product slaves to. No capture codec, no
+    /// capture transfer, no capture poll, and no second DMA direction competing
+    /// for the channel.
+    ///
+    /// The expander is still driven, and only for the amplifier: `PA_EN` is the
+    /// board's spare pin, and the panel is held in the same power-down its masks
+    /// already select so a probe that never paints the panel also never wakes it.
+    /// Everything else is left `None`, so the probe's entry point can refuse to
+    /// ask for a capability this bring-up did not wire.
+    pub fn new_audio_only(peripherals: Peripherals) -> Result<Startup<'static>, BoardError> {
+        #[allow(non_snake_case)]
+        let Peripherals {
+            I2C0,
+            I2S0,
+            GPIO1,
+            GPIO2,
+            GPIO13,
+            GPIO14,
+            GPIO38,
+            GPIO45,
+            TIMG0,
+            FROM_CPU_INTR0,
+            // Handed back with the rest so both bring-ups return one shape. The
+            // probe's main ignores it: the probe deliberately feeds on the
+            // cooperative executor, to measure the transmit path alone.
+            FROM_CPU_INTR1,
+            DMA_CH1,
+            ..
+        } = peripherals;
+
+        let i2c = i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+            .map_err(BoardError::I2cConfig)?
+            .with_sda(GPIO1)
+            .with_scl(GPIO2);
+        let bus = I2C_BUS.init(Mutex::new(RefCell::new(i2c)));
+        let delay = Delay::new();
+        let mut pca9557 = Pca9557::new(I2cDevice::new(bus), PCA9557_I2C_ADDR);
+        let mut pca_error = None;
+        for attempt in 0..PCA9557_RETRY_ATTEMPTS {
+            match pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8) {
+                Ok(()) => break,
+                Err(error) => {
+                    pca_error = Some(error);
+                    if attempt + 1 < PCA9557_RETRY_ATTEMPTS {
+                        delay.delay_millis(PCA9557_RETRY_MS);
+                    }
+                }
+            }
+        }
+        if let Some(error) = pca_error {
+            return Err(BoardError::I2c(error));
+        }
+
+        // Probed and initialised exactly as the product build does, at both
+        // addresses, so the probe measures the same DAC the product drives.
+        let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
+        let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
+        let speaker_codec = if es8311.chip_id().is_ok_and(ChipId::is_expected) {
+            es8311.init().ok().map(|()| es8311)
+        } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
+            es8311_alt.init().ok().map(|()| es8311_alt)
+        } else {
+            log::warn!("[SPEAKER] ES8311 not found, the probe has nothing to drive");
+            None
+        };
+
+        let speaker = match speaker_codec {
+            Some(codec) => {
+                pca9557.set_output_bit(PA_EN_PIN, true)?;
+                let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, playback::shared_tdm_config())
+                    .map_err(BoardError::I2sConfig)?
+                    .with_mclk(GPIO38);
+                let tx = i2s
+                    .i2s_tx
+                    .with_bclk(GPIO14)
+                    .with_ws(GPIO13)
+                    .with_dout(GPIO45)
+                    .build();
+                match playback::Es8311Tx::new(tx, codec) {
+                    Ok(speaker) => Some(Box::new(speaker)),
+                    Err(error) => {
+                        log::error!("[SPEAKER] stream would not start: {error:?}");
+                        None
+                    }
+                }
+            }
+            None => None,
+        };
+
+        Ok((
+            Self {
+                light: None,
+                button: None,
+                touch: None,
+                motion: None,
+                audio: None,
+                speaker,
+            },
+            TimerGroup::new(TIMG0),
+            FROM_CPU_INTR0,
+            FROM_CPU_INTR1,
         ))
     }
 }
@@ -359,6 +580,14 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
 
     fn motion_capabilities(&self) -> MotionCapabilities {
         MOTION_CAPABILITIES
+    }
+}
+
+impl HasPlayback for Board<'static> {
+    type Speaker = playback::Es8311Tx<Es8311<SharedI2cDevice>>;
+
+    fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {
+        self.speaker.take()
     }
 }
 

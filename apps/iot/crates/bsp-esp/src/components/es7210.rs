@@ -48,14 +48,12 @@ const POWER_DOWN_RUN: u8 = 0x00;
 /// part must not be allowed to generate or divide them.
 const MODE_SLAVE_BIT: u8 = 0x01;
 
-/// The clock the host drives MCLK at. The part is configured from the clock
-/// table's row for this rate, so the board that wires the clocks and the codec
-/// that programs them have to agree on it.
-pub const MCLK_HZ: u32 = 12_288_000;
-/// The rate this driver programs. Fixed rather than a parameter: the clock table
-/// row, the LRCK divider and the host's I2S configuration all have to move
-/// together, and a per-instance rate would let them drift apart silently.
-pub const SAMPLE_RATE_HZ: u32 = 48_000;
+/// The clock this part is configured from the table's row for, and the rate that
+/// row produces. Both are the board's shared clock rather than this driver's to
+/// choose — the same MCLK programs the playback codec, so they are declared once
+/// in [`super::audio_clock`] and re-exported here for callers that already
+/// import this driver.
+pub use super::audio_clock::{MCLK_HZ, SAMPLE_RATE_HZ};
 
 /// The 12288000/48000 row of the datasheet clock table: ADC divide 1, the clock
 /// doubler on, the DLL on, OSR 0x20, and an LRCK divide of 256 (0x01:0x00) —
@@ -69,23 +67,16 @@ const LRCK_DIVL_48K: u8 = 0x00;
 /// landing on the host as a part running at the wrong rate.
 const _: () = assert!(MCLK_HZ / SAMPLE_RATE_HZ == 256);
 
-/// Datasheet 4.6: each input pair's DC-blocking filter, in two registers whose
-/// values differ only in bit 5 — `0x0A ^ 0x2A == 0x20` — and whose low three
-/// bits are the same in both, so the corner is the only field the two share.
+/// Datasheet 4.6: each input pair's DC-blocking filter, in two registers differing
+/// only in bit 5 — `0x0A ^ 0x2A == 0x20` — so the corner is the only shared field.
 ///
-/// They are named for the bit they carry rather than for a stage order, because
-/// no public document supports one. The datasheet is "Everest Semiconductor
-/// Confidential" and defers the bit definitions to a user guide that is not
-/// distributed, and the two driver families disagree even on the names:
-/// `espressif/esp-bsp` calls `0x22` HPF2 where `esp-audio-dev` calls it HPF1. The
-/// write order below is therefore kept as the reference driver issues it — the
-/// bit-5-clear register first, then the bit-5-set one, for both pairs — rather
-/// than re-ordered to match a stage order nothing documents. Swapping the pair
-/// is not cosmetic: measured on this board it lifts the quiet-room floor from
-/// about −40 dBFS to −30 dBFS, leaving the input stage's DC offset standing, so
-/// the order is a field result as much as a reference one.
-///
-/// Both pairs carry the same two values, so one pair of constants serves both.
+/// Named for the bit they carry, not for a stage order: none is documented. The
+/// datasheet defers the definitions to an undistributed guide, and the driver
+/// families disagree even on the names (`esp-bsp` calls `0x22` HPF2 where
+/// `esp-audio-dev` calls it HPF1). So the write order below follows the reference
+/// driver rather than a stage order — and swapping the pair is not cosmetic:
+/// measured here it lifts the quiet-room floor from ~−40 dBFS to −30, leaving the
+/// input stage's DC offset standing.
 const FILTER_CLEAR: u8 = 0x0A;
 const FILTER_SET: u8 = 0x2A;
 
@@ -125,27 +116,17 @@ const GAIN_FIELD: u8 = 0x0F;
 const GAIN_30DB: u8 = 0x0A;
 const MIC_POWER: u8 = 0x08;
 
-/// How far this microphone's full scale sits above 0 dB SPL, as the offset that
-/// turns a `dbfs` reading into a sound pressure level — 0 dBFS here is 102 dB
-/// SPL. Everything in it is a property of the parts on this board, which is why
-/// it lives beside the gain it depends on instead of in the core mapping that
-/// does the adding: a different capsule or a different PGA step moves this
-/// number and nothing else.
+/// How far this microphone's full scale sits above 0 dB SPL: 0 dBFS is 102 dB SPL.
 ///
-/// From the ES7210 datasheet: Analog Input Full Scale Input (differential P and
-/// N) = AVDD/3.3 Vrms, so at the 3.3 V analog rail [`ANALOG_POWER_RUN`] runs the
-/// converter's full scale is 1.0 Vrms, not the 2 Vrms the "headroom" argument
-/// would suggest. From the ZTS6216 datasheet: −38 dBV/Pa, with 0 dBV referenced
-/// to 1 Vrms, is 12.59 mV per pascal on the microphone pin. Through [`GAIN_30DB`]
-/// that is 397.8 mV per pascal at the converter, so 1.0 Vrms full scale is
-/// 2.51 Pa. Against the 20 µPa reference pressure that is 101.98 dB, the whole of
-/// the difference between the two readings the panel shows.
+/// From the two datasheets. ES7210: full scale is AVDD/3.3 Vrms, so at
+/// [`ANALOG_POWER_RUN`] it is 1.0 Vrms, not the 2 Vrms "headroom" would suggest.
+/// ZTS6216: −38 dBV/Pa is 12.59 mV/Pa, which through [`GAIN_30DB`] is 397.8 mV/Pa at
+/// the converter — so full scale is 2.51 Pa, or 101.98 dB against the 20 µPa
+/// reference.
 ///
-/// Anchored against normal speech at 30 cm on 2026-09-28: continuous reading
-/// found a 66 dB SPL floor and peaks to 80, where an unweighted meter puts
-/// conversational speech, so the datasheet value above stands within ±3 dB. To
-/// re-anchor the day a capsule or a gain step changes: set `CAL_SPL_LOG` in the
-/// capture driver and speak at the same distance again.
+/// Anchored against speech at 30 cm on 2026-09-28: a 66 dB SPL floor, peaks to 80.
+/// To re-anchor when the capsule or a gain step changes, set `CAL_SPL_LOG` in the
+/// capture driver and speak at the same distance.
 pub const SPL_OFFSET_DECIBELS: i16 = 102;
 
 /// Datasheet 3.3: bits 1-0 of the serial-port register select the frame; 0b00 is

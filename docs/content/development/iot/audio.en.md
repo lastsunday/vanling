@@ -3,13 +3,15 @@ title = "Audio Metering Semantics"
 weight = 260
 sort_by = "weight"
 [extra]
-source_file_hash = "88898778e92d69b86cee8f1a97a5b989bb6d6676"
-translated_at = "2026-09-28T06:54:58Z"
+source_file_hash = "efa38738d31551e5978935fc59a9e3ab10271f87187e7945aefab9648302b96b"
+translated_at = "2026-09-30T17:36:07Z"
 +++
 
 # Audio Metering Semantics
 
 The ES7210 is only one source. What the page exposes is **level** — how many dBFS right now, and how much of it persisted over the last two seconds — not a count of LSBs and certainly not raw samples. This page covers the contract, the meaning of every readout, and why the numbers are drawn the way they are.
+
+> This page was written by AI and has not been reviewed by a human. It describes what the system **should be**; how the implementation became so, and what was rejected along the way, is in the [development records](@/records/_index.en.md).
 
 ## The contract
 
@@ -20,6 +22,8 @@ A capture poll is pure data plane: it refreshes the envelope and raises **zero**
 There are three phases: `IDLE` (nothing captured, the panel draws only `TAP TO REC` and no sweep), `REC` (follows the live envelope), and `STOP` (draws the latched copy). A click on either `IDLE` or `STOP` goes straight back to `REC`; there is no "resume" semantic, because what gets latched is **the window at the moment of stopping**, not a recording.
 
 When the board finds no ES7210, `audio_enabled` is false and the `AUDIO` page never enters the page cycle (`DisplayPage::next_page` skips pages no capability backs); every other page is unaffected. Getting to the page is a triple-click of the button or a three-finger tap (`TogglePage`).
+
+The side that makes sound is in [Playback Semantics](@/development/iot/playback.en.md). The two pages share one 12.288 MHz MCLK but their contracts are opposite: capture **never stops**, playback is over when the sound is — which is why playback has a phase and this page does not.
 
 ## Parameter lookup
 
@@ -67,7 +71,7 @@ One more constraint from the same datasheet: with `VDDA` below 2 V, a microphone
 
 **Calibration record (2026-09-28): the value still stands at 102.** Anchored against **normal speech at 30 cm** as a voice reference: set the compile-time `CAL_SPL_LOG` in `virtual_components/audio.rs` to `true` and rebuild, speak continuously at normal conversational volume 30 cm from the capsule for about 30 s, and the serial logs `[AUDIO] CAL floor … dB SPL, rms … dB SPL` every 5 s. The speech block read a 66 dB SPL floor with peaks up to 80 — exactly where an unweighted meter puts conversational speech — so the datasheet derivation is within ±3 dB. `CAL_SPL_LOG` stays `false` in ordinary builds; re-anchor the same way the day the capsule or `GAIN_30DB` changes. Phone SPL apps are not a trustworthy reference here (one read 20 dB in the same sound field), so they are not used as one.
 
-The conversion is integer addition rather than floating point: no `float` reaches core, and once the offset is fixed the fraction it adds is finer than the panel can resolve.
+The conversion is integer addition rather than floating point: no `float` reaches the metering side of core (playback's synthesis is the one exception, for the opposite reason — see [Playback Semantics](@/development/iot/playback.en.md)), and once the offset is fixed the fraction it adds is finer than the panel can resolve.
 
 ### The live dB(A) readout
 
@@ -75,7 +79,7 @@ The top-right of the title row used to carry a static `+102dB`; it now shows a *
 
 - **Where the number comes from**: the I2S samples pass a real A-weighting filter (IEC 61672), slow-tracked by a single exponential average (τ ≈ 1.4 s), and `level_lsb()` is then folded into dB(A) through `dbfs()` and `spl(·, SPL_OFFSET_DECIBELS)`. **The offset is still 102**: A-weighting is exactly 0 dB at 1 kHz, so the full-scale conversion is untouched.
 - **Why A**: the curve a person uses to judge "how loud" is A-weighting. A quiet room reads a notch below the unweighted column because A-weighting presses below 100 Hz by 19 dB or more, and the unweighted column's floor here is low-frequency codec noise the filter simply removes — the dBA cell falls toward the 12 dB SPL floor while `RMS` sits ~60 dB higher. The capture driver never stops, so this cell always tracks "now". **The sweep is weighted the same way**: each column runs through the same filter before it is drawn, so the solid band rises with what is audible and collapses when the room quiets, instead of staying a thick slab on the codec's unweighted floor.
-- **Implementation** (core, no float): `drivers/audio/weighting.rs`. Three Q30 fixed-point bilinear biquads (prewarped, normalized at 1 kHz) cascade into the 6th-order A-weighting, ±0.7 dB in-band, with the output clamped back to i16. The signal rides the cascade at eight extra fractional bits (`STATE_FRACTION`): the highest-Q poles sit near the unit circle, and a state step wide enough to drop a signal's low bits would recycle that quantization error into a self-sustaining limit cycle — a quiet room read ~65 dBA no matter what it heard (reproduced on the host, `input RMS 19 LSB → filter out 489 LSB`), and scaling the *signal* up shrinks that amplifier by 2⁸ with no coefficient change. `DbaMeter` feeds the square of every sample into an exponential average (`METER_RELEASE_SHIFT = 16`, τ ≈ 1.37 s) and `level_lsb()` is its `isqrt`. The tests pin each frequency's gain to an exact integer copy of the module through the 384-point sine table rather than guessing against a floating-point expectation, and one asserts a quiet input reads quiet instead of feeding the poles.
+- **Implementation** (core, fixed point the whole way): `drivers/audio/weighting.rs`. Three Q30 fixed-point bilinear biquads (prewarped, normalized at 1 kHz) cascade into the 6th-order A-weighting, ±0.7 dB in-band, with the output clamped back to i16. The signal rides the cascade at eight extra fractional bits (`STATE_FRACTION`): the highest-Q poles sit near the unit circle, and a state step wide enough to drop a signal's low bits would recycle that quantization error into a self-sustaining limit cycle — a quiet room read ~65 dBA no matter what it heard (reproduced on the host, `input RMS 19 LSB → filter out 489 LSB`), and scaling the *signal* up shrinks that amplifier by 2⁸ with no coefficient change. `DbaMeter` feeds the square of every sample into an exponential average (`METER_RELEASE_SHIFT = 16`, τ ≈ 1.37 s) and `level_lsb()` is its `isqrt`. The tests pin each frequency's gain to an exact integer copy of the module through the 384-point sine table rather than guessing against a floating-point expectation, and one asserts a quiet input reads quiet instead of feeding the poles.
 
 ### Scale and graphics
 
@@ -184,13 +188,38 @@ The base of the SPL column can therefore be read as a **trustworthy level**: it 
 ## Testing
 
 ```bash
-moon run iot:test        # core: metering maths, contract, state machine
+moon run iot:test        # core: metering maths, contracts, the state machine
 moon run iot:test-bsp    # board: I2S configuration and buffering
 moon run iot:smoke-host  # end to end: source → state → diagnostics
 ```
 
-Core covers: dB and bar height sharing one map, dB monotonic and never over the rail, dBFS to dB SPL differing by the offset and nothing else, an SPL reading never outgrowing the column reserved for it, the release's per-column floor and its "back to the floor within the window", RMS distinguishing a steady signal from a single spike, the RMS of a two-slot full-scale signal, the clip latch and its mark ageing out with the column, chronological order across a wrapped window, the 2 s window length, and the tallest bar being the `PK`. `weighting.rs` adds its own: a table that is one clean full-scale cycle, an A-weighting cascade matching an exact integer copy of itself LSB for LSB, gains that sit inside the IEC frequency band, a meter that wakes on a tone and settles back after it, and one that reads silence for DC.
+There are 342 tests; the count is not the point of this section. **The point is which invariant each one holds.** The table below is an index: a new test must land in some row, and a test that lands in none is an invariant nothing covers.
 
-`overlay.rs` covers the column layout on its own: a whole blank cell of clearance between a unit and the widest reading, three columns that do not touch in turn, and an SPL reading within `LEVEL_VALUE_GLYPHS`. The layout lives in core rather than the board because a column in the wrong place only *looks* like a decision on the panel — a unit shoved sideways by a digit is a bug that is invisible as a defect and obvious as a wrong answer — and the board carries `esp-hal`, which does not build for the host at all.
+The "break verified" column reads as: deliberately break that invariant and confirm the test goes red. It is the only way to know a test is actually watching — running green proves nothing.
 
-The `smoke-host` fake source feeds **whole polls** and asserts the decibel reading genuinely travels through the state layer; its peak counter is seeded at `isize::MIN` — every reading a level meter can report is at or below 0 dBFS, so a zero seed would leave the maximum at "no level at all" and the smoke would pass on a capture that never measured anything.
+| Invariant | Test that holds it | Break verified |
+| --- | --- | --- |
+| every synth table entry is within 1 LSB of `sinf` | `the_table_holds_the_oscillator_it_replaced` | ✅ a 4 LSB table error turns it red |
+| still within 1 LSB after interpolation | `the_interpolated_oscillator_tracks_sinf_within_an_lsb` | ✅ as above |
+| the oscillator phase never leaves the table | `a_chime_stays_inside_the_table_it_indexes` | ✅ mismatching `WAVE_TURN` with `PHASE_BITS` turns it red |
+| the envelope is capped by the ramp (no overshoot into clipping) | `a_chime_opens_and_closes_on_silence` | ✅ dropping `min(ramp)` turns it red |
+| a brief idle ring is not a drained stream | `a_late_poll_within_the_silence_limit_is_not_a_stall` | — |
+| only a genuine drain triggers a rebuild | `a_brief_idle_between_feeds_is_not_a_drained_stream` | ✅ deciding straight off `tx_idle` turns it red |
+| the microphone's DC-blocking write order cannot be swapped | `es7210`'s MockI2c trace test | ✅ swapping `0x0A`/`0x2A` turns it red |
+| register writes are read-modify-write, not overwrite | `es7210`'s stored-byte test | ✅ changing `merged` to `value` turns it red |
+| ES8311 needs a second write after power-up | `es8311`'s power-on value test | ✅ dropping the second write turns it red |
+| a partly filled column is not committed | `a_partial_window_leaves_the_column_untouched` | ✅ setting `committed` straight to full turns it red |
+| an uncommitted window has a floor of zero | `a_window_of_silence_has_a_floor_of_zero` | ✅ starting the floor at 1 turns it red |
+| bar height and dB share one source (so cannot disagree) | `dbfs_agrees_with_the_band_it_is_drawn_on` | ✅ skewing the height range to 255/200 turns it red |
+| dB, SPL and bar height are each monotonic | `dbfs_…` / `spl_…` / `scope_height_never_dips…` | — |
+| the A-weighting cascade matches the integer prototype LSB for LSB | `weighting`'s band test | ✅ a 0.25 dB mid-band coefficient error turns it red |
+| an invalid motion sample advances nothing | `an_invalid_sample_advances_nothing` | ✅ removing the `valid` early return turns it red |
+| a knock needs the residual to fall back under the quiet bar | `recognizer`'s knock/turn tests | ✅ dropping `TAP_QUIET_MG2` turns it red |
+| gestures pair by position | `input`'s double-tap window test | ✅ widening the pairing distance by 200 px turns it red |
+| gesture tallies accumulate | `state`'s `off_tap_…keeps_off` | ✅ resetting the tally each time turns it red |
+
+`overlay.rs` covers column layout on its own: a whole blank cell fits between a unit and the widest reading, the three columns never touch, and the SPL reading stays within `LEVEL_VALUE_GLYPHS`. The layout lives in core rather than at board level because a column laid out wrongly shows on screen only as "looks intentional" — a unit pushed out of line by its digits is a bug that does not look like a defect while being obviously the wrong answer — and the board side carries `esp-hal`, which the host cannot compile at all.
+
+`smoke-host`'s fake source supplies data in **whole polls** and asserts the dB reading really passed through the state layer; its peak counter is seeded from `isize::MIN` — the level is always ≤ 0 dBFS, and seeding from 0 would leave the maximum stuck at "no level at all".
+
+> The full break-verification procedure is recorded in the [Playback Implementation Record](@/records/iot/playback.en.md). This table is a contract, not a list: the day a row stops turning red, it is no longer a test but decoration.

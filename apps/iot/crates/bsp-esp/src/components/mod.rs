@@ -1,9 +1,16 @@
+/// The clock row both codecs are programmed from, and the rate the DMA fills
+/// its ring at. Ungated and tiny: it is arithmetic, and a board that wires
+/// both halves of the audio peripheral has to be able to name it from either
+/// side without pulling in a driver that may not be fitted.
+pub mod audio_clock;
 #[cfg(feature = "backlight")]
 pub mod backlight;
 #[cfg(feature = "button")]
 pub mod button;
 #[cfg(feature = "es7210")]
 pub mod es7210;
+#[cfg(feature = "es8311")]
+pub mod es8311;
 #[cfg(feature = "ft6336")]
 pub mod ft6336;
 #[cfg(feature = "pca9557")]

@@ -2,6 +2,8 @@ use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::light::RgbLight;
 use crate::drivers::motion::MotionCapabilities;
+use crate::drivers::playback::Speaker;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 /// A hardware board instance. Implemented per board in the bsp crate.
@@ -55,11 +57,41 @@ pub trait HasAudio: Board {
     fn take_audio(&mut self) -> Option<PollEntry>;
 }
 
+/// Board providing a speaker.
+///
+/// The other half of [`HasAudio`] and independent of it: a board can capture,
+/// play, both or neither, so this is its own trait and its own one-line
+/// declaration. Shaped like the audio one for the same reason — the codec and
+/// the DMA ring live in the bsp crate, and the app only ever sees a
+/// [`Speaker`] and never names a device. A board with no speaker returns `None`
+/// and the Speaker page simply never appears.
+pub trait HasPlayback: Board {
+    /// Owned speaker; `'static` so it can sit in the app's playback task for the
+    /// board's lifetime, and `Send` because that task is not necessarily on the
+    /// same executor as the rest of the app — a board whose feed has a hard
+    /// cadence runs it on its own higher-priority interrupt executor, and a
+    /// driver that cannot cross executors could not be fed on one. Every transport
+    /// a board wires a speaker to has to be `Send` for that, which the I2C-backed
+    /// codecs are: their bus sits behind a `CriticalSectionRawMutex`, whose
+    /// `RefCell` is only ever reached with interrupts masked.
+    type Speaker: Speaker + 'static;
+
+    /// Hands the speaker over boxed. The app awaits the input and render futures
+    /// in one cooperative join and hands the playback future to whichever executor
+    /// the board's feed cadence demands, so every arm of that join is part of the
+    /// single task's stack frame — and that task's stack is a fixed few tens of
+    /// kilobytes it cannot grow. A driver this size held by value would be
+    /// carried down the whole frame on top of the render path's own call chain, so
+    /// it lives on the heap instead: the app only ever holds a pointer to it.
+    fn take_playback(&mut self) -> Option<Box<Self::Speaker>>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::drivers::input::{BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator};
     use crate::drivers::light::{Fill, Rgb};
+    use crate::drivers::playback::{Recovery, Sound, SpeakerFault};
     use alloc::{boxed::Box, vec};
 
     struct FakeLight;
@@ -78,9 +110,42 @@ mod tests {
         }
     }
 
+    /// A speaker that answers every call, and remembers the last one so a case
+    /// can assert what the driver was actually asked to do.
+    struct FakeSpeaker {
+        last: Option<(Sound, bool)>,
+    }
+
+    impl FakeSpeaker {
+        fn new() -> Self {
+            Self { last: None }
+        }
+    }
+
+    impl Speaker for FakeSpeaker {
+        fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault> {
+            self.last = Some((sound, false));
+            Ok(())
+        }
+
+        fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault> {
+            self.last = Some((Sound::Chime, muted));
+            Ok(())
+        }
+
+        fn feed(&mut self, _now_ms: u64) -> bool {
+            false
+        }
+
+        fn recover(&mut self) -> Option<Recovery> {
+            None
+        }
+    }
+
     struct FakeBoard {
         lights: Option<Vec<FakeLight>>,
         input: Option<Vec<PollEntry>>,
+        playback: Option<FakeSpeaker>,
     }
 
     impl Board for FakeBoard {}
@@ -99,11 +164,20 @@ mod tests {
         }
     }
 
+    impl HasPlayback for FakeBoard {
+        type Speaker = FakeSpeaker;
+
+        fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {
+            self.playback.take().map(Box::new)
+        }
+    }
+
     #[test]
     fn has_light_delivers_every_surface_then_none() {
         let mut board = FakeBoard {
             lights: Some(vec![FakeLight, FakeLight]),
             input: None,
+            playback: None,
         };
         let lights = board.take_lights().expect("lights present");
         assert_eq!(lights.len(), 2, "both surfaces in wiring order");
@@ -118,6 +192,7 @@ mod tests {
         let mut board = FakeBoard {
             lights: Some(vec![FakeLight]),
             input: None,
+            playback: None,
         };
         let mut lights = board.take_lights().expect("lights present");
         assert_eq!(lights.len(), 1);
@@ -129,6 +204,7 @@ mod tests {
     fn has_input_delivers_sources_then_none() {
         let mut board = FakeBoard {
             lights: None,
+            playback: None,
             input: Some(vec![PollEntry::new(
                 0,
                 Box::new(ButtonScanner::new(FakeButton)),
@@ -140,5 +216,30 @@ mod tests {
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].cadence_ms(), BUTTON_SCAN_MS);
         assert!(board.take_input().is_none(), "taken exactly once");
+    }
+
+    #[test]
+    fn has_playback_delivers_a_speaker_once_or_not_at_all() {
+        // Two different no-speaker shapes, and both have to read the same to
+        // the app: a board that wired none, and one that already handed its
+        // speaker to the playback task.
+        let mut unwired = FakeBoard {
+            lights: None,
+            input: None,
+            playback: None,
+        };
+        assert!(unwired.take_playback().is_none());
+
+        let mut wired = FakeBoard {
+            lights: None,
+            input: None,
+            playback: Some(FakeSpeaker::new()),
+        };
+        let mut speaker = wired.take_playback().expect("speaker present");
+        speaker.play(Sound::Asset).expect("the fake codec answers");
+        assert!(
+            wired.take_playback().is_none(),
+            "taken exactly once, so the app cannot start a second ring"
+        );
     }
 }

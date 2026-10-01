@@ -12,6 +12,14 @@ name = "host-smoke"
 path = "src/bin/host-smoke.rs"
 required-features = ["host"]
 
+# Playback isolation probe. Gated on the S3 board because that is the only board
+# whose speaker this bring-up knows how to wire, and left out of the product
+# tasks by name: every `iot:*` task that builds firmware passes `--bin vanling`.
+[[bin]]
+name = "audio-probe"
+path = "src/bin/audio-probe.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
 esp32c6 = [

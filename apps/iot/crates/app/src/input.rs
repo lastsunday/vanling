@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use embassy_time::{Duration, Ticker};
+use embassy_time::{Duration, Instant, Ticker};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{Intent, recognize};
 
@@ -18,18 +18,35 @@ pub static INTENT_BUS: IntentBus = IntentBus::new();
 /// its own cadence, and forwards recognized operations onto the intent bus.
 /// `try_send` drops intents when the bus is full: dropping a press is
 /// preferable to blocking the scan loop, which would skew debounce timing.
+/// Source names by wiring order, for the executor-hold report. Index matches
+/// the order `take_input`/`take_motion`/`take_audio` push into the vector.
+const SOURCE_NAMES: [&str; 4] = ["button", "touch", "motion", "capture"];
+
+/// Wall-clock window between executor-hold reports, matching the playback
+/// side so the two reports line up on one clock.
+const HOLD_REPORT_MS: u64 = 5_000;
+
 pub async fn input_task(intent_bus: &'static IntentBus, mut sources: Vec<PollEntry>) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(INPUT_BASE_MS));
     let mut now_ms: u64 = 0;
+    // Per-source worst hold seen in the current window, in microseconds, plus
+    // whether that source was ever polled this window.
+    let mut worst_us = [0u64; 4];
+    let mut polled = [false; 4];
+    let mut window_hold_us: u64 = 0;
+    let mut window_ticks: u32 = 0;
+    let mut last_report = Instant::now();
     loop {
         // Ticks stay anchored to the base clock even when a source takes
         // inconsistent time to sample, so slow devices never alias.
         ticker.next().await;
         now_ms = now_ms.wrapping_add(INPUT_BASE_MS);
-        for entry in sources.iter_mut() {
+        let loop_start = Instant::now();
+        for (index, entry) in sources.iter_mut().enumerate() {
             if entry.next_at_ms() > now_ms {
                 continue;
             }
+            let poll_start = Instant::now();
             // Recognition is stateless: it packages the raw event plus the
             // wiring-order source, never reading device state. The render loop
             // interprets the operation against the freshest snapshot, so
@@ -41,6 +58,53 @@ pub async fn input_task(intent_bus: &'static IntentBus, mut sources: Vec<PollEnt
             // Advance past the current time, keeping the source on its own
             // cadence grid with no catch-up burst.
             entry.advance_past(now_ms);
+            let took_us = poll_start.elapsed().as_micros();
+            if let Some(slot) = worst_us.get_mut(index) {
+                *slot = (*slot).max(took_us);
+            }
+            if let Some(seen) = polled.get_mut(index) {
+                *seen = true;
+            }
+        }
+        // The whole `for` body runs without awaiting, so its wall time is
+        // exactly how long the other tasks on the shared executor wait.
+        let loop_hold_us = loop_start.elapsed().as_micros();
+        window_hold_us += loop_hold_us;
+        window_ticks += 1;
+
+        let now = Instant::now();
+        let window_ms = now.saturating_duration_since(last_report).as_millis();
+        if window_ms >= HOLD_REPORT_MS {
+            let mut parts = alloc::string::String::new();
+            use core::fmt::Write;
+            for (index, seen) in polled.iter().enumerate() {
+                if !seen {
+                    continue;
+                }
+                let _ = write!(
+                    parts,
+                    "{}{} {} ms",
+                    if parts.is_empty() { "" } else { ", " },
+                    SOURCE_NAMES.get(index).copied().unwrap_or("?"),
+                    worst_us[index] / 1_000,
+                );
+            }
+            log::warn!(
+                "[INPUT] held the executor {} ms of {} ms over {} ticks; worst source: {}",
+                window_hold_us / 1_000,
+                window_ms,
+                window_ticks,
+                parts
+            );
+            window_hold_us = 0;
+            window_ticks = 0;
+            for slot in worst_us.iter_mut() {
+                *slot = 0;
+            }
+            for seen in polled.iter_mut() {
+                *seen = false;
+            }
+            last_report = now;
         }
     }
 }

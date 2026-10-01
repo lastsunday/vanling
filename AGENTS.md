@@ -33,6 +33,7 @@ Edition 2024（RPIT 捕获规则、无 `'_` elision）/ Mantine v9 / zod v4 / OX
 - **测试**: `apps/server/api/tests/` 按功能分类；每次修改增/改对应测试
 - **命名**: Rust snake_case/PascalCase 类型；TS camelCase 变量/PascalCase 组件（`.tsx`）
 - **自文档化代码**: 语义命名承载意图；不写逐步注释、不为未改代码补注释；仅注不直观的 Why/约束；改代码须删/改过时注释
+- **断言需证据**: 注释与文档中的每条断言，或有对应测试/实测支撑，或降级为"据称"并标明未复现；不得把未验证的观察写成事实。代码注释只写当前正确做法与当前硬约束，不写历史叙事（"曾经做错"、对比旧实现）——这类内容归 `docs/content/records/`（带 `<!-- doc-audience: ai -->`），该页标明 AI 产出未经人类审阅
 - **提交**: Conventional Commits（`feat:|fix:|perf:|remove:|deprecate:|security:`）；破坏性用 `feat!:`/BREAKING CHANGE；禁自由格式
 - `cargo fmt && cargo clippy` 零警告后提交
 - 运行下载器时用 `--data-dir ../../data`（从 `apps/server/` 执行）

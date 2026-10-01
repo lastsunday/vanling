@@ -7,4 +7,21 @@ rustflags = ["-C", "link-arg=-Tlinkall.x"]
 
 [target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor"
-rustflags = ["-C", "link-arg=-Tlinkall.x"]
+# The second script lands after linkall.x and moves the main stack's top out of
+# dram_seg into dram2_seg, 41.5 KB -> 112.5 KB. See crates/app/linker.
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+  "-C", "link-arg=-Tesp32s3-main-stack.x",
+]
+
+# esp-hal/esp-rtos arm hardware STORE watchpoints as stack-overflow guards
+# (esp-hal init + per-context-switch re-arm, 128-byte store window at the stack
+# floor). The armed window overlaps legitimate stores and trips a level-6 Debug
+# exception that panics the boot (observed at render `on_appearance` on
+# esp32s3). esp-rtos defaults the software canary to off, so turn it on: it
+# checks the canary below the stack floor on every context switch and panics
+# with the offending task instead of corrupting memory.
+[env]
+ESP_RTOS_CONFIG_HW_TASK_OVERFLOW_DETECTION = "false"
+ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"
+ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"

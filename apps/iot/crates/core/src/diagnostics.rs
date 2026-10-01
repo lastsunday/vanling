@@ -8,7 +8,8 @@ use crate::drivers::audio::AudioEnvelope;
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use crate::drivers::light::MAX_LIGHTS;
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
-use crate::state::{AudioPhase, DisplayPage};
+use crate::drivers::playback::Sound;
+use crate::state::{AudioPhase, DisplayPage, PlaybackPhase};
 
 /// Breathing mode's full dimension set carried by a light snapshot so the
 /// panel can print every parameter the mode exposes; all zero outside
@@ -98,6 +99,19 @@ pub struct AudioDiagnostics {
     pub dba_lsb: u16,
 }
 
+/// Playback state stamped on the Speaker page: the phase the page is showing,
+/// the sound a tap would play, the mute latch, and the two tallies that make a
+/// busy finger visible — sounds started against taps that arrived over one and
+/// were therefore not heard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlaybackDiagnostics {
+    pub phase: PlaybackPhase,
+    pub sound: Sound,
+    pub muted: bool,
+    pub plays: u16,
+    pub dropped: u16,
+}
+
 /// The on-surface diagnostics payload: touch-path counters/readout, display
 /// page, motion sample, and one [`LightSnapshot`] per light surface slot,
 /// fused so one diff carries the corner digits and the current page data.
@@ -111,6 +125,7 @@ pub struct Diagnostics {
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,
     pub audio: AudioDiagnostics,
+    pub playback: PlaybackDiagnostics,
 }
 
 /// Consumer of the device diagnostic snapshot. The screen surface implements

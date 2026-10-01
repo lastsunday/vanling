@@ -1,11 +1,10 @@
 //! Where the on-panel diagnostics overlay puts each column of text.
 //!
 //! Here rather than beside the panel because the panel is only reachable on the
-//! device, and a column that moved is a bug that reads as a design decision: a
-//! unit nudged left by a digit is invisible as a defect and obvious as a wrong
-//! answer. Every column is a fixed distance along a fixed pitch, so a readout
-//! that changes width cannot drag the unit beside it out from under the row
-//! above, and the arithmetic that guarantees that is checkable without a screen.
+//! device, and a column that moved is a bug that reads as a design decision: a unit
+//! nudged left by a digit is invisible as a defect and obvious as a wrong answer.
+//! Every column is a fixed distance along a fixed pitch, so a readout that changes
+//! width cannot drag the unit beside it out from under the row above.
 
 /// Width of one glyph cell. The pitch every column is placed on is this plus
 /// [`OVERLAY_GAP`], so a column is an index into a rhythm rather than a number
@@ -24,19 +23,15 @@ pub const OVERLAY_X: usize = 10;
 /// space glyph between label and value.
 pub const LEFT_VALUE_X: usize = OVERLAY_X + 4 * GLYPH_PITCH;
 
-/// Unit column of the Audio level rows, a [`LEVEL_VALUE_GLYPHS`]-glyph value
-/// plus a whole blank cell after [`LEFT_VALUE_X`]. Fixed rather than flush to
-/// the right edge so a level growing a digit cannot walk its unit sideways out
-/// from under the row above: the eye finds one vertical line for the unit and
-/// never checks a second.
+/// Unit column of the Audio level rows, a [`LEVEL_VALUE_GLYPHS`]-glyph value plus a
+/// whole blank cell after [`LEFT_VALUE_X`]. Fixed rather than flush right so a level
+/// growing a digit cannot walk its unit out from under the row above.
 pub const LEVEL_UNIT_X: usize = LEFT_VALUE_X + 4 * GLYPH_PITCH;
 
-/// Value column of the sound pressure level beside it, and the column its own
-/// unit label sits in. A [`LEVEL_UNIT_GLYPHS`]-glyph unit plus a whole blank
-/// cell, because `DBFS` is four glyphs wide and one glyph further right than its
-/// own left edge still leaves the two columns touching: the value and the unit
-/// then read as one run of digits and letters. The last glyph stays well clear of
-/// the right edge of a 240-column panel.
+/// Value column of the sound pressure level beside it, and the column its own unit label
+/// sits in. A [`LEVEL_UNIT_GLYPHS`]-glyph unit plus a whole blank cell, because `DBFS` is
+/// four glyphs wide and one glyph further right than its own left edge still leaves the
+/// two columns touching.
 pub const LEVEL_SPL_X: usize = LEVEL_UNIT_X + (LEVEL_UNIT_GLYPHS + 1) * GLYPH_PITCH;
 pub const LEVEL_SPL_UNIT_X: usize = LEVEL_SPL_X + 4 * GLYPH_PITCH;
 

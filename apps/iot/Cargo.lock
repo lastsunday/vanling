@@ -1199,6 +1199,7 @@ dependencies = [
 name = "iot-chip-esp"
 version = "0.1.0"
 dependencies = [
+ "embassy-executor",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",

@@ -35,6 +35,8 @@ async fn main(_spawner: Spawner) -> ! {
     log::info!("[IOT] boot ok");
 
     // A transient boot NACK must not leave the screen black: reset and retry.
+    // This board's bring-up hands back no second software interrupt, and it drives
+    // no speaker either, so there is no feed to move and no executor to move it to.
     let (board, timg0, from_cpu_intr) = match Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
@@ -44,7 +46,7 @@ async fn main(_spawner: Spawner) -> ! {
     };
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    iot_app::run(board).await
+    iot_app::run(board, iot_app::SpeakerRunner::Inline).await
 }
 
 #[cfg(feature = "esp32s3")]
@@ -60,9 +62,8 @@ async fn main(_spawner: Spawner) -> ! {
     let peripherals = iot_chip_esp::chip_init();
     iot_chip_esp::init_logging();
     log::info!("[IOT] boot ok");
-
     // A transient boot NACK must not leave the screen black: reset and retry.
-    let (board, timg0, from_cpu_intr) = match Board::new(peripherals) {
+    let (board, timg0, from_cpu_intr, feed_intr) = match Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[IOT] board init failed, resetting: {error:?}");
@@ -71,5 +72,6 @@ async fn main(_spawner: Spawner) -> ! {
     };
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    iot_app::run(board).await
+    let feed = iot_chip_esp::start_feed_executor(feed_intr);
+    iot_app::run(board, iot_app::SpeakerRunner::Interrupt(feed)).await
 }

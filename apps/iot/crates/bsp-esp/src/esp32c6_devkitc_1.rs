@@ -7,6 +7,7 @@ use esp_hal_smartled::buffer_size;
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
 use iot_core::drivers::motion::MotionCapabilities;
+use iot_core::drivers::playback::UnwiredSpeaker;
 use smart_leds::RGB8;
 
 pub use crate::components::button::PullButton;
@@ -94,6 +95,16 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
 
 impl iot_core::drivers::board::HasAudio for Board<'static> {
     fn take_audio(&mut self) -> Option<PollEntry> {
+        None
+    }
+}
+
+impl iot_core::drivers::board::HasPlayback for Board<'static> {
+    /// This board drives no speaker: the dev kit's LED is the only output, and
+    /// a name for the surface the product has is all the app needs to run.
+    type Speaker = UnwiredSpeaker;
+
+    fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {
         None
     }
 }

@@ -53,7 +53,7 @@ tasks:
   test-bsp:
     command: >-
       cargo test -p iot-bsp-esp --no-default-features
-      --features qmi8658,pca9557,es7210
+      --features qmi8658,pca9557,es7210,es8311
     deps:
       - ~:check
 
@@ -162,6 +162,29 @@ tasks:
     command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/vanling'
     deps:
       - ~:build-s3
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
+  # Playback isolation probe: the speaker alone, looping the catalogue. A second
+  # image on the same target, never produced by build-s3 (which names --bin
+  # vanling), so the product's artifacts and its flash task are untouched.
+  probe-audio-s3:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin audio-probe \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/audio-probe'
+    options:
+      runInCI: false
+
+  flash-probe-audio-s3:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/audio-probe'
+    deps:
+      - ~:probe-audio-s3
     options:
       persistent: true
       cache: false

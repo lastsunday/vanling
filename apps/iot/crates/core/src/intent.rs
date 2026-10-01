@@ -119,6 +119,19 @@ pub enum BusinessIntent {
     /// reaches for drives the recording, and neither shadows a gesture that
     /// means something on the other pages.
     ToggleRecord,
+    /// Play the next sound in the catalogue, reached from a tap or the button's
+    /// click on the Speaker page. Whether it is heard is the state layer's call:
+    /// over a sounding one it is tallied and dropped, so the intent names the
+    /// request and not the outcome.
+    PlayNext,
+    /// Flip the output's mute latch. A long press on the Speaker page, because
+    /// muting is a decision rather than a one-liner verb and should not be
+    /// reachable by the gesture that plays.
+    ToggleMute,
+    /// The driver's report that a sound ran out, sent by the playback task.
+    /// Never raised by [`translate`]: it is the one business intent that comes
+    /// back from the plane it commands.
+    PlaybackFinished,
 }
 
 /// The management-pipe message: one pipe carries both planes. The operation
@@ -152,21 +165,30 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
     let slot = light_slot(current, op.source);
     let light = current.lights[slot];
     match op.event {
-        // A click advances the color; `Off` has none, so it reads as no-op. On the
-        // Audio page the button is the record control instead, mirroring the tap
-        // below: the panel and the hardware button are the same one-liner verb
-        // there, and neither takes a gesture away from the other pages.
-        InputEvent::Button(ButtonEvent::Click) if current.page == DisplayPage::Audio => {
-            BusinessIntent::ToggleRecord
-        }
-        InputEvent::Button(ButtonEvent::Click) => target_for(advance_color(light), slot),
+        // A click advances the color; `Off` has none, so it reads as no-op. On
+        // the Audio and Speaker pages the button is the page's own one-liner
+        // control instead, mirroring the tap below: the panel and the hardware
+        // button are the same verb there, and neither takes a gesture away from
+        // the other pages.
+        InputEvent::Button(ButtonEvent::Click) => match current.page {
+            DisplayPage::Audio => BusinessIntent::ToggleRecord,
+            DisplayPage::Speaker => BusinessIntent::PlayNext,
+            DisplayPage::Ambient | DisplayPage::Attitude => target_for(advance_color(light), slot),
+        },
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
         InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
         InputEvent::Gesture(GestureEvent::TripleTap { .. }) => BusinessIntent::TogglePage,
-        // Cycles the mode; always resolves, so any state is the way back on.
-        InputEvent::Button(ButtonEvent::LongPress) => BusinessIntent::SetLight {
-            instance: slot as u8,
-            state: cycle_mode(light),
+        // Cycles the light mode; always resolves, so any state is the way back
+        // on — except on the Speaker page, where the long press is the mute
+        // latch instead of a mode move.
+        InputEvent::Button(ButtonEvent::LongPress) => match current.page {
+            DisplayPage::Speaker => BusinessIntent::ToggleMute,
+            DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Audio => {
+                BusinessIntent::SetLight {
+                    instance: slot as u8,
+                    state: cycle_mode(light),
+                }
+            }
         },
         // A press-down pulse folds into the live points; no light move.
         InputEvent::Gesture(GestureEvent::Press { .. }) => BusinessIntent::Invalid,
@@ -179,18 +201,26 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         }
         // Classified touch gestures mirror the button moves in their own
         // tallying variants; the device-level panel always drives surface 0.
-        InputEvent::Gesture(GestureEvent::Tap { .. }) if current.page != DisplayPage::Audio => {
-            target_for(advance_color(light), 0)
-        }
-        // On the Audio page a tap is the record control, not a color move.
-        InputEvent::Gesture(GestureEvent::Tap { .. }) => BusinessIntent::ToggleRecord,
+        // A tap is the one gesture two pages own — the record control on Audio,
+        // the play control on Speaker — and both leave the color walk to the
+        // pages that have no use for it.
+        InputEvent::Gesture(GestureEvent::Tap { .. }) => match current.page {
+            DisplayPage::Audio => BusinessIntent::ToggleRecord,
+            DisplayPage::Speaker => BusinessIntent::PlayNext,
+            DisplayPage::Ambient | DisplayPage::Attitude => target_for(advance_color(light), 0),
+        },
         InputEvent::Gesture(GestureEvent::DoubleTap { .. }) => target_for(advance_step(light), 0),
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
             target_for(swipe(light, direction), 0)
         }
-        InputEvent::Gesture(GestureEvent::LongPress { .. }) => BusinessIntent::SetLight {
-            instance: 0,
-            state: cycle_mode(light),
+        InputEvent::Gesture(GestureEvent::LongPress { .. }) => match current.page {
+            DisplayPage::Speaker => BusinessIntent::ToggleMute,
+            DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Audio => {
+                BusinessIntent::SetLight {
+                    instance: 0,
+                    state: cycle_mode(light),
+                }
+            }
         },
         // A raw snapshot is diagnostic-only; the render layer keeps the
         // controller's native multi-point ability, never a light transition.
@@ -403,7 +433,7 @@ mod tests {
     };
     use crate::drivers::light::MAX_LIGHTS;
     use crate::drivers::motion::{MotionCapabilities, MotionCounts};
-    use crate::state::AudioState;
+    use crate::state::{AudioState, PlaybackState};
 
     const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 
@@ -433,6 +463,8 @@ mod tests {
             motion_caps: MotionCapabilities::EMPTY,
             audio_enabled: true,
             audio: AudioState::default(),
+            playback_enabled: true,
+            playback: PlaybackState::default(),
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -467,9 +499,12 @@ mod tests {
     fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightState> {
         match translate(&op(event), current) {
             BusinessIntent::SetLight { state, .. } => Some(state),
-            BusinessIntent::Invalid | BusinessIntent::TogglePage | BusinessIntent::ToggleRecord => {
-                None
-            }
+            BusinessIntent::Invalid
+            | BusinessIntent::TogglePage
+            | BusinessIntent::ToggleRecord
+            | BusinessIntent::PlayNext
+            | BusinessIntent::ToggleMute
+            | BusinessIntent::PlaybackFinished => None,
         }
     }
 
@@ -889,7 +924,6 @@ mod tests {
                 BusinessIntent::Invalid
             );
         }
-
         #[test]
         fn long_press_mirrors_the_button_mode_ring() {
             // A long press on Off is never a no-op: it is the way back on.
@@ -925,6 +959,119 @@ mod tests {
                     brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
                 })
             );
+        }
+    }
+
+    mod speaker_page {
+        use super::*;
+
+        fn on_speaker() -> DeviceState {
+            state_on(DisplayPage::Speaker, DEFAULT_BREATH)
+        }
+
+        fn long_press_gesture() -> InputEvent {
+            InputEvent::Gesture(GestureEvent::LongPress {
+                id: 0,
+                x: 1,
+                y: 2,
+                held_ms: 800,
+            })
+        }
+
+        #[test]
+        fn a_tap_plays_and_a_long_press_mutes() {
+            // The two verbs the page owns, from the panel...
+            assert_eq!(
+                translate(&op(tap_gesture(0)), &on_speaker()),
+                BusinessIntent::PlayNext
+            );
+            assert_eq!(
+                translate(&op(long_press_gesture()), &on_speaker()),
+                BusinessIntent::ToggleMute
+            );
+            // ...and from the hardware button, which is the same verb on this
+            // page exactly as the record control is on the Audio page.
+            assert_eq!(
+                translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_speaker()),
+                BusinessIntent::PlayNext
+            );
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Button(ButtonEvent::LongPress)),
+                    &on_speaker()
+                ),
+                BusinessIntent::ToggleMute
+            );
+        }
+
+        #[test]
+        fn the_page_never_moves_a_light() {
+            // Playback takes a tap and a long press, but leaves the light verbs
+            // it did not claim — the double-tap and the swipes — alone, so the
+            // Speaker page costs no light control and never sits on a stale
+            // color.
+            assert_eq!(
+                target_in(double_tap(), &on_speaker()),
+                target(double_tap(), DEFAULT_BREATH),
+                "the double-tap still steps the table"
+            );
+            for direction in [
+                SwipeDirection::Up,
+                SwipeDirection::Down,
+                SwipeDirection::Left,
+                SwipeDirection::Right,
+            ] {
+                assert_eq!(
+                    target_in(swipe_event(direction), &on_speaker()),
+                    target(swipe_event(direction), DEFAULT_BREATH),
+                    "{direction:?} still moves the light"
+                );
+            }
+            // The page turn is what a triple tap still means, or there would be
+            // no way back to the page you can hear the answer on.
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Gesture(GestureEvent::TripleTap {
+                        id: 0,
+                        x: 0,
+                        y: 0,
+                        end_x: 0,
+                        end_y: 0,
+                        held_ms: 0,
+                    })),
+                    &on_speaker()
+                ),
+                BusinessIntent::TogglePage
+            );
+        }
+
+        #[test]
+        fn a_tap_off_the_speaker_page_never_plays() {
+            // The play control belongs to the page, not to the gesture: a tap
+            // anywhere else is still the color move.
+            assert_eq!(
+                target(tap_gesture(0), DEFAULT_BREATH),
+                Some(LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)))
+            );
+        }
+
+        #[test]
+        fn a_finished_play_is_never_recognized_from_an_event() {
+            // It is the one intent that comes back from the plane it commands,
+            // so no input can raise it and the driver owns the only path in.
+            for event in [
+                InputEvent::Button(ButtonEvent::Click),
+                InputEvent::Button(ButtonEvent::LongPress),
+                tap_gesture(0),
+                double_tap(),
+                long_press_gesture(),
+            ] {
+                assert_ne!(
+                    translate(&op(event), &on_speaker()),
+                    BusinessIntent::PlaybackFinished,
+                    "{event:?} must not fake a driver report"
+                );
+            }
         }
     }
 
