@@ -5,10 +5,9 @@ extern crate alloc;
 
 use embassy_executor::Spawner;
 
-#[cfg(feature = "esp32c6-devkitc-1")]
-type Board = iot_bsp_esp::Board<'static>;
-
-#[cfg(feature = "lckfb-szpi-esp32s3")]
+/// The board this firmware is wired for. One alias because the board features
+/// are mutually exclusive, so `iot-bsp-esp` re-exports a single `Board` name
+/// either way and there is nothing for two arms to disambiguate.
 type Board = iot_bsp_esp::Board<'static>;
 
 /// Heap for the pluggable renderer registry and other runtime allocation.

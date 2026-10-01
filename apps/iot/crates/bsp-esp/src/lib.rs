@@ -18,5 +18,9 @@ pub use lckfb_szpi_esp32s3::{Board, DisplayLight, PullButton};
 /// pin instances handed in by the board wiring.
 pub mod components;
 
-#[cfg(feature = "display-light")]
+/// Abstract components assembled from real ones. Gated on whichever of the
+/// three is present rather than on one of them: each virtual component carries
+/// its own gate below, so a board wiring only the speaker still gets its
+/// transport and a board wiring only the microphone still gets its own.
+#[cfg(any(feature = "display-light", feature = "audio", feature = "audio-out"))]
 pub mod virtual_components;

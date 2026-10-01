@@ -3,8 +3,8 @@ title = "Development Documentation"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "5ddd311ee0f6908cd26eff3b3f46b202c32e30e543250feed414ee838954a600"
-translated_at = "2026-09-30T16:55:35Z"
+source_file_hash = "d694825c805acf02f5d66f5564a58f7f0efc5cc6"
+translated_at = "2026-10-01T07:37:04Z"
 +++
 
 # Development Documentation

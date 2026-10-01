@@ -3,8 +3,8 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "beb5800be17e19340d27ca4ae56340f3438ca47a2bb3edc0388e426a61e7cfb7"
-translated_at = "2026-09-30T17:36:07Z"
+source_file_hash = "49afa729fa864b844dc3660a4c382882f979fc8f"
+translated_at = "2026-10-01T07:37:04Z"
 +++
 
 <!-- doc-audience: ai -->

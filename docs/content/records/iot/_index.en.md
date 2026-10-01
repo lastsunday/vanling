@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "a81aebb6aa8f2c78e19893df993aba62db74e6c9b15e544605c5773786161fe9"
-translated_at = "2026-09-30T17:36:07Z"
+source_file_hash = "49ccc612f3e81648e95ff72ba3adf86599a90217"
+translated_at = "2026-10-01T07:37:04Z"
 +++
 
 <!-- doc-audience: ai -->

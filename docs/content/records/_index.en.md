@@ -3,8 +3,8 @@ title = "Development Records"
 weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "db5e6e344f4837eff8acda0a04624589260f253723dafddcda1a5a43262f89b1"
-translated_at = "2026-09-30T17:36:07Z"
+source_file_hash = "cf1533e05b11c9c492e5395f0a8c47f1eb6d422d"
+translated_at = "2026-10-01T07:37:04Z"
 +++
 
 <!-- doc-audience: ai -->

@@ -77,9 +77,10 @@ static BACKLIGHT_TIMER: esp_hal::__macro_implementation::static_cell::StaticCell
 /// I2C0 shared by PCA9557 (0x19) and FT6336 (0x38): each device holds a
 /// blocking `I2cDevice` that takes a critical section around the inner
 /// `RefCell`, so the two drivers can never interleave on the wire.
-static I2C_BUS: esp_hal::__macro_implementation::static_cell::StaticCell<
-    Mutex<CriticalSectionRawMutex, RefCell<i2c_master::I2c<'static, Blocking>>>,
-> = esp_hal::__macro_implementation::static_cell::StaticCell::new();
+static I2C_BUS: esp_hal::__macro_implementation::static_cell::StaticCell<SharedI2cBus> =
+    esp_hal::__macro_implementation::static_cell::StaticCell::new();
+
+type SharedI2cBus = Mutex<CriticalSectionRawMutex, RefCell<i2c_master::I2c<'static, Blocking>>>;
 
 type SharedI2cDevice =
     I2cDevice<'static, CriticalSectionRawMutex, i2c_master::I2c<'static, Blocking>>;
@@ -127,6 +128,64 @@ impl From<I2cDeviceError<i2c_master::Error>> for BoardError {
 impl From<DmaBufError> for BoardError {
     fn from(e: DmaBufError) -> Self {
         BoardError::Dma(e)
+    }
+}
+
+/// Brings up the shared I2C bus and the expander on it, as both entry points
+/// need them.
+///
+/// The bus is a `StaticCell` rather than a local because the panel's touch
+/// controller, the accelerometer, the microphone and the DAC each hold their own
+/// `I2cDevice` over it for the board's lifetime. `port` and the two pins are
+/// taken as arguments rather than named here: they are this board's wiring, and
+/// esp-hal's pin bounds are private, so the caller configures the bus and hands
+/// the configured peripheral in.
+///
+/// The expander is retried because its first transaction is the one most exposed
+/// to a NACK from a peripheral that has not finished settling, and a stranded
+/// board is a black screen where a later failure is only a missing page.
+fn bring_up_i2c(
+    i2c: i2c_master::I2c<'static, Blocking>,
+) -> Result<(&'static SharedI2cBus, Pca9557<SharedI2cDevice>), BoardError> {
+    let bus = I2C_BUS.init(Mutex::new(RefCell::new(i2c)));
+    let delay = Delay::new();
+    let mut pca9557 = Pca9557::new(I2cDevice::new(bus), PCA9557_I2C_ADDR);
+    let mut pca_error = None;
+    for attempt in 0..PCA9557_RETRY_ATTEMPTS {
+        match pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8) {
+            Ok(()) => break,
+            Err(error) => {
+                pca_error = Some(error);
+                if attempt + 1 < PCA9557_RETRY_ATTEMPTS {
+                    delay.delay_millis(PCA9557_RETRY_MS);
+                }
+            }
+        }
+    }
+    match pca_error {
+        Some(error) => Err(BoardError::I2c(error)),
+        None => Ok((bus, pca9557)),
+    }
+}
+
+/// Probes the ES8311 at both addresses and brings up whichever answers.
+///
+/// The part has a single address pin, so which of the two a board strapped it to
+/// is a property of the board and not of the driver — hence two attempts rather
+/// than one configured address. `absent_note` says what the caller loses when
+/// neither answers, because the product build keeps the panel, the button and
+/// the microphone and only loses the page, while the probe has nothing left to
+/// drive. A board with no DAC fitted is a real configuration, not a failure.
+fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<SharedI2cDevice>> {
+    let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
+    let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
+    if es8311.chip_id().is_ok_and(ChipId::is_expected) {
+        es8311.init().ok().map(|()| es8311)
+    } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
+        es8311_alt.init().ok().map(|()| es8311_alt)
+    } else {
+        log::warn!("[SPEAKER] ES8311 not found, {absent_note}");
+        None
     }
 }
 
@@ -185,28 +244,13 @@ impl Board<'static> {
             ..
         } = peripherals;
 
-        let i2c = i2c_master::I2c::new(I2C0, i2c_master::Config::default())
-            .map_err(BoardError::I2cConfig)?
-            .with_sda(GPIO1)
-            .with_scl(GPIO2);
-        let bus = I2C_BUS.init(Mutex::new(RefCell::new(i2c)));
+        let (bus, mut pca9557) = bring_up_i2c(
+            i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+                .map_err(BoardError::I2cConfig)?
+                .with_sda(GPIO1)
+                .with_scl(GPIO2),
+        )?;
         let mut delay = Delay::new();
-        let mut pca9557 = Pca9557::new(I2cDevice::new(bus), PCA9557_I2C_ADDR);
-        let mut pca_error = None;
-        for attempt in 0..PCA9557_RETRY_ATTEMPTS {
-            match pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8) {
-                Ok(()) => break,
-                Err(error) => {
-                    pca_error = Some(error);
-                    if attempt + 1 < PCA9557_RETRY_ATTEMPTS {
-                        delay.delay_millis(PCA9557_RETRY_MS);
-                    }
-                }
-            }
-        }
-        if let Some(error) = pca_error {
-            return Err(BoardError::I2c(error));
-        }
 
         // Keep CS high while the SPI/GPIO IO_MUX glitch (#15703) settles. DMA
         // pushes whole frames without the per-FIFO poll that caps the panel at
@@ -297,21 +341,7 @@ impl Board<'static> {
             }
         };
 
-        // ES8311 on the same bus. Probed before it is brought up, and at both
-        // addresses: the part has a single address pin, so which one a board
-        // strapped it to is a property of the board and not of the driver. A
-        // board with no DAC fitted keeps the microphone, the panel and the
-        // button, and shows no Speaker page.
-        let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
-        let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
-        let speaker_codec = if es8311.chip_id().is_ok_and(ChipId::is_expected) {
-            es8311.init().ok().map(|()| es8311)
-        } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
-            es8311_alt.init().ok().map(|()| es8311_alt)
-        } else {
-            log::warn!("[SPEAKER] ES8311 not found, the Speaker page stays dark");
-            None
-        };
+        let speaker_codec = probe_es8311(bus, "the Speaker page stays dark");
 
         // One I2S, one pair of BCLK and WS pins, two codecs, so the pin pair is
         // wired once in either layout and both codecs are timed from one divider
@@ -458,41 +488,16 @@ impl Board<'static> {
             ..
         } = peripherals;
 
-        let i2c = i2c_master::I2c::new(I2C0, i2c_master::Config::default())
-            .map_err(BoardError::I2cConfig)?
-            .with_sda(GPIO1)
-            .with_scl(GPIO2);
-        let bus = I2C_BUS.init(Mutex::new(RefCell::new(i2c)));
-        let delay = Delay::new();
-        let mut pca9557 = Pca9557::new(I2cDevice::new(bus), PCA9557_I2C_ADDR);
-        let mut pca_error = None;
-        for attempt in 0..PCA9557_RETRY_ATTEMPTS {
-            match pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8) {
-                Ok(()) => break,
-                Err(error) => {
-                    pca_error = Some(error);
-                    if attempt + 1 < PCA9557_RETRY_ATTEMPTS {
-                        delay.delay_millis(PCA9557_RETRY_MS);
-                    }
-                }
-            }
-        }
-        if let Some(error) = pca_error {
-            return Err(BoardError::I2c(error));
-        }
+        let (bus, mut pca9557) = bring_up_i2c(
+            i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+                .map_err(BoardError::I2cConfig)?
+                .with_sda(GPIO1)
+                .with_scl(GPIO2),
+        )?;
 
         // Probed and initialised exactly as the product build does, at both
         // addresses, so the probe measures the same DAC the product drives.
-        let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
-        let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
-        let speaker_codec = if es8311.chip_id().is_ok_and(ChipId::is_expected) {
-            es8311.init().ok().map(|()| es8311)
-        } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
-            es8311_alt.init().ok().map(|()| es8311_alt)
-        } else {
-            log::warn!("[SPEAKER] ES8311 not found, the probe has nothing to drive");
-            None
-        };
+        let speaker_codec = probe_es8311(bus, "the probe has nothing to drive");
 
         let speaker = match speaker_codec {
             Some(codec) => {

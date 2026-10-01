@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 270
 sort_by = "weight"
 [extra]
-source_file_hash = "0f1c5eb4a6aa16d323cec3e24dfe9d7ae2da3670c7f9cf2390ef1fe848617f34"
-translated_at = "2026-09-30T17:36:07Z"
+source_file_hash = "a668539bef7d20a3c967b31c6a217d2bafc19a33"
+translated_at = "2026-10-01T07:37:04Z"
 +++
 
 # Playback Semantics

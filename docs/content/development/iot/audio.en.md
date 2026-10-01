@@ -3,8 +3,8 @@ title = "Audio Metering Semantics"
 weight = 260
 sort_by = "weight"
 [extra]
-source_file_hash = "efa38738d31551e5978935fc59a9e3ab10271f87187e7945aefab9648302b96b"
-translated_at = "2026-09-30T17:36:07Z"
+source_file_hash = "adf819704dbbfe9bb84d5b845b9a7b9a7cb2d283"
+translated_at = "2026-10-01T07:37:04Z"
 +++
 
 # Audio Metering Semantics

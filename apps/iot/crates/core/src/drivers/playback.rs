@@ -683,12 +683,12 @@ mod tests {
         // resolution through a DAC, and this pins that claim down: a table too
         // coarse to hold it would fail here instead of being audible later.
         let mut worst = 0_i32;
-        for index in 0..WAVE_ENTRIES {
+        for (index, &table) in WAVE.iter().enumerate().take(WAVE_ENTRIES) {
             let turns = index as f32 / WAVE_ENTRIES as f32;
             let expected = (sinf(core::f32::consts::TAU * turns) * TONE_PEAK_LSB) as i16;
             worst = worst
-                .max(i32::from(WAVE[index]) - i32::from(expected))
-                .max(i32::from(expected) - i32::from(WAVE[index]));
+                .max(i32::from(table) - i32::from(expected))
+                .max(i32::from(expected) - i32::from(table));
         }
         assert!(
             worst <= 1,
@@ -719,7 +719,7 @@ mod tests {
             let whole = (phase >> PHASE_BITS) as usize;
             let fraction = (phase & PHASE_MASK) as i32;
             let (low, high) = (WAVE[whole] as i32, WAVE[whole + 1] as i32);
-            let got = low + ((high - low) * fraction >> PHASE_BITS);
+            let got = low + (((high - low) * fraction) >> PHASE_BITS);
 
             let turns = phase as f64 / f64::from(WAVE_TURN);
             let want = (core::f64::consts::TAU * turns).sin() * f64::from(TONE_PEAK_LSB);

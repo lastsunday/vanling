@@ -261,7 +261,10 @@ pub struct RenderController {
     /// inside `Render`, which the app hands to its render task by value — so an
     /// inline copy would be carried down that task's fixed stack frame on top of
     /// the frame the render path's own call chain is already using. The box is
-    /// allocated once, when the state changes, not once per frame.
+    /// allocated once, when the state changes, not once per frame: `DeviceState`
+    /// equality follows `AudioEnvelope`, which compares the drawn window rather
+    /// than the ring's write position, so a capture that draws the same sweep
+    /// two polls running does not count as a change.
     last: Option<Box<DeviceState>>,
 }
 

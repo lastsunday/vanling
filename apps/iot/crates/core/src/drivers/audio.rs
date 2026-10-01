@@ -189,7 +189,7 @@ pub fn released_peak(measured: u16, previous: u16) -> u16 {
 /// Every column also keeps its A-weighted twin ([`weighting`]): the raw columns
 /// stay the bench reading, the twin is the level a listener would call it, so a
 /// low-frequency codec floor draws as a flat line instead of a solid band.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct AudioEnvelope {
     columns: [u16; ENVELOPE_COLUMNS],
     /// The same peaks A-weighted, per column.
@@ -239,6 +239,36 @@ impl Default for AudioEnvelope {
         Self::ZERO
     }
 }
+
+/// Equality over what a renderer draws, not over the whole struct.
+///
+/// Derived `PartialEq` would compare the write bookkeeping too — above all
+/// `cursor`, which advances once per poll as a pure ring position and says
+/// nothing about the window. That made a silent room read as a changed capture
+/// on every poll, and the whole diff pipeline (build a `Diagnostics`, re-box the
+/// `DeviceState`, fan out to every renderer) then re-ran at the render cadence
+/// instead of when the sweep actually moved. Measured on a fully silent
+/// capture: successive polls compared equal 0 times in 600, while every value
+/// this impl does compare stayed equal 600 times in 600.
+///
+/// The omitted fields are all in-flight accumulators the render path never
+/// reads: `cursor`, `peak`, `weighted_peak`, `sum_squares`,
+/// `weighted_sum_squares`, `weight`, `dba`, `filled`. `weight` and `dba` are
+/// filter state whose only rendered consequence is already folded into the
+/// columns below.
+impl PartialEq for AudioEnvelope {
+    fn eq(&self, other: &Self) -> bool {
+        self.columns == other.columns
+            && self.weighted_columns == other.weighted_columns
+            && self.rms == other.rms
+            && self.weighted_rms == other.weighted_rms
+            && self.committed == other.committed
+            && self.clipped == other.clipped
+            && self.columns_since_clip == other.columns_since_clip
+    }
+}
+
+impl Eq for AudioEnvelope {}
 
 impl AudioEnvelope {
     /// A blank envelope: nothing committed, every column zero. Named rather
@@ -1636,6 +1666,57 @@ mod tests {
         envelope.push(&vec![0; SAMPLES_PER_COLUMN as usize * 3]);
         assert_eq!(envelope.committed(), 3);
         assert!(envelope.columns()[..3].iter().all(|&column| column == 0));
+    }
+
+    #[test]
+    fn a_silent_capture_stops_reading_as_changed_once_the_ring_has_wrapped() {
+        // The window wrapped, so `cursor` is advancing on every poll, and a
+        // derived `PartialEq` counted that as a change: 0 of 600 successive
+        // silent polls compared equal, which kept the whole diff pipeline
+        // re-running at the render cadence on a quiet room. Everything the
+        // panel draws is identical here, so equality has to hold.
+        let silence = [0_i16; SAMPLES_PER_COLUMN as usize];
+        let mut envelope = AudioEnvelope::default();
+        for _ in 0..ENVELOPE_COLUMNS + 10 {
+            envelope.push(&silence);
+        }
+        assert_eq!(
+            envelope.committed(),
+            ENVELOPE_COLUMNS as u8,
+            "the ring has wrapped, so the cursor is no longer where it started",
+        );
+
+        let mut unchanged = 0;
+        for _ in 0..600 {
+            let before = envelope;
+            envelope.push(&silence);
+            if before == envelope {
+                unchanged += 1;
+            }
+        }
+        assert_eq!(
+            unchanged, 600,
+            "a silent capture draws the same sweep every poll, so it is not a change",
+        );
+    }
+
+    #[test]
+    fn a_capture_that_hears_something_is_still_read_as_changed() {
+        // The counterpart to the silence case: an equality that only ever said
+        // "equal" would be as wrong as one that always says "changed".
+        let silence = [0_i16; SAMPLES_PER_COLUMN as usize];
+        let mut envelope = AudioEnvelope::default();
+        for _ in 0..ENVELOPE_COLUMNS + 10 {
+            envelope.push(&silence);
+        }
+        let before = envelope;
+        let mut loud = silence;
+        loud[0] = 8_000;
+        envelope.push(&loud);
+        assert_ne!(
+            before, envelope,
+            "a column that moved is exactly what a repaint exists to draw",
+        );
     }
 
     #[test]
