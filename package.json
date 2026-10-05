@@ -21,7 +21,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-i18next": "17.0.9",
-    "wavesurfer.js": "7.12.10",
+    "wavesurfer.js": "8.0.1",
     "zod": "4.4.3"
   },
   "devDependencies": {
