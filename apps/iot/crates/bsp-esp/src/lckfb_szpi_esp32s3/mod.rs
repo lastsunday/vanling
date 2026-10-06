@@ -43,16 +43,30 @@ use crate::virtual_components::Es7210Rx;
 use crate::virtual_components::audio as capture;
 use crate::virtual_components::audio_out as playback;
 
+/// The camera↔display isolation probe's wiring: [`camera::Board::new_camera_only`].
+#[cfg(feature = "camera")]
+mod camera;
+
 const PCA9557_I2C_ADDR: u8 = 0x19;
 const LCD_CS_BIT: u8 = 1 << 0;
+/// The sensor's power-down line, sharing the expander register with the panel's
+/// chip-select. **Active low**, so writing it selects the panel and parks the sensor;
+/// the camera path clears it to give the sensor a clock.
 const DVP_PWDN_BIT: u8 = 1 << 2;
 /// Speaker amplifier enable, high active. Driven from the expander rather than a
 /// GPIO because the pin is the board's only spare: the amplifier sits between
 /// the DAC and the speaker and its own rail, and a board that boots with it
 /// driving would pop the speaker on every reset.
 const PA_EN_PIN: u8 = 1;
+
+/// The panel's mounted shape, as the product's renderer addresses it.
+///
+/// **Unverified and probably wrong**: the module is a 2.0" ST7789 whose own resolution is
+/// 320x240, so this is the portrait shape of a panel that is not portrait. Revisit before
+/// the product's own picture is trusted; the camera probe measures the panel at 320x240.
 const LCD_WIDTH: u16 = 240;
 const LCD_HEIGHT: u16 = 320;
+
 /// Boot-time retries for the PCA9557 config write: the bus's first transaction
 /// and the one most exposed to a still-settling NACK that would strand the board.
 const PCA9557_RETRY_ATTEMPTS: u8 = 5;
@@ -82,7 +96,7 @@ static I2C_BUS: esp_hal::__macro_implementation::static_cell::StaticCell<SharedI
 
 type SharedI2cBus = Mutex<CriticalSectionRawMutex, RefCell<i2c_master::I2c<'static, Blocking>>>;
 
-type SharedI2cDevice =
+pub type SharedI2cDevice =
     I2cDevice<'static, CriticalSectionRawMutex, i2c_master::I2c<'static, Blocking>>;
 
 /// Board bring-up failure, aggregating every peripheral error source.
@@ -328,10 +342,8 @@ impl Board<'static> {
             log::warn!("[MOTION] QMI8658 init deferred, retrying from the first poll: {error:?}");
         }
 
-        // ES7210 on I2C0 at 0x41, sharing the bus with the expander and the touch
-        // controller. Configured before the I2S starts so the codec is already
-        // listening when the clocks appear; a variant with no codec fitted keeps
-        // the rest of the plane alive and simply never shows the Audio page.
+        // Configured before the I2S starts, so the codec is already listening when the
+        // clocks appear.
         let mut es7210 = Es7210::new(I2cDevice::new(bus), ES7210_I2C_ADDR);
         let capture_codec = match es7210.init() {
             Ok(()) => Some(es7210),

@@ -13,6 +13,8 @@ pub mod es7210;
 pub mod es8311;
 #[cfg(feature = "ft6336")]
 pub mod ft6336;
+#[cfg(feature = "gc2145")]
+pub mod gc2145;
 #[cfg(feature = "pca9557")]
 pub mod pca9557;
 #[cfg(feature = "qmi8658")]

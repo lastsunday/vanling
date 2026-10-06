@@ -8,11 +8,18 @@ rustflags = ["-C", "link-arg=-Tlinkall.x"]
 [target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor"
 # The second script lands after linkall.x and moves the main stack's top out of
-# dram_seg into dram2_seg, 41.5 KB -> 112.5 KB. See crates/app/linker.
+# dram_seg into dram2_seg, less the ROM's per-core boot stacks. See
+# crates/app/linker/esp32s3-main-stack.x.
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",
   "-C", "link-arg=-Tesp32s3-main-stack.x",
 ]
+
+[env]
+# The main stack gets whatever DRAM the static data leaves over, so a `.bss` that
+# grows silently eats it and the first sign is an overflow at runtime. esp-hal
+# turns this into a link-time assertion, which is a far better place to find out.
+ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM = "65536"
 
 # esp-hal/esp-rtos arm hardware STORE watchpoints as stack-overflow guards
 # (esp-hal init + per-context-switch re-arm, 128-byte store window at the stack
@@ -21,7 +28,6 @@ rustflags = [
 # esp32s3). esp-rtos defaults the software canary to off, so turn it on: it
 # checks the canary below the stack floor on every context switch and panics
 # with the offending task instead of corrupting memory.
-[env]
 ESP_RTOS_CONFIG_HW_TASK_OVERFLOW_DETECTION = "false"
 ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"
 ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"

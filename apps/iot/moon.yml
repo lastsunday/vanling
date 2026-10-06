@@ -53,7 +53,7 @@ tasks:
   test-bsp:
     command: >-
       cargo test -p iot-bsp-esp --no-default-features
-      --features qmi8658,pca9557,es7210,es8311
+      --features qmi8658,pca9557,es7210,es8311,gc2145
     deps:
       - ~:check
 
@@ -118,18 +118,28 @@ tasks:
   # (CI/release); otherwise falls back to the espressif/idf-rust:esp32s3_1.95.0.0
   # container (macOS Intel, where esp-rs stopped shipping toolchains at v1.91+).
   # The esp nightly fork ships no prebuilt Xtensa rust-std, hence -Z build-std.
-  # Names both bins so the playback probe is type-checked on every run. Only
-  # `vanling` is linked by `build-s3`, but a probe nothing compiles can rot in
-  # place: it calls a board bring-up of its own (`new_audio_only`), and a change
-  # to `Board` or to `Speaker` would leave it failing to build with nobody
-  # noticing until the day it is needed on a bench.
+  # Names every bin so each probe is type-checked on every run. Only `vanling` is
+  # linked by `build-s3`, but a probe nothing compiles can rot in place: each one
+  # calls a bring-up or a chip API of its own, and a change to `Board`, `Speaker` or
+  # the chip layer would leave it failing to build with nobody noticing until the
+  # day it is needed on a bench.
+  #
+  # Two invocations because `camera` is deliberately not in the board feature: it
+  # carries a 150 KB frame ring, and a board feature is the union of what every
+  # image of that board builds. `vanling` and the audio/multicore probes are checked
+  # on the board feature alone, so nothing but the camera probe pays for the ring.
   check-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin vanling --bin audio-probe \
+        --bin vanling --bin audio-probe --bin multicore-s3 \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+      bash ../../scripts/iot-xtensa.sh check -p iot-app \
+        --bin camera-probe \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,camera,console-auto
 
   build-s3:
     script: |
@@ -155,9 +165,16 @@ tasks:
       cache: false
       runInCI: false
 
-  # Playback isolation probe: the speaker alone, looping the catalogue. A second
-  # image on the same target, never produced by build-s3 (which names --bin
-  # vanling), so the product's artifacts and its flash task are untouched.
+  # Bench images: one peripheral each, so a fault belongs to a path rather than to the
+  # product's three tasks contending for one executor. None is produced by build-s3, which
+  # names only the product's own bins, so the product's artifacts and its flash task are
+  # untouched. Repeated rather than shared: moon does not forward a child's `args` to an
+  # inherited script, and each probe brings its own feature set anyway — the camera probe is
+  # the only image that enables `camera`.
+  #
+  #   probe-audio-s3      the speaker alone, looping the catalogue
+  #   probe-camera-s3     the camera and the panel, and nothing else
+  #   probe-multicore-s3  the second core and the main stack beneath it
   probe-audio-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin audio-probe \
@@ -169,10 +186,50 @@ tasks:
     options:
       runInCI: false
 
+  probe-camera-s3:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin camera-probe \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,camera,console-auto
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/camera-probe'
+    options:
+      runInCI: false
+
+  probe-multicore-s3:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin multicore-s3 \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/multicore-s3'
+    options:
+      runInCI: false
+
   flash-probe-audio-s3:
     command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/audio-probe'
     deps:
       - ~:probe-audio-s3
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
+  flash-probe-camera-s3:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/camera-probe'
+    deps:
+      - ~:probe-camera-s3
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
+  flash-probe-multicore-s3:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/multicore-s3'
+    deps:
+      - ~:probe-multicore-s3
     options:
       persistent: true
       cache: false

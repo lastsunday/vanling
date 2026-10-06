@@ -10,3 +10,6 @@ pub use audio_out::Es8311Tx;
 pub mod display_light;
 #[cfg(feature = "display-light")]
 pub use display_light::DisplayLight;
+
+#[cfg(feature = "camera")]
+pub mod camera;

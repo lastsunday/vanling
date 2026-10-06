@@ -25,7 +25,7 @@ BSP="iot-bsp-esp"
 TARGET="xtensa-esp32s3-none-elf"
 
 # Pure `embedded-hal` drivers: no chip HAL, so the host builds them.
-HOST_COMPONENTS=(pca9557 qmi8658 es7210 es8311 ft6336)
+HOST_COMPONENTS=(pca9557 qmi8658 es7210 es8311 ft6336 gc2145)
 
 # Everything that needs `esp-hal`, and therefore the bare-metal target. The chip
 # feature is what the board features normally contribute; named here so each
@@ -38,6 +38,7 @@ CHIP_COMPONENTS=(
   "display-light"
   "audio"
   "audio-out"
+  "camera"
 )
 
 failed=()

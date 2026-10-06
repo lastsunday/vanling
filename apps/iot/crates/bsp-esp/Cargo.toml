@@ -14,6 +14,7 @@ qmi8658 = ["dep:embedded-hal"]
 es7210 = ["dep:embedded-hal"]
 es8311 = ["dep:embedded-hal"]
 ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
+gc2145 = ["dep:embedded-hal"]
 ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
 st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # Virtual components: assembled from real components.
@@ -30,6 +31,10 @@ audio = ["es7210", "dep:esp-hal"]
 # transport. It does not depend on the capture, because a speaker with no
 # microphone is a real board and the other way round.
 audio-out = ["es8311", "dep:esp-hal"]
+# The capture side: the sensor driver plus the chip HAL for the ring and the DMA
+# behind it. Separate from `gc2145` because the driver stands on its own on a host
+# and its register table is worth testing without a chip in the room.
+camera = ["gc2145", "dep:esp-hal"]
 esp32c6-devkitc-1 = ["button", "ws2812"]
 lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out"]
 

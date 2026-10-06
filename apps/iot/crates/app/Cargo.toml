@@ -20,6 +20,19 @@ name = "audio-probe"
 path = "src/bin/audio-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
+# Multi-core isolation probe: the second core and the main stack beneath it. Gated on
+# the S3 because it is the only board here whose ROM boots a second core. Left out of
+# the product tasks by name, like the other probes.
+[[bin]]
+name = "camera-probe"
+path = "src/bin/camera-probe.rs"
+required-features = ["lckfb-szpi-esp32s3", "camera"]
+
+[[bin]]
+name = "multicore-s3"
+path = "src/bin/multicore-s3.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
 esp32c6 = [
@@ -38,6 +51,10 @@ esp32s3 = [
   "esp-hal/esp32s3", "esp-println/esp32s3", "esp-rtos/esp32s3",
 ]
 lckfb-szpi-esp32s3 = ["esp32s3", "dep:iot-bsp-esp", "iot-bsp-esp/lckfb-szpi-esp32s3"]
+# The camera path a probe asks for on top of a board, never a board's own doing: it
+# carries a 150 KB frame ring, and a board feature is the union of what every image of
+# that board builds. `camera-probe` requires both; `vanling` requires neither.
+camera = ["iot-bsp-esp/camera"]
 
 # Log console routing for esp_println. `console-auto` mirrors device behavior:
 # USB-Serial/JTAG when a host is attached, UART otherwise. `console-uart` forces

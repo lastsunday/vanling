@@ -12,7 +12,7 @@ pub use esp32c6_devkitc_1::{Board, PullButton, Ws2812RgbLed};
 pub mod lckfb_szpi_esp32s3;
 
 #[cfg(feature = "lckfb-szpi-esp32s3")]
-pub use lckfb_szpi_esp32s3::{Board, DisplayLight, PullButton};
+pub use lckfb_szpi_esp32s3::{Board, DisplayLight, PullButton, SharedI2cDevice};
 
 /// Board-agnostic real components: chip drivers parameterized over the bus /
 /// pin instances handed in by the board wiring.

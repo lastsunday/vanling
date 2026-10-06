@@ -13,9 +13,14 @@ embedded-graphics-core = { version = "0.4.1", default-features = false }
 embedded-hal = { version = "1.0.0", default-features = false }
 esp-backtrace = { version = "0.20.0", features = ["panic-handler", "println"] }
 esp-bootloader-esp-idf = "0.6.0"
-esp-hal = { version = "~1.2.0", default-features = false, features = ["rt", "unstable"] }
+esp-hal = { version = "1.2.2", default-features = false, features = [
+  "rt",
+  "unstable",
+] }
 esp-hal-smartled = "0.18.0"
-esp-println = { version = "0.18.0", default-features = false, features = ["log-04"] }
+esp-println = { version = "0.18.0", default-features = false, features = [
+  "log-04",
+] }
 esp-rtos = { version = "0.4.0", features = ["embassy"] }
 embassy-executor = { version = "0.10.0", default-features = false }
 embassy-futures = "0.1.2"
@@ -29,3 +34,4 @@ smart-leds = "0.4.0"
 iot-core = { path = "crates/core" }
 iot-chip-esp = { path = "crates/chip-esp", default-features = false }
 iot-bsp-esp = { path = "crates/bsp-esp", default-features = false }
+
