@@ -222,9 +222,6 @@ pub async fn control_loop(
             sounding = false;
             finished(intent_bus).await;
         }
-        // The repair the last feed found necessary, done here rather than there:
-        // rebuilding a ring allocates and logging takes locks a feed must never
-        // wait on. A cadence late is free — the ring is already dry.
         if let Some(recovery) = shared.lock(|s| s.speaker.borrow_mut().recover()) {
             log::info!(
                 "[PLAY] recovered the outgoing DMA, {} bytes free, sound was {}",

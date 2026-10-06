@@ -52,7 +52,6 @@ pub enum SlotAppearance {
 }
 
 impl SlotAppearance {
-    /// Which slot this appearance belongs to.
     pub fn slot(&self) -> Slot {
         match self {
             SlotAppearance::Light { instance, .. } => Slot::Light(*instance),
@@ -151,11 +150,8 @@ fn light_diagnostics(state: &DeviceState) -> Diagnostics {
     }
 }
 
-/// Resolves which envelope the Audio page draws: a live capture follows the
-/// driver, a stopped one the latch taken when it stopped. An idle page carries
-/// the live envelope too but draws nothing off the phase, since the driver
-/// keeps folding samples in whether or not a capture is running. Done here so a
-/// sink reads one envelope and never re-implements the phase rule.
+/// Resolves which envelope the Audio page draws, done here so a sink reads one
+/// envelope and never re-implements the phase rule.
 fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
     let shown = match state.audio.phase {
         AudioPhase::Stopped => &state.audio.captured,
@@ -257,15 +253,20 @@ pub trait Renderer {
 /// snapshots and reports only the appearances that changed, via a callback the
 /// render layer fans out to matching renderers. Allocation-free.
 pub struct RenderController {
-    /// Boxed because `DeviceState` is several kilobytes and this snapshot sits
-    /// inside `Render`, which the app hands to its render task by value — so an
-    /// inline copy would be carried down that task's fixed stack frame on top of
-    /// the frame the render path's own call chain is already using. The box is
-    /// allocated once, when the state changes, not once per frame: `DeviceState`
-    /// equality follows `AudioEnvelope`, which compares the drawn window rather
-    /// than the ring's write position, so a capture that draws the same sweep
-    /// two polls running does not count as a change.
-    last: Option<Box<DeviceState>>,
+    /// Boxed because `Render` is handed to the app's render task by value, so an
+    /// inline snapshot would ride down that task's fixed stack frame. The box is
+    /// allocated once and then overwritten in place.
+    last: Option<Box<Snapshot>>,
+}
+
+/// What the controller diffs successive [`DeviceState`]s on: the diagnostics the
+/// renderers receive, plus each light's own state, which is what decides whether
+/// its appearance moved. A `DeviceState` change that reaches neither — the raw
+/// touch snapshot, which no diagnostics row carries — cannot change what is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Snapshot {
+    diagnostics: Diagnostics,
+    lights: [LightState; MAX_LIGHTS],
 }
 
 impl RenderController {
@@ -281,19 +282,19 @@ impl RenderController {
         state: &DeviceState,
         mut notify: impl FnMut(SlotAppearance),
     ) -> bool {
-        let last: Option<&DeviceState> = self.last.as_deref();
-        let changed = match last {
-            None => true,
-            Some(last) => last != state,
+        let next = Snapshot {
+            diagnostics: light_diagnostics(state),
+            lights: state.lights,
         };
+        let changed = self.last.as_deref() != Some(&next);
         if changed {
             // Diagnostics first so panel renderers repaint the digits onto the
             // current surface, then each moved light appearance repaints over
             // it in one write instead of an old-color frame followed by a new
             // one.
-            notify(SlotAppearance::Diagnostics(light_diagnostics(state)));
-            for (instance, light) in state.lights.iter().enumerate() {
-                let moved = match last {
+            notify(SlotAppearance::Diagnostics(next.diagnostics));
+            for (instance, light) in next.lights.iter().enumerate() {
+                let moved = match self.last.as_deref() {
                     None => true,
                     Some(last) => last.lights[instance] != *light,
                 };
@@ -304,7 +305,10 @@ impl RenderController {
                     });
                 }
             }
-            self.last = Some(Box::new(state.clone()));
+            match &mut self.last {
+                Some(last) => **last = next,
+                None => self.last = Some(Box::new(next)),
+            }
         }
         changed
     }
@@ -312,15 +316,15 @@ impl RenderController {
     /// Last synced appearance for `slot` (or `None` before the first sync), so a
     /// freshly registered renderer can catch up before the next diff.
     pub fn current(&self, slot: Slot) -> Option<SlotAppearance> {
-        let state = self.last.as_ref()?;
+        let last = self.last.as_deref()?;
         Some(match slot {
             Slot::Light(instance) => SlotAppearance::Light {
                 instance,
                 appearance: light_appearance(
-                    state.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
+                    last.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
                 ),
             },
-            Slot::Diagnostics => SlotAppearance::Diagnostics(light_diagnostics(state)),
+            Slot::Diagnostics => SlotAppearance::Diagnostics(last.diagnostics),
         })
     }
 }
@@ -378,9 +382,6 @@ mod tests {
         seen
     }
 
-    /// The diagnostics the controller derives for a given light over a zero
-    /// base: the light snapshot is the only field determined by the light
-    /// itself.
     fn diagnostics_for(light: LightState) -> Diagnostics {
         light_diagnostics(&state(light))
     }
@@ -637,6 +638,27 @@ mod tests {
             ]
         );
         assert_eq!(collect(&mut ctl, &off), vec![]);
+    }
+
+    #[test]
+    fn a_state_change_no_renderer_can_see_stays_silent() {
+        let mut ctl = RenderController::new();
+        let boot = state(LightState::boot());
+        collect(&mut ctl, &boot);
+        // The raw touch snapshot rides no diagnostics row, so a state differing
+        // only there cannot change what a renderer is handed.
+        let mut moved = boot;
+        moved.touch = Some(crate::drivers::input::TouchEvent {
+            points: [crate::drivers::input::TouchPoint {
+                id: 0,
+                x: 7,
+                y: 8,
+                status: crate::drivers::input::TouchStatus::Down,
+            }; crate::drivers::input::MAX_TOUCH_POINTS],
+            len: 1,
+            contacts: 1,
+        });
+        assert!(collect(&mut ctl, &moved).is_empty());
     }
 
     #[test]

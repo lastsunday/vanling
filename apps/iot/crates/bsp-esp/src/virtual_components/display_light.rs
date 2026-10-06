@@ -294,9 +294,9 @@ impl DiagnosticsSink for DisplayLight {
                 DEBUG_DIAGNOSTICS,
             );
         // The previous snapshot is read through `self` right up to the decision
-        // above rather than saved into a local. `Diagnostics` embeds a 1.6 KB
-        // audio envelope, so one by-value copy of it here was a large slice of
-        // the main stack this repaint path was already overflowing.
+        // above rather than saved into a local: `Diagnostics` embeds a 1.6 KB
+        // audio envelope, and one by-value copy of it is a large slice of a main
+        // stack this path is already close to overflowing.
         self.diagnostics = *diagnostics;
         if !repaint {
             return;
@@ -623,80 +623,28 @@ impl DisplayLight {
         }
         self.stamp_horizon(&sample, width, height);
 
-        for axis in 0..3 {
-            let mut buf = [0u8; 12];
-            let raw_accel = format_i32(i32::from(sample.raw_accel[axis]), &mut buf);
-            self.stamp_left(
-                match axis {
-                    0 => b"A0",
-                    1 => b"A1",
-                    _ => b"A2",
-                },
-                raw_accel,
-                axis + 1,
-                width,
-                height,
-            );
-        }
-        for axis in 0..3 {
-            let mut buf = [0u8; 12];
-            let accel_mg = format_i32(sample.accel_mg[axis], &mut buf);
-            self.stamp_left(
-                match axis {
-                    0 => b"M0",
-                    1 => b"M1",
-                    _ => b"M2",
-                },
-                accel_mg,
-                axis + 4,
-                width,
-                height,
-            );
-        }
-        for axis in 0..3 {
-            let mut buf = [0u8; 12];
-            let raw_gyro = format_i32(i32::from(sample.raw_gyro[axis]), &mut buf);
-            self.stamp_left(
-                match axis {
-                    0 => b"G0",
-                    1 => b"G1",
-                    _ => b"G2",
-                },
-                raw_gyro,
-                axis + 7,
-                width,
-                height,
-            );
-        }
-        for axis in 0..3 {
-            let mut buf = [0u8; 12];
-            let gyro_dps = format_tenths(sample.gyro_dps_x10[axis], &mut buf);
-            self.stamp_left(
-                match axis {
-                    0 => b"D0",
-                    1 => b"D1",
-                    _ => b"D2",
-                },
-                gyro_dps,
-                axis + 10,
-                width,
-                height,
-            );
-        }
-        for axis in 0..3 {
-            let mut buf = [0u8; 12];
-            let tilt = format_tenths(i32::from(sample.tilt_deg_x10[axis]), &mut buf);
-            self.stamp_left(
-                match axis {
-                    0 => b"R0",
-                    1 => b"R1",
-                    _ => b"R2",
-                },
-                tilt,
-                axis + 13,
-                width,
-                height,
-            );
+        // One row per axis per channel: raw and scaled acceleration, raw gyro,
+        // yaw rate, roll/pitch. The label prefix carries the channel, the unit
+        // picks the formatter, and `first_row` is where the block starts.
+        const BLOCKS: [(u8, usize); 5] = [(b'A', 1), (b'M', 4), (b'G', 7), (b'D', 10), (b'R', 13)];
+        for &(prefix, first_row) in &BLOCKS {
+            for axis in 0..3 {
+                let mut buf = [0u8; 12];
+                let value = match prefix {
+                    b'A' => format_i32(i32::from(sample.raw_accel[axis]), &mut buf),
+                    b'M' => format_i32(sample.accel_mg[axis], &mut buf),
+                    b'G' => format_i32(i32::from(sample.raw_gyro[axis]), &mut buf),
+                    b'D' => format_tenths(sample.gyro_dps_x10[axis], &mut buf),
+                    _ => format_tenths(i32::from(sample.tilt_deg_x10[axis]), &mut buf),
+                };
+                self.stamp_left(
+                    &[prefix, b'0' + axis as u8],
+                    value,
+                    first_row + axis,
+                    width,
+                    height,
+                );
+            }
         }
         self.stamp_left(
             b"ST",
@@ -843,8 +791,6 @@ impl DisplayLight {
             width,
             height,
         );
-        // The two levels, in decibels, because a level in LSB is a number only
-        // this code can read: is anything arriving, and is it a voice or a knock.
         self.stamp_level(
             b"PK",
             dbfs(self.diagnostics.audio.envelope.loudest()),
@@ -918,9 +864,6 @@ impl DisplayLight {
             width,
             height,
         );
-        // The sound is the page's one piece of state a tap changes, so it gets a
-        // row of its own: it is what the user is choosing between, and the
-        // catalogue it walks is a word, not a level.
         self.stamp_left(
             b"SRC",
             match playback.sound {
@@ -931,15 +874,9 @@ impl DisplayLight {
             width,
             height,
         );
-        // A latch, so it reads as a state rather than as an event: `MUT` is only
-        // stamped when it is engaged, the same way `CLIP` appears.
         if playback.muted {
             self.stamp_unit(b"MUTE", 1, width, height);
         }
-        // Plays and dropped taps as two numbers rather than one, because they
-        // answer different questions — "did it make a sound" and "did it hear me"
-        // — and a single combined tally could not tell a quiet speaker from a
-        // busy finger.
         self.stamp_left(
             b"PLY",
             format_u16(playback.plays, &mut [0u8; 6]),
@@ -1056,7 +993,6 @@ impl DisplayLight {
         }
     }
 
-    /// The floor, solid.
     fn stamp_centre_line(&mut self, width: usize, height: usize) {
         for column in 0..SCAN_COLUMNS {
             self.stamp_pixel(SCAN_X + column, WAVE_CY, width, height);
@@ -1186,7 +1122,6 @@ impl DisplayLight {
 
         self.stamp_circle(cx, cy, r, width, height);
 
-        // Fixed airframe reference: top bank index and center wing bar.
         self.stamp_line(cx - 4, cy - r + 2, cx + 4, cy - r + 2, width, height);
         self.stamp_line(cx - 10, cy, cx + 10, cy, width, height);
 
@@ -1385,7 +1320,6 @@ fn stamp_char(frame: &mut [u8], ch: u8, left: usize, top: usize, width: usize, h
     }
 }
 
-/// Draws `text` left to right from `left` on one glyph pitch.
 fn stamp_text(frame: &mut [u8], text: &[u8], left: usize, top: usize, width: usize, height: usize) {
     for (glyph, &ch) in text.iter().enumerate() {
         stamp_char(
@@ -1415,19 +1349,18 @@ fn stamp_text_right(
 }
 
 fn format_i32(value: i32, buf: &mut [u8; 12]) -> &[u8] {
-    let negative = value < 0;
-    let magnitude = if negative {
-        -(value as i64) as u64
-    } else {
-        value as u64
-    };
-    let mut n = 0;
+    let n = write_signed(value.unsigned_abs() as u64, value < 0, buf, 0);
+    &buf[..n]
+}
+
+/// Writes a `-` sign when `negative`, then `magnitude`'s digits, starting at
+/// offset `n`; returns the new length.
+fn write_signed(magnitude: u64, negative: bool, buf: &mut [u8], mut n: usize) -> usize {
     if negative {
         buf[n] = b'-';
         n += 1;
     }
-    n = write_u64(magnitude, buf, n);
-    &buf[..n]
+    write_u64(magnitude, buf, n)
 }
 
 /// A pressure level in decibels with its unit, as the corner readout: unlike a
@@ -1442,18 +1375,8 @@ fn format_dba(decibels: i16, buf: &mut [u8; 12]) -> &[u8] {
 }
 
 fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
-    let negative = value < 0;
-    let magnitude = if negative {
-        -(value as i64) as u64
-    } else {
-        value as u64
-    };
-    let mut n = 0;
-    if negative {
-        buf[n] = b'-';
-        n += 1;
-    }
-    n = write_u64(magnitude / 10, buf, n);
+    let magnitude = value.unsigned_abs() as u64;
+    let n = write_signed(magnitude / 10, value < 0, buf, 0);
     buf[n] = b'.';
     buf[n + 1] = b'0' + (magnitude % 10) as u8;
     &buf[..n + 2]
@@ -1484,24 +1407,8 @@ fn format_u16(value: u16, buf: &mut [u8; 6]) -> &[u8] {
     &buf[..n]
 }
 
-/// Appends the decimal ASCII digits of `value` to `buf` starting at offset
-/// `n`; returns the new length.
-fn write_u16(mut value: u16, buf: &mut [u8], mut n: usize) -> usize {
-    let mut tmp = [0u8; 5];
-    let mut len = 0;
-    loop {
-        tmp[len] = b'0' + (value % 10) as u8;
-        len += 1;
-        value /= 10;
-        if value == 0 {
-            break;
-        }
-    }
-    for &digit in tmp[..len].iter().rev() {
-        buf[n] = digit;
-        n += 1;
-    }
-    n
+fn write_u16(value: u16, buf: &mut [u8], n: usize) -> usize {
+    write_u64(value.into(), buf, n)
 }
 
 /// Renders an optional coordinate pair as `x y` (single dash when unset) for
@@ -1521,8 +1428,6 @@ fn format_pair(pair: Option<(u16, u16)>, buf: &mut [u8; 8]) -> &[u8] {
     }
 }
 
-/// The value channel `hsv_to_rgb` encoded a color with — its brightest
-/// channel — back out of the driven frame, for the live brightness readout.
 fn brightness_of(Rgb(r, g, b): Rgb) -> u8 {
     r.max(g).max(b)
 }

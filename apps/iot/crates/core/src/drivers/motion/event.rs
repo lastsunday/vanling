@@ -91,9 +91,8 @@ pub struct MotionCounts {
     pub moving: u16,
     pub activity: u16,
     pub steps: u16,
-    /// Tilt entries summed over all four directions.
+    /// Tilt entries and exits, each summed over all four directions.
     pub tilt_enters: u16,
-    /// Tilt exits summed over all four directions.
     pub tilt_exits: u16,
     pub shakes: u16,
     pub lifts: u16,
@@ -103,7 +102,6 @@ pub struct MotionCounts {
 }
 
 impl MotionCounts {
-    /// A zeroed tally, for the const-built boot state.
     pub const ZERO: Self = Self {
         taps: 0,
         double_taps: 0,
@@ -185,9 +183,7 @@ impl MotionCapabilities {
 /// What the core-side classifier derives from any source's data plane. Held
 /// apart from a driver's own declarations so a semantic is never attributed to
 /// hardware that never computed it, and so the two layers can be unioned into
-/// the capability set a product actually advertises. Tap is core-side: the
-/// QMI8658A tap engine this product abandoned never resolved a gesture from its
-/// enable transient on, so the knock contract belongs to the recognizer here.
+/// the capability set a product actually advertises.
 pub const RECOGNIZER_CAPABILITIES: MotionCapabilities = MotionCapabilities::TAP
     .union(MotionCapabilities::TILT)
     .union(MotionCapabilities::SHAKE)

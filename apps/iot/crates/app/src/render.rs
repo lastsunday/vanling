@@ -23,14 +23,13 @@ pub const STEP_MS: u32 = 20;
 /// Capacity of the cross-task render bus.
 pub const RENDER_BUS_CAPACITY: usize = 8;
 
-/// Cross-task render messages: renderers register when their resource exists
-/// (e.g. a connected Web client) and unregister when it disappears. The
-/// render task is the single owner draining this bus.
+/// Cross-task render messages: renderers register when their resource exists and
+/// unregister when it disappears. The render task is the single owner draining
+/// this bus.
 pub enum RenderMsg {
     /// Cross-task renderers must be `Send`; in-task boot renderers (the light)
     /// register directly with [`Render::register`].
     Register(Box<dyn Renderer + Send>),
-    /// P1: runtime renderers (Web/Audio) drop on disconnect.
     Unregister(RenderToken),
 }
 
@@ -39,8 +38,8 @@ pub enum RenderMsg {
 pub struct RenderToken(pub u64);
 
 /// Cross-task render channel type. The render task consumes it via an explicit
-/// argument (never a hidden global); producers (future Web/Audio renderers on
-/// other tasks) send to [`RENDER_BUS`].
+/// argument (never a hidden global); producers on other tasks send to
+/// [`RENDER_BUS`].
 pub type RenderBus = Channel<CriticalSectionRawMutex, RenderMsg, RENDER_BUS_CAPACITY>;
 
 /// Single shared render bus: storage for the cross-task renderer registry and

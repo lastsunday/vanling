@@ -79,9 +79,7 @@ impl Spi4 {
         *used += N;
         Ok(())
     }
-}
 
-impl Spi4 {
     fn write_data(&mut self, data: &[u8]) -> Result<(), esp_hal::spi::Error> {
         self.dc.set_high();
         SpiBus::write(&mut self.spi, data)
@@ -229,8 +227,7 @@ impl St7789 {
         self.height
     }
 
-    /// Push one full frame to panel VRAM. The panel is treated as a windowed
-    /// RAM target: select the full column/row range then stream the pixels.
+    /// Push one full frame to panel VRAM.
     pub fn write_frame(&mut self, frame: &[u8]) -> Result<(), esp_hal::spi::Error> {
         let x_end = self.width - 1;
         let y_end = self.height - 1;

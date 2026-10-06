@@ -22,9 +22,7 @@ impl DisplayPage {
     /// The next page in cycle order, skipping pages the board cannot back.
     ///
     /// Self-healing: sitting on a page the wiring no longer supports falls
-    /// back to `Ambient` instead of stranding the cycle, and a board with
-    /// neither capability stays on `Ambient` as it did when the cycle was
-    /// motion-gated.
+    /// back to `Ambient` instead of stranding the cycle.
     pub const fn next_page(
         &self,
         motion_enabled: bool,
@@ -421,12 +419,7 @@ impl DeviceManager {
     /// a business intent applied by [`Self::apply_business`].
     pub fn apply_operation(&mut self, op: OperationIntent) {
         match op.event {
-            // Buttons carry no touch fingerprint; their operation is a pure
-            // mode/color move resolved by the interpreter, so nothing to tally.
             InputEvent::Button(_) => {}
-            // A press-down pulse folds into the live points and tallies
-            // independently of the lift's fate, so a tap the classifier
-            // swallowed still surfaces its physical press.
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
                 let before = self.live_point_count();
                 if let Some(slot) = self.upsert_point(id, x, y) {
@@ -435,13 +428,9 @@ impl DeviceManager {
                 self.bump_two_finger_runs(before);
                 self.state.press_count = self.state.press_count.wrapping_add(1);
             }
-            // An anomaly pulse saturates: each failure/extra-contact run is
-            // already collapsed upstream.
             InputEvent::Gesture(GestureEvent::Ghost) => {
                 self.state.ghost_count = self.state.ghost_count.saturating_add(1);
             }
-            // A tap tallies and records its hold/origin; the color walk is the
-            // business side of the same signal.
             InputEvent::Gesture(GestureEvent::Tap { id, x, y, held_ms }) => {
                 self.state.tap_count = self.tally_gesture(
                     self.state.tap_count,
@@ -458,8 +447,6 @@ impl DeviceManager {
                     },
                 );
             }
-            // A double-tap tallies separately from a tap; both overlay rows
-            // show its two tap positions.
             InputEvent::Gesture(GestureEvent::DoubleTap {
                 id,
                 x,
@@ -506,9 +493,6 @@ impl DeviceManager {
                     },
                 );
             }
-            // A long-press tallies separately from the button's mode cycle;
-            // the wake/cycle business move is resolved by the interpreter,
-            // never here.
             InputEvent::Gesture(GestureEvent::LongPress { id, x, y, held_ms }) => {
                 self.state.long_press_count = self.tally_gesture(
                     self.state.long_press_count,
@@ -525,8 +509,6 @@ impl DeviceManager {
                     },
                 );
             }
-            // A swipe tallies, records its travel, and frees the live slot;
-            // the diagonal identity target resolves in translate.
             InputEvent::Gesture(GestureEvent::Swipe {
                 id,
                 x,
@@ -570,16 +552,11 @@ impl DeviceManager {
                     }
                 }
             }
-            // A capture poll is pure data plane: it refreshes the envelope the
-            // Audio page draws and raises no semantics, so the phase that
-            // decides start/stop is the business side of a tap.
             InputEvent::Audio(sample) => {
                 if self.state.audio_enabled {
                     self.state.audio.live = sample;
                 }
             }
-            // A raw snapshot folds its points into the live slots (upsert on
-            // down/contact, free on release) before storing the frame.
             InputEvent::Touch(event) => {
                 let before = self.live_point_count();
                 for point in event.points.iter().take(usize::from(event.len)) {
@@ -641,11 +618,8 @@ impl DeviceManager {
                     };
                 }
             }
-            // Advances to the next sound and starts it. The phase is the whole
-            // rule: a sound is a one-shot, so a tap over a sounding one is
-            // tallied and dropped rather than cutting the current sound off —
-            // restarting mid-note is a click, and the count is what tells the
-            // user their taps were heard.
+            // A sound is one-shot: a tap over a sounding one is counted, not
+            // played, because cutting the note short is a click.
             BusinessIntent::PlayNext => {
                 if self.state.playback_enabled {
                     match self.state.playback.phase {
@@ -661,17 +635,14 @@ impl DeviceManager {
                     }
                 }
             }
-            // A latch, not a moment: the long press flips it and the next press
-            // flips it back, so muting does not need a second gesture to undo
-            // and the page can show which way it stands.
+            // A latch, not a moment: the page has to show which way it stands.
             BusinessIntent::ToggleMute => {
                 if self.state.playback_enabled {
                     self.state.playback.muted = !self.state.playback.muted;
                 }
             }
-            // The driver's own report that a sound ran out. Ignored unless one
-            // was sounding, so a late or duplicated report cannot knock the
-            // page out of phase with the driver.
+            // Ignored unless one was sounding, so a late or duplicated report
+            // cannot knock the page out of phase with the driver.
             BusinessIntent::PlaybackFinished => {
                 if self.state.playback_enabled
                     && self.state.playback.phase == PlaybackPhase::Playing
@@ -698,10 +669,8 @@ impl DeviceManager {
             .position(|p| p.is_some_and(|l| l.id == id))
     }
 
-    /// Upsert a live point into its tracker's slot, or the first free slot for
-    /// a new tracker; a point with no free slot to spare (the panel's cap
-    /// already live to other trackers) is dropped rather than evicted. Returns
-    /// the slot that now owns the tracker, or `None` when the point was dropped.
+    /// A point with no free slot to spare is dropped rather than evicted, so a
+    /// live finger never loses its row to a newer one.
     fn upsert_point(&mut self, id: u8, x: u16, y: u16) -> Option<usize> {
         let slot = self
             .point_slot(id)
@@ -718,10 +687,8 @@ impl DeviceManager {
         }
     }
 
-    /// Count a resolved touch gesture: record hold/origin/end and the slot's
-    /// last gesture, free the finger's live slot, and return the counter
-    /// bumped. The operation plane only tallies; the light move travels as a
-    /// separate business intent.
+    /// The operation plane only tallies; the light move travels as a separate
+    /// business intent. Returns the counter bumped.
     fn tally_gesture(&mut self, counter: u8, record: GestureRecord) -> u8 {
         self.state.touch_held_ms = record.held_ms;
         self.state.last_gesture_origin = Some(record.origin);
@@ -730,9 +697,8 @@ impl DeviceManager {
         counter.wrapping_add(1)
     }
 
-    /// Stamp a slot's last resolved gesture, then free the slot: resolving a
-    /// gesture means the finger lifted, so its live point and movement arrow
-    /// both go back to `-` until the next press.
+    /// Resolving a gesture means the finger lifted, so its live point and
+    /// movement arrow both go back to `-` until the next press.
     fn record_gesture(&mut self, id: u8, last: FingerLast) {
         if let Some(slot) = self.point_slot(id) {
             self.state.finger[slot] = last;
@@ -741,7 +707,7 @@ impl DeviceManager {
         }
     }
 
-    /// A saturated rise counter: bump once per transition into ≥2 live slots.
+    /// Saturating: it answers "ever concurrent", not "how many frames".
     fn bump_two_finger_runs(&mut self, before: usize) {
         if before < 2 && self.live_point_count() >= 2 {
             self.state.two_finger_runs = self.state.two_finger_runs.saturating_add(1);
@@ -756,23 +722,24 @@ impl DeviceManager {
         self.state.lights[0]
     }
 
-    /// State of the `instance`-th light surface, clamped like
-    /// [`Self::apply_to`] so an out-of-range read is the last surface, never a
-    /// panic.
+    /// Clamped like [`Self::apply_to`]: an out-of-range read is the last surface,
+    /// never a panic.
+    #[cfg(test)]
     pub fn light_state_at(&self, instance: u8) -> LightState {
         self.state.lights[usize::from(instance).min(MAX_LIGHTS - 1)]
     }
 
-    /// Latest touch snapshot, or `None` before the first contact. Consumed by
-    /// the render loop alongside the light state.
+    #[cfg(test)]
     pub fn touch_state(&self) -> Option<TouchEvent> {
         self.state.touch
     }
 
+    #[cfg(test)]
     pub fn motion_state(&self) -> Option<MotionSample> {
         self.state.motion
     }
 
+    #[cfg(test)]
     pub fn motion_counts_state(&self) -> MotionCounts {
         self.state.motion_counts
     }
@@ -1298,9 +1265,8 @@ mod tests {
         use super::*;
         use crate::drivers::playback::Sound;
 
-        /// A board with all three capabilities, parked on the Speaker page. Every
-        /// capability is on so a case can also assert the cycle, and the taps
-        /// are looped rather than counted so the helper does not have to be
+        /// Every capability is on so a case can also assert the cycle, and the
+        /// taps are looped rather than counted so the helper does not have to be
         /// rewritten when a page is added.
         fn on_speaker() -> DeviceManager {
             let mut manager = DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
@@ -1755,7 +1721,6 @@ mod tests {
         #[test]
         fn light_moves_only_via_a_business_intent() {
             let mut manager = DeviceManager::new();
-            // Operation-plane diagnostics never move the light.
             manager.apply_operation(tap());
             manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Ghost)));
             manager.apply_operation(press(0, 12, 34));
@@ -1769,7 +1734,6 @@ mod tests {
                 1,
                 "only a classifier press pulse earns a press tally, never a raw frame"
             );
-            // A business intent is the only path to a new color.
             let target = LightState::Solid {
                 color: Rgb(1, 2, 3),
                 brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
@@ -1791,11 +1755,8 @@ mod tests {
 
         #[test]
         fn off_tap_full_path_records_diagnostics_and_keeps_off() {
-            // The dispatcher's sequence for an operation: record its operation
-            // diagnostics, translate against the freshest state, apply the
-            // business side. A tap on `Off` has no color step, so it resolves
-            // `Invalid` — the light must not move while the physical input
-            // still records.
+            // A tap on `Off` has no color step, so it resolves `Invalid` — the
+            // light must not move while the physical input still records.
             let mut manager = DeviceManager::new();
             manager.apply_business(set_light(0, LightState::Off));
             let op = tap();

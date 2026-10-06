@@ -118,6 +118,18 @@ Tone::fill
 
 ---
 
+## 两个判定在宿主上看不见，所以做成纯函数 + 显式测试
+
+`still_sounding(source_done, arm_sounded, arm_in_flight)` 回答"声音还在不在响"。
+
+**被否的方向**：源用尽即判定结束。**错**：源用尽不等于声音结束——正在播最后几帧的那一路（`arm_sounded`）得先放完。反过来写反了更糟：源用尽后仍然每次 arm 一个静音环，每一个都回答"还在响"，于是相位永远出不了 `Playing`，之后每次轻点都被记成"对一个已经结束的声音的丢弃"。而这个错误**在宿主上完全看不出来**：arm 只存在于板上。
+
+watchdog 的方向错法同类，但更贵：`tx_idle` 在 FIFO 瞬时空的那一刻就拉高，而那是两次 feed 之间的常态。当成故障处理会在声音中途拆掉并重建 DMA，重启 codec 时钟并重放一整环陈旧音频。
+
+`[测试]` `a_spent_source_never_reports_playing_again` 与 `a_brief_idle_between_feeds_is_not_a_drained_stream`（`core/src/drivers/playback.rs`）分别钉住这两个方向；后者按一个整环的播放时长逐节拍走完，避免任何一种 unlucky 的节拍组合把它藏过去。
+
+---
+
 ## 音效配方
 
 `asset.pcm` 是二进制，不自述来源，配方记在 `audio_out.rs` 的 `ASSET` 注释里：660 Hz 120 ms 接 880 Hz 160 ms，两音各为 1.0 / 2.76 / 5.40 倍分音之和。

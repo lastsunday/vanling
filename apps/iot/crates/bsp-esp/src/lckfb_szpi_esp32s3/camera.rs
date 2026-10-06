@@ -109,24 +109,8 @@ impl Board<'static> {
                 .with_scl(GPIO2),
         )?;
 
-        let mut block_spi = spi_master::Spi::new(
-            SPI3,
-            spi_master::Config::default()
-                .with_frequency(Rate::from_hz(SPI_FREQ_HZ))
-                .with_mode(SPI_MODE),
-        )
-        .map_err(BoardError::SpiConfig)?
-        .with_sck(GPIO41)
-        .with_mosi(GPIO40)
-        .with_dma(DMA_CH0)
-        .with_buffers(
-            dma_rx_buffer!(SPI_DMA_BUF_BYTES).map_err(BoardError::from)?,
-            dma_tx_buffer!(SPI_DMA_BUF_BYTES).map_err(BoardError::from)?,
-        );
-        let dc = Output::new(GPIO39, Level::Low, OutputConfig::default());
-        // Prime the bus before chip-select drops: the pins glitch on their first transfer
-        // and the panel ignores the byte while chip-select is high.
-        SpiBus::write(&mut block_spi, &[0x01]).map_err(BoardError::Spi)?;
+        let (block_spi, dc) =
+            panel_spi(SPI3, DMA_CH0, GPIO41, GPIO40, GPIO39).map_err(BoardError::from)?;
         // Selects the panel and wakes the sensor in one write, because both lines are
         // active low and share the expander's register. `bring_up_i2c` left the register
         // at `LCD_CS_BIT | DVP_PWDN_BIT`, which parks the sensor and selects the panel, so
@@ -136,28 +120,9 @@ impl Board<'static> {
         // no `MADCTL` transposition and no CPU transpose.
         let panel = St7789::new(block_spi, dc, dvp::FRAME_WIDTH, dvp::FRAME_HEIGHT)
             .map_err(BoardError::from)?;
-
-        let mut ledc = Ledc::new(LEDC);
-        ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-        let timer = BACKLIGHT_TIMER.init(ledc.timer::<LowSpeed>(ledc_timer::Number::Timer0));
-        timer
-            .configure(ledc_timer::config::Config {
-                duty: ledc_timer::config::Duty::Duty10Bit,
-                clock_source: ledc_timer::LSClockSource::APBClk,
-                frequency: Rate::from_hz(BACKLIGHT_PWM_HZ),
-            })
-            .map_err(BoardError::LedcTimer)?;
-        let mut channel = ledc.channel::<LowSpeed>(ledc_channel::Number::Channel0, GPIO42);
-        channel
-            .configure(ledc_channel::config::Config {
-                timer: &*timer,
-                duty_pct: 0,
-                drive_mode: DriveMode::PushPull,
-            })
-            .map_err(BoardError::LedcChannel)?;
         // Held for the run: dropping the channel would leave the line wherever the PWM
         // last left it, and the probe has no renderer to ask for brightness again.
-        let _backlight = Backlight::new(channel);
+        let _backlight = panel_backlight(LEDC, GPIO42).map_err(BoardError::from)?;
 
         let dvp_peripheral = esp_hal::lcd_cam::cam::Camera::new(
             esp_hal::lcd_cam::LcdCam::new(LCD_CAM).cam,
@@ -202,9 +167,9 @@ impl Board<'static> {
             .map_err(CameraOnlyError::Sensor)?;
         sensor.set_hmirror(true).map_err(CameraOnlyError::Sensor)?;
 
-        // What the part holds rather than what it was asked for: an output size that reads
-        // back right while the ratio is wrong is a picture of the right shape and the
-        // wrong content.
+        // What the part holds rather than what it was asked for: an output size
+        // that reads back right while the ratio is wrong is a picture of the right
+        // shape and the wrong content.
         let geometry = sensor
             .read_window_geometry()
             .map_err(CameraOnlyError::Sensor)?;
@@ -223,9 +188,8 @@ impl Board<'static> {
             geometry.subsample >> 4,
             geometry.subsample & 0x0f,
         );
-        // Register by register, because the size above reads back as asked for whether or
-        // not the part is doing what was asked: it reports the window it was given, not the
-        // picture it produced.
+        // Register by register, because the part reports the window it was
+        // given, not the picture it produced.
         log::info!(
             "[CAM] decim regs: 0x99=0x{:02x} 0x9a=0x{:02x} bins={:02x?} crop={}",
             geometry.subsample,

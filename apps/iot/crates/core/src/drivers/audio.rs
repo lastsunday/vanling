@@ -352,12 +352,14 @@ impl AudioEnvelope {
 
     /// The whole window, oldest column first. Columns past [`Self::committed`]
     /// are still zero on a fresh envelope.
+    #[cfg(test)]
     pub fn columns(&self) -> &[u16; ENVELOPE_COLUMNS] {
         &self.columns
     }
 
     /// The whole A-weighted window, raw peaks through the filter, same layout as
     /// [`columns`](Self::columns).
+    #[cfg(test)]
     pub fn weighted_columns(&self) -> &[u16; ENVELOPE_COLUMNS] {
         &self.weighted_columns
     }
@@ -491,6 +493,7 @@ impl AudioEnvelope {
     /// True while a window is partly filled and its column is still the
     /// previous value, so a panel drawing on poll rather than on sample count
     /// shows the newest bar a poll late.
+    #[cfg(test)]
     pub fn mid_window(&self) -> bool {
         self.filled > 0
     }
@@ -562,9 +565,7 @@ impl SampleStream {
         self.envelope
     }
 
-    /// The A-weighted level as an RMS in LSB, saturating after the sample the
-    /// meter last folded. Zero until the first bytes arrive, and it settles
-    /// back toward it after the room goes quiet — the fall itself is the meter.
+    /// The A-weighted level as an RMS in LSB. Zero until the first bytes arrive.
     pub const fn dba_lsb(&self) -> u16 {
         self.envelope.dba_lsb()
     }
@@ -674,11 +675,13 @@ impl CaptureBacklog {
     }
 
     /// The depth that opens a backlog, for a driver that has to describe it.
+    #[cfg(test)]
     pub const fn warn_bytes(&self) -> usize {
         self.warn_bytes
     }
 
     /// The depth that closes one.
+    #[cfg(test)]
     pub const fn clear_bytes(&self) -> usize {
         self.clear_bytes
     }
@@ -699,8 +702,7 @@ impl CaptureBacklog {
         Some(produced_bytes)
     }
 
-    /// Whether a backlog is currently called, for a driver that reports state
-    /// rather than the moment it opened.
+    #[cfg(test)]
     pub const fn backlogged(&self) -> bool {
         self.backlogged
     }
@@ -994,12 +996,9 @@ mod tests {
 
     #[test]
     fn the_depth_a_healthy_capture_settles_at_is_not_called_a_backlog() {
-        // The regression this rule exists for. A poll that arrives on time finds
-        // about one poll of audio waiting, and a loop running a fixed beat behind
-        // the wire settles a whole poll deeper than that for ever — so a line at
-        // two polls sits exactly on the steady state and fires on every poll, on
-        // a ring that holds three and was never filling. The depths below are
-        // what the panel actually reported while the ring stayed healthy.
+        // A loop running a fixed beat behind the wire settles a whole poll
+        // deeper than the steady state for ever, so the depths below are what
+        // the panel reported while the ring stayed healthy.
         let mut backlog = CaptureBacklog::new(RING_BYTES);
         for produced in [7_708, 7_934, 8_188] {
             assert_eq!(
@@ -1200,10 +1199,9 @@ mod tests {
     #[test]
     fn spl_is_dbfs_with_the_microphones_own_reference_back() {
         // The two readings are the same signal counted from different zeros, so
-        // the offset has to be the whole of the difference: anything else in
-        // between means the two columns are no longer the same measurement. The
-        // offset is this board's own (`SPL_OFFSET_DECIBELS` in `bsp-esp`), restated
-        // here because the core cannot depend on the board that carries the part.
+        // the offset has to be the whole of the difference. It is this board's own
+        // (`SPL_OFFSET_DECIBELS` in `bsp-esp`), restated here because core cannot
+        // depend on the board carrying the part.
         const ZTS6216: i16 = 102;
         assert_eq!(spl(-40, ZTS6216), 62, "a −40 dBFS floor is 62 dB SPL");
         assert_eq!(spl(0, ZTS6216), 102, "and the rail is the offset itself");
@@ -1234,9 +1232,6 @@ mod tests {
 
     #[test]
     fn a_bar_falls_gradually_instead_of_tracking_the_signal() {
-        // The release is the difference between a level meter and a waveform: a
-        // bar that fell as fast as the signal did would show only the attack and
-        // lose the whole of every syllable after it.
         let measured = 8_000;
         assert_eq!(released_peak(measured, 0), measured, "a first column");
         let after_one = released_peak(0, measured);
@@ -1670,11 +1665,8 @@ mod tests {
 
     #[test]
     fn a_silent_capture_stops_reading_as_changed_once_the_ring_has_wrapped() {
-        // The window wrapped, so `cursor` is advancing on every poll, and a
-        // derived `PartialEq` counted that as a change: 0 of 600 successive
-        // silent polls compared equal, which kept the whole diff pipeline
-        // re-running at the render cadence on a quiet room. Everything the
-        // panel draws is identical here, so equality has to hold.
+        // Everything the panel draws is identical here, so equality has to hold
+        // on the ring position advancing underneath it.
         let silence = [0_i16; SAMPLES_PER_COLUMN as usize];
         let mut envelope = AudioEnvelope::default();
         for _ in 0..ENVELOPE_COLUMNS + 10 {
@@ -1702,8 +1694,6 @@ mod tests {
 
     #[test]
     fn a_capture_that_hears_something_is_still_read_as_changed() {
-        // The counterpart to the silence case: an equality that only ever said
-        // "equal" would be as wrong as one that always says "changed".
         let silence = [0_i16; SAMPLES_PER_COLUMN as usize];
         let mut envelope = AudioEnvelope::default();
         for _ in 0..ENVELOPE_COLUMNS + 10 {

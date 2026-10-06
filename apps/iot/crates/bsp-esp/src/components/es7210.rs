@@ -1,5 +1,8 @@
 use embedded_hal::i2c::I2c;
 
+use super::register_seq::{self, Step};
+use register_seq::{merge, write};
+
 /// Datasheet 2.2: the seven-bit write address. The part has no second address
 /// line, so this is the only address it answers on.
 pub const ES7210_I2C_ADDR: u8 = 0x41;
@@ -62,9 +65,8 @@ const MAINCLK_48K: u8 = 0xC1;
 const OSR_48K: u8 = 0x20;
 const LRCK_DIVH_48K: u8 = 0x01;
 const LRCK_DIVL_48K: u8 = 0x00;
-/// Pins the divider to the rate it is documented to produce, so retuning
-/// `SAMPLE_RATE_HZ` without retuning the register bytes fails here instead of
-/// landing on the host as a part running at the wrong rate.
+/// Retuning `SAMPLE_RATE_HZ` without retuning the divider bytes fails here
+/// instead of landing on the host as a part running at the wrong rate.
 const _: () = assert!(MCLK_HZ / SAMPLE_RATE_HZ == 256);
 
 /// Datasheet 4.6: each input pair's DC-blocking filter, in two registers differing
@@ -144,34 +146,8 @@ const SDP_16BIT: u8 = 0x60;
 /// consequence of the microphone count, not as a power-on value.
 const SDP2_NO_TDM: u8 = 0x00;
 
-/// One entry in a bring-up sequence: write `value` across `reg`, or merge it into
-/// just the bits `mask` selects when a mask is given. A masked write is how the
-/// shared registers stay intact — the serial-port register carries the frame, the
-/// word width and the serial enable at once, and the gain register carries the
-/// PGA enable beside its gain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Step {
-    reg: u8,
-    mask: u8,
-    value: u8,
-}
-
-const fn write(reg: u8, value: u8) -> Step {
-    Step {
-        reg,
-        mask: 0,
-        value,
-    }
-}
-
-const fn merge(reg: u8, mask: u8, value: u8) -> Step {
-    Step { reg, mask, value }
-}
-
-/// Selects MIC1 alone: clears every PGA enable first so no unused channel can
-/// hold one, gates both bias/ADC/PGA pairs off, then releases only the MIC1/MIC2
-/// path and enables MIC1's PGA at 30 dB. Written once and referenced twice, since
-/// a divergence between two copies would configure the part by start count.
+/// Selects MIC1 alone. Written once and referenced twice, since a divergence
+/// between two copies would configure the part by start count.
 const MIC1_SELECT: &[Step] = &[
     merge(REG_MIC1_GAIN, GAIN_ENABLE, 0x00),
     merge(REG_MIC2_GAIN, GAIN_ENABLE, 0x00),
@@ -186,9 +162,8 @@ const MIC1_SELECT: &[Step] = &[
     write(REG_SDP_INTERFACE2, SDP2_NO_TDM),
 ];
 
-/// Reset, then the state-cycle timers and the two DC-blocking filters. The reset
-/// is first because every later write is meaningless against a part still coming
-/// out of it.
+/// The reset comes first: every later write is meaningless against a part still
+/// coming out of it.
 const BRING_UP_RESET: &[Step] = &[
     write(REG_RESET, RESET_ALL),
     write(REG_RESET, RESET_IDLE),
@@ -201,9 +176,8 @@ const BRING_UP_RESET: &[Step] = &[
     write(REG_ADC34_FILTER_SET, FILTER_SET),
 ];
 
-/// Slave mode, the analog rail, the microphone bias, and the 48 kHz clock table
-/// row. Slave mode is set before the microphone selection so the part is not
-/// driving a clock the host is also driving.
+/// Slave mode is set before the microphone selection so the part is not driving
+/// a clock the host is also driving.
 const BRING_UP_CLOCKS: &[Step] = &[
     merge(REG_MODE_CONFIG, MODE_SLAVE_BIT, 0x00),
     write(REG_ANALOG_POWER, ANALOG_POWER_RUN),
@@ -233,10 +207,7 @@ const BRING_UP: &[&[Step]] = &[
     MIC1_SELECT,
 ];
 
-/// Releases the part into capture. The clock register is written by `start`
-/// itself from the byte it read back, ahead of these steps, because the vendor
-/// driver round-trips it: bit7 records that the external clock is present, and
-/// writing a literal would clobber that readback.
+/// Releases the part into capture.
 const START: &[&[Step]] = &[
     &[
         write(REG_POWER_DOWN, POWER_DOWN_RUN),
@@ -283,11 +254,7 @@ impl<D: I2c> HpfCorner for Es7210<D> {
     type CornerError = Es7210Error<D::Error>;
 
     fn set_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
-        // Fully qualified, because the trait method and the inherent one this
-        // forwards to share a name and the inherent one wins resolution — a bare
-        // `self.set_hpf_corner` would be right by accident rather than by
-        // statement, and would look like recursion to whoever reads it next.
-        Es7210::set_hpf_corner(self, corner)
+        Es7210::write_hpf_corner(self, corner)
     }
 }
 
@@ -314,51 +281,21 @@ impl<D: I2c> Es7210<D> {
         if self.running {
             return Ok(());
         }
-        self.run(BRING_UP)?;
+        register_seq::run(&mut self.i2c, self.addr, BRING_UP)?;
         self.start()?;
         self.running = true;
         Ok(())
     }
 
-    /// Releases the part into capture, reading the clock register first so the
-    /// start hands back the byte the part actually holds. Separate from `init` so
-    /// a part that lost its clocks can be restarted without a full re-init.
+    /// Separate from `init` so a part that lost its clocks can be restarted
+    /// without a full re-init. Reads the clock register back first, so the start
+    /// hands back the byte the part actually holds rather than a literal.
     pub fn start(&mut self) -> Result<(), Es7210Error<D::Error>> {
-        let clock_off = self.read_reg(REG_CLOCK_OFF)?;
+        let clock_off = register_seq::read_reg(&mut self.i2c, self.addr, REG_CLOCK_OFF)?;
         self.i2c
             .write(self.addr, &[REG_CLOCK_OFF, clock_off])
             .map_err(Es7210Error::Bus)?;
-        self.run(START)
-    }
-
-    fn run(&mut self, stages: &[&[Step]]) -> Result<(), Es7210Error<D::Error>> {
-        for stage in stages {
-            for step in *stage {
-                if step.mask == 0 {
-                    self.i2c
-                        .write(self.addr, &[step.reg, step.value])
-                        .map_err(Es7210Error::Bus)?;
-                } else {
-                    self.update(*step)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn update(&mut self, step: Step) -> Result<(), Es7210Error<D::Error>> {
-        let current = self.read_reg(step.reg)?;
-        let merged = (current & !step.mask) | (step.value & step.mask);
-        self.i2c
-            .write(self.addr, &[step.reg, merged])
-            .map_err(Es7210Error::Bus)
-    }
-
-    fn read_reg(&mut self, reg: u8) -> Result<u8, D::Error> {
-        let mut value = [0u8; 1];
-        self.i2c.write(self.addr, &[reg])?;
-        self.i2c.read(self.addr, &mut value)?;
-        Ok(value[0])
+        Ok(register_seq::run(&mut self.i2c, self.addr, START)?)
     }
 
     /// Moves every input pair's DC-blocking corner to `corner`, leaving every
@@ -370,14 +307,14 @@ impl<D: I2c> Es7210<D> {
     /// whatever state it was in for every field it did not mean to change. A
     /// board can therefore walk the corner and come back to
     /// [`HPF_CORNER`] without knowing the rest of the byte.
-    pub fn set_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
+    pub fn write_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
         for reg in [
             REG_ADC12_FILTER_CLEAR,
             REG_ADC12_FILTER_SET,
             REG_ADC34_FILTER_CLEAR,
             REG_ADC34_FILTER_SET,
         ] {
-            let current = self.read_reg(reg)?;
+            let current = register_seq::read_reg(&mut self.i2c, self.addr, reg)?;
             let value = (current & !FILTER_CORNER_MASK) | (corner & FILTER_CORNER_MASK);
             self.i2c.write(self.addr, &[reg, value])?;
         }
@@ -389,102 +326,26 @@ impl<D: I2c> Es7210<D> {
 mod tests {
     use super::*;
     use alloc::vec;
-    use alloc::vec::Vec;
-    use embedded_hal::i2c::{ErrorKind, ErrorType, NoAcknowledgeSource, Operation};
     use iot_core::drivers::audio::SCOPE_FLOOR_DECIBELS;
 
-    /// The fault the mock bus injects, in the vocabulary the embedded-hal trait
-    /// defines rather than a bespoke type, so a test that asserts on it reads the
-    /// same as a real peripheral failure.
-    const NACK: ErrorKind = ErrorKind::NoAcknowledge(NoAcknowledgeSource::Data);
+    use crate::components::mock_i2c::{MockI2c, NACK};
 
-    struct MockI2c {
-        registers: [u8; 0x4D],
-        pointer: u8,
-        /// Every write in order, as (register, value). Masked writes record the
-        /// merged byte the bus actually saw, so a wrong mask shows up as a wrong
-        /// trace rather than as nothing at all.
-        trace: Vec<(u8, u8)>,
-        /// Index into `trace` at which the bus starts failing, so a fault can be
-        /// placed at one specific write of a long sequence.
-        fail_at: Option<usize>,
-    }
+    type Mock = MockI2c<0x4D>;
 
-    impl MockI2c {
-        fn new() -> Self {
-            let mut registers = [0u8; 0x4D];
-            // Seed the power-on values the sequence has to correct. The serial
-            // port matters most: a bring-up that only merged the word width
-            // would leave the TDM bit and the frame bits standing.
+    fn mock() -> Mock {
+        Mock::new(|registers| {
+            // The serial port matters most: a bring-up that only merged the word
+            // width would leave the TDM bit and the frame bits standing.
             registers[REG_SDP_INTERFACE1 as usize] = 0x83;
             registers[REG_SDP_INTERFACE2 as usize] = 0x02;
             registers[REG_MODE_CONFIG as usize] = 0x01;
             registers[REG_MIC1_GAIN as usize] = GAIN_ENABLE;
             registers[REG_CLOCK_OFF as usize] = 0xBF;
-            Self {
-                registers,
-                pointer: 0,
-                trace: Vec::new(),
-                fail_at: None,
-            }
-        }
-
-        fn apply(&mut self, write: &[u8]) -> Result<(), ErrorKind> {
-            match write {
-                [reg] => {
-                    self.pointer = *reg;
-                    Ok(())
-                }
-                [reg, value] => {
-                    if self.fail_at == Some(self.trace.len()) {
-                        return Err(NACK);
-                    }
-                    self.registers[*reg as usize] = *value;
-                    self.trace.push((*reg, *value));
-                    Ok(())
-                }
-                _ => Ok(()),
-            }
-        }
-
-        fn writes_of(&self, reg: u8) -> Vec<u8> {
-            self.trace
-                .iter()
-                .filter(|&&(written, _)| written == reg)
-                .map(|&(_, value)| value)
-                .collect()
-        }
+        })
     }
 
-    impl ErrorType for MockI2c {
-        type Error = ErrorKind;
-    }
-
-    impl I2c for MockI2c {
-        fn read(&mut self, _address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
-            for (offset, byte) in read.iter_mut().enumerate() {
-                *byte = self.registers[(self.pointer as usize + offset).min(0x4C)];
-            }
-            Ok(())
-        }
-
-        fn transaction(
-            &mut self,
-            address: u8,
-            operations: &mut [Operation<'_>],
-        ) -> Result<(), Self::Error> {
-            for operation in operations {
-                match operation {
-                    Operation::Read(read) => self.read(address, read)?,
-                    Operation::Write(write) => self.apply(write)?,
-                }
-            }
-            Ok(())
-        }
-    }
-
-    fn settle() -> Es7210<MockI2c> {
-        let mut codec = Es7210::new(MockI2c::new(), ES7210_I2C_ADDR);
+    fn settle() -> Es7210<Mock> {
+        let mut codec = Es7210::new(mock(), ES7210_I2C_ADDR);
         codec.init().expect("init");
         codec
     }
@@ -662,11 +523,10 @@ mod tests {
 
     #[test]
     fn a_corner_write_reports_a_bus_failure_at_every_register() {
-        // Four read-modify-writes, each two transfers plus a read, so the failure
-        // is placed by trace index and the walk is checked to give up on the
-        // register that faulted rather than carrying on to the next one.
+        // The walk has to give up on the register that faulted rather than
+        // carry on to the next one.
         for fail_at in 0..4 {
-            let mut i2c = MockI2c::new();
+            let mut i2c = mock();
             i2c.fail_at = Some(fail_at);
             let mut codec = Es7210::new(i2c, ES7210_I2C_ADDR);
             assert_eq!(
@@ -700,7 +560,7 @@ mod tests {
         // Bit7 of the gain register is outside every mask the sequence uses, so
         // it has to survive being written twice — once to clear the enable and
         // once to set the gain.
-        let mut i2c = MockI2c::new();
+        let mut i2c = mock();
         i2c.registers[REG_MIC1_GAIN as usize] = 0x80;
         let mut codec = Es7210::new(i2c, ES7210_I2C_ADDR);
         codec.init().expect("init");
@@ -712,7 +572,7 @@ mod tests {
 
     #[test]
     fn start_hands_the_clock_register_back_the_value_it_read() {
-        let mut codec = Es7210::new(MockI2c::new(), ES7210_I2C_ADDR);
+        let mut codec = Es7210::new(mock(), ES7210_I2C_ADDR);
         codec.init().expect("init");
         // The bring-up leaves the clock register wherever its masked writes put
         // it, so a start has to write that byte back rather than a literal.
@@ -724,14 +584,11 @@ mod tests {
 
     #[test]
     fn the_microphone_selection_is_the_same_whether_it_is_the_first_or_a_later_start() {
-        // The vendor issues the selection during bring-up and again on every
-        // start. Both have to leave the same register state, or a part that was
-        // started twice would be configured differently from a fresh one.
-        let mut first = Es7210::new(MockI2c::new(), ES7210_I2C_ADDR);
+        let mut first = Es7210::new(mock(), ES7210_I2C_ADDR);
         first.init().expect("init");
         let once = first.i2c.registers;
 
-        let mut second = Es7210::new(MockI2c::new(), ES7210_I2C_ADDR);
+        let mut second = Es7210::new(mock(), ES7210_I2C_ADDR);
         second.init().expect("init");
         second.start().expect("start");
         assert_eq!(
@@ -753,7 +610,7 @@ mod tests {
 
     #[test]
     fn init_is_idempotent() {
-        let mut codec = Es7210::new(MockI2c::new(), ES7210_I2C_ADDR);
+        let mut codec = Es7210::new(mock(), ES7210_I2C_ADDR);
         codec.init().expect("init");
         let after_init = codec.i2c.trace.len();
         codec.init().expect("second init");
@@ -767,7 +624,7 @@ mod tests {
     #[test]
     fn a_bus_failure_during_bring_up_is_reported_and_leaves_the_part_not_running() {
         for fail_at in 0..12 {
-            let mut i2c = MockI2c::new();
+            let mut i2c = mock();
             i2c.fail_at = Some(fail_at);
             let mut codec = Es7210::new(i2c, ES7210_I2C_ADDR);
             assert_eq!(
@@ -788,10 +645,6 @@ mod tests {
         // settled before the start reads it — a start reading it before the
         // selection cleared its gate bits would latch the gated value.
         let codec = settle();
-        // The power-on value stands in for whatever the host's clock divider
-        // leaves behind; the bring-up overwrites it, then each of the two
-        // microphone selections clears its gate bits, then the start hands back
-        // the byte it read.
         let gated = codec.i2c.registers[REG_CLOCK_OFF as usize] & !CLOCK_OFF_MIC12_MASK;
         assert_eq!(
             codec.i2c.writes_of(REG_CLOCK_OFF),

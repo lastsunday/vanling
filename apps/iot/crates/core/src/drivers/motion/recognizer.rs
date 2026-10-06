@@ -39,11 +39,10 @@ pub const SHAKE_GRAVITY_TAU_MS: i32 = 70;
 pub const GRAVITY_MG: i32 = 1_000;
 
 /// Still test for the lift/place pair, on the departure of the measured
-/// magnitude from one g. Subtracting a gravity estimate carried its error for
-/// the whole run, hiding the desk/hand transition; raw magnitude drifts only at
-/// the sensor's noise floor, so a band settled from the bench (8-22 mG rest
-/// swing) keeps the 150 mG intent ST's LSM6DSO FSM escapes on. A smooth carry
-/// stays at exactly one g and reads as still — the same blind spot ST shares.
+/// magnitude from one g. Measured raw rather than against a subtracted gravity
+/// estimate, which carries its own error for the whole run: raw magnitude drifts
+/// only at the sensor's noise floor, so a band settled from the bench (8-22 mG
+/// rest swing) keeps the 150 mG intent ST's LSM6DSO FSM escapes on.
 pub const STILL_GRAVITY_DEV_MG: i32 = 150;
 
 /// Dwell before a stillness transition is believed. ST waits 3 s, which reads
@@ -319,13 +318,12 @@ impl MotionRecognizer {
         }
     }
 
-    /// The knock detector the QMI8658A tap engine could not deliver (it latched a
-    /// stuck tap bit at its enable transient and never resolved a blow). A
-    /// per-axis moving average is subtracted and the squared sum compared
-    /// straight against both bars, the windows below being the datasheet's 10.1
-    /// walk-through decay semantics; a peak that does not decay under the quiet
-    /// bar inside its window is a press or a turn, and first-knock departures
-    /// anchor the double-tap window so a double reports once with its count.
+    /// The knock detector. A per-axis moving average is subtracted and the
+    /// squared sum compared straight against both bars, the windows below being
+    /// the datasheet's 10.1 walk-through decay semantics; a peak that does not
+    /// decay under the quiet bar inside its window is a press or a turn, and
+    /// first-knock departures anchor the double-tap window so a double reports
+    /// once with its count.
     fn update_tap(
         &mut self,
         sample: &mut MotionSample,
@@ -359,9 +357,6 @@ impl MotionRecognizer {
 
         let rested = self.tap_prev_quiet;
         let above = square_sum > TAP_PEAK_MAG_MG2;
-        // A knock is a step out of rest, so only a rise from an actually-quiet
-        // sample counts; a turn climbs across the bars over a few polls and
-        // never assembles that one jump.
         let rising = !self.tap_above && above && rested;
         self.tap_above = above;
 
@@ -377,16 +372,15 @@ impl MotionRecognizer {
                     self.tap_phase = TapPhase::Quiet;
                     self.tap_at_ms = Some(now_ms);
                 } else if self.expired(now_ms, TAP_PEAK_WINDOW_MS) {
-                    // The budget ran out above the quiet bar: an excursion that
-                    // stays high is a press or a turn, not a blow.
+                    // Still above the quiet bar when the budget runs out: a
+                    // press or a turn, not a blow.
                     self.tap_phase = TapPhase::Idle;
                     self.tap_at_ms = None;
                 }
             }
             TapPhase::Quiet => {
                 if rising {
-                    // A second blow inside the quiet window is the ringing tail
-                    // of the first, not a separate knock.
+                    // A second blow here is the first one's ringing tail.
                     self.tap_phase = TapPhase::Peak;
                     self.tap_at_ms = Some(now_ms);
                 } else if self.expired(now_ms, TAP_QUIET_WINDOW_MS) {
@@ -405,8 +399,8 @@ impl MotionRecognizer {
                     self.tap_phase = TapPhase::Peak;
                     self.tap_at_ms = Some(now_ms);
                 } else if self.gesture_ended(now_ms) {
-                    // A settling knock spends the window near rest; one that has rung it
-                    // over the quiet bar most of the way was never a blow.
+                    // A knock that rang the quiet bar most of the way was
+                    // never a blow.
                     if self.tap_motion_ms < TAP_SETTLED_MOTION_MS {
                         events.push(MotionEvent::Tap {
                             count: self.tap_knocks,

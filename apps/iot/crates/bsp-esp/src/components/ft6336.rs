@@ -5,10 +5,12 @@ use iot_core::drivers::input::{
 
 pub const FT6336_I2C_ADDR: u8 = 0x38;
 
-/// Raw `GESTURE_ID` register of the FT5x06 family (`0x10` up / `0x14` left /
-/// `0x18` down / `0x1C` right), read verbatim for the overlay so the chip's
-/// built-in slide engine and the software classifier stay comparable. Never
-/// used for classification.
+/// Raw `GESTURE_ID` register of the FT5x06 family, read verbatim for the
+/// overlay so the chip's built-in slide engine and the software classifier stay
+/// comparable. Never used for classification. The reported codes are `0x10` up /
+/// `0x14` left / `0x18` down / `0x1C` right [据称] — the register only carries the
+/// code, the tests pin that it passes through unmodified and never check the
+/// directions themselves.
 const REG_GESTURE_ID: u8 = 0x01;
 const REG_TD_STATUS: u8 = 0x02;
 /// First point's `XH` register; each point occupies six contiguous bytes
@@ -18,8 +20,9 @@ const POINT_BYTES: usize = 6;
 /// The FT6336 reports at most two self-capacitance contacts.
 const FT6336_MAX_POINTS: usize = 2;
 /// Touch-decision threshold (FT5x06 family system register), one step below
-/// the default so a marginal press latches; the diagnostics verify it —
-/// dropped presses shrink while the anomaly row must stay zero.
+/// the default so a marginal press latches. The diagnostics verify it by
+/// behaviour, not a read-back: dropped presses must shrink while the anomaly
+/// row stays zero.
 const REG_THGROUP: u8 = 0x80;
 const TOUCH_THRESHOLD: u8 = 0x14;
 
@@ -47,8 +50,7 @@ type TouchSample = ([(u16, u16); FT6336_MAX_POINTS], usize, u8);
 /// board-provided I2C device on the shared bus. One failed read is tolerated
 /// (log once per run, pulse `Ghost` on its rising edge, skip the sample) so a
 /// wedged bus can neither stall the input pipeline nor hide from the
-/// on-panel diagnostic. First poll lowers the touch threshold and applies the
-/// mode config; every poll pulses [`InputEvent::ChipGesture`] when the
+/// on-panel diagnostic. Every poll pulses [`InputEvent::ChipGesture`] when the
 /// controller's `GESTURE_ID` changes.
 ///
 /// [`Ghost`]: iot_core::drivers::input::GestureEvent::Ghost
@@ -61,12 +63,8 @@ pub struct Ft6336<D: I2c> {
     continuity: TouchContinuity,
     /// Deduplicates the failure log and tally pulse across a contiguous run.
     error_logged: bool,
-    /// The touch threshold has been applied for this boot.
     sensitivity_applied: bool,
-    /// The mode config has been applied for this boot.
     mode_config_applied: bool,
-    /// Last read `GESTURE_ID`; the poll pulses [`InputEvent::ChipGesture`] on
-    /// change so the diagnostic overlay sees the controller's own engine.
     gesture_id: u8,
 }
 
@@ -99,11 +97,8 @@ impl<D: I2c> Ft6336<D> {
         }
     }
 
-    /// Applies the mode config once at boot: restores the factory trigger
-    /// distances over whichever the FT6336U persisted, keeps `CTRL` in Active
-    /// (the freeze hunt implicated the Monitor lapse) and locks `G_MODE` to
-    /// polling. Tolerates a quiet chip (log once per write, keep polling);
-    /// whether the writes took is judged by the diagnostics, not a read-back.
+    /// Restores the factory trigger distances over whichever the FT6336U
+    /// persisted, keeps `CTRL` in Active and locks `G_MODE` to polling.
     fn apply_mode_config(&mut self) {
         for (reg, wanted) in [
             (REG_DISTANCE_LEFT_RIGHT, GESTURE_DISTANCE_FACTORY_LR),

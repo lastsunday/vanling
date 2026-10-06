@@ -16,7 +16,10 @@ use esp_hal::ledc::channel::ChannelIFace as _;
 use esp_hal::ledc::timer as ledc_timer;
 use esp_hal::ledc::timer::TimerIFace as _;
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
-use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, Peripherals};
+use esp_hal::peripherals::{
+    DMA_CH0, FROM_CPU_INTR0, FROM_CPU_INTR1, GPIO39, GPIO40, GPIO41, GPIO42, LEDC, Peripherals,
+    SPI3,
+};
 use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
@@ -43,7 +46,6 @@ use crate::virtual_components::Es7210Rx;
 use crate::virtual_components::audio as capture;
 use crate::virtual_components::audio_out as playback;
 
-/// The camera↔display isolation probe's wiring: [`camera::Board::new_camera_only`].
 #[cfg(feature = "camera")]
 mod camera;
 
@@ -145,6 +147,94 @@ impl From<DmaBufError> for BoardError {
     }
 }
 
+/// The panel's SPI bus and its data/command line, as both entry points need
+/// them. `DMA_CH0` is fixed here because the capture gets the next channel.
+///
+/// The bus is primed with one byte before chip-select drops: the pins glitch on
+/// their first transfer (esp-idf #15703) and the panel ignores a byte while
+/// chip-select is high. DMA pushes whole frames without the per-FIFO poll that
+/// caps the panel at ~17 fps, and the copy buffers stage flash-resident command
+/// tables DMA cannot read in place.
+fn panel_spi(
+    spi3: SPI3<'static>,
+    dma_ch0: DMA_CH0<'static>,
+    sck: GPIO41<'static>,
+    mosi: GPIO40<'static>,
+    dc: GPIO39<'static>,
+) -> Result<(spi_master::SpiDma<'static, Blocking>, Output<'static>), BoardError> {
+    let mut spi = spi_master::Spi::new(
+        spi3,
+        spi_master::Config::default()
+            .with_frequency(Rate::from_hz(SPI_FREQ_HZ))
+            .with_mode(SPI_MODE),
+    )
+    .map_err(BoardError::SpiConfig)?
+    .with_sck(sck)
+    .with_mosi(mosi)
+    .with_dma(dma_ch0)
+    .with_buffers(
+        dma_rx_buffer!(SPI_DMA_BUF_BYTES)?,
+        dma_tx_buffer!(SPI_DMA_BUF_BYTES)?,
+    );
+    let dc = Output::new(dc, Level::Low, OutputConfig::default());
+    SpiBus::write(&mut spi, &[0x01]).map_err(BoardError::Spi)?;
+    Ok((spi, dc))
+}
+
+/// The panel's LEDC backlight channel, as both entry points need them. Duty 0
+/// keeps the active-low line pulled low (bright) from boot until the first
+/// renderer write.
+fn panel_backlight(
+    ledc_peripheral: LEDC<'static>,
+    channel_pin: GPIO42<'static>,
+) -> Result<Backlight, BoardError> {
+    let mut ledc = Ledc::new(ledc_peripheral);
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+    let timer = BACKLIGHT_TIMER.init(ledc.timer::<LowSpeed>(ledc_timer::Number::Timer0));
+    timer
+        .configure(ledc_timer::config::Config {
+            duty: ledc_timer::config::Duty::Duty10Bit,
+            clock_source: ledc_timer::LSClockSource::APBClk,
+            frequency: Rate::from_hz(BACKLIGHT_PWM_HZ),
+        })
+        .map_err(BoardError::LedcTimer)?;
+    let mut channel = ledc.channel::<LowSpeed>(ledc_channel::Number::Channel0, channel_pin);
+    channel
+        .configure(ledc_channel::config::Config {
+            timer: &*timer,
+            duty_pct: 0,
+            drive_mode: DriveMode::PushPull,
+        })
+        .map_err(BoardError::LedcChannel)?;
+    Ok(Backlight::new(channel))
+}
+
+/// Runs `op` until it succeeds or `attempts` is spent, and returns the last
+/// failure. The board's bring-up retries the two peripherals whose first
+/// transaction is the one most exposed to a NACK from a part still settling;
+/// each keeps its own attempt count and delay, because their budgets are
+/// separate hardware facts.
+fn retry<E>(
+    attempts: u8,
+    delay_ms: u32,
+    delay: &mut Delay,
+    mut op: impl FnMut(&mut Delay) -> Result<(), E>,
+) -> Option<E> {
+    let mut last = None;
+    for attempt in 0..attempts {
+        match op(delay) {
+            Ok(()) => return None,
+            Err(error) => {
+                last = Some(error);
+                if attempt + 1 < attempts {
+                    delay.delay_millis(delay_ms);
+                }
+            }
+        }
+    }
+    last
+}
+
 /// Brings up the shared I2C bus and the expander on it, as both entry points
 /// need them.
 ///
@@ -162,21 +252,11 @@ fn bring_up_i2c(
     i2c: i2c_master::I2c<'static, Blocking>,
 ) -> Result<(&'static SharedI2cBus, Pca9557<SharedI2cDevice>), BoardError> {
     let bus = I2C_BUS.init(Mutex::new(RefCell::new(i2c)));
-    let delay = Delay::new();
     let mut pca9557 = Pca9557::new(I2cDevice::new(bus), PCA9557_I2C_ADDR);
-    let mut pca_error = None;
-    for attempt in 0..PCA9557_RETRY_ATTEMPTS {
-        match pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8) {
-            Ok(()) => break,
-            Err(error) => {
-                pca_error = Some(error);
-                if attempt + 1 < PCA9557_RETRY_ATTEMPTS {
-                    delay.delay_millis(PCA9557_RETRY_MS);
-                }
-            }
-        }
-    }
-    match pca_error {
+    let mut delay = Delay::new();
+    match retry(PCA9557_RETRY_ATTEMPTS, PCA9557_RETRY_MS, &mut delay, |_| {
+        pca9557.init(LCD_CS_BIT | DVP_PWDN_BIT, 0xf8)
+    }) {
         Some(error) => Err(BoardError::I2c(error)),
         None => Ok((bus, pca9557)),
     }
@@ -266,57 +346,12 @@ impl Board<'static> {
         )?;
         let mut delay = Delay::new();
 
-        // Keep CS high while the SPI/GPIO IO_MUX glitch (#15703) settles. DMA
-        // pushes whole frames without the per-FIFO poll that caps the panel at
-        // ~17 fps; the copy buffers stage flash-resident command tables DMA
-        // cannot read in place.
-        let mut block_spi = spi_master::Spi::new(
-            SPI3,
-            spi_master::Config::default()
-                .with_frequency(Rate::from_hz(SPI_FREQ_HZ))
-                .with_mode(SPI_MODE),
-        )
-        .map_err(BoardError::SpiConfig)?
-        .with_sck(GPIO41)
-        .with_mosi(GPIO40)
-        .with_dma(DMA_CH0)
-        .with_buffers(
-            dma_rx_buffer!(SPI_DMA_BUF_BYTES)?,
-            dma_tx_buffer!(SPI_DMA_BUF_BYTES)?,
-        );
-
-        let dc = Output::new(GPIO39, Level::Low, OutputConfig::default());
-
-        // Prime the bus before CS drops: the pins glitch on their first transfer
-        // (esp-idf #15703) and the panel ignores the byte while CS is high.
-        SpiBus::write(&mut block_spi, &[0x01]).map_err(BoardError::Spi)?;
+        let (block_spi, dc) = panel_spi(SPI3, DMA_CH0, GPIO41, GPIO40, GPIO39)?;
 
         pca9557.set_output(DVP_PWDN_BIT)?;
 
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
-
-        // Backlight on IO42: duty 0 keeps the active-low line pulled low
-        // (bright) from boot until the first renderer write.
-        let mut ledc = Ledc::new(LEDC);
-        ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
-        let timer = BACKLIGHT_TIMER.init(ledc.timer::<LowSpeed>(ledc_timer::Number::Timer0));
-        timer
-            .configure(ledc_timer::config::Config {
-                duty: ledc_timer::config::Duty::Duty10Bit,
-                clock_source: ledc_timer::LSClockSource::APBClk,
-                frequency: Rate::from_hz(BACKLIGHT_PWM_HZ),
-            })
-            .map_err(BoardError::LedcTimer)?;
-        let mut channel = ledc.channel::<LowSpeed>(ledc_channel::Number::Channel0, GPIO42);
-        channel
-            .configure(ledc_channel::config::Config {
-                timer: &*timer,
-                duty_pct: 0,
-                drive_mode: DriveMode::PushPull,
-            })
-            .map_err(BoardError::LedcChannel)?;
-
-        let light = DisplayLight::new(0, panel, Backlight::new(channel));
+        let light = DisplayLight::new(0, panel, panel_backlight(LEDC, GPIO42)?);
         let button = PullButton::new(GPIO0);
         let touch = Ft6336::new(
             I2cDevice::new(bus),
@@ -326,24 +361,15 @@ impl Board<'static> {
             LCD_HEIGHT,
         );
         let mut motion = Qmi8658::new(I2cDevice::new(bus), QMI8658_I2C_ADDR);
-        let mut motion_error = None;
-        for attempt in 0..MOTION_RETRY_ATTEMPTS {
-            match motion.init(&mut delay) {
-                Ok(()) => break,
-                Err(error) => {
-                    motion_error = Some(error);
-                    if attempt + 1 < MOTION_RETRY_ATTEMPTS {
-                        delay.delay_millis(MOTION_RETRY_MS);
-                    }
-                }
-            }
-        }
-        if let Some(error) = motion_error {
+        if let Some(error) = retry(
+            MOTION_RETRY_ATTEMPTS,
+            MOTION_RETRY_MS,
+            &mut delay,
+            |delay| motion.init(delay),
+        ) {
             log::warn!("[MOTION] QMI8658 init deferred, retrying from the first poll: {error:?}");
         }
 
-        // Configured before the I2S starts, so the codec is already listening when the
-        // clocks appear.
         let mut es7210 = Es7210::new(I2cDevice::new(bus), ES7210_I2C_ADDR);
         let capture_codec = match es7210.init() {
             Ok(()) => Some(es7210),
@@ -360,19 +386,10 @@ impl Board<'static> {
         // — a microphone and a speaker a hertz apart is a capture and a chime
         // that sound like two devices.
         //
-        // The transmit unit is the one built with those pins and the capture
-        // takes them from inside the peripheral, and the direction is not
-        // interchangeable. The two units run in separate clock domains, so the
-        // unit that drives the pins is the clock the data on them is timed
-        // against, and the other has to be slaved to it (see
-        // [`playback::shared_tdm_config`]). Letting the capture drive them made
-        // the transmit unit shift its samples out on a divider the ES8311 was not
-        // being clocked by, which the bench heard as continuous crackle; giving
-        // the pins to the transmit unit instead leaves the capture sampling the
-        // ES7210 on a divider that is not the one clocking the part, which it
-        // answered with a flat full-scale reading and a dead waveform. Neither
-        // unit can be the clock owner on its own, so the transmit unit drives
-        // the pins and the capture is held in slave mode behind it.
+        // The two units run in separate clock domains and neither can be the
+        // clock owner alone, so the transmit unit drives the pins and the
+        // capture is held in slave mode behind it (see
+        // [`playback::shared_tdm_config`]).
         let shared_clocks = speaker_codec.is_some();
         let config = if shared_clocks {
             playback::shared_tdm_config()
@@ -407,10 +424,6 @@ impl Board<'static> {
                     )
                 };
                 let audio = match capture_codec {
-                    // The codec goes with the transfer rather than being dropped
-                    // here: the ring cannot be reconfigured, so anything that
-                    // wants to move the input stage's corner after bring-up needs
-                    // the part still to hand.
                     Some(codec) => {
                         let transfer = rx
                             .read(capture::stream())
@@ -421,16 +434,9 @@ impl Board<'static> {
                 };
                 let speaker = match (tx, speaker_codec) {
                     (Some(tx), Some(codec)) => {
-                        // The amplifier comes up after the DAC does, so the
-                        // speaker is never driven by a codec that has not been
-                        // programmed yet. Pin numbers, not masks, reach the
-                        // expander's read-modify-write.
                         pca9557.set_output_bit(PA_EN_PIN, true)?;
                         match playback::Es8311Tx::new(tx, codec) {
                             Ok(speaker) => Some(Box::new(speaker)),
-                            // A stream the DMA refused cannot make a sound, so
-                            // the page is left off rather than offered a mute
-                            // that points at silence.
                             Err(error) => {
                                 log::error!("[SPEAKER] stream would not start: {error:?}");
                                 None
@@ -444,8 +450,6 @@ impl Board<'static> {
             _ => (None, None),
         };
 
-        let timg0 = TimerGroup::new(TIMG0);
-
         Ok((
             Self {
                 light: Some(light),
@@ -455,7 +459,7 @@ impl Board<'static> {
                 audio,
                 speaker,
             },
-            timg0,
+            TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
             FROM_CPU_INTR1,
         ))
@@ -464,15 +468,11 @@ impl Board<'static> {
     /// Bring-up for the playback isolation probe: the DAC, its amplifier and the
     /// transmit unit, and nothing else.
     ///
-    /// The product build shares one BCLK/WS pair between both codecs, holding the
-    /// capture slaved to the transmit unit (see [`playback::shared_tdm_config`]),
-    /// so a probe that is to isolate the speaker from the capture has to cut that
-    /// coupling too. Here the transmit unit drives the same two pins itself and
-    /// the receive unit is never built — which it can be, because with no
-    /// microphone to slave there is nothing to slave, and the transmit unit is
-    /// already the clock master the product slaves to. No capture codec, no
-    /// capture transfer, no capture poll, and no second DMA direction competing
-    /// for the channel.
+    /// The product build holds the capture slaved to the transmit unit (see
+    /// [`playback::shared_tdm_config`]), so isolating the speaker means cutting
+    /// that coupling too: here the transmit unit drives the same two pins itself
+    /// and the receive unit is never built, which it can be because with no
+    /// microphone to slave there is nothing to slave.
     ///
     /// The expander is still driven, and only for the amplifier: `PA_EN` is the
     /// board's spare pin, and the panel is held in the same power-down its masks
@@ -507,8 +507,6 @@ impl Board<'static> {
                 .with_scl(GPIO2),
         )?;
 
-        // Probed and initialised exactly as the product build does, at both
-        // addresses, so the probe measures the same DAC the product drives.
         let speaker_codec = probe_es8311(bus, "the probe has nothing to drive");
 
         let speaker = match speaker_codec {

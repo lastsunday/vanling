@@ -59,10 +59,9 @@ pub trait HasAudio: Board {
 
 /// Board providing a speaker.
 ///
-/// The other half of [`HasAudio`] and independent of it: a board can capture,
-/// play, both or neither, so this is its own trait and its own one-line
-/// declaration. Shaped like the audio one for the same reason — the codec and
-/// the DMA ring live in the bsp crate, and the app only ever sees a
+/// Independent of [`HasAudio`]: a board can capture, play, both or neither, so
+/// this is its own trait. Shaped like the audio one for the same reason — the
+/// codec and the DMA ring live in the bsp crate, and the app only ever sees a
 /// [`Speaker`] and never names a device. A board with no speaker returns `None`
 /// and the Speaker page simply never appears.
 pub trait HasPlayback: Board {

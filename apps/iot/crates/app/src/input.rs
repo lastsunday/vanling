@@ -14,18 +14,18 @@ pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, 8>;
 /// reaches the global by name.
 pub static INTENT_BUS: IntentBus = IntentBus::new();
 
-/// Drains every input source at the shared base tick, gating each source to
-/// its own cadence, and forwards recognized operations onto the intent bus.
-/// `try_send` drops intents when the bus is full: dropping a press is
-/// preferable to blocking the scan loop, which would skew debounce timing.
-/// Source names by wiring order, for the executor-hold report. Index matches
-/// the order `take_input`/`take_motion`/`take_audio` push into the vector.
+/// Source names by wiring order, for the executor-hold report. Index matches the
+/// order `take_input`/`take_motion`/`take_audio` push into the vector.
 const SOURCE_NAMES: [&str; 4] = ["button", "touch", "motion", "capture"];
 
 /// Wall-clock window between executor-hold reports, matching the playback
 /// side so the two reports line up on one clock.
 const HOLD_REPORT_MS: u64 = 5_000;
 
+/// Drains every input source at the shared base tick, gating each source to
+/// its own cadence, and forwards recognized operations onto the intent bus.
+/// `try_send` drops intents when the bus is full: dropping a press is preferable
+/// to blocking the scan loop, which would skew debounce timing.
 pub async fn input_task(intent_bus: &'static IntentBus, mut sources: Vec<PollEntry>) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(INPUT_BASE_MS));
     let mut now_ms: u64 = 0;
@@ -55,8 +55,6 @@ pub async fn input_task(intent_bus: &'static IntentBus, mut sources: Vec<PollEnt
                 let intent = Intent::Operation(recognize(event, entry.source_id()));
                 let _ = intent_bus.try_send(intent);
             }
-            // Advance past the current time, keeping the source on its own
-            // cadence grid with no catch-up burst.
             entry.advance_past(now_ms);
             let took_us = poll_start.elapsed().as_micros();
             if let Some(slot) = worst_us.get_mut(index) {

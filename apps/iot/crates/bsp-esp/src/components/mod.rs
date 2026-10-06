@@ -15,10 +15,17 @@ pub mod es8311;
 pub mod ft6336;
 #[cfg(feature = "gc2145")]
 pub mod gc2145;
+#[cfg(test)]
+pub mod mock_i2c;
 #[cfg(feature = "pca9557")]
 pub mod pca9557;
 #[cfg(feature = "qmi8658")]
 pub mod qmi8658;
+/// Only the two codecs' register sequences need it, and each of those features
+/// already pulls in `embedded-hal`, so gating on either keeps the module
+/// compiling standalone per feature.
+#[cfg(any(feature = "es7210", feature = "es8311"))]
+pub mod register_seq;
 #[cfg(feature = "st7789")]
 pub mod st7789;
 #[cfg(feature = "ws2812")]

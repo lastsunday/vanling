@@ -100,8 +100,6 @@ impl iot_core::drivers::board::HasAudio for Board<'static> {
 }
 
 impl iot_core::drivers::board::HasPlayback for Board<'static> {
-    /// This board drives no speaker: the dev kit's LED is the only output, and
-    /// a name for the surface the product has is all the app needs to run.
     type Speaker = UnwiredSpeaker;
 
     fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {

@@ -20,10 +20,8 @@
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
-/// Single static logger installed once at boot via [`init_logging`].
 pub static LOGGER: UptimeLogger = UptimeLogger(LevelFilter::Info);
 
-/// Silent until a record is loggable under the configured level.
 pub struct UptimeLogger(LevelFilter);
 
 impl Log for UptimeLogger {

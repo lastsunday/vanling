@@ -47,13 +47,10 @@ pub struct MotionSample {
     pub status: u8,
     /// The gravity-removed accelerometer magnitude's root against the tap
     /// baseline, in mG. This is the number the squared-domain peak bar
-    /// (`TAP_PEAK_MAG_MG2`) decides on, published so the threshold can be read
-    /// off the device instead of inferred from a flash, mirroring `SR`.
+    /// (`TAP_PEAK_MAG_MG2`) decides on.
     pub tap_residual_mg: i32,
     /// How far the measured magnitude sits from one g, in mG. This is the
-    /// number the lift/place still band measures in the squared domain via
-    /// [`crate::drivers::motion::recognizer`], published so a threshold can be
-    /// read off the device instead of inferred from a flash.
+    /// number the lift/place still band measures in the squared domain.
     pub gravity_deviation_mg: i32,
     /// The gravity-removed accelerometer magnitude against the shake estimate,
     /// taken as a vector length. This is the number [`SHAKE_ON_MG`] decides on.

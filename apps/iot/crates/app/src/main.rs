@@ -51,6 +51,8 @@ async fn main(_spawner: Spawner) -> ! {
 #[cfg(feature = "esp32s3")]
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
+    // SAFETY: called exactly once before any allocation; the region is a
+    // private static never aliased elsewhere.
     unsafe {
         HEAP.init(
             core::ptr::addr_of_mut!(HEAP_MEM) as usize,

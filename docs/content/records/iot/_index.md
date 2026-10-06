@@ -17,3 +17,5 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 | [放音实现记录](@/records/iot/playback.md)               | `Cp0Disabled` 调查、被否方案、feed 节拍归属、ISR 拆分  |
 | [硬件约束记录](@/records/iot/hardware-constraints.md)   | 麦克风前端写序与标定、运动判定、栈容量由来             |
 | [摄像头实现记录](@/records/iot/camera.md)             | GC2145 视野算术、bins 与标量实测、PSRAM 不可用由来、面板接线 |
+| [音频实现记录](@/records/iot/audio.md)               | 静音判定、积压深度实测、dBA 与原始列、量化噪声底噪       |
+| [运动实现记录](@/records/iot/motion.md)               | 敲击判定的被否方案、门限来源、No-Motion 是电平不是事件   |

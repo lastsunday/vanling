@@ -55,5 +55,5 @@ async fn main(_spawner: Spawner) -> ! {
     };
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    iot_app::run_audio_only(board).await
+    iot_app::probe::run(board).await
 }

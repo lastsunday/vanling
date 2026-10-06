@@ -8,8 +8,7 @@
 //! Frames are assembled from a fixed descriptor count, which assumes the part emits exactly
 //! the geometry programmed into it. A test pins that; the bus cannot. `@/records/iot/camera.md`.
 //!
-//! Absent on purpose, as they belong to the product: executor hand-off, a staged copy so a
-//! surface can hold a frame across a re-arm, a restart-settle window, `cam_stop_en`.
+//! Absent on purpose, as they belong to the product.
 
 use esp_hal::dma::aligned::{DmaAlignedMut, DmaAlignedRef};
 use esp_hal::dma::{
@@ -351,7 +350,6 @@ unsafe impl DmaRxBuffer for FrameRing {
     }
 }
 
-/// A transfer over a [`FrameRing`].
 type Transfer = CameraTransfer<'static, FrameRing>;
 
 /// Logs what the peripheral's configuration registers actually hold, against what the HAL
@@ -376,13 +374,13 @@ pub fn report_peripheral_config(label: &str) {
 /// What one poll of the capture reports.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CameraSample {
-    /// Polls that found a frame newer than the last one.
+    /// Polls that found a frame newer than the last one, and polls that found
+    /// nothing newer.
     pub frames: u32,
-    /// Polls that found nothing newer.
     pub repeated: u32,
-    /// Re-arms since boot.
+    /// Re-arms since boot, and the descriptors the DMA had finished at the last
+    /// poll.
     pub restarts: u32,
-    /// Descriptors the DMA had finished at the last poll.
     pub finished: usize,
 }
 
@@ -442,7 +440,6 @@ impl<S> Gc2145Capture<S> {
         self.transfer.as_ref()?.frame(frame)
     }
 
-    /// The sensor behind the capture, for a board that has to re-program it.
     pub fn sensor(&mut self) -> &mut S {
         &mut self.sensor
     }

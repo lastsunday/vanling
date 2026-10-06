@@ -39,10 +39,10 @@ pub struct LightSnapshot {
     pub breath: BreathSnapshot,
 }
 
-/// The touch-path diagnostics stamped on a light surface: counter gaps
-/// between `taps` and `presses` localize dropped touches, `ghost` flags input
-/// trouble the classifier saw, `points`/`finger` carry the live per-finger
-/// readout.
+/// The touch-path diagnostics stamped on a light surface, folded field by field
+/// out of [`DeviceState`](crate::state::DeviceState): counter gaps between `taps`
+/// and `presses` localize dropped touches, `ghost` flags input trouble the
+/// classifier saw, `points`/`finger` carry the live per-finger readout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TouchDiagnostics {
     pub taps: u8,
@@ -51,31 +51,16 @@ pub struct TouchDiagnostics {
     pub triple_taps: u8,
     pub long_presses: u8,
     pub ghost: u8,
-    /// Live contact position each tracked slot last reported, framebuffer
-    /// space; `None` while the slot is free.
     pub points: [Option<(u16, u16)>; MAX_TRACKED_POINTS],
-    /// `SwipeDirection::code` of the slot's latest frame-to-frame move
-    /// (`0` while still or free), aligned with `points`.
     pub live_dir: [u8; MAX_TRACKED_POINTS],
-    /// How many times two contacts were live in the same snapshot, saturated.
     pub two_finger_runs: u8,
-    /// Applied raw-frame heartbeat; frozen while the controller stalls versus
-    /// standing still on a real hold.
     pub frames: u16,
-    /// Per-slot last resolved gesture, aligned with `points`.
     pub finger: [FingerLast; MAX_TRACKED_POINTS],
-    /// Hold duration (ms) of the last resolved lift.
     pub held_ms: u16,
-    /// Resolved swipes, bumped once per classified slide.
     pub swipes: u8,
-    /// `SwipeDirection::code` of the last resolved swipe, `0` before any.
     pub last_swipe_dir: u8,
-    /// Euclidean length (px) of the last resolved swipe.
     pub last_swipe_dist: u16,
-    /// Where the last resolved gesture began, framebuffer space; feeds `XY`.
     pub last_gesture_origin: Option<(u16, u16)>,
-    /// Trailing point of the last multi-point gesture; `None` for the
-    /// single-point ones. Feeds the `XY2` row.
     pub last_gesture_end: Option<(u16, u16)>,
     /// Last raw chip gesture id (`0x10` up / `0x14` left / `0x18` down /
     /// `0x1C` right on the FT5x06 family), `0` when none.
@@ -134,6 +119,5 @@ pub struct Diagnostics {
 /// ignorant. A sink is bound to a slot by registration, never by an identity
 /// it carries.
 pub trait DiagnosticsSink {
-    /// Deliver the latest device diagnostic snapshot.
     fn consume(&mut self, _diagnostics: &Diagnostics) {}
 }

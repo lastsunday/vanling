@@ -3,8 +3,8 @@ title = "Camera Implementation Record"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "25cf7c75c971cccb7f6ed943eddee8afce58c597"
-translated_at = "2026-10-06T02:57:00Z"
+source_file_hash = "1f98281e68e4b2bf34def38b0b2cf274868eb0c6"
+translated_at = "2026-10-06T05:35:23Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -116,6 +116,18 @@ So `camera` is **not** in the board feature: `camera-probe` asks for it through 
 `[measured]` `PIXEL_CLOCK_HZ` is fixed at 24 MHz and is not a free parameter: at 20 MHz the sensor's PLL does not lock, and thereafter it **streams frames that are perfectly framed and entirely noise** — every register reads back correctly and the eye sees speckle. No register readback reports this.
 
 `[reported]` The frame period is capped by the page-1 AEC exposure ceiling. The power-on table writes `0x05`–`0x08` = `0x3090`/`0x2070` (12432 / 8304 lines) against a full readout of ~1200 lines. rockchip's table has dedicated frame-rate steps (`0x27`–`0x2e`, `0x04e2`, for 8/12/14/20 fps) and **this repository writes none of them**. That is the one untried knob left, and it is orthogonal to field of view.
+
+---
+
+## The sensor can be read back, the panel cannot: two verification routes
+
+`[measured]` The GC2145 is on I²C, and `read_window_geometry()` reads the registers the part **actually holds** rather than the bytes that were written. So a write that did not land shows up on the sensor side immediately, instead of surfacing later as a picture of the wrong content.
+
+**Rejected verification**: reading only `0x95`–`0x98`. That reports the size that was **asked for** and says nothing about the read window or the extract ratio — which is exactly how a stretched picture passes as correctly sized.
+
+The panel is the other way round: **no MISO**, so every register read comes back `0x00` (see the next section). `MADCTL` therefore cannot be verified by reading it back, and window geometry has to be confirmed by eye against a known pattern.
+
+That boundary decides which call sites can carry a "read-back, not write-echo" note and which cannot. `gc2145.rs`, `lckfb_szpi_esp32s3/camera.rs` and `camera-probe.rs` were all saying the same thing, so it is now stated once on `read_window_geometry`.
 
 ---
 

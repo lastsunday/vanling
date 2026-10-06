@@ -27,8 +27,8 @@ use crate::components::es8311::Mute;
 /// at [`SAMPLE_RATE_HZ`] — the format the DMA transmits, so the file is the wire,
 /// and nothing is copied into RAM to reach it.
 ///
-/// The file is opaque, so its recipe (pitches, inharmonic partials, ramps, level)
-/// is in the record rather than in a generator the build does not run.
+/// The file is opaque, so its recipe is in the record rather than in a generator
+/// the build does not run.
 const ASSET: &[u8] = include_bytes!("../assets/asset.pcm");
 
 /// Bytes per DMA descriptor: a 5 ms slice of the wire at [`SAMPLE_RATE_HZ`] —
@@ -41,10 +41,9 @@ const CHUNK_BYTES: usize = 960;
 /// occasionally hand the feed loop.
 const RING_CHUNKS: usize = 24;
 
-/// The streaming ring: [`RING_CHUNKS`] descriptors, [`CHUNK_BYTES`] each. Sized
-/// as runway rather than against a cadence — 120 ms of audio — so a poll can
-/// arrive that late before the DMA runs the ring dry, and large enough to take a
-/// feed's whole push in one contiguous slice.
+/// The streaming ring: [`RING_CHUNKS`] descriptors, [`CHUNK_BYTES`] each, sized
+/// as runway rather than against a cadence and large enough to take a feed's
+/// whole push in one contiguous slice.
 const RING_BYTES: usize = CHUNK_BYTES * RING_CHUNKS;
 
 /// Frames one feed pushes at most, sized to a ring: a feed copies up to a whole
@@ -122,9 +121,7 @@ fn render_slice(voice: &mut Option<Voice>, buf: &mut [u8], produced_sound: &mut 
     written
 }
 
-/// What playback needs from a codec driver: the mute latch. The bring-up, the
-/// clock row and the registers stay behind I2C in the driver, so the transport
-/// never names a register or a bus.
+/// What playback needs from a codec driver: the mute latch.
 pub struct Es8311Tx<C> {
     codec: C,
     /// The one streaming transfer the driver runs on: armed at bring-up and fed
@@ -228,11 +225,9 @@ impl<C> Es8311Tx<C> {
     /// The repair half of a drain: rebuild the stream and report what the ring
     /// looked like when it was noticed.
     ///
-    /// On the cooperative side because the rebuild allocates, and because the
-    /// output channel does not serialise writers (see `logging.rs`), so a line
-    /// printed here would interleave with whatever a preempting writer had
-    /// half-sent. Nothing is lost by the deferral — the ring is already dry, so
-    /// the stream is silent for a cadence either way.
+    /// On the cooperative side because the rebuild allocates. Nothing is lost by
+    /// the deferral — the ring is already dry, so the stream is silent for a
+    /// cadence either way.
     fn recover_drained(&mut self, recovery: Recovery) {
         let sound = if recovery.playing { "playing" } else { "idle" };
         log::warn!(
@@ -279,12 +274,10 @@ where
     /// Advances the stream by one cadence and reports whether a sound is still
     /// going.
     ///
-    /// Called even when nothing is playing: the idle stream carrying the capture's clocks
-    /// must be fed silence too. A drain is only *recorded* here — repairing needs an
-    /// allocation an interrupt may not take, and prints its report on a channel that
-    /// does not serialise writers (see [`recover`](Self::recover)) — so the priming push
-    /// is load-bearing for [`restart`](Self::restart). A sound is done once its source
-    /// is spent and the last frames it queued have played out.
+    /// Called even when nothing is playing: the idle stream carrying the capture's
+    /// clocks must be fed silence too. A drain is only *recorded* here, so the
+    /// priming push is load-bearing for [`restart`](Self::restart). A sound is
+    /// done once its source is spent and the last frames it queued have played out.
     fn feed(&mut self, now_ms: u64) -> bool {
         let drained = match self.transfer.as_mut() {
             Some(transfer) => {

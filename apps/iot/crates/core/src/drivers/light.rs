@@ -20,7 +20,6 @@ pub const MAX_LIGHTS: usize = 2;
 
 /// Abstraction over a light surface that accepts an RGB color.
 pub trait RgbLight {
-    /// Paints the surface flat.
     fn set_rgb(&mut self, color: Rgb) {
         self.set_fill(Fill::Uniform, color);
     }

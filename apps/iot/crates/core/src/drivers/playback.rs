@@ -126,25 +126,20 @@ const WAVE_END: usize = WAVE_ENTRIES + 1;
 /// staircase.
 const PHASE_BITS: u32 = 8;
 
-/// The fractional part of a phase, which is everything below its entry.
 const PHASE_MASK: u32 = (1 << PHASE_BITS) - 1;
 
 /// A whole turn of the table, in phase units: what the oscillator wraps at.
 const WAVE_TURN: u32 = (WAVE_ENTRIES as u32) << PHASE_BITS;
 
-/// Fractional bits the envelope's scale carries.
 const Q16_BITS: u32 = 16;
-
-/// One, in the Q16 the envelope is worked in.
 const Q16_ONE: i32 = 1 << Q16_BITS;
 
 /// One turn of a sine, sampled at [`WAVE_ENTRIES`] even points and scaled to the
 /// rail.
 ///
 /// Built at compile time: `libm::sinf` is not a `const fn`, so the entries come
-/// from the polynomial in [`sine`], and the table's test is what makes that a
-/// substitution rather than a second guess — it holds every entry to within one
-/// LSB of the `sinf` this replaced.
+/// from the polynomial in [`sine`], which its test holds to within one LSB of
+/// the `sinf` this replaced.
 ///
 /// `i16` rather than `f32` because the read side is what runs in an interrupt,
 /// where an FPU instruction is not slow but fatal: see [`Tone::next_sample`].
@@ -156,15 +151,13 @@ static WAVE: [i16; WAVE_END] = {
     while i < WAVE_END {
         let turns = i as f32 / WAVE_ENTRIES as f32;
         let phase = core::f32::consts::TAU * turns;
-        // Reusing the rail here keeps the table's own peak equal to the peak a
-        // note generates at, so `WAVE[i]` already carries the intended level and
-        // the envelope is the only thing left to scale it by.
+        // Scaling by the rail here means `WAVE[i]` already carries the intended
+        // level and the envelope is the only thing left to scale it by.
         wave[i] = rounded(sine(phase) * TONE_PEAK_LSB);
         i += 1;
     }
-    // The closing entry repeats the opening one, which is where the first entry's
-    // interpolation partner has to be for the last segment of a turn to land back
-    // on the same value the turn started from.
+    // The first entry's interpolation partner, so the last segment of a turn
+    // lands back on the value the turn started from.
     wave[WAVE_ENTRIES] = wave[0];
     wave
 };
@@ -192,9 +185,6 @@ const fn rounded(scaled: f32) -> i16 {
 /// its only caller.
 const fn sine(x: f32) -> f32 {
     let pi = core::f32::consts::PI;
-    // The second half of a turn is the first half inverted, so everything below
-    // only ever sees `[0, PI]`; the symmetry about `PI / 2` then folds that in
-    // half again.
     let (half, negative) = if x > pi { (x - pi, true) } else { (x, false) };
     let quarter = if half > pi / 2.0 { pi - half } else { half };
     let squared = quarter * quarter;
@@ -214,18 +204,15 @@ const fn sine(x: f32) -> f32 {
 #[derive(Debug, Clone, Copy)]
 pub struct Tone {
     score: &'static [Note],
-    /// Index of the note being played; past the end of the score when done.
     note: usize,
     /// Oscillator position, in [`PHASE_BITS`]-fractional units of a table entry.
     phase: u32,
     /// Phase units one sample advances — the note's frequency, and zero for a
     /// rest.
     phase_step: u32,
-    /// Length of the current note in samples.
     samples: u32,
     /// Ramp length in samples; zero means the note is played flat out.
     ramp: u32,
-    /// Samples into the current note.
     into_note: u32,
     /// The ramp as a Q16 multiplier per sample, divided out once per note rather
     /// than per sample. Recomputed on every note would cost a 64-bit divide in
@@ -273,10 +260,9 @@ impl Tone {
         };
         self.samples = samples_of_ms(note.ms);
         self.ramp = samples_of_ms(note.ramp_ms);
-        // In phase units rather than radians, which is what lets the sample path
-        // wrap by comparison instead of dividing: the ratio is the same, so the
-        // pitch does not change. Widened for the multiply because a table turn
-        // times a frequency overflows `u32` well below Nyquist.
+        // Phase units rather than radians, so the sample path wraps by
+        // comparison instead of dividing. Widened for the multiply because a
+        // table turn times a frequency overflows `u32` well below Nyquist.
         self.phase_step =
             (u64::from(WAVE_TURN) * u64::from(note.hz) / u64::from(SAMPLE_RATE_HZ)) as u32;
         // A single subtract on wrap is only enough while a step stays inside a
@@ -298,8 +284,8 @@ impl Tone {
             return Q16_ONE;
         }
         // The nearer of the two edges is what the note is under, and the ramp is
-        // the ceiling on both — which is what bounds this at `Q16_ONE` and so
-        // bounds the sample below it, with no saturation needed anywhere.
+        // the ceiling on both — which bounds this at `Q16_ONE` and so bounds the
+        // sample below it, with no saturation needed anywhere.
         let peak = self
             .into_note
             .min(self.samples - self.into_note)
@@ -378,7 +364,6 @@ impl SampleSource for Pcm<'_> {
     fn fill(&mut self, out: &mut [i16]) -> usize {
         let mut filled = 0;
         for slot in out.iter_mut() {
-            // Out of whole samples: stop, and let `done` report the tail.
             let Some(pair) = self.bytes.get(self.cursor..self.cursor + 2) else {
                 break;
             };
@@ -409,6 +394,7 @@ impl SampleSource for Pcm<'_> {
 /// seen from the host — the arm only exists on the board. Getting it backwards
 /// strands the page in `Playing` for ever: a spent source keeps arming silent
 /// rings, and every one of them answers "still going".
+#[cfg(test)]
 pub const fn still_sounding(source_done: bool, arm_sounded: bool, arm_in_flight: bool) -> bool {
     !source_done || (arm_sounded && arm_in_flight)
 }
@@ -624,14 +610,10 @@ pub trait Speaker: Send + 'static {
 }
 
 /// A speaker that is not wired, for a board that has an output surface in the
-/// product but nothing driving it on this hardware.
-///
-/// It exists because `HasPlayback` names its speaker as a type, not as an
-/// `Option` of a trait object: a board with no output still has to name
-/// something, and one copy of the app has to run on it. A board hands this out
-/// only by returning `None` from `take_playback`, so nothing ever plays a sound
-/// through it — it is what a missing speaker is called, not a silent fallback
-/// that would let a page offer a sound nothing can make.
+/// product but nothing driving it on this hardware. `HasPlayback` names its
+/// speaker as a type rather than an `Option` of a trait object, so a board with
+/// no output still has to name something — this is that name, not a silent
+/// fallback that would let a page offer a sound nothing can make.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UnwiredSpeaker;
 
@@ -678,11 +660,9 @@ mod tests {
 
     #[test]
     fn the_table_holds_the_oscillator_it_replaced() {
-        // The table is only worth having if it is the oscillator, so it is
-        // checked against the very `sinf` it replaced rather than against an
-        // ideal nobody can build. One LSB at 16 bits is far below the rail's
-        // resolution through a DAC, and this pins that claim down: a table too
-        // coarse to hold it would fail here instead of being audible later.
+        // Checked against the very `sinf` it replaced rather than an ideal
+        // nobody can build; one LSB at 16 bits is far below the rail's resolution
+        // through a DAC.
         let mut worst = 0_i32;
         for (index, &table) in WAVE.iter().enumerate().take(WAVE_ENTRIES) {
             let turns = index as f32 / WAVE_ENTRIES as f32;
@@ -734,12 +714,8 @@ mod tests {
 
     #[test]
     fn a_chime_stays_inside_the_table_it_indexes() {
-        // `oscillator` reads `WAVE[whole + 1]`, so a phase that ever reached or
-        // passed the turn without wrapping would index past the end. Driven
-        // through `fill` one frame at a time, because that is exactly how
-        // `Es8311Tx::render_slice` calls the voice, and because `fill` is what
-        // advances the note — a caller that ran the oscillator past a note's end
-        // would be testing a path that does not exist.
+        // Driven through `fill` one frame at a time, because that is how the
+        // voice is called and because `fill` is what advances the note.
         let mut tone = Tone::chime();
         let mut frame = [0_i16; 1];
         for _ in 0..16_320 {
@@ -1031,11 +1007,8 @@ mod tests {
 
     #[test]
     fn a_spent_source_never_reports_playing_again() {
-        // The regression this function exists for. Inverting it made every feed
-        // after the samples ran out answer "still going", because a spent source
-        // only ever arms silent rings — so the phase never left `Playing`, and
-        // every later tap was counted as dropped against a sound already over.
-        // Asserted over the states a driver actually reaches while winding down.
+        // Asserted over the states a driver actually reaches while winding
+        // down, where a silent arm must not read as a sound in progress.
         assert!(
             !still_sounding(true, false, true),
             "the silent arm a spent source arms must not read as a sound in progress"
@@ -1063,12 +1036,9 @@ mod tests {
 
     #[test]
     fn a_brief_idle_between_feeds_is_not_a_drained_stream() {
-        // The regression this watchdog exists for. The peripheral's `tx_idle`
-        // goes high whenever the FIFO is momentarily empty, which is the ordinary
-        // state between two feeds; treated as a fault it tore the stream down and
-        // rebuilt it mid-sound, restarting the codec's clocks and replaying a ring
-        // of stale audio. Asserted across a whole ring's worth of feeds, so no
-        // single unlucky arrangement of cadences can hide it.
+        // `tx_idle` goes high whenever the FIFO is momentarily empty, which is
+        // the ordinary state between two feeds, so the walk has to span a whole
+        // ring's worth for no unlucky cadence to hide it.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         let mut now_ms = 0_u64;
         while now_ms <= ring_play_ms(RING_BYTES) {
@@ -1181,13 +1151,9 @@ mod tests {
 
     #[test]
     fn repeated_drains_report_once_each_and_never_drift() {
-        // A driver recovers a drained ring and asks the watchdog again on the very
-        // next feed, so the whole point is that recovering does not turn into a
-        // report storm: a stream whose recovery leaves it busy reports nothing more
-        // that spell, and a stream that dries again reports once and only once. The
-        // clock is walked feed by feed across many spells rather than jumping, so a
-        // deadline that crept would show up as a false positive inside a spell it
-        // should have stayed quiet through.
+        // The clock is walked feed by feed across many spells rather than
+        // jumping, so a deadline that crept would show up as a false positive
+        // inside a spell it should have stayed quiet through.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         let limit = watchdog.idle_limit_ms();
         let mut now_ms = 0_u64;

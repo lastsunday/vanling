@@ -71,7 +71,7 @@ impl Biquad {
 }
 
 /// The full IEC 61672-1 A-weighting response, as a cascade of the three
-/// sections above. Zero state on construction, so a fresh meter starts silent
+/// sections below. Zero state on construction, so a fresh meter starts silent
 /// rather than inheriting the room it was built in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AWeight {
@@ -133,7 +133,7 @@ const METER_RELEASE_SHIFT: u32 = 16;
 ///
 /// The average folds the *already weighted* samples rather than running a second
 /// cascade over the same stream: identical coefficients and zero state could only
-/// ever agree, and running both doubled the per-sample cost of the capture path.
+/// ever agree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DbaMeter {
     avg_sq: u64,
@@ -219,10 +219,9 @@ mod tests {
     ];
 
     /// The gain a steady full-scale tone at each frequency should produce, as
-    /// the RMS of the filtered output, in LSB. These are the output of an exact
-    /// integer copy of this module — the same coefficients, the same shift, the
-    /// same table, the same output clamp — so they pin the implementation to
-    /// its prototype within one LSB instead of letting either drift.
+    /// the RMS of the filtered output, in LSB. An exact integer copy of this
+    /// module produced these, so they pin the implementation within one LSB
+    /// instead of letting either drift.
     ///
     /// `(table stride, expected RMS)` with stride 1 at 125 Hz up to 64 at 8 kHz.
     const EXPECTED_OUTPUTS: [(usize, u16); 7] = [
@@ -267,10 +266,9 @@ mod tests {
         assert_eq!((sum_sq / 384).isqrt() as u16, INPUT_RMS);
     }
 
-    /// The implementation reproduces its prototype: each of the seven test
-    /// frequencies lands on the same integer RMS an exact copy produced, not
-    /// merely inside a band. A mismatch here is a coefficient in the wrong
-    /// register or a shift placed wrong, not a borderline reading.
+    /// Each frequency lands on the same integer RMS, not merely inside a band:
+    /// a mismatch is a coefficient in the wrong register or a shift placed
+    /// wrong, not a borderline reading.
     #[test]
     fn cascade_matches_its_integer_prototype() {
         for (stride, expected) in EXPECTED_OUTPUTS {
@@ -386,11 +384,10 @@ mod tests {
     }
 
     /// A quiet signal must not feed the near-unit-circle poles a limit cycle: the
-    /// same idle floor that showed up as a constant ~65 dBA on a board that heard
+    /// idle floor that showed up as a constant ~65 dBA on a board that heard
     /// nothing but its own codec floor. Down where the IEEE A-weighting is nearly
-    /// flat, a board's own floor of a few dozen LSB has to read a few dozen LSB —
-    /// not a self-sustained four-hundred, which is what a state step wide enough to
-    /// recycle quantization noise built here before [`STATE_FRACTION`].
+    /// flat, a board's own floor of a few dozen LSB has to read a few dozen LSB,
+    /// which is what [`STATE_FRACTION`] is narrow enough to allow.
     #[test]
     fn a_quiet_floor_reads_quiet_instead_of_feeding_a_limit_cycle() {
         let n = 600_000;

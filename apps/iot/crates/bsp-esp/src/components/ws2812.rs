@@ -12,8 +12,7 @@ use smart_leds::{RGB8, SmartLedsWrite};
 pub const RMT_FREQ_HZ: u32 = 80_000_000;
 
 /// WS2812 addressable RGB LED strip. `BUFFER_SIZE` is the RMT pulse buffer
-/// size for the whole strip (`buffer_size::<RGB8>(leds)`), resolved by the
-/// board wiring.
+/// size for the whole strip.
 pub struct Ws2812RgbLed<'d, const BUFFER_SIZE: usize> {
     driver: RmtSmartLeds<'d, BUFFER_SIZE, Blocking, RGB8, color_order::Grb>,
     led_count: usize,

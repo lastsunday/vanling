@@ -68,7 +68,6 @@ pub fn level_columns() -> LevelColumns {
     }
 }
 
-/// The column a value of `glyphs` glyphs ends at, exclusive.
 pub fn level_value_end(value_x: usize, glyphs: usize) -> usize {
     value_x + glyphs * GLYPH_PITCH - OVERLAY_GAP
 }
@@ -97,11 +96,8 @@ mod tests {
 
     #[test]
     fn a_unit_starts_a_whole_blank_cell_after_the_widest_value() {
-        // The value is given an extra slot, so the unit is separated from it by
-        // an empty cell rather than by the gap between two words — enough that a
-        // number ending in a digit and a unit beginning with a letter do not read
-        // as one token. A minimum rather than a count, because the distance is
-        // what the eye needs and not a number anyone chose deliberately.
+        // Enough that a number ending in a digit and a unit beginning with a
+        // letter do not read as one token.
         let columns = level_columns();
         let end = level_value_end(columns.value_x, LEVEL_VALUE_GLYPHS);
         assert!(
@@ -158,10 +154,9 @@ mod tests {
 
     #[test]
     fn every_level_column_keeps_a_whole_blank_cell_between_it_and_the_next() {
-        // A minimum rather than a count, because the distance is what the eye needs
-        // and not a number anyone chose deliberately: two glyphs separated by only
-        // the gap between their own strokes read as one run of text, which is how
-        // `DBFS` came to look like part of the pressure level beside it.
+        // Two glyphs separated by only the gap between their own strokes read as
+        // one run of text, which is how `DBFS` came to look like part of the
+        // pressure level beside it.
         let columns = level_columns();
         for (left, right, glyphs_here) in [
             (columns.value_x, columns.unit_x, LEVEL_VALUE_GLYPHS),

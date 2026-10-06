@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "99655208c883b48c5404b5ddc12bda1125471474"
-translated_at = "2026-10-01T07:37:04Z"
+source_file_hash = "69ba151075775a84aba39d2d96be11a7e9168bd7"
+translated_at = "2026-10-06T05:35:23Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -22,6 +22,15 @@ Each judgement is marked with its basis: **`[test]`** a unit test backs it, **`[
 `[measured]` Capture and playback hang off the same MCLK / BCLK / LRCK. Were they declared from separate clocks, they could sit a few hertz apart with **nothing reporting it**: the panel would meter the capture correctly while the speaker ran slightly sharp — which sounds like a hardware fault and is not.
 
 `[measured]` Each fault is quiet, and each reads as the other: a speaker fed a misaligned clock crackles, while a microphone sampled off-clock returns constant full scale that looks like a loud room.
+
+`[measured]` **Which unit drives that pin pair was tried both ways, and both ways are broken**:
+
+| Who drives the pins | What the transmit side hears | What the capture side sees |
+| --- | --- | --- |
+| The capture unit | continuous crackle (the transmit unit shifts out on a divider the ES8311 is not being clocked by) | normal |
+| The transmit unit | normal | a constant full-scale reading and a dead flat waveform (sampling the ES7210 off a divider that is not the one clocking the part) |
+
+The two units run in separate clock domains and neither can own the clock alone, so **the transmit unit drives the pins and the capture is held in slave mode**. The direction is not interchangeable.
 
 The corresponding constraint in code (`shared_tdm_config`): `with_signal_loopback` slaves the receive unit to follow, and **its name is the one misleading thing about it** — it carries no samples across; it shares the clock.
 
@@ -49,13 +58,15 @@ The derivation (in full in the code comment): the ES7210's full scale is AVDD/3.
 
 > These numbers live in the code comment because they decide the readout; changing a value here requires changing it there too.
 
+Core-side consumption of this offset (and why `spl()` takes it as a parameter) is in the [audio implementation record](@/records/iot/audio.en.md).
+
 ---
 
 ## The QMI8658A tap engine is unusable
 
-`[reported]` The part's tap engine latched a stuck tap bit and a frozen `TAP_NUM` at its enable transient and never resolved a real blow, so knock detection moved to the core-side recognizer (`recognizer.rs`, with `[test]` 7 cases covering knocks, turns and the first-knock count). Not reproduced in this pass.
+`[reported]` The part's tap engine latched a stuck tap bit and a frozen `TAP_NUM` at its enable transient and never resolved a real blow, so only No-Motion is armed and knock detection moved to the core-side recognizer (`recognizer.rs`, with `[test]` 7 cases covering knocks, turns and the first-knock count). Not reproduced in this pass.
 
-Only No-Motion is armed.
+The full detection rules, where the thresholds came from, and the rejected approaches are in the [motion implementation record](@/records/iot/motion.en.md).
 
 ---
 

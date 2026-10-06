@@ -38,12 +38,9 @@ const CTRL2_VALUE: u8 = 0x13;
 const CTRL3_VALUE: u8 = 0x53;
 /// Datasheet Table 22: bit4 `gLPF_EN` clear, bit0 `aLPF_EN` clear. The
 /// accelerometer low-pass filter is off, keeping the full 896.8 Hz bandwidth
-/// for the knock's broadband transient. An on-device A/B pass (same gestures,
-/// aLPF off/on) showed identical resting noise and knock readings either way —
-/// the attenuation comes from the structure and coupling, not this filter — so
-/// the radio is left clear and the recognizer's bars (peak 250 mG / quiet
-/// 150 mG) were calibrated on this unfiltered stream. The gyro filter stays
-/// off because nothing reads the gyro path for peaks.
+/// for the knock's broadband transient, and the core recognizer's bars (peak
+/// 250 mG / quiet 150 mG) were calibrated on this unfiltered stream. The gyro
+/// filter stays off because nothing reads the gyro path for peaks.
 const CTRL5_VALUE: u8 = 0x00;
 const CTRL7_VALUE: u8 = 0x03;
 
@@ -51,9 +48,8 @@ const CTRL8_NO_MOTION_EN: u8 = 1 << 2;
 /// This board wires no INT line, so the CTRL9 handshake has to be polled
 /// through `STATUSINT.bit7` instead of waiting on the INT1 pin.
 const CTRL8_STATUSINT_HANDSHAKE: u8 = 1 << 7;
-/// The tap engine is left disarmed: it latched a stuck tap bit and a frozen
-/// `TAP_NUM` at its enable transient and never resolved a real blow, so that
-/// contract moved to the core recognizer. Only No-Motion is armed here.
+/// The tap engine is left disarmed on purpose; the knock contract lives in the
+/// core recognizer. Only No-Motion is armed here.
 const CTRL8_VALUE: u8 = CTRL8_NO_MOTION_EN | CTRL8_STATUSINT_HANDSHAKE;
 
 const STATUS1_NO_MOTION: u8 = 1 << 6;
@@ -79,13 +75,10 @@ const RESET_POLL_ATTEMPTS: u8 = 100;
 const RESET_POLL_US: u32 = 200;
 
 /// This firmware enables both sensors, where note 13 makes the gyro set the
-/// rate for both, so `0b0011` is the 6DOF ODR of 896.8 Hz. The rate no longer
-/// gates the tap contract — the knock detector lives in core and sees the
-/// filtered 20 ms plane, not the raw ODR — but it still sits well above the
-/// No-Motion engine's needs and keeps the gyro path (yaw diagnostics) full
-/// rate. The No-Motion engine counts samples while the product reasons in
-/// milliseconds, so the index is pinned here to stop a retuned ODR from
-/// silently rescaling every window.
+/// rate for both, so `0b0011` is the 6DOF ODR of 896.8 Hz. The No-Motion
+/// engine counts samples while the product reasons in milliseconds, so the
+/// index is pinned here to stop a retuned ODR from silently rescaling every
+/// window.
 const ODR_INDEX: u8 = 0b0011;
 const ODR_HZ_X10: u32 = 8_968;
 const _: () = assert!(CTRL2_VALUE & 0x0F == ODR_INDEX && CTRL3_VALUE & 0x0F == ODR_INDEX);
@@ -129,8 +122,7 @@ const DATA_READY_MASK: u8 = 0x03;
 
 /// What this part contributes on its own: raw telemetry plus the No-Motion
 /// engine it arms. Everything else the product reports is derived core-side
-/// from the data plane — including the tap contract after that engine proved
-/// unreachable — so claiming it here would misattribute it to the hardware.
+/// from the data plane, so claiming it here would misattribute it.
 pub const QMI8658_CAPABILITIES: MotionCapabilities =
     MotionCapabilities::TELEMETRY.union(MotionCapabilities::STILL);
 
@@ -272,18 +264,14 @@ impl<D: I2c> Qmi8658<D> {
 
     fn configure(&mut self, delay: &mut impl DelayNs) -> Result<(), Qmi8658Error<D::Error>> {
         let bus = |error: D::Error| Qmi8658Error::Bus(error);
-        self.i2c
-            .write(self.addr, &[REG_CTRL1, CTRL1_VALUE])
-            .map_err(bus)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL2, CTRL2_VALUE])
-            .map_err(bus)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL3, CTRL3_VALUE])
-            .map_err(bus)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL5, CTRL5_VALUE])
-            .map_err(bus)?;
+        for (reg, value) in [
+            (REG_CTRL1, CTRL1_VALUE),
+            (REG_CTRL2, CTRL2_VALUE),
+            (REG_CTRL3, CTRL3_VALUE),
+            (REG_CTRL5, CTRL5_VALUE),
+        ] {
+            self.i2c.write(self.addr, &[reg, value]).map_err(bus)?;
+        }
         // The CTRL9 protocol requires both sensors quiet, and the engines only
         // arm once their parameters have landed.
         self.i2c.write(self.addr, &[REG_CTRL7, 0x00]).map_err(bus)?;
@@ -291,11 +279,7 @@ impl<D: I2c> Qmi8658<D> {
             .write(self.addr, &[REG_CTRL8, CTRL8_STATUSINT_HANDSHAKE])
             .map_err(bus)?;
 
-        // Motion, datasheet Table 34. The three AnyMotion thresholds and the
-        // three NoMotion thresholds fill the first set, the windows and the
-        // SignificantMotion windows fill the second. NoMotion is the engine this
-        // product arms, so its thresholds and window have to land where the
-        // engine reads them.
+        // Motion, datasheet Table 34.
         let motion_first = [
             ANY_MOTION_THR,
             ANY_MOTION_THR,
@@ -379,9 +363,7 @@ impl<D: I2c> Qmi8658<D> {
     }
 
     fn read_bytes(&mut self, reg: u8, out: &mut [u8]) -> Result<(), D::Error> {
-        self.i2c.write(self.addr, &[reg])?;
-        self.i2c.read(self.addr, out)?;
-        Ok(())
+        self.i2c.write_read(self.addr, &[reg], out)
     }
 }
 
@@ -472,8 +454,6 @@ mod tests {
         pointer: u8,
         completes_reset: bool,
         completes_commands: bool,
-        /// Every bus access in order. Reads carry `READ` as their value so that
-        /// ordering between reads and writes stays comparable in one timeline.
         history: Vec<(u8, u8)>,
         calibrations: Vec<[u8; 8]>,
     }
@@ -531,14 +511,10 @@ mod tests {
                     self.state.registers[register(*reg)] = *value;
                     self.state.history.push((*reg, *value));
                     if *reg == REG_RESET && self.state.completes_reset {
-                        // A real part raises 0x4D.bit7 once the reset process
-                        // finishes, and later operations overwrite it again.
                         self.state.registers[register(REG_RESET_FLAG)] = RESET_FLAG_READY;
                     }
                     if *reg == REG_CTRL9 && *value != CTRL_CMD_ACK && self.state.completes_commands
                     {
-                        // A real part raises CmdDone for a command and drops it
-                        // on the acknowledge that follows.
                         self.state.registers[register(REG_STATUSINT)] |= STATUSINT_CMD_DONE;
                     } else if *reg == REG_CTRL9 {
                         self.state.registers[register(REG_STATUSINT)] &= !STATUSINT_CMD_DONE;
@@ -634,12 +610,6 @@ mod tests {
         settle(&mut driver);
         let ctrl5 = driver.i2c.state.registers[register(REG_CTRL5)];
         assert_eq!(ctrl5, CTRL5_VALUE);
-        // Datasheet Table 22: bit4 gLPF_EN clear, bit0 aLPF_EN clear. The accel
-        // filter is off so the knock's broadband transient reaches the squared
-        // residual intact; an on-device filter on/off A/B read identically, so
-        // the low-pass was never the attenuator and the bars are set on the
-        // unfiltered stream. The gyro filter stays off since nothing reads the
-        // gyro path for peaks.
         assert_eq!(ctrl5 & (1 << 4), 0);
         assert_eq!(ctrl5 & 1, 0);
     }
@@ -651,10 +621,6 @@ mod tests {
         let ctrl8 = driver.i2c.state.registers[register(REG_CTRL8)];
         assert_eq!(ctrl8 & CTRL8_NO_MOTION_EN, CTRL8_NO_MOTION_EN);
         assert_eq!(ctrl8 & CTRL8_STATUSINT_HANDSHAKE, CTRL8_STATUSINT_HANDSHAKE);
-        // Engines this product leaves to the core-side classifier stay off.
-        // Tap is one of them: the hardware engine latched a stuck bit at its
-        // enable transient and never resolved a blow, so the contract moved to
-        // the core recognizer and the silicon is left disarmed.
         assert_eq!(ctrl8 & 1 << 0, 0);
         assert_eq!(ctrl8 & (1 << 1 | 1 << 3 | 1 << 4), 0);
     }
@@ -673,23 +639,17 @@ mod tests {
                 CTRL_CMD_ACK,
             ]
         );
-        // Every command is acknowledged, so the handshake flag is left clear.
         assert_eq!(
             state.registers[register(REG_STATUSINT)] & STATUSINT_CMD_DONE,
             0
         );
-        // CAL4_H selects which half of a parameter set is being written.
         assert_eq!(state.registers[register(REG_CAL1_L + 7)], CAL_SET_SECOND);
-        // Each burst is CAL1_L..CAL4_H. Pinning the whole layout rather than a
-        // few interesting bytes is the point: the tables interleave unrelated
-        // fields, so a plausible-looking subset hides a misfiled threshold. The
-        // windows are derived from the production constants so a retuned ODR
-        // cannot silently desync the snapshot from what the part is sent.
+        // Pinning the whole layout rather than a few interesting bytes is the
+        // point: the tables interleave unrelated fields, so a plausible-looking
+        // subset hides a misfiled threshold.
         assert_eq!(
             state.calibrations,
             vec![
-                // Table 34, motion first set: AnyMotionX/Y/ZThr, NoMotionX/Y/ZThr,
-                // MOTION_MODE_CTRL, 1st command.
                 [
                     ANY_MOTION_THR,
                     ANY_MOTION_THR,
@@ -908,10 +868,6 @@ mod tests {
 
     #[test]
     fn a_tap_bit_is_no_longer_decoded() {
-        // The knock contract moved to the core recognizer, so the driver
-        // ignores whatever the silicon's tap engine still asserts on STATUS1
-        // — the bit neither becomes a Tap event nor disturbs the Still the
-        // NoMotion engine carries, and only rides along as a raw flag.
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION | 1 << 1;
@@ -926,10 +882,6 @@ mod tests {
 
     #[test]
     fn a_still_bit_held_across_polls_reports_the_transition_once() {
-        // The NoMotion flag is a level: the engine asserts it on every poll the
-        // device is still, so a driver that published the bit would fire Still
-        // at the frame rate for as long as the device rests. Only the rising
-        // edge is the transition, and it has to happen once.
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION;
@@ -1013,9 +965,6 @@ mod tests {
     fn the_driver_claims_only_what_its_own_engines_compute() {
         assert!(QMI8658_CAPABILITIES.contains(MotionCapabilities::TELEMETRY));
         assert!(QMI8658_CAPABILITIES.contains(MotionCapabilities::STILL));
-        // Tap now belongs to the core recognizer: the silicon engine proved
-        // unreachable and never advertised a gesture, so claiming it here would
-        // attribute the core's work to the hardware.
         assert!(!QMI8658_CAPABILITIES.contains(MotionCapabilities::TAP));
         assert!(!QMI8658_CAPABILITIES.contains(MotionCapabilities::SHAKE));
         assert!(!QMI8658_CAPABILITIES.contains(MotionCapabilities::STEP));

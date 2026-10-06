@@ -3,8 +3,8 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "dfd6b4c96468d6be0ca6e6f9795905823dadcbd8"
-translated_at = "2026-10-01T09:44:05Z"
+source_file_hash = "768a834f15249008fe2c27f4e6ebc905720d6328"
+translated_at = "2026-10-06T05:35:23Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -118,6 +118,18 @@ One ordering in that fix is counter-intuitive and the easiest thing to break lat
 1. `feed()` must **push before it records** — writing into a live transfer has exactly one route, and a just-drained ring is entirely free, so that push is what primes the restart
 2. the buffer `stop()` returns must **never** be pushed into — it comes back whole with `pre_filled` set, so a push is handed the empty tail past the ring's end and writes nothing
 3. `write()` replays that whole ring from the first descriptor — which is why priming first is what makes the replay this cadence's audio rather than the sound that stalled
+
+---
+
+## Two decisions the host cannot see, so they are pure functions with explicit tests
+
+`still_sounding(source_done, arm_sounded, arm_in_flight)` answers whether a sound is still audible.
+
+**Rejected direction**: treat a spent source as the end of the sound. **Wrong**: a spent source is not the end — the arm carrying its last frames has to play out first. Inverting it is worse: a spent source keeps arming silent rings, each of which answers "still going", so the phase never leaves `Playing` and every later tap is tallied as dropped against a sound already over. And this error is **entirely invisible from the host**, because the arm only exists on the board.
+
+The watchdog's direction mistake is the same shape but costs more: `tx_idle` goes high whenever the FIFO is momentarily empty, which is the ordinary state between two feeds. Treated as a fault, it tears the stream down and rebuilds it mid-sound, restarting the codec's clocks and replaying a ring of stale audio.
+
+`[test]` `a_spent_source_never_reports_playing_again` and `a_brief_idle_between_feeds_is_not_a_drained_stream` (`core/src/drivers/playback.rs`) pin the two directions; the second walks a whole ring's playthrough feed by feed, so no unlucky arrangement of cadences can hide it.
 
 ---
 

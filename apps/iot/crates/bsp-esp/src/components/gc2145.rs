@@ -48,8 +48,6 @@ const TABLE_SETTLE_MS: u32 = 100;
 /// started immediately begins on a part still streaming the previous one.
 const WINDOW_SETTLE_MS: u32 = 100;
 
-// ── Page 0 ───────────────────────────────────────────────────────────────────
-
 /// Output format. Bits 4:0 choose the data mode; the upper bits are other output-path
 /// settings and are merged rather than overwritten.
 const REG_OUTPUT_FORMAT: u8 = 0x84;
@@ -140,7 +138,6 @@ const _: () = {
 const WIN_HEIGHT_MARGIN: u16 = 8;
 const WIN_WIDTH_MARGIN: u16 = 16;
 
-/// What the power-on table leaves in the window registers.
 const POWER_ON_OUT_WIDTH: u16 = 320;
 const POWER_ON_OUT_HEIGHT: u16 = 240;
 
@@ -166,7 +163,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     // Exposure, which AEC owns once it is running — the table only seeds a start value.
     (0x03, 0x04),
     (0x04, 0x62),
-    // Frame timing: HBLANK.
     (0x05, 0x01),
     (0x06, 0x3b),
     // Read window: origin at 0,0 and 1618x1216, the array plus the margins.
@@ -181,7 +177,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     // SH delay, and the mirror / vertical-flip register.
     (0x12, 0x2e),
     (0x17, 0x14),
-    // Analog front end.
     (0x18, 0x22),
     (0x19, 0x0f),
     (0x1a, 0x01),
@@ -718,10 +713,8 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xfe, 0x00),
     (0x18, 0x22),
     (0xfe, 0x02),
-    // Dark sun.
     (0x40, 0xbf),
     (0x46, 0xcf),
-    // And again.
     (0xfe, 0x00),
     (0xfe, 0x00),
     (0xf7, 0x1d),
@@ -1062,8 +1055,7 @@ impl<D: I2c> Gc2145<D> {
 
     fn read_reg(&mut self, reg: u8) -> Result<u8, D::Error> {
         let mut byte = [0u8; 1];
-        self.i2c.write(self.addr, &[reg])?;
-        self.i2c.read(self.addr, &mut byte)?;
+        self.i2c.write_read(self.addr, &[reg], &mut byte)?;
         Ok(byte[0])
     }
 
@@ -1226,12 +1218,9 @@ mod tests {
         found
     }
 
-    /// Pins the entries the picture depends on.
-    ///
-    /// Not a checksum of the whole table: the point is that the handful of registers
-    /// whose values are known to fix or cause a specific artefact cannot be edited by
-    /// accident. Each value below is the one esp32-camera's table carries, and the
-    /// comment is that driver's own.
+    /// Pins the entries the picture depends on. Not a checksum of the whole table:
+    /// the point is that the handful of registers whose values are known to fix or
+    /// cause a specific artefact cannot be edited by accident.
     #[test]
     fn power_on_table_pins_the_entries_that_decide_the_picture() {
         // Output data mode. If this drifts the merge still yields RGB565, but the other
@@ -1306,8 +1295,6 @@ mod tests {
         assert!(history.len() >= POWER_ON_REGS.len());
 
         assert_eq!(sensor.read_format().expect("format"), FORMAT_RGB565);
-        // `320x240` at ratio 5 is the whole array, so the power-on window and the window
-        // the board programs agree — the reason the ratio is fixed.
         assert_eq!(POWER_ON_OUT_WIDTH * EXTRACT_RATIO, ARRAY_WIDTH);
         assert_eq!(POWER_ON_OUT_HEIGHT * EXTRACT_RATIO, ARRAY_HEIGHT);
         assert_eq!(delay.waited_ms, vec![RESET_SETTLE_MS, TABLE_SETTLE_MS]);
@@ -1351,8 +1338,7 @@ mod tests {
             part.pair(REG_OUT_WIN_HEIGHT_HIGH, REG_OUT_WIN_HEIGHT_LOW),
             POWER_ON_OUT_HEIGHT
         );
-        // The read window is the whole array, so it starts at the origin; the two margins
-        // are asymmetric because that is what the reference driver writes.
+        // The margins are asymmetric because that is what the reference driver writes.
         assert_eq!(part.pair(REG_ROW_START_HIGH, REG_ROW_START_LOW), 0);
         assert_eq!(part.pair(REG_COL_START_HIGH, REG_COL_START_LOW), 0);
         assert_eq!(
@@ -1370,7 +1356,6 @@ mod tests {
         for reg in REG_SUB_ROW_N1..=REG_SUB_COL_N4 {
             assert_eq!(part.get(reg), 0x00, "bin register 0x{reg:02x}");
         }
-        // Never written, so it has to still read as the table left it.
         assert_eq!(part.get(REG_SCALAR_MODE), 0x00);
         assert_eq!(delay.waited_ms, vec![WINDOW_SETTLE_MS]);
     }

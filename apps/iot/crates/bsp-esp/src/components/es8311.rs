@@ -1,5 +1,8 @@
 use embedded_hal::i2c::I2c;
 
+use super::register_seq;
+use register_seq::{Step, merge, write};
+
 /// Datasheet 2.1: the seven-bit write address. The part has a single address
 /// pin, so a board that straps it the other way lands on
 /// [`ES8311_I2C_ADDR_ALT`]; the board probes both rather than trusting a
@@ -62,8 +65,6 @@ const MCLK_SOURCE_MASK: u8 = 0x80;
 const MCLK_INVERT_MASK: u8 = 0x40;
 /// BCLK inversion, cleared: the host emits BCLK rising-edge aligned.
 const BCLK_INVERT_MASK: u8 = 0x20;
-/// The BCLK divider's own field, which the reference driver's mask leaves
-/// entirely to the divider write.
 const BCLK_DIV_MASK: u8 = 0x1F;
 /// The part of `0x03` and `0x04` the clock table owns: the fractional-speed bit
 /// pair and the OSR the row names. Every row the reference table holds is an OSR
@@ -126,15 +127,11 @@ impl Coeff {
     }
 
     /// The byte `0x03` carries: the fractional part in bits 7-6 and the ADC OSR
-    /// below it. The reference driver keeps bit 7 of the register it is about to
-    /// overwrite, but its next line is `regv |= fs_mode << 6`, which decides that
-    /// same bit — so the preserved copy is a value the row overwrites, and bit 7
-    /// belongs to the fractional part with the rest of the field.
+    /// below it.
     const fn adc(self) -> u8 {
         (self.fs_mode << 6) | self.adc_osr
     }
 
-    /// The byte `0x04` carries: the DAC OSR on its own.
     const fn dac_osr(self) -> u8 {
         self.dac_osr
     }
@@ -204,37 +201,13 @@ impl ChipId {
     }
 }
 
-/// One entry in a bring-up sequence: write `value` across `reg`, or merge it into
-/// just the bits `mask` selects. Same shape and the same reason as the capture
-/// codec's: a masked write is how the shared clock manager keeps the source and
-/// inversion bits the earlier stage set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Step {
-    reg: u8,
-    mask: u8,
-    value: u8,
-}
-
-const fn write(reg: u8, value: u8) -> Step {
-    Step {
-        reg,
-        mask: 0,
-        value,
-    }
-}
-
-const fn merge(reg: u8, mask: u8, value: u8) -> Step {
-    Step { reg, mask, value }
-}
-
 /// I2C noise immunity, written twice. The reference driver does this because the
 /// part intermittently drops the first write after power-up; the second write is
 /// not redundant, it is the one that has to land.
 const BRING_UP_NOISE_IMMUNITY: &[Step] = &[write(REG_GPIO, 0x08), write(REG_GPIO, 0x08)];
 
-/// The power-on byte set: clock gates off, then the base system registers. These
-/// are whole-register writes because the part has just been reset and the
-/// reference driver's values are its power-on state with the ports held idle.
+/// Whole-register writes: the part has just been reset and the reference
+/// driver's values are its power-on state with the ports held idle.
 const BRING_UP_POWER_ON: &[Step] = &[
     write(REG_CLK_ENABLE, 0x30),
     write(REG_CLK_DIV_MULT, 0x00),
@@ -337,11 +310,7 @@ impl<D: I2c> Mute for Es8311<D> {
     type MuteError = Es8311Error<D::Error>;
 
     fn set_muted(&mut self, muted: bool) -> Result<(), Es8311Error<D::Error>> {
-        // Fully qualified, because the trait method and the inherent one this
-        // forwards to share a name and the inherent one wins resolution — a bare
-        // `self.set_muted` would be right by accident rather than by statement,
-        // and would look like recursion to whoever reads it next.
-        Es8311::set_muted(self, muted)
+        Es8311::write_mute_latch(self, muted)
     }
 }
 
@@ -379,8 +348,8 @@ impl<D: I2c> Es8311<D> {
     /// unwrite.
     pub fn chip_id(&mut self) -> Result<ChipId, Es8311Error<D::Error>> {
         Ok(ChipId {
-            first: self.read_reg(REG_CHIP_ID1)?,
-            second: self.read_reg(REG_CHIP_ID2)?,
+            first: register_seq::read_reg(&mut self.i2c, self.addr, REG_CHIP_ID1)?,
+            second: register_seq::read_reg(&mut self.i2c, self.addr, REG_CHIP_ID2)?,
         })
     }
 
@@ -391,7 +360,7 @@ impl<D: I2c> Es8311<D> {
         if self.running {
             return Ok(());
         }
-        self.run(BRING_UP)?;
+        register_seq::run(&mut self.i2c, self.addr, BRING_UP)?;
         self.start()?;
         self.running = true;
         Ok(())
@@ -399,7 +368,7 @@ impl<D: I2c> Es8311<D> {
 
     /// Releases the DAC out of reset, at unity volume and unmuted.
     pub fn start(&mut self) -> Result<(), Es8311Error<D::Error>> {
-        self.run(&[START])
+        Ok(register_seq::run(&mut self.i2c, self.addr, &[START])?)
     }
 
     /// Latches the DAC output quiet, or audible again.
@@ -407,72 +376,28 @@ impl<D: I2c> Es8311<D> {
     /// A read-modify-write of the soft-mute bits rather than a literal, because
     /// the same register carries the volume ramp and the power state, and a
     /// literal would clear both — which is audible as a click on every unmute.
-    pub fn set_muted(&mut self, muted: bool) -> Result<(), Es8311Error<D::Error>> {
+    pub fn write_mute_latch(&mut self, muted: bool) -> Result<(), Es8311Error<D::Error>> {
         let value = if muted { DAC_MUTED } else { 0x00 };
-        self.update(merge(REG_DAC_MUTE, DAC_MUTE_FIELD, value))
-    }
-
-    fn run(&mut self, stages: &[&[Step]]) -> Result<(), Es8311Error<D::Error>> {
-        for stage in stages {
-            for step in *stage {
-                if step.mask == 0 {
-                    self.i2c
-                        .write(self.addr, &[step.reg, step.value])
-                        .map_err(Es8311Error::Bus)?;
-                } else {
-                    self.update(*step)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn update(&mut self, step: Step) -> Result<(), Es8311Error<D::Error>> {
-        let current = self.read_reg(step.reg)?;
-        let merged = (current & !step.mask) | (step.value & step.mask);
-        self.i2c
-            .write(self.addr, &[step.reg, merged])
-            .map_err(Es8311Error::Bus)
-    }
-
-    fn read_reg(&mut self, reg: u8) -> Result<u8, Es8311Error<D::Error>> {
-        let mut value = [0u8; 1];
-        self.i2c.write(self.addr, &[reg])?;
-        self.i2c.read(self.addr, &mut value)?;
-        Ok(value[0])
+        Ok(register_seq::update(
+            &mut self.i2c,
+            self.addr,
+            merge(REG_DAC_MUTE, DAC_MUTE_FIELD, value),
+        )?)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec::Vec;
-    use embedded_hal::i2c::{ErrorKind, ErrorType, NoAcknowledgeSource, Operation};
 
-    /// The fault the mock bus injects, in the vocabulary the embedded-hal trait
-    /// defines rather than a bespoke type, so a test that asserts on it reads the
-    /// same as a real peripheral failure.
-    const NACK: ErrorKind = ErrorKind::NoAcknowledge(NoAcknowledgeSource::Data);
+    use crate::components::mock_i2c::{MockI2c, NACK};
 
-    const REGISTERS: usize = 0xFF;
+    type Mock = MockI2c<0xFF>;
 
-    struct MockI2c {
-        registers: [u8; REGISTERS],
-        pointer: u8,
-        /// Every write in order, as (register, value). Masked writes record the
-        /// merged byte the bus actually saw, so a wrong mask shows up as a wrong
-        /// trace rather than as nothing at all.
-        trace: Vec<(u8, u8)>,
-        /// Index into `trace` at which the bus starts failing, so a fault can be
-        /// placed at one specific write of a long sequence.
-        fail_at: Option<usize>,
-    }
-
-    impl MockI2c {
-        fn new() -> Self {
-            let mut registers = [0u8; REGISTERS];
-            // Seed the power-on values the sequence has to correct, and the ID
-            // registers so `chip_id` reports the part rather than a zeroed bus.
+    fn mock() -> Mock {
+        Mock::new(|registers| {
+            // The ID registers matter too: a zeroed bus would make `chip_id`
+            // report an absent part.
             registers[REG_RESET as usize] = 0x00;
             registers[REG_CLK_ENABLE as usize] = 0x00;
             registers[REG_SDP_DAC as usize] = 0x83;
@@ -483,73 +408,14 @@ mod tests {
             registers[REG_CLK_LRCK_H as usize] = 0xC0;
             registers[REG_CHIP_ID1 as usize] = 0x83;
             registers[REG_CHIP_ID2 as usize] = 0x11;
-            Self {
-                registers,
-                pointer: 0,
-                trace: Vec::new(),
-                fail_at: None,
-            }
-        }
-
-        fn apply(&mut self, write: &[u8]) -> Result<(), ErrorKind> {
-            match write {
-                [reg] => {
-                    self.pointer = *reg;
-                    Ok(())
-                }
-                [reg, value] => {
-                    if self.fail_at == Some(self.trace.len()) {
-                        return Err(NACK);
-                    }
-                    self.registers[*reg as usize] = *value;
-                    self.trace.push((*reg, *value));
-                    Ok(())
-                }
-                _ => Ok(()),
-            }
-        }
-
-        fn writes_of(&self, reg: u8) -> Vec<u8> {
-            self.trace
-                .iter()
-                .filter(|&&(written, _)| written == reg)
-                .map(|&(_, value)| value)
-                .collect()
-        }
+        })
     }
 
-    impl ErrorType for MockI2c {
-        type Error = ErrorKind;
+    fn codec() -> Es8311<Mock> {
+        Es8311::new(mock(), ES8311_I2C_ADDR)
     }
 
-    impl I2c for MockI2c {
-        fn read(&mut self, _address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
-            for (offset, byte) in read.iter_mut().enumerate() {
-                *byte = self.registers[(self.pointer as usize + offset).min(REGISTERS - 1)];
-            }
-            Ok(())
-        }
-
-        fn transaction(
-            &mut self,
-            address: u8,
-            operations: &mut [Operation<'_>],
-        ) -> Result<(), Self::Error> {
-            for operation in operations {
-                match operation {
-                    Operation::Read(read) => self.read(address, read)?,
-                    Operation::Write(write) => self.apply(write)?,
-                }
-            }
-            Ok(())
-        }
-    }
-
-    fn codec() -> Es8311<MockI2c> {
-        Es8311::new(MockI2c::new(), ES8311_I2C_ADDR)
-    }
-
-    fn settle() -> Es8311<MockI2c> {
+    fn settle() -> Es8311<Mock> {
         let mut codec = codec();
         codec.init().expect("init");
         codec
@@ -565,8 +431,6 @@ mod tests {
     #[test]
     fn the_part_runs_as_a_slave_of_the_host_clocks() {
         let codec = settle();
-        // Every value `0x00` ever holds: the digital block released and the
-        // master bit never set, whatever the power-on value was.
         for value in codec.i2c.writes_of(REG_RESET) {
             assert_eq!(value & MASTER_BIT, 0x00, "the part was left a clock master");
             assert_eq!(value & RESET_DIGITAL, RESET_DIGITAL);
@@ -602,10 +466,6 @@ mod tests {
     #[test]
     fn the_row_lands_the_bytes_the_reference_driver_writes() {
         let codec = settle();
-        // The reference driver reaches the same three registers through
-        // read-modify-writes seeded with the power-on values the mock holds, so
-        // these are its bytes: the OSRs at `0x10`, and BCLK holding the divider
-        // `3` under the three high bits the bring-up's whole-register write left.
         assert_eq!(codec.i2c.writes_of(REG_CLK_ADC).last().copied(), Some(0x10));
         assert_eq!(
             codec.i2c.writes_of(REG_CLK_DAC_OSR).last().copied(),

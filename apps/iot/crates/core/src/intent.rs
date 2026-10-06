@@ -190,9 +190,7 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 }
             }
         },
-        // A press-down pulse folds into the live points; no light move.
         InputEvent::Gesture(GestureEvent::Press { .. }) => BusinessIntent::Invalid,
-        // An anomaly pulse tallies; no light move.
         InputEvent::Gesture(GestureEvent::Ghost) => BusinessIntent::Invalid,
         // A raw chip gesture and a capture poll are diagnostic read-backs; they
         // never move a light and never drive the capture phase.
@@ -222,8 +220,6 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 }
             }
         },
-        // A raw snapshot is diagnostic-only; the render layer keeps the
-        // controller's native multi-point ability, never a light transition.
         InputEvent::Touch(_) => BusinessIntent::Invalid,
     }
 }
@@ -261,14 +257,14 @@ fn cycle_mode(current: LightState) -> LightState {
 }
 
 /// Advance the color one slot (wrapping): the color group in breath, the
-/// palette in solid. The single click's action — exactly a right-swipe, so the
-/// two land on the same next color.
+/// palette in solid. Exactly a right-swipe, so the two land on the same next
+/// color.
 fn advance_color(current: LightState) -> Option<LightState> {
     swipe_color(current, true)
 }
 
 /// Step the current mode's table by one slot (wrapping): breathing period for
-/// breath, brightness for solid. The double-click's action.
+/// breath, brightness for solid.
 fn advance_step(current: LightState) -> Option<LightState> {
     match current {
         LightState::Off => None,
@@ -379,8 +375,6 @@ fn table_step<T: Copy + PartialEq>(table: &[T], current: T, dir: isize) -> T {
     table[((idx as isize + dir).rem_euclid(len)) as usize]
 }
 
-/// Look up `current` in `table` and return the next value (wrapping).
-/// Falls back to the first entry if `current` is not found.
 fn advance(table: &[u32], current: u32) -> u32 {
     table_step(table, current, 1)
 }
@@ -393,8 +387,6 @@ fn retreat_u8(table: &[u8], current: u8) -> u8 {
     table_step(table, current, -1)
 }
 
-/// Look up `current` in `palette` and return the next color (wrapping).
-/// Falls back to the first entry if `current` is not found.
 fn advance_palette(current: Rgb) -> Rgb {
     table_step(&PALETTE, current, 1)
 }
@@ -403,10 +395,9 @@ fn retreat_palette(current: Rgb) -> Rgb {
     table_step(&PALETTE, current, -1)
 }
 
-/// Look up `breath`'s color group in `COLOR_GROUPS` and return the next
-/// preset (wrapping); falls back to the first entry if not found. Matching
-/// keys on `group`/`group_len` — the hue span rides along with every preset,
-/// so an unknown span must not hide a known trajectory.
+/// Index of `breath`'s color group in `COLOR_GROUPS`, `0` if not found.
+/// Matching keys on `group`/`group_len` — the hue span rides along with every
+/// preset, so an unknown span must not hide a known trajectory.
 fn color_group_idx(breath: &Breath) -> usize {
     COLOR_GROUPS
         .iter()
@@ -414,11 +405,13 @@ fn color_group_idx(breath: &Breath) -> usize {
         .unwrap_or(0)
 }
 
+/// The preset after the current group, wrapping.
 fn advance_color_group(breath: &Breath) -> ColorGroup {
     let idx = color_group_idx(breath);
     COLOR_GROUPS[(idx + 1) % COLOR_GROUPS.len()]
 }
 
+/// The preset before the current group, wrapping.
 fn retreat_color_group(breath: &Breath) -> ColorGroup {
     let idx = color_group_idx(breath);
     COLOR_GROUPS[(idx + COLOR_GROUPS.len() - 1) % COLOR_GROUPS.len()]
