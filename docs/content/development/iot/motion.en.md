@@ -63,9 +63,11 @@ The board layer declares its own union through `HasMotion::motion_capabilities()
 
 ## Parameter lookup
 
-Bench calibration is run against these two tables. The parameters sit in two layers: the core recognizer (pure software thresholds) and the QMI8658A engine (hardware thresholds in registers), with the details in the two sections below.
+Bench calibration is run against the two tables below. The parameters sit in two layers: the core recognizer (pure software thresholds) and the QMI8658A engine (hardware thresholds in registers), with the details in the two sections below.
 
-### `ATTITUDE` left column
+The landscape panel lays this page out as two text blocks and a dial: the first block is the axis readings, the second is the estimator outputs and the semantic counts, and the third is the attitude dial. A block holds eighteen rows and the axis readings alone take fifteen of them, so the four estimator rows went to the second block rather than into a fourth column.
+
+### `ATTITUDE` first block: the axis readings
 
 | Label | Field | Unit | Meaning | Corresponding parameter |
 | --- | --- | --- | --- | --- |
@@ -74,14 +76,19 @@ Bench calibration is run against these two tables. The parameters sit in two lay
 | `G0`–`G2` | `raw_gyro` | LSB | raw gyroscope counts (±1024 °/s, 64 LSB/°/s) | — |
 | `D0`–`D2` | `gyro_dps_x10` | 0.1 °/s | angular rate | — |
 | `R0`–`R2` | `tilt_deg_x10` | 0.1° | roll / pitch / yaw (yaw drifts without a magnetometer) | `TILT_ENTER_DEG_X10` / `TILT_EXIT_DEG_X10` |
+
+### `ATTITUDE` second block
+
+The first four rows are estimator outputs rather than raw axis values: they are what the recognizer **decided**, not what the sensor **measured**.
+
+| Label | Field | Unit | Meaning | Corresponding parameter |
+| --- | --- | --- | --- | --- |
 | `ST` | `status` | bitmap | the raw value of `STATUS1`(0x2F) | — |
 | `LR` | `gravity_deviation_mg` | mG | \|measured magnitude − 1 g\| (the quantity the still criterion decides on) | `STILL_GRAVITY_DEV_MG` |
 | `SR` | `shake_residual_mg` | mG | shake-estimate residual (vector length) | `SHAKE_ON_MG` |
 | `TR` | `tap_residual_mg` | mG | square root of the tap squared sum (the sum of squared linear acceleration across axes) | `TAP_PEAK_MAG_MG2` |
 
-The last three rows of the left column are calibration-only: in the raw axis values these quantities are 0 by definition (at rest the magnitude lands exactly on the 1 g shell), so the thresholds can only be read on the device.
-
-### `ATTITUDE` right column
+These four are calibration-only: in the raw axis values these quantities are 0 by definition (at rest the magnitude lands exactly on the 1 g shell), so the thresholds can only be read on the device. The fourteen rows below them are the cumulative count per semantic.
 
 | Label | Semantic | Trigger condition | On this board |
 | --- | --- | --- | --- |

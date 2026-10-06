@@ -1,10 +1,25 @@
-//! Where the on-panel diagnostics overlay puts each column of text.
+//! Where the on-panel diagnostics overlay puts each block of text.
 //!
 //! Here rather than beside the panel because the panel is only reachable on the
 //! device, and a column that moved is a bug that reads as a design decision: a unit
 //! nudged left by a digit is invisible as a defect and obvious as a wrong answer.
-//! Every column is a fixed distance along a fixed pitch, so a readout that changes
+//! Every block is a fixed distance along a fixed pitch, so a readout that changes
 //! width cannot drag the unit beside it out from under the row above.
+//!
+//! The panel is addressed 320 columns by 240 rows, and the layout follows from that:
+//! wide enough for three text blocks across, short enough that a block cannot hold
+//! twenty rows at this pitch. The tests below pin both against that geometry, which
+//! is the whole reason the numbers live here and not in the panel driver.
+
+/// The panel the layout below is built for, in panel columns/rows.
+///
+/// Named here because every number in this module is a distance on that panel,
+/// and a panel that changed shape is a reason to re-read all of them. It is not
+/// a board fact core may rely on: the board owns what it mounted, and its own
+/// constants are asserted against these two at the wiring point, so a board that
+/// mounts a different panel cannot compile against a layout meant for this one.
+pub const PANEL_COLUMNS: usize = 320;
+pub const PANEL_ROWS: usize = 240;
 
 /// Width of one glyph cell. The pitch every column is placed on is this plus
 /// [`OVERLAY_GAP`], so a column is an index into a rhythm rather than a number
@@ -16,12 +31,80 @@ pub const OVERLAY_GAP: usize = 4;
 /// Distance between the left edges of adjacent glyph columns.
 pub const GLYPH_PITCH: usize = FONT_W + OVERLAY_GAP;
 
+/// Rows one glyph cell occupies, matching the 5x7 font the panel draws with.
+pub const FONT_H: usize = 7;
+/// Vertical gap between diagnostics rows.
+pub const OVERLAY_ROW_GAP: usize = 6;
+/// Distance between the top edges of adjacent diagnostics rows.
+pub const ROW_PITCH: usize = FONT_H + OVERLAY_ROW_GAP;
+/// Top edge of the first diagnostics row, in panel rows.
+pub const OVERLAY_Y: usize = 8;
+
+/// The top edge of `row`, in panel rows. Every row is placed through this rather
+/// than by arithmetic at the call site, so the vertical rhythm is one number.
+pub const fn overlay_row_top(row: usize) -> usize {
+    OVERLAY_Y + row * ROW_PITCH
+}
+
 /// Left edge of the overlay, in panel columns.
 pub const OVERLAY_X: usize = 10;
 
-/// Value column of the touch/gesture column: a 3-glyph label slot plus one
+/// Label slot of a block, in glyph columns: a three-glyph label plus one blank
+/// cell, so the reading beside it starts on one vertical line in every block.
+pub const BLOCK_LABEL_GLYPHS: usize = 4;
+
+/// Distance between the left edges of adjacent text blocks. Sized by the widest
+/// reading any block takes — seven glyphs, a coordinate pair written `x y` — plus
+/// the blank cell that keeps one block's last digit from reading as the next
+/// block's first letter. A fourth block would not fit beside these three, which is
+/// why the Audio page's narrow block is pinned to the panel edge instead.
+pub const BLOCK_PITCH: usize = 104;
+
+/// Reading column of a block, measured from the block's left edge.
+pub const BLOCK_VALUE_OFFSET: usize = BLOCK_LABEL_GLYPHS * GLYPH_PITCH;
+
+/// Left edge of the narrow block pinned to the panel's right edge, in panel
+/// columns. For a page whose graphics own the left columns — the Audio sweep —
+/// this is the only width the rest of the panel leaves, and it is set by the
+/// sweep's right-hand column rather than by the block rhythm above.
+pub const RIGHT_EDGE_X: usize = 242;
+
+/// Where a page writes one of its readout rows.
+///
+/// A row names its block rather than an x coordinate, because the blocks are
+/// what a page's layout is made of: a column that moves has to move once, for
+/// every row in it, and the only way to guarantee that is for nothing to know
+/// where the column is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Block {
+    /// The leftmost block: the page's title and its primary readout.
+    First,
+    /// The middle block, for a page whose rows outgrow one column.
+    Second,
+    /// The third block, and the width the attitude dial is drawn into.
+    Third,
+    /// The narrow block against the panel's right edge.
+    RightEdge,
+}
+
+/// The block's left edge, in panel columns.
+pub const fn block_x(block: Block) -> usize {
+    match block {
+        Block::First => OVERLAY_X,
+        Block::Second => OVERLAY_X + BLOCK_PITCH,
+        Block::Third => OVERLAY_X + 2 * BLOCK_PITCH,
+        Block::RightEdge => RIGHT_EDGE_X,
+    }
+}
+
+/// The block's reading column, in panel columns.
+pub const fn block_value_x(block: Block) -> usize {
+    block_x(block) + BLOCK_VALUE_OFFSET
+}
+
+/// Value column of the Audio level rows: a 3-glyph label slot plus one
 /// space glyph between label and value.
-pub const LEFT_VALUE_X: usize = OVERLAY_X + 4 * GLYPH_PITCH;
+pub const LEFT_VALUE_X: usize = block_value_x(Block::First);
 
 /// Unit column of the Audio level rows, a [`LEVEL_VALUE_GLYPHS`]-glyph value plus a
 /// whole blank cell after [`LEFT_VALUE_X`]. Fixed rather than flush right so a level
@@ -44,6 +127,26 @@ pub const LEVEL_UNIT_GLYPHS: usize = 4;
 /// level of this microphone's is two or three — and reserving more would spend
 /// panel columns on widths no reading can use.
 pub const LEVEL_VALUE_GLYPHS: usize = 3;
+
+/// Glyphs a reading in a block on the block rhythm is allowed to occupy. Seven is
+/// the widest any readout gets — a coordinate pair written `319 239` — and
+/// [`BLOCK_PITCH`] is sized on it.
+pub const BLOCK_VALUE_GLYPHS: usize = 7;
+
+/// Glyphs the narrow right-edge block has room for. Five, and not by choice: the
+/// Audio sweep owns the columns to its left, so this block is what is left over,
+/// and a reading wider than this one has to be written in a full block instead.
+pub const RIGHT_EDGE_VALUE_GLYPHS: usize = 5;
+
+/// How wide a reading in `block` may be before it reaches the panel edge or the
+/// next block. A page asks this rather than counting, because the reservation and
+/// the pitch that follows from it are the same decision.
+pub const fn block_value_glyphs(block: Block) -> usize {
+    match block {
+        Block::RightEdge => RIGHT_EDGE_VALUE_GLYPHS,
+        _ => BLOCK_VALUE_GLYPHS,
+    }
+}
 
 /// Where one level row's text sits, as the left edge of each of its four
 /// columns. The value and its unit are one gap apart, so the unit is a column
@@ -68,6 +171,7 @@ pub fn level_columns() -> LevelColumns {
     }
 }
 
+/// The column just past the last one a `glyphs`-wide reading reaches.
 pub fn level_value_end(value_x: usize, glyphs: usize) -> usize {
     value_x + glyphs * GLYPH_PITCH - OVERLAY_GAP
 }
@@ -175,13 +279,93 @@ mod tests {
     #[test]
     fn the_level_row_stays_inside_the_panel() {
         // The one row that has to hold four columns at once, so it is the one that
-        // can run off the right edge. 240 columns wide, as the panel is framed.
-        const PANEL_COLUMNS: usize = 240;
+        // can run off the right edge.
         let columns = level_columns();
         let end = level_value_end(columns.spl_unit_x, LEVEL_UNIT_GLYPHS);
         assert!(
             end < PANEL_COLUMNS,
             "the level row ends at {end}, off a {PANEL_COLUMNS}-column panel"
         );
+    }
+
+    #[test]
+    fn a_block_reading_never_outgrows_the_block_it_is_written_in() {
+        // Landscape is wide enough for the blocks and short enough that a page
+        // needing a seventh reading has to find it another way, so the reserved
+        // width is a fact the pages are laid out against rather than a number they
+        // discover by overrunning the next block.
+        for block in [Block::First, Block::Second, Block::Third, Block::RightEdge] {
+            let end = level_value_end(block_value_x(block), block_value_glyphs(block));
+            assert!(
+                end < PANEL_COLUMNS,
+                "the block at {} ends at {end}, off a {PANEL_COLUMNS}-column panel",
+                block_x(block)
+            );
+        }
+    }
+
+    #[test]
+    fn the_right_edge_block_is_narrower_than_the_others() {
+        // Because it is defined by the sweep beside it rather than by the block
+        // pitch. A page that needs a wide reading in it is silently writing past
+        // the panel edge, which reads as a clipped digit.
+        assert!(
+            block_value_glyphs(Block::RightEdge) < block_value_glyphs(Block::First),
+            "the right-edge block reserves as much as a full block, so nothing is \
+             pinning it to the width the sweep leaves it"
+        );
+    }
+
+    #[test]
+    fn one_blocks_widest_reading_keeps_a_blank_cell_before_the_next() {
+        // The pitch's whole reason for being. Two glyphs separated by only the
+        // gap between their own strokes read as one run of text, so a reading that
+        // grew into the next block's first letter would not look like a defect.
+        for (left, right) in [(Block::First, Block::Second), (Block::Second, Block::Third)] {
+            let end = level_value_end(block_value_x(left), BLOCK_VALUE_GLYPHS);
+            assert!(
+                block_x(right) - end >= GLYPH_PITCH,
+                "only {} columns of clearance after the block at {}, wanted a blank cell",
+                block_x(right) - end,
+                block_x(left)
+            );
+        }
+    }
+
+    /// The last row whose text still fits the panel height.
+    fn last_row_that_fits() -> usize {
+        (0..)
+            .take_while(|row| overlay_row_top(*row) + FONT_H <= PANEL_ROWS)
+            .last()
+            .expect("the first row fits a panel it is meant for")
+    }
+
+    #[test]
+    fn a_block_holds_eighteen_rows_and_not_one_more() {
+        // The portrait panel was tall enough for twenty-one rows and landscape is
+        // not, and the failure is silent: `stamp_pixel` clips an out-of-panel row
+        // rather than complaining, so a page that outgrew the panel would simply
+        // lose readouts. The count is pinned instead, because the pages are laid
+        // out against it.
+        assert_eq!(
+            last_row_that_fits(),
+            17,
+            "a block has {} rows, and the pages are laid out for a different count",
+            last_row_that_fits() + 1
+        );
+    }
+
+    #[test]
+    fn a_label_stays_inside_its_own_blocks_label_slot() {
+        // The reading column is what makes the labels line up, so a label wider
+        // than its slot reaches under the reading it is supposed to introduce.
+        for block in [Block::First, Block::Second, Block::Third, Block::RightEdge] {
+            let label_end = level_value_end(block_x(block), BLOCK_LABEL_GLYPHS);
+            assert!(
+                label_end < block_value_x(block),
+                "the label slot at {} reaches its own reading column",
+                block_x(block)
+            );
+        }
     }
 }

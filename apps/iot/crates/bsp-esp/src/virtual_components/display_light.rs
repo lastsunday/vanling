@@ -13,7 +13,8 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::drivers::playback::Sound;
 use iot_core::horizon::{SCALE, horizon};
 use iot_core::overlay::{
-    FONT_W, LEFT_VALUE_X, LEVEL_UNIT_X, OVERLAY_GAP, OVERLAY_X, level_columns,
+    Block, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS, RIGHT_EDGE_X,
+    ROW_PITCH, block_value_x, block_x, level_columns, overlay_row_top,
 };
 use iot_core::render::{MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_rate};
 use iot_core::state::{AudioPhase, DisplayPage, PlaybackPhase};
@@ -91,53 +92,45 @@ const COST_WINDOW_MS: u64 = 2_000;
 /// attitude page remains visible in either mode.
 const DEBUG_DIAGNOSTICS: bool = true;
 
-/// Top edge of the first diagnostics row, in panel rows.
-const OVERLAY_Y: usize = 8;
-/// Vertical gap between diagnostics rows.
-const OVERLAY_ROW_GAP: usize = 6;
-/// Rows of one glyph cell, matching the 5×7 [`FONT`] whose columns are
-/// [`FONT_W`] in `overlay.rs`.
-const FONT_H: usize = 7;
-/// Value column of the mode column: its label right-aligns into the fixed
-/// five-glyph slot that ends one space before it, so every value starts on
-/// one vertical line. The widest entry (`LO HI 140 255`) still fits the
-/// 240-column panel.
-const RIGHT_VALUE_X: usize = 174;
 /// Stand-in value for a semantic the board does not declare, matching the
 /// `ERR`/`WAIT` sentinels the attitude page already uses for missing data.
 const NOT_AVAILABLE: &[u8] = b"N/A";
 
-/// Attitude dial center, in panel columns/rows. Anchored in the free
-/// bottom-right corner: below the mode column's last row (`y ≈ 184`) and
-/// right of the touch column's widest value (`x ≈ 145`), so a radius of
-/// [`HORIZON_R`] stays clear of both columns on the 240×320 panel.
-const HORIZON_CX: usize = 192;
-const HORIZON_CY: usize = 252;
-const HORIZON_R: usize = 40;
+/// Attitude dial center, in panel columns/rows. Anchored in the third text
+/// block, which the attitude page leaves empty for it: the dial is 96 rows across,
+/// so the block's own width is what decides the radius and the rows below the
+/// counts column (the last ends at 184) are what is left over.
+const HORIZON_CX: isize = 266;
+const HORIZON_CY: isize = 120;
+const HORIZON_R: isize = 48;
 
-/// Sweep band on the Audio page, in panel rows: mirrored about [`WAVE_CY`], and
-/// starting below the six readout rows (the last ends at 93) so a full-scale
-/// column fills the band without being drawn through the readout.
-const WAVE_TOP: isize = 100;
+/// Top edge of the sweep band, in panel rows. The Audio page's two level rows
+/// are the only readouts wide enough not to fit the narrow block, so the band is
+/// given every row from below them down: a portrait panel spent its top third on
+/// readouts stacked above a band it had already shortened.
+const WAVE_TOP: isize = 42;
 /// Centre line of the mirrored band, which is also the bottom of the scale: a
 /// mirrored bar measures *outward* from silence here, so 0 dBFS is at the band's
 /// two edges and the floor is the middle.
-const WAVE_CY: isize = 196;
+const WAVE_CY: isize = 132;
 /// Rows the tallest column reaches up and down from [`WAVE_CY`]. Set to clear
 /// [`WAVE_TOP`] and leave room for the span label, not chosen: a logarithmic
-/// scale spends the rows it leaves free on under half a decibel each.
-const WAVE_HALF: isize = 96;
+/// scale spends the rows it leaves free on under half a decibel each. At 90 it
+/// also spends one row on one decibel, which is what makes the grid land whole.
+const WAVE_HALF: isize = 90;
 
-/// Decibels per grid line, chosen so a line lands every 20 rows of the half band
-/// and the ten-octave window divides into whole steps: 96 rows per 60 dB is
-/// 1.6 rows per decibel, and twelve is 19.2 — close to a whole row either way,
-/// and a scale whose lines land off-pixel reads as a scale that is wrong.
+/// Decibels per grid line, chosen so a line lands on a whole row and the
+/// ten-octave window divides into whole steps: [`WAVE_HALF`] rows per 90 dB is
+/// one row per decibel, so twelve decibels is exactly twelve rows. A scale whose
+/// lines land off-pixel reads as a scale that is wrong.
 const GRID_DECIBELS: i16 = 12;
 
 /// Left column of the sweep, and its width in panel columns. The width is
 /// [`ENVELOPE_COLUMNS`] so one column is one pixel: a scale that resamples the
 /// envelope has to drop peaks, and dropping peaks on a peak meter means the
-/// meter misses the thing it exists to show.
+/// meter misses the thing it exists to show. Those columns and the ruler beside
+/// them are what fix the right-edge block's left edge, so neither can move
+/// without it.
 const SCAN_X: isize = 40;
 const SCAN_COLUMNS: isize = 200;
 
@@ -151,11 +144,103 @@ const RULER_TICK_COLUMNS: isize = 6;
 /// Rows below the band the window's own length is written at, so a sweep is read
 /// as "two seconds" rather than as an unbounded strip whose rate nobody can
 /// infer from a moving bar.
-const SPAN_Y: usize = 298;
+const SPAN_Y: usize = 224;
 
-/// Global FPS badge pinned to the panel's top-right edge on every page, the
-/// only strip no content uses; the value right-aligns to the panel edge.
-const FPS_Y: usize = 0;
+/// Top edge of the global FPS badge, which every page shows. Below the span label
+/// and clear of the sweep, so the one strip that belongs to no page sits where no
+/// page's content is, and against the same panel edge the Audio readouts use.
+const FPS_Y: usize = 232;
+const PANEL_RIGHT: isize = PANEL_COLUMNS as isize - 1;
+
+/// The Audio page's two level rows, the only readouts wide enough not to fit a
+/// block, and the rows the band has to start below.
+const AUDIO_LAST_FULL_WIDTH_ROW: usize = 2;
+
+/// The attitude page's tall block, whose last row the dial is centred against.
+const LAST_BLOCK_ROW: usize = 17;
+
+/// Rows the attitude page's estimator readouts take at the head of its second
+/// block, before the cumulative counts start.
+const ESTIMATOR_ROWS: usize = 4;
+
+/// Semantic counters the attitude page prints, and the last row of the attitude
+/// page's first block.
+const MOTION_SEMANTIC_ROWS: usize = 14;
+const ATTITUDE_LAST_AXIS_ROW: usize = 15;
+
+/// Width in columns of the block that marks the column which clipped, which is
+/// drawn past the sweep's last column by its own width.
+const CLIP_MARK_WIDTH: isize = 3;
+
+// The layout is only checkable against the panel it was chosen for, and a stamp
+// that falls off an edge is clipped rather than reported — so every relationship
+// that decides whether something lands on the panel is settled at compile time,
+// on the target build this crate is only ever compiled for.
+const _: () = assert!(
+    SCAN_COLUMNS as usize <= ENVELOPE_COLUMNS,
+    "the sweep draws one panel column per envelope column, so a wider sweep reads past the window"
+);
+const _: () = assert!(
+    SCAN_X >= RULER_TICK_X + RULER_TICK_COLUMNS,
+    "the ruler's tick runs into the sweep"
+);
+const _: () = assert!(
+    RULER_RIGHT as usize + OVERLAY_GAP >= 3 * GLYPH_PITCH,
+    "the widest ruler label is three glyphs, so the labels would hang off the panel's left edge"
+);
+const _: () = assert!(
+    SCAN_X + (SCAN_COLUMNS - 1) + (CLIP_MARK_WIDTH - 1) < RIGHT_EDGE_X as isize,
+    "the clip mark runs under the right-edge readouts"
+);
+const _: () = assert!(
+    SCAN_X + SCAN_COLUMNS <= RIGHT_EDGE_X as isize,
+    "the sweep runs under the right-edge readouts"
+);
+const _: () = assert!(
+    ESTIMATOR_ROWS + MOTION_SEMANTIC_ROWS <= LAST_BLOCK_ROW + 1,
+    "the attitude page's second block runs off the bottom of the panel"
+);
+const _: () = assert!(
+    ATTITUDE_LAST_AXIS_ROW <= LAST_BLOCK_ROW,
+    "the attitude page's first block runs off the bottom of the panel"
+);
+const _: () = assert!(
+    WAVE_CY - WAVE_HALF == WAVE_TOP,
+    "the band's top edge is where the window's floor falls, which is what the ruler's top label points at"
+);
+const _: () = assert!(
+    WAVE_CY + WAVE_HALF <= SPAN_Y as isize,
+    "the band's bottom edge runs through the span label"
+);
+const _: () = assert!(
+    WAVE_HALF * GRID_DECIBELS as isize % SCOPE_DECIBEL_FLOOR as isize == 0,
+    "a grid line lands off a whole number of rows, which reads as a scale that is wrong"
+);
+const _: () = assert!(
+    WAVE_TOP as usize >= overlay_row_top(AUDIO_LAST_FULL_WIDTH_ROW) + FONT_H,
+    "the band is drawn through the Audio page's level rows"
+);
+const _: () = assert!(
+    overlay_row_top(LAST_BLOCK_ROW) + FONT_H <= PANEL_ROWS,
+    "the tallest text block runs off the bottom of the panel"
+);
+const _: () = assert!(
+    SPAN_Y + FONT_H <= PANEL_ROWS,
+    "the sweep's span label runs off the bottom of the panel"
+);
+const _: () = assert!(
+    FPS_Y + FONT_H <= PANEL_ROWS,
+    "the FPS badge runs off the bottom of the panel"
+);
+const _: () = assert!(
+    HORIZON_CY - HORIZON_R >= 0 && (HORIZON_CY + HORIZON_R) as usize + FONT_H <= PANEL_ROWS,
+    "the attitude dial runs off the top or bottom of the panel"
+);
+const _: () = assert!(
+    HORIZON_CX - HORIZON_R >= block_x(Block::Third) as isize
+        && (HORIZON_CX + HORIZON_R) as usize <= PANEL_COLUMNS,
+    "the attitude dial is not inside the third text block it is anchored to"
+);
 
 /// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes), column-major,
 /// bit 0 the top row: the Adafruit GFX `glcdfont` layout, drawn the way the panel
@@ -278,7 +363,7 @@ impl DiagnosticsSink for DisplayLight {
         let page_changed = self.diagnostics.page != diagnostics.page;
         // A page switch is drawn immediately; a diagnostics drift is only drawn
         // when the page redraws it and the rate gate has opened. The gate exists
-        // because a repaint ships the whole 240×320 frame down one blocking SPI
+        // because a repaint ships the whole 320×240 frame down one blocking SPI
         // transfer, and without it the live pages (Audio follows the capture,
         // Attitude the motion sample) hold the shared cooperative executor in a
         // ~15 ms block every 20 ms snapshot — starving the playback feed and the
@@ -310,8 +395,8 @@ impl DiagnosticsSink for DisplayLight {
 }
 
 impl DisplayLight {
-    /// Paints `fill`/`color`, stamps the diagnostics rows into the corner, and ships
-    /// the frame. Always paints; callers guard for repaint skipping.
+    /// Paints `fill`/`color`, stamps the page's rows over it, and ships the frame.
+    /// Always paints; callers guard for repaint skipping.
     fn paint(&mut self, fill: Fill, color: Rgb) {
         let render_start = Instant::now();
         self.screen_color = Some((fill, color));
@@ -424,11 +509,12 @@ impl DisplayLight {
         }
     }
 
-    /// Overdraws the corner as two columns of inverted-pixel rows. Touch column:
-    /// the gesture counters, `DIR`, per-finger `P0*`/`P1*`, `XY`/`XY2`, `CHP`, and
-    /// `FRM` — an applied-frame heartbeat, so a frozen `FRM` under a held finger
-    /// tells "no frames arrived" from "coordinates did not move". Mode column: the
-    /// active mode's own rows, breathing rows tracking the live color.
+    /// Overdraws the ambient overlay as three blocks of inverted-pixel rows,
+    /// which is what the landscape panel's extra width is for. First block: the
+    /// gesture counters, `DIR`, and the two gesture coordinate pairs. Second
+    /// block: the per-finger readouts and the two rows that say whether the input
+    /// path is alive. Third block: the active mode's own rows, breathing rows
+    /// tracking the live color.
     fn stamp_diagnostics(&mut self, width: usize, height: usize, live: (u8, u8)) {
         let touch = self.diagnostics.touch;
         let light = self.diagnostics.lights[usize::from(self.instance)];
@@ -445,22 +531,29 @@ impl DisplayLight {
             (b"SWP".as_slice(), u16::from(touch.swipes)),
         ];
         for (row, (label, value)) in counters.into_iter().enumerate() {
-            self.stamp_left(label, format_u16(value, &mut buf), row, width, height);
+            self.stamp_left(
+                label,
+                format_u16(value, &mut buf),
+                Block::First,
+                row,
+                width,
+                height,
+            );
         }
 
         let mut dir = [b' '; 8];
         dir[0] = direction_arrow(touch.last_swipe_dir);
         dir[1] = b' ';
         let nd = write_u16(touch.last_swipe_dist, &mut dir, 2);
-        self.stamp_left(b"DIR", &dir[..nd], 8, width, height);
+        self.stamp_left(b"DIR", &dir[..nd], Block::First, 8, width, height);
 
         let mut ref_buf = [0u8; 8];
         let origin = format_pair(touch.last_gesture_origin, &mut ref_buf);
-        self.stamp_left(b"XY", origin, 9, width, height);
+        self.stamp_left(b"XY", origin, Block::First, 9, width, height);
 
         let mut end_buf = [0u8; 8];
         let end = format_pair(touch.last_gesture_end, &mut end_buf);
-        self.stamp_left(b"XY2", end, 10, width, height);
+        self.stamp_left(b"XY2", end, Block::First, 10, width, height);
 
         /// Overlay row label quartet for one finger slot: coordinate, resolved
         /// gesture digit, its value, and the live movement arrow.
@@ -473,7 +566,7 @@ impl DisplayLight {
         for (slot, (xy_label, gesture_label, value_label, dir_label)) in
             SLOT_ROWS.iter().enumerate()
         {
-            let base = 11 + 4 * slot;
+            let base = 4 * slot;
             let mut xy = [0u8; 8];
             let n = match touch.points[slot] {
                 Some((x, y)) => {
@@ -486,7 +579,7 @@ impl DisplayLight {
                     1
                 }
             };
-            self.stamp_left(xy_label, &xy[..n], base, width, height);
+            self.stamp_left(xy_label, &xy[..n], Block::Second, base, width, height);
 
             let last = touch.finger[slot];
             let mut value = [b'-'; 6];
@@ -498,11 +591,26 @@ impl DisplayLight {
                 digits.len()
             };
             let gesture = [gesture_glyph(last.kind)];
-            self.stamp_left(gesture_label, &gesture, base + 1, width, height);
-            self.stamp_left(value_label, &value[..value_len], base + 2, width, height);
+            self.stamp_left(
+                gesture_label,
+                &gesture,
+                Block::Second,
+                base + 1,
+                width,
+                height,
+            );
+            self.stamp_left(
+                value_label,
+                &value[..value_len],
+                Block::Second,
+                base + 2,
+                width,
+                height,
+            );
             self.stamp_left(
                 dir_label,
                 &[direction_arrow(touch.live_dir[slot])],
+                Block::Second,
                 base + 3,
                 width,
                 height,
@@ -512,7 +620,8 @@ impl DisplayLight {
         self.stamp_left(
             b"CHP",
             format_u16(u16::from(touch.chip_gesture_id), &mut buf),
-            19,
+            Block::Second,
+            8,
             width,
             height,
         );
@@ -520,7 +629,8 @@ impl DisplayLight {
         self.stamp_left(
             b"FRM",
             format_u16(touch.frames, &mut buf),
-            20,
+            Block::Second,
+            9,
             width,
             height,
         );
@@ -532,100 +642,139 @@ impl DisplayLight {
 
         match light.mode {
             MODE_BREATH => {
-                self.stamp_right(mode_word(light.mode), b"MOD", 0, width, height);
-                self.stamp_right(
+                self.stamp_left(
+                    mode_word(light.mode),
+                    b"MOD",
+                    Block::Third,
+                    0,
+                    width,
+                    height,
+                );
+                self.stamp_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
+                    Block::Third,
                     1,
                     width,
                     height,
                 );
-                self.stamp_right(&lo_hi[..n], b"LO HI", 2, width, height);
-                self.stamp_right(
+                self.stamp_left(&lo_hi[..n], b"LO HI", Block::Third, 2, width, height);
+                self.stamp_left(
                     format_u16(light.breath.period_ms, &mut buf),
                     b"PER",
+                    Block::Third,
                     3,
                     width,
                     height,
                 );
-                self.stamp_right(
+                self.stamp_left(
                     format_u16(u16::from(live.1), &mut buf),
                     b"HUE",
+                    Block::Third,
                     4,
                     width,
                     height,
                 );
-                self.stamp_right(
+                self.stamp_left(
                     format_u16(light.breath.hue_period_ms, &mut buf),
                     b"HPR",
+                    Block::Third,
                     5,
                     width,
                     height,
                 );
-                self.stamp_right(
+                self.stamp_left(
                     format_u16(u16::from(light.breath.hue_span), &mut buf),
                     b"SPN",
+                    Block::Third,
                     6,
                     width,
                     height,
                 );
-                self.stamp_right(
+                self.stamp_left(
                     format_u16(u16::from(light.breath.group_len), &mut buf),
                     b"GRP",
+                    Block::Third,
                     7,
                     width,
                     height,
                 );
-                self.stamp_right(
+                self.stamp_left(
                     format_u16(u16::from(light.breath.saturation), &mut buf),
                     b"SAT",
+                    Block::Third,
                     8,
                     width,
                     height,
                 );
             }
             MODE_SOLID => {
-                self.stamp_right(mode_word(light.mode), b"MOD", 0, width, height);
-                self.stamp_right(
+                self.stamp_left(
+                    mode_word(light.mode),
+                    b"MOD",
+                    Block::Third,
+                    0,
+                    width,
+                    height,
+                );
+                self.stamp_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
+                    Block::Third,
                     1,
                     width,
                     height,
                 );
-                self.stamp_right(
+                self.stamp_left(
                     format_u16(u16::from(live.1), &mut buf),
                     b"HUE",
+                    Block::Third,
                     2,
                     width,
                     height,
                 );
             }
-            _ => self.stamp_right(mode_word(light.mode), b"MOD", 0, width, height),
+            _ => self.stamp_left(
+                mode_word(light.mode),
+                b"MOD",
+                Block::Third,
+                0,
+                width,
+                height,
+            ),
         }
     }
 
-    /// Overdraws the corner as two columns of inverted-pixel rows: the motion
-    /// readout (`ERR`/`WAIT`/`READ` when the source has produced nothing or a read
-    /// failed) on the left, and one firing count per semantic on the right, `N/A`
-    /// where the board declares no such capability. Labels, fields and thresholds:
-    /// `docs/content/development/iot/motion.md`.
+    /// Overdraws the attitude page as two blocks of inverted-pixel rows and the
+    /// dial in the third. First block: the motion readout (`ERR`/`WAIT`/`READ`
+    /// when the source has produced nothing or a read failed), then one row per
+    /// axis per channel — raw and scaled acceleration, raw gyro, yaw rate,
+    /// roll/pitch. Second block: what the recognizer's estimators decided on,
+    /// which the raw axes cannot show, then one firing count per semantic,
+    /// `N/A` where the board declares no such capability. Third: the horizon
+    /// dial. A block holds eighteen rows and the axis rows alone are fifteen, so
+    /// the second block is where the estimators went rather than a fourth column.
+    /// Labels, fields and thresholds: `docs/content/development/iot/motion.md`.
     fn stamp_attitude(&mut self, width: usize, height: usize) {
-        let top = OVERLAY_Y;
-        self.stamp_text(b"ATTITUDE", OVERLAY_X, top, width, height);
+        self.stamp_text(
+            b"ATTITUDE",
+            block_x(Block::First),
+            overlay_row_top(0),
+            width,
+            height,
+        );
         let Some(sample) = self.diagnostics.motion else {
-            self.stamp_left(b"ERR", b"WAIT", 2, width, height);
+            self.stamp_left(b"ERR", b"WAIT", Block::First, 1, width, height);
             return;
         };
         if !sample.valid {
-            self.stamp_left(b"ERR", b"READ", 2, width, height);
+            self.stamp_left(b"ERR", b"READ", Block::First, 1, width, height);
             return;
         }
         self.stamp_horizon(&sample, width, height);
 
-        // One row per axis per channel: raw and scaled acceleration, raw gyro,
-        // yaw rate, roll/pitch. The label prefix carries the channel, the unit
-        // picks the formatter, and `first_row` is where the block starts.
+        // The label prefix carries the channel, the unit picks the formatter, and
+        // `first_row` is where the block starts.
         const BLOCKS: [(u8, usize); 5] = [(b'A', 1), (b'M', 4), (b'G', 7), (b'D', 10), (b'R', 13)];
         for &(prefix, first_row) in &BLOCKS {
             for axis in 0..3 {
@@ -640,6 +789,7 @@ impl DisplayLight {
                 self.stamp_left(
                     &[prefix, b'0' + axis as u8],
                     value,
+                    Block::First,
                     first_row + axis,
                     width,
                     height,
@@ -649,31 +799,36 @@ impl DisplayLight {
         self.stamp_left(
             b"ST",
             format_u16(u16::from(sample.status), &mut [0; 6]),
-            16,
+            Block::Second,
+            0,
             width,
             height,
         );
         // What the recognizer's estimators decided on, which the raw axes cannot
         // show: a settled reading is near zero by definition, so a threshold has
-        // to be read off the device.
+        // to be read off the device. `TR` publishes the tap peak threshold's
+        // square root, the other two the residuals it is judged against.
         self.stamp_left(
             b"LR",
             format_i32(sample.gravity_deviation_mg, &mut [0; 12]),
-            17,
+            Block::Second,
+            1,
             width,
             height,
         );
         self.stamp_left(
             b"SR",
             format_i32(sample.shake_residual_mg, &mut [0; 12]),
-            18,
+            Block::Second,
+            2,
             width,
             height,
         );
         self.stamp_left(
             b"TR",
             format_i32(sample.tap_residual_mg, &mut [0; 12]),
-            19,
+            Block::Second,
+            3,
             width,
             height,
         );
@@ -682,7 +837,7 @@ impl DisplayLight {
         // Every row is always drawn, so a semantic this board never declares
         // shows `N/A`: "the stack cannot report it" has to stay distinct from
         // "its threshold never fires".
-        let rows: [(&[u8], MotionCapabilities, u16); 14] = [
+        let rows: [(&[u8], MotionCapabilities, u16); MOTION_SEMANTIC_ROWS] = [
             (b"TAP".as_slice(), MotionCapabilities::TAP, counts.taps),
             (
                 b"2T".as_slice(),
@@ -735,38 +890,73 @@ impl DisplayLight {
             ),
         ];
         let mut buf = [0u8; 6];
-        for (row, (label, capability, count)) in rows.into_iter().enumerate() {
+        for (index, (label, capability, count)) in rows.into_iter().enumerate() {
             let value: &[u8] = if caps.contains(capability) {
                 format_u16(count, &mut buf)
             } else {
                 NOT_AVAILABLE
             };
-            self.stamp_right(value, label, row, width, height);
+            self.stamp_left(
+                label,
+                value,
+                Block::Second,
+                ESTIMATOR_ROWS + index,
+                width,
+                height,
+            );
         }
     }
 
-    /// Overdraws the Audio page: the capture phase and its wall time, then the
-    /// envelope as a scope sweep, one mirrored bar per panel column. The phase
-    /// alone decides what is drawn, because the state layer already resolved which
-    /// envelope that is. Readouts, scale and their meanings:
+    /// Overdraws the Audio page: the capture phase and its wall time beside the two
+    /// level rows, then the envelope as a scope sweep taking the left of the
+    /// panel and the narrow readouts the right of it. The phase alone decides
+    /// what is drawn, because the state layer already resolved which envelope
+    /// that is. Readouts, scale and their meanings:
     /// `docs/content/development/iot/audio.md`.
     fn stamp_audio(&mut self, width: usize, height: usize) {
         // The snapshot is read in place rather than copied into a local: the
         // embedded `AudioEnvelope` is 1.6 KB, which on this stack was a large
         // slice of what a repaint could afford. Reading through `self` in the
         // arguments below keeps that borrowing honest without the copy.
-        self.stamp_text(b"AUDIO", OVERLAY_X, OVERLAY_Y, width, height);
+        //
+        // The sweep owns the panel's left columns from `WAVE_TOP` down, so
+        // everything this page reads out is either above that row or to the right
+        // of it. The hint below stands in the ruler's top label's own rows, which
+        // is safe only because the two are never drawn together: the hint is the
+        // idle page's, and the idle page returns before the sweep.
+        self.stamp_text(
+            b"AUDIO",
+            block_x(Block::First),
+            overlay_row_top(0),
+            width,
+            height,
+        );
         // The corner readout is the number this page shows a human: the
         // A-weighted sound level of the same capture, counted in the same
         // decibels the SPL column uses, with its unit spelled out so a glance
-        // answers "is it loud?" without converting dBFS.
+        // answers "is it loud?" without converting dBFS. It heads the readouts on
+        // the right, which is the same position it held against the title.
         self.stamp_text_right(
             format_dba(
                 spl(dbfs(self.diagnostics.audio.dba_lsb), SPL_OFFSET_DECIBELS),
                 &mut [0u8; 12],
             ),
-            width as isize - 1,
-            OVERLAY_Y,
+            PANEL_RIGHT,
+            overlay_row_top(0),
+            width,
+            height,
+        );
+        self.stamp_level(
+            b"PK",
+            dbfs(self.diagnostics.audio.envelope.loudest()),
+            1,
+            width,
+            height,
+        );
+        self.stamp_level(
+            b"RMS",
+            dbfs(self.diagnostics.audio.envelope.loudest_rms()),
+            2,
             width,
             height,
         );
@@ -777,6 +967,7 @@ impl DisplayLight {
                 AudioPhase::Recording => b"REC",
                 AudioPhase::Stopped => b"STOP",
             },
+            Block::RightEdge,
             1,
             width,
             height,
@@ -787,21 +978,8 @@ impl DisplayLight {
                 i32::try_from(self.diagnostics.audio.elapsed_ms).unwrap_or(i32::MAX),
                 &mut [0u8; 12],
             ),
+            Block::RightEdge,
             2,
-            width,
-            height,
-        );
-        self.stamp_level(
-            b"PK",
-            dbfs(self.diagnostics.audio.envelope.loudest()),
-            3,
-            width,
-            height,
-        );
-        self.stamp_level(
-            b"RMS",
-            dbfs(self.diagnostics.audio.envelope.loudest_rms()),
-            4,
             width,
             height,
         );
@@ -814,7 +992,8 @@ impl DisplayLight {
                 u16::from(self.diagnostics.audio.envelope.committed()),
                 &mut [0u8; 6],
             ),
-            5,
+            Block::RightEdge,
+            3,
             width,
             height,
         );
@@ -824,19 +1003,33 @@ impl DisplayLight {
         self.stamp_left(
             b"RST",
             format_u16(self.diagnostics.audio.restarts, &mut [0u8; 6]),
-            6,
+            Block::RightEdge,
+            4,
             width,
             height,
         );
-        // A clip is an absolute statement about the whole window, not a level
-        // reading, so it says so in words and not only as a mark. It takes the
-        // unit column `CLIP` sits in for the same reason: a latch that appears
-        // and clears must not push anything it appears next to.
+        // A clip is an absolute statement about the whole window, not a level reading,
+        // so it says so in words and not only as a mark. It takes a row of its own
+        // rather than a column beside `COL`, because the narrow block this page
+        // reads in has no room for a fourth column — and a latch that appears and
+        // clears must not push anything it appears next to.
         if self.diagnostics.audio.envelope.clipped() {
-            self.stamp_unit(b"CLIP", 5, width, height);
+            self.stamp_text(
+                b"CLIP",
+                block_x(Block::RightEdge),
+                overlay_row_top(5),
+                width,
+                height,
+            );
         }
         if self.diagnostics.audio.phase == AudioPhase::Idle {
-            self.stamp_text(b"TAP TO REC", OVERLAY_X, WAVE_TOP as usize, width, height);
+            self.stamp_text(
+                b"TAP TO REC",
+                block_x(Block::First),
+                WAVE_TOP as usize,
+                width,
+                height,
+            );
             return;
         }
         let envelope = &self.diagnostics.audio.envelope;
@@ -853,13 +1046,20 @@ impl DisplayLight {
     /// out so neither has to be discovered.
     fn stamp_speaker(&mut self, width: usize, height: usize) {
         let playback = self.diagnostics.playback;
-        self.stamp_text(b"SPKR", OVERLAY_X, OVERLAY_Y, width, height);
+        self.stamp_text(
+            b"SPKR",
+            block_x(Block::First),
+            overlay_row_top(0),
+            width,
+            height,
+        );
         self.stamp_left(
             b"ST",
             match playback.phase {
                 PlaybackPhase::Idle => b"IDLE",
                 PlaybackPhase::Playing => b"PLAY",
             },
+            Block::First,
             1,
             width,
             height,
@@ -870,16 +1070,28 @@ impl DisplayLight {
                 Sound::Chime => b"CHIME",
                 Sound::Asset => b"ASSET",
             },
+            Block::First,
             2,
             width,
             height,
         );
+        // The latch is four glyphs, which is a glyph more than a block's label
+        // slot, so it heads the second block rather than sitting beside the row
+        // it latches: a latch that appears and clears must not push anything it
+        // appears next to.
         if playback.muted {
-            self.stamp_unit(b"MUTE", 1, width, height);
+            self.stamp_text(
+                b"MUTE",
+                block_x(Block::Second),
+                overlay_row_top(1),
+                width,
+                height,
+            );
         }
         self.stamp_left(
             b"PLY",
             format_u16(playback.plays, &mut [0u8; 6]),
+            Block::First,
             3,
             width,
             height,
@@ -887,22 +1099,24 @@ impl DisplayLight {
         self.stamp_left(
             b"DRP",
             format_u16(playback.dropped, &mut [0u8; 6]),
+            Block::First,
             4,
             width,
             height,
         );
-        self.stamp_text(b"TAP PLAY", OVERLAY_X, WAVE_TOP as usize, width, height);
+        let hint = overlay_row_top(6);
+        self.stamp_text(b"TAP PLAY", block_x(Block::First), hint, width, height);
         self.stamp_text(
             b"HOLD MUTE",
-            OVERLAY_X,
-            WAVE_TOP as usize + FONT_H + OVERLAY_ROW_GAP,
+            block_x(Block::First),
+            hint + ROW_PITCH,
             width,
             height,
         );
     }
 
     /// The meter: a logarithmic band, each column's A-weighted sustained level
-    /// solid and its peak dithered outside it. The sweep uses the corner's own
+    /// solid and its peak dithered outside it. The sweep uses the readout's own
     /// filter, so a low-frequency codec floor draws quiet. Stamping inverts, so
     /// two levels in one ink have to be *patterns*: a stripe inside the peak
     /// bar would be invisible. Heights come from [`scope_height`], so the bars
@@ -977,7 +1191,9 @@ impl DisplayLight {
             let row = decibels_row(decibels);
             let mut buf = [0u8; 12];
             let label = format_decibels(decibels, &mut buf);
-            let top = (row - FONT_H as isize / 2).max(0) as usize;
+            // Clamped into the band rather than the panel: the top label would
+            // otherwise reach up into the level rows the sweep starts below.
+            let top = (row - FONT_H as isize / 2).max(WAVE_TOP) as usize;
             self.stamp_text_right(label, RULER_RIGHT, top, width, height);
             self.stamp_rule(RULER_TICK_X, row, RULER_TICK_COLUMNS, width, height);
         }
@@ -1030,23 +1246,24 @@ impl DisplayLight {
             return;
         };
         let column = SCAN_COLUMNS - 1 - age as isize;
-        for offset in 0..3 {
+        for offset in 0..CLIP_MARK_WIDTH {
             for row in WAVE_TOP..(WAVE_TOP + 8) {
                 self.stamp_pixel(SCAN_X + column + offset, row, width, height);
             }
         }
     }
 
-    /// Overdraws the `FPS <rate>` badge in the corner, right-aligned so it stays
-    /// flush as the rate grows digits.
+    /// Overdraws the `FPS <rate>` badge in the panel's bottom-right corner,
+    /// right-aligned so it stays flush as the rate grows digits.
     fn stamp_fps(&mut self, width: usize, height: usize) {
         let buf = &mut [0u8; 6];
         let digits = format_u16(u16::from(self.fps), buf);
-        let pitch = FONT_W + OVERLAY_GAP;
-        let value_left = width - digits.len() * pitch + OVERLAY_GAP;
+        let value_left = (PANEL_RIGHT + OVERLAY_GAP as isize
+            - digits.len() as isize * GLYPH_PITCH as isize)
+            .max(0) as usize;
         self.stamp_text(
             b"FPS",
-            value_left - (3 * FONT_W + 4 * OVERLAY_GAP),
+            value_left - (3 * GLYPH_PITCH + OVERLAY_GAP),
             FPS_Y,
             width,
             height,
@@ -1054,12 +1271,20 @@ impl DisplayLight {
         self.stamp_text(digits, value_left, FPS_Y, width, height);
     }
 
-    /// Writes one touch-column row: label at [`OVERLAY_X`], one space glyph,
-    /// then the value at [`LEFT_VALUE_X`].
-    fn stamp_left(&mut self, label: &[u8], value: &[u8], row: usize, width: usize, height: usize) {
-        let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
-        self.stamp_text(label, OVERLAY_X, top, width, height);
-        self.stamp_text(value, LEFT_VALUE_X, top, width, height);
+    /// Writes one row: label at the block's left edge, one blank cell, then the
+    /// reading at the block's own reading column.
+    fn stamp_left(
+        &mut self,
+        label: &[u8],
+        value: &[u8],
+        block: Block,
+        row: usize,
+        width: usize,
+        height: usize,
+    ) {
+        let top = overlay_row_top(row);
+        self.stamp_text(label, block_x(block), top, width, height);
+        self.stamp_text(value, block_value_x(block), top, width, height);
     }
 
     /// Writes one Audio level row: the label, the level as dBFS, that reading's
@@ -1070,6 +1295,10 @@ impl DisplayLight {
     /// page exists to answer — dBFS says how much of the converter the signal
     /// uses, dB SPL says how loud the room is, and only the second is a number
     /// anybody compares with a noise complaint.
+    ///
+    /// Four columns is more than any block on this panel is wide, so this is the
+    /// one row that runs the full width of the first block's neighbour: the sweep
+    /// starts below it rather than beside it.
     fn stamp_level(
         &mut self,
         label: &[u8],
@@ -1078,9 +1307,9 @@ impl DisplayLight {
         width: usize,
         height: usize,
     ) {
-        let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
+        let top = overlay_row_top(row);
         let columns = level_columns();
-        self.stamp_text(label, OVERLAY_X, top, width, height);
+        self.stamp_text(label, block_x(Block::First), top, width, height);
         self.stamp_text(
             format_i32(i32::from(decibels), &mut [0u8; 12]),
             columns.value_x,
@@ -1102,23 +1331,11 @@ impl DisplayLight {
         self.stamp_text(b"SPL", columns.spl_unit_x, top, width, height);
     }
 
-    /// Writes a diagnostics row's unit at [`LEVEL_UNIT_X`]. Pinned to one column
-    /// rather than flushed right so a value that changes width — a level growing
-    /// a digit, `CLIP` appearing and clearing — cannot walk its unit sideways
-    /// out from under the row above it: the eye finds one vertical line for the
-    /// unit and never has to look for a second.
-    fn stamp_unit(&mut self, text: &[u8], row: usize, width: usize, height: usize) {
-        let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
-        self.stamp_text(text, LEVEL_UNIT_X, top, width, height);
-    }
-
     /// Overdraws the attitude dial — the inverted counterpart of `R0`–`R2` —
     /// with ring, fixed wing/bank references, and a `-roll`/`pitch` horizon.
     fn stamp_horizon(&mut self, sample: &MotionSample, width: usize, height: usize) {
         let geo = horizon(sample.tilt_deg_x10[0], sample.tilt_deg_x10[1]);
-        let cx = HORIZON_CX as isize;
-        let cy = HORIZON_CY as isize;
-        let r = HORIZON_R as isize;
+        let (cx, cy, r) = (HORIZON_CX, HORIZON_CY, HORIZON_R);
 
         self.stamp_circle(cx, cy, r, width, height);
 
@@ -1139,23 +1356,10 @@ impl DisplayLight {
         );
     }
 
-    /// Writes one mode-column row: value at [`RIGHT_VALUE_X`], the label
-    /// right-aligned into the fixed five-glyph slot ending one space before
-    /// it — so every label (`MOD` up to `LO HI`) floats right next to its
-    /// value and the numbers line up in one column.
-    fn stamp_right(&mut self, value: &[u8], label: &[u8], row: usize, width: usize, height: usize) {
-        let pitch = FONT_W + OVERLAY_GAP;
-        let top = OVERLAY_Y + row * (FONT_H + OVERLAY_ROW_GAP);
-        self.stamp_text(value, RIGHT_VALUE_X, top, width, height);
-        self.stamp_text(
-            label,
-            RIGHT_VALUE_X - (label.len() + 1) * pitch,
-            top,
-            width,
-            height,
-        );
-    }
-
+    /// Overdraws one run of text at a panel coordinate. The escape hatch the
+    /// block rows above are deliberately not built from: a row placed by name is
+    /// one whose position follows the layout, and a page that needs its words
+    /// somewhere the blocks do not go says so here.
     fn stamp_text(&mut self, text: &[u8], left: usize, top: usize, width: usize, height: usize) {
         stamp_text(&mut self.frame, text, left, top, width, height)
     }
@@ -1322,14 +1526,7 @@ fn stamp_char(frame: &mut [u8], ch: u8, left: usize, top: usize, width: usize, h
 
 fn stamp_text(frame: &mut [u8], text: &[u8], left: usize, top: usize, width: usize, height: usize) {
     for (glyph, &ch) in text.iter().enumerate() {
-        stamp_char(
-            frame,
-            ch,
-            left + glyph * (FONT_W + OVERLAY_GAP),
-            top,
-            width,
-            height,
-        );
+        stamp_char(frame, ch, left + glyph * GLYPH_PITCH, top, width, height);
     }
 }
 
@@ -1343,8 +1540,7 @@ fn stamp_text_right(
     width: usize,
     height: usize,
 ) {
-    let pitch = (FONT_W + OVERLAY_GAP) as isize;
-    let left = right + OVERLAY_GAP as isize - text.len() as isize * pitch;
+    let left = right + OVERLAY_GAP as isize - text.len() as isize * GLYPH_PITCH as isize;
     stamp_text(frame, text, left.max(0) as usize, top, width, height);
 }
 
@@ -1363,10 +1559,11 @@ fn write_signed(magnitude: u64, negative: bool, buf: &mut [u8], mut n: usize) ->
     write_u64(magnitude, buf, n)
 }
 
-/// A pressure level in decibels with its unit, as the corner readout: unlike a
-/// level row's `DBFS`/`SPL` halves, this one carries no sign — the A-weighted
-/// readout is clamped to the floor the envelope can even see, and a "−42 dBA"
-/// that can only be wrong is worse than a floor that says so indirectly.
+/// A pressure level in decibels with its unit, as the dB(A) readout heading the
+/// Audio page's right-hand block: unlike a level row's `DBFS`/`SPL` halves,
+/// this one carries no sign — the A-weighted readout is clamped to the floor
+/// the envelope can even see, and a "−42 dBA" that can only be wrong is worse
+/// than a floor that says so indirectly.
 fn format_dba(decibels: i16, buf: &mut [u8; 12]) -> &[u8] {
     let n = write_u64(u64::from(decibels.unsigned_abs()), buf, 0);
     buf[n] = b' ';

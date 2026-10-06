@@ -63,11 +63,24 @@ const PA_EN_PIN: u8 = 1;
 
 /// The panel's mounted shape, as the product's renderer addresses it.
 ///
-/// **Unverified and probably wrong**: the module is a 2.0" ST7789 whose own resolution is
-/// 320x240, so this is the portrait shape of a panel that is not portrait. Revisit before
-/// the product's own picture is trusted; the camera probe measures the panel at 320x240.
-const LCD_WIDTH: u16 = 240;
-const LCD_HEIGHT: u16 = 320;
+/// The module is a 2.0" ST7789 whose own resolution is 320x240, so this is the
+/// only shape it can be written in. `MADCTL` transposes the address window, and
+/// getting that wrong does not rotate the picture: a column range of 0..319
+/// overruns the controller's 240-wide RAM and the frame comes back cut.
+/// `@/records/iot/camera.md`.
+const LCD_WIDTH: u16 = 320;
+const LCD_HEIGHT: u16 = 240;
+
+// The diagnostics layout is a set of distances on a panel of one particular
+// shape, and it is written for this one. A board that mounted a panel of another
+// shape would compile every stamp and clip them off the edge instead, so the two
+// are asserted against each other here — at the wiring, which is where the
+// mounted panel is actually a fact.
+const _: () = assert!(
+    LCD_WIDTH as usize == iot_core::overlay::PANEL_COLUMNS
+        && LCD_HEIGHT as usize == iot_core::overlay::PANEL_ROWS,
+    "the panel this board mounts is not the shape the diagnostics layout is written for"
+);
 
 /// Boot-time retries for the PCA9557 config write: the bus's first transaction
 /// and the one most exposed to a still-settling NACK that would strand the board.

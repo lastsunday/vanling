@@ -60,9 +60,11 @@ MotionSource::sample(now_ms) -> Result<Option<MotionReading>, MotionError>
 
 ## 参数速查
 
-台架标定对着这两张表走。参数分两层：core 识别器（纯软件阈值）与 QMI8658A 引擎（寄存器里的硬件阈值），细节分别在下面两节。
+台架标定对着下面这两张表走。参数分两层：core 识别器（纯软件阈值）与 QMI8658A 引擎（寄存器里的硬件阈值），细节分别在下面两节。
 
-### `ATTITUDE` 左列
+横版面板把这一页排成两块文本加一个仪表盘：第一块是各轴读数，第二块是估计量与语义计数，第三块是姿态仪的圆盘。一块放得下十八行，而各轴读数一个人就占十五行，所以估计量那四行只能挪到第二块，而不是再加第四块。
+
+### `ATTITUDE` 第一块：各轴读数
 
 | 标签 | 字段 | 单位 | 意义 | 对应参数 |
 | --- | --- | --- | --- | --- |
@@ -71,14 +73,19 @@ MotionSource::sample(now_ms) -> Result<Option<MotionReading>, MotionError>
 | `G0`–`G2` | `raw_gyro` | LSB | 陀螺仪原始计数（±1024 °/s，64 LSB/°/s） | — |
 | `D0`–`D2` | `gyro_dps_x10` | 0.1 °/s | 角速度 | — |
 | `R0`–`R2` | `tilt_deg_x10` | 0.1° | roll / pitch / yaw（yaw 无磁力计会漂） | `TILT_ENTER_DEG_X10` / `TILT_EXIT_DEG_X10` |
+
+### `ATTITUDE` 第二块
+
+前四行是估计量，不是原始轴值：它们是识别器**判了什么**，不是传感器**测了什么**。
+
+| 标签 | 字段 | 单位 | 意义 | 对应参数 |
+| --- | --- | --- | --- | --- |
 | `ST` | `status` | 位图 | `STATUS1`(0x2F) 原值 | — |
 | `LR` | `gravity_deviation_mg` | mG | \|测量模长 − 1 g\|（静止判据的量） | `STILL_GRAVITY_DEV_MG` |
 | `SR` | `shake_residual_mg` | mG | 摇动估计残差（矢量长度） | `SHAKE_ON_MG` |
 | `TR` | `tap_residual_mg` | mG | tap 平方和（多轴线性加速度平方和）的平方根 | `TAP_PEAK_MAG_MG2` |
 
-左列后三行是标定专用：原始轴值里这些量按定义就是 0（静止时模长恰落在 1 g 壳上），阈值只能在设备上读。
-
-### `ATTITUDE` 右列
+这四行是标定专用：原始轴值里这些量按定义就是 0（静止时模长恰落在 1 g 壳上），阈值只能在设备上读。其下十四行是每个语义的累计计数。
 
 | 标签 | 语义 | 触发条件 | 本板 |
 | --- | --- | --- | --- |

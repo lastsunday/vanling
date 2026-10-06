@@ -35,7 +35,7 @@ ES7210 只是一个来源。页面对外暴露的是**电平**——这一刻多
 | `COL` | `envelope.committed()` | 列 | 已提交列数，封顶 200 | `ENVELOPE_COLUMNS` |
 | `RST` | `audio.restarts` | 次 | DMA 停摆后重臂的次数 | `CaptureWatchdog` |
 
-`PK` 与 `RMS` 各有两个读数，同一瞬间的两种量法：左起 dBFS，紧跟 `DBFS`；再右是 dB SPL，紧跟 `SPL`。`COL` 行的 `CLIP` 落在 dBFS 的单位列上，标题行右侧是**实时 dB(A)**，见「实时 dB(A) 读数」。
+`PK` 与 `RMS` 各有两个读数，同一瞬间的两种量法：左起 dBFS，紧跟 `DBFS`；再右是 dB SPL，紧跟 `SPL`。这两行是本页唯一宽到放不进一个块的读数，所以它们横着铺开、扫带从它们下面开始；`ST` / `MS` / `COL` / `RST` 与 `CLIP` 排在扫带右边的窄块里，**实时 dB(A)** 在那一块的头上一行，见「实时 dB(A) 读数」。
 
 四个标记的列位置固定在 `overlay.rs` 的 `LEVEL_UNIT_X` / `LEVEL_SPL_X` / `LEVEL_SPL_UNIT_X`，不随读数位数变化。原因是右对齐会让单位跟着数字宽度左右挪，两行的单位就对不齐了，眼睛得在两个位置之间找。
 
@@ -90,7 +90,8 @@ dB SPL = dBFS + SPL_OFFSET_DECIBELS
 | 列内抖动肩部 | A 计权峰值高出 A 计权 RMS 的部分 | `weighted_released_peaks()` |
 | 顶端方块 | 削波发生的那一列（按未加权峰值锁存） | `FULL_SCALE_LSB` |
 | 最高柱上的短横线 | 峰值保持：窗内最高（计权）柱及其位置 | `weighted_released_peaks()` |
-| 左下 `2.0S` | 窗长，由常量算出 | `COLUMN_MS` × `ENVELOPE_COLUMNS` |
+| 扫带下方 `2.0S` | 窗长，由常量算出 | `COLUMN_MS` × `ENVELOPE_COLUMNS` |
+| 右下 `FPS` | 面板重绘率，唯一不属于任何一页的条带 | `FPS_WINDOW_MS` |
 | `TAP TO REC` | `IDLE` 时唯一的提示，此时不画扫描条 | `AudioPhase::Idle` |
 
 ## 计量语义

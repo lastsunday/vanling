@@ -167,7 +167,7 @@ fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
 }
 
 /// Minimum wall time between full-frame panel repaints driven by a diagnostics
-/// drift. A repaint ships the whole 240×320 frame down one blocking SPI
+/// drift. A repaint ships the whole 320×240 frame down one blocking SPI
 /// transfer (on the order of 15 ms), so without a bound the live pages — the
 /// Audio sweep follows the capture, the attitude dial the motion sample —
 /// repaint every 20 ms snapshot and hold the shared cooperative executor in a

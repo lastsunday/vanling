@@ -40,7 +40,7 @@ Work the bench against these two tables. Every metering parameter lives in core 
 | `COL` | `envelope.committed()` | columns | Columns committed so far, capped at 200 | `ENVELOPE_COLUMNS` |
 | `RST` | `audio.restarts` | times | Re-arms after a stalled DMA | `CaptureWatchdog` |
 
-`PK` and `RMS` each carry two readings of the same instant: dBFS first, followed by `DBFS`, then dB SPL, followed by `SPL`. `CLIP` on the `COL` row lands in the dBFS unit column, and the **live dB(A)** rides at the right of the title row, described below.
+`PK` and `RMS` each carry two readings of the same instant: dBFS first, followed by `DBFS`, then dB SPL, followed by `SPL`. These two rows are the only readouts on this page too wide for one text block, so they run the full width and the sweep starts below them; `ST` / `MS` / `COL` / `RST` and the `CLIP` latch live in the narrow block to the right of the sweep, with the **live dB(A)** on the row heading that block, described below.
 
 All four marks sit in fixed columns — `LEVEL_UNIT_X` / `LEVEL_SPL_X` / `LEVEL_SPL_UNIT_X` in `overlay.rs` — and do not move with the width of a reading. Right-aligning them would walk each unit sideways as its number gained a digit, leaving two rows disagreeing about where the unit is and the eye hunting between two positions.
 
@@ -95,7 +95,8 @@ The top-right of the title row used to carry a static `+102dB`; it now shows a *
 | Dithered shoulder in a column | The A-weighted peak above the A-weighted RMS | `weighted_released_peaks()` |
 | Block at the top | The column where clipping happened (latched on the raw peak) | `FULL_SCALE_LSB` |
 | Short dash on the tallest bar | Peak hold: the window's tallest drawn bar and where it sits | `weighted_released_peaks()` |
-| `2.0S` at bottom left | Window length, computed from the constants | `COLUMN_MS` × `ENVELOPE_COLUMNS` |
+| `2.0S` below the sweep | Window length, computed from the constants | `COLUMN_MS` × `ENVELOPE_COLUMNS` |
+| `FPS` bottom-right | The panel's repaint rate; the only strip that belongs to no page | `FPS_WINDOW_MS` |
 | `TAP TO REC` | The only mark while `IDLE`; no sweep is drawn then | `AudioPhase::Idle` |
 
 ## Metering semantics

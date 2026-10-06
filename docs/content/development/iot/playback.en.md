@@ -57,7 +57,7 @@ The table is built at compile time by `sine()` (a whole turn folded to a quarter
 
 `PLY` and `DRP` are two numbers because they answer two questions — "did it make a sound" and "did it hear me". A page that combined them into one tally could not tell a quiet speaker from a busy finger.
 
-The Speaker page has no animation, and that is why it is not in `is_live_page()`: its phase flips twice per play, and both flips come from intents (so both bring a fresh diagnostics), and a page repainting 240×320 pixels every frame to say the same sentence is pure waste. The Audio page is the opposite — its sweep is always moving.
+The Speaker page has no animation, and that is why it is not in `is_live_page()`: its phase flips twice per play, and both flips come from intents (so both bring a fresh diagnostics), and a page repainting 320×240 pixels every frame to say the same sentence is pure waste. The Audio page is the opposite — its sweep is always moving.
 
 ## One 20 ms arm, not a resident ring
 

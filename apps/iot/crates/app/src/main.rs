@@ -14,7 +14,7 @@ type Board = iot_bsp_esp::Board<'static>;
 #[global_allocator]
 static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
 
-/// Sized to hold the LCD frame buffer (240×320×2 B) plus renderer registry headroom.
+/// Sized to hold the LCD frame buffer (320×240×2 B) plus renderer registry headroom.
 static mut HEAP_MEM: [u8; 200 * 1024] = [0; 200 * 1024];
 
 #[cfg(feature = "esp32c6")]
