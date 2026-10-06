@@ -18,7 +18,10 @@ use iot_core::drivers::audio::{
     SAMPLES_PER_COLUMN, SampleStream, dbfs,
 };
 use iot_core::drivers::board::{
-    Board as BoardTrait, HasAudio, HasInput, HasLight, HasMotion, HasPlayback,
+    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPlayback,
+};
+use iot_core::drivers::camera::{
+    CameraCounters, CameraTarget, FrameAdvance, FrameOwner, FrameSource, WindowGeometry,
 };
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry,
@@ -35,6 +38,12 @@ use iot_core::state::{DisplayPage, PlaybackPhase};
 /// Recorded paint operations per surface, so the smoke can assert what `run`
 /// drew and on which instance.
 static PAINTED: Mutex<Vec<(u8, Fill, Rgb)>> = Mutex::new(Vec::new());
+
+/// Camera frames the fake surface was asked to ship, so the smoke can prove the Camera page
+/// reaches the surface rather than only appearing in the page cycle.
+static CAMERA_PAINTED: AtomicUsize = AtomicUsize::new(0);
+/// Page changes that handed the frame buffer back from the camera.
+static RELEASED: AtomicUsize = AtomicUsize::new(0);
 
 /// Firmware-visible press states, flipped by the smoke scenario: one per
 /// button, matching the wiring-order sources the board assembles.
@@ -199,18 +208,111 @@ impl Button for HostButton {
     }
 }
 
-struct HostLight(u8);
+struct HostLight {
+    instance: u8,
+    camera: Option<Box<dyn FrameSource>>,
+    /// The same ownership rule the panel uses, so that a page change the panel would
+    /// deadlock on is one this surface can be shown to survive.
+    owner: FrameOwner,
+    page: Option<DisplayPage>,
+}
+
+impl HostLight {
+    /// Records a fill reaching the panel, unless the camera owns the buffer or this is the
+    /// colour already there.
+    fn record(&mut self, fill: Fill, color: Rgb) {
+        if !self.owner.accepts_fill(fill, color) {
+            return;
+        }
+        self.owner.painted(fill, color);
+        PAINTED.lock().unwrap().push((self.instance, fill, color));
+    }
+}
 
 impl RgbLight for HostLight {
     fn set_fill(&mut self, fill: Fill, color: Rgb) {
-        PAINTED.lock().unwrap().push((self.0, fill, color));
+        self.record(fill, color);
     }
 
     fn set_backlight(&mut self, _level_pct: u8) {}
 }
 
+/// A camera with no sensor behind it: it reports frames without filling anything, which is
+/// all the host needs to walk the page and see that the surface is asked to draw.
+struct HostCamera {
+    frames: u32,
+}
+
+impl FrameSource for HostCamera {
+    fn advance(&mut self, frame: &mut [u8], _now_ms: u64) -> FrameAdvance {
+        self.frames = self.frames.saturating_add(1);
+        frame.fill(0x5a);
+        FrameAdvance::Fresh
+    }
+
+    fn pause(&mut self) {}
+
+    fn resume(&mut self, _frame: &mut [u8]) {}
+
+    fn counters(&self) -> CameraCounters {
+        CameraCounters {
+            frames: self.frames,
+            finished: 40,
+            ..CameraCounters::ZERO
+        }
+    }
+
+    fn geometry(&mut self) -> Option<WindowGeometry> {
+        Some(WindowGeometry {
+            out_width: 320,
+            out_height: 240,
+            win_width: 1616,
+            win_height: 1208,
+            subsample: 0x55,
+            scalar: 0,
+            ..WindowGeometry::default()
+        })
+    }
+}
+
+impl CameraTarget for HostLight {
+    fn paint_camera(&mut self, now_ms: u64) -> bool {
+        if !self.owner.is_camera() {
+            let Some(camera) = self.camera.as_mut() else {
+                return false;
+            };
+            camera.resume(&mut []);
+            self.owner.taken();
+        }
+        let Some(camera) = self.camera.as_mut() else {
+            return false;
+        };
+        let painted = camera.advance(&mut [0u8; 4], now_ms) == FrameAdvance::Fresh;
+        if painted {
+            CAMERA_PAINTED.fetch_add(1, Ordering::SeqCst);
+        }
+        painted
+    }
+
+    fn attach_camera(&mut self, camera: Box<dyn FrameSource>) {
+        self.camera = Some(camera);
+    }
+}
+
 impl iot_core::diagnostics::DiagnosticsSink for HostLight {
     fn consume(&mut self, diagnostics: &Diagnostics) {
+        // The panel hands the buffer back on a page change, before it decides whether to
+        // repaint — otherwise a camera page, which is the one page with no colour to
+        // repaint, is also the one page that can never release the camera.
+        let page_changed = self.page != Some(diagnostics.page);
+        if page_changed && self.owner.is_camera() {
+            if let Some(camera) = self.camera.as_mut() {
+                camera.pause();
+            }
+            self.owner.released();
+            RELEASED.fetch_add(1, Ordering::SeqCst);
+        }
+        self.page = Some(diagnostics.page);
         PAGES.lock().unwrap().push(diagnostics.page);
         AUDIO_COLUMNS.fetch_max(
             usize::from(diagnostics.audio.envelope.committed()),
@@ -240,12 +342,26 @@ struct HostBoard {
     motion: Option<PollEntry>,
     audio: Option<PollEntry>,
     playback: Option<HostSpeaker>,
+    camera: Option<Box<dyn FrameSource>>,
 }
 
 impl HostBoard {
     fn new() -> Self {
         Self {
-            lights: Some(vec![HostLight(0), HostLight(1)]),
+            lights: Some(vec![
+                HostLight {
+                    instance: 0,
+                    camera: Some(Box::new(HostCamera { frames: 0 })),
+                    owner: FrameOwner::NeedsPaint,
+                    page: None,
+                },
+                HostLight {
+                    instance: 1,
+                    camera: None,
+                    owner: FrameOwner::NeedsPaint,
+                    page: None,
+                },
+            ]),
             input: Some(vec![
                 PollEntry::new(
                     0,
@@ -277,6 +393,7 @@ impl HostBoard {
                 CAPTURE_MS,
             )),
             playback: Some(HostSpeaker { feeds_left: 0 }),
+            camera: Some(Box::new(HostCamera { frames: 0 })),
         }
     }
 }
@@ -318,6 +435,12 @@ impl HasPlayback for HostBoard {
 
     fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {
         self.playback.take().map(Box::new)
+    }
+}
+
+impl HasCamera for HostBoard {
+    fn take_camera(&mut self) -> Option<Box<dyn FrameSource>> {
+        self.camera.take()
     }
 }
 
@@ -614,6 +737,82 @@ async fn scenario() {
         MUTED.lock().unwrap().as_slice(),
         &[true],
         "the mute did not reach the driver as a single latch"
+    );
+
+    // 11. The camera page, which the cycle reaches after the speaker one and
+    //     which exists because the composition picked the board's sensor up. It
+    //     has to reach the surface and not only the page cycle: the page is what
+    //     the user sees, and a frame that never left the surface would be a page
+    //     of nothing.
+    triple_click().await;
+
+    attempts = 0;
+    while !page_seen(DisplayPage::Camera) && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        page_seen(DisplayPage::Camera),
+        "the camera-enabled page was never reached"
+    );
+
+    attempts = 0;
+    while CAMERA_PAINTED.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        CAMERA_PAINTED.load(Ordering::SeqCst) > 0,
+        "the camera page was reached but no frame ever reached the surface"
+    );
+
+    // And the camera page must not have taken the fill away from the rest. A click there
+    // walks the colour without leaving — that is the page's contract — so the page is
+    // left the same way it was entered, and what has to survive is the surface's.
+    //
+    // `page_seen` would answer this from the whole run: ambient is the boot page, so it
+    // is already in the log and the old check here passed without the page ever moving.
+    // What has to be watched is the entries appended from here on.
+    let painted_before = PAINTED.lock().unwrap().len();
+    let released_before = RELEASED.load(Ordering::SeqCst);
+    let pages_before = PAGES.lock().unwrap().len();
+    triple_click().await;
+    attempts = 0;
+    while !PAGES.lock().unwrap()[pages_before..]
+        .iter()
+        .any(|page| *page != DisplayPage::Camera)
+        && attempts < 100
+    {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        PAGES.lock().unwrap()[pages_before..]
+            .iter()
+            .any(|page| *page != DisplayPage::Camera),
+        "the page cycle did not come back round from the camera page"
+    );
+
+    // Leaving the camera page has to hand the buffer back. This is the regression the
+    // panel shipped with: the camera held the buffer, and the only call that released it
+    // was gated on a colour being held, which taking the buffer had already cleared — so
+    // the camera kept writing over every fill afterwards and the panel never came back.
+    assert!(
+        RELEASED.load(Ordering::SeqCst) > released_before,
+        "the camera page was left without the buffer being handed back"
+    );
+
+    // ... and the surface has to accept a fill again. Both halves of the deadlock: the
+    // release above is what makes this reachable, and a refused fill here is what it looked
+    // like on the panel — the last camera frame left on screen for good.
+    attempts = 0;
+    while PAINTED.lock().unwrap().len() == painted_before && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        PAINTED.lock().unwrap().len() > painted_before,
+        "no fill reached the surface after leaving the camera page"
     );
 
     std::process::exit(0);

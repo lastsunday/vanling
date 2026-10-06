@@ -37,6 +37,11 @@ const CHIP_ID: u16 = 0x2145;
 const PAGE_SELECT: u8 = 0xfe;
 const PAGE_RESET_BIT: u8 = 0x80;
 const PAGE_0: u8 = 0x00;
+// Only needed by a test that reads the power-on table page-aware: the table selects page 1
+// to write the exposure ladder but this driver never selects it itself, so nothing outside
+// the table has a reason to name it.
+#[cfg(test)]
+const PAGE_1: u8 = 0x01;
 const PAGE_2: u8 = 0x02;
 
 /// Settling after the reset and after the table lands, as the reference driver waits.
@@ -105,6 +110,14 @@ const SUBSAMPLE_BINS: [u8; 8] = [0x00; 8];
 /// Read-only; AEC drives them.
 const REG_EXPOSURE_HIGH: u8 = 0x03;
 const REG_EXPOSURE_LOW: u8 = 0x04;
+
+/// Datasheet P0:0x05`–`0x08`, the blanking. `P0:0x07`/`0x08` carry the vertical blanking
+/// lines and the datasheet gives the frame time as `Ft = VB + Vt + 8`, with `VB` counting
+/// this pair — which is what makes them the documented frame-rate knob.
+const REG_HBLANK_HIGH: u8 = 0x05;
+const REG_HBLANK_LOW: u8 = 0x06;
+const REG_VBLANK_HIGH: u8 = 0x07;
+const REG_VBLANK_LOW: u8 = 0x08;
 /// Bits 4:0 only — the rest of the high byte is not part of the exposure.
 const EXPOSURE_HIGH_FIELD: u8 = 0x1f;
 
@@ -1031,6 +1044,23 @@ impl<D: I2c> Gc2145<D> {
         Ok(high << 8 | u16::from(self.read_reg(REG_EXPOSURE_LOW)?))
     }
 
+    /// The blanking the part is actually running, horizontal and vertical.
+    ///
+    /// Read rather than assumed from the power-on table, because the datasheet makes the
+    /// vertical pair the frame-rate control — `Ft = VB + Vt + 8` — and the table writes that
+    /// group twice. Naming the pair is the difference between a measured frame rate and an
+    /// arithmetic one; see `@/records/iot/camera.md`.
+    pub fn read_blanking(&mut self) -> Result<(u16, u16), Gc2145Error<D::Error>> {
+        self.select_page(PAGE_0)?;
+        let mut pair = |high: u8, low: u8| -> Result<u16, D::Error> {
+            Ok(u16::from(self.read_reg(high)?) << 8 | u16::from(self.read_reg(low)?))
+        };
+        Ok((
+            pair(REG_HBLANK_HIGH, REG_HBLANK_LOW)?,
+            pair(REG_VBLANK_HIGH, REG_VBLANK_LOW)?,
+        ))
+    }
+
     /// The identity pair as the part reports it, so a caller can log what answered.
     pub fn read_id(&mut self) -> Result<u16, Gc2145Error<D::Error>> {
         // The identity pair is not on page 0, and the page select is what the
@@ -1251,6 +1281,60 @@ mod tests {
         // The mirror/flip register, whose bit 0 this driver sets and whose bit 1 it
         // leaves alone.
         assert_eq!(table_entry(REG_ANALOG_MODE), Some(0x14));
+    }
+
+    /// The page-1 frame-rate steps are written twice, and only the second set is in effect.
+    ///
+    /// Pinned because the first set reads like the real thing — it comes earlier in the table
+    /// and carries the larger values — so quoting it is easy and wrong. `camera.md` recorded
+    /// these registers as written nowhere at all, and then cited the pair above them as the
+    /// frame-rate ceiling, which measurement (486 lines against a ~1200-line readout) rules out.
+    ///
+    /// The exposure itself is a different register pair on a different page: page 0's
+    /// `0x03`/`0x04`, written once. That separation is the reason the earlier claim was wrong,
+    /// so it is asserted here too.
+    #[test]
+    fn the_frame_rate_steps_are_written_twice_and_the_second_set_wins() {
+        // Walked with the driver's own page rule rather than through `table_entry`, which
+        // returns the last write per page already and so cannot show that there were two.
+        let mut page = PAGE_0;
+        let mut writes: BTreeMap<(u8, u8), Vec<u8>> = BTreeMap::new();
+        for (reg, value) in POWER_ON_REGS {
+            if *reg == PAGE_SELECT {
+                page = *value & 0x03;
+                continue;
+            }
+            writes.entry((page, *reg)).or_default().push(*value);
+        }
+        let steps = |reg: u8| writes.get(&(PAGE_1, reg)).cloned().unwrap_or_default();
+
+        // `0x27`–`0x2c` are halved by the second write and `0x2d`/`0x2e` are written twice
+        // unchanged, so a claim about these has to name the effective pair.
+        for (reg, first, second) in [
+            (0x27, 0x03, 0x01),
+            (0x28, 0x96, 0xe6),
+            (0x29, 0x03, 0x01),
+            (0x2a, 0x96, 0xe6),
+            (0x2b, 0x03, 0x01),
+            (0x2c, 0x96, 0xe6),
+            (0x2d, 0x04, 0x04),
+            (0x2e, 0x62, 0x62),
+        ] {
+            assert_eq!(
+                steps(reg),
+                vec![first, second],
+                "page-1 0x{reg:02x} is a frame-rate step, written twice"
+            );
+        }
+        // The pair the driver actually reads as the exposure, on the page it reads it from.
+        assert_eq!(
+            (
+                writes.get(&(PAGE_0, REG_EXPOSURE_HIGH)),
+                writes.get(&(PAGE_0, REG_EXPOSURE_LOW)),
+            ),
+            (Some(&vec![0x04]), Some(&vec![0x62])),
+            "exposure is page 0's 0x03/0x04, written once — not the page-1 ladder above"
+        );
     }
 
     /// Every register write in the table is preceded by a page select, because a write

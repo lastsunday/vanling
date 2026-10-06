@@ -8,6 +8,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, TrySendError};
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::diagnostics::DiagnosticsSink;
+use iot_core::drivers::camera::CameraTarget;
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, backlight_level, group_hue, hsv_to_rgb, should_repaint, smooth_brightness,
 };
@@ -15,7 +16,9 @@ use iot_core::intent::Intent;
 use iot_core::render::{
     Activity, LightAppearance, RenderController, Renderer, Slot, SlotAppearance,
 };
-use iot_core::state::{Breath, DeviceManager, DeviceState, PlaybackPhase, PlaybackState};
+use iot_core::state::{
+    Breath, DeviceManager, DeviceState, DisplayPage, PlaybackPhase, PlaybackState,
+};
 
 /// Frame cadence of the render loop.
 pub const STEP_MS: u32 = 20;
@@ -144,15 +147,21 @@ impl Default for Render {
 /// the render layer steps it every tick to produce frames from the schedule. A surface
 /// subscribes to its own light slot plus the device-level diagnostics, forwarding the
 /// snapshot to the light bus it sinks.
+///
+/// The panel also implements [`CameraTarget`], and on the Camera page the camera draws
+/// instead of the light — see [`Self::step`].
 pub struct LightRenderer<R: RgbLight + DiagnosticsSink> {
     instance: u8,
     light: R,
     slots: [Slot; 2],
     last: Option<Rgb>,
     breath: Option<Breath>,
+    /// The page the surface was last told about. `step` gets no appearance, so it reads the
+    /// camera's turn off this rather than being handed the snapshot a second time.
+    page: Option<DisplayPage>,
 }
 
-impl<R: RgbLight + DiagnosticsSink> LightRenderer<R> {
+impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
     pub fn new(instance: u8, light: R) -> Self {
         Self {
             instance,
@@ -160,7 +169,18 @@ impl<R: RgbLight + DiagnosticsSink> LightRenderer<R> {
             slots: [Slot::Light(instance), Slot::Diagnostics],
             last: None,
             breath: None,
+            page: None,
         }
+    }
+
+    /// Binds the camera that fills this surface's frame buffer.
+    ///
+    /// Taken by value and erased to [`CameraTarget`], so the renderer names a shape and not a
+    /// sensor — the same reason the light arrives as [`RgbLight`].
+    pub fn with_camera(mut self, camera: Box<dyn iot_core::drivers::camera::FrameSource>) -> Self {
+        self.light.attach_camera(camera);
+        self.page = None;
+        self
     }
 
     fn drive(&mut self, fill: Fill, color: Rgb) {
@@ -185,7 +205,7 @@ impl<R: RgbLight + DiagnosticsSink> LightRenderer<R> {
     }
 }
 
-impl<R: RgbLight + DiagnosticsSink> Renderer for LightRenderer<R> {
+impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R> {
     fn slots(&self) -> &[Slot] {
         &self.slots
     }
@@ -195,7 +215,23 @@ impl<R: RgbLight + DiagnosticsSink> Renderer for LightRenderer<R> {
             // A diagnostics bump must not disturb the animation cadence: keep the
             // breathing activity, and let panel surfaces repaint the digits.
             SlotAppearance::Diagnostics(diagnostics) => {
+                let page_changed = self.page != Some(diagnostics.page);
                 self.light.consume(&diagnostics);
+                self.page = Some(diagnostics.page);
+                // A new page starts from a buffer neither the camera nor the previous fill
+                // owns, so the repaint gate below has nothing to compare against and would
+                // skip the one frame that replaces it. Without this, leaving the camera page
+                // is only repainted when the breathing colour happens to have moved far
+                // enough by the next tick.
+                if page_changed {
+                    self.last = None;
+                }
+                if self.on_camera_page() {
+                    // The camera page is time-driven by the frame arriving, which this diff
+                    // cannot see — the panel is always breathing from boot, so the render loop
+                    // would otherwise park and the chain would never be polled again.
+                    return Activity::TimeDriven;
+                }
                 if self.breath.is_some() {
                     Activity::TimeDriven
                 } else {
@@ -231,6 +267,14 @@ impl<R: RgbLight + DiagnosticsSink> Renderer for LightRenderer<R> {
     }
 
     fn step(&mut self, now_ms: u32) -> Activity {
+        // The camera page draws the sensor's picture and the light draws nothing, but the
+        // poll inside this call is what repairs the chain — so it has to run on every tick
+        // rather than when a frame is due. It stays time-driven either way: a page whose
+        // render is an arriving frame has to be stepped to see the frame arrive.
+        if self.on_camera_page() {
+            self.light.paint_camera(u64::from(now_ms));
+            return Activity::TimeDriven;
+        }
         match self.breath {
             Some(breath) => {
                 self.draw(now_ms, breath);
@@ -238,6 +282,12 @@ impl<R: RgbLight + DiagnosticsSink> Renderer for LightRenderer<R> {
             }
             None => Activity::Idle,
         }
+    }
+}
+
+impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
+    fn on_camera_page(&self) -> bool {
+        self.page == Some(DisplayPage::Camera)
     }
 }
 

@@ -31,3 +31,15 @@ ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM = "65536"
 ESP_RTOS_CONFIG_HW_TASK_OVERFLOW_DETECTION = "false"
 ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"
 ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
+
+# Which page the firmware boots onto, spelled as the page's variant name: ambient,
+# attitude, audio, speaker or camera. Defaults to ambient. A page that would otherwise
+# need a triple-tap on the hardware is reachable by building with this set, which is the
+# only practical way to bench one — the default artifact still starts where a product
+# starts.
+#
+# This names the build's starting point and nothing about what the board can do: the
+# capabilities come from the features, and a build asking for a page its board cannot
+# back boots on ambient anyway. An unrecognised name falls back rather than failing the
+# link. `moon run iot:build-s3-camera` sets it.
+IOT_BOOT_PAGE = "ambient"

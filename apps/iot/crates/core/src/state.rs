@@ -16,30 +16,84 @@ pub enum DisplayPage {
     Attitude,
     Audio,
     Speaker,
+    /// The camera feed, which replaces the background rather than sitting on one: the panel
+    /// shows the sensor's picture and prints its readout over it, so there is no fill behind
+    /// it and the light's colour is not drawn here.
+    Camera,
 }
+
+/// The page cycle, in order.
+///
+/// The list is the definition of the order rather than a set of jumps written page to page: a
+/// cycle spelled as transitions between pairs can close through the wrong page and lose one,
+/// which is how `Ambient` stopped being reachable once the camera joined — the camera left for
+/// "a page the board can back" that was not the start, and every later page skipped the start
+/// too, so nothing returned to it. Walking one list and wrapping cannot skip an entry the
+/// board can back, so every page in it is reachable from every other.
+const CYCLE: [DisplayPage; 5] = [
+    DisplayPage::Ambient,
+    DisplayPage::Attitude,
+    DisplayPage::Audio,
+    DisplayPage::Speaker,
+    DisplayPage::Camera,
+];
 
 impl DisplayPage {
     /// The next page in cycle order, skipping pages the board cannot back.
     ///
-    /// Self-healing: sitting on a page the wiring no longer supports falls
-    /// back to `Ambient` instead of stranding the cycle.
+    /// Walks [`CYCLE`] from just after this page and wraps, so the order is the one declared
+    /// there and the start is a page like any other. Self-healing: a page the wiring cannot
+    /// back is stepped over rather than landed on, and `Ambient` needs no capability, so a
+    /// board that lost one mid-cycle always has somewhere to go.
     pub const fn next_page(
         &self,
         motion_enabled: bool,
         audio_enabled: bool,
         playback_enabled: bool,
+        camera_enabled: bool,
     ) -> Self {
-        match (*self, motion_enabled, audio_enabled, playback_enabled) {
-            (Self::Ambient, true, _, _) => Self::Attitude,
-            (Self::Ambient, false, true, _) => Self::Audio,
-            (Self::Ambient, false, false, true) => Self::Speaker,
-            (Self::Ambient, false, false, false) => Self::Ambient,
-            (Self::Attitude, _, true, _) => Self::Audio,
-            (Self::Attitude, _, false, true) => Self::Speaker,
-            (Self::Attitude, _, false, false) => Self::Ambient,
-            (Self::Audio, _, _, true) => Self::Speaker,
-            (Self::Audio, _, _, false) => Self::Ambient,
-            (Self::Speaker, _, _, _) => Self::Ambient,
+        let mut step = 1;
+        while step <= CYCLE.len() {
+            let candidate = CYCLE[(self.cycle_index() + step) % CYCLE.len()];
+            if candidate.is_backed(
+                motion_enabled,
+                audio_enabled,
+                playback_enabled,
+                camera_enabled,
+            ) {
+                return candidate;
+            }
+            step += 1;
+        }
+        // Only reachable if the board backs nothing at all, which `Ambient` contradicts.
+        *self
+    }
+
+    /// Whether the wiring can back this page at all. `Ambient` is the answer for every board,
+    /// which is what makes it the cycle's fixed point.
+    const fn is_backed(
+        &self,
+        motion_enabled: bool,
+        audio_enabled: bool,
+        playback_enabled: bool,
+        camera_enabled: bool,
+    ) -> bool {
+        match self {
+            Self::Ambient => true,
+            Self::Attitude => motion_enabled,
+            Self::Audio => audio_enabled,
+            Self::Speaker => playback_enabled,
+            Self::Camera => camera_enabled,
+        }
+    }
+
+    const fn cycle_index(&self) -> usize {
+        match self {
+            Self::Ambient => 0,
+            Self::Attitude => 1,
+            Self::Audio => 2,
+            Self::Speaker => 3,
+            Self::Camera => 4,
         }
     }
 }
@@ -80,6 +134,10 @@ pub struct DeviceState {
     /// board with no speaker shows no page and counts no plays.
     pub playback_enabled: bool,
     pub playback: PlaybackState,
+    /// Whether this board wired a camera. Gates the Camera page, the same way
+    /// `audio_enabled` gates the Audio page — a board with no sensor shows no
+    /// page.
+    pub camera_enabled: bool,
     /// Most recent touch snapshot, mirroring the lights' absolute-target
     /// contract: the render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -367,6 +425,7 @@ impl DeviceManager {
                 audio: AudioState::boot(),
                 playback_enabled: false,
                 playback: PlaybackState::boot(),
+                camera_enabled: false,
                 touch: None,
                 touch_points: [None; MAX_TRACKED_POINTS],
                 live_dir: [0; MAX_TRACKED_POINTS],
@@ -404,6 +463,43 @@ impl DeviceManager {
     /// both or neither.
     pub const fn with_playback(mut self, playback_enabled: bool) -> Self {
         self.state.playback_enabled = playback_enabled;
+        self
+    }
+
+    /// Chains the camera capability on, so a board declares its sensor and the
+    /// page that shows it in one place — the same shape as
+    /// [`Self::with_audio`], and independent of it.
+    pub const fn with_camera(mut self, camera_enabled: bool) -> Self {
+        self.state.camera_enabled = camera_enabled;
+        self
+    }
+
+    /// Puts the device on `page` at boot, so a page that would otherwise need a
+    /// triple-tap is reachable by flashing a build that asks for it.
+    ///
+    /// Falls back to `Ambient` when the board cannot back it, so asking for a
+    /// page the wiring does not have leaves the device on a page it can draw
+    /// rather than on one whose driver never exists.
+    ///
+    /// This is a build-time convenience and nothing else: the product decides
+    /// what it can do from the board's capabilities, and nothing reads this back
+    /// to change that. A camera feature is not a boot-page switch, and a board
+    /// that mounts a sensor still starts on `Ambient` unless a build asks
+    /// otherwise.
+    pub const fn with_boot_page(mut self, page: DisplayPage) -> Self {
+        // The same gate the cycle walks with, so a page a build can name is a page the board
+        // can show. It used to be a hand-written match that left `Attitude` out, which meant
+        // `IOT_BOOT_PAGE=attitude` landed on a page the wiring cannot back.
+        let page = match page.is_backed(
+            self.state.motion_enabled,
+            self.state.audio_enabled,
+            self.state.playback_enabled,
+            self.state.camera_enabled,
+        ) {
+            true => page,
+            false => DisplayPage::Ambient,
+        };
+        self.state.page = page;
         self
     }
 
@@ -605,6 +701,7 @@ impl DeviceManager {
                     self.state.motion_enabled,
                     self.state.audio_enabled,
                     self.state.playback_enabled,
+                    self.state.camera_enabled,
                 );
             }
             BusinessIntent::ToggleRecord => {
@@ -1117,20 +1214,20 @@ mod tests {
         #[test]
         fn the_audio_page_only_appears_on_a_board_that_has_one() {
             assert_eq!(
-                DisplayPage::Ambient.next_page(true, false, false),
+                DisplayPage::Ambient.next_page(true, false, false, false),
                 DisplayPage::Attitude
             );
             assert_eq!(
-                DisplayPage::Attitude.next_page(true, false, false),
+                DisplayPage::Attitude.next_page(true, false, false, false),
                 DisplayPage::Ambient,
                 "a board without audio skips the page"
             );
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, true, false),
+                DisplayPage::Ambient.next_page(false, true, false, false),
                 DisplayPage::Audio
             );
             assert_eq!(
-                DisplayPage::Attitude.next_page(true, true, false),
+                DisplayPage::Attitude.next_page(true, true, false, false),
                 DisplayPage::Audio
             );
         }
@@ -1143,6 +1240,202 @@ mod tests {
             apply(&mut manager, triple_tap());
             assert_eq!(manager.state().page, DisplayPage::Ambient);
             assert_eq!(manager.state().triple_tap_count, 2);
+        }
+
+        #[test]
+        fn the_camera_page_only_appears_on_a_board_that_has_one() {
+            // The camera is last in the cycle, so a board with nothing else reaches it
+            // directly from Ambient.
+            assert_eq!(
+                DisplayPage::Ambient.next_page(false, false, false, true),
+                DisplayPage::Camera
+            );
+            assert_eq!(
+                DisplayPage::Ambient.next_page(false, false, false, false),
+                DisplayPage::Ambient,
+                "a board without a camera never reaches the page"
+            );
+            assert_eq!(
+                DisplayPage::Audio.next_page(false, false, false, true),
+                DisplayPage::Camera,
+                "the camera follows the pages that need a wired source"
+            );
+            assert_eq!(
+                DisplayPage::Audio.next_page(false, false, false, false),
+                DisplayPage::Ambient,
+                "and is skipped when there is none"
+            );
+        }
+
+        #[test]
+        fn leaving_the_camera_page_wraps_to_the_start_of_the_cycle() {
+            // The camera is the last entry in `CYCLE`, so leaving it wraps — and the wrap
+            // target is the start, not merely "a page the board can back". That distinction
+            // was the defect: leaving for any page other than the start meant the pages after
+            // it skipped the start too, and `Ambient` was never shown again.
+            assert_eq!(
+                DisplayPage::Camera.next_page(true, false, false, false),
+                DisplayPage::Ambient,
+                "a board that lost the camera mid-cycle wraps rather than jumping ahead"
+            );
+            assert_eq!(
+                DisplayPage::Camera.next_page(false, true, false, false),
+                DisplayPage::Ambient
+            );
+            assert_eq!(
+                DisplayPage::Camera.next_page(false, false, false, false),
+                DisplayPage::Ambient,
+                "and a camera is the only capability, so back to Ambient"
+            );
+        }
+
+        #[test]
+        fn every_page_the_board_can_back_is_shown_on_the_way_round() {
+            // What the cycle exists for: one full turn visits each page the board can back
+            // exactly once and comes back to where it started. The defect this replaces did
+            // not fail on any single transition — each one went somewhere legal — so it is
+            // the whole walk that has to be asserted, from every start, not one hop.
+            //
+            // Every capability combination, because a page is skipped exactly when a
+            // neighbouring one in the order is absent.
+            for (motion, audio, playback, camera) in [
+                (false, false, false, false),
+                (true, false, false, false),
+                (false, true, false, false),
+                (false, false, true, false),
+                (false, false, false, true),
+                (true, true, true, true),
+                (false, true, true, true),
+                (true, false, false, true),
+            ] {
+                let backed: Vec<DisplayPage> = CYCLE
+                    .iter()
+                    .copied()
+                    .filter(|page| page.is_backed(motion, audio, playback, camera))
+                    .collect();
+                assert!(
+                    !backed.is_empty(),
+                    "Ambient needs no capability, so there is always somewhere to go"
+                );
+                for start in CYCLE {
+                    let start_is_backed = backed.contains(&start);
+                    let mut seen = Vec::new();
+                    let mut page = start;
+                    for _ in 0..backed.len() {
+                        page = page.next_page(motion, audio, playback, camera);
+                        seen.push(page);
+                    }
+                    // Compared as a set: one full turn from a later page visits the same pages
+                    // in a rotated order, and the rotation is the point — what must not vary
+                    // is that the turn is a permutation of the backed pages.
+                    let mut expected = backed.clone();
+                    let mut walked = seen.clone();
+                    expected.sort_by_key(|page| page.cycle_index());
+                    walked.sort_by_key(|page| page.cycle_index());
+                    assert_eq!(
+                        walked, expected,
+                        "a full turn from {start:?} did not visit each backed page once \
+                         (motion={motion} audio={audio} playback={playback} camera={camera})"
+                    );
+                    if start_is_backed {
+                        assert_eq!(
+                            page, start,
+                            "and a full turn from a page the board backs comes back to it, so \
+                             the toggle is a cycle rather than a drift"
+                        );
+                    } else {
+                        // Self-healing: sitting on a page the wiring lost does not trap the
+                        // toggle there, and the walk above shows every page is still reached.
+                        assert!(
+                            backed.contains(&seen[0]),
+                            "one tap off {start:?} enters the cycle rather than staying put"
+                        );
+                    }
+                }
+                if backed.len() == 1 {
+                    // The only page this board can show is the only one it can move to, so
+                    // the toggle has somewhere to go rather than stranding the user.
+                    assert_eq!(
+                        backed[0].next_page(motion, audio, playback, camera),
+                        backed[0],
+                        "a board that backs one page has nowhere to go and stays"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn the_boot_page_joins_the_cycle_it_was_asked_for() {
+            // A build that names a page starts on it and then cycles by the declared order,
+            // so a bench page is not a dead end the way a bespoke jump used to be.
+            let mut manager = DeviceManager::with_motion(true, ALL_CAPS)
+                .with_audio(true)
+                .with_playback(true)
+                .with_camera(true)
+                .with_boot_page(DisplayPage::Camera);
+            assert_eq!(manager.state().page, DisplayPage::Camera);
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Ambient);
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Attitude);
+        }
+
+        #[test]
+        fn the_boot_page_falls_back_for_every_capability_not_wired() {
+            // The clamp used to name Camera, Audio and Speaker by hand and miss `Attitude`,
+            // so a build asking for a page the board cannot show landed on it anyway.
+            let bare = DeviceManager::new();
+            let default_page = bare.state().page;
+            for page in CYCLE {
+                let landed = DeviceManager::new().with_boot_page(page).state().page;
+                assert_eq!(
+                    landed, default_page,
+                    "{page:?} needs no capability, so a board with nothing wired still lands \
+                     on the same page either way"
+                );
+            }
+            let with_motion = DeviceManager::with_motion(true, ALL_CAPS);
+            assert_eq!(
+                DeviceManager::with_motion(true, ALL_CAPS)
+                    .with_boot_page(DisplayPage::Attitude)
+                    .state()
+                    .page,
+                DisplayPage::Attitude,
+                "the one capability it does have"
+            );
+            assert_eq!(
+                with_motion.with_boot_page(DisplayPage::Camera).state().page,
+                DisplayPage::Ambient,
+                "and the one it does not"
+            );
+        }
+
+        #[test]
+        fn the_camera_page_cycles_from_the_board_and_back() {
+            assert!(
+                !DeviceManager::new().state().camera_enabled,
+                "not declared until a board declares it"
+            );
+            let mut manager = DeviceManager::new().with_camera(true);
+            assert!(manager.state().camera_enabled);
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Camera);
+            apply(&mut manager, triple_tap());
+            assert_eq!(manager.state().page, DisplayPage::Ambient);
+        }
+
+        #[test]
+        fn a_board_without_a_camera_never_lands_on_its_page() {
+            // Every other capability present, so the cycle would be full without it.
+            let mut manager = DeviceManager::new().with_audio(true).with_playback(true);
+            for _ in 0..8 {
+                apply(&mut manager, triple_tap());
+                assert_ne!(
+                    manager.state().page,
+                    DisplayPage::Camera,
+                    "the camera page is gated on the wiring, not on how long you press"
+                );
+            }
         }
 
         #[test]
@@ -1322,26 +1615,26 @@ mod tests {
         #[test]
         fn the_speaker_page_only_appears_on_a_board_that_has_one() {
             assert_eq!(
-                DisplayPage::Ambient.next_page(true, false, true),
+                DisplayPage::Ambient.next_page(true, false, true, false),
                 DisplayPage::Attitude
             );
             assert_eq!(
-                DisplayPage::Audio.next_page(true, true, true),
+                DisplayPage::Audio.next_page(true, true, true, false),
                 DisplayPage::Speaker
             );
             assert_eq!(
-                DisplayPage::Audio.next_page(true, true, false),
+                DisplayPage::Audio.next_page(true, true, false, false),
                 DisplayPage::Ambient,
                 "a board without a speaker skips the page"
             );
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, false, true),
+                DisplayPage::Ambient.next_page(false, false, true, false),
                 DisplayPage::Speaker
             );
             // Sitting on the Speaker page with the speaker gone falls back to
             // Ambient rather than stranding the cycle.
             assert_eq!(
-                DisplayPage::Speaker.next_page(true, true, false),
+                DisplayPage::Speaker.next_page(true, true, false, false),
                 DisplayPage::Ambient
             );
         }

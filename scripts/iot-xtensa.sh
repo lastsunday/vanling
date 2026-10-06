@@ -63,6 +63,22 @@ run_native() {
 # -Z build-std std-lock needs (e.g. memchr 2.7.6); that offline-only failure is
 # detected and retried once online, which downloads the same pinned versions
 # cargo already resolved — subsequent builds stay offline and byte-identical.
+# Build-time configuration that has to reach the compiler, not the build script's
+# shell: `option_env!` is expanded where the crate is compiled, so a variable set here
+# is only seen if the compiler runs with it. Listed by name because forwarding the whole
+# environment would forward whatever the host happens to export, and a stray one would
+# silently become a build input.
+FORWARDED_ENV=(IOT_BOOT_PAGE)
+
+docker_env_args() {
+  local arg
+  for arg in "${FORWARDED_ENV[@]}"; do
+    if [ -n "${!arg:-}" ]; then
+      printf -- '-e\n%s=%s\n' "$arg" "${!arg}"
+    fi
+  done
+}
+
 run_docker() {
   local log status
   log="$(mktemp "${TMPDIR:-/tmp}/iot-xtensa.XXXXXX")"
@@ -71,6 +87,7 @@ run_docker() {
     -v "$PROJECT:/project" \
     -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
     -w /project \
+    $(docker_env_args) \
     "$IMAGE" \
     bash -lc 'source /home/esp/export-esp.sh && cargo --offline "$@"' \
     bash "$@" 2>&1 | tee "$log"
@@ -87,6 +104,7 @@ run_docker() {
     -v "$PROJECT:/project" \
     -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
     -w /project \
+    $(docker_env_args) \
     "$IMAGE" \
     bash -lc 'source /home/esp/export-esp.sh && cargo "$@"' \
     bash "$@"

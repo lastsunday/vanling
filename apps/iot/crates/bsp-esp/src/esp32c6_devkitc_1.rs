@@ -106,3 +106,9 @@ impl iot_core::drivers::board::HasPlayback for Board<'static> {
         None
     }
 }
+
+impl iot_core::drivers::board::HasCamera for Board<'static> {
+    fn take_camera(&mut self) -> Option<Box<dyn iot_core::drivers::camera::FrameSource>> {
+        None
+    }
+}

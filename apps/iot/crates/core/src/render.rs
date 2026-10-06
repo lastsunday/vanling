@@ -206,6 +206,11 @@ pub fn diag_repaint_due(
         DisplayPage::Attitude => true,
         DisplayPage::Speaker => prev.playback != next.playback,
         DisplayPage::Ambient => overlay,
+        // The camera page redraws on a frame arriving, which is a data-plane event and not
+        // anything this diff can see — so a snapshot drift must not force a repaint here.
+        // Forcing one would ship a full frame that is a copy of the last one, ~15 ms of
+        // blocking SPI for nothing, and the picture is only new every few hundred ms anyway.
+        DisplayPage::Camera => false,
     }
 }
 

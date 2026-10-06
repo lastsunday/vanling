@@ -69,18 +69,27 @@ sort_by = "weight"
 
 ## 主任务栈容量
 
+> `[实测]` **栈的三个数字都已随摄像头进产品而变，以下是当前值**（`vanling`，`moon run iot:build-s3` 后读 ELF 符号）：
+> ```
+> _stack_end        = 0x3fcd529c   (was 0x3fcd154c)
+> _stack_start_cpu0 = 0x3fce9710   →  83 060 B = 81.1 KB   (was 98 756 B)
+> ```
+> 面板帧缓冲从堆上那份 `Vec` 变成了板层的静态 arena（与相机 ring 共用，见 `camera.md`），`HEAP_MEM` 因此从 204,800 降到 65,536；净效果是 `.bss` **增加** 14,336 B、主栈减少约 15 KB。`FRAME_ARENA` 实测落在 `0x3fcaf900`，`% 64 == 0`。
+
 `[实测]` `esp-hal` 自带的 `stack.x` 把主任务栈顶设在 `dram_seg` 末尾，`dram2_seg` 那块无人认领，`crates/app/linker/esp32s3-main-stack.x` 把它接上，栈因此跨两块内存连续。
 
 `[实测]` 从 ELF 符号读出的真实几何：
 
 ```
 _stack_end        = 0x3fcd154c
-_stack_start_cpu0 = 0x3fced710   →  115 140 B = 112.4 KB
+_stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB
 ```
+
+> `[实测]` **这两个值是摄像头进产品之前测的**，见本节开头。`_stack_start_cpu0` 此前还记为 `0x3fced710` / 115 140 B，少算了 ROM 的两个 16 KB 引导栈：`esp32s3-main-stack.x` 把栈顶设在 `dram2_seg` 上沿**减** `ROM_BOOT_STACKS = 0x4000`（`0x3fced710 - 0x4000 = 0x3fce9710`）；ROM 的 PRO/APP 引导栈不能被主栈顶到。同一个漏算让 `camera.md` 一度得出"ring 进 `vanling` 必然 region overflow"的错误结论，那一节已注明。
 
 **为什么需要**：绘制一屏渲染时 `Diagnostics` 快照与两个 `[u16; ENVELOPE_COLUMNS]` 列数组按值在栈上，Audio 页曾在这个栈上崩溃（异常的 `A1` 落在 `_stack_end` 之下）。
 
-`[实测]` 当前占用 32 617 B（28.3%），余量 82.5 KB。固件自带水位测量（`[DISPLAY] stack peak`），每重绘窗口采样一次，取最深值——不是估算。
+`[实测]` 当前占用 36 453 B（43.9%），余量约 46.6 KB（Ambient 页实测，`vanling` 烧录后 47 秒日志内的最深值）。固件自带水位测量（`[DISPLAY] stack peak`），每重绘窗口采样一次，取最深值——不是估算。Camera 页的水位此前一直读 `0 B`：那条路径不经过任何采样点，是没测而不是水位低，现已补上。
 
 **一个未解的疑问**：这个峰值从开机起几乎不变，多页切换也没有推高它。而历史崩溃点是 Audio 页的整帧 stamp。峰值到底属于哪条路径**尚未定位**；若它其实属于渲染，说明渲染比代码注释描述的还重，值得继续查。
 

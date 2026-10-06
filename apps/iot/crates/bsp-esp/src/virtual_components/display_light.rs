@@ -1,8 +1,11 @@
-use alloc::vec::Vec;
+use alloc::boxed::Box;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::audio::{
     COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height, spl,
 };
+#[cfg(feature = "camera")]
+use iot_core::drivers::camera::{CameraCounters, FrameAdvance, WindowGeometry};
+use iot_core::drivers::camera::{CameraTarget, FrameOwner, FrameSource};
 use iot_core::drivers::input::{
     FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP,
 };
@@ -19,6 +22,9 @@ use iot_core::overlay::{
 use iot_core::render::{MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_rate};
 use iot_core::state::{AudioPhase, DisplayPage, PlaybackPhase};
 
+use crate::camera_readout::format_pair;
+#[cfg(feature = "camera")]
+use crate::camera_readout::{format_u32, frame_fingerprint, write_ratio};
 use crate::components::backlight::Backlight;
 use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::components::st7789::St7789;
@@ -282,17 +288,32 @@ const FONT: [u8; 95 * 5] = [
 ];
 
 /// ST7789 panel framed as an `RgbLight` surface.
+///
+/// The frame buffer is the board's, not this type's: it is a static because it has to outlive
+/// the DMA transfer the peripheral keeps running against it, and because its size is part of
+/// the board's memory budget rather than of what one image happens to ask the heap for. A
+/// camera wired to the same panel fills those same bytes, which is why they are handed in here
+/// rather than allocated — one buffer, two engines, never at once.
 pub struct DisplayLight {
     /// Which light surface this panel renders (wiring order); the diagnostics
     /// snapshot carries every surface, so the panel reads its own row.
     instance: u8,
     panel: St7789,
-    frame: Vec<u8>,
-    screen_color: Option<(Fill, Rgb)>,
+    frame: &'static mut [u8],
+    /// The camera behind the Camera page, if this board mounted one. Absent means the page
+    /// never appears; it is an `Option` rather than a required parameter so a board with no
+    /// sensor needs no branch anywhere else.
+    #[cfg(feature = "camera")]
+    camera: Option<Box<dyn FrameSource>>,
+    /// Which engine owns the frame buffer, and what the CPU last drew while it held it.
+    /// Unconditional because the colour half is also how a panel with no camera decides
+    /// whether a fill is worth shipping, so gating it would leave one half of the decision
+    /// outside the value that holds it.
+    owner: FrameOwner,
     backlight: Backlight,
     /// Diagnostic overlay payload: touch counters, light mode, and motion (see
     /// [`Diagnostics`]). A bump repaints via [`Self::paint`], which the
-    /// `screen_color` guard would otherwise skip.
+    /// [`FrameOwner::painted_color`] guard would otherwise skip.
     diagnostics: Diagnostics,
     /// Panel repaint rate over the last window, `0` while nothing repaints.
     fps: u8,
@@ -309,18 +330,54 @@ pub struct DisplayLight {
     worst_write: Duration,
 }
 
+/// A surface with no camera bound: the trait's two methods are how the app hands one over, and
+/// a panel with nothing mounted answers `false` and drops it. Reached only when the app had no
+/// camera to hand, which a board with no sensor is the ordinary case for.
+impl CameraTarget for DisplayLight {
+    fn paint_camera(&mut self, now_ms: u64) -> bool {
+        #[cfg(feature = "camera")]
+        {
+            DisplayLight::paint_camera(self, now_ms)
+        }
+        #[cfg(not(feature = "camera"))]
+        {
+            let _ = now_ms;
+            false
+        }
+    }
+
+    fn attach_camera(&mut self, camera: Box<dyn FrameSource>) {
+        #[cfg(feature = "camera")]
+        {
+            self.camera = Some(camera);
+        }
+        #[cfg(not(feature = "camera"))]
+        {
+            let _ = camera;
+            log::info!("[CAM] this build has no camera path, dropping it");
+        }
+    }
+}
+
 impl DisplayLight {
     /// Raise the backlight to full as part of bring-up; the LEDC PWM channel
     /// keeps the active-low pin pulled low (bright) until a renderer write.
-    pub fn new(instance: u8, panel: St7789, mut backlight: Backlight) -> Self {
+    pub fn new(
+        instance: u8,
+        panel: St7789,
+        mut backlight: Backlight,
+        frame: &'static mut [u8],
+    ) -> Self {
         backlight.set_level_pct(100);
         log::info!("[DISPLAY] backlight raised");
         log::info!("[DISPLAY] main stack {} B", main_stack_bytes());
         Self {
             instance,
             panel,
-            frame: Vec::new(),
-            screen_color: None,
+            frame,
+            #[cfg(feature = "camera")]
+            camera: None,
+            owner: FrameOwner::NeedsPaint,
             backlight,
             diagnostics: Diagnostics::default(),
             fps: 0,
@@ -333,8 +390,32 @@ impl DisplayLight {
         }
     }
 
+    #[cfg(feature = "camera")]
     fn frame_bytes(&self) -> usize {
         usize::from(self.panel.width()) * usize::from(self.panel.height()) * 2
+    }
+
+    /// This surface's buffer, for a board wiring a camera onto the same bytes.
+    ///
+    /// A window rather than the whole buffer: the camera fills a frame of exactly this size,
+    /// and handing over more would let it write past the panel's window.
+    #[cfg(feature = "camera")]
+    pub fn frame(&mut self) -> &mut [u8] {
+        // The length is taken first: computing it inside the index would borrow `self` to read
+        // the panel while the same borrow is handing out the buffer.
+        let bytes = self.frame_bytes();
+        &mut self.frame[..bytes]
+    }
+
+    /// Binds the camera that fills this panel's buffer.
+    ///
+    /// Takes it by value and erases it to the trait, because the surface is its only
+    /// consumer — a frame has nowhere else to be seen — and so that neither this signature
+    /// nor the renderer's names a sensor.
+    #[cfg(feature = "camera")]
+    pub fn with_camera(mut self, camera: Box<dyn FrameSource>) -> Self {
+        self.camera = Some(camera);
+        self
     }
 }
 
@@ -348,7 +429,7 @@ impl RgbLight for DisplayLight {
     }
 
     fn set_fill(&mut self, fill: Fill, color: Rgb) {
-        if self.screen_color == Some((fill, color)) {
+        if !self.owner.accepts_fill(fill, color) {
             return;
         }
         self.paint(fill, color);
@@ -361,6 +442,19 @@ impl DiagnosticsSink for DisplayLight {
             return;
         }
         let page_changed = self.diagnostics.page != diagnostics.page;
+        // Leaving the camera's page is what hands the buffer back, and it is done here rather
+        // than in `paint` for two reasons. A chain left running would overwrite every fill
+        // after it a row at a time; and waiting for `paint` to release it deadlocked the
+        // panel, because taking the buffer is what clears the colour `paint` reads to know
+        // what to draw — so the call that had to release it was gated on there being a colour,
+        // and the page that needed releasing was the one that had cleared it.
+        #[cfg(feature = "camera")]
+        if page_changed && self.owner.is_camera() {
+            if let Some(camera) = &mut self.camera {
+                camera.pause();
+            }
+            self.owner.released();
+        }
         // A page switch is drawn immediately; a diagnostics drift is only drawn
         // when the page redraws it and the rate gate has opened. The gate exists
         // because a repaint ships the whole 320×240 frame down one blocking SPI
@@ -386,7 +480,7 @@ impl DiagnosticsSink for DisplayLight {
         if !repaint {
             return;
         }
-        if let Some((fill, color)) = self.screen_color {
+        if let Some((fill, color)) = self.owner.painted_color() {
             note_stack_high_water();
             self.paint(fill, color);
             DIAG_LAST_REPAINT_MS.store(now_ms, Ordering::Relaxed);
@@ -399,8 +493,7 @@ impl DisplayLight {
     /// Always paints; callers guard for repaint skipping.
     fn paint(&mut self, fill: Fill, color: Rgb) {
         let render_start = Instant::now();
-        self.screen_color = Some((fill, color));
-        self.frame.resize(self.frame_bytes(), 0);
+        self.owner.painted(fill, color);
 
         let height = self.panel.height();
         let colors = |row: u16| match fill {
@@ -434,11 +527,13 @@ impl DisplayLight {
             self.stamp_audio(width, usize::from(height));
         } else if self.diagnostics.page == DisplayPage::Speaker {
             self.stamp_speaker(width, usize::from(height));
+        } else if self.diagnostics.page == DisplayPage::Camera {
+            self.stamp_camera_page(width, usize::from(height));
         } else if DEBUG_DIAGNOSTICS {
             self.stamp_diagnostics(width, usize::from(height), live);
         }
         if DEBUG_DIAGNOSTICS {
-            self.stamp_fps(width, usize::from(height));
+            Self::stamp_fps(&mut self.frame, self.fps, width, usize::from(height));
         }
 
         // The render and the transfer are timed apart rather than together: this
@@ -448,11 +543,79 @@ impl DisplayLight {
         // the bus. Those need different fixes, so the log has to tell them apart.
         let render = render_start.elapsed();
         let write_start = Instant::now();
-        if let Err(e) = self.panel.write_frame(&self.frame) {
+        if let Err(e) = self.panel.write_frame(self.frame) {
             log::error!("[DISPLAY] frame write failed: {e:?}");
         }
         self.sample_frame_cost(render, write_start.elapsed());
         self.sample_fps();
+    }
+
+    /// Advances the camera and, if a whole frame arrived, stamps the readout over it and
+    /// ships it. Returns whether this pass painted.
+    ///
+    /// The frame is not copied: the buffer the camera just filled is the one the panel reads,
+    /// which is why they are the same bytes. The ordering is the load-bearing part — `advance`
+    /// reports a frame and does not re-arm until the next call, so nothing writes the buffer
+    /// between it being reported and the panel being given it, and the readout goes on top of
+    /// a picture that is not being rewritten underneath.
+    #[cfg(feature = "camera")]
+    pub(crate) fn paint_camera(&mut self, now_ms: u64) -> bool {
+        // Each field is borrowed where it is needed rather than copied out, and the borrows
+        // are of disjoint fields so they hold at once. The snapshot is the reason: it embeds a
+        // 1.6 KB audio envelope, and copying it here would put a kilobyte and a half on a stack
+        // this path is already close to the floor of — see the note on `paint`.
+        let bytes = self.frame_bytes();
+        let diagnostics = &self.diagnostics;
+        let fps = self.fps;
+        let width = usize::from(self.panel.width());
+        let height = usize::from(self.panel.height());
+        let Some(camera) = &mut self.camera else {
+            return false;
+        };
+        let frame = &mut self.frame[..bytes];
+
+        // Parked by the last page change, so this is where it comes back — with the chain it
+        // handed back, over a buffer whose contents were a colour fill until now.
+        if !self.owner.is_camera() {
+            camera.resume(frame);
+            self.owner.taken();
+        }
+        let sample = camera.advance(frame, now_ms);
+        if sample != FrameAdvance::Fresh {
+            return false;
+        }
+        let counters = camera.counters();
+        let geometry = camera.geometry();
+
+        let render_start = Instant::now();
+        // A free function rather than a method: the glyph writes need the buffer while the
+        // snapshot and the panel are reached through `self`, and a method taking `&mut self`
+        // could not hold those at once. Disjoint fields, so it can be handed all three. The
+        // rate is read out first because it is a `self` field and `frame` borrows `self`.
+        stamp_camera(
+            frame,
+            width,
+            height,
+            counters,
+            geometry,
+            diagnostics,
+            fps,
+            false,
+        );
+        let render = render_start.elapsed();
+
+        let write_start = Instant::now();
+        if let Err(error) = self.panel.write_frame(&self.frame[..bytes]) {
+            log::error!("[DISPLAY] camera frame write failed: {error:?}");
+        }
+        self.sample_frame_cost(render, write_start.elapsed());
+        self.sample_fps();
+        // Sampled here because the camera page reaches the panel through this path and nowhere
+        // else: without it the reading is `0 B` on this page for the whole run, which says
+        // nothing about the stack. `consume` covers the light pages and `stamp_sweep` the audio
+        // page's own working set.
+        note_stack_high_water();
+        true
     }
 
     /// Folds one frame's two costs into the current window and reports the peaks
@@ -547,11 +710,11 @@ impl DisplayLight {
         let nd = write_u16(touch.last_swipe_dist, &mut dir, 2);
         self.stamp_left(b"DIR", &dir[..nd], Block::First, 8, width, height);
 
-        let mut ref_buf = [0u8; 8];
+        let mut ref_buf = [0u8; 12];
         let origin = format_pair(touch.last_gesture_origin, &mut ref_buf);
         self.stamp_left(b"XY", origin, Block::First, 9, width, height);
 
-        let mut end_buf = [0u8; 8];
+        let mut end_buf = [0u8; 12];
         let end = format_pair(touch.last_gesture_end, &mut end_buf);
         self.stamp_left(b"XY2", end, Block::First, 10, width, height);
 
@@ -1253,22 +1416,55 @@ impl DisplayLight {
         }
     }
 
+    /// Draws the Camera page's own frame, for the tick where the page has just been entered
+    /// and no sensor frame has arrived yet.
+    ///
+    /// The camera page has no fill — the sensor's picture is the page — but leaving the previous
+    /// page's colour on the panel until a frame lands reads as a stall: at this sensor's rate
+    /// that is about a fifth of a second of a frozen picture. This says `WAIT` instead, and
+    /// leaves no fingerprint, because the bytes it would fold are the fill rather than a sensor
+    /// picture.
+    #[cfg(feature = "camera")]
+    fn stamp_camera_page(&mut self, width: usize, height: usize) {
+        stamp_camera(
+            &mut self.frame,
+            width,
+            height,
+            CameraCounters::ZERO,
+            None,
+            &self.diagnostics,
+            self.fps,
+            true,
+        );
+    }
+
+    #[cfg(not(feature = "camera"))]
+    fn stamp_camera_page(&mut self, _width: usize, _height: usize) {}
+
     /// Overdraws the `FPS <rate>` badge in the panel's bottom-right corner,
     /// right-aligned so it stays flush as the rate grows digits.
-    fn stamp_fps(&mut self, width: usize, height: usize) {
+    ///
+    /// A free function taking the rate rather than a method reading `self`, because the camera
+    /// page stamps its readout over a buffer it already borrowed from `self` and cannot hold
+    /// that borrow and the field at once. Every page draws this badge: a page missing it reads
+    /// as a page that is not refreshing, which on the camera page is exactly the question the
+    /// page exists to answer.
+    fn stamp_fps(frame: &mut [u8], fps: u8, width: usize, height: usize) {
         let buf = &mut [0u8; 6];
-        let digits = format_u16(u16::from(self.fps), buf);
+        let digits = format_u16(u16::from(fps), buf);
         let value_left = (PANEL_RIGHT + OVERLAY_GAP as isize
             - digits.len() as isize * GLYPH_PITCH as isize)
             .max(0) as usize;
-        self.stamp_text(
+        stamp_text(
+            frame,
             b"FPS",
-            value_left - (3 * GLYPH_PITCH + OVERLAY_GAP),
+            (value_left as isize - (3 * GLYPH_PITCH as isize + OVERLAY_GAP as isize)).max(0)
+                as usize,
             FPS_Y,
             width,
             height,
         );
-        self.stamp_text(digits, value_left, FPS_Y, width, height);
+        stamp_text(frame, digits, value_left, FPS_Y, width, height);
     }
 
     /// Writes one row: label at the block's left edge, one blank cell, then the
@@ -1361,7 +1557,7 @@ impl DisplayLight {
     /// one whose position follows the layout, and a page that needs its words
     /// somewhere the blocks do not go says so here.
     fn stamp_text(&mut self, text: &[u8], left: usize, top: usize, width: usize, height: usize) {
-        stamp_text(&mut self.frame, text, left, top, width, height)
+        stamp_text(self.frame, text, left, top, width, height)
     }
 
     /// `stamp_text` measured from the text's last column rather than its first,
@@ -1374,14 +1570,14 @@ impl DisplayLight {
         width: usize,
         height: usize,
     ) {
-        stamp_text_right(&mut self.frame, text, right, top, width, height)
+        stamp_text_right(self.frame, text, right, top, width, height)
     }
 
     /// Inverts one pixel: the shared ink for glyphs and the dial. The glyph and
     /// text wrappers go straight to the free functions, since they have no state
     /// of their own to fold the frame into.
     fn stamp_pixel(&mut self, x: isize, y: isize, width: usize, height: usize) {
-        stamp_pixel(&mut self.frame, x, y, width, height)
+        stamp_pixel(self.frame, x, y, width, height)
     }
 
     /// Inverts the straight run from `(x0, y0)` to `(x1, y1)` (Bresenham).
@@ -1486,6 +1682,215 @@ fn format_span(buf: &mut [u8; 12]) -> &[u8] {
         len += 1;
     }
     &buf[..len]
+}
+
+/// The Camera page's readout, stamped over the sensor's picture.
+///
+/// A free function of the buffer and its numbers, for the reason [`stamp_pixel`] is: a
+/// camera readout's layout is otherwise only checkable by looking at a panel, and here it can
+/// be stamped into a bare buffer and read back as pixels.
+///
+/// Two facts decide what is worth printing. The field of view is arithmetic — output width
+/// over array width — so a decimation ratio that reads back wrong is a stretched picture of
+/// the right shape, and the ratio and bins are what say so. And a pixel clock the sensor's PLL
+/// will not lock to produces perfectly framed noise with every register reading back correct,
+/// which the fingerprint is the only thing here that can see. Between them the geometry rows
+/// answer "is this the picture I asked for" and the fingerprint answers "is there a picture".
+///
+/// The exposure line is the sensor's own and is AGC-driven, so it says whether a slow frame is
+/// the part's doing rather than the transport's. It is read once at bring-up rather than
+/// polled, because it is I²C and it does not change on its own.
+#[cfg(feature = "camera")]
+fn stamp_camera(
+    frame: &mut [u8],
+    width: usize,
+    height: usize,
+    counters: CameraCounters,
+    geometry: Option<WindowGeometry>,
+    diagnostics: &Diagnostics,
+    fps: u8,
+    // The page has just been entered and no frame has arrived yet, so the numbers would all
+    // read zero and `NOBUS` would claim there is no sensor. Says it is starting instead.
+    starting: bool,
+) {
+    stamp_text(
+        frame,
+        b"CAMERA",
+        block_x(Block::First),
+        overlay_row_top(0),
+        width,
+        height,
+    );
+    if starting {
+        stamp_text(
+            frame,
+            b"WAIT",
+            block_value_x(Block::First),
+            overlay_row_top(0),
+            width,
+            height,
+        );
+    }
+    if let Some(geometry) = geometry {
+        let ratio = &mut [0u8; 6];
+        let ratio = write_ratio(ratio, geometry.subsample);
+        stamp_text(
+            frame,
+            b"WIN",
+            block_x(Block::First),
+            overlay_row_top(1),
+            width,
+            height,
+        );
+        stamp_text(
+            frame,
+            ratio,
+            block_value_x(Block::First),
+            overlay_row_top(1),
+            width,
+            height,
+        );
+        let out = &mut [0u8; 12];
+        let out = format_pair(Some((geometry.out_width, geometry.out_height)), out);
+        stamp_text(
+            frame,
+            b"OUT",
+            block_x(Block::First),
+            overlay_row_top(2),
+            width,
+            height,
+        );
+        stamp_text(
+            frame,
+            out,
+            block_value_x(Block::First),
+            overlay_row_top(2),
+            width,
+            height,
+        );
+        let read = &mut [0u8; 12];
+        let read = format_pair(Some((geometry.win_width, geometry.win_height)), read);
+        stamp_text(
+            frame,
+            b"RD",
+            block_x(Block::First),
+            overlay_row_top(3),
+            width,
+            height,
+        );
+        stamp_text(
+            frame,
+            read,
+            block_value_x(Block::First),
+            overlay_row_top(3),
+            width,
+            height,
+        );
+    } else {
+        stamp_text(
+            frame,
+            if starting { b"----" } else { b"NOBUS" },
+            block_value_x(Block::First),
+            overlay_row_top(1),
+            width,
+            height,
+        );
+    }
+
+    // Frames, and the re-arms that cost: on a single-buffer ring every whole frame costs one
+    // rebuild, so the two counters move together and a gap between them is what a stall looks
+    // like.
+    let frames = &mut [0u8; 12];
+    let frames = format_u32(counters.frames, frames);
+    stamp_text(
+        frame,
+        b"FRM",
+        block_x(Block::Second),
+        overlay_row_top(0),
+        width,
+        height,
+    );
+    stamp_text(
+        frame,
+        frames,
+        block_value_x(Block::Second),
+        overlay_row_top(0),
+        width,
+        height,
+    );
+    let restarts = &mut [0u8; 12];
+    let restarts = format_u32(counters.restarts, restarts);
+    stamp_text(
+        frame,
+        b"RM",
+        block_x(Block::Second),
+        overlay_row_top(1),
+        width,
+        height,
+    );
+    stamp_text(
+        frame,
+        restarts,
+        block_value_x(Block::Second),
+        overlay_row_top(1),
+        width,
+        height,
+    );
+    // The light's own row, because the Camera page does not draw the fill that row would
+    // otherwise sit on — the state still moved, so the readout should still say where it is.
+    let live = &diagnostics.lights[0];
+    // Three glyphs, like every other label: the reading column sits a block label slot from
+    // the block's left edge, and a four-glyph label fills that slot exactly, which leaves the
+    // value butted against it. The value is the mode word either way, so the label says as
+    // much as it needs to and no more.
+    let mode = mode_word(live.mode);
+    stamp_text(
+        frame,
+        b"MOD",
+        block_x(Block::Second),
+        overlay_row_top(2),
+        width,
+        height,
+    );
+    stamp_text(
+        frame,
+        mode,
+        block_value_x(Block::Second),
+        overlay_row_top(2),
+        width,
+        height,
+    );
+
+    // A fold over the frame's own bytes, over a prime stride so the walk lands on a spread of
+    // rows rather than tracking one. Sparse on purpose: this runs on every painted frame.
+    // Folded before any glyph goes down, so the number describes the sensor's picture and not
+    // the readout sitting on it — otherwise the readout itself moves it every repaint.
+    // Skipped while starting: the buffer holds the fill, not a sensor picture, so folding it
+    // would report a fingerprint for a frame that does not exist.
+    if !starting {
+        let sampled = &mut [0u8; 12];
+        let sampled = format_u32(frame_fingerprint(frame), sampled);
+        stamp_text(
+            frame,
+            b"FP",
+            block_x(Block::Third),
+            overlay_row_top(0),
+            width,
+            height,
+        );
+        stamp_text(
+            frame,
+            sampled,
+            block_value_x(Block::Third),
+            overlay_row_top(0),
+            width,
+            height,
+        );
+    }
+
+    if DEBUG_DIAGNOSTICS {
+        DisplayLight::stamp_fps(frame, fps, width, height);
+    }
 }
 
 /// Inverts one pixel of `frame`, the shared ink for glyphs and the dial. A
@@ -1610,21 +2015,6 @@ fn write_u16(value: u16, buf: &mut [u8], n: usize) -> usize {
 
 /// Renders an optional coordinate pair as `x y` (single dash when unset) for
 /// the `XY`/`XY2` overlay rows.
-fn format_pair(pair: Option<(u16, u16)>, buf: &mut [u8; 8]) -> &[u8] {
-    match pair {
-        Some((x, y)) => {
-            let n = write_u16(x, buf, 0);
-            buf[n] = b' ';
-            let end = write_u16(y, buf, n + 1);
-            &buf[..end]
-        }
-        None => {
-            buf[0] = b'-';
-            &buf[..1]
-        }
-    }
-}
-
 fn brightness_of(Rgb(r, g, b): Rgb) -> u8 {
     r.max(g).max(b)
 }

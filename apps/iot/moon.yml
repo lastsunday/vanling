@@ -124,22 +124,17 @@ tasks:
   # the chip layer would leave it failing to build with nobody noticing until the
   # day it is needed on a bench.
   #
-  # Two invocations because `camera` is deliberately not in the board feature: it
-  # carries a 150 KB frame ring, and a board feature is the union of what every
-  # image of that board builds. `vanling` and the audio/multicore probes are checked
-  # on the board feature alone, so nothing but the camera probe pays for the ring.
+  # One invocation, because `camera` is in the board feature: the board mounts the
+  # sensor, so every image of this board pays for the 150 KB frame arena the panel's
+  # DMA shares. `check-s3` does not link, so nothing here sees the memory that costs —
+  # `build-s3` / `image-s3` do, and that is the step that would fail on it.
   check-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin vanling --bin audio-probe --bin multicore-s3 \
+        --bin vanling --bin audio-probe --bin camera-probe --bin multicore-s3 \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
-      bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin camera-probe \
-        --target xtensa-esp32s3-none-elf \
-        -Z build-std=core,alloc \
-        --no-default-features --features lckfb-szpi-esp32s3,camera,console-auto
 
   build-s3:
     script: |
@@ -156,6 +151,36 @@ tasks:
     options:
       runInCI: false
 
+  # The same product, booting onto the camera page. A page that would otherwise need a
+  # triple-tap on the hardware is only benchable this way, so it is a second image rather
+  # than a second way of producing the first one.
+  #
+  # Cargo writes it to the same path the product's image lives at, because it is the same
+  # firmware from a different starting page, and there is no second target directory to put it
+  # in: a bench task is not worth another few GB of build cache. So the product image is saved
+  # and put back around the build, which is what keeps `vanling` meaning "the product" — without
+  # it, whichever of the two tasks ran last decides what `flash-s3` and `iot-image.sh` pick up,
+  # and a cached `build-s3` does not necessarily restore its own.
+  #
+  # Kept off CI: it is the same firmware with a different starting page.
+  build-s3-camera:
+    script: |
+      out=target/xtensa-esp32s3-none-elf/release/vanling
+      if [ -f "$out" ]; then cp "$out" "$out.product"; fi
+      IOT_BOOT_PAGE=camera bash ../../scripts/iot-xtensa.sh build --release \
+        -p iot-app --bin vanling \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+      cp "$out" "$out-camera"
+      if [ -f "$out.product" ]; then mv "$out.product" "$out"; fi
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/vanling-camera'
+    deps:
+      - ~:check-s3
+    options:
+      runInCI: false
+
   flash-s3:
     command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/vanling'
     deps:
@@ -165,12 +190,20 @@ tasks:
       cache: false
       runInCI: false
 
+  flash-s3-camera:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/vanling-camera'
+    deps:
+      - ~:build-s3-camera
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
   # Bench images: one peripheral each, so a fault belongs to a path rather than to the
   # product's three tasks contending for one executor. None is produced by build-s3, which
   # names only the product's own bins, so the product's artifacts and its flash task are
   # untouched. Repeated rather than shared: moon does not forward a child's `args` to an
-  # inherited script, and each probe brings its own feature set anyway — the camera probe is
-  # the only image that enables `camera`.
+  # inherited script, and each probe builds only its own bin.
   #
   #   probe-audio-s3      the speaker alone, looping the catalogue
   #   probe-camera-s3     the camera and the panel, and nothing else
@@ -191,7 +224,7 @@ tasks:
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin camera-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
-        --no-default-features --features lckfb-szpi-esp32s3,camera,console-auto
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/camera-probe'
     options:

@@ -35,8 +35,10 @@ audio-out = ["es8311", "dep:esp-hal"]
 # behind it. Separate from `gc2145` because the driver stands on its own on a host
 # and its register table is worth testing without a chip in the room.
 camera = ["gc2145", "dep:esp-hal"]
+
+
 esp32c6-devkitc-1 = ["button", "ws2812"]
-lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out", "camera"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }

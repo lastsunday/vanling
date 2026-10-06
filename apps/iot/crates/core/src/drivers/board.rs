@@ -19,7 +19,12 @@ pub trait Board: Sized {}
 pub trait HasLight: Board {
     /// Owned light surfaces; `'static` so they can live behind a boxed renderer
     /// in the render task for the board's lifetime.
-    type Light: RgbLight + DiagnosticsSink + 'static;
+    ///
+    /// [`crate::drivers::camera::CameraTarget`] is a bound rather than an optional capability,
+    /// so the renderer is generic over one shape: a surface that cannot take a camera is a
+    /// surface no board has, since the only thing a camera can draw on is a panel and the panel
+    /// has a frame buffer. A strip binds nothing and its `attach_camera` is unreachable.
+    type Light: RgbLight + DiagnosticsSink + crate::drivers::camera::CameraTarget + 'static;
 
     /// Take the board's light surfaces. Returns `None` when none are wired or
     /// they were already taken.
@@ -55,6 +60,17 @@ pub trait HasMotion: Board {
 /// microphone returns `None` and the Audio page simply never appears.
 pub trait HasAudio: Board {
     fn take_audio(&mut self) -> Option<PollEntry>;
+}
+
+/// Board providing a camera.
+///
+/// The only consumer is the panel — a camera has nowhere else to be seen — so the buffer it
+/// fills is the panel's own and travels on every call rather than being held here. What the
+/// board hands over is therefore the capability, not a device: the app binds it to the
+/// surface that owns the frame buffer and never names a sensor. A board with no camera returns
+/// `None` and the Camera page simply never appears.
+pub trait HasCamera: Board {
+    fn take_camera(&mut self) -> Option<Box<dyn crate::drivers::camera::FrameSource>>;
 }
 
 /// Board providing a speaker.
@@ -100,6 +116,18 @@ mod tests {
     }
 
     impl DiagnosticsSink for FakeLight {}
+
+    /// Never asked to draw a camera, but the bound is unconditional: a surface that cannot
+    /// take one is a surface no board has, since the panel is the only thing a frame can be
+    /// seen on and the panel has a frame buffer. So the fake carries the empty implementation
+    /// and this test stays about what `take_lights` delivers.
+    impl crate::drivers::camera::CameraTarget for FakeLight {
+        fn paint_camera(&mut self, _now_ms: u64) -> bool {
+            false
+        }
+
+        fn attach_camera(&mut self, _camera: Box<dyn crate::drivers::camera::FrameSource>) {}
+    }
 
     struct FakeButton;
 

@@ -92,6 +92,14 @@ cargo build && espflash flash target/.../vanling
 espflash monitor   # press enter in console to restart
 ```
 
+## Boot page and the bench image
+
+`IOT_BOOT_PAGE` (`.cargo/config.toml`, default `ambient`) picks the page the firmware comes up on — `ambient` / `attitude` / `audio` / `speaker` / `camera`, with an unrecognised name falling back to `ambient`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`.
+
+> `[measured]` Those two tasks **must not** share one artifact path. `build-s3-camera` and `build-s3` both used to declare `target/.../release/vanling`, and `flash-s3` and `scripts/iot-image.sh` both read that file — so whichever ran last decided what got flashed, and a cached task did not put its own back, meaning "flash the product firmware" flashed the camera firmware. The bench build now saves and restores the product image around the build and keeps a separate `vanling-camera`, so both images coexist.
+
+> `[measured]` `option_env!` is tracked by cargo's fingerprint: changing only `IOT_BOOT_PAGE` does rebuild and the two artifacts differ byte-for-byte. The problem above was therefore the shared path alone, not a cache key — no `touch` of the source is needed.
+
 ## Firmware layout
 
 Release `merged.bin` (`save-image --merge`) is a whole-flash image:

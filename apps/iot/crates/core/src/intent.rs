@@ -173,7 +173,12 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         InputEvent::Button(ButtonEvent::Click) => match current.page {
             DisplayPage::Audio => BusinessIntent::ToggleRecord,
             DisplayPage::Speaker => BusinessIntent::PlayNext,
-            DisplayPage::Ambient | DisplayPage::Attitude => target_for(advance_color(light), slot),
+            // The camera page draws the sensor's picture rather than a fill, so a colour
+            // walk is not visible here — but the state still moves, because the light is
+            // still the light's and the page the user leaves onto shows where it landed.
+            DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
+                target_for(advance_color(light), slot)
+            }
         },
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
         InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
@@ -183,12 +188,15 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         // latch instead of a mode move.
         InputEvent::Button(ButtonEvent::LongPress) => match current.page {
             DisplayPage::Speaker => BusinessIntent::ToggleMute,
-            DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Audio => {
-                BusinessIntent::SetLight {
-                    instance: slot as u8,
-                    state: cycle_mode(light),
-                }
-            }
+            // Camera included for the click's reason: the mode changes either way, and a
+            // mode with no page to show it on still needs a way back to `Solid`.
+            DisplayPage::Ambient
+            | DisplayPage::Attitude
+            | DisplayPage::Audio
+            | DisplayPage::Camera => BusinessIntent::SetLight {
+                instance: slot as u8,
+                state: cycle_mode(light),
+            },
         },
         InputEvent::Gesture(GestureEvent::Press { .. }) => BusinessIntent::Invalid,
         InputEvent::Gesture(GestureEvent::Ghost) => BusinessIntent::Invalid,
@@ -205,7 +213,10 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         InputEvent::Gesture(GestureEvent::Tap { .. }) => match current.page {
             DisplayPage::Audio => BusinessIntent::ToggleRecord,
             DisplayPage::Speaker => BusinessIntent::PlayNext,
-            DisplayPage::Ambient | DisplayPage::Attitude => target_for(advance_color(light), 0),
+            // As the button's click: the camera page hides the fill but not the state.
+            DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
+                target_for(advance_color(light), 0)
+            }
         },
         InputEvent::Gesture(GestureEvent::DoubleTap { .. }) => target_for(advance_step(light), 0),
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
@@ -213,12 +224,13 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         }
         InputEvent::Gesture(GestureEvent::LongPress { .. }) => match current.page {
             DisplayPage::Speaker => BusinessIntent::ToggleMute,
-            DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Audio => {
-                BusinessIntent::SetLight {
-                    instance: 0,
-                    state: cycle_mode(light),
-                }
-            }
+            DisplayPage::Ambient
+            | DisplayPage::Attitude
+            | DisplayPage::Audio
+            | DisplayPage::Camera => BusinessIntent::SetLight {
+                instance: 0,
+                state: cycle_mode(light),
+            },
         },
         InputEvent::Touch(_) => BusinessIntent::Invalid,
     }
@@ -458,6 +470,7 @@ mod tests {
             audio: AudioState::default(),
             playback_enabled: true,
             playback: PlaybackState::default(),
+            camera_enabled: true,
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -615,6 +628,20 @@ mod tests {
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_audio),
                 BusinessIntent::ToggleRecord,
                 "on the audio page the button is the record control, the same as the tap"
+            );
+            // The camera page has no one-liner control, so it keeps the colour walk even
+            // though it does not draw a fill: the state moves either way, and the page the
+            // user leaves onto is where the new colour shows up.
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Button(ButtonEvent::Click)),
+                    &state_on(DisplayPage::Camera, DEFAULT_BREATH)
+                ),
+                BusinessIntent::SetLight {
+                    instance: 0,
+                    state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
+                },
+                "the camera page is not a control page, so the colour still walks"
             );
             // Off that page the click still advances the color, so taking the
             // record control on the Audio page costs no gesture anywhere else.

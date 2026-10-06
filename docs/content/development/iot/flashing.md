@@ -89,6 +89,14 @@ cargo build && espflash flash target/.../vanling
 espflash monitor   # console 内带回车重启
 ```
 
+## 启动页与 bench 镜像
+
+`IOT_BOOT_PAGE`（`.cargo/config.toml`，默认 `ambient`）决定固件开机停在哪一页 —— `ambient` / `attitude` / `audio` / `speaker` / `camera`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。
+
+> `[实测]` 这两个任务**不能**共用一个产物路径。`build-s3-camera` 与 `build-s3` 曾都声明 `target/.../release/vanling`，而 `flash-s3` 和 `scripts/iot-image.sh` 都读那个文件 —— 谁最后跑谁决定刷进去的是什么，moon 命中缓存时不会把自己的写回去，于是"烧产品固件"实际烧的是 camera 固件。现在 bench 构建前后保存/还原产品镜像，另存 `vanling-camera`，两个镜像并存。
+
+> `[实测]` `option_env!` 确实被 cargo 指纹跟踪：同一份源码只改 `IOT_BOOT_PAGE` 就会重编，两个产物字节不同。因此上面的问题只是共享路径，不是缓存键 —— 不需要 `touch` 源文件。
+
 ## 固件构成
 
 发布产物的 `merged.bin`（`save-image --merge`）为整片 Flash 镜像：

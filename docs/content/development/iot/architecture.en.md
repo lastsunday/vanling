@@ -28,6 +28,12 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Module configurability** = feature switch + const parameters.
 - **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback) plus `iot-app`'s heap `Vec<Box<dyn Renderer>>` registry (`embedded-alloc` 32KB heap; boot LED registered in-task; cross-task Web/Audio renderers go over `RENDER_BUS` + `Send`).
 
+## The page cycle walks one ordered list
+
+`DisplayPage::CYCLE` is the definition of the order (`Ambient → Attitude → Audio → Speaker → Camera`). `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end. The boot page (`with_boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
+
+This rule exists because of a defect it fixed: `next_page` was 18 hand-written jumps, and `Camera`'s leaving branch returned "a page the board can back" (`Attitude`) rather than the start, so `Ambient` was skipped for good — a full turn with every capability measured as `[Attitude, Attitude, Audio, Speaker, Camera]`, `Ambient` gone and `Attitude` twice. Written as pairs, a cycle drops the page that closes it; a single list walked with a wrap cannot. A test in `iot-core` walks capability combinations × start pages to hold that (`every_page_the_board_can_back_is_shown_on_the_way_round`) — restoring the old `Camera → Attitude` makes it fail and print the string above.
+
 ## Logging
 
 Only the `log` facade (`log::info!` etc.); the output channel is initialized by the family crate `iot-chip-esp` (esp uses `esp_println::logger`); business code must not use `println!` / `esp_println::println!`.

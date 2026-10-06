@@ -1,9 +1,11 @@
+use alloc::boxed::Box;
 use esp_hal::Blocking;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::rmt::TxChannelCreator;
 use esp_hal::time::Rate;
 use esp_hal_smartled::{RmtSmartLeds, WS2812_TIMING, color_order};
 use iot_core::diagnostics::DiagnosticsSink;
+use iot_core::drivers::camera::{CameraTarget, FrameSource};
 use iot_core::drivers::light::{Fill, Rgb, RgbLight};
 use smart_leds::{RGB8, SmartLedsWrite};
 
@@ -47,3 +49,15 @@ impl<const BUFFER_SIZE: usize> RgbLight for Ws2812RgbLed<'_, BUFFER_SIZE> {
 // A plain strip has no digits to overlay; the trait's default no-op sink keeps
 // the surface usable as a diagnostic-free light.
 impl<const BUFFER_SIZE: usize> DiagnosticsSink for Ws2812RgbLed<'_, BUFFER_SIZE> {}
+
+/// A strip is not a screen, so there is nothing to fill and nothing to stamp over. Both are
+/// unreachable rather than merely unused — a board that mounts a camera has a panel, and the
+/// panel is what the app hands the camera to — so this is the empty implementation the
+/// unconditional bound on a light surface asks for.
+impl<const BUFFER_SIZE: usize> CameraTarget for Ws2812RgbLed<'_, BUFFER_SIZE> {
+    fn paint_camera(&mut self, _now_ms: u64) -> bool {
+        false
+    }
+
+    fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {}
+}

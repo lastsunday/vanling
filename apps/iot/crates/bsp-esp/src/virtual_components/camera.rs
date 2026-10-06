@@ -17,6 +17,43 @@ use esp_hal::dma::{
 use esp_hal::dma_descriptors_chunk_size;
 use esp_hal::lcd_cam::cam::{self, CameraTransfer, EofMode, VhdeMode};
 use esp_hal::time::Rate;
+use iot_core::drivers::camera::{CameraCounters, FrameAdvance, FrameSource, WindowGeometry};
+
+use crate::components::gc2145::WindowGeometry as SensorGeometry;
+
+/// A sensor that can report the window it is reading out.
+///
+/// A trait rather than a bound on `Gc2145<D>` so [`Gc2145Capture`] stays generic over what it
+/// carries: the capture never reads the part itself, and only the readout needs the bus.
+pub trait WindowReadable {
+    fn window(&mut self) -> Option<SensorGeometry>;
+}
+
+impl<D: embedded_hal::i2c::I2c> WindowReadable for crate::components::gc2145::Gc2145<D> {
+    fn window(&mut self) -> Option<SensorGeometry> {
+        self.read_window_geometry().ok()
+    }
+}
+
+/// The part's readout window, reshaped for the render layer.
+///
+/// `subsample_mode` is not carried: it says what the part does with the rows and columns the
+/// decimation removes, which changes how the picture looks but not what the window is.
+fn window_geometry<S: WindowReadable>(sensor: &mut S) -> Option<WindowGeometry> {
+    let read = sensor.window()?;
+    Some(WindowGeometry {
+        out_width: read.out_width,
+        out_height: read.out_height,
+        win_width: read.win_width,
+        win_height: read.win_height,
+        row_start: read.row_start,
+        col_start: read.col_start,
+        subsample: read.subsample,
+        scalar: read.scalar,
+        sub_bins: read.sub_bins,
+        crop_enabled: read.crop_enabled,
+    })
+}
 
 /// RGB565, because that is what the panel's frame buffer holds: a frame in this format
 /// reaches it with no conversion, and there is no memory for a frame-sized one.
@@ -35,8 +72,11 @@ const CHUNK_BYTES: usize = 3840;
 /// Descriptors one frame spans, which is what makes a frame a slice rather than a walk.
 const DESCRIPTORS_PER_FRAME: usize = FRAME_BYTES / CHUNK_BYTES;
 
-/// One: two do not fit, and the frame period is far longer than the panel's read of it
-/// (15 ms to shift a frame at 80 MHz, against a sensor frame every few hundred ms).
+/// One, and deliberately so: two would let the peripheral refill while the panel reads the
+/// first, which is the only thing that would raise the frame rate — and the frame period is
+/// set by the sensor's readout, not by how fast the chain is drained. Doubling the ring buys
+/// nothing here and costs another 150 KB of DRAM, which does not fit. Measured frame rates
+/// per ratio are in `@/records/iot/camera.md`.
 const RING_FRAMES: usize = 1;
 
 /// 150 KB, of a `dram_seg` that is 333 KB before `.rwtext` and the panel's SPI buffers take
@@ -45,7 +85,9 @@ const RING_FRAMES: usize = 1;
 /// DRAM rather than PSRAM not for want of the 8 MB this part has: Espressif gates the receive
 /// descriptor and data burst bits on `//internal SRAM only` and esp-hal cannot express that
 /// split, so a PSRAM ring is always left in a configuration the part streams scrambled into.
-/// A descriptor list may not point into PSRAM either.
+/// A descriptor list may not point into PSRAM either. The hardware can be told otherwise —
+/// `CONFIG_CAMERA_PSRAM_DMA` in esp-idf's camera driver, itself documented as experimental —
+/// so the limit is this HAL's, not the chip's.
 pub const RING_BYTES: usize = FRAME_BYTES * RING_FRAMES;
 
 pub const DESCRIPTOR_COUNT: usize = DESCRIPTORS_PER_FRAME * RING_FRAMES;
@@ -56,11 +98,17 @@ pub const DESCRIPTOR_COUNT: usize = DESCRIPTORS_PER_FRAME * RING_FRAMES;
 /// [`report_peripheral_config`] reads it back.
 const EOF_BYTE_LEN: u16 = CHUNK_BYTES as u16 - 1;
 
-/// Bytes every chunk has to be a whole multiple of. The DMA pads a receive to its alignment,
-/// so a chunk that is not shifts everything after it. In DRAM that alignment is the cache
-/// line — the S3's, since esp-hal rejects an internal-memory region that is not a whole
-/// number of lines.
-const DMA_ALIGNMENT_BYTES: usize = 32;
+/// Bytes every chunk has to be a whole multiple of, and the alignment the frame arena is
+/// declared with. Public because the board asserts its placed address against this: a type's
+/// alignment constrains the declaration, not where the linker put the thing.
+///
+/// The DMA pads a receive to its alignment, so a chunk that is not shifts everything after
+/// it. In DRAM that alignment is the cache line — the S3's 32 bytes.
+///
+/// Not what esp-hal asks for: it requires a whole multiple of 4 on this part, because S3
+/// internal DRAM is not cached and so needs no cache-line alignment of its own. This is the
+/// peripheral's requirement, met deliberately rather than by accident.
+pub const DMA_ALIGNMENT_BYTES: usize = 32;
 
 const _: () = assert!(
     FRAME_BYTES.is_multiple_of(CHUNK_BYTES),
@@ -167,6 +215,12 @@ impl FrameRing {
 
     /// Lays the ring out over `arena`: [`RING_BYTES`] of internal DRAM the caller owns for the
     /// rest of the run.
+    ///
+    /// **Once per run, and once only.** The descriptor list comes from a `ConstStaticCell`, and
+    /// taking one of those a second time panics rather than handing out a second array — so a
+    /// caller that loses the ring cannot build another, and must have kept it instead. Every
+    /// rebuild after this point goes through [`DmaRxBuffer::prepare`], which is what the
+    /// re-arm after each whole frame already uses.
     ///
     /// # Safety
     ///
@@ -372,18 +426,6 @@ pub fn report_peripheral_config(label: &str) {
 }
 
 /// What one poll of the capture reports.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CameraSample {
-    /// Polls that found a frame newer than the last one, and polls that found
-    /// nothing newer.
-    pub frames: u32,
-    pub repeated: u32,
-    /// Re-arms since boot, and the descriptors the DMA had finished at the last
-    /// poll.
-    pub restarts: u32,
-    pub finished: usize,
-}
-
 /// A capture: a transfer, drained a frame at a time.
 ///
 /// Nothing on the capture path touches `S`, because the frames are the peripheral's rather
@@ -394,6 +436,9 @@ pub struct Gc2145Capture<S> {
     /// `Option` so a failed repair leaves a capture that reports no frames rather than one
     /// that panics on the next poll.
     transfer: Option<Transfer>,
+    /// The peripheral, held while a surface owns the buffer — what [`Self::pause`] recovers,
+    /// so a pause costs one stop rather than a whole re-bring-up.
+    parked: Option<(esp_hal::lcd_cam::cam::Camera<'static>, FrameRing)>,
     sensor: S,
     frames: u32,
     repeated: u32,
@@ -408,6 +453,9 @@ pub struct Gc2145Capture<S> {
     /// A full chain waiting to be rebuilt, held back one pass so the caller can read the
     /// frame first. See `poll`.
     rearm_pending: bool,
+    /// The sensor's readout geometry as last read. Over I²C, so a caller printing it does not
+    /// pay for the read on every repaint.
+    geometry: Option<WindowGeometry>,
 }
 
 impl<S> Gc2145Capture<S> {
@@ -421,6 +469,7 @@ impl<S> Gc2145Capture<S> {
         );
         Self {
             transfer: Some(transfer),
+            parked: None,
             sensor,
             frames: 0,
             repeated: 0,
@@ -429,7 +478,28 @@ impl<S> Gc2145Capture<S> {
             advanced_at: None,
             latest: None,
             rearm_pending: false,
+            geometry: None,
         }
+    }
+}
+
+impl<S: WindowReadable> Gc2145Capture<S> {
+    /// The sensor's readout window as the part reports it, read once and kept.
+    ///
+    /// Cached because it is I²C and a readout asks for it every repaint: at 4.5 fps that is
+    /// twenty-five reads a second for a number that only changes when the board is
+    /// reconfigured. [`Self::forget_geometry`] drops it, so a board that reprograms the window
+    /// gets the new one read rather than the old one printed.
+    pub fn geometry(&mut self) -> Option<WindowGeometry> {
+        if self.geometry.is_none() {
+            self.geometry = window_geometry(&mut self.sensor);
+        }
+        self.geometry
+    }
+
+    /// Drops the cached geometry, so the next [`Self::geometry`] reads the part again.
+    pub fn forget_geometry(&mut self) {
+        self.geometry = None;
     }
 
     /// The pixels the last [`Self::poll`] reported. Separate from the poll because that has
@@ -446,7 +516,7 @@ impl<S> Gc2145Capture<S> {
 
     /// Looks at the ring and reports what it found. The whole interface: never blocks,
     /// never waits for a frame, never hands the same frame over twice.
-    pub fn poll(&mut self, now_ms: u64) -> CameraSample {
+    pub fn poll(&mut self, now_ms: u64) -> CameraCounters {
         let Some(transfer) = self.transfer.as_mut() else {
             return self.counters();
         };
@@ -485,7 +555,7 @@ impl<S> Gc2145Capture<S> {
 
     /// Rebuilds the chain if the DMA has completed nothing for long enough that it is
     /// not going to.
-    fn check_stall(&mut self, now_ms: u64) -> CameraSample {
+    fn check_stall(&mut self, now_ms: u64) -> CameraCounters {
         let advanced_at = *self.advanced_at.get_or_insert(now_ms);
         if now_ms.saturating_sub(advanced_at) <= STALL_MS {
             return self.counters();
@@ -522,6 +592,7 @@ impl<S> Gc2145Capture<S> {
         self.advanced_at = None;
         self.finished = 0;
         self.latest = None;
+        self.rearm_pending = false;
         match camera.receive(buffer) {
             Ok(transfer) => self.transfer = Some(transfer),
             Err((error, _camera, _buffer)) => {
@@ -532,12 +603,73 @@ impl<S> Gc2145Capture<S> {
 
     /// The running totals, for a consumer that drains the capture on another core and so
     /// reports from its own loop.
-    pub fn counters(&self) -> CameraSample {
-        CameraSample {
+    pub fn counters(&self) -> CameraCounters {
+        CameraCounters {
             frames: self.frames,
             repeated: self.repeated,
             restarts: self.restarts,
-            finished: self.finished,
+            finished: self.finished as u32,
         }
+    }
+}
+
+/// Bounded by [`WindowReadable`] and nothing else: a capture whose part cannot be read cannot
+/// report what the part holds, and a panel printing a number nobody can fetch is worse than
+/// one printing nothing.
+impl<S: WindowReadable> FrameSource for Gc2145Capture<S> {
+    fn advance(&mut self, _frame: &mut [u8], now_ms: u64) -> FrameAdvance {
+        let stalled_at = self.finished;
+        // `poll` is what repairs the chain, so it has to run every pass — the panel reading
+        // the frame afterwards is not a substitute.
+        self.poll(now_ms);
+        match self.latest {
+            // A frame is only ever reported whole: `poll` hands one over once every
+            // descriptor of it is finished, and it is not taken back until the *next* poll.
+            // So the buffer the DMA just filled is what the caller reads, with nothing to copy
+            // it through — which is the whole reason the panel and the camera share one.
+            Some(_) => FrameAdvance::Fresh,
+            // The chain rebuilt while this pass ran: the counters moved but nothing arrived.
+            None if self.restarts > 0 && stalled_at >= DESCRIPTOR_COUNT => FrameAdvance::Stalled,
+            None => FrameAdvance::Same,
+        }
+    }
+
+    fn pause(&mut self) {
+        let Some(transfer) = self.transfer.take() else {
+            return;
+        };
+        // Keeps the ring, and that is the whole point. `FrameRing::new` cannot be called twice
+        // — the descriptor list it draws from is a `ConstStaticCell`, and `take` on one panics
+        // on the second call — so a pause that dropped the ring would leave `resume` with no way
+        // to hand the chain a buffer, and rebuilding one is the panic rather than the repair.
+        let (camera, ring) = transfer.stop();
+        self.parked = Some((camera, ring));
+        self.advanced_at = None;
+        self.finished = 0;
+        self.latest = None;
+        self.rearm_pending = false;
+    }
+
+    fn resume(&mut self, _frame: &mut [u8]) {
+        let Some((camera, ring)) = self.parked.take() else {
+            return;
+        };
+        // The ring `pause` took back, over the same arena the caller still owns: its
+        // `prepare` is what rebuilds the descriptor chain, which is the one thing this path
+        // shares with the re-arm after every whole frame.
+        match camera.receive(ring) {
+            Ok(transfer) => self.transfer = Some(transfer),
+            Err((error, _camera, _ring)) => {
+                log::error!("[CAM] capture could not be resumed, going dark: {error:?}");
+            }
+        }
+    }
+
+    fn counters(&self) -> CameraCounters {
+        Gc2145Capture::counters(self)
+    }
+
+    fn geometry(&mut self) -> Option<WindowGeometry> {
+        Gc2145Capture::geometry(self)
     }
 }

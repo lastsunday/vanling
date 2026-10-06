@@ -15,7 +15,7 @@ Judgement records from the GC2145 capture path and the ST7789 panel wiring in `a
 
 Each judgement is labelled by its evidence: **`[test]`** a unit test covers it, **`[measured]`** there is a hardware measurement with a reproduction, **`[reported]`** not reproduced, recorded only as a lead.
 
-Reproduction is the same throughout: flash `camera-probe` from `apps/iot/` and read the `[PROBE]` and `[CAM]` lines off the serial port.
+Reproduction is the same throughout: flash `camera-probe` from `apps/iot/` and read the `[PROBE]` and `[CAM]` lines off the serial port. Every 2 s the probe prints `sensor exposure`, `blanking h/v` (measured page-0 `0x05`–`0x08`) and the window's KB/s — every frame-rate claim below rests on those three lines.
 
 ---
 
@@ -99,23 +99,55 @@ A PSRAM ring is therefore always left in the configuration Espressif declines to
 
 ---
 
-## The ring's 150 KB hangs off the feature composition, not off the link
+## The ring's 150 KB used to hang off the feature composition; it no longer does
 
-`[measured]` `FRAME_RING` is a 153,600 B `static mut` landing in `.bss` → `RWDATA` = `dram_seg` (esp-hal 1.2.2; `dram_seg` is 341,760 B in `ld/esp32s3/memory.x`). The product image's `_stack_end` sits at `0x3FCD1554`, leaving **41,388 B** — so any build in which this code is in `vanling`'s reachable set overflows the region at link time.
+> `[measured]` **This section previously recorded that the ring would region-overflow the moment it was reachable in `vanling`. That was wrong.** The mistake was treating `dram_seg` as a hard ceiling for the main stack — it is not: `crates/app/linker/esp32s3-main-stack.x` raises `_stack_start` into `dram2_seg`, so the stack spans both regions contiguously, and the original reasoning only counted the tail of `dram_seg`. The same premise produced another wrong number (`hardware-constraints.md` recorded `_stack_start_cpu0 = 0x3fced710` / 115,140 B, omitting `ROM_BOOT_STACKS = 0x4000`); both are corrected in place. **Lesson**: the "space left" in `dram_seg` is not the space available for static data — read the linker script first.
 
-`[measured]` It does **not** overflow today, because it is unreachable in `vanling`: with `camera` in the board feature, a `vanling` built that way has zero symbols for `FRAME_RING`, `new_camera_only` and `Gc2145` — release `--gc-sections` drops the whole camera path. Doing the arithmetic on `.bss` while ignoring reachability concludes "the link must fail", which is wrong.
+`[measured]` Those 150 KB are now **the panel's frame buffer itself**. `FRAME_ARENA` (formerly `FRAME_RING`) is unconditionally in `.bss`, `camera` is in the board feature, and `--gc-sections` no longer has any opportunity to drop it — so the 150 KB went from "whatever a link-time GC decides" to a link-time fact. `cargo check` does not link and `check-s3` cannot see it, so only `moon run iot:image` / `build-s3` can falsify this section.
 
-`[measured]` The real problem is that **the product's DRAM budget then rests on a link-time GC**. The day the product actually uses the camera, the board feature's aggregation quietly brings those 150 KB in, and `cargo check` does not link — `check-s3` cannot see it, only `moon run iot:image` / `build-s3` fail.
-
-So `camera` is **not** in the board feature: `camera-probe` asks for it through `required-features`, and the board's camera wiring lives in `lckfb_szpi_esp32s3/camera.rs` so `#[cfg]` appears once, at the `mod` (features.md rules 1 and 2). When the product does grow a camera path, DRAM has to come from somewhere else, and the link will say so at the moment it runs.
+`[measured]` What was saved is not DRAM but the per-frame 150 KB memcpy (measured frame rate 5.5 fps, about 4.5 ms each): the panel's former `Vec` became this static arena, and the two are the same size, so `.bss` grows by 14,336 B net. In DRAM terms "one buffer" and "both buffers" are equivalent; they differ in CPU time and in ownership coupling.
 
 ---
 
-## The pixel clock is not free, and the frame rate is bounded by it
+## The pixel clock is not free; the frame rate is bounded by data volume, not by exposure
 
 `[measured]` `PIXEL_CLOCK_HZ` is fixed at 24 MHz and is not a free parameter: at 20 MHz the sensor's PLL does not lock, and thereafter it **streams frames that are perfectly framed and entirely noise** — every register reads back correctly and the eye sees speckle. No register readback reports this.
 
-`[reported]` The frame period is capped by the page-1 AEC exposure ceiling. The power-on table writes `0x05`–`0x08` = `0x3090`/`0x2070` (12432 / 8304 lines) against a full readout of ~1200 lines. rockchip's table has dedicated frame-rate steps (`0x27`–`0x2e`, `0x04e2`, for 8/12/14/20 fps) and **this repository writes none of them**. That is the one untried knob left, and it is orthogonal to field of view.
+`[measured]` **This section previously recorded that the frame period is capped by the page-1 AEC exposure ceiling, and that rockchip's frame-rate steps (`0x27`–`0x2e`, `0x04e2`, for 8/12/14/20 fps) are written nowhere in this repository — both were wrong.** Flashing `camera-probe` measures `sensor exposure 486 lines` against a full readout of ~1200 lines: the exposure sits **below** the window and locks nothing, so that group is not an exposure-driven frame-rate knob.
+
+`[measured]` The second error is in the registers themselves: rockchip's frame-rate steps (`0x27`–`0x2e`) **are** in the power-on table, on page 1, written **twice** — `0x27` `0x03` then `0x01`, `0x28`–`0x2c` `0x96` then `0xe6`, `0x25` `0x01` then `0x00`, `0x26` `0x32` then `0xa2` (`0x2d`/`0x2e` identical both times). So "writes none of them" does not hold. The `0x05`–`0x08` = `0x3090`/`0x2070` (12432 / 8304 lines) quoted above **read the wrong page**: on page 1 those four addresses are part of the exposure ladder, while the driver reads exposure from page 0's `0x03`/`0x04` (`REG_EXPOSURE_HIGH`/`LOW`), which the table writes once, `0x04`/`0x62` = 1122 lines.
+
+`[measured]` The frame rate is set by data volume: measured `691`–`844 KB/s`, i.e. 5.0–5.2 fps, and 153,600 B per frame is exactly that number.
+
+`[measured]` The datasheet (CSP DataSheet V1.0, §7.1.1, on the Pine64 mirror) gives a computable formula: `Ft = VB + Vt + 8`, where `VB` is page 0's `0x07`/`0x08` (vertical blanking) and `Vt` is `win_height`. Both were measured — `blanking v=46`, `win_height=1208` ⇒ `Ft = 1262` rows; at `PIXEL_CLOCK_HZ` = 24 MHz over 1600 pixels per row that is an 84 ms frame, **11.9 fps**.
+
+`[measured]` That is 2.29× the measured 5.2 fps: **each row actually takes 2.29× what 24 MHz over 1600 pixels implies** (back-solving an equivalent ~10.5 MHz line clock). The blanking reads exactly as the power-on table wrote it, so the gap is **not in the registers** — either the datasheet's timing formula does not hold for this revision, or `0xf7`/`0xf8` (PLL mode, written `0x1d`/`0x84` where the datasheet's reset values are `0x05`/`0x81`) leave the real line clock out of step with `PIXEL_CLOCK_HZ`. **This step is not located.** The table writes `0xf7`/`0xf8` as `0x83` mid-sequence and then `0x84` again, and those two differing writes are where to look first.
+
+**So the conclusion is rewritten**: going faster means a smaller readout window (the same switch as field of view — see "bins decide the field of view, and pay for it in frame rate") or a different sensor. **There is no orthogonal register knob left untried** — the claim in the first half of this section is falsified by the measurements above. The datasheet names vertical blanking `0x07`/`0x08` as the frame-rate control, yet the blanking reads exactly as the table wrote it while the rate stays 2.29× under the formula, so changing that register **would not** buy speed until the 2.29× is understood.
+
+---
+
+## The frame buffer's owner is one value, not two flags
+
+`[test]` The panel and the camera share one frame buffer (153,600 B), so exactly one of them may be writing it. This was once recorded as two flags — "is the camera running" plus "does the CPU have a colour waiting" — which has four combinations, one of which cannot exist in this domain: the camera running *and* no colour waiting.
+
+`[test]` That combination was unreachable because the way out of it was itself guarded. `consume()` repaints only when there is a colour waiting, and `paint()` is where "the camera is running, so release it" lived; entering the Camera page cleared the colour to "none", so **leaving the page meant the only call that could release the camera was blocked by its own guard**. The flag stayed true, every fill afterwards was refused, and the panel kept the last camera frame with no column of ticks able to walk out of it.
+
+`[test]` The fix is `FrameOwner` (`iot-core::drivers::camera`): `NeedsPaint` / `Painted { fill, color }` / `Camera`, one variant per legal state, so the fourth combination is unrepresentable. Five unit tests cover the transitions, of which `a_released_camera_lets_the_next_fill_through` walks exactly the sequence that could not be left; `host-smoke`'s `HostLight` uses the same type and asserts that a fill must reach the surface after leaving the Camera page.
+
+`[test]` Alongside it, "who owns it" went back to being recorded once: `LightRenderer` carried both `camera_page: bool` and `page: Option<DisplayPage>` for the same fact, so the former is gone and `step()` computes it. The panel's `owner` field is **not** gated on the camera feature — the colour half is also how a panel with no camera decides whether a fill is worth shipping, and gating it leaves half of that decision outside the value that holds it.
+
+---
+
+## Entering the Camera page has a ~192 ms window with nothing on it
+
+`[measured]` Under a single buffer the first frame cannot be shown until the DMA has filled all 153,600 B, so there is a fixed gap between the triple-tap and the picture appearing. The measured rate is `11 repaints / 2.12 s` (about 5.2 fps), so the gap is about 192 ms, from the same cause as the frame-rate bound above.
+
+`[measured]` What is done about it is a transition frame: entering the page paints `CAMERA WAIT / ----` (the `starting` arm of `stamp_camera`) rather than leaving the previous page's colour up. The previous behaviour left the previous page frozen on screen, which reads as a hang; the transition frame reads as starting up. **This is mitigation, not removal** — the gap's length is set by how long the sensor takes to produce a frame, not by the code.
+
+`[measured]` The transition frame also skips the fingerprint fold: at that moment the buffer holds a fill rather than a picture, so `frame_fingerprint` would report a fingerprint for a frame that does not exist.
+
+`[measured]` **This gap could not be shortened this round.** The page-1 frame-rate step was the intended lever, and measurement falsified its premise (see "The pixel clock is not free, and the frame rate is bounded by it"): the exposure reads 486 lines against a 1200-line readout window, and the frame rate is this sensor's physical limit at the current readout window. Going faster means a smaller window (the same switch as field of view) or a different sensor. **So the Camera page is a 5.2 fps preview as it stands, not a state waiting to be optimised.**
 
 ---
 

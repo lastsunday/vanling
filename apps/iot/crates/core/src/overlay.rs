@@ -53,6 +53,14 @@ pub const OVERLAY_X: usize = 10;
 /// cell, so the reading beside it starts on one vertical line in every block.
 pub const BLOCK_LABEL_GLYPHS: usize = 4;
 
+/// Glyphs a label written in a block is allowed to occupy.
+///
+/// One short of [`BLOCK_LABEL_GLYPHS`], and that one glyph is the point: the slot reserves it as
+/// the blank cell that keeps a label from reading as one word with the value beside it. A
+/// label that fills the slot has no gap and reads as a single run — which is exactly what a
+/// four-glyph `MODE` did, sitting flush against its value.
+pub const BLOCK_LABEL_MAX_GLYPHS: usize = BLOCK_LABEL_GLYPHS - 1;
+
 /// Distance between the left edges of adjacent text blocks. Sized by the widest
 /// reading any block takes — seven glyphs, a coordinate pair written `x y` — plus
 /// the blank cell that keeps one block's last digit from reading as the next
@@ -367,5 +375,19 @@ mod tests {
                 block_x(block)
             );
         }
+    }
+
+    #[test]
+    fn a_label_leaves_the_blank_cell_its_slot_reserves() {
+        // The one glyph the slot keeps back is what separates a label from the reading beside
+        // it. A label that fills the slot has no gap, and the two read as one run — which is
+        // what a four-glyph label on the camera page did, flush against its own value. The test
+        // above cannot catch that: a label filling the slot still fits inside it.
+        let widest = level_value_end(0, BLOCK_LABEL_MAX_GLYPHS);
+        assert!(
+            block_value_x(Block::First) - widest >= GLYPH_PITCH,
+            "the widest allowed label ends {widest}, leaving {} to the reading column",
+            block_value_x(Block::First) - widest
+        );
     }
 }

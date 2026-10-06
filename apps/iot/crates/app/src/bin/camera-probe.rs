@@ -159,6 +159,11 @@ async fn run(mut panel: St7789, capture: &mut Gc2145Capture<Gc2145<SharedI2cDevi
             if let Ok(exposure) = capture.sensor().read_exposure() {
                 log::info!("[PROBE] sensor exposure {exposure} lines");
             }
+            // The datasheet computes the frame time from the vertical blanking, so this is
+            // the pair that says whether a measured rate is the sensor's or the arithmetic's.
+            if let Ok((horizontal, vertical)) = capture.sensor().read_blanking() {
+                log::info!("[PROBE] blanking h={horizontal} v={vertical} lines");
+            }
             // `painted` includes frames offered again unchanged, so only the changed count
             // is new sensor output. Frames per millisecond is kilobytes per second here,
             // since a frame is `FRAME_BYTES` bytes.

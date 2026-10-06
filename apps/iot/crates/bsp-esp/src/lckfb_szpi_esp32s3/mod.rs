@@ -26,7 +26,8 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_rx_buffer, dma_tx_buffer};
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS};
 use iot_core::drivers::board::Board as BoardTrait;
-use iot_core::drivers::board::{HasAudio, HasPlayback};
+use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback};
+use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
     TouchGestures, TouchMap,
@@ -46,8 +47,9 @@ use crate::virtual_components::Es7210Rx;
 use crate::virtual_components::audio as capture;
 use crate::virtual_components::audio_out as playback;
 
-#[cfg(feature = "camera")]
 mod camera;
+
+use camera::frame_arena;
 
 const PCA9557_I2C_ADDR: u8 = 0x19;
 const LCD_CS_BIT: u8 = 1 << 0;
@@ -119,6 +121,11 @@ pub type SharedI2cDevice =
 pub enum BoardError {
     /// I2C bus configuration rejected.
     I2cConfig(i2c_master::ConfigError),
+    /// The camera's DMA rejected a buffer, which means the frame arena is not where the
+    /// peripheral can reach it.
+    CameraDma(DmaBufError),
+    /// The camera peripheral rejected its clock or pin configuration.
+    CameraConfig(esp_hal::lcd_cam::cam::ConfigError),
     /// An I2C transaction on a shared-bus device failed.
     I2c(I2cDeviceError<i2c_master::Error>),
     /// SPI bus configuration rejected.
@@ -304,6 +311,7 @@ pub struct Board<'d> {
     motion: Option<Qmi8658<SharedI2cDevice>>,
     audio: Option<Es7210Rx<Es7210<SharedI2cDevice>>>,
     speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
+    camera: Option<Box<dyn FrameSource>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -346,8 +354,23 @@ impl Board<'static> {
             // higher-priority executor; see `Startup`.
             FROM_CPU_INTR1,
             DMA_CH0,
-            // The panel's SPI owns channel 0; capture gets the next one.
+            // The panel's SPI owns channel 0; audio capture gets the next one, and the
+            // camera's DVP receive the one after it.
             DMA_CH1,
+            LCD_CAM,
+            DMA_CH2,
+            GPIO3,
+            GPIO4,
+            GPIO5,
+            GPIO6,
+            GPIO7,
+            GPIO8,
+            GPIO9,
+            GPIO15,
+            GPIO16,
+            GPIO17,
+            GPIO18,
+            GPIO46,
             ..
         } = peripherals;
 
@@ -361,10 +384,46 @@ impl Board<'static> {
 
         let (block_spi, dc) = panel_spi(SPI3, DMA_CH0, GPIO41, GPIO40, GPIO39)?;
 
+        // The camera's peripheral is built here, before anything else is touched, because
+        // building it enables the module clock and takes the clock pin over — which is why
+        // the sensor is programmed after it and not before.
+        let dvp_peripheral = Board::new_dvp(camera::CameraPins {
+            LCD_CAM,
+            DMA_CH2,
+            GPIO3,
+            GPIO4,
+            GPIO5,
+            GPIO6,
+            GPIO7,
+            GPIO8,
+            GPIO9,
+            GPIO15,
+            GPIO16,
+            GPIO17,
+            GPIO18,
+            GPIO46,
+        })?;
+
         pca9557.set_output(DVP_PWDN_BIT)?;
 
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
-        let light = DisplayLight::new(0, panel, panel_backlight(LEDC, GPIO42)?);
+        // The surface owns the frame buffer and the camera borrows it, so the two DMAs
+        // address one region rather than two.
+        let mut light = DisplayLight::new(
+            0,
+            panel,
+            panel_backlight(LEDC, GPIO42)?,
+            &mut frame_arena().0,
+        );
+        // A sensor that is not fitted is a board without a camera, not a board that cannot
+        // boot: the page that needs it stays dark and the rest are unaffected.
+        let camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {
+            Ok(camera) => Some(Box::new(camera) as Box<dyn FrameSource>),
+            Err(error) => {
+                log::warn!("[CAM] camera bring-up failed, the Camera page stays dark: {error:?}");
+                None
+            }
+        };
         let button = PullButton::new(GPIO0);
         let touch = Ft6336::new(
             I2cDevice::new(bus),
@@ -471,6 +530,7 @@ impl Board<'static> {
                 motion: Some(motion),
                 audio,
                 speaker,
+                camera,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -553,6 +613,9 @@ impl Board<'static> {
                 motion: None,
                 audio: None,
                 speaker,
+                // The probe brings its own camera up through `new_camera_only`; this path
+                // wires the speaker alone, so it must hand over none.
+                camera: None,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -629,5 +692,11 @@ impl HasAudio for Board<'static> {
                 CAPTURE_MS,
             )
         })
+    }
+}
+
+impl HasCamera for Board<'static> {
+    fn take_camera(&mut self) -> Option<Box<dyn FrameSource>> {
+        self.camera.take()
     }
 }

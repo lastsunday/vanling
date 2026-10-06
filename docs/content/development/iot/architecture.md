@@ -27,6 +27,12 @@ weight = 20
 - **模块可配置** = feature 开关 + const 参数
 - **渲染层运行时可插拔**：`iot-core` 零分配中央 `RenderController`（reconcile 闭包回调）+ `iot-app` 堆上 `Vec<Box<dyn Renderer>>` 注册表（`embedded-alloc` 32KB 堆，boot LED in-task 注册，跨任务 Web/Audio renderer 走 `RENDER_BUS` + `Send`）
 
+## 页面循环按次序表走一圈
+
+`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`with_boot_page`）用同一份能力判定夹取，所以一次"走一圈"从任何一页出发都是全部可用页各一次并回到起点。
+
+这条规约是修一个缺陷写下来的：`next_page` 曾是 18 个手写跳转分支，`Camera` 的离开分支返回"第一个本板能显示的页"（`Attitude`）而非起点，于是 `Ambient` 被永久跳过 —— 实测 `CYCLE` 全能力下走一圈是 `[Attitude, Attitude, Audio, Speaker, Camera]`，`Ambient` 消失、`Attitude` 出现两次。跳着写会漏掉闭环的那一页；走一张表再回绕不会。`iot-core` 里有一条测试遍历能力组合 × 起点断言这一点（`every_page_the_board_can_back_is_shown_on_the_way_round`），把旧的 `Camera → Attitude` 放回去它会失败并打出上面那串。
+
 ## 日志
 
 只用 `log` façade（`log::info!` 等）；输出通道由家族 `iot-chip-esp` 初始化（esp 为 `esp_println::logger`）；业务代码禁止 `println!` / `esp_println::println!`

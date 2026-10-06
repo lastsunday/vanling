@@ -20,13 +20,18 @@ name = "audio-probe"
 path = "src/bin/audio-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# Multi-core isolation probe: the second core and the main stack beneath it. Gated on
-# the S3 because it is the only board here whose ROM boots a second core. Left out of
-# the product tasks by name, like the other probes.
+# Camera isolation probe: the sensor and the panel and nothing else, so a fault belongs to
+# the capture path rather than to the product's pages contending for one buffer. Gated on the
+# S3 alone because the board feature now carries `camera` with the rest of the panel wiring,
+# so there is nothing extra to ask for.
 [[bin]]
 name = "camera-probe"
 path = "src/bin/camera-probe.rs"
-required-features = ["lckfb-szpi-esp32s3", "camera"]
+required-features = ["lckfb-szpi-esp32s3"]
+
+# Multi-core isolation probe: the second core and the main stack beneath it. Gated on
+# the S3 because it is the only board here whose ROM boots a second core. Left out of
+# the product tasks by name, like the other probes.
 
 [[bin]]
 name = "multicore-s3"
@@ -51,9 +56,10 @@ esp32s3 = [
   "esp-hal/esp32s3", "esp-println/esp32s3", "esp-rtos/esp32s3",
 ]
 lckfb-szpi-esp32s3 = ["esp32s3", "dep:iot-bsp-esp", "iot-bsp-esp/lckfb-szpi-esp32s3"]
-# The camera path a probe asks for on top of a board, never a board's own doing: it
-# carries a 150 KB frame ring, and a board feature is the union of what every image of
-# that board builds. `camera-probe` requires both; `vanling` requires neither.
+# The camera, on its own. The S3 board feature carries it with the rest of its wiring, so
+# this exists for a board that mounts a sensor the product does not draw, and for
+# `check-features` to build the capture path alone. It is not a product tier: the product's
+# camera is not optional at runtime, because the panel has the buffer either way.
 camera = ["iot-bsp-esp/camera"]
 
 # Log console routing for esp_println. `console-auto` mirrors device behavior:

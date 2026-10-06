@@ -14,8 +14,16 @@ type Board = iot_bsp_esp::Board<'static>;
 #[global_allocator]
 static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
 
-/// Sized to hold the LCD frame buffer (320×240×2 B) plus renderer registry headroom.
-static mut HEAP_MEM: [u8; 200 * 1024] = [0; 200 * 1024];
+/// Sized for the renderer registry, the device state and the driver's own buffers.
+///
+/// No longer holds the frame buffer: that is the board's static now — the camera's DMA and
+/// the panel's SPI share it — so it is 150 KB out of DRAM that this used to duplicate on the
+/// heap. What is left is small allocations, and the heap that fits them leaves the main stack
+/// the rest. Measured against `@/records/iot/hardware-constraints.md`.
+static mut HEAP_MEM: [u8; HEAP_BYTES] = [0; HEAP_BYTES];
+
+/// Heap size in bytes.
+const HEAP_BYTES: usize = 64 * 1024;
 
 #[cfg(feature = "esp32c6")]
 #[esp_rtos::main]
@@ -23,10 +31,7 @@ async fn main(_spawner: Spawner) -> ! {
     // SAFETY: called exactly once before any allocation; the region is a
     // private static never aliased elsewhere.
     unsafe {
-        HEAP.init(
-            core::ptr::addr_of_mut!(HEAP_MEM) as usize,
-            core::mem::size_of::<[u8; 200 * 1024]>(),
-        );
+        HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_BYTES);
     }
 
     let peripherals = iot_chip_esp::chip_init();
@@ -54,10 +59,7 @@ async fn main(_spawner: Spawner) -> ! {
     // SAFETY: called exactly once before any allocation; the region is a
     // private static never aliased elsewhere.
     unsafe {
-        HEAP.init(
-            core::ptr::addr_of_mut!(HEAP_MEM) as usize,
-            core::mem::size_of::<[u8; 200 * 1024]>(),
-        );
+        HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_BYTES);
     }
 
     let peripherals = iot_chip_esp::chip_init();
