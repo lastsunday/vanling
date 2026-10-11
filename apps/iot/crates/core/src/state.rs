@@ -1,3 +1,8 @@
+use alloc::vec::Vec;
+
+use crate::demand::{
+    DemandField, EffectiveDemand, Mode, Override, PlaneDemand, PlaneKey, Sensitivity,
+};
 use crate::drivers::audio::{AudioEnvelope, AudioSample};
 use crate::drivers::input::{
     FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP, FingerLast,
@@ -96,6 +101,46 @@ impl DisplayPage {
             Self::Camera => 4,
         }
     }
+
+    /// What this page asks of the planes a board declares.
+    ///
+    /// The plane list is the board's, not this page's: a plane no board wires is never
+    /// claimed, so the same page code serves a board with a microphone and one without.
+    ///
+    /// The mode and the class follow the page, not the plane: a mode says whether a plane
+    /// runs, a class says how stale a reading this page can put up with, and only the page
+    /// knows that.
+    pub fn demand(&self, planes: &[PlaneKey]) -> EffectiveDemand {
+        let mut demand = EffectiveDemand::none();
+        for key in planes {
+            demand.set(*key, self.claim_for(*key));
+        }
+        demand
+    }
+
+    /// What this page asks of one plane. The match is the page's claim and is exhaustive by
+    /// construction: a plane this page has no opinion of is claimed off, never unclaimed.
+    fn claim_for(&self, key: PlaneKey) -> PlaneDemand {
+        let motion_class = match self {
+            Self::Attitude => Sensitivity::Primary,
+            _ => Sensitivity::Secondary,
+        };
+        let audio_class = match self {
+            Self::Audio => Sensitivity::Primary,
+            _ => Sensitivity::Secondary,
+        };
+        match key.field() {
+            DemandField::Motion => PlaneDemand::new(Mode::Continuous, 0, motion_class),
+            DemandField::Audio => PlaneDemand::new(Mode::Continuous, 0, audio_class),
+            DemandField::Camera => match self {
+                Self::Camera => PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+                _ => PlaneDemand::off(),
+            },
+            DemandField::Display => PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+            // Nothing gates the interaction path, so no page claims it.
+            DemandField::Interaction => PlaneDemand::off(),
+        }
+    }
 }
 
 /// A live contact slot: the tracker `id` that owns it plus where it last
@@ -191,6 +236,17 @@ pub struct DeviceState {
     /// can compare the chip's engine with the software classifier. Never
     /// drives the light.
     pub chip_gesture_id: u8,
+}
+
+impl DeviceState {
+    /// The page's demand with the board's wiring clamped on top.
+    ///
+    /// The single place a proposed demand is derived. [`DeviceManager`] holds the result as
+    /// its demand state rather than calling this on every read, so a configurator has
+    /// something to refine and somewhere to write back what the part could actually meet.
+    pub fn demand(&self, planes: &[PlaneKey]) -> EffectiveDemand {
+        self.page.demand(planes)
+    }
 }
 
 /// A breathing schedule: brightness envelope plus the hue path it travels.
@@ -384,6 +440,22 @@ struct GestureRecord {
 /// wholesale, so the device never needs to remember "last breath".
 pub struct DeviceManager {
     state: DeviceState,
+    /// The planes this board wires. What the device can be asked about at all, so a page
+    /// claims only these and the demand layer never has to know what devices exist.
+    planes: Vec<PlaneKey>,
+    /// What the build asks beyond what the page would.
+    ///
+    /// Held here rather than applied once at boot because the render loop
+    /// republishes on every page change, so a one-shot patch would last a tick.
+    override_: Override,
+    /// What the device is committed to, as distinct from what was asked for.
+    ///
+    /// Held rather than re-derived on read so a configurator has something to refine: it
+    /// writes the demand it could actually meet back here, and every consumer downstream
+    /// reads that rather than the proposal. Recomputed wherever the proposal changes, which
+    /// is why no other field of this struct may be written without
+    /// [`Self::propose_demand`] following.
+    demand: EffectiveDemand,
 }
 
 impl DeviceManager {
@@ -408,52 +480,83 @@ impl DeviceManager {
     /// instead of a hard on/off blip.
     pub const BACKLIGHT_FLOOR_PCT: u8 = 12;
 
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self::with_motion(false, MotionCapabilities::EMPTY)
     }
 
-    pub const fn with_motion(motion_enabled: bool, motion_caps: MotionCapabilities) -> Self {
+    pub fn with_motion(motion_enabled: bool, motion_caps: MotionCapabilities) -> Self {
+        let state = DeviceState {
+            lights: [LightState::boot(); MAX_LIGHTS],
+            page: DisplayPage::Ambient,
+            motion_enabled,
+            motion: None,
+            motion_counts: MotionCounts::ZERO,
+            motion_caps,
+            audio_enabled: false,
+            audio: AudioState::boot(),
+            playback_enabled: false,
+            playback: PlaybackState::boot(),
+            camera_enabled: false,
+            touch: None,
+            touch_points: [None; MAX_TRACKED_POINTS],
+            live_dir: [0; MAX_TRACKED_POINTS],
+            two_finger_runs: 0,
+            touch_frames: 0,
+            finger: [FingerLast::empty(); MAX_TRACKED_POINTS],
+            touch_held_ms: 0,
+            tap_count: 0,
+            press_count: 0,
+            double_tap_count: 0,
+            triple_tap_count: 0,
+            long_press_count: 0,
+            ghost_count: 0,
+            swipe_count: 0,
+            last_swipe: None,
+            last_gesture_origin: None,
+            last_gesture_end: None,
+            chip_gesture_id: 0,
+        };
+        let demand = Self::proposed(&state, &[], &Override::none());
         Self {
-            state: DeviceState {
-                lights: [LightState::boot(); MAX_LIGHTS],
-                page: DisplayPage::Ambient,
-                motion_enabled,
-                motion: None,
-                motion_counts: MotionCounts::ZERO,
-                motion_caps,
-                audio_enabled: false,
-                audio: AudioState::boot(),
-                playback_enabled: false,
-                playback: PlaybackState::boot(),
-                camera_enabled: false,
-                touch: None,
-                touch_points: [None; MAX_TRACKED_POINTS],
-                live_dir: [0; MAX_TRACKED_POINTS],
-                two_finger_runs: 0,
-                touch_frames: 0,
-                finger: [FingerLast::empty(); MAX_TRACKED_POINTS],
-                touch_held_ms: 0,
-                tap_count: 0,
-                press_count: 0,
-                double_tap_count: 0,
-                triple_tap_count: 0,
-                long_press_count: 0,
-                ghost_count: 0,
-                swipe_count: 0,
-                last_swipe: None,
-                last_gesture_origin: None,
-                last_gesture_end: None,
-                chip_gesture_id: 0,
-            },
+            state,
+            planes: Vec::new(),
+            override_: Override::none(),
+            demand,
         }
+    }
+
+    /// Declares the planes this board wires. Must be set before anything asks the device for
+    /// anything, because an empty list means a device with no planes at all.
+    pub fn with_planes(mut self, planes: Vec<PlaneKey>) -> Self {
+        self.planes = planes;
+        self.propose_demand();
+        self
+    }
+
+    /// What the current state proposes: the page's claim over the board's planes, and the
+    /// build's override last.
+    fn proposed(state: &DeviceState, planes: &[PlaneKey], override_: &Override) -> EffectiveDemand {
+        let mut demand = state.demand(planes);
+        override_.clone().apply(&mut demand);
+        demand
+    }
+
+    /// Recomputes the demand state from what the page and the build now ask for.
+    ///
+    /// Every write to `page`, the plane list, or `override_` ends here. Those are the only
+    /// inputs a proposal is derived from, so a write that skips this call is the one way the
+    /// held demand can fall behind what was asked.
+    fn propose_demand(&mut self) {
+        self.demand = Self::proposed(&self.state, &self.planes, &self.override_);
     }
 
     /// Chains the audio capability onto [`Self::with_motion`], so a board
     /// declares its capture source and the page that shows it in one place.
     /// Kept separate because most boards have motion and no microphone, and
     /// the app's composition point reads better as two explicit facts.
-    pub const fn with_audio(mut self, audio_enabled: bool) -> Self {
+    pub fn with_audio(mut self, audio_enabled: bool) -> Self {
         self.state.audio_enabled = audio_enabled;
+        self.propose_demand();
         self
     }
 
@@ -461,7 +564,7 @@ impl DeviceManager {
     /// the page that shows it in one place — the same shape as
     /// [`Self::with_audio`], and independent of it: a board can capture, play,
     /// both or neither.
-    pub const fn with_playback(mut self, playback_enabled: bool) -> Self {
+    pub fn with_playback(mut self, playback_enabled: bool) -> Self {
         self.state.playback_enabled = playback_enabled;
         self
     }
@@ -469,8 +572,9 @@ impl DeviceManager {
     /// Chains the camera capability on, so a board declares its sensor and the
     /// page that shows it in one place — the same shape as
     /// [`Self::with_audio`], and independent of it.
-    pub const fn with_camera(mut self, camera_enabled: bool) -> Self {
+    pub fn with_camera(mut self, camera_enabled: bool) -> Self {
         self.state.camera_enabled = camera_enabled;
+        self.propose_demand();
         self
     }
 
@@ -486,7 +590,7 @@ impl DeviceManager {
     /// to change that. A camera feature is not a boot-page switch, and a board
     /// that mounts a sensor still starts on `Ambient` unless a build asks
     /// otherwise.
-    pub const fn with_boot_page(mut self, page: DisplayPage) -> Self {
+    pub fn with_boot_page(mut self, page: DisplayPage) -> Self {
         // The same gate the cycle walks with, so a page a build can name is a page the board
         // can show. It used to be a hand-written match that left `Attitude` out, which meant
         // `IOT_BOOT_PAGE=attitude` landed on a page the wiring cannot back.
@@ -500,6 +604,7 @@ impl DeviceManager {
             false => DisplayPage::Ambient,
         };
         self.state.page = page;
+        self.propose_demand();
         self
     }
 
@@ -748,6 +853,7 @@ impl DeviceManager {
                 }
             }
         }
+        self.propose_demand();
     }
 
     fn live_point_count(&self) -> usize {
@@ -813,6 +919,29 @@ impl DeviceManager {
 
     pub fn state(&self) -> DeviceState {
         self.state.clone()
+    }
+
+    /// What the device is committed to, which is the proposal narrowed to what the parts
+    /// can actually meet. Not interchangeable with [`Self::state`]'s copy: a state is what
+    /// the device *reached* and a demand is what it will be held to.
+    ///
+    /// Read this, not a fresh derivation, so a configurator's refusal is already accounted
+    /// for by everyone downstream.
+    pub fn demand(&self) -> &EffectiveDemand {
+        &self.demand
+    }
+
+    /// Commits a demand the configurator could actually meet. The only way a demand stops
+    /// being what was asked for, and the reason this is held rather than re-derived.
+    pub fn commit_demand(&mut self, demand: EffectiveDemand) {
+        self.demand = demand;
+    }
+
+    /// Pins what the build asks beyond the page's claim.
+    pub fn with_override(mut self, override_: Override) -> Self {
+        self.override_ = override_;
+        self.propose_demand();
+        self
     }
 
     pub fn light_state(&self) -> LightState {
@@ -951,6 +1080,264 @@ mod tests {
 
     fn press(id: u8, x: u16, y: u16) -> OperationIntent {
         op(InputEvent::Gesture(GestureEvent::Press { id, x, y }))
+    }
+
+    mod demand {
+        use super::*;
+        use crate::config::{MotionConfig, Unreachable};
+        use crate::demand::{ALL_PLANES, PlaneKey};
+
+        fn fully_wired() -> DeviceManager {
+            DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
+                .with_planes(alloc::vec![
+                    PlaneKey::MOTION,
+                    PlaneKey::AUDIO,
+                    PlaneKey::CAMERA,
+                    PlaneKey::DISPLAY
+                ])
+                .with_audio(true)
+                .with_playback(true)
+                .with_camera(true)
+        }
+
+        #[test]
+        fn a_pages_class_follows_the_page_that_draws_the_plane() {
+            // The rule this pins: the class is a property of the page asking for it, not of
+            // the plane. Getting it backwards is silent.
+            assert_eq!(
+                DisplayPage::Attitude
+                    .demand(ALL_PLANES)
+                    .plane(PlaneKey::MOTION)
+                    .class,
+                Sensitivity::Primary,
+                "the page that draws the motion sample may wait nothing for it"
+            );
+            assert_eq!(
+                DisplayPage::Audio
+                    .demand(ALL_PLANES)
+                    .plane(PlaneKey::AUDIO)
+                    .class,
+                Sensitivity::Primary,
+                "and the same for the page that draws the envelope"
+            );
+
+            // Everywhere else the reading is background to what is on screen, so a budget may
+            // batch it.
+            for page in CYCLE {
+                if page == DisplayPage::Camera {
+                    continue;
+                }
+                if page != DisplayPage::Attitude {
+                    assert_eq!(
+                        page.demand(ALL_PLANES).plane(PlaneKey::MOTION).class,
+                        Sensitivity::Secondary,
+                        "{page:?}"
+                    );
+                }
+                if page != DisplayPage::Audio {
+                    assert_eq!(
+                        page.demand(ALL_PLANES).plane(PlaneKey::AUDIO).class,
+                        Sensitivity::Secondary,
+                        "{page:?}"
+                    );
+                }
+            }
+
+            // The mode is unchanged by any of this: the class decides how long a reading
+            // may go unread.
+            for page in CYCLE {
+                assert_eq!(
+                    page.demand(ALL_PLANES).plane(PlaneKey::MOTION).mode,
+                    Mode::Continuous,
+                    "{page:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn a_plane_the_board_did_not_declare_is_never_claimed() {
+            // The plane list is the board's whole statement of what it can be asked about,
+            // so a plane left out of it is not claimed at Off — it is absent, and absent
+            // reads as Off without anyone having to say so twice.
+            let panel_only = DeviceManager::new().with_planes(alloc::vec![PlaneKey::DISPLAY]);
+            let demand = panel_only.demand();
+
+            assert_eq!(demand.plane(PlaneKey::MOTION).mode, Mode::Off);
+            assert_eq!(demand.plane(PlaneKey::AUDIO).mode, Mode::Off);
+            assert_eq!(demand.plane(PlaneKey::CAMERA).mode, Mode::Off);
+            assert_eq!(demand.plane(PlaneKey::DISPLAY).mode, Mode::Continuous);
+            assert!(
+                !demand.keys().any(|key| key.field() == DemandField::Motion),
+                "a plane the board never declared must not appear in the demand at all"
+            );
+        }
+
+        #[test]
+        fn a_page_claims_every_plane_it_is_asked_about_and_nothing_more() {
+            // `claim_for` is exhaustive per plane, so the page cannot forget one and inherit a
+            // demand nobody chose. The page's list is the board's, so this is also the only
+            // place a page decides what exists.
+            let claimed = DisplayPage::Camera.demand(ALL_PLANES);
+
+            assert_eq!(claimed.keys().count(), ALL_PLANES.len());
+            assert_eq!(claimed.plane(PlaneKey::CAMERA).mode, Mode::Continuous);
+            for page in CYCLE {
+                assert_eq!(
+                    page.demand(ALL_PLANES).keys().count(),
+                    ALL_PLANES.len(),
+                    "{page:?} must claim every plane the board declared"
+                );
+            }
+        }
+
+        #[test]
+        fn two_of_one_kind_can_be_demanded_apart() {
+            // The reason the key carries an instance: two sensors of one type are two planes
+            // the product can name separately.
+            let twin = DeviceManager::new().with_planes(alloc::vec![
+                PlaneKey::instance(DemandField::Audio, 0),
+                PlaneKey::instance(DemandField::Audio, 1),
+            ]);
+            let mut demand = twin.demand().clone();
+            demand.set(
+                PlaneKey::instance(DemandField::Audio, 0),
+                PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+            );
+            demand.set(
+                PlaneKey::instance(DemandField::Audio, 1),
+                PlaneDemand::new(Mode::Continuous, 5_000, Sensitivity::Secondary),
+            );
+
+            assert_eq!(
+                demand
+                    .plane(PlaneKey::instance(DemandField::Audio, 0))
+                    .period_ms,
+                0,
+                "narrowing one sensor must not reach its twin"
+            );
+            assert_eq!(
+                demand
+                    .plane(PlaneKey::instance(DemandField::Audio, 1))
+                    .period_ms,
+                5_000
+            );
+        }
+
+        #[test]
+        fn demand_follows_the_page_instead_of_lagging_it() {
+            let mut manager = fully_wired();
+            let before = manager.demand().clone();
+
+            manager.apply_business(BusinessIntent::TogglePage);
+
+            assert_ne!(
+                manager.demand(),
+                &before,
+                "the page moved, so the demand it claims should have moved with it"
+            );
+            assert_eq!(
+                manager.demand(),
+                &DeviceManager::proposed(&manager.state, &manager.planes, &manager.override_),
+                "a held demand a fresh derivation would contradict has fallen behind"
+            );
+        }
+
+        #[test]
+        fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
+            // The held demand is only as fresh as the last `propose_demand`. These four
+            // fields are everything a proposal is derived from, so every write path that
+            // touches one has to re-derive — going through the public entry points rather
+            // than poking `state` is what makes a missed recompute visible here.
+            let mut by_page = fully_wired();
+            by_page.apply_business(BusinessIntent::TogglePage);
+            assert_eq!(
+                by_page.demand(),
+                &DeviceManager::proposed(&by_page.state, &by_page.planes, &by_page.override_)
+            );
+
+            for manager in [
+                DeviceManager::with_motion(false, MotionCapabilities::EMPTY).with_camera(true),
+                DeviceManager::with_motion(false, MotionCapabilities::EMPTY).with_audio(true),
+                DeviceManager::with_motion(false, MotionCapabilities::EMPTY).with_playback(true),
+                DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
+                    .with_boot_page(DisplayPage::Attitude),
+            ] {
+                assert_eq!(
+                    manager.demand(),
+                    &DeviceManager::proposed(&manager.state, &manager.planes, &manager.override_)
+                );
+            }
+        }
+
+        #[test]
+        fn a_committed_demand_survives_being_read_back() {
+            // What the configurator writes is what everyone downstream must see, even
+            // though a fresh derivation would say otherwise.
+            let mut manager = fully_wired().with_boot_page(DisplayPage::Camera);
+            assert_eq!(
+                manager.demand().plane(PlaneKey::CAMERA).mode,
+                Mode::Continuous
+            );
+
+            let narrowed = manager.demand().without(PlaneKey::MOTION);
+            manager.commit_demand(narrowed);
+
+            assert_eq!(manager.demand().plane(PlaneKey::MOTION).mode, Mode::Off);
+            assert_eq!(
+                manager.demand().plane(PlaneKey::CAMERA).mode,
+                Mode::Continuous
+            );
+            assert_ne!(
+                manager.demand(),
+                &DeviceManager::proposed(&manager.state, &manager.planes, &manager.override_),
+                "a committed demand is the one place the two are allowed to differ"
+            );
+        }
+
+        #[test]
+        fn a_refused_plane_leaves_the_committed_demand_but_nothing_else_does() {
+            // What the render loop does with a refusal: the plane it names stops being claimed,
+            // so no consumer downstream reads a promise the part cannot keep. The other planes
+            // are untouched, and the interaction path is untouched whatever it says.
+            let mut manager = fully_wired();
+            let refused = Unreachable {
+                key: PlaneKey::MOTION,
+                mode: Mode::OnChange,
+                config: MotionConfig::PolledRegisters,
+            };
+
+            manager.commit_demand(manager.demand().without(refused.key));
+
+            assert_eq!(manager.demand().plane(PlaneKey::MOTION).mode, Mode::Off);
+            assert_eq!(
+                manager.demand().plane(PlaneKey::AUDIO).mode,
+                Mode::Continuous,
+                "one plane going unmet is not a reason to drop the others"
+            );
+            assert_eq!(
+                manager.demand().plane(PlaneKey::INTERACTION).mode,
+                Mode::Continuous,
+                "nothing a demand says may switch the interaction path off"
+            );
+        }
+
+        #[test]
+        fn a_page_change_re_proposes_over_a_committed_demand() {
+            // A committed demand is a statement about now. The next page is a new claim, and
+            // the proposal has to come back — otherwise one refusal would silence the plane for
+            // as long as the device is on.
+            let mut manager = fully_wired();
+            manager.commit_demand(manager.demand().without(PlaneKey::MOTION));
+            assert_eq!(manager.demand().plane(PlaneKey::MOTION).mode, Mode::Off);
+
+            manager.apply_business(BusinessIntent::TogglePage);
+
+            assert_ne!(
+                manager.demand().plane(PlaneKey::MOTION).mode,
+                Mode::Off,
+                "a page that asks for motion again must be heard again"
+            );
+        }
     }
 
     mod boot {

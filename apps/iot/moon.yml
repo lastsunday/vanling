@@ -45,8 +45,11 @@ tasks:
     deps:
       - ~:check
 
+  # `iot-app`'s own tests run on the host backend rather than bare metal: the
+  # demand publisher is a task-boundary concern rather than a chip one, and
+  # `--lib` keeps the `vanling` bin out of it, since that one needs a board.
   test:
-    command: 'cargo test -p iot-core'
+    script: 'cargo test -p iot-core && cargo test -p iot-app --lib --no-default-features --features host'
     deps:
       - ~:check
 
@@ -132,6 +135,7 @@ tasks:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
         --bin vanling --bin audio-probe --bin camera-probe --bin multicore-s3 \
+        --bin demand-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
@@ -181,6 +185,29 @@ tasks:
     options:
       runInCI: false
 
+  # The product with two planes turned down — the only shipped path that both gates a
+  # plane (`audio=off`) and stretches one (`motion=on:30000`), so both halves of the
+  # demand are exercised. Kept off CI like `build-s3-camera`: a different demand, not
+  # a different product.
+  build-s3-thrift:
+    script: |
+      out=target/xtensa-esp32s3-none-elf/release/vanling
+      if [ -f "$out" ]; then cp "$out" "$out.product"; fi
+      IOT_DEMAND='audio=off,display=on-change,motion=on:30000' \
+        bash ../../scripts/iot-xtensa.sh build --release \
+        -p iot-app --bin vanling \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+      cp "$out" "$out-thrift"
+      if [ -f "$out.product" ]; then mv "$out.product" "$out"; fi
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/vanling-thrift'
+    deps:
+      - ~:check-s3
+    options:
+      runInCI: false
+
   flash-s3:
     command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/vanling'
     deps:
@@ -208,6 +235,7 @@ tasks:
   #   probe-audio-s3      the speaker alone, looping the catalogue
   #   probe-camera-s3     the camera and the panel, and nothing else
   #   probe-multicore-s3  the second core and the main stack beneath it
+  #   probe-demand-s3     one settled, measured cell per (configuration x cadence) pair
   probe-audio-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin audio-probe \
@@ -259,10 +287,39 @@ tasks:
       cache: false
       runInCI: false
 
+  probe-demand-s3:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin demand-probe \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/demand-probe'
+    options:
+      runInCI: false
+
   flash-probe-multicore-s3:
     command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/multicore-s3'
     deps:
       - ~:probe-multicore-s3
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
+  flash-s3-thrift:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/vanling-thrift'
+    deps:
+      - ~:build-s3-thrift
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
+  flash-probe-demand-s3:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/demand-probe'
+    deps:
+      - ~:probe-demand-s3
     options:
       persistent: true
       cache: false

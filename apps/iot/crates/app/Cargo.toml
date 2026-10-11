@@ -29,6 +29,14 @@ name = "camera-probe"
 path = "src/bin/camera-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
+# Motion demand matrix: one settled, measured cell per (configuration x policy) pair the driver
+# can reach, so the cost table carries measurements rather than arithmetic done from a
+# datasheet. Gated on the S3 and left out of the product tasks by name, like the rest.
+[[bin]]
+name = "demand-probe"
+path = "src/bin/demand-probe.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 # Multi-core isolation probe: the second core and the main stack beneath it. Gated on
 # the S3 because it is the only board here whose ROM boots a second core. Left out of
 # the product tasks by name, like the other probes.

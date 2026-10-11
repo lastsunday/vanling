@@ -39,6 +39,7 @@ Vanling 服务端和相关项目的开发指南。
 
 Vanling 自有 ESP32 固件（`apps/iot`）开发文档。
 
+- [分层与组合](@/development/iot/architecture.md) — 分层、组合三轴、需求两轴模型与传输、实施顺序
 - [Cargo Feature 判据与内聚](@/development/iot/features.md) — 硬/软 feature 定义、引入判据、内聚规则
 - [无硬件仿真与回归冒烟](@/development/iot/emulation.md) — 宿主 harness + esp-emu、决策矩阵
 

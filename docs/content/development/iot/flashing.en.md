@@ -2,7 +2,7 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "10f57b94a030435c8eba595f4cecbff89e5a715a"
+source_file_hash = "510f19d70e3825377bfb8f32bdae8419df4d2e34"
 translated_at = "2026-09-23T04:30:00Z"
 +++
 

@@ -24,6 +24,8 @@ use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_rx_buffer, dma_tx_buffer};
+use iot_core::config::MotionConfig;
+use iot_core::demand::PlaneKey;
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS};
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback};
@@ -40,7 +42,9 @@ use crate::components::es7210::{ES7210_I2C_ADDR, Es7210};
 use crate::components::es8311::{ChipId, ES8311_I2C_ADDR, ES8311_I2C_ADDR_ALT, Es8311};
 use crate::components::ft6336::{FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
-use crate::components::qmi8658::{MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi};
+use crate::components::qmi8658::{
+    MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi, SUPPORTED_CONFIGS,
+};
 use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
 pub use crate::virtual_components::DisplayLight;
 use crate::virtual_components::Es7210Rx;
@@ -552,6 +556,49 @@ impl Board<'static> {
     /// already select so a probe that never paints the panel also never wakes it.
     /// Everything else is left `None`, so the probe's entry point can refuse to
     /// ask for a capability this bring-up did not wire.
+    /// The motion plane alone, for the demand matrix probe.
+    ///
+    /// The expander is brought up because the IMU is on the same bus and its reset needs it.
+    /// The IMU comes back configured but *uninitialized*: this path walks fidelities, so a
+    /// bring-up that already wrote one would make the first cell measure a switch nobody
+    /// asked for.
+    pub fn new_motion_only(peripherals: Peripherals) -> Result<Startup<'static>, BoardError> {
+        #[allow(non_snake_case)]
+        let Peripherals {
+            I2C0,
+            GPIO1,
+            GPIO2,
+            TIMG0,
+            FROM_CPU_INTR0,
+            FROM_CPU_INTR1,
+            ..
+        } = peripherals;
+
+        let (bus, _pca9557) = bring_up_i2c(
+            i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+                .map_err(BoardError::I2cConfig)?
+                .with_sda(GPIO1)
+                .with_scl(GPIO2),
+        )?;
+
+        let motion = Qmi8658::new(I2cDevice::new(bus), QMI8658_I2C_ADDR);
+
+        Ok((
+            Self {
+                light: None,
+                button: None,
+                touch: None,
+                motion: Some(motion),
+                audio: None,
+                speaker: None,
+                camera: None,
+            },
+            TimerGroup::new(TIMG0),
+            FROM_CPU_INTR0,
+            FROM_CPU_INTR1,
+        ))
+    }
+
     pub fn new_audio_only(peripherals: Peripherals) -> Result<Startup<'static>, BoardError> {
         #[allow(non_snake_case)]
         let Peripherals {
@@ -624,6 +671,16 @@ impl Board<'static> {
     }
 }
 
+impl Board<'static> {
+    /// The IMU driver itself, for a probe that walks configurations.
+    ///
+    /// Not [`HasMotion::take_motion`]: a probe walks the configurations by writing the
+    /// registers itself and counting what that caused.
+    pub fn take_motion_driver(&mut self) -> Option<Qmi8658<SharedI2cDevice>> {
+        self.motion.take()
+    }
+}
+
 impl BoardTrait for Board<'static> {}
 
 impl iot_core::drivers::board::HasLight for Board<'static> {
@@ -640,6 +697,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
         if let Some(button) = self.button.take() {
             entries.push(PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(ButtonScanner::new(button)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,
@@ -648,6 +706,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
         if let Some(touch) = self.touch.take() {
             entries.push(PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(touch),
                 Box::new(TouchGestures::new()),
                 TOUCH_SCAN_MS,
@@ -662,6 +721,7 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
         self.motion.take().map(|motion| {
             PollEntry::new(
                 1,
+                PlaneKey::MOTION,
                 Box::new(MotionInput::new(RecoverableQmi::new(motion, Delay::new()))),
                 Box::new(PassThrough),
                 MOTION_SCAN_MS,
@@ -671,6 +731,10 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
 
     fn motion_capabilities(&self) -> MotionCapabilities {
         MOTION_CAPABILITIES
+    }
+
+    fn motion_configurations(&self) -> &'static [MotionConfig] {
+        SUPPORTED_CONFIGS
     }
 }
 
@@ -687,6 +751,7 @@ impl HasAudio for Board<'static> {
         self.audio.take().map(|audio| {
             PollEntry::new(
                 2,
+                PlaneKey::AUDIO,
                 Box::new(AudioInput::new(audio)),
                 Box::new(PassThrough),
                 CAPTURE_MS,

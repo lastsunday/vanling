@@ -3,7 +3,7 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "69ba151075775a84aba39d2d96be11a7e9168bd7"
+source_file_hash = "f1001465bf08432688d83ac7a70965c69e7ba019"
 translated_at = "2026-10-06T05:35:23Z"
 +++
 
@@ -14,6 +14,31 @@ translated_at = "2026-10-06T05:35:23Z"
 Constraints established against real hardware in `apps/iot`. **AI-produced, not reviewed by a human** — see the [section above](@/records/_index.en.md).
 
 Each judgement is marked with its basis: **`[test]`** a unit test backs it, **`[measured]`** hardware measurement with a way to reproduce, **`[reported]`** not reproduced, kept only for the record.
+
+---
+
+## No power management yet, so no clock-source locks either — but the order matters
+
+`[reported]` (not implemented, recorded as a lead) ESP-IDF's `esp_pm` expresses a component's power requirement with three locks: `ESP_PM_CPU_FREQ_MAX`, `ESP_PM_APB_FREQ_MAX` and `ESP_PM_NO_LIGHT_SLEEP`. Locks are recursive and must be released as many times as they were acquired. Its documentation gives two facts this board will eventually hit:
+
+- **In Light-sleep, peripherals are clock gated and no interrupt is generated.** So any driver relying on a peripheral interrupt has to hold `NO_LIGHT_SLEEP`. This board's DVP capture chain and both I2S chains move their data by DMA and fall under that rule.
+- Peripheral clock sources such as `REF_TICK`, `XTAL` and `RC_FAST` (i.e. RTC_8M) **are not influenced by APB frequency**, so downclocking is not a full stop and some clocks survive an APB change.
+
+The firmware has **no PM configuration at all** — no light-sleep, no `esp_pm_configure`, no `WFI`. The feed already runs on its own `InterruptExecutor` (`SpeakerRunner::OnInterrupt` in `lib.rs`), so the executor-contention route is settled structurally and needs no lock.
+
+So **not implementing locks is the right call**: adding two with no holder is dead code, and a deadlock is harder to diagnose than dead code.
+
+But the order does matter. Before light-sleep there has to be a reference-counted lock set, held at minimum by:
+
+| Holder | Why |
+|---|---|
+| Playback feed | its existence is the clock source; stopping it stops the codec's master clock |
+| The capture chain | a completed DMA releases the ring, and a gated DMA means the ring is never drained |
+| The DVP capture chain | same, and its chain-repair poll lives render-side |
+
+`InputSource::set_plane_collecting` is already this shape (a plane that is off cannot learn it from the next poll, so someone has to say it explicitly), so the wiring point is right and only the locks themselves are missing.
+
+Zephyr's split confirms it: its device runtime PM explicitly **does not manage device dependencies** — "devices can manually get or put their dependencies" — so dependencies are the consumer's job, not something automatic.
 
 ---
 

@@ -3,8 +3,8 @@ title = "Camera Implementation Record"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "1f98281e68e4b2bf34def38b0b2cf274868eb0c6"
-translated_at = "2026-10-06T05:35:23Z"
+source_file_hash = "66e2dc166069c9f3e5f25668fd44fd9e277c3e64"
+translated_at = "2026-10-10T17:04:06Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -43,6 +43,38 @@ Reproduction is the same throughout: flash `camera-probe` from `apps/iot/` and r
 **On this sensor full field of view and frame rate are two ends of one switch.** `esp32-camera`'s own table comment says it: `A smaller ratio brings a larger view, but it reduces the frame rate`. This repository writes `0x00`.
 
 `[reported]` Why averaging a 5×5 bin costs twice what taking one point does is unexplained — there is no material on the sensor's DSP.
+
+---
+
+## Where the read window's margins come from
+
+`[measured]` `0x09`-`0x10` are the read window's origin and size, and the part **counts its margins into its own line timing**, so the size written in code has to include them. The values are **+8 vertically, +16 horizontally**, from `esp32-camera`'s `set_framesize`:
+
+```c
+write_reg(sensor->slv_addr, 0x0d, H8(win_h + 8));
+write_reg(sensor->slv_addr, 0x0f, L8(win_w + 16));
+```
+
+`[measured]` `+16` was used at one point, on the grounds that the datasheet gives these registers' reset values as 1216 rather than 1208 (i.e. `1200 + 16`). **That reset value describes the part sitting in its own default window**, not the state after code set it to 320x240; the vendor driver computes the margins from the window it just chose. Reverting to `+8` made the view correct.
+
+`[measured]` 16 horizontally against 8 vertically is not a typo — those are the two values the vendor driver writes for QVGA.
+
+---
+
+## Measured throughput and detail per ratio
+
+`[measured]` Once the decimation ratio in `0x99` is written, its effect can only be inferred from how many bytes the DMA receives: if the ratio takes effect the byte rate falls roughly in proportion, and if it does not, nothing moves. Measured one ratio at a time:
+
+| ratio | read window | DMA | distinct values per row |
+| --- | --- | --- | --- |
+| 5 | 1600x1200 | 1558 KB/s | 186 |
+| 3 | 976x736 | 3444 KB/s | - |
+| 2 | 656x496 | 3474 KB/s | - |
+| 1 | 336x256 | 4641 KB/s | 0 (no frames) |
+
+`[measured]` **ratio 1 produces no frames at all**; ratios 3 and 4 produce frames but each row carries only about half the distinct values ratio 5 does — the frame is right, the pixels are undersampled. Ratio 5 is the only one that reads the full array.
+
+`[reported]` Why ratio 1 yields no frames while 3 and 4 undersample is not explicable from the registers.
 
 ---
 
@@ -101,8 +133,6 @@ A PSRAM ring is therefore always left in the configuration Espressif declines to
 
 ## The ring's 150 KB used to hang off the feature composition; it no longer does
 
-> `[measured]` **This section previously recorded that the ring would region-overflow the moment it was reachable in `vanling`. That was wrong.** The mistake was treating `dram_seg` as a hard ceiling for the main stack — it is not: `crates/app/linker/esp32s3-main-stack.x` raises `_stack_start` into `dram2_seg`, so the stack spans both regions contiguously, and the original reasoning only counted the tail of `dram_seg`. The same premise produced another wrong number (`hardware-constraints.md` recorded `_stack_start_cpu0 = 0x3fced710` / 115,140 B, omitting `ROM_BOOT_STACKS = 0x4000`); both are corrected in place. **Lesson**: the "space left" in `dram_seg` is not the space available for static data — read the linker script first.
-
 `[measured]` Those 150 KB are now **the panel's frame buffer itself**. `FRAME_ARENA` (formerly `FRAME_RING`) is unconditionally in `.bss`, `camera` is in the board feature, and `--gc-sections` no longer has any opportunity to drop it — so the 150 KB went from "whatever a link-time GC decides" to a link-time fact. `cargo check` does not link and `check-s3` cannot see it, so only `moon run iot:image` / `build-s3` can falsify this section.
 
 `[measured]` What was saved is not DRAM but the per-frame 150 KB memcpy (measured frame rate 5.5 fps, about 4.5 ms each): the panel's former `Vec` became this static arena, and the two are the same size, so `.bss` grows by 14,336 B net. In DRAM terms "one buffer" and "both buffers" are equivalent; they differ in CPU time and in ownership coupling.
@@ -136,6 +166,28 @@ A PSRAM ring is therefore always left in the configuration Espressif declines to
 `[test]` The fix is `FrameOwner` (`iot-core::drivers::camera`): `NeedsPaint` / `Painted { fill, color }` / `Camera`, one variant per legal state, so the fourth combination is unrepresentable. Five unit tests cover the transitions, of which `a_released_camera_lets_the_next_fill_through` walks exactly the sequence that could not be left; `host-smoke`'s `HostLight` uses the same type and asserts that a fill must reach the surface after leaving the Camera page.
 
 `[test]` Alongside it, "who owns it" went back to being recorded once: `LightRenderer` carried both `camera_page: bool` and `page: Option<DisplayPage>` for the same fact, so the former is gone and `step()` computes it. The panel's `owner` field is **not** gated on the camera feature — the colour half is also how a panel with no camera decides whether a fill is worth shipping, and gating it leaves half of that decision outside the value that holds it.
+
+---
+
+## Entering and leaving the Camera page rebuilds the DMA chain, and the fresh one stalls
+
+`[measured]` To reproduce: flash the default firmware, tap through the cycle repeatedly for several minutes, and read `[CAM] no descriptor completed`, `[DISPLAY] Camera … repaints … held the executor` and `[INPUT] held … worst single hold`.
+
+Booting straight into the Camera page (`IOT_BOOT_PAGE=camera`) and tapping in and out of it are **two different costs**:
+
+| | Booted straight in | Tapping in and out (183 page switches) |
+|---|---|---|
+| Repaints / window | 11 / 2119 ms (5.2 fps) | **25-29 / 2100 ms** |
+| Render-side occupancy | 188 ms = **8%** | **626-754 ms = 29-36%** |
+| Chain re-arms | 0 | **140** |
+
+The fps figure **should not be taken at face value**: during 140 rebuilds each one may hand out a frame that gets counted as new, so "more repaints" may be re-arm churn rather than genuinely more pictures out. The render side going 8% -> 29-36% is not in doubt.
+
+`[measured]` The mechanism follows from the code: leaving the Camera page makes the demand's camera `Off`, so `DisplayLight::consume` calls `pause()` and hands the buffer back; coming back, `paint_camera` finds the buffer is not the camera's and calls `resume()` — and `resume` **rebuilds the whole chain** (`camera.receive(ring)`) rather than resuming it. This run entered the Camera page 36 times for 140 re-arms, stalling several times right after each entry: **enter the camera page and the chain stalls as soon as it is built.**
+
+`[measured]` One single-hold breach came with it: `worst single hold 31 ms` at 00:00:06 against `MAX_SINGLE_HOLD_MS = 30`, with the Camera page entered at 00:00:04.68 — **entering the camera page can breach the single-hold bound**, and it is probably the same thing as the re-arm churn.
+
+`[reported]` The cause of "stalls as soon as it is built" is not located. Candidates are `check_stall` judging the ring stalled before the rebuild has filled it (`STALL_MS` is 420 ms), or the rebuild's own window losing the first `take_latest`. Not confirmed, recorded as a lead.
 
 ---
 

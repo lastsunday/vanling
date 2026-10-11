@@ -3,14 +3,19 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 use embassy_executor::SendSpawner;
 use embassy_futures::join::{join, join3, join4};
+use iot_core::config::Configurator;
+use iot_core::demand::PlaneKey;
 use iot_core::drivers::board::{
     Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPlayback,
 };
 use iot_core::drivers::playback::Speaker;
 use iot_core::state::{DeviceManager, DisplayPage};
+
+pub mod demand;
 
 /// The page the device comes up on, named by `IOT_BOOT_PAGE` at build time.
 ///
@@ -26,6 +31,19 @@ use iot_core::state::{DeviceManager, DisplayPage};
 /// their own configuration in `.cargo/config.toml`.
 fn boot_page() -> DisplayPage {
     boot_page_from_env(option_env!("IOT_BOOT_PAGE"))
+}
+
+/// What the build asks of each data plane beyond what the page would, as
+/// `IOT_DEMAND=audio=off,display=on-change`.
+///
+/// Comma-separated and parsed leniently: a repeated variable keeps only its last
+/// assignment, so a mistyped term should cost a term rather than the build.
+fn boot_override() -> demand::Override {
+    let parsed = iot_core::demand::parse_override(option_env!("IOT_DEMAND").unwrap_or(""));
+    if option_env!("IOT_DEMAND").is_some() && !parsed.names_anything() {
+        log::warn!("[IOT] IOT_DEMAND named no plane this firmware recognises: ignored");
+    }
+    parsed
 }
 
 /// The variant name each page answers to, which is what `IOT_BOOT_PAGE` spells.
@@ -174,8 +192,17 @@ where
     // else.
     let audio = board.take_audio();
     let audio_enabled = audio.is_some();
-    sources.extend(motion);
-    sources.extend(audio);
+    // Which planes this board can be asked about at all. A source the board did not wire
+    // contributes no plane, so a board with no microphone never has an audio demand to meet.
+    let mut planes: Vec<PlaneKey> = alloc::vec![PlaneKey::DISPLAY];
+    if let Some(motion) = motion {
+        sources.push(motion);
+        planes.push(PlaneKey::MOTION);
+    }
+    if let Some(audio) = audio {
+        sources.push(audio);
+        planes.push(PlaneKey::AUDIO);
+    }
 
     // Unlike the capture, playback is a task of its own: a sound has to keep
     // being fed while it plays, and a task is what makes that independent of how
@@ -193,6 +220,9 @@ where
     // knows how to park the chain before painting a colour under it.
     let mut camera = board.take_camera();
     let camera_enabled = camera.is_some();
+    if camera_enabled {
+        planes.push(PlaneKey::CAMERA);
+    }
     if !camera_enabled {
         log::info!("[CAM] no camera wired, the Camera page stays dark");
     }
@@ -217,16 +247,23 @@ where
             }
         }
     }
+    let override_ = boot_override();
     let mut manager = Box::new(
         DeviceManager::with_motion(motion_enabled, motion_caps)
+            .with_planes(planes)
             .with_audio(audio_enabled)
             .with_playback(playback_enabled)
             .with_camera(camera_enabled)
-            .with_boot_page(boot_page()),
+            .with_boot_page(boot_page())
+            .with_override(override_),
     );
     if manager.state().page != DisplayPage::Ambient {
         log::info!("[IOT] boot page is {:?}", manager.state().page);
     }
+    // What the board's parts can be left in. The configurator holds this so the decision
+    // has the parts' answer at the moment a demand is made, rather than needing a lookup
+    // threaded down to whoever polls them.
+    let configurator = Configurator::new(board.motion_configurations());
     // Both playback loops reach the driver through one shared handle rather than
     // owning it, because they run on different executors: the feed has to be
     // preemptible and the codec's I2C calls must not be. The board's driver is
@@ -239,6 +276,13 @@ where
     // loops are only ever started when there is one: parking on buses nothing
     // writes would be two more tasks doing nothing. Three arms rather than one, so
     // the tuples the joins return never have to agree.
+    //
+    // The opening demand is written before any task that reads it starts, so the polling
+    // loop's first tick already schedules against it. The feed loop is deliberately not given
+    // it: that loop's existence is what supplies the microphone's clock, so handing it a gate
+    // would make the one thing nothing may switch off the one thing a page could switch.
+    demand::propose(manager.demand());
+    log::info!("[IOT] opening demand {}", manager.demand());
     match (shared, speaker_runner) {
         (Some(shared), SpeakerRunner::Interrupt(spawner)) => {
             // Spawned, not joined: it is on the other executor, and joining a
@@ -248,7 +292,7 @@ where
                 feed_task(shared).expect("the feed executor has room for the one task on it"),
             );
             match join3(
-                input_task(&INTENT_BUS, sources),
+                input_task(&INTENT_BUS, sources, &configurator),
                 render_loop(
                     &INTENT_BUS,
                     &RENDER_BUS,
@@ -261,7 +305,7 @@ where
             .await {}
         }
         (Some(shared), SpeakerRunner::Inline) => match join4(
-            input_task(&INTENT_BUS, sources),
+            input_task(&INTENT_BUS, sources, &configurator),
             render_loop(
                 &INTENT_BUS,
                 &RENDER_BUS,
@@ -274,7 +318,7 @@ where
         )
         .await {},
         (None, _) => match join(
-            input_task(&INTENT_BUS, sources),
+            input_task(&INTENT_BUS, sources, &configurator),
             render_loop(
                 &INTENT_BUS,
                 &RENDER_BUS,

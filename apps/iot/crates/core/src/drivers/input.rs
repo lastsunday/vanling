@@ -2,6 +2,8 @@ use alloc::boxed::Box;
 
 use super::audio::AudioSample;
 use super::motion::MotionBatch;
+use crate::config::MotionConfig;
+use crate::demand::PlaneKey;
 
 /// Active-low contract for a physical button: returns `true` when pressed.
 pub trait Button {
@@ -414,6 +416,41 @@ fn isqrt_u32(n: u32) -> u32 {
 /// [`crate::intent::recognize`].
 pub trait InputSource {
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent>;
+
+    /// Told that the demand has switched this source's plane off or back on.
+    ///
+    /// Separate from [`Self::poll`] because a plane that is off is not polled, so a source
+    /// that has to *stop* would otherwise never hear about it. The default does nothing,
+    /// right for a source that holds no peripheral.
+    fn set_plane_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
+
+    /// Whether a latency budget may stretch this source's poll cadence outward.
+    ///
+    /// True for a source that answers a poll by reading state, so polling it less often only
+    /// makes its readings older. False for a source whose peripheral needs a poll to keep
+    /// running: the capture's DMA ring is emptied only by `sample` and the I2S engine halts
+    /// once it fills, so a stretched capture is not a staler reading but a dead clock.
+    ///
+    /// The default is `true`, so a board opts out by answering here rather than the core
+    /// guessing which peripherals need to.
+    fn accepts_slower_poll(&self) -> bool {
+        true
+    }
+
+    /// Leaves whatever is behind this source in the configuration its plane was decided to
+    /// need, answering what it is now in.
+    ///
+    /// The default is the answer for a source with no acquisition choice: there is nothing to
+    /// configure, so the wiring stands. Sources that do have one forward it to the part, and
+    /// the refusal travels back out rather than being logged away here — a demand nothing was
+    /// done about is the one thing a reader of the schedule cannot infer on their own.
+    fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig> {
+        let _ = wanted;
+        Ok(None)
+    }
 }
 
 /// Combines/coalesces raw input events into higher-level gestures.
@@ -1131,15 +1168,25 @@ impl Default for TouchContinuity {
 /// that source drives.
 pub struct PollEntry {
     source_id: u8,
+    /// The plane this source answers for, so a schedule reads what this entry is for rather
+    /// than inferring it from the source's position in a parallel list.
+    key: PlaneKey,
     source: Box<dyn InputSource>,
     aggregator: Box<dyn EventAggregator>,
+    /// What the board wired, kept apart from [`Self::cadence_ms`] so a demand can be
+    /// relaxed again. An already-stretched cadence is not a floor: treating it as one would
+    /// stop a cheaper budget shortening what a dearer one lengthened.
+    board_cadence_ms: u64,
     cadence_ms: u64,
     next_at_ms: u64,
+    /// The one part of the schedule that is runtime state rather than the board's wiring.
+    active: bool,
 }
 
 impl PollEntry {
     pub fn new(
         source_id: u8,
+        key: PlaneKey,
         source: Box<dyn InputSource>,
         aggregator: Box<dyn EventAggregator>,
         cadence_ms: u64,
@@ -1148,11 +1195,69 @@ impl PollEntry {
         // uniform straight from boot.
         Self {
             source_id,
+            key,
             source,
             aggregator,
+            board_cadence_ms: cadence_ms,
             cadence_ms,
             next_at_ms: cadence_ms,
+            active: true,
         }
+    }
+
+    /// Whether the demand wants this source polled.
+    pub const fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// Turns polling on or off. Resuming clears the schedule rather than restoring it: a
+    /// source off for a minute has no next-due time worth honouring, and waiting out the
+    /// old one opens the page to a gap.
+    pub fn set_active(&mut self, active: bool) {
+        if self.active == active {
+            return;
+        }
+        self.active = active;
+        if active {
+            self.next_at_ms = 0;
+        }
+    }
+
+    /// Moves the source's cadence, which is where a latency budget lands.
+    ///
+    /// The board's wiring is the floor, in either direction, since a plan is derived from
+    /// [`Self::board_cadence_ms`] each time. Below the floor is refused rather than clamped:
+    /// a caller that ignored the floor must not silently shorten a source whose debounce
+    /// windows were measured against it.
+    ///
+    /// The reading already scheduled stays where it is, so a stretch costs no reading that
+    /// was due and a relaxation costs no wait that was not.
+    pub fn set_cadence_ms(&mut self, cadence_ms: u64) {
+        if cadence_ms < self.board_cadence_ms || cadence_ms == self.cadence_ms {
+            return;
+        }
+        self.cadence_ms = cadence_ms;
+    }
+
+    /// Passes the switch on to the source behind it. Not folded into
+    /// [`Self::set_active`]: this asks a driver to change what it is doing.
+    pub fn set_collecting(&mut self, now_ms: u64, collecting: bool) {
+        self.source.set_plane_collecting(now_ms, collecting);
+    }
+
+    /// Whether a latency budget may stretch this source's cadence.
+    pub fn accepts_slower_poll(&self) -> bool {
+        self.source.accepts_slower_poll()
+    }
+
+    /// Forwards the configuration its plane was decided to need. Answering with what the part
+    /// is now in is what lets the schedule report the achieved configuration rather than the
+    /// requested one.
+    pub fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig> {
+        self.source.configure_for(wanted)
     }
 
     /// The wiring-order identity the board assigned this input, driving intent
@@ -1161,9 +1266,19 @@ impl PollEntry {
         self.source_id
     }
 
-    /// The source's cadence, a whole multiple of the shared base tick.
+    /// The plane this source answers for.
+    pub const fn key(&self) -> PlaneKey {
+        self.key
+    }
+
+    /// A whole multiple of the shared base tick, which a demand may have stretched.
     pub fn cadence_ms(&self) -> u64 {
         self.cadence_ms
+    }
+
+    /// The floor a demand cannot cross, and the value a plan is derived from.
+    pub fn board_cadence_ms(&self) -> u64 {
+        self.board_cadence_ms
     }
 
     /// When this source is next due on the shared grid.
@@ -1247,6 +1362,7 @@ impl<B: Button> InputSource for ButtonScanner<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::demand::PlaneKey;
 
     mod button {
         use super::*;
@@ -1429,6 +1545,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1443,10 +1560,133 @@ mod tests {
         }
 
         #[test]
+        fn a_deactivated_source_is_due_immediately_once_it_comes_back() {
+            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let mut entry = PollEntry::new(
+                0,
+                PlaneKey::INTERACTION,
+                Box::new(ButtonScanner::new(FakeButton { pressed })),
+                Box::new(PassThrough),
+                BUTTON_SCAN_MS,
+            );
+            entry.advance_past(1_000);
+            assert!(entry.is_active());
+
+            entry.set_active(false);
+            assert!(!entry.is_active());
+
+            entry.set_active(true);
+            // Due now, not at the next slot on a schedule that ran for a minute.
+            assert_eq!(entry.next_at_ms(), 0);
+            entry.advance_past(1_000);
+            assert!(entry.next_at_ms() > 1_000, "and it is due, not parked");
+        }
+
+        #[test]
+        fn deactivating_a_source_that_is_already_off_changes_nothing() {
+            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let mut entry = PollEntry::new(
+                0,
+                PlaneKey::INTERACTION,
+                Box::new(ButtonScanner::new(FakeButton { pressed })),
+                Box::new(PassThrough),
+                BUTTON_SCAN_MS,
+            );
+            entry.advance_past(50);
+            let due = entry.next_at_ms();
+
+            // A no-op re-activation must not reset the schedule.
+            entry.set_active(true);
+            assert_eq!(entry.next_at_ms(), due);
+        }
+
+        /// A source on a board's own cadence.
+        fn button_entry() -> PollEntry {
+            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            PollEntry::new(
+                0,
+                PlaneKey::INTERACTION,
+                Box::new(ButtonScanner::new(FakeButton { pressed })),
+                Box::new(PassThrough),
+                BUTTON_SCAN_MS,
+            )
+        }
+
+        #[test]
+        fn a_latency_budget_stretches_the_cadence_and_keeps_the_source_due_now() {
+            let mut entry = button_entry();
+            let board = entry.board_cadence_ms();
+            entry.advance_past(1_000);
+            let due = entry.next_at_ms();
+            assert!(due > 1_000, "due on the original grid");
+
+            entry.set_cadence_ms(30_000);
+
+            assert_eq!(entry.cadence_ms(), 30_000);
+            assert_eq!(
+                entry.board_cadence_ms(),
+                board,
+                "the floor the board wired is not the demand's to move"
+            );
+            // A stretch must not swallow the reading already due: the page that asked for
+            // the stretch is waiting on it.
+            assert_eq!(entry.next_at_ms(), due);
+            entry.advance_past(due);
+            assert!(
+                entry.next_at_ms() >= due + 30_000,
+                "and the one after it waits a whole stretched cadence"
+            );
+        }
+
+        #[test]
+        fn a_budget_can_never_shorten_a_cadence_the_board_wired() {
+            // Honouring a shorter request would invalidate the debounce windows measured
+            // against the cadence the board wired.
+            let mut entry = button_entry();
+            let board = entry.board_cadence_ms();
+            entry.set_cadence_ms(board - 1);
+            entry.set_cadence_ms(0);
+            assert_eq!(entry.cadence_ms(), board);
+        }
+
+        #[test]
+        fn a_cheaper_budget_can_put_a_stretched_cadence_back() {
+            // The other direction, and the reason the floor is kept separately: a page that
+            // no longer wants a stretched stream must be able to say so.
+            let mut entry = button_entry();
+            let board = entry.board_cadence_ms();
+            entry.set_cadence_ms(30_000);
+            entry.advance_past(60_000);
+
+            entry.set_cadence_ms(board);
+
+            assert_eq!(entry.cadence_ms(), board);
+            entry.advance_past(60_000);
+            assert!(
+                entry.next_at_ms() <= 60_000 + board,
+                "back on the grid the board wired"
+            );
+        }
+
+        #[test]
+        fn a_resumed_source_is_not_postponed_by_a_longer_cadence() {
+            // Order matters: `set_active` parks the schedule at zero and `set_cadence_ms`
+            // arrives on the same demand update, so the second must not push the first out.
+            let mut entry = button_entry();
+            entry.advance_past(600_000);
+            entry.set_active(false);
+            entry.set_active(true);
+            entry.set_cadence_ms(60_000);
+
+            assert_eq!(entry.next_at_ms(), 0);
+        }
+
+        #[test]
         fn poll_entry_wires_scanner_into_the_double_click() {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1462,6 +1702,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,

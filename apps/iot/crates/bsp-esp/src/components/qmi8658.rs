@@ -1,5 +1,6 @@
 use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::I2c;
+use iot_core::config::MotionConfig;
 use iot_core::drivers::motion::{
     MotionCapabilities, MotionError, MotionEvent, MotionEvents, MotionReading, MotionSample,
     MotionScale, MotionSource, RECOGNIZER_CAPABILITIES,
@@ -83,17 +84,19 @@ const ODR_INDEX: u8 = 0b0011;
 const ODR_HZ_X10: u32 = 8_968;
 const _: () = assert!(CTRL2_VALUE & 0x0F == ODR_INDEX && CTRL3_VALUE & 0x0F == ODR_INDEX);
 
-/// Converts a window from the milliseconds a person reasons about into the
-/// sample count the No-Motion engine expects, rounded to nearest.
-const fn odr_samples(ms: u16) -> u16 {
-    ((ms as u32 * ODR_HZ_X10 + 5_000) / 10_000) as u16
+/// Converts a window from milliseconds into the sample count the No-Motion engine expects.
+/// The rate is a parameter because the part's two ODR tables do not agree: with both sensors
+/// on the gyro sets the rate for both, alone the accelerometer follows its own oscillator. A
+/// window converted through the wrong table is a window of the wrong length.
+const fn odr_samples(ms: u16, odr_hz_x10: u32) -> u16 {
+    ((ms as u32 * odr_hz_x10 + 5_000) / 10_000) as u16
 }
 
 // Motion parameter values, datasheet Table 32; byte positions from Table 34.
 // NoMotionX/Y/ZThr carry five fractional bits of 0.03125 g, so 0x08 is 0.25 g
 // of slope; the windows count accel samples.
 const NO_MOTION_THR: u8 = 0x08;
-const NO_MOTION_WINDOW: u8 = odr_samples(80) as u8;
+const NO_MOTION_WINDOW_MS: u16 = 80;
 /// Bits 0-2 enable the AnyMotion axes, 4-6 the NoMotion axes, and bit 7 picks
 /// whether the engine ANDs or ORs the enabled axes. Only NoMotion is armed,
 /// and ANDing all three is the stricter reading of a still device: every axis
@@ -107,10 +110,9 @@ const MOTION_MODE_CTRL: u8 = 0b1111_0111;
 // any deviation at all, which is exactly why the engine is left disarmed and a
 // test pins it there.
 const ANY_MOTION_THR: u8 = 0x00;
-const ANY_MOTION_WINDOW: u8 = odr_samples(80) as u8;
+const ANY_MOTION_WINDOW_MS: u16 = 80;
 const SIG_MOTION_WAIT_WINDOW: u16 = 0;
 const SIG_MOTION_CONFIRM_WINDOW: u16 = 0;
-const _: () = assert!(NO_MOTION_WINDOW == 72 && ANY_MOTION_WINDOW == 72);
 
 const ACCEL_LSB_PER_G: i32 = 16_384 >> ((CTRL2_VALUE >> 4) & 0x07);
 const GYRO_LSB_PER_DPS: i32 = 2_048 >> ((CTRL3_VALUE >> 4) & 0x07);
@@ -119,6 +121,71 @@ const _: () = assert!(CTRL2_VALUE & 0x80 == 0 && CTRL3_VALUE & 0x80 == 0);
 const SCALE: MotionScale = MotionScale::from_ranges(ACCEL_LSB_PER_G, GYRO_LSB_PER_DPS);
 const DATA_BYTES: usize = 12;
 const DATA_READY_MASK: u8 = 0x03;
+
+/// One configuration's register set and the conversion that goes with it. The scale
+/// lives here rather than in a `const` because it is derived from the full-scale
+/// fields in CTRL2 and CTRL3.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SensorConfig {
+    ctrl2: u8,
+    ctrl3: u8,
+    ctrl5: u8,
+    ctrl7: u8,
+    odr_hz_x10: u32,
+    scale: MotionScale,
+}
+
+/// The register set a configuration needs, or `None` when this driver cannot reach it without
+/// guessing. Only the configurations that stay on the bring-up arrangement are spelled out:
+///
+/// - `WakeDetector` needs the accelerometer alone, which changes both the power-mode fields in
+///   CTRL7 and which of the part's two ODR tables applies; the datasheet publishes both
+///   tables' frequencies but not the index each uses, and the engine windows below are
+///   wrong by exactly that much if guessed.
+/// - `Fifo` needs the FIFO, whose registers start at the same 0x0B this driver writes
+///   motion calibration through — a sequencing problem, not a register write.
+///
+/// Refusing is the point: each is reachable by adding one encoding with the register table
+/// open, none by writing a plausible byte.
+const fn config_for(config: MotionConfig) -> Option<SensorConfig> {
+    let both_sensors = SensorConfig {
+        ctrl2: CTRL2_VALUE,
+        ctrl3: CTRL3_VALUE,
+        ctrl5: CTRL5_VALUE,
+        ctrl7: CTRL7_VALUE,
+        odr_hz_x10: ODR_HZ_X10,
+        scale: SCALE,
+    };
+
+    match config {
+        MotionConfig::PolledRegisters => Some(both_sensors),
+        // Same axes and rate, only the filters come on — a different stream
+        // from the one the core recognizer's bars were calibrated against.
+        MotionConfig::FilteredRegisters => Some(SensorConfig {
+            ctrl5: 0x11,
+            ..both_sensors
+        }),
+        MotionConfig::WakeDetector | MotionConfig::Fifo => None,
+    }
+}
+
+/// Every configuration at which this driver can leave the chip, low to high. A probe
+/// walks this rather than a ladder, so cells it cannot measure come out unreachable rather
+/// than carrying a number nobody measured.
+///
+/// Off is absent: it is honoured by not polling, which is the consumer's side, and
+/// configuring the part *for* off is a separate question.
+pub const SUPPORTED_CONFIGS: &[MotionConfig] = &[
+    MotionConfig::PolledRegisters,
+    MotionConfig::FilteredRegisters,
+];
+
+const _: () = {
+    assert!(config_for(MotionConfig::PolledRegisters).is_some());
+    assert!(config_for(MotionConfig::FilteredRegisters).is_some());
+    assert!(config_for(MotionConfig::WakeDetector).is_none());
+    assert!(config_for(MotionConfig::Fifo).is_none());
+};
 
 /// What this part contributes on its own: raw telemetry plus the No-Motion
 /// engine it arms. Everything else the product reports is derived core-side
@@ -138,6 +205,10 @@ pub enum Qmi8658Error<E> {
     /// be trusted: the reset byte was rejected or the chip is not responding.
     ResetIncomplete,
     EngineConfig,
+    /// The demanded configuration needs a register encoding this driver does not carry.
+    /// Answering it with a plausible byte would put the part into a mode nobody has read a
+    /// datasheet row for.
+    UnsupportedConfig(MotionConfig),
 }
 
 impl<E> From<E> for Qmi8658Error<E> {
@@ -150,6 +221,10 @@ pub struct Qmi8658<D> {
     i2c: D,
     addr: u8,
     initialized: bool,
+    /// The configuration the part is running, and its conversion. Runtime because the
+    /// scale is derived from the full-scale fields.
+    config: MotionConfig,
+    scale: MotionScale,
     last_sample_ms: Option<u64>,
     last_sample: Option<MotionSample>,
     yaw_deg_x10: i16,
@@ -157,34 +232,93 @@ pub struct Qmi8658<D> {
     /// rising edge instead of once per poll it holds.
     last_status: u8,
     error_logged: bool,
+    /// Bus transactions this part has issued, so a cost report can state a measured rate
+    /// instead of counting what the driver was written to do.
+    transactions: u32,
 }
 
 impl<D: I2c> Qmi8658<D> {
+    /// Boots at [`MotionConfig::PolledRegisters`], the configuration the board's bring-up
+    /// validated. A board that wants a different one says so with [`Self::init_at`] before
+    /// its first poll.
     pub const fn new(i2c: D, addr: u8) -> Self {
+        let mut scale = SCALE;
+        if let Some(config) = config_for(MotionConfig::PolledRegisters) {
+            scale = config.scale;
+        }
         Self {
             i2c,
             addr,
             initialized: false,
+            config: MotionConfig::PolledRegisters,
+            scale,
             last_sample_ms: None,
             last_sample: None,
             yaw_deg_x10: 0,
             last_status: 0,
             error_logged: false,
+            transactions: 0,
         }
     }
 
+    /// How many bus transactions this part has issued since boot.
+    pub const fn transactions(&self) -> u32 {
+        self.transactions
+    }
+
+    /// The configuration the part is running right now.
+    pub const fn config(&self) -> MotionConfig {
+        self.config
+    }
+
     pub fn init(&mut self, delay: &mut impl DelayNs) -> Result<(), Qmi8658Error<D::Error>> {
-        if self.initialized {
+        let config = self.config;
+        self.init_at(config, delay)
+    }
+
+    pub fn init_at(
+        &mut self,
+        config: MotionConfig,
+        delay: &mut impl DelayNs,
+    ) -> Result<(), Qmi8658Error<D::Error>> {
+        let Some(register_set) = config_for(config) else {
+            return Err(Qmi8658Error::UnsupportedConfig(config));
+        };
+        if self.initialized && self.config == config {
             return Ok(());
         }
         self.validate_id()?;
-        self.i2c
-            .write(self.addr, &[REG_RESET, RESET_VALUE])
+        self.write(&[REG_RESET, RESET_VALUE])
             .map_err(Qmi8658Error::Bus)?;
         self.await_reset(delay)?;
-        self.configure(delay)?;
+        self.configure(&register_set, delay)?;
+        self.config = config;
+        self.scale = register_set.scale;
         self.initialized = true;
+        // The recognizer's peaks, yaw integral and stillness edge all describe the stream
+        // that was running before the switch, so carrying them across makes the core read
+        // the gap as motion.
+        self.last_sample = None;
+        self.last_sample_ms = None;
+        self.yaw_deg_x10 = 0;
+        self.last_status = 0;
         Ok(())
+    }
+
+    /// Reconfigure a part that is already running, under the same rules as `init_at`: a
+    /// sample straddling the switch is discarded rather than converted. Returns the
+    /// configuration unchanged when the part was never initialized, so a board that failed
+    /// at boot and recovers through the poll side lands on the demanded configuration.
+    pub fn set_config(
+        &mut self,
+        config: MotionConfig,
+        delay: &mut impl DelayNs,
+    ) -> Result<(), Qmi8658Error<D::Error>> {
+        if self.initialized && self.config == config {
+            return Ok(());
+        }
+        self.initialized = false;
+        self.init_at(config, delay)
     }
 
     /// Datasheet 5.9 and 7.4: 0x4D reads 0x80 once the reset process finished,
@@ -244,7 +378,8 @@ impl<D: I2c> Qmi8658<D> {
             .last_sample_ms
             .map(|previous| now_ms.saturating_sub(previous))
             .unwrap_or_default();
-        let sample = MotionSample::from_raw(raw_accel, raw_gyro, SCALE, status, self.yaw_deg_x10);
+        let sample =
+            MotionSample::from_raw(raw_accel, raw_gyro, self.scale, status, self.yaw_deg_x10);
         self.yaw_deg_x10 = integrate_yaw(self.yaw_deg_x10, sample.gyro_dps_x10[2], elapsed_ms);
         self.last_sample_ms = Some(now_ms);
         self.last_sample = Some(sample);
@@ -262,22 +397,30 @@ impl<D: I2c> Qmi8658<D> {
         }
     }
 
-    fn configure(&mut self, delay: &mut impl DelayNs) -> Result<(), Qmi8658Error<D::Error>> {
+    fn configure(
+        &mut self,
+        config: &SensorConfig,
+        delay: &mut impl DelayNs,
+    ) -> Result<(), Qmi8658Error<D::Error>> {
         let bus = |error: D::Error| Qmi8658Error::Bus(error);
         for (reg, value) in [
             (REG_CTRL1, CTRL1_VALUE),
-            (REG_CTRL2, CTRL2_VALUE),
-            (REG_CTRL3, CTRL3_VALUE),
-            (REG_CTRL5, CTRL5_VALUE),
+            (REG_CTRL2, config.ctrl2),
+            (REG_CTRL3, config.ctrl3),
+            (REG_CTRL5, config.ctrl5),
         ] {
-            self.i2c.write(self.addr, &[reg, value]).map_err(bus)?;
+            self.write(&[reg, value]).map_err(bus)?;
         }
         // The CTRL9 protocol requires both sensors quiet, and the engines only
         // arm once their parameters have landed.
-        self.i2c.write(self.addr, &[REG_CTRL7, 0x00]).map_err(bus)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL8, CTRL8_STATUSINT_HANDSHAKE])
+        self.write(&[REG_CTRL7, 0x00]).map_err(bus)?;
+        self.write(&[REG_CTRL8, CTRL8_STATUSINT_HANDSHAKE])
             .map_err(bus)?;
+
+        // The windows count samples the part actually produces, so they follow the selected
+        // rate.
+        let no_motion_window = odr_samples(NO_MOTION_WINDOW_MS, config.odr_hz_x10) as u8;
+        let any_motion_window = odr_samples(ANY_MOTION_WINDOW_MS, config.odr_hz_x10) as u8;
 
         // Motion, datasheet Table 34.
         let motion_first = [
@@ -291,8 +434,8 @@ impl<D: I2c> Qmi8658<D> {
             CAL_SET_FIRST,
         ];
         let motion_second = [
-            ANY_MOTION_WINDOW,
-            NO_MOTION_WINDOW,
+            any_motion_window,
+            no_motion_window,
             SIG_MOTION_WAIT_WINDOW as u8,
             (SIG_MOTION_WAIT_WINDOW >> 8) as u8,
             SIG_MOTION_CONFIRM_WINDOW as u8,
@@ -303,12 +446,8 @@ impl<D: I2c> Qmi8658<D> {
         self.submit_calibration(&motion_first, CTRL_CMD_CONFIGURE_MOTION, delay)?;
         self.submit_calibration(&motion_second, CTRL_CMD_CONFIGURE_MOTION, delay)?;
 
-        self.i2c
-            .write(self.addr, &[REG_CTRL8, CTRL8_VALUE])
-            .map_err(bus)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL7, CTRL7_VALUE])
-            .map_err(bus)?;
+        self.write(&[REG_CTRL8, CTRL8_VALUE]).map_err(bus)?;
+        self.write(&[REG_CTRL7, config.ctrl7]).map_err(bus)?;
         Ok(())
     }
 
@@ -321,14 +460,10 @@ impl<D: I2c> Qmi8658<D> {
         let bus = |error: D::Error| Qmi8658Error::Bus(error);
         let mut burst = [REG_CAL1_L; 9];
         burst[1..].copy_from_slice(parameters);
-        self.i2c.write(self.addr, &burst).map_err(bus)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL9, command])
-            .map_err(bus)?;
+        self.write(&burst).map_err(bus)?;
+        self.write(&[REG_CTRL9, command]).map_err(bus)?;
         self.await_cmd_done(delay)?;
-        self.i2c
-            .write(self.addr, &[REG_CTRL9, CTRL_CMD_ACK])
-            .map_err(bus)?;
+        self.write(&[REG_CTRL9, CTRL_CMD_ACK]).map_err(bus)?;
         Ok(())
     }
 
@@ -356,6 +491,12 @@ impl<D: I2c> Qmi8658<D> {
         Ok(status)
     }
 
+    /// One register write, counted.
+    fn write(&mut self, bytes: &[u8]) -> Result<(), D::Error> {
+        self.transactions = self.transactions.saturating_add(1);
+        self.i2c.write(self.addr, bytes)
+    }
+
     fn read_reg(&mut self, reg: u8) -> Result<u8, D::Error> {
         let mut value = [0u8; 1];
         self.read_bytes(reg, &mut value)?;
@@ -363,6 +504,7 @@ impl<D: I2c> Qmi8658<D> {
     }
 
     fn read_bytes(&mut self, reg: u8, out: &mut [u8]) -> Result<(), D::Error> {
+        self.transactions = self.transactions.saturating_add(1);
         self.i2c.write_read(self.addr, &[reg], out)
     }
 }
@@ -373,6 +515,19 @@ const CAL_SET_FIRST: u8 = 0x01;
 const CAL_SET_SECOND: u8 = 0x02;
 
 impl<D: I2c> MotionSource for Qmi8658<D> {
+    /// No delay, so no switch. Already being in `wanted` still answers, because that part is
+    /// true of a part that was brought up here.
+    fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig> {
+        match wanted {
+            None => Ok(None),
+            Some(wanted) if self.config == wanted && self.initialized => Ok(Some(wanted)),
+            Some(wanted) => Err(wanted),
+        }
+    }
+
     fn sample(&mut self, now_ms: u64) -> Result<Option<MotionReading>, MotionError> {
         let result = self.read_sample(now_ms);
         if let Err(error) = result {
@@ -384,6 +539,57 @@ impl<D: I2c> MotionSource for Qmi8658<D> {
         }
         self.error_logged = false;
         result
+    }
+
+    // `configure_for` is not overridden here. This driver holds no delay, so it cannot
+    // complete a switch, and the trait has no default to fall back on precisely so that a
+    // driver asked to switch and unable to would have to say so. `RecoverableQmi` is what
+    // production configures through, because it carries the delay this one lacks.
+}
+
+impl<D: I2c> Qmi8658<D> {
+    /// Enters `wanted` without the soft reset a full bring-up needs.
+    ///
+    /// The reset gives a part that has never run a clean start; it is not part of changing
+    /// configuration. [`Self::configure`] already quiets the part before writing and restores
+    /// it afterwards, so resetting on top of that only adds a window in which the part is
+    /// deaf. Reconfiguring a running part stays destructive either way — the recognizer's
+    /// baseline does not survive a change of filtering or scale — but the deafness does not
+    /// have to be part of the price.
+    pub fn enter(
+        &mut self,
+        wanted: MotionConfig,
+        delay: &mut impl DelayNs,
+    ) -> Result<MotionConfig, MotionConfig> {
+        // Being in `wanted` is only the answer if the part is actually running in it. `config`
+        // is the target the driver last wrote, so before the first bring-up it already reads as
+        // `PolledRegisters` while nothing has been brought up at all — short-circuiting there
+        // leaves a silent part that every later poll reads as "no new data".
+        if self.config == wanted && self.initialized {
+            return Ok(wanted);
+        }
+        let Some(register_set) = config_for(wanted) else {
+            return Err(wanted);
+        };
+        if !self.initialized {
+            // Never came up, so there is no baseline to preserve and no state to lose: a full
+            // bring-up is the honest way to reach a configuration the part never held.
+            return self
+                .set_config(wanted, delay)
+                .map_err(|_| wanted)
+                .map(|()| wanted);
+        }
+        self.configure(&register_set, delay).map_err(|_| wanted)?;
+        self.config = wanted;
+        self.scale = register_set.scale;
+        // The recognizer's peaks, yaw integral and stillness edge all describe the stream
+        // that was running before the switch, so carrying them across makes the core read the
+        // gap as motion.
+        self.last_sample = None;
+        self.last_sample_ms = None;
+        self.yaw_deg_x10 = 0;
+        self.last_status = 0;
+        Ok(wanted)
     }
 }
 
@@ -411,6 +617,18 @@ impl<D, Del> RecoverableQmi<D, Del> {
 }
 
 impl<D: I2c, Del: DelayNs> MotionSource for RecoverableQmi<D, Del> {
+    /// This is the wrapper production configures through: it already holds the delay the
+    /// inner driver refuses to switch without.
+    fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig> {
+        match wanted {
+            None => Ok(None),
+            Some(wanted) => self.inner.enter(wanted, &mut self.delay).map(Some),
+        }
+    }
+
     fn sample(&mut self, now_ms: u64) -> Result<Option<MotionReading>, MotionError> {
         let first = self.inner.sample(now_ms);
         if !matches!(first, Err(MotionError::NotReady)) {
@@ -605,6 +823,299 @@ mod tests {
     }
 
     #[test]
+    fn the_supported_list_is_exactly_what_can_be_configured() {
+        for config in SUPPORTED_CONFIGS {
+            assert!(
+                config_for(*config).is_some(),
+                "{config:?} is offered as configurable and has no encoding"
+            );
+        }
+        // Everything else on the ladder is refused, so the two lists cannot drift apart
+        // silently.
+        for config in [MotionConfig::WakeDetector, MotionConfig::Fifo] {
+            assert!(
+                !SUPPORTED_CONFIGS.contains(&config),
+                "{config:?} is not configurable and must not be walked"
+            );
+        }
+    }
+
+    #[test]
+    fn a_poll_reports_the_bus_traffic_it_actually_caused() {
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+
+        let before = driver.transactions();
+        let _ = driver.read_sample(1_000);
+        let first_poll = driver.transactions() - before;
+
+        let _ = driver.read_sample(1_020);
+        let second_poll = driver.transactions() - before - first_poll;
+
+        assert!(
+            first_poll > 0,
+            "a poll that reaches the bus must be counted"
+        );
+        assert_eq!(
+            first_poll, second_poll,
+            "the same poll costs the same twice over, so a cost report can divide by the cadence"
+        );
+    }
+
+    #[test]
+    fn bring_up_traffic_is_counted_separately_from_polling() {
+        // Per-read only: a cost report divides the delta over a window by the window, so a
+        // counter shared with the polls would show up as a steady rate.
+        let mut driver = driver(MockI2c::new());
+        let before = driver.transactions();
+        settle(&mut driver);
+        let after_bring_up = driver.transactions() - before;
+        assert!(after_bring_up > 0, "bringing the part up talks to it");
+
+        let polls = 4u32;
+        for index in 0..polls {
+            let _ = driver.read_sample(u64::from(index) * 20);
+        }
+        let polling = driver.transactions() - before - after_bring_up;
+        assert_eq!(polling % polls, 0, "four identical polls");
+    }
+
+    #[test]
+    fn a_configuration_this_driver_cannot_reach_is_refused_before_anything_is_written() {
+        for config in [MotionConfig::WakeDetector, MotionConfig::Fifo] {
+            let mut driver = driver(MockI2c::new());
+            let mut delay = NoDelay;
+            assert!(
+                matches!(
+                    driver.init_at(config, &mut delay),
+                    Err(Qmi8658Error::UnsupportedConfig(wanted)) if wanted == config
+                ),
+                "{config:?} must be refused, not approximated"
+            );
+            assert!(
+                driver.i2c.state.history.is_empty(),
+                "{config:?} must not reach the bus"
+            );
+            assert_eq!(driver.config(), MotionConfig::PolledRegisters);
+        }
+    }
+
+    #[test]
+    fn the_registers_configuration_reproduces_the_bring_up_configuration_byte_for_byte() {
+        let Some(config) = config_for(MotionConfig::PolledRegisters) else {
+            panic!("PolledRegisters is the configuration the board validated");
+        };
+        assert_eq!(config.ctrl2, CTRL2_VALUE);
+        assert_eq!(config.ctrl3, CTRL3_VALUE);
+        assert_eq!(config.ctrl5, CTRL5_VALUE);
+        assert_eq!(config.ctrl7, CTRL7_VALUE);
+        assert_eq!(config.scale, SCALE);
+    }
+
+    #[test]
+    fn the_filters_configuration_keeps_the_axes_and_the_rate_and_adds_the_filters() {
+        let plain = config_for(MotionConfig::PolledRegisters).expect("PolledRegisters");
+        let filtered = config_for(MotionConfig::FilteredRegisters).expect("FilteredRegisters");
+
+        assert_eq!(filtered.ctrl2, plain.ctrl2);
+        assert_eq!(filtered.ctrl3, plain.ctrl3);
+        assert_eq!(filtered.odr_hz_x10, plain.odr_hz_x10);
+        assert_eq!(filtered.scale, plain.scale);
+        assert_eq!(plain.ctrl5 & 1, 0, "accelerometer filter off below");
+        assert_eq!(
+            filtered.ctrl5 & 1,
+            1,
+            "accelerometer filter on at FilteredRegisters"
+        );
+        assert_eq!(
+            filtered.ctrl5 & 1 << 4,
+            1 << 4,
+            "gyro filter on at FilteredRegisters"
+        );
+    }
+
+    #[test]
+    fn entering_a_configuration_leaves_a_part_that_answers_polls() {
+        // The assertion that matters is not which registers were written but whether the part
+        // still produces afterwards. A switch that writes the table and returns before the
+        // part starts is silent, and every poll after it reads "no new data" — which looks
+        // like a configuration that costs almost nothing rather than one that had not landed.
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+        let mut delay = NoDelay;
+
+        driver
+            .enter(MotionConfig::FilteredRegisters, &mut delay)
+            .expect("FilteredRegisters is reachable");
+
+        // The mock reports data ready continuously, so reaching the read at all is the
+        // assertion: `enter` returning means the part was polled, not merely written to.
+        assert!(
+            driver.read_sample(1_000).is_ok(),
+            "a part left quiet by a configuration switch reads as free, not as misconfigured"
+        );
+    }
+
+    #[test]
+    fn entering_a_configuration_does_not_soft_reset_the_part() {
+        // The distinction `enter` exists for. `set_config` resets because it must also bring
+        // up a part that never ran; a change of configuration does not need that, and the
+        // reset is a window in which the part is deaf and its identity is re-established.
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+        let resets_before = driver.i2c.state.control_writes(REG_RESET).len();
+
+        let mut delay = NoDelay;
+        driver
+            .enter(MotionConfig::FilteredRegisters, &mut delay)
+            .expect("FilteredRegisters is reachable");
+
+        assert_eq!(
+            driver.i2c.state.control_writes(REG_RESET).len(),
+            resets_before,
+            "a configuration change paid for a soft reset the part did not need"
+        );
+        assert_eq!(
+            driver.i2c.state.registers[register(REG_CTRL5)],
+            0x11,
+            "and the configuration it did apply still has to land"
+        );
+        assert_eq!(driver.config(), MotionConfig::FilteredRegisters);
+    }
+
+    #[test]
+    fn entering_a_configuration_drops_the_state_that_described_the_stream_before_it() {
+        // Same reason `init_at` clears it, reached the other way: the recognizer's baseline
+        // describes the stream that was running, so carrying it across makes the core read the
+        // gap as motion.
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+        driver.last_sample = Some(MotionSample::from_raw([1, 2, 3], [4, 5, 6], SCALE, 0, 0));
+        driver.last_sample_ms = Some(1_000);
+        driver.yaw_deg_x10 = 900;
+        driver.last_status = STATUS1_NO_MOTION;
+
+        let mut delay = NoDelay;
+        driver
+            .enter(MotionConfig::FilteredRegisters, &mut delay)
+            .expect("FilteredRegisters is reachable");
+
+        assert!(driver.last_sample.is_none());
+        assert_eq!(driver.last_sample_ms, None);
+        assert_eq!(driver.yaw_deg_x10, 0);
+        assert_eq!(driver.last_status, 0);
+    }
+
+    #[test]
+    fn entering_the_configuration_the_part_is_already_in_writes_nothing() {
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+        let writes_before = writes(&driver.i2c.state.history).len();
+
+        let mut delay = NoDelay;
+        driver
+            .enter(MotionConfig::PolledRegisters, &mut delay)
+            .expect("already in it");
+
+        assert_eq!(
+            writes(&driver.i2c.state.history).len(),
+            writes_before,
+            "a demand that resolves back to the boot configuration must not cost a switch"
+        );
+    }
+
+    #[test]
+    fn entering_the_boot_configuration_of_a_part_that_never_ran_still_brings_it_up() {
+        // The target the driver was constructed with is already `PolledRegisters` before
+        // anything has been written. Reading that as "already there" returns success without
+        // bringing the part up, and the first grid of a measurement then reads as a
+        // configuration that costs almost nothing.
+        let mut driver = driver(MockI2c::new());
+        assert!(
+            !driver.initialized,
+            "the driver starts before the part has been brought up"
+        );
+
+        let mut delay = NoDelay;
+        driver
+            .enter(MotionConfig::PolledRegisters, &mut delay)
+            .expect("the configuration it was constructed for is reachable");
+
+        assert!(
+            driver.initialized,
+            "matching the target configuration is not the same as running in it"
+        );
+        assert!(driver.read_sample(1_000).is_ok());
+    }
+
+    #[test]
+    fn switching_configuration_takes_effect_on_the_part_and_in_what_the_driver_reports() {
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+        let mut delay = NoDelay;
+        driver
+            .set_config(MotionConfig::FilteredRegisters, &mut delay)
+            .expect("FilteredRegisters is reachable");
+
+        assert_eq!(driver.config(), MotionConfig::FilteredRegisters);
+        assert_eq!(driver.i2c.state.registers[register(REG_CTRL2)], CTRL2_VALUE);
+        assert_eq!(driver.i2c.state.registers[register(REG_CTRL5)], 0x11);
+    }
+
+    #[test]
+    fn a_switch_drops_the_state_that_described_the_stream_before_it() {
+        let mut driver = driver(MockI2c::new());
+        settle(&mut driver);
+        driver.last_sample = Some(MotionSample::from_raw([1, 2, 3], [4, 5, 6], SCALE, 0, 0));
+        driver.last_sample_ms = Some(1_000);
+        driver.yaw_deg_x10 = 900;
+        driver.last_status = STATUS1_NO_MOTION;
+
+        let mut delay = NoDelay;
+        driver
+            .set_config(MotionConfig::FilteredRegisters, &mut delay)
+            .expect("FilteredRegisters is reachable");
+
+        // The core's recognizer compares each sample against the last one and reads the
+        // gap as a peak, so carrying any of this across the switch turns a configuration
+        // change into a knock.
+        assert_eq!(driver.last_sample, None);
+        assert_eq!(driver.last_sample_ms, None);
+        assert_eq!(driver.yaw_deg_x10, 0);
+        assert_eq!(driver.last_status, 0);
+    }
+
+    #[test]
+    fn an_engine_window_follows_the_rate_the_part_was_told_to_run_at() {
+        // The window counts samples the part actually produces, so a part running four
+        // times slower needs a quarter as many: the engine reports stillness four times as
+        // often as it was asked to otherwise.
+        assert_eq!(odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10), 72);
+        assert_eq!(odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10 / 4), 18);
+        assert_eq!(odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10 * 2), 143);
+    }
+
+    #[test]
+    fn a_recovery_after_a_failed_boot_lands_on_the_demanded_configuration() {
+        let mut i2c = MockI2c::new();
+        i2c.state.completes_reset = false;
+        let mut driver = driver(i2c);
+        let mut delay = NoDelay;
+        assert!(
+            driver
+                .init_at(MotionConfig::FilteredRegisters, &mut delay)
+                .is_err()
+        );
+
+        driver.i2c.state.completes_reset = true;
+        driver
+            .init_at(MotionConfig::FilteredRegisters, &mut delay)
+            .expect("the part answers this time");
+
+        assert_eq!(driver.config(), MotionConfig::FilteredRegisters);
+    }
+
+    #[test]
     fn the_accelerometer_low_pass_is_disabled_and_gyro_filter_is_not() {
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
@@ -664,8 +1175,8 @@ mod tests {
                 // (80 ms = 72 samples each), SigMotionWait 0x0000, SigMotionConfirm
                 // 0x0000, NA, 2nd command.
                 [
-                    ANY_MOTION_WINDOW,
-                    NO_MOTION_WINDOW,
+                    odr_samples(ANY_MOTION_WINDOW_MS, ODR_HZ_X10) as u8,
+                    odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10) as u8,
                     SIG_MOTION_WAIT_WINDOW as u8,
                     (SIG_MOTION_WAIT_WINDOW >> 8) as u8,
                     SIG_MOTION_CONFIRM_WINDOW as u8,

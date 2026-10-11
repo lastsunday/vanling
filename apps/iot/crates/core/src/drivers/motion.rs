@@ -1,4 +1,5 @@
 use super::input::{InputEvent, InputSource};
+use crate::config::MotionConfig;
 use libm::{atan2f, sqrtf};
 
 mod event;
@@ -183,6 +184,22 @@ pub trait MotionSource {
     /// `Ok(None)` means the sensor had no new frame, which is ordinary at this
     /// cadence and must not be reported as a fault.
     fn sample(&mut self, now_ms: u64) -> Result<Option<MotionReading>, MotionError>;
+
+    /// Leaves the part in `wanted`, answering what it is now in, or reporting the
+    /// configuration it cannot enter.
+    ///
+    /// No delay is passed because none is the caller's to give: waiting out a part's reset is
+    /// the part's business, and a driver with no way to wait has no way to switch. Such a
+    /// driver answers `Err` for a configuration it is not already in, which is the truth
+    /// rather than a reconfiguration it would silently skip.
+    ///
+    /// The switch is destructive on a part that has to reset to change configuration: it
+    /// loses whatever was in flight and drops whatever baseline it had accumulated. Being
+    /// already in `wanted` is therefore success and not work.
+    fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig>;
 }
 
 pub struct MotionInput<S> {
@@ -204,6 +221,13 @@ impl<S> MotionInput<S> {
 }
 
 impl<S: MotionSource> InputSource for MotionInput<S> {
+    fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig> {
+        self.source.configure_for(wanted)
+    }
+
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent> {
         let reading = match self.source.sample(now_ms) {
             Ok(Some(reading)) => reading,
@@ -259,6 +283,13 @@ mod tests {
     }
 
     impl MotionSource for Scripted {
+        fn configure_for(
+            &mut self,
+            wanted: Option<MotionConfig>,
+        ) -> Result<Option<MotionConfig>, MotionConfig> {
+            Ok(wanted)
+        }
+
         fn sample(&mut self, _now_ms: u64) -> Result<Option<MotionReading>, MotionError> {
             let frame = self.frames[self.index % self.frames.len()];
             self.index += 1;

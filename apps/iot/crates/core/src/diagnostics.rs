@@ -4,6 +4,7 @@
 //! [`DiagnosticsSink`]s. The source stays the central `DeviceState` and a sink
 //! only consumes, so the panel today can be joined by log/HTTP/WebSocket sinks.
 
+use crate::demand::EffectiveDemand;
 use crate::drivers::audio::AudioEnvelope;
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use crate::drivers::light::MAX_LIGHTS;
@@ -100,9 +101,12 @@ pub struct PlaybackDiagnostics {
 /// The on-surface diagnostics payload: touch-path counters/readout, display
 /// page, motion sample, and one [`LightSnapshot`] per light surface slot,
 /// fused so one diff carries the corner digits and the current page data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Diagnostics {
     pub touch: TouchDiagnostics,
+    /// What the page asks of each data plane, so a cost report can be read
+    /// against what was being asked for when it was spent.
+    pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: DisplayPage,
     pub motion_enabled: bool,

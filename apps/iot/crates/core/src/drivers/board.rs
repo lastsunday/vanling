@@ -1,3 +1,4 @@
+use crate::config::MotionConfig;
 use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::light::RgbLight;
@@ -50,6 +51,16 @@ pub trait HasMotion: Board {
     /// unconditionally, so a capability the stack lacks is simply never raised.
     /// A board with no accelerometer returns `MotionCapabilities::EMPTY`.
     fn motion_capabilities(&self) -> MotionCapabilities;
+
+    /// What this board's motion part can be left in, for the configurator to choose from.
+    ///
+    /// Declared here rather than asked of the driver because the configurator runs where
+    /// the demand is produced, not where the part is polled. A board with no accelerometer
+    /// returns an empty slice, which makes every motion demand a refusal rather than a
+    /// configuration it cannot honour.
+    fn motion_configurations(&self) -> &'static [MotionConfig] {
+        &[]
+    }
 }
 
 /// Board providing an audio capture source.
@@ -104,6 +115,7 @@ pub trait HasPlayback: Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::demand::PlaneKey;
     use crate::drivers::input::{BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator};
     use crate::drivers::light::{Fill, Rgb};
     use crate::drivers::playback::{Recovery, Sound, SpeakerFault};
@@ -234,6 +246,7 @@ mod tests {
             playback: None,
             input: Some(vec![PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,

@@ -30,6 +30,10 @@ pub trait RgbLight {
     /// Drives a backlight to a percentage; surfaces without one keep the
     /// default no-op.
     fn set_backlight(&mut self, _level_pct: u8) {}
+    /// How bright the panel is allowed to get, as a ceiling on every `set_backlight` that
+    /// follows. A knob on the surface rather than a parameter per call, because the calls
+    /// arrive from an animation loop that has no business knowing about it.
+    fn set_backlight_ceiling(&mut self, _level_pct: u8) {}
 
     /// Minimum per-channel delta that warrants a repaint; slow-refresh
     /// surfaces return a step > 0 to skip imperceptible drift.

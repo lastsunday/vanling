@@ -3,8 +3,8 @@ title = "Development Documentation"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "d694825c805acf02f5d66f5564a58f7f0efc5cc6"
-translated_at = "2026-10-01T07:37:04Z"
+source_file_hash = "92116a6527d84006574c8fcb866cc7b4b0a5e627"
+translated_at = "2026-10-06T13:18:00Z"
 +++
 
 # Development Documentation
@@ -42,6 +42,7 @@ Debugging and diagnostics documentation.
 
 Development documentation for the Vanling ESP32 firmware (`apps/iot`).
 
+- [Layering and Composition](@/development/iot/architecture.en.md) — layering, the three composition axes, the two demand axes and their transport, implementation order
 - [Cargo Feature Criteria and Cohesion](@/development/iot/features.en.md) — hard/soft feature definitions, introduction criteria, cohesion rules
 - [Hardware-free Emulation and Regression Smoke](@/development/iot/emulation.en.md) — host harness + esp-emu, decision matrix
 

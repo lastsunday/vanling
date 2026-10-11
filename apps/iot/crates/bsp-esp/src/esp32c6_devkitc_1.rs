@@ -4,6 +4,7 @@ use esp_hal::rmt::Rmt;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal_smartled::buffer_size;
+use iot_core::demand::PlaneKey;
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
 use iot_core::drivers::motion::MotionCapabilities;
@@ -75,6 +76,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
         self.button.take().map(|button| {
             vec![PollEntry::new(
                 0,
+                PlaneKey::INTERACTION,
                 Box::new(ButtonScanner::new(button)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,

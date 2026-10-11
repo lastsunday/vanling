@@ -628,6 +628,93 @@ impl CaptureWatchdog {
     }
 }
 
+/// A capture chain that can be taken off the wire and put back.
+///
+/// Split out as a trait because both operations need the peripheral and the host
+/// implements them on a value it can build — the only reason any of this is testable, since
+/// the concrete chain is an I2S DMA transfer.
+pub trait Armed: Sized {
+    /// The chain off the wire but still assembled: the codec side and the ring.
+    type Parked;
+
+    /// Takes the chain down, returning what is needed to put it back. Costs one descriptor
+    /// of audio.
+    fn stop(self) -> Self::Parked;
+
+    /// Puts a parked chain back on the wire. The error hands the parked chain back rather
+    /// than swallowing it, so a failure that still owns a ring does not lose it.
+    fn read(parked: Self::Parked) -> Result<Self, Self::Parked>;
+}
+
+/// Where a capture's chain is.
+///
+/// **The invariant: nothing stops a running chain except [`Self::take_to_arm`].**
+/// That is one method rather than a convention because losing this chain is
+/// unrecoverable and silent — the source keeps answering, with silence.
+#[derive(Debug)]
+pub struct Chain<A: Armed> {
+    running: Option<A>,
+    parked: Option<A::Parked>,
+}
+
+impl<A: Armed> Chain<A> {
+    pub const fn new(running: A) -> Self {
+        Self {
+            running: Some(running),
+            parked: None,
+        }
+    }
+
+    /// Takes the chain off the wire, because the demand stopped wanting it.
+    /// `false` when there was nothing on it to take.
+    pub fn park(&mut self) -> bool {
+        match self.running.take() {
+            Some(running) => {
+                self.parked = Some(running.stop());
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The chain to put back on the wire. `None` means there is nothing to arm, which is a
+    /// fault and not a state: a capture that has never been parked always has a running
+    /// chain.
+    pub fn take_to_arm(&mut self) -> Option<A::Parked> {
+        match self.parked.take() {
+            Some(parked) => Some(parked),
+            None => self.running.take().map(Armed::stop),
+        }
+    }
+
+    pub fn put(&mut self, armed: A) {
+        self.running = Some(armed);
+    }
+
+    pub fn running(&self) -> Option<&A> {
+        self.running.as_ref()
+    }
+
+    pub fn running_mut(&mut self) -> Option<&mut A> {
+        self.running.as_mut()
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.is_some()
+    }
+
+    /// Whether the plane is off on purpose rather than having nothing.
+    pub fn is_parked(&self) -> bool {
+        self.parked.is_some()
+    }
+
+    /// Neither running nor parked: unrecoverable, and terminal. A question rather
+    /// than a state so a caller holding no chain has to ask which of the two it is.
+    pub fn is_lost(&self) -> bool {
+        self.running.is_none() && self.parked.is_none()
+    }
+}
+
 /// Notices a capture whose input loop is not keeping up with the codec, by how
 /// deep the ring is rather than by whether anything was lost.
 ///
@@ -734,6 +821,15 @@ pub struct AudioSample {
 /// condition with no correct response has no business in a retry path.
 pub trait AudioSource {
     fn sample(&mut self, now_ms: u64) -> AudioSample;
+
+    /// Whether the plane is collecting. A source with no peripheral answers `true` and
+    /// ignores the change.
+    fn set_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
+
+    /// Forwarded from the driver for the same reason `set_collecting` is.
+    fn accepts_slower_poll(&self) -> bool {
+        true
+    }
 }
 
 /// Adapts an [`AudioSource`] onto the shared input interface, so a board hands
@@ -756,6 +852,14 @@ impl<S: AudioSource> InputSource for AudioInput<S> {
         // would freeze between speech, and a flat line is the honest reading
         // during silence.
         Some(InputEvent::Audio(self.source.sample(now_ms)))
+    }
+
+    fn set_plane_collecting(&mut self, now_ms: u64, collecting: bool) {
+        self.source.set_collecting(now_ms, collecting);
+    }
+
+    fn accepts_slower_poll(&self) -> bool {
+        self.source.accepts_slower_poll()
     }
 }
 
@@ -845,15 +949,128 @@ impl CornerSweep {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A chain the host can build, so the transitions can be walked without an I2S
+    /// peripheral.
+    #[derive(Debug, PartialEq)]
+    struct FakeChain(u32);
+
+    #[derive(Debug)]
+    struct FakeParked(u32);
+
+    // `READ_REFUSES` makes `Armed::read` refuse, so the unrecoverable branch is walked rather
+    // than assumed.
+    thread_local! {
+        static READ_REFUSES: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+        static STOPS: core::cell::Cell<u32> = const { core::cell::Cell::new(0) };
+    }
+
+    impl Armed for FakeChain {
+        type Parked = FakeParked;
+        fn stop(self) -> FakeParked {
+            STOPS.with(|n| n.set(n.get() + 1));
+            FakeParked(self.0)
+        }
+        fn read(parked: FakeParked) -> Result<Self, FakeParked> {
+            if READ_REFUSES.with(|r| r.get()) {
+                return Err(parked);
+            }
+            Ok(FakeChain(parked.0))
+        }
+    }
+
+    #[test]
+    fn parking_and_arming_returns_the_same_chain() {
+        let mut chain = Chain::new(FakeChain(7));
+        assert!(chain.is_running());
+        assert!(chain.park());
+
+        let armed = chain.take_to_arm().expect("a parked chain is there to arm");
+        chain.put(<FakeChain as Armed>::read(armed).expect("read takes"));
+        assert_eq!(
+            chain.running(),
+            Some(&FakeChain(7)),
+            "the same ring came back"
+        );
+        assert_eq!(
+            STOPS.with(|n| n.get()),
+            1,
+            "stopped exactly once, not dropped"
+        );
+    }
+
+    #[test]
+    fn repairing_a_stalled_capture_never_drops_the_chain() {
+        // The bug this exists for: an earlier `restart` emptied the field itself and left
+        // the arming path to find nothing, dropping the ring and the codec side together.
+        let mut chain = Chain::new(FakeChain(7));
+        // A repair is: arm from whatever is there. Nothing else stops a chain.
+        let armed = chain
+            .take_to_arm()
+            .expect("a running chain is there to arm");
+        assert!(chain.is_lost(), "the chain is in hand, not in the struct");
+        chain.put(<FakeChain as Armed>::read(armed).expect("read takes"));
+        assert!(chain.is_running());
+        assert!(!chain.is_lost());
+    }
+
+    #[test]
+    fn a_capture_with_the_demand_off_is_parked_and_not_lost() {
+        let mut chain = Chain::new(FakeChain(1));
+        assert!(chain.park());
+        assert!(!chain.is_running(), "off the wire");
+        assert!(
+            chain.is_parked(),
+            "and still owned, which is not the same as gone"
+        );
+        assert!(!chain.is_lost());
+    }
+
+    #[test]
+    fn a_re_arm_that_refuses_reports_itself_rather_than_going_quiet() {
+        // The other silent path: `read` failing means no ring to put back, and the caller
+        // is handed what it still owns so it can say so instead of discovering it as
+        // silence.
+        let mut chain = Chain::new(FakeChain(3));
+        let armed = chain.take_to_arm().expect("there to arm");
+        READ_REFUSES.with(|r| r.set(true));
+        let refused = <FakeChain as Armed>::read(armed);
+        READ_REFUSES.with(|r| r.set(false));
+
+        assert!(refused.is_err(), "the peripheral said no");
+        assert!(
+            chain.is_lost(),
+            "so there is nothing left to drive, and the caller has to be told"
+        );
+    }
+
+    #[test]
+    fn parking_nothing_is_not_a_second_park() {
+        let mut chain = Chain::new(FakeChain(1));
+        assert!(chain.park());
+        assert!(!chain.park(), "already off the wire");
+        assert!(
+            chain.is_parked(),
+            "and the one chain that was there is still parked"
+        );
+    }
+
     use alloc::vec::Vec;
 
     struct FakeSource {
         calls: u32,
         amplitude: i16,
         restarts: u16,
+        /// The collecting state last handed down, and how many times it changed.
+        collecting: Option<bool>,
+        switched_at_ms: u64,
     }
 
     impl AudioSource for FakeSource {
+        fn set_collecting(&mut self, now_ms: u64, collecting: bool) {
+            self.collecting = Some(collecting);
+            self.switched_at_ms = now_ms;
+        }
+
         fn sample(&mut self, now_ms: u64) -> AudioSample {
             self.calls += 1;
             let mut samples = [0_i16; SAMPLES_PER_COLUMN as usize];
@@ -875,6 +1092,8 @@ mod tests {
             calls: 0,
             amplitude: 8_000,
             restarts: 7,
+            collecting: None,
+            switched_at_ms: 0,
         });
         // Silence has to keep publishing: a scope that only moved on new samples
         // would freeze between speech instead of showing a flat line.
@@ -898,12 +1117,35 @@ mod tests {
             calls: 0,
             amplitude: 0,
             restarts: 0,
+            collecting: None,
+            switched_at_ms: 0,
         });
         input.poll(1_234);
         assert_eq!(
             input.source.calls, 1,
             "one poll, one read of the capture ring"
         );
+    }
+
+    #[test]
+    fn turning_the_plane_off_reaches_the_source_without_a_poll() {
+        let mut input = AudioInput::new(FakeSource {
+            calls: 0,
+            amplitude: 0,
+            restarts: 0,
+            collecting: None,
+            switched_at_ms: 0,
+        });
+        assert_eq!(input.source.collecting, None);
+
+        // The reason this method exists: a plane that is off is not polled, so a source
+        // that has to *stop* would never hear it from `poll`.
+        input.set_plane_collecting(30_000, false);
+        assert_eq!(input.source.collecting, Some(false));
+        assert_eq!(input.source.calls, 0, "and it took no poll to say so");
+
+        input.set_plane_collecting(30_050, true);
+        assert_eq!(input.source.collecting, Some(true));
     }
 
     /// The ring the S3 capture runs on: three polls of audio, so the watchdog

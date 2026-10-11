@@ -1,3 +1,4 @@
+use crate::demand::{EffectiveDemand, Mode, PlaneKey};
 use crate::diagnostics::{
     AudioDiagnostics, BreathSnapshot, Diagnostics, LightSnapshot, PlaybackDiagnostics,
     TouchDiagnostics,
@@ -38,7 +39,7 @@ pub enum LightAppearance {
 /// `InputEvent`: a fixed snapshot that a renderer forwards whole, with no
 /// allocation and no lifetime to thread through the diff.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotAppearance {
     /// The `instance`-th light surface's declared appearance.
     Light {
@@ -117,8 +118,9 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
 /// The diagnostics a `DeviceState` folds into for the renderer's digit rows:
 /// the touch counters/persistence carry into [`TouchDiagnostics`] and every
 /// light surface's driving values ride along in wiring order.
-fn light_diagnostics(state: &DeviceState) -> Diagnostics {
+fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnostics {
     Diagnostics {
+        demand: demand.clone(),
         touch: TouchDiagnostics {
             taps: state.tap_count,
             presses: state.press_count,
@@ -193,6 +195,13 @@ pub fn diag_repaint_due(
     since_ms: u64,
     overlay: bool,
 ) -> bool {
+    // The panel's own mode is not a page rule: a change-driven panel repaints when something
+    // changes and an unlit one never repaints at all. `Continuous` falls through to the page's.
+    match next.demand.plane(PlaneKey::DISPLAY).mode {
+        Mode::Off => return false,
+        Mode::OnChange => return since_ms >= DIAG_REPAINT_STEP_MS * 4 && prev != next,
+        Mode::Continuous => {}
+    }
     if since_ms < DIAG_REPAINT_STEP_MS {
         return false;
     }
@@ -268,7 +277,7 @@ pub struct RenderController {
 /// renderers receive, plus each light's own state, which is what decides whether
 /// its appearance moved. A `DeviceState` change that reaches neither — the raw
 /// touch snapshot, which no diagnostics row carries — cannot change what is drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Snapshot {
     diagnostics: Diagnostics,
     lights: [LightState; MAX_LIGHTS],
@@ -282,13 +291,19 @@ impl RenderController {
     /// Diff `state` against the last snapshot, invoking `notify` per changed
     /// slot; the first call reports every known slot. Returns whether any slot
     /// changed, so bindings can react once.
+    /// Folds the state into a snapshot and hands each changed slot to `notify`.
+    ///
+    /// `demand` is passed rather than derived from `state` because a build's override lives
+    /// on the manager: a cost report naming the page's demand would be evidence about a
+    /// configuration nobody is running.
     pub fn reconcile(
         &mut self,
         state: &DeviceState,
+        demand: &EffectiveDemand,
         mut notify: impl FnMut(SlotAppearance),
     ) -> bool {
         let next = Snapshot {
-            diagnostics: light_diagnostics(state),
+            diagnostics: light_diagnostics(state, demand),
             lights: state.lights,
         };
         let changed = self.last.as_deref() != Some(&next);
@@ -297,7 +312,7 @@ impl RenderController {
             // current surface, then each moved light appearance repaints over
             // it in one write instead of an old-color frame followed by a new
             // one.
-            notify(SlotAppearance::Diagnostics(next.diagnostics));
+            notify(SlotAppearance::Diagnostics(next.diagnostics.clone()));
             for (instance, light) in next.lights.iter().enumerate() {
                 let moved = match self.last.as_deref() {
                     None => true,
@@ -329,7 +344,7 @@ impl RenderController {
                     last.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
                 ),
             },
-            Slot::Diagnostics => SlotAppearance::Diagnostics(last.diagnostics),
+            Slot::Diagnostics => SlotAppearance::Diagnostics(last.diagnostics.clone()),
         })
     }
 }
@@ -353,10 +368,33 @@ pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {
         .unwrap_or(u8::MAX)
 }
 
+/// A share of a window as a whole percent, or `0` for a window nothing was measured in.
+///
+/// Capped at 100: the sum can exceed its own window when the clock the two ends read
+/// differs, and that is a clock artefact rather than a finding.
+pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
+    part_us
+        .saturating_mul(100)
+        .checked_div(window_us)
+        .and_then(|pct| u32::try_from(pct).ok())
+        .unwrap_or(100)
+        .min(100)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::drivers::audio::{AudioEnvelope, AudioSample};
+
+    #[test]
+    fn a_share_is_reported_whole_and_never_over_a_hundred() {
+        assert_eq!(windowed_percent(500_000, 2_000_000), 25);
+        assert_eq!(windowed_percent(2_000_000, 2_000_000), 100);
+        assert_eq!(windowed_percent(1, 1_000_000), 0);
+        // A hold longer than its own window is two clocks disagreeing, not a real cost.
+        assert_eq!(windowed_percent(4_000_000, 2_000_000), 100);
+        assert_eq!(windowed_percent(7_000, 0), 100);
+    }
     use crate::drivers::input::InputEvent;
     use crate::drivers::playback::Sound;
     use crate::intent::{BusinessIntent, OperationIntent};
@@ -383,12 +421,12 @@ mod tests {
 
     fn collect(ctl: &mut RenderController, s: &DeviceState) -> Vec<SlotAppearance> {
         let mut seen = Vec::new();
-        ctl.reconcile(s, |a| seen.push(a));
+        ctl.reconcile(s, &EffectiveDemand::default(), |a| seen.push(a));
         seen
     }
 
     fn diagnostics_for(light: LightState) -> Diagnostics {
-        light_diagnostics(&state(light))
+        light_diagnostics(&state(light), &EffectiveDemand::default())
     }
 
     fn live_envelope() -> AudioEnvelope {
@@ -402,7 +440,7 @@ mod tests {
     #[test]
     fn diag_repaint_waits_out_the_step() {
         let base = Diagnostics::default();
-        let mut moved = base;
+        let mut moved = base.clone();
         moved.audio.phase = AudioPhase::Recording;
         assert!(!diag_repaint_due(
             DisplayPage::Audio,
@@ -423,7 +461,7 @@ mod tests {
     #[test]
     fn diag_repaint_ignores_the_wall_time_counter() {
         let base = Diagnostics::default();
-        let mut ticked = base;
+        let mut ticked = base.clone();
         ticked.audio.elapsed_ms = 1_234;
         assert!(!diag_repaint_due(
             DisplayPage::Audio,
@@ -437,13 +475,13 @@ mod tests {
     #[test]
     fn diag_repaint_audio_tracks_everything_else_it_draws() {
         let base = Diagnostics::default();
-        let mut phase = base;
+        let mut phase = base.clone();
         phase.audio.phase = AudioPhase::Recording;
-        let mut envelope = base;
+        let mut envelope = base.clone();
         envelope.audio.envelope = live_envelope();
-        let mut restarts = base;
+        let mut restarts = base.clone();
         restarts.audio.restarts = 3;
-        let mut level = base;
+        let mut level = base.clone();
         level.audio.dba_lsb = 0x8000;
         for next in [phase, envelope, restarts, level] {
             assert!(
@@ -462,7 +500,7 @@ mod tests {
     #[test]
     fn diag_repaint_attitude_follows_every_snapshot() {
         let base = Diagnostics::default();
-        let mut ticked = base;
+        let mut ticked = base.clone();
         ticked.audio.elapsed_ms = 10;
         assert!(!diag_repaint_due(
             DisplayPage::Attitude,
@@ -483,7 +521,7 @@ mod tests {
     #[test]
     fn diag_repaint_ambient_only_for_the_overlay() {
         let base = Diagnostics::default();
-        let mut ticked = base;
+        let mut ticked = base.clone();
         ticked.audio.phase = AudioPhase::Recording;
         assert!(!diag_repaint_due(
             DisplayPage::Ambient,
@@ -504,15 +542,15 @@ mod tests {
     #[test]
     fn diag_repaint_speaker_tracks_the_row_it_stamps() {
         let base = Diagnostics::default();
-        let mut playing = base;
+        let mut playing = base.clone();
         playing.playback.phase = PlaybackPhase::Playing;
-        let mut source = base;
+        let mut source = base.clone();
         source.playback.sound = Sound::Asset;
-        let mut muted = base;
+        let mut muted = base.clone();
         muted.playback.muted = true;
-        let mut played = base;
+        let mut played = base.clone();
         played.playback.plays = 7;
-        let mut dropped = base;
+        let mut dropped = base.clone();
         dropped.playback.dropped = 2;
         for next in [playing, source, muted, played, dropped] {
             assert!(
@@ -533,7 +571,7 @@ mod tests {
         let base = Diagnostics::default();
         // The envelope is live on every poll, so a Speaker-page predicate that
         // accepted it would ship a full frame every step for the whole session.
-        let mut drifting = base;
+        let mut drifting = base.clone();
         drifting.audio.envelope = live_envelope();
         for overlay in [false, true] {
             assert!(
@@ -567,13 +605,15 @@ mod tests {
             event: InputEvent::Audio(poll),
         });
         assert_eq!(
-            light_diagnostics(&manager.state()).audio.phase,
+            light_diagnostics(&manager.state(), manager.demand())
+                .audio
+                .phase,
             AudioPhase::Idle,
             "polling alone never starts a capture"
         );
         manager.apply_business(BusinessIntent::ToggleRecord);
         manager.apply_business(BusinessIntent::TogglePage);
-        let recording = light_diagnostics(&manager.state()).audio;
+        let recording = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
             recording.envelope, poll.envelope,
@@ -586,7 +626,7 @@ mod tests {
         );
 
         manager.apply_business(BusinessIntent::ToggleRecord);
-        let stopped = light_diagnostics(&manager.state()).audio;
+        let stopped = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(
             stopped.envelope, poll.envelope,
@@ -600,7 +640,7 @@ mod tests {
         let boot = state(LightState::boot());
         let mut seen = Vec::new();
         assert!(
-            ctl.reconcile(&boot, |a| seen.push(a)),
+            ctl.reconcile(&boot, &EffectiveDemand::default(), |a| seen.push(a)),
             "first sync is a change"
         );
         assert_eq!(
@@ -617,10 +657,19 @@ mod tests {
                 },
             ]
         );
-        assert!(!ctl.reconcile(&boot, |_| {}), "identical state is silent");
+        assert!(
+            !ctl.reconcile(&boot, &EffectiveDemand::default(), |_| {}),
+            "identical state is silent"
+        );
         let off = state(LightState::Off);
-        assert!(ctl.reconcile(&off, |_| {}), "changed state is a change");
-        assert!(!ctl.reconcile(&off, |_| {}), "settled state is silent");
+        assert!(
+            ctl.reconcile(&off, &EffectiveDemand::default(), |_| {}),
+            "changed state is a change"
+        );
+        assert!(
+            !ctl.reconcile(&off, &EffectiveDemand::default(), |_| {}),
+            "settled state is silent"
+        );
     }
 
     #[test]
@@ -652,7 +701,7 @@ mod tests {
         collect(&mut ctl, &boot);
         // The raw touch snapshot rides no diagnostics row, so a state differing
         // only there cannot change what a renderer is handed.
-        let mut moved = boot;
+        let mut moved = boot.clone();
         moved.touch = Some(crate::drivers::input::TouchEvent {
             points: [crate::drivers::input::TouchPoint {
                 id: 0,
@@ -723,7 +772,7 @@ mod tests {
         let seen = collect(&mut ctl, &second);
         assert_eq!(seen.len(), 3, "diagnostics ride along with the light diff");
         assert!(matches!(
-            seen[0],
+            seen[0].clone(),
             SlotAppearance::Diagnostics(t) if t == diagnostics_for(second.lights[0])
         ));
         assert!(matches!(
@@ -818,7 +867,7 @@ mod tests {
             vec![
                 // Device-level diagnostics first, then surface 0, then
                 // surface 1, in wiring order.
-                SlotAppearance::Diagnostics(light_diagnostics(&two)),
+                SlotAppearance::Diagnostics(light_diagnostics(&two, &EffectiveDemand::default())),
                 SlotAppearance::Light {
                     instance: 0,
                     appearance: LightAppearance::Off,
@@ -830,7 +879,7 @@ mod tests {
             ]
         );
         // The second instance's snapshot is carried beside the first.
-        let SlotAppearance::Diagnostics(d) = seen[0] else {
+        let SlotAppearance::Diagnostics(d) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(d.lights.len(), MAX_LIGHTS);
@@ -853,7 +902,10 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &changed),
             vec![
-                SlotAppearance::Diagnostics(light_diagnostics(&changed)),
+                SlotAppearance::Diagnostics(light_diagnostics(
+                    &changed,
+                    &EffectiveDemand::default()
+                )),
                 SlotAppearance::Light {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3)),
@@ -979,7 +1031,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let SlotAppearance::Diagnostics(diagnostics) = seen[0] else {
+        let SlotAppearance::Diagnostics(diagnostics) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(
@@ -1014,7 +1066,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let SlotAppearance::Diagnostics(diagnostics) = seen[0] else {
+        let SlotAppearance::Diagnostics(diagnostics) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(diagnostics.touch.swipes, 1);
@@ -1041,7 +1093,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let SlotAppearance::Diagnostics(diagnostics) = seen[0] else {
+        let SlotAppearance::Diagnostics(diagnostics) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(diagnostics.touch.taps, 1);
@@ -1154,5 +1206,107 @@ mod tests {
     fn overheated_rate_saturates_at_max() {
         assert_eq!(windowed_rate(1_000, 1_000), u8::MAX);
         assert_eq!(windowed_rate(u32::MAX, 1), u8::MAX);
+    }
+
+    #[test]
+    fn an_unlit_panel_never_repaints_and_a_dim_one_only_on_a_change() {
+        let base = Diagnostics::default();
+        assert_eq!(base.demand.plane(PlaneKey::DISPLAY).mode, Mode::Continuous);
+
+        let mut unlit = base.clone();
+        unlit.demand.set(
+            PlaneKey::DISPLAY,
+            crate::demand::PlaneDemand::new(Mode::Off, 0, crate::demand::Sensitivity::Primary),
+        );
+        let mut wobble = unlit.clone();
+        wobble.audio.phase = AudioPhase::Recording;
+
+        assert!(
+            !diag_repaint_due(
+                DisplayPage::Audio,
+                &unlit,
+                &wobble,
+                10 * DIAG_REPAINT_STEP_MS,
+                true
+            ),
+            "a panel nobody is looking at does not get frames no matter what drifts"
+        );
+
+        let mut dim = base.clone();
+        dim.demand.set(
+            PlaneKey::DISPLAY,
+            crate::demand::PlaneDemand::new(Mode::OnChange, 0, crate::demand::Sensitivity::Primary),
+        );
+        assert!(
+            !diag_repaint_due(
+                DisplayPage::Audio,
+                &dim,
+                &dim,
+                10 * DIAG_REPAINT_STEP_MS,
+                false
+            ),
+            "nothing changed, so there is nothing to redraw"
+        );
+
+        let mut dim_moved = dim.clone();
+        dim_moved.audio.phase = AudioPhase::Recording;
+        assert!(
+            !diag_repaint_due(
+                DisplayPage::Audio,
+                &dim,
+                &dim_moved,
+                DIAG_REPAINT_STEP_MS,
+                false
+            ),
+            "a dim panel waits out the base cadence before it spends a frame"
+        );
+        assert!(diag_repaint_due(
+            DisplayPage::Audio,
+            &dim,
+            &dim_moved,
+            DIAG_REPAINT_STEP_MS * 4,
+            false
+        ));
+    }
+
+    #[test]
+    fn the_snapshot_carries_the_demand_in_force_not_the_pages_own() {
+        // Passing the demand in rather than deriving it: a build that turns a plane down
+        // reaches the snapshot with the level it is actually running.
+        let mut manager =
+            DeviceManager::with_motion(true, crate::drivers::motion::MotionCapabilities::EMPTY)
+                .with_planes(alloc::vec![
+                    PlaneKey::MOTION,
+                    PlaneKey::AUDIO,
+                    PlaneKey::CAMERA,
+                    PlaneKey::DISPLAY
+                ])
+                .with_audio(true)
+                .with_camera(true);
+        let quiet = manager.demand().clone();
+        assert_eq!(
+            quiet.plane(PlaneKey::AUDIO).mode,
+            crate::demand::Mode::Continuous
+        );
+
+        manager = manager.with_override(crate::demand::parse_override("audio=off"));
+        assert_eq!(
+            manager.demand().plane(PlaneKey::AUDIO).mode,
+            crate::demand::Mode::Off
+        );
+
+        let snapshot = light_diagnostics(&manager.state(), manager.demand());
+        assert_eq!(
+            snapshot.demand.plane(PlaneKey::AUDIO).mode,
+            crate::demand::Mode::Off
+        );
+        assert_eq!(
+            light_diagnostics(&manager.state(), &quiet)
+                .demand
+                .plane(PlaneKey::AUDIO)
+                .mode,
+            crate::demand::Mode::Continuous,
+            "the page's own demand is still there to be passed when it is the one in force"
+        );
     }
 }

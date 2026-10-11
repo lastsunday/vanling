@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use iot_core::demand::{CAMERA_THUMBNAIL_PERIOD_MS, PlaneKey};
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::audio::{
     COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, dbfs, scope_height, spl,
@@ -19,7 +20,9 @@ use iot_core::overlay::{
     Block, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS, RIGHT_EDGE_X,
     ROW_PITCH, block_value_x, block_x, level_columns, overlay_row_top,
 };
-use iot_core::render::{MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_rate};
+use iot_core::render::{
+    MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_percent, windowed_rate,
+};
 use iot_core::state::{AudioPhase, DisplayPage, PlaybackPhase};
 
 use crate::camera_readout::format_pair;
@@ -91,6 +94,11 @@ const FPS_WINDOW_MS: u64 = 500;
 /// opposite fixes: a slow render is CPU the shared executor does not get back,
 /// while a slow write is GDMA arbitration the playback DMA has to win.
 const COST_WINDOW_MS: u64 = 2_000;
+
+/// How often a frame is written to the panel under a thumbnail request (a camera demand at
+/// [`CAMERA_THUMBNAIL_PERIOD_MS`] or slower). The whole frame write is what the thumbnail
+/// request exists to avoid.
+const THUMBNAIL_INTERVAL_MS: u64 = CAMERA_THUMBNAIL_PERIOD_MS as u64;
 
 /// Debug overlay toggle. A compile-time switch (not a Cargo feature): the
 /// ambient diagnostics rows and last-touch coordinates are a field/development
@@ -314,6 +322,9 @@ pub struct DisplayLight {
     /// Diagnostic overlay payload: touch counters, light mode, and motion (see
     /// [`Diagnostics`]). A bump repaints via [`Self::paint`], which the
     /// [`FrameOwner::painted_color`] guard would otherwise skip.
+    /// Ceiling every `set_backlight` is clamped to, so a demand can hold the panel dim
+    /// without the animation loop having to know it.
+    backlight_ceiling: u8,
     diagnostics: Diagnostics,
     /// Panel repaint rate over the last window, `0` while nothing repaints.
     fps: u8,
@@ -328,6 +339,13 @@ pub struct DisplayLight {
     cost_anchor: Instant,
     worst_render: Duration,
     worst_write: Duration,
+    /// Every render-plus-write this window. The peaks above cannot be summed into it:
+    /// 11 frames at 16 ms is not 16 ms, and a window reporting only a peak reads as cheaper
+    /// than one spending twice as long on shorter frames.
+    window_hold: Duration,
+    /// When the panel last wrote a camera frame. `None` before the first one, which is what
+    /// lets the first frame through without a warm-up.
+    thumbnail_last_ms: Option<u64>,
 }
 
 /// A surface with no camera bound: the trait's two methods are how the app hands one over, and
@@ -379,6 +397,7 @@ impl DisplayLight {
             camera: None,
             owner: FrameOwner::NeedsPaint,
             backlight,
+            backlight_ceiling: 100,
             diagnostics: Diagnostics::default(),
             fps: 0,
             fps_frames: 0,
@@ -387,6 +406,8 @@ impl DisplayLight {
             cost_anchor: Instant::now(),
             worst_render: Duration::ZERO,
             worst_write: Duration::ZERO,
+            thumbnail_last_ms: None,
+            window_hold: Duration::ZERO,
         }
     }
 
@@ -425,7 +446,12 @@ impl RgbLight for DisplayLight {
     }
 
     fn set_backlight(&mut self, level_pct: u8) {
-        self.backlight.set_level_pct(level_pct);
+        self.backlight
+            .set_level_pct(level_pct.min(self.backlight_ceiling));
+    }
+
+    fn set_backlight_ceiling(&mut self, level_pct: u8) {
+        self.backlight_ceiling = level_pct;
     }
 
     fn set_fill(&mut self, fill: Fill, color: Rgb) {
@@ -448,8 +474,16 @@ impl DiagnosticsSink for DisplayLight {
         // panel, because taking the buffer is what clears the colour `paint` reads to know
         // what to draw — so the call that had to release it was gated on there being a colour,
         // and the page that needed releasing was the one that had cleared it.
+        // Gated on the demand rather than on the page: a demand granting no mode is
+        // something an application other than a page switch could ask for.
         #[cfg(feature = "camera")]
-        if page_changed && self.owner.is_camera() {
+        if !diagnostics
+            .demand
+            .plane(PlaneKey::CAMERA)
+            .mode
+            .is_collecting()
+            && self.owner.is_camera()
+        {
             if let Some(camera) = &mut self.camera {
                 camera.pause();
             }
@@ -476,7 +510,7 @@ impl DiagnosticsSink for DisplayLight {
         // above rather than saved into a local: `Diagnostics` embeds a 1.6 KB
         // audio envelope, and one by-value copy of it is a large slice of a main
         // stack this path is already close to overflowing.
-        self.diagnostics = *diagnostics;
+        self.diagnostics = diagnostics.clone();
         if !repaint {
             return;
         }
@@ -584,6 +618,17 @@ impl DisplayLight {
         if sample != FrameAdvance::Fresh {
             return false;
         }
+        // `advance` still runs (it is what repairs the chain), so a throttled camera leaves
+        // the picture fresh without shipping it.
+        if self.diagnostics.demand.plane(PlaneKey::CAMERA).period_ms >= CAMERA_THUMBNAIL_PERIOD_MS {
+            let due = self
+                .thumbnail_last_ms
+                .is_none_or(|last| now_ms.saturating_sub(last) >= THUMBNAIL_INTERVAL_MS);
+            if !due {
+                return false;
+            }
+            self.thumbnail_last_ms = Some(now_ms);
+        }
         let counters = camera.counters();
         let geometry = camera.geometry();
 
@@ -632,20 +677,26 @@ impl DisplayLight {
         if write > self.worst_write {
             self.worst_write = write;
         }
+        self.window_hold += render + write;
         let now = Instant::now();
         let window = now - self.cost_anchor;
         if window.as_millis() >= COST_WINDOW_MS {
             log::info!(
-                "[DISPLAY] {} repaints in {} ms, worst render {} ms, worst write {} ms",
+                "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst write {} ms; asked {}",
+                self.diagnostics.page,
                 self.cost_frames,
                 window.as_millis(),
+                self.window_hold.as_millis(),
+                windowed_percent(self.window_hold.as_micros(), window.as_micros()),
                 self.worst_render.as_millis(),
                 self.worst_write.as_millis(),
+                self.diagnostics.demand,
             );
             self.cost_frames = 0;
             self.cost_anchor = now;
             self.worst_render = Duration::ZERO;
             self.worst_write = Duration::ZERO;
+            self.window_hold = Duration::ZERO;
         }
     }
 

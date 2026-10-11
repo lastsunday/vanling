@@ -1,12 +1,14 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+use crate::demand;
 use crate::input::IntentBus;
 use crate::playback::{PlaybackBus, PlaybackCommand};
 use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, TrySendError};
 use embassy_time::{Duration, Instant, Timer};
+use iot_core::demand::{EffectiveDemand, Mode, PlaneKey};
 use iot_core::diagnostics::DiagnosticsSink;
 use iot_core::drivers::camera::CameraTarget;
 use iot_core::drivers::light::{
@@ -100,15 +102,21 @@ impl Render {
     /// One frame: reconcile `state` against the controller, fan changes out to
     /// matching renderers, then step time-driven animations. Returns `true`
     /// while any renderer still animates.
-    pub fn tick(&mut self, bus: &RenderBus, state: &DeviceState, now_ms: u32) -> bool {
+    pub fn tick(
+        &mut self,
+        bus: &RenderBus,
+        state: &DeviceState,
+        demand: &EffectiveDemand,
+        now_ms: u32,
+    ) -> bool {
         self.drain_bus(bus, now_ms);
         let controller = &mut self.controller;
         let entries = &mut self.renderers;
-        controller.reconcile(state, |appearance| {
+        controller.reconcile(state, demand, |appearance| {
             let slot = appearance.slot();
             for entry in entries.iter_mut() {
                 if entry.renderer.slots().contains(&slot) {
-                    entry.activity = entry.renderer.on_appearance(appearance, now_ms);
+                    entry.activity = entry.renderer.on_appearance(appearance.clone(), now_ms);
                 }
             }
         });
@@ -159,6 +167,10 @@ pub struct LightRenderer<R: RgbLight + DiagnosticsSink> {
     /// The page the surface was last told about. `step` gets no appearance, so it reads the
     /// camera's turn off this rather than being handed the snapshot a second time.
     page: Option<DisplayPage>,
+    /// What the build and the page ask of the panel itself, as opposed to of what the
+    /// page draws. Kept here because `step` gets no appearance, and a parked loop is
+    /// exactly the case that needs the answer.
+    display: Mode,
 }
 
 impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
@@ -170,6 +182,7 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
             last: None,
             breath: None,
             page: None,
+            display: Mode::Continuous,
         }
     }
 
@@ -184,6 +197,11 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
     }
 
     fn drive(&mut self, fill: Fill, color: Rgb) {
+        // One place every frame leaves through, so one place an unlit panel stops them.
+        if !self.display.is_collecting() {
+            self.last = None;
+            return;
+        }
         let step = self.light.repaint_step();
         let repaint = match self.last {
             None => true,
@@ -218,6 +236,29 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
                 let page_changed = self.page != Some(diagnostics.page);
                 self.light.consume(&diagnostics);
                 self.page = Some(diagnostics.page);
+                let was_collecting = self.display.is_collecting();
+                self.display = diagnostics.demand.plane(PlaneKey::DISPLAY).mode;
+                if was_collecting != self.display.is_collecting() {
+                    // The lit/dark crossing cannot wait for a colour to move: the mode
+                    // changes the backlight, and nothing else would ask for that frame.
+                    self.last = None;
+                }
+                match self.display {
+                    Mode::Off => {
+                        // Nothing on screen is wanted, so the loop parks: the ceiling below
+                        // darkens the panel, the park stops spending on frames nobody sees.
+                        self.light.set_backlight_ceiling(0);
+                        self.breath = None;
+                        return Activity::Idle;
+                    }
+                    Mode::OnChange => {
+                        // Lit but at the floor, and still on the animation clock — dimming
+                        // the panel is not a reason to stop breathing.
+                        self.light
+                            .set_backlight_ceiling(DeviceManager::BACKLIGHT_FLOOR_PCT);
+                    }
+                    Mode::Continuous => self.light.set_backlight_ceiling(100),
+                }
                 // A new page starts from a buffer neither the camera nor the previous fill
                 // owns, so the repaint gate below has nothing to compare against and would
                 // skip the one frame that replaces it. Without this, leaving the camera page
@@ -330,6 +371,7 @@ pub async fn render_loop(
     manager: &mut DeviceManager,
 ) -> ! {
     let mut elapsed_ms: u32 = 0;
+    let mut last_page = manager.state().page;
     let mut next_frame: Instant = Instant::now();
     let mut playback = PlaybackDispatch::new(manager.playback_state());
     loop {
@@ -343,6 +385,12 @@ pub async fn render_loop(
                     manager.apply_operation(op);
                     let business = iot_core::intent::translate(&op, &manager.state());
                     manager.apply_business(business);
+                    // A page change, one line: the cost report names a page once per window,
+                    // which cannot show whether a gesture advanced one page or three.
+                    if manager.state().page != last_page {
+                        log::info!("[INPUT] page is now {:?}", manager.state().page);
+                        last_page = manager.state().page;
+                    }
                 }
                 // A producer that already speaks business (e.g. a network
                 // drive) goes straight to the state.
@@ -354,7 +402,16 @@ pub async fn render_loop(
             // replay a sound it just dropped.
             playback.dispatch(playback_bus, manager.playback_state());
         }
-        let active = render.tick(render_bus, &manager.state(), elapsed_ms);
+        let state = manager.state();
+        // The page is the product's declaration of what it wants, so the demand follows it
+        // here rather than each consumer deriving its own.
+        //
+        // The demand is shared state rather than a message: this writes it, and the polling
+        // loop reads whatever is current on its next tick. The configurator is not called
+        // here — it needs the board's capabilities and answers against the part that
+        // refused, so it sits beside the parts.
+        demand::propose(manager.demand());
+        let active = render.tick(render_bus, &state, manager.demand(), elapsed_ms);
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
         if active {
             // Absolute deadline: work between frames never piles drift onto
@@ -431,5 +488,157 @@ fn queue(bus: &PlaybackBus, command: PlaybackCommand) -> bool {
             log::error!("[PLAY] {command:?} had no room, asking again");
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iot_core::diagnostics::Diagnostics;
+    use iot_core::drivers::camera::FrameSource;
+    use iot_core::render::{SlotAppearance, light_appearance};
+    use iot_core::state::LightState;
+
+    /// Counts what reached the panel rather than what was asked of it.
+    struct FakePanel {
+        fills: u32,
+        backlight: u8,
+        ceiling: u8,
+    }
+
+    impl FakePanel {
+        fn new() -> Self {
+            Self {
+                fills: 0,
+                backlight: 100,
+                ceiling: 100,
+            }
+        }
+    }
+
+    impl RgbLight for FakePanel {
+        fn set_fill(&mut self, _fill: Fill, _color: Rgb) {
+            self.fills += 1;
+        }
+
+        fn set_backlight(&mut self, level_pct: u8) {
+            self.backlight = level_pct.min(self.ceiling);
+        }
+
+        fn set_backlight_ceiling(&mut self, level_pct: u8) {
+            self.ceiling = level_pct;
+            self.backlight = self.backlight.min(level_pct);
+        }
+    }
+
+    impl DiagnosticsSink for FakePanel {
+        fn consume(&mut self, _diagnostics: &Diagnostics) {}
+    }
+
+    impl CameraTarget for FakePanel {
+        fn paint_camera(&mut self, _now_ms: u64) -> bool {
+            false
+        }
+
+        fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {}
+    }
+
+    fn panel_asked(display: Mode) -> SlotAppearance {
+        let mut demand = EffectiveDemand::default();
+        demand.set(
+            PlaneKey::DISPLAY,
+            iot_core::demand::PlaneDemand::new(display, 0, iot_core::demand::Sensitivity::Primary),
+        );
+        SlotAppearance::Diagnostics(Diagnostics {
+            demand,
+            ..Diagnostics::default()
+        })
+    }
+
+    /// The Ambient page breathes forever, so it proves the gate is on the panel rather
+    /// than on the diagnostics slot.
+    fn ambient_breath(instance: u8) -> SlotAppearance {
+        SlotAppearance::Light {
+            instance,
+            appearance: light_appearance(LightState::boot()),
+        }
+    }
+
+    fn renderer(panel: FakePanel) -> LightRenderer<FakePanel> {
+        LightRenderer::new(0, panel)
+    }
+
+    #[test]
+    fn a_lit_panel_keeps_breathing_on_a_page_that_never_settles() {
+        let mut r = renderer(FakePanel::new());
+        assert_eq!(
+            r.on_appearance(panel_asked(Mode::Continuous), 0),
+            Activity::Idle,
+            "the first appearance only tells the panel what it is for"
+        );
+        assert_eq!(r.on_appearance(ambient_breath(0), 0), Activity::TimeDriven);
+        r.step(1_000);
+        r.step(1_100);
+        assert!(r.light.fills > 0, "a lit panel keeps painting");
+    }
+
+    #[test]
+    fn an_unlit_panel_ships_nothing_from_any_slot() {
+        let mut r = renderer(FakePanel::new());
+        r.on_appearance(panel_asked(Mode::Off), 0);
+        assert_eq!(r.light.ceiling, 0, "and its backlight is off");
+        let fills_before = r.light.fills;
+
+        r.on_appearance(ambient_breath(0), 0);
+        r.step(1_000);
+        r.step(1_100);
+        r.on_appearance(
+            SlotAppearance::Light {
+                instance: 0,
+                appearance: LightAppearance::Color(Rgb(255, 0, 0)),
+            },
+            1_200,
+        );
+
+        assert_eq!(
+            r.light.fills, fills_before,
+            "the breathing loop and the colour change both leave through the same gate"
+        );
+        assert_eq!(r.light.backlight, 0);
+    }
+
+    #[test]
+    fn a_panel_relit_after_being_dark_paints_the_frame_the_darkness_swallowed() {
+        let mut r = renderer(FakePanel::new());
+        r.on_appearance(panel_asked(Mode::Off), 0);
+        r.on_appearance(ambient_breath(0), 0);
+        r.step(1_000);
+        assert_eq!(r.light.fills, 0);
+
+        // The gate clears `last`, so relighting cannot inherit an undrawn colour and skip
+        // the frame that shows the panel is back.
+        r.on_appearance(panel_asked(Mode::Continuous), 2_000);
+        r.step(2_000);
+        assert_eq!(
+            r.light.fills, 1,
+            "the first frame after relighting is the one that matters"
+        );
+        assert_eq!(r.light.ceiling, 100);
+    }
+
+    #[test]
+    fn a_dimmed_panel_is_brightness_only_and_keeps_its_cadence() {
+        let mut r = renderer(FakePanel::new());
+        r.on_appearance(panel_asked(Mode::OnChange), 0);
+        assert_eq!(r.light.ceiling, DeviceManager::BACKLIGHT_FLOOR_PCT);
+
+        r.on_appearance(ambient_breath(0), 0);
+        assert_eq!(
+            r.on_appearance(ambient_breath(0), 0),
+            Activity::TimeDriven,
+            "dimming is a brightness, not a rate"
+        );
+        r.step(1_000);
+        assert!(r.light.fills > 0);
     }
 }

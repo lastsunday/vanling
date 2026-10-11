@@ -14,6 +14,31 @@ sort_by = "weight"
 
 ---
 
+## 还没有电源管理，所以还没有时钟源锁——但顺序不能反
+
+`[据称]`（未实现，仅留痕）ESP-IDF 的 `esp_pm` 用三种锁表达组件对功耗的需求：`ESP_PM_CPU_FREQ_MAX`、`ESP_PM_APB_FREQ_MAX`、`ESP_PM_NO_LIGHT_SLEEP`。锁是**递归**的，持有几次就得释放几次。其文档给出两条本板将来会撞上的事实：
+
+- **Light-sleep 期间外设被时钟门控，且不会产生中断。** 因此任何依赖外设中断的驱动必须持 `NO_LIGHT_SLEEP`。本板的 DVP 采集链与 I2S 采集/放音链都靠 DMA 完成传输，落在这一条里。
+- `REF_TICK` / `XTAL` / `RC_FAST`（即 RTC_8M）等外设时钟源**不受 APB 降频影响**，所以降频不等于全停，某些时钟能活过 APB 变化。
+
+当前固件**没有任何 PM 配置**——没有 light-sleep、没有 `esp_pm_configure`、没有 `WFI`。喂数任务已在独立的 `InterruptExecutor` 上（`lib.rs` 的 `SpeakerRunner::OnInterrupt`），所以执行器争用这条路已经被结构解决，不需要锁。
+
+因此**没有实现锁是对的**：加两把没有持有者的锁就是死代码，而死锁比死代码更难查。
+
+但顺序不能反。要加 light-sleep，必须先有引用计数的锁集合，并让至少这些持有：
+
+| 持有者 | 需要的原因 |
+|---|---|
+| 播放喂数 | 它的存在本身就是时钟来源；停它等于停掉 codec 的主时钟 |
+| 采集链 | DMA 完成即释放环，DMA 被门控则环永远不排空 |
+| DVP 采集链 | 同上，且其链的修复轮询住在 render 侧 |
+
+`InputSource::set_plane_collecting` 已经是这个形状（平面关闭时不能靠下一次 poll 得知，必须有人显式说），所以接线位置已经对了，缺的只是锁本身。
+
+Zephyr 的做法也印证这个分工：它的 device runtime PM 明确**不管理设备依赖**，「devices can manually get or put their dependencies」——依赖关系由消费者自己管，不是自动的。
+
+---
+
 ## 共用一根 MCLK
 
 `[实测]` 采集与放音两个 codec 挂同一组 MCLK / BCLK / LRCK。若各自用独立时钟声明，可以相差几 Hz 而**没有任何东西会报告**：面板会把采集计量对，喇叭却略微偏高——听起来像硬件故障，而它不是。

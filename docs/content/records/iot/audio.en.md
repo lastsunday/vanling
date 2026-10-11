@@ -3,8 +3,8 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "109db55f3ae6a05ae291e917e9d75bf7e71f5332"
-translated_at = "2026-10-06T05:35:23Z"
+source_file_hash = "46e0b1d7aebc6e4c215e16afb00faeb27cd8a125"
+translated_at = "2026-10-10T17:04:06Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -28,6 +28,117 @@ The consequence is not visual jitter but the entire render diff pipeline re-runn
 So `AudioEnvelope` hand-writes `PartialEq` over what the panel can actually draw: the committed column count and the drawn column values, never the write pointer. The test is "did anything the render layer can see change" — a pointer that moves while the picture does not is not a change.
 
 ---
+
+## One place may stop the capture chain, and dropping it kills the microphone
+
+`[measured]` To reproduce: flash the default firmware, tap the screen fast enough to enter and leave the Camera page repeatedly (no `IOT_BOOT_PAGE` — the touch path is the real one), and read 220 s of serial. The tell in the failing run was `[INPUT] held … worst source: … capture N ms` going from 17-20ms to **0 ms** and staying there.
+
+**`0 ms` is not "cheaper", it is "no ring to drain".** That run had 130 seconds with no `[AUDIO]` line at all, input occupancy dropping from 52% to 27%, and all 46 `[DEMAND]` lines saying `capture on` — the demand had not switched it off, the chain was simply gone.
+
+The failure shape is worth writing down in full, because it is quiet and irreversible:
+
+1. the watchdog decides the capture has gone quiet and fires a repair
+2. the repair path **takes its own chain first**, then goes to arm — so arm finds nothing
+3. the ring and the codec side are dropped together, with no log
+4. from then on `sample()` returns early on "no chain", and the watchdog sits *below* that return, so the watchdog that should have noticed is never reached
+5. so it answers every poll with silence, forever, having said nothing
+
+Step 4 is the one that matters: **an early return hides the watchdog behind itself**, which is why "the chain is gone" presented as "everything is fine, there is just no sound".
+
+The fix makes the invariant structural rather than conventional: **only `arm()` may stop a running chain.** `Chain<A>` holds both the on-the-wire half and the assembled-but-parked half, and its only emptying method, `take_to_arm()`, always stops what it takes. The type lives in `iot-core` (which already hosts the host-testable `CaptureWatchdog`, `CaptureBacklog` and `SampleStream`), because the type worth keeping is an I2S DMA transfer — precisely the thing that cannot be built off hardware — and `set_collecting` / `arm` / `restart` had **no tests at all** before this.
+
+`[test]` `parking_and_arming_returns_the_same_chain`, `repairing_a_stalled_capture_never_drops_the_chain`, `a_capture_with_the_demand_off_is_parked_and_not_lost`, `a_re_arm_that_refuses_reports_itself_rather_than_going_quiet`, `parking_nothing_is_not_a_second_park` (`core/src/drivers/audio.rs`). The second of those fails against the code as it was.
+
+`[reported]` Not reproduced on hardware after the fix: under the same gesture load, which was *heavier* (183 page switches against 46, 74 camera chain re-arms against 9), capture stayed at 12-20ms and never reached 0, and the watchdog never fired once — **so the fix itself is unverified on hardware**; all that has changed is that it can no longer drop a chain silently.
+
+Also added: `sample()` now distinguishes "parked by demand" from "the chain is lost", logging the second once. From inside `sample()` the two are **identical** — neither has a running chain — and the only difference is whether something is still parked.
+
+---
+
+## The calibration walk hangs off a demand-gated poll
+
+`[measured]` To reproduce: flash `IOT_DEMAND='audio=off'` and read 40 s of serial; then flash `IOT_BOOT_PAGE=camera IOT_DEMAND='motion=on:30000,audio=on:30000'` and read 40 s.
+
+> Every "batched to 30 s" row here was measured under the **removed `Budget` mechanism** (`IOT_BUDGET=thrift`: `Secondary` → 30 s, `Primary` → 10 s). That layer was identical to writing the cadence directly, because this board's IMU has no FIFO, so it has been removed — see the [architecture document](@/development/iot/architecture.en.md#the-demand-model-what--how-often--how-sensitive). **The numbers are unchanged**, and each place gives the equivalent `IOT_DEMAND` spelling.
+
+`[AUDIO] HPF corner walk` is a one-shot at boot (`HPF_CORNER_WALK`, off in production builds): it walks all 8 corner codes and returns to the working one. It is stepped from `sample()`, and `sample()` is a demand-gated poll. So the walk's **completion time is set by budget**:
+
+| Build | audio demand | Walk should take | Measured corner reports |
+|---|---|---|---|
+| default | `Continuous@Secondary`, 20ms | 24s | one every 3s |
+| Camera page + motion batched to 30 s | 30s | ~240s | 0 in 40s |
+| `audio=off` | chain parked | never | 0 in 40s |
+
+`[measured]` This explains an earlier observation nobody attributed: the `build-s3-thrift` log (`audio=off`) shows no corner reports after `capture stopped`. It was read as "not advancing" when in fact it **can never advance**.
+
+Not fatal for a bounded one-shot field aid, but the coupling has to be written down rather than discovered in a log. **A calibration that must finish on time cannot live inside `sample()`** — that function is switched off by the demand.
+
+---
+
+## A Plane's Marginal Cost Moves With Whether Another Task Is Awake
+
+`[measured]` To reproduce: from `apps/iot/`, build five firmware variants that differ only in `IOT_DEMAND`, flash each, and read 45 s of `[INPUT] held` (8 windows of 5 s, median).
+
+| `IOT_DEMAND` | `[INPUT] held` | Less the floor | Yields |
+|---|---|---|---|
+| `motion=off,audio=off,display=off` | 10.87% | — | interaction floor |
+| `audio=off,display=off` | 23.4% | 12.52% | motion alone |
+| `audio=off,display=on-change` | 26.6% | 15.73% | motion with a task awake |
+| `motion=off,display=off` | 34.0% | 23.13% | capture alone |
+| default (`motion Continuous + audio Continuous + display Continuous`) | 49.4% | — | — |
+
+Two conclusions:
+
+**One — contention tracks whether another task is awake, not how much it does.** `display=on-change` and `display=off` sit far closer together than `OnChange` and `Continuous` do, because `Mode::Off` parks the render loop (`Activity::Idle`), so the panel stops waking the executor every tick; `OnChange` and `Continuous` both keep it waking and pay contention anyway. **Doing less is not waking less.**
+
+**Two — so a fixed conversion factor cannot work.** `motion Continuous` alone is 12.52% and 15.73% with an awake task beside it, +26%, while `probe-demand-s3` measures 11.40% in isolation, which is a third figure again. Any budget shaped as `isolated figure × some factor` is wrong by more the more planes a scenario turns on, which is the only reason a budget exists.
+
+There is also a trap in the method itself: differencing yields a **marginal** cost, and it depends on context. The 12.52% above was measured with the panel dark and the 15.73% with it awake — one configuration, two numbers. So a differenced row is not "what this plane costs" but "what this plane adds in this scenario", and cited as the former it stops being true as soon as the scenario changes. Take the lit reading (157_300), because the expensive context is the one that counts.
+
+`[test]` `an_isolated_row_would_still_not_be_addable_to_a_device_row`, `the_row_is_the_device_reading_and_the_probe_only_found_the_floor`, `the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from` (`core/src/demand.rs`) pin that the three units cannot be mixed.
+
+## Throttling moves executor from one place to another, it does not save any
+
+`[measured]` Batching only motion to 30 s (`IOT_DEMAND='motion=on:30000,audio=on:30000,display=on:10000'`; the old spelling was `IOT_BUDGET=thrift`), 8 windows of 5 s per build against the default:
+
+| Build | `[INPUT] held` | `[DISPLAY] held` (per 2 s window) | Both sides |
+|---|---|---|---|
+| default | 2473/5000 = 49.5% | 923 ms = 45.3% (35 frames) | 94.8% |
+| motion batched to 30 s | 1774/5000 = 35.5% (motion 30 s) | 1179 ms = 58.5% (45 frames) | 94.0% |
+
+Motion gave up 14.0 points and the render loop took 13.2 of them, with the device total barely moving. Every frame is still 26 ms (10 ms render + a 16 ms whole-frame SPI write); what changed is the frame count, because a cooperative executor gives its time to whoever is awake and the panel's animation clock will draw more frames whenever it has CPU.
+
+**So adding a latency ceiling in percent was the wrong shape**: the two percentages are what add up to the device, and they trade against each other. The two sides must be read separately, and the panel side is a residual that may not be added to the polled side — the sum exceeds 100% of a core.
+
+## The capture plane cannot be batched, because a stretched poll stops the clock
+
+`[measured]` With capture also stretched to 30 s (`IOT_DEMAND='motion=on:30000,audio=on:30000,display=on:10000'`):
+
+```
+[00:00:31.023] WARN - [AUDIO] capture ring 10842 B deep, the input loop is behind the codec
+[00:01:31.023] INFO - [AUDIO] capture DMA had stopped, re-armed (1)
+```
+
+In 90 s the HPF corner walk advanced one step (the default build advances one every 3 s). The 60 ms ring fills and the I2S engine halts on its own, while the watchdog lives inside `sample()` and `stalled()` only fires when a poll found **no** bytes — so it only discovers it on the poll *after* the one that emptied the chain.
+
+That is the same constraint the `audio=off` bug had, reached by two different roads: `Off` takes the chain down deliberately, and batching refuses to make it rarer. The fix is `InputSource::accepts_slower_poll()`, `true` by default and `false` from `Es7210Rx`, with `apply()` folding the plan's cadence back to the board's and printing what is in force. After the fix the same build prints `motion on 30000 ms, capture on 20 ms`, the corner walk is back to every 3 s, and there is no backlog and no re-arm.
+
+`[test]` `a_plane_whose_driver_needs_its_poll_is_not_stretched` (`app/src/input.rs`) pins this.
+
+## The poll side scales by cadence, and agrees with the device at both ends
+
+A cost row is a rate *at the plane's board cadence*, so a batched plane is cheaper. The premise of that scaling — a cadence changes how often this happens, not what one of them costs — is measured rather than assumed: `probe-demand-s3` reads **2281 µs per poll** at the board's 20 ms against **2282 µs** at 200 ms, 0.04% apart. The probe was changed to run each cell at its own cadence, printing MEASURED where a 20 s window allows it and DERIVED where it does not.
+
+`[measured]` The scaled poll side against whole-device runs, 8 windows of 5 s per build:
+
+| Build | `[DEMAND]` poll side | `[INPUT] held` measured | Error |
+|---|---|---|---|
+| default | 497,300 | 494,600 | **+0.6%** |
+| motion batched to 30 s | 340,104 | 354,800 | **−4.1%** |
+
+Before the scaling, the batched row reported 497,300 (motion counted at 20 ms) against a measured 354,800 — **40% high**.
+
+`[test]` `the_cadence_scaled_poll_side_predicts_what_the_device_measures` (`core/src/demand.rs`) pins both ends with a 5% tolerance.
 
 ## The three backlog depths come from measurement
 
@@ -68,3 +179,11 @@ A-weighting is nearly flat at low frequencies while the filter poles sit close t
 Core measures dBFS, and the offset belongs to the board (`SPL_OFFSET_DECIBELS` in `bsp-esp`). `iot-core` cannot depend on the board that carries the part, so `spl()` takes the offset as a parameter and the board passes its own value in.
 
 `[test]` `spl_is_dbfs_with_the_microphones_own_reference_back` also pins that the difference between the two readings must be **entirely** that offset: anything in between means the two columns have stopped being the same measurement.
+
+---
+
+## The full derivation, measured comparison and method are not in this record
+
+Only the conclusions and the code locations are kept here. The measurement tables, why the price is reported on two sides, why `Sensitivity` moves no cadence on this board, why the bound is a single hold rather than a percentage, and every reproduction build and command are in the [architecture document's cost-table and pricing section](@/development/iot/architecture.en.md#the-pricing-mechanism-two-sides-each-stating-its-own-trustworthiness).
+
+Three code-side hard constraints are explained there as well: why `Cost::basis` is a field rather than a comment, why the panel row is a residual that cannot be added, and why the capture plane answers `false` for `InputSource::accepts_slower_poll()` (only `sample()` drains the ring, so throttling does not make a reading staler — it stops the I2S clock).

@@ -13,8 +13,8 @@ use esp_hal::i2s::master::I2sRxDmaTransfer;
 use esp_hal::i2s::master::{Channels, DataFormat, TdmConfig};
 use esp_hal::time::Rate;
 use iot_core::drivers::audio::{
-    AudioSample, AudioSource, BYTES_PER_POLL, CaptureBacklog, CaptureWatchdog, CornerStep,
-    CornerSweep, SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
+    Armed, AudioSample, AudioSource, BYTES_PER_POLL, CaptureBacklog, CaptureWatchdog, Chain,
+    CornerStep, CornerSweep, SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
 };
 
 use crate::components::es7210::{HPF_CORNER, HPF_CORNER_CODES, HpfCorner, SPL_OFFSET_DECIBELS};
@@ -84,6 +84,56 @@ pub fn tdm_config() -> TdmConfig {
         .with_channels(Channels::MONO)
 }
 
+/// The capture wrapped in something this crate owns.
+///
+/// `Armed` lives in the core crate so its states can be walked on the host, and that leaves
+/// the orphan rule: a trait may only be implemented for a type the same crate defines. The
+/// newtype adds no behaviour; it gives the peripheral a local name to hang the two
+/// transitions on.
+struct Chainable(Capture);
+
+impl Chainable {
+    /// Bytes the DMA has finished and nobody has folded.
+    fn available_bytes(&mut self) -> usize {
+        self.0.available_bytes()
+    }
+
+    fn peek(&mut self) -> &[u8] {
+        self.0.peek()
+    }
+
+    fn consume(&mut self, len: usize) {
+        self.0.consume(len);
+    }
+}
+
+/// A chain that is off the wire but still assembled, so `read` can put the same ring back
+/// without building anything new. The ring comes back as its `Final` view, the only one
+/// `read` takes.
+type Parked = (
+    esp_hal::i2s::master::I2sRx<'static, Blocking>,
+    DmaRxStreamBuf,
+);
+
+impl Armed for Chainable {
+    type Parked = Parked;
+
+    fn stop(self) -> Self::Parked {
+        self.0.stop()
+    }
+
+    fn read(parked: Self::Parked) -> Result<Self, Self::Parked> {
+        let (i2s_rx, buffer) = parked;
+        i2s_rx
+            .read(buffer)
+            .map(Chainable)
+            .map_err(|(error, i2s_rx, buffer)| {
+                log::error!("[AUDIO] capture could not be armed, going silent: {error:?}");
+                (i2s_rx, buffer)
+            })
+    }
+}
+
 /// Allocates the capture ring in DMA-capable internal memory.
 pub fn stream() -> DmaRxStreamBuf {
     dma_rx_stream_buffer!(STREAM_BYTES, CHUNK_BYTES)
@@ -98,11 +148,13 @@ pub fn stream() -> DmaRxStreamBuf {
 /// reachable for the half minute it lasts. Reached only through [`HpfCorner`], so no
 /// I2C or register detail reaches the capture.
 pub struct Es7210Rx<C> {
-    /// `None` once a re-arm has failed — the one state a capture cannot come
-    /// back from, since a re-arm that does not take has no ring to put back in
-    /// the chain. An `Option` rather than a field the restart path can empty, so
-    /// a failed re-arm leaves a source that reports silence.
-    transfer: Option<Capture>,
+    /// The chain and where it is, which is one question rather than two fields: a capture
+    /// holding neither a running nor a parked chain has lost it, and that has to be
+    /// answerable rather than inferred from silence.
+    chain: Chain<Chainable>,
+    /// Whether the lost-chain report has already gone out: terminal is terminal, so it is
+    /// said once rather than on every poll of the next ten minutes.
+    reported_lost: bool,
     stream: SampleStream,
     /// Notices the DMA stopping. The transfer cannot report it itself, so the
     /// capture is timed against the clock — see [`CaptureWatchdog`].
@@ -137,7 +189,8 @@ impl<C> Es7210Rx<C> {
             );
         }
         Self {
-            transfer: Some(transfer),
+            chain: Chain::new(Chainable(transfer)),
+            reported_lost: false,
             stream: SampleStream::new(),
             watchdog: CaptureWatchdog::new(STREAM_BYTES),
             backlog: CaptureBacklog::new(STREAM_BYTES),
@@ -214,7 +267,7 @@ impl<C> Es7210Rx<C> {
     /// shared executor for tens of milliseconds — long enough for the playback ring to
     /// empty underneath it. Two poll periods catches up while capping the hold.
     fn drain(&mut self) {
-        let Some(transfer) = self.transfer.as_mut() else {
+        let Some(transfer) = self.chain.running_mut() else {
             return;
         };
         let mut budget = DRAIN_BYTES_PER_POLL;
@@ -232,25 +285,38 @@ impl<C> Es7210Rx<C> {
     /// goes straight into `read`, allocating nothing. It costs one descriptor of
     /// audio, which on a scope is a column with a notch in it.
     fn restart(&mut self, now_ms: u64) {
-        let Some(transfer) = self.transfer.take() else {
+        if !self.chain.is_running() {
+            // A parked plane is not a stalled one, and a lost chain has already said so.
             return;
-        };
-        let (i2s_rx, buffer) = transfer.stop();
+        }
         self.restarts = self.restarts.saturating_add(1);
+        if self.arm(now_ms) {
+            log::info!(
+                "[AUDIO] capture DMA had stopped, re-armed ({})",
+                self.restarts
+            );
+        }
+    }
+
+    /// Puts a chain on the wire, from the one parked here or from a chain the caller has
+    /// just taken down. The buffer that comes back is the one the ring was built on, so no
+    /// allocation happens here.
+    fn arm(&mut self, now_ms: u64) -> bool {
+        // The one place a chain is stopped, whoever asked for it: a repair that took the
+        // chain here itself left this to find nothing and dropped the ring with it.
+        let Some(chain) = self.chain.take_to_arm() else {
+            return false;
+        };
         // The new stream starts on an empty ring, so it has to earn its own
         // deadline rather than be judged against the one the dead one left.
         self.watchdog.note_progress(now_ms);
-        match i2s_rx.read(buffer) {
+        match Chainable::read(chain) {
             Ok(transfer) => {
-                log::info!(
-                    "[AUDIO] capture DMA had stopped, re-armed ({})",
-                    self.restarts
-                );
-                self.transfer = Some(transfer);
+                self.chain.put(transfer);
+                true
             }
-            Err((error, _i2s_rx, _buffer)) => {
-                log::error!("[AUDIO] capture could not be re-armed, going silent: {error:?}");
-            }
+            // The error already said so, and the chain went with it.
+            Err(_) => false,
         }
     }
 
@@ -274,10 +340,45 @@ where
     C: HpfCorner,
     C::CornerError: core::fmt::Debug,
 {
+    fn accepts_slower_poll(&self) -> bool {
+        // The ring is only emptied by `sample`, so a slower poll does not make the reading
+        // staler — it lets the I2S engine halt on a full ring.
+        false
+    }
+
+    fn set_collecting(&mut self, now_ms: u64, collecting: bool) {
+        // The guard is the state the chain is in, not whether a field is empty: a chain
+        // lost to a failed re-arm is not parked, so a turn-on still tries to arm it.
+        if collecting == self.chain.is_running() {
+            return;
+        }
+        if collecting {
+            if !self.arm(now_ms) {
+                log::error!("[AUDIO] the demand asked for the plane back and it did not come");
+            }
+        } else if self.chain.park() {
+            // The chain comes down **here**, while someone asked for it. Left running, the
+            // ring fills, the engine halts on its own, and the only thing that would notice
+            // is the watchdog inside a `sample` this plane no longer receives.
+            log::info!("[AUDIO] capture stopped: the demand turned the plane off");
+        }
+    }
+
     fn sample(&mut self, now_ms: u64) -> AudioSample {
-        let produced = match self.transfer.as_mut() {
+        let produced = match self.chain.running_mut() {
             Some(transfer) => transfer.available_bytes(),
-            None => return self.summary(now_ms),
+            None => {
+                // Off the wire is a legitimate answer — the demand parked this plane — but
+                // so is having lost the chain, and the two look identical from here.
+                if self.chain.is_lost() && !self.reported_lost {
+                    self.reported_lost = true;
+                    log::error!(
+                        "[AUDIO] the capture chain is gone: a re-arm failed and dropped the ring. \
+                         The microphone clock is not running and nothing will bring it back."
+                    );
+                }
+                return self.summary(now_ms);
+            }
         };
         if let Some(produced) = self.backlog.report(produced) {
             log::warn!(

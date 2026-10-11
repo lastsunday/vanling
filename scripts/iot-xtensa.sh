@@ -68,7 +68,7 @@ run_native() {
 # is only seen if the compiler runs with it. Listed by name because forwarding the whole
 # environment would forward whatever the host happens to export, and a stray one would
 # silently become a build input.
-FORWARDED_ENV=(IOT_BOOT_PAGE)
+FORWARDED_ENV=(IOT_BOOT_PAGE IOT_DEMAND)
 
 docker_env_args() {
   local arg

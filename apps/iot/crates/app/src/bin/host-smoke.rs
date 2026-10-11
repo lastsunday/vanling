@@ -12,6 +12,8 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::{SpeakerRunner, run};
+use iot_core::config::MotionConfig;
+use iot_core::demand::PlaneKey;
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL,
@@ -157,6 +159,13 @@ struct HostMotion;
 const HOST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
 
 impl MotionSource for HostMotion {
+    fn configure_for(
+        &mut self,
+        wanted: Option<MotionConfig>,
+    ) -> Result<Option<MotionConfig>, MotionConfig> {
+        Ok(wanted)
+    }
+
     fn sample(&mut self, _now_ms: u64) -> Result<Option<MotionReading>, MotionError> {
         Ok(Some(MotionReading {
             sample: MotionSample::from_raw([1, 2, 3], [4, 5, 6], HOST_SCALE, 3, 0),
@@ -365,12 +374,14 @@ impl HostBoard {
             input: Some(vec![
                 PollEntry::new(
                     0,
+                    PlaneKey::INTERACTION,
                     Box::new(ButtonScanner::new(HostButton(0))),
                     Box::new(DoubleClickAggregator::new()),
                     BUTTON_SCAN_MS,
                 ),
                 PollEntry::new(
                     1,
+                    PlaneKey::INTERACTION,
                     Box::new(ButtonScanner::new(HostButton(1))),
                     Box::new(DoubleClickAggregator::new()),
                     BUTTON_SCAN_MS,
@@ -378,12 +389,14 @@ impl HostBoard {
             ]),
             motion: Some(PollEntry::new(
                 2,
+                PlaneKey::MOTION,
                 Box::new(MotionInput::new(HostMotion)),
                 Box::new(PassThrough),
                 MOTION_SCAN_MS,
             )),
             audio: Some(PollEntry::new(
                 3,
+                PlaneKey::AUDIO,
                 Box::new(AudioInput::new(HostAudio {
                     envelope: AudioEnvelope::ZERO,
                     stream: SampleStream::new(),

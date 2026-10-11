@@ -17,6 +17,9 @@ use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
 
 use crate::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
 
+#[cfg(feature = "lckfb-szpi-esp32s3")]
+pub mod motion;
+
 pub async fn run<B>(mut board: B) -> !
 where
     B: HasPlayback,
