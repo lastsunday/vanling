@@ -56,7 +56,7 @@ sort_by = "weight"
 
 `[实测]` 复现：烧 `IOT_DEMAND='audio=off'`，读 40 s 串口；再烧 `IOT_BOOT_PAGE=camera IOT_DEMAND='motion=on:30000,audio=on:30000'`，同样读 40 s。
 
-> 本文所有「批到 30 s」的行都测于**已删除的 `Budget` 机制**（`IOT_BUDGET=thrift`：Secondary → 30 s、Primary → 10 s）。那一层因为本板 IMU 无 FIFO 而恒等于直接写节奏，已移除，理由见[架构文档](@/development/iot/architecture.md#需求模型要什么--多频繁--多敏感)。**数值不变**，`IOT_DEMAND` 的等价写法在每处给出。
+> 本文所有「批到 30 s」的行都测于**已删除的 `Budget` 机制**（`IOT_BUDGET=thrift`：Secondary → 30 s、Primary → 10 s）。那一层因为本板 IMU 无 FIFO 而恒等于直接写节奏，已移除，理由见[架构文档](@/development/iot/architecture.md#需求模型（要什么_/_多频繁_/_多敏感）)。**数值不变**，`IOT_DEMAND` 的等价写法在每处给出。
 
 `[AUDIO] HPF corner walk` 是一次性开机走查（`HPF_CORNER_WALK`，生产构建关闭）：走完 8 个 corner 码再回到工作码。它由 `sample()` 推进，而 `sample()` 是需求门控的轮询。后果是走查的**完成时间由预算决定**：
 

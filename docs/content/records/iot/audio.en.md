@@ -3,8 +3,8 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "46e0b1d7aebc6e4c215e16afb00faeb27cd8a125"
-translated_at = "2026-10-10T17:04:06Z"
+source_file_hash = "d8620f1c8dc6eaa4e8262a1f58e5cacd6f99c66c"
+translated_at = "2026-10-11T08:52:24Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -59,7 +59,7 @@ Also added: `sample()` now distinguishes "parked by demand" from "the chain is l
 
 `[measured]` To reproduce: flash `IOT_DEMAND='audio=off'` and read 40 s of serial; then flash `IOT_BOOT_PAGE=camera IOT_DEMAND='motion=on:30000,audio=on:30000'` and read 40 s.
 
-> Every "batched to 30 s" row here was measured under the **removed `Budget` mechanism** (`IOT_BUDGET=thrift`: `Secondary` → 30 s, `Primary` → 10 s). That layer was identical to writing the cadence directly, because this board's IMU has no FIFO, so it has been removed — see the [architecture document](@/development/iot/architecture.en.md#the-demand-model-what--how-often--how-sensitive). **The numbers are unchanged**, and each place gives the equivalent `IOT_DEMAND` spelling.
+> Every "batched to 30 s" row here was measured under the **removed `Budget` mechanism** (`IOT_BUDGET=thrift`: `Secondary` → 30 s, `Primary` → 10 s). That layer was identical to writing the cadence directly, because this board's IMU has no FIFO, so it has been removed — see the [architecture document](@/development/iot/architecture.en.md#The_demand_model_(what_/_how_often_/_how_sensitive)). **The numbers are unchanged**, and each place gives the equivalent `IOT_DEMAND` spelling.
 
 `[AUDIO] HPF corner walk` is a one-shot at boot (`HPF_CORNER_WALK`, off in production builds): it walks all 8 corner codes and returns to the working one. It is stepped from `sample()`, and `sample()` is a demand-gated poll. So the walk's **completion time is set by budget**:
 
@@ -184,6 +184,6 @@ Core measures dBFS, and the offset belongs to the board (`SPL_OFFSET_DECIBELS` i
 
 ## The full derivation, measured comparison and method are not in this record
 
-Only the conclusions and the code locations are kept here. The measurement tables, why the price is reported on two sides, why `Sensitivity` moves no cadence on this board, why the bound is a single hold rather than a percentage, and every reproduction build and command are in the [architecture document's cost-table and pricing section](@/development/iot/architecture.en.md#the-pricing-mechanism-two-sides-each-stating-its-own-trustworthiness).
+Only the conclusions and the code locations are kept here. The measurement tables, why the price is reported on two sides, why `Sensitivity` moves no cadence on this board, why the bound is a single hold rather than a percentage, and every reproduction build and command are in the [architecture document](@/development/iot/architecture.en.md).
 
 Three code-side hard constraints are explained there as well: why `Cost::basis` is a field rather than a comment, why the panel row is a residual that cannot be added, and why the capture plane answers `false` for `InputSource::accepts_slower_poll()` (only `sample()` drains the ring, so throttling does not make a reading staler — it stops the I2S clock).

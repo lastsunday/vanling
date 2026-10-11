@@ -203,10 +203,8 @@ mod tests {
     use alloc::boxed::Box;
     use alloc::rc::Rc;
     use core::cell::RefCell;
-    use iot_core::config::{Configuration, MotionConfig};
-    use iot_core::demand::{
-        DemandField, EffectiveDemand, Mode, PlaneDemand, PlaneKey, Sensitivity,
-    };
+    use iot_core::config::MotionConfig;
+    use iot_core::demand::{EffectiveDemand, Mode, PlaneDemand, PlaneKey, Sensitivity};
     use iot_core::drivers::input::{InputSource, PassThrough};
 
     /// A source that records what it was told, so a test can see the demand reach the
@@ -311,12 +309,10 @@ mod tests {
     }
 
     #[test]
-    #[test]
-    #[test]
     fn the_configuration_the_configurator_decides_reaches_the_part() {
         // The configurator sits here because the parts are here, so this hop is the one that
         // decides whether the decision does anything at all.
-        let (mut entry, told) = configurable_entry(PlaneKey::MOTION, MOTION_CADENCE_MS);
+        let (entry, told) = configurable_entry(PlaneKey::MOTION, MOTION_CADENCE_MS);
         let mut sources = alloc::vec![entry];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
@@ -332,7 +328,7 @@ mod tests {
     fn a_plane_with_no_configuration_is_not_told_about_one() {
         // Only motion has an acquisition choice. Asking the others about it would be a claim
         // that they have one.
-        let (mut entry, told) = configurable_entry(PlaneKey::AUDIO, CAPTURE_CADENCE_MS);
+        let (entry, told) = configurable_entry(PlaneKey::AUDIO, CAPTURE_CADENCE_MS);
         let mut sources = alloc::vec![entry];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
@@ -344,7 +340,7 @@ mod tests {
     fn a_board_that_cannot_enter_what_a_mode_needs_keeps_the_part_where_it_is() {
         // Refusal has to be visible where it happens: the part is here, so a configurator that
         // cannot be satisfied must not leave the schedule looking configured.
-        let (mut entry, told) = configurable_entry(PlaneKey::MOTION, MOTION_CADENCE_MS);
+        let (entry, told) = configurable_entry(PlaneKey::MOTION, MOTION_CADENCE_MS);
         let mut sources = alloc::vec![entry];
 
         apply(
