@@ -39,6 +39,13 @@ name = "aec-probe"
 path = "src/bin/aec-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
+# Clock switch probe: what moving the CPU between presets costs and what it leaves behind.
+# Writes the clock registers directly, which is S3-specific work and nothing else can do it.
+[[bin]]
+name = "clock-probe"
+path = "src/bin/clock-probe.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 # Motion demand matrix: one settled, measured cell per (configuration x policy) pair the driver
 # can reach, so the cost table carries measurements rather than arithmetic done from a
 # datasheet. Gated on the S3 and left out of the product tasks by name, like the rest.

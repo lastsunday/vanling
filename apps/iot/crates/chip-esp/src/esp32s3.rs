@@ -1,17 +1,21 @@
 use embassy_executor::SendSpawner;
 use esp_bootloader_esp_idf::esp_app_desc;
 use esp_hal::clock::CpuClock;
-use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, Peripherals};
+use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, Peripherals, SYSTEM};
+use esp_hal::rom::ets_update_cpu_frequency_rom;
 
 /// Brings the chip up, optionally at a clock other than [`CpuClock`]'s default.
 ///
 /// [`CpuClock`]'s `Default` arm is `_80MHz` on this part, so the default here is
 /// 80 MHz on a chip rated for 240. That is a board-level fact every cost in this
-/// tree inherits, and the only reason it is not simply the default is that
-/// esp-hal notes its 160/240 presets change the PLL away from the 480 MHz the chip
-/// boots on, which it says breaks USB Serial/JTAG -- and this repository's console
-/// is USB Serial/JTAG. `[据称]` untested either way; the argument is esp-hal's
-/// comment, not a measurement here.
+/// tree inherits.
+///
+/// The 240 MHz preset is not kept out on the strength of esp-hal's warning that
+/// changing the PLL breaks USB Serial/JTAG, which is this repository's console.
+/// That warning is about the PLL, and the presets do not touch it: all three
+/// pin `pll_clk` to 480 and differ only in the divider, so the console is not on
+/// the path. Measured at 240 MHz with the console intact — `clock-probe`, and
+/// the AEC cost figures that needed the clock.
 pub fn chip_init_at(clock: CpuClock) -> Peripherals {
     esp_app_desc!();
     esp_hal::init(esp_hal::Config::default().with_cpu_clock(clock))
@@ -19,6 +23,57 @@ pub fn chip_init_at(clock: CpuClock) -> Peripherals {
 
 pub fn chip_init() -> Peripherals {
     chip_init_at(CpuClock::_80MHz)
+}
+
+/// Moves the CPU to another preset while the chip is running.
+///
+/// **This is outside esp-hal's contract.** Its own docs say the clock
+/// frequencies "become frozen and cannot be changed" once applied, and this
+/// reaches past that to write the registers directly. What esp-hal keeps sealed
+/// is the voltage bias — `regi2c` and the PVT helpers are `pub(crate)` or
+/// private — so this writes the frequency, the LDO divider and the ROM's tick
+/// calibration, and leaves the bias where init put it. Never lowering that bias
+/// makes every frequency below 240 run over-biased, which is the conservative
+/// direction; measured in `docs/content/records/iot/clock.md`, including the
+/// climb from an 80 MHz boot. Nothing outside the CPU moves: the PLL stays at 480
+/// MHz, APB is untouched, and the system timer is clocked from XTAL alone.
+///
+/// # Safety
+///
+/// Interrupts must be disabled across the register writes, or a handler can
+/// observe the LDO divider and the frequency divider disagreeing — the core
+/// briefly running at one frequency against a divider set for another. Only the
+/// calling core's ROM tick calibration is updated; `ets_update_cpu_frequency_rom`
+/// documents this as per-core, so a second core's `ets_delay_us` is mis-scaled
+/// afterwards. Measured to cost nothing observable here, but that is one workload
+/// on one board, not a guarantee for code that depends on it elsewhere.
+pub unsafe fn set_cpu_clock(clock: CpuClock) {
+    // esp-hal's own mapping, with `pll_clk` pinned at 480 and the source at PLL
+    // for every preset — which is why only `cpuperiod_sel` actually differs.
+    let (period, mhz) = match clock {
+        CpuClock::_80MHz => (0, 80),
+        CpuClock::_160MHz => (1, 160),
+        CpuClock::_240MHz => (2, 240),
+        // Guessing a divider here would leave the core running at a frequency
+        // nothing here can name, so a preset this HAL grew later is refused
+        // rather than mapped to a neighbour.
+        other => panic!("{other:?} has no divider this function knows"),
+    };
+
+    critical_section::with(|_| {
+        SYSTEM::regs().cpu_per_conf().modify(|_, w| unsafe {
+            w.cpuperiod_sel().bits(period);
+            w.pll_freq_sel().bit(true)
+        });
+        SYSTEM::regs().sysclk_conf().modify(|_, w| unsafe {
+            w.pre_div_cnt().bits(0);
+            w.soc_clk_sel().bits(1)
+        });
+        LPWR::regs()
+            .date()
+            .modify(|_, w| unsafe { w.ldo_slave().bits(0x7 >> (mhz / 80)) });
+        ets_update_cpu_frequency_rom(mhz);
+    })
 }
 
 pub fn init_logging() {

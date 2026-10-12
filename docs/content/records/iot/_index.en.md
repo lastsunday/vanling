@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "b7f8e096715d8fb8a845d6dfa609dc43c1346723"
-translated_at = "2026-10-12T02:21:57Z"
+source_file_hash = "e22e7e086ce48151da36a422f44066445607761a"
+translated_at = "2026-10-12T03:47:23Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -122,6 +122,7 @@ A probe is not another form of the product: the product firmware **cannot produc
 | `audio-probe` | The transmit path's steady state with the runtime to itself | Stalls and gaps across the two alternated sounds |
 | `multicore-s3` | Whether starting the second core survives the main stack sitting beneath it | Whether the stack top — where the thread-mode executor's `ThreadFlag` lives — is overwritten by the startup prologue |
 | `aec-probe` | What one audio tick of the linear canceller costs, at L = 16/32/64/128 | First/mean/worst tick, share of 20 ms, and the delay search, filter and meters timed separately |
+| `clock-probe` | What a runtime CPU clock switch costs, what stays true afterwards, and what core 1 makes of it | Ratio of one work unit across the three presets (**not `cpu_clock()` — it reads configuration, not hardware**), switch wall clock, `Instant` across a switch, both cores measuring the same work |
 
 ```sh
 moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3

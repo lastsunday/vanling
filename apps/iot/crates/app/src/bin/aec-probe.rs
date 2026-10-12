@@ -30,10 +30,12 @@ use esp_hal::timer::timg::TimerGroup;
 /// The clock this image brings the chip up at.
 ///
 /// Flip this and rebuild to compare; everything else in the image is identical
-/// between the two figures. esp-hal notes that its 160/240 presets move the PLL
-/// off the 480 MHz the chip boots on and that this "breaks USB Serial/JTAG" --
-/// which is the console this probe reports through, so the claim gets checked
-/// here rather than taken on trust.
+/// between the two figures.
+///
+/// esp-hal warns that changing the PLL breaks USB Serial/JTAG, which is the
+/// console this probe reports through. The 240 preset is not that: it pins
+/// `pll_clk` to 480 like the others and moves only the divider. The console has
+/// stayed up through every figure below, which is what the choice rests on.
 const CLOCK: CpuClock = CpuClock::_240MHz;
 
 /// Only the log line's formatting and the executor's own allocations.

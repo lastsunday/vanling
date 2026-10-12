@@ -14,4 +14,6 @@ pub use esp32c6::{chip_init, init_logging, start_rtos};
 pub(crate) mod esp32s3;
 
 #[cfg(feature = "esp32s3")]
-pub use esp32s3::{chip_init, chip_init_at, init_logging, start_feed_executor, start_rtos};
+pub use esp32s3::{
+    chip_init, chip_init_at, init_logging, set_cpu_clock, start_feed_executor, start_rtos,
+};

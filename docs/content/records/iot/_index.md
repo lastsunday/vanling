@@ -116,6 +116,7 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 | `audio-probe` | 放音链路独占运行时的稳态 | 交替两个音效的 stall 与缺口 |
 | `multicore-s3` | 启动第二核能否在主栈底下存活 | 栈顶是否被启动序例覆写（`ThreadFlag` 就住在那里） |
 | `aec-probe` | 线性回声消除跑一个音频 tick 要多少时间，L = 16/32/64/128 | 首/均/最坏 tick、占 20 ms 比例、延迟搜索/滤波/计量器分开计时 |
+| `clock-probe` | 运行期切 CPU 频率要多少、切完谁还准、切完核 1 怎么样 | 三档同一工作量的耗时比（**不看 `cpu_clock()`，它读配置不读硬件**）、切换墙钟、跨切换的 `Instant` 差、两核同量对比 |
 
 ```sh
 moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3
