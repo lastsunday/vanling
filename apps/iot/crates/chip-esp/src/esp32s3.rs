@@ -1,10 +1,24 @@
 use embassy_executor::SendSpawner;
 use esp_bootloader_esp_idf::esp_app_desc;
+use esp_hal::clock::CpuClock;
 use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, Peripherals};
 
-pub fn chip_init() -> Peripherals {
+/// Brings the chip up, optionally at a clock other than [`CpuClock`]'s default.
+///
+/// [`CpuClock`]'s `Default` arm is `_80MHz` on this part, so the default here is
+/// 80 MHz on a chip rated for 240. That is a board-level fact every cost in this
+/// tree inherits, and the only reason it is not simply the default is that
+/// esp-hal notes its 160/240 presets change the PLL away from the 480 MHz the chip
+/// boots on, which it says breaks USB Serial/JTAG -- and this repository's console
+/// is USB Serial/JTAG. `[据称]` untested either way; the argument is esp-hal's
+/// comment, not a measurement here.
+pub fn chip_init_at(clock: CpuClock) -> Peripherals {
     esp_app_desc!();
-    esp_hal::init(esp_hal::Config::default())
+    esp_hal::init(esp_hal::Config::default().with_cpu_clock(clock))
+}
+
+pub fn chip_init() -> Peripherals {
+    chip_init_at(CpuClock::_80MHz)
 }
 
 pub fn init_logging() {

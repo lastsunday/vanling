@@ -135,7 +135,7 @@ tasks:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
         --bin vanling --bin audio-probe --bin camera-probe --bin multicore-s3 \
-        --bin demand-probe \
+        --bin demand-probe --bin aec-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
@@ -236,6 +236,7 @@ tasks:
   #   probe-camera-s3     the camera and the panel, and nothing else
   #   probe-multicore-s3  the second core and the main stack beneath it
   #   probe-demand-s3     one settled, measured cell per (configuration x cadence) pair
+  #   probe-aec-s3        what one audio tick of the linear canceller costs, per tap count
   probe-audio-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin audio-probe \
@@ -267,6 +268,26 @@ tasks:
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/multicore-s3'
     options:
+      runInCI: false
+
+  probe-aec-s3:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin aec-probe \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/aec-probe'
+    options:
+      runInCI: false
+
+  flash-probe-aec-s3:
+    command: 'espflash flash --chip esp32s3 target/xtensa-esp32s3-none-elf/release/aec-probe'
+    deps:
+      - ~:probe-aec-s3
+    options:
+      persistent: true
+      cache: false
       runInCI: false
 
   flash-probe-audio-s3:

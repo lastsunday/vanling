@@ -17,7 +17,7 @@
 | 运行测试  | `cargo test --package api`（Rust）/ `moon run server-ui:test`（前端）/ `-- <test_name>`（单模型） |
 | 格式化    | `cargo fmt --check && cargo clippy -- -D warnings`（pre-commit 已拦）                             |
 | IoT 检查  | `moon run iot:check-s3`（真实编 S3 目标）/ `check-host` / `check-features`                        |
-| IoT 探针  | `moon run iot:probe-camera-s3`（另有 `audio`、`multicore`、`demand`），配对 `flash-probe-*` 烧录      |
+| IoT 探针  | `moon run iot:probe-camera-s3`（另有 `audio`、`multicore`、`demand`、`aec`），配对 `flash-probe-*` 烧录      |
 | IoT 产物  | `moon run iot:image`（ELF + merged.bin，可从 `apps/iot/` 运行）                                     |
 
 ## ❌ Never

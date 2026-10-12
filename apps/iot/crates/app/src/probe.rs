@@ -17,6 +17,10 @@ use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
 
 use crate::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
 
+/// Board-independent: the AEC touches no peripheral, so its cost belongs to the tap
+/// count and the clock rather than to any wiring.
+pub mod echo;
+
 #[cfg(feature = "lckfb-szpi-esp32s3")]
 pub mod motion;
 

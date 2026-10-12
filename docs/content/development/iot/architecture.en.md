@@ -2,8 +2,8 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "4555add02623839b0131c4ac7d72173c47603b8e"
-translated_at = "2026-10-11T07:22:09Z"
+source_file_hash = "4a7c70326a994cfaacdf2bfa26464003670c6e19"
+translated_at = "2026-10-11T15:41:51Z"
 +++
 
 # Layering and Composition
@@ -169,6 +169,8 @@ The object being bounded is the whole tick, not the largest contributor within i
 
 Measured (S3, 8 windows of 5 s) a single tick runs 17–25 ms. `MAX_SINGLE_HOLD_MS = 30`, one poll period of margin above the measured bound. `[INPUT]` prints `worst single hold N ms (bound 30 ms)` every window, so a breach is visible without anyone comparing figures.
 
+That figure was measured at **80 MHz**, not the datasheet's 240: `CpuClock`'s default arm is `_80MHz`, `chip_init` goes through `esp_hal::init(Config::default())`, and nothing in this repository sets the clock explicitly. `[measured]` `aec-probe` reads 80,000,000 Hz back from `esp_hal::clock::cpu_clock()`. esp-hal notes on its 160/240 presets that changing the PLL affects USB Serial/JTAG, which is this repository's console, so whether those are usable is untested. **Read every millisecond figure above with that 3× of headroom in mind.**
+
 The total is not the risk: Ambient spends 94.8% and behaves. A single 25 ms block is. Playback feeding runs on its own higher-priority executor, driven by DMA, so such a block cannot reach it.
 
 #### Two configurations are refused by implementation
@@ -236,6 +238,10 @@ The codec half of the audio plane's `Off` is still not wired: the consumer half 
 The board has no pin-level microphone power control, and shutting only the ADC does not reduce folding cost (the DMA runs either way, and folding zeros costs what folding data costs). That would build exactly the "low fidelity at high cost" quadrant this section exists to avoid.
 
 #### What the probe reports, and what it cannot
+
+`aec-probe` is the only probe that wires no peripheral: echo cancellation is arithmetic on two streams, and a bring-up would only add noise to the measurement. What it reports is that the CPU cost depends on the tap count and the clock and on nothing else, which is what makes it safe to reserve time for it in the budget before wiring it in. It reports the first, mean and worst tick, the share of 20 ms, and the delay search, the filter and the meters timed separately — they differ in cost and, more to the point, in what they trade: the delay search is one constant against accuracy, and a tap is accuracy against both of the others.
+
+Its ticks run back to back rather than on the 20 ms schedule, so what it reads is a **floor** and not the loaded figure. The room buffer is on the heap: a 10 KB local would sit in the main task's stack, which is the shared resource this document accounts for.
 
 `demand-probe` walks the motion plane's (configuration × cadence) grid, settling each cell before measuring it, and reports three numbers: **bus transactions per second** from the driver's own counter, the **executor occupancy** as the wall-clock share of the window spent polling, and the **number of polls measured**.
 

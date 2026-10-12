@@ -29,6 +29,16 @@ name = "camera-probe"
 path = "src/bin/camera-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
+# AEC cost probe: what one audio tick of the linear canceller costs on this chip, per tap
+# count. The canceller itself is arithmetic and wires no peripheral, but the probe brings the
+# chip up at a clock of its own and measures it on the second core — neither of which exists
+# on the C6, so it is gated on the S3 board like `multicore-s3`. Left out of the product tasks
+# by name, like the rest.
+[[bin]]
+name = "aec-probe"
+path = "src/bin/aec-probe.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 # Motion demand matrix: one settled, measured cell per (configuration x policy) pair the driver
 # can reach, so the cost table carries measurements rather than arithmetic done from a
 # datasheet. Gated on the S3 and left out of the product tasks by name, like the rest.

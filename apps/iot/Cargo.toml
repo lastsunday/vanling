@@ -6,6 +6,15 @@ members = ["crates/core", "crates/chip-esp", "crates/bsp-esp", "crates/app"]
 version = "0.1.0"
 edition = "2024"
 
+# The AEC's cost is measured inside this profile, so the defaults are part of that
+# measurement: `lto = false` with 16 codegen units leaves cross-crate calls
+# unmoved and unoptimised across, which is a property of the schedule rather than
+# of the code. `aec-probe` calls the filter across `iot-core` -> `iot-app`, so it
+# is exactly the kind of call those defaults leave on the boundary.
+[profile.release]
+lto = true
+codegen-units = 1
+
 [workspace.dependencies]
 critical-section = { version = "1.1", default-features = false }
 embedded-alloc = "0.5.1"
