@@ -18,6 +18,48 @@
 
 use alloc::collections::BTreeMap;
 
+/// How fast the chip has to run for one piece of work to meet its deadline.
+///
+/// Chip-independent on purpose: `CpuClock` lives in esp-hal and this crate does
+/// not depend on it, so `iot-chip-esp` is what turns these into clocks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Speed {
+    Slow,
+    Normal,
+    /// The default, because every deadline this board has measured needs the
+    /// fastest clock it has. That is a measurement, not a preference: see
+    /// [`speed_for`].
+    #[default]
+    Fast,
+}
+
+/// What a page asks for, before anything is arbitrated.
+///
+/// `Auto` is the only variant that consults [`speed_for`]. The other three are
+/// the page's decision and are taken as given, so a page that says
+/// [`Speed::Slow`] gets `Slow` even where a deadline says otherwise — and
+/// [`speed_shortfall`] names what that costs, so the breakage points at the page
+/// that asked for it rather than at nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SpeedRequest {
+    #[default]
+    Auto,
+    /// As named.
+    Fixed(Speed),
+}
+
+/// What one device type needs while it is collecting, in this build's terms.
+///
+/// The numbers behind this live in the chip layer, because they are worst cases
+/// measured on one part and mean nothing on another: the same deadline on a
+/// faster core is a shorter hold. What stays here is the shape — which plane
+/// needs which — so a board adding a device declares one row and the chip
+/// decides what it costs.
+pub trait SpeedTable {
+    /// What one plane needs while it is collecting.
+    fn speed_for(field: DemandField) -> Speed;
+}
+
 /// What a plane is asked to produce, in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Mode {
@@ -182,6 +224,7 @@ impl PlaneKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveDemand {
     planes: BTreeMap<PlaneKey, PlaneDemand>,
+    speed: SpeedRequest,
 }
 
 impl Default for EffectiveDemand {
@@ -195,7 +238,10 @@ impl Default for EffectiveDemand {
             PlaneKey::DISPLAY,
             PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
         );
-        Self { planes }
+        Self {
+            planes,
+            speed: SpeedRequest::Auto,
+        }
     }
 }
 
@@ -251,13 +297,25 @@ impl core::fmt::Display for PlaneKey {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Override {
     named: BTreeMap<PlaneKey, (Mode, u32)>,
+    speed: SpeedRequest,
 }
 
 impl Override {
     pub fn none() -> Self {
         Self {
             named: BTreeMap::new(),
+            speed: SpeedRequest::Auto,
         }
+    }
+
+    /// What this override asks for, or [`SpeedRequest::Auto`] if it says nothing.
+    pub fn speed(&self) -> SpeedRequest {
+        self.speed
+    }
+
+    pub fn with_speed(mut self, speed: SpeedRequest) -> Self {
+        self.speed = speed;
+        self
     }
 
     /// What this override says about one plane, or `None` if it says nothing.
@@ -271,6 +329,7 @@ impl Override {
 
     /// Applies the modes this override names, in place, keeping each claim's class.
     pub fn apply(self, demand: &mut EffectiveDemand) {
+        demand.speed = self.speed;
         for (key, (mode, period_ms)) in self.named {
             let current = demand.plane(key);
             demand.set(key, current.with(mode, period_ms));
@@ -332,17 +391,173 @@ fn parse_term(term: &str) -> Option<(PlaneKey, (Mode, u32))> {
     Some((PlaneKey::of(field), mode))
 }
 
-/// Parses a comma-separated list of `field=mode` terms. Comma-separated rather than a
+fn speed_for_name(name: &str) -> SpeedRequest {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "slow" => SpeedRequest::Fixed(Speed::Slow),
+        "normal" => SpeedRequest::Fixed(Speed::Normal),
+        "fast" => SpeedRequest::Fixed(Speed::Fast),
+        // Anything unrecognised, `auto` included: a speed nobody asked for is not
+        // a speed the product should invent one for.
+        _ => SpeedRequest::Auto,
+    }
+}
+
+/// Parses a comma-separated list of `field=mode` terms, plus an optional
+/// `speed=` term naming the clock the whole demand wants. Comma-separated rather than a
 /// repeated variable, which the shell would collapse to its last value.
 pub fn parse_override(text: &str) -> Override {
     let mut combined = Override::none();
     for term in text.split(',') {
+        // `speed=` names no plane, so it is read before the plane parser turns
+        // a term with an unknown field into nothing.
+        if let Some(wanted) = term.strip_prefix("speed=") {
+            combined = combined.with_speed(speed_for_name(wanted));
+            continue;
+        }
         if let Some((key, (mode, period))) = parse_term(term) {
             // Two terms naming the same plane: the later one wins.
             combined.set(key, mode, period);
         }
     }
     combined
+}
+
+/// The clock the chip should run at for this demand.
+///
+/// A page's explicit choice is taken as given — that is the whole point of
+/// letting it state one. Only [`SpeedRequest::Auto`] reads [`speed_for`], and it
+/// reads the collecting planes and takes the highest.
+///
+/// Downclocking stretches durations and changes nothing else: the peripheral bus
+/// keeps its own clock and the system timer runs from XTAL, so the cost of a
+/// wrong answer here is a missed deadline and not a broken device. That is why
+/// this does not second-guess an explicit request, and why
+/// [`speed_shortfall`] exists to report instead. Which preset a [`Speed`] is on
+/// this part is the chip layer's, behind [`SpeedTable`].
+pub fn resolve_speed<T: SpeedTable>(demand: &EffectiveDemand) -> Speed {
+    match demand.speed {
+        SpeedRequest::Fixed(speed) => speed,
+        SpeedRequest::Auto => demand
+            .keys()
+            .filter(|key| demand.plane(**key).mode.is_collecting())
+            .map(|key| T::speed_for(key.field()))
+            .max()
+            .unwrap_or_default(),
+    }
+}
+
+/// The collecting plane whose requirement `resolve_speed` is currently
+/// undercut, and what it needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shortfall {
+    /// The plane being asked to collect below its own speed.
+    pub plane: PlaneKey,
+    /// What that plane needs, so a report can name the requirement beside the
+    /// plane rather than making the reader look it up.
+    pub needed: Speed,
+}
+
+/// The collecting plane whose requirement `resolve_speed` is currently
+/// undercut, if a page asked for something below it.
+///
+/// Named rather than counted so the report can point at the plane rather than at
+/// a number with no owner.
+pub fn speed_shortfall<T: SpeedTable>(demand: &EffectiveDemand) -> Option<Shortfall> {
+    let SpeedRequest::Fixed(asked) = demand.speed else {
+        return None;
+    };
+    demand
+        .keys()
+        .filter(|key| demand.plane(**key).mode.is_collecting())
+        .find_map(|key| {
+            let needed = T::speed_for(key.field());
+            (needed > asked).then_some(Shortfall {
+                plane: *key,
+                needed,
+            })
+        })
+}
+
+/// The part a resolved speed is applied to, and what that part achieves.
+///
+/// The table comes from the sink rather than being named beside it because the two
+/// are the same measurement: the rows say how long a plane holds **on that part**,
+/// so pairing one part's rows with another's setter would compute a deadline for a
+/// chip that is not running. Making it an associated type makes that pairing a
+/// compile error instead of a runtime surprise.
+pub trait ClockSink {
+    /// What each plane needs on the part this sink drives.
+    type Table: SpeedTable;
+
+    /// Applies `speed` and returns the speed the part is actually running.
+    ///
+    /// Answering with what was reached rather than what was asked is what keeps a
+    /// part with fewer presets than the vocabulary has — the C6 has no third — from
+    /// being believed to have reached the top one.
+    fn set_speed(&mut self, speed: Speed) -> Speed;
+}
+
+/// What one call to [`ClockGovernor::apply`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Applied {
+    /// What the demand resolved to.
+    pub asked: Speed,
+    /// What the part is running, which is below [`asked`](Self::asked) on a part
+    /// with fewer presets than the vocabulary has.
+    pub running: Speed,
+    /// The plane `asked` is undercut, when a page named the speed itself.
+    pub undercuts: Option<Shortfall>,
+}
+
+/// Holds a part at whatever the current demand resolves to, moving only when the
+/// answer moves.
+///
+/// Named rather than folded into a free function because the answer has to be
+/// remembered somewhere, and a `static` would make two devices in one process
+/// answer for each other.
+///
+/// Nothing here names a clock, so what the three speeds are on any given part stays
+/// in the chip layer.
+pub struct ClockGovernor {
+    asked: Option<Speed>,
+}
+
+impl Default for ClockGovernor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ClockGovernor {
+    pub const fn new() -> Self {
+        Self { asked: None }
+    }
+
+    /// Puts `sink` at the speed this demand resolves to, and reports what it did.
+    ///
+    /// `None` when the answer has not moved since last time. The switch itself
+    /// would be cheap every frame — a few microseconds against a 20 ms one — but
+    /// the line that announces it is not, and a caller that reports on change
+    /// should be able to say nothing while a page sits still.
+    ///
+    /// This returns what happened rather than logging it, leaving the output channel
+    /// to the layer that owns one.
+    pub fn apply<C: ClockSink>(
+        &mut self,
+        demand: &EffectiveDemand,
+        sink: &mut C,
+    ) -> Option<Applied> {
+        let asked = resolve_speed::<C::Table>(demand);
+        if self.asked == Some(asked) {
+            return None;
+        }
+        self.asked = Some(asked);
+        Some(Applied {
+            asked,
+            running: sink.set_speed(asked),
+            undercuts: speed_shortfall::<C::Table>(demand),
+        })
+    }
 }
 
 /// What one polled source should do, given the demand.
@@ -442,7 +657,13 @@ impl EffectiveDemand {
     pub const fn none() -> Self {
         Self {
             planes: BTreeMap::new(),
+            speed: SpeedRequest::Auto,
         }
+    }
+
+    /// What this demand asks the clock for, before anything is arbitrated.
+    pub const fn speed(&self) -> SpeedRequest {
+        self.speed
     }
 
     /// What one plane is asked for. The interaction path is answered as always-continuous:
@@ -496,7 +717,65 @@ impl EffectiveDemand {
 
 #[cfg(test)]
 mod tests {
+
+    /// The S3's rows, so these tests pin the table that ships rather than a
+    /// stand-in. The real one lives in `iot-chip-esp` and `iot-core` cannot see
+    /// it, which is the point: these numbers belong to a chip, so the chip's copy
+    /// is the one that matters and these only keep the *mechanism* honest.
+    struct S3;
+
+    impl SpeedTable for S3 {
+        fn speed_for(field: DemandField) -> Speed {
+            match field {
+                DemandField::Interaction | DemandField::Motion => Speed::Slow,
+                DemandField::Audio | DemandField::Camera | DemandField::Display => Speed::Fast,
+            }
+        }
+    }
+
+    /// Reaches whatever it is asked for, the way a part whose presets cover the
+    /// whole vocabulary does.
+    #[derive(Default)]
+    struct Reaching {
+        asked: Vec<Speed>,
+    }
+
+    impl ClockSink for Reaching {
+        type Table = S3;
+
+        fn set_speed(&mut self, speed: Speed) -> Speed {
+            self.asked.push(speed);
+            speed
+        }
+    }
+
+    /// A part whose top preset sits below the top of the vocabulary — one with 80
+    /// and 160 and no third.
+    #[derive(Default)]
+    struct Capped {
+        asked: Vec<Speed>,
+    }
+
+    impl ClockSink for Capped {
+        type Table = S3;
+
+        fn set_speed(&mut self, speed: Speed) -> Speed {
+            self.asked.push(speed);
+            match speed {
+                Speed::Fast => Speed::Normal,
+                reached => reached,
+            }
+        }
+    }
+
     use super::*;
+    use alloc::vec::Vec;
+
+    fn collecting(key: PlaneKey) -> EffectiveDemand {
+        let mut demand = EffectiveDemand::none();
+        demand.set(key, PlaneDemand::off().with(Mode::Continuous, 0));
+        demand
+    }
 
     fn live_planes() -> EffectiveDemand {
         {
@@ -883,6 +1162,208 @@ mod tests {
         assert_eq!(
             thrift.named_mode(PlaneKey::DISPLAY),
             Some((Mode::OnChange, 0))
+        );
+    }
+
+    #[test]
+    fn auto_reads_the_collecting_planes_and_takes_the_highest() {
+        let mut demand = EffectiveDemand::none();
+        demand.set(
+            PlaneKey::CAMERA,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        assert_eq!(resolve_speed::<S3>(&demand), Speed::Fast);
+
+        demand.set(PlaneKey::CAMERA, PlaneDemand::off());
+        assert_eq!(
+            resolve_speed::<S3>(&demand),
+            Speed::default(),
+            "nothing collecting leaves the default, which is what a device that is not wired needs"
+        );
+    }
+
+    #[test]
+    fn an_explicit_request_is_taken_as_given_rather_than_arbitrated() {
+        let mut demand = EffectiveDemand::none();
+        demand.set(
+            PlaneKey::AUDIO,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        demand.speed = SpeedRequest::Fixed(Speed::Slow);
+        assert_eq!(
+            resolve_speed::<S3>(&demand),
+            Speed::Slow,
+            "a page that named a speed gets it; the point of letting one is that it can be wrong"
+        );
+    }
+
+    #[test]
+    fn a_forced_speed_names_the_plane_it_is_undercutting() {
+        let mut demand = EffectiveDemand::none();
+        demand.set(
+            PlaneKey::AUDIO,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        demand.set(PlaneKey::CAMERA, PlaneDemand::off());
+
+        demand.speed = SpeedRequest::Fixed(Speed::Slow);
+        assert_eq!(
+            speed_shortfall::<S3>(&demand),
+            Some(Shortfall {
+                plane: PlaneKey::AUDIO,
+                needed: Speed::Fast,
+            }),
+            "the report names the plane and what it needs, so neither has to be looked up"
+        );
+
+        demand.speed = SpeedRequest::Auto;
+        assert_eq!(
+            speed_shortfall::<S3>(&demand),
+            None,
+            "Auto is arbitrated, so nothing is being undercut by it"
+        );
+    }
+
+    #[test]
+    fn a_table_that_makes_a_choice_splits_the_fields_around_it() {
+        // This pins that a table with more than one row is honoured per field, not
+        // collapsed to one answer. The values themselves are the S3's and are
+        // copied; whether they are still the shipped ones is `iot-chip-esp`'s to say.
+        assert_eq!(S3::speed_for(DemandField::Motion), Speed::Slow);
+        assert_eq!(S3::speed_for(DemandField::Interaction), Speed::Slow);
+        assert_eq!(S3::speed_for(DemandField::Camera), Speed::Fast);
+        assert_eq!(S3::speed_for(DemandField::Display), Speed::Fast);
+        assert_eq!(S3::speed_for(DemandField::Audio), Speed::Fast);
+    }
+
+    #[test]
+    fn auto_over_motion_alone_drops_below_fast_and_a_page_can_override_that() {
+        let mut demand = EffectiveDemand::none();
+        demand.set(
+            PlaneKey::MOTION,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        assert_eq!(
+            resolve_speed::<S3>(&demand),
+            Speed::Slow,
+            "motion is the row that makes the table a choice rather than a constant"
+        );
+
+        demand.speed = SpeedRequest::Fixed(Speed::Fast);
+        assert_eq!(resolve_speed::<S3>(&demand), Speed::Fast);
+    }
+
+    #[test]
+    fn the_highest_of_several_collecting_planes_wins() {
+        let mut demand = EffectiveDemand::none();
+        demand.set(
+            PlaneKey::MOTION,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        demand.set(
+            PlaneKey::AUDIO,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        assert_eq!(
+            resolve_speed::<S3>(&demand),
+            Speed::Fast,
+            "one plane at the top of the table lifts every other, which is what makes \
+             Auto a max rather than a first-match"
+        );
+    }
+
+    #[test]
+    fn a_speed_term_in_the_build_time_override_reaches_the_demand() {
+        let mut demand = EffectiveDemand::none();
+        parse_override("display=continuous,speed=slow").apply(&mut demand);
+        assert_eq!(demand.speed(), SpeedRequest::Fixed(Speed::Slow));
+        assert_eq!(
+            parse_override("display=continuous").speed(),
+            SpeedRequest::Auto
+        );
+        assert_eq!(parse_override("speed=nonsense").speed(), SpeedRequest::Auto);
+    }
+
+    #[test]
+    fn an_override_carries_its_speed_onto_the_demand() {
+        let mut demand = EffectiveDemand::none();
+        assert_eq!(demand.speed(), SpeedRequest::Auto);
+        Override::none()
+            .with_speed(SpeedRequest::Fixed(Speed::Normal))
+            .apply(&mut demand);
+        assert_eq!(demand.speed(), SpeedRequest::Fixed(Speed::Normal));
+    }
+
+    #[test]
+    fn what_comes_back_is_what_the_part_reached() {
+        let mut sink = Reaching::default();
+        let mut governor = ClockGovernor::new();
+        assert_eq!(
+            governor.apply(&collecting(PlaneKey::MOTION), &mut sink),
+            Some(Applied {
+                asked: Speed::Slow,
+                running: Speed::Slow,
+                undercuts: None,
+            }),
+            "a page collecting nothing but motion is under the line, so it sits slow"
+        );
+        assert_eq!(sink.asked, [Speed::Slow]);
+    }
+
+    #[test]
+    fn an_answer_that_has_not_moved_is_not_asked_for_again() {
+        let mut sink = Reaching::default();
+        let mut governor = ClockGovernor::new();
+        let demand = collecting(PlaneKey::MOTION);
+        governor.apply(&demand, &mut sink);
+        assert_eq!(
+            governor.apply(&demand, &mut sink),
+            None,
+            "the answer has not moved, and a line per frame costs more than the switch \
+             it would announce"
+        );
+        assert_eq!(sink.asked, [Speed::Slow], "asked once, not once a frame");
+    }
+
+    #[test]
+    fn a_part_that_cannot_reach_the_top_of_the_vocabulary_says_so() {
+        let mut sink = Capped::default();
+        let mut governor = ClockGovernor::new();
+        assert_eq!(
+            governor.apply(&collecting(PlaneKey::AUDIO), &mut sink),
+            Some(Applied {
+                asked: Speed::Fast,
+                running: Speed::Normal,
+                undercuts: None,
+            }),
+            "a part that cannot reach the top has to report the gap, or the caller names \
+             a clock it never got"
+        );
+        assert_eq!(sink.asked, [Speed::Fast], "asked for the top anyway");
+    }
+
+    #[test]
+    fn a_page_that_named_its_own_speed_is_told_which_plane_it_is_undercutting() {
+        let mut sink = Reaching::default();
+        let mut governor = ClockGovernor::new();
+        let mut demand = collecting(PlaneKey::MOTION);
+        demand.set(
+            PlaneKey::AUDIO,
+            PlaneDemand::off().with(Mode::Continuous, 0),
+        );
+        governor.apply(&demand, &mut sink);
+        demand.speed = SpeedRequest::Fixed(Speed::Slow);
+        assert_eq!(
+            governor.apply(&demand, &mut sink),
+            Some(Applied {
+                asked: Speed::Slow,
+                running: Speed::Slow,
+                undercuts: Some(Shortfall {
+                    plane: PlaneKey::AUDIO,
+                    needed: Speed::Fast,
+                }),
+            }),
+            "the page's choice is applied as given, and the plane it costs is named"
         );
     }
 }

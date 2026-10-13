@@ -50,7 +50,7 @@ async fn main(_spawner: Spawner) -> ! {
     };
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    iot_app::run(board, iot_app::SpeakerRunner::Inline).await
+    iot_app::run(board, iot_chip_esp::Part, iot_app::SpeakerRunner::Inline).await
 }
 
 #[cfg(feature = "esp32s3")]
@@ -62,7 +62,11 @@ async fn main(_spawner: Spawner) -> ! {
         HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_BYTES);
     }
 
-    let peripherals = iot_chip_esp::chip_init();
+    // 240 MHz, not the 80 MHz `chip_init` hands back: the AEC's delay search alone
+    // busts the 30 ms audio tick at 80 MHz, and the governor may only lower from
+    // here. `set_cpu_clock` never raises the bias, so starting lower would leave
+    // the speed the product needs most without one trimmed for it.
+    let peripherals = iot_chip_esp::chip_init_at(esp_hal::clock::CpuClock::_240MHz);
     iot_chip_esp::init_logging();
     log::info!("[IOT] boot ok");
     // A transient boot NACK must not leave the screen black: reset and retry.
@@ -76,5 +80,10 @@ async fn main(_spawner: Spawner) -> ! {
 
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
     let feed = iot_chip_esp::start_feed_executor(feed_intr);
-    iot_app::run(board, iot_app::SpeakerRunner::Interrupt(feed)).await
+    iot_app::run(
+        board,
+        iot_chip_esp::Part,
+        iot_app::SpeakerRunner::Interrupt(feed),
+    )
+    .await
 }

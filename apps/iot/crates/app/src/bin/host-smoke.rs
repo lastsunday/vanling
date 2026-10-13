@@ -13,7 +13,7 @@ use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::{SpeakerRunner, run};
 use iot_core::config::MotionConfig;
-use iot_core::demand::PlaneKey;
+use iot_core::demand::{ClockSink, DemandField, PlaneKey, Speed, SpeedTable};
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL,
@@ -531,6 +531,32 @@ fn phase_idle_after_playing() -> bool {
     false
 }
 
+/// No plane has been measured on the host, and an unmeasured worst case is not a
+/// small one — the same rule the C6's table follows, for the same reason.
+struct Unmeasured;
+
+impl SpeedTable for Unmeasured {
+    fn speed_for(_field: DemandField) -> Speed {
+        Speed::Fast
+    }
+}
+
+/// Stands in for the chip's clock on the host, which has no clock.
+///
+/// Every speed is the same speed here, so it reaches whatever it is asked. That is
+/// true rather than convenient: the alternative would be a host build quietly
+/// asserting a deadline against timings that were never measured, which is the one
+/// thing the table exists to prevent.
+struct HostClock;
+
+impl ClockSink for HostClock {
+    type Table = Unmeasured;
+
+    fn set_speed(&mut self, speed: Speed) -> Speed {
+        speed
+    }
+}
+
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     // Boot the real composition: input task + render loop on a fake board.
@@ -540,7 +566,7 @@ async fn main(_spawner: Spawner) {
     // Host has no interrupt executor to hand the feed's cadence to, and the
     // scenarios assert against a loop they can observe, so the feed is joined
     // onto this executor exactly as it was before the split.
-    match select(run(board, SpeakerRunner::Inline), scenario()).await {
+    match select(run(board, HostClock, SpeakerRunner::Inline), scenario()).await {
         Either::First(never) => match never {},
         Either::Second(()) => {}
     }

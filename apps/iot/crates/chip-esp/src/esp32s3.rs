@@ -3,6 +3,7 @@ use esp_bootloader_esp_idf::esp_app_desc;
 use esp_hal::clock::CpuClock;
 use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, Peripherals, SYSTEM};
 use esp_hal::rom::ets_update_cpu_frequency_rom;
+use iot_core::demand::{DemandField, Speed, SpeedTable};
 
 /// Brings the chip up, optionally at a clock other than [`CpuClock`]'s default.
 ///
@@ -23,6 +24,54 @@ pub fn chip_init_at(clock: CpuClock) -> Peripherals {
 
 pub fn chip_init() -> Peripherals {
     chip_init_at(CpuClock::_80MHz)
+}
+
+/// What each plane needs on this part, from worst cases measured here.
+///
+/// A worst case is a hold in wall time, so it belongs to the chip that was
+/// holding: the same deadline on a slower core is a longer hold and a faster one
+/// a shorter, and neither transfers.
+///
+/// Each row is that part's own measured hold times three, against the 30 ms one
+/// audio tick may occupy, so a row under 10 ms may sit slow and one over it may
+/// not. The multiplier is deliberately pessimistic — measured downclocking
+/// stretches a hold by about 2x rather than 3x, because part of the cost is I2C
+/// wait that does not track the clock. Both directions of that reasoning, and the
+/// rows themselves, are in `docs/content/records/iot/clock.md`.
+pub struct Table;
+
+impl SpeedTable for Table {
+    fn speed_for(field: DemandField) -> Speed {
+        match field {
+            DemandField::Interaction | DemandField::Motion => Speed::Slow,
+            DemandField::Audio | DemandField::Camera | DemandField::Display => Speed::Fast,
+        }
+    }
+}
+
+/// Puts the chip at the clock [`Speed`] names.
+///
+/// The three-way mapping lives here because the presets are a fact about this part:
+/// `CpuClock` has three of them, and a chip with fewer cannot honour the same
+/// vocabulary. This part can honour all three, so what this returns equals what it
+/// was given; a part that cannot says so through the same return value.
+///
+/// [`set_cpu_clock`] is `unsafe` for its one requirement — interrupts disabled
+/// across the register writes — and this discharges it with the critical section
+/// that function already takes.
+pub fn set_speed(speed: Speed) -> Speed {
+    // SAFETY: the callee's only requirement is interrupts disabled across the register
+    // writes, which the critical section it takes itself provides.
+    unsafe { set_cpu_clock(clock_for(speed)) };
+    speed
+}
+
+const fn clock_for(speed: Speed) -> CpuClock {
+    match speed {
+        Speed::Slow => CpuClock::_80MHz,
+        Speed::Normal => CpuClock::_160MHz,
+        Speed::Fast => CpuClock::_240MHz,
+    }
 }
 
 /// Moves the CPU to another preset while the chip is running.

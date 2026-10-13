@@ -4,18 +4,32 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
 use embassy_executor::SendSpawner;
 use embassy_futures::join::{join, join3, join4};
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use iot_core::config::Configurator;
-use iot_core::demand::PlaneKey;
+use iot_core::demand::{ClockSink, EffectiveDemand, Override, PlaneKey};
 use iot_core::drivers::board::{
     Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPlayback,
 };
 use iot_core::drivers::playback::Speaker;
 use iot_core::state::{DeviceManager, DisplayPage};
 
-pub mod demand;
+/// The demand a running device is under, read by the tasks that schedule against it and
+/// written by the one that derives it.
+///
+/// Shared state rather than a message because a demand **is** state: idempotent, with only the
+/// latest value meaning anything. Carrying it on a channel would need a one-deep queue,
+/// change detection on the writer, and a retry for a refused send — three mechanisms that
+/// exist only because a channel cannot hold a value.
+///
+/// The [`RefCell`] is inside the critical section because embassy-sync's blocking mutex
+/// lends out `&T`. Holding it never spans an await, so a reader sees a whole demand and
+/// never a torn one.
+pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
 /// The page the device comes up on, named by `IOT_BOOT_PAGE` at build time.
 ///
@@ -38,7 +52,7 @@ fn boot_page() -> DisplayPage {
 ///
 /// Comma-separated and parsed leniently: a repeated variable keeps only its last
 /// assignment, so a mistyped term should cost a term rather than the build.
-fn boot_override() -> demand::Override {
+fn boot_override() -> Override {
     let parsed = iot_core::demand::parse_override(option_env!("IOT_DEMAND").unwrap_or(""));
     if option_env!("IOT_DEMAND").is_some() && !parsed.names_anything() {
         log::warn!("[IOT] IOT_DEMAND named no plane this firmware recognises: ignored");
@@ -173,9 +187,10 @@ pub enum SpeakerRunner {
 /// registers one light renderer per wired surface, and runs the persistent tasks.
 /// Generic over capabilities, so every board wiring the same capabilities is
 /// served by this single copy.
-pub async fn run<B>(mut board: B, speaker_runner: SpeakerRunner) -> !
+pub async fn run<B, C>(mut board: B, mut clock: C, speaker_runner: SpeakerRunner) -> !
 where
     B: BoardTrait + HasLight + HasInput + HasMotion + HasAudio + HasPlayback + HasCamera + 'static,
+    C: ClockSink,
 {
     let lights = board.take_lights().expect("board has a wired light");
     let mut sources = board.take_input().unwrap_or_default();
@@ -272,17 +287,20 @@ where
     // `Speaker::Error` is one named type rather than an implementation's own.
     let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));
 
+    // A local rather than a `static`: this is the function that creates both tasks that
+    // read it, so a process-wide value would let a second `run` in one process answer
+    // for the first. Opened with the page's demand already in it, which makes the
+    // polling loop's first tick schedule against it by construction rather than by a
+    // line above saying so. The feed loop is deliberately not given it: that loop's
+    // existence is what supplies the microphone's clock, so handing it a gate would
+    // make the one thing nothing may switch off the one thing a page could switch.
+    let demand = SharedDemand::new(RefCell::new(manager.demand().clone()));
+    log::info!("[IOT] opening demand {}", manager.demand());
+
     // A board without a speaker still has to run the tasks it has, so the playback
     // loops are only ever started when there is one: parking on buses nothing
     // writes would be two more tasks doing nothing. Three arms rather than one, so
     // the tuples the joins return never have to agree.
-    //
-    // The opening demand is written before any task that reads it starts, so the polling
-    // loop's first tick already schedules against it. The feed loop is deliberately not given
-    // it: that loop's existence is what supplies the microphone's clock, so handing it a gate
-    // would make the one thing nothing may switch off the one thing a page could switch.
-    demand::propose(manager.demand());
-    log::info!("[IOT] opening demand {}", manager.demand());
     match (shared, speaker_runner) {
         (Some(shared), SpeakerRunner::Interrupt(spawner)) => {
             // Spawned, not joined: it is on the other executor, and joining a
@@ -292,39 +310,45 @@ where
                 feed_task(shared).expect("the feed executor has room for the one task on it"),
             );
             match join3(
-                input_task(&INTENT_BUS, sources, &configurator),
+                input_task(&INTENT_BUS, sources, &configurator, &demand),
                 render_loop(
                     &INTENT_BUS,
                     &RENDER_BUS,
                     &PLAYBACK_BUS,
                     render,
                     &mut manager,
+                    &mut clock,
+                    &demand,
                 ),
                 control_loop(shared, &PLAYBACK_BUS, &INTENT_BUS),
             )
             .await {}
         }
         (Some(shared), SpeakerRunner::Inline) => match join4(
-            input_task(&INTENT_BUS, sources, &configurator),
+            input_task(&INTENT_BUS, sources, &configurator, &demand),
             render_loop(
                 &INTENT_BUS,
                 &RENDER_BUS,
                 &PLAYBACK_BUS,
                 render,
                 &mut manager,
+                &mut clock,
+                &demand,
             ),
             control_loop(shared, &PLAYBACK_BUS, &INTENT_BUS),
             playback::feed_loop(shared),
         )
         .await {},
         (None, _) => match join(
-            input_task(&INTENT_BUS, sources, &configurator),
+            input_task(&INTENT_BUS, sources, &configurator, &demand),
             render_loop(
                 &INTENT_BUS,
                 &RENDER_BUS,
                 &PLAYBACK_BUS,
                 render,
                 &mut manager,
+                &mut clock,
+                &demand,
             ),
         )
         .await {},

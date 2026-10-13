@@ -5,8 +5,8 @@ edition.workspace = true
 
 [features]
 default = ["esp32c6"]
-esp32c6 = []
-esp32s3 = []
+esp32c6 = ["esp-hal/esp32c6", "esp-rtos/esp32c6"]
+esp32s3 = ["esp-hal/esp32s3", "esp-rtos/esp32s3"]
 
 [dependencies]
 critical-section = { workspace = true }
@@ -16,4 +16,5 @@ esp-bootloader-esp-idf = { workspace = true }
 esp-hal = { workspace = true }
 esp-println = { workspace = true }
 esp-rtos = { workspace = true }
+iot-core = { workspace = true }
 log = { workspace = true }

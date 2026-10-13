@@ -118,6 +118,138 @@ esp-hal 1.2.2 的时钟文档有一节叫 **Frozen Clock Frequencies**：
 
 这是**一个工作量、一块板**的结果。依赖 `ets_delay_us` 精确计时的代码不能据此假定两个核都准。
 
+## 接入产品：整条链在硬件上跑通
+
+`ClockGovernor::apply` 挂在 `render_loop` 的 `demand::propose` 旁边，每帧解析一次，只在结果变化时写寄存器。决策是 `iot-core` 里的一个类型；映射和写寄存器是芯片的。
+
+`IOT_DEMAND` 增加了一个 `speed=` 项，所以整条链可以只改构建期变量就走完：
+
+```sh
+IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
+```
+
+**实测（产品固件，非探针）：**
+
+```
+[CLOCK] a page asked for Slow, but PlaneKey { field: Motion, instance: 0 } is running and needs Fast
+[CLOCK] running at _80MHz
+```
+
+**显式档位不被仲裁改写，被压过的 plane 被指名报出**——正是设计要的形状。
+
+**代价有多大，同一次运行里就有数：**
+
+| | @240 MHz | @80 MHz |
+|---|---:|---:|
+| 每 2 秒 repaint | 49–50 | **19–27** |
+| 占用 executor | 48% | **24%** |
+| worst render | 4 ms | **10 ms** |
+
+同一份工作量，在三分之一的时钟下只做完一半到三分之一的 repaint。**降频不制造空闲，它把同样的活摊到更长的墙钟上**——而这个产品每帧都有 deadline。
+
+## 表第一次真的会做选择
+
+设备表按实测重填之后，`Auto` 不再是常量：
+
+| 在跑的 plane | 仲裁结果 |
+|---|---|
+| motion + audio + display（默认开机形态） | **240 MHz** |
+| **只有 motion** | **80 MHz** |
+
+三条路径都在产品固件上验过：`Auto` 满配 240、`Auto` 只有 motion 降 80、显式 `speed=slow` 强制 80 并 warn 指名被压过的 plane。
+
+**每一行的来源，以及为什么其中一行值得单独说：**
+
+| device | 最坏 @240 | ×3 | 档 |
+|---|---:|---:|---|
+| Interaction（touch poll） | 3 ms | 9 ms | Slow |
+| Motion | 3 ms | 9 ms | **Slow** |
+| Audio（AEC tick） | 13.3 ms | 40 ms | Fast |
+| Camera（capture poll） | 8 ms | 24 ms | Fast |
+| Display（render） | 4 ms | 12 ms | Fast |
+
+**Motion 在 240 和 80 下都是 3 ms** —— 它的开销几乎全在 I2C 等待，不随时钟缩放。所以它是唯一一行「降频对它没有影响」的。
+
+**Display 按 render 的 4 ms 收，不按面板写的 16 ms** —— 写是 DMA，不随时钟变长；按 16 ms 收会让这张表在一个根本不该算进 CPU 成本的数字上高估自己。
+
+**逐源最坏本来就是现成的**：`input.rs` 每个窗口已经在报 `worst source: button 0 ms, touch 1-3 ms, motion 3 ms, capture 5-8 ms`。所以这批数字不是新写的探针，是把产品一直在报的东西读出来。
+
+## 表回答不了的那个问题：整轮最坏
+
+逐源最坏加起来不等于一轮的最坏。产品自己报的两个数说明它们确实叠加：
+
+| @240 MHz | |
+|---|---:|
+| 最慢单个源（capture poll） | 5–8 ms |
+| **整轮最坏持有** | **10–13 ms** |
+
+一轮里不止一个源到期，所以**每一行单独看合格，加起来就不一定**。`speed_for` 回答的是「这个 plane 需要多快」，问的不是「这一轮要多久」——两个问题，绑不上。
+
+**而整轮最坏才是绑定约束**，因为 30 ms 的界是对「单次持有」说的：
+
+| @80 MHz，全部 plane 开着 | |
+|---|---:|
+| 最慢单个源 | 20–21 ms |
+| **整轮最坏持有** | **25–26 ms** |
+| 界 | 30 ms |
+
+**用掉了 83%。** 任何额外工作都会破界。
+
+**顺带修正了一个判据**：13 ms @240 到 26 ms @80 是 **2.0×**，不是 3×。里面有一截不随时钟缩放（I2C 等待）。所以表里那个「×3」是偏保守的估计——真实倍率更小，对「能不能慢」这件事是偏向放行的一侧。
+
+**未测**：具体是哪几个源在同一轮里叠加、叠加多少。`input.rs` 报的是整轮最坏，没有逐源的时间戳，所以这一层还答不了。
+
+## 表跟着芯片走，不留在 core
+
+每行的数字是**这块板上测的最坏持有**（墙钟）。同一个 deadline 在更慢的核上是更长的持有、更快的核上是更短的——**所以数字不能住在看不见芯片的层里。**
+
+`speed_for` 因此是一个 trait，各芯片自己实现：
+
+| 层 | 内容 |
+|---|---|
+| `iot-core::demand` | `Speed` / `SpeedRequest` / `SpeedTable` / `ClockSink` / `resolve_speed` / `speed_shortfall` / `ClockGovernor` —— 机制，无数字 |
+| `iot-chip-esp` | 每片一份 `Table`、`Speed → CpuClock`，以及实现 `ClockSink` 的 `Part` |
+| `iot-app` | `render_loop` 里的两行日志。**不再知道 `CpuClock` 存在** |
+
+**表是从 sink 上取的，不是并排传进去的** —— `ClockSink::Table` 是关联类型。两个数是同一次测量：一行说的是**那块芯片上**某个平面持有多久，所以拿 A 片的表配 B 片的 `set_speed` 就是替一块没在跑的芯片算 deadline。做成关联类型，这个配对变成编译错误而不是运行时的意外。
+
+**`Governor` 在 core 里，因为它是本仓库已有的形状** —— `RenderController` 就在 `core::render` 里：同样是有状态（存 `last`）、`&mut self`、变了才动、效果经注入（那边是闭包，这里是 `ClockSink`）、返回「有没有动」（那边是 `bool`，这里是 `Option<Applied>`）。**core 连 `Box` 都在用**，所以「core 只依赖 libm」不是它不放有状态控制器的理由——那是现状，不是约束。
+
+**用 `&mut self` 而不是 `static`，换回来三样东西**：
+
+- **测试能拆开**。做成全局 static 时，「上次是什么」跨调用共享，于是四个本该独立的断言被硬塞进一条顺序 walk，测试自己都写了「拆开会因为跑到的顺序而时红时绿」。改成 `&mut self` 就是四个独立测试。
+- **两个 `run()` 不再互相踩**。static 是进程级的，一进程两台设备会各报各的。
+- **`iot-core` 不必引入 `log`**。`apply` 返回结构化的 `Applied { asked, running, undercuts }`，**报什么**留给拥有输出通道的那一层——和 `RenderController` 不打日志、`DiagnosticsSink` 在 core 而报告在 app 是同一个分法。
+
+切频本身每帧做也只有几微秒（20 ms 一帧的 0.25%），**真正贵的是每帧一行串口日志**（80 MHz 下实测 2634 µs，而切换本身 48 µs），所以 dedup 是为日志省的不是为 CPU 省。
+
+**两片的能力不同，所以签名也不同：**
+
+| | `CpuClock` 预设 | `Fast` 对应 |
+|---|---|---|
+| S3 | 80 / 160 / **240** | 240 MHz |
+| C6 | 80 / **160** | 160 MHz（顶档即此） |
+
+**C6 的表一行都没测**，而且这是刻意的：**在没测过的芯片上一个「未知的最坏情况」不是小的情况。** 所以它全填 `Fast`（= 该片能达到的顶档），谁测了谁填自己那行并写明出处。
+
+**上一版把 S3 的三行数字直接给 C6 用是错的**——那三个数是 S3 的墙钟持有时间，对 C6 毫无意义。
+
+**`set_speed` 返回「实际达成的档位」，而不是「问的档位」**，所以差档是返回值而不是失败：S3 上 `Fast → Fast`；C6 上 `Fast → Normal`（160 是它的顶档）。`iot-chip-esp::Part` 一比就报「问 Fast，这片达成 Normal」。**不崩、不静默、不说谎**——这比最初那版 `unimplemented!()` 好，也比静默不动好。
+
+**`set_cpu_clock` 那条越界警告在 C6 上不成立**：esp-hal 在 C6 上没有运行期改频的接口，所以 C6 的 `set_speed` 只接受请求而不动时钟。这件事写进了注释，而不是藏起来——**依赖它的构建应当是看得见的。**
+
+**这条路径不靠板子测**：`ClockGovernor::apply` 从 bin 注入 sink（和 `Board`、`SpeakerRunner` 同一个形状），所以 host 侧能传一个记录式的 sink 断言「问的是不是它达到的」。C6 那条降级就是 host 上钉住 `Some(Normal)` 而不是 `Some(Fast)` 测出来的。
+
+## 一个挡路的既有缺陷
+
+`vanling` 的 release 构建此前**编不出来**，且 `check-s3` 看不见它（`cargo check` 不跑 codegen），`build-s3` / `image-s3` 又标着 `runInCI: false`。
+
+症状是 rustc 的 Xtensa 后端中止：`Cannot select: i32 = XtensaISD::PCREL_WRAPPER TargetConstantPool`，发生在 `Board::new`，符号是含中断处理函数指针的 `DMA_CH2::INFO`。
+
+**已排除**：不是本次改动引入（`git stash` 后同样复现）；不是 LTO（关掉照样复现）；不是内联深度本身（同一个 `#[inline(never)]` 加在 `Board::new` 上无效）。
+
+**有效的是把它加在 `new_dvp` 上**——保持 DVP 构造不内联进 `Board::new`，那个常量就不进后者的 codegen。代价是一次性 bring-up 的优化机会，未测。
+
 ## 未测与明确不做
 
 - **功耗**。探针不降偏置，所以测不出真实省电效果。这是刻意的取舍，不是遗漏。

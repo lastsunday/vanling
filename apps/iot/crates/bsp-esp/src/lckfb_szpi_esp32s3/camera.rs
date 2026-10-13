@@ -133,6 +133,15 @@ impl Board<'static> {
     /// Errors as a [`BoardError`] because the product's bring-up reports a camera that will
     /// not configure the same way it reports a panel that will not — both are the board's
     /// peripherals, and the probe wraps them into one variant.
+    // Not a performance choice. Inlined into `Board::new`, this pulls
+    // `DMA_CH2::INFO` — an associated constant holding interrupt handler
+    // pointers — into that function's codegen, and rustc's Xtensa backend then
+    // cannot select `XtensaISD::PCREL_WRAPPER TargetConstantPool` for it and
+    // aborts the whole crate with "Cannot select". `#[inline(never)]` here keeps
+    // it out. Two other attributes do not: removing LTO does not, and the same
+    // attribute on `Board::new` does not, because what has to stay out is *this*
+    // function rather than that one.
+    #[inline(never)]
     pub(super) fn new_dvp(
         pins: CameraPins,
     ) -> Result<esp_hal::lcd_cam::cam::Camera<'static>, BoardError> {

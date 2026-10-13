@@ -1,13 +1,15 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::demand;
+use crate::SharedDemand;
 use crate::input::IntentBus;
 use crate::playback::{PlaybackBus, PlaybackCommand};
 use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, TrySendError};
 use embassy_time::{Duration, Instant, Timer};
+use iot_core::demand::ClockGovernor;
+use iot_core::demand::ClockSink;
 use iot_core::demand::{EffectiveDemand, Mode, PlaneKey};
 use iot_core::diagnostics::DiagnosticsSink;
 use iot_core::drivers::camera::CameraTarget;
@@ -363,16 +365,21 @@ fn backlight_for(now_ms: u32, breath: Breath) -> u8 {
 /// Render loop: drains the management pipe, interpreting operation intents against the
 /// manager (the pipeline context) and applying business intents wholesale, and parks on
 /// the intent/render buses once the surface settles instead of busy-stepping.
-pub async fn render_loop(
+pub async fn render_loop<C: ClockSink>(
     intent_bus: &'static IntentBus,
     render_bus: &'static RenderBus,
     playback_bus: &'static PlaybackBus,
     mut render: Render,
     manager: &mut DeviceManager,
+    clock: &mut C,
+    demand: &SharedDemand,
 ) -> ! {
     let mut elapsed_ms: u32 = 0;
     let mut last_page = manager.state().page;
     let mut next_frame: Instant = Instant::now();
+    // This loop's, not a static: what the chip was last asked for belongs to the one
+    // loop that asks it, so a second `run` in one process does not answer for the first.
+    let mut governor = ClockGovernor::new();
     let mut playback = PlaybackDispatch::new(manager.playback_state());
     loop {
         while let Ok(intent) = intent_bus.try_receive() {
@@ -404,13 +411,24 @@ pub async fn render_loop(
         }
         let state = manager.state();
         // The page is the product's declaration of what it wants, so the demand follows it
-        // here rather than each consumer deriving its own.
-        //
-        // The demand is shared state rather than a message: this writes it, and the polling
-        // loop reads whatever is current on its next tick. The configurator is not called
-        // here — it needs the board's capabilities and answers against the part that
-        // refused, so it sits beside the parts.
-        demand::propose(manager.demand());
+        // here rather than each consumer deriving its own. The polling loop reads
+        // whatever is current on its next tick. The configurator is not called here — it
+        // needs the board's capabilities and answers against the part that refused, so
+        // it sits beside the parts.
+        demand.lock(|current| *current.borrow_mut() = manager.demand().clone());
+        // The governor returns what it did; the wording and the channel are this layer's.
+        if let Some(applied) = governor.apply(manager.demand(), clock) {
+            if let Some(short) = applied.undercuts {
+                log::warn!(
+                    "[CLOCK] a page asked for {:?}, but {:?} is running and needs {:?} \
+                     — applying the page's choice",
+                    applied.asked,
+                    short.plane,
+                    short.needed,
+                );
+            }
+            log::info!("[CLOCK] running at {:?}", applied.running);
+        }
         let active = render.tick(render_bus, &state, manager.demand(), elapsed_ms);
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
         if active {

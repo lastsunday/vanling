@@ -9,7 +9,7 @@ use iot_core::demand::{DemandField, EffectiveDemand, InputLimiter, MAX_SINGLE_HO
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{Intent, recognize};
 
-use crate::demand;
+use crate::SharedDemand;
 use iot_core::config::{Configuration, Configurator};
 
 /// Intent channel: input task writes recognized operations, the render loop
@@ -108,6 +108,7 @@ pub async fn input_task(
     intent_bus: &'static IntentBus,
     mut sources: Vec<PollEntry>,
     configurator: &Configurator,
+    demand: &SharedDemand,
 ) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(INPUT_BASE_MS));
     let mut now_ms: u64 = 0;
@@ -127,7 +128,7 @@ pub async fn input_task(
         ticker.next().await;
         now_ms = now_ms.wrapping_add(INPUT_BASE_MS);
         let loop_start = Instant::now();
-        demand::with(|current| apply(&mut sources, current, configurator, now_ms));
+        demand.lock(|current| apply(&mut sources, &current.borrow(), configurator, now_ms));
         for (index, entry) in sources.iter_mut().enumerate() {
             if !entry.is_active() || entry.next_at_ms() > now_ms {
                 continue;
