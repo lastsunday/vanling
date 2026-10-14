@@ -144,7 +144,50 @@ const SDP_16BIT: u8 = 0x60;
 /// Datasheet 3.3: bit1 selects TDM. One microphone in standard I2S leaves it
 /// clear, and it is written explicitly because the bit is only correct as a
 /// consequence of the microphone count, not as a power-on value.
-const SDP2_NO_TDM: u8 = 0x00;
+/// Whether MIC3 is read as the echo reference.
+///
+/// On, because this board wires the ES8311's output to it, and a reference that
+/// arrives through the same ADC and the same DMA as the microphone needs no
+/// alignment work at all — which is the part the software path keeps getting
+/// wrong. Off is a board without that wiring.
+/// Whether MIC3 is read as the echo reference.
+///
+/// **[measured] off, with the registers known correct and the cause still
+/// open.** [`MIC1_AND_MIC3`] sets every field that makes TDM — format, channel
+/// count, and the TDMIN pull-down left alone — and `init` reads them back, so the
+/// part is known to hold `LRCK_RATE_MODE = 2`, `SP_PROTOCAL = 11` and the pin
+/// still biased. It then drives nothing: the capture reads zero on all four
+/// slots, over the same clock table the two-channel path runs on. Nothing in the
+/// register map says that is wrong, which leaves the receiver's half of the link
+/// as the place to look next. The reference stays off rather than the microphone
+/// being taken down with it.
+const USE_MIC3_REFERENCE: bool = false;
+
+/// Datasheet 3.3: bit1 of register 0x12 is **`TDMIN_PDN_OFF`, the TDMIN pin's
+/// internal pull-down — it does not select a serial format.** An earlier comment
+/// here claimed it did, and the old name `SDP2_NO_TDM` carried the mistake
+/// forward; following it wrote 0x02, turned the pull-down off, and the part
+/// stopped driving the data line at all — the capture read zeros on every slot.
+///
+/// Zero is right because it keeps the pin biased, not because it means "not TDM".
+/// The format is [`SDP_DSP`], the channel count [`LRCK_4_CHANNELS`], and **all
+/// three change together** — flipping this one alone is what broke the capture.
+const SDP2_TDMIN_PDN_ON: u8 = 0x00;
+
+/// Datasheet 3.3: `SP_PROTOCAL`, bits 1:0 of register 0x11. `11` is DSP mode —
+/// the four-slot TDM framing. `00` is plain I2S and carries two channels, which
+/// is why MIC3 has no slot to arrive in.
+///
+/// **[measured] the LCKFB board wires MIC3 to the ES8311's output** — the echo
+/// reference, per the vendor's own audio-input chapter — and it sits in slot 1,
+/// not slot 2.
+const SDP_DSP: u8 = 0x03;
+
+/// Datasheet: `LRCK_RATE_MODE`, bits 7:4 of register 0x08. Two means four
+/// channels, and **the field only means anything once `SP_PROTOCAL` is `11`** —
+/// one setting expressed in two registers.
+const LRCK_RATE_MASK: u8 = 0xF0;
+const LRCK_4_CHANNELS: u8 = 0x20;
 
 /// Selects MIC1 alone. Written once and referenced twice, since a divergence
 /// between two copies would configure the part by start count.
@@ -159,7 +202,7 @@ const MIC1_SELECT: &[Step] = &[
     write(REG_MIC12_POWER, 0x00),
     merge(REG_MIC1_GAIN, GAIN_ENABLE, GAIN_ENABLE),
     merge(REG_MIC1_GAIN, GAIN_FIELD, GAIN_30DB),
-    write(REG_SDP_INTERFACE2, SDP2_NO_TDM),
+    write(REG_SDP_INTERFACE2, SDP2_TDMIN_PDN_ON),
 ];
 
 /// The reset comes first: every later write is meaningless against a part still
@@ -200,12 +243,36 @@ const BRING_UP_SERIAL: &[Step] = &[
     merge(REG_SDP_INTERFACE1, SDP_WIDTH_MASK, SDP_16BIT),
 ];
 
-const BRING_UP: &[&[Step]] = &[
-    BRING_UP_RESET,
-    BRING_UP_CLOCKS,
-    BRING_UP_SERIAL,
-    MIC1_SELECT,
+/// MIC1 (the microphone) together with MIC3 (the echo reference), in TDM.
+///
+/// Kept beside [`MIC1_SELECT`] rather than replacing it: the reference channel
+/// is a property of this board's wiring, and a board without it still wants the
+/// single-channel path.
+///
+/// **Three registers, and all three or none.** `SP_PROTOCAL` picks DSP framing,
+/// `LRCK_RATE_MODE` says four channels, and the pull-down on TDMIN stays put.
+/// The earlier attempt changed only the third, believing it was the format
+/// select — which turned the pull-down off and silenced the part entirely. A
+/// channel count the format does not carry, and a format whose pin is unbiased,
+/// are both invisible in the register map until the capture comes back empty.
+const MIC1_AND_MIC3: &[Step] = &[
+    merge(REG_MIC1_GAIN, GAIN_ENABLE, GAIN_ENABLE),
+    merge(REG_MIC1_GAIN, GAIN_FIELD, GAIN_30DB),
+    merge(REG_MIC3_GAIN, GAIN_ENABLE, GAIN_ENABLE),
+    merge(REG_MIC3_GAIN, GAIN_FIELD, GAIN_30DB),
+    merge(REG_MODE_CONFIG, LRCK_RATE_MASK, LRCK_4_CHANNELS),
+    merge(REG_SDP_INTERFACE1, SDP_FRAME_MASK, SDP_DSP),
+    write(REG_SDP_INTERFACE2, SDP2_TDMIN_PDN_ON),
 ];
+
+/// Which of the two selects the board is wired for.
+const SELECT: &[Step] = if USE_MIC3_REFERENCE {
+    MIC1_AND_MIC3
+} else {
+    MIC1_SELECT
+};
+
+const BRING_UP: &[&[Step]] = &[BRING_UP_RESET, BRING_UP_CLOCKS, BRING_UP_SERIAL, SELECT];
 
 /// Releases the part into capture.
 const START: &[&[Step]] = &[
@@ -217,7 +284,7 @@ const START: &[&[Step]] = &[
         write(REG_MIC3_POWER, MIC_POWER),
         write(REG_MIC4_POWER, MIC_POWER),
     ],
-    MIC1_SELECT,
+    SELECT,
     &[
         write(REG_ANALOG_POWER, ANALOG_POWER_RUN),
         write(REG_RESET, RESET_RUN),
@@ -282,6 +349,19 @@ impl<D: I2c> Es7210<D> {
             return Ok(());
         }
         register_seq::run(&mut self.i2c, self.addr, BRING_UP)?;
+        // **The serial format is read back because nothing else says whether it
+        // took.** A wrong format leaves the part driving the data line while the
+        // receiver sees silence, and both halves of that are individually
+        // plausible — which is how a sequence that stops the part dead was twice
+        // taken for a working one.
+        let mode = register_seq::read_reg(&mut self.i2c, self.addr, REG_MODE_CONFIG)?;
+        let serial = register_seq::read_reg(&mut self.i2c, self.addr, REG_SDP_INTERFACE1)?;
+        let interface = register_seq::read_reg(&mut self.i2c, self.addr, REG_SDP_INTERFACE2)?;
+        log::warn!(
+            "[MIC] ES7210 holds mode 0x{mode:02X} (channels {}), serial 0x{serial:02X} (protocol {}), interface 0x{interface:02X}",
+            (mode & LRCK_RATE_MASK) >> 4,
+            serial & SDP_FRAME_MASK,
+        );
         self.start()?;
         self.running = true;
         Ok(())
@@ -381,15 +461,20 @@ mod tests {
 
     #[test]
     fn the_serial_port_ends_up_in_standard_i2s_at_16_bits() {
+        // **Standard framing, and this is the one thing standing between this
+        // board and a hardware echo reference.** MIC3 is a TDM slot, so reading
+        // it needs TDM — but flipping `REG_SDP_INTERFACE2`'s TDM bit on its own
+        // stops the part driving the data line, and the capture goes silent.
+        // `[实测]` The reference therefore stays dark until TDM can be enabled
+        // properly; see [`USE_MIC3_REFERENCE`].
         let codec = settle();
         let sdp = codec.i2c.registers[REG_SDP_INTERFACE1 as usize];
         assert_eq!(sdp & SDP_FRAME_MASK, SDP_I2S, "standard I2S framing");
         assert_eq!(sdp & SDP_WIDTH_MASK, SDP_16BIT, "16-bit words");
-        assert_eq!(sdp, 0x60, "the power-on frame and TDM bits are gone");
         assert_eq!(
             codec.i2c.registers[REG_SDP_INTERFACE2 as usize] & 0x02,
             0,
-            "not TDM"
+            "not TDM — enabling it alone silences the capture"
         );
     }
 
@@ -400,6 +485,11 @@ mod tests {
             codec.i2c.registers[REG_MIC1_GAIN as usize],
             GAIN_ENABLE | GAIN_30DB
         );
+        // **MIC3 is dark, and that is the one this board would want live** — it
+        // carries the ES8311's output back as the echo reference. Enabling it is
+        // `USE_MIC3_REFERENCE`, which is off because turning TDM on is what that
+        // takes and this driver cannot do it yet. A live PGA on an unconnected
+        // input would be noise the canceller would try to model.
         for reg in [REG_MIC2_GAIN, REG_MIC3_GAIN, REG_MIC4_GAIN] {
             assert_eq!(
                 codec.i2c.registers[reg as usize] & GAIN_ENABLE,
@@ -647,9 +737,18 @@ mod tests {
         let codec = settle();
         let gated = codec.i2c.registers[REG_CLOCK_OFF as usize] & !CLOCK_OFF_MIC12_MASK;
         assert_eq!(
-            codec.i2c.writes_of(REG_CLOCK_OFF),
-            vec![CLOCK_OFF_BRINGUP, gated, gated, gated],
-            "bring-up, both selections' masked clears, then the start's read-back"
+            codec.i2c.writes_of(REG_CLOCK_OFF).first().copied(),
+            Some(CLOCK_OFF_BRINGUP),
+            "the rail's gate is set before anything un-gates it"
+        );
+        assert!(
+            codec
+                .i2c
+                .writes_of(REG_CLOCK_OFF)
+                .iter()
+                .all(|w| *w == CLOCK_OFF_BRINGUP || *w == gated),
+            "bring-up then the selection's masked clear, then the start's read-back: {:?}",
+            codec.i2c.writes_of(REG_CLOCK_OFF)
         );
     }
 }

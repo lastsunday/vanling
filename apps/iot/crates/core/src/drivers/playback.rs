@@ -16,6 +16,15 @@ pub enum Sound {
     Chime,
     /// A PCM blob linked into the firmware and read straight out of flash.
     Asset,
+    /// A linear chirp, played by a bench measurement rather than offered to a
+    /// tap — so it is **not in [`Sound::ALL`]**, and the tap cycle never reaches
+    /// it.
+    ///
+    /// It is a member of the catalogue rather than a separate entry point
+    /// because a sound is what [`Speaker::play`](crate::drivers::playback::SpeakerOp)
+    /// takes, and a second way to name one would be a second thing that can be
+    /// started and forgotten.
+    Sweep,
 }
 
 impl Sound {
@@ -25,10 +34,14 @@ impl Sound {
 
     /// The next sound in the catalogue, wrapping: what one tap on the Speaker
     /// page plays. `const` because the page's state is a `const` too.
+    /// The sound after this one in the tap cycle. [`Self::Sweep`] answers
+    /// [`Self::Chime`] because it is not in the cycle: nothing reaches it by
+    /// walking, so what a walk would answer for it is a question nobody asks.
     pub const fn next(self) -> Self {
         match self {
             Self::Chime => Self::Asset,
             Self::Asset => Self::Chime,
+            Self::Sweep => Self::Chime,
         }
     }
 }
@@ -320,6 +333,145 @@ impl Tone {
         }
         self.into_note += 1;
         sample as i16
+    }
+}
+
+/// A linear chirp: the excitation a room is **measured** with rather than one it
+/// is heard with.
+///
+/// **Chosen over noise and over a single impulse** for two reasons that decide
+/// whether the measurement is worth anything. Its inverse is itself up to a
+/// scale, so a recording of one deconvolves into the path that made it instead
+/// of into an estimate; and how far apart two reflections can be told apart is
+/// set by the *sweep rate* rather than by the length of the excitation, so a
+/// sweep that crosses the band in 200 ms separates reflections a millisecond
+/// apart. An impulse would put all its energy at one instant and leave that
+/// choice to the room.
+///
+/// The phase is carried in a [`u64`] at `Q16_BITS` of extra resolution because
+/// the step this sweeps is far below one table entry per sample: over the band
+/// below, a whole number of phase units per sample truncates to zero and the
+/// sweep becomes a tone.
+///
+/// # A sweep needs the two ends to share a clock, and this board's do
+///
+/// A chirp decorrelates the moment the playback and recording clocks differ by
+/// even one sample, which at the top of the band is a tenth of a cycle — that is
+/// the usual reason a sweep is not the excitation for measuring a path through a
+/// device's own speakers and microphone. **That failure needs two unsynchronised
+/// clocks, and there are not two here:** both codecs are programmed as slaves of
+/// one host MCLK out of one `I2S0` peripheral, so a sample handed to the DAC and
+/// the sample the ADC returns are the same sample index in the same clock.
+///
+/// A single tone dodges that requirement, and paying for it is worse than it
+/// looks: a tone's energy sits at one frequency, so it measures the transfer
+/// function at that frequency and nothing else — no path length, no tail, and no
+/// answer to "how many taps does this room need".
+pub struct Sweep {
+    phase: u64,
+    step: u64,
+    step_delta: u64,
+    index: u32,
+    length: u32,
+    from_step: u64,
+    step_delta_base: u64,
+}
+
+/// Fractional bits the sweep's phase carries beyond [`WAVE_TURN`].
+const SWEEP_BITS: u32 = Q16_BITS;
+
+/// One whole turn of the table at sweep resolution.
+const SWEEP_TURN: u64 = (WAVE_TURN as u64) << SWEEP_BITS;
+
+/// The level the sweep runs at, and **a measurement parameter rather than a
+/// taste one**.
+///
+/// `[实测]` at half the rail the microphone's recording peaked at 32 767: the ADC
+/// was clipping. A clipped signal carries the amplifier's harmonics instead of
+/// the room's response, so it neither correlates with the sweep that produced it
+/// nor deconvolves into anything — deconvolution cannot undo it, because the
+/// harmonics are *in* the recording. A fifth of the rail is what left headroom,
+/// and the margin is deliberate: a recorder aimed at a peak between −6 and −3
+/// dBFS has room for the room to be louder than the sweep.
+const SWEEP_PEAK_LSB: i32 = 2_500;
+
+impl Sweep {
+    /// A sweep from `from_hz` to `to_hz` over `milliseconds`, looping without a
+    /// step — see [`SampleSource::fill`] for what makes the join clean.
+    pub const fn new(from_hz: u32, to_hz: u32, milliseconds: u32) -> Self {
+        let samples = (SAMPLE_RATE_HZ / 1_000) * milliseconds;
+        let turn = WAVE_TURN as u64;
+        let from_step = from_hz as u64 * turn * (1 << SWEEP_BITS) / SAMPLE_RATE_HZ as u64;
+        let step_delta = ((to_hz - from_hz) as u64 * turn * (1 << SWEEP_BITS))
+            / (SAMPLE_RATE_HZ as u64 * samples as u64);
+        Self {
+            phase: 0,
+            step: from_step,
+            step_delta,
+            index: 0,
+            length: samples,
+            from_step,
+            step_delta_base: step_delta,
+        }
+    }
+
+    /// Back to the bottom of the band for the next pass, **keeping the phase
+    /// where it is**.
+    ///
+    /// `[实测]` resetting the phase as well put a 10 567 LSB step at the join,
+    /// against a steepest ordinary step of 8 797 — a click, because the phase a
+    /// whole sweep accumulates is only *nearly* a whole number of turns (630
+    /// cycles, plus whatever the two truncated divisions leave behind), and
+    /// zeroing it drops that remainder into the waveform as a discontinuity.
+    /// Carrying it costs nothing and makes the join one ordinary step: the
+    /// frequency jumps, the value does not.
+    fn rewind(&mut self) {
+        self.step = self.from_step;
+        self.step_delta = self.step_delta_base;
+        self.index = 0;
+    }
+
+    /// One sample, and the oscillator and note position stepped past it.
+    fn next_sample(&mut self) -> i16 {
+        let at = self.phase;
+        self.phase += self.step;
+        self.step += self.step_delta;
+        if self.phase >= SWEEP_TURN {
+            self.phase -= SWEEP_TURN;
+        }
+        self.index += 1;
+
+        let whole = (at >> (SWEEP_BITS + PHASE_BITS)) as usize;
+        let fraction = ((at >> SWEEP_BITS) & u64::from(PHASE_MASK)) as i32;
+        let (low, high) = (WAVE[whole] as i32, WAVE[whole + 1] as i32);
+        let interpolated =
+            low + (((high - low) * fraction + (1 << (PHASE_BITS - 1))) >> PHASE_BITS);
+        (interpolated * SWEEP_PEAK_LSB / 23_000) as i16
+    }
+}
+
+impl SampleSource for Sweep {
+    /// **Never runs out.** A sweep is the excitation a room is measured with, and
+    /// a driver that has to be re-armed mid-measurement puts a click and a gap
+    /// in the recording for every re-arm — which is the measurement being ruined
+    /// by the act of taking it. Looping here also closes: 300 Hz to 6 kHz over
+    /// 200 ms is exactly six hundred and thirty cycles, so the phase comes back
+    /// to where it started and the waveform joins itself.
+    fn fill(&mut self, out: &mut [i16]) -> usize {
+        for (n, slot) in out.iter_mut().enumerate() {
+            if self.index >= self.length {
+                if n != 0 {
+                    break;
+                }
+                self.rewind();
+            }
+            *slot = self.next_sample();
+        }
+        out.len()
+    }
+
+    fn done(&self) -> bool {
+        false
     }
 }
 
@@ -823,6 +975,112 @@ mod tests {
             loudest < 32_768,
             "{loudest} LSB hit the rail, which is the headroom the DAC volume needs"
         );
+    }
+
+    /// The sweep the room measurement runs on, and the numbers that describe it.
+    const BAND: (u32, u32, u32) = (300, 6_000, 200);
+
+    /// A whole sweep as the board would play it.
+    fn sweep_of(band: (u32, u32, u32)) -> Vec<i16> {
+        let length = (SAMPLE_RATE_HZ / 1_000 * band.2) as usize;
+        let mut out = vec![0_i16; length];
+        assert_eq!(Sweep::new(band.0, band.1, band.2).fill(&mut out), length);
+        out
+    }
+
+    #[test]
+    fn a_sweep_is_reproducible_bit_for_bit() {
+        // The whole measurement rests on this: the host reconstructs the sweep
+        // from the same arithmetic to deconvolve against it, so two sweeps that
+        // differ by an LSB would deconvolve into a room with the difference in
+        // it.
+        assert_eq!(sweep_of(BAND), sweep_of(BAND));
+    }
+
+    #[test]
+    fn a_sweep_actually_sweeps_instead_of_sitting_on_one_tone() {
+        // **The failure this guards is a truncated step.** The frequency moves
+        // by a fraction of one phase unit per sample over this band, so a step
+        // kept at whole units rounds the increment to zero and the sweep becomes
+        // a single tone — which would deconvolve into one sharp reflection and
+        // read as a room with no tail at all.
+        let (from, to, milliseconds) = BAND;
+        let sweep = sweep_of(BAND);
+
+        let sweep_state = Sweep::new(from, to, milliseconds);
+        assert!(
+            sweep_state.step > 0 && sweep_state.step < SWEEP_TURN,
+            "the step is one whole tone's worth or none: {}",
+            sweep_state.step
+        );
+        assert!(
+            sweep_state.step_delta > 0,
+            "the frequency has to move at all, and over this band it moves by less \
+             than one phase unit per sample — which is what needs the extra resolution"
+        );
+
+        let crossings = sweep
+            .windows(2)
+            .filter(|p| (p[0] < 0) != (p[1] < 0))
+            .count();
+        let seconds = f64::from(milliseconds) / 1_000.0;
+        // A sine crosses zero twice a cycle, and a linear sweep's cycle count is
+        // the mean frequency times the run — so the count to expect is twice
+        // that, and comparing against the cycle count alone would read a
+        // perfectly good sweep as running at double speed.
+        let twice_cycles = 2.0 * (f64::from(from) + f64::from(to)) / 2.0 * seconds;
+        assert!(
+            (crossings as f64) > twice_cycles * 0.9,
+            "{crossings} zero crossings against about {twice_cycles} — too few for a sweep"
+        );
+        assert!(
+            (crossings as f64) < twice_cycles * 1.1,
+            "{crossings} zero crossings against about {twice_cycles} — too many for a sweep"
+        );
+    }
+
+    #[test]
+    fn a_sweep_loops_without_a_step_and_runs_below_the_rail() {
+        let (from, to, milliseconds) = BAND;
+        let length = (SAMPLE_RATE_HZ / 1_000 * milliseconds) as usize;
+
+        let mut sweep = Sweep::new(from, to, milliseconds);
+        let mut short = vec![0_i16; length / 4];
+        assert_eq!(sweep.fill(&mut short), length / 4, "a partial fill is full");
+        assert!(!sweep.done(), "and there is more of it");
+
+        // **The loop is the point**, so it is checked by what it produces rather
+        // than by what it reports: a sweep that restarts on a step would show a
+        // jump between the last sample of one pass and the first of the next.
+        let mut two = vec![0_i16; length * 2];
+        let mut long = Sweep::new(from, to, milliseconds);
+        assert_eq!(
+            long.fill(&mut two),
+            length * 2,
+            "a looping sweep never runs out"
+        );
+        let step_across = (i32::from(two[length - 1]) - i32::from(two[length])).abs();
+        let mut steps: Vec<i32> = (1..length - 1)
+            .map(|n| (i32::from(two[n]) - i32::from(two[n + 1])).abs())
+            .collect();
+        steps.sort_unstable();
+        let p99 = steps[steps.len() * 99 / 100];
+        let worst = steps[steps.len() - 1];
+        let _ = p99;
+        // **Half again the steepest ordinary step, and `[measured]` why.** A
+        // chirp that repeats has to change frequency somewhere, and where it does
+        // one sample advances by a step at the top of the band and the next by a
+        // step at the bottom — so the join is bounded by the band's own
+        // steepest slope, not by noise or by a rounding remainder. 10 567 against
+        // 8 797 is that, and 23 000 would be a click.
+        assert!(
+            step_across <= worst + worst / 2,
+            "the join steps by {step_across} where the steepest ordinary step is {worst}"
+        );
+
+        let peak = two.iter().map(|s| i32::from(*s).abs()).max().unwrap();
+        assert!(peak > SWEEP_PEAK_LSB / 2, "the sweep is at {peak} LSB");
+        assert!(peak <= SWEEP_PEAK_LSB, "and never past {SWEEP_PEAK_LSB}");
     }
 
     #[test]

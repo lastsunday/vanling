@@ -3,8 +3,8 @@ title = "Camera Implementation Record"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "66e2dc166069c9f3e5f25668fd44fd9e277c3e64"
-translated_at = "2026-10-10T17:04:06Z"
+source_file_hash = "1f028f1f04cc019af1568d0951a395bb15059c6f"
+translated_at = "2026-10-14T15:19:04Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -16,6 +16,33 @@ Judgement records from the GC2145 capture path and the ST7789 panel wiring in `a
 Each judgement is labelled by its evidence: **`[test]`** a unit test covers it, **`[measured]`** there is a hardware measurement with a reproduction, **`[reported]`** not reproduced, recorded only as a lead.
 
 Reproduction is the same throughout: flash `camera-probe` from `apps/iot/` and read the `[PROBE]` and `[CAM]` lines off the serial port. Every 2 s the probe prints `sensor exposure`, `blanking h/v` (measured page-0 `0x05`–`0x08`) and the window's KB/s — every frame-rate claim below rests on those three lines.
+
+## The sensor on this board is a GC2145; the LCKFB wiki's GC0308 is wrong
+
+`[measured]` This is the first hardware fact in this record, and the first time the whole capture chain has run on a real board.
+
+The vendor documentation ([LCKFB Shizhan ESP32-S3 camera chapter](https://wiki.lckfb.com/zh-hans/szpi-esp32s3/beginner/camera.html)) says the board ships a **GC0308**; the repository drives a **GC2145**. The two are not just differently named:
+
+| | GC2145 (what the code drives) | GC0308 (what the wiki claims) |
+|---|---|---|
+| Chip ID register | `0xf0`/`0xf1` on page 2 | **`0x00` on page 0**, value `0x9b` |
+| Array | 1600×1200 | 640×480 |
+| Page-select mechanism | different | different |
+
+So "the code is wrong" and "the wiki is wrong" would not look alike: on a real GC0308 the repository's `read_id()`, which selects page 2, would read back **garbage** rather than `0x0308` — and `lckfb_szpi_esp32s3/camera.rs` **logs that ID without checking it**, which is the silent-failure class this repository keeps running into.
+
+Measured (`moon run iot:probe-camera-s3`, flashed to the S3):
+
+```
+[00:00:00.850] [CAM] sensor id 0x2145
+[00:00:00.851] [CAM] sensor reports 320x240 out, read 1616x1208 at 0,0 ratio 5:5, format 0x06
+[00:00:02.892] [PROBE] sensor exposure 486 lines
+[00:00:02.896] [PROBE] painted 10, 9 new in 2000 ms = 691 KB/s of new sensor data
+```
+
+**The ID is `0x2145`, with a 1616×1208 read window at 5:5** — GC2145's shape, not GC0308's 640×480. And 691 KB/s of new sensor data means it is genuinely delivering frames rather than answering register reads. **The code is right and the wiki is wrong.**
+
+This also says something structural: **a disagreement between a driver that has never run on hardware and a vendor document can only be settled by measurement** — and here the code won. It equally says that `read_id()` logging without checking is a real gap; see the same class of problem once more in `aec.en.md`.
 
 ---
 

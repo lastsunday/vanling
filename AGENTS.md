@@ -4,7 +4,7 @@
 
 1. 保持代码库一致性（风格、模式、架构）
 2. 首选已有的 crate/packages，不引入新依赖
-3. 所有修改必须通过对应目标的检查：server/UI `cargo check` + `moon run server-ui:typecheck`；IoT `moon run iot:check-s3` + `moon run iot:check-host`
+3. 所有修改必须通过对应目标的检查：server/UI `cargo check` + `moon run server-ui:typecheck`；IoT `moon run iot:check-s3` + `moon run iot:check-c6` + `moon run iot:check-host`
 
 ## 关键命令
 
@@ -16,7 +16,7 @@
 | 检查 TS   | `moon run server-ui:typecheck`                                                                    |
 | 运行测试  | `cargo test --package api`（Rust）/ `moon run server-ui:test`（前端）/ `-- <test_name>`（单模型） |
 | 格式化    | `cargo fmt --check && cargo clippy -- -D warnings`（pre-commit 已拦）                             |
-| IoT 检查  | `moon run iot:check-s3`（真实编 S3 目标）/ `check-host` / `check-features`                        |
+| IoT 检查  | `moon run iot:check-s3`（真实编 S3 目标）/ `check-c6`（C6 目标）/ `check-host` / `check-features`        |
 | IoT 探针  | `moon run iot:probe-camera-s3`（另有 `audio`、`multicore`、`demand`、`aec`），配对 `flash-probe-*` 烧录      |
 | IoT 产物  | `moon run iot:image`（ELF + merged.bin，可从 `apps/iot/` 运行）                                     |
 
@@ -70,10 +70,20 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 ### Definition of Done
 
 - [ ] `cargo fmt --check && cargo clippy -- -D warnings` 零警告
-- [ ] 对应目标的 typecheck 通过（IoT 用 `moon run iot:check-s3`）
+- [ ] 对应目标的 typecheck 通过（IoT：`check-s3` + `check-c6` + `check-host`）
 - [ ] 新增功能有对应测试
 - [ ] 无遗留 `console.log`
 - [ ] 计划项全部完成，或已标为未完成并说明阻碍
+
+## 硬件
+
+台架上一直接着两块板，**不要假设没有硬件**。`lckfb-szpi-esp32s3`（S3）是产品靶，`esp32c6-devkitc-1`（C6）只有 WS2812 和 Boot 键、产品路径在它上面不存在，两者不可互相代替。**端口名每次插拔都会变，两块都插着时烧录必须带 `IOT_PORT=`**，否则 `espflash` 自己挑一个、可能挑到 C6：
+
+```sh
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
+```
+
+认板、定位、实测事实与抓串口见 `docs/content/development/iot/flashing.md`；结论与复现见 `docs/content/records/iot/`。
 
 ## 环境
 
@@ -84,6 +94,6 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 > 深度知识与操作流程见 `docs/content/development/`；卡住时先读对应域，再 `rg` 搜索 + 参照同类测试。
 
 - **server**: `server/architecture.md` — 架构与数据流 / AI Manager / 新增模块路径；`server/TODO.md` — 已完成/未完成清单（开工入口）；`server/research.md` — 定位与取舍参考
-- **iot**: `iot/architecture.md` — 分层与组合 / 新增板 / 新增芯片；`iot/features.md` — 软 feature 判据与内聚
+- **iot**: `iot/architecture.md` — 分层与组合 / 新增板 / 新增芯片；`iot/features.md` — 软 feature 判据与内聚；`iot/flashing.md` — 台架有哪些板 / 烧录 / 抓串口
 - **clients**: `clients/server-ui.md` — 新增页面路径
 - **多语文档**: 维护规则见 `development/_index.md`

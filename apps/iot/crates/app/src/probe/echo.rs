@@ -7,23 +7,21 @@
 //! wiring it in.
 //!
 //! Per tap count it reports the **first** tick (the delay search against an empty
-//! history, representing no later tick), the **worst** tick (the bound in
+//! history, standing for no later tick), the **worst** tick (the bound in
 //! `architecture.md` is a worst tick, and an average is not one), **the share of a
 //! 20 ms tick**, and **where the time goes** — delay search, convolution,
-//! metering, which differ in cost and in what changing them costs: one constant
-//! trades the search against accuracy, a tap trades accuracy against both.
+//! metering, which differ in cost and in what changing them costs.
 //!
 //! Two stream states, and the label matters. An **adapting** filter pays for the
 //! convolution *and* the coefficient update; a **frozen** one pays only for the
 //! convolution. A converged filter with someone talking over it is frozen
-//! (`learning.rs`), so frozen is what barge-in costs and adapting is what
-//! far-end-only playback costs. The larger of the two is what the budget covers.
+//! (`gate.rs`), so frozen is what barge-in costs and adapting is what far-end-only
+//! playback costs; the larger of the two is what the budget covers.
 //!
-//! Ticks run back to back rather than on a 20 ms schedule: that measures the work
-//! and nothing else — no wake latency, no other task's interference — so it is a
-//! floor, and the log says so. Each measurement follows an untouched warm-up pass,
-//! because a filter that has never run is also paying to bring its own pages in.
-
+//! Ticks run back to back rather than on a 20 ms schedule, so it measures the work
+//! and nothing else — no wake latency, no other task's interference — and the log
+//! says so. Each measurement follows an untouched warm-up pass, because a filter
+//! that has never run is also paying to bring its own pages in.
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 

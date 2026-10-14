@@ -32,6 +32,14 @@ pub mod components;
 /// that only some features define.
 pub mod camera_readout;
 
+/// Who this board is, and what came up on it — a boot inventory, printed at the
+/// end of a board's bring-up.
+///
+/// Ungated, unlike the board modules around it: only [`post::identity`] needs a
+/// chip and that one function carries its own gate, so the states and the
+/// reporting can be built and tested on a host.
+pub mod post;
+
 /// Abstract components assembled from real ones. Gated on whichever is present
 /// rather than on one of them: each virtual component carries its own gate
 /// below, so a board wiring only the speaker still gets its transport and a

@@ -4,7 +4,7 @@ weight = 260
 sort_by = "weight"
 [extra]
 source_file_hash = "bbf13df20a96c813d0b87f0838f6761b36c8d837"
-translated_at = "2026-10-11T07:38:04Z"
+translated_at = "2026-10-14T15:19:04Z"
 +++
 
 # Audio Metering Semantics

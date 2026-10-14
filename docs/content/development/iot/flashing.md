@@ -15,10 +15,40 @@ weight = 30
   # 在 apps/iot 下
   moon run build
   espflash save-image --chip esp32c6 --merge \
-    --flash-size 4mb --flash-mode dio --flash-freq 40mhz \
+    --flash-size 8mb --flash-mode dio --flash-freq 40mhz \
     target/riscv32imac-unknown-none-elf/debug/vanling \
     vanling-merged.bin
   ```
+  > **8mb 是实测值**（`espflash board-info` 读出来的，实物就是 8 MB），此前写的 `4mb` 与板子对不上。
+  > 两块板各自的实测值：**C6 = 8 MB（MAC `98:a3:16:7e:55:08`）**、**S3 = 16 MB（MAC `30:ed:a0:a8:2f:c8`）**。
+
+## 台架上有哪些板，各自是什么定位
+
+不要假设没有硬件——台架上一直接着两块。**端口名每次插拔都会变，不能当标识。**
+
+| 板 | 仓库 feature | 定位 |
+|---|---|---|
+| 立创·实战派 ESP32-S3 | `lckfb-szpi-esp32s3` | **产品靶**：320×240 屏、FT6336 触摸、双麦+喇叭、QMI8658、PCA9557、GC2145 摄像头 |
+| ESP32-C6-DevKitC-1 | `esp32c6-devkitc-1` | **冒烟/仿真靶**：只有 WS2812 和 Boot 键。`UnwiredSpeaker`、面板、Audio 页全是 `None`，**产品路径在它上面不存在**，两者不可互相代替 |
+
+已实测的硬件事实（结论与复现见[开发记录](@/records/iot/_index.md)）：
+
+- **摄像头是 GC2145，不是立创 wiki 写的 GC0308**（`sensor id 0x2145`，读窗口 1616×1208 @5:5）
+- **AEC 延迟锁得住，消除量仍无读数**：延迟搜索两次实测全程只动一次；固件的 ERLE 计量器在板上从未出过非零数，唯一的 12.3 dB 来自一次已删除、不可复现的离线 dump
+
+## 两块板同时插着时
+
+`espflash` 会自己挑一个端口，**有可能挑错**（`--chip esp32c6` 配 S3 会直接失败）。先认板再烧：
+
+```sh
+espflash board-info --port /dev/cu.usbmodem14401   # C6 → 98:a3:16:7e:55:08
+espflash board-info --port /dev/cu.usbmodem1422301 # S3 → 30:ed:a0:a8:2f:c8
+
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3
+```
+
+不设 `IOT_PORT` 时任务行为与从前一致（`espflash` 自己挑），但两块板都插着时必须设。
 
 ## 产物本地生成
 
@@ -88,6 +118,16 @@ moon run flash
 cargo build && espflash flash target/.../vanling
 espflash monitor   # console 内带回车重启
 ```
+
+`espflash monitor` 需要真 tty（picocom 在这台机器上认不出自己的参数）。原生 USB 不支持 DTR/RTS，所以**烧录完立刻抓**，趁 ROM 还在启动；加 `> /tmp/x.log` 存盘，别用管道刷屏。
+
+## 构建失败先看 Docker，再看别的
+
+S3 的构建走 `scripts/iot-xtensa.sh`：先试本机 esp 工具链，不全则回退容器。本机那份通常是不全的（`~/.espressif` 下只有 `xtensa-esp-elf` 的 gcc，缺 `bin/cargo` 与 `lib/rustlib/src/rust/library`，`has_native_esp` 因此判否），所以实际构建**依赖 Docker 守护进程**。
+
+> `[实测]` 守护进程挂掉时的报错是 `docker: request returned 500 Internal Server Error ... /docker.sock/_ping`，退出码 125，**不是**任何编译错误。`open -a Docker` 在无 GUI 会话的 shell 里起不来；要直接跑 `/Applications/Docker.app/Contents/MacOS/Docker`，等 `com.docker.backend` 出现。
+>
+> 它的危险之处在于**构建失败后旧二进制仍在**，`espflash flash` 会若无其事地把上一次的镜像刷进板子。退出码被 `grep '^error'` 一过滤就什么都看不见，于是连测三轮才发现。**每次烧录前用 `strings <elf> | grep <新加的日志字面量>` 确认产物是新的**，不要只看命令退出码。
 
 ## 启动页与 bench 镜像
 

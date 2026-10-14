@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "df5c8f52436d3e1d8333cca182e1b7a07ad25807"
-translated_at = "2026-10-12T03:47:23Z"
+source_file_hash = "db7811330bb2203ee07dc13fb6866d0d8b856730"
+translated_at = "2026-10-14T15:19:04Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -16,6 +16,149 @@ Judgements and rejected approaches from `apps/iot/crates/core/src/drivers/aec/`.
 Each judgement is marked with its basis: **`[test]`** a unit test backs it, **`[measured]`** a measurement with a way to reproduce, **`[reported]`** not reproduced, kept only for the record.
 
 Linear AEC does one thing: model the acoustic path from the samples sent to the speaker, and subtract it from the microphone. Nonlinear suppression is not part of it — see the module documentation in `aec/mod.rs`.
+
+## The first board numbers: the pairing holds, the cancellation does not
+
+`[measured]` Reproduce: `moon run iot:probe-echo-s3`, flash to the LCKFB S3, `moon run iot:flash-probe-echo-s3` (**with two boards plugged in that task carries no `--port` and will pick one for itself**), then capture 30 s of serial.
+
+| Figure | Measured | Verdict |
+|---|---|---|
+| paired / unpaired | 160–200 / **0** | ✅ the two streams are in step; log 160 of 2944, well inside its runway |
+| worst single poll | 15.3–16.6 ms of a 30 ms bound | ✅ it fits, but at half the budget |
+| feed | 200/s, 0 late, worst work 142–428 µs | ✅ steady |
+| **ERLE** | **0 dB for all 60 s, not once moved** | ❌ |
+| delay | None → 16 → 50 → 6, wandering the whole 64-sample window | ❌ |
+
+**The delay search wandering is the finding here, not the zero ERLE.** A real acoustic path has a *fixed* delay: it converges and stays there. A delay that changes every second says there is no stable relationship between the reference and the microphone — so the filter never converges on anything, and it converges **quietly**.
+
+### A/B: the microphone does hear the speaker, and "it does not" was an artifact I measured
+
+`[measured]` An ERLE of 0 means two completely different things: the reference is mispaired, or **there is no echo to cancel at all**. The probe separates them by **flipping the amplifier's mute every 6 s** (`probe/echo_room.rs`).
+
+The first A/B said: with the amplifier on the microphone sat at −76…−90 dBFS against −43 dBFS off — **a 45 dB difference** — and concluded there was no measurable acoustic path on this board.
+
+**That conclusion was wrong, and it was an artifact of how the measurement was built.** The envelope level is a rolling window of 200 columns × 20 ms = **four seconds**, while the first version flipped every 1 s — so every window straddled two complete cycles, both states got averaged, and what came out was a beat. After moving to a 6 s flip and withholding the reading until the window lies wholly inside one state, the same figure did not reproduce.
+
+Printing the **per-poll peak** (20 ms, immune to the window) instead gives a continuous trace, and it **moves with the reference peak**:
+
+| Reference peak LSB | Microphone peak LSB |
+|---|---|
+| 22971 | 2180 / 2375 |
+| 17100 | 2220 |
+| 9178 | 1413 / 1454 |
+| 8884 | 1513 |
+
+**The microphone follows the speaker — the acoustic path is real**, roughly 15 dB below the reference.
+
+The conclusion therefore narrows: **an ERLE of 0 with a wandering delay is the canceller's own problem, not a missing acoustic path.** The filter is holding a reference that genuinely exists and genuinely correlates, and still converging on nothing — which is the same silent-failure road, just one layer deeper than before.
+
+### The capture only hands over half the audio — which is why the delay search cannot lock
+
+`[measured]` The probe now reports capture throughput (`capture rate`), which gives a number that needs no inference:
+
+```
+41 polls in 1007 ms, 8424 paired = 8365 samples/s of the 16000 the canceller runs, 205 per poll
+```
+
+**A poll period of 24.6 ms, pairing 205 decimated samples.** At 16 kHz, 24.6 ms should be 394 — it is 52% of that, **almost exactly half**.
+
+That number is what breaks the search. The delay estimator correlates over 256 ms of history (`REFRESH_SAMPLES = 4096`), and the microphone now hands over half of real time on every poll: **the two streams cover spans that are not proportional, so the "same moment" the estimator pairs is not the same moment.** The correlation peak therefore lands on no grid point, `best_lag` picks noise out of the window every time, and the delay wanders `None → 16 → 50 → 6`.
+
+**Two candidates, neither excluded:**
+
+1. **The RX is configured at half the rate.** 24.6 ms × 24000 = 590 frames → 197 decimated samples, which matches the measured 205 closely.
+2. **The drain stops early.** `drain` takes about 2460 bytes per poll where the period says the ring should hold about 4723.
+
+> The next section settles both of these and gives the real cause.
+
+### Root cause: the RX holds one sample per frame; the driver counted two
+
+`[measured]` How it was decided: count, in the drain, how often the two halves of a four-byte group carry the same sample.
+
+```
+slots: 2/480 = 4 per mille
+slots: 9/543 = 16 per mille
+```
+
+**Effectively zero** — the two halves of a four-byte group are not the same sample. The receive buffer holds **one sample per two bytes**, while the driver used `chunks_exact(BYTES_PER_FRAME = 4)` and took `frame[0..2]`, so it **kept one of every two consecutive samples and threw the other half of the microphone away**.
+
+The source is esp-hal 1.2.2's `Channels` documentation, on the same page as the `Channels::MONO` definition:
+
+> `mask` ... **Inactive channels do not consume or write data in the DMA buffer.**
+> `fill` ... **This field is ignored in the receiver unit.**
+
+`MONO = new_impl(2, 0b01, None)` — slot 0 is active and slot 1 **does not occupy the DMA buffer in the receiver**. So **the two directions have different frame widths to begin with**:
+
+| Direction | Per frame | Mechanism |
+|---|---|---|
+| TX | 2 samples = 4 B | `fill=None`, so an inactive channel **repeats** the last active one |
+| RX | **1 sample = 2 B** | the inactive channel **consumes no** DMA data |
+
+The arithmetic closes: 48000 ÷ 2 ÷ 3 = **8000**, matching the measured 8000 samples/s exactly.
+
+**Where the wrong model lived** is the `SLOTS_PER_FRAME` doc comment in core, which asserts that `Channels::MONO` is only a slot selection, that both slots reach the DMA, and so that the capture moves twice `SAMPLE_RATE_HZ` samples per second. **That comment is wrong, in core, and the driver only copied it** — so what got fixed is the model, not one multiplication.
+
+### After the fix
+
+`[measured]` Same probe, same flash:
+
+| | Before | After |
+|---|---|---|
+| capture rate | 8000 samples/s | **15 561 samples/s** (target 16000) |
+| paired / poll | 205 | **442** |
+| unpaired | 0 | 0 |
+| delay | `None→16→50→6`, wandering | `Some(16)…Some(64)`, `None` no longer appears |
+| **ERLE** | 0 dB | **still 0 dB** |
+
+**The capture rate is fixed; the pairing is not.** The delay search now answers every time (wandering over 16–64) instead of picking noise out of the window — but the ERLE is still zero, so **alignment is a separate problem that remains**.
+
+### A second failure met while fixing it
+
+The probe panicked immediately after the frame width was corrected (`LoadProhibited`, in `Es8311Tx::new`). A bisect showed it was **not the frame width**: the real cause was `BYTES_PER_POLL`, which also used `SLOTS_PER_FRAME` to size **capture** bytes, so every capture-side buffer derived from it was twice as large, the pairing scratch grew from 1601 to 3201 `i16`, and `Board::new` returns that struct by value on the stack — which overflowed the main task's stack.
+
+**`BYTES_PER_POLL` is the root constant**: the capture ring's depth, a poll's drain budget, the lag conversion and the scratch all derive from it. Changing it from `SAMPLE_RATE_HZ × SLOTS_PER_FRAME × BYTES_PER_SAMPLE × CAPTURE_MS` to `SAMPLE_RATE_HZ × CAPTURE_BYTES_PER_FRAME × CAPTURE_MS` (3840 → **1920**) put the scratch back to size and the panic went away.
+
+`[test]` Two tests written against the old constants then failed (`7708/7934/8188`, `9600/7680`). What they assert is a depth **in polls** — their own comment says "2.13 polls" — so the fix was not to copy the new observed numbers but to **rewrite them in polls** (`BYTES_PER_POLL * 2 + offset`), so the next frame-width correction cannot silently invalidate them again.
+
+### Also found: the envelope's time axis has been running at half speed
+
+`[measured]` `SAMPLES_PER_COLUMN` used `SLOTS_PER_FRAME` too, while `SampleStream::push_bytes` decodes one sample per two bytes — **so every column held half the samples its own stated duration claims**. The Audio page's window has been drawn at **half speed in every build so far**. Unrelated to the AEC: the same mistake's other victim.
+
+### The delay search is not "measuring a large delay"; it has no peak at all
+
+`[measured]` Widening `MAX_DELAY` from 64 to 256 (diagnostic, since reverted — 8x the search cost would not fit the poll budget) sent the reported delay straight to **223–255**.
+
+**It pegs at whatever edge it is given**: window 64 reports 64, window 256 reports 255.
+
+That is not "the true offset exceeds the window" — it is **the search returning the window boundary itself**. `best_lag` takes the highest-scoring grid point, and the score climbs monotonically toward the edge, which means **there is no correlation peak, only a ramp**.
+
+The likeliest mechanism (**unverified**): if both signals carry a DC offset, `cross·1000/(√ref_pow·√mic_pow)` comes out near ±1000 at **every** lag — far above the 0.3 confidence gate. The search then takes the first grid point strictly greater than the running maximum over a flat line, so the answer is decided by traversal order and noise, and it appears as "always at the window edge".
+
+**That accounts for every observation so far**: ERLE pinned at 0, the delay wandering, and the post-frame-width change from "`None`, wandering" to "stably 64" — all one symptom seen from different sides. **So the next step is not more lag tuning; it is to see what the correlation actually looks like.**
+
+The smallest criterion: report `best_lag`'s winning score next to its lag. A score near 1000 says DC offset; a low score that still lands on the edge says the traversal or indexing is wrong.
+
+### The criterion: the correlation peak reaches only 78-271 per mille, and the gate is 300
+
+`[measured]` Reporting `best_lag`'s winning score (`delay_peak`) settles the whole chain of symptoms at once:
+
+```
+delay None     peak 215 per mille
+delay Some(53) peak  89
+delay Some(64) peak 271
+delay Some(60) peak  78
+delay Some(55) peak 193
+```
+
+**The gate `MIN_CORRELATION = 300` is never crossed.** So `estimate` is never updated, and **every reported `delay` is stale** — the "stably 64" seen after the frame-width fix was not convergence, it was a leftover.
+
+**The DC-offset hypothesis is refuted**: that would score near 1000 at every lag, and the highest reading is 271.
+
+**What is actually true: the microphone and the reference are barely correlated within ±64 samples**, and the best point the search finds is 0.08-0.27. The delay search is not broken — it is correctly answering "no measurable correlation here".
+
+`MIN_CORRELATION`'s own comment said **`[reported]` 0.3 is a guess with headroom, and wants a bench number**. That number now exists: **this board's acoustic path reaches only 78-271 per mille.** The gate should be re-set from the measurement rather than the lag tuned further — which is precisely what that comment said not to do.
+
+---
 
 **This record is ordered algorithm first, hardware cost second.** I got that causality backwards once — measured the CPU, then used a synthetic room's number to argue the algorithm was fine. The order only works one way, because "is the algorithm worth doing" decides "is it worth spending CPU on", and not the reverse.
 
@@ -120,7 +263,7 @@ So the design is **partly** effective: the freeze does stop the damage growing, 
 
 On a room at 12 000 LSB that put the opening step at 1/48 of full speed, and the filter reached **−0.5 dB**; the same loop at a constant full-speed step reached 20 dB. A slow start does not cost a little accuracy — it costs the entire convergence.
 
-So the step in `learning.rs` is a **constant**: full speed, or zero while frozen. The residual is used only for the one decision it can answer unambiguously.
+So the step in `gate.rs` is a **constant**: full speed, or zero while frozen. The residual is used only for the one decision it can answer unambiguously.
 
 "Full speed" is a choice, not a default: NLMS is stable anywhere in `(0, 2)`, and `1 << 29` (0.5 in Q30) is the conventional pick with room left below it.
 
@@ -137,7 +280,7 @@ What separates the two is **coherence**:
 
 That is Gänsler's coherence-based double-talk detector (JASIP 2015 calls out its two drawbacks: a threshold that depends on background noise and on the talker's level). It lives beside the filter rather than as a second detector beside that, because the filter already computes everything it needs: three running means, one extra multiply per sample.
 
-Both thresholds in `learning.rs` are marked `[reported]`: `LEAKAGE_FREEZE = 1<<24` (~4096 LSB RMS, taken from the 30 cm speech peaking to 80 dB SPL calibration in the [audio record](@/records/iot/audio.en.md)) and `MAX_COHERENCE = 0.6`. Both want re-measuring on a bench with a person in the room. The freeze is confirmed working on a synthetic talker — 98% coverage — but see the onset burst above.
+Both thresholds in `gate.rs` are marked `[reported]`: `LEAKAGE_FREEZE = 1<<24` (~4096 LSB RMS, taken from the 30 cm speech peaking to 80 dB SPL calibration in the [audio record](@/records/iot/audio.en.md)) and `MAX_COHERENCE = 0.6`. Both want re-measuring on a bench with a person in the room. The freeze is confirmed working on a synthetic talker — 98% coverage — but see the onset burst above.
 
 **The `has_path` layer was removed.** It used "is the echo estimate large enough" in place of coherence, and a filter that predicts the entire microphone also has a large echo estimate — it has learned nothing. Coherence alone is enough.
 
@@ -485,16 +628,293 @@ assert!(bytes < 1024, ...);                                             // passe
 
 `state_bytes<L>()` is now `size_of::<Canceller<L>>()`, with `L` a const generic rather than a runtime argument — **a runtime argument let callers pass a number the compiler could not check, which is exactly how it drifted.** The new `the_reported_size_covers_the_whole_canceller_not_just_the_filter` asserts the reported figure is at least large enough to hold the filter and the delay estimator together.
 
+## The reference is wired in, and "take it from `render_slice`" was the wrong answer
+
+`[measured]` The line in the list below — "the digital tap comes from `audio_out::render_slice`" — turned out not to work, and the reason is the same class of error this file keeps running into: the number was right and the place was wrong.
+
+`render_slice` is the **write** side. The transmit ring is 24 descriptors × 960 B = 23 040 B = 5 760 frames, which at 48 kHz is **120 ms of audio still in flight**. A tap taken there is a reference up to 120 ms *ahead* of the echo it has to cancel, while the delay search covers `MAX_DELAY = 64` samples — 4 ms at 16 kHz. That is **thirty times outside the window**: the search answers "nothing found", and the filter converges on whichever noise the correlation grid favours, looking entirely normal throughout.
+
+`[test]` The difference is pinned on the host, and it pins the **threshold rather than a slogan** (`aec/stage.rs::a_small_misalignment_is_absorbed_and_a_large_one_is_not`):
+
+| Reference's offset from the microphone | Result |
+|---|---|
+| 0 frames | cancelled |
+| **1 frame** | **still cancelled** |
+| `MAX_DELAY + 1` = 65 frames | the echo survives essentially intact |
+
+A one-frame mismatch is **recoverable**: the delay search's ±64-sample window plus the filter's own sliding window learn the path one tap over. So "one frame off ruins it" was never true, and the test written to assert it said the correct thing instead — the boundary is **outside the search window, not at one frame**.
+
+So the wiring is shaped by that:
+
+- The **write** side taps as before (one sample per **frame** in `render_slice` — both slots carry the same stream, so a tap per slot halves the rate), and the **read** side goes through a play cursor: `Es8311Tx::advance_play_cursor` derives how far the wire has travelled from the DMA's own free space and feeds the delta to `ReferenceLog::played`. That is the answer to "`Speaker` has no `played_frames()`" — **no method is added to `Speaker`**. What is added is a shared cell the speaker publishes into, one direction only.
+- The cell **crosses two executors**: the feed is on a Priority2 interrupt, the folding is in the cooperative `input_task`, so it is a `CriticalSectionRawMutex` cell, taken **once per feed and once per poll, never once per sample** — a lock per sample at 48 kHz would cost more than the canceller it is feeding.
+- **Where it sits**: the decimator in core (`drivers/audio/decimator.rs`, indexed by frame number rather than a free-running counter, since a phase mismatch between the two streams is a silent failure), the reference shadow log in core (`drivers/aec/reference.rs`), the tap in the bsp transmit side, the pairing in the bsp capture side, the wire between them in the board module's `Board::new`. **`Speaker` gained nothing** — a method there would pull a data-plane coupling back across the interrupt boundary its contract exists to prevent.
+- **Sized from geometry**: `REFERENCE_SAMPLES = ⌈(5 760 + 2 880 + 192) / 3⌉ = 2 944`, with a `const _: () = assert!` holding that it spans the whole runway. The capture side asserts separately that its ring really is three poll periods deep — **two modules each spelling out one number is free to drift**, and a stale copy makes the log quietly lap.
+
+`[test]` The most important of `ReferenceLog`'s 14 tests is the **index unit** in `at_play_cursor`: the ring is addressed in *kept samples* while the counters count *frames*. The first version used `written % N` with `written` incrementing per frame, so only one slot in three was ever written — **every test green, every sample zero**. It now asserts **specific sample values** (`frames(n) = n × 97`) rather than indices, because a wrong index looks like a right one.
+
+### Free space is an *occupancy*, not a position — off by a whole ring
+
+`[measured]` Found after the first `advance_play_cursor` was written, and it is the most dangerous bug in this whole section: **the output still looked entirely normal.**
+
+The DMA frees ring bytes and the CPU refills them at once, so "free" measures how much audio is **queued** (`ring − (pushed − played)`), not how far along the stream the wire is. Read as a position, it puts the wire a whole ring ahead at boot — the ring holds a full ring of prefilled silence that the DMA has not sent a byte of — so `played` starts at 5 760 and `at_play_cursor` returns either `None` or the oldest thing in the ring. **Every pair is garbage, and every log line looks like the system is working.**
+
+The fix moves the arithmetic into core as `wire_position` and counts the **prefill** with everything else in `pushed_frames`:
+
+```
+wire_position = pushed_frames − (ring_frames − free_bytes / frame_bytes)
+```
+
+`[test]` Two tests hold it: at boot (a whole ring pushed, nothing freed) it must read **0**, not 5 760; and a free-space reading larger than anything pushed must never report the wire ahead of the pushed count, which is the guarantee the driver's own saturating delta then builds on. Writing those two tests I got it wrong once as well — mixing the free space from *before* a push with the pushed count from *after* it, which of course does not agree. **The two numbers have to come from the same instant**, which is now in the comment too.
+
+### The two streams run in opposite directions, and zipping them pairs the whole run wrong
+
+`[measured]` The second bug of the same class, and equally silent. The microphone is walked **forwards** (`scratch_mic[0]` is the oldest frame the drain saw) while the log can only be read **backwards** (`out[0]` is the frame on the wire *now*, which is what the newest microphone sample heard). Zipped as they stand, **the oldest microphone is paired with the newest reference** — every pair wrong by the length of the run — and the filter still converges on *something*, so the ERLE stays a plausible number rather than an obvious zero.
+
+The fix reverses the reference back into time order in `pair_and_cancel` before it is fed. `[test]` `a_reference_run_read_newest_first_pairs_once_reversed` pins both halves: reversing a reversed run recovers the aligned pairing exactly, and not reversing it is clearly worse. `Reference::read_backwards`'s own doc now states the direction, so the next person to read it does not have to rediscover it.
+
+Both are kept here because they are **the same kind** of thing: `RING_BYTES - free` looks like a position and is an occupancy, and `read_backwards` looks like something to zip and needs reversing first. **Both read entirely normally and produce nothing but garbage** — which is the only genuinely dangerous class of defect on this path, and the reason every pairing column is reported beside the ERLE rather than instead of it.
+
+### The microphone ring's **latency** was not applied — a 60 ms skew
+
+`[measured]` The worst of the three, and the only one where leaving it unfixed throws away the whole thing.
+
+When a capture ring is drained, **how long ago was its newest frame captured?** Answer: however deep the ring is — three poll periods on this board, 60 ms. And `far[0]` is the frame the wire was carrying *at the moment the poll runs*. Pairing those two directly hands every sample a reference **up to 60 ms newer than it**:
+
+```
+worst skew   960 samples @16 kHz = 60 ms
+search window 64 samples @16 kHz =  4 ms
+```
+
+**Fifteen times outside the window.** The delay search still answers "nothing found", the filter still converges on something, and the ERLE is still a plausible low number.
+
+`[measured]` The fix passes the ring depth measured *before* the drain (`produced / BYTES_PER_FRAME` — the number `poll` was already computing) into the pairing as a **lag**, and reads the reference from `play_cursor − lag`. Converting to kept samples **rounds up** (`lag_in_samples`): rounding down reaches back a little too little and leaves the pair out by less than a sample; rounding up reaches back at least as far, overshoots by less than a sample, and is still inside the window.
+
+The **sizing had already paid for this**. The log is sized from `5 760 + 2 880 + 192` frames into 2 944 samples, which covers the transmit runway, the capture latency and the search window together. `2 944 − 960 = 1 984` samples of headroom after reaching back. So this is **not extra memory — it is using a term the sizing formula already contained and nobody read**. That is the argument for deriving sizes from geometry rather than quoting them: the number that was silently unused was the one that would have flagged the bug.
+
+`[test]` `a_capture_ring_s_lag_rounds_up_into_whole_samples` pins the rounding direction and checks across a range that the samples converted back out never fall short of the frames they came from.
+
+**L is fixed at 16**, because at 240 MHz an L=128 tick is 21.6 ms in the worst case, the input tick already takes 17–25 ms, and `MAX_SINGLE_HOLD_MS` is 30 — **128 taps do not fit in this poll**. Going larger is either a slower tap count in the filter or a tick that stops folding everything else: a design change, not a constant.
+
+### The product firmware leaves it **off**
+
+`[measured]` A problem this work introduced in itself, and the easiest one to make while wiring a path like this: **the envelope still folds the raw microphone, so the canceller's output was being discarded** — while the canceller ran on every poll. That is precisely the quadrant `architecture.md` calls unexpressible: low fidelity at high cost.
+
+**The cause is not the arithmetic, it is the rates**: the canceller works at 16 kHz while the envelope is specified on 48 kHz with two slots a frame. Folding the residual in means resampling back, and **resampling back to feed a level meter is a measurement decision nobody has made** — the 6th-order A-weighting cascade would be looking at a staircase. Until something reads it, running it is 3 248 µs a tick for an output nobody looks at.
+
+So it gets a **compile-time switch, default false**, in the same shape as `HPF_CORNER_WALK` and `CAL_SPL_LOG` already in this file — not a Cargo feature, because this is a measurement being taken rather than a product variant (`features.md` criterion 1). The wiring stays in the tree either way, `echo-probe` turns it on explicitly and reads the numbers, and the state stays resident at 2.6 KB (against a board already carrying a 150 KB frame arena), which buys back the *time* without a feature or a second code path.
+
+There is **no ERLE row on the panel** either. Same reason: the cell would read zero today, and adding a row to a layout `audio.md` records as "a column computed wrong looks like a considered design" for a number that cannot be validated yet is spending the most expensive thing available on the least verifiable one.
+
+### 12.7 KB of new resident RAM
+
+`[measured]` Derived from this board's geometry rather than estimated:
+
+| Part | Bytes | Note |
+|---|---:|---|
+| Reference log | 5,888 | 2,944 `i16`, a `&'static` cell |
+| Canceller at L=16 | 2,592 | measured on the board, above |
+| Microphone scratch | 1,282 | a poll's worst drain over the decimation |
+| Reference scratch | 3,202 | **960 of ring latency + 641 of run**, see above |
+| **Total** | **12,964 (12.7 KB)** | |
+
+For scale, the board already carries a 150 KB frame arena (the panel's DMA and the camera share it) plus a 64 KB heap. **The 12.7 KB is resident and off the heap** — `feed` may not allocate, which is exactly why the log is fixed-length and its size is written down rather than grown. PSRAM is still off (measure first, per the earlier decision) and these 12.7 KB do not need it.
+
+`[measured]` Both images link with this in place: the product `vanling` (`.bss` 303,688 B / `.data` 9,316 B) and the `echo-probe` (`.bss` 259,872 B / `.data` 8,644 B, smaller because it paints no panel and so carries no frame arena).
+
 ## Open, and the edges of this
 
 - **CPU passes.** Block adaptation (`UPDATE_STRIDE = 4`) puts **L=16 at 9,680 µs against a ≤10 ms bar**, L=32 at 13.5 ms. The cost is slower convergence (whole-file 20.9 → 16.2 dB) with steady-state ERLE bit-identical. **The road is open again**, but only as far as L=16/L=32. `aec/mod.rs` with its 44 unit tests and `tests/aec_erle.rs` all stay in the tree, as the evidence that the road does not go and as proof the algorithm itself is correct; `aec-probe` stays in `check-s3`'s bin list, so a build failure means the cost moved again.
-- **The clock is an open board-level question worth 3× more than the AEC.** The whole board runs at 80 MHz; `CpuClock` also offers 160 and 240. esp-hal notes that presets off the 480 MHz PLL affect USB Serial/JTAG, which is this repository's console. `[reported]` Whether 160 MHz is safe is untested.
+- **The clock has moved to 240 MHz, product firmware included** (`app/src/main.rs` calls `chip_init_at(_240MHz)`). An earlier version of this list said it was probe-only — that is out of date, and so is the 17–25 ms input-tick figure it was read against, which was measured at 80 MHz and needs the 3× headroom. What 240 MHz costs is power, the PLL, and the long-term stability of USB Serial/JTAG (measured once, which is not a long-term result).
 - **The update's 119 cycles/MAC is still unexplained.** Decimation routes around it; the cause is untouched. Fetch is ruled out (IRAM is 6% slower) and a second core is ruled out (both cores report identical digits), which leaves the memory system itself. `[reported]` Flash controller, absent data cache, or un-pipelined multiplication is untested.
 - **The onset burst is a known, unfixed defect.** The freeze stops the damage growing but not its first half second, because the coherence meter needs ~512 samples to read "incoherent" and the filter has already run through them. A shorter meter dedicated to the freeze decision is the fix, and it is a design change that was not made here.
 - **`[reported]` `LEAKAGE_FREEZE` and `MAX_COHERENCE` are not calibrated on this board**; every threshold still comes from the microphone calibration in `audio.md`.
 - **RAM measures 3,040 B on the board** (`state_bytes::<128>()`; 2,592 B at L=16) against a 4 KB budget. 3,064 B on host. That is the main advantage over ESP-SR's 30.9 KB internal + 90 KB PSRAM.
 - **`state_bytes()` under-reported by 3.4–5.8×** until it was changed to measure the whole canceller. See *The memory accounting was a lie* below.
-- **The reference is not wired up.** The digital tap takes every TX sample written by `audio_out::render_slice`; `Speaker` has no `played_frames()`, and one needs adding.
+- **The reference is wired up**, through a play cursor rather than the write pointer; see *The reference is wired in* above. **It has not yet run against a real room** — `echo-probe` is the build for that, below.
 - **PSRAM is still off**, per the decision to measure first. 3 KB does not need it.
 - **No nonlinear/residual suppression.** The ERLE measured here is the value before it.
-- **A real echo path remains the one unanswered part.** No public recording has one, and G.168 says the real acoustic vectors do not exist yet either. The only way to close it is to record this board: play a known signal, capture the microphone. That is a capture session, and the capture session is exactly what the CPU measurement has already ruled out.
+- **The delay locks; the amount cancelled still has no number.** See *Once the delay is locked: it locks, ERLE still has no number* above: across two measurements delay moved exactly once (26; elsewhere 53 → 42), while the firmware's ERLE meter has **never returned a non-zero reading on hardware**. The 12.3 dB computed midway came from an offline dump that has since been deleted and cannot be reproduced, so it does not count. **L=16 is still from a synthetic host room and an offline optimum** — nothing measured on this board has changed the tap count.
+- **`echo-probe` reports the case where the ERLE looks fine and the pairing is broken**, so the columns cannot be read apart: a zero pair count pins ERLE at zero (a meter that has not moved has measured nothing), while a lapped log can leave ERLE looking normal. `EchoReport` bundles them so no caller can read them separately. The probe also confirms **the canceller is actually running** on every line — a run of zeros is the same output from a broken pairing and from a canceller that never ran.
+- **The product firmware leaves the canceller off** (a compile-time switch, above), so every one of those figures reads zero in the product image. **Only `echo-probe` produces real numbers.**
+- **The decimation phase is 0 on both sides today** (the transmit unit is armed before the capture, so frame 0 pairs to frame 0). A board that armed the microphone first has to state its offset to *both* the reference log's phase and the capture's decimator, and the delay search covers the remainder — **this is not automatic**, it is a constant that fails silently by one tap.
+
+## MIC3 as a hardware reference: the registers are right and the link is still silent
+
+The Lichuang Shizhianpai board wires the ES8311's output to MIC3, and the vendor's own example asks for `tdm_enable = true`. This round took that route to the end and three of the results **overturn what was believed before**.
+
+### The first repair was a misreading of the datasheet, sitting in the code
+
+`es7210.rs` carried the comment "bit1 of `REG_SDP_INTERFACE2` selects TDM", and the name `SDP2_NO_TDM` fixed the mistake in place. What the datasheet says:
+
+- **Bit 1 of register 0x12 is `TDMIN_PDN_OFF` — the TDMIN pin's internal pull-down, not a serial format select.** Writing `0x02` turns the pull-down off, the part stops driving the data line, and the capture reads zeros.
+- The format is **`SP_PROTOCAL`, bits 1:0 of register 0x11**, where `11` is DSP mode.
+- The channel count is **`LRCK_RATE_MODE`, bits 7:4 of register 0x08**, where `2` means four channels — **and it only means anything once `SP_PROTOCAL` is `11`**.
+
+The old code wrote `0x00`, which kept the pull-down: **right result, wrong reason.** That accounts for the earlier readings of zero and zero — the hardware was never the broken part.
+
+### All three registers land correctly and the part is still silent
+
+`init` now reads the serial registers back and prints them, because **a wrong serial format has no other symptom**: the part keeps driving, the receiver sees silence, and each half of that is individually plausible.
+
+`[measured]` With TDM on, the part holds `mode 0x20` (`LRCK_RATE_MODE = 2`, four channels), `serial 0x63` (`SP_PROTOCAL = 11`) and `interface 0x00` (pull-down kept) — **exactly what the datasheet specifies.** The capture still reads zero on **all four slots**, over the same clock table the two-channel path uses.
+
+The read-back also confirms the field decoding itself: with TDM off the part holds `mode 0x10` (`LRCK_RATE_MODE = 1`, which the datasheet lists under "0/1 – 2 channels").
+
+**The suspect is therefore on the receiver's half of the link** — whether esp-hal's slot count and MCLK divider stop the ES7210's sample-rate detector from locking — rather than in the registers. **The route is closed for now and the MIC3 reference stays off**, with the reasoning on `USE_MIC3_REFERENCE`.
+
+### What the diagnostic is worth: a peak cannot tell a copy from a channel
+
+Under the two-slot configuration all four slots read almost bit-for-bit equal at every frame width tried (2557/2558, 946/949) — which is equally what two different signals look like and what one microphone's sample duplicated across left and right looks like. So the drain now also reports the **peak of the difference between the two slots**: if one is a copy, that figure is zero. Peaks cannot separate the two cases; the difference can.
+
+## The delay is measured for the first time, and measuring it needs a switch that used to be off by default
+
+`A_B_RUN` defaulted to off, on the grounds that only a muted run measures the microphone's floor with no echo present. That is true, and it hid something: **with the amplifier silent for the whole run the canceller is handed a silent reference, there is nothing to correlate against, and the delay search cannot return an estimate however good the room is.** `[measured]` Every run of a muted-speaker probe sat at `delay None` — which reads exactly like a board with no echo path at all.
+
+With the alternation on:
+
+```
+[amplifier on — reference peaked 22876 LSB, microphone peaked 936 LSB]
+321 paired this poll | ERLE 0 dB, delay Some(17), tap 13 ..., adapting
+```
+
+**The delay settles at 17 samples — 1.06 ms at 16 kHz**, which is a desk-to-speaker distance plus a codec round trip, and the correlation clears the gate. **The path exists and the pairing works**; both are established now. The earlier "no echo path" conclusion came from the probe's configuration, not from the hardware.
+
+So the alternation is now the default: the muted floor is still reported every window, but the delay is no longer blocked by a silent reference.
+
+## A wide scan, to separate "no path" from "path beyond the filter"
+
+`SEARCH` is only `MAX_DELAY = 64` samples, which is **4 ms** at 16 kHz. Nothing could tell "this room has no echo" from "the echo is further away than that" — both are no peak inside the search.
+
+`DelayEstimator::scan_wide(reach)` closes it, scanning out to `HISTORY - WINDOW` (256 samples, 16 ms) **on a grid of every single sample**. That is not a preference but this module's own documented finding: against a broadband reference the correlation peak is one sample wide, so a coarse grid can only return the largest of a few noise samples. The new tests pin that, and also pin that noise is not read as a path and that a path past the scan's reach is not found by it.
+
+## The new blocker: the capture stream has holes
+
+ERLE is still 0 and the **loudest tap keeps moving** (13/14/1/13/14/9/6/13/12/15) — coefficients dominated by noise, not a filter converging. The same log says why:
+
+```
+ring 1920 B arrived, 2400 B drained
+capture rate: 12611 paired = 12400 samples/s of the 16000 the canceller runs
+```
+
+**The real rate is 77% of target.** An adaptive filter cannot converge on gapped data — which sits alongside a correct delay without contradiction: the delay was measured across a continuous stretch, but convergence has to happen over the whole stream.
+
+**The cause is not the link. It is one constant divided by the wrong frame width.** `DECIMATED_PER_POLL` and two neighbours are derived from the *transmit* `BYTES_PER_FRAME` (4 bytes) while the capture delivers `CAPTURE_BYTES_PER_FRAME` (2 bytes):
+
+| constant | was | is | consequence |
+|---|---|---|---|
+| `DECIMATED_PER_POLL` | 321 | **641** | a poll's budget produces 400 decimated samples into 321 |
+| `DECIMATED_RING_LATENCY` | 480 | **960** | the microphone ring's latency counted at half |
+| `lag_frames` | `produced / 4` | `produced / 2` | the reference reached back half as far as it should |
+
+`if *frames_this_pass < DECIMATED_PER_POLL` was **silently dropping the last 79 samples of every poll — 4.9 ms contiguous**, not scattered: one hole every 25 ms. 321/400 = 80%, and the measured rate was `12400/16000` = 77.5%.
+
+**The doc on `BYTES_PER_POLL` already says "this figure is the root every capture-side size is derived from"** — and all three derivations used the wrong width anyway.
+
+`[measured]` After the fix: `paired this poll` 321 → **400/413**, the rate → **15 130–15 515 / 16 000**, and the delay 17 (jumping) → **41 (steady)**. All three match the arithmetic predicted beforehand.
+
+The silent drop went with it, replaced by a compile-time assertion: a wrong size must fail the build rather than quietly lose data.
+
+## The algorithm is right — that rules it out
+
+`core/tests/aec_erle.rs` runs the canceller against the **offline least-squares optimum** on every path, on the host. `[measured]`:
+
+| path | taps | offline | canceller | gap |
+|---|---|---|---|---|
+| short, fast decay | 16 | 62.9 dB | 61.0 dB | 1.9 |
+| medium, moderate decay | 48 | 58.8 dB | 57.2 dB | 1.6 |
+| long tail, slow decay | 192 | 38.9 dB | 38.8 dB | 0.0 |
+| tail longer than the filter | 256 | 14.4 dB | 13.2 dB | 1.2 |
+
+All four land within 0–1.9 dB of the optimum, and none beats it (`the_canceller_does_not_beat_the_offline_optimum` pins that — exceeding the optimum can only be overfitting or an arithmetic error). The delay is found correctly on every path.
+
+**So ERLE = 0 on the hardware is not an algorithm problem.** It is still 0 after the sample loss is fixed, and the variable still missing is **how long this room's path is** — L=16 was chosen against a synthetic room, and nobody has measured how long the tail is in the room this board is actually in.
+
+## Measuring the impulse response was itself the wrong road, twice
+
+The missing variable above was the room's impulse response, so it went to being measured — by dumping the microphone out and deconvolving it on the host. It broke in the same place twice, and neither time in the code.
+
+### First: clipping, and the conclusion drawn was that the sweep's clock was unreliable
+
+`[measured]` the sweep first ran at half rail (`SWEEP_PEAK_LSB` was 11 500) and the microphone recorded **32 767** — the ADC was clipping. Four analyses of the same recording gave four answers that contradicted each other.
+
+The reason given at the time was that a sweep decorrelates the moment playback and capture slip by one sample — 45° of phase at 6 kHz — so it needs two independent crystals aligned, and every alignment gave a different answer. So the **excitation was replaced with a 1 kHz tone**.
+
+**That reason does not hold on this board, and the code that refutes it is in the same repository:**
+
+- `components/audio_clock.rs:3`: "Both codecs are slaves of one host MCLK", with a test pinning it;
+- `es8311.rs:55` / `es7210.rs:50,56`: both parts are slaves, MCLK comes from a pin;
+- `lckfb_szpi_esp32s3/mod.rs:481-493`: **one `i2s_master::I2s::new(I2S0, DMA_CH1, shared_tdm_config()).with_mclk(GPIO38)`, with `tx` and `rx` built from the same handle.**
+
+One `I2S0` peripheral and one MCLK pin means the sample handed to the DAC and the sample the ADC returns are the same sample index in the same clock. The literature's failure mode — sweep and MLS deconvolution breaking under unsynchronised clocks — is real, but it requires two clocks that are *not* synchronised. This board has one.
+
+And a tone is an **excitation that cannot measure a path**: its energy sits at one frequency, so it gives that frequency's transfer function and nothing else — no path length, no tail, and no answer to "how many taps does this room need".
+
+Lowering `SWEEP_PEAK_LSB` from 11 500 to **2 500** was the actual fix. Clipping's harmonics **cannot be undone by deconvolution**, because the harmonics are in the recording. The sweep went back.
+
+### Second: this console cannot carry 16 kHz
+
+The dump had a larger premise underneath it that nobody ever checked: **whether this console can carry paired samples out at 16 kHz continuously.**
+
+The capture script was `B115200`, no flow control, and slept 50 ms whenever a read came back empty. On the board, one line per sixteen samples, sixty-four hex characters per half. `log::info!` waits on the USB FIFO, so a host that reads slowly blocks the firmware — on the very executor that still has to poll the capture. The capture ring is 60 ms deep, and one overrunning drain loses it.
+
+The first version of this route **did not even report the loss**: the probe printed a pair count and nothing else, so a hole in the recording was invisible from the recording itself — and a signal with a hole in it deconvolves into *the room's shape smeared by the length of the hole*, which reads as an ordinary, slightly wrong answer.
+
+`[claimed]` How much is actually lost was never measured. The direction is enough to reject the route: its only deliverable is a number that **has to prove it has no holes before it can be believed**, and the proof would have to come over the same console that is already struggling.
+
+### So the measurement moved back onto the board: the path profile
+
+`DelayEstimator::scan_wide` **already** computes a normalised correlation at every lag, then keeps the maximum and throws the rest away. Accumulating them **by which lag they landed on** costs almost nothing — one multiply-add per lag, in an inner loop that is already dividing.
+
+`PROFILE_BANDS = 8`, `PROFILE_BAND = 32` — 2 ms per band at 16 kHz, covering the scan's whole 256-sample reach. `DelayEstimator::unreachable_by(taps)` reports **the share of the correlated path a filter of `taps` cannot reach**, in hundredths — the input to the tap budget. `echo-probe` prints one line once the wide scan has located a path:
+
+```
+[PATH] out of reach of a filter of — 16 taps N%, 64 taps N%, 128 taps N%, 256 taps N%.
+```
+
+**No dump, so no hole; no deconvolution, so nothing reconstructed; beside the correlation that produced it, so it has 79 unit tests.**
+
+### What this measure can and cannot say
+
+Written down because it is coarser than an impulse response, and is one step away from being read as one:
+
+- **It is not an impulse response.** It is the scan's own correlations accumulated by lag, smeared by `WINDOW` (the 256-sample correlation window) and quantised to a band. Its job is *how much of the path lies past what a filter of a given length can hold*, and a band is the right resolution for that.
+- **It must not be accumulated behind a per-lag gate**, and that is measured. A gate at 300‰ admits only the main lobe: the correlation at lag *L* is the path's own autocorrelation at *L*, so **holding a lag to 300‰ holds the path's energy at *L* to nearly the direct sound's** — which no room is. Every room came back with a tail of nothing. So it is accumulated whole, and the noise floor is removed when the numbers are read: the quietest band is taken as the floor and taken off every band.
+- **The bottom resolves only to a few percent.** A strong band smears some of itself into the bands after it. So "near zero" means "below what this can resolve", not "none". **What it resolves is the difference between rooms**, and that difference is what a budget turns on.
+- **It counts the correlated share.** Energy that does not correlate with the reference is not something a linear filter can hold either, so leaving it out costs the measurement nothing; anything a filter would have reached is inside the number.
+- **Resolution is one band** (2 ms). Two tap counts less than a band apart cannot be told apart by it.
+
+`[test]` What is pinned is the contract it can actually carry: more taps never reach less; a damped room leaves far less over than a live one (`quiet[2] = 3%` against `loud[2] = 12%`); no path and no scan both return −1 rather than 0 — because 0 would be read as "everything reached"; and the loudest band is the one the direct reflection falls in.
+
+**Those four numbers have not been produced on the board yet.** `PATH_RUN` is a compile-time switch, off by default; turned on it plays the sweep, leaves the canceller off, and prints that line once the wide scan has located a path. **It answers "how many taps does this room need", not "what the impulse response looks like"** — the latter still does not exist, and the former is already enough to decide L.
+
+## Once the delay is locked: it locks, ERLE still has no number
+
+The **delay** half of the "pairing holds, cancellation is zero" section above ends here. Locking the delay (first search takes the lock; after that it may only be pulled by `DRIFT_SAMPLES`, and only yields after `MISSES_BEFORE_MOVING` searches in a row disagree) changes the same measurement to:
+
+| Reading | Before | After |
+|---|---|---|
+| delay | None → 16 → 50 → 6, jumping across the 64-sample window | **26, not once**; measured again elsewhere on the desk, 53 → 42, still one move |
+
+`[measured]` Reproduce: `moon run iot:probe-echo-s3` → `IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3` → attach the serial port after the reset, read for 30 s or more, and count the distinct values delay takes. Across both runs, 28 polls, two distinct values, and the single transition came exactly after four consecutive searches agreed on the new one.
+
+**So "the delay search jumps around" is closed. The ERLE half is not.**
+
+### A 12.3 dB figure that does not count
+
+One intermediate firmware dumped three channels of 512 samples each (reference, microphone, residual) once the delay was locked. Over that data `mic_rms = 20.7` and `res_rms = 5.0`, i.e. 12.3 dB.
+
+**But the probe's own ERLE column read `--` on that run, not 12.** The 12.3 came from computing it on the PC side from the CSV, not from the firmware. And:
+
+- the dump code has since been removed and that log is gone, so **the number cannot be reproduced**;
+- the firmware's ERLE meter has **never produced a non-zero reading on hardware** — the recheck run reported `ERLE 0 dB` on all 36 polls, including the phases where the amplifier was on.
+
+The residual-waveform approach is still the right one (ERLE is a ratio: it says how much went, not whether what went was echo), but **it needs a reproducible measurement, and that run was not one.** Making it one means the dump becomes a standing output of the probe rather than throwaway debug code.
+
+### What this does and does not establish
+
+- **It does**: on this board the delay locks. Two measurements, two placements, one move each.
+- **It still does not**: how much the linear AEC cancels on the board. The firmware's meter has never produced a number, and the single 12.3 dB came from an offline calculation that can no longer be repeated.
+- **Whether 12 dB is enough** is a question about how it sounds, and nothing here measured that. This device is quiet, and in a quiet room that difference is the most audible one there is.
+- **Still absent**: nonlinear suppression, the other half (`aec_nlp_process`). A class-D amplifier near clipping produces harmonics no linear model can predict, so they remain in the residual even once the linear part has converged.
+- **The next thing to measure is the ERLE meter itself**, not the filter: it has never returned a number on hardware, so find out why it does not accumulate.

@@ -1,3 +1,4 @@
+use crate::post::{self, Provenance, State};
 use alloc::{boxed::Box, vec, vec::Vec};
 use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals};
 use esp_hal::rmt::Rmt;
@@ -49,6 +50,19 @@ impl Board<'static> {
         let light = Ws2812RgbLed::new(rmt.channel0, GPIO8, LEDS)?;
         let button = PullButton::new(GPIO9);
         let timg0 = TimerGroup::new(TIMG0);
+
+        // This board reports almost nothing, and that is the point of the
+        // report: **the product's panel, microphones, speaker, touch and camera
+        // simply are not here**, so a reader who sees two `[POST]` blocks from
+        // two builds knows which hardware each number came from without having
+        // to know the feature sets.
+        post::identity();
+        post::line("rgb-led", State::Found, Provenance::Asserted);
+        post::line("button", State::Found, Provenance::Asserted);
+        for name in ["panel", "touch", "motion", "mic", "speaker", "camera"] {
+            post::line(name, State::Absent, Provenance::Asserted);
+        }
+        post::summary(2, 0, 6);
 
         Ok((
             Self {

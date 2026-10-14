@@ -21,6 +21,12 @@ use crate::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
 /// count and the clock rather than to any wiring.
 pub mod echo;
 
+/// The same canceller against a real room, through the product's own pairing.
+/// Board-dependent, because the whole point is that the board supplies the
+/// reference — see the module for why this build had to exist.
+#[cfg(feature = "lckfb-szpi-esp32s3")]
+pub mod echo_room;
+
 /// S3 only: the switch itself is a register write, which is S3-only the moment
 /// esp-hal refuses to do it.
 #[cfg(feature = "lckfb-szpi-esp32s3")]

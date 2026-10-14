@@ -1,58 +1,39 @@
-//! Linear acoustic echo cancellation — the half of an AEC that decides whether
-//! the speaker's own output can be taken back out of the microphone.
+//! Linear acoustic echo cancellation — whether the speaker's own output can be
+//! taken back out of the microphone.
 //!
 //! The board has the reference for free: `audio_out` writes every sample it
 //! sends to the codec, so the playback about to become echo is already a sample
 //! the firmware holds. That makes the reference exact rather than a third
-//! microphone watching the speaker, and is why the digital tap is preferred over
-//! the board's MIC3 wherever both are available.
+//! microphone watching the speaker.
 //!
-//! # Linear only
+//! **Linear only.** [`Canceller`] subtracts a *linear* estimate of the echo: one
+//! filter adapted online, modelling the acoustic path from the reference to the
+//! microphone. Not the other half — a class-D amplifier driving near clipping
+//! distorts, and no filter can predict a distortion. Suppressing what survives is
+//! what WebRTC puts behind `aec_process` and Espressif exposes as
+//! `aec_nlp_process`, so an ERLE measured here is the number *before* that.
 //!
-//! [`Canceller`] subtracts a *linear* estimate of the echo: one filter adapted
-//! online, modelling the acoustic path from the reference to the microphone.
-//!
-//! Not the other half. A speaker and its amplifier are not linear — a class-D
-//! amplifier driving near clipping distorts, and no filter can predict a
-//! distortion. Suppressing what survives the linear part is what WebRTC puts
-//! behind `aec_process` and Espressif exposes as `aec_nlp_process`, after
-//! exactly this split. Nothing here does that, so an ERLE measured here is the
-//! number *before* it.
-//!
-//! # The pieces
-//!
-//! [`DelayEstimator`] finds the bulk delay, so the filter's window is not spent
-//! on the distance between the microphone and its own speaker. [`AdaptiveFilter`]
-//! is the NLMS loop. [`AdaptationGate`] replaces a separate double-talk detector:
-//! the ratio of the filter's own echo estimate to the residual that survived
-//! *is* the leakage, and a filter chasing a talker is exactly what barge-in
-//! would otherwise cause. [`ErleMeter`] reports it in the decibels the literature
-//! quotes. All fixed point, like the rest of the capture path.
-//!
-//! # What has been measured
-//!
-//! `tests/aec_erle.rs` measures against a **computed offline Wiener optimum on
-//! the same path**, not a recording: the public vectors either are not
-//! synchronized (Espressif's `aec_in_far/near.wav` pair correlates at 0.137) or
-//! hold no echo path to find. Every figure it prints is gap-to-optimum, and a
-//! figure that beats the optimum is a bug rather than a result.
-//!
-//! None of that says anything about this board. The acoustic loop gain, the real
-//! path length that would fix the tap count, and the CPU cost per tick need the
-//! hardware in front of them — the last is what `aec-probe` is for.
+//! All fixed point, like the rest of the capture path.
 
 mod delay;
 mod gate;
 mod nlms;
 mod power;
+mod reference;
+mod stage;
 
 #[cfg(test)]
 mod signal;
 
-pub use delay::DelayEstimator;
+#[cfg(test)]
+mod stage_signal;
+
+pub use delay::{DelayEstimator, PROFILE_BAND, PROFILE_BANDS};
 pub use gate::{AdaptationGate, MAX_STEP_Q30};
 pub use nlms::{AdaptiveFilter, COEFFICIENT_SHIFT, Cancelled, Coef, MAX_DELAY, MAX_TAPS};
 pub use power::{ErleMeter, MAX_DECIBELS, PowerMeter, SignedMeter};
+pub use reference::{ReferenceLog, SEARCH_FRAMES, lag_in_samples, required_frames, wire_position};
+pub use stage::{EchoOutcome, EchoStage};
 
 /// The rate this module works at. Espressif's AEC takes 16 kHz and nothing else;
 /// the board's codec runs at 48 kHz, so a caller has to decimate first.
@@ -63,6 +44,7 @@ pub const SAMPLE_RATE_HZ: u32 = 16_000;
 /// `delay` is fed from the same call so that a caller does not have to keep two
 /// streams of each signal in step by hand, which is the one way this arrangement
 /// can silently cancel the wrong thing.
+#[derive(Debug, Clone)]
 pub struct Canceller<const L: usize> {
     filter: AdaptiveFilter<L>,
     gate: AdaptationGate,
@@ -110,7 +92,41 @@ impl<const L: usize> Canceller<L> {
         !self.gate.frozen()
     }
 
-    /// The delay the filter has settled on, and whether it has.
+    /// The correlation peak behind the reported delay, in thousandths, whether
+    /// or not it passed the gate.
+    ///
+    /// Reported beside the delay because the delay alone cannot be trusted: a
+    /// search that found nothing and one that peaked at the window's edge both
+    /// leave a plausible number behind.
+    pub const fn delay_peak(&self) -> i64 {
+        self.delay.peak()
+    }
+
+    /// Where the strongest match sits over the whole history, and how strong it
+    /// is — the search's answer when its own range came back with nothing.
+    ///
+    /// Reported beside [`Self::delay_peak`] because the two failures they
+    /// describe look identical from outside: a room with no echo path, and a
+    /// path that starts further back than [`MAX_DELAY`] can reach. Only this one
+    /// tells them apart, and until it was written there was no way to say which
+    /// of the two a quiet canceller was looking at.
+    pub fn scan_wide(&mut self) -> (usize, i64) {
+        self.delay.scan_wide(delay::HISTORY - delay::WINDOW)
+    }
+
+    /// The share of this room's echo path a filter of `taps` cannot reach, in
+    /// hundredths — the tap budget's input. See
+    /// [`DelayEstimator::unreachable_by`].
+    ///
+    /// Needs a [`Self::scan_wide`] first: the path's shape is what it is read
+    /// from, and only the wide scan measures it.
+    pub fn unreachable_by(&self, taps: usize) -> i32 {
+        self.delay.unreachable_by(taps)
+    }
+
+    /// The delay the filter's window is sitting at, or `None` before one has been
+    /// measured — a caller has to tell a gap in the measurement from a delay of
+    /// zero, because the second is a real answer and the first is not.
     pub const fn delay(&self) -> Option<usize> {
         if self.delay.settled() {
             Some(self.filter.delay())

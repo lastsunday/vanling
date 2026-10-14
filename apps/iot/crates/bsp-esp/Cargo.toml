@@ -26,11 +26,16 @@ st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # board aggregation that happens to enable it today.
 display-light = ["st7789", "es7210", "backlight"]
 # The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
-audio = ["es7210", "dep:esp-hal"]
-# The playback side: the DAC driver, and a ring in DMA memory for the
-# transport. It does not depend on the capture, because a speaker with no
-# microphone is a real board and the other way round.
-audio-out = ["es8311", "dep:esp-hal"]
+# `embassy-sync` is the shared cell the reference between the two audio halves
+# sits in — the capture reads it from the cooperative input loop while the
+# speaker's feed writes it from an interrupt executor, so it has to be a cell
+# rather than a field on either driver.
+audio = ["es7210", "dep:esp-hal", "dep:embassy-sync"]
+# The playback side: the DAC driver, and a ring in DMA memory for the transport.
+# It does not depend on the capture, because a speaker with no microphone is a
+# real board and the other way round — and the reference cell it shares is
+# written on its own, read by nobody.
+audio-out = ["es8311", "dep:esp-hal", "dep:embassy-sync"]
 # The capture side: the sensor driver plus the chip HAL for the ring and the DMA
 # behind it. Separate from `gc2145` because the driver stands on its own on a host
 # and its register table is worth testing without a chip in the room.

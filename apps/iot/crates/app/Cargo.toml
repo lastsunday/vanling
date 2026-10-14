@@ -63,6 +63,15 @@ name = "multicore-s3"
 path = "src/bin/multicore-s3.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
+# Auto-discovered without this: Cargo gives a bin it discovers no
+# `required-features`, so the C6 clippy in the pre-commit hook built it and found
+# S3-only symbols gated out. The other probes above are declared for the same
+# reason.
+[[bin]]
+name = "echo-probe"
+path = "src/bin/echo-probe.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
 esp32c6 = [

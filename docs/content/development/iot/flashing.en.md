@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "510f19d70e3825377bfb8f32bdae8419df4d2e34"
-translated_at = "2026-09-23T04:30:00Z"
+source_file_hash = "90ca21991d90c29a9d3c317e381e761214a740c4"
+translated_at = "2026-10-14T15:19:21Z"
 +++
 
 # Firmware Installation
@@ -18,10 +18,40 @@ This page explains how to install vanling firmware onto a development board. A [
   # under apps/iot
   moon run build
   espflash save-image --chip esp32c6 --merge \
-    --flash-size 4mb --flash-mode dio --flash-freq 40mhz \
+    --flash-size 8mb --flash-mode dio --flash-freq 40mhz \
     target/riscv32imac-unknown-none-elf/debug/vanling \
     vanling-merged.bin
   ```
+  > **8mb is the measured value** (`espflash board-info`; the part really is 8 MB). The `4mb` written here before did not match the board.
+  > Measured for both boards: **C6 = 8 MB (MAC `98:a3:16:7e:55:08`)**, **S3 = 16 MB (MAC `30:ed:a0:a8:2f:c8`)**.
+
+## What is on the bench, and what each board is for
+
+Do not assume there is no hardware — two boards stay plugged in. **Port names change on every replug and cannot be used as identifiers.**
+
+| Board | Repository feature | Role |
+|---|---|---|
+| LCKFB Shizhan ESP32-S3 | `lckfb-szpi-esp32s3` | **Product target**: 320×240 panel, FT6336 touch, two mics and a speaker, QMI8658, PCA9557, GC2145 camera |
+| ESP32-C6-DevKitC-1 | `esp32c6-devkitc-1` | **Smoke/emulation target**: a WS2812 and the boot key, nothing else. `UnwiredSpeaker`, the panel and the Audio page are all `None`, so **the product path does not exist on it**; the two are not interchangeable |
+
+Measured hardware facts (conclusions and reproduction in the [development records](@/records/iot/_index.md)):
+
+- **The camera is a GC2145, not the GC0308 the LCKFB wiki names** (`sensor id 0x2145`, read window 1616×1208 @5:5)
+- **AEC's delay locks; the amount cancelled still has no reading**: the delay search moved exactly once across two measurements, while the firmware's ERLE meter has never returned a non-zero number on hardware — the one 12.3 dB came from an offline dump that has since been deleted and cannot be reproduced
+
+## With two boards plugged in
+
+`espflash` picks a port on its own and **can pick the wrong one** (`--chip esp32c6` against the S3 fails outright). Identify, then flash:
+
+```sh
+espflash board-info --port /dev/cu.usbmodem14401   # C6 → 98:a3:16:7e:55:08
+espflash board-info --port /dev/cu.usbmodem1422301 # S3 → 30:ed:a0:a8:2f:c8
+
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3
+```
+
+With `IOT_PORT` unset the tasks behave as they did before (`espflash` chooses), but it must be set while both boards are attached.
 
 ## Local artifact generation
 
@@ -91,6 +121,16 @@ moon run flash
 cargo build && espflash flash target/.../vanling
 espflash monitor   # press enter in console to restart
 ```
+
+`espflash monitor` needs a real tty (picocom cannot make sense of its own arguments on this machine). Native USB does not support DTR/RTS, so **attach immediately after flashing** to catch the ROM's own boot; redirect with `> /tmp/x.log` rather than piping.
+
+## When a build fails, look at Docker first
+
+S3 builds go through `scripts/iot-xtensa.sh`: it tries the machine's esp toolchain first and falls back to a container when that one is incomplete. The local toolchain usually *is* incomplete — `~/.espressif` has `xtensa-esp-elf`'s gcc but neither `bin/cargo` nor `lib/rustlib/src/rust/library`, so `has_native_esp` says no — which means **building depends on the Docker daemon being up.**
+
+> `[measured]` When the daemon is down the message is `docker: request returned 500 Internal Server Error ... /docker.sock/_ping` with exit code 125, and **not** any compile error. `open -a Docker` does not start it from a shell with no GUI session; run `/Applications/Docker.app/Contents/MacOS/Docker` directly and wait for `com.docker.backend`.
+>
+> The dangerous part is that **the stale binary survives a failed build**, so `espflash flash` cheerfully writes the previous image to the board. Filtering the output through `grep '^error'` hides that completely, which cost three rounds of measuring nothing. **Before every flash, confirm the artefact is new with `strings <elf> | grep <a log literal only the new code emits>`** — never trust the exit code alone.
 
 ## Boot page and the bench image
 

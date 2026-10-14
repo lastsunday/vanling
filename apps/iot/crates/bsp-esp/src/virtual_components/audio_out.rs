@@ -16,12 +16,63 @@ use esp_hal::i2s::master::{
     Channels, DataFormat, Error as I2sError, I2sTx, I2sTxDmaTransfer, TdmConfig,
 };
 use esp_hal::time::Rate;
-use iot_core::drivers::audio::{BYTES_PER_FRAME, SAMPLE_RATE_HZ};
+use iot_core::drivers::aec::wire_position;
+use iot_core::drivers::audio::{
+    BYTES_PER_FRAME, CAPTURE_BYTES_PER_FRAME, DECIMATION, SAMPLE_RATE_HZ,
+};
 use iot_core::drivers::playback::{
-    Pcm, PlayStreamWatchdog, Recovery, SampleSource, Sound, Speaker, SpeakerFault, SpeakerOp, Tone,
+    Pcm, PlayStreamWatchdog, Recovery, SampleSource, Sound, Speaker, SpeakerFault, SpeakerOp,
+    Sweep, Tone,
 };
 
 use crate::components::es8311::Mute;
+use crate::virtual_components::reference::{Writer, samples_for};
+
+/// Frames the transmit ring holds: the run of audio the CPU may write before it
+/// reaches audio the DMA has already sent.
+///
+/// This is the distance between where a sample is *put on the ring* and where it
+/// is *on the wire* — 120 ms on this board — and it is the whole reason the
+/// reference is read through a play cursor rather than a write pointer. A
+/// reference taken at the write pointer would sit thirty times outside the delay
+/// search's window, and a filter handed one converges on whatever the correlation
+/// grid happens to favour.
+const TRANSMIT_RUNWAY_FRAMES: usize = RING_BYTES / BYTES_PER_FRAME;
+
+/// Frames of microphone latency the reference has to reach back across to pair
+/// with: this board's capture ring, three poll periods.
+///
+/// Stated here rather than read from `audio` so neither driver depends on the
+/// other, and asserted against the real ring in both — a figure two modules each
+/// spelled out is free to disagree, and a stale copy makes the pairing stop short
+/// of the ring's real depth silently.
+///
+/// **Counted in capture frames, not transmit ones.** The receive ring holds one
+/// sample per frame where the transmit ring holds two — see
+/// [`CAPTURE_BYTES_PER_FRAME`] — so a capture ring three poll periods deep is
+/// twice as many *frames* as the same byte count read as transmit frames. This
+/// was the transmit width, and it under-counted the depth the pairing has to
+/// reach across by half.
+const RECEIVE_LATENCY_FRAMES: usize = 3 * 1_920 / CAPTURE_BYTES_PER_FRAME;
+
+/// The lag has to be *inside* the runway, or the log is sized for a ring shallower
+/// than the one that exists and every pair past the difference is drawn from
+/// nothing. The reverse — a log longer than needed — costs memory and nothing else.
+const _: () = assert!(
+    RECEIVE_LATENCY_FRAMES <= TRANSMIT_RUNWAY_FRAMES,
+    "the capture ring cannot be deeper than the runway the log has to span"
+);
+
+/// Kept samples the shared log holds on this board.
+pub const REFERENCE_SAMPLES: usize = samples_for(TRANSMIT_RUNWAY_FRAMES, RECEIVE_LATENCY_FRAMES);
+
+/// The log covers the whole transmit runway, so it cannot lap while the feed keeps
+/// up — asserted against the geometry rather than left to the arithmetic above
+/// being edited correctly.
+const _: () = assert!(
+    REFERENCE_SAMPLES * DECIMATION as usize >= TRANSMIT_RUNWAY_FRAMES,
+    "the reference log cannot hold this ring's runway"
+);
 
 /// The stored sound [`Sound::Asset`] plays, as mono 16-bit little-endian samples
 /// at [`SAMPLE_RATE_HZ`] — the format the DMA transmits, so the file is the wire,
@@ -77,9 +128,28 @@ pub fn stream() -> DmaTxStreamBuf {
 /// What the ring is being filled from. The catalogue's two sounds, and silence —
 /// which is a voice too, in that a ring is fed either way and the difference is
 /// only what goes on it.
+/// The band the room measurement's sweep crosses.
+///
+/// **It stops at 6 kHz and starts at 300 Hz** because the answer is deconvolved,
+/// and a sweep that reaches DC or Nyquist puts its energy where the codec's
+/// filters are still settling — what comes back then describes them rather than
+/// the room. The whole band in [`SWEEP_MS`] is what sets how far apart two
+/// reflections can be told: about 40 Hz, or 0.55 ms, between them.
+const SWEEP_FROM_HZ: u32 = 300;
+const SWEEP_TO_HZ: u32 = 6_000;
+
+/// One pass of the room measurement's sweep, and therefore its repeat period.
+///
+/// Two hundred milliseconds is also what makes the loop close: 300 Hz to 6 kHz
+/// over 200 ms is exactly six hundred and thirty cycles, so the phase a whole
+/// sweep accumulates is a whole number of turns and consecutive passes join with
+/// no step — see [`Sweep`].
+pub const SWEEP_MS: u32 = 200;
+
 enum Voice {
     Chime(Tone),
     Asset(Pcm<'static>),
+    Sweep(Sweep),
 }
 
 impl SampleSource for Voice {
@@ -87,6 +157,7 @@ impl SampleSource for Voice {
         match self {
             Self::Chime(tone) => tone.fill(out),
             Self::Asset(asset) => asset.fill(out),
+            Self::Sweep(sweep) => sweep.fill(out),
         }
     }
 
@@ -94,6 +165,7 @@ impl SampleSource for Voice {
         match self {
             Self::Chime(tone) => tone.done(),
             Self::Asset(asset) => asset.done(),
+            Self::Sweep(sweep) => sweep.done(),
         }
     }
 }
@@ -102,7 +174,17 @@ impl SampleSource for Voice {
 /// next samples, or silence when there is none, each stereo-ised to the wire
 /// format. One frame at a time, so a slice ending mid-ring cannot strand a voice
 /// ahead of the DMA. Answers the bytes written, for a bounded hand-off.
-fn render_slice(voice: &mut Option<Voice>, buf: &mut [u8], produced_sound: &mut bool) -> usize {
+///
+/// The frames are also copied into `rendered`, which is what makes the
+/// transmitted stream readable back for a canceller. It is written on the *write*
+/// side — the only place a transmitted sample exists — and read on the *play*
+/// side, a ring's worth of runway behind; see [`crate::virtual_components::reference`].
+fn render_slice(
+    voice: &mut Option<Voice>,
+    buf: &mut [u8],
+    produced_sound: &mut bool,
+    rendered: &mut [i16; PUSH_FRAMES],
+) -> usize {
     let mut written = 0;
     for frame in buf.chunks_exact_mut(BYTES_PER_FRAME).take(PUSH_FRAMES) {
         let sample = match voice.as_mut() {
@@ -113,15 +195,26 @@ fn render_slice(voice: &mut Option<Voice>, buf: &mut [u8], produced_sound: &mut 
             }
             None => 0,
         };
+        // Both slots carry the same sample, so one sample reaches the log per
+        // frame: a second would decimate the log at half the intended rate and
+        // the capture would pair against the wrong frames.
         for slot in frame.chunks_exact_mut(2) {
             slot.copy_from_slice(&sample.to_le_bytes());
         }
+        let Some(slot) = rendered.get_mut(written / BYTES_PER_FRAME) else {
+            break;
+        };
+        *slot = sample;
         written += BYTES_PER_FRAME;
     }
     written
 }
 
 /// What playback needs from a codec driver: the mute latch.
+///
+/// `C` is held for the mute latch and nothing else. The reference log is reached
+/// through a `&'static` handle rather than owned, because the capture side reads
+/// it from a different executor — see [`crate::virtual_components::reference`].
 pub struct Es8311Tx<C> {
     codec: C,
     /// The one streaming transfer the driver runs on: armed at bring-up and fed
@@ -146,6 +239,29 @@ pub struct Es8311Tx<C> {
     /// repairing it would have meant logging and allocating from an interrupt.
     /// Taken by [`recover`](Speaker::recover) on the cooperative side.
     pending: Option<Recovery>,
+    /// The write end of the reference log the capture side reads, and the only
+    /// reason this driver knows a microphone exists.
+    ///
+    /// Written from `render_slice`, which is the only place a transmitted sample
+    /// exists, and read through the play cursor rather than the write pointer —
+    /// which sits [`TRANSMIT_RUNWAY_FRAMES`] ahead of the wire.
+    reference: Writer<REFERENCE_SAMPLES>,
+    /// The frames the last push rendered, handed to the log afterwards. Driver
+    /// state rather than a local because a push can render a whole ring and this
+    /// is sized to that.
+    rendered: [i16; PUSH_FRAMES],
+    /// Frames handed to the ring since it was armed, **including the prefill**.
+    ///
+    /// The prefill counts because the ring is handed to the DMA already full: a
+    /// whole ring of silence is queued and unsent at that moment, and leaving it
+    /// out of the count is what makes the first play-cursor reading wrong rather
+    /// than merely early.
+    pushed_frames: usize,
+    /// Frames the DMA had finished at the last cursor advance, so the delta
+    /// between two readings is how far the wire moved. Monotonic across the
+    /// stream's life and reset by a [`restart`](Self::restart), which replays
+    /// the whole ring and so moves the wire back to its start.
+    played_frames: usize,
 }
 
 impl<C> Es8311Tx<C> {
@@ -156,7 +272,11 @@ impl<C> Es8311Tx<C> {
     ///
     /// Fallible because the DMA can refuse the ring, and a ring that would not
     /// take is not a speaker anyone can hear.
-    pub fn new(i2s: I2sTx<'static, Blocking>, codec: C) -> Result<Self, I2sError> {
+    pub fn new(
+        i2s: I2sTx<'static, Blocking>,
+        codec: C,
+        reference: Writer<REFERENCE_SAMPLES>,
+    ) -> Result<Self, I2sError> {
         let mut ring = stream();
         // Zero the ring while it is still CPU-owned: the DMA starts the moment
         // `write` arms it, and a boot that handed the codec a garbage buffer
@@ -166,6 +286,7 @@ impl<C> Es8311Tx<C> {
             slot.fill(0);
             slot.len()
         });
+        let prefilled = RING_BYTES / BYTES_PER_FRAME;
         let transfer = i2s.write(ring).map_err(|(error, _, _)| error)?;
         Ok(Self {
             codec,
@@ -175,20 +296,68 @@ impl<C> Es8311Tx<C> {
             watchdog: PlayStreamWatchdog::new(RING_BYTES),
             restarts: 0,
             pending: None,
+            reference,
+            rendered: [0; PUSH_FRAMES],
+            pushed_frames: prefilled,
+            played_frames: 0,
         })
     }
 
     /// Hands the DMA the next slice of the ring: up to [`PUSH_FRAMES`] frames of
     /// the voice, then silence to the end of what the DMA has freed. Reports
-    /// whether any of that slice was sound.
+    /// whether any of that slice was sound, and copies the frames it rendered
+    /// into the reference log.
+    ///
+    /// The log is written **after** the push rather than inside it: the ring's
+    /// free space bounds what the DMA will take, so the frames that reach the wire
+    /// are the ones the push actually wrote — and only the push knows that.
     fn push(&mut self) -> bool {
-        let Some(transfer) = self.transfer.as_mut() else {
+        let Self {
+            transfer,
+            voice,
+            rendered,
+            reference,
+            pushed_frames,
+            ..
+        } = self;
+        let Some(transfer) = transfer.as_mut() else {
             return false;
         };
-        let voice = &mut self.voice;
         let mut produced_sound = false;
-        transfer.push_with(|slot| render_slice(voice, slot, &mut produced_sound));
+        let written =
+            transfer.push_with(|slot| render_slice(voice, slot, &mut produced_sound, rendered));
+        let frames = written / BYTES_PER_FRAME;
+        // Through the binding the destructuring opened, not `self`: the closure
+        // above holds a borrow of the other fields for as long as it runs.
+        *pushed_frames += frames;
+        reference.write_frames(rendered[..frames].iter().copied());
         produced_sound
+    }
+
+    /// Moves the reference log's read cursor to where the wire actually is.
+    ///
+    /// Free space is the ring's **occupancy**, not the wire's position — the DMA
+    /// frees bytes as it sends them, but the CPU refills them immediately, so a
+    /// reading is only meaningful against how much has been pushed. That
+    /// subtraction is [`wire_position`]'s, and it is in core so it can be tested
+    /// against a ring this board cannot build.
+    ///
+    /// Cheap on purpose: this runs on the feed, which is the one loop that may not
+    /// take a lock, allocate or log. It is arithmetic on a number the DMA already
+    /// has, plus a saturating subtraction.
+    fn advance_play_cursor(&mut self) {
+        let Some(transfer) = self.transfer.as_mut() else {
+            return;
+        };
+        let played = wire_position(
+            self.pushed_frames,
+            PUSH_FRAMES,
+            transfer.available_bytes(),
+            BYTES_PER_FRAME,
+        );
+        let moved = played.saturating_sub(self.played_frames);
+        self.played_frames = played;
+        self.reference.advance_played(moved);
     }
 
     /// Rebuilds the streaming transfer after the DMA has run the ring dry, which
@@ -208,6 +377,14 @@ impl<C> Es8311Tx<C> {
         match i2s_tx.write(ring) {
             Ok(transfer) => {
                 self.restarts += 1;
+                // The wire is back at the start of the ring: `write` replays
+                // every frame of it, so the pushed count is a whole ring again
+                // and the cursor is at zero. Left where they were, the next
+                // reading would be a saturating subtraction of a smaller number
+                // and the log would never advance again — a pairing frozen at the
+                // moment of the fault rather than reporting one.
+                self.pushed_frames = PUSH_FRAMES;
+                self.played_frames = 0;
                 log::warn!(
                     "[SPEAKER] restarted the outgoing DMA, recovery {}",
                     self.restarts
@@ -257,6 +434,7 @@ where
         self.voice = Some(match sound {
             Sound::Chime => Voice::Chime(Tone::chime()),
             Sound::Asset => Voice::Asset(Pcm::new(ASSET)),
+            Sound::Sweep => Voice::Sweep(Sweep::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS)),
         });
         self.tail = false;
         Ok(())
@@ -278,7 +456,14 @@ where
     /// clocks must be fed silence too. A drain is only *recorded* here, so the
     /// priming push is load-bearing for [`restart`](Self::restart). A sound is
     /// done once its source is spent and the last frames it queued have played out.
+    ///
+    /// The play cursor is advanced *before* the push, from the state the DMA was
+    /// left in by the previous cadence — which is the same information either
+    /// order reports, and this one is right on the first feed, where the ring has
+    /// been full since bring-up and a reading taken afterwards would count frames
+    /// the DMA had not yet been given.
     fn feed(&mut self, now_ms: u64) -> bool {
+        self.advance_play_cursor();
         let drained = match self.transfer.as_mut() {
             Some(transfer) => {
                 let drained = self.watchdog.report_drained(now_ms, transfer.is_done());

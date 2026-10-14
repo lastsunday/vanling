@@ -1,7 +1,9 @@
 use crate::drivers::input::{InputEvent, InputSource};
 
+pub mod decimator;
 mod weighting;
 
+pub use decimator::{DECIMATION, Decimator};
 use weighting::{AWeight, DbaMeter};
 
 /// The codec's frame rate: one I2S frame per this many nanoseconds, which is
@@ -9,15 +11,39 @@ use weighting::{AWeight, DbaMeter};
 /// samples is counted against.
 pub const SAMPLE_RATE_HZ: u32 = 48_000;
 
-/// 16-bit slots one I2S frame carries. The ES7210 is clocked for a standard
-/// two-slot frame, and the driver's `Channels::MONO` is a TDM slot *selection*
-/// rather than a shorter frame — the peripheral's own mono mode is left off —
-/// so the DMA is handed both slots. The capture therefore moves twice as many
-/// samples per second as [`SAMPLE_RATE_HZ`] frames.
+/// 16-bit slots one I2S frame carries **on the transmit side**.
+///
+/// The ES7210 is clocked for a standard two-slot frame, and the driver's
+/// `Channels::MONO` is a TDM slot *selection* rather than a shorter frame. What
+/// that selection does **differs by direction**, which is the whole reason
+/// [`CAPTURE_BYTES_PER_FRAME`] is not simply this times the sample width:
+///
+/// - **Transmit**: `fill` is `None`, so an inactive channel *repeats* the last
+///   active one and both slots reach the DMA buffer. The playback ring is
+///   therefore two samples per frame.
+/// - **Receive**: esp-hal documents that an inactive channel "does not consume
+///   or write data in the DMA buffer", and that `fill` "is ignored in the
+///   receiver unit". So only the active channel's sample lands in the ring, and
+///   the capture buffer is **one** sample per frame.
+///
+/// `[实测]` measured on the board: the capture moved 8000 samples/s where this
+/// constant, read as applying to the capture, predicted 16000 — exactly half,
+/// because a four-byte stride over two-byte samples keeps one sample and throws
+/// the next away. A follow-up count of how often two adjacent samples in the
+/// ring were equal settled it: 4–16 per mille, where a duplicated slot would
+/// read 1000.
 pub const SLOTS_PER_FRAME: u32 = 2;
 
 /// Bytes one 16-bit sample occupies, little-endian like the wire.
 pub const BYTES_PER_SAMPLE: u16 = 2;
+
+/// Bytes one **captured** frame occupies in the receive ring.
+///
+/// **Two — one sample — and not [`BYTES_PER_FRAME`].** See [`SLOTS_PER_FRAME`]
+/// for why the two directions differ; this is the receive half of that, and it
+/// is the unit a capture ring's depth, a pairing's lag and a poll's drain budget
+/// are all counted in.
+pub const CAPTURE_BYTES_PER_FRAME: usize = BYTES_PER_SAMPLE as usize;
 
 /// Bytes one whole I2S frame occupies on the wire: its slots, each one sample
 /// wide. The unit a playback ring is measured in, and the reason a mono source
@@ -39,18 +65,27 @@ pub const COLUMNS_PER_POLL: u16 = 2;
 /// Time one envelope column spans.
 pub const COLUMN_MS: u64 = CAPTURE_MS / COLUMNS_PER_POLL as u64;
 
-/// Samples one envelope column spans at [`SAMPLE_RATE_HZ`] and
-/// [`SLOTS_PER_FRAME`].
-pub const SAMPLES_PER_COLUMN: u16 =
-    (SAMPLE_RATE_HZ as u64 * SLOTS_PER_FRAME as u64 * COLUMN_MS / 1_000) as u16;
+/// Samples one envelope column spans at [`SAMPLE_RATE_HZ`], counting the
+/// receive ring's samples rather than the transmit ring's slots.
+///
+/// `[实测]` this counted [`SLOTS_PER_FRAME`] and so was twice what the envelope
+/// actually holds: `SampleStream::push_bytes` decodes one sample per
+/// [`BYTES_PER_SAMPLE`], and the receive ring holds one sample per frame. Every
+/// window has therefore been drawn with twice the samples in it that its own
+/// duration claims — half speed, silently, on every build so far.
+pub const SAMPLES_PER_COLUMN: u16 = (SAMPLE_RATE_HZ as u64 * COLUMN_MS / 1_000) as u16;
 
 /// Audio one capture poll hands over, in bytes. The unit a capture ring and a
 /// backlog are both measured in.
-pub const BYTES_PER_POLL: usize = SAMPLE_RATE_HZ as usize
-    * SLOTS_PER_FRAME as usize
-    * BYTES_PER_SAMPLE as usize
-    * CAPTURE_MS as usize
-    / 1_000;
+///
+/// **Counted in [`CAPTURE_BYTES_PER_FRAME`], not [`BYTES_PER_FRAME`].** The
+/// receive ring holds one sample per frame where the transmit ring holds two
+/// (see [`SLOTS_PER_FRAME`]), and this figure is the root every capture-side
+/// size is derived from — the ring's depth, a poll's drain budget, and so the
+/// pairing's scratch. Read with the transmit width it was twice the truth, and
+/// every buffer sized from it came out twice as large as the audio it holds.
+pub const BYTES_PER_POLL: usize =
+    SAMPLE_RATE_HZ as usize * CAPTURE_BYTES_PER_FRAME * CAPTURE_MS as usize / 1_000;
 
 /// Envelope columns kept, sized to the pixel columns the panel's sweep is
 /// given, so one column is one pixel column and nothing has to be decimated to
@@ -1241,8 +1276,20 @@ mod tests {
         // A loop running a fixed beat behind the wire settles a whole poll
         // deeper than the steady state for ever, so the depths below are what
         // the panel reported while the ring stayed healthy.
+        //
+        // **Halved along with [`BYTES_PER_POLL`]**, and deliberately not
+        // re-measured: these were recorded when a poll period was counted with
+        // two slots per frame, so every figure in them was a poll count wearing
+        // twice the bytes. What they assert is a *depth in polls* — 2.0 to 2.13
+        // — and that is unchanged. Quoting them again in poll counts rather than
+        // bytes is what stops the next frame-width correction from silently
+        // invalidating them.
         let mut backlog = CaptureBacklog::new(RING_BYTES);
-        for produced in [7_708, 7_934, 8_188] {
+        for produced in [
+            BYTES_PER_POLL * 2 + BYTES_PER_POLL / 51,
+            BYTES_PER_POLL * 2 + BYTES_PER_POLL * 7 / 100,
+            BYTES_PER_POLL * 2 + BYTES_PER_POLL * 3 / 32,
+        ] {
             assert_eq!(
                 backlog.report(produced),
                 None,
@@ -1297,10 +1344,10 @@ mod tests {
         // state would warn continuously again, and a level with no ring left above
         // it would warn too late to be worth anything.
         let backlog = CaptureBacklog::new(RING_BYTES);
-        assert_eq!(backlog.warn_bytes(), 9_600);
-        assert_eq!(backlog.clear_bytes(), 7_680);
+        assert_eq!(backlog.warn_bytes(), 4_800);
+        assert_eq!(backlog.clear_bytes(), 3_840);
         assert!(
-            backlog.warn_bytes() > 8_188,
+            backlog.warn_bytes() > BYTES_PER_POLL * 2 + BYTES_PER_POLL * 3 / 32,
             "the deepest steady-state depth measured on hardware, 2.13 polls"
         );
         assert!(

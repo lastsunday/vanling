@@ -1283,6 +1283,7 @@ impl DisplayLight {
             match playback.sound {
                 Sound::Chime => b"CHIME",
                 Sound::Asset => b"ASSET",
+                Sound::Sweep => b"SWEEP",
             },
             Block::First,
             2,

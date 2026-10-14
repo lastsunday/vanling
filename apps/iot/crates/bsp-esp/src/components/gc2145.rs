@@ -10,17 +10,16 @@
 //!
 //! The field of view is the output width over the array width and no register moves it, so
 //! the ratio only has to divide the array exactly — which the compile-time assertion on
-//! [`EXTRACT_RATIO`] is there to keep true. What a wider *view* needs is a wider *output*,
-//! and the panel's width caps that.
+//! [`EXTRACT_RATIO`] is there to keep true. A wider *view* needs a wider *output*, and the
+//! panel's width caps that.
 //!
 //! The table is transcribed from `gc2145_settings.h` (which register, which bits) and
-//! `gc2145.c` (which sequence, which value), so it is replayed as written rather than
-//! sorted or split per page: one register number means different things on different
-//! pages, and the list carries its own page selects for that reason.
+//! `gc2145.c` (which sequence, which value), replayed as written rather than sorted or
+//! split per page: one register number means different things on different pages, and the
+//! list carries its own page selects for that reason.
 //! `tests::power_on_table_pins_the_entries_that_decide_the_picture` pins the entries a
-//! transcription error would otherwise hide. Measured behaviour of each register is in
+//! transcription error would otherwise hide. Measured behaviour is in
 //! `@/records/iot/camera.md`; the comments here state the current setting and why.
-
 use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::I2c;
 
@@ -31,6 +30,16 @@ pub const GC2145_I2C_ADDR: u8 = 0x3c;
 const CHIP_ID_HIGH: u8 = 0xf0;
 const CHIP_ID_LOW: u8 = 0xf1;
 
+/// What this part answers with on that pair.
+///
+/// **Checked, not merely logged**: [`Gc2145::probe`] compares against it and
+/// refuses anything else before a single register of the table above is written,
+/// so a board fitted with some other sensor cannot be brought up on this
+/// driver's register map. The LCKFB wiki says this board ships a GC0308, which
+/// is why the check earns its place — `[实测]` it answers `0x2145`.
+///
+/// Not public: the board layer has no reason to compare again, and a second
+/// comparison is a second thing that can drift from the driver's.
 const CHIP_ID: u16 = 0x2145;
 
 /// Reset and page select: bit 7 is the part's own reset, bits 2:0 are the page.

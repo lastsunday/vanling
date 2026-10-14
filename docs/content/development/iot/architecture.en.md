@@ -2,8 +2,8 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "4a7c70326a994cfaacdf2bfa26464003670c6e19"
-translated_at = "2026-10-11T15:41:51Z"
+source_file_hash = "16df9f4ce074989fbfd6462e66a9050b23901b0d"
+translated_at = "2026-10-14T15:19:04Z"
 +++
 
 # Layering and Composition
@@ -242,6 +242,24 @@ The board has no pin-level microphone power control, and shutting only the ADC d
 `aec-probe` is the only probe that wires no peripheral: echo cancellation is arithmetic on two streams, and a bring-up would only add noise to the measurement. What it reports is that the CPU cost depends on the tap count and the clock and on nothing else, which is what makes it safe to reserve time for it in the budget before wiring it in. It reports the first, mean and worst tick, the share of 20 ms, and the delay search, the filter and the meters timed separately — they differ in cost and, more to the point, in what they trade: the delay search is one constant against accuracy, and a tap is accuracy against both of the others.
 
 Its ticks run back to back rather than on the 20 ms schedule, so what it reads is a **floor** and not the loaded figure. The room buffer is on the heap: a 10 KB local would sit in the main task's stack, which is the shared resource this document accounts for.
+
+`echo-probe` is its exact counterpart: **the only AEC probe that touches a peripheral**, because it answers the one thing `aec-probe` structurally cannot — whether the wiring is right. The speaker plays, the microphone listens, the canceller is fed both, and it drives the product's own feed and capture poll. It reports ERLE, delay, the loudest tap, pair count, reference log depth and worst hold.
+
+**Those figures have to be read together**: ERLE is flatly zero when the pair count is (a log that does not move is not measured), and it can look healthy while the reference log has lapped. Both print the same zero. `EchoReport` binds them together so a caller cannot read them apart.
+
+It also reports something `aec-probe` cannot: **where the delay is locked**. The delay search on this board used to jump across a 64-sample window (`None → 16 → 50 → 6`), dragging the filter's window with it every 256 ms, so none of its 64 taps ever converged on one room. With the lock in place, delay moved exactly once across two measurements. As for how much actually gets cancelled, neither probe has produced a number on hardware yet — see the [echo cancellation record](@/records/iot/aec.en.md).
+
+#### How the cancellation layer is wired
+
+`Canceller` is two samples in and one out, and making those two samples be *about the same instant* is not its problem. Two DMA transfers share one clock, each drained at its own cadence, and the reference is held back by a transmit ring's runway. So the pairing is its own layer:
+
+| Type | Lives in | What it is |
+|---|---|---|
+| `ReferenceLog` | core | holds reference samples against the play cursor rather than the write pointer, and reports lapping — a pair read has to be a segment that has actually been sent |
+| `Decimator` | core | carries a **phase** that each side reports for the other to match, rather than both guessing |
+| `EchoStage` | core | the pairing and cancellation of capture against reference, producing `EchoOutcome` |
+
+The phase is the one thing in here that can be wrong by one tap in silence: both sides take 0 today because the transmit arms before the capture, and **a board that arms the microphone first has to report the offset to both sides**. The delay search covers the difference; it is not automatic.
 
 `demand-probe` walks the motion plane's (configuration × cadence) grid, settling each cell before measuring it, and reports three numbers: **bus transactions per second** from the driver's own counter, the **executor occupancy** as the wall-clock share of the window spent polling, and the **number of polls measured**.
 

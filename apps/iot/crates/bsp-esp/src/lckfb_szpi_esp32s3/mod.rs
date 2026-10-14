@@ -1,3 +1,4 @@
+use crate::post::{self, Provenance, State};
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::I2cDeviceError;
@@ -50,6 +51,7 @@ pub use crate::virtual_components::DisplayLight;
 use crate::virtual_components::Es7210Rx;
 use crate::virtual_components::audio as capture;
 use crate::virtual_components::audio_out as playback;
+use crate::virtual_components::reference;
 
 mod camera;
 
@@ -313,7 +315,7 @@ pub struct Board<'d> {
     button: Option<PullButton<'d>>,
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
-    audio: Option<Es7210Rx<Es7210<SharedI2cDevice>>>,
+    audio: Option<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>,
     speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
     camera: Option<Box<dyn FrameSource>>,
 }
@@ -499,19 +501,29 @@ impl Board<'static> {
                             .build(),
                     )
                 };
+                // One cell both audio paths reach: the speaker fills it and the
+                // microphone reads it. Made here because this is the only place
+                // both drivers are visible — see `virtual_components::reference`
+                // for why it has to be shared rather than owned by either.
+                let reference = reference::share::<{ playback::REFERENCE_SAMPLES }>();
                 let audio = match capture_codec {
                     Some(codec) => {
                         let transfer = rx
                             .read(capture::stream())
                             .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
-                        Some(Es7210Rx::new(transfer, codec))
+                        Some(Es7210Rx::new(
+                            transfer,
+                            codec,
+                            reference::Side::wired(reference),
+                        ))
                     }
                     None => None,
                 };
                 let speaker = match (tx, speaker_codec) {
                     (Some(tx), Some(codec)) => {
                         pca9557.set_output_bit(PA_EN_PIN, true)?;
-                        match playback::Es8311Tx::new(tx, codec) {
+                        match playback::Es8311Tx::new(tx, codec, reference::Writer::new(reference))
+                        {
                             Ok(speaker) => Some(Box::new(speaker)),
                             Err(error) => {
                                 log::error!("[SPEAKER] stream would not start: {error:?}");
@@ -525,6 +537,46 @@ impl Board<'static> {
             }
             _ => (None, None),
         };
+
+        // What came up, in one place, before the product starts using any of it.
+        // Every state is read off the same value the board hands back, so this
+        // cannot disagree with what the product will actually find.
+        //
+        // The panel, touch and IMU are not options here — a board without them
+        // fails bring-up outright — so they are `Found` by construction, and
+        // their provenance is `Asserted`: the driver succeeding is evidence the
+        // bus works, not a readback of what is on it.
+        let present = |present: bool| {
+            if present { State::Found } else { State::Absent }
+        };
+        let mut found = 3;
+        let mut absent = 0;
+        let mut tally = |state: State| {
+            match state {
+                State::Found => found += 1,
+                State::Absent => absent += 1,
+                State::Degraded(_) => {}
+            }
+            state
+        };
+
+        post::identity();
+        post::line("panel", State::Found, Provenance::Asserted);
+        post::line("touch", State::Found, Provenance::Asserted);
+        post::line("motion", State::Found, Provenance::Asserted);
+        for (name, wired) in [
+            ("mic", audio.is_some()),
+            ("speaker", speaker.is_some()),
+            ("camera", camera.is_some()),
+        ] {
+            let state = tally(present(wired));
+            post::line(name, state, Provenance::Read);
+        }
+        // Wired, and the wiring measured, but whether the pairing actually
+        // cancels is a question this build cannot answer — see the record.
+        post::line("aec", State::Found, Provenance::Unverified);
+        found += 1;
+        post::summary(found, 0, absent);
 
         Ok((
             Self {
@@ -641,7 +693,16 @@ impl Board<'static> {
                     .with_ws(GPIO13)
                     .with_dout(GPIO45)
                     .build();
-                match playback::Es8311Tx::new(tx, codec) {
+                match playback::Es8311Tx::new(
+                    tx,
+                    codec,
+                    // This bring-up drives the speaker alone and builds no
+                    // microphone, so nothing reads the reference it writes. The
+                    // cell is still made, so the driver has somewhere real to
+                    // write and a probe that later adds a capture does not have to
+                    // change this call.
+                    reference::Writer::new(reference::share::<{ playback::REFERENCE_SAMPLES }>()),
+                ) {
                     Ok(speaker) => Some(Box::new(speaker)),
                     Err(error) => {
                         log::error!("[SPEAKER] stream would not start: {error:?}");
@@ -678,6 +739,22 @@ impl Board<'static> {
     /// registers itself and counting what that caused.
     pub fn take_motion_driver(&mut self) -> Option<Qmi8658<SharedI2cDevice>> {
         self.motion.take()
+    }
+
+    /// The capture driver itself, for a probe that has to read the canceller's own
+    /// numbers.
+    ///
+    /// Not [`HasAudio::take_audio`]: that hands over a `PollEntry` boxed behind the
+    /// input pipeline, which is right for the product — one capture among several
+    /// polled sources — and useless for a probe, which needs the driver to ask what
+    /// the echo cancellation did rather than what the envelope says.
+    ///
+    /// Boxed as a trait object so a probe names no codec, and erased once here
+    /// because `Es7210Rx` is generic over the codec that captured it.
+    pub fn take_capture(&mut self) -> Option<Box<dyn crate::virtual_components::EchoCapture>> {
+        self.audio
+            .take()
+            .map(|audio| Box::new(audio) as Box<dyn crate::virtual_components::EchoCapture>)
     }
 }
 
