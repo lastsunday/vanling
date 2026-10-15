@@ -136,13 +136,16 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3
 ```
 
-`probe-*-s3` 只构建，`flash-probe-*-s3` 才烧录；端口在 `moon.yml` 的命令里。
+`probe-*-s3` 只构建，`flash-probe-*-s3` 才烧录；端口在 `moon.yml` 的命令里。`wifi-probe` **两个芯片都有**（`-s3` / `-c6`）：同一份源码，C6 那条用**普通复位**而不是 `-a watchdog-reset`（原因见 `@/development/iot/flashing.md`）。
 
 `wifi-probe` 还多一步：它的凭据是**构建期输入**，所以构建命令上带两个变量
 
 ```sh
 IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-s3
 IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-wifi-s3
+# C6：同一份源码，普通复位启动
+IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-c6
+IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 ```
 
 不设这两个变量它照样能跑，只是会说「这个构建没有让我连任何东西」——那是「扫描本身通不通」的答案，而**不会**假装自己是一次连接测试。两个名字在 `scripts/iot-xtensa.sh` 的 `FORWARDED_ENV` 里，宿主测试 `build_env.rs` 会在「读了却没转发」时失败构建。

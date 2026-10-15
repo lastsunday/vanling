@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "e22e7e086ce48151da36a422f44066445607761a"
-translated_at = "2026-10-12T03:47:23Z"
+source_file_hash = "a4c27f1449c6f95314195ddbf174f615071ee9e9"
+translated_at = "2026-10-15T15:52:28Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -142,13 +142,16 @@ A probe is not another form of the product: the product firmware **cannot produc
 moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3
 ```
 
-`probe-*-s3` only builds; `flash-probe-*-s3` is what flashes. The port is in the command in `moon.yml`.
+`probe-*-s3` only builds; `flash-probe-*-s3` is what flashes. The port is in the command in `moon.yml`. `wifi-probe` exists **for both chips** (`-s3` / `-c6`): one source, and the C6 runs on a **plain reset** rather than `-a watchdog-reset` (why: `@/development/iot/flashing.md`).
 
 `wifi-probe` has one extra step: its credentials are a **build-time input**, so the build command carries two variables.
 
 ```sh
 IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-s3
 IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-wifi-s3
+# the C6 probe: same source, plain DTR reset instead of `-a watchdog-reset`
+IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-c6
+IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 ```
 
 Without them it still runs and says that this build was not told to join anything — which answers "does the scan work on its own" without pretending to be a connection test. Both names are in `FORWARDED_ENV` in `scripts/iot-xtensa.sh`, and the host test `build_env.rs` fails the build if one is read but not forwarded.

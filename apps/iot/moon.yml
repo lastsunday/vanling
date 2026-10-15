@@ -143,7 +143,8 @@ tasks:
   # `wifi-probe` is named on its own rather than through the board feature: it
   # needs the radio and its heap, which the board feature does carry, but it is
   # also the one bin whose `required-features` are the `wifi` feature, so naming
-  # the bin is what keeps that feature reachable from here.
+  # the bin is what keeps that feature reachable from here. Both checks name it,
+  # because the probe is the one image that has to build on both parts.
   #
   # One invocation, because `camera` is in the board feature: the board mounts the
   # sensor, so every image of this board pays for the 150 KB frame arena the panel's
@@ -162,7 +163,7 @@ tasks:
   check-c6:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin vanling \
+        --bin vanling --bin wifi-probe \
         --target riscv32imac-unknown-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features esp32c6-devkitc-1,console-auto
@@ -328,7 +329,7 @@ tasks:
 
   flash-probe-aec-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/aec-probe
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/aec-probe
     deps:
       - ~:probe-aec-s3
     options:
@@ -352,7 +353,7 @@ tasks:
 
   flash-probe-echo-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/echo-probe
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/echo-probe
     deps:
       - ~:probe-echo-s3
     options:
@@ -374,6 +375,8 @@ tasks:
   #   probe-wifi-s3       the radio, the IP stack and the credentials this build was
   #                       given, and nothing else: scan, associate, DHCP, then the
   #                       driver's heap and the stage timings for as long as it holds
+  #   probe-wifi-c6       the same image on the other board: the probe's own code is
+  #                       chip-agnostic, so only the part's memory budget differs
   #
   # Credentials are a build-time input, named in FORWARDED_ENV, so a bench run is one
   # command with two variables rather than a protocol typed on a panel this image
@@ -396,11 +399,30 @@ tasks:
       cache: false
       runInCI: false
 
+  probe-wifi-c6:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin wifi-probe \
+        --target riscv32imac-unknown-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features esp32c6-devkitc-1,wifi,console-auto
+    outputs:
+      - 'target/riscv32imac-unknown-none-elf/release/wifi-probe'
+    options:
+      cache: false
+      runInCI: false
+
+  # `-a watchdog-reset` on the S3 only. That board runs native USB, where a plain DTR reset
+  # is a core reset that does not re-sample the boot strapping pins, so it lands in the ROM
+  # downloader rather than the application — and espflash's watchdog reset is the way out. The
+  # C6 boots on a plain DTR reset (`rst:0x15 (USB_UART_HPSYS),boot:0x1c (SPI_FAST_FLASH_BOOT)`)
+  # and espflash refuses the watchdog reset on it outright, so adding it would break the task.
+  # `@/development/iot/flashing.md` has why.
   flash-probe-wifi-s3:
     script: |
       espflash flash --chip esp32s3 \
         --flash-size 16mb \
         --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        -a watchdog-reset \
         ${IOT_PORT:+--port $IOT_PORT} \
         target/xtensa-esp32s3-none-elf/release/wifi-probe
     deps:
@@ -410,9 +432,22 @@ tasks:
       cache: false
       runInCI: false
 
+  flash-probe-wifi-c6:
+    script: |
+      espflash flash --chip esp32c6 \
+        --partition-table partitions/esp32c6-devkitc-1.csv \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/riscv32imac-unknown-none-elf/release/wifi-probe
+    deps:
+      - ~:probe-wifi-c6
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
   flash-probe-clock-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/clock-probe
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/clock-probe
     deps:
       - ~:probe-clock-s3
     options:
@@ -422,7 +457,7 @@ tasks:
 
   flash-probe-audio-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/audio-probe
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/audio-probe
     deps:
       - ~:probe-audio-s3
     options:
@@ -432,7 +467,7 @@ tasks:
 
   flash-probe-camera-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/camera-probe
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/camera-probe
     deps:
       - ~:probe-camera-s3
     options:
@@ -453,7 +488,7 @@ tasks:
 
   flash-probe-multicore-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/multicore-s3
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/multicore-s3
     deps:
       - ~:probe-multicore-s3
     options:
@@ -477,7 +512,7 @@ tasks:
 
   flash-probe-demand-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/demand-probe
+      espflash flash --chip esp32s3 -a watchdog-reset ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/demand-probe
     deps:
       - ~:probe-demand-s3
     options:

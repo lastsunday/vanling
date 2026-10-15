@@ -42,7 +42,7 @@ Tone::fill
 `[measured]` Reproduction:
 
 1. The firmware sends `Intent::Business(BusinessIntent::PlayNext)` into `INTENT_BUS` every 1.2 s after boot — the same path a real tap takes
-2. `[PLAY] Asset` is fine; `[PLAY] Chime` is immediately followed by a panic (both names are the ones of the day; the catalogue grew to five sounds later, see [Sound recipes](#sound-recipes))
+2. `[PLAY] Asset` is fine; `[PLAY] Chime` is immediately followed by a panic (both names are the ones of the day; the catalogue grew to five sounds later, see [Sound recipes](#Sound_recipes))
 3. The first chime frame crashes it — there is no cumulative process
 
 **Why automate the reproduction**: the bug needs "tap the chime" to fire, and a human tap is both slow and irreproducible. With a self-trigger, one flash plus one log capture decides it — which is what made every later fix verifiable automatically.
@@ -197,7 +197,7 @@ The guidelines want note counts; Google wants restraint; each sits on the other'
 
 A functional sound that may fire dozens of times a day turned into an arpeggio is a sound that draws attention, which weakens the moments that matter. **The earcon literature measures whether users can tell A from B — that is a data display. vanling is a desk companion and none of its five sounds encodes a data parameter, so by Google's standard they should get quieter, not richer.**
 
-The fix was a **bare octave**, placed in the lowest register so it does not compete with `TAP`. The pitches are in the [catalogue table](@/development/iot/playback.en.md#where-the-sound-comes-from).
+The fix was a **bare octave**, placed in the lowest register so it does not compete with `TAP`. The pitches are in the [catalogue table](@/development/iot/playback.en.md#Where_the_sound_comes_from).
 
 **Why this is written down**: the decision rests on another company's practice (a twelve-person sound team at Google, shipping across all of its products), not on an experiment of ours. The next person to see `TAP` and `RISE` overlap in register and think "make it more obviously different" will do it again — **overlapping registers on two sounds with different contours is the design, not a defect.**
 

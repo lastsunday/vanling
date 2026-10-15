@@ -138,6 +138,8 @@ espflash monitor   # console 内带回车重启
 >
 > 那个 `printf '\\x12'` 是 monitor 里的 `CTRL+R Reset chip`，从同一个 pty 喂进去 = 已接上 + 立即复位；它比烧录时那次复位晚几秒，所以 ROM 第一行也在日志里。`script` 给 monitor 一个 pty 并顺手录一份，加 `> /tmp/x.log` 存盘，别用管道刷屏。
 
+`[实测]` **C6 是反过来的**：它**不需要** `-a watchdog-reset`，普通 DTR 复位就正常启动，ROM 打 `rst:0x15 (USB_UART_HPSYS),boot:0x1c (SPI_FAST_FLASH_BOOT)`。espflash 会直接拒绝这个选项（`The esp32c6 does not support watchdog reset`），所以 `flash-probe-*-c6` 的任务里不能带它 —— 带了会在最后一步失败，前面的烧录照样写完。
+
 ## 构建失败先看 Docker，再看别的
 
 S3 的构建走 `scripts/iot-xtensa.sh`：先试本机 esp 工具链，不全则回退容器。本机那份通常是不全的（`~/.espressif` 下只有 `xtensa-esp-elf` 的 gcc，缺 `bin/cargo` 与 `lib/rustlib/src/rust/library`，`has_native_esp` 因此判否），所以实际构建**依赖 Docker 守护进程**。

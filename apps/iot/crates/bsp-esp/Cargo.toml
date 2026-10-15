@@ -48,10 +48,11 @@ camera = ["gc2145", "dep:esp-hal"]
 wifi = ["dep:esp-radio", "iot-chip-esp?/radio"]
 
 
-esp32c6-devkitc-1 = ["button", "ws2812"]
+esp32c6-devkitc-1 = ["button", "ws2812", "wifi", "esp-radio/esp32c6"]
 # The board features are the hardware axis, so they are also where a component's
-# chip feature is contributed: `esp-radio/esp32s3` picks the blob for this part,
-# the same way the app's family alias picks the HAL's.
+# chip feature is contributed: `esp-radio/<chip>` picks the blob for this part, the
+# same way the app's family alias picks the HAL's. Both boards have a radio soldered
+# to them, so both carry the component; the parts differ in what the component costs.
 lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out", "camera", "wifi", "esp-radio/esp32s3"]
 
 [dependencies]

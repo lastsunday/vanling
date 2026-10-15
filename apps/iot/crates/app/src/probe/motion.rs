@@ -243,7 +243,7 @@ async fn measure(
         Timer::at(due).await;
         let poll_start = Instant::now();
         let _ = driver.sample(now_ms(boot));
-        cell.occupied_us += poll_start.elapsed().as_micros() as u64;
+        cell.occupied_us += poll_start.elapsed().as_micros();
         cell.polls = cell.polls.saturating_add(1);
         let after = driver.transactions();
         cell.transactions = cell.transactions.saturating_add(after - last_transactions);
@@ -252,11 +252,11 @@ async fn measure(
     }
     cell.window_us = Instant::now()
         .saturating_duration_since(window_start)
-        .as_micros() as u64;
+        .as_micros();
 }
 
 /// Milliseconds since the anchor. Saturating: an instant taken before it is not a fault
 /// worth unwinding a probe over.
 fn now_ms(boot: Instant) -> u64 {
-    Instant::now().saturating_duration_since(boot).as_millis() as u64
+    Instant::now().saturating_duration_since(boot).as_millis()
 }

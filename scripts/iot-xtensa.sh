@@ -77,7 +77,7 @@ FORWARDED_ENV=(IOT_BOOT_PAGE IOT_DEMAND IOT_WIFI_SSID IOT_WIFI_PSK)
 # of it for the data cache, so with the default 64 KB cache the reclaimed region is
 # empty and the Wi-Fi driver's heap has nowhere to sit that does not come out of the
 # main stack — which is asserted at 64 KB and has about 12 KB of slack. Halving the
-# cache buys 32 KB back, and `crates/chip-esp/src/radio.rs` is the budget that depends
+# cache buys 32 KB back, and `crates/chip-esp/src/radio/` is the budget that depends
 # on it.
 #
 # It cannot be a `[env]` entry: esp-config treats an option that is not active for the

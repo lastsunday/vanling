@@ -203,10 +203,10 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
         );
     }
     loop {
-        if !PATH_RUN {
-            if let Err(error) = shared.lock(|shared| shared.speaker.borrow_mut().play(sound)) {
-                log::error!("[ECHO] {sound:?} refused: {error}");
-            }
+        if !PATH_RUN
+            && let Err(error) = shared.lock(|shared| shared.speaker.borrow_mut().play(sound))
+        {
+            log::error!("[ECHO] {sound:?} refused: {error}");
         }
         // Re-arms the same sound; which sound it is turns over with the
         // amplifier below, not with the feed.
@@ -234,9 +234,9 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
         // into the band being measured. The canceller run's A/B is on the envelope's
         // window instead, because what it reads is the microphone's level.
         let ab_due = if PATH_RUN {
-            held_since.elapsed().as_millis() as u64 >= PATH_AB_MS
+            held_since.elapsed().as_millis() >= PATH_AB_MS
         } else {
-            A_B_RUN && held_since.elapsed().as_millis() as u64 >= A_B_MS
+            A_B_RUN && held_since.elapsed().as_millis() >= A_B_MS
         };
         if ab_due {
             let next = !AUDIBLE.load(Ordering::Relaxed);
@@ -324,9 +324,9 @@ async fn poll_cancellers(capture: &mut dyn EchoCapture) -> ! {
             seen_audible = audible;
             audible_since = Instant::now();
         }
-        let settled = audible_since.elapsed().as_millis() as u64 >= A_B_WARMUP_MS;
+        let settled = audible_since.elapsed().as_millis() >= A_B_WARMUP_MS;
         report_line(&report, worst_hold_us, &sample, audible, settled);
-        if worst_hold_us > MAX_SINGLE_HOLD_MS as u32 * 1_000 {
+        if worst_hold_us > MAX_SINGLE_HOLD_MS * 1_000 {
             log::error!(
                 "[ECHO] a poll held {worst_hold_us} us, past the {MAX_SINGLE_HOLD_MS} ms \
                  bound: the canceller does not fit where it is"

@@ -22,7 +22,7 @@
 //! and reported upward as a [`NetworkError`] kind, because the panel acts on the
 //! kind and the code belongs in the log next to the call that produced it.
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use esp_radio::wifi::{
     AuthenticationMethod, AuthenticationMethodConfig, Config, ControllerConfig, Interface,
     Password, Ssid, WifiController, WifiError,
@@ -271,5 +271,21 @@ impl Station for EspStation {
 
     fn take_device(&mut self) -> Option<Self::Device> {
         self.device.take()
+    }
+}
+
+/// Start a radio a board took off its bring-up, or say in the log why it would not start.
+///
+/// Builds the station rather than handing one over, because the driver's start needs the
+/// scheduler and every board calls this after it. That shape is the same on every board that
+/// carries a radio, which is what lets a caller ask for a station without naming the part
+/// underneath it.
+pub fn start(radio: esp_hal::peripherals::WIFI<'static>) -> Option<Box<EspStation>> {
+    match EspStation::new(radio) {
+        Ok(station) => Some(Box::new(station)),
+        Err(error) => {
+            log::error!("[WIFI] the radio would not start: {error:?}");
+            None
+        }
     }
 }

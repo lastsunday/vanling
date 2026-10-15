@@ -16,6 +16,18 @@ pre-commit:
       # `iot-tool` is host-side and a bare-metal target has no std; a second
       # host tool goes here too. Why not a feature: records/iot/playback.md.
       run: cargo clippy --workspace --exclude iot-tool --target riscv32imac-unknown-none-elf -- -D warnings
+    iot-clippy-s3:
+      glob: "**/*.rs"
+      root: apps/iot/
+      # Everything the job above cannot reach: the target alone decides what a clippy
+      # can see, and behind `lckfb-szpi-esp32s3` sit the panel's display_light, two
+      # probe modules and six bins that a riscv clippy never compiles — nothing had
+      # ever linted them. One `-p iot-app --bins` is the whole graph: clippy lints
+      # every workspace member it compiles, not only the selected one. Through
+      # `iot-xtensa.sh` rather than a bare cargo, because the xtensa target needs the
+      # espup toolchain (or the pinned container) and a bare `cargo --target
+      # xtensa-...` fails without it.
+      run: bash ../../scripts/iot-xtensa.sh clippy -p iot-app --bins --no-default-features --features lckfb-szpi-esp32s3,console-auto --target xtensa-esp32s3-none-elf -Z build-std=core,alloc -- -D warnings
     iot-clippy-host:
       glob: "crates/core/**/*.rs"
       root: apps/iot/

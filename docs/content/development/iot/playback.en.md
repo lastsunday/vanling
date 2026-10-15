@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 270
 sort_by = "weight"
 [extra]
-source_file_hash = "f19e622a2127b92fd17fa49d38e52d2897bdebda"
-translated_at = "2026-10-15T02:20:27Z"
+source_file_hash = "a2b4cf9fa057211abe5279b162ffeea22ba9b699"
+translated_at = "2026-10-15T16:10:00Z"
 +++
 
 # Playback Semantics
@@ -55,7 +55,7 @@ The catalogue holds five sounds, and **each one is a MIDI file** (`bsp-esp/src/a
 
 MIDI is not here for its synthesis abilities — it carries no timbre and no per-note envelope in either version — it is here for **provenance**. Stored as PCM blobs, the sounds are untraceable binaries with a recipe in a comment that the build does not run; stored as MIDI, anyone who opens a file can tell what it is and change it.
 
-The layout is not a matter of taste — it was searched for under the earcon guidelines: **thirty-two semitones have to hold five sounds, and the table below is the only arrangement that fits.** Why these five numbers is in the [playback record](@/records/iot/playback.en.md#why-the-first-versions-five-sounds-did-not-sound-like-five).
+The layout is not a matter of taste — it was searched for under the earcon guidelines: **thirty-two semitones have to hold five sounds, and the table below is the only arrangement that fits.** Why these five numbers is in the [playback record](@/records/iot/playback.en.md#Why_the_first_version's_five_sounds_did_not_sound_like_five).
 
 | `Sound` | `SRC` | Score | Notes | Register | Length | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -67,9 +67,9 @@ The layout is not a matter of taste — it was searched for under the earcon gui
 
 Neighbouring registers are **exactly three semitones apart**, no pitch is used by two sounds, and all five lengths differ. The only repetition is the two-note count, and it falls on `ERROR` and `RISE` because they are the one pair whose contours are opposite — falling against rising is the single difference the ear cannot get wrong.
 
-`RISE`'s **bare octave** is the shape of Google's brand sound `Super G`, placed in the lowest register so it does not compete with `TAP`. The reasoning is in the [Playback Implementation Record](@/records/iot/playback.en.md#why-not-an-arpeggio).
+`RISE`'s **bare octave** is the shape of Google's brand sound `Super G`, placed in the lowest register so it does not compete with `TAP`. The reasoning is in the [Playback Implementation Record](@/records/iot/playback.en.md#Why_not_an_arpeggio).
 
-Moving `TAP` from two notes to three is the largest concession in this version: it is both the default sound and the boot sound, and Google's rule is that **the more often an interaction happens, the less intrusive that sound should be** — while three notes run 30 ms longer than two. The reasoning is in the [playback record](@/records/iot/playback.en.md#why-tap-went-from-two-notes-to-three).
+Moving `TAP` from two notes to three is the largest concession in this version: it is both the default sound and the boot sound, and Google's rule is that **the more often an interaction happens, the less intrusive that sound should be** — while three notes run 30 ms longer than two. The reasoning is in the [playback record](@/records/iot/playback.en.md#Why_TAP_went_from_two_notes_to_three).
 
 `D#4` is the note this speaker reproduces worst, so `RISE` is carried by its 2.76 partial at 765 Hz rather than by its fundamental. That one is **not measured** — it follows from how a small speaker rolls off, and it wants a listen on the board.
 

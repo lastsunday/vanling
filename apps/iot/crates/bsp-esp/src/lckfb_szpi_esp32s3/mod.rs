@@ -856,20 +856,7 @@ impl HasCamera for Board<'static> {
 impl HasWifi for Board<'static> {
     type Station = crate::components::wifi::EspStation;
 
-    /// Builds the station rather than handing one over, because the driver's start
-    /// needs the scheduler and this is called after it.
-    ///
-    /// A bring-up that wired no radio returns `None`, which is the same shape as a
-    /// board without one: the probe then has no radio to measure and says so rather
-    /// than looking for a fault in the driver's start.
     fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
-        let radio = self.radio.take()?;
-        match crate::components::wifi::EspStation::new(radio) {
-            Ok(station) => Some(Box::new(station)),
-            Err(error) => {
-                log::error!("[WIFI] the radio would not start: {error:?}");
-                None
-            }
-        }
+        self.radio.take().and_then(crate::components::wifi::start)
     }
 }

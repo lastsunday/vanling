@@ -2,6 +2,9 @@
 title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
+[extra]
+source_file_hash = "cdcd8cc7b00846fc6800dcdae340a0115438a14f"
+translated_at = "2026-10-15T15:52:28Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -17,27 +20,35 @@ a hardware measurement, **`[as-reported]`** not reproduced, left as a trace.
 
 ## State
 
-The probe has run on the bench end to end (scan, associate, DHCP). The product page has
-not started; the two loose ends are at the [bottom](#still-to-done-not-done).
+**The probe has run end to end on both parts** (scan, associate, DHCP). The product page
+has not started; the loose ends are at the [bottom](#Still_to_do_([not_done])).
 
 ## What the bench said
 
-`[measured, 2026-10-15]` `wifi-probe` flashed and booted with `-a watchdog-reset`
-(commands in `@/development/iot/flashing.md`), joining `whitehell` with build-time
-credentials:
+`[measured, 2026-10-15]` One probe source, built for each part and flashed to each: the
+S3 booted with `-a watchdog-reset`, the C6 on a plain reset (why the difference, and the
+commands, are in `@/development/iot/flashing.md`). Both joined `whitehell` with build-time
+credentials.
 
-| Stage | Time |
-| --- | --- |
-| six scan rounds | 0.65–1.0 s each |
-| **association** | **2184 / 2203 / 2189 ms** (three boots) |
-| **DHCP** | **546 / 22 / 44 ms** |
-| link up | 9428–9789 ms after boot |
-| address | `192.168.1.136` |
-| driver's C heap | **32,204 B free of 65,536 B**, unchanged for 40 s |
+| | S3 (LCKFB SZPI) | C6 (DevKitC-1) |
+| --- | --- | --- |
+| six scan rounds | 0.65–1.0 s each, 1–6 APs | 0.73–0.80 s each, 1–4 APs |
+| **association** | **2184 / 2203 / 2189 ms** (three boots) | **3246 / 3261 ms** (two boots) |
+| **DHCP** | **546 / 22 / 44 ms** | **31 / 548 ms** |
+| link up | 9428–9789 ms after boot | 10325–10995 ms after boot |
+| address | `192.168.1.136` | `192.168.1.158` |
+| driver's C heap | **32,204 B free of 65,536 B**, unchanged for 40 s | **14,124 B free of 49,152 B** |
+| `phase Connected` | steady | steady |
+
+Both boards see the same access points (`whitehell` strongest at −45…−50 dBm, then `2305`,
+`CMCC-6yVk`, `888`, `6802`, `94:be:09:98:cf:29`), so what differs between the two columns
+is the part, not the room.
 
 esp-radio's documented heap need for a station is **47–57 KiB** with the default
-`ControllerConfig`: 32 KiB makes `esp_wifi_init` fail with `OutOfMemory`, 64 KiB works,
-leaving about 49% headroom.
+`ControllerConfig` — the high end is the 6 dynamic RX buffers this repository sets — and
+32 KiB makes `esp_wifi_init` fail with `OutOfMemory`. Measured, the driver takes 33,332 B
+on the S3 and 35,028 B on the C6: **the C6 needs 1,696 B more**, so one source needs two
+budgets. See [the section on that](#One_source,_two_parts).
 
 Access points around the bench (union of 12 rounds and 6 more, strongest per row):
 
@@ -54,27 +65,37 @@ Access points around the bench (union of 12 rounds and 6 more, strongest per row
 A name that is not printable ASCII shows as its BSSID by design: the panel's glyph table
 has no other option.
 
-At link time (`[measured]`, from link symbols):
+At link time (`[measured]`, from link symbols; the floor is
+`ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM = 65536` from `.cargo/config.toml`, which
+esp-hal's `ld/sections/stack.x` turns into a link-time `ASSERT`):
 
 | | main stack | against the 65,536 B assertion |
 | --- | --- | --- |
-| product, no Wi-Fi | 77,880 B | +12,344 B |
-| product, Wi-Fi, app heap still in `dram_seg` | 63,788 B | **−1,748 B, does not link** |
-| product, Wi-Fi, app heap in PSRAM | **125,788 B** | +60,252 B |
-| `wifi-probe` | 102,872 B | +37,336 B |
+| S3 product, no Wi-Fi | 77,880 B | +12,344 B |
+| S3 product, Wi-Fi, app heap still in `dram_seg` | 63,788 B | **−1,748 B, does not link** |
+| S3 product, Wi-Fi, app heap in PSRAM | **125,788 B** | +60,252 B |
+| S3 `wifi-probe` | 102,872 B | +37,336 B |
+| C6 `wifi-probe` | 247,400 B | +181,864 B |
+| C6 product `vanling` | 348,124 B | +282,588 B |
 
-Product image 497,744 B against a 6 MB partition (7.91%); the probe is 660,992 B
-(10.51%), larger because it links the driver's IRAM segments too. Wi-Fi's own 14,092 B
-is the driver's statics: `esp_phy::PHY_STATE` 2,008 B, the blob's `s_wifi_nvs` 1,440 B,
+The C6's margin is that large for two structural reasons: it has 400 KiB of internal DRAM
+(of the S3's 512 KiB, 150 KiB is the camera's frame arena) and this board mounts no panel
+and no camera.
+
+S3 product image 497,744 B against a 6 MB partition (7.91%); its probe is 660,992 B
+(10.51%), larger because it links the driver's IRAM segments too. The C6 does not need the
+6 MB: its probe merges to 597,264 B against 1 MB (56.96%) and its product to 223,584 B
+(21.32%) — a RISC-V blob is smaller than an Xtensa one. Wi-Fi's own 14,092 B on the S3 is
+the driver's statics: `esp_phy::PHY_STATE` 2,008 B, the blob's `s_wifi_nvs` 1,440 B,
 `esp_rtos`'s scheduler 1,416 B, `g_ic`/`g_pm` 760/584 B, `phy_param` 740 B, the rest under
 512 B each.
 
-**The product image does not carry that 64 KiB heap yet**: only the probe calls
-`init_radio_heap()`, the product has no `take_wifi()` yet, so the linker drops both
-regions as dead code (no `INTERNAL_MEM` / `RECLAIMED_MEM` in the `vanling` ELF, while the
-driver's own statics are there — 17 symbols). Once Stage B wires it up, the 32 KiB
-`dram_seg` region returns to the budget: 125,788 − 32,768 = **93,020 B**, still 27,484 B
-above the floor.
+**The product images do not carry that 64/48 KiB driver heap yet**: only the probe calls
+`init_radio_heap()`, the product has no `take_wifi()` yet, so the linker drops the regions
+as dead code (no `INTERNAL_MEM` / `RECLAIMED_MEM` in the S3 ELF, no `INTERNAL_MEM` in the
+C6's, while the driver's own statics are there — 17 symbols on the S3). Once Stage B wires
+it up, the 32 KiB `dram_seg` region returns to the S3's budget: 125,788 − 32,768 =
+**93,020 B**, still 27,484 B above the floor.
 
 ## This generation has no lwIP — only "driver + embassy-net"
 
@@ -98,7 +119,10 @@ writing a protocol.
 tree. beta.2's S3 source is **byte-identical** to beta.1's — its only change is an S31
 build fix — so a version bump buys nothing today.
 
-## Memory: three decisions
+## Memory: three decisions (the S3's budget)
+
+This section is the S3's three decisions; the C6's counterparts are in [the section
+below](#One_source,_two_parts).
 
 ### The driver's heap: 32 KiB reclaimed + 32 KiB `dram_seg`
 
@@ -129,7 +153,7 @@ written by DMA and the render path's working set is internal DRAM, so the measur
 do not read it — but that is an expectation, not a measurement, and `[INPUT]`'s 17–25 ms
 worst tick plus the AEC figures need re-measuring.
 
-### The app's heap: PSRAM, because there is no third place
+### The app's heap: PSRAM, because there is no third place (S3)
 
 `[measured]` For the product to carry Wi-Fi, its 64 KiB Rust heap has to leave
 `dram_seg`, and two places were left: the camera's 150 KiB arena (a page that already
@@ -150,7 +174,7 @@ bench: `Ready(len: 8388608)`.
 [`set_cpu_clock`] moves the CPU while leaving APB alone, so the CPU frequency is not what
 the SPI block is clocked from — pinning one would divide by a clock that is not the source.
 
-### `wifi_force_pd`: doing the `init()` esp-radio never calls
+### `wifi_force_pd`: doing the `init()` esp-radio never calls (S3)
 
 `[measured]` esp-radio 1.0.0-beta.1 carries a `pub(crate) fn init()` that un-gates the
 modem clocks, powers the WiFi domain up, pulses its reset and takes the RTC wake lock —
@@ -164,6 +188,81 @@ move: `0xfffce030 → 0xffffdfdf`, `0x20000 → 0`.
 radio's power and clock state is not what makes the scan wobble. The writes stay because no
 driver should run on a radio whose power state nobody set — not because they fixed
 anything.
+
+## One source, two parts
+
+`[measured]` The probe and the product are **the same source**, built per part and flashed
+to each. Every difference lives below `iot-chip-esp`, and a caller sees one entry point:
+
+```rust
+iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);   // where the heap comes from: not asked
+iot_chip_esp::ungate_radio();                // powering the radio: not asked
+let station = board.take_wifi();             // which part's radio: not asked
+```
+
+`take_wifi()` has one implementation per board module — a board knows what it is by
+construction — and the driver's blob is the board feature's choice:
+`lckfb-szpi-esp32s3` carries `esp-radio/esp32s3`, `esp32c6-devkitc-1` carries
+`esp-radio/esp32c6`. `esp-alloc`'s chip feature moved the same way, from the `radio`
+component feature onto the chip features (`esp-alloc?/<chip>`), because only a chip feature
+knows which part is being compiled; `scripts/iot-feature-check.sh` now builds that
+combination on each part.
+
+### The general heap: PSRAM on the S3, a static on the C6
+
+`[measured]` The C6 **has no PSRAM** — esp-hal's `psram` module is behind `soc_has_psram`
+and the C6 is not in it — so "the app's heap goes to PSRAM" holds on the S3 alone. The C6
+gets a 64 KiB `dram_seg` static in the chip layer instead, which is the same block of memory
+in the same section that the product's entry point used to declare for itself: it moved
+because where memory comes from is a fact about the part, not something an entry point
+should know. The two arms differ only in where the window is, and the source appears in the
+log and nowhere else.
+
+`[measured]` An entry point now says `init_heap` once, and that one call does three things
+that used to sit with the caller: finding the window, checking that `bytes` fits what this
+part can offer, and — when there is no window — resetting with the reason
+("this module has no PSRAM to map" / "PSRAM mapped and did not read back"). The second
+reason carries the mapped size, and `init_psram` is the only place that can still see it, so
+that log line lives there.
+
+### The driver's heap: two blocks on the S3, one on the C6
+
+`[measured]` The S3 has 32 KiB reclaimed plus 32 KiB of `dram_seg`; the C6 has `dram_seg`
+only, **48 KiB** (the driver takes 35,028 B, leaving 14,124 B — 28.7% headroom).
+
+Three constraints produce those two numbers:
+
+- **`#[ram(unstable(dcache_reclaimed))]` cannot compile on the C6.** The procmacro feature is
+  opened by `esp-hal/esp32s3` alone (it is one line of the `esp32s3 = [...]` group in
+  esp-hal's `Cargo.toml`; esp32s2 does not open it either), so the reclaimed block is the
+  S3's alone rather than something that was forgotten on the C6.
+- **The C6 has no third place.** It has 400 KiB of internal DRAM; with 64 KiB for the app's
+  heap and 48 KiB for the driver's, the main stack **measures** 247,400 B — 181,864 B above
+  the floor — and the rest is the driver's statics. The S3's 32 KiB came from moving its app
+  heap to PSRAM.
+- **The headroom is wide on the S3 and tight on the C6, and no amount of tuning closes
+  that.** The S3's 49% was bought with PSRAM; 28.7% is what the C6 can offer. **Raise
+  `DYNAMIC_RX_BUFFERS` and the C6 is what fails first** — the high end of the documented
+  47–57 KiB range is exactly the 6 dynamic buffers this build sets, and the C6's driver
+  measured 1,696 B hungrier than the S3's. It is on the list at the bottom.
+
+### `ungate_radio` is an empty function on the C6, and that was checked
+
+`[measured, checked call by call against esp-radio 1.0.0-beta.1]` The S3's version copies
+register writes from `clocks_ll/esp32s3.rs` and `common_adapter.rs`. **On the C6 all three
+of esp-radio's calls are empty**:
+
+| esp-radio's call | on the C6 |
+| --- | --- |
+| `init_clocks()` | empty, commented `// done in esp-hal` |
+| `reset_wifi_mac()` | empty |
+| `enable_wifi_power_domain()` | the whole body is `#[cfg(not(any(soc_has_pmu, esp32c2)))]`, and the C6 has `soc_has_pmu` and no `APB_CTRL` |
+| the clock bits that are left | the driver writes them itself: `os_adapter/mod.rs` calls `enable_wifi(true)` as it starts, into `MODEM_SYSCON.clk_conf1` and `MODEM_LPCON.clk_conf` |
+
+So the C6 arm is an empty body and this table — not "not written yet", but written-and-cfg'd-
+out. The S3's arm stays because it really does move registers there
+(`0xfffce030 → 0xffffdfdf`, `dig_pwc 0x20000 → 0`), and because the radio scans without it
+anyway ([next section](#Scanning:_one_round_is_not_a_measurement,_and_neither_is_two)).
 
 ## Scanning: one round is not a measurement, and neither is two
 
@@ -241,20 +340,23 @@ driver's calibration-restore hook as `todo!()` (`ld/esp32s3_provides.x` binds
 `misc_nvs_restore` to it, and the blob references it undefined), and the driver reaches for
 that path once it can see a calibration partition. `[measured]` **it does not reach it** —
 with the partition present `esp_wifi_init` does not panic and the scan works. The partition
-stays: it is where the driver writes its calibration on the first boot.
+stays: it is where the driver writes its calibration on the first boot. The C6's table
+carries a `phy_init` for the same reason.
 
 The tables are named after the **board**: `scripts/iot-image.sh` has always looked for
-`partitions/<board>.csv`, and the layout is a board fact anyway — another S3 board with an
-8 MB part is another table. A 6 MB slot does not fit inside espflash's assumed 4 MB, so
-every S3 flash and image task passes `--flash-size 16mb`. The C6 table is equivalent to
-`espflash`'s default but is a file too: the image task and the flash task then have exactly
-one place that knows the layout.
+`partitions/<board>.csv`, and the layout is a board fact anyway. A 6 MB slot does not fit
+inside espflash's assumed 4 MB, so every S3 flash and image task passes `--flash-size 16mb`.
+**The C6's table does not move**: 1 MB holds its largest image, the probe, at 597,264 B. It
+is still a file — the image task and the flash task then have exactly one place that knows
+the layout.
 
 ## Features and where each layer sits
 
 `wifi` is a **component feature (module axis)**: one file, one module in `iot-bsp-esp`,
-gated once in `components/mod.rs`, aggregated into the S3 board feature. `iot-core` has no
-cfgs — the capability arrives through the composition point (`HasWifi`).
+gated once in `components/mod.rs`, aggregated into **both** board features (both boards have
+a radio soldered on). `iot-core` has no cfgs — the capability arrives through the composition
+point (`HasWifi`). `components/wifi.rs` is itself chip-agnostic: it takes only
+`peripherals::WIFI` and the driver's types, and it now compiles for each part.
 
 `Station`'s methods return `impl Future` (RPITIT) and deliberately **do not** carry
 `+ Send`: the product joins those futures with input/render/control/feed on one task stack
@@ -298,14 +400,20 @@ compiled into firmware.
 
 ## Still to do (`[not done]`)
 
-1. **Why the camera's DVP DMA can eat a whole scan round**: 1 round in 12, no mechanism
+1. **The C6's driver heap has 28.7% headroom** (14,124 B of 49,152 B), against the S3's
+   49%. Anything that raises `DYNAMIC_RX_BUFFERS` or `STATIC_RX_BUFFERS` breaks the C6 first
+   — it has no PSRAM to buy memory with. Either measure the C6 in the same commit that
+   changes those constants, or raise the C6's `INTERNAL_BYTES` to 56 KiB (which costs 8 KiB
+   of a stack margin still in the hundreds of kilobytes).
+2. **Why the camera's DVP DMA can eat a whole scan round**: 1 round in 12, no mechanism
    yet. A page that keeps scanning while the list is empty is fine, so it does not block
    delivery.
-2. **The product page has to call `note_address`** — the only route to `Connected`.
+3. **The product page has to call `note_address`** — the only route to `Connected`.
    Leaving it out is what kept the panel saying "connecting" while the link was up.
-3. **Re-measure** `[INPUT]` and the AEC figures — halving the data cache is a change that
+4. **Re-measure** `[INPUT]` and the AEC figures — halving the data cache is a change that
    has already happened.
-4. The product page (`DisplayPage::Network`, intents, the on-screen keyboard, credential
+5. The product page (`DisplayPage::Network`, intents, the on-screen keyboard, credential
    persistence) has not started. It **cannot take one round of scanning as the answer**:
    measured, a single round swings between 0 and 6 APs.
-5. `esp-radio` is a beta: a version bump re-runs this whole page.
+6. `esp-radio` is a beta: a version bump re-runs this whole page, **on both parts** — the
+   per-part budgets above came out of what the driver actually took.

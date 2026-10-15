@@ -567,7 +567,7 @@ impl DisplayLight {
             self.stamp_diagnostics(width, usize::from(height), live);
         }
         if DEBUG_DIAGNOSTICS {
-            Self::stamp_fps(&mut self.frame, self.fps, width, usize::from(height));
+            Self::stamp_fps(self.frame, self.fps, width, usize::from(height));
         }
 
         // The render and the transfer are timed apart rather than together: this
@@ -641,11 +641,13 @@ impl DisplayLight {
             frame,
             width,
             height,
-            counters,
-            geometry,
-            diagnostics,
-            fps,
-            false,
+            CameraStamp {
+                counters,
+                geometry,
+                diagnostics,
+                fps,
+                starting: false,
+            },
         );
         let render = render_start.elapsed();
 
@@ -1475,14 +1477,16 @@ impl DisplayLight {
     #[cfg(feature = "camera")]
     fn stamp_camera_page(&mut self, width: usize, height: usize) {
         stamp_camera(
-            &mut self.frame,
+            self.frame,
             width,
             height,
-            CameraCounters::ZERO,
-            None,
-            &self.diagnostics,
-            self.fps,
-            true,
+            CameraStamp {
+                counters: CameraCounters::ZERO,
+                geometry: None,
+                diagnostics: &self.diagnostics,
+                fps: self.fps,
+                starting: true,
+            },
         );
     }
 
@@ -1732,6 +1736,20 @@ fn format_span(buf: &mut [u8; 12]) -> &[u8] {
     &buf[..len]
 }
 
+/// The overlay inputs of a camera frame that are not the frame itself: what the counters say,
+/// which window the sensor is cropping to, where the diagnostics go, and what the page can
+/// claim about itself.
+#[cfg(feature = "camera")]
+struct CameraStamp<'a> {
+    counters: CameraCounters,
+    geometry: Option<WindowGeometry>,
+    diagnostics: &'a Diagnostics,
+    fps: u8,
+    /// The page has just been entered and no frame has arrived yet, so the numbers would all
+    /// read zero and `NOBUS` would claim there is no sensor. Says it is starting instead.
+    starting: bool,
+}
+
 /// The Camera page's readout, stamped over the sensor's picture.
 ///
 /// A free function of the buffer and its numbers, for the reason [`stamp_pixel`] is: a
@@ -1749,18 +1767,14 @@ fn format_span(buf: &mut [u8; 12]) -> &[u8] {
 /// the part's doing rather than the transport's. It is read once at bring-up rather than
 /// polled, because it is I²C and it does not change on its own.
 #[cfg(feature = "camera")]
-fn stamp_camera(
-    frame: &mut [u8],
-    width: usize,
-    height: usize,
-    counters: CameraCounters,
-    geometry: Option<WindowGeometry>,
-    diagnostics: &Diagnostics,
-    fps: u8,
-    // The page has just been entered and no frame has arrived yet, so the numbers would all
-    // read zero and `NOBUS` would claim there is no sensor. Says it is starting instead.
-    starting: bool,
-) {
+fn stamp_camera(frame: &mut [u8], width: usize, height: usize, stamp: CameraStamp<'_>) {
+    let CameraStamp {
+        counters,
+        geometry,
+        diagnostics,
+        fps,
+        starting,
+    } = stamp;
     stamp_text(
         frame,
         b"CAMERA",

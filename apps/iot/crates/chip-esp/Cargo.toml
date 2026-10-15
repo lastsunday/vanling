@@ -18,6 +18,7 @@ esp32c6 = [
   "esp-println/esp32c6",
   "esp-backtrace/esp32c6",
   "esp-bootloader-esp-idf/esp32c6",
+  "esp-alloc?/esp32c6",
 ]
 esp32s3 = [
   "esp-hal/esp32s3",
@@ -25,18 +26,17 @@ esp32s3 = [
   "esp-println/esp32s3",
   "esp-backtrace/esp32s3",
   "esp-bootloader-esp-idf/esp32s3",
+  "esp-alloc?/esp32s3",
 ]
 # The heap the Wi-Fi driver links against, and the scheduler integration its tasks
-# need. A component axis like any other here: the code lives in `radio.rs`, gated
+# need. A component axis like any other here: the code lives in `radio/`, gated
 # once, and a build without a radio carries none of it.
 #
-# S3-specific on purpose — `esp-alloc`'s chip feature names this part — and that is
-# not a restriction quietly imposed but the state of the wiring: the only board that
-# brings up a radio is the S3 one, and it turns this on through the bsp component
-# that owns it. Wiring it to the chip alias instead would make every S3 build depend
-# on a driver crate that only exists for the boards that wire a radio, which is how
-# `esp-rtos/esp-radio` ended up in the graph with no chip to attach to.
-radio = ["dep:esp-alloc", "esp-alloc/esp32s3", "esp-rtos/esp-radio"]
+# The chip of `esp-alloc` is named by the chip features above rather than here, the
+# same way a board names its radio's blob: which part is being built is the one that
+# knows. `scripts/iot-feature-check.sh` builds this component alone, so the entry
+# there names the chip for the same reason an image does.
+radio = ["dep:esp-alloc", "esp-rtos/esp-radio"]
 
 # Where `logging::LOGGER` writes. esp-println's build script fails the build unless
 # exactly one console is named, and this crate is what pulls esp-println in, so a
@@ -48,6 +48,7 @@ console-uart = ["esp-println/uart"]
 
 [dependencies]
 critical-section = { workspace = true }
+embedded-alloc = { workspace = true }
 embassy-executor = { workspace = true }
 esp-alloc = { workspace = true, optional = true }
 esp-backtrace = { workspace = true }

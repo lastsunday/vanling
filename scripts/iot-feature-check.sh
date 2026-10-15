@@ -23,6 +23,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BSP="iot-bsp-esp"
 TARGET="xtensa-esp32s3-none-elf"
+C6_TARGET="riscv32imac-unknown-none-elf"
 
 # Pure `embedded-hal` drivers: no chip HAL, so the host builds them.
 HOST_COMPONENTS=(pca9557 qmi8658 es7210 es8311 ft6336 gc2145)
@@ -51,6 +52,14 @@ CHIP_COMPONENTS=(
   "wifi,esp-hal/esp32s3,esp-radio/esp32s3,iot-chip-esp/esp32s3,iot-chip-esp/console-auto"
 )
 
+# The radio is the one component that reaches a part's memory layout as well as its
+# blob: the heap it hands the driver comes out of a region only some parts have, so a
+# build that checks one part's wiring has checked half of what the component assumes.
+# Named per chip rather than per feature because only this one is per chip.
+C6_COMPONENTS=(
+  "wifi,esp-hal/esp32c6,esp-radio/esp32c6,iot-chip-esp/esp32c6,iot-chip-esp/console-auto"
+)
+
 failed=()
 
 for component in "${HOST_COMPONENTS[@]}"; do
@@ -69,6 +78,17 @@ for component in "${CHIP_COMPONENTS[@]}"; do
     echo "  ok   $component (bare-metal)"
   else
     echo "  FAIL $component (bare-metal)"
+    failed+=("$component")
+  fi
+done
+
+for component in "${C6_COMPONENTS[@]}"; do
+  if (cd "$ROOT/apps/iot" && bash "$ROOT/scripts/iot-xtensa.sh" check \
+        -p "$BSP" --no-default-features --features "$component" \
+        --target "$C6_TARGET" -Z build-std=core,alloc) >/dev/null 2>&1; then
+    echo "  ok   $component (c6)"
+  else
+    echo "  FAIL $component (c6)"
     failed+=("$component")
   fi
 done

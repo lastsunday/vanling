@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "90ca21991d90c29a9d3c317e381e761214a740c4"
-translated_at = "2026-10-14T15:19:21Z"
+source_file_hash = "346cc0a8735d042af36562e666df4b8013bf3d1f"
+translated_at = "2026-10-15T15:52:28Z"
 +++
 
 # Firmware Installation
@@ -150,6 +150,12 @@ espflash monitor   # press enter in console to restart
 > and reset in one breath. It lands a few seconds later than the flash's own reset, so the
 > ROM's first line is in the transcript too. `script` hands the monitor the tty it demands
 > and records a copy; redirect rather than piping.
+
+`[measured]` **The C6 is the other way round**: it does **not** want `-a watchdog-reset` — a
+plain DTR reset boots it, and the ROM prints `rst:0x15 (USB_UART_HPSYS),boot:0x1c
+(SPI_FAST_FLASH_BOOT)`. espflash refuses the option outright (`The esp32c6 does not support
+watchdog reset`), so no `flash-probe-*-c6` task may carry it: a task that did would write the
+image and then fail on its last step.
 
 ## When a build fails, look at Docker first
 

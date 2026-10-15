@@ -1,11 +1,10 @@
 use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
+use crate::heap::Window;
 use embassy_executor::SendSpawner;
 use esp_bootloader_esp_idf::esp_app_desc;
 use esp_hal::clock::CpuClock;
-use esp_hal::peripherals::{
-    APB_CTRL, FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, PSRAM, Peripherals, RTC_CNTL, SYSTEM,
-};
+use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, PSRAM, Peripherals, SYSTEM};
 use esp_hal::psram::{Psram, PsramConfig};
 use esp_hal::rom::ets_update_cpu_frequency_rom;
 use iot_core::demand::{DemandField, Speed, SpeedTable};
@@ -33,26 +32,19 @@ pub fn chip_init() -> Peripherals {
     chip_init_at(CpuClock::_80MHz)
 }
 
-/// A window of this part's PSRAM, in the CPU's address space.
-#[derive(Clone, Copy, Debug)]
-pub struct PsramRegion {
-    /// First byte of the window.
-    pub start: usize,
-    /// How many bytes it spans.
-    pub len: usize,
-}
-
-/// What [`psram_window`] found on this part. Three answers because the two failures lead
+/// What [`psram_window`] found on this part, for [`crate::heap`]. Three answers because the two failures lead
 /// apart: no PSRAM on the module is hardware to go looking for, a window that does not
 /// read back is this build's SPI timing.
 #[derive(Clone, Copy, Debug)]
-pub enum PsramWindow {
+pub(crate) enum PsramWindow {
     /// The window, mapped and confirmed to read back what was written to it.
-    Ready(PsramRegion),
+    Ready(Window),
     /// Nothing to map — this part has no PSRAM, or esp-hal could not bring one up.
     Absent,
-    /// Mapped at this size, and a pattern written to it did not come back unchanged.
-    Unusable(PsramRegion),
+    /// Mapped, and a pattern written to it did not come back unchanged. The size it mapped
+    /// is reported where the pattern failed rather than carried here: a caller with no window
+    /// to offer has nothing to do with one.
+    Unusable,
 }
 
 /// The PSRAM handle. It outlives the program because the window below is the mapping it
@@ -74,71 +66,17 @@ static PSRAM_STATE: AtomicU8 = AtomicU8::new(PSRAM_ABSENT);
 static PSRAM_START: AtomicUsize = AtomicUsize::new(0);
 static PSRAM_LEN: AtomicUsize = AtomicUsize::new(0);
 
-/// The modem clock mask esp-radio would have written, had anything called its `init()`.
-/// Before [`ungate_radio`] this part sits at the ROM's `0xfffce030` and bit 17 of
-/// `dig_pwc` (`wifi_force_pd`) is set; the radio works anyway.
-const SYSTEM_WIFI_CLK_EN: u32 = 0x00FB9FCF;
-
-/// The WiFi bits of the SDIO/I2C clock group, which the WiFi mask clears.
-const WIFI_BT_SDIO_CLK: u32 = (1 << 5) | (1 << 12) | (1 << 13);
-
-/// WiFi baseband, RF frontend and WiFi MAC, the three esp-radio pulses a reset through.
-const MODEM_RESET_FIELD_WHEN_PU: u32 = (1 << 0) | (1 << 1) | (1 << 2);
-
-/// Un-gates the modem clocks and powers the WiFi domain up, the way esp-radio's uncalled
-/// `init()` would have.
-///
-/// Call once, after the scheduler is up and **before** the radio is built: the driver's
-/// own `wifi_init` runs after these and expects the domain powered. This is the S3 arm of
-/// upstream's `radio_clocks/clocks_ll/esp32s3.rs` and `common_adapter.rs`, 10 µs delay
-/// included. It does not steady the scan — measured both ways — but no driver should run
-/// on a radio whose power state nobody set.
-pub fn ungate_radio() {
-    let clocks = || APB_CTRL::regs().wifi_clk_en().read().bits();
-    let pwc = || RTC_CNTL::regs().dig_pwc().read().bits();
-    let (clocks_before, pwc_before) = (clocks(), pwc());
-
-    APB_CTRL::regs()
-        .wifi_clk_en()
-        .modify(|r, w| unsafe { w.bits(r.bits() & !WIFI_BT_SDIO_CLK | SYSTEM_WIFI_CLK_EN) });
-    RTC_CNTL::regs()
-        .dig_pwc()
-        .modify(|_, w| w.wifi_force_pd().clear_bit());
-    // SAFETY: a delay, which is what the ROM call is for; the clocks are ungated and the
-    // domain is powering up, which is exactly the sequence esp-idf's
-    // `esp_wifi_bt_power_domain_on` waits between.
-    unsafe { esp_hal::rom::ets_delay_us(10) };
-    APB_CTRL::regs()
-        .wifi_rst_en()
-        .modify(|r, w| unsafe { w.bits(r.bits() | MODEM_RESET_FIELD_WHEN_PU) });
-    APB_CTRL::regs()
-        .wifi_rst_en()
-        .modify(|r, w| unsafe { w.bits(r.bits() & !MODEM_RESET_FIELD_WHEN_PU) });
-    RTC_CNTL::regs()
-        .dig_iso()
-        .modify(|_, w| w.wifi_force_iso().clear_bit());
-    esp_hal::rtc_cntl::WakeLock::acquire();
-
-    log::info!(
-        "[RADIO] modem clocks {clocks_before:#010x} -> {:#010x}, dig_pwc {pwc_before:#010x} -> {:#010x} \
-         (esp-radio's uncalled init())",
-        clocks(),
-        pwc()
-    );
-}
-
 /// The PSRAM on this part, or what is wrong with it.
 ///
 /// `Absent` is also the answer before [`chip_init_at`] has run: nothing is mapped yet,
 /// and a window that does not exist is not one to hand an allocator.
-pub fn psram_window() -> PsramWindow {
-    let region = PsramRegion {
-        start: PSRAM_START.load(Ordering::Relaxed),
-        len: PSRAM_LEN.load(Ordering::Relaxed),
-    };
+pub(crate) fn psram_window() -> PsramWindow {
     match PSRAM_STATE.load(Ordering::Relaxed) {
-        PSRAM_READY => PsramWindow::Ready(region),
-        PSRAM_UNUSABLE => PsramWindow::Unusable(region),
+        PSRAM_READY => PsramWindow::Ready(Window {
+            start: PSRAM_START.load(Ordering::Relaxed),
+            len: PSRAM_LEN.load(Ordering::Relaxed),
+        }),
+        PSRAM_UNUSABLE => PsramWindow::Unusable,
         _ => PsramWindow::Absent,
     }
 }
@@ -169,23 +107,30 @@ fn init_psram() {
     // the whole of "did it come up". A window that mapped and then fails the pattern is
     // kept apart from that: the bytes are there, and something about reaching them is
     // wrong, which is a different thing to go looking for.
-    let (state, region) = match len {
+    let (state, window) = match len {
         0 => (PSRAM_ABSENT, None),
         len => {
-            let region = PsramRegion {
+            let window = Window {
                 start: start as usize,
                 len,
             };
-            if reads_back(region) {
-                (PSRAM_READY, Some(region))
+            if reads_back(window) {
+                (PSRAM_READY, Some(window))
             } else {
-                (PSRAM_UNUSABLE, Some(region))
+                // A window that mapped and will not read back is this build's SPI timing,
+                // and the size that did map is what says which mapping failed.
+                log::error!(
+                    "[PSRAM] mapped {} B at {:#x}, and the pattern did not read back",
+                    window.len,
+                    window.start
+                );
+                (PSRAM_UNUSABLE, Some(window))
             }
         }
     };
-    if let Some(region) = region {
-        PSRAM_START.store(region.start, Ordering::Relaxed);
-        PSRAM_LEN.store(region.len, Ordering::Relaxed);
+    if let Some(window) = window {
+        PSRAM_START.store(window.start, Ordering::Relaxed);
+        PSRAM_LEN.store(window.len, Ordering::Relaxed);
     }
     PSRAM_STATE.store(state, Ordering::Relaxed);
 }
@@ -193,18 +138,18 @@ fn init_psram() {
 /// Whether a pattern written to the window comes back unchanged: 4 KiB at each end (a
 /// mapping covering only part of the window passes a check in the middle), stepping by
 /// seven from a non-zero base so stale contents cannot pass.
-fn reads_back(region: PsramRegion) -> bool {
+fn reads_back(window: Window) -> bool {
     const SPAN: usize = 4 * 1024;
     const STEP: usize = 7;
     const BASE: usize = 11;
 
     let expected = |index: usize| (index * STEP + BASE) as u8;
 
-    [0, region.len.saturating_sub(SPAN)].into_iter().all(|at| {
-        // SAFETY: `at + SPAN` is inside the window `region` names, which is mapped for
+    [0, window.len.saturating_sub(SPAN)].into_iter().all(|at| {
+        // SAFETY: `at + SPAN` is inside the window `window` names, which is mapped for
         // the life of the program, and nothing else has been handed this memory — the
         // allocator that will own it is initialised after the chip is up.
-        let bytes = unsafe { core::slice::from_raw_parts_mut(region.start as *mut u8, region.len) };
+        let bytes = unsafe { core::slice::from_raw_parts_mut(window.start as *mut u8, window.len) };
         let span = &mut bytes[at..at + SPAN];
         for (index, byte) in span.iter_mut().enumerate() {
             *byte = expected(index);

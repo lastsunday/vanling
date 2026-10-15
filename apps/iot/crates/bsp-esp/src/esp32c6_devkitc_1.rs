@@ -1,12 +1,12 @@
 use crate::post::{self, Provenance, State};
 use alloc::{boxed::Box, vec, vec::Vec};
-use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals};
+use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals, WIFI};
 use esp_hal::rmt::Rmt;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal_smartled::buffer_size;
 use iot_core::demand::PlaneKey;
-use iot_core::drivers::board::Board as BoardTrait;
+use iot_core::drivers::board::{Board as BoardTrait, HasWifi};
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
 use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::drivers::playback::UnwiredSpeaker;
@@ -24,6 +24,10 @@ pub struct Board<'d> {
     pub light: Option<Ws2812RgbLed<'d, { buffer_size::<RGB8>(LEDS) }>>,
     /// The onboard boot button.
     pub button: Option<PullButton<'d>>,
+    /// The on-board radio peripheral, unopened. It stays here rather than being built in
+    /// `new` because the driver's start needs the scheduler, and the scheduler is the app's
+    /// to start — see [`HasWifi`].
+    radio: Option<WIFI<'static>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -43,6 +47,7 @@ impl Board<'static> {
             GPIO9,
             TIMG0,
             FROM_CPU_INTR0,
+            WIFI,
             ..
         } = peripherals;
 
@@ -68,6 +73,7 @@ impl Board<'static> {
             Self {
                 light: Some(light),
                 button: Some(button),
+                radio: Some(WIFI),
             },
             timg0,
             FROM_CPU_INTR0,
@@ -126,5 +132,13 @@ impl iot_core::drivers::board::HasPlayback for Board<'static> {
 impl iot_core::drivers::board::HasCamera for Board<'static> {
     fn take_camera(&mut self) -> Option<Box<dyn iot_core::drivers::camera::FrameSource>> {
         None
+    }
+}
+
+impl HasWifi for Board<'static> {
+    type Station = crate::components::wifi::EspStation;
+
+    fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
+        self.radio.take().and_then(crate::components::wifi::start)
     }
 }

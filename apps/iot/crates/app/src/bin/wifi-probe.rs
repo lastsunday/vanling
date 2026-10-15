@@ -19,9 +19,10 @@
 //!   `phy_init` partition exists, which is this repository's choice. If it is
 //!   called the panic is immediate and says so, which is the answer.
 //!
-//! The board's own bring-up — panel, camera, audio codec — still happens, because it
-//! arrives with the board feature and the probe inherits it. That costs DRAM and boot
-//! time rather than accuracy: nothing here competes for the executor.
+//! The board's own bring-up still happens, because it arrives with the board feature and the
+//! probe inherits it. How much that is depends on the board: the S3's brings up a panel, a
+//! camera and an audio codec, the C6's a button and an LED. It costs DRAM and boot time
+//! rather than accuracy — nothing here competes for the executor.
 //!
 //! Credentials come from the build. A probe whose input were a keystroke protocol
 //! would be measuring that protocol as much as the link, and the credentials would
@@ -60,11 +61,13 @@ const SCAN_GAP_MS: u64 = 500;
 /// cost here beyond the driver's.
 const SOCKETS: usize = 1;
 
-/// Sized by this board's bring-up: the camera's driver object is an 11,728-byte `Box`
-/// allocated inside `Board::new`, so anything under ~16 KiB panics there once the
-/// bring-up has already succeeded. The driver's own allocations come from the C heap
-/// the chip layer set up. This is the product's number, because the product is the one
-/// that has to keep working.
+/// Sized by the board's own bring-up: the S3's allocates an 11,728-byte `Box` inside
+/// `Board::new`, so anything under ~16 KiB panics there once the bring-up has already
+/// succeeded. The driver's allocations do not come from here — they come from the C heap the
+/// chip layer set up, and where *that* lives differs per part.
+///
+/// The product's number, because the product is the one that has to keep working, and the one
+/// the chip layer offers a heap for on every part that carries a radio.
 const HEAP_BYTES: usize = 64 * 1024;
 
 #[global_allocator]
@@ -78,45 +81,56 @@ static RESOURCES: esp_hal::__macro_implementation::static_cell::StaticCell<
 > = esp_hal::__macro_implementation::static_cell::StaticCell::new();
 
 #[esp_rtos::main]
+#[cfg(feature = "esp32c6")]
 async fn main(_spawner: Spawner) -> ! {
-    // 240 MHz, like the product: a timing measured at a different clock is a
-    // timing of a different machine.
-    let peripherals = iot_chip_esp::chip_init_at(esp_hal::clock::CpuClock::_240MHz);
+    // No clock to choose: this part boots where esp-hal leaves it, and a timing measured at
+    // a clock the product does not run at would be a timing of a different machine.
+    let peripherals = iot_chip_esp::chip_init();
     iot_chip_esp::init_logging();
     iot_chip_esp::init_radio_heap();
+    iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
 
-    // In PSRAM, as the product's is: this board feature brings the panel and the camera
-    // up with the radio, and their first allocations do not fit in internal DRAM.
-    let region = match iot_chip_esp::psram_window() {
-        iot_chip_esp::PsramWindow::Ready(region) => region,
-        other => {
-            log::error!("[PROBE] no PSRAM window for the heap ({other:?}), resetting");
-            esp_hal::system::software_reset();
-        }
-    };
-    // SAFETY: called exactly once before any allocation, and the window is mapped
-    // memory the pattern check in `chip_init_at` has already read and written.
-    unsafe {
-        HEAP.init(region.start, HEAP_BYTES);
-    }
-    log::info!("[PROBE] psram: {region:?}, heap {HEAP_BYTES} B in it");
-    log::warn!("[PROBE] radio and IP stack only: no panel, touch, motion or audio");
-
-    let (mut board, timg0, from_cpu_intr, _feed_intr) = match iot_bsp_esp::Board::new(peripherals) {
+    let (board, timg0, from_cpu_intr) = match iot_bsp_esp::Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[PROBE] board bring-up failed, resetting: {error:?}");
             esp_hal::system::software_reset();
         }
     };
-
-    // The driver's start needs the scheduler, so the radio is taken after this
-    // rather than before — which is why the board hands over a peripheral and not
-    // a station.
+    // The driver's start needs the scheduler, so the radio is taken after this rather than
+    // before — which is why the board hands over a peripheral and not a station.
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
+    measure(board).await
+}
 
-    // The driver expects the domain powered and the modem clocks un-gated; on this
-    // version of esp-radio nothing in the crate does that, so it is done here.
+#[esp_rtos::main]
+#[cfg(feature = "esp32s3")]
+async fn main(_spawner: Spawner) -> ! {
+    // 240 MHz, like the product: a timing measured at a different clock is a timing of a
+    // different machine.
+    let peripherals = iot_chip_esp::chip_init_at(esp_hal::clock::CpuClock::_240MHz);
+    iot_chip_esp::init_logging();
+    iot_chip_esp::init_radio_heap();
+    iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
+
+    let (board, timg0, from_cpu_intr, _feed_intr) = match iot_bsp_esp::Board::new(peripherals) {
+        Ok(startup) => startup,
+        Err(error) => {
+            log::error!("[PROBE] board bring-up failed, resetting: {error:?}");
+            esp_hal::system::software_reset();
+        }
+    };
+    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
+    measure(board).await
+}
+
+/// Everything the two parts have in common: the same station, the same IP stack, the same
+/// three stages, on whichever part is under it.
+async fn measure(mut board: iot_bsp_esp::Board<'static>) -> ! {
+    log::warn!("[PROBE] radio and IP stack only: no panel, touch, motion or audio");
+
+    // The driver expects the domain powered and the modem clocks un-gated; on the parts this
+    // driver version supports, nothing in the crate does that, so it is done here.
     iot_chip_esp::ungate_radio();
 
     let Some(station) = board.take_wifi() else {
@@ -292,7 +306,7 @@ where
                 .map(|cidr| Ipv4::from_octets(cidr.address.address().octets())),
         );
         let status = station.status();
-        let window_ms = last_report.elapsed().as_millis() as u64;
+        let window_ms = last_report.elapsed().as_millis();
         last_report = Instant::now();
         // The address is repeated every window because its absence is the finding that
         // matters: a line per window turns "the address never arrived" into something a
