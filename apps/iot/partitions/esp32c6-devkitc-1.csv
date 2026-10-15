@@ -1,0 +1,17 @@
+# The flash layout this board's firmware is built against.
+#
+# `espflash` writes this layout by default for an 8 MB part, and nothing in this
+# repository's C6 firmware needs more: the driver blobs the Wi-Fi station links
+# are an S3 build's cost, and this board is not the Wi-Fi target.
+#
+# Kept as a file rather than relying on the default so that a flash task and an
+# image task cannot disagree about the layout — the merged image in `dist/` has to
+# be the one the device is flashed with, and the partition table is part of it.
+#
+# Fields are single-spaced on purpose: `espflash` parses this CSV itself and
+# rejects the column-aligned form the ESP-IDF examples use.
+#
+# Name,Type,SubType,Offset,Size,Flags
+nvs,data,nvs,0x9000,0x6000,
+phy_init,data,phy,,0x1000,
+factory,app,factory,,1M,

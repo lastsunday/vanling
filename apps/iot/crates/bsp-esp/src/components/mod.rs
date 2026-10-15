@@ -28,5 +28,7 @@ pub mod qmi8658;
 pub mod register_seq;
 #[cfg(feature = "st7789")]
 pub mod st7789;
+#[cfg(feature = "wifi")]
+pub mod wifi;
 #[cfg(feature = "ws2812")]
 pub mod ws2812;

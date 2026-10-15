@@ -3,6 +3,7 @@ use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::light::RgbLight;
 use crate::drivers::motion::MotionCapabilities;
+use crate::drivers::network::Station;
 use crate::drivers::playback::Speaker;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -110,6 +111,23 @@ pub trait HasPlayback: Board {
     /// carried down the whole frame on top of the render path's own call chain, so
     /// it lives on the heap instead: the app only ever holds a pointer to it.
     fn take_playback(&mut self) -> Option<Box<Self::Speaker>>;
+}
+
+/// Board providing a Wi-Fi station.
+///
+/// Independent of the rest, like [`HasPlayback`]: a board can have a radio and no
+/// panel, or a panel and no radio. The device is *not* usable when this is handed
+/// over — the driver's start needs the scheduler running, which only the app's
+/// entry point can guarantee — so what the board hands over is the peripheral and
+/// the wiring, and `take_wifi` is called after the runtime is up. A board with no
+/// radio returns `None` and the link stays where it was.
+pub trait HasWifi: Board {
+    /// Owned station; `'static` because it lives in the network task for the
+    /// board's lifetime, and boxed for the same reason [`HasPlayback::Speaker`] is:
+    /// the task that awaits it is a stack frame this repository does not control.
+    type Station: Station + 'static;
+
+    fn take_wifi(&mut self) -> Option<Box<Self::Station>>;
 }
 
 #[cfg(test)]

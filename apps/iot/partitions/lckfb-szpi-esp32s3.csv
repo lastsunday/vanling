@@ -1,0 +1,38 @@
+# The flash layout this board's firmware is built against.
+#
+# Two departures from the layout `espflash` writes by default, both forced by
+# facts rather than chosen:
+#
+# * **`factory` is 6 MB, not 1 MB.** The Wi-Fi driver links prebuilt blobs, which
+#   is about a megabyte of code this firmware could not fit in the default slot
+#   alongside the camera's DMA tables and the panel's glyphs. 6 MB is what the
+#   reference firmware on the same 16 MB module gives each of its two OTA slots;
+#   one slot is all this repository builds, and the space past it is what makes a
+#   second slot possible later without moving everything. Note that the flash
+#   size has to travel with it: a 6 MB partition does not fit inside espflash's
+#   default 8 MB, so every S3 flash task passes `--flash-size 16mb` (the size
+#   `espflash board-info` reads off this part; see `iot/flashing.md`).
+# * **`phy_init` is 4 KB at the ESP-IDF default offset.** This was left out first,
+#   on the reading that esp-radio's Xtensa build implements the driver's
+#   calibration-restore hook as `todo!()` and the driver would reach for it as soon
+#   as it could see the partition. Measured on the bench with the partition present:
+#   `esp_wifi_init` does not panic and the radio scans normally, so that hook is not
+#   reached on this part and the partition is worth having — it is where the driver
+#   keeps the calibration it writes on the first boot. `@/records/iot/wifi.md`.
+#
+# `nvs` stays: it is where the driver's saved state and any credentials the
+# product keeps will live, and both need somewhere to be.
+#
+# Offsets after `nvs` are omitted, so each partition starts where the previous one
+# ended — the form the ESP-IDF documentation uses, and the one that cannot drift
+# out of step with a size above it.
+#
+# Fields are single-spaced on purpose: `espflash` parses this CSV itself and
+# rejects the column-aligned form the ESP-IDF examples use (aligned rows fail
+# with "Failed to parse partition table"), so padding is not available here even
+# though it reads better.
+#
+# Name,Type,SubType,Offset,Size,Flags
+nvs,data,nvs,0x9000,0x6000,
+phy_init,data,phy,,0x1000,
+factory,app,factory,,6M,

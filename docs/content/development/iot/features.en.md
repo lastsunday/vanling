@@ -61,8 +61,11 @@ Cargo features are **additive** (union; enabling one must not disable another) a
 ```
 iot-core     — no [features]
 iot-bsp-esp  — component features (backlight / button / pca9557 / qmi8658 / es7210 / es8311 /
-                             ft6336 / ws2812 / st7789 / display-light / audio / audio-out)
+                             ft6336 / ws2812 / st7789 / wifi / display-light / audio / audio-out)
                board features (esp32c6-devkitc-1 / lckfb-szpi-esp32s3) = component aggregate
+iot-chip-esp — chip features (esp32c6 / esp32s3) + a component feature (radio: the C heap the
+               Wi-Fi driver links against, and the scheduler integration it needs, which the
+               S3 chip alias carries)
 iot-app      — esp32c6 (chip alias) / esp32c6-devkitc-1 (default) / lckfb-szpi-esp32s3
 ```
 

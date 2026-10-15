@@ -122,7 +122,34 @@ cargo build && espflash flash target/.../vanling
 espflash monitor   # press enter in console to restart
 ```
 
-`espflash monitor` needs a real tty (picocom cannot make sense of its own arguments on this machine). Native USB does not support DTR/RTS, so **attach immediately after flashing** to catch the ROM's own boot; redirect with `> /tmp/x.log` rather than piping.
+`espflash monitor` needs a real tty (picocom cannot make sense of its own arguments on this machine), and macOS's `script -q <log> <cmd>` hands it one while recording a transcript — so wrap the monitor in `script`.
+
+> `[measured, corrected 2026-10-15]` **Do not ask anyone to press RESET, and do not "attach
+> right after flashing"** (the second was my own earlier conclusion and it is wrong).
+>
+> This board runs **native USB** (USB-Serial/JTAG), whose DTR/RTS is a *core reset*, and a
+> core reset **does not re-sample the boot strapping pins** — so every software reset lands
+> on `boot:0x23 (DOWNLOAD(USB/UART0))` and the application never starts after a flash.
+> esptool's ESP32-S3 documentation (*Leaving Download Mode in USB-Serial/JTAG Mode*) names
+> the way out: `-a watchdog-reset`, which hijacks the RTC WDT to force a real system
+> reset, so the strapping pins are re-sampled and the chip boots normally (the ROM prints
+> `boot:0x2b (SPI_FAST_FLASH_BOOT)`).
+>
+> Capturing the whole boot log — attach first, then reset, so nothing is missed:
+>
+> ```sh
+> espflash flash --chip esp32s3 --flash-size 16mb \
+>   --partition-table partitions/lckfb-szpi-esp32s3.csv \
+>   --port /dev/cu.usbmodem1422301 -a watchdog-reset target/.../wifi-probe
+>
+> ({ sleep 4; printf '\\x12'; sleep 30; } | script -q -t 35 /tmp/boot.log \
+>    espflash monitor --chip esp32s3 --port /dev/cu.usbmodem1422301 -a no-reset) >/dev/null 2>&1
+> ```
+>
+> That `printf '\\x12'` is the monitor's `CTRL+R Reset chip` fed into the same pty: attached
+> and reset in one breath. It lands a few seconds later than the flash's own reset, so the
+> ROM's first line is in the transcript too. `script` hands the monitor the tty it demands
+> and records a copy; redirect rather than piping.
 
 ## When a build fails, look at Docker first
 
@@ -148,9 +175,23 @@ Release `merged.bin` (`save-image --merge`) is a whole-flash image:
 | ---------- | ---------- | -------------------------- |
 | bootloader | `0x0`      | 2nd-stage bootloader       |
 | partition  | `0x8000`   | partition table            |
-| app        | `0x10000`  | vanling app + data         |
+| app        | see table  | vanling app + data         |
 
 > The layout follows the partition table used when producing the bin; flash the whole image at `0x0`, no need to write each segment separately.
+
+**The partition table comes from this repository**: `apps/iot/partitions/<board>.csv`, passed
+explicitly as `--partition-table` by both `flash-*` and `scripts/iot-image.sh`. Both must name
+the same file — with a table written down in two places, whichever task ran last decides what
+the device gets, and neither side fails to compile.
+
+The S3 table departs from the default in two places, each for a reason spelled out in the file
+itself and in the [Wi-Fi record](@/records/iot/wifi.en.md):
+
+- **factory 6 MB** (`espflash` defaults to 1 MB): the firmware links the Wi-Fi driver's prebuilt
+  blobs and does not fit in 1 MB. The S3 part has 16 MB.
+- **no `phy_init` partition**: esp-radio's Xtensa build implements the driver's calibration
+  restore hook as `todo!()`, and the driver looks for a calibration partition; without one the
+  path is not taken, at the cost of calibrating at every boot.
 
 ## How browser flashing works
 

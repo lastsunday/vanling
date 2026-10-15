@@ -39,6 +39,16 @@ CHIP_COMPONENTS=(
   "audio"
   "audio-out"
   "camera"
+  # The radio, alone. Four things make it the case rule 5 exists for: it reaches into
+  # the chip layer (`iot-chip-esp?/radio`, which is the driver's heap), so a build
+  # listing only `wifi` proves the component names the heap itself rather than
+  # relying on a board that happens to enable both; its blob is per-chip, so the
+  # feature the board would normally contribute has to be named here too; the chip
+  # layer it reaches is per-chip, so *that* has to be named too; and it is the first
+  # component to reach a crate (`iot-chip-esp`) that pulls in `esp-println`, whose
+  # build script fails unless both a chip and a console are named — which an image
+  # normally does on the app's behalf.
+  "wifi,esp-hal/esp32s3,esp-radio/esp32s3,iot-chip-esp/esp32s3,iot-chip-esp/console-auto"
 )
 
 failed=()

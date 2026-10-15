@@ -3,6 +3,11 @@
 use esp_backtrace as _;
 
 pub(crate) mod logging;
+#[cfg(feature = "radio")]
+mod radio;
+
+#[cfg(feature = "radio")]
+pub use radio::{init_radio_heap, radio_heap_free, radio_heap_total};
 
 /// The one sink that routes a demand's speed to the part this build targets.
 ///
@@ -34,6 +39,6 @@ pub(crate) mod esp32s3;
 
 #[cfg(feature = "esp32s3")]
 pub use esp32s3::{
-    Table, chip_init, chip_init_at, init_logging, set_cpu_clock, set_speed, start_feed_executor,
-    start_rtos,
+    PsramRegion, PsramWindow, Table, chip_init, chip_init_at, init_logging, psram_window,
+    set_cpu_clock, set_speed, start_feed_executor, start_rtos, ungate_radio,
 };

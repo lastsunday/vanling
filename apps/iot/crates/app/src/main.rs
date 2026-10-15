@@ -20,10 +20,16 @@ static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
 /// the panel's SPI share it — so it is 150 KB out of DRAM that this used to duplicate on the
 /// heap. What is left is small allocations, and the heap that fits them leaves the main stack
 /// the rest. Measured against `@/records/iot/hardware-constraints.md`.
-static mut HEAP_MEM: [u8; HEAP_BYTES] = [0; HEAP_BYTES];
-
-/// Heap size in bytes.
 const HEAP_BYTES: usize = 64 * 1024;
+
+/// The heap's memory on the C6, which has no PSRAM to hold it.
+///
+/// Deliberately not kept for the S3 as a fallback: a static costs its 64 KiB in every
+/// image whether or not anything reads it, and this part does not have 64 KiB to spare
+/// beside the camera's frame arena — the radio's own statics are what take the slack
+/// below zero.
+#[cfg(feature = "esp32c6")]
+static mut HEAP_MEM: [u8; HEAP_BYTES] = [0; HEAP_BYTES];
 
 #[cfg(feature = "esp32c6")]
 #[esp_rtos::main]
@@ -56,18 +62,34 @@ async fn main(_spawner: Spawner) -> ! {
 #[cfg(feature = "esp32s3")]
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    // SAFETY: called exactly once before any allocation; the region is a
-    // private static never aliased elsewhere.
-    unsafe {
-        HEAP.init(core::ptr::addr_of_mut!(HEAP_MEM) as usize, HEAP_BYTES);
-    }
-
     // 240 MHz, not the 80 MHz `chip_init` hands back: the AEC's delay search alone
     // busts the 30 ms audio tick at 80 MHz, and the governor may only lower from
     // here. `set_cpu_clock` never raises the bias, so starting lower would leave
     // the speed the product needs most without one trimmed for it.
     let peripherals = iot_chip_esp::chip_init_at(esp_hal::clock::CpuClock::_240MHz);
     iot_chip_esp::init_logging();
+
+    // In PSRAM, and the window comes up inside `chip_init_at` so it exists before the
+    // board's own bring-up allocates below. Internal DRAM has no 64 KiB left beside the
+    // camera's 150 KiB frame arena; `@/records/iot/wifi.md` has the arithmetic.
+    let region = match iot_chip_esp::psram_window() {
+        iot_chip_esp::PsramWindow::Ready(region) => region,
+        other => {
+            log::error!("[IOT] no PSRAM window for the heap ({other:?}), resetting");
+            esp_hal::system::software_reset();
+        }
+    };
+    // SAFETY: called exactly once before any allocation, and the window is mapped
+    // memory the pattern check in `chip_init_at` has already read and written.
+    unsafe {
+        HEAP.init(region.start, HEAP_BYTES);
+    }
+    log::info!(
+        "[IOT] heap: {HEAP_BYTES} B at {:#x}, {} B of PSRAM mapped",
+        region.start,
+        region.len
+    );
+
     log::info!("[IOT] boot ok");
     // A transient boot NACK must not leave the screen black: reset and retry.
     let (board, timg0, from_cpu_intr, feed_intr) = match Board::new(peripherals) {

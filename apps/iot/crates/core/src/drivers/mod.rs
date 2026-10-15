@@ -5,4 +5,5 @@ pub mod camera;
 pub mod input;
 pub mod light;
 pub mod motion;
+pub mod network;
 pub mod playback;

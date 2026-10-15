@@ -58,8 +58,10 @@ Cargo feature 是**加法语义**（union，开启一个不应关闭另一个）
 ```
 iot-core     — 无 [features]
 iot-bsp-esp  — 元件 feature（backlight / button / pca9557 / qmi8658 / es7210 / es8311 /
-                             ft6336 / ws2812 / st7789 / display-light / audio / audio-out）
+                             ft6336 / ws2812 / st7789 / wifi / display-light / audio / audio-out）
                板 feature（esp32c6-devkitc-1 / lckfb-szpi-esp32s3）＝ 元件聚合
+iot-chip-esp — 芯片 feature（esp32c6 / esp32s3）+ 元件 feature（radio：Wi-Fi 驱动链接的 C 堆与
+                它依赖的调度器集成，由 S3 的芯片别名捎带）
 iot-app      — esp32c6（chip 别名）/ esp32c6-devkitc-1（default）/ lckfb-szpi-esp32s3
 ```
 

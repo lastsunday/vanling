@@ -119,7 +119,24 @@ cargo build && espflash flash target/.../vanling
 espflash monitor   # console 内带回车重启
 ```
 
-`espflash monitor` 需要真 tty（picocom 在这台机器上认不出自己的参数）。原生 USB 不支持 DTR/RTS，所以**烧录完立刻抓**，趁 ROM 还在启动；加 `> /tmp/x.log` 存盘，别用管道刷屏。
+`espflash monitor` 需要真 tty（picocom 在这台机器上认不出自己的参数）。macOS 的 `script -q <log> <cmd>` 会给它一个 pty 并顺带录一份，所以 monitor 要包在 `script` 里跑。
+
+> `[实测，2026-10-15 更正]` **不要让人去按 RESET 键，也不要「烧录完立刻抓」**（后者是我早先的错误结论）。
+>
+> 这块板子走**原生 USB**（USB-Serial/JTAG），DTR/RTS 触发的是 *core reset*，**不重新采样 strapping 引脚**，所以任何软件复位都必然落回 `boot:0x23 (DOWNLOAD(USB/UART0))`，刷完根本起不来应用。esptool 的 ESP32-S3 文档（*Leaving Download Mode in USB-Serial/JTAG Mode*）给了出路：`-a watchdog-reset` 劫持 RTC WDT 做一次**真正的系统复位**，strapping 重新采样，于是正常启动（ROM 打 `boot:0x2b (SPI_FAST_FLASH_BOOT)`）。
+>
+> 抓完整开机日志（先接上、再复位，不丢任何一行）：
+>
+> ```sh
+> espflash flash --chip esp32s3 --flash-size 16mb \
+>   --partition-table partitions/lckfb-szpi-esp32s3.csv \
+>   --port /dev/cu.usbmodem1422301 -a watchdog-reset target/.../wifi-probe
+>
+> ({ sleep 4; printf '\\x12'; sleep 30; } | script -q -t 35 /tmp/boot.log \
+>    espflash monitor --chip esp32s3 --port /dev/cu.usbmodem1422301 -a no-reset) >/dev/null 2>&1
+> ```
+>
+> 那个 `printf '\\x12'` 是 monitor 里的 `CTRL+R Reset chip`，从同一个 pty 喂进去 = 已接上 + 立即复位；它比烧录时那次复位晚几秒，所以 ROM 第一行也在日志里。`script` 给 monitor 一个 pty 并顺手录一份，加 `> /tmp/x.log` 存盘，别用管道刷屏。
 
 ## 构建失败先看 Docker，再看别的
 
@@ -145,9 +162,18 @@ S3 的构建走 `scripts/iot-xtensa.sh`：先试本机 esp 工具链，不全则
 | --------- | ---------- | ------------------------------ |
 | bootloader| `0x0`      | 二级引导程序，固定脚本产物     |
 | partition | `0x8000`   | 分区表                         |
-| app       | `0x10000`  | vanling 应用 + 数据            |
+| app       | 见分区表   | vanling 应用 + 数据            |
 
 > 布局以产出 bin 时实际分区表为准；安装时整片写 `0x0` 即可，不必单个段分别写。
+
+**分区表由本仓库提供**：`apps/iot/partitions/<board>.csv`，`flash-*` 与 `scripts/iot-image.sh`
+都显式传 `--partition-table`。两处必须指向同一张表 —— 镜像任务与烧录任务各写一份时，谁最后跑决定设备上是什么布局，而两边都编译通过。
+
+S3 那张表有两处不是默认值，各有原因（详见该文件内的注释与
+[Wi-Fi 实现记录](@/records/iot/wifi.md)）：
+
+- **factory 6 MB**（espflash 默认 1 MB）：链接了 Wi-Fi 驱动的预编译 blob，固件放不进 1 MB。S3 是 16 MB。
+- **没有 `phy_init`**：esp-radio 的 Xtensa 构建把驱动的标定恢复钩子实现为 `todo!()`，而驱动会去找标定分区；没有这个分区就不走那条路，代价是每次开机重新标定。
 
 ## 浏览器安装原理
 

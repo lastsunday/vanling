@@ -140,6 +140,11 @@ tasks:
   # the chip layer would leave it failing to build with nobody noticing until the
   # day it is needed on a bench.
   #
+  # `wifi-probe` is named on its own rather than through the board feature: it
+  # needs the radio and its heap, which the board feature does carry, but it is
+  # also the one bin whose `required-features` are the `wifi` feature, so naming
+  # the bin is what keeps that feature reachable from here.
+  #
   # One invocation, because `camera` is in the board feature: the board mounts the
   # sensor, so every image of this board pays for the 150 KB frame arena the panel's
   # DMA shares. `check-s3` does not link, so nothing here sees the memory that costs —
@@ -149,6 +154,7 @@ tasks:
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
         --bin vanling --bin audio-probe --bin camera-probe --bin multicore-s3 \
         --bin demand-probe --bin aec-probe --bin clock-probe --bin echo-probe \
+        --bin wifi-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
@@ -229,9 +235,21 @@ tasks:
     options:
       runInCI: false
 
+  # Every S3 image is flashed against this repository's partition table rather than
+  # the one `espflash` writes by default: the Wi-Fi driver's prebuilt blobs do not fit
+  # the default 1 MB factory slot, and the table also decides whether the driver finds
+  # a PHY calibration partition — see `partitions/lckfb-szpi-esp32s3.csv` for both.
+  #
+  # `--flash-size 16mb` comes with the table: the board is a 16 MB part and espflash
+  # would otherwise assume 4 MB, which cannot hold a 6 MB factory slot — it then fails
+  # on the table rather than on the image.
   flash-s3:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/vanling
+      espflash flash --chip esp32s3 \
+        --flash-size 16mb \
+        --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/xtensa-esp32s3-none-elf/release/vanling
     deps:
       - ~:build-s3
     options:
@@ -241,7 +259,11 @@ tasks:
 
   flash-s3-camera:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/vanling-camera
+      espflash flash --chip esp32s3 \
+        --flash-size 16mb \
+        --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/xtensa-esp32s3-none-elf/release/vanling-camera
     deps:
       - ~:build-s3-camera
     options:
@@ -349,6 +371,45 @@ tasks:
     options:
       runInCI: false
 
+  #   probe-wifi-s3       the radio, the IP stack and the credentials this build was
+  #                       given, and nothing else: scan, associate, DHCP, then the
+  #                       driver's heap and the stage timings for as long as it holds
+  #
+  # Credentials are a build-time input, named in FORWARDED_ENV, so a bench run is one
+  # command with two variables rather than a protocol typed on a panel this image
+  # never lights. The two names are set on the invocation:
+  #
+  #   IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-s3
+  #
+  # A build without them still runs and says that it has nothing to connect to, which
+  # is the answer to "does the scan work on its own" without pretending to be a
+  # connection test.
+  probe-wifi-s3:
+    script: |
+      bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin wifi-probe \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,wifi,console-auto
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/wifi-probe'
+    options:
+      cache: false
+      runInCI: false
+
+  flash-probe-wifi-s3:
+    script: |
+      espflash flash --chip esp32s3 \
+        --flash-size 16mb \
+        --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/xtensa-esp32s3-none-elf/release/wifi-probe
+    deps:
+      - ~:probe-wifi-s3
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
   flash-probe-clock-s3:
     script: |
       espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/clock-probe
@@ -402,7 +463,11 @@ tasks:
 
   flash-s3-thrift:
     script: |
-      espflash flash --chip esp32s3 ${IOT_PORT:+--port $IOT_PORT} target/xtensa-esp32s3-none-elf/release/vanling-thrift
+      espflash flash --chip esp32s3 \
+        --flash-size 16mb \
+        --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/xtensa-esp32s3-none-elf/release/vanling-thrift
     deps:
       - ~:build-s3-thrift
     options:

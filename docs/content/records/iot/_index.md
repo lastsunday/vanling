@@ -102,6 +102,19 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 | 共用 MCLK | 两个单元跑在各自时钟域，**发送单元驱动引脚、采集被强制从属**，方向不可交换 | `with_signal_loopback` 名字是唯一误导处 |
 | 主任务栈 | 随摄像头进产品而变，以链接 ELF 符号为准 | `_stack_start_cpu0` = 83,060 B |
 | esp-hal 栈溢出 watchpoint | 会误触发，不能当溢出判据 | — |
+| **数据缓存默认 64 KiB ⇒ reclaimed 区为空** | esp-hal 把 0x3FCF0000 以上「留给堆」，但要从数据缓存那一头扣。默认配置下 `#[ram(reclaimed)]` 无处可放 | 本仓既有 ELF 里 0x3FCF0000 以上**零符号**；压到 32 KiB 换回 **32 KiB** |
+
+### 网络（Wi-Fi）
+
+| 发现 | 结论 | 数字 |
+| --- | --- | --- |
+| 本世代有无 TCP/IP 栈 | **没有 lwIP/esp-netif**（crates.io 404 + 仓库无目录 + CHANGELOG 零命中）。替代物是 `esp-radio`（L2）+ `embassy-net`（smoltcp） | `esp-radio` 自带 `embassy_net_driver::Driver` 实现，接上就能拿 IP |
+| 「连上」的定义 | **拿到地址才算**。参考固件的 `STA_CONNECTED` 处理函数是空的，连接位在 `GOT_IP` 里置 | 关联 ≠ 连上 |
+| 三个阶段的预算是三份 | 扫描归射频、关联归 AP 与重试、DHCP 归租约，合并成「连接中」就看不出哪一段慢 | 探针分开计时 |
+| 连接默认值的坑 | 快速扫描取第一个匹配 ⇒ 强的同名 AP 一次认证失败就被换成弱的 | 参考固件实测：−73 dBm 在范围内，却连上 −79 dBm |
+| **DRAM 预算是板上最硬的一条** | `dram_seg` 只能再拿 **12,344 B**（主栈断言 65,536 B 之下只剩这些），装不下驱动缓冲 | 主栈 77,880 B；Wi-Fi 堆 8 KiB + 32 KiB reclaimed |
+| **PHY 标定恢复在 S3 上是 `todo!()`** | `PROVIDE(misc_nvs_restore = __esp_radio_misc_restore)` 把它绑到 `#[cfg(xtensa)]` 的 `todo!()`，而 blob 对它是未定义引用 | 规避手段：**分区表不写 `phy_init`**（代价：每次开机重标定） |
+| 分区表 | espflash 默认 factory 1 MB，而固件加 Wi-Fi 前已 630 KB | factory **6 MB**；16 MB 板 |
 
 ## 探针
 
@@ -117,12 +130,22 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 | `multicore-s3` | 启动第二核能否在主栈底下存活 | 栈顶是否被启动序例覆写（`ThreadFlag` 就住在那里） |
 | `aec-probe` | 线性回声消除跑一个音频 tick 要多少时间，L = 16/32/64/128 | 首/均/最坏 tick、占 20 ms 比例、延迟搜索/滤波/计量器分开计时 |
 | `clock-probe` | 运行期切 CPU 频率要多少、切完谁还准、切完核 1 怎么样 | 三档同一工作量的耗时比（**不看 `cpu_clock()`，它读配置不读硬件**）、切换墙钟、跨切换的 `Instant` 差、两核同量对比 |
+| `wifi-probe` | 射频与 IP 栈能不能立起来，这块板的 DRAM 预算够不够 | 扫描/关联/DHCP **三个分开**的耗时、扫描到的条数、驱动堆每 2 秒的余量、开机标定代价 |
 
 ```sh
 moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3
 ```
 
 `probe-*-s3` 只构建，`flash-probe-*-s3` 才烧录；端口在 `moon.yml` 的命令里。
+
+`wifi-probe` 还多一步：它的凭据是**构建期输入**，所以构建命令上带两个变量
+
+```sh
+IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-s3
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-wifi-s3
+```
+
+不设这两个变量它照样能跑，只是会说「这个构建没有让我连任何东西」——那是「扫描本身通不通」的答案，而**不会**假装自己是一次连接测试。两个名字在 `scripts/iot-xtensa.sh` 的 `FORWARDED_ENV` 里，宿主测试 `build_env.rs` 会在「读了却没转发」时失败构建。
 
 **五个 bin 每次 `check-s3` 都编一遍，只编不链。** 没有编译它们的探针会烂在原地：每个都自己调一遍 bring-up 或芯片 API，`Board`、`Speaker`、芯片层一改就会编译失败，而没人会注意到，直到某天在台架上要用。
 
@@ -138,6 +161,7 @@ moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3
 | [硬件约束记录](@/records/iot/hardware-constraints.md) | 共享 MCLK、时钟源锁与 PM 的先后顺序、麦克风前端写序与标定、栈容量由来 |
 | [摄像头实现记录](@/records/iot/camera.md) | GC2145 视野算术、bins 与标量实测、PSRAM 不可用由来、面板接线、反复进出导致链重建后停滞 |
 | [音频实现记录](@/records/iot/audio.md) | 静音判定、执行器边际代价实测、采集链只有一处能停、标定走查受需求门控、积压深度、dBA 与原始列、量化噪声底噪 |
+| [Wi-Fi 实现记录](@/records/iot/wifi.md) | 本世代没有 lwIP 只有 esp-radio+embassy-net、「连上」= 拿到地址、连接默认值抄自参考固件的三条、DRAM 预算怎么凑出来的、PHY 标定 `todo!()` 与分区表的规避手段 |
 | [运动实现记录](@/records/iot/motion.md) | 敲击判定的被否方案、门限来源、No-Motion 是电平不是事件 |
 | [输入与触摸实现记录](@/records/iot/input.md) | 页面循环硬件实测、2 秒窗口看不出页序、四路轮询里只有一路可关 |
 | [回声消除实现记录](@/records/iot/aec.md) | 乐鑫向量为何测不了 AEC、步长不能按残余缩放、相干度冻结判据、延迟搜索的置信度与限频、ERLE 稳态与全程的差 |

@@ -72,6 +72,22 @@ name = "echo-probe"
 path = "src/bin/echo-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
+# Network probe: the radio, the IP stack and the credentials, and nothing else —
+# no panel, no touch, no motion, no audio. It exists to answer four questions that
+# only hardware can: whether the driver's heap and this part's DRAM budget agree,
+# what the firmware costs against a partition table, how long a scan and a
+# connection take, and whether the driver's PHY-calibration restore path is
+# reachable at all on this chip (esp-radio leaves it `todo!()` on Xtensa, and the
+# partition table decides whether it is called).
+#
+# Credentials come from the build, named in `FORWARDED_ENV`, so a bench run is a
+# command rather than a keystroke protocol, and a build without them says so
+# instead of connecting to something it was not told to.
+[[bin]]
+name = "wifi-probe"
+path = "src/bin/wifi-probe.rs"
+required-features = ["wifi"]
+
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
 esp32c6 = [
@@ -89,19 +105,32 @@ esp32s3 = [
   "esp-backtrace/esp32s3", "esp-bootloader-esp-idf/esp32s3",
   "esp-hal/esp32s3", "esp-println/esp32s3", "esp-rtos/esp32s3",
 ]
-lckfb-szpi-esp32s3 = ["esp32s3", "dep:iot-bsp-esp", "iot-bsp-esp/lckfb-szpi-esp32s3"]
+# The board carries its own `wifi` the same way it carries `camera`: the radio is
+# on this board, so the product's link is where the driver's heap and the IP stack
+# have to fit, and `build-s3` is what answers that. Naming it here is also what
+# lets `check-s3` compile the network probe without a second feature set.
+lckfb-szpi-esp32s3 = ["esp32s3", "dep:iot-bsp-esp", "iot-bsp-esp/lckfb-szpi-esp32s3", "wifi"]
 # The camera, on its own. The S3 board feature carries it with the rest of its wiring, so
 # this exists for a board that mounts a sensor the product does not draw, and for
 # `check-features` to build the capture path alone. It is not a product tier: the product's
 # camera is not optional at runtime, because the panel has the buffer either way.
 camera = ["iot-bsp-esp/camera"]
+# The radio on its own, with the IP stack on top of it. Same shape as `camera`: the board
+# feature carries the driver's wiring and this is the pair the isolation bring-up and the
+# network probe ask for, so `check-features` can build the path alone.
+wifi = ["iot-bsp-esp/wifi", "iot-chip-esp?/radio", "dep:embassy-net"]
 
 # Log console routing for esp_println. `console-auto` mirrors device behavior:
 # USB-Serial/JTAG when a host is attached, UART otherwise. `console-uart` forces
 # UART0, which the esp-emu smoke build needs -- the emulator only scans UART0
 # for --exit-on (see docs/content/development/iot/emulation.md).
-console-auto = ["esp-println/auto"]
-console-uart = ["esp-println/uart"]
+#
+# Forwarded to the chip layer as well: `esp-println` insists on exactly one
+# console feature and this crate pulls it in through `iot-chip-esp`, so a build that
+# reaches the chip layer without an app in it -- what `scripts/iot-feature-check.sh`
+# does -- has to be able to name the console too.
+console-auto = ["esp-println/auto", "iot-chip-esp?/console-auto"]
+console-uart = ["esp-println/uart", "iot-chip-esp?/console-uart"]
 
 # Host testing backend (runs on the development machine, no ESP hardware).
 host = [
@@ -114,6 +143,7 @@ host = [
 critical-section = { workspace = true, optional = true }
 embassy-executor = { workspace = true }
 embassy-futures = { workspace = true }
+embassy-net = { workspace = true, optional = true }
 embassy-sync = { workspace = true }
 embassy-time = { workspace = true }
 embedded-alloc = { workspace = true }

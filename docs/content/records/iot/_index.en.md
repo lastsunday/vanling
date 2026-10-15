@@ -108,6 +108,19 @@ The system description lives in [development docs / IoT firmware](@/development/
 | Shared MCLK | The two units run in their own clock domains; **the transmit unit drives the pin and capture is forced subordinate**, and the direction is not interchangeable | `with_signal_loopback` is the only misleading name here |
 | Main task stack | Changed when the camera entered the product; read the linked ELF symbols | `_stack_start_cpu0` = 83,060 B |
 | esp-hal stack-overflow watchpoint | Fires spuriously and cannot be used as an overflow criterion | — |
+| **A 64 KB data cache leaves the reclaimed region empty** | esp-hal calls the space above 0x3FCF0000 "leaving to the heap", but takes the data cache off its top. At the default, `#[ram(reclaimed)]` has nowhere to go | The existing ELF in this tree has **zero symbols** above 0x3FCF0000; halving the cache buys **32 KiB** back |
+
+### Network (Wi-Fi)
+
+| Finding | Conclusion | Numbers |
+| --- | --- | --- |
+| Is there a TCP/IP stack in this generation | **No lwIP, no esp-netif** (404 on crates.io, no directory in the repo, zero hits in the changelog). What replaces it is `esp-radio` (L2) plus `embassy-net` (smoltcp) | `esp-radio` ships an `embassy_net_driver::Driver` implementation, so getting an address is wiring, not writing |
+| What "connected" means | **An address, not an association.** The reference firmware's `STA_CONNECTED` handler is empty; the bit is set from `GOT_IP` | Associated ≠ connected |
+| The three stages have three budgets | The scan is the radio's, association is the AP's reply and retries, DHCP is the network's lease — one "connecting" label hides which is slow | The probe times them apart |
+| The trap in the driver's connect defaults | A fast scan takes the first match, so **a strong same-name AP that fails authentication once is silently replaced by a weak one** | Measured on the reference firmware: −73 dBm in range, connected to −79 dBm |
+| **The DRAM budget is the hardest constraint on this board** | `dram_seg` can give **12,344 B** more (all that is left under the 65,536 B stack assertion) — not enough for the driver's buffers | Main stack 77,880 B; the Wi-Fi heap is 8 KiB + 32 KiB reclaimed |
+| **PHY calibration restore is `todo!()` on the S3** | `PROVIDE(misc_nvs_restore = __esp_radio_misc_nvs_restore)` binds the blob's undefined reference to a `#[cfg(xtensa)]` `todo!()`, and this is an Xtensa target | Workaround: **no `phy_init` partition** (at the cost of calibrating at every boot) |
+| Partition table | `espflash` defaults to a 1 MB factory partition and the firmware was already 630 KB before the Wi-Fi blobs | factory **6 MB**; a 16 MB part |
 
 ## Probes
 
@@ -123,12 +136,22 @@ A probe is not another form of the product: the product firmware **cannot produc
 | `multicore-s3` | Whether starting the second core survives the main stack sitting beneath it | Whether the stack top — where the thread-mode executor's `ThreadFlag` lives — is overwritten by the startup prologue |
 | `aec-probe` | What one audio tick of the linear canceller costs, at L = 16/32/64/128 | First/mean/worst tick, share of 20 ms, and the delay search, filter and meters timed separately |
 | `clock-probe` | What a runtime CPU clock switch costs, what stays true afterwards, and what core 1 makes of it | Ratio of one work unit across the three presets (**not `cpu_clock()` — it reads configuration, not hardware**), switch wall clock, `Instant` across a switch, both cores measuring the same work |
+| `wifi-probe` | Whether the radio and the IP stack come up at all, and whether this board's DRAM budget holds them | Scan / association / DHCP **timed apart**, how many access points the scan found, the driver's heap every 2 s, what calibration costs at boot |
 
 ```sh
 moon run iot:probe-demand-s3 && moon run iot:flash-probe-demand-s3
 ```
 
 `probe-*-s3` only builds; `flash-probe-*-s3` is what flashes. The port is in the command in `moon.yml`.
+
+`wifi-probe` has one extra step: its credentials are a **build-time input**, so the build command carries two variables.
+
+```sh
+IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-s3
+IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-wifi-s3
+```
+
+Without them it still runs and says that this build was not told to join anything — which answers "does the scan work on its own" without pretending to be a connection test. Both names are in `FORWARDED_ENV` in `scripts/iot-xtensa.sh`, and the host test `build_env.rs` fails the build if one is read but not forwarded.
 
 **All five bins are compiled on every `check-s3`, and never linked.** A probe nothing compiles rots in place: each one calls a bring-up or a chip API of its own, so a change to `Board`, `Speaker` or the chip layer breaks its build and nobody notices until the day it is needed on a bench.
 
@@ -147,5 +170,6 @@ Read on for derivations, the full list of rejected alternatives, and reproductio
 | [Motion record](@/records/iot/motion.en.md) | Rejected tap approaches, where the thresholds come from, No-Motion is a level not an event |
 | [Input and touch record](@/records/iot/input.en.md) | Page cycle measured on hardware, 2 s windows cannot show page order, only one of four polled sources may be switched off |
 | [Echo cancellation record](@/records/iot/aec.en.md) | Why Espressif's vectors cannot measure AEC, why the step must not be scaled by the residual, coherence as the freeze criterion, the delay search's confidence and rate limit, steady-state against whole-file ERLE |
+| [Wi-Fi record](@/records/iot/wifi.en.md) | No lwIP in this generation, only esp-radio plus embassy-net; "connected" means an address; three connection defaults copied from the reference firmware; how the DRAM budget was made to fit; the PHY calibration `todo!()` and the partition table's workaround |
 
 > The full derivation of throttling, with measurements and method, is in the [architecture doc](@/development/iot/architecture.en.md).

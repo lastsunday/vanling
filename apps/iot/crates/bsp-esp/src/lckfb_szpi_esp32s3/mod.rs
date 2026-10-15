@@ -19,7 +19,7 @@ use esp_hal::ledc::timer::TimerIFace as _;
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::peripherals::{
     DMA_CH0, FROM_CPU_INTR0, FROM_CPU_INTR1, GPIO39, GPIO40, GPIO41, GPIO42, LEDC, Peripherals,
-    SPI3,
+    SPI3, WIFI,
 };
 use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
@@ -29,7 +29,7 @@ use iot_core::config::MotionConfig;
 use iot_core::demand::PlaneKey;
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS};
 use iot_core::drivers::board::Board as BoardTrait;
-use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback};
+use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
@@ -318,6 +318,10 @@ pub struct Board<'d> {
     audio: Option<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>,
     speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
     camera: Option<Box<dyn FrameSource>>,
+    /// The radio peripheral, unopened. It stays here rather than being built in
+    /// `new` because the driver's start needs the scheduler, and the scheduler is
+    /// the app's to start — see [`HasWifi`].
+    radio: Option<WIFI<'static>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -377,6 +381,9 @@ impl Board<'static> {
             GPIO17,
             GPIO18,
             GPIO46,
+            // The radio, kept for `HasWifi::take_wifi`: the driver's start needs the
+            // scheduler, which the app starts after this returns.
+            WIFI,
             ..
         } = peripherals;
 
@@ -587,6 +594,7 @@ impl Board<'static> {
                 audio,
                 speaker,
                 camera,
+                radio: Some(WIFI),
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -644,6 +652,7 @@ impl Board<'static> {
                 audio: None,
                 speaker: None,
                 camera: None,
+                radio: None,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -724,6 +733,7 @@ impl Board<'static> {
                 // The probe brings its own camera up through `new_camera_only`; this path
                 // wires the speaker alone, so it must hand over none.
                 camera: None,
+                radio: None,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -840,5 +850,26 @@ impl HasAudio for Board<'static> {
 impl HasCamera for Board<'static> {
     fn take_camera(&mut self) -> Option<Box<dyn FrameSource>> {
         self.camera.take()
+    }
+}
+
+impl HasWifi for Board<'static> {
+    type Station = crate::components::wifi::EspStation;
+
+    /// Builds the station rather than handing one over, because the driver's start
+    /// needs the scheduler and this is called after it.
+    ///
+    /// A bring-up that wired no radio returns `None`, which is the same shape as a
+    /// board without one: the probe then has no radio to measure and says so rather
+    /// than looking for a fault in the driver's start.
+    fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
+        let radio = self.radio.take()?;
+        match crate::components::wifi::EspStation::new(radio) {
+            Ok(station) => Some(Box::new(station)),
+            Err(error) => {
+                log::error!("[WIFI] the radio would not start: {error:?}");
+                None
+            }
+        }
     }
 }
