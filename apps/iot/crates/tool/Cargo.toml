@@ -1,0 +1,8 @@
+[package]
+name = "iot-tool"
+version.workspace = true
+edition.workspace = true
+
+# No dependencies, deliberately: a change on the device side could otherwise
+# break the thing that builds the device side's assets. A subcommand that turns
+# out to need one gets it, scoped to its own module.

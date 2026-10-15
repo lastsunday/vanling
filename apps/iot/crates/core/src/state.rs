@@ -413,7 +413,7 @@ impl PlaybackState {
     /// and the codec's own reset already leaves the DAC unmuted.
     pub const BOOT: Self = Self {
         phase: PlaybackPhase::Idle,
-        sound: Sound::Chime,
+        sound: Sound::Tap,
         muted: false,
         plays: 0,
         dropped: 0,
@@ -2047,13 +2047,16 @@ mod tests {
             let mut manager = on_speaker();
             let boot = manager.playback_state();
             assert_eq!(boot.phase, PlaybackPhase::Idle);
-            assert_eq!(boot.sound, Sound::Chime);
+            assert_eq!(boot.sound, Sound::Tap);
             assert!(!boot.muted, "a boot that is silent reads as dead");
 
+            // Walked off the catalogue rather than written out, so adding a sound
+            // cannot leave this asserting a walk that no longer happens.
+            let second = Sound::Tap.next();
             play(&mut manager);
             let played = manager.playback_state();
             assert_eq!(played.phase, PlaybackPhase::Playing);
-            assert_eq!(played.sound, Sound::Asset, "the tap advanced the catalogue");
+            assert_eq!(played.sound, second, "the tap advanced the catalogue");
             assert_eq!(played.plays, 1);
             assert_eq!(played.dropped, 0);
 
@@ -2067,7 +2070,7 @@ mod tests {
                 PlaybackPhase::Playing,
                 "still the same sound"
             );
-            assert_eq!(dropped.sound, Sound::Asset, "and not the next one");
+            assert_eq!(dropped.sound, second, "and not the next one");
             assert_eq!(dropped.plays, 1, "so no second sound started");
             assert_eq!(dropped.dropped, 1);
 
@@ -2076,10 +2079,17 @@ mod tests {
             manager.apply_business(BusinessIntent::PlaybackFinished);
             assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
             play(&mut manager);
-            let second = manager.playback_state();
-            assert_eq!(second.sound, Sound::Chime, "the catalogue wrapped");
-            assert_eq!(second.plays, 2);
-            assert_eq!(second.dropped, 1, "the dropped tally is kept across plays");
+            let second_play = manager.playback_state();
+            assert_eq!(
+                second_play.sound,
+                second.next(),
+                "the catalogue kept walking",
+            );
+            assert_eq!(second_play.plays, 2);
+            assert_eq!(
+                second_play.dropped, 1,
+                "the dropped tally is kept across plays"
+            );
         }
 
         #[test]

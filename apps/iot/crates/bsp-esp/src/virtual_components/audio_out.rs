@@ -21,11 +21,12 @@ use iot_core::drivers::audio::{
     BYTES_PER_FRAME, CAPTURE_BYTES_PER_FRAME, DECIMATION, SAMPLE_RATE_HZ,
 };
 use iot_core::drivers::playback::{
-    Pcm, PlayStreamWatchdog, Recovery, SampleSource, Sound, Speaker, SpeakerFault, SpeakerOp,
-    Sweep, Tone,
+    PlayStreamWatchdog, Recovery, SampleSource, Sound, Speaker, SpeakerFault, SpeakerOp, Sweep,
+    Tone, from_midi, interleave_mono,
 };
 
 use crate::components::es8311::Mute;
+use crate::sounds::file_of;
 use crate::virtual_components::reference::{Writer, samples_for};
 
 /// Frames the transmit ring holds: the run of audio the CPU may write before it
@@ -74,14 +75,6 @@ const _: () = assert!(
     "the reference log cannot hold this ring's runway"
 );
 
-/// The stored sound [`Sound::Asset`] plays, as mono 16-bit little-endian samples
-/// at [`SAMPLE_RATE_HZ`] — the format the DMA transmits, so the file is the wire,
-/// and nothing is copied into RAM to reach it.
-///
-/// The file is opaque, so its recipe is in the record rather than in a generator
-/// the build does not run.
-const ASSET: &[u8] = include_bytes!("../assets/asset.pcm");
-
 /// Bytes per DMA descriptor: a 5 ms slice of the wire at [`SAMPLE_RATE_HZ`] —
 /// one feed cadence, the sensible grain for a feed to take over as the DMA
 /// finishes one.
@@ -125,9 +118,10 @@ pub fn stream() -> DmaTxStreamBuf {
     dma_tx_stream_buffer!(RING_BYTES, CHUNK_BYTES)
 }
 
-/// What the ring is being filled from. The catalogue's two sounds, and silence —
-/// which is a voice too, in that a ring is fed either way and the difference is
-/// only what goes on it.
+/// What the ring is being filled from. A catalogue sound, and the bench
+/// excitation — which is a voice too, in that a ring is fed either way and the
+/// difference is only what goes on it.
+///
 /// The band the room measurement's sweep crosses.
 ///
 /// **It stops at 6 kHz and starts at 300 Hz** because the answer is deconvolved,
@@ -147,24 +141,21 @@ const SWEEP_TO_HZ: u32 = 6_000;
 pub const SWEEP_MS: u32 = 200;
 
 enum Voice {
-    Chime(Tone),
-    Asset(Pcm<'static>),
+    Tone(Tone),
     Sweep(Sweep),
 }
 
 impl SampleSource for Voice {
     fn fill(&mut self, out: &mut [i16]) -> usize {
         match self {
-            Self::Chime(tone) => tone.fill(out),
-            Self::Asset(asset) => asset.fill(out),
+            Self::Tone(tone) => tone.fill(out),
             Self::Sweep(sweep) => sweep.fill(out),
         }
     }
 
     fn done(&self) -> bool {
         match self {
-            Self::Chime(tone) => tone.done(),
-            Self::Asset(asset) => asset.done(),
+            Self::Tone(tone) => tone.done(),
             Self::Sweep(sweep) => sweep.done(),
         }
     }
@@ -172,8 +163,14 @@ impl SampleSource for Voice {
 
 /// Renders audio into a ring slice: up to [`PUSH_FRAMES`] frames of the voice's
 /// next samples, or silence when there is none, each stereo-ised to the wire
-/// format. One frame at a time, so a slice ending mid-ring cannot strand a voice
-/// ahead of the DMA. Answers the bytes written, for a bounded hand-off.
+/// format. Answers the bytes written, for a bounded hand-off.
+///
+/// Two steps, not one fused loop: the voice is asked for a whole slice of mono
+/// frames, then [`interleave_mono`] widens them. Asking one frame at a time
+/// meant re-entering the voice 240 times a feed, and — the reason the two are
+/// separate here rather than the same thing — it left the interleaving itself
+/// untested, because the version on this path was a copy of a function no test
+/// could reach.
 ///
 /// The frames are also copied into `rendered`, which is what makes the
 /// transmitted stream readable back for a canceller. It is written on the *write*
@@ -185,29 +182,19 @@ fn render_slice(
     produced_sound: &mut bool,
     rendered: &mut [i16; PUSH_FRAMES],
 ) -> usize {
-    let mut written = 0;
-    for frame in buf.chunks_exact_mut(BYTES_PER_FRAME).take(PUSH_FRAMES) {
-        let sample = match voice.as_mut() {
-            Some(voice) => {
-                let mut single = [0i16; 1];
-                *produced_sound |= voice.fill(&mut single) == 1;
-                single[0]
-            }
-            None => 0,
-        };
-        // Both slots carry the same sample, so one sample reaches the log per
-        // frame: a second would decimate the log at half the intended rate and
-        // the capture would pair against the wrong frames.
-        for slot in frame.chunks_exact_mut(2) {
-            slot.copy_from_slice(&sample.to_le_bytes());
-        }
-        let Some(slot) = rendered.get_mut(written / BYTES_PER_FRAME) else {
-            break;
-        };
-        *slot = sample;
-        written += BYTES_PER_FRAME;
+    // Whole frames only: a tail too short for one would be half a frame on the
+    // wire, which is a click.
+    let frames = (buf.len() / BYTES_PER_FRAME).min(PUSH_FRAMES);
+    let mut produced = 0;
+    if let Some(voice) = voice.as_mut() {
+        produced = voice.fill(&mut rendered[..frames]);
     }
-    written
+    *produced_sound |= produced != 0;
+    // Whatever the voice did not reach is silence, and has to be said so: the
+    // tail of a spent score is the gap between a sound's last note and its end.
+    rendered[produced..frames].fill(0);
+
+    interleave_mono(&rendered[..frames], buf)
 }
 
 /// What playback needs from a codec driver: the mute latch.
@@ -431,10 +418,23 @@ where
     /// codec's lock — the pull of the draw, putting sound on a stream that has
     /// been running all along.
     fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault> {
-        self.voice = Some(match sound {
-            Sound::Chime => Voice::Chime(Tone::chime()),
-            Sound::Asset => Voice::Asset(Pcm::new(ASSET)),
-            Sound::Sweep => Voice::Sweep(Sweep::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS)),
+        self.voice = Some(match file_of(sound) {
+            // The parse runs here rather than in the feed because it allocates,
+            // and `play` is called from the control loop — the one place on this
+            // path the heap is reachable. A file that would not parse is a sound
+            // the catalogue names and the speaker cannot make, which is a fault
+            // rather than a silent gap: the page would sit in `Playing` for ever
+            // waiting on a voice that was never built.
+            Some(score) => {
+                let Some(notes) = from_midi(score) else {
+                    return Err(SpeakerFault::new(
+                        SpeakerOp::Play,
+                        "a sound file would not parse",
+                    ));
+                };
+                Voice::Tone(Tone::playing(notes))
+            }
+            None => Voice::Sweep(Sweep::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS)),
         });
         self.tail = false;
         Ok(())

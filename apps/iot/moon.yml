@@ -60,6 +60,19 @@ tasks:
     deps:
       - ~:check
 
+  # The sound catalogue's files are build products of a table that lives in
+  # `iot-tool`, so nothing else in the workspace holds them to it.
+  test-tool:
+    command: 'cargo test -p iot-tool'
+
+  # Rebuild `assets/*.mid` from the recipes. Writes the source tree, and running
+  # it in CI would paper over exactly the failure `test-tool` exists to catch.
+  gen-midi-assets:
+    command: 'cargo run --quiet -p iot-tool -- midi'
+    options:
+      cache: false
+      runInCI: false
+
   # Every component feature compiled on its own, which is what features.md rule 5
   # asks for and what no other task here checks: a board feature is by
   # construction the union of what that board wires, so a component reaching for a

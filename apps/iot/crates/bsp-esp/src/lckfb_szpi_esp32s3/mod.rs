@@ -461,7 +461,7 @@ impl Board<'static> {
 
         // One I2S, one pair of BCLK and WS pins, two codecs, so the pin pair is
         // wired once in either layout and both codecs are timed from one divider
-        // — a microphone and a speaker a hertz apart is a capture and a chime
+        // — a microphone and a speaker a hertz apart is a capture and a tap
         // that sound like two devices.
         //
         // The two units run in separate clock domains and neither can be the

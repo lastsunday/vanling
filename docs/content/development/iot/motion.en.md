@@ -3,8 +3,8 @@ title = "Motion Semantic Framework"
 weight = 250
 sort_by = "weight"
 [extra]
-source_file_hash = "4573458b0670cfd2b70ed000b56452bf4968cd46"
-translated_at = "2026-10-11T07:32:02Z"
+source_file_hash = "f1a2adfcdc2c0d328e849e1d89f5435bc1797c4d"
+translated_at = "2026-10-15T02:29:35Z"
 +++
 
 # Motion Semantic Framework

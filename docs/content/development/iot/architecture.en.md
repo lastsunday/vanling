@@ -2,8 +2,8 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "16df9f4ce074989fbfd6462e66a9050b23901b0d"
-translated_at = "2026-10-14T15:19:04Z"
+source_file_hash = "b4c58dd507c246979e565ef69f43f4824200d9bb"
+translated_at = "2026-10-15T02:45:17Z"
 +++
 
 # Layering and Composition
@@ -20,6 +20,7 @@ translated_at = "2026-10-14T15:19:04Z"
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
+- **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
 ## Composition (three orthogonal axes)
 

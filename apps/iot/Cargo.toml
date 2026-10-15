@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/chip-esp", "crates/bsp-esp", "crates/app"]
+members = [
+  "crates/core",
+  "crates/chip-esp",
+  "crates/bsp-esp",
+  "crates/app",
+  # Host-side: reads and writes this repository's source files, not the device.
+  "crates/tool",
+]
 
 [workspace.package]
 version = "0.1.0"

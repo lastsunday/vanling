@@ -48,7 +48,7 @@ pub const CAPTURE_BYTES_PER_FRAME: usize = BYTES_PER_SAMPLE as usize;
 /// Bytes one whole I2S frame occupies on the wire: its slots, each one sample
 /// wide. The unit a playback ring is measured in, and the reason a mono source
 /// has to be widened before it reaches the DMA rather than sized for one slot —
-/// see `playback::interleave_mono`.
+/// see [`playback::interleave_mono`], which is what puts a mono frame on the wire.
 pub const BYTES_PER_FRAME: usize = SLOTS_PER_FRAME as usize * BYTES_PER_SAMPLE as usize;
 
 /// Capture cadence: how often the input loop polls the capture, and so how much

@@ -40,6 +40,14 @@ pub mod camera_readout;
 /// reporting can be built and tested on a host.
 pub mod post;
 
+/// The sound catalogue: which MIDI file each sound is.
+///
+/// Its own module, ungated like [`post`], because the files are plain bytes and
+/// the speaker driver that plays them needs a chip to exist. Reading them here
+/// is what lets a sound file that would not parse be caught by the host tests
+/// rather than by the first tap on hardware.
+pub mod sounds;
+
 /// Abstract components assembled from real ones. Gated on whichever is present
 /// rather than on one of them: each virtual component carries its own gate
 /// below, so a board wiring only the speaker still gets its transport and a

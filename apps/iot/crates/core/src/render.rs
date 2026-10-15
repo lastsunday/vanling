@@ -545,7 +545,7 @@ mod tests {
         let mut playing = base.clone();
         playing.playback.phase = PlaybackPhase::Playing;
         let mut source = base.clone();
-        source.playback.sound = Sound::Asset;
+        source.playback.sound = Sound::Rise;
         let mut muted = base.clone();
         muted.playback.muted = true;
         let mut played = base.clone();

@@ -14,7 +14,6 @@ use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, rgb_hue, scale_brightness, vertical_brightness,
 };
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
-use iot_core::drivers::playback::Sound;
 use iot_core::horizon::{SCALE, horizon};
 use iot_core::overlay::{
     Block, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS, RIGHT_EDGE_X,
@@ -31,6 +30,7 @@ use crate::camera_readout::{format_u32, frame_fingerprint, write_ratio};
 use crate::components::backlight::Backlight;
 use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::components::st7789::St7789;
+use crate::sounds::label_of;
 use core::sync::atomic::{AtomicU32, Ordering};
 use esp_hal::time::{Duration, Instant};
 
@@ -1280,11 +1280,7 @@ impl DisplayLight {
         );
         self.stamp_left(
             b"SRC",
-            match playback.sound {
-                Sound::Chime => b"CHIME",
-                Sound::Asset => b"ASSET",
-                Sound::Sweep => b"SWEEP",
-            },
+            label_of(playback.sound),
             Block::First,
             2,
             width,

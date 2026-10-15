@@ -13,7 +13,9 @@ pre-commit:
     iot-clippy:
       glob: "**/*.rs"
       root: apps/iot/
-      run: cargo clippy --workspace --target riscv32imac-unknown-none-elf -- -D warnings
+      # `iot-tool` is host-side and a bare-metal target has no std; a second
+      # host tool goes here too. Why not a feature: records/iot/playback.md.
+      run: cargo clippy --workspace --exclude iot-tool --target riscv32imac-unknown-none-elf -- -D warnings
     iot-clippy-host:
       glob: "crates/core/**/*.rs"
       root: apps/iot/

@@ -168,7 +168,7 @@ mod tests {
         }
 
         fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault> {
-            self.last = Some((Sound::Chime, muted));
+            self.last = Some((Sound::Tap, muted));
             Ok(())
         }
 
@@ -276,7 +276,7 @@ mod tests {
             playback: Some(FakeSpeaker::new()),
         };
         let mut speaker = wired.take_playback().expect("speaker present");
-        speaker.play(Sound::Asset).expect("the fake codec answers");
+        speaker.play(Sound::Rise).expect("the fake codec answers");
         assert!(
             wired.take_playback().is_none(),
             "taken exactly once, so the app cannot start a second ring"

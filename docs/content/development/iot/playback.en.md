@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 270
 sort_by = "weight"
 [extra]
-source_file_hash = "4a3577ad66f5b9f318ce9aaa58a7fe279b6b7f3a"
-translated_at = "2026-10-14T15:19:04Z"
+source_file_hash = "f19e622a2127b92fd17fa49d38e52d2897bdebda"
+translated_at = "2026-10-15T02:20:27Z"
 +++
 
 # Playback Semantics
@@ -27,7 +27,7 @@ That loop is split into two tasks on two executors, because a cadence and a bloc
 
 `feed_loop` does nothing but the 5 ms cadence and one memory write, and is spawned onto the S3's `FROM_CPU_INTR1` at `Priority2`. `control_loop` handles commands, the I2C behind `play()`/`set_muted()`, and reporting `finished` back on the intent bus, and stays on the cooperative `FROM_CPU_INTR0`.
 
-The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tread on the arm the other is using.
+The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tread on the ring the other is writing.
 
 That is why `Speaker` demands `Send + 'static`, and why its error is the named `SpeakerFault` rather than each implementation's own type: a trait object cannot spell an unnamed associated type.
 
@@ -51,19 +51,61 @@ With no ES8311 found, `playback_enabled` is false and the page does not enter th
 
 ## Where the sound comes from
 
-The catalogue holds two sounds, and they share one format: 48 kHz mono 16-bit, handed to the driver and widened into a two-slot frame.
+The catalogue holds five sounds, and **each one is a MIDI file** (`bsp-esp/src/assets/*.mid`) in the same format: a Standard MIDI File, which any DAW can open, play and edit.
 
-`interleave_mono` copies every sample into both slots. A mono source into a two-slot frame has to look stereo, or only half the frame would be ours. A tail too short for a whole frame is simply not written, because a partial frame on the wire is a click.
+MIDI is not here for its synthesis abilities — it carries no timbre and no per-note envelope in either version — it is here for **provenance**. Stored as PCM blobs, the sounds are untraceable binaries with a recipe in a comment that the build does not run; stored as MIDI, anyone who opens a file can tell what it is and change it.
 
-- `Chime` (the default): synthesised as it plays by `Tone`. The `CHIME` score is 880 Hz for 120 ms, a 40 ms rest, then 1320 Hz for 180 ms — two notes and a gap, 340 ms all told, an answer you hear rather than a tune you sit through. Each end has a ramp into silence (12 ms and 40 ms), because a note that starts or stops on a step edge clicks, and a click is louder than a bad note
-- `Asset`: a PCM blob in flash (`bsp-esp/src/assets/asset.pcm`), read straight out as 16-bit LE by `Pcm`. Its rate and width are not checked — those are properties of the file that only its author knows, and guessing wrong shows up as "4% slow" rather than as an error
-- The peak is `TONE_PEAK_LSB = 23_000` (the 16-bit wire's own LSB), deliberately short of the rail: the level control is the DAC's volume register (`0x32`), and these 23 000 are only the headroom left to it
+The layout is not a matter of taste — it was searched for under the earcon guidelines: **thirty-two semitones have to hold five sounds, and the table below is the only arrangement that fits.** Why these five numbers is in the [playback record](@/records/iot/playback.en.md#why-the-first-versions-five-sounds-did-not-sound-like-five).
 
-### The Asset's recipe lives in a comment
+| `Sound` | `SRC` | Score | Notes | Register | Length | Meaning |
+| --- | --- | --- | --- | --- | --- | --- |
+| `Rise` | `RISE` | D#4 137 ms / rest 25 / D#5 150 ms | 2 | lowest | 312 ms | ascent |
+| `Error` | `ERROR` | A5 112 ms / rest 25 / E5 125 ms | 2 | low-middle | 262 ms | it failed |
+| `Notice` | `NOTICE` | B5 200 ms | **1** | middle | 200 ms | something happened |
+| `Tap` (the default) | `TAP` | D6 100 / rest 25 / E6 100 / rest 25 / F#6 100 | **3** | high-middle | 350 ms | confirmation |
+| `Warn` | `WARN` | A6 87 ms ×4, 12 ms apart | **4** | highest | 384 ms | needs attention |
 
-There is no generator in the repository and the build does not run one. Changing the sound means re-synthesising from the numbers in the `ASSET` comment in `audio_out.rs`.
+Neighbouring registers are **exactly three semitones apart**, no pitch is used by two sounds, and all five lengths differ. The only repetition is the two-note count, and it falls on `ERROR` and `RISE` because they are the one pair whose contours are opposite — falling against rising is the single difference the ear cannot get wrong.
 
-The recipe is 660 Hz for 120 ms then 880 Hz for 160 ms, each note summing partials at 1.0, 2.76 and 5.40 of its fundamental. The result is 325 ms, peaking at 18 000 LSB, ramped to zero at both ends with 45 ms of trailing silence.
+`RISE`'s **bare octave** is the shape of Google's brand sound `Super G`, placed in the lowest register so it does not compete with `TAP`. The reasoning is in the [Playback Implementation Record](@/records/iot/playback.en.md#why-not-an-arpeggio).
+
+Moving `TAP` from two notes to three is the largest concession in this version: it is both the default sound and the boot sound, and Google's rule is that **the more often an interaction happens, the less intrusive that sound should be** — while three notes run 30 ms longer than two. The reasoning is in the [playback record](@/records/iot/playback.en.md#why-tap-went-from-two-notes-to-three).
+
+`D#4` is the note this speaker reproduces worst, so `RISE` is carried by its 2.76 partial at 765 Hz rather than by its fundamental. That one is **not measured** — it follows from how a small speaker rolls off, and it wants a listen on the board.
+
+`Sweep` is a sixth sound but is **not in the tap cycle**: it is the bench excitation, generated from a band of frequencies rather than played from a file.
+
+Parsing runs through `from_midi` inside `play()`, which is on the cooperative side and can allocate; the feed interrupt walks the parsed note table and never touches a byte of the file.
+
+`from_midi` skips every event an earcon does not use — track names, program changes, controllers, sysex — rather than refusing the file. A DAW writes those by default, so refusing a file for carrying them would make the one authoring tool in use the one that does not work. Tracks are concatenated in file order: a piece split across tracks is one sound, not several, and reading them apart would silently play only the first.
+
+### The ramp is inferred, not declared
+
+MIDI has note on and note off, and no envelope — and a note starting or ending on a step edge is a click.
+
+So `ramp_of(ms) = min(ms / 4, 40 ms)` is applied at both ends of every note and written into `Note` as `from_midi` reads the file. The cap matters: a proportional ramp spends three quarters of a three-second note fading rather than sounding.
+
+This is a real retreat from "hand-declared" to "inferred by rule" — there is no way to say of one particular note that it wants a 40 ms release. The rule is pinned by `a_note_ramps_at_both_of_its_ends`.
+
+### Timbre: one family, two inharmonic partials
+
+`TIMBRE = [(100, 180), (276, 76)]`, a ratio in hundredths and a Q8 gain.
+
+**Inharmonic on purpose**: a real bell's partials are not integer multiples of its fundamental, and integer multiples are exactly what makes a synthesised tone a buzzer — which is why the sound this replaced had to be stored as samples rather than generated.
+
+**"The five share one timbre" was only half true.** The partial ratio is fixed at ×2.76, but it rides on the fundamental, so `RISE`'s partial sits at 765 Hz and `WARN`'s at 4858 Hz. The five spectra differ by an order of magnitude and already sound like five timbres rather than one. The docs used to call it one because "same partial ratio" got read as "same timbre" — which is also the good news: `WARN`'s 4858 Hz partial lands right on a small speaker's roll-off, and any higher would have forced the catalogue to give ground.
+
+The gains **sum to exactly full scale** in Q8 (180 + 76 = 256), so two partials together cannot reach further than one alone. That cap is what stops a note whose partials happen to line up from pushing the sum past the rail.
+
+Past three partials the arithmetic has to be redone: the per-sample cost grows with the partial count, and eight would eat the 5 ms cadence. Past that point the choice is a cached wavetable — which only accepts harmonic ratios, and so returns to the buzzer — or a longer interval.
+
+`Tone::on(score, &PLAIN)` speaks with a single partial, and `a_lone_partial_is_the_oscillator_it_replaced` uses it to compare, sample for sample, against **the synthesis it replaced written out in the test**.
+
+`interleave_mono` copies each sample into both slots. A mono source into a two-slot frame has to look stereo, or only half the frame is ours; a tail too short for a whole frame writes nothing — half a frame on the wire is a click.
+
+`render_slice` does this in two steps: ask the source for a whole slice of mono frames, then widen it with `interleave_mono`. The fused version it replaced called in one frame at a time, re-entering the source 240 times a feed, and its interleaving was a hand-copy inside `audio_out` that no test could reach.
+
+The peak is `TONE_PEAK_LSB = 23_000` (the 16-bit wire's own LSB), deliberately short of the rail: the level control is the DAC's volume register (`0x32`), and these 23 000 are only the headroom left to it.
 
 Synthesis is fixed point too, like the [capture side](@/development/iot/audio.en.md), but for a different reason: metering chose fixed point, whereas synthesis was forced to.
 
@@ -82,7 +124,7 @@ Fidelity is pinned by tests, not by this comment: every entry and every interpol
 | Label | Field | Unit | Meaning |
 | --- | --- | --- | --- |
 | `ST` | `playback.phase` | — | `IDLE` nothing playing / `PLAY` playing; only the driver pushes it back to `IDLE` |
-| `SRC` | `playback.sound` | — | The sound the next tap will play, `CHIME` / `ASSET`, cycled by a click |
+| `SRC` | `playback.sound` | — | The sound the next tap will play, `TAP` / `NOTICE` / `WARN` / `ERROR` / `RISE`, cycled by a click |
 | `MUTE` | `playback.muted` | — | Stamped only while latched, the same way `CLIP` appears: it is a state, not an event |
 | `PLY` | `playback.plays` | times | How many sounds actually made it out |
 | `DRP` | `playback.dropped` | times | Taps that landed on `PLAY` and were dropped |
@@ -93,27 +135,21 @@ The Speaker page has no animation, and that is why it is not in `is_live_page()`
 
 A page repainting 320×240 pixels every frame to say the same sentence is pure waste. The Audio page is the opposite — its sweep is always moving.
 
-## One 20 ms arm, not a resident ring
+## One resident ring, 120 ms of runway
 
-The board's playback driver (`virtual_components/audio_out.rs`) does not use a "4096-byte resident ring with a cursor" design, and that is forced by how `esp-hal` actually works:
+The board's playback driver (`virtual_components/audio_out.rs`) builds one **streaming ring** at bring-up and never touches it again: 24 descriptors of 960 bytes, 23 040 bytes in total = **120 ms of audio on the wire**. The DMA walks that ring from end to end, and each feed tops up **the slice the DMA has already played** rather than swapping in a fresh one.
 
-On the TX side, descriptors never come back from the DMA to the CPU. The writable byte count `I2s::write()` hands over is a one-shot budget, and there is no path that returns the ring to you once the chain runs.
+So the "allocate a ring per arm" design is wrong here, and wrong twice over. On the TX side descriptors never come back from the DMA to the CPU: the writable byte count `I2s::write()` hands over is a one-shot budget with no path that returns the ring to you once the chain runs, so a second use of the same ring either hits `available_bytes == 0` or plays the previous round again. A streaming ring works precisely because it **tops up and never swaps**.
 
-So the second use of the same ring runs into one of two bad outcomes: either `available_bytes` hits zero and nothing more can be filled, or the previous round's contents play again.
+A descriptor's length — 960 bytes = 5 ms — is chosen by the app's cadence, not by the DMA. Dividing evenly means every feed lands on its own grid line instead of a beat late, and a beat late quantizes the moment playback starts, which plays a stored sound a few percent flat: exactly the kind of thing that sounds wrong with nothing to point at.
 
-Every arm therefore allocates a fresh 3840-byte ring (960 bytes × 4 = 960 frames = 20 ms), plays it once, waits for `is_done()`, and after `stop()` drops the ring. Allocation goes through `esp-hal`'s own internal memory pool, and dropping the ring returns the block.
+The playback task never waits for the DMA. A feed is a plain memory write; what waits is the DMA.
 
-An arm's length is chosen by the app's cadence, not by the DMA.
-
-The playback task feeds every 5 ms, and a 20 ms arm is exactly four of them. Dividing evenly means every arm is re-armed on its own grid line instead of a beat late.
-
-A beat late quantizes the moment playback starts, which plays a stored sound a few percent flat — exactly the kind of thing that sounds wrong with nothing to point at.
-
-The playback task does not wait for an arm to finish. A feed is therefore only "is the last arm done", a plain memory write; what waits on the DMA is the DMA.
+The 120 ms of runway is not an estimate, it is the ring's length — and being pushed late once is enough to drain it. That is why the ring is resident rather than allocated on demand.
 
 Why the feed gets a preemptible executor of its own is that under cooperative scheduling "nothing else is running" is not a state you get to assume.
 
-On the same cooperative executor, a capture fold, a panel write and input diagnostics each hold the CPU for stretches well beyond the 5 ms cadence, so a feed is eventually pushed late. The playback ring has 120 ms of runway, and being pushed late once is enough to drain an arm.
+On the same cooperative executor, a capture fold, a panel write and input diagnostics each hold the CPU for stretches well beyond the 5 ms cadence, so a feed is eventually pushed late. The playback ring has 120 ms of runway, and being pushed late once is enough to drain it.
 
 The per-task measurements, the warm-up soak, and the 158-second record taken after the move are in the [Playback Implementation Record](@/records/iot/playback.en.md).
 
@@ -125,7 +161,7 @@ Capture still took 17 ms and the panel still took 16 ms throughout. They just ca
 
 `Priority2` is a deliberate ceiling: any higher and the feed would starve input and rendering in turn, becoming the thing everything else waits on.
 
-`play()` does not cut the arm already in flight either: the step where arms meet is a click. The cost is up to 20 ms from tap to sound.
+`play()` does not cut what is already on the ring either: the step where two sounds meet is a click. The cost is up to one descriptor = 5 ms from tap to sound.
 
 ## Clocks: one MCLK, RX hung off the TX's clocks
 
@@ -215,10 +251,16 @@ The amplifier is not in `Speaker`: it is board wiring, not a driver contract.
 ## Tests
 
 ```bash
-moon run iot:test        # core: sound catalogue, state machine, UnwiredSpeaker, the synthesiser
-moon run iot:test-bsp    # board: ES8311 register rows (MockI2c)
-moon run iot:smoke-host  # end to end: both sounds, dropping, finishing, mute
+moon run iot:test        # core: MIDI parsing, additive synthesis, the state machine, UnwiredSpeaker
+moon run iot:test-bsp    # board: the sound catalogue (what note each file holds), the ES8311 register rows (MockI2c)
+moon run iot:smoke-host  # end to end: the catalogue, a drop, completion, mute
 ```
+
+They are in two places, because they need different things.
+
+The seven in `sounds.rs` under `moon run iot:test-bsp` walk the catalogue over `Sound::ALL` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
+
+The six under `moon run iot:test-tool` are about **files and recipes**: that the `.mid` on disk is byte for byte what the recipes generate, that the directory holds no `.mid` no recipe claims, that the table's own shape rules hold (registers three semitones apart, lengths all different), and that the board's `include_bytes!` filenames match the recipes. **A sound edited in a DAW without the `RECIPES` table updated makes `moon run iot:test-tool` go red.**
 
 The cross-layer invariant index is in [Audio Metering Semantics · Testing](@/development/iot/audio.en.md#testing) — one table covering the invariants shared by both sides, with the "deliberately break it, confirm red" column. The few unique to playback:
 
@@ -226,8 +268,8 @@ The cross-layer invariant index is in [Audio Metering Semantics · Testing](@/de
 | --- | --- | --- |
 | every synth table entry is within 1 LSB of `sinf` | `the_table_holds_the_oscillator_it_replaced` | ✅ a 4 LSB table error turns it red |
 | still within 1 LSB after interpolation | `the_interpolated_oscillator_tracks_sinf_within_an_lsb` | ✅ as above turns it red |
-| the phase never leaves the table | `a_chime_stays_inside_the_table_it_indexes` | ✅ mismatched units turn it red |
-| the envelope is capped by the ramp | `a_chime_opens_and_closes_on_silence` | ✅ dropping `min(ramp)` turns it red |
+| the phase never leaves the table | `every_partial_stays_inside_the_table_it_indexes` | ✅ mismatched units turn it red |
+| the envelope is capped by the ramp | `a_tap_opens_and_closes_on_silence` | ✅ dropping `min(ramp)` turns it red |
 | a brief idle ring is not a drained stream | `a_brief_idle_between_feeds_is_not_a_drained_stream` | ✅ deciding straight off `tx_idle` turns it red |
 | ES8311 needs a second write after power-up | `es8311`'s power-on value test | ✅ dropping the second write turns it red |
 | a tap over a sounding one is dropped | `smoke-host`'s `dropped` tally | — |
@@ -245,6 +287,6 @@ After the split into two tasks, the `smoke-host` case for "a tap over a sounding
 
 `feed()` reports "nothing to feed" whenever no sound is on it, and it is already running before `play()`. So the "finished" report it left stands in `done` and is read as the end of the new sound: the sound starts and is immediately judged finished, and the page returns to `Idle`.
 
-The next trigger therefore plays on rather than dropping, seen as `played = [Asset, Chime]`, `dropped = 0`.
+The next trigger therefore plays on rather than dropping, seen as `played = [Notice, Tap]`, `dropped = 0`.
 
 The `play()` that is accepted must therefore clear `done` while holding the lock: both halves in one critical section, so the feed cannot set it again in between.

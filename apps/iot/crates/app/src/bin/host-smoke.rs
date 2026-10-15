@@ -686,7 +686,7 @@ async fn scenario() {
     );
 
     // 7. A click on the speaker page plays: the driver is asked for the sound
-    //    after the boot chime, and the panel reports the play.
+    //    after the boot tap, and the panel reports the play.
     click(1).await;
 
     attempts = 0;
@@ -710,8 +710,8 @@ async fn scenario() {
     }
     assert_eq!(
         PLAYED.lock().unwrap().as_slice(),
-        &[Sound::Asset],
-        "a tap did not reach the driver with the asset sound"
+        &[Sound::Notice],
+        "a tap did not reach the driver with the next sound"
     );
     assert_eq!(
         PLAYBACK_PLAYS.load(Ordering::SeqCst),
@@ -735,7 +735,7 @@ async fn scenario() {
     );
     assert_eq!(
         PLAYED.lock().unwrap().as_slice(),
-        &[Sound::Asset],
+        &[Sound::Notice],
         "a dropped tap still reached the driver"
     );
 

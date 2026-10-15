@@ -293,8 +293,8 @@ The "break verified" column reads as: deliberately break that invariant and conf
 | --- | --- | --- |
 | every synth table entry is within 1 LSB of `sinf` | `the_table_holds_the_oscillator_it_replaced` | ✅ a 4 LSB table error turns it red |
 | still within 1 LSB after interpolation | `the_interpolated_oscillator_tracks_sinf_within_an_lsb` | ✅ as above |
-| the oscillator phase never leaves the table | `a_chime_stays_inside_the_table_it_indexes` | ✅ mismatching `WAVE_TURN` with `PHASE_BITS` turns it red |
-| the envelope is capped by the ramp (no overshoot into clipping) | `a_chime_opens_and_closes_on_silence` | ✅ dropping `min(ramp)` turns it red |
+| the oscillator phase never leaves the table | `every_partial_stays_inside_the_table_it_indexes` | ✅ mismatching `WAVE_TURN` with `PHASE_BITS` turns it red |
+| the envelope is capped by the ramp (no overshoot into clipping) | `a_tap_opens_and_closes_on_silence` | ✅ dropping `min(ramp)` turns it red |
 | a brief idle ring is not a drained stream | `a_late_poll_within_the_silence_limit_is_not_a_stall` | — |
 | only a genuine drain triggers a rebuild | `a_brief_idle_between_feeds_is_not_a_drained_stream` | ✅ deciding straight off `tx_idle` turns it red |
 | the microphone's DC-blocking write order cannot be swapped | `es7210`'s MockI2c trace test | ✅ swapping `0x0A`/`0x2A` turns it red |
