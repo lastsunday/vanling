@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/iot/architecture">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;research&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link active">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link active leaf">分层与组合</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/iot/architecture/#分层与组合">分层与组合</a></li>
+    
+  </ul>
+  
+  <h1 id="分层与组合">分层与组合</h1>
+<h2 id="分层">分层</h2>
+<p><code>iot-core(纯逻辑) → iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(单任务二进制)</code></p>
+<ul>
+<li><strong>接线只出现在 <code>bsp/</code> 板模块</strong>：<code>Board::new(Peripherals)</code> 内固定引脚；业务代码禁止出现引脚号</li>
+<li><strong>bsp-esp 内部分两层元件</strong>：<code>components/</code> 是实际元件（芯片驱动，参数化总线与引脚，不认板）；<code>virtual_components/</code> 是抽象元件（由实际元件组装而成的虚拟器件，如 <code>DisplayLight</code> 把 ST7789 面板适配成 <code>RgbLight</code>）。板模块只做选引脚与装配，元件本身跨板通用</li>
+<li><strong>元件独立 feature</strong>：每个元件一个 feature，在 <code>components/</code> 的 <code>mod</code> 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 <a href="https://lastsunday.github.io/vanling/development/iot/features/">features.md</a> 模块轴）</li>
+<li><strong>iot-chip-esp</strong>：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 <code>#[esp_rtos::main]</code> 留在 app <code>main.rs</code></li>
+<li><strong>iot-bsp-esp</strong>：板差异收敛在 <code>type Board</code> 别名与 run 分发，每板一个 <code>#[cfg(feature)]</code> 分支</li>
+<li><strong>iot-app</strong>：应用层，产品名 <code>vanling</code>；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统</li>
+<li><strong>命名约定</strong>：板层用板名、应用层用产品名，不重复</li>
+<li><strong>main 入口</strong>：按家族 feature 分支，每家族一份</li>
+<li><strong>iot-tool 在这条链之外</strong>：唯一不属于设备的 crate，读写本仓的源文件（目前只有 <code>midi</code>，生成声音目录的 <code>.mid</code>）。<strong>零依赖</strong>——固件一改不该把生成固件资产的那个东西改坏。裸金属的 <code>--workspace</code> 只剩 <code>lefthook.yml</code> 里那一条，已 <code>--exclude iot-tool</code>；<code>moon</code> 各任务都显式带 <code>-p</code>，本来就不碰它。入口是 <code>moon run iot:test-tool</code> 与 <code>moon run iot:gen-midi-assets</code></li>
+</ul>
+<h2 id="组合（三轴正交）">组合（三轴正交）</h2>
+<p>硬件（板 feature）⊥ 模块（模块 feature）⊥ 能力（<code>iot-core</code> trait）。模块只见能力、板只供能力。</p>
+<ul>
+<li><strong>组合点 = bin 板清单</strong>：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默</li>
+<li><strong>产品档 = feature 别名</strong>：档定模块集、板定支持集，交点编译期裁剪校验</li>
+<li><strong>模块可配置</strong> = feature 开关 + const 参数</li>
+<li><strong>渲染层运行时可插拔</strong>：core 里一个零分配的中央 <code>RenderController</code> 做 reconcile（闭包回调），app 里一个堆上的注册表（<code>embedded-alloc</code> 32 KB 堆）。boot LED 在任务内注册，跨任务的 renderer 走 <code>RENDER_BUS</code> 并要求 <code>Send</code></li>
+</ul>
+<h2 id="需求模型（要什么_/_多频繁_/_多敏感）">需求模型（要什么 / 多频繁 / 多敏感）</h2>
+<p>当前固件是<strong>板级接入验证</strong>，不是产品；结构要能容纳后续应用把任一元件提升为主要交互或运算，且那条路径允许开到该元件的最大能力。</p>
+<p>一个需求是三句独立的话，必须分开表达：</p>
+<table><thead><tr><th>维度</th><th>问的问题</th><th>类型</th><th>决定什么</th></tr></thead><tbody>
+<tr><td><strong>模式</strong></td><td>产不产</td><td><code>Mode</code>：<code>Off</code> / <code>OnChange</code> / <code>Continuous</code></td><td>轮询是否发生、是否按时钟产</td></tr>
+<tr><td><strong>节奏</strong></td><td>多频繁</td><td><code>PlaneDemand::period_ms</code>（0 = 板级节奏）</td><td>轮询周期的下限</td></tr>
+<tr><td><strong>敏感度</strong></td><td>多旧还算对</td><td><code>Sensitivity</code>：<code>Primary</code> / <code>Secondary</code> / <code>Background</code></td><td>本板无处落地（见下），只参与仲裁与日志</td></tr>
+</tbody></table>
+<p>而「怎么取」——寄存器组、FIFO、片上引擎、传输——是采集配置（<code>MotionConfig</code> 等），由驱动选定，页面永远不点名。</p>
+<p>这条分离让「低保真 + 高成本」不可表达：页面根本没有办法要求一个更差的画面来省资源。</p>
+<p>把两者合成一个「档位」序数，等于同时编码「要什么」和「怎么取」。降档既像降保真、又像省资源，而降档并不等于省资源。</p>
+<p><code>Sensitivity</code> 在本板改不动任何节奏，这是硬件决定的。Android 的 <code>max_report_latency</code> 前提是事件按时钟采集、只在上报前压在 FIFO 里，所以「采得勤、报得晚」是两句独立的话。本板 IMU 没有 FIFO，报得晚只能换成采得稀，而那正是 <code>period_ms</code> 已经说出口的话。</p>
+<p>所以「class → 毫秒」那层查表在本板不可兑现：它只会把 <code>period_ms</code> 乘一个系数再取 max。</p>
+<p>Android 那一侧给的两条形状照抄过来：</p>
+<ul>
+<li>
+<p>每个传感器的 <code>minDelay</code> 对 on-change 必须是 0、one-shot 必须是 −1。「多频繁」不是每种上报模式都问得到的。</p>
+<p>运动平面在本板虽然名字像 on-change，实际是持续轮询加器件内的 No-Motion 引擎产出变化事件：<code>Mode::OnChange</code> 与 <code>Mode::Continuous</code> 由 <code>MotionConfig::for_mode</code> 映射到同一个 <code>PolledRegisters</code>。</p>
+<p>这不是把两个模式并成一个——消费者要的东西在时间上确实不同（一个只要变化、一个按时钟），只是产出它们的接线相同。「怎么取」是器件的答案，不是需求的字段。</p>
+<p><code>WakeDetector</code> 仍在配置集合里，但那是驱动按器件能力明确拒绝的一档，不是 <code>OnChange</code> 的落点。别的元件要先问一句上报模式。</p>
+</li>
+<li>
+<p><code>power</code> 几乎总高于器件手册，且「多传感器同时开启的功耗增量不超过各自之和」是可加性假设。本板没有电流表，这条无法验证——所以固件里不带任何功耗数字，只报执行器占用。</p>
+</li>
+</ul>
+<h3 id="仲裁取最大值，不取优先级">仲裁取最大值，不取优先级</h3>
+<p>多个消费者声明同一个元件时，最大需求胜出，不是各自决定。</p>
+<p>这是 Android sensor stack 的规则（"If one application requests one sensor with a maximum reporting latency of 0, all applications will receive the events from this sensor in continuous mode"），也是 ESP-IDF 的 PM lock 形状。</p>
+<p>优先级仲裁是例外场景才需要的复杂度，不做。</p>
+<h3 id="换配置必须无损，且有独立_flush">换配置必须无损，且有独立 flush</h3>
+<p>Android 的硬约束："A sensor must be able to be reconfigured at any time using <code>batch()</code> without the loss of sensor data"。</p>
+<p>落在本仓库：<code>ACCEL_LSB_PER_G</code> 与 <code>GYRO_LSB_PER_DPS</code> 是 <code>const</code>，全量程或 ODR 一变，core 侧换算就错，所以它们必须转运行期值。</p>
+<p>切换瞬间「新 scale + 旧样本」的那一拍必须作废，而不是折算。</p>
+<p>换配置前还需 <code>flush()</code> 把已积累的数据排空，否则丢掉的是有效样本。</p>
+<p>non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need to overwrite their FIFOs when they're full till the AP wakes up"），但必须有界且报出来，不能静默。</p>
+<h3 id="需求与已有的_phase_是三件事">需求与已有的 phase 是三件事</h3>
+<p><code>AudioPhase</code>（<code>Idle</code>/<code>Recording</code>/<code>Stopped</code>）与 <code>PlaybackPhase</code>（<code>Idle</code>/<code>Playing</code>）是 UI 语义。<code>AudioPhase</code> 的注释说它决定 "which envelope the panel draws"。</p>
+<p>它们不是模式也不是节奏：同一模式可以有不同 UI 语义，同一 UI 语义可以有不同模式。三者用注释互相指认，不合并。</p>
+<h2 id="需求的更改与传输">需求的更改与传输</h2>
+<h3 id="更改：复用现有_intent_管道">更改：复用现有 intent 管道</h3>
+<p><code>apply_business</code> 已经是唯一改状态的入口，<code>BusinessIntent::TogglePage</code> 是唯一改 <code>page</code> 的地方。</p>
+<p>新增场景 = 新增一个 <code>BusinessIntent</code> 变体；运行期换节奏 = 再一个变体。<code>apply_business</code> 之后求 <code>EffectiveDemand</code>（取最大值聚合）。不新造机制。</p>
+<h3 id="传输：三条下行路径，性质不同">传输：三条下行路径，性质不同</h3>
+<table><thead><tr><th>消费者</th><th>executor</th><th>现状</th></tr></thead><tbody>
+<tr><td>渲染层 / 摄像头</td><td>协作</td><td>✅ <strong>已有通道</strong></td></tr>
+<tr><td><code>input_task</code></td><td>协作</td><td>❌ <code>input_task(intent_bus, sources)</code> 拿不到 state</td></tr>
+<tr><td><code>control_loop</code></td><td>协作</td><td>❌ 同上</td></tr>
+<tr><td><code>feed_task</code></td><td><strong>Priority2 中断，独立 executor</strong></td><td>⚠️ <strong>故意无依赖，不能加</strong></td></tr>
+</tbody></table>
+<p><strong>渲染层零成本</strong>：<code>Diagnostics</code> 已经是「融合所有子系统状态的单快照」，含 <code>page</code>/<code>motion_enabled</code>/<code>audio</code>/<code>playback</code>；<code>DiagnosticsSink::consume</code> 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics</span></span>
+<span class="giallo-l"><span>  → RenderController::reconcile → LightRenderer::on_appearance</span></span>
+<span class="giallo-l"><span>  → DisplayLight::consume → camera.pause() / released()</span></span></code></pre>
+<p>所以 <code>Demand</code> 只需长在同一快照上，display 与 camera 部分零新增。</p>
+<p><strong>需求是共享状态，不是消息。</strong> 需求是幂等的聚合状态而非事件，只有最新那一份有意义。用通道装它，就得补上一格深队列、写方变化检测与失败重试——三套机制都只为「通道存不住一个值」而存在。</p>
+<p>共享槽的形状跟着这个约束来：embassy 的 blocking mutex 是共享只读的（<code>RawMutex::lock(f)</code> 的闭包拿不到 <code>&amp;mut</code>），所以槽内还要一层 <code>RefCell</code>。</p>
+<p><code>Intent</code> 是相反的情形——事件——所以仍走总线。</p>
+<p>采集窗口是第三种形状：它是<strong>窗口</strong>不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽平面：<code>HasAudio::take_audio(&amp;'static dyn CaptureSink)</code> 把目的地交给板子，<code>input_task</code> 的 poll 往里发布，<code>render_loop</code> 在 intent 之后取走。</p>
+<p>第二个理由是宽度：<code>Channel&lt;T, N&gt;</code> 的每个槽按 <code>size_of::&lt;T&gt;()</code> 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 <code>INTENT_BUS</code> 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 <code>INTENT_BUS</code> 是 896 B，平面自己 1,824 B（记在 <a href="https://lastsunday.github.io/vanling/records/iot/wifi/">Wi-Fi 实现记录</a>）。</p>
+<p>顺序是顺带的：<code>input_task</code> 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一次 pass 画过的那一帧。</p>
+<p>句柄由组合点造并注入（复用 <code>playback::share()</code> 的形状），满足 <code>input.rs</code> 的约定：句柄传进去，没有消费者按名字摸全局。</p>
+<h3 id="feed_task_是时钟声明方，不是需求消费者">feed_task 是时钟声明方，不是需求消费者</h3>
+<p>这条最容易搞反。</p>
+<p>麦克风的 BCLK 与 WS 由 I2S TX 单元产生，RX 从属它（板模块里 RX 不接 BCLK 与 WS）。feed 的存在本身就是麦克风时钟的来源——silence 也是一种 voice，ring 永远被喂满。</p>
+<p>所以 <code>feed_task</code> 持有一个永不释放的时钟 claim，需求不流向它。</p>
+<p>需求只决定采集侧折叠的节奏，而折叠在 <code>input_task</code> 里。麦克风时钟因此永远在，折叠可按需降频，不需要动时钟拓扑。</p>
+<p>代价与耦合：ring 是 <code>BYTES_PER_POLL * 3</code>（约 60 ms），最多约 60 ms 不 drain 就开始丢样本。</p>
+<p>更要紧的是 drain 不只影响丢样本：环满之后 I2S 引擎自行停机。于是 poll 变稀不是「读数变旧」而是「时钟停摆」。</p>
+<p>实测把 capture 批到 30 s 之后，环在 60 ms 内撞满、<code>capture ring 10842 B deep</code> 报警，90 s 里 <code>CaptureWatchdog</code> 只在第 91 秒才通过 <code>restart</code> 把链接回来一次。</p>
+<p>所以采集平面不接受任何慢于板级 cadence 的 poll：<code>Es7210Rx::accepts_slower_poll()</code> 答 <code>false</code>。</p>
+<p><code>CaptureWatchdog</code> 靠「有没有进度」判停滞这件事因此不是问题——它根本没有机会看到一次故意的长间隔，间隔不存在。</p>
+<h3 id="时序">时序</h3>
+<p><code>render_loop</code> 写槽 → <code>input_task</code> 下一个 <code>INPUT_BASE_MS</code> tick 读到。「场景切换 → 需求生效」是一个 tick 加上 <code>render_loop</code> 被持有的时间。</p>
+<h4 id="上限是单次最长持有，不是百分比">上限是单次最长持有，不是百分比</h4>
+<p>Liu &amp; Layland、CFS、RT group 的利用率界约束的都是抢占式调度器跑任务的时间份额。</p>
+<p>协作式执行器不在这个模型里：每次 poll 公平，没有任务被份额饿死。它不能做的是打断。</p>
+<p>一次不让步的 poll 会占住整个最坏执行时间。所以要界定的是单次持有。</p>
+<p>界定对象是整个 tick，不是其中最大的那个源。input tick 里所有源跑在同一个不让步的循环里，面板写不在其中。</p>
+<p>实测（S3，8 个 5 秒窗口）单次 tick 17–25 ms。<code>MAX_SINGLE_HOLD_MS = 30</code>，留一个 poll 周期的余量。<code>[INPUT]</code> 每窗口打印 <code>worst single hold N ms (bound 30 ms)</code>，越界直接可见。</p>
+<p>这个数字是在 <strong>80 MHz</strong> 下测的，不是数据手册的 240：<code>CpuClock</code> 的默认臂是 <code>_80MHz</code>，而 <code>chip_init</code> 走的是 <code>esp_hal::init(Config::default())</code>，仓库里没有任何地方显式设过时钟。<code>[实测]</code> <code>aec-probe</code> 的 <code>esp_hal::clock::cpu_clock()</code> 读回 80,000,000 Hz。esp-hal 对 160/240 预设有一条注释说换 PLL 会影响 USB Serial/JTAG，而本仓库控制台正是它，所以这档位是否可用未测。<strong>读上面任何一个毫秒数都要带上这个 3 倍的余量。</strong></p>
+<p>总量不是风险项：Ambient 花掉 94.8% 且一切正常。一次 25 ms 的阻塞才是。播放喂数跑在独立的高优先级 executor 上、由 DMA 驱动，碰不到这种阻塞。</p>
+<h4 id="两种配置拒绝实现，返回_UnsupportedConfig_而不是写一个像样的字节">两种配置拒绝实现，返回 <code>UnsupportedConfig</code> 而不是写一个像样的字节</h4>
+<table><thead><tr><th>配置</th><th>缺什么</th></tr></thead><tbody>
+<tr><td><code>WakeDetector</code></td><td>单加速度计同时改变 CTRL7 功耗域和「用哪张 ODR 表」；datasheet 给了两张表的频率但没给各自索引，引擎窗口按该索引换算，猜错就正好错这么多</td></tr>
+<tr><td><code>Fifo</code></td><td>FIFO 寄存器从 <code>0x0B</code> 起，与本驱动写运动标定的地址重叠——重叠正是 CTRL9 命令协议存在的原因，所以这不是一次寄存器写而是排序问题</td></tr>
+</tbody></table>
+<p>每一条都是「打开寄存器表补一个编码」的可达路径。</p>
+<p><code>Off</code> 不是配置而是模式，由消费者不轮询兑现。</p>
+<p>驱动的具体接线与寄存器细节在 <a href="https://lastsunday.github.io/vanling/development/iot/motion/">motion.md</a>。</p>
+<h4 id="配置器、仲裁与接线">配置器、仲裁与接线</h4>
+<p>配置器是模式与寄存器之间唯一的一道翻译。<code>Configurator::configuration_for</code> 把需求变成各器件「必须被配置成什么」，映射在 core 的 <code>MotionConfig::for_mode</code>，器件能力由板子在装配点交给 <code>Configurator::new</code>。</p>
+<p>分工是硬的：哪个模式要哪个配置是产品的话，这块硅片上有什么是板子的话。</p>
+<p>拒绝是返回类型的一部分。走不进去时返回 <code>Unreachable { key, mode, config }</code>，三者齐全，调用方拿不到「悄悄降级」的选项。</p>
+<p>拒绝会被写进需求：被点名的平面从「设备承诺」里去掉（<code>EffectiveDemand::without</code>），下游读到的需求不再声称一件器件做不到的事。</p>
+<p><code>Off</code> 不在此列，它由「不采集」兑现，返回 <code>None</code> 而非 <code>Err</code>。交互通道永不受影响。</p>
+<p>图上 Logic 分别调 Render 与 Configurator。但器件在 <code>input_task</code> 里，<code>render_loop</code> 够不着，所以配置器也放在持有器件的一侧：它要板子声明的能力来翻译模式，拒绝也该对着真正拒绝的那个器件报告。</p>
+<p>配置器随需求一起兑现，<code>[DEMAND]</code> 报的是这次排程的结果。</p>
+<p>需求按平面索引，不按字段枚举。<code>EffectiveDemand</code> 是 <code>BTreeMap&lt;PlaneKey, PlaneDemand&gt;</code>，键是「器件类型 + 第几个」，所以 <code>plane</code>、<code>without</code>、<code>aggregate</code> 与 <code>Override::apply</code> 全是查表，新增一个传感器不需要改动需求机械的任何一行。</p>
+<p>两个同型号器件可以分开提需求（<code>PlaneKey::instance(Audio, 0)</code> 与 <code>…, 1</code>）。</p>
+<p>平面清单由板子给。<code>DisplayPage::demand(&amp;self, planes)</code> 遍历板子声明的平面表调 <code>claim_for</code>。这个 match 是穷尽的，所以页面不可能漏掉一个平面然后继承一份没人选过的需求。</p>
+<p>板子没声明的平面不出现在需求里，读作 <code>Off</code>，不需要再用四个布尔开关夹一次。</p>
+<p>需求状态是被持有的，不是现算的。<code>DeviceManager</code> 持有 <code>demand</code>，与 <code>state</code> 并列。派生的唯一出处是 <code>propose_demand()</code>，而 <code>page</code>、平面清单、<code>override_</code> 的任何一次写入都要跟着它走。</p>
+<p>理由只有一个：配置器要有东西可以改。<code>commit_demand</code> 把可达的那份写回同一处，下游读的都是被改过的那份。</p>
+<p>仲裁由 <code>EffectiveDemand::aggregate</code> 逐键取最大值，测试断言它是逐平面取胜而非整表取胜。</p>
+<p>接线：</p>
+<table><thead><tr><th>消费者</th><th>怎么拿到需求</th></tr></thead><tbody>
+<tr><td><code>input_task</code></td><td>共享需求，每个 tick 在临界区内借用一次，按 <code>PollEntry.key()</code> 排程（cadence 还要问驱动 <code>accepts_slower_poll</code>）</td></tr>
+<tr><td><code>render_loop</code></td><td>写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导</td></tr>
+<tr><td>摄像头</td><td><code>DiagnosticsSink</code>（已有通道），门控条件从「页面变了」改成「需求不再要求画面」</td></tr>
+<tr><td><code>feed_task</code></td><td>刻意不注入。它的存在本身供给麦克风时钟，所以它是音频平面时钟的来源而不是它需求的消费者</td></tr>
+</tbody></table>
+<p>轮询节奏只向外走：板级 cadence 是抖动窗口的量度下限，需求没有资格改短。地板与当前节奏分两个字段（<code>board_cadence_ms</code> 与 <code>cadence_ms</code>），否则一次拉长就再也收不回来。</p>
+<p>有些源连向外都不许。<code>accepts_slower_poll()</code> 默认 <code>true</code>，<code>Es7210Rx</code> 答 <code>false</code>。采集环只有 <code>sample()</code> 会排空，被批到 30 s 就是环撞满、I2S 引擎停机。把这个判断交给驱动，而不是让 core 猜哪个外设需要它。</p>
+<p>audio 的 codec 那一半仍未接。<code>Off</code> 在消费端已接（<code>set_collecting</code> 把 I2S 链 park 掉），但 ES7210 的寄存器级模拟电源关闭位没有落进代码。板上没有引脚级 mic 电源控制，而只关 ADC 不降低折叠成本（DMA 照跑，折叠零串与真数据同价），那只会造出「低保真 + 高成本」这个象限。</p>
+<h4 id="探针报什么、不报什么">探针报什么、不报什么</h4>
+<p><code>aec-probe</code> 是唯一不接外设的探针：回声消除是两路数据的算术，bring-up 只会往测量里加噪声。它报的是「CPU 代价只与抽头数和时钟有关」，因而可以先把时间预留进预算再接线。报首/均/最坏 tick、占 20 ms 的比例，以及延迟搜索、滤波、计量器分开计时——三者的代价不同，能换的东西也不同：延迟搜索是一个常数换精度，抽头是精度同时换另外两者。</p>
+<p>它的 tick 是连续跑的而不是按 20 ms 调度，所以读到的是<strong>下限</strong>而不是带载值。房间缓冲区放在堆上：10 KB 的局部量会占掉 main 任务的栈，而栈正是本文记账的那份共享资源。</p>
+<p><code>echo-probe</code> 正好是它的对照：<strong>唯一接外设的 AEC 探针</strong>，因为它要回答的恰恰是 <code>aec-probe</code> 答不了的那件事——接线对不对。扬声器在放、麦克风在听、取消器喂两路，走产品自己的喂入与采集轮询。报 ERLE、delay、抽头峰值、配对数、参考日志深度与最坏持有时间。</p>
+<p><strong>这些数字必须捆在一起读</strong>：配对数为零时 ERLE 恒为 0（日志不动就不测量），而参考日志 lap 过时 ERLE 可以看着正常。两者输出的是同一个零。<code>EchoReport</code> 把它们捆在一起就是为了不让调用方拆开读。</p>
+<p>它还报一条 <code>aec-probe</code> 结构上不可能报的东西：<strong>延迟锁在哪</strong>。板上的延迟搜索曾在一个 64 样本窗口里乱跳（<code>None → 16 → 50 → 6</code>），而滤波器被拖着每 256 ms 换一次窗，64 个抽头没有一次朝同一个房间收敛。加上锁之后两次实测 delay 全程只动一次。至于消除量本身，<code>aec-probe</code> 和 <code>echo-probe</code> 都还没有在板上出过数——见<a href="https://lastsunday.github.io/vanling/records/iot/aec/">回声消除实现记录</a>。</p>
+<h4 id="回声消除这一层的接线">回声消除这一层的接线</h4>
+<p><code>Canceller</code> 是两路进一路出，而把这两路配成「同一个瞬间」不是它的问题。两个 DMA 共用一个时钟、各自按自己的节奏排空，参考信号还要被发射环的跑道拖住。所以配对这一层是独立的：</p>
+<table><thead><tr><th>类型</th><th>归哪</th><th>是什么</th></tr></thead><tbody>
+<tr><td><code>ReferenceLog</code></td><td>core</td><td>按放音游标而不是写入指针保存参考样本，并报 lap —— 配对读到的必须是已经播出去的那一段</td></tr>
+<tr><td><code>Decimator</code></td><td>core</td><td>抽取器带<strong>相位</strong>，两路各自报自己的，供配对方对齐而不是各猜各的</td></tr>
+<tr><td><code>EchoStage</code></td><td>core</td><td>采集 × 参考的配对与抵消，产出 <code>EchoOutcome</code></td></tr>
+</tbody></table>
+<p>相位是这套里唯一会静默错一抽的东西：发端比收端先 arm 时两边取 0，<strong>换一块先 arm 麦克风的板子必须同时把偏移报给两边</strong>，差的部分由延迟搜索兜，那不是自动的。</p>
+<p><code>demand-probe</code> 遍历运动平面的（配置 × 节奏）矩阵，每个格子先 settle 再测量，报三个数：驱动自己计数器给出的总线事务/秒、窗口内 poll 的执行器占用墙钟占比、以及测量的 poll 数（好让前两个互相校验）。</p>
+<p>它报不了电流——那需要板子上接表，别人的数据手册数字不是对这块板的测量。所以 <code>micro_amps</code> 列保持空白。</p>
+<p>驱动没有寄存器编码的格子按「不可达」打印而不是跳过，日志对「没测到的」和「测到的」一样响。</p>
+<p>配套两件事：<code>SUPPORTED_CONFIGS</code> 只列驱动能把芯片配成的样子（有测试断言它与 <code>config_for</code> 一致）；<code>Board::new_motion_only()</code> 提供隔离 bring-up——一个在别的平面还在跑的格子里测出来的东西是关于错的东西的证据。</p>
+<p>各平面的实测数字与它们的口径限制，在<a href="https://lastsunday.github.io/vanling/records/iot/">实现记录索引</a>。</p>
+<h4 id="执行器占用的数字不可相加">执行器占用的数字不可相加</h4>
+<p>同一批协作执行器，谁醒着谁拿时间：把 motion 批到 30 s 后 input 侧从 49.5% 降到 35.5%，面板侧同时从 45.3% 升到 58.5%。</p>
+<p>面板那一侧是残差不是增量。把它和被轮询平面的数字相加，等于把同一批微秒数数两遍，加出来会超过一个核的 100%。</p>
+<p>同理，平面独自在板上跑测到的数（探针）与两个整机构建相减测到的数不是同一个口径。混在一起相加得到的和是下界不是总量（三个平面隔离相加读作 43.2%，同一构建实测 51.0%）。</p>
+<p>要贵的那一侧：平面的代价随旁侧运行的东西上升，便宜的读数正是最先失效的那个。</p>
+<p>由此有一条测量方法上的硬规矩：<strong>要问节流对最坏阻塞的作用，测法是只改节奏不动模式。</strong> 两者同时改时，省下的部分可能来自关掉整个平面而不是来自节流。</p>
+<h2 id="页面循环按次序表走一圈">页面循环按次序表走一圈</h2>
+<p><code>DisplayPage::CYCLE</code> 是次序的定义（<code>Ambient → Attitude → Audio → Speaker → Camera → Network</code>），<code>next_page</code> 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（<code>with_boot_page</code>）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。</p>
+<p>能力判定是每条页自己的一个 bool（<code>is_backed</code>），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 <code>take_*</code>，链路来自入口点（station 要在调度器起来之后才启动，<code>run</code> 拿到板子时射频已经被取走）——所以 <code>iot_app::Link</code> 与 <code>SpeakerRunner</code> 同形，是<strong>接线事实的参数</strong>，不是 <code>run</code> 里回头去问板子。</p>
+<p>这条规约是修一个缺陷写下来的。</p>
+<p><code>next_page</code> 曾是 18 个手写跳转分支，<code>Camera</code> 的离开分支返回「第一个本板能显示的页」（<code>Attitude</code>）而非起点，于是 <code>Ambient</code> 被永久跳过：实测 <code>CYCLE</code> 全能力下走一圈是 <code>[Attitude, Attitude, Audio, Speaker, Camera]</code>，<code>Ambient</code> 消失、<code>Attitude</code> 出现两次。</p>
+<p>跳着写会漏掉闭环的那一页，走一张表再回绕不会。</p>
+<p><code>iot-core</code> 里有一条测试遍历能力组合 × 起点断言这一点（<code>every_page_the_board_can_back_is_shown_on_the_way_round</code>），把旧的 <code>Camera → Attitude</code> 放回去它会失败并打出上面那串。</p>
+<h2 id="日志">日志</h2>
+<p>只用 <code>log</code> façade（<code>log::info!</code> 等）；输出通道由家族 <code>iot-chip-esp</code> 初始化（esp 为 <code>esp_println::logger</code>）；业务代码禁止 <code>println!</code> / <code>esp_println::println!</code></p>
+<p>一个日志行要能被相信的前提是它报的是<strong>正在运行的那个配置</strong>，不是被请求的那一个。<code>[DISPLAY]</code> 的 <code>asked</code> 曾报页面自己的需求而非 override 生效后的，因为快照从 state 取需求而 override 挂在 manager 上。一个报出无人运行之配置的日志比没有日志更糟。</p>
+<h2 id="新增板">新增板</h2>
+<ol>
+<li><code>bsp-esp/</code> 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 <code>components/</code> 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配</li>
+<li><code>app/src/main.rs</code> 加 <code>type Board</code>/run 分发 cfg 分支</li>
+<li>app feature 透传 <code>iot-bsp-esp/&lt;board&gt;</code></li>
+<li><code>reusable-iot-build.yml</code> 的 <code>platforms</code> 默认 JSON 与 <code>iot-dev-release.yml</code> 的 <code>platforms</code> 输入里加该板（xtensa 板需标 <code>use-xtensa-toolchain: true</code>，经 <code>build-s3</code> 任务构建：CI/发布用 espup 原生 <code>esp</code> 1.95.0.0 工具链，macOS Intel 本地自动回退同版本 Docker 容器）</li>
+<li>验证：<code>cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features &lt;board&gt;</code></li>
+</ol>
+<h2 id="新增芯片家族">新增芯片家族</h2>
+<p>esp 家族仓固定为 <code>iot-chip-esp</code>/<code>iot-bsp-esp</code>；新增非 esp 家族：</p>
+<ol>
+<li>新增 <code>iot-chip-&lt;family&gt;</code>/<code>iot-bsp-&lt;family&gt;</code> crate</li>
+<li>app 家族别名 feature 门控该家族 entry deps；<code>main</code> 加家族入口块（<code>#[cfg(feature)]</code>）</li>
+<li>工具链目标 + <code>rust-toolchain.toml</code> + <code>reusable-iot-build.yml</code> 的 <code>platforms</code>（<code>target</code>/<code>use-xtensa-toolchain</code>）与 <code>iot-dev-release.yml</code> 的 <code>platforms</code> 输入</li>
+<li><code>moon</code>/<code>lefthook</code> 的 <code>--workspace --target</code> 改按固件作用域；工具链目标经 <code>CARGO_ESP_TARGET</code> 传入 moon 任务（<code>.envrc</code>/CI env 与 workflow inputs 提供，moon 任务以 <code>- '$CARGO_ESP_TARGET'</code> 收入 inputs 保证跨芯片缓存隔离）</li>
+</ol>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>
