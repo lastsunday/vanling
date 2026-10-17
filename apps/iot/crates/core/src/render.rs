@@ -124,8 +124,6 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         touch: TouchDiagnostics {
             taps: state.tap_count,
             presses: state.press_count,
-            double_taps: state.double_tap_count,
-            triple_taps: state.triple_tap_count,
             long_presses: state.long_press_count,
             ghost: state.ghost_count,
             swipes: state.swipe_count,
@@ -143,6 +141,9 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         },
         lights: state.lights.map(light_snapshot),
         page: state.page,
+        link: state.link,
+        aps: state.aps,
+        setup: state.setup,
         motion_enabled: state.motion_enabled,
         motion: state.motion,
         motion_counts: state.motion_counts,
@@ -220,6 +221,16 @@ pub fn diag_repaint_due(
         // Forcing one would ship a full frame that is a copy of the last one, ~15 ms of
         // blocking SPI for nothing, and the picture is only new every few hundred ms anyway.
         DisplayPage::Camera => false,
+        // The Network page draws the link, the scan list, the entry being taken on it, and the marks
+        // the store puts on the list's rows — so a drift in any of them is exactly a repaint, and a
+        // drift in none of them (the touch counters the same snapshot carries) is not. The entry is
+        // here because it is what a finger is typing: a key that did not repaint would be a key the
+        // user cannot see arrive. The marks ride the list itself, so `aps` covers them: a save or a
+        // forget is a new list from the network task, and the survey's own list deliberately does
+        // not republish a round it read the same.
+        DisplayPage::Network => {
+            prev.link != next.link || prev.aps != next.aps || prev.setup != next.setup
+        }
     }
 }
 
@@ -395,9 +406,9 @@ mod tests {
         assert_eq!(windowed_percent(4_000_000, 2_000_000), 100);
         assert_eq!(windowed_percent(7_000, 0), 100);
     }
-    use crate::drivers::input::InputEvent;
+    use crate::drivers::network::{AccessPoint, ApList, Ipv4, LinkPhase, Ssid};
     use crate::drivers::playback::Sound;
-    use crate::intent::{BusinessIntent, OperationIntent};
+    use crate::intent::BusinessIntent;
     use crate::state::{DeviceManager, PlaybackPhase};
 
     const BOOT_BREATH: crate::state::Breath = crate::state::Breath {
@@ -588,6 +599,60 @@ mod tests {
     }
 
     #[test]
+    fn diag_repaint_network_tracks_the_link_and_the_list() {
+        let base = Diagnostics::default();
+        let mut associated = base.clone();
+        associated.link.phase = LinkPhase::Connecting;
+        associated.link.ap = Some(AccessPoint {
+            ssid: Ssid::from_octets(b"neighbour"),
+            bssid: [1, 2, 3, 4, 5, 6],
+            channel: 11,
+            rssi: -55,
+            secured: true,
+        });
+        let mut addressed = base.clone();
+        addressed.link.address = Some(Ipv4::from_octets([192, 168, 1, 136]));
+        let mut scanned = base.clone();
+        scanned.aps = Some(ApList::from_ranked(&[AccessPoint::default()]));
+        for next in [associated, addressed, scanned] {
+            assert!(
+                diag_repaint_due(
+                    DisplayPage::Network,
+                    &base,
+                    &next,
+                    DIAG_REPAINT_STEP_MS,
+                    false
+                ),
+                "a link or list drift the Network page draws must repaint even with the \
+                 overlay off"
+            );
+        }
+    }
+
+    #[test]
+    fn diag_repaint_network_ignores_a_drift_it_does_not_draw() {
+        let base = Diagnostics::default();
+        // The envelope folds on every poll and the touch counters move on every gesture, and
+        // the Network page draws neither: a predicate that accepted them would ship a full
+        // frame every step for as long as the device is on.
+        let mut drifting = base.clone();
+        drifting.audio.envelope = live_envelope();
+        drifting.touch.taps = 12;
+        for overlay in [false, true] {
+            assert!(
+                !diag_repaint_due(
+                    DisplayPage::Network,
+                    &base,
+                    &drifting,
+                    DIAG_REPAINT_STEP_MS,
+                    overlay
+                ),
+                "the Network page stamps no envelope and no counter"
+            );
+        }
+    }
+
+    #[test]
     fn the_audio_page_stamps_the_capture_the_phase_points_at() {
         let mut manager = DeviceManager::new().with_audio(true);
         let mut envelope = AudioEnvelope::default();
@@ -600,10 +665,7 @@ mod tests {
             restarts: 2,
             dba_lsb: 0,
         };
-        manager.apply_operation(OperationIntent {
-            source: 0,
-            event: InputEvent::Audio(poll),
-        });
+        manager.apply_capture(poll);
         assert_eq!(
             light_diagnostics(&manager.state(), manager.demand())
                 .audio
@@ -922,13 +984,11 @@ mod tests {
         let mut changed = state(LightState::Off);
         changed.tap_count = 7;
         changed.press_count = 9;
-        changed.double_tap_count = 2;
         changed.long_press_count = 1;
         changed.touch_held_ms = 590;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.taps = 7;
         expected.touch.presses = 9;
-        expected.touch.double_taps = 2;
         expected.touch.long_presses = 1;
         expected.touch.held_ms = 590;
         let seen = collect(&mut ctl, &changed);
@@ -1088,6 +1148,7 @@ mod tests {
                 x: 5,
                 y: 7,
                 held_ms: 590,
+                at_ms: 590,
             }),
             0,
         ));

@@ -5,14 +5,19 @@ use crate::demand::{
 };
 use crate::drivers::audio::{AudioEnvelope, AudioSample};
 use crate::drivers::input::{
-    FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP, FingerLast,
-    GestureEvent, InputEvent, MAX_TRACKED_POINTS, MOVE_DEADBAND_PX, SwipeDirection, TouchEvent,
-    TouchStatus, direction_between,
+    FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FingerLast, GestureEvent, InputEvent,
+    MAX_TRACKED_POINTS, MOVE_DEADBAND_PX, SwipeDirection, TouchEvent, TouchStatus,
+    direction_between,
 };
 use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
+use crate::drivers::network::{
+    AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError,
+    PASSWORD_BYTES, Password, Ssid,
+};
 use crate::drivers::playback::Sound;
 use crate::intent::{BusinessIntent, OperationIntent};
+use crate::keyboard::{Cycling, Key, LIST_ROWS, Layer, MULTITAP_WINDOW_MS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayPage {
@@ -25,6 +30,11 @@ pub enum DisplayPage {
     /// shows the sensor's picture and prints its readout over it, so there is no fill behind
     /// it and the light's colour is not drawn here.
     Camera,
+    /// The link: which access point it is on, the address it holds and — while the build is
+    /// unconfigured, which is how the product ships — what a scan can see. The page the
+    /// panel will take credentials on; until then it is a readout, and the readout is what
+    /// makes "the link came up" a thing the bench can see rather than log.
+    Network,
 }
 
 /// The page cycle, in order.
@@ -35,12 +45,13 @@ pub enum DisplayPage {
 /// "a page the board can back" that was not the start, and every later page skipped the start
 /// too, so nothing returned to it. Walking one list and wrapping cannot skip an entry the
 /// board can back, so every page in it is reachable from every other.
-const CYCLE: [DisplayPage; 5] = [
+const CYCLE: [DisplayPage; 6] = [
     DisplayPage::Ambient,
     DisplayPage::Attitude,
     DisplayPage::Audio,
     DisplayPage::Speaker,
     DisplayPage::Camera,
+    DisplayPage::Network,
 ];
 
 impl DisplayPage {
@@ -56,6 +67,7 @@ impl DisplayPage {
         audio_enabled: bool,
         playback_enabled: bool,
         camera_enabled: bool,
+        network_enabled: bool,
     ) -> Self {
         let mut step = 1;
         while step <= CYCLE.len() {
@@ -65,6 +77,7 @@ impl DisplayPage {
                 audio_enabled,
                 playback_enabled,
                 camera_enabled,
+                network_enabled,
             ) {
                 return candidate;
             }
@@ -82,6 +95,7 @@ impl DisplayPage {
         audio_enabled: bool,
         playback_enabled: bool,
         camera_enabled: bool,
+        network_enabled: bool,
     ) -> bool {
         match self {
             Self::Ambient => true,
@@ -89,6 +103,7 @@ impl DisplayPage {
             Self::Audio => audio_enabled,
             Self::Speaker => playback_enabled,
             Self::Camera => camera_enabled,
+            Self::Network => network_enabled,
         }
     }
 
@@ -99,6 +114,7 @@ impl DisplayPage {
             Self::Audio => 2,
             Self::Speaker => 3,
             Self::Camera => 4,
+            Self::Network => 5,
         }
     }
 
@@ -160,6 +176,44 @@ pub struct LivePoint {
 pub struct DeviceState {
     pub lights: [LightState; MAX_LIGHTS],
     pub page: DisplayPage,
+    /// The link: the phase, the access point and the address the network task last saw.
+    /// `Off` on a board that wired no radio, which is what makes "has this device been on
+    /// the air" answerable without asking the driver.
+    pub link: LinkStatus,
+    /// The ranked scan list the network task last published, or `None` while nothing has
+    /// scanned at all.
+    ///
+    /// `None` and an empty list are different states and draw differently: a build that holds
+    /// its own credentials associates instead of looking around, so it has no list and nothing
+    /// to say about what is in range — while a build that did look and found nothing is saying
+    /// something about the room. A report like [`Self::link`], not a request: the page draws it.
+    pub aps: Option<ApList>,
+    /// What the page is in the middle of taking: the row that was picked, the passphrase being
+    /// typed on its keyboard, and the last refusal. Drawn, so it rides the diagnostics snapshot
+    /// with the list.
+    pub setup: NetworkSetup,
+    /// What the panel asked the link for, waiting for the render loop to carry it to the network
+    /// task. The one command this path produces, and so not in [`Self::setup`]: the panel draws
+    /// that, and a secret waiting to be sent is not something to print.
+    ///
+    /// A typed credential and a name for one the device already keeps are the same command with
+    /// different amounts of help, which is why they are one field and one plane: the page's own
+    /// answer for a row is the store's, and the store is the network task's.
+    pub join: Option<JoinRequest>,
+    /// The panel's request to leave the network the link is on, waiting the same way and for the
+    /// same reason: a command, not a state the page draws. A latch rather than a value because a
+    /// leave has nothing to carry — the network to leave is the one the link is on.
+    pub leave: bool,
+    /// The panel's request to look around now, which is the action strip's other verb.
+    ///
+    /// A latch for the leave's reason: the survey is the radio's own loop, and what the panel can
+    /// say about it is that it should not wait out the pause it is in.
+    pub scan_now: bool,
+    /// The panel's request to forget a saved network, named by the row a finger held.
+    ///
+    /// Carries the name because a forget is about the store rather than about the link: the network
+    /// to drop is not the one the device is on, and nothing else in the state names it.
+    pub forget: Option<Ssid>,
     pub motion_enabled: bool,
     pub motion: Option<MotionSample>,
     /// How many times each semantic has been raised, arbitrated across the
@@ -183,6 +237,10 @@ pub struct DeviceState {
     /// `audio_enabled` gates the Audio page — a board with no sensor shows no
     /// page.
     pub camera_enabled: bool,
+    /// Whether this build has a link at all. Gates the Network page the way
+    /// `camera_enabled` gates the Camera page: a build with no radio has no link to
+    /// show, and its `link` phase stays `Off` for ever.
+    pub network_enabled: bool,
     /// Most recent touch snapshot, mirroring the lights' absolute-target
     /// contract: the render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -212,10 +270,6 @@ pub struct DeviceState {
     /// classifier swallowed it; no press at all = the controller never
     /// reported it — the drop-layer split.
     pub press_count: u8,
-    /// Double-tap tally, bumped per resolved double-tap in the operation
-    /// plane regardless of whether the business side moved a light.
-    pub double_tap_count: u8,
-    pub triple_tap_count: u8,
     /// Long-press tally, bumped per resolved long-press in the operation
     /// plane regardless of whether the business side moved a light.
     pub long_press_count: u8,
@@ -424,6 +478,334 @@ impl PlaybackState {
     }
 }
 
+/// A passphrase being typed on the Network page's keyboard.
+///
+/// A draft rather than a [`Password`], because the two are different jobs: a `Password` is
+/// what the radio stores and what has been checked against its limits, this is text a finger
+/// is entering and can be wrong. The cap is the radio's own — one byte short of
+/// [`PASSWORD_BYTES`], which is the length the driver refuses — so a keystroke past it is
+/// dropped rather than producing a credential the radio will not take as typed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entry {
+    octets: [u8; PASSWORD_BYTES - 1],
+    len: u8,
+    /// What the shift key is set to: off, the one letter a tap capitalises, or the lock a second
+    /// tap inside the window sets.
+    shift: Shift,
+    layer: Layer,
+    /// The character the last character key typed, while a repeat of that key can still cycle it.
+    /// What the panel draws a key's candidates from: the key being cycled is the one that knows
+    /// what the next tap of it would type.
+    pending: Option<Pending>,
+    /// When the shift was last tapped, while a second tap could still lock it.
+    shift_at: Option<u32>,
+}
+
+/// The shift key's three states.
+///
+/// A one-shot rather than a latch, because that is what a thumb expects of a shift: a single
+/// capital is the common case and a lock is one tap away from it, which is cheaper than a lock
+/// every time and a mode to escape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Shift {
+    #[default]
+    Off,
+    /// The next letter typed comes out upper case, and then this is off again.
+    OneShot,
+    /// Letters come out upper case until shift is tapped again.
+    Locked,
+}
+
+/// A character key whose character a repeat tap inside [`MULTITAP_WINDOW_MS`] can still change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Pending {
+    /// The face of the key: that key tapped again cycles, and any other key starts a character.
+    face: u8,
+    /// Where in the key's candidates the character on the panel came from, so the next tap of
+    /// that key replaces it with the one after.
+    index: u8,
+    /// Whether the run's character is a capital.
+    ///
+    /// The run's rather than the tap's: a letter three taps down a key is still that run's
+    /// character, so a shift spent on the first tap of it would leave `S` reachable only by locking
+    /// the shift for everything after it.
+    shifted: bool,
+    at_ms: u32,
+}
+
+impl Default for Entry {
+    /// An empty draft on the alphabet layer, which is where naming a network starts.
+    fn default() -> Self {
+        Self {
+            octets: [0; PASSWORD_BYTES - 1],
+            len: 0,
+            shift: Shift::Off,
+            layer: Layer::Abc,
+            pending: None,
+            shift_at: None,
+        }
+    }
+}
+
+impl Entry {
+    /// Type one key.
+    ///
+    /// The two that end an entry — connect and cancel — are the state's decisions rather than
+    /// the draft's, so they are not here: this type only knows what text a key adds.
+    ///
+    /// `at_ms` is the touch panel's own clock, and it is what decides whether a repeat of a key
+    /// is the same character cycling or a new one — which is the whole of what a multi-tap
+    /// keyboard needs a clock for.
+    pub fn edit(&mut self, key: Key, at_ms: u32) {
+        match key {
+            Key::Char(face) => self.tap(face, at_ms),
+            Key::Backspace => {
+                self.end();
+                self.len = self.len.saturating_sub(1);
+            }
+            Key::Layer => {
+                self.end();
+                self.layer = self.layer.next();
+            }
+            Key::Shift => self.shift_tap(at_ms),
+            // The two that end an entry end the run of taps with it: neither is a character, and a
+            // `pending` kept past one would let a later tap of that key cycle a character the user
+            // has already moved on from. Showing the draft is the third: it changes what the panel
+            // draws, not what the draft holds.
+            Key::Connect | Key::Cancel | Key::Reveal => self.end(),
+        }
+    }
+
+    /// One character key: the same key tapped again inside the window moves the character on,
+    /// and anything else starts a new one.
+    fn tap(&mut self, face: u8, at_ms: u32) {
+        let candidates = self.layer.candidates_of(face);
+        if candidates.is_empty() {
+            return;
+        }
+        // A tap of the same key cycles while the window is open; every other key ends the run by
+        // replacing what the last one typed, which is why nothing here has to remember more than
+        // the one character. A layer whose keys type one character each has nothing to cycle, so
+        // a repeat of one of them is the second character — a passphrase with `00` in it.
+        let cycling = candidates.len() > 1
+            && self.pending.is_some_and(|pending| {
+                pending.face == face && at_ms.saturating_sub(pending.at_ms) <= MULTITAP_WINDOW_MS
+            });
+        let index = match (cycling, self.pending) {
+            (true, Some(pending)) => (pending.index + 1) % candidates.len() as u8,
+            _ => 0,
+        };
+        if cycling {
+            // The character on the panel is replaced rather than followed: that is what makes a
+            // phone keypad's second tap type `b` where the first typed `a`.
+            self.len = self.len.saturating_sub(1);
+        }
+        // The case belongs to the run, not to the tap that opened it: `Z` is four taps of one key
+        // with the shift set, and a shift spent on the first of them would leave the capital on a
+        // character the fourth tap replaces.
+        let shifted = match (cycling, self.pending) {
+            (true, Some(pending)) => pending.shifted,
+            _ => self.spend_shift(candidates[usize::from(index)]),
+        };
+        let candidate = candidates[usize::from(index)];
+        let byte = if shifted {
+            candidate.to_ascii_uppercase()
+        } else {
+            candidate
+        };
+        if self.push(byte) {
+            self.pending = Some(Pending {
+                face,
+                index,
+                shifted,
+                at_ms,
+            });
+        } else {
+            // A draft at the cap took nothing, and a `pending` kept here would make the next
+            // tap of this key erase the character it could not replace.
+            self.pending = None;
+        }
+    }
+
+    /// A shift tap: one shot from off, a lock from a second tap inside the window, and off from
+    /// the lock. The phone's own shift, on the window every other key already uses.
+    fn shift_tap(&mut self, at_ms: u32) {
+        self.end();
+        let repeated = self
+            .shift_at
+            .is_some_and(|at| at_ms.saturating_sub(at) <= MULTITAP_WINDOW_MS);
+        self.shift = match (self.shift, repeated) {
+            (Shift::Locked, _) => Shift::Off,
+            (Shift::OneShot, true) => Shift::Locked,
+            _ => Shift::OneShot,
+        };
+        self.shift_at = Some(at_ms);
+    }
+
+    /// Ends the run of character-key taps, so that a later tap of the same key starts a new
+    /// character instead of cycling one that some other key has already moved on from.
+    fn end(&mut self) {
+        self.pending = None;
+    }
+
+    /// Whether `candidate` is the letter a one-shot shift is spent on.
+    ///
+    /// Punctuation has no case, so a shift tapped before one is still there for the letter after
+    /// it: a finger that means to capitalise is not aiming at the key it landed on.
+    fn spend_shift(&mut self, candidate: u8) -> bool {
+        let letter = candidate.to_ascii_uppercase() != candidate;
+        match self.shift {
+            Shift::Off => false,
+            Shift::OneShot if letter => {
+                self.shift = Shift::Off;
+                true
+            }
+            // A shift no letter has spent yet is still set for the one that comes, and a lock is
+            // never spent.
+            Shift::OneShot | Shift::Locked => letter,
+        }
+    }
+
+    fn push(&mut self, byte: u8) -> bool {
+        if self.len as usize >= self.octets.len() {
+            return false;
+        }
+        self.octets[self.len as usize] = byte;
+        self.len += 1;
+        true
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.octets[..self.len as usize]
+    }
+
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Whether letters type upper case.
+    pub fn shift(&self) -> bool {
+        self.shift != Shift::Off
+    }
+
+    pub fn layer(&self) -> Layer {
+        self.layer
+    }
+
+    /// The character key a repeat tap would cycle, and which of the characters printed on it the
+    /// panel is holding: the keyboard's own feedback, and never the passphrase itself.
+    pub fn cycling(&self) -> Option<Cycling> {
+        let pending = self.pending?;
+        Some(Cycling {
+            face: pending.face,
+            candidates: self.layer.candidates_of(pending.face),
+            index: pending.index,
+        })
+    }
+
+    /// What this draft would hand the radio, for the name the user picked it for.
+    pub fn credentials(&self, ssid: Ssid) -> Credentials {
+        Credentials {
+            ssid,
+            password: Password::from_bytes(self.as_bytes()),
+        }
+    }
+}
+
+/// What the Network page is in the middle of: the row a passphrase is being typed for, the
+/// draft itself, and the last refusal.
+///
+/// Part of the state and of the diagnostics because the page draws all of it — the list is
+/// what a tap picks from, the keyboard is what picking opens, and the refusal is what the page
+/// has to keep saying while the survey's own phase reports overwrite each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NetworkSetup {
+    /// The scanned row the user picked, whose name the draft goes with.
+    pub selected: Option<AccessPoint>,
+    /// The draft, and with it what a passphrase is being typed for.
+    ///
+    /// Kept while the keyboard is *down* as well as up: a credential the radio refused is the one
+    /// a user has to edit, and a draft dropped on the way out would make them type the whole thing
+    /// again to change one character.
+    pub entry: Option<Entry>,
+    /// Whether the keyboard is up, which is what the page's two states are.
+    ///
+    /// Separate from the draft because the two come apart exactly while an attempt is in flight:
+    /// the credential has been handed to the radio, the page goes back to the list so the phase and
+    /// the address have somewhere to be read, and what was typed is still there to come back to.
+    ///
+    /// Never up without a draft: the keys are drawn *from* the draft, and the page hides the strip
+    /// while they are, so a keyboard with nothing under it is a page that drew nothing at all where
+    /// the list and the strip should be — black, and with no control left on it. Every write of
+    /// this field is therefore conditional on [`Self::entry`] being `Some`.
+    pub keyboard: bool,
+    /// Whether the draft is drawn as it was typed rather than masked.
+    pub revealed: bool,
+    /// The last association the radio refused, kept until another attempt starts.
+    pub refused: Option<NetworkError>,
+    /// The first scan row the list is showing. The list is [`LIST_ROWS`] rows tall and eight rows
+    /// long at most, so a finger slides it a row at a time rather than seeing it all at once.
+    pub list_top: u8,
+    /// The confirmation the page is asking, if it is asking one.
+    ///
+    /// The page's third state: while it is up the list and the action strip are not drawn at all
+    /// and the only thing a tap can mean is one of the two answers — see [`crate::page::Part`],
+    /// which is where both halves of that rule live. Drawn, so it rides the snapshot.
+    pub confirm: Option<Confirm>,
+    /// Whether the action strip is waiting for a survey round it asked for.
+    ///
+    /// The strip's one word for "asked, not answered yet". A round is a fraction of a second of
+    /// radio time and the phase it publishes is what clears this, so the strip says `WAIT` rather
+    /// than inviting a second tap that would ask for the same round again.
+    pub rescan_wait: bool,
+}
+
+/// The action a confirmation is standing in front of.
+///
+/// Two, and both are the kind of thing a page asks about before doing: a link that goes down
+/// cannot be put back without the passphrase, and a forgotten network is one the next boot will
+/// not join. The rest of what this page does — picking a row, typing, looking around again — is
+/// either reversible or asks for nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Confirm {
+    /// Leave the network the link is on.
+    ///
+    /// The network is the link's own, read when the question is drawn and again when it is
+    /// answered, so a link that dropped under the box takes the question with it rather than
+    /// taking down a link that is no longer there.
+    Leave,
+    /// Forget a saved network, named by the row the finger held.
+    Forget(AccessPoint),
+}
+
+impl Confirm {
+    /// The network this question is about, which is the row the page highlights behind it.
+    pub fn network(&self, link: LinkStatus) -> Option<AccessPoint> {
+        match self {
+            Confirm::Leave => link.ap,
+            Confirm::Forget(ap) => Some(*ap),
+        }
+    }
+}
+
+impl NetworkSetup {
+    /// The phase the page should show.
+    ///
+    /// The link's own phase whenever it says anything about an attempt, and the last refusal
+    /// while it does not: a survey round lands within a second of a refused association and
+    /// would otherwise print `Off` over the one moment the user has to be told.
+    pub fn phase(&self, link: LinkPhase) -> LinkPhase {
+        match (self.refused, link) {
+            (Some(kind), LinkPhase::Off | LinkPhase::Scanning) => LinkPhase::Failed(kind),
+            (_, link) => link,
+        }
+    }
+}
+
 /// The per-lift data a resolved touch gesture carries into its tally: the
 /// slot's last [`FingerLast`], the hold and endpoints; the counter bump and
 /// target light are passed alongside.
@@ -438,6 +820,11 @@ struct GestureRecord {
 
 /// Single owner of device state. Producers apply absolute target states
 /// wholesale, so the device never needs to remember "last breath".
+///
+/// `Clone` is for the sweep in the tests and is not part of the firmware: a device with two copies
+/// of its state is the thing this type is the single owner of. Forking one is how that sweep walks
+/// every move from every state it reaches, one move at a time.
+#[cfg_attr(test, derive(Clone))]
 pub struct DeviceManager {
     state: DeviceState,
     /// The planes this board wires. What the device can be asked about at all, so a page
@@ -488,6 +875,13 @@ impl DeviceManager {
         let state = DeviceState {
             lights: [LightState::boot(); MAX_LIGHTS],
             page: DisplayPage::Ambient,
+            link: LinkStatus::default(),
+            aps: None,
+            setup: NetworkSetup::default(),
+            join: None,
+            leave: false,
+            scan_now: false,
+            forget: None,
             motion_enabled,
             motion: None,
             motion_counts: MotionCounts::ZERO,
@@ -497,6 +891,7 @@ impl DeviceManager {
             playback_enabled: false,
             playback: PlaybackState::boot(),
             camera_enabled: false,
+            network_enabled: false,
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -506,8 +901,6 @@ impl DeviceManager {
             touch_held_ms: 0,
             tap_count: 0,
             press_count: 0,
-            double_tap_count: 0,
-            triple_tap_count: 0,
             long_press_count: 0,
             ghost_count: 0,
             swipe_count: 0,
@@ -578,6 +971,16 @@ impl DeviceManager {
         self
     }
 
+    /// Chains the link capability on, so a build declares that it carries a radio
+    /// and the page that shows what it is doing in one place — the same shape as
+    /// [`Self::with_camera`], and independent of it. A board can have a radio and no
+    /// panel, a panel and no radio, or both.
+    pub fn with_network(mut self, network_enabled: bool) -> Self {
+        self.state.network_enabled = network_enabled;
+        self.propose_demand();
+        self
+    }
+
     /// Puts the device on `page` at boot, so a page that would otherwise need a
     /// triple-tap is reachable by flashing a build that asks for it.
     ///
@@ -599,6 +1002,7 @@ impl DeviceManager {
             self.state.audio_enabled,
             self.state.playback_enabled,
             self.state.camera_enabled,
+            self.state.network_enabled,
         ) {
             true => page,
             false => DisplayPage::Ambient,
@@ -632,7 +1036,9 @@ impl DeviceManager {
             InputEvent::Gesture(GestureEvent::Ghost) => {
                 self.state.ghost_count = self.state.ghost_count.saturating_add(1);
             }
-            InputEvent::Gesture(GestureEvent::Tap { id, x, y, held_ms }) => {
+            InputEvent::Gesture(GestureEvent::Tap {
+                id, x, y, held_ms, ..
+            }) => {
                 self.state.tap_count = self.tally_gesture(
                     self.state.tap_count,
                     GestureRecord {
@@ -645,52 +1051,6 @@ impl DeviceManager {
                         held_ms,
                         origin: (x, y),
                         end: None,
-                    },
-                );
-            }
-            InputEvent::Gesture(GestureEvent::DoubleTap {
-                id,
-                x,
-                y,
-                end_x,
-                end_y,
-                held_ms,
-            }) => {
-                self.state.double_tap_count = self.tally_gesture(
-                    self.state.double_tap_count,
-                    GestureRecord {
-                        id,
-                        last: FingerLast {
-                            kind: FINGER_DOUBLE_TAP,
-                            dir: 0,
-                            value: held_ms,
-                        },
-                        held_ms,
-                        origin: (x, y),
-                        end: Some((end_x, end_y)),
-                    },
-                );
-            }
-            InputEvent::Gesture(GestureEvent::TripleTap {
-                id,
-                x,
-                y,
-                end_x,
-                end_y,
-                held_ms,
-            }) => {
-                self.state.triple_tap_count = self.tally_gesture(
-                    self.state.triple_tap_count,
-                    GestureRecord {
-                        id,
-                        last: FingerLast {
-                            kind: FINGER_TRIPLE_TAP,
-                            dir: 0,
-                            value: held_ms,
-                        },
-                        held_ms,
-                        origin: (x, y),
-                        end: Some((end_x, end_y)),
                     },
                 );
             }
@@ -753,11 +1113,6 @@ impl DeviceManager {
                     }
                 }
             }
-            InputEvent::Audio(sample) => {
-                if self.state.audio_enabled {
-                    self.state.audio.live = sample;
-                }
-            }
             InputEvent::Touch(event) => {
                 let before = self.live_point_count();
                 for point in event.points.iter().take(usize::from(event.len)) {
@@ -792,6 +1147,49 @@ impl DeviceManager {
         }
     }
 
+    /// Apply the capture's data plane: the window the newest poll folded.
+    ///
+    /// A capture poll reports no operation — it is a window, and a window rides its own plane
+    /// rather than the intent ring — so this is where the state hears one at all. The enable
+    /// check stays because the state, not the poll, is what the panel reads: a window handed
+    /// up after the plane was switched off is dropped like any other.
+    pub fn apply_capture(&mut self, sample: AudioSample) {
+        if self.state.audio_enabled {
+            self.state.audio.live = sample;
+        }
+    }
+
+    /// Apply the link's data plane: the ranked scan list the network task last published.
+    ///
+    /// On its own plane rather than the intent ring, for the reason the capture window is:
+    /// a scan list is a window rather than an event, only its newest value means anything,
+    /// and it is a few hundred bytes wide — the ring prices every slot at its widest
+    /// message, so carrying lists there would buy eight of them for the one a page draws.
+    ///
+    /// The enable check stays, like the capture's: the state, not the producer, is what the
+    /// panel reads, so a list handed up by a build with no link is dropped rather than drawn
+    /// on a page that build cannot show.
+    pub fn apply_scan(&mut self, list: ApList) {
+        if self.state.network_enabled {
+            self.state.aps = Some(list);
+            // A scan that found fewer networks than the page was scrolled past leaves the list
+            // above its own end, which draws as a page of empty bands.
+            let last = self.last_list_top();
+            self.state.setup.list_top = self.state.setup.list_top.min(last);
+        }
+    }
+
+    /// The list's last top row, which is as far down as the page can be scrolled.
+    ///
+    /// The last *window* of rows rather than a count of pages: a list that ran out a row or two
+    /// short of its own end would end on blank bands, and the indicator says which rows are shown.
+    /// Under [`LIST_ROWS`] rows the answer is zero — there is nothing to scroll to.
+    fn last_list_top(&self) -> u8 {
+        self.state
+            .aps
+            .map_or(0, |list| list.len().saturating_sub(LIST_ROWS)) as u8
+    }
+
     /// Apply a business-plane intent: an absolute target the device moves to.
     /// A new business intent variant only grows this match, never the
     /// consuming task.
@@ -807,6 +1205,7 @@ impl DeviceManager {
                     self.state.audio_enabled,
                     self.state.playback_enabled,
                     self.state.camera_enabled,
+                    self.state.network_enabled,
                 );
             }
             BusinessIntent::ToggleRecord => {
@@ -852,8 +1251,300 @@ impl DeviceManager {
                     self.state.playback.phase = PlaybackPhase::Idle;
                 }
             }
+            // A report rather than a target, like `PlaybackFinished`: taken whole, because
+            // the radio is the only thing that has been on the air.
+            BusinessIntent::Link(status) => {
+                // A refusal is remembered until something else is tried, because the survey
+                // republishes the phase every round: the page would otherwise stop saying a
+                // passphrase was wrong about a second after it was typed, which is the one
+                // moment the user needs it.
+                match status.phase {
+                    // A refusal is the one answer the user has to *act* on, so the keyboard comes
+                    // back up over the draft that produced it: the likeliest reason an association
+                    // was refused is a passphrase with a typo in it, and the screen that can fix
+                    // that is the one the draft is on.
+                    LinkPhase::Failed(kind) => {
+                        self.state.setup.refused = Some(kind);
+                        self.reopen_entry();
+                    }
+                    // A new attempt, or one that worked, supersedes the last refusal.
+                    LinkPhase::Connecting | LinkPhase::Connected => self.state.setup.refused = None,
+                    LinkPhase::Off | LinkPhase::Scanning => {}
+                }
+                // What worked is not kept: the radio holds the network now, and a draft left in
+                // the state would be a passphrase sitting in RAM for no reader.
+                if status.phase == LinkPhase::Connected {
+                    self.state.setup.entry = None;
+                    self.state.setup.keyboard = false;
+                    self.state.setup.revealed = false;
+                }
+                // A question about the link does not outlive the link it was about: a drop under
+                // the box takes the question with it, rather than leaving a `LEAVE` on offer for a
+                // link that is already down.
+                if !status.is_leavable() && self.state.setup.confirm == Some(Confirm::Leave) {
+                    self.state.setup.confirm = None;
+                }
+                // And the strip stops waiting: a report about the link is a survey round's own
+                // publish, which is what the round the strip asked for ends with.
+                self.state.setup.rescan_wait = false;
+                self.state.link = status;
+            }
+            // The store's own answer to a join the page asked it for: the row is one to type for,
+            // which is where that tap would have landed had the store shown no mark on it.
+            BusinessIntent::NoCopy(ssid) => self.no_copy(ssid),
+            BusinessIntent::Key { key, at_ms } => self.apply_key(key, at_ms),
+            BusinessIntent::Row(band) => self.pick_row(usize::from(band)),
+            BusinessIntent::RowHold(band) => self.hold_row(usize::from(band)),
+            BusinessIntent::ListSlide(forward) => self.slide_list(forward),
+            BusinessIntent::Toolbar => self.toolbar(),
+            BusinessIntent::Confirm => self.confirm(),
+            // The one thing a question's own answer can be other than yes. Nothing else to do:
+            // there is no state but the question, and dropping it is the whole of the answer.
+            BusinessIntent::Dismiss => self.state.setup.confirm = None,
         }
         self.propose_demand();
+    }
+
+    /// Type one key of the Network page's keyboard.
+    ///
+    /// Guarded on the keyboard being up, so a key that arrived after the entry closed — a
+    /// queued tap from the same finger that just pressed connect — types nothing.
+    fn apply_key(&mut self, key: Key, at_ms: u32) {
+        if !self.state.setup.keyboard {
+            return;
+        }
+        match key {
+            // The keyboard's ways out. Connect hands over what was typed for the row that was
+            // picked and drops the page back to the list, because it is the radio that says whether
+            // it worked and the phase is where that is read — while the draft itself stays, so a
+            // refusal comes back to the text it refused rather than to an empty field.
+            Key::Connect => {
+                let (Some(ap), Some(entry)) = (self.state.setup.selected, self.state.setup.entry)
+                else {
+                    return;
+                };
+                self.state.setup.keyboard = false;
+                self.state.setup.revealed = false;
+                self.state.join = Some(JoinRequest::Typed(entry.credentials(ap.ssid)));
+            }
+            Key::Cancel => {
+                self.state.setup.keyboard = false;
+                self.state.setup.revealed = false;
+                self.state.setup.entry = None;
+                self.state.setup.selected = None;
+            }
+            // A view of the draft, not a change to it: the finger decides how long its own
+            // passphrase is on the panel.
+            Key::Reveal => self.state.setup.revealed = !self.state.setup.revealed,
+            typing => {
+                if let Some(entry) = self.state.setup.entry.as_mut() {
+                    entry.edit(typing, at_ms);
+                }
+            }
+        }
+    }
+
+    /// Put the keyboard back over whatever draft the page is holding, starting one if there is none.
+    ///
+    /// Not `entry = Some(Entry::default())`: a refused passphrase comes back to the text it was
+    /// refused for, because the likely mistake is one character rather than the whole thing.
+    ///
+    /// A row with no draft is the case a credential the *store* handed over leaves behind — that tap
+    /// opened no draft — and the keys are drawn *from* the draft, so a keyboard with nothing under it
+    /// would be a page that drew nothing below its header.
+    fn reopen_entry(&mut self) {
+        // Cleared here rather than at the draw: a question about the list has nowhere left to be
+        // answered from under the keyboard, and the state the page holds is the state it shows.
+        self.state.setup.confirm = None;
+        if self.state.setup.selected.is_some() {
+            self.state.setup.entry.get_or_insert_with(Entry::default);
+        }
+        self.state.setup.keyboard = self.state.setup.entry.is_some();
+    }
+
+    /// Pick the network shown in one of the list's bands, opening the keyboard on it.
+    ///
+    /// A band the list has nothing in is not a selection: the tap landed on the page's own
+    /// background rather than on a control, and the band counts from the page's top row rather than
+    /// from the scan's, because the page is what the finger aimed at.
+    ///
+    /// Two rows are handed straight over rather than typed for: one that is open, and one this device
+    /// keeps a passphrase for. What goes with the second is the row's *name*: the store is the network
+    /// task's, so a page that asked for the copy could not name it if the store turned out to hold
+    /// none — the tap asks for the network, and the radio is the one that answers.
+    ///
+    /// Picking the row that is already picked keeps the draft, which is what makes a refused
+    /// passphrase editable: the survey rewrites every row a second later, so what is compared is the
+    /// network, not the reading. A row with *no* draft opens a fresh one — a link that came up dropped
+    /// the draft on purpose and left the row it was for picked, and a keyboard over nothing is a page
+    /// that drew nothing below its header (see [`NetworkSetup::keyboard`]).
+    ///
+    /// A pick is read only while there is no link to disturb, and "not this one any more" is the
+    /// strip's business rather than a row's: the strip is the one way off a link.
+    fn pick_row(&mut self, band: usize) {
+        if self.state.link.is_leavable() {
+            return;
+        }
+        let index = usize::from(self.state.setup.list_top) + band;
+        let Some(ap) = self.state.aps.and_then(|list| list.get(index)) else {
+            return;
+        };
+        // The mark decides the order rather than the answer: it is the store's report from a round
+        // ago, and a name whose copy has gone since is answered by the radio, which puts the page
+        // back on the keyboard this tap skipped. Any draft in hand goes with it — a draft left over
+        // the row would be a second answer to the same question.
+        if ap.secured && self.state.aps.is_some_and(|list| list.is_saved(index)) {
+            self.state.setup.selected = Some(ap);
+            self.state.setup.entry = None;
+            self.state.setup.revealed = false;
+            self.state.setup.keyboard = false;
+            self.state.join = Some(JoinRequest::Held(ap.ssid));
+            return;
+        }
+        let same = self.state.setup.entry.is_some()
+            && self
+                .state
+                .setup
+                .selected
+                .is_some_and(|picked| picked.is_same_network(&ap));
+        if !same {
+            self.state.setup.entry = Some(Entry::default());
+            self.state.setup.revealed = false;
+        }
+        self.state.setup.selected = Some(ap);
+        if ap.secured {
+            self.state.setup.keyboard = true;
+            return;
+        }
+        self.state.setup.keyboard = false;
+        let entry = self.state.setup.entry.unwrap_or_default();
+        self.state.join = Some(JoinRequest::Typed(entry.credentials(ap.ssid)));
+    }
+
+    /// The store held no copy of the network the panel asked it to join, so the page asks for a
+    /// passphrase after all.
+    ///
+    /// An answer that names another row is dropped: a tap on a different row since the ask is a newer
+    /// question whose own answer is still coming, and raising the keyboard over *this* name would hand
+    /// whatever the user types to a network they did not pick.
+    fn no_copy(&mut self, ssid: Ssid) {
+        if !self
+            .state
+            .setup
+            .selected
+            .is_some_and(|picked| picked.ssid == ssid)
+        {
+            return;
+        }
+        self.reopen_entry();
+    }
+
+    /// A long press on one of the list's bands: ask about the copy this device keeps of the
+    /// network there, if it keeps one.
+    ///
+    /// A row that is not saved is not a question: there is nothing to forget, and a box that asked
+    /// anyway would be offering to erase a memory this device does not have. Nothing happens
+    /// instead, which is the honest answer to a hold on a row the store does not hold.
+    ///
+    /// The band counts as it does for a tap — from the page's own top row — because the finger is
+    /// aiming at the page either way; the two differ in what the row is asked about.
+    fn hold_row(&mut self, band: usize) {
+        let index = usize::from(self.state.setup.list_top) + band;
+        let Some(list) = self.state.aps else {
+            return;
+        };
+        let Some(ap) = list.get(index) else {
+            return;
+        };
+        if !list.is_saved(index) {
+            return;
+        }
+        self.state.setup.confirm = Some(Confirm::Forget(ap));
+    }
+
+    /// The action strip's own verb: the one thing this page can do to the radio from here.
+    ///
+    /// One action at a time, and the link decides which. A link that is up or on its way is one to
+    /// take down — and there is nothing to look around for while there is one, so the strip never
+    /// has a choice and never has to say "and also".
+    ///
+    /// Leaving is asked about rather than done, because a link that goes down cannot be put back
+    /// without the passphrase. Looking around is done at once: it changes nothing but what is
+    /// drawn, and a question in front of it would be a question in front of the page's own job.
+    fn toolbar(&mut self) {
+        if self.state.link.is_leavable() {
+            self.state.setup.confirm = Some(Confirm::Leave);
+            return;
+        }
+        self.state.scan_now = true;
+        self.state.setup.rescan_wait = true;
+    }
+
+    /// The confirmation's own action button: do what the question asked.
+    ///
+    /// The link is asked again rather than trusted, because the box is answered a moment after it
+    /// is drawn and a link that dropped in between is not one to take down.
+    fn confirm(&mut self) {
+        match self.state.setup.confirm.take() {
+            Some(Confirm::Leave) if self.state.link.is_leavable() => self.state.leave = true,
+            // The link went down under the box: the question is answered, and the answer is that
+            // there is nothing left to take down.
+            Some(Confirm::Leave) => {}
+            Some(Confirm::Forget(ap)) => self.state.forget = Some(ap.ssid),
+            None => {}
+        }
+    }
+
+    /// Slide the scan list by one row, or stay where it is at either end.
+    ///
+    /// One row rather than a page of them: a page-sized step cannot land on a list whose last rows
+    /// do not fill one, so the end of the list would be a window that jumped back over rows the
+    /// finger had already passed — and the row a finger is looking for is as likely to be the
+    /// fourth of eight as the first. The window is still [`LIST_ROWS`] rows tall; what moved by one
+    /// is where it starts.
+    ///
+    /// Nothing here reads the finger's direction: which way is "on" is the page's own order and
+    /// belongs to the side that read the swipe.
+    fn slide_list(&mut self, forward: bool) {
+        let top = if forward {
+            self.state.setup.list_top.saturating_add(1)
+        } else {
+            self.state.setup.list_top.saturating_sub(1)
+        };
+        self.state.setup.list_top = top.min(self.last_list_top());
+    }
+
+    /// Take what the panel just asked the link for, if it asked for anything.
+    ///
+    /// The render loop is the only caller: it drains the state once a pass and hands what it
+    /// finds to the plane the network task reads, which is how a request made on a panel
+    /// reaches the task that owns the radio. Taken rather than read — it is a command, and a
+    /// second take must not send the same passphrase twice.
+    pub fn take_join(&mut self) -> Option<JoinRequest> {
+        self.state.join.take()
+    }
+
+    /// Take the panel's request to leave the network the link is on, if there is one.
+    ///
+    /// Taken rather than read, for the reason the credential is: it is a command, and a second take
+    /// must not leave twice.
+    pub fn take_leave(&mut self) -> bool {
+        core::mem::take(&mut self.state.leave)
+    }
+
+    /// Take the panel's request to look around now, if there is one.
+    ///
+    /// Taken for the leave's reason: a command, and a survey round asked for twice is one round.
+    pub fn take_scan_now(&mut self) -> bool {
+        core::mem::take(&mut self.state.scan_now)
+    }
+
+    /// Take the panel's request to forget a saved network, if there is one.
+    ///
+    /// Taken for the same reason, and carrying the name because the store is what acts on it: the
+    /// state knows which row a finger held, and the network task is the one holding the list.
+    pub fn take_forget(&mut self) -> Option<Ssid> {
+        self.state.forget.take()
     }
 
     fn live_point_count(&self) -> usize {
@@ -986,8 +1677,13 @@ impl Default for DeviceManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drivers::input::{MAX_TOUCH_POINTS, TouchEvent, TouchPoint, TouchStatus};
+    use crate::drivers::input::{
+        ButtonEvent, MAX_TOUCH_POINTS, TouchEvent, TouchPoint, TouchStatus,
+    };
     use crate::drivers::motion::MotionScale;
+    use crate::drivers::network::{
+        AccessPoint, ApList, Credentials, Ipv4, LinkPhase, SavedNetworks, Ssid,
+    };
     use crate::intent::translate;
 
     const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
@@ -1014,29 +1710,12 @@ mod tests {
             x: 1,
             y: 2,
             held_ms: 0,
+            at_ms: 0,
         }))
     }
 
-    fn double_tap() -> OperationIntent {
-        op(InputEvent::Gesture(GestureEvent::DoubleTap {
-            id: 0,
-            x: 1,
-            y: 2,
-            end_x: 1,
-            end_y: 2,
-            held_ms: 0,
-        }))
-    }
-
-    fn triple_tap() -> OperationIntent {
-        op(InputEvent::Gesture(GestureEvent::TripleTap {
-            id: 0,
-            x: 1,
-            y: 2,
-            end_x: 1,
-            end_y: 2,
-            held_ms: 0,
-        }))
+    fn triple_click() -> OperationIntent {
+        op(InputEvent::Button(ButtonEvent::TripleClick))
     }
 
     fn long_press() -> OperationIntent {
@@ -1353,8 +2032,6 @@ mod tests {
             assert_eq!(manager.touch_state(), None);
             assert_eq!(state.tap_count, 0);
             assert_eq!(state.press_count, 0);
-            assert_eq!(state.double_tap_count, 0);
-            assert_eq!(state.triple_tap_count, 0);
             assert_eq!(state.long_press_count, 0);
             assert_eq!(state.ghost_count, 0);
             assert_eq!(state.swipe_count, 0);
@@ -1409,18 +2086,16 @@ mod tests {
         type Bucket = fn(&MotionCounts) -> u16;
 
         #[test]
-        fn triple_tap_switches_only_on_motion_enabled_boards() {
+        fn the_page_switch_skips_pages_the_board_lacks() {
             let mut disabled = DeviceManager::new();
-            apply_page(&mut disabled, triple_tap());
+            apply_page(&mut disabled, triple_click());
             assert_eq!(disabled.state().page, DisplayPage::Ambient);
-            assert_eq!(disabled.state().triple_tap_count, 1);
 
             let mut enabled = DeviceManager::with_motion(true, ALL_CAPS);
-            apply_page(&mut enabled, triple_tap());
+            apply_page(&mut enabled, triple_click());
             assert_eq!(enabled.state().page, DisplayPage::Attitude);
-            apply_page(&mut enabled, triple_tap());
+            apply_page(&mut enabled, triple_click());
             assert_eq!(enabled.state().page, DisplayPage::Ambient);
-            assert_eq!(enabled.state().triple_tap_count, 2);
         }
 
         #[test]
@@ -1538,6 +2213,7 @@ mod tests {
                 x: 20,
                 y: 30,
                 held_ms: 40,
+                at_ms: 40,
             })));
             poll(&mut manager, &[MotionEvent::Tap { count: 1 }]);
             assert_eq!(manager.state().tap_count, 1, "the finger tap still tallies");
@@ -1581,8 +2257,8 @@ mod tests {
         /// page turns, so the tests start from there and tap on it.
         fn on_audio_page() -> DeviceManager {
             let mut manager = DeviceManager::with_motion(true, ALL_CAPS).with_audio(true);
-            apply(&mut manager, triple_tap());
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Audio);
             manager
         }
@@ -1601,32 +2277,31 @@ mod tests {
         #[test]
         fn the_audio_page_only_appears_on_a_board_that_has_one() {
             assert_eq!(
-                DisplayPage::Ambient.next_page(true, false, false, false),
+                DisplayPage::Ambient.next_page(true, false, false, false, false),
                 DisplayPage::Attitude
             );
             assert_eq!(
-                DisplayPage::Attitude.next_page(true, false, false, false),
+                DisplayPage::Attitude.next_page(true, false, false, false, false),
                 DisplayPage::Ambient,
                 "a board without audio skips the page"
             );
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, true, false, false),
+                DisplayPage::Ambient.next_page(false, true, false, false, false),
                 DisplayPage::Audio
             );
             assert_eq!(
-                DisplayPage::Attitude.next_page(true, true, false, false),
+                DisplayPage::Attitude.next_page(true, true, false, false, false),
                 DisplayPage::Audio
             );
         }
 
         #[test]
-        fn a_triple_tap_reaches_the_audio_page_and_back() {
+        fn the_page_switch_reaches_the_audio_page_and_back() {
             let mut manager = DeviceManager::new().with_audio(true);
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Audio);
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Ambient);
-            assert_eq!(manager.state().triple_tap_count, 2);
         }
 
         #[test]
@@ -1634,43 +2309,60 @@ mod tests {
             // The camera is last in the cycle, so a board with nothing else reaches it
             // directly from Ambient.
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, false, false, true),
+                DisplayPage::Ambient.next_page(false, false, false, true, false),
                 DisplayPage::Camera
             );
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, false, false, false),
+                DisplayPage::Ambient.next_page(false, false, false, false, false),
                 DisplayPage::Ambient,
                 "a board without a camera never reaches the page"
             );
             assert_eq!(
-                DisplayPage::Audio.next_page(false, false, false, true),
+                DisplayPage::Audio.next_page(false, false, false, true, false),
                 DisplayPage::Camera,
                 "the camera follows the pages that need a wired source"
             );
             assert_eq!(
-                DisplayPage::Audio.next_page(false, false, false, false),
+                DisplayPage::Audio.next_page(false, false, false, false, false),
                 DisplayPage::Ambient,
                 "and is skipped when there is none"
             );
         }
 
         #[test]
-        fn leaving_the_camera_page_wraps_to_the_start_of_the_cycle() {
-            // The camera is the last entry in `CYCLE`, so leaving it wraps — and the wrap
-            // target is the start, not merely "a page the board can back". That distinction
-            // was the defect: leaving for any page other than the start meant the pages after
-            // it skipped the start too, and `Ambient` was never shown again.
+        fn leaving_the_last_page_wraps_to_the_start_of_the_cycle() {
+            // The Network page is the last entry in `CYCLE`, so leaving it wraps — and the
+            // wrap target is the start, not merely "a page the board can back". That
+            // distinction was the defect: leaving for any page other than the start meant the
+            // pages after it skipped the start too, and `Ambient` was never shown again.
             assert_eq!(
-                DisplayPage::Camera.next_page(true, false, false, false),
+                DisplayPage::Network.next_page(true, false, false, false, true),
+                DisplayPage::Ambient,
+                "a board that lost the link mid-cycle wraps rather than jumping ahead"
+            );
+            assert_eq!(
+                DisplayPage::Network.next_page(false, false, false, false, true),
+                DisplayPage::Ambient,
+                "and a link is the only capability, so back to Ambient"
+            );
+            // The same transition one page earlier, for the board that has both: leaving the
+            // camera lands on the Network page rather than skipping it, which is what makes
+            // the wrap the start's answer rather than "wherever is next".
+            assert_eq!(
+                DisplayPage::Camera.next_page(false, false, false, true, true),
+                DisplayPage::Network
+            );
+            assert_eq!(
+                DisplayPage::Camera.next_page(true, false, false, false, false),
                 DisplayPage::Ambient,
                 "a board that lost the camera mid-cycle wraps rather than jumping ahead"
             );
             assert_eq!(
-                DisplayPage::Camera.next_page(false, true, false, false),
+                DisplayPage::Camera.next_page(false, true, false, false, false),
                 DisplayPage::Ambient
             );
             assert_eq!(
-                DisplayPage::Camera.next_page(false, false, false, false),
+                DisplayPage::Camera.next_page(false, false, false, false, false),
                 DisplayPage::Ambient,
                 "and a camera is the only capability, so back to Ambient"
             );
@@ -1684,21 +2376,26 @@ mod tests {
             // the whole walk that has to be asserted, from every start, not one hop.
             //
             // Every capability combination, because a page is skipped exactly when a
-            // neighbouring one in the order is absent.
-            for (motion, audio, playback, camera) in [
-                (false, false, false, false),
-                (true, false, false, false),
-                (false, true, false, false),
-                (false, false, true, false),
-                (false, false, false, true),
-                (true, true, true, true),
-                (false, true, true, true),
-                (true, false, false, true),
+            // neighbouring one in the order is absent. `network` gets its own rows rather
+            // than only riding along with the full set: it is last in `CYCLE`, so a board
+            // with a link and nothing else is the case where leaving the camera page and
+            // wrapping are different transitions.
+            for (motion, audio, playback, camera, network) in [
+                (false, false, false, false, false),
+                (true, false, false, false, false),
+                (false, true, false, false, false),
+                (false, false, true, false, false),
+                (false, false, false, true, false),
+                (false, false, false, false, true),
+                (true, true, true, true, true),
+                (false, true, true, true, true),
+                (true, false, false, true, true),
+                (true, true, true, true, false),
             ] {
                 let backed: Vec<DisplayPage> = CYCLE
                     .iter()
                     .copied()
-                    .filter(|page| page.is_backed(motion, audio, playback, camera))
+                    .filter(|page| page.is_backed(motion, audio, playback, camera, network))
                     .collect();
                 assert!(
                     !backed.is_empty(),
@@ -1709,7 +2406,7 @@ mod tests {
                     let mut seen = Vec::new();
                     let mut page = start;
                     for _ in 0..backed.len() {
-                        page = page.next_page(motion, audio, playback, camera);
+                        page = page.next_page(motion, audio, playback, camera, network);
                         seen.push(page);
                     }
                     // Compared as a set: one full turn from a later page visits the same pages
@@ -1722,7 +2419,8 @@ mod tests {
                     assert_eq!(
                         walked, expected,
                         "a full turn from {start:?} did not visit each backed page once \
-                         (motion={motion} audio={audio} playback={playback} camera={camera})"
+                         (motion={motion} audio={audio} playback={playback} camera={camera} \
+                         network={network})"
                     );
                     if start_is_backed {
                         assert_eq!(
@@ -1743,7 +2441,7 @@ mod tests {
                     // The only page this board can show is the only one it can move to, so
                     // the toggle has somewhere to go rather than stranding the user.
                     assert_eq!(
-                        backed[0].next_page(motion, audio, playback, camera),
+                        backed[0].next_page(motion, audio, playback, camera, network),
                         backed[0],
                         "a board that backs one page has nowhere to go and stays"
                     );
@@ -1761,9 +2459,9 @@ mod tests {
                 .with_camera(true)
                 .with_boot_page(DisplayPage::Camera);
             assert_eq!(manager.state().page, DisplayPage::Camera);
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Ambient);
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Attitude);
         }
 
@@ -1805,9 +2503,9 @@ mod tests {
             );
             let mut manager = DeviceManager::new().with_camera(true);
             assert!(manager.state().camera_enabled);
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Camera);
-            apply(&mut manager, triple_tap());
+            apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Ambient);
         }
 
@@ -1816,7 +2514,7 @@ mod tests {
             // Every other capability present, so the cycle would be full without it.
             let mut manager = DeviceManager::new().with_audio(true).with_playback(true);
             for _ in 0..8 {
-                apply(&mut manager, triple_tap());
+                apply(&mut manager, triple_click());
                 assert_ne!(
                     manager.state().page,
                     DisplayPage::Camera,
@@ -1828,11 +2526,11 @@ mod tests {
         #[test]
         fn a_capture_poll_is_kept_only_when_audio_is_enabled() {
             let mut disabled = DeviceManager::new();
-            disabled.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            disabled.apply_capture(loud(8_000));
             assert_eq!(disabled.state().audio.live.envelope.committed(), 0);
 
             let mut enabled = DeviceManager::new().with_audio(true);
-            enabled.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            enabled.apply_capture(loud(8_000));
             assert_eq!(enabled.state().audio.live.envelope.committed(), 1);
             assert_eq!(
                 enabled.state().audio.phase,
@@ -1842,12 +2540,50 @@ mod tests {
         }
 
         #[test]
+        fn a_scan_list_is_kept_only_when_a_link_is_wired() {
+            let list = ApList::from_ranked(&[AccessPoint {
+                ssid: Ssid::from_octets(b"neighbour"),
+                bssid: [1, 2, 3, 4, 5, 6],
+                channel: 11,
+                rssi: -55,
+                secured: true,
+            }]);
+
+            let mut disabled = DeviceManager::new();
+            disabled.apply_scan(list);
+            assert_eq!(
+                disabled.state().aps,
+                None,
+                "a build with no link has no page to draw a list on"
+            );
+
+            let mut enabled = DeviceManager::new().with_network(true);
+            enabled.apply_scan(list);
+            assert_eq!(enabled.state().aps, Some(list));
+        }
+
+        /// The two states a page words differently: never looked (a build with its own
+        /// credentials) against looked and found nothing.
+        #[test]
+        fn an_empty_scan_is_a_reading_not_an_absence() {
+            let mut manager = DeviceManager::new().with_network(true);
+            assert_eq!(manager.state().aps, None, "nothing has scanned yet");
+
+            manager.apply_scan(ApList::empty());
+            assert_eq!(
+                manager.state().aps,
+                Some(ApList::empty()),
+                "a scan that found nothing is kept as an answer"
+            );
+        }
+
+        #[test]
         fn a_tap_starts_and_stops_a_capture() {
             let mut manager = on_audio_page();
             tap_in_place(&mut manager);
             assert_eq!(manager.state().audio.phase, AudioPhase::Recording);
 
-            manager.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            manager.apply_capture(loud(8_000));
             tap_in_place(&mut manager);
             assert_eq!(manager.state().audio.phase, AudioPhase::Stopped);
             assert_eq!(
@@ -1861,12 +2597,12 @@ mod tests {
         fn a_stopped_capture_keeps_what_it_caught() {
             let mut manager = on_audio_page();
             tap_in_place(&mut manager);
-            manager.apply_operation(op(InputEvent::Audio(loud(8_000))));
+            manager.apply_capture(loud(8_000));
             tap_in_place(&mut manager);
             let stopped = manager.state().audio.captured;
 
             let polled_on = loud(20_000);
-            manager.apply_operation(op(InputEvent::Audio(polled_on)));
+            manager.apply_capture(polled_on);
             assert_eq!(
                 manager.state().audio.captured,
                 stopped,
@@ -1939,6 +2675,31 @@ mod tests {
             manager.apply_business(BusinessIntent::Invalid);
             assert_eq!(manager.light_state(), solid, "an invalid intent is a no-op");
         }
+
+        #[test]
+        fn a_link_report_lands_whole_and_an_unwired_board_reads_off() {
+            // A board that never wired a radio reports `Off` without asking anything, which
+            // is what lets a consumer read the link rather than the board's wiring.
+            let mut manager = DeviceManager::new();
+            assert_eq!(manager.state().link.phase, LinkPhase::Off);
+
+            // The whole report, access point and address included: the panel draws both,
+            // and re-deriving either here would be a second opinion about what the radio
+            // said.
+            let status = LinkStatus {
+                phase: LinkPhase::Connected,
+                ap: Some(AccessPoint {
+                    ssid: Ssid::from_octets(b"neighbour"),
+                    bssid: [0xaa; 6],
+                    channel: 11,
+                    rssi: -45,
+                    secured: true,
+                }),
+                address: Some(Ipv4::from_octets([192, 168, 1, 136])),
+            };
+            manager.apply_business(BusinessIntent::Link(status));
+            assert_eq!(manager.state().link, status);
+        }
     }
 
     mod playback {
@@ -1956,7 +2717,7 @@ mod tests {
                 if manager.state().page == DisplayPage::Speaker {
                     break;
                 }
-                apply_page(&mut manager, triple_tap());
+                apply_page(&mut manager, triple_click());
             }
             assert_eq!(manager.state().page, DisplayPage::Speaker);
             manager
@@ -2002,26 +2763,26 @@ mod tests {
         #[test]
         fn the_speaker_page_only_appears_on_a_board_that_has_one() {
             assert_eq!(
-                DisplayPage::Ambient.next_page(true, false, true, false),
+                DisplayPage::Ambient.next_page(true, false, true, false, false),
                 DisplayPage::Attitude
             );
             assert_eq!(
-                DisplayPage::Audio.next_page(true, true, true, false),
+                DisplayPage::Audio.next_page(true, true, true, false, false),
                 DisplayPage::Speaker
             );
             assert_eq!(
-                DisplayPage::Audio.next_page(true, true, false, false),
+                DisplayPage::Audio.next_page(true, true, false, false, false),
                 DisplayPage::Ambient,
                 "a board without a speaker skips the page"
             );
             assert_eq!(
-                DisplayPage::Ambient.next_page(false, false, true, false),
+                DisplayPage::Ambient.next_page(false, false, true, false, false),
                 DisplayPage::Speaker
             );
             // Sitting on the Speaker page with the speaker gone falls back to
             // Ambient rather than stranding the cycle.
             assert_eq!(
-                DisplayPage::Speaker.next_page(true, true, false, false),
+                DisplayPage::Speaker.next_page(true, true, false, false, false),
                 DisplayPage::Ambient
             );
         }
@@ -2263,26 +3024,6 @@ mod tests {
                 manager.light_state(),
                 LightState::default(),
                 "the tally never moves the light; only the translated business intent does"
-            );
-        }
-
-        #[test]
-        fn double_tap_tallies_on_its_own_row() {
-            let mut manager = DeviceManager::new();
-            manager.apply_operation(double_tap());
-            manager.apply_operation(op(InputEvent::Gesture(GestureEvent::DoubleTap {
-                id: 0,
-                x: 3,
-                y: 4,
-                end_x: 5,
-                end_y: 6,
-                held_ms: 0,
-            })));
-            assert_eq!(manager.state().double_tap_count, 2);
-            assert_eq!(
-                manager.state().tap_count,
-                0,
-                "a double-tap is its own tally, never counted as a tap"
             );
         }
 
@@ -2713,6 +3454,7 @@ mod tests {
                 x: 120,
                 y: 40,
                 held_ms: 90,
+                at_ms: 90,
             })));
             assert_eq!(
                 manager.state().touch_points,
@@ -2788,6 +3530,7 @@ mod tests {
                 x: 11,
                 y: 12,
                 held_ms: 0,
+                at_ms: 0,
             })));
             assert_eq!(
                 manager.state().last_gesture_origin,
@@ -2815,23 +3558,25 @@ mod tests {
             );
 
             manager.apply_operation(swipe());
-            manager.apply_operation(op(InputEvent::Gesture(GestureEvent::DoubleTap {
+            manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Swipe {
                 id: 0,
                 x: 21,
                 y: 22,
                 end_x: 23,
                 end_y: 24,
+                direction: SwipeDirection::DownRight,
                 held_ms: 0,
+                distance_px: 3,
             })));
             assert_eq!(
                 manager.state().last_gesture_origin,
                 Some((21, 22)),
-                "a double-tap shows its first tap as the origin"
+                "a slide shows where it started"
             );
             assert_eq!(
                 manager.state().last_gesture_end,
                 Some((23, 24)),
-                "a double-tap shows its second tap as the trailing point"
+                "a slide shows where it ended"
             );
         }
     }
@@ -2842,5 +3587,2025 @@ mod tests {
             len: 1,
             contacts: 1,
         }))
+    }
+
+    mod network_page {
+        use super::*;
+        use crate::keyboard::{self, Key, Layer};
+
+        /// A network whose BSSID follows its name, because that is the field a rescan does not
+        /// change: two rows of one list are two networks here as they are on a panel, and a test
+        /// that gave them one BSSID would be testing a list of one network twice.
+        fn ap_named(ssid: &[u8], rssi: i8, secured: bool) -> AccessPoint {
+            let first = ssid.first().copied().unwrap_or(0);
+            AccessPoint {
+                ssid: Ssid::from_octets(ssid),
+                bssid: [first, 2, 3, 4, 5, ssid.len() as u8],
+                channel: 6,
+                rssi,
+                secured,
+            }
+        }
+
+        fn ap(ssid: &[u8]) -> AccessPoint {
+            ap_named(ssid, -55, true)
+        }
+
+        /// A network with no passphrase, which the panel connects to on the tap that picks it.
+        fn open(ssid: &[u8]) -> AccessPoint {
+            ap_named(ssid, -55, false)
+        }
+
+        /// The store's own answer for a device that has saved these names, as the network task
+        /// publishes it: the list the page is showing, marked against a store that holds them.
+        ///
+        /// A mark per row rather than the names themselves, which is why this takes the list the
+        /// page already has: what the store answers is a question about *those* rows.
+        fn marked(manager: &mut DeviceManager, names: &[&str]) {
+            let mut networks = SavedNetworks::empty();
+            for name in names {
+                let credentials =
+                    Credentials::from_text(name, "latte").expect("a credential the radio takes");
+                networks.remember(&credentials);
+            }
+            let Some(mut list) = manager.state().aps else {
+                return;
+            };
+            list.mark_saved(networks.mask(&list));
+            manager.apply_scan(list);
+        }
+
+        /// A build that wired a radio, sitting on the page with two networks in range — the
+        /// state the product spends its first minutes in.
+        fn on_network_page() -> DeviceManager {
+            let mut manager = DeviceManager::new().with_network(true);
+            manager.apply_scan(ApList::from_ranked(&[ap(b"neighbour"), ap(b"cafe")]));
+            // A board with no other capability cycles straight to the link's page.
+            manager.apply_business(BusinessIntent::TogglePage);
+            assert_eq!(manager.state().page, DisplayPage::Network);
+            manager
+        }
+
+        /// One tap, translated against the state the way the render loop does it.
+        fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) {
+            let operation = op(InputEvent::Gesture(GestureEvent::Tap {
+                id: 0,
+                x,
+                y,
+                held_ms: 40,
+                at_ms,
+            }));
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) {
+            tap_on_at(manager, x, y, 40);
+        }
+
+        /// Tap the middle of the band the list's `band`-th visible row is drawn in.
+        fn tap_band(manager: &mut DeviceManager, band: usize) {
+            let y = (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2)
+                as u16;
+            tap_on(manager, 30, y);
+        }
+
+        fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) {
+            manager.apply_business(BusinessIntent::Key { key, at_ms });
+        }
+
+        fn key(manager: &mut DeviceManager, key: Key) {
+            key_at(manager, key, 40);
+        }
+
+        /// What the page handed the link, as the credential the radio would join with: every test
+        /// here is about a passphrase, and the typed shape is the one that carries one. A name
+        /// arriving where a passphrase was expected is a page that asked the store instead, which is
+        /// a different test's subject and never this one's intended answer.
+        fn handed_over(manager: &mut DeviceManager) -> Option<Credentials> {
+            match manager.take_join() {
+                Some(JoinRequest::Typed(credentials)) => Some(credentials),
+                Some(JoinRequest::Held(_)) => {
+                    panic!("the page handed over a name where a passphrase was expected")
+                }
+                None => None,
+            }
+        }
+
+        /// Type one letter of the phone layer the way a finger would: the key that carries it,
+        /// tapped until the letter comes round, each tap inside the multi-tap window.
+        ///
+        /// `at_ms` is where the first tap of it lands. A caller spelling a word has to move the
+        /// clock forward between letters, because two letters off one key in a row are the same
+        /// character being cycled — which is what a phone keypad does and what a tester has to wait
+        /// out.
+        fn type_letter(manager: &mut DeviceManager, wanted: u8, at_ms: u32) {
+            for digit in 0..keyboard::CHARS {
+                let candidates = Layer::Abc.candidates(digit);
+                let Some(taps) = candidates.iter().position(|candidate| *candidate == wanted)
+                else {
+                    continue;
+                };
+                let face = Layer::Abc.face(digit);
+                for tap in 0..=taps {
+                    key_at(manager, Key::Char(face), at_ms + 100 * tap as u32);
+                }
+                return;
+            }
+            panic!("{wanted:?} is not a key of the phone layer");
+        }
+
+        #[test]
+        fn a_script_types_its_own_text_through_the_keyboard() {
+            // The whole typing chain without a finger: each of the script's cells reads back as a
+            // key through the same `key_of` the panel draws with, and the entry those keys fill is
+            // the text the radio would be handed. This is what a bench that plays a script at the
+            // panel's coordinates is standing on.
+            for text in [b"pass".as_slice(), b"aZ9.# 0_", b"00", b"z9", b"AaA", b" "] {
+                let mut entry = Entry::default();
+                for tap in keyboard::script_for(text).expect("a text the keyboard carries") {
+                    let key =
+                        keyboard::key_of(entry.layer(), tap.cell).expect("a cell of the grid");
+                    entry.edit(key, tap.at_ms);
+                }
+                assert_eq!(entry.as_bytes(), text, "{text:?} did not come back");
+            }
+        }
+
+        #[test]
+        fn a_tap_on_a_band_opens_the_keyboard_on_the_network_shown_in_it() {
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 1);
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"cafe")),
+                "the keyboard goes with the network the band was showing"
+            );
+            assert_eq!(
+                manager.state().setup.entry,
+                Some(Entry::default()),
+                "and starts empty"
+            );
+            assert_eq!(
+                manager.state().setup.entry.map(|entry| entry.layer()),
+                Some(Layer::Abc),
+                "on the layer a network's name is spelled with"
+            );
+        }
+
+        #[test]
+        fn a_band_the_list_has_nothing_in_is_not_a_selection() {
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 3);
+            assert_eq!(
+                manager.state().setup.entry,
+                None,
+                "a band past the last network is the page's own background"
+            );
+        }
+
+        #[test]
+        fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
+            // Eight rows through a window of three: the band is the page's row rather than the
+            // scan's, so the same finger position is a different network as the list slides.
+            let mut manager = DeviceManager::new().with_network(true);
+            let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
+            manager.apply_scan(ApList::from_ranked(&aps));
+            manager.apply_business(BusinessIntent::TogglePage);
+
+            tap_band(&mut manager, 0);
+            assert_eq!(manager.state().setup.selected, Some(ap(b"a")));
+            manager.apply_business(BusinessIntent::Key {
+                key: Key::Cancel,
+                at_ms: 1,
+            });
+
+            assert_eq!(manager.state().setup.list_top, 0);
+            manager.apply_business(BusinessIntent::ListSlide(true));
+            assert_eq!(
+                manager.state().setup.list_top,
+                1,
+                "a slide forward moves the window one row"
+            );
+            tap_band(&mut manager, 0);
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"b")),
+                "and the first band now holds the second network"
+            );
+            // Forward to the end: the last window of rows, so the end of the list shows the rows it
+            // has rather than a window of empty bands.
+            for _ in 0..(8 - keyboard::LIST_ROWS) {
+                manager.apply_business(BusinessIntent::ListSlide(true));
+            }
+            assert_eq!(
+                manager.state().setup.list_top,
+                (8 - keyboard::LIST_ROWS) as u8,
+                "eight rows through a three-row window stop five rows down"
+            );
+            manager.apply_business(BusinessIntent::ListSlide(true));
+            assert_eq!(
+                manager.state().setup.list_top,
+                (8 - keyboard::LIST_ROWS) as u8,
+                "and the end of the list is as far as it goes"
+            );
+            manager.apply_business(BusinessIntent::ListSlide(false));
+            assert_eq!(
+                manager.state().setup.list_top,
+                (8 - keyboard::LIST_ROWS - 1) as u8
+            );
+            for _ in 0..8 {
+                manager.apply_business(BusinessIntent::ListSlide(false));
+            }
+            assert_eq!(
+                manager.state().setup.list_top,
+                0,
+                "and the top of it is as far back"
+            );
+        }
+
+        #[test]
+        fn a_pick_is_read_only_while_there_is_a_link_to_take_down() {
+            // The page's own rule: a row is a pick only while nothing is on the air. A list that
+            // still took one under a link would be naming the next network while standing on the
+            // current one, and the strip is the way off.
+            for phase in [LinkPhase::Connecting, LinkPhase::Connected] {
+                let mut manager = on_network_page();
+                link_at(&mut manager, phase, b"neighbour");
+                tap_band(&mut manager, 1);
+                assert_eq!(
+                    manager.state().setup.selected,
+                    None,
+                    "{phase:?} is a link, so the band is not a pick"
+                );
+                assert!(!manager.state().setup.keyboard, "{phase:?}: no keyboard");
+                assert_eq!(manager.state().setup.entry, None, "{phase:?}: no draft");
+                assert_eq!(
+                    handed_over(&mut manager),
+                    None,
+                    "{phase:?}: and nothing reaches the radio"
+                );
+            }
+            // The same band under a phase that is not a link is the pick it always was.
+            for phase in [
+                LinkPhase::Off,
+                LinkPhase::Scanning,
+                LinkPhase::Failed(NetworkError::Credentials),
+            ] {
+                let mut manager = on_network_page();
+                link_at(&mut manager, phase, b"neighbour");
+                tap_band(&mut manager, 1);
+                assert_eq!(
+                    manager.state().setup.selected,
+                    Some(ap(b"cafe")),
+                    "{phase:?} is not a link, so the band picks the row it shows"
+                );
+                assert!(
+                    manager.state().setup.keyboard,
+                    "{phase:?}: and opens the keyboard"
+                );
+            }
+        }
+
+        #[test]
+        fn a_pick_of_an_open_row_is_read_only_under_a_link_too() {
+            // An open row has no keyboard to open: the tap is the whole of the pick, and the
+            // credential it builds is the one that reaches the radio with no screen in between.
+            // So it is the pick the gate has to cover as well as the one that types.
+            let mut manager = DeviceManager::new().with_network(true);
+            manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
+            manager.apply_business(BusinessIntent::TogglePage);
+            link_at(&mut manager, LinkPhase::Connected, b"neighbour");
+
+            tap_band(&mut manager, 0);
+            assert_eq!(
+                manager.state().setup.selected,
+                None,
+                "the row is not a pick"
+            );
+            assert_eq!(
+                handed_over(&mut manager),
+                None,
+                "and nothing reaches the radio"
+            );
+        }
+
+        #[test]
+        fn a_hold_on_the_list_under_the_join_box_asks_nothing() {
+            // The box is over the list, so the rows under it are the box's paper: a forget asked of a
+            // row nobody can see would be a memory erased off a screen the finger was not looking at.
+            // The strip is the one part that stays offered under the box, which is what this costs
+            // the list.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["cafe"]);
+            link_at(&mut manager, LinkPhase::Connecting, b"cafe");
+
+            hold_band(&mut manager, 1);
+            assert_eq!(
+                manager.state().setup.confirm,
+                None,
+                "a hold under the join box asks nothing"
+            );
+            assert_eq!(manager.take_forget(), None, "and nothing reaches the store");
+        }
+
+        #[test]
+        fn a_slide_under_the_join_box_does_not_move_the_list() {
+            // The list's other gesture. A window that moved under a box nobody can see through would
+            // be a page that jumped the moment the box came off it.
+            let mut manager = eight_rows();
+            link_at(&mut manager, LinkPhase::Connecting, b"a");
+            slide_list(&mut manager);
+            assert_eq!(
+                manager.state().setup.list_top,
+                0,
+                "the window stayed where the box was drawn over it"
+            );
+
+            // The same gesture with nothing over the list is the slide it always was.
+            let mut manager = eight_rows();
+            slide_list(&mut manager);
+            assert_eq!(manager.state().setup.list_top, 1);
+        }
+
+        /// A build sitting on the page with eight networks in range, which is a list with more rows
+        /// than the window holds.
+        fn eight_rows() -> DeviceManager {
+            let mut manager = DeviceManager::new().with_network(true);
+            let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
+            manager.apply_scan(ApList::from_ranked(&aps));
+            manager.apply_business(BusinessIntent::TogglePage);
+            manager
+        }
+
+        /// Slide the list forward one row, through the same translate the render loop runs a swipe
+        /// through.
+        fn slide_list(manager: &mut DeviceManager) {
+            let operation = op(InputEvent::Gesture(GestureEvent::Swipe {
+                id: 0,
+                direction: SwipeDirection::Up,
+                x: 30,
+                y: (keyboard::LIST_TOP + keyboard::LIST_ROW_H * 2) as u16,
+                end_x: 30,
+                end_y: keyboard::LIST_TOP as u16,
+                held_ms: 40,
+                distance_px: (keyboard::LIST_ROW_H * 2) as u16,
+            }));
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        #[test]
+        fn a_hold_on_a_saved_row_still_asks_while_the_link_is_up() {
+            // The store is not the link's: what a hold asks about is the copy on the part, so it
+            // is read whatever the radio is doing — and it is the one thing the list still
+            // answers under a link.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["cafe"]);
+            link_up(&mut manager, b"neighbour");
+
+            tap_band(&mut manager, 1);
+            assert_eq!(
+                manager.state().setup.confirm,
+                None,
+                "a tap is not a question"
+            );
+
+            hold_band(&mut manager, 1);
+            assert_eq!(
+                manager.state().setup.confirm,
+                Some(Confirm::Forget(ap(b"cafe"))),
+                "a hold still is"
+            );
+        }
+
+        #[test]
+        fn a_draft_picked_before_the_radio_associated_is_still_open_under_it() {
+            // The gate is on the pick, not on the keyboard: a draft opened while the list was
+            // free stays open when a link comes up under it, and what changed is the strip's own
+            // verb. That is the window the credential plane still has a panel source in.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 1);
+            assert!(
+                manager.state().setup.keyboard,
+                "the pick opened the keyboard"
+            );
+
+            link_at(&mut manager, LinkPhase::Connecting, b"neighbour");
+            assert!(
+                manager.state().setup.keyboard,
+                "and the association does not close it"
+            );
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"cafe")),
+                "the draft is still the row it was opened on"
+            );
+        }
+
+        /// Tap the action strip, which is one target at every column.
+        fn tap_strip(manager: &mut DeviceManager) {
+            tap_on(
+                manager,
+                160,
+                (keyboard::TOOLBAR_TOP + keyboard::TOOLBAR_H / 2) as u16,
+            );
+        }
+
+        /// Hold the middle of the band the list's `band`-th visible row is drawn in, through the
+        /// same translate the render loop runs a classified long press through.
+        fn hold_band(manager: &mut DeviceManager, band: usize) {
+            let y = (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2)
+                as u16;
+            let operation = op(InputEvent::Gesture(GestureEvent::LongPress {
+                id: 0,
+                x: 30,
+                y,
+                held_ms: u16::from(FINGER_LONG_PRESS) + 20,
+            }));
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        /// Tap the middle of one of a confirmation's two answers.
+        fn tap_answer(manager: &mut DeviceManager, choice: keyboard::DialogChoice) {
+            let box_ = keyboard::dialog_answer_box(choice);
+            tap_on(
+                manager,
+                (box_.x + box_.w / 2) as u16,
+                (box_.y + box_.h / 2) as u16,
+            );
+        }
+
+        fn link_up(manager: &mut DeviceManager, ssid: &[u8]) {
+            link_at(manager, LinkPhase::Connected, ssid);
+        }
+
+        /// The link in `phase` with `ssid` named, as the network task publishes it.
+        fn link_at(manager: &mut DeviceManager, phase: LinkPhase, ssid: &[u8]) {
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase,
+                ap: Some(ap(ssid)),
+                address: None,
+            }));
+        }
+
+        #[test]
+        fn the_action_strip_leaves_while_a_link_is_up_and_looks_around_while_it_is_not() {
+            // One control, and the link decides which verb it carries: the phases a link is up or
+            // coming up in are the ones the radio will not scan in, so there is never a choice.
+            let mut manager = on_network_page();
+            link_up(&mut manager, b"neighbour");
+
+            tap_strip(&mut manager);
+            assert_eq!(
+                manager.state().setup.confirm,
+                Some(Confirm::Leave),
+                "a link that is up is one to take down, and taking it down is asked about"
+            );
+            assert!(!manager.take_leave(), "asked about, not done");
+            assert!(
+                !manager.take_scan_now(),
+                "and the strip was not asking to look around"
+            );
+
+            // The same control with no link on it is the survey's own request, and it is not asked
+            // about: a scan changes nothing but what is drawn.
+            let mut manager = on_network_page();
+            tap_strip(&mut manager);
+            assert!(
+                manager.take_scan_now(),
+                "with no link there is something to look around for"
+            );
+            assert!(
+                manager.state().setup.rescan_wait,
+                "and the strip waits for the round it asked for"
+            );
+            assert_eq!(manager.state().setup.confirm, None, "nothing to confirm");
+            assert!(
+                !manager.take_scan_now(),
+                "a request is handed over once, like every other command"
+            );
+        }
+
+        #[test]
+        fn a_link_that_is_coming_up_is_already_one_to_leave() {
+            // The phase is the whole of the answer, so an attempt the radio has not accepted yet
+            // is on the strip's side of it as much as one that associated and is waiting for its
+            // address. Asked with and without an access point, because the network task publishes
+            // both: the attempt goes up the moment it has a credential in hand — before the radio
+            // has named anything, since the association is where the name comes from — and the
+            // access point is filled in when the radio answers. A rule that asked about the
+            // association report instead of the phase would answer `SCAN` through the whole
+            // association, which is the half-minute a user is most likely to change their mind in.
+            for named in [None, Some(ap(b"neighbour"))] {
+                for phase in [LinkPhase::Connecting, LinkPhase::Connected] {
+                    let mut manager = on_network_page();
+                    manager.apply_business(BusinessIntent::Link(LinkStatus {
+                        phase,
+                        ap: named,
+                        address: None,
+                    }));
+                    tap_strip(&mut manager);
+                    assert_eq!(
+                        manager.state().setup.confirm,
+                        Some(Confirm::Leave),
+                        "{phase:?} is a link to leave, named {named:?}"
+                    );
+                }
+            }
+            for phase in [
+                LinkPhase::Off,
+                LinkPhase::Scanning,
+                LinkPhase::Failed(NetworkError::Credentials),
+            ] {
+                let mut manager = on_network_page();
+                link_at(&mut manager, phase, b"neighbour");
+                tap_strip(&mut manager);
+                assert!(
+                    manager.take_scan_now(),
+                    "{phase:?} is not a link, so the strip looks around instead"
+                );
+            }
+        }
+
+        #[test]
+        fn leaving_happens_when_the_question_is_answered_and_not_when_it_is_left_alone() {
+            let mut manager = on_network_page();
+            link_up(&mut manager, b"neighbour");
+
+            // `KEEP`: the question goes and the link stays.
+            tap_strip(&mut manager);
+            tap_answer(&mut manager, keyboard::DialogChoice::Keep);
+            assert_eq!(manager.state().setup.confirm, None);
+            assert!(!manager.take_leave(), "the safe answer takes nothing down");
+            assert_eq!(
+                manager.state().link.phase,
+                LinkPhase::Connected,
+                "and the link is still the one it was"
+            );
+
+            // The action button: the same question, answered the other way.
+            tap_strip(&mut manager);
+            tap_answer(&mut manager, keyboard::DialogChoice::Act);
+            assert_eq!(manager.state().setup.confirm, None, "the question is done");
+            assert!(manager.take_leave(), "and the request is on its way");
+        }
+
+        #[test]
+        fn a_question_about_the_link_does_not_outlive_the_link() {
+            // The box is drawn and answered a moment apart, and a link that dropped in between is
+            // not one to take down: the question goes with the link it was about.
+            let mut manager = on_network_page();
+            link_up(&mut manager, b"neighbour");
+            tap_strip(&mut manager);
+            assert!(manager.state().setup.confirm.is_some());
+
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Failed(NetworkError::NotFound),
+                ap: None,
+                address: None,
+            }));
+            assert_eq!(
+                manager.state().setup.confirm,
+                None,
+                "a link that is gone takes its own question with it"
+            );
+            assert!(!manager.take_leave());
+        }
+
+        #[test]
+        fn a_survey_round_ends_the_strips_wait() {
+            // The cue exists so a tap that changes nothing visible still answers: a report about
+            // the link is what a round of the survey publishes, so it is what clears it.
+            let mut manager = on_network_page();
+            tap_strip(&mut manager);
+            assert!(manager.state().setup.rescan_wait);
+            manager.apply_business(BusinessIntent::Link(LinkStatus::default()));
+            assert!(
+                !manager.state().setup.rescan_wait,
+                "the round came back, so the strip stops waiting"
+            );
+        }
+
+        #[test]
+        fn a_hold_on_a_saved_row_asks_to_forget_it() {
+            // The second verb for a row: a tap joins the network, a hold asks about the copy this
+            // device keeps of it — and the store is what says whether it keeps one.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["cafe"]);
+            hold_band(&mut manager, 1);
+            assert_eq!(
+                manager.state().setup.confirm,
+                Some(Confirm::Forget(ap(b"cafe"))),
+                "the band held is the network the box asks about"
+            );
+            assert!(
+                !manager.state().setup.keyboard,
+                "a hold is not a tap: nothing is picked and nothing is typed"
+            );
+            assert_eq!(manager.state().setup.selected, None);
+
+            tap_answer(&mut manager, keyboard::DialogChoice::Act);
+            assert_eq!(
+                manager.take_forget(),
+                Some(Ssid::from_octets(b"cafe")),
+                "the answer hands the name to the task that holds the store"
+            );
+            assert_eq!(manager.take_forget(), None, "once");
+        }
+
+        #[test]
+        fn a_hold_on_a_row_this_device_has_not_saved_asks_nothing() {
+            // There is nothing to forget, so there is no question: a box that asked anyway would
+            // be offering to erase a memory the device does not have.
+            let mut manager = on_network_page();
+            hold_band(&mut manager, 0);
+            assert_eq!(manager.state().setup.confirm, None);
+            assert_eq!(manager.take_forget(), None);
+
+            // And the mark is the store's own answer rather than the page's guess: a name it
+            // reports is one the hold asks about, and one it stops reporting is one it does not.
+            marked(&mut manager, &["neighbour"]);
+            hold_band(&mut manager, 0);
+            assert!(manager.state().setup.confirm.is_some());
+            manager.apply_business(BusinessIntent::Dismiss);
+            marked(&mut manager, &[]);
+            hold_band(&mut manager, 0);
+            assert_eq!(
+                manager.state().setup.confirm,
+                None,
+                "a name the store no longer holds is not one to ask about"
+            );
+        }
+
+        #[test]
+        fn the_stores_marks_ride_the_snapshot_the_panel_draws_from() {
+            // The mark is drawn by a sink that holds only the snapshot, so the marks have to be in
+            // it — and they are marks rather than names: what joins the networks stays with the
+            // radio, and the page only ever asks about the rows in front of it.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["neighbour", "cafe"]);
+            let snapshot = manager.state();
+            let list = snapshot.aps.expect("the page has a list");
+            assert!(list.is_saved(0), "the row the store holds is marked");
+            assert!(list.is_saved(1), "and so is the other one");
+            assert!(
+                !list.is_saved(2),
+                "a row the store does not hold is not marked, and neither is a row that is not there"
+            );
+
+            marked(&mut manager, &["cafe"]);
+            let list = manager.state().aps.expect("the page has a list");
+            assert!(!list.is_saved(0), "a mark the store dropped is gone");
+            assert!(list.is_saved(1));
+        }
+
+        #[test]
+        fn the_same_row_is_a_request_to_join_while_the_link_is_not_on_it() {
+            // The row is the link's own only while the link is *up*: a device that has an access
+            // point recorded from an attempt that failed still has to be able to join it.
+            let mut manager = on_network_page();
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Failed(NetworkError::Credentials),
+                ap: Some(ap(b"neighbour")),
+                address: None,
+            }));
+
+            tap_band(&mut manager, 0);
+            assert!(!manager.take_leave());
+            assert!(
+                manager
+                    .state()
+                    .setup
+                    .selected
+                    .is_some_and(|picked| picked.is_same_network(&ap(b"neighbour"))),
+                "the row is a selection, and the passphrase can be fixed from there"
+            );
+        }
+
+        #[test]
+        fn the_row_the_link_is_on_is_neither_a_leave_nor_a_pick() {
+            // Leaving is the strip's, not the row's: one row meaning its own opposite was a tap
+            // with two meanings and nothing on the panel to tell which one was coming. And under a
+            // link the row means nothing at all — the strip is the page's one way off it, so the
+            // row that is up is no more a pick than any other row is.
+            let mut manager = on_network_page();
+            link_up(&mut manager, b"neighbour");
+
+            tap_band(&mut manager, 0);
+            assert!(
+                !manager.take_leave(),
+                "a tap on the link's own row is not a leave"
+            );
+            assert!(
+                !manager.state().setup.keyboard,
+                "and it is not a pick while the link is up"
+            );
+            assert_eq!(
+                manager.state().setup.selected,
+                None,
+                "nothing on the page moved"
+            );
+        }
+
+        #[test]
+        fn a_scan_that_shrank_pulls_the_list_back_to_its_own_end() {
+            let mut manager = DeviceManager::new().with_network(true);
+            let eight: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
+            manager.apply_scan(ApList::from_ranked(&eight));
+            manager.apply_business(BusinessIntent::TogglePage);
+            manager.apply_business(BusinessIntent::ListSlide(true));
+            assert_eq!(manager.state().setup.list_top, 1);
+
+            manager.apply_scan(ApList::from_ranked(&[ap(b"a"), ap(b"b")]));
+            assert_eq!(
+                manager.state().setup.list_top,
+                0,
+                "a list shorter than its own window cannot be scrolled past its end"
+            );
+            // Both of its rows are still reachable afterwards.
+            tap_band(&mut manager, 1);
+            assert_eq!(manager.state().setup.selected, Some(ap(b"b")));
+        }
+
+        #[test]
+        fn connect_hands_over_what_was_typed_for_the_row_that_was_picked() {
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            // `b` is the phone layer's second key tapped twice: the first tap types `a` and the
+            // second cycles it, because two letters off one key in a row are one character.
+            type_letter(&mut manager, b'b', 0);
+            type_letter(&mut manager, b'd', 1_000);
+            key(&mut manager, Key::Connect);
+
+            let credential = handed_over(&mut manager).expect("connect hands one over");
+            assert_eq!(credential.ssid, Ssid::from_octets(b"neighbour"));
+            assert_eq!(credential.password.as_bytes(), b"bd");
+            assert!(
+                !manager.state().setup.keyboard,
+                "the keyboard closes on connect: the radio says whether it worked"
+            );
+            assert_eq!(
+                manager.state().setup.entry.map(|entry| entry.len()),
+                Some(2),
+                "and the draft stays: a refusal comes back to the text it refused"
+            );
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"neighbour")),
+                "the page keeps showing which network is being tried"
+            );
+            assert_eq!(
+                handed_over(&mut manager),
+                None,
+                "a credential is a command, not a latch: it is handed over once"
+            );
+        }
+
+        #[test]
+        fn an_open_network_is_handed_over_without_a_keyboard() {
+            // The panel's own answer to "open": there is nothing to type, so the tap that picks the
+            // row is the whole handover — and the page goes back to the list, where the phase and
+            // the address have somewhere to be read.
+            let mut manager = on_network_page();
+            manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
+            tap_band(&mut manager, 0);
+            assert!(
+                !manager.state().setup.keyboard,
+                "no keyboard for a network that asks for nothing"
+            );
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(open(b"cafe")),
+                "but the page still says which network is being tried"
+            );
+            let credential = handed_over(&mut manager).expect("the pick hands one over");
+            assert_eq!(credential.ssid, Ssid::from_octets(b"cafe"));
+            assert!(
+                credential.password.as_bytes().is_empty(),
+                "no passphrase rather than a guess at one"
+            );
+        }
+
+        #[test]
+        fn a_tap_on_a_saved_row_asks_for_the_copy_the_device_keeps() {
+            // The row is one the device can join on its own, so the tap says *which* network and
+            // nothing else: no keyboard, because there is nothing to type, and the passphrase never
+            // leaves the store.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["neighbour"]);
+            tap_band(&mut manager, 0);
+            assert_eq!(
+                manager.take_join(),
+                Some(JoinRequest::Held(Ssid::from_octets(b"neighbour"))),
+                "the tap names the row for the store rather than for the keyboard"
+            );
+            assert!(!manager.state().setup.keyboard, "and nothing is asked for");
+            assert_eq!(manager.state().setup.entry, None);
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"neighbour")),
+                "with the row still saying which network is being tried"
+            );
+        }
+
+        #[test]
+        fn a_saved_row_that_is_open_is_still_handed_over_without_a_keyboard() {
+            // An open network's copy is an empty passphrase, which the page can hand over itself:
+            // the tap is the whole handover either way, and the row's mark decides nothing here.
+            let mut manager = on_network_page();
+            manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
+            marked(&mut manager, &["cafe"]);
+            tap_band(&mut manager, 0);
+            assert!(!manager.state().setup.keyboard);
+            let credential = handed_over(&mut manager).expect("the pick hands one over");
+            assert!(credential.password.is_empty());
+        }
+
+        #[test]
+        fn a_row_the_store_has_no_copy_of_puts_the_page_back_on_the_keyboard() {
+            // The mark is a round old and the store is the truth, so the tap that skipped the
+            // keyboard can end on one after all: the radio says there is no copy, and the page asks
+            // for the passphrase — over an empty draft, because the tap that asked for the copy
+            // opened none.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["neighbour"]);
+            tap_band(&mut manager, 0);
+            manager.apply_business(BusinessIntent::NoCopy(Ssid::from_octets(b"neighbour")));
+            assert!(manager.state().setup.keyboard, "the page has to ask");
+            assert_eq!(
+                manager.state().setup.entry,
+                Some(Entry::default()),
+                "over an empty draft, which is what the keys are drawn from"
+            );
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"neighbour")),
+                "on the row the finger picked"
+            );
+        }
+
+        #[test]
+        fn a_copy_the_store_has_that_was_refused_comes_back_as_a_keyboard() {
+            // The store's copy can be refused like any other, and the page it leaves has to be one
+            // the user can type on: the row is picked with no draft under it — the tap that asked
+            // for the copy opened none — and a keyboard over nothing is a page with no keys drawn
+            // on it at all. So the refusal starts the draft the user edits.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["neighbour"]);
+            tap_band(&mut manager, 0);
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Failed(NetworkError::Credentials),
+                ap: Some(ap(b"neighbour")),
+                address: None,
+            }));
+            assert!(manager.state().setup.keyboard, "the refusal asks for a fix");
+            assert_eq!(manager.state().setup.entry, Some(Entry::default()));
+            assert_eq!(
+                manager.state().setup.refused,
+                Some(NetworkError::Credentials),
+                "and the page says what went wrong"
+            );
+        }
+
+        #[test]
+        fn an_answer_about_another_row_is_not_this_rows_question() {
+            // A tap on a different row since the ask is a newer question, whose own answer is still
+            // on its way. Raising the keyboard over the older name would hand whatever the user
+            // types to a network they did not pick — and the page the answer arrives on is one where
+            // that shows: the newer row was asked for by name too, so it has no draft to rise over.
+            let mut manager = on_network_page();
+            marked(&mut manager, &["neighbour", "cafe"]);
+            tap_band(&mut manager, 0);
+            manager.take_join();
+            tap_band(&mut manager, 1);
+            manager.apply_business(BusinessIntent::NoCopy(Ssid::from_octets(b"neighbour")));
+            assert!(
+                !manager.state().setup.keyboard,
+                "the answer is about a row that is not the picked one"
+            );
+            assert_eq!(manager.state().setup.entry, None);
+            assert_eq!(
+                manager.state().setup.selected,
+                Some(ap(b"cafe")),
+                "which is still the row the finger is on"
+            );
+            assert_eq!(
+                manager.take_join(),
+                Some(JoinRequest::Held(Ssid::from_octets(b"cafe"))),
+                "and the ask the newer row made is the one still in hand"
+            );
+        }
+
+        #[test]
+        fn a_second_tap_of_the_same_row_keeps_the_draft_through_a_rescan() {
+            // A rescan rewrites every row it lists, so "the same network" has to be read off the
+            // network and not off the row — otherwise the tap that follows a refusal would wipe the
+            // passphrase that refusal was about.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            type_letter(&mut manager, b'b', 0);
+            key(&mut manager, Key::Connect);
+            manager.apply_scan(ApList::from_ranked(&[
+                ap_named(b"neighbour", -70, true),
+                ap(b"cafe"),
+            ]));
+            tap_band(&mut manager, 0);
+            assert!(
+                manager.state().setup.keyboard,
+                "the same row opens the entry again over the draft"
+            );
+            assert_eq!(
+                manager
+                    .state()
+                    .setup
+                    .entry
+                    .map(|entry| entry.as_bytes().to_vec()),
+                Some(b"b".to_vec()),
+                "the draft belongs to the network, not to the reading of it"
+            );
+            // A row for a *different* network starts an empty draft: the text belonged to the
+            // first one. The keyboard has to go down first, because while it is up the whole panel
+            // is keys.
+            key(&mut manager, Key::Cancel);
+            tap_band(&mut manager, 1);
+            assert_eq!(
+                manager.state().setup.entry.map(|entry| entry.len()),
+                Some(0)
+            );
+            assert_eq!(manager.state().setup.selected, Some(ap(b"cafe")));
+        }
+
+        #[test]
+        fn the_row_a_link_was_left_from_opens_a_new_draft() {
+            // What worked dropped the draft and kept the row it was for, and leaving the link
+            // touches neither. So the row of the network this device just had is still the picked
+            // one, and tapping it again asks to join it again — over a *new* draft, because there
+            // is none left to keep. Keeping the row and skipping the draft is a keyboard raised
+            // over nothing: the keys are drawn from the draft and the strip is hidden with them,
+            // so the page draws nothing between the header and the bottom edge, and no control on
+            // it can be reached. This is the state a panel showed as black.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            type_letter(&mut manager, b'b', 0);
+            key(&mut manager, Key::Connect);
+            link_up(&mut manager, b"neighbour");
+            assert!(
+                manager.state().setup.selected.is_some() && manager.state().setup.entry.is_none(),
+                "the link kept the row and dropped the draft"
+            );
+
+            tap_strip(&mut manager);
+            tap_answer(&mut manager, keyboard::DialogChoice::Act);
+            manager.apply_business(BusinessIntent::Link(LinkStatus::default()));
+            assert!(!manager.state().link.is_leavable(), "the link is down");
+
+            tap_band(&mut manager, 0);
+            assert!(
+                manager.state().setup.keyboard,
+                "the row the link was on is a request to join it again"
+            );
+            assert_eq!(
+                manager.state().setup.entry.map(|entry| entry.len()),
+                Some(0),
+                "and the entry under the keys is a new one, not the draft the link dropped"
+            );
+        }
+
+        #[test]
+        fn a_refused_passphrase_comes_back_to_the_keyboard_over_the_draft() {
+            // The likeliest reason an association is refused is a character in the passphrase, so
+            // the screen that can fix it comes back up — and the refusal stays written for as long
+            // as it takes, because the survey's own phase reports would otherwise bury it.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            type_letter(&mut manager, b'b', 0);
+            key(&mut manager, Key::Connect);
+            assert!(
+                !manager.state().setup.keyboard,
+                "the keyboard is down while the radio tries"
+            );
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Failed(NetworkError::Credentials),
+                ..LinkStatus::default()
+            }));
+            assert_eq!(
+                manager.state().setup.refused,
+                Some(NetworkError::Credentials)
+            );
+            assert!(
+                manager.state().setup.keyboard,
+                "the keyboard comes back to fix the passphrase"
+            );
+            assert_eq!(
+                manager
+                    .state()
+                    .setup
+                    .entry
+                    .map(|entry| entry.as_bytes().to_vec()),
+                Some(b"b".to_vec()),
+                "over the draft that was refused, not over an empty field"
+            );
+            // What worked is not kept: the radio holds the network, and the passphrase is not left
+            // in the state for no reader.
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Connected,
+                ..LinkStatus::default()
+            }));
+            assert_eq!(manager.state().setup.entry, None);
+            assert!(
+                !manager.state().setup.keyboard,
+                "and a link that came up has nothing left to type"
+            );
+        }
+
+        #[test]
+        fn the_reveal_key_shows_the_draft_without_touching_it() {
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            type_letter(&mut manager, b'b', 0);
+            assert!(!manager.state().setup.revealed);
+            key(&mut manager, Key::Reveal);
+            assert!(manager.state().setup.revealed);
+            assert_eq!(
+                manager
+                    .state()
+                    .setup
+                    .entry
+                    .map(|entry| entry.as_bytes().to_vec()),
+                Some(b"b".to_vec()),
+                "showing the draft is not typing on it"
+            );
+            key(&mut manager, Key::Cancel);
+            assert!(
+                !manager.state().setup.revealed,
+                "and leaving the entry puts the stars back"
+            );
+        }
+
+        #[test]
+        fn a_draft_spelling_a_word_reaches_the_radio_byte_for_byte() {
+            // The keyboard's own end-to-end claim, driven through the geometry rather than
+            // through the draft's API: what a finger types is what the radio is handed. `pass`
+            // is the word this is for — two letters off the `pqrs` key in a row, which is the one
+            // place a multi-tap keyboard has to be waited out rather than tapped faster.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            for (n, byte) in b"pass".iter().enumerate() {
+                type_letter(&mut manager, *byte, 2_000 * n as u32);
+            }
+            key(&mut manager, Key::Connect);
+            let credential = handed_over(&mut manager).expect("connect hands one over");
+            assert_eq!(credential.password.as_bytes(), b"pass");
+        }
+
+        #[test]
+        fn cancel_throws_the_draft_away_without_asking_the_radio() {
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            key(&mut manager, Key::Char(b'2'));
+            key(&mut manager, Key::Cancel);
+            assert_eq!(manager.state().setup.entry, None);
+            assert_eq!(manager.state().setup.selected, None);
+            assert_eq!(
+                handed_over(&mut manager),
+                None,
+                "cancelling sends nothing to the radio"
+            );
+        }
+
+        #[test]
+        fn a_key_with_no_keyboard_up_types_nothing() {
+            // A queued tap can arrive after the entry closed — the same finger that pressed
+            // connect. It must not type into the next entry, which is not open yet.
+            let mut manager = on_network_page();
+            let before = manager.state();
+            key(&mut manager, Key::Char(b'2'));
+            key(&mut manager, Key::Connect);
+            assert_eq!(manager.state(), before);
+            assert_eq!(handed_over(&mut manager), None);
+        }
+
+        #[test]
+        fn a_repeat_of_one_key_cycles_it_and_any_other_key_starts_a_character() {
+            let mut entry = Entry::default();
+            let two = Layer::Abc.face(1);
+            entry.edit(Key::Char(two), 0);
+            assert_eq!(
+                entry.as_bytes(),
+                b"a",
+                "the first tap is the first candidate"
+            );
+            entry.edit(Key::Char(two), 100);
+            entry.edit(Key::Char(two), 200);
+            assert_eq!(
+                entry.as_bytes(),
+                b"c",
+                "each tap inside the window moves the character on rather than adding one"
+            );
+            entry.edit(Key::Char(two), 300);
+            assert_eq!(entry.as_bytes(), b"a", "and the run comes round again");
+            entry.edit(Key::Char(Layer::Abc.face(2)), 400);
+            assert_eq!(
+                entry.as_bytes(),
+                b"ad",
+                "another key ends the run and starts a character of its own"
+            );
+            entry.edit(Key::Char(Layer::Abc.face(2)), 400 + MULTITAP_WINDOW_MS + 1);
+            assert_eq!(
+                entry.as_bytes(),
+                b"add",
+                "and so does the same key once the window has closed"
+            );
+        }
+
+        #[test]
+        fn backspace_ends_the_run_so_the_next_tap_starts_a_character() {
+            // Cycling replaces the character on the panel, so a character that is no longer there
+            // must not be cycled: the run ends with the character.
+            let mut entry = Entry::default();
+            let two = Layer::Abc.face(1);
+            entry.edit(Key::Char(two), 0);
+            entry.edit(Key::Char(two), 100);
+            entry.edit(Key::Backspace, 200);
+            entry.edit(Key::Char(two), 300);
+            assert_eq!(entry.as_bytes(), b"a");
+            assert_eq!(entry.cycling().map(|c| c.index), Some(0));
+        }
+
+        #[test]
+        fn the_digit_and_symbol_layers_type_one_character_a_key() {
+            // One character a key, so a repeat is a second character rather than a cycle: a
+            // passphrase with `00` in it is four taps and not two.
+            let mut entry = Entry::default();
+            entry.edit(Key::Layer, 0);
+            assert_eq!(entry.layer(), Layer::Digits);
+            let zero = Layer::Digits.face(9);
+            entry.edit(Key::Char(zero), 0);
+            entry.edit(Key::Char(zero), 100);
+            assert_eq!(entry.as_bytes(), b"00");
+            entry.edit(Key::Layer, 200);
+            assert_eq!(entry.layer(), Layer::Symbols);
+            let at = Layer::Symbols.face(8);
+            entry.edit(Key::Char(at), 300);
+            assert_eq!(entry.as_bytes(), b"00@");
+        }
+
+        #[test]
+        fn shift_capitalises_one_letter_and_a_second_tap_locks_it() {
+            let mut entry = Entry::default();
+            let (two, three) = (Layer::Abc.face(1), Layer::Abc.face(2));
+            entry.edit(Key::Shift, 0);
+            entry.edit(Key::Char(two), 100);
+            entry.edit(Key::Char(three), 200);
+            assert_eq!(
+                entry.as_bytes(),
+                b"Ad",
+                "one shot: the capital is the letter after the tap and nothing else"
+            );
+            // A second tap inside the window locks it, and it stays locked across other keys.
+            entry.edit(Key::Shift, 300);
+            entry.edit(Key::Shift, 400);
+            entry.edit(Key::Char(two), 500);
+            entry.edit(Key::Char(three), 600);
+            assert_eq!(entry.as_bytes(), b"AdAD");
+            // One more tap takes the lock off again, so the letter after it is lower case.
+            entry.edit(Key::Shift, 700);
+            entry.edit(Key::Char(two), 800);
+            assert_eq!(entry.as_bytes(), b"AdADa");
+            // Punctuation has no case to capitalise, so a one-shot shift is not spent on it.
+            entry.edit(Key::Shift, 900);
+            entry.edit(Key::Char(Layer::Abc.face(0)), 1_000);
+            entry.edit(Key::Char(two), 1_100);
+            assert_eq!(entry.as_bytes(), b"AdADa.A");
+            // A letter three taps down a key is still that run's character, so the shift reaches it:
+            // `Z` is the shift and then `wxyz` tapped through, which a shift spent on the *first*
+            // tap of the run could not type at all.
+            entry.edit(Key::Shift, 3_000);
+            let nine = Layer::Abc.face(8);
+            for tap in 0..4 {
+                entry.edit(Key::Char(nine), 3_100 + 100 * tap);
+            }
+            assert_eq!(entry.as_bytes(), b"AdADa.AZ");
+            // And the shift is spent by it: the next letter is lower case again.
+            entry.edit(Key::Char(two), 4_000);
+            assert_eq!(entry.as_bytes(), b"AdADa.AZa");
+        }
+
+        #[test]
+        fn the_draft_stops_at_the_length_the_radio_takes() {
+            // A passphrase one byte past what the driver accepts is refused rather than
+            // truncated there, which reads as a wrong password — so the keyboard stops.
+            let mut entry = Entry::default();
+            let (two, three) = (Layer::Abc.face(1), Layer::Abc.face(2));
+            for n in 0..(PASSWORD_BYTES + 8) {
+                // Alternating keys, because a repeat of one would cycle rather than add.
+                let face = if n % 2 == 0 { two } else { three };
+                entry.edit(Key::Char(face), 100 * n as u32);
+            }
+            assert_eq!(entry.len(), PASSWORD_BYTES - 1);
+            entry.edit(Key::Backspace, 0);
+            entry.edit(Key::Char(two), 0);
+            assert_eq!(entry.len(), PASSWORD_BYTES - 1);
+            assert_eq!(entry.as_bytes().last(), Some(&b'a'));
+            // And a key tapped at the cap does not leave the run open behind it, which would
+            // make the next tap of it erase the character it could not replace.
+            assert_eq!(entry.cycling().map(|c| c.index), Some(0));
+        }
+
+        #[test]
+        fn the_panel_is_told_which_candidate_a_key_is_holding() {
+            // The keyboard's own feedback: the key being cycled says what the next tap of it
+            // would type, which is how a passphrase gets typed without reading it back.
+            let mut entry = Entry::default();
+            assert_eq!(entry.cycling(), None, "nothing is being cycled yet");
+            let two = Layer::Abc.face(1);
+            entry.edit(Key::Char(two), 0);
+            let cycling = entry
+                .cycling()
+                .expect("the key just tapped is the one cycling");
+            assert_eq!(cycling.face, two);
+            assert_eq!(cycling.candidates, b"abc");
+            assert_eq!(cycling.index, 0);
+            entry.edit(Key::Char(two), 100);
+            assert_eq!(entry.cycling().map(|c| c.index), Some(1));
+            entry.edit(Key::Connect, 200);
+            assert_eq!(entry.cycling(), None, "leaving the entry ends the run");
+        }
+
+        #[test]
+        fn an_empty_passphrase_is_still_a_credential_the_radio_can_refuse() {
+            // An open network has none, and the panel has no way to say "open" yet: what it
+            // hands over is what was typed, empty included.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            key(&mut manager, Key::Connect);
+            let credential = handed_over(&mut manager).expect("an empty one is still one");
+            assert!(credential.password.is_empty());
+        }
+
+        #[test]
+        fn a_refusal_is_kept_until_another_attempt_starts() {
+            // The survey republishes the phase every round, so a page that only read the live
+            // phase would print `Off` about a second after a wrong passphrase was typed.
+            let mut manager = on_network_page();
+            let failed = LinkStatus {
+                phase: LinkPhase::Failed(NetworkError::Driver),
+                ..LinkStatus::default()
+            };
+            manager.apply_business(BusinessIntent::Link(failed));
+            assert_eq!(
+                manager.state().setup.phase(LinkPhase::Off),
+                LinkPhase::Failed(NetworkError::Driver),
+                "the round's own phase does not bury the refusal"
+            );
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Scanning,
+                ..LinkStatus::default()
+            }));
+            assert_eq!(
+                manager.state().setup.phase(LinkPhase::Scanning),
+                LinkPhase::Failed(NetworkError::Driver),
+                "nor does the survey that follows it"
+            );
+            // Another attempt supersedes it, whichever way it goes.
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                phase: LinkPhase::Connecting,
+                ..LinkStatus::default()
+            }));
+            assert_eq!(
+                manager.state().setup.phase(LinkPhase::Connecting),
+                LinkPhase::Connecting
+            );
+        }
+
+        #[test]
+        fn the_page_draws_the_row_being_typed_for_before_the_link_is_on_it() {
+            // What the keyboard's own header needs: the name comes from the row the user
+            // picked, because the link does not know it until the association succeeds.
+            let mut manager = on_network_page();
+            tap_band(&mut manager, 0);
+            assert_eq!(manager.state().link.ap, None, "nothing is on the air yet");
+            assert_eq!(
+                manager.state().setup.selected.map(|ap| ap.ssid),
+                Some(Ssid::from_octets(b"neighbour"))
+            );
+        }
+    }
+
+    /// The page's moves, walked exhaustively rather than along the paths a test happened to pick.
+    ///
+    /// The tests above are examples: one path somebody thought of, with the state it expected beside
+    /// it. That is the wrong shape for a move whose *precondition* an earlier move took away — such a
+    /// rule can be green for every state its own test walks into while being wrong for a state none of
+    /// them does. So this walks the reachable states instead: a breadth-first sweep over every move the
+    /// page has, from the state a booted device is in, with [`broken`]'s invariants checked on every
+    /// state a move lands on. The moves that reached a broken state are printed with it, so a failure
+    /// here is a reproduction rather than a verdict.
+    ///
+    /// Two limits of the alphabet decide what the sweep's answer is worth. Every report it sends is one
+    /// the radio really makes — `Connected` carries an address, `Connecting` may or may not have a name
+    /// yet, `Off` and `Scanning` carry neither — because a sweep free to invent a report would find
+    /// states the device cannot be in and call them reachable. And states are compared through [`key`]:
+    /// a field left out that a move reads would merge two states the page tells apart.
+    mod reachable {
+        use super::*;
+        use crate::keyboard::{self, DialogChoice, Key};
+        use alloc::collections::{BTreeSet, VecDeque};
+        use alloc::string::String;
+
+        /// Where a list band is tapped and held: inside the row, well clear of the panel's edge.
+        const LIST_X: u16 = 30;
+
+        /// How many states the sweep may reach before it is called off. Asserted rather than assumed:
+        /// the page settles at under half of it, so reaching it means a move was added that the page's
+        /// own state cannot really be in.
+        const SWEEP_CAP: usize = 20_000;
+
+        /// The sweep's key for a state: the fields a move branches on, written out as bytes.
+        ///
+        /// The fields only the *drawing* reads — the reveal, the last refusal, the strip's wait — are
+        /// left out, and that costs nothing: [`broken`] is checked on the state every move lands on
+        /// whether or not a state like it has been seen. What the key is for is the frontier.
+        ///
+        /// Bytes rather than a hash, because a hash's collision would merge two states and drop the
+        /// moves leading out of one of them — a silent hole in the one thing this test is for.
+        fn key(state: &DeviceState) -> Vec<u8> {
+            let mut key = Vec::with_capacity(64);
+            key.push(state.page as u8);
+            key.push(u8::from(state.link.is_leavable()));
+            encode_ap(&mut key, state.link.ap);
+            key.push(u8::from(state.link.address.is_some()));
+            match state.aps {
+                None => key.push(0),
+                Some(list) => {
+                    key.push(1);
+                    key.push(list.len() as u8);
+                    for index in 0..list.len() {
+                        let Some(ap) = list.get(index) else {
+                            break;
+                        };
+                        encode_ap(&mut key, Some(ap));
+                        key.push(u8::from(list.is_saved(index)));
+                    }
+                }
+            }
+            encode_ap(&mut key, state.setup.selected);
+            key.push(u8::from(state.setup.entry.is_some()));
+            key.push(u8::from(state.setup.keyboard));
+            key.push(state.setup.list_top);
+            match state.setup.confirm {
+                None => key.push(0),
+                Some(Confirm::Leave) => key.push(1),
+                Some(Confirm::Forget(ap)) => {
+                    key.push(2);
+                    encode_ap(&mut key, Some(ap));
+                }
+            }
+            key.push(u8::from(state.leave));
+            key.push(u8::from(state.scan_now));
+            match state.join {
+                None => key.push(0),
+                // The two shapes of the same command are two states here: one is joined with and
+                // the other is looked up, and the moves below do different things with each.
+                Some(JoinRequest::Typed(_)) => key.push(1),
+                Some(JoinRequest::Held(_)) => key.push(2),
+            }
+            key.push(u8::from(state.forget.is_some()));
+            key
+        }
+
+        /// A network as bytes: the BSSID, which is the field that names it, and whether it asks for
+        /// a passphrase, which is the field a pick branches on.
+        fn encode_ap(bytes: &mut Vec<u8>, ap: Option<AccessPoint>) {
+            match ap {
+                None => bytes.push(0),
+                Some(ap) => {
+                    bytes.push(1);
+                    bytes.extend_from_slice(&ap.bssid);
+                    bytes.push(u8::from(ap.secured));
+                }
+            }
+        }
+
+        /// The invariants the page's own drawing and hit rules rest on, read off a state some move
+        /// reached: `None` when they all hold.
+        ///
+        /// Each one is the negation of a state that draws nothing, offers nothing, or offers
+        /// something that is not there — the failures this page has no way to be loud about, because
+        /// what breaks is what the panel puts on the glass.
+        fn broken(state: &DeviceState) -> Option<&'static str> {
+            if state.setup.keyboard && state.setup.entry.is_none() {
+                return Some(
+                    "the keyboard is up with no draft under it. The keys are drawn from the draft \
+                     and the strip is hidden with them, so the page draws nothing between the \
+                     header and the bottom edge, and no control on it can be reached",
+                );
+            }
+            if state.setup.entry.is_some() && state.setup.selected.is_none() {
+                return Some(
+                    "a draft is kept for no row, so nothing names the network it would be handed \
+                     to",
+                );
+            }
+            if state.setup.confirm == Some(Confirm::Leave) && !state.link.is_leavable() {
+                return Some(
+                    "the page is asking about leaving a link that is not up, so the box has no \
+                     answer left to take",
+                );
+            }
+            if state.setup.rescan_wait && state.link.is_leavable() {
+                return Some(
+                    "the strip is waiting for a survey round under a link it would offer to leave",
+                );
+            }
+            None
+        }
+
+        /// How the sweep reached `at`, with `this` as the move that was applied to it.
+        fn path(origin: &[(Option<usize>, &'static str)], at: usize, this: &str) -> String {
+            let mut names = Vec::new();
+            let mut here = Some(at);
+            while let Some(index) = here {
+                let (parent, name) = origin[index];
+                names.push(name);
+                here = parent;
+            }
+            names.reverse();
+            let mut text = String::new();
+            for (index, name) in names.iter().enumerate() {
+                if index > 0 {
+                    text.push_str(", ");
+                }
+                text.push_str(name);
+            }
+            if !text.is_empty() {
+                text.push_str(", ");
+            }
+            text.push_str(this);
+            text
+        }
+
+        fn band_y(band: usize) -> u16 {
+            (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2) as u16
+        }
+
+        /// One classified event, applied the way the render loop applies one: the operation first,
+        /// then the business intent `translate` makes of it against the state that operation left.
+        fn applied(manager: &mut DeviceManager, event: InputEvent) {
+            let operation = op(event);
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        fn tap_at(manager: &mut DeviceManager, x: u16, y: u16) {
+            applied(
+                manager,
+                InputEvent::Gesture(GestureEvent::Tap {
+                    id: 0,
+                    x,
+                    y,
+                    held_ms: 40,
+                    at_ms: 40,
+                }),
+            );
+        }
+
+        fn hold_at(manager: &mut DeviceManager, x: u16, y: u16) {
+            applied(
+                manager,
+                InputEvent::Gesture(GestureEvent::LongPress {
+                    id: 0,
+                    x,
+                    y,
+                    held_ms: 500,
+                }),
+            );
+        }
+
+        fn swipe(manager: &mut DeviceManager, direction: SwipeDirection, end_y: u16) {
+            let y = band_y(1);
+            applied(
+                manager,
+                InputEvent::Gesture(GestureEvent::Swipe {
+                    id: 0,
+                    direction,
+                    x: LIST_X,
+                    y,
+                    end_x: LIST_X,
+                    end_y,
+                    held_ms: 40,
+                    distance_px: 60,
+                }),
+            );
+        }
+
+        fn tap_key(manager: &mut DeviceManager, key: Key) {
+            let cell = keyboard::cell_of(key)
+                .or_else(|| {
+                    (0..keyboard::KEYS)
+                        .find(|cell| keyboard::key_of(Layer::Abc, *cell) == Some(key))
+                })
+                .expect("the grid holds every key");
+            let rect = keyboard::key_box(cell).expect("a cell of the grid");
+            tap_at(
+                manager,
+                (rect.x + rect.w / 2) as u16,
+                (rect.y + rect.h / 2) as u16,
+            );
+        }
+
+        fn tap_answer(manager: &mut DeviceManager, choice: DialogChoice) {
+            let choice = keyboard::dialog_answer_box(choice);
+            tap_at(
+                manager,
+                (choice.x + choice.w / 2) as u16,
+                (choice.y + choice.h / 2) as u16,
+            );
+        }
+
+        /// A network whose BSSID is its own, so the rows of a list stay distinct states.
+        fn ap_named(ssid: &[u8], last: u8) -> AccessPoint {
+            AccessPoint {
+                ssid: Ssid::from_octets(ssid),
+                bssid: [0x02, 0, 0, 0, 0, last],
+                channel: 6,
+                rssi: -55,
+                secured: true,
+            }
+        }
+
+        fn neighbour() -> AccessPoint {
+            ap_named(b"neighbour", 1)
+        }
+
+        fn cafe() -> AccessPoint {
+            ap_named(b"cafe", 2)
+        }
+
+        fn link_to(manager: &mut DeviceManager, status: LinkStatus) {
+            manager.apply_business(BusinessIntent::Link(status));
+        }
+
+        fn scan_of(manager: &mut DeviceManager, rows: &[AccessPoint]) {
+            manager.apply_scan(ApList::from_ranked(rows));
+        }
+
+        // The page's own moves.
+        fn tap_first_band(manager: &mut DeviceManager) {
+            tap_at(manager, LIST_X, band_y(0));
+        }
+        fn tap_second_band(manager: &mut DeviceManager) {
+            tap_at(manager, LIST_X, band_y(1));
+        }
+        fn tap_third_band(manager: &mut DeviceManager) {
+            tap_at(manager, LIST_X, band_y(2));
+        }
+        fn tap_the_strip(manager: &mut DeviceManager) {
+            tap_at(
+                manager,
+                160,
+                (keyboard::TOOLBAR_TOP + keyboard::TOOLBAR_H / 2) as u16,
+            );
+        }
+        fn tap_the_header(manager: &mut DeviceManager) {
+            tap_at(manager, 2, 2);
+        }
+        fn tap_keep(manager: &mut DeviceManager) {
+            tap_answer(manager, DialogChoice::Keep);
+        }
+        fn tap_the_action(manager: &mut DeviceManager) {
+            tap_answer(manager, DialogChoice::Act);
+        }
+        fn hold_first_band(manager: &mut DeviceManager) {
+            hold_at(manager, LIST_X, band_y(0));
+        }
+        fn hold_second_band(manager: &mut DeviceManager) {
+            hold_at(manager, LIST_X, band_y(1));
+        }
+        fn slide_down(manager: &mut DeviceManager) {
+            swipe(manager, SwipeDirection::Down, band_y(2));
+        }
+        fn slide_up(manager: &mut DeviceManager) {
+            swipe(manager, SwipeDirection::Up, 0);
+        }
+        fn tap_a_character(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Char(Layer::Abc.face(0)));
+        }
+        fn tap_shift(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Shift);
+        }
+        fn tap_backspace(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Backspace);
+        }
+        fn tap_layer(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Layer);
+        }
+        fn tap_reveal(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Reveal);
+        }
+        fn tap_connect(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Connect);
+        }
+        fn tap_cancel(manager: &mut DeviceManager) {
+            tap_key(manager, Key::Cancel);
+        }
+        fn triple_click(manager: &mut DeviceManager) {
+            applied(manager, InputEvent::Button(ButtonEvent::TripleClick));
+        }
+        fn click(manager: &mut DeviceManager) {
+            applied(manager, InputEvent::Button(ButtonEvent::Click));
+        }
+        fn hold_the_button(manager: &mut DeviceManager) {
+            applied(manager, InputEvent::Button(ButtonEvent::LongPress));
+        }
+
+        // The radio's own reports, each one a shape the radio really makes.
+        fn nothing_on_the_air(manager: &mut DeviceManager) {
+            link_to(manager, LinkStatus::default());
+        }
+        fn looking_around(manager: &mut DeviceManager) {
+            link_to(
+                manager,
+                LinkStatus {
+                    phase: LinkPhase::Scanning,
+                    ..LinkStatus::default()
+                },
+            );
+        }
+        fn attempt_without_a_name(manager: &mut DeviceManager) {
+            link_to(
+                manager,
+                LinkStatus {
+                    phase: LinkPhase::Connecting,
+                    ap: None,
+                    address: None,
+                },
+            );
+        }
+        fn associated(manager: &mut DeviceManager) {
+            link_to(
+                manager,
+                LinkStatus {
+                    phase: LinkPhase::Connecting,
+                    ap: Some(neighbour()),
+                    address: None,
+                },
+            );
+        }
+        fn connected(manager: &mut DeviceManager) {
+            link_to(
+                manager,
+                LinkStatus {
+                    phase: LinkPhase::Connected,
+                    ap: Some(neighbour()),
+                    address: Some(Ipv4::from_octets([10, 0, 0, 2])),
+                },
+            );
+        }
+        fn refused(manager: &mut DeviceManager) {
+            link_to(
+                manager,
+                LinkStatus {
+                    phase: LinkPhase::Failed(NetworkError::Credentials),
+                    ap: Some(neighbour()),
+                    address: None,
+                },
+            );
+        }
+        fn the_driver_refused(manager: &mut DeviceManager) {
+            link_to(
+                manager,
+                LinkStatus {
+                    phase: LinkPhase::Failed(NetworkError::Driver),
+                    ap: None,
+                    address: None,
+                },
+            );
+        }
+
+        // The survey's own answers.
+        fn scan_two(manager: &mut DeviceManager) {
+            scan_of(manager, &[neighbour(), cafe()]);
+        }
+        fn scan_one_open(manager: &mut DeviceManager) {
+            scan_of(
+                manager,
+                &[AccessPoint {
+                    secured: false,
+                    ..neighbour()
+                }],
+            );
+        }
+        fn scan_with_a_saved_row(manager: &mut DeviceManager) {
+            let mut list = ApList::from_ranked(&[neighbour(), cafe()]);
+            let mut store = SavedNetworks::empty();
+            let credentials =
+                Credentials::from_text("neighbour", "latte").expect("a credential the radio takes");
+            store.remember(&credentials);
+            let marks = store.mask(&list);
+            list.mark_saved(marks);
+            manager.apply_scan(list);
+        }
+
+        // The render loop's own half: one latch handed over, and the radio's answer to it.
+        fn the_leave_is_carried_out(manager: &mut DeviceManager) {
+            if manager.take_leave() {
+                nothing_on_the_air(manager);
+            }
+        }
+        // A typed credential is joined with, and the radio's first report about the attempt is the
+        // phase it starts in: an association with no name yet, because the driver has not said which
+        // access point answered.
+        fn the_typed_join_is_carried_out(manager: &mut DeviceManager) {
+            if let Some(JoinRequest::Typed(_)) = manager.take_join() {
+                attempt_without_a_name(manager);
+            }
+        }
+        // And the two answers a name has: the copy is on the part, so the link goes after it and
+        // reports the association, or there is none and the page is told to ask. Both take the same
+        // command, so the sweep forks on the answer rather than on the ask.
+        fn the_held_join_is_carried_out(manager: &mut DeviceManager) {
+            if let Some(JoinRequest::Held(_)) = manager.take_join() {
+                associated(manager);
+            }
+        }
+        fn the_missing_copy_is_reported(manager: &mut DeviceManager) {
+            if let Some(JoinRequest::Held(ssid)) = manager.take_join() {
+                manager.apply_business(BusinessIntent::NoCopy(ssid));
+            }
+        }
+        fn the_scan_request_is_carried_out(manager: &mut DeviceManager) {
+            if manager.take_scan_now() {
+                looking_around(manager);
+                scan_two(manager);
+            }
+        }
+        fn the_forget_is_carried_out(manager: &mut DeviceManager) {
+            if manager.take_forget().is_some() {
+                // The store's own erase, as the network task answers it: the same rows, marked
+                // against a store that no longer holds the name.
+                let mut list = manager.state().aps.unwrap_or_else(ApList::empty);
+                list.mark_saved(0);
+                manager.apply_scan(list);
+            }
+        }
+
+        /// One move of the page, and the words a failure prints it as.
+        struct Move {
+            name: &'static str,
+            run: fn(&mut DeviceManager),
+        }
+
+        fn alphabet() -> Vec<Move> {
+            alloc::vec![
+                Move {
+                    name: "a tap on the first band",
+                    run: tap_first_band
+                },
+                Move {
+                    name: "a tap on the second band",
+                    run: tap_second_band
+                },
+                Move {
+                    name: "a tap on the third band",
+                    run: tap_third_band
+                },
+                Move {
+                    name: "a tap on the strip",
+                    run: tap_the_strip
+                },
+                Move {
+                    name: "a tap on the header",
+                    run: tap_the_header
+                },
+                Move {
+                    name: "a tap on the box's KEEP",
+                    run: tap_keep
+                },
+                Move {
+                    name: "a tap on the box's action",
+                    run: tap_the_action
+                },
+                Move {
+                    name: "a hold on the first band",
+                    run: hold_first_band
+                },
+                Move {
+                    name: "a hold on the second band",
+                    run: hold_second_band
+                },
+                Move {
+                    name: "a slide down the list",
+                    run: slide_down
+                },
+                Move {
+                    name: "a slide up the list",
+                    run: slide_up
+                },
+                Move {
+                    name: "a tap on a character key",
+                    run: tap_a_character
+                },
+                Move {
+                    name: "a tap on shift",
+                    run: tap_shift
+                },
+                Move {
+                    name: "a tap on backspace",
+                    run: tap_backspace
+                },
+                Move {
+                    name: "a tap on the layer key",
+                    run: tap_layer
+                },
+                Move {
+                    name: "a tap on reveal",
+                    run: tap_reveal
+                },
+                Move {
+                    name: "a tap on connect",
+                    run: tap_connect
+                },
+                Move {
+                    name: "a tap on cancel",
+                    run: tap_cancel
+                },
+                Move {
+                    name: "a triple click",
+                    run: triple_click
+                },
+                Move {
+                    name: "a click",
+                    run: click
+                },
+                Move {
+                    name: "a long press of the button",
+                    run: hold_the_button
+                },
+                Move {
+                    name: "the radio reporting nothing on the air",
+                    run: nothing_on_the_air
+                },
+                Move {
+                    name: "the radio looking around",
+                    run: looking_around
+                },
+                Move {
+                    name: "an attempt with no name yet",
+                    run: attempt_without_a_name
+                },
+                Move {
+                    name: "the radio associating",
+                    run: associated
+                },
+                Move {
+                    name: "the radio connected",
+                    run: connected
+                },
+                Move {
+                    name: "the credential refused",
+                    run: refused
+                },
+                Move {
+                    name: "the driver refusing",
+                    run: the_driver_refused
+                },
+                Move {
+                    name: "a scan of two networks",
+                    run: scan_two
+                },
+                Move {
+                    name: "a scan of an open network",
+                    run: scan_one_open
+                },
+                Move {
+                    name: "a scan with a saved row",
+                    run: scan_with_a_saved_row
+                },
+                Move {
+                    name: "the leave carried out",
+                    run: the_leave_is_carried_out
+                },
+                Move {
+                    name: "the typed credential carried out",
+                    run: the_typed_join_is_carried_out
+                },
+                Move {
+                    name: "the held copy carried out",
+                    run: the_held_join_is_carried_out
+                },
+                Move {
+                    name: "the store reporting no copy",
+                    run: the_missing_copy_is_reported
+                },
+                Move {
+                    name: "the scan request carried out",
+                    run: the_scan_request_is_carried_out
+                },
+                Move {
+                    name: "the forget carried out",
+                    run: the_forget_is_carried_out
+                },
+            ]
+        }
+
+        #[test]
+        fn every_state_the_page_can_reach_keeps_its_invariants() {
+            let moves = alphabet();
+            let start = DeviceManager::new().with_network(true);
+            assert_eq!(
+                broken(&start.state()),
+                None,
+                "a booted device is already in a state the page cannot draw"
+            );
+
+            let mut states: Vec<DeviceManager> = alloc::vec![start];
+            let mut seen: BTreeSet<Vec<u8>> = BTreeSet::new();
+            seen.insert(key(&states[0].state()));
+            let mut queue = VecDeque::from([0usize]);
+            let mut origin: Vec<(Option<usize>, &'static str)> =
+                alloc::vec![(None, "the device at boot")];
+            let mut walked = 0usize;
+
+            while let Some(here) = queue.pop_front() {
+                walked += 1;
+                assert!(
+                    walked <= SWEEP_CAP,
+                    "the sweep reached {SWEEP_CAP} states without settling: raise the cap, or cut \
+                     the alphabet down to what the page really reads"
+                );
+                for step in &moves {
+                    let mut next = states[here].clone();
+                    (step.run)(&mut next);
+                    let state = next.state();
+                    if let Some(why) = broken(&state) {
+                        panic!(
+                            "the page can reach a state where {why}\nreached by {}",
+                            path(&origin, here, step.name),
+                        );
+                    }
+                    if seen.insert(key(&state)) {
+                        states.push(next);
+                        origin.push((Some(here), step.name));
+                        queue.push_back(states.len() - 1);
+                    }
+                }
+            }
+
+            // What the sweep reached, which is what makes it a sweep of this page rather than of
+            // nothing. Every state named here is one the moves above have to be able to get to, and
+            // one that stops being reached is an alphabet that lost a move — a floor on the count
+            // would say the same thing less exactly, and would break on any legitimate cut.
+            let reached = |wanted: fn(&DeviceState) -> bool| {
+                states.iter().any(|manager| wanted(&manager.state()))
+            };
+            assert!(
+                reached(|state| state.setup.keyboard && state.setup.entry.is_some()),
+                "the keyboard never came up over a draft"
+            );
+            assert!(
+                reached(|state| state.setup.selected.is_some() && state.setup.entry.is_none()),
+                "a row was never left picked with no draft: the state a link that came up leaves \
+                 behind, and the one the pick after it reads"
+            );
+            assert!(
+                reached(|state| state.setup.confirm == Some(Confirm::Leave)),
+                "the strip never asked about leaving"
+            );
+            assert!(
+                reached(|state| matches!(state.setup.confirm, Some(Confirm::Forget(_)))),
+                "a hold never asked about a saved row"
+            );
+            assert!(
+                reached(|state| state.leave),
+                "a leave was never waiting for the network task"
+            );
+            assert!(
+                reached(|state| state.scan_now),
+                "the strip never asked to look around"
+            );
+            assert!(
+                reached(|state| matches!(state.join, Some(JoinRequest::Typed(_)))),
+                "a credential was never handed up"
+            );
+            assert!(
+                reached(|state| matches!(state.join, Some(JoinRequest::Held(_)))),
+                "a saved row was never asked for by name"
+            );
+            assert!(
+                reached(|state| state.link.is_leavable()),
+                "the link was never up"
+            );
+            assert!(
+                reached(|state| state.page != DisplayPage::Network),
+                "the page cycle was never walked"
+            );
+        }
     }
 }

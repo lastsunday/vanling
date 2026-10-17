@@ -1,6 +1,5 @@
 use alloc::boxed::Box;
 
-use super::audio::AudioSample;
 use super::motion::MotionBatch;
 use crate::config::MotionConfig;
 use crate::demand::PlaneKey;
@@ -21,10 +20,9 @@ pub enum ButtonEvent {
 
 /// A discrete touch gesture folded from the raw contact stream by
 /// [`TouchGestures`]. Contact gestures carry a stable per-finger `id` plus the
-/// gesture origin and classifier-measured hold; multi-point gestures (triple-tap,
-/// double-tap, swipe) add the trailing `end_x`/`end_y`; a swipe adds its dominant octant
-/// and Euclidean travel; `Ghost` is a coordinate-less input-path anomaly pulse
-/// (rejected phantom, or a driver I2C failure).
+/// gesture origin and classifier-measured hold; a swipe adds its dominant octant,
+/// its trailing `end_x`/`end_y` and Euclidean travel; `Ghost` is a coordinate-less
+/// input-path anomaly pulse (rejected phantom, or a driver I2C failure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GestureEvent {
     Press {
@@ -38,22 +36,11 @@ pub enum GestureEvent {
         x: u16,
         y: u16,
         held_ms: u16,
-    },
-    DoubleTap {
-        id: u8,
-        x: u16,
-        y: u16,
-        end_x: u16,
-        end_y: u16,
-        held_ms: u16,
-    },
-    TripleTap {
-        id: u8,
-        x: u16,
-        y: u16,
-        end_x: u16,
-        end_y: u16,
-        held_ms: u16,
+        /// The input clock's milliseconds at the lift that resolved this tap. Carried
+        /// because the panel's keyboard reads two taps on one key as one character being
+        /// cycled rather than two characters, and only a tap can say how long ago the one
+        /// before it happened. Not a measurement of the gesture: `held_ms` is that.
+        at_ms: u32,
     },
     Swipe {
         id: u8,
@@ -105,11 +92,12 @@ impl SwipeDirection {
     }
 }
 
-/// The audio variant is a fixed-size peak envelope rather than a pointer:
-/// the whole point is that a poll crosses this enum by value with no
-/// allocation, and `Copy` is what lets the input channel and the render diff
-/// keep moving whole snapshots instead of references.
-#[allow(clippy::large_enum_variant)]
+/// What a driver reported on one poll.
+///
+/// `Copy` and deliberately narrow: the input ring's every slot is as wide as its widest
+/// message, so a payload that is a *window* rather than an event — the capture's envelope —
+/// rides its own plane instead. See
+/// [`CaptureSink`](crate::drivers::audio::CaptureSink).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputEvent {
     Button(ButtonEvent),
@@ -124,11 +112,6 @@ pub enum InputEvent {
     /// semantics the poll raised after arbitration. Both travel together —
     /// the semantic plane feeds intent, the data plane feeds diagnostics.
     Motion(MotionBatch),
-    /// One capture poll: the peak envelope every consumer may read, plus how
-    /// long the capture has run. Purely a data plane — a capture raises no
-    /// semantics yet, so it resolves to no business intent and only feeds
-    /// diagnostics.
-    Audio(AudioSample),
 }
 
 pub const BUTTON_SCAN_MS: u64 = 10;
@@ -167,12 +150,6 @@ pub const PHANTOM_RADIUS_PX: u16 = 60;
 /// contact.
 pub const PHANTOM_WINDOW_MS: u64 = TOUCH_SCAN_MS;
 
-/// Farthest a second short lift may sit from the chambered first tap and still
-/// pair into a [`GestureEvent::DoubleTap`] or [`GestureEvent::TripleTap`];
-/// deliberately above [`PHANTOM_RADIUS_PX`] so a real tap sequence and a
-/// phantom echo never rule in the same way.
-pub const PENDING_PAIR_PX: u16 = 100;
-
 /// How many fingers the touch path tracks side-by-side: the FT6336
 /// self-capacitance panel exposes exactly two, and the live-point/last-gesture/
 /// run-counter tuple is dimensioned to that ceiling.
@@ -183,10 +160,8 @@ pub const MAX_TRACKED_POINTS: usize = 2;
 /// readout.
 pub const FINGER_NONE: u8 = 0;
 pub const FINGER_TAP: u8 = 1;
-pub const FINGER_DOUBLE_TAP: u8 = 2;
-pub const FINGER_TRIPLE_TAP: u8 = 3;
-pub const FINGER_LONG_PRESS: u8 = 4;
-pub const FINGER_SWIPE: u8 = 5;
+pub const FINGER_LONG_PRESS: u8 = 2;
+pub const FINGER_SWIPE: u8 = 3;
 
 /// The gesture one tracked finger last resolved, so the overlay can answer per
 /// finger what it did: `kind` the `FINGER_*` code, `dir` the swipe's
@@ -372,30 +347,6 @@ fn sq_dist(x0: u16, y0: u16, x1: u16, y1: u16) -> u32 {
     dx * dx + dy * dy
 }
 
-/// Whether two lift positions belong to the same physical tap cadence.
-fn pair_close(x0: u16, y0: u16, x1: u16, y1: u16) -> bool {
-    sq_dist(x0, y0, x1, y1) <= u32::from(PENDING_PAIR_PX) * u32::from(PENDING_PAIR_PX)
-}
-
-fn pending_event(pending: PendingTap) -> InputEvent {
-    match pending.second_at_ms {
-        Some(_) => InputEvent::Gesture(GestureEvent::DoubleTap {
-            id: pending.owner_id,
-            x: pending.x,
-            y: pending.y,
-            end_x: pending.second_x,
-            end_y: pending.second_y,
-            held_ms: pending.second_held_ms,
-        }),
-        None => InputEvent::Gesture(GestureEvent::Tap {
-            id: pending.owner_id,
-            x: pending.x,
-            y: pending.y,
-            held_ms: pending.held_ms,
-        }),
-    }
-}
-
 /// Floor of the square root of a `u32` via Newton iteration. Integer-only so
 /// the classifier runs on the same fixed-point policy as the rest of `no_std`.
 fn isqrt_u32(n: u32) -> u32 {
@@ -476,43 +427,52 @@ impl EventAggregator for PassThrough {
     }
 }
 
-/// Folds per-finger touch into `Press` down-edges, deferred `Tap`, in-window
-/// `DoubleTap`/`TripleTap` (paired by position alone — hardware hands each
-/// physical tap a fresh tracker id), `Swipe` when a press ever travelled
-/// [`SWIPE_MIN_DISTANCE_PX`] (measured to the farthest published point, since
-/// the coarse panel leaves the release stale), and lone `LongPress`. A second
-/// contact landing within [`PHANTOM_WINDOW_MS`]/[`PHANTOM_RADIUS_PX`] of a
-/// down finger is a self-cap phantom echo, rejected and pulsed as `Ghost` once
-/// per run.
+/// Folds per-finger touch into `Press` down-edges, a `Tap` on the lift that resolves
+/// one, `Swipe` when a press ever travelled [`SWIPE_MIN_DISTANCE_PX`] (measured to the
+/// farthest published point, since the coarse panel leaves the release stale), and a
+/// lone `LongPress`. A second contact landing within
+/// [`PHANTOM_WINDOW_MS`]/[`PHANTOM_RADIUS_PX`] of a down finger is a self-cap phantom
+/// echo, rejected and pulsed as `Ghost` once per run.
+///
+/// A tap fires on the tick its finger lifts, carrying that tick's clock: the panel's
+/// keyboard wants to know how long ago the tap before it happened (two taps on one key
+/// cycle that key's character, one tap is one character) and nothing else wants the
+/// delay a sequence-detecting window would cost. The hardware button keeps its own
+/// window for the multi-click it distinguishes; touch has no multi-tap to distinguish.
 ///
 /// Each contact owns a `FingerState` slot keyed by tracker `id`. Samples that
 /// resolve no gesture forward the raw snapshot unchanged; extra resolved
 /// gestures buffer for the next poll. `Press` fires whatever its lift's fate,
 /// so physical presses tally even when nothing resolves; non-touch pulses pass
 /// through untouched.
-/// Two slots of gestures a sample resolved beyond the single-event channel.
-/// Drop-oldest once full: the newest is the one the caller has not seen.
-struct EventQueue([Option<InputEvent>; 2]);
+/// Events a sample resolved beyond the single-event channel.
+///
+/// Four slots, which is one more than a sample can carry: each of the two tracked contacts
+/// resolves at most one gesture per sample (one status per point) plus the run's single phantom
+/// pulse. Drop-oldest once full: a consumer that falls behind loses the least recent report
+/// rather than the newest.
+struct EventQueue([Option<InputEvent>; 4]);
 
 impl EventQueue {
     const fn new() -> Self {
-        Self([None, None])
+        Self([None, None, None, None])
     }
 
     fn push(&mut self, event: InputEvent) {
-        if self.0[0].is_none() {
-            self.0[0] = Some(event);
-        } else if self.0[1].is_none() {
-            self.0[1] = Some(event);
-        } else {
-            self.0[0] = self.0[1].take();
-            self.0[1] = Some(event);
+        for slot in self.0.iter_mut() {
+            if slot.is_none() {
+                *slot = Some(event);
+                return;
+            }
         }
+        self.0.copy_within(1.., 0);
+        self.0[3] = Some(event);
     }
 
     fn pop(&mut self) -> Option<InputEvent> {
         let first = self.0[0].take();
-        self.0[0] = self.0[1].take();
+        self.0.copy_within(1.., 0);
+        self.0[3] = None;
         first
     }
 }
@@ -520,11 +480,6 @@ impl EventQueue {
 pub struct TouchGestures {
     /// One state machine per finger slot, keyed by the tracker `id`.
     fingers: [FingerState; MAX_TOUCH_POINTS],
-    /// A short lift awaiting its next tap, paired by
-    /// [`DOUBLE_CLICK_WINDOW_MS`]/[`PENDING_PAIR_PX`] — never by id, which
-    /// hardware reuses across taps.
-    chamber: Option<PendingTap>,
-    window_ms: u64,
     /// Previous sample contained a phantom rejection; a run pulses once.
     ghosted: bool,
     queued: EventQueue,
@@ -563,32 +518,10 @@ impl FingerState {
     }
 }
 
-/// A short-lift tap parked until its click window closes, carrying the
-/// finger that parked it so a lone release reports at its own position/id even
-/// after the slot was freed for a newer finger.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PendingTap {
-    owner_id: u8,
-    first_at_ms: u64,
-    second_at_ms: Option<u64>,
-    x: u16,
-    y: u16,
-    held_ms: u16,
-    second_x: u16,
-    second_y: u16,
-    second_held_ms: u16,
-}
-
 impl TouchGestures {
     pub fn new() -> Self {
-        Self::with_window_ms(DOUBLE_CLICK_WINDOW_MS)
-    }
-
-    pub fn with_window_ms(window_ms: u64) -> Self {
         Self {
             fingers: [FingerState::free(); MAX_TOUCH_POINTS],
-            chamber: None,
-            window_ms,
             ghosted: false,
             queued: EventQueue::new(),
         }
@@ -616,8 +549,10 @@ impl TouchGestures {
 
     /// Drain the event channel: a buffered event emits first (the fresh batch
     /// queues behind it), else the batch's first event — queueing the rest.
-    /// `fallback` fills in when the batch is empty, so a quiet sample still
-    /// lets the empty raw snapshot through.
+    /// `fallback` is the sample's own raw report, and it rides only when the sample resolved
+    /// nothing: a resolved gesture already carries the finger's position, and hands the state the
+    /// fact that the contact is gone (see `state`'s gesture records), so the frame it displaces is
+    /// not a second report of the same moment.
     fn forward(
         &mut self,
         fresh: &mut [Option<InputEvent>; 4],
@@ -627,10 +562,10 @@ impl TouchGestures {
             for event in fresh.iter().flatten() {
                 self.queued.push(*event);
             }
-            if let Some(fill) = fallback
+            if let Some(frame) = fallback
                 && fresh.iter().all(Option::is_none)
             {
-                self.queued.push(fill);
+                self.queued.push(frame);
             }
             return Some(older);
         }
@@ -768,7 +703,6 @@ impl TouchGestures {
                 i32::from(end_x) - i32::from(down_x),
                 i32::from(end_y) - i32::from(down_y),
             );
-            self.close_own_chamber(id, down_x, down_y);
             return Some(InputEvent::Gesture(GestureEvent::Swipe {
                 id,
                 direction,
@@ -781,7 +715,6 @@ impl TouchGestures {
             }));
         }
         if held >= LONG_PRESS_MS && !sibling_lift && !self.fingers.iter().any(|f| f.pressed) {
-            self.close_own_chamber(id, down_x, down_y);
             return Some(InputEvent::Gesture(GestureEvent::LongPress {
                 id,
                 x: down_x,
@@ -790,69 +723,17 @@ impl TouchGestures {
             }));
         }
 
-        let pending = self.chamber.take();
-        match pending {
-            None => {
-                self.park_tap(id, now_ms, point.x, point.y, held_ms);
-                None
-            }
-            Some(pending)
-                if pair_close(pending.x, pending.y, point.x, point.y)
-                    && pending
-                        .second_at_ms
-                        .is_some_and(|second| now_ms.saturating_sub(second) <= self.window_ms) =>
-            {
-                Some(InputEvent::Gesture(GestureEvent::TripleTap {
-                    id,
-                    x: pending.x,
-                    y: pending.y,
-                    end_x: point.x,
-                    end_y: point.y,
-                    held_ms,
-                }))
-            }
-            Some(pending)
-                if pair_close(pending.x, pending.y, point.x, point.y)
-                    && pending.second_at_ms.is_none()
-                    && now_ms.saturating_sub(pending.first_at_ms) <= self.window_ms =>
-            {
-                self.chamber = Some(PendingTap {
-                    second_at_ms: Some(now_ms),
-                    second_x: point.x,
-                    second_y: point.y,
-                    second_held_ms: held_ms,
-                    ..pending
-                });
-                None
-            }
-            Some(pending) => {
-                self.park_tap(id, now_ms, point.x, point.y, held_ms);
-                Some(pending_event(pending))
-            }
-        }
-    }
-
-    fn park_tap(&mut self, id: u8, now_ms: u64, x: u16, y: u16, held_ms: u16) {
-        self.chamber = Some(PendingTap {
-            owner_id: id,
-            first_at_ms: now_ms,
-            second_at_ms: None,
-            x,
-            y,
+        // Neither a slide nor a hold: a tap, reported on this lift's own tick. The position is
+        // the down edge rather than the release the finger drifted to — the aim is where it
+        // landed, and this panel's release coordinate is the stale one the slide measure
+        // already refuses to trust.
+        Some(InputEvent::Gesture(GestureEvent::Tap {
+            id,
+            x: down_x,
+            y: down_y,
             held_ms,
-            second_x: x,
-            second_y: y,
-            second_held_ms: held_ms,
-        });
-    }
-
-    fn close_own_chamber(&mut self, id: u8, x: u16, y: u16) {
-        if let Some(pending) = self.chamber
-            && (pending.owner_id == id || pair_close(pending.x, pending.y, x, y))
-        {
-            self.chamber = None;
-            self.queued.push(pending_event(pending));
-        }
+            at_ms: u32::try_from(now_ms).unwrap_or(u32::MAX),
+        }))
     }
 }
 
@@ -874,16 +755,10 @@ impl EventAggregator for TouchGestures {
         self.forward(&mut backlog, Some(InputEvent::Touch(sample)))
     }
 
-    fn tick(&mut self, now_ms: u64) -> Option<InputEvent> {
-        let mut expired = [None; 4];
-        if let Some(pending) = self.chamber {
-            let since = pending.second_at_ms.unwrap_or(pending.first_at_ms);
-            if now_ms.saturating_sub(since) > self.window_ms {
-                self.chamber = None;
-                expired[0] = Some(pending_event(pending));
-            }
-        }
-        self.forward(&mut expired, None)
+    fn tick(&mut self, _now_ms: u64) -> Option<InputEvent> {
+        // Nothing resolves on a quiet tick any more — a tap is reported by the lift that made
+        // it — but a sample that resolved several gestures still has the rest queued.
+        self.queued.pop()
     }
 }
 
@@ -1942,16 +1817,14 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 10), 15),
-                Some(touch(TouchStatus::Release, 10, 10))
-            );
-            assert_eq!(
-                agg.tick(416),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 10,
-                    held_ms: 15
-                }))
+                    held_ms: 15,
+                    at_ms: 15,
+                })),
+                "the lift resolves the tap on its own tick"
             );
             // A dropped Down frame still pulses on the first contact published.
             let mut agg = TouchGestures::new();
@@ -1965,15 +1838,12 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                Some(touch(TouchStatus::Release, 10, 10))
-            );
-            assert_eq!(
-                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 10,
-                    held_ms: 5
+                    held_ms: 5,
+                    at_ms: 10,
                 }))
             );
             // A lift that never saw a press.
@@ -1985,12 +1855,12 @@ mod tests {
             );
             assert!(
                 agg.tick(400).is_none(),
-                "no press ever parked a tap chamber"
+                "an unpaired lift is not a tap, then or later"
             );
         }
 
         #[test]
-        fn a_short_lift_is_a_tap_at_its_lift_position() {
+        fn a_tap_reports_its_down_edge_on_the_tick_it_lifts() {
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(touch(TouchStatus::Down, 100, 100), 0),
@@ -2000,23 +1870,18 @@ mod tests {
                     y: 100
                 }))
             );
+            // The release drifts 20 px, which is the stale coordinate the slide measure
+            // refuses to trust: the tap is where the finger landed, not where it left.
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 120, 105), 10),
-                Some(touch(TouchStatus::Release, 120, 105)),
-                "a lift that parks a pending tap still forwards the raw snapshot"
-            );
-            assert!(
-                agg.tick(410).is_none(),
-                "the window stays open at exactly DOUBLE_CLICK_WINDOW_MS"
-            );
-            assert_eq!(
-                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
-                    x: 120,
-                    y: 105,
-                    held_ms: 10
-                }))
+                    x: 100,
+                    y: 100,
+                    held_ms: 10,
+                    at_ms: 10,
+                })),
+                "no window stands between the lift and the tap"
             );
             // A dirty raw class count never cancels the tap.
             let mut agg = TouchGestures::new();
@@ -2030,15 +1895,12 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(touch_contacts_dirty(TouchStatus::Release, 10, 10), 10),
-                Some(touch_contacts_dirty(TouchStatus::Release, 10, 10))
-            );
-            assert_eq!(
-                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 10,
-                    held_ms: 10
+                    held_ms: 10,
+                    at_ms: 10,
                 }))
             );
         }
@@ -2053,18 +1915,14 @@ mod tests {
                 );
                 assert_eq!(
                     agg.feed(touch(TouchStatus::Release, 100, 100), gap),
-                    Some(touch(TouchStatus::Release, 100, 100)),
-                    "gap {gap}: the short lift defers its tap"
-                );
-                assert_eq!(
-                    agg.tick(gap + 411),
                     Some(InputEvent::Gesture(GestureEvent::Tap {
                         id: 0,
                         x: 100,
                         y: 100,
-                        held_ms: gap as u16
+                        held_ms: gap as u16,
+                        at_ms: gap as u32,
                     })),
-                    "gap {gap}: the tick past the window releases the tap"
+                    "gap {gap}: a short lift taps at the lift"
                 );
             }
             for gap in [600, 610, 800] {
@@ -2295,7 +2153,9 @@ mod tests {
         }
 
         #[test]
-        fn in_window_lifts_pair_into_a_double_tap() {
+        fn two_quick_lifts_are_two_taps() {
+            // The panel's taps are single taps, however fast they come: nothing here pairs a
+            // sequence, so a finger that stabs twice on a key types twice.
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Down, 12, 40, 60)], 1), 0),
@@ -2307,8 +2167,14 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 12, 40, 60)], 1), 10),
-                Some(sample(&[(TouchStatus::Release, 12, 40, 60)], 1)),
-                "the first lift parks the chamber and forwards its raw snapshot"
+                Some(InputEvent::Gesture(GestureEvent::Tap {
+                    id: 12,
+                    x: 40,
+                    y: 60,
+                    held_ms: 10,
+                    at_ms: 10,
+                })),
+                "the first lift reports its own tap, not a pending first half"
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Down, 7, 45, 65)], 1), 90),
@@ -2321,171 +2187,63 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 7, 45, 65)], 1), 100),
-                Some(sample(&[(TouchStatus::Release, 7, 45, 65)], 1)),
-                "the second lift parks for a possible third"
-            );
-            assert_eq!(
-                agg.tick(502),
-                Some(InputEvent::Gesture(GestureEvent::DoubleTap {
-                    id: 12,
-                    x: 40,
-                    y: 60,
-                    end_x: 45,
-                    end_y: 65,
-                    held_ms: 10
+                Some(InputEvent::Gesture(GestureEvent::Tap {
+                    id: 7,
+                    x: 45,
+                    y: 65,
+                    held_ms: 10,
+                    at_ms: 100,
                 })),
-                "the same-spot pair is keyed by position, not by id"
+                "the pair is two taps on two ids, with no window between them"
             );
-
-            let mut agg = TouchGestures::new();
-            assert_eq!(
-                agg.feed(touch(TouchStatus::Down, 10, 10), 0),
-                Some(InputEvent::Gesture(GestureEvent::Press {
-                    id: 0,
-                    x: 10,
-                    y: 10
-                }))
-            );
-            assert_eq!(
-                agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                Some(touch(TouchStatus::Release, 10, 10))
-            );
-            assert_eq!(
-                agg.feed(touch(TouchStatus::Down, 30, 30), 100),
-                Some(InputEvent::Gesture(GestureEvent::Press {
-                    id: 0,
-                    x: 30,
-                    y: 30
-                }))
-            );
-            assert_eq!(
-                agg.feed(touch(TouchStatus::Release, 40, 30), 170),
-                Some(touch(TouchStatus::Release, 40, 30))
-            );
-            assert_eq!(
-                agg.tick(571),
-                Some(InputEvent::Gesture(GestureEvent::DoubleTap {
-                    id: 0,
-                    x: 10,
-                    y: 10,
-                    end_x: 40,
-                    end_y: 30,
-                    held_ms: 70
-                }))
-            );
-        }
-
-        #[test]
-        fn double_tap_gap_sweeps_the_chamber_window() {
-            for gap in [200_u64, 290, 400] {
-                let mut agg = TouchGestures::new();
-                assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
-                assert_eq!(
-                    agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                    Some(touch(TouchStatus::Release, 10, 10))
-                );
-                assert!(agg.feed(touch(TouchStatus::Down, 20, 20), gap).is_some());
-                assert_eq!(
-                    agg.feed(touch(TouchStatus::Release, 20, 20), gap + 10),
-                    Some(touch(TouchStatus::Release, 20, 20))
-                );
-                assert!(
-                    matches!(
-                        agg.tick(gap + 411),
-                        Some(InputEvent::Gesture(GestureEvent::DoubleTap {
-                            id: 0,
-                            x: 10,
-                            y: 10,
-                            ..
-                        }))
-                    ),
-                    "gap {gap}: the second lift inside the window pairs"
-                );
-            }
-            for gap in [401_u64, 500, 599] {
-                let mut agg = TouchGestures::new();
-                assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
-                assert_eq!(
-                    agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                    Some(touch(TouchStatus::Release, 10, 10))
-                );
-                assert!(agg.feed(touch(TouchStatus::Down, 20, 20), gap).is_some());
-                assert!(
-                    matches!(
-                        agg.feed(touch(TouchStatus::Release, 20, 20), gap + 10),
-                        Some(InputEvent::Gesture(GestureEvent::Tap {
-                            id: 0,
-                            x: 10,
-                            y: 10,
-                            ..
-                        }))
-                    ),
-                    "gap {gap}: the lapsed pending tap surfaces at its own lift first"
-                );
-                assert!(
-                    matches!(
-                        agg.tick(gap + 412),
-                        Some(InputEvent::Gesture(GestureEvent::Tap { id: 0, x: 20, .. }))
-                    ),
-                    "gap {gap}: the new tap parks and expires via tick"
-                );
-            }
+            assert!(agg.tick(2_000).is_none(), "and nothing lapses later");
         }
 
         #[test]
         fn separated_lifts_release_as_independent_taps() {
             let mut agg = TouchGestures::new();
-            assert!(agg.tick(100).is_none(), "a quiet clock parks nothing");
+            assert!(agg.tick(100).is_none(), "a quiet clock reports nothing");
             assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                Some(touch(TouchStatus::Release, 10, 10))
-            );
-            assert_eq!(
-                agg.tick(411),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 10,
-                    held_ms: 10
+                    held_ms: 10,
+                    at_ms: 10,
                 }))
             );
             assert!(agg.feed(touch(TouchStatus::Down, 20, 20), 400).is_some());
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 20, 20), 410),
-                Some(touch(TouchStatus::Release, 20, 20))
-            );
-            assert_eq!(
-                agg.tick(811),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 20,
                     y: 20,
-                    held_ms: 10
+                    held_ms: 10,
+                    at_ms: 410,
                 }))
             );
         }
 
         #[test]
-        fn an_end_gesture_preserves_the_pending_tap() {
+        fn an_end_gesture_after_a_tap_is_reported_behind_it() {
             let mut agg = TouchGestures::new();
             assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                Some(touch(TouchStatus::Release, 10, 10))
-            );
-            assert!(agg.feed(touch(TouchStatus::Down, 10, 200), 400).is_some());
-            assert_eq!(
-                agg.feed(touch(TouchStatus::Release, 10, 100), 480),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 10,
-                    held_ms: 10
+                    held_ms: 10,
+                    at_ms: 10,
                 }))
             );
+            assert!(agg.feed(touch(TouchStatus::Down, 10, 200), 400).is_some());
             assert_eq!(
-                agg.tick(481),
+                agg.feed(touch(TouchStatus::Release, 10, 100), 480),
                 Some(InputEvent::Gesture(GestureEvent::Swipe {
                     id: 0,
                     direction: SwipeDirection::Up,
@@ -2495,28 +2253,25 @@ mod tests {
                     end_y: 100,
                     held_ms: 80,
                     distance_px: 100,
-                }))
+                })),
+                "the slide's own sample reports the slide"
             );
-            assert!(agg.tick(800).is_none());
 
             let mut agg = TouchGestures::new();
             assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 10), 10),
-                Some(touch(TouchStatus::Release, 10, 10))
-            );
-            assert!(agg.feed(touch(TouchStatus::Down, 20, 20), 400).is_some());
-            assert_eq!(
-                agg.feed(touch(TouchStatus::Release, 20, 20), 1000),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 10,
-                    held_ms: 10
+                    held_ms: 10,
+                    at_ms: 10,
                 }))
             );
+            assert!(agg.feed(touch(TouchStatus::Down, 20, 20), 400).is_some());
             assert_eq!(
-                agg.tick(1000),
+                agg.feed(touch(TouchStatus::Release, 20, 20), 1000),
                 Some(InputEvent::Gesture(GestureEvent::LongPress {
                     id: 0,
                     x: 20,
@@ -2554,19 +2309,18 @@ mod tests {
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 1, 110, 105)], 1), 20),
                 Some(sample(&[(TouchStatus::Release, 1, 110, 105)], 1)),
+                "a lift with no tracked press is a bare snapshot, not a tap"
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 0, 100, 100)], 1), 30),
-                Some(sample(&[(TouchStatus::Release, 0, 100, 100)], 1)),
-            );
-            assert_eq!(
-                agg.tick(431),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 100,
                     y: 100,
-                    held_ms: 30
-                }))
+                    held_ms: 30,
+                    at_ms: 30,
+                })),
+                "the real finger's lift is its own tap, unmoved by the echo"
             );
             // A second echo inside the same window is the same run; a clean
             // one closes it.
@@ -2676,18 +2430,19 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 1, 150, 200)], 1), 100),
-                Some(sample(&[(TouchStatus::Release, 1, 150, 200)], 1)),
-            );
-            assert_eq!(
-                agg.tick(502),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 1,
                     x: 150,
                     y: 200,
-                    held_ms: 100
+                    held_ms: 100,
+                    at_ms: 100,
                 })),
                 "finger 1's tap did not pair with finger 0's swipe"
             );
+            assert!(agg.tick(101).is_none());
+
+            // Two fingers down, lifting in separate samples: two taps, each on the tick its own
+            // finger left, and neither waiting on the other.
             let mut agg = TouchGestures::new();
             assert!(
                 agg.feed(sample(&[(TouchStatus::Down, 0, 10, 90)], 1), 0)
@@ -2699,28 +2454,26 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Release, 0, 10, 90)], 1), 10),
-                Some(sample(&[(TouchStatus::Release, 0, 10, 90)], 1)),
-            );
-            assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 1, 150, 90)], 1), 20),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
                     y: 90,
-                    held_ms: 10
-                })),
-                "the faraway finger flushes the chambered tap as its own lone Tap"
+                    held_ms: 10,
+                    at_ms: 10,
+                }))
             );
-            assert_eq!(agg.tick(411), None);
             assert_eq!(
-                agg.tick(421),
+                agg.feed(sample(&[(TouchStatus::Release, 1, 150, 90)], 1), 20),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 1,
                     x: 150,
                     y: 90,
-                    held_ms: 20
-                }))
+                    held_ms: 20,
+                    at_ms: 20,
+                })),
+                "the second finger's lift taps on its own tick, not the first's window"
             );
+            assert!(agg.tick(21).is_none());
         }
 
         #[test]
@@ -2767,6 +2520,10 @@ mod tests {
                     distance_px: 76,
                 })),
                 "the second event waited in FIFO, not dropped"
+            );
+            assert!(
+                agg.tick(110).is_none(),
+                "and nothing else was reported for that frame"
             );
         }
 

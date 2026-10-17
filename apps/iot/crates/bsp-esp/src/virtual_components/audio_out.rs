@@ -29,9 +29,6 @@ use crate::components::es8311::Mute;
 use crate::sounds::file_of;
 use crate::virtual_components::reference::{Writer, samples_for};
 
-/// Frames the transmit ring holds: the run of audio the CPU may write before it
-/// reaches audio the DMA has already sent.
-///
 /// This is the distance between where a sample is *put on the ring* and where it
 /// is *on the wire* — 120 ms on this board — and it is the whole reason the
 /// reference is read through a play cursor rather than a write pointer. A
@@ -51,9 +48,7 @@ const TRANSMIT_RUNWAY_FRAMES: usize = RING_BYTES / BYTES_PER_FRAME;
 /// **Counted in capture frames, not transmit ones.** The receive ring holds one
 /// sample per frame where the transmit ring holds two — see
 /// [`CAPTURE_BYTES_PER_FRAME`] — so a capture ring three poll periods deep is
-/// twice as many *frames* as the same byte count read as transmit frames. This
-/// was the transmit width, and it under-counted the depth the pairing has to
-/// reach across by half.
+/// twice as many *frames* as the same byte count read as transmit frames.
 const RECEIVE_LATENCY_FRAMES: usize = 3 * 1_920 / CAPTURE_BYTES_PER_FRAME;
 
 /// The lag has to be *inside* the runway, or the log is sized for a ring shallower

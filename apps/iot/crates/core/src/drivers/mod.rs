@@ -2,6 +2,7 @@ pub mod aec;
 pub mod audio;
 pub mod board;
 pub mod camera;
+pub mod credentials;
 pub mod input;
 pub mod light;
 pub mod motion;

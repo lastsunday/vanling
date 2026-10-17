@@ -50,6 +50,9 @@ esp-radio = { version = "=1.0.0-beta.1", default-features = false, features = [
   "wifi",
 ] }
 esp-rtos = { version = "0.4.0", features = ["embassy"] }
+# The credential store's side of the flash. The chip feature is added by the board
+# feature, the same way `esp-radio`'s is: which part is being built is the board's to say.
+esp-storage = "0.10.0"
 embassy-executor = { version = "0.10.0", default-features = false }
 embassy-futures = "0.1.2"
 # The IP stack the Wi-Fi driver's frame interface feeds. `dhcpv4` is what turns

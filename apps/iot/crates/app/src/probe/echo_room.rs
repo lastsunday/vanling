@@ -208,8 +208,6 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
         {
             log::error!("[ECHO] {sound:?} refused: {error}");
         }
-        // Re-arms the same sound; which sound it is turns over with the
-        // amplifier below, not with the feed.
         Timer::after(Duration::from_millis(if PATH_RUN {
             SWEEP_MS as u64 + 20
         } else {

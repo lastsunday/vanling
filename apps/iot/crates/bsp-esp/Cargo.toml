@@ -45,15 +45,24 @@ camera = ["gc2145", "dep:esp-hal"]
 # so: with only `esp-radio` on, the build compiles and then fails at link with an
 # undefined `malloc`, which is the shape of a self-sufficiency bug features.md rule 5
 # exists to prevent.
-wifi = ["dep:esp-radio", "iot-chip-esp?/radio"]
+#
+# The credential store rides with the radio, because what it keeps is the network the
+# panel named on the radio's own page: a build with no radio has nothing to keep, and
+# the two crates it needs are the whole of the axis there is to gate.
+wifi = [
+  "dep:esp-radio",
+  "dep:esp-storage",
+  "dep:esp-bootloader-esp-idf",
+  "iot-chip-esp?/radio",
+]
 
 
-esp32c6-devkitc-1 = ["button", "ws2812", "wifi", "esp-radio/esp32c6"]
+esp32c6-devkitc-1 = ["button", "ws2812", "wifi", "esp-radio/esp32c6", "esp-storage/esp32c6"]
 # The board features are the hardware axis, so they are also where a component's
 # chip feature is contributed: `esp-radio/<chip>` picks the blob for this part, the
 # same way the app's family alias picks the HAL's. Both boards have a radio soldered
 # to them, so both carry the component; the parts differ in what the component costs.
-lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out", "camera", "wifi", "esp-radio/esp32s3"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out", "camera", "wifi", "esp-radio/esp32s3", "esp-storage/esp32s3"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }
@@ -70,7 +79,9 @@ mipidsi = { workspace = true, optional = true }
 # host build is what lets the pure `embedded_hal` components above be unit
 # tested on a workstation.
 [target.'cfg(target_os = "none")'.dependencies]
+esp-bootloader-esp-idf = { workspace = true, optional = true }
 esp-hal = { workspace = true, optional = true }
 esp-hal-smartled = { workspace = true, optional = true }
 esp-radio = { workspace = true, optional = true }
+esp-storage = { workspace = true, optional = true }
 smart-leds = { workspace = true, optional = true }

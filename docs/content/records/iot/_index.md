@@ -154,6 +154,19 @@ IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 
 **探针与产品的分界线会无声地被挪动**：两边各自都还能编译，所以编译期抓不到漂移。改动若触及探针调用的框架路径（`poll_plan_of`、`MotionConfig::for_mode`、驱动入口），把探针烧一次当作证据，不要只等编译通过。
 
+## 检查任务
+
+`moon` 按内容哈希缓存。不写 `inputs` 时默认把**项目下的每个文件**都算进去；写了 `inputs` 是**替换**而不是叠加。所以经仓库根脚本编译的任务（`check-s3` / `check-features` / `probe-*-s3`）必须显式点名那个脚本，否则改分派脚本不会让缓存失效。详见[检查任务与缓存记录](@/records/iot/tasks.md)。
+
+| 发现 | 结论 | 数字 |
+| --- | --- | --- |
+| 缓存键里有什么 | 任务文本 + 项目级 `env:` + **每个输入文件一条 sha1**；默认输入是整项目 | `check-host` 的默认键 121 条 |
+| 脚本在键外 | 经 `scripts/iot-xtensa.sh` 编译的任务要显式点名它，否则改脚本不失效 | 追加一行注释：键 `0973f854` → `577401ca`；还原后命中 |
+| `check-features` 曾经每次真跑 | 改前是 `cache: false`。现在同树重跑 0.09 s，改源码仍付全价 | 2m20s570ms（八套 S3 子集各 ~15 s） |
+| C6 产品检查 | 改宿主 stable：该目标有预编译 `core`/`alloc`，固件本来也是宿主产的 | 1m12s → 1.65 s |
+| 8 次容器合成 1 次 | **被否**：容器启动实测 0.45 s，最多省 3.5 s，不值得加批量协议 | 3 × 0.45 s（5.4 s 是冷启读数） |
+| 仍走分派脚本的守卫 | `check-features` 的 C6 子集特意保留：它是 S3-only `ESP_HAL_CONFIG_DATA_CACHE_SIZE` gating 在 CI 里唯一的见证 | — |
+
 ## 各记录正文
 
 需要推导过程、被否方案全文或复现方式时再下钻。
@@ -168,5 +181,6 @@ IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 | [运动实现记录](@/records/iot/motion.md) | 敲击判定的被否方案、门限来源、No-Motion 是电平不是事件 |
 | [输入与触摸实现记录](@/records/iot/input.md) | 页面循环硬件实测、2 秒窗口看不出页序、四路轮询里只有一路可关 |
 | [回声消除实现记录](@/records/iot/aec.md) | 乐鑫向量为何测不了 AEC、步长不能按残余缩放、相干度冻结判据、延迟搜索的置信度与限频、ERLE 稳态与全程的差 |
+| [检查任务与缓存记录](@/records/iot/tasks.md) | moon 缓存键的组成与脚本盲点、`check-features` 开缓存、C6 检查改宿主、被否的容器合并 |
 
 > 节流的完整推导、实测对照与方法在[架构文档](@/development/iot/architecture.md)，不在这份记录里。

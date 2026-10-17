@@ -9,8 +9,9 @@ use crate::drivers::audio::AudioEnvelope;
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use crate::drivers::light::MAX_LIGHTS;
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
+use crate::drivers::network::{ApList, LinkStatus};
 use crate::drivers::playback::Sound;
-use crate::state::{AudioPhase, DisplayPage, PlaybackPhase};
+use crate::state::{AudioPhase, DisplayPage, NetworkSetup, PlaybackPhase};
 
 /// Breathing mode's full dimension set carried by a light snapshot so the
 /// panel can print every parameter the mode exposes; all zero outside
@@ -48,8 +49,6 @@ pub struct LightSnapshot {
 pub struct TouchDiagnostics {
     pub taps: u8,
     pub presses: u8,
-    pub double_taps: u8,
-    pub triple_taps: u8,
     pub long_presses: u8,
     pub ghost: u8,
     pub points: [Option<(u16, u16)>; MAX_TRACKED_POINTS],
@@ -109,6 +108,16 @@ pub struct Diagnostics {
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: DisplayPage,
+    /// Where the link stands and what the last scan saw, as the network task last
+    /// reported them — copied whole rather than borrowed, so a sink holds no reference
+    /// into the state layer. The list is `None` until something has scanned, which is
+    /// the state a build that holds its own credentials stays in.
+    pub link: LinkStatus,
+    pub aps: Option<ApList>,
+    /// What the Network page is in the middle of taking: the row a passphrase is being typed
+    /// for, the draft, and the last refusal. The credential the draft produced is not here —
+    /// that is a command on its way to the radio, and nothing that draws should hold it.
+    pub setup: NetworkSetup,
     pub motion_enabled: bool,
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
@@ -124,4 +133,14 @@ pub struct Diagnostics {
 /// it carries.
 pub trait DiagnosticsSink {
     fn consume(&mut self, _diagnostics: &Diagnostics) {}
+
+    /// Whether this surface draws the device's own pages ([`DisplayPage`]) rather than only
+    /// the light. A panel does; a light-only surface — a strip, an addressable LED — does not,
+    /// and a page rule asked of one would be a rule about a screen it does not have. What asks
+    /// is the page's own ground (see `app::render`'s `LightRenderer`): the pages a surface
+    /// draws decide what that surface shows, and a surface that draws none keeps showing the
+    /// light it is.
+    fn draws_pages(&self) -> bool {
+        false
+    }
 }

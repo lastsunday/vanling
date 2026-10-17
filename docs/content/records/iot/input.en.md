@@ -3,8 +3,8 @@ title = "Input and Touch Implementation Record"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "e554cdd444e9e605a3ea54a3b253b2e55194a42f"
-translated_at = "2026-10-10T10:25:42Z"
+source_file_hash = "7bea578524dfb85bd30dda882536f49fa48510fe"
+translated_at = "2026-10-16T12:52:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -60,3 +60,33 @@ That line also makes "did one gesture become several operations" falsifiable —
 `[test]` The capture path may not be batched (`Es7210Rx::accepts_slower_poll()` answers `false`), because the ring is emptied only by `sample()` — see the [audio record](@/records/iot/audio.en.md).
 
 `[measured]` `capture 0 ms` is not "cheaper", it is **a ring with nothing in it** — see the failure chain in the [audio record](@/records/iot/audio.en.md). Reading that line, `0 ms` and `1 ms` mean opposite things, and the first one is a fault.
+
+---
+
+## The touch coordinates need one frame change, and `IDENTITY` was wrong all along
+
+`[reported]` This module's digitizer reports the **panel controller's own 240×320 portrait window**, while the panel is addressed as 320×240 landscape (`MADCTL = MV|MX`): the two differ by a **transpose plus a mirror**, and the correct net mapping is
+
+```
+raw(rx 0..240, ry 0..320)  →  fb(x, y) = (ry, 239 − rx)
+```
+
+Before that, the FT6336 was handed `TouchMap::IDENTITY`, so a single touch read as `(rx, ry) = (239 − fy, fx)`: the **column came from the finger's vertical position and the row from its horizontal one, with the column mirrored**. Tapping `7` (`pqrs`, box centre `(96,133)`) hits `(106,96)` — the `2` (`abc`) key; a list band came from `fx` (`(fx−47)/61`, the vertical position ignored entirely); and a physical up/down swipe on the light pages classified as `Left`/`Right` — changing the colour rather than the brightness.
+
+Two independent sources:
+
+- The vendor's touch configuration for this panel (wiki chapters 9/11; the `08-lcd_lvgl` and `14-handheld` examples carry the same one, as does a third-party LVGL port blog): `.x_max = BSP_LCD_V_RES(240)`, `.y_max = BSP_LCD_H_RES(320)`, `swap_xy = 1`, `mirror_x = 1`, `mirror_y = 0`, paired with the display configuration `swap_xy(true)` + `mirror(true, false)` — that is `MV|MX`, this repository's `MADCTL_LANDSCAPE = 0x60`.
+- Upstream `esp_lcd_touch.c` transforms in the order **mirror first (using `x_max`/`y_max`, so on the raw axes) and swap last**, while `esp_lcd_touch_ft5x06.c` hands the registers up untouched; the two compose to exactly `(ry, 240 − rx)`.
+
+So this end's value is `bsp-esp::components::ft6336::LANDSCAPE_MAP`: `TouchMap { swap_xy: true, mirror_x: false, mirror_y: true }`. Its `mirror_y` is the **post-swap** `y` (`TouchMap::map` swaps first and mirrors after), which is the same act as the vendor's `mirror_x`; this repository uses `239 − rx` rather than the vendor's `240 − rx`, because the latter puts the top row outside the framebuffer.
+
+`[test]` Two of them, in `bsp-esp/src/components/ft6336.rs`, run by `iot:test-bsp` (which is why `ft6336` was added to that task's feature list — it was the one bsp driver with no host coverage at all):
+
+- `a_finger_lands_where_the_panel_shows_it`: writes "a finger at (96,133)" as the raw coordinates the inverse map implies and feeds them to `read_sample`, asserting that what comes out is still (96,133). The input side is derived from `LANDSCAPE_MAP`, so putting the constant back to `IDENTITY` turns this one red.
+- `the_panels_own_frame_is_transposed_and_mirrored`: the four corners, `(0,0)→(0,239)`, `(239,0)→(0,0)`, `(0,319)→(319,239)`, `(239,319)→(319,0)`. A transpose is invisible in the middle of either axis, so only the corners pin it.
+
+The mistake survived this long because **every touch behaviour verified on hardware until now was direction-agnostic** (the page cycle: any tap counted as one transition), and each list row is a full-width band — a horizontal error is only obvious in the keyboard's **columns**.
+
+**Not verified yet**, because software cannot synthesise touch and only the FT6336 produces panel coordinates: tapping the `abc` key must type `abc`, tapping `7` must type `7`, and a physical up/down swipe on the light pages must change the brightness.
+
+`[measured]` This build is already on the S3 (bench image, `IOT_PORT=/dev/cu.usbmodem1422301`): `App/part. size: 880,112/6,291,456 bytes`, `[IOT] boot page is Network` at boot, no panic, and `[DISPLAY] Network 1 repaints in 5901 ms, held the executor 18 ms (0%)` — **so the board is running this build**, and the item above owes a finger, not a flash.

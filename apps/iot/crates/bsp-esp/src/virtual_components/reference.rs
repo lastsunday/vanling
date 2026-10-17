@@ -74,7 +74,7 @@ pub trait Reference {
     /// **Newest first, deliberately.** The log is indexed from the newest frame
     /// backwards, and the newest frame is the one the newest microphone sample
     /// heard. A caller whose microphone run is chronological has to reverse this
-    /// before zipping; see `Es7210Rx::pair_and_cancel`, which is where that
+    /// before zipping; see `Es7210Rx::pair`, which is where that
     /// reconciliation is done and why.
     ///
     /// Fewer than `out.len()` means the log has lapped, or the wire has not

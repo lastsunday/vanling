@@ -85,8 +85,6 @@ pub const fn wire_position(
 pub struct ReferenceLog<const N: usize> {
     samples: [i16; N],
     decimator: Decimator,
-    /// Frames the log has taken in, and so the next ring slot to write.
-    ///
     /// Counts **kept samples**, not frames: one frame in three is written, so
     /// indexing the ring by frame number would address three slots per sample
     /// and leave two thirds of the ring holding whatever was there before.

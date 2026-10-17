@@ -20,7 +20,7 @@ weight = 30
     vanling-merged.bin
   ```
   > **8mb 是实测值**（`espflash board-info` 读出来的，实物就是 8 MB），此前写的 `4mb` 与板子对不上。
-  > 两块板各自的实测值：**C6 = 8 MB（MAC `98:a3:16:7e:55:08`）**、**S3 = 16 MB（MAC `30:ed:a0:a8:2f:c8`）**。
+  > 两块板各自的实测值：**C6 = 8 MB**、**S3 = 16 MB**（`espflash board-info` 的 `Flash size` 行）。
 
 ## 台架上有哪些板，各自是什么定位
 
@@ -38,11 +38,11 @@ weight = 30
 
 ## 两块板同时插着时
 
-`espflash` 会自己挑一个端口，**有可能挑错**（`--chip esp32c6` 配 S3 会直接失败）。先认板再烧：
+`espflash` 会自己挑一个端口，**有可能挑错**（`--chip esp32c6` 配 S3 会直接失败）。先认板再烧 —— 认的是 `board-info` 的 `Chip` 行：
 
 ```sh
-espflash board-info --port /dev/cu.usbmodem14401   # C6 → 98:a3:16:7e:55:08
-espflash board-info --port /dev/cu.usbmodem1422301 # S3 → 30:ed:a0:a8:2f:c8
+espflash board-info --port /dev/cu.usbmodem14401   # Chip: esp32c6 → C6
+espflash board-info --port /dev/cu.usbmodem1422301 # Chip: esp32s3 → S3
 
 IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
 IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3
@@ -150,7 +150,16 @@ S3 的构建走 `scripts/iot-xtensa.sh`：先试本机 esp 工具链，不全则
 
 ## 启动页与 bench 镜像
 
-`IOT_BOOT_PAGE`（`.cargo/config.toml`，默认 `ambient`）决定固件开机停在哪一页 —— `ambient` / `attitude` / `audio` / `speaker` / `camera`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。
+`IOT_BOOT_PAGE`（`.cargo/config.toml`，默认 `ambient`）决定固件开机停在哪一页 —— `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。`network` 没有对应的 moon 任务，同一条命令手写：
+
+```sh
+cd apps/iot
+IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
+  -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc \
+  --no-default-features --features lckfb-szpi-esp32s3,console-auto
+```
+
+`[实测]` 这一版**不带构建时凭据**，所以设备停在 `setup` 一直扫；`moon run iot:flash-s3` 会重新构建产品镜像并把 `target/xtensa-esp32s3-none-elf/release/vanling` 覆盖回去。开机日志里有一行 `[IOT] boot page is Network`（停 `ambient` 时不打），所以「这一版真的停在那页」不用猜。
 
 > `[实测]` 这两个任务**不能**共用一个产物路径。`build-s3-camera` 与 `build-s3` 曾都声明 `target/.../release/vanling`，而 `flash-s3` 和 `scripts/iot-image.sh` 都读那个文件 —— 谁最后跑谁决定刷进去的是什么，moon 命中缓存时不会把自己的写回去，于是"烧产品固件"实际烧的是 camera 固件。现在 bench 构建前后保存/还原产品镜像，另存 `vanling-camera`，两个镜像并存。
 

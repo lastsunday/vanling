@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "a4c27f1449c6f95314195ddbf174f615071ee9e9"
-translated_at = "2026-10-15T15:52:28Z"
+source_file_hash = "06e6886ccd1d823a271d1050f3451798d358cff9"
+translated_at = "2026-10-17T08:56:39Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -160,6 +160,19 @@ Without them it still runs and says that this build was not told to join anythin
 
 **The boundary between probe and product can move silently**: both sides still compile, so drift is not a compile error. When a change touches a framework path a probe calls (`poll_plan_of`, `MotionConfig::for_mode`, a driver entry point), flash the probe and treat its output as evidence rather than waiting for the build to go green.
 
+## Check tasks
+
+`moon` caches on a content hash. With no `inputs` its default takes in **every file under the project**; declaring `inputs` **replaces** that default rather than adding to it. So a task that compiles through a workspace-root script (`check-s3` / `check-features` / the `probe-*-s3` ones) has to name that script, or editing the dispatcher leaves the cache valid. See the [Check tasks and caching record](@/records/iot/tasks.en.md).
+
+| Finding | Conclusion | Numbers |
+| --- | --- | --- |
+| What is in the cache key | Task text + project `env:` + **one sha1 per input file**; the default input is the whole project | `check-host`'s default key holds 121 entries |
+| The script is outside it | A task compiling through `scripts/iot-xtensa.sh` must name it, or editing the script does not invalidate | Append one comment: key `0973f854` → `577401ca`; restore → cache hit |
+| `check-features` used to run every time | It was `cache: false`. Now an unchanged tree replays in 0.09 s, a source change still pays full price | 2m20s570ms (eight S3 subsets at ~15 s each) |
+| The C6 product check | Moved to the host's stable toolchain: the target has a prebuilt `core`/`alloc`, and that is the toolchain producing its firmware | 1m12s → 1.65 s |
+| Merging 8 containers into 1 | **Rejected**: starting a container measures 0.45 s, so the ceiling is 3.5 s — not worth a batch protocol | 3 × 0.45 s (5.4 s was a cold start) |
+| The guard that stays on the dispatcher | `check-features`' C6 subset is kept deliberately: it is CI's only witness of the S3-only `ESP_HAL_CONFIG_DATA_CACHE_SIZE` gating | — |
+
 ## Full records
 
 Read on for derivations, the full list of rejected alternatives, and reproduction steps.
@@ -174,5 +187,6 @@ Read on for derivations, the full list of rejected alternatives, and reproductio
 | [Input and touch record](@/records/iot/input.en.md) | Page cycle measured on hardware, 2 s windows cannot show page order, only one of four polled sources may be switched off |
 | [Echo cancellation record](@/records/iot/aec.en.md) | Why Espressif's vectors cannot measure AEC, why the step must not be scaled by the residual, coherence as the freeze criterion, the delay search's confidence and rate limit, steady-state against whole-file ERLE |
 | [Wi-Fi record](@/records/iot/wifi.en.md) | No lwIP in this generation, only esp-radio plus embassy-net; "connected" means an address; three connection defaults copied from the reference firmware; how the DRAM budget was made to fit; the PHY calibration `todo!()` and the partition table's workaround |
+| [Check tasks and caching record](@/records/iot/tasks.en.md) | What moon's cache key is made of and the script blind spot, `check-features` gaining a cache, the C6 check moving to the host, the rejected container merge |
 
 > The full derivation of throttling, with measurements and method, is in the [architecture doc](@/development/iot/architecture.en.md).

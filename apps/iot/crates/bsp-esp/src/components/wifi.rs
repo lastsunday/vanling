@@ -24,8 +24,8 @@
 
 use alloc::{boxed::Box, vec::Vec};
 use esp_radio::wifi::{
-    AuthenticationMethod, AuthenticationMethodConfig, Config, ControllerConfig, Interface,
-    Password, Ssid, WifiController, WifiError,
+    AuthenticationMethod, AuthenticationMethodConfig, Config, ControllerConfig, DisconnectReason,
+    Interface, Password, Ssid, WifiController, WifiError,
     ap::AccessPointInfo,
     scan::{ScanConfig, ScanTypeConfig},
     sta::{DisconnectedInfo, ScanMethod, StationConfig},
@@ -144,7 +144,20 @@ impl EspStation {
             disconnected.reason,
             disconnected.rssi
         );
-        NetworkError::Driver
+        // Three of the driver's reasons become kinds of their own, because they are the three a
+        // user standing at the panel can do something about, and they are told apart in the log by
+        // the driver's own word for them either way. The rest stay `Driver` rather than being
+        // guessed at: the reason set is long, and a wrong guess would put a confident word on the
+        // panel about a failure nobody diagnosed.
+        match disconnected.reason {
+            DisconnectReason::NoAccessPointFound | DisconnectReason::BeaconTimeout => {
+                NetworkError::NotFound
+            }
+            DisconnectReason::AuthenticationFailed
+            | DisconnectReason::FourWayHandshakeTimeout
+            | DisconnectReason::HandshakeTimeout => NetworkError::Credentials,
+            _ => NetworkError::Driver,
+        }
     }
 
     /// One driver's record as a row the panel can rank.
@@ -163,6 +176,35 @@ impl EspStation {
                 .auth_method
                 .is_some_and(|method| method != AuthenticationMethod::None),
         }
+    }
+
+    /// The driver's own config for one credential, as far as the driver's own validation
+    /// takes it.
+    ///
+    /// Built through the driver's types rather than this crate's so that the limits the radio
+    /// enforces are the limits a credential is refused by: a second opinion here would be a
+    /// passphrase this crate thinks is short and the radio does not.
+    fn config_for(credentials: &Credentials) -> Result<Config, NetworkError> {
+        let ssid = Ssid::try_from(credentials.ssid.as_bytes()).map_err(Self::kind_of)?;
+        // An empty passphrase is the network the list marked `OPEN`: the driver has to be told
+        // there is nothing to ask for, because a WPA2 config carrying no password is a request the
+        // access point refuses rather than one it ignores. The list's own `OPEN` marker and this
+        // reading of the credential are the same fact, and the credential is the one that reaches
+        // the radio.
+        let auth = if credentials.password.is_empty() {
+            AuthenticationMethodConfig::Open
+        } else {
+            AuthenticationMethodConfig::Wpa2Personal(
+                Password::try_from(credentials.password.as_bytes()).map_err(Self::kind_of)?,
+            )
+        };
+        let station = StationConfig::default()
+            .with_ssid(ssid)
+            .with_authentication(auth)
+            .with_scan_method(ScanMethod::AllChannels)
+            .with_failure_retry_cnt(STRONGEST_RETRIES)
+            .with_listen_interval(LISTEN_INTERVAL);
+        Ok(Config::Station(station))
     }
 }
 
@@ -192,27 +234,29 @@ impl Station for EspStation {
         Ok(ranked)
     }
 
-    async fn connect(&mut self, credentials: &Credentials) -> Result<(), NetworkError> {
-        // Built through the driver's own types so its validation is what rejects a
-        // name or passphrase, rather than a second opinion about the same limits.
-        let ssid = Ssid::try_from(credentials.ssid.as_bytes()).map_err(Self::kind_of)?;
-        let password =
-            Password::try_from(credentials.password.as_bytes()).map_err(Self::kind_of)?;
-        let station = StationConfig::default()
-            .with_ssid(ssid)
-            .with_authentication(AuthenticationMethodConfig::Wpa2Personal(password))
-            .with_scan_method(ScanMethod::AllChannels)
-            .with_failure_retry_cnt(STRONGEST_RETRIES)
-            .with_listen_interval(LISTEN_INTERVAL);
-        self.controller
-            .set_config(&Config::Station(station))
-            .map_err(Self::kind_of)?;
+    fn begin_connect(&mut self, credentials: &Credentials) -> Result<(), NetworkError> {
+        // A credential the driver will not take is refused here rather than in the wait, and the
+        // phase is where it is reported: the panel reads refusals off the phase, and one that only
+        // the log ever saw would leave a name or a passphrase the radio is holding out for looking
+        // like nothing happening at all.
+        let refusal = match Self::config_for(credentials) {
+            Ok(config) => self.controller.set_config(&config).err().map(Self::kind_of),
+            Err(kind) => Some(kind),
+        };
+        if let Some(kind) = refusal {
+            self.status.phase = LinkPhase::Failed(kind);
+            return Err(kind);
+        }
 
         // A new attempt invalidates the old address: it belonged to the previous link,
         // and leaving it in the status would let a report claim an address this
         // association has not earned yet.
         self.status = self.status.with_address(None);
         self.status.phase = LinkPhase::Connecting;
+        Ok(())
+    }
+
+    async fn await_connected(&mut self) -> Result<(), NetworkError> {
         match self.controller.connect_async().await {
             Ok(connected) => {
                 self.status.ap = Some(AccessPoint {

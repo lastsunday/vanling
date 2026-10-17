@@ -117,8 +117,6 @@ fn init_psram() {
             if reads_back(window) {
                 (PSRAM_READY, Some(window))
             } else {
-                // A window that mapped and will not read back is this build's SPI timing,
-                // and the size that did map is what says which mapping failed.
                 log::error!(
                     "[PSRAM] mapped {} B at {:#x}, and the pattern did not read back",
                     window.len,

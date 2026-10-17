@@ -1,12 +1,15 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::future::Future;
+use core::sync::atomic::{AtomicU8, Ordering};
 
 use crate::SharedDemand;
-use crate::input::IntentBus;
+use crate::input::{CapturePlane, IntentBus};
 use crate::playback::{PlaybackBus, PlaybackCommand};
-use embassy_futures::select::select;
+use embassy_futures::select::select4;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, TrySendError};
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::demand::ClockGovernor;
 use iot_core::demand::ClockSink;
@@ -16,6 +19,7 @@ use iot_core::drivers::camera::CameraTarget;
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, backlight_level, group_hue, hsv_to_rgb, should_repaint, smooth_brightness,
 };
+use iot_core::drivers::network::{ApList, JoinRequest, Ssid};
 use iot_core::intent::Intent;
 use iot_core::render::{
     Activity, LightAppearance, RenderController, Renderer, Slot, SlotAppearance,
@@ -52,6 +56,274 @@ pub type RenderBus = Channel<CriticalSectionRawMutex, RenderMsg, RENDER_BUS_CAPA
 /// Single shared render bus: storage for the cross-task renderer registry and
 /// the producers' global entry point.
 pub static RENDER_BUS: RenderBus = RenderBus::new();
+
+/// The link's data plane: the newest ranked scan list, and the wake that says there is one.
+///
+/// One slot, and off the intent ring, for the reason [`CapturePlane`] is: a scan list is a
+/// window rather than an event, only its newest value means anything to a page, and eight
+/// names are a few hundred bytes where every slot of the ring costs the widest message the
+/// ring can carry.
+///
+/// The network task publishes into it and the render loop takes from it. The storage lives
+/// here because of where those two are compiled: the producer is behind the `wifi` feature,
+/// and a build without a radio still compiles the loop that drains this and the build-page
+/// machinery that names it — so the plane cannot live in the module that can disappear.
+///
+/// A slot that overwrites rather than a channel that refuses, and the refusal is why: a round
+/// publishes the room and the store's own correction to that same list follows within the same
+/// millisecond — a forget is acted on at the end of the round's own pause — so the slot holds
+/// two publishes of the same rows before the loop has drawn either. A channel that kept the
+/// first one threw the correction away, and nothing after it put the page right: the history had
+/// published the correction, so every round after found the list unchanged and published
+/// nothing, and the row kept saying a network was saved that the part no longer had.
+///
+/// The wake is a signal of its own rather than the value's: the render loop parks on the wake,
+/// and a park that took the list would leave the take at the top of the next pass with nothing.
+pub struct ScanPlane {
+    list: Signal<CriticalSectionRawMutex, ApList>,
+    arrived: Signal<CriticalSectionRawMutex, ()>,
+}
+
+impl ScanPlane {
+    /// Not `pub`: each plane is a static's, and the type is passed around by reference — a second
+    /// plane of one kind would be a second answer to what the radio last saw.
+    const fn new() -> Self {
+        Self {
+            list: Signal::new(),
+            arrived: Signal::new(),
+        }
+    }
+
+    /// Take the list the network task published, or `None` when nothing has arrived since
+    /// the last take.
+    pub fn take(&self) -> Option<ApList> {
+        self.list.try_take()
+    }
+
+    /// Ready when a list is waiting. The render loop parks on this, so the wake does not
+    /// consume the list — the take at the top of the next pass does.
+    pub fn ready(&self) -> impl Future<Output = ()> {
+        self.arrived.wait()
+    }
+
+    /// Hand over a scan list, keeping it until the loop takes it.
+    ///
+    /// Overwrites rather than refusing: a list is a whole window, and the one that arrives while
+    /// the last is still undrawn is the newer truth about the same room.
+    pub fn publish(&self, list: ApList) {
+        self.list.signal(list);
+        self.arrived.signal(());
+    }
+}
+
+/// Scan plane storage; the network task publishes into it, the render loop draws from it.
+pub static SCAN: ScanPlane = ScanPlane::new();
+
+/// The panel's join plane: what a finger asked the link for, on its way to the network task.
+///
+/// One slot, and off the intent ring for the reason [`ScanPlane`] is: a request is a value only
+/// its newest form means anything as, and one of its two shapes carries a secret — the ring prices
+/// every slot at the widest message it can carry, and a passphrase is ninety-seven bytes of one.
+///
+/// The direction is the other way round from the scan plane's. The render loop takes the request
+/// out of the device state, because that is where a pick and a keyboard's draft end up, and the
+/// network task — the one that owns the radio, and so the only one that can act on it — takes it
+/// from here.
+///
+/// The two shapes are one request with different amounts of help — a passphrase typed for a row, or
+/// a row's name for the copy this device keeps of it — which is [`JoinRequest`]'s own subject.
+pub struct JoinPlane(Channel<CriticalSectionRawMutex, JoinRequest, 1>);
+
+impl JoinPlane {
+    /// Take what the panel asked for, or `None` when nothing is waiting.
+    pub fn take(&self) -> Option<JoinRequest> {
+        self.0.try_receive().ok()
+    }
+
+    /// Ready when a request is waiting, without taking it. The network task waits on this while it
+    /// holds a link, so a keyboard — or a row — that names a different network is heard.
+    pub fn ready(&self) -> impl Future<Output = ()> {
+        self.0.ready_to_receive()
+    }
+
+    /// Hand over what the panel asked for.
+    ///
+    /// Refused when the last one has not been taken, and nothing is lost by that: what a request
+    /// comes from is the page's own state, and the pick or the keyboard that produced this one is
+    /// done with — a second copy would be the same association asked for twice.
+    pub fn publish(&self, asked: JoinRequest) {
+        let _ = self.0.try_send(asked);
+    }
+}
+
+/// Join plane storage; the render loop publishes into it, the network task takes.
+pub static JOIN: JoinPlane = JoinPlane(Channel::new());
+
+/// A plane that carries one request and nothing with it: whether the panel asked for something
+/// whose whole content is that it was asked for.
+///
+/// Two of them are wired — taking the link down, and looking around again — and they share a shape
+/// because a request with no value is one bit of state however it is spelled. What they do *not*
+/// share is how long it lives: a leave is about the link it was asked of and is dropped where the
+/// next association starts, while a look-around is about the radio and outlives any link. That is
+/// the caller's rule, so it is the caller's [`clear`](Self::clear) to call.
+///
+/// A wake rather than a plane with a slot: all a reader needs is that there is a request, and a
+/// second one while the first is unread is the same request. The render loop publishes, the network
+/// task takes.
+pub struct FlagPlane(Signal<CriticalSectionRawMutex, ()>);
+
+impl FlagPlane {
+    /// Not `pub`: each plane is a static's, and the type is passed around by reference — a second
+    /// plane of one kind would be a second answer to whether the panel asked.
+    const fn new() -> Self {
+        Self(Signal::new())
+    }
+
+    /// Say the panel asked, and stay saying it until a reader takes it.
+    pub fn request(&self) {
+        self.0.signal(());
+    }
+
+    /// Resolve once there is a request, and take it.
+    pub async fn ready(&self) {
+        self.0.wait().await;
+    }
+
+    /// Drop a request nobody is left to act on.
+    pub fn clear(&self) {
+        self.0.reset();
+    }
+}
+
+/// Leave-request storage; the render loop publishes into it, the network task takes.
+///
+/// Cleared where an association is about to be attempted: a leave that outlived the link it was
+/// about would otherwise take effect on the next one, which is a device that joins a network and
+/// leaves it in the same breath. What that cannot drop is a request made *while* this link is up,
+/// because a leave is only asked for of a link that is up.
+pub static LEAVE: FlagPlane = FlagPlane::new();
+
+/// Survey-request storage; the render loop publishes into it, the network task takes.
+///
+/// Not cleared with the leave: looking around is asked of the radio rather than of the link, and a
+/// round that arrives just as an association starts is a round that has already been paid for.
+pub static RESCAN: FlagPlane = FlagPlane::new();
+
+/// The panel's request to forget a saved network, named by the row a finger held.
+///
+/// The one command on this path that carries something, and it carries the network's name rather
+/// than the store's own copy of it: what the panel knows is which row was held, and the store — the
+/// network task's — is what turns a name into an erase. A signal rather than a channel for the
+/// reason the flag planes are: a request nobody has read is one request, and a second forget of the
+/// same name is the same erase.
+pub struct ForgetPlane(Signal<CriticalSectionRawMutex, Ssid>);
+
+impl ForgetPlane {
+    /// Not `pub`, for the reason [`FlagPlane::new`] is not.
+    const fn new() -> Self {
+        Self(Signal::new())
+    }
+
+    /// Say the panel asked to forget `ssid`, and stay saying it until a reader takes it.
+    pub fn request(&self, ssid: Ssid) {
+        self.0.signal(ssid);
+    }
+
+    /// Resolve once there is a request, and take the name with it.
+    pub async fn ready(&self) -> Ssid {
+        self.0.wait().await
+    }
+}
+
+/// Forget-request storage; the render loop publishes into it, the network task takes.
+pub static FORGET: ForgetPlane = ForgetPlane::new();
+
+/// The page the panel is on, for the one task that cannot reach the device state.
+///
+/// A value and a wake rather than the one-slot channel the planes above use: a page is *state* a
+/// reader asks about, not a message it takes, and what the reader wants is to know whether the
+/// page that shows the scan list is up. The render loop is the only writer, the network task the
+/// only reader.
+///
+/// It exists because a scan is something the radio spends on the user's behalf and nothing else can
+/// tell the survey whether anyone is looking: the render loop owns the device state, and the page
+/// is in it.
+pub struct PagePlane {
+    page: AtomicU8,
+    changed: Signal<CriticalSectionRawMutex, ()>,
+}
+
+impl PagePlane {
+    /// Not `pub`: the page is a static's, and the type is passed around by reference — a second
+    /// plane would be a second answer to which page is up.
+    const fn new() -> Self {
+        Self {
+            // The page the state itself boots on. The render loop publishes before any reader
+            // could have a reason to ask, and a *down* page is the safe way for this to be wrong.
+            page: AtomicU8::new(DisplayPage::Ambient as u8),
+            changed: Signal::new(),
+        }
+    }
+
+    /// Whether the panel is on the page that shows the scan list.
+    pub fn shows_list(&self) -> bool {
+        self.page.load(Ordering::Relaxed) == DisplayPage::Network as u8
+    }
+
+    /// Hand over the page the loop is drawing.
+    ///
+    /// A page that has not changed is not news, so the wake is not signalled: the render loop
+    /// publishes on every pass, and a wake per pass would be a task woken twenty times a second to
+    /// find nothing to do.
+    pub fn publish(&self, page: DisplayPage) {
+        if self.page.swap(page as u8, Ordering::Relaxed) != page as u8 {
+            self.changed.signal(());
+        }
+    }
+
+    /// Resolve when the panel is on the list's page, and say whether it had to wait.
+    ///
+    /// The answer is what starts the survey's idle clock over: arriving at the page is an act, and
+    /// the list a user is shown on arrival is the one that has to be fresh.
+    pub async fn wait_for_list(&self) -> bool {
+        let mut waited = false;
+        while !self.shows_list() {
+            waited = true;
+            self.changed.wait().await;
+        }
+        waited
+    }
+
+    /// Resolve when the panel comes *back* to the list's page.
+    ///
+    /// [`wait_for_list`](Self::wait_for_list) answers a question — is the list up? — and answers at
+    /// once when it is. Right for a caller deciding whether to look around at all, and wrong for one
+    /// resting between rounds: a check that is already true cannot tell "came back to the page" from
+    /// "never left it", so as an interrupt it makes the rest no rest at all — on the board that read
+    /// as a survey every 790 ms against a 5,000 ms pause, the pause never once being waited out.
+    /// This one wants a *change* of page that lands on the list, so it reads the page now and waits
+    /// for it to differ.
+    pub async fn wait_for_return(&self) {
+        let mut seen = self.page.load(Ordering::Relaxed);
+        loop {
+            self.changed.wait().await;
+            let page = self.page.load(Ordering::Relaxed);
+            if page == seen {
+                // A signal that was already pending when this was called, or a change that landed
+                // back where it started: neither is a return.
+                continue;
+            }
+            seen = page;
+            if page == DisplayPage::Network as u8 {
+                return;
+            }
+        }
+    }
+}
+
+/// Page storage; the render loop publishes into it, the network task reads it.
+pub static PAGE: PagePlane = PagePlane::new();
 
 struct Entry {
     token: RenderToken,
@@ -166,6 +438,10 @@ pub struct LightRenderer<R: RgbLight + DiagnosticsSink> {
     slots: [Slot; 2],
     last: Option<Rgb>,
     breath: Option<Breath>,
+    /// The appearance the light declared, kept so a page change can put it back: the page is
+    /// what decides whether the light is drawn at all (see [`Self::present`]), and a page that
+    /// stopped showing it is not a light that moved.
+    appearance: Option<LightAppearance>,
     /// The page the surface was last told about. `step` gets no appearance, so it reads the
     /// camera's turn off this rather than being handed the snapshot a second time.
     page: Option<DisplayPage>,
@@ -183,6 +459,7 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
             slots: [Slot::Light(instance), Slot::Diagnostics],
             last: None,
             breath: None,
+            appearance: None,
             page: None,
             display: Mode::Continuous,
         }
@@ -222,6 +499,53 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
         let color = breath_frame(now_ms, breath);
         self.drive(Fill::Uniform, color);
         self.light.set_backlight(backlight_for(now_ms, breath));
+    }
+
+    /// The ground a page draws for itself, on the surfaces that draw pages: the Network page is
+    /// a setup screen — a list, a keyboard, a status line — and the fill behind it is that
+    /// screen's black, at full backlight and holding still. The light surface sharing the panel
+    /// is that fill, so on this page it is neither coloured nor breathing.
+    ///
+    /// Asked of the page rather than derived in the state, because the light is not what
+    /// changed: it is the same light it was, and it comes back exactly as it was when the page
+    /// does — see [`Self::present`] and the diagnostics arm of [`Renderer::on_appearance`].
+    fn page_ground(&self) -> Option<Rgb> {
+        (self.light.draws_pages() && self.page == Some(DisplayPage::Network))
+            .then_some(Rgb(0, 0, 0))
+    }
+
+    /// Shows the appearance the light declared — or, on a page that draws its own ground, the
+    /// page's instead. The one place an appearance becomes fills and backlight levels, so the
+    /// page rule has one place to live.
+    fn present(&mut self, now_ms: u32) {
+        let Some(declared) = self.appearance else {
+            // No appearance has arrived yet: the surface keeps what bring-up gave it rather
+            // than being driven to a state nothing declared.
+            return;
+        };
+        match self.page_ground() {
+            Some(ground) => {
+                self.breath = None;
+                self.drive(Fill::Uniform, ground);
+                self.light.set_backlight(100);
+            }
+            None => match declared {
+                LightAppearance::Off => {
+                    self.breath = None;
+                    self.drive(Fill::Uniform, Rgb(0, 0, 0));
+                    self.light.set_backlight(0);
+                }
+                LightAppearance::Color(color) => {
+                    self.breath = None;
+                    self.drive(Fill::Uniform, color);
+                    self.light.set_backlight(100);
+                }
+                LightAppearance::Breathing(breath) => {
+                    self.breath = Some(breath);
+                    self.draw(now_ms, breath);
+                }
+            },
+        }
     }
 }
 
@@ -268,6 +592,11 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
                 // enough by the next tick.
                 if page_changed {
                     self.last = None;
+                    // And the page is what decides whether the light is drawn at all, so the
+                    // appearance is shown again: leaving a page that drew its own ground has to
+                    // put the light back, and nothing else would ask for it — the light did
+                    // not move, the page did.
+                    self.present(now_ms);
                 }
                 if self.on_camera_page() {
                     // The camera page is time-driven by the frame arriving, which this diff
@@ -286,24 +615,12 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
                 appearance,
             } => {
                 debug_assert_eq!(instance, self.instance);
-                match appearance {
-                    LightAppearance::Off => {
-                        self.breath = None;
-                        self.drive(Fill::Uniform, Rgb(0, 0, 0));
-                        self.light.set_backlight(0);
-                        Activity::Idle
-                    }
-                    LightAppearance::Color(color) => {
-                        self.breath = None;
-                        self.drive(Fill::Uniform, color);
-                        self.light.set_backlight(100);
-                        Activity::Idle
-                    }
-                    LightAppearance::Breathing(breath) => {
-                        self.breath = Some(breath);
-                        self.draw(now_ms, breath);
-                        Activity::TimeDriven
-                    }
+                self.appearance = Some(appearance);
+                self.present(now_ms);
+                if self.breath.is_some() {
+                    Activity::TimeDriven
+                } else {
+                    Activity::Idle
                 }
             }
         }
@@ -363,10 +680,22 @@ fn backlight_for(now_ms: u32, breath: Breath) -> u8 {
 }
 
 /// Render loop: drains the management pipe, interpreting operation intents against the
-/// manager (the pipeline context) and applying business intents wholesale, and parks on
-/// the intent/render buses once the surface settles instead of busy-stepping.
+/// manager (the pipeline context) and applying business intents wholesale, takes the capture
+/// plane's newest window, and parks on the pipes once the surface settles instead of
+/// busy-stepping.
+///
+/// Eleven arguments, allowed rather than bundled: every one is a distinct thing this loop
+/// reaches for by name, and a struct over them would be a case list wearing a type.
+#[allow(clippy::too_many_arguments)]
 pub async fn render_loop<C: ClockSink>(
     intent_bus: &'static IntentBus,
+    capture: &'static CapturePlane,
+    scan: &'static ScanPlane,
+    joins: &'static JoinPlane,
+    leave: &'static FlagPlane,
+    rescan: &'static FlagPlane,
+    forget: &'static ForgetPlane,
+    page: &'static PagePlane,
     render_bus: &'static RenderBus,
     playback_bus: &'static PlaybackBus,
     mut render: Render,
@@ -381,6 +710,11 @@ pub async fn render_loop<C: ClockSink>(
     // loop that asks it, so a second `run` in one process does not answer for the first.
     let mut governor = ClockGovernor::new();
     let mut playback = PlaybackDispatch::new(manager.playback_state());
+    // Boxed, though it is one value: the bench's own state is a field of this loop's future, and
+    // the loop's future is the largest thing on the one stack the product has to fit the radio,
+    // the panel and the audio into. Behind a pointer the future pays four bytes for a hand it
+    // never uses, and the bench's own bytes live on the heap it already allocates from.
+    let mut bench = Box::new(crate::panel::PanelBench::new());
     loop {
         while let Ok(intent) = intent_bus.try_receive() {
             match intent {
@@ -408,6 +742,62 @@ pub async fn render_loop<C: ClockSink>(
             // a tap was heard, so a command built from the intent alone would
             // replay a sound it just dropped.
             playback.dispatch(playback_bus, manager.playback_state());
+        }
+        // The page, for the one reader that cannot see the state: the network task asks whether
+        // the list it would survey is on the panel at all. Published after the intents, so a page
+        // this pass changed is the one the survey hears about.
+        page.publish(manager.state().page);
+        // A bench build's own hand on the glass, which is nothing at all in any other build: the
+        // taps it publishes are read by the next pass, exactly as a tap from the touch driver is.
+        bench.step(manager, intent_bus);
+        // After the intents, so a tap on the record control that landed in the same tick as a
+        // poll latches the window the last pass drew, which is what the capture last handed
+        // over. `if` and not `while`: the plane is one slot, and what it holds is the newest
+        // window rather than the next one.
+        if let Some(sample) = capture.take() {
+            manager.apply_capture(sample);
+        }
+        // The link's list the same way, and after the intents for the same reason: a list that
+        // landed in this tick is drawn by this pass rather than the next.
+        if let Some(list) = scan.take() {
+            manager.apply_scan(list);
+        }
+        // And what the panel asked the link for, in the other direction: the state holds it because
+        // the state is what the panel's taps go through, and the network task is the only thing that
+        // can act on it. What is logged is the name either way; the passphrase never is.
+        if let Some(asked) = manager.take_join() {
+            match asked {
+                JoinRequest::Typed(credentials) => log::info!(
+                    "[WIFI] the panel named a network: {:?}",
+                    credentials
+                        .ssid
+                        .as_display_text()
+                        .unwrap_or("<unprintable>"),
+                ),
+                JoinRequest::Held(ssid) => log::info!(
+                    "[WIFI] the panel asked for the copy this device keeps of {:?}",
+                    ssid.as_display_text().unwrap_or("<unprintable>"),
+                ),
+            }
+            joins.publish(asked);
+        }
+        // And the other commands this path produces, whose whole value is that they happened: the
+        // strip the user tapped said leave or look around, and the row they held named the network
+        // to forget.
+        if manager.take_leave() {
+            log::info!("[WIFI] the panel asked to leave the network the link is on");
+            leave.request();
+        }
+        if manager.take_scan_now() {
+            log::info!("[WIFI] the panel asked to look around now");
+            rescan.request();
+        }
+        if let Some(ssid) = manager.take_forget() {
+            log::info!(
+                "[WIFI] the panel asked to forget {:?}",
+                ssid.as_display_text().unwrap_or("<unprintable>"),
+            );
+            forget.request(ssid);
         }
         let state = manager.state();
         // The page is the product's declaration of what it wants, so the demand follows it
@@ -439,7 +829,13 @@ pub async fn render_loop<C: ClockSink>(
         } else {
             // The wake is a readiness signal, not a receive: it never pops, so
             // the drain at the top of the next pass sees the message.
-            select(intent_bus.ready_to_receive(), render_bus.ready_to_receive()).await;
+            select4(
+                intent_bus.ready_to_receive(),
+                render_bus.ready_to_receive(),
+                capture.ready(),
+                scan.ready(),
+            )
+            .await;
             // Re-anchor so missed frames while parked do not replay as a burst
             // when the light resumes animating.
             next_frame = Instant::now();
@@ -512,31 +908,49 @@ fn queue(bus: &PlaybackBus, command: PlaybackCommand) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::future::Future;
+    use core::task::{Context, Waker};
     use iot_core::diagnostics::Diagnostics;
     use iot_core::drivers::camera::FrameSource;
+    use iot_core::drivers::network::AccessPoint;
     use iot_core::render::{SlotAppearance, light_appearance};
     use iot_core::state::LightState;
 
     /// Counts what reached the panel rather than what was asked of it.
     struct FakePanel {
         fills: u32,
+        color: Rgb,
         backlight: u8,
         ceiling: u8,
+        /// Whether this surface draws the device's pages, as the real panel does and an
+        /// addressable LED does not.
+        pages: bool,
     }
 
     impl FakePanel {
         fn new() -> Self {
             Self {
                 fills: 0,
+                color: Rgb(0, 0, 0),
                 backlight: 100,
                 ceiling: 100,
+                pages: false,
+            }
+        }
+
+        /// The panel: the surface the product's pages are drawn on.
+        fn panel() -> Self {
+            Self {
+                pages: true,
+                ..Self::new()
             }
         }
     }
 
     impl RgbLight for FakePanel {
-        fn set_fill(&mut self, _fill: Fill, _color: Rgb) {
+        fn set_fill(&mut self, _fill: Fill, color: Rgb) {
             self.fills += 1;
+            self.color = color;
         }
 
         fn set_backlight(&mut self, level_pct: u8) {
@@ -551,6 +965,10 @@ mod tests {
 
     impl DiagnosticsSink for FakePanel {
         fn consume(&mut self, _diagnostics: &Diagnostics) {}
+
+        fn draws_pages(&self) -> bool {
+            self.pages
+        }
     }
 
     impl CameraTarget for FakePanel {
@@ -562,6 +980,11 @@ mod tests {
     }
 
     fn panel_asked(display: Mode) -> SlotAppearance {
+        panel_on(DisplayPage::Ambient, display)
+    }
+
+    /// The diagnostics for a page a surface is being told about.
+    fn panel_on(page: DisplayPage, display: Mode) -> SlotAppearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
             PlaneKey::DISPLAY,
@@ -569,6 +992,7 @@ mod tests {
         );
         SlotAppearance::Diagnostics(Diagnostics {
             demand,
+            page,
             ..Diagnostics::default()
         })
     }
@@ -658,5 +1082,165 @@ mod tests {
         );
         r.step(1_000);
         assert!(r.light.fills > 0);
+    }
+
+    /// The Network page's own ground: this surface is the fill behind the setup screen, so the
+    /// light is not what it shows.
+    #[test]
+    fn the_network_page_grounds_the_panel_black_and_still() {
+        let mut r = renderer(FakePanel::panel());
+        r.on_appearance(panel_on(DisplayPage::Network, Mode::Continuous), 0);
+        assert_eq!(
+            r.on_appearance(ambient_breath(0), 0),
+            Activity::Idle,
+            "a breathing light does not breathe through the page's ground"
+        );
+        assert_eq!(r.light.color, Rgb(0, 0, 0), "the ground is black");
+        assert_eq!(
+            r.light.backlight, 100,
+            "and the setup screen is lit to read"
+        );
+        let fills = r.light.fills;
+        assert_eq!(r.step(1_000), Activity::Idle);
+        r.step(1_100);
+        assert_eq!(
+            r.light.fills, fills,
+            "and the loop parks instead of repainting"
+        );
+        assert_eq!(
+            r.light.backlight, 100,
+            "the backlight holds instead of ramping"
+        );
+
+        // The page is what is on the panel: a light switched off does not take the screen with
+        // it, or the page could not be read to switch it back on.
+        r.on_appearance(
+            SlotAppearance::Light {
+                instance: 0,
+                appearance: LightAppearance::Off,
+            },
+            1_200,
+        );
+        assert_eq!(r.light.color, Rgb(0, 0, 0));
+        assert_eq!(r.light.backlight, 100);
+    }
+
+    #[test]
+    fn leaving_the_page_that_grounds_the_panel_puts_the_light_back() {
+        let mut r = renderer(FakePanel::panel());
+        r.on_appearance(panel_on(DisplayPage::Network, Mode::Continuous), 0);
+        r.on_appearance(ambient_breath(0), 0);
+        assert_eq!(r.light.color, Rgb(0, 0, 0));
+
+        // The light never moved; the page did. Nothing in the appearance diff would ask for the
+        // colour back, so the page change is what has to.
+        assert_eq!(
+            r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 100),
+            Activity::TimeDriven,
+            "the breathing the page was hiding resumes"
+        );
+        let LightAppearance::Breathing(breath) = light_appearance(LightState::boot()) else {
+            panic!("the boot light breathes");
+        };
+        assert_eq!(r.light.color, breath_frame(100, breath));
+    }
+
+    #[test]
+    fn a_surface_that_draws_no_page_keeps_showing_the_light() {
+        // The page rule is asked of the surface: an addressable LED has no screen to put a
+        // setup list on, so a page it cannot draw must not darken the one output it has.
+        let mut r = renderer(FakePanel::new());
+        r.on_appearance(panel_on(DisplayPage::Network, Mode::Continuous), 0);
+        assert_eq!(r.on_appearance(ambient_breath(0), 0), Activity::TimeDriven);
+        assert!(
+            r.light.fills > 0,
+            "the light is still what this surface shows"
+        );
+    }
+
+    /// A context with a waker that does nothing, which is enough: this plane is state plus a
+    /// signal, and each poll reads the state, so nothing has to be woken for a poll to be made.
+    fn cx() -> Context<'static> {
+        Context::from_waker(Waker::noop())
+    }
+
+    /// The one-row list a round publishes, marked or not as the store would have it.
+    fn round_list(saved: bool) -> ApList {
+        let mut list = ApList::from_ranked(&[AccessPoint {
+            ssid: Ssid::from_octets(b"target"),
+            bssid: [7; 6],
+            channel: 11,
+            rssi: -50,
+            secured: true,
+        }]);
+        list.mark_saved(u8::from(saved));
+        list
+    }
+
+    #[test]
+    fn a_list_published_before_the_last_one_is_taken_replaces_it_rather_than_being_refused() {
+        // The shape of the defect this plane had: a round publishes the room and the store's own
+        // correction to that same list follows in the same millisecond — the network task acts on a
+        // forget at the end of the round's own pause — so two lists go out before the loop has drawn
+        // either. What the page has to be handed is the second one. The first is the list carrying a
+        // mark for a network the part no longer holds, and no round after this one publishes it
+        // again, because the history took the correction as the list the page is showing: every
+        // round after found the list unchanged and published nothing.
+        let plane = ScanPlane::new();
+        plane.publish(round_list(true));
+        plane.publish(round_list(false));
+
+        let list = plane.take().expect("a list is waiting");
+        assert!(
+            !list.is_saved(0),
+            "the newest list is the one the page is handed, and the mark is off it"
+        );
+        assert!(plane.take().is_none(), "and it is handed over once");
+    }
+
+    #[test]
+    fn the_wake_a_park_waits_on_does_not_take_the_list_it_woke_for() {
+        // The loop parks on the wake and takes the list at the top of the pass after it, so a wake
+        // that took the list would leave that pass nothing to draw — and nothing would publish it a
+        // second time.
+        let plane = ScanPlane::new();
+        plane.publish(round_list(true));
+        let mut wake = core::pin::pin!(plane.ready());
+        assert!(
+            wake.as_mut().poll(&mut cx()).is_ready(),
+            "the wake is up as soon as a list is waiting"
+        );
+        assert!(
+            plane.take().is_some(),
+            "the take at the top of the pass is the one that takes the list"
+        );
+    }
+
+    #[test]
+    fn a_rest_on_the_list_is_not_cut_short_by_the_list_being_up() {
+        // The board read this as a survey every 790 ms against a 5,000 ms pause: the pause was
+        // waiting on `wait_for_list`, which is true the moment it is asked on the page the pause is
+        // spent on. The two futures are asked side by side here so the difference is the test.
+        let plane = PagePlane::new();
+        plane.publish(DisplayPage::Network);
+        let mut level = core::pin::pin!(plane.wait_for_list());
+        let mut back = core::pin::pin!(plane.wait_for_return());
+        assert!(
+            level.as_mut().poll(&mut cx()).is_ready(),
+            "the level check answers \"is the list up?\", and it is"
+        );
+        assert!(
+            back.as_mut().poll(&mut cx()).is_pending(),
+            "a return cannot be satisfied by never having left"
+        );
+
+        // Away alone is not a return either — the loop has to run on the panel being on the list.
+        plane.publish(DisplayPage::Ambient);
+        assert!(back.as_mut().poll(&mut cx()).is_pending());
+        plane.publish(DisplayPage::Network);
+        assert!(
+            back.as_mut().poll(&mut cx()).is_ready(),
+            "away and back is the return the pause waits on"
+        );
     }
 }

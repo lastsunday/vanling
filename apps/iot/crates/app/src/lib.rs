@@ -61,12 +61,13 @@ fn boot_override() -> Override {
 }
 
 /// The variant name each page answers to, which is what `IOT_BOOT_PAGE` spells.
-const BOOT_PAGE_NAMES: [(&str, DisplayPage); 5] = [
+const BOOT_PAGE_NAMES: [(&str, DisplayPage); 6] = [
     ("ambient", DisplayPage::Ambient),
     ("attitude", DisplayPage::Attitude),
     ("audio", DisplayPage::Audio),
     ("speaker", DisplayPage::Speaker),
     ("camera", DisplayPage::Camera),
+    ("network", DisplayPage::Network),
 ];
 
 /// Resolves a boot page name, falling back to [`DisplayPage::Ambient`].
@@ -155,13 +156,24 @@ mod boot_page_tests {
 }
 
 pub mod input;
+/// The link lives behind the `wifi` feature rather than inside `run`: it is the one part of the
+/// product that needs the radio's own types, and a build without a radio still compiles the
+/// rest of the app.
+#[cfg(feature = "wifi")]
+pub mod network;
+/// The bench that replays a credential through the panel's own path. Always compiled, because the
+/// render loop steps it unconditionally and [`panel::BENCH`] is what makes it nothing: a build
+/// named for the bench types, and every other build's loop has the call folded away.
+pub mod panel;
 pub mod playback;
 pub mod probe;
 pub mod render;
 
-use input::{INTENT_BUS, input_task};
+use input::{CAPTURE, INTENT_BUS, input_task};
 use playback::{PLAYBACK_BUS, control_loop, feed_task, share};
-use render::{LightRenderer, RENDER_BUS, Render, render_loop};
+use render::{
+    FORGET, JOIN, LEAVE, LightRenderer, PAGE, RENDER_BUS, RESCAN, Render, SCAN, render_loop,
+};
 
 /// Where the feed loop runs, because the feed has a deadline the rest of the app can
 /// break and the board may or may not be able to defend it.
@@ -183,11 +195,39 @@ pub enum SpeakerRunner {
     Inline,
 }
 
+/// Whether the entry point got a station off the board.
+///
+/// A wiring fact handed in like [`SpeakerRunner`], and for a reason of the same shape: the
+/// station is taken by the entry point, because its start needs the scheduler — so by the time
+/// `run` is called, the board no longer has a radio to look at.
+///
+/// What it gates is the Network page. A build with no link has none to show, and the phase it
+/// would draw stays `Off` for ever.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Link {
+    /// A station came up: the page belongs in the cycle.
+    Wired,
+    /// No radio, or none that started: the page is skipped.
+    Absent,
+}
+
+impl Link {
+    /// What the entry point found when it took the board's radio.
+    pub const fn of(present: bool) -> Self {
+        if present { Self::Wired } else { Self::Absent }
+    }
+
+    /// Whether a page showing the link belongs in the cycle.
+    pub const fn is_wired(self) -> bool {
+        matches!(self, Self::Wired)
+    }
+}
+
 /// Application composition: takes the board's light and input sources,
 /// registers one light renderer per wired surface, and runs the persistent tasks.
 /// Generic over capabilities, so every board wiring the same capabilities is
 /// served by this single copy.
-pub async fn run<B, C>(mut board: B, mut clock: C, speaker_runner: SpeakerRunner) -> !
+pub async fn run<B, C>(mut board: B, mut clock: C, speaker_runner: SpeakerRunner, link: Link) -> !
 where
     B: BoardTrait + HasLight + HasInput + HasMotion + HasAudio + HasPlayback + HasCamera + 'static,
     C: ClockSink,
@@ -204,8 +244,9 @@ where
     );
     // The capture is just another polled source: it joins the same tick rather
     // than a task of its own, so a slow poll costs envelope columns and nothing
-    // else.
-    let audio = board.take_audio();
+    // else. What it reports goes to the capture plane rather than the intent bus,
+    // which is why the board is handed the plane: a window is not an event.
+    let audio = board.take_audio(&CAPTURE);
     let audio_enabled = audio.is_some();
     // Which planes this board can be asked about at all. A source the board did not wire
     // contributes no plane, so a board with no microphone never has an audio demand to meet.
@@ -269,6 +310,10 @@ where
             .with_audio(audio_enabled)
             .with_playback(playback_enabled)
             .with_camera(camera_enabled)
+            // The link's gate arrives from the entry point rather than being read off the
+            // board like the three above: the station's start needs the scheduler, so the
+            // entry point takes it before this runs. See [`Link`].
+            .with_network(link.is_wired())
             .with_boot_page(boot_page())
             .with_override(override_),
     );
@@ -313,6 +358,13 @@ where
                 input_task(&INTENT_BUS, sources, &configurator, &demand),
                 render_loop(
                     &INTENT_BUS,
+                    &CAPTURE,
+                    &SCAN,
+                    &JOIN,
+                    &LEAVE,
+                    &RESCAN,
+                    &FORGET,
+                    &PAGE,
                     &RENDER_BUS,
                     &PLAYBACK_BUS,
                     render,
@@ -328,6 +380,13 @@ where
             input_task(&INTENT_BUS, sources, &configurator, &demand),
             render_loop(
                 &INTENT_BUS,
+                &CAPTURE,
+                &SCAN,
+                &JOIN,
+                &LEAVE,
+                &RESCAN,
+                &FORGET,
+                &PAGE,
                 &RENDER_BUS,
                 &PLAYBACK_BUS,
                 render,
@@ -343,6 +402,13 @@ where
             input_task(&INTENT_BUS, sources, &configurator, &demand),
             render_loop(
                 &INTENT_BUS,
+                &CAPTURE,
+                &SCAN,
+                &JOIN,
+                &LEAVE,
+                &RESCAN,
+                &FORGET,
+                &PAGE,
                 &RENDER_BUS,
                 &PLAYBACK_BUS,
                 render,

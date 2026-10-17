@@ -150,7 +150,6 @@ fn tick() {
     switch(CpuClock::_240MHz);
 }
 
-/// The cost repeated far enough that a per-switch error stops being invisible.
 fn drift() {
     for preset in [CpuClock::_160MHz, CpuClock::_80MHz, CpuClock::_240MHz] {
         let started = Instant::now();

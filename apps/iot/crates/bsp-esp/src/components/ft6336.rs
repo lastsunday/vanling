@@ -5,6 +5,24 @@ use iot_core::drivers::input::{
 
 pub const FT6336_I2C_ADDR: u8 = 0x38;
 
+/// The frame this digitizer reports in on the 2.0" module it is fitted to.
+///
+/// The module is an ST7789 addressed as 320x240 landscape (`MV` + `MX`, see
+/// `st7789::MADCTL_LANDSCAPE`), while the FT6336 reports the panel controller's own 240x320
+/// portrait window: the raw short axis is the framebuffer's vertical and runs the other way, the
+/// raw long axis is the framebuffer's horizontal. The mirror is named after the swap because
+/// [`TouchMap::map`] swaps first — a map written in the panel's own terms would call this
+/// `mirror_x`.
+///
+/// Not [`TouchMap::IDENTITY`], and not by taste: the module vendor's touch configuration for this
+/// panel is `x_max = 240`, `y_max = 320`, `swap_xy` + `mirror_x`, which composes to exactly this
+/// mapping. `@/records/iot/input.md`.
+pub const LANDSCAPE_MAP: TouchMap = TouchMap {
+    swap_xy: true,
+    mirror_x: false,
+    mirror_y: true,
+};
+
 /// Raw `GESTURE_ID` register of the FT5x06 family, read verbatim for the
 /// overlay so the chip's built-in slide engine and the software classifier stay
 /// comparable. Never used for classification. The reported codes are `0x10` up /
@@ -208,5 +226,59 @@ where
         self.continuity
             .update(&raw[..n], contacts)
             .map(InputEvent::Touch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::mock_i2c::MockI2c;
+
+    /// The panel: 320x240, the shape the module is addressed in.
+    const PANEL: (u16, u16) = (320, 240);
+    /// Registers as far as the mode configuration writes, which is what this bus has to hold.
+    const REGISTERS: usize = 0xA5;
+
+    /// A digitizer reporting one contact at wherever it would report a finger shown at
+    /// `framebuffer` — [`LANDSCAPE_MAP`] read backwards, written out rather than called, so that a
+    /// map that changed fails the assertion below instead of moving with it.
+    fn touching(framebuffer: (u16, u16)) -> Ft6336<MockI2c<REGISTERS>> {
+        let (raw_x, raw_y) = (PANEL.1 - 1 - framebuffer.1, framebuffer.0);
+        let i2c = MockI2c::new(|registers| {
+            registers[REG_TD_STATUS as usize] = 1;
+            registers[POINTS_BASE_REG as usize] = (raw_x >> 8) as u8;
+            registers[POINTS_BASE_REG as usize + 1] = raw_x as u8;
+            registers[POINTS_BASE_REG as usize + 2] = (raw_y >> 8) as u8;
+            registers[POINTS_BASE_REG as usize + 3] = raw_y as u8;
+        });
+        Ft6336::new(i2c, FT6336_I2C_ADDR, LANDSCAPE_MAP, PANEL.0, PANEL.1)
+    }
+
+    #[test]
+    fn a_finger_lands_where_the_panel_shows_it() {
+        // The middle of a key of the Network page's keyboard, which is the space `key_at`
+        // hit-tests: a driver that reports anything else types something else.
+        let mut touch = touching((96, 133));
+        let (points, len, _) = touch.read_sample().expect("a readable sample");
+        assert_eq!((points[0], len), ((96, 133), 1));
+    }
+
+    #[test]
+    fn the_panels_own_frame_is_transposed_and_mirrored() {
+        // All four corners: the whole error this map exists to prevent is an axis pair swapped or
+        // mirrored without looking wrong in any one reading, and a transposition is invisible
+        // along the middle of either axis.
+        for (raw, framebuffer) in [
+            ((0, 0), (0, 239)),
+            ((239, 0), (0, 0)),
+            ((0, 319), (319, 239)),
+            ((239, 319), (319, 0)),
+        ] {
+            assert_eq!(
+                LANDSCAPE_MAP.map(raw, PANEL.0, PANEL.1),
+                framebuffer,
+                "raw {raw:?} does not come out at {framebuffer:?}"
+            );
+        }
     }
 }

@@ -120,6 +120,12 @@ DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
 
 `Intent` 是相反的情形——事件——所以仍走总线。
 
+采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽平面：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`render_loop` 在 intent 之后取走。
+
+第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，平面自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
+
+顺序是顺带的：`input_task` 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一次 pass 画过的那一帧。
+
 句柄由组合点造并注入（复用 `playback::share()` 的形状），满足 `input.rs` 的约定：句柄传进去，没有消费者按名字摸全局。
 
 ### feed_task 是时钟声明方，不是需求消费者
@@ -268,7 +274,9 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面循环按次序表走一圈
 
-`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`with_boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
+`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`with_boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
+
+能力判定是每条页自己的一个 bool（`is_backed`），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Link` 与 `SpeakerRunner` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子。
 
 这条规约是修一个缺陷写下来的。
 

@@ -57,3 +57,33 @@ sort_by = "weight"
 `[实测]` 把所有平面关掉后这个地板仍在，因为它与需求无关：**一个什么都不给的设备，按下按钮仍然必须被响应。** 所以它是理论下限，不是调优空间。
 
 `[实测]` 采集那一路在 `capture 0 ms` 时不是「变便宜」，而是**没有环可排空**——见[音频实现记录](@/records/iot/audio.md)里那条失效链。读这行时 `0 ms` 与 `1 ms` 的含义完全不同，前者是故障。
+
+---
+
+## 触摸坐标要过一次帧变换，`IDENTITY` 一直是错的
+
+`[据称]` 这块模组的数字转换器报的是**面板控制器自己的 240×320 竖幅窗口**，而面板被写成 320×240 横幅（`MADCTL = MV|MX`）：两者差一次**转置 + 镜像**，正确的净变换是
+
+```
+raw(rx 0..240, ry 0..320)  →  fb(x, y) = (ry, 239 − rx)
+```
+
+在此之前给 FT6336 的是 `TouchMap::IDENTITY`，于是同一次点按被读成 `(rx, ry) = (239 − fy, fx)`：**列由手指的纵向位置决定、行由横向位置决定，列还是镜像的**。点 `7`（`pqrs`，格心 `(96,133)`）命中 `(106,96)`，也就是 `2`（`abc`）那一格；列表的 band 由 `fx` 决定（`(fx−47)/61`，纵向完全不参与）；灯页的物理上下滑被判成 `Left`/`Right` —— 改的是颜色，不是亮度。
+
+依据两条，互相独立：
+
+- 板厂对这块面板的触摸配置（wiki 第 9/11 章；例程 `08-lcd_lvgl` 与 `14-handheld` 是同一份，第三方 LVGL 移植博客亦然）：`.x_max = BSP_LCD_V_RES(240)`、`.y_max = BSP_LCD_H_RES(320)`、`swap_xy = 1`、`mirror_x = 1`、`mirror_y = 0`，配同一个显示配置（`swap_xy(true)` + `mirror(true, false)`，也就是 `MV|MX` = 本仓的 `MADCTL_LANDSCAPE = 0x60`）。
+- 上游 `esp_lcd_touch.c` 的变换顺序是**先镜像（用 `x_max`/`y_max`，所以作用在原始轴上）再交换**，而 `esp_lcd_touch_ft5x06.c` 只把寄存器原样交出去；两条合起来正是 `(ry, 240 − rx)`。
+
+所以这一侧的取值是 `bsp-esp::components::ft6336::LANDSCAPE_MAP`：`TouchMap { swap_xy: true, mirror_x: false, mirror_y: true }`。它名字里的 `mirror_y` 是**交换之后**的 `y`（`TouchMap::map` 先交换再镜像），跟板厂嘴里的 `mirror_x` 是同一件事；本仓用 `239 − rx` 而不是板厂的 `240 − rx`，因为后者把最上面一行落到了 framebuffer 之外。
+
+`[测试]` 两条在 `bsp-esp/src/components/ft6336.rs`，跑在 `iot:test-bsp`（为此把 `ft6336` 加进该任务的 feature 列表——它是 bsp 里到那时唯一没有宿主机覆盖的驱动）：
+
+- `a_finger_lands_where_the_panel_shows_it`：把「手指在 (96,133)」按逆变换写成原始坐标喂进 `read_sample`，断言交出来的还是 (96,133)。喂进去的一侧是照着 `LANDSCAPE_MAP` 反推的，所以把常量改回 `IDENTITY`，这条立刻红。
+- `the_panels_own_frame_is_transposed_and_mirrored`：`(0,0)→(0,239)`、`(239,0)→(0,0)`、`(0,319)→(319,239)`、`(239,319)→(319,0)` 四个角。转置在任一轴的中段看不出来，只有角能钉住它。
+
+这个错能活到今天，是因为**在此之前上板验过的触摸只有方向无关的点击**（页循环：点哪儿都算一次跃迁），而列表的每一行是整宽的一条——横向错位只有键盘的**列**会一眼暴露。
+
+**还没验的**（软件合成不了触摸，只有 FT6336 产面板坐标）：点 `abc` 那一格必须出 `abc`、点 `7` 那一格必须出 `7`，灯页物理上下滑必须改亮度。
+
+`[实测]` 这一版已经烧上 S3（bench 镜像，`IOT_PORT=/dev/cu.usbmodem1422301`）：`App/part. size: 880,112/6,291,456 bytes`、开机 `[IOT] boot page is Network`、无 panic，`[DISPLAY] Network 1 repaints in 5901 ms, held the executor 18 ms (0%)`——**所以板上跑的就是这一版**，上面那条只欠一次手指，不欠一次烧录。

@@ -108,8 +108,7 @@ impl<const L: usize> Canceller<L> {
     /// Reported beside [`Self::delay_peak`] because the two failures they
     /// describe look identical from outside: a room with no echo path, and a
     /// path that starts further back than [`MAX_DELAY`] can reach. Only this one
-    /// tells them apart, and until it was written there was no way to say which
-    /// of the two a quiet canceller was looking at.
+    /// tells them apart.
     pub fn scan_wide(&mut self) -> (usize, i64) {
         self.delay.scan_wide(delay::HISTORY - delay::WINDOW)
     }

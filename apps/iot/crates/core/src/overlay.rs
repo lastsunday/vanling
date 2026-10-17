@@ -21,6 +21,18 @@
 pub const PANEL_COLUMNS: usize = 320;
 pub const PANEL_ROWS: usize = 240;
 
+/// Rows along the bottom of the panel that belong to no page's content: the global FPS badge,
+/// which the panel draws last and on every page.
+///
+/// A page's own controls are sized against [`CONTENT_BOTTOM`] rather than against the panel, so
+/// the numbers that fill a page's height are the ones above the strip. The panel asserts that
+/// this is the strip it actually keeps, because a badge moved by a row would otherwise be
+/// overdrawn by whatever control grew into it.
+pub const FOOTER_ROWS: usize = 8;
+
+/// The first row below every page's content: the top of the footer.
+pub const CONTENT_BOTTOM: usize = PANEL_ROWS - FOOTER_ROWS;
+
 /// Width of one glyph cell. The pitch every column is placed on is this plus
 /// [`OVERLAY_GAP`], so a column is an index into a rhythm rather than a number
 /// someone measured off a photograph.
@@ -155,6 +167,19 @@ pub const fn block_value_glyphs(block: Block) -> usize {
         _ => BLOCK_VALUE_GLYPHS,
     }
 }
+
+/// The Network page's first list row: the row below its three-row header.
+///
+/// Rows 0–2 are the header — the title and the phase, the network in question and how good it
+/// is, the address — and the scan list starts under them. The keyboard starts on the same row,
+/// which is why its keys are as tall as three header rows leave rather than as tall as a thumb
+/// asks for: the header is the page's own, and a key sized up from it is a key that eats it. See
+/// [`crate::keyboard::KEYBOARD_TOP`].
+///
+/// Here rather than in the page that draws them because [`crate::keyboard`] sizes the list's
+/// bands and the keys from it: the list and the keys are two things a finger picks from on one
+/// panel, and a row that moved would move the taps with it.
+pub const NETWORK_LIST_ROW: usize = 3;
 
 /// Where one level row's text sits, as the left edge of each of its four
 /// columns. The value and its unit are one gap apart, so the unit is a column

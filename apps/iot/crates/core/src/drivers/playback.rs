@@ -59,9 +59,8 @@ impl Sound {
 
     /// The next sound in the catalogue, wrapping: what one tap on the Speaker
     /// page plays. `const` because the page's state is a `const` too.
-    /// The sound after this one in the tap cycle. [`Self::Sweep`] answers
-    /// [`Self::Tap`] because it is not in the cycle: nothing reaches it by
-    /// walking, so what a walk would answer for it is a question nobody asks.
+    /// [`Self::Sweep`] is not in the cycle, so nothing walks to it and it answers
+    /// [`Self::Tap`].
     pub const fn next(self) -> Self {
         match self {
             Self::Tap => Self::Notice,
@@ -909,8 +908,6 @@ pub const fn still_sounding(source_done: bool, arm_sounded: bool, arm_in_flight:
 /// [`PlayStreamWatchdog`]'s limit can run a ring dry.
 pub const FEED_MS: u32 = 5;
 
-/// Bytes the wire carries a second: a frame is [`BYTES_PER_FRAME`] wide and
-/// [`SAMPLE_RATE_HZ`] of them go out a second.
 const WIRE_BYTES_PER_SEC: usize = BYTES_PER_FRAME * SAMPLE_RATE_HZ as usize;
 
 /// How long the DMA needs to play a whole ring out, and so the longest a healthy

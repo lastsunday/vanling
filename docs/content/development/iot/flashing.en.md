@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "346cc0a8735d042af36562e666df4b8013bf3d1f"
-translated_at = "2026-10-15T15:52:28Z"
+source_file_hash = "2d4458c4f9357042b46534636b159164b670ee65"
+translated_at = "2026-10-16T16:46:22Z"
 +++
 
 # Firmware Installation
@@ -23,7 +23,7 @@ This page explains how to install vanling firmware onto a development board. A [
     vanling-merged.bin
   ```
   > **8mb is the measured value** (`espflash board-info`; the part really is 8 MB). The `4mb` written here before did not match the board.
-  > Measured for both boards: **C6 = 8 MB (MAC `98:a3:16:7e:55:08`)**, **S3 = 16 MB (MAC `30:ed:a0:a8:2f:c8`)**.
+  > Measured for both boards: **C6 = 8 MB**, **S3 = 16 MB** (the `Flash size` line of `espflash board-info`).
 
 ## What is on the bench, and what each board is for
 
@@ -41,11 +41,11 @@ Measured hardware facts (conclusions and reproduction in the [development record
 
 ## With two boards plugged in
 
-`espflash` picks a port on its own and **can pick the wrong one** (`--chip esp32c6` against the S3 fails outright). Identify, then flash:
+`espflash` picks a port on its own and **can pick the wrong one** (`--chip esp32c6` against the S3 fails outright). Identify, then flash — what identifies is the `Chip` line of `board-info`:
 
 ```sh
-espflash board-info --port /dev/cu.usbmodem14401   # C6 → 98:a3:16:7e:55:08
-espflash board-info --port /dev/cu.usbmodem1422301 # S3 → 30:ed:a0:a8:2f:c8
+espflash board-info --port /dev/cu.usbmodem14401   # Chip: esp32c6 → C6
+espflash board-info --port /dev/cu.usbmodem1422301 # Chip: esp32s3 → S3
 
 IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
 IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3
@@ -167,7 +167,16 @@ S3 builds go through `scripts/iot-xtensa.sh`: it tries the machine's esp toolcha
 
 ## Boot page and the bench image
 
-`IOT_BOOT_PAGE` (`.cargo/config.toml`, default `ambient`) picks the page the firmware comes up on — `ambient` / `attitude` / `audio` / `speaker` / `camera`, with an unrecognised name falling back to `ambient`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`.
+`IOT_BOOT_PAGE` (`.cargo/config.toml`, default `ambient`) picks the page the firmware comes up on — `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network`, with an unrecognised name falling back to `ambient`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`. `network` has no moon task of its own; the same command by hand:
+
+```sh
+cd apps/iot
+IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
+  -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc \
+  --no-default-features --features lckfb-szpi-esp32s3,console-auto
+```
+
+`[measured]` That build carries **no build-time credentials**, so the device sits in `setup` and keeps scanning; `moon run iot:flash-s3` rebuilds the product image and overwrites `target/xtensa-esp32s3-none-elf/release/vanling` again. The boot log carries `[IOT] boot page is Network` (nothing is logged when it stays on `ambient`), so which page this image really starts on is not a guess.
 
 > `[measured]` Those two tasks **must not** share one artifact path. `build-s3-camera` and `build-s3` both used to declare `target/.../release/vanling`, and `flash-s3` and `scripts/iot-image.sh` both read that file — so whichever ran last decided what got flashed, and a cached task did not put its own back, meaning "flash the product firmware" flashed the camera firmware. The bench build now saves and restores the product image around the build and keeps a separate `vanling-camera`, so both images coexist.
 

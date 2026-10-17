@@ -2,7 +2,7 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "b4c58dd507c246979e565ef69f43f4824200d9bb"
+source_file_hash = "f9bbaf699fca5d92aa0f3493406d94720f76d7ea"
 translated_at = "2026-10-15T02:45:17Z"
 +++
 
@@ -131,6 +131,12 @@ Carrying one on a channel would need a one-deep queue, change detection on the w
 The shared slot's shape follows from that constraint: embassy-sync's blocking mutex is shared-read-only (the closure `RawMutex::lock(f)` takes gets no `&mut`), so a `RefCell` sits inside the slot.
 
 `Intent` is the opposite case — an event — so those still travel on a bus.
+
+The capture window is a third shape: a **window**, not an event (only the newest one means anything), and not shared state either (nobody writes a common slot — the board hands over the frame the driver just folded, during its own poll). It therefore rides a single-slot plane: `HasAudio::take_audio(&'static dyn CaptureSink)` gives the board the destination, `input_task`'s poll publishes into it, and `render_loop` takes from it after the intents.
+
+The second reason is width: every slot of a `Channel<T, N>` is allocated at `size_of::<T>()`, so the slot width is set by the widest event variant — a capture event carrying an envelope (1.76 KB) would price the eight-slot `INTENT_BUS` at 14,184 B of internal DRAM for the one frame the panel reads. Without that variant `INTENT_BUS` is 896 B and the plane itself 1,824 B (recorded in the [Wi-Fi record](@/records/iot/wifi.md)).
+
+The ordering falls out of it: `input_task` polls in wiring order with the capture last, so a tap on the record control in the same tick latches the frame the previous pass drew.
 
 The handle is built at the composition point and injected, reusing the shape of `playback::share()`. That honours the convention in `input.rs`: the handle is passed in, and no consumer reaches a global by name.
 
@@ -288,11 +294,13 @@ The per-plane figures and their individual basis labels are in the [implementati
 
 ## The page cycle walks one ordered list
 
-`DisplayPage::CYCLE` is the definition of the order (`Ambient → Attitude → Audio → Speaker → Camera`).
+`DisplayPage::CYCLE` is the definition of the order (`Ambient → Attitude → Audio → Speaker → Camera → Network`).
 
 `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end.
 
 The boot page (`with_boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
+
+The capability test is one bool per page (`is_backed`), injected at the composition point: motion, audio, playback, camera and the link. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `iot_app::Link` is shaped like `SpeakerRunner`: **a wiring fact passed in as an argument**, not something `run` turns round and asks the board about.
 
 This rule exists because of a defect it fixed.
 

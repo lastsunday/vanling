@@ -7,24 +7,35 @@ use iot_core::drivers::audio::{
 #[cfg(feature = "camera")]
 use iot_core::drivers::camera::{CameraCounters, FrameAdvance, WindowGeometry};
 use iot_core::drivers::camera::{CameraTarget, FrameOwner, FrameSource};
-use iot_core::drivers::input::{
-    FINGER_DOUBLE_TAP, FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FINGER_TRIPLE_TAP,
-};
+use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
 use iot_core::drivers::light::{
     Fill, Rgb, RgbLight, rgb_hue, scale_brightness, vertical_brightness,
 };
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
+use iot_core::drivers::network::SSID_BYTES;
+use iot_core::drivers::network::{AccessPoint, ApList, LinkStatus};
 use iot_core::horizon::{SCALE, horizon};
-use iot_core::overlay::{
-    Block, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS, RIGHT_EDGE_X,
-    ROW_PITCH, block_value_x, block_x, level_columns, overlay_row_top,
+use iot_core::keyboard::{
+    self, ControlRect, DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP,
+    DIALOG_W, DIALOG_X, KEY_H, KEYBOARD_TOP, Key, LIST_ROW_H, LIST_ROWS, LIST_TOP, Layer,
+    MAX_CANDIDATES, ROWS,
 };
+use iot_core::overlay::{
+    Block, CONTENT_BOTTOM, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS,
+    RIGHT_EDGE_X, ROW_PITCH, block_value_x, block_x, level_columns, overlay_row_top,
+};
+use iot_core::page::{Part, walk};
 use iot_core::render::{
     MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_percent, windowed_rate,
 };
-use iot_core::state::{AudioPhase, DisplayPage, PlaybackPhase};
+use iot_core::stamp::{fill_surface, invert_rgb565, rgb565};
+use iot_core::state::{AudioPhase, DisplayPage, Entry, NetworkSetup, PlaybackPhase};
 
 use crate::camera_readout::format_pair;
+use crate::camera_readout::{
+    NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
+    format_joining_title, format_network_name, format_phase, format_question, format_verb,
+};
 #[cfg(feature = "camera")]
 use crate::camera_readout::{format_u32, frame_fingerprint, write_ratio};
 use crate::components::backlight::Backlight;
@@ -166,6 +177,54 @@ const SPAN_Y: usize = 224;
 const FPS_Y: usize = 232;
 const PANEL_RIGHT: isize = PANEL_COLUMNS as isize - 1;
 
+/// Glyphs of the masked passphrase the row above the keyboard shows.
+///
+/// The whole row, from its reading column to the panel's right edge. It used to share the row with
+/// the name it is being typed for and the phase word between them, and got what they left; the
+/// keyboard now stops a row lower and the draft has the row to itself, so what it takes is the
+/// width it can use. A draft can be 63 bytes and this is still shorter, which is why the row marks
+/// the part of it that does not fit rather than pretending to show all of it.
+const PSK_MASK_GLYPHS: usize =
+    (PANEL_COLUMNS - block_value_x(Block::First) + OVERLAY_GAP) / GLYPH_PITCH;
+
+/// Right edge of the word an open network's own list row carries, in panel columns.
+///
+/// Between the name and the bars rather than in either's place: which network a row is and how
+/// strong it is are the two readings it exists for, and "no passphrase" is the one thing about a
+/// row that the tap picking it acts on.
+const OPEN_MARKER_RIGHT: isize = PANEL_RIGHT - 5 * GLYPH_PITCH as isize;
+
+/// The word an open network's row carries, so the tap that connects it is not a surprise.
+const OPEN_MARKER: &[u8] = b"OPEN";
+
+/// Right edge of the mark a saved network's row carries, in panel columns.
+///
+/// Left of the open marker's own slot rather than in it, because the two are different facts about
+/// a row and a network can be both: what the device would join again on its own, and what asks for
+/// nothing to join now.
+const SAVED_MARKER_RIGHT: isize =
+    OPEN_MARKER_RIGHT - OPEN_MARKER.len() as isize * GLYPH_PITCH as isize - GLYPH_PITCH as isize;
+
+/// The mark a saved network's row carries: the one glyph the font has for "this device keeps it".
+///
+/// A mark and not a word, unlike the open marker: the row has a name to show and a strength to
+/// show, and this is a fact about the row rather than something a user acts on — the hold that acts
+/// on it is what says what it means.
+const SAVED_MARKER: &[u8] = b"*";
+
+/// The action strip's three words, which are the three things its one control can mean.
+///
+/// `WAIT` is the strip's own state rather than a fourth action: a round of the survey is a fraction
+/// of a second of radio time, and a strip that went on offering `SCAN` through it would be inviting
+/// a second tap that asks for the same round again.
+const LEAVE_LABEL: &[u8] = b"LEAVE";
+const SCAN_LABEL: &[u8] = b"SCAN";
+const WAIT_LABEL: &[u8] = b"WAIT";
+
+/// Gap between the two lines of a key's own label: the face a phone keypad prints above the
+/// characters the key cycles.
+const KEY_LINE_GAP: usize = 4;
+
 /// The Audio page's two level rows, the only readouts wide enough not to fit a
 /// block, and the rows the band has to start below.
 const AUDIO_LAST_FULL_WIDTH_ROW: usize = 2;
@@ -185,6 +244,28 @@ const ATTITUDE_LAST_AXIS_ROW: usize = 15;
 /// Width in columns of the block that marks the column which clipped, which is
 /// drawn past the sweep's last column by its own width.
 const CLIP_MARK_WIDTH: isize = 3;
+
+const _: () = assert!(
+    block_value_x(Block::First) + PSK_MASK_GLYPHS * GLYPH_PITCH - OVERLAY_GAP <= PANEL_COLUMNS,
+    "the draft a passphrase is typed into runs off the row's own right edge"
+);
+const _: () = assert!(
+    block_x(Block::First) + NETWORK_NAME_GLYPHS * GLYPH_PITCH - OVERLAY_GAP + GLYPH_PITCH
+        <= OPEN_MARKER_RIGHT as usize + 1 - (OPEN_MARKER.len() * GLYPH_PITCH - OVERLAY_GAP),
+    "an open network's marker runs into the name of the row it is on"
+);
+const _: () = assert!(
+    (OPEN_MARKER_RIGHT as usize) < PANEL_COLUMNS - 4 * GLYPH_PITCH,
+    "an open network's marker runs into the signal bars of the row it is on"
+);
+const _: () = assert!(
+    LIST_TOP + LIST_ROWS * LIST_ROW_H <= CONTENT_BOTTOM,
+    "the list's last band runs into the strip no page's content owns"
+);
+const _: () = assert!(
+    KEYBOARD_TOP + ROWS * KEY_H <= CONTENT_BOTTOM,
+    "the keyboard's last row runs into the strip no page's content owns"
+);
 
 // The layout is only checkable against the panel it was chosen for, and a stamp
 // that falls off an edge is clipped rather than reported — so every relationship
@@ -245,6 +326,31 @@ const _: () = assert!(
 const _: () = assert!(
     FPS_Y + FONT_H <= PANEL_ROWS,
     "the FPS badge runs off the bottom of the panel"
+);
+const _: () = assert!(
+    FPS_Y == CONTENT_BOTTOM,
+    "the badge's strip is not the rows core sized the pages' controls against"
+);
+const _: () = assert!(
+    KEYBOARD_TOP + keyboard::ROWS * KEY_H <= FPS_Y,
+    "the keyboard's last row runs into the FPS badge, which is the strip no page's content owns"
+);
+const _: () = assert!(
+    LIST_TOP + LIST_ROWS * LIST_ROW_H <= FPS_Y,
+    "the Network page's list runs into the FPS badge, which is the strip no page's content owns"
+);
+const _: () = assert!(
+    keyboard::TOOLBAR_TOP + keyboard::TOOLBAR_H <= FPS_Y,
+    "the Network page's action strip runs into the FPS badge"
+);
+const _: () = assert!(
+    SAVED_MARKER_RIGHT + OVERLAY_GAP as isize - GLYPH_PITCH as isize
+        > (block_x(Block::First) + (NETWORK_NAME_GLYPHS - 1) * GLYPH_PITCH + FONT_W - 1) as isize,
+    "the saved mark is drawn over the name slot the list gives a row"
+);
+const _: () = assert!(
+    SAVED_MARKER_RIGHT < OPEN_MARKER_RIGHT,
+    "the saved mark and the open marker are drawn in the same slot"
 );
 const _: () = assert!(
     HORIZON_CY - HORIZON_R >= 0 && (HORIZON_CY + HORIZON_R) as usize + FONT_H <= PANEL_ROWS,
@@ -463,6 +569,12 @@ impl RgbLight for DisplayLight {
 }
 
 impl DiagnosticsSink for DisplayLight {
+    /// The panel is the surface the product's pages are drawn on: it is the one with the frame
+    /// buffer, and `consume` below is what stamps the page's rows into it.
+    fn draws_pages(&self) -> bool {
+        true
+    }
+
     fn consume(&mut self, diagnostics: &Diagnostics) {
         if self.diagnostics == *diagnostics {
             return;
@@ -563,6 +675,8 @@ impl DisplayLight {
             self.stamp_speaker(width, usize::from(height));
         } else if self.diagnostics.page == DisplayPage::Camera {
             self.stamp_camera_page(width, usize::from(height));
+        } else if self.diagnostics.page == DisplayPage::Network {
+            self.stamp_network(width, usize::from(height));
         } else if DEBUG_DIAGNOSTICS {
             self.stamp_diagnostics(width, usize::from(height), live);
         }
@@ -736,13 +850,11 @@ impl DisplayLight {
         let light = self.diagnostics.lights[usize::from(self.instance)];
         let mut buf = [0u8; 6];
 
-        let counters: [(&[u8], u16); 8] = [
+        let counters: [(&[u8], u16); 6] = [
             (b"GST".as_slice(), u16::from(touch.ghost)),
             (b"2F".as_slice(), u16::from(touch.two_finger_runs)),
             (b"PRS".as_slice(), u16::from(touch.presses)),
             (b"TAP".as_slice(), u16::from(touch.taps)),
-            (b"DBL".as_slice(), u16::from(touch.double_taps)),
-            (b"3T".as_slice(), u16::from(touch.triple_taps)),
             (b"LNG".as_slice(), u16::from(touch.long_presses)),
             (b"SWP".as_slice(), u16::from(touch.swipes)),
         ];
@@ -1328,6 +1440,521 @@ impl DisplayLight {
         );
     }
 
+    /// Overdraws the Network page, one part at a time.
+    ///
+    /// Which parts there are and what order they are drawn in are [`walk`]'s, because which of them
+    /// covers which is a fact about the page rather than about the panel — and the panel is the only
+    /// place a wrong answer to it is invisible. All that is left here is what each part looks like.
+    fn stamp_network(&mut self, width: usize, height: usize) {
+        let link = self.diagnostics.link;
+        // Copied rather than borrowed: the borrow would be of `self.diagnostics`, and every
+        // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
+        // reason, and a list is 350 B against the envelope's kilobyte and a half.
+        let aps = self.diagnostics.aps;
+        let setup = self.diagnostics.setup;
+        // The network the page is about. While a draft is open that is the row it is for, because
+        // the draft is what the page is being used for; otherwise it is the link's own wherever
+        // there is one, because a link that is up is the truth about where the device is, and the
+        // picked row while nothing is up, because that is all there is to show.
+        let shown_ap = if setup.keyboard {
+            setup.selected
+        } else {
+            link.ap.or(setup.selected)
+        };
+
+        walk(setup, link, |part| match part {
+            Part::Header => self.stamp_header(setup, link, shown_ap, width, height),
+            Part::Content => self.stamp_content(setup, link, aps, width, height),
+            Part::Controls => self.stamp_strip(setup, link, width, height),
+            Part::Overlay => self.stamp_box(setup, link, shown_ap, width, height),
+        });
+    }
+
+    /// The page's readings: the title, the phase, the network it is about, and either the address
+    /// the link is on or the draft being typed.
+    ///
+    /// The header keeps three rows while nothing is being typed and four while something is,
+    /// because the four rows a thumb on the keys needs are the digits' own block and the row that
+    /// ends the entry: a key too small to hit is no keyboard at all, and the phase and the address
+    /// are what the finger is not looking at. So the draft takes the row the list state gives the
+    /// address, and neither state has to move for the other.
+    ///
+    /// The phase word is where a refusal stays: the alternative was a row of its own, and a key a
+    /// thumb cannot reach is worse than a reason that shares a row with what it is about.
+    fn stamp_header(
+        &mut self,
+        setup: NetworkSetup,
+        link: LinkStatus,
+        shown_ap: Option<AccessPoint>,
+        width: usize,
+        height: usize,
+    ) {
+        self.stamp_text(
+            b"NETWORK",
+            block_x(Block::First),
+            overlay_row_top(0),
+            width,
+            height,
+        );
+        self.stamp_left(
+            b"ST",
+            // Not the link's raw phase: the page's own says the last refusal until something
+            // else is tried, because the survey republishes the phase every round.
+            format_phase(setup.phase(link.phase), &mut [0u8; 4]),
+            Block::Second,
+            0,
+            width,
+            height,
+        );
+        if let Some(ap) = shown_ap {
+            self.stamp_left(
+                b"AP",
+                format_network_name(ap, NETWORK_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
+                Block::First,
+                1,
+                width,
+                height,
+            );
+            self.stamp_text_right(
+                format_bars(ap.bars(), &mut [0u8; 4]),
+                PANEL_RIGHT,
+                overlay_row_top(1),
+                width,
+                height,
+            );
+        }
+        if setup.keyboard {
+            let Some(entry) = setup.entry else {
+                return;
+            };
+            self.stamp_left(
+                b"PSK",
+                format_psk(&entry, setup.revealed, &mut [0u8; PSK_MASK_GLYPHS]),
+                Block::First,
+                2,
+                width,
+                height,
+            );
+        } else {
+            self.stamp_left(
+                b"IP",
+                format_address(link.address, &mut [0u8; 16]),
+                Block::First,
+                2,
+                width,
+                height,
+            );
+        }
+    }
+
+    /// The page's content: the keyboard a picked row opened, or the scan's bands in its place.
+    ///
+    /// The bands are the page's content rather than a reading beside a label: name from the left
+    /// edge and bars against the right, because a full-width name is the one thing a user picks a
+    /// network by.
+    ///
+    /// Three states the list draws differently, and they are not the same state: nothing has
+    /// scanned (a build that holds its own credentials and associates instead), a scan that
+    /// found nothing, and the scan's own bands.
+    fn stamp_content(
+        &mut self,
+        setup: NetworkSetup,
+        link: LinkStatus,
+        aps: Option<ApList>,
+        width: usize,
+        height: usize,
+    ) {
+        if setup.keyboard {
+            if let Some(entry) = setup.entry {
+                self.stamp_keyboard(entry, setup.revealed, width, height);
+            }
+            return;
+        }
+        match aps {
+            None => self.stamp_band(b"NOT SCANNED", width, height),
+            Some(list) if list.is_empty() => self.stamp_band(b"NO NETWORKS", width, height),
+            Some(list) => {
+                // Which of the scan's networks these bands hold, because a page of a list that a
+                // finger scrolled to is one the finger has to be told the position of.
+                self.stamp_text(
+                    format_window(setup.list_top, list.len(), &mut [0u8; 12]),
+                    block_x(Block::Third),
+                    overlay_row_top(0),
+                    width,
+                    height,
+                );
+                for band in 0..LIST_ROWS {
+                    let index = usize::from(setup.list_top) + band;
+                    let Some(ap) = list.get(index) else {
+                        break;
+                    };
+                    // The row the page is trying an association with is filled, because the phase
+                    // and the refusal are about *that* network: the list is where the finger comes
+                    // back to when one is refused, and the interruption the panel owes it is which
+                    // row it was. While a question is up it is the row the question is about
+                    // instead, which is the same row for a leave and the held one for a forget.
+                    let marked = setup
+                        .confirm
+                        .and_then(|confirm| confirm.network(link))
+                        .or(setup.selected);
+                    if marked.is_some_and(|marked| marked.is_same_network(&ap)) {
+                        self.stamp_band_fill(band, width, height);
+                    }
+                    let top = band_top(band);
+                    self.stamp_text(
+                        format_network_name(ap, NETWORK_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
+                        block_x(Block::First),
+                        top,
+                        width,
+                        height,
+                    );
+                    // And a network that asks for nothing says so, because the tap that picks it is
+                    // the whole handover: a user who expected a keyboard would read the list coming
+                    // back as a failure.
+                    if !ap.secured {
+                        self.stamp_text_right(OPEN_MARKER, OPEN_MARKER_RIGHT, top, width, height);
+                    }
+                    // And one this device would join again on its own is marked as saved: the hold
+                    // that forgets it is a gesture nobody would try on a row that said nothing, and
+                    // what the mark reports is the store rather than the attempt. The mark travels
+                    // with the list, one bit per row, so the row in front of the finger is the row
+                    // the mark is about.
+                    if list.is_saved(index) {
+                        self.stamp_text_right(SAVED_MARKER, SAVED_MARKER_RIGHT, top, width, height);
+                    }
+                    self.stamp_text_right(
+                        format_bars(ap.bars(), &mut [0u8; 4]),
+                        PANEL_RIGHT,
+                        top,
+                        width,
+                        height,
+                    );
+                }
+            }
+        }
+    }
+
+    /// A control's outline: the four edges of the box it is drawn in.
+    ///
+    /// The same box the tap that acts on it is resolved through, which is the page's own rule and
+    /// the reason every control here takes a [`ControlRect`] rather than four numbers.
+    fn stamp_frame(&mut self, rect: ControlRect, width: usize, height: usize) {
+        let (x, y) = (rect.x as isize, rect.y as isize);
+        let (right, bottom) = (x + rect.w as isize - 1, y + rect.h as isize - 1);
+        self.stamp_line(x, y, right, y, width, height);
+        self.stamp_line(x, bottom, right, bottom, width, height);
+        self.stamp_line(x, y, x, bottom, width, height);
+        self.stamp_line(right, y, right, bottom, width, height);
+    }
+
+    /// Fills a box with the surface: the page's own ground turned over, which is the panel's one
+    /// way of laying down a paper for ink to be drawn on.
+    ///
+    /// The writing itself is [`iot_core::stamp::fill_surface`]'s — a function of the buffer alone,
+    /// so what a fill covers can be read back as pixels off the device. What is here is where the
+    /// ground comes from: the colour the page was painted with, which `paint` recorded before any
+    /// of this ran, and which a buffer the camera owns never reaches.
+    fn stamp_fill(&mut self, rect: ControlRect, width: usize, height: usize) {
+        let Some((fill, color)) = self.owner.painted_color() else {
+            return;
+        };
+        fill_surface(self.frame, rect, fill, color, width, height);
+    }
+
+    /// The page's action strip: one control, and the word for what it would do.
+    ///
+    /// Hollow, like the keys and the two answers on a question, because a surface is what this page
+    /// says "this row" and "this question" with: a control that filled its own box would read as one
+    /// of those. Drawn from [`keyboard::toolbar_box`], the same box the tap that acts on it is
+    /// resolved through.
+    ///
+    /// Which word is the link's answer rather than the page's: a link to leave is a link to leave,
+    /// so the two never both apply and the strip never has to choose. `WAIT` is the third, and it is
+    /// the strip's own state rather than a third action — a round that is already on its way.
+    fn stamp_strip(&mut self, setup: NetworkSetup, link: LinkStatus, width: usize, height: usize) {
+        let rect = keyboard::toolbar_box();
+        let label: &[u8] = if link.is_leavable() {
+            LEAVE_LABEL
+        } else if setup.rescan_wait {
+            WAIT_LABEL
+        } else {
+            SCAN_LABEL
+        };
+        self.stamp_frame(rect, width, height);
+        self.stamp_text(
+            label,
+            text_left(rect, label),
+            rect.y + rect.h.saturating_sub(FONT_H) / 2,
+            width,
+            height,
+        );
+    }
+
+    /// What the box over the list holds, which is one of two things and never both.
+    ///
+    /// One entry point because the two are the same rectangle in the same place, and which of them
+    /// is the page's is [`Part::hidden`]'s answer rather than a second one here: the box is drawn
+    /// exactly when the page has something to say over the list, and a question is the finger's own
+    /// screen where an attempt in flight is the radio's — so when the two are up at once the box
+    /// holds the question.
+    fn stamp_box(
+        &mut self,
+        setup: NetworkSetup,
+        link: LinkStatus,
+        shown_ap: Option<AccessPoint>,
+        width: usize,
+        height: usize,
+    ) {
+        if setup.confirm.is_some() {
+            self.stamp_confirm(setup, link, width, height);
+        } else {
+            self.stamp_joining(shown_ap, width, height);
+        }
+    }
+
+    /// The box the radio's own attempt is drawn in: what the page says between the panel's own tap
+    /// and an address.
+    ///
+    /// The same paper as a question's, and for the same reason: it is over the list, so the list is
+    /// not drawn under it. What it does not have is an answer — nothing is being asked, and the way
+    /// off the attempt is the strip's own `LEAVE`, which stays where it is.
+    ///
+    /// The network is the page's own `shown_ap`, so the box and the header name the same one: while
+    /// there is nothing on the air yet it is the row that was picked, and once the radio is on the
+    /// network it is the radio's report of it.
+    fn stamp_joining(&mut self, shown_ap: Option<AccessPoint>, width: usize, height: usize) {
+        self.stamp_fill(
+            ControlRect {
+                x: DIALOG_X,
+                y: keyboard::DIALOG_TOP,
+                w: DIALOG_W,
+                h: DIALOG_H,
+            },
+            width,
+            height,
+        );
+        let title_left = DIALOG_X + DIALOG_INSET;
+        self.stamp_text(
+            format_joining_title(shown_ap, &mut [0u8; DIALOG_GLYPHS]),
+            title_left,
+            DIALOG_TITLE_TOP,
+            width,
+            height,
+        );
+        self.stamp_text(
+            format_joining_body(shown_ap),
+            title_left,
+            DIALOG_BODY_TOP,
+            width,
+            height,
+        );
+    }
+
+    /// The question the page is asking, drawn over the list.
+    ///
+    /// A filled box with the words stamped into it, which is the panel's own way of drawing ink on
+    /// paper: the fill is one inversion of the page's ground, so it reads as the light surface, and
+    /// a glyph stamped into it is a second inversion — the ground's own colour, which reads as the
+    /// dark ink. The two answers are drawn hollow inside the box, the way a key is, so the button a
+    /// finger presses is the button it reads.
+    ///
+    /// Nothing is drawn under the box — [`Part::hidden`] — because the box's paper is the same
+    /// paper as a marked row's band, so a band showing either side of it would read as part of it.
+    fn stamp_confirm(
+        &mut self,
+        setup: NetworkSetup,
+        link: LinkStatus,
+        width: usize,
+        height: usize,
+    ) {
+        let Some(confirm) = setup.confirm else {
+            return;
+        };
+        self.stamp_fill(
+            ControlRect {
+                x: DIALOG_X,
+                y: keyboard::DIALOG_TOP,
+                w: DIALOG_W,
+                h: DIALOG_H,
+            },
+            width,
+            height,
+        );
+        // The question names the network it is about, folded to what the line holds; the row behind
+        // the box is still showing the whole name.
+        let mut question = [0u8; DIALOG_GLYPHS];
+        let title = format_question(confirm, link, &mut question);
+        let title_left = DIALOG_X + DIALOG_INSET;
+        self.stamp_text(title, title_left, DIALOG_TITLE_TOP, width, height);
+        self.stamp_text(
+            format_body(confirm),
+            title_left,
+            DIALOG_BODY_TOP,
+            width,
+            height,
+        );
+        // The two answers along the box's own bottom edge: `KEEP` and the word of the action. The
+        // labels come from the geometry core resolved the taps through, so a button and the tap that
+        // lands on it cannot come apart.
+        let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
+        let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
+        for (rect, label) in [(keep, b"KEEP".as_slice()), (act, format_verb(confirm))] {
+            self.stamp_frame(rect, width, height);
+            self.stamp_text(
+                label,
+                text_left(rect, label),
+                rect.y + rect.h.saturating_sub(FONT_H) / 2,
+                width,
+                height,
+            );
+        }
+    }
+
+    /// Fills one band of the scan list, which is how the page says which row it is trying.
+    ///
+    /// The band's own ground turned over, with the name and the bars stamped into it and turned
+    /// back — the trade [`Self::stamp_marked`] makes for one word, over the whole row because the
+    /// row is the target the finger aims at.
+    fn stamp_band_fill(&mut self, band: usize, width: usize, height: usize) {
+        self.stamp_fill(
+            ControlRect {
+                x: 0,
+                y: LIST_TOP + band * LIST_ROW_H,
+                w: PANEL_COLUMNS,
+                h: LIST_ROW_H,
+            },
+            width,
+            height,
+        );
+    }
+
+    /// One line of text in the middle of the list's first band, which is where the page says the
+    /// two things it says in place of a list.
+    fn stamp_band(&mut self, text: &[u8], width: usize, height: usize) {
+        self.stamp_text(text, block_x(Block::First), band_top(0), width, height);
+    }
+
+    /// Overdraws the keyboard, one key at a time.
+    ///
+    /// Every key's cell comes from [`keyboard::key_box`] — the same call the tap that types it
+    /// is resolved through, so a key is exactly where it looks like it is. Drawn hollow rather
+    /// than filled because stamping inverts: a filled cell with a glyph stamped into it would
+    /// leave the glyph in the cell's own ink, which is to say invisible.
+    ///
+    /// The characters a key cycles are printed on it, and the one a repeat tap would type is
+    /// boxed; the two keys that are *states* rather than characters — the shift and the reveal —
+    /// say their own state on themselves. That is the whole of what a finger needs to spell a
+    /// passphrase on a keypad.
+    fn stamp_keyboard(&mut self, entry: Entry, revealed: bool, width: usize, height: usize) {
+        let layer = entry.layer();
+        let shift = entry.shift();
+        let cycling = entry.cycling();
+        let mut candidates = [0u8; MAX_CANDIDATES];
+        for cell in 0..keyboard::KEYS {
+            let (Some(rect), Some(key)) = (keyboard::key_box(cell), keyboard::key_of(layer, cell))
+            else {
+                continue;
+            };
+            let Key::Char(face) = key else {
+                // The two controls whose state the page has to show say it on themselves: the shift
+                // because a latch that showed up nowhere but in the letters would be a capital the
+                // user has to guess at, and the reveal because a key that both shows and hides a
+                // passphrase has to say which it would do.
+                let mark = if key == Key::Shift && shift {
+                    Mark::Face
+                } else {
+                    Mark::None
+                };
+                let label = if key == Key::Reveal && revealed {
+                    HIDE_LABEL
+                } else {
+                    control_label(key, layer)
+                };
+                self.stamp_key(rect, label, mark, b"", width, height);
+                continue;
+            };
+            let run = &mut candidates[..layer.candidates_of(face).len()];
+            for (glyph, candidate) in run.iter_mut().zip(layer.candidates_of(face)) {
+                *glyph = if shift {
+                    candidate.to_ascii_uppercase()
+                } else {
+                    *candidate
+                };
+            }
+            // The key a repeat tap would cycle says which of its characters it is holding — and
+            // only a key with more than one has anything to hold: a digit layer's key types
+            // itself, so a repeat of it is a second digit and not a cycle.
+            let mark = match cycling {
+                Some(cycling) if cycling.face == face && run.len() > 1 => {
+                    Mark::Candidate(usize::from(cycling.index))
+                }
+                _ => Mark::None,
+            };
+            self.stamp_key(rect, &[face], mark, run, width, height);
+        }
+    }
+
+    /// One key: its frame, then the face it is printed with, with the characters it types under
+    /// the face where it types more than one.
+    ///
+    /// A key that types a single character prints only its face, because the face *is* what it
+    /// types — which is the phone keypad's own arrangement, where the digit and its letters are
+    /// one key and the face is the digit.
+    fn stamp_key(
+        &mut self,
+        rect: ControlRect,
+        face: &[u8],
+        mark: Mark,
+        run: &[u8],
+        width: usize,
+        height: usize,
+    ) {
+        // A one-character layer's "run" *is* the face — the key still has a candidate table, it
+        // just holds one character — and a key that drew both would carry its own label twice.
+        let run = if run == face { b"".as_slice() } else { run };
+        self.stamp_frame(rect, width, height);
+
+        // The face and the characters under it are one block, centred in the cell: a key that
+        // placed both lines off the cell's own middle would sit its face high and its letters low,
+        // which reads as one key's label spilled across two.
+        let lines = usize::from(!run.is_empty());
+        let block = (lines + 1) * FONT_H + lines * KEY_LINE_GAP;
+        let face_top = rect.y + rect.h.saturating_sub(block) / 2;
+        let face_left = text_left(rect, face);
+        if mark == Mark::Face {
+            self.stamp_marked(face, face_left, face_top, width, height);
+        } else {
+            self.stamp_text(face, face_left, face_top, width, height);
+        }
+        if run.is_empty() {
+            return;
+        }
+        let run_top = face_top + FONT_H + KEY_LINE_GAP;
+        let run_left = text_left(rect, run);
+        self.stamp_text(run, run_left, run_top, width, height);
+        if let Mark::Candidate(index) = mark {
+            // That one character stamped again inside a patch: a box around the character rather
+            // than around the key, because the key's other characters are still its own.
+            let at = run_left + index * GLYPH_PITCH;
+            self.stamp_marked(&run[index..=index], at, run_top, width, height);
+        }
+    }
+
+    /// Fills the cell around `text` and stamps it back in. The patch inverts to a white ground
+    /// and the glyph, inverted a second time, reads black on it — this panel has one paper, and
+    /// the paper is the ground turned over, so a patch is what picks something out on it. One
+    /// blank column and row of margin, because a glyph flush against the patch's edge reads as
+    /// clipped.
+    fn stamp_marked(&mut self, text: &[u8], left: usize, top: usize, width: usize, height: usize) {
+        let (right, bottom) = (left + text_width(text), top + FONT_H);
+        for y in top.saturating_sub(1)..=bottom {
+            for x in left.saturating_sub(1)..=right {
+                self.stamp_pixel(x as isize, y as isize, width, height);
+            }
+        }
+        self.stamp_text(text, left, top, width, height);
+    }
+
     /// The meter: a logarithmic band, each column's A-weighted sustained level
     /// solid and its peak dithered outside it. The sweep uses the readout's own
     /// filter, so a low-frequency codec floor draws quiet. Stamping inverts, so
@@ -1736,6 +2363,115 @@ fn format_span(buf: &mut [u8; 12]) -> &[u8] {
     &buf[..len]
 }
 
+/// What a key draws inverted: the panel's way of saying "this one", since stamping inverts and a
+/// filled cell with a plain glyph in it would be a cell with nothing in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mark {
+    /// Nothing on this key.
+    None,
+    /// The whole face, for the one control whose *state* the page has to show — a shift that is
+    /// on, which is a mode the user cannot read off the letters until one is typed.
+    Face,
+    /// The `n`-th character of the key's own run: the key a repeat tap would cycle, which says
+    /// what counting presses on it is counting.
+    Candidate(usize),
+}
+
+/// The word one of the six controls is printed with.
+///
+/// The words are the panel's, not the driver's — the radio has no opinion about a keypad — so they
+/// are written once, here, where the drawing reads them.
+///
+/// The layer key says where it goes rather than where it is: `123` on the alphabet layer, `#&?` on
+/// the digits one, and `abc` on the symbols one, so the key always reads as the layer it would
+/// switch to.
+fn control_label(key: Key, layer: Layer) -> &'static [u8] {
+    match key {
+        Key::Layer => match layer {
+            Layer::Abc => b"123",
+            Layer::Digits => b"#&?",
+            Layer::Symbols => b"abc",
+        },
+        Key::Shift => b"SH",
+        Key::Backspace => b"<-",
+        Key::Connect => b"OK",
+        Key::Cancel => b"X",
+        Key::Reveal => b"SHOW",
+        Key::Char(_) => b"",
+    }
+}
+
+/// What the reveal key says while the draft is showing, which is the other half of
+/// [`control_label`]'s own word: the key is a latch, and a latch that said `SHOW` while the
+/// passphrase was on the panel would be a key whose word is not what it does.
+const HIDE_LABEL: &[u8] = b"HIDE";
+
+/// The top edge of the list's `band`-th row, on the glyphs' own line: the middle of the band,
+/// because a band is a target a thumb aims at rather than a row of text.
+fn band_top(band: usize) -> usize {
+    LIST_TOP + band * LIST_ROW_H + (LIST_ROW_H - FONT_H) / 2
+}
+
+/// The width `text` occupies: every glyph but the last, which carries no trailing gap.
+fn text_width(text: &[u8]) -> usize {
+    text.len() * GLYPH_PITCH - OVERLAY_GAP
+}
+
+/// Where `text` starts inside `rect`, measured on the glyphs' own width rather than on a cell
+/// count: the last glyph carries no trailing gap, so counting cells would sit every label right of
+/// centre by part of one.
+fn text_left(rect: ControlRect, text: &[u8]) -> usize {
+    rect.x + rect.w.saturating_sub(text_width(text)) / 2
+}
+
+/// The draft as the row above the keyboard shows it: masked, or as typed while the reveal is on.
+///
+/// The *tail* of it rather than the head, because the end is what the finger just typed and a
+/// character to fix is at the end of a passphrase about as often as anywhere. What does not fit is
+/// marked with a leading `+` rather than silently dropped, and the mark is one of the row's own
+/// glyphs: the row's width is what the columns above leave it, so a draft a glyph wider than that
+/// would run into the phase word beside it.
+fn format_psk<'a>(entry: &Entry, revealed: bool, buf: &'a mut [u8; PSK_MASK_GLYPHS]) -> &'a [u8] {
+    let shown = entry.len().min(PSK_MASK_GLYPHS);
+    let more = entry.len() > shown;
+    let tail = if more { shown - 1 } else { shown };
+    let mut n = 0;
+    if more {
+        buf[0] = b'+';
+        n = 1;
+    }
+    let bytes = entry.as_bytes();
+    for (slot, byte) in buf[n..n + tail]
+        .iter_mut()
+        .zip(&bytes[bytes.len() - tail..])
+    {
+        *slot = match (revealed, byte.is_ascii_graphic()) {
+            (true, true) => *byte,
+            // A passphrase can hold a space, which the font draws as a gap: an honest blank reads
+            // as one, where a `_` would be a character the password does not have.
+            (true, false) => b'?',
+            (false, _) => b'*',
+        };
+    }
+    &buf[..n + tail]
+}
+
+/// The rows of the scan list the page is showing, as `first-last/total`.
+///
+/// The one thing about the list that the list itself cannot say: a finger that scrolled it has to
+/// be told where it scrolled to, and a list that ends at the panel's bottom edge looks the same as
+/// one that has run out.
+fn format_window(top: u8, rows: usize, buf: &mut [u8; 12]) -> &[u8] {
+    let first = usize::from(top) + 1;
+    let last = (usize::from(top) + LIST_ROWS).min(rows);
+    let mut n = write_u64(first as u64, buf, 0);
+    buf[n] = b'-';
+    n = write_u64(last as u64, buf, n + 1);
+    buf[n] = b'/';
+    n = write_u64(rows as u64, buf, n + 1);
+    &buf[..n]
+}
+
 /// The overlay inputs of a camera frame that are not the frame itself: what the counters say,
 /// which window the sensor is cropping to, where the diagnostics go, and what the page can
 /// claim about itself.
@@ -2104,34 +2840,14 @@ fn direction_arrow(dir: u8) -> u8 {
 }
 
 /// Single-digit glyph of a finger's last resolved gesture, matching the
-/// core `FINGER_*` codes (`1` tap, `2` double-tap, `3` triple-tap, `4`
-/// long-press, `5` swipe) so the per-finger rows and the on-panel digit
-/// gradient agree; a dash before the slot ever resolves one.
+/// core `FINGER_*` codes (`1` tap, `2` long-press, `3` swipe) so the
+/// per-finger rows and the on-panel digit gradient agree; a dash before the
+/// slot ever resolves one.
 fn gesture_glyph(kind: u8) -> u8 {
     match kind {
         FINGER_TAP => b'1',
-        FINGER_DOUBLE_TAP => b'2',
-        FINGER_TRIPLE_TAP => b'3',
-        FINGER_LONG_PRESS => b'4',
-        FINGER_SWIPE => b'5',
+        FINGER_LONG_PRESS => b'2',
+        FINGER_SWIPE => b'3',
         _ => b'-',
     }
-}
-
-/// Pack an RGB color into ST7789 big-endian RGB565.
-fn rgb565(color: Rgb) -> u16 {
-    let r = color.0 as u16;
-    let g = color.1 as u16;
-    let b = color.2 as u16;
-    ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-}
-
-/// Per-channel bitwise inversion of an RGB565 word: a digit drawn this way is
-/// visible on any fill, matching the "off" side of the contrast regardless of
-/// base color.
-fn invert_rgb565(packed: u16) -> u16 {
-    let r = (packed >> 11) & 0x1F;
-    let g = (packed >> 5) & 0x3F;
-    let b = packed & 0x1F;
-    ((0x1F - r) << 11) | ((0x3F - g) << 5) | (0x1F - b)
 }

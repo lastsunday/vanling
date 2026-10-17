@@ -5,6 +5,9 @@ use esp_hal::rmt::Rmt;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal_smartled::buffer_size;
+use esp_storage::FlashStorage;
+
+use crate::components::credentials::CredentialStore;
 use iot_core::demand::PlaneKey;
 use iot_core::drivers::board::{Board as BoardTrait, HasWifi};
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
@@ -28,6 +31,14 @@ pub struct Board<'d> {
     /// `new` because the driver's start needs the scheduler, and the scheduler is the app's
     /// to start — see [`HasWifi`].
     radio: Option<WIFI<'static>>,
+    /// The saved networks, over the partition this board's table gives them. Read at bring-up
+    /// and handed to the link by [`Board::take_credentials`].
+    ///
+    /// Boxed because of where it travels: the link's futures are polled inside the one task
+    /// the whole product shares, so every frame that carries the list by value is that many
+    /// hundred bytes of the main stack's own region — and the region is what the static data
+    /// around a 64 KB stack has to fit in.
+    credentials: Option<Box<CredentialStore>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -48,8 +59,15 @@ impl Board<'static> {
             TIMG0,
             FROM_CPU_INTR0,
             WIFI,
+            FLASH,
             ..
         } = peripherals;
+
+        // Read before the LED and the button: a partition that will not read is said while
+        // the boot still has the frame for the table. No auto-parking here — this part has one
+        // core, so there is no other one to park; see the S3 board for the other arm.
+        let credentials =
+            crate::components::credentials::load(FlashStorage::new(FLASH)).map(Box::new);
 
         let rmt = Rmt::new(RMT, Rate::from_hz(RMT_FREQ_HZ)).expect("failed to initialize RMT");
         let light = Ws2812RgbLed::new(rmt.channel0, GPIO8, LEDS)?;
@@ -74,10 +92,19 @@ impl Board<'static> {
                 light: Some(light),
                 button: Some(button),
                 radio: Some(WIFI),
+                credentials,
             },
             timg0,
             FROM_CPU_INTR0,
         ))
+    }
+
+    /// The saved networks, for the link that keeps them.
+    ///
+    /// Taken rather than borrowed: the task that holds the link is the one that writes a
+    /// credential the panel named, and it is the only writer there is.
+    pub fn take_credentials(&mut self) -> Option<Box<CredentialStore>> {
+        self.credentials.take()
     }
 }
 
@@ -116,7 +143,10 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
 }
 
 impl iot_core::drivers::board::HasAudio for Board<'static> {
-    fn take_audio(&mut self) -> Option<PollEntry> {
+    fn take_audio(
+        &mut self,
+        _sink: &'static dyn iot_core::drivers::audio::CaptureSink,
+    ) -> Option<PollEntry> {
         None
     }
 }

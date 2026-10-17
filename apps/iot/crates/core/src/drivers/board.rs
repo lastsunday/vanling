@@ -1,5 +1,6 @@
 use crate::config::MotionConfig;
 use crate::diagnostics::DiagnosticsSink;
+use crate::drivers::audio::CaptureSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::light::RgbLight;
 use crate::drivers::motion::MotionCapabilities;
@@ -71,7 +72,10 @@ pub trait HasMotion: Board {
 /// ever sees a ready-made [`PollEntry`] and never names a codec. A board with no
 /// microphone returns `None` and the Audio page simply never appears.
 pub trait HasAudio: Board {
-    fn take_audio(&mut self) -> Option<PollEntry>;
+    /// Take the board's capture source as a ready-made poll entry, wired to `sink` — the
+    /// plane the app owns, where every poll's window goes. The board names the destination
+    /// only through the supplied reference, so the capture's storage stays the app's.
+    fn take_audio(&mut self, sink: &'static dyn CaptureSink) -> Option<PollEntry>;
 }
 
 /// Board providing a camera.

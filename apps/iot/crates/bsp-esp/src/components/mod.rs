@@ -7,6 +7,10 @@ pub mod audio_clock;
 pub mod backlight;
 #[cfg(feature = "button")]
 pub mod button;
+/// The saved networks, in the partition this board's table gives them. Gated with the
+/// radio, because the network it keeps is the one the radio's own page named.
+#[cfg(feature = "wifi")]
+pub mod credentials;
 #[cfg(feature = "es7210")]
 pub mod es7210;
 #[cfg(feature = "es8311")]

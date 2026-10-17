@@ -141,15 +141,6 @@ const SDP_I2S: u8 = 0x00;
 /// and only looks harmless because the frame write before it wrote zero.
 const SDP_WIDTH_MASK: u8 = 0xE0;
 const SDP_16BIT: u8 = 0x60;
-/// Datasheet 3.3: bit1 selects TDM. One microphone in standard I2S leaves it
-/// clear, and it is written explicitly because the bit is only correct as a
-/// consequence of the microphone count, not as a power-on value.
-/// Whether MIC3 is read as the echo reference.
-///
-/// On, because this board wires the ES8311's output to it, and a reference that
-/// arrives through the same ADC and the same DMA as the microphone needs no
-/// alignment work at all — which is the part the software path keeps getting
-/// wrong. Off is a board without that wiring.
 /// Whether MIC3 is read as the echo reference.
 ///
 /// **[measured] off, with the registers known correct and the cause still

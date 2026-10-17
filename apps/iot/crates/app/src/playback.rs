@@ -115,8 +115,8 @@ pub(crate) fn take_stats(shared: &Shared) -> (u32, u32, u32, u32) {
 
 /// Drives the ring: one feed every [`FEED_MS`], and nothing else.
 ///
-/// The only part of playback that may not block, and it carries the capture's clock
-/// as well as the sound. Publishes rather than logs, so see [`FeedStats`].
+/// Carries the capture's clock as well as the sound; publishes rather than logs,
+/// so see [`FeedStats`].
 pub async fn feed_loop(shared: &'static Shared) -> ! {
     let mut next_feed: Instant = Instant::now();
     // The loop's own millisecond count, advanced with the schedule. A driver needs

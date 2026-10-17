@@ -1,24 +1,70 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
+use core::future::Future;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{DemandField, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS};
+use iot_core::drivers::audio::{AudioSample, CaptureSink};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{Intent, recognize};
 
 use crate::SharedDemand;
 use iot_core::config::{Configuration, Configurator};
 
+/// Slots on the intent ring.
+///
+/// Sized for the events whose order matters: three sources can report on one tick, and the
+/// render loop drains what it finds. A slot costs the widest message the ring can carry, so
+/// nothing that is a window rather than an event belongs on it — see [`CapturePlane`].
+pub const INTENT_SLOTS: usize = 8;
+
 /// Intent channel: input task writes recognized operations, the render loop
 /// drains and interprets.
-pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, 8>;
+pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, INTENT_SLOTS>;
 
 /// Intent bus storage; passed as `&'static` into the tasks so no consumer
 /// reaches the global by name.
 pub static INTENT_BUS: IntentBus = IntentBus::new();
+
+/// The capture's data plane: the newest poll's window, and the wake that says there is one.
+///
+/// One slot, rather than a queue, and off the intent ring rather than on it. A capture poll is
+/// a window — only its newest value means anything to a scope, so a stale one is worth nothing
+/// — and it is a kilobyte and a half wide, where every slot of the ring costs the widest
+/// message that ring can carry. Carrying polls there would therefore price the ring at eight
+/// windows for the one the state draws from. The board is handed the plane by
+/// [`take_audio`](iot_core::drivers::board::HasAudio::take_audio) and publishes into it, the
+/// render loop takes from it, and the state keeps what it took.
+pub struct CapturePlane(Channel<CriticalSectionRawMutex, AudioSample, 1>);
+
+impl CapturePlane {
+    /// Take the window the input task published, or `None` when nothing has arrived since the
+    /// last take.
+    pub fn take(&self) -> Option<AudioSample> {
+        self.0.try_receive().ok()
+    }
+
+    /// Ready when a window is waiting. The render loop parks on this, so the wake does not
+    /// consume the window — the take at the top of the next pass does.
+    pub fn ready(&self) -> impl Future<Output = ()> {
+        self.0.ready_to_receive()
+    }
+}
+
+impl CaptureSink for CapturePlane {
+    fn publish(&self, sample: AudioSample) {
+        // Refused when the render loop has not taken the last window, and nothing is lost by
+        // it: the envelope is the driver's rolling one, so the next poll re-sends what this one
+        // held plus the columns it added. The panel runs one poll behind at worst.
+        let _ = self.0.try_send(sample);
+    }
+}
+
+/// Capture plane storage; the board publishes into it and the render loop draws from it.
+pub static CAPTURE: CapturePlane = CapturePlane(Channel::new());
 
 /// Source names by wiring order, for the executor-hold report. Index matches the
 /// order `take_input`/`take_motion`/`take_audio` push into the vector.
@@ -475,6 +521,25 @@ mod tests {
             assert!(sources[0].is_active(), "the input path was gated");
             assert_eq!(sources[0].cadence_ms(), 10, "the input path was stretched");
         }
+    }
+
+    #[test]
+    fn a_capture_window_costs_one_slot_beside_the_ring() {
+        // What a ring costs is its slot count times its widest message, so a poll's 1.7 KB
+        // window on the intent ring would have set every one of its slots to that width — the
+        // memory the capture plane exists to keep off it. These are the two sides of that
+        // trade, and both fail if a window moves back onto the ring.
+        let ring = core::mem::size_of::<Intent>() * INTENT_SLOTS;
+        let window = core::mem::size_of::<AudioSample>();
+        assert!(
+            ring < window,
+            "a capture window is sizing the intent ring again: {ring} B of ring against a \
+             {window} B window"
+        );
+        assert!(
+            core::mem::size_of::<CapturePlane>() < 2 * window,
+            "the capture plane holds one window, not a queue of them"
+        );
     }
 
     /// The board's motion cadence, which the plan's floor is compared against.

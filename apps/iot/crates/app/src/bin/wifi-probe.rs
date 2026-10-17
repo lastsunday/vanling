@@ -243,7 +243,13 @@ where
     };
 
     let connect_start = Instant::now();
-    match station.connect(&credentials).await {
+    // The probe's own number is the whole of the attempt, so the two halves of it are read as one
+    // measurement: the config is set, and then the radio answers.
+    let outcome = match station.begin_connect(&credentials) {
+        Ok(()) => station.await_connected().await,
+        Err(error) => Err(error),
+    };
+    match outcome {
         Ok(()) => log::info!(
             "[WIFI] associated in {} ms",
             connect_start.elapsed().as_millis()

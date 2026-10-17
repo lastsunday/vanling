@@ -1,5 +1,8 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::drivers::light::{GROUP_CAPACITY, Rgb};
+use crate::drivers::network::{LinkStatus, Ssid};
+use crate::keyboard::{self, Key};
+use crate::page::Part;
 use crate::state::{Breath, DeviceManager, DeviceState, DisplayPage, LightState};
 
 /// Standard-color palette for solid mode, cycled by a single click or a
@@ -129,9 +132,71 @@ pub enum BusinessIntent {
     /// reachable by the gesture that plays.
     ToggleMute,
     /// The driver's report that a sound ran out, sent by the playback task.
-    /// Never raised by [`translate`]: it is the one business intent that comes
-    /// back from the plane it commands.
+    /// Never raised by [`translate`]: it is a business intent that comes back
+    /// from the plane it commands.
     PlaybackFinished,
+    /// Where the link stands, sent by the network task.
+    ///
+    /// A report rather than a target, like [`Self::PlaybackFinished`]: the radio is
+    /// the only thing that has been on the air, so nothing above it can reconstruct
+    /// an association or a lease. Never raised by [`translate`].
+    Link(LinkStatus),
+    /// The radio's answer to a network the panel asked it to join with the copy this device keeps:
+    /// there is no such copy.
+    ///
+    /// A report rather than a target, like [`Self::Link`]: the store is the network task's, and
+    /// nothing above it can tell a name the device holds from one it does not. What the state does
+    /// with it is put the page back where a passphrase can be typed for that row, which is the only
+    /// way such a network gets on the air.
+    NoCopy(Ssid),
+    /// A key of the Network page's keyboard, tapped where the page draws that key, with the
+    /// input clock's reading at the lift.
+    ///
+    /// Raised only on that page and only while its keyboard is up. What a key *means* is the state
+    /// layer's call — it owns the draft a character goes into, and the clock reading is what tells a
+    /// repeat of a key that it is cycling a character rather than typing another.
+    Key {
+        key: Key,
+        at_ms: u32,
+    },
+    /// The band of the Network page's scan list a tap landed on, counted from the top of what
+    /// the page is showing.
+    ///
+    /// A band with no network in it is not a selection: the tap landed on the page's own
+    /// background, and the state layer drops a band it can show nothing for.
+    Row(u8),
+    /// Slide the Network page's scan list a row forward or back.
+    ///
+    /// Raised by a swipe across the list, and only while the keyboard is down: while a passphrase is
+    /// being typed, the rows are not what the finger is on. One row a swipe, like every other list of
+    /// rows: a step of a whole window cannot land on a list whose end does not fill one.
+    ListSlide(bool),
+    /// A tap on the Network page's action strip: the one control under the list.
+    ///
+    /// Which action that is belongs to the state layer, because it is a question about the link —
+    /// there is something to leave while one is up, and something to look around for while one is
+    /// not. Raised only while the page is asking nothing: with a confirmation up, the strip is one of
+    /// the many places that mean [`Self::Dismiss`].
+    Toolbar,
+    /// The action button inside a confirmation: the tap that says yes to the question.
+    ///
+    /// The only gesture on this page that does what the page is asking about. Every other one is
+    /// [`Self::Dismiss`], so the answer that is not the action is the one a finger finds wherever
+    /// it lands — the mistake a dialog exists to make cheap.
+    Confirm,
+    /// Leave the question the page is asking undone.
+    ///
+    /// Raised for everything a finger can do to a page that is asking: the box's own `KEEP`, a tap
+    /// on the strip under it, on the header, on a row, or a swipe. One intent for all of them
+    /// because they all mean the same thing, and the page's own question is the only state they
+    /// touch.
+    Dismiss,
+    /// A long press on one of the list's bands: the row a finger held.
+    ///
+    /// A hold rather than a tap because it is a different question about the same row: a tap picks
+    /// the network, a hold asks about the copy this device keeps of it. Which network a band holds
+    /// is the state layer's own offset, as [`Self::Row`] is.
+    RowHold(u8),
 }
 
 /// The management-pipe message: one pipe carries both planes. The operation
@@ -164,6 +229,51 @@ pub fn recognize(event: InputEvent, source: u8) -> OperationIntent {
 pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
     let slot = light_slot(current, op.source);
     let light = current.lights[slot];
+    // The Network page is a setup page rather than a light page: it paints its own black
+    // background instead of the light's fill, so a gesture that moves the light has nothing on
+    // this page to show for it, and the panel's own controls are the only things a finger can
+    // act on. What it answers is therefore exactly what its content owns plus the page switch,
+    // and the switch is the hardware button's triple click: touch has no multi-tap gesture to
+    // switch pages with, because a single tap that had to wait for a second one would be the
+    // latency every key on this page pays.
+    //
+    // Every page match below therefore carries the Network page as a no-op of its own, which is
+    // what keeps a page added later from silently inheriting a gesture here.
+    if current.page == DisplayPage::Network {
+        return match op.event {
+            InputEvent::Gesture(GestureEvent::Tap { x, y, at_ms, .. }) => {
+                network_tap(current, x, y, at_ms)
+            }
+            InputEvent::Gesture(GestureEvent::LongPress { x, y, .. }) => {
+                network_hold(current, x, y)
+            }
+            // A slide down the list, the way a list of eight rows through a window of three is
+            // read everywhere else: the finger pushes the content away from itself, one row at a
+            // time so every row is reachable. While the keyboard is up there is no list under the
+            // finger, so a slide means nothing — and while the page is asking a question the list
+            // behind it is not what the finger is on either, so the slide answers the question.
+            InputEvent::Gesture(GestureEvent::Swipe { direction, .. })
+                if !current.setup.keyboard =>
+            {
+                if current.setup.confirm.is_some() {
+                    return BusinessIntent::Dismiss;
+                }
+                if !Part::Content.showing(current.setup, current.link) {
+                    return BusinessIntent::Invalid;
+                }
+                // A list the page is not drawing is not a list to push: the box over it belongs to
+                // the radio rather than to the finger, and a slide under it would move rows nobody
+                // can see.
+                match direction {
+                    SwipeDirection::Up => BusinessIntent::ListSlide(true),
+                    SwipeDirection::Down => BusinessIntent::ListSlide(false),
+                    _ => BusinessIntent::Invalid,
+                }
+            }
+            InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
+            _ => BusinessIntent::Invalid,
+        };
+    }
     match op.event {
         // A click advances the color; `Off` has none, so it reads as no-op. On
         // the Audio and Speaker pages the button is the page's own one-liner
@@ -179,10 +289,10 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
             DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
                 target_for(advance_color(light), slot)
             }
+            DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
         InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
-        InputEvent::Gesture(GestureEvent::TripleTap { .. }) => BusinessIntent::TogglePage,
         // Cycles the light mode; always resolves, so any state is the way back
         // on — except on the Speaker page, where the long press is the mute
         // latch instead of a mode move.
@@ -197,14 +307,14 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 instance: slot as u8,
                 state: cycle_mode(light),
             },
+            DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Gesture(GestureEvent::Press { .. }) => BusinessIntent::Invalid,
         InputEvent::Gesture(GestureEvent::Ghost) => BusinessIntent::Invalid,
-        // A raw chip gesture and a capture poll are diagnostic read-backs; they
-        // never move a light and never drive the capture phase.
-        InputEvent::ChipGesture(_) | InputEvent::Motion(_) | InputEvent::Audio(_) => {
-            BusinessIntent::Invalid
-        }
+        // A raw chip gesture and a motion batch are diagnostic read-backs; they
+        // never move a light. (A capture poll never reaches here at all: what the
+        // capture produces is a window, and windows do not ride this plane.)
+        InputEvent::ChipGesture(_) | InputEvent::Motion(_) => BusinessIntent::Invalid,
         // Classified touch gestures mirror the button moves in their own
         // tallying variants; the device-level panel always drives surface 0.
         // A tap is the one gesture two pages own — the record control on Audio,
@@ -217,8 +327,8 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
             DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
                 target_for(advance_color(light), 0)
             }
+            DisplayPage::Network => BusinessIntent::Invalid,
         },
-        InputEvent::Gesture(GestureEvent::DoubleTap { .. }) => target_for(advance_step(light), 0),
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
             target_for(swipe(light, direction), 0)
         }
@@ -231,9 +341,95 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 instance: 0,
                 state: cycle_mode(light),
             },
+            DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Touch(_) => BusinessIntent::Invalid,
     }
+}
+
+/// What a tap on the Network page means: a key while its keyboard is up, an answer while the page
+/// is asking a question, the action strip, and otherwise a band of the scan list.
+///
+/// The bands, the strip and the keys are read off the same geometry the panel draws them at, which
+/// is what [`keyboard`] exists for: a tap that landed on a label and started something else would
+/// be a control that does not do what it looks like.
+///
+/// The state layer decides what picking a band *does* — that it opens the keyboard, and which of
+/// the scan's rows that band is showing — because the list's own offset is its state. This only
+/// says which band, which key, or which answer, the tap was on. What the page is not drawing is not
+/// aimed at either: the box an attempt in flight is drawn in is over the list, so the bands under it
+/// are the box's paper rather than rows ([`Part::showing`]).
+fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessIntent {
+    // The keyboard is up exactly when there is a draft under it, and it is the page's whole state
+    // while it is: a tap anywhere else on this page is a key, or nothing at all.
+    if current.setup.keyboard {
+        let Some(entry) = current.setup.entry else {
+            return BusinessIntent::Invalid;
+        };
+        return keyboard::key_at(entry.layer(), x, y).map_or(BusinessIntent::Invalid, |key| {
+            BusinessIntent::Key { key, at_ms }
+        });
+    }
+    if let Some(answer) = answer_at(current, x, y) {
+        return answer;
+    }
+    // The strip first, because it is the one part of the page that stays offered under the box: it
+    // is not read off the list, and it is where the page's own action lives.
+    if keyboard::toolbar_at(y) {
+        return BusinessIntent::Toolbar;
+    }
+    if !Part::Content.showing(current.setup, current.link) {
+        return BusinessIntent::Invalid;
+    }
+    match keyboard::list_band_at(y) {
+        Some(band) => BusinessIntent::Row(band as u8),
+        None => BusinessIntent::Invalid,
+    }
+}
+
+/// What a long press on the Network page means: the row a finger held, or an answer to the
+/// question the page is asking.
+///
+/// A hold is a second verb for a row rather than a second way to pick one, so it never reaches the
+/// list's own selection: what the state does with it is ask about the saved copy, and a hold
+/// anywhere the page has nothing saved to say is nothing at all.
+///
+/// The answer comes before the row for the same reason it does for a tap, and it is the one gesture
+/// the question does not take the whole page for: everything outside its two buttons leaves the
+/// action undone. The box an attempt in flight is drawn in is not a question, so what it covers is
+/// simply not there — a forget asked of a row nobody can see would be a memory erased off a screen
+/// the finger was not looking at.
+fn network_hold(current: &DeviceState, x: u16, y: u16) -> BusinessIntent {
+    if current.setup.keyboard {
+        return BusinessIntent::Invalid;
+    }
+    if let Some(answer) = answer_at(current, x, y) {
+        return answer;
+    }
+    if !Part::Content.showing(current.setup, current.link) {
+        return BusinessIntent::Invalid;
+    }
+    match keyboard::list_band_at(y) {
+        Some(band) => BusinessIntent::RowHold(band as u8),
+        None => BusinessIntent::Invalid,
+    }
+}
+
+/// The answer a gesture at `(x, y)` gives to a question the page is asking, or `None` when the page
+/// is asking nothing.
+///
+/// One rule for both gestures, because a question is answered by where a finger lands rather than by
+/// how it moved: the action button says yes, and every other point on the page — the box's own
+/// `KEEP`, the strip under it, the header, the rows, the seams — leaves the action undone. Which is
+/// the whole point of asking: the tap that undoes it is the one that lands anywhere.
+fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
+    // A page that is asking nothing answers nothing: the question is the only thing that makes a
+    // tap an answer.
+    current.setup.confirm?;
+    Some(match keyboard::dialog_choice_at(x, y) {
+        Some(keyboard::DialogChoice::Act) => BusinessIntent::Confirm,
+        Some(keyboard::DialogChoice::Keep) | None => BusinessIntent::Dismiss,
+    })
 }
 
 /// Fold an optional table step into a business intent: `None` means the mode
@@ -432,7 +628,6 @@ fn retreat_color_group(breath: &Breath) -> ColorGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drivers::audio::AudioSample;
     use crate::drivers::input::{
         FingerLast, MAX_TOUCH_POINTS, MAX_TRACKED_POINTS, TouchEvent, TouchPoint, TouchStatus,
     };
@@ -462,6 +657,13 @@ mod tests {
         DeviceState {
             lights: [light; MAX_LIGHTS],
             page,
+            link: LinkStatus::default(),
+            aps: None,
+            setup: crate::state::NetworkSetup::default(),
+            join: None,
+            leave: false,
+            scan_now: false,
+            forget: None,
             motion_enabled: true,
             motion: None,
             motion_counts: MotionCounts::default(),
@@ -471,6 +673,7 @@ mod tests {
             playback_enabled: true,
             playback: PlaybackState::default(),
             camera_enabled: true,
+            network_enabled: true,
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -480,8 +683,6 @@ mod tests {
             touch_held_ms: 0,
             tap_count: 0,
             press_count: 0,
-            double_tap_count: 0,
-            triple_tap_count: 0,
             long_press_count: 0,
             ghost_count: 0,
             swipe_count: 0,
@@ -510,7 +711,16 @@ mod tests {
             | BusinessIntent::ToggleRecord
             | BusinessIntent::PlayNext
             | BusinessIntent::ToggleMute
-            | BusinessIntent::PlaybackFinished => None,
+            | BusinessIntent::PlaybackFinished
+            | BusinessIntent::Link(_)
+            | BusinessIntent::NoCopy(_)
+            | BusinessIntent::Key { .. }
+            | BusinessIntent::Row(_)
+            | BusinessIntent::ListSlide(_)
+            | BusinessIntent::Toolbar
+            | BusinessIntent::Confirm
+            | BusinessIntent::Dismiss
+            | BusinessIntent::RowHold(_) => None,
         }
     }
 
@@ -520,17 +730,7 @@ mod tests {
             x: 0,
             y: 0,
             held_ms,
-        })
-    }
-
-    fn double_tap() -> InputEvent {
-        InputEvent::Gesture(GestureEvent::DoubleTap {
-            id: 0,
-            x: 0,
-            y: 0,
-            end_x: 1,
-            end_y: 1,
-            held_ms: 0,
+            at_ms: 0,
         })
     }
 
@@ -871,14 +1071,10 @@ mod tests {
         }
 
         #[test]
-        fn tap_and_double_tap_mirror_the_button() {
+        fn tap_mirrors_the_button_click() {
             // No color, period or brightness to step on Off.
             assert_eq!(
                 translate(&op(tap_gesture(0)), &state(LightState::Off)),
-                BusinessIntent::Invalid
-            );
-            assert_eq!(
-                translate(&op(double_tap()), &state(LightState::Off)),
                 BusinessIntent::Invalid
             );
             // A tap walks the same color the button's click does: the color
@@ -899,15 +1095,6 @@ mod tests {
                     color: PALETTE[1],
                     brightness: 255,
                 })
-            );
-            // And the double-tap steps the same period table the button's
-            // double-click does: 3000 → 5000.
-            assert_eq!(
-                target(double_tap(), DEFAULT_BREATH),
-                Some(LightState::Breath(Breath {
-                    period_ms: 5_000,
-                    ..BREATH_BASE
-                }))
             );
         }
 
@@ -934,16 +1121,6 @@ mod tests {
             );
         }
 
-        #[test]
-        fn a_capture_poll_carries_no_business_meaning() {
-            assert_eq!(
-                translate(
-                    &op(InputEvent::Audio(AudioSample::default())),
-                    &state(DEFAULT_BREATH)
-                ),
-                BusinessIntent::Invalid
-            );
-        }
         #[test]
         fn long_press_mirrors_the_button_mode_ring() {
             // A long press on Off is never a no-op: it is the way back on.
@@ -1027,13 +1204,13 @@ mod tests {
         #[test]
         fn the_page_never_moves_a_light() {
             // Playback takes a tap and a long press, but leaves the light verbs
-            // it did not claim — the double-tap and the swipes — alone, so the
+            // it did not claim — the double-click and the swipes — alone, so the
             // Speaker page costs no light control and never sits on a stale
             // color.
             assert_eq!(
-                target_in(double_tap(), &on_speaker()),
-                target(double_tap(), DEFAULT_BREATH),
-                "the double-tap still steps the table"
+                target_in(InputEvent::Button(ButtonEvent::DoubleClick), &on_speaker()),
+                target(InputEvent::Button(ButtonEvent::DoubleClick), DEFAULT_BREATH),
+                "the double-click still steps the table"
             );
             for direction in [
                 SwipeDirection::Up,
@@ -1047,18 +1224,11 @@ mod tests {
                     "{direction:?} still moves the light"
                 );
             }
-            // The page turn is what a triple tap still means, or there would be
-            // no way back to the page you can hear the answer on.
+            // The page turn is what the button's triple click still means, or
+            // there would be no way back to the page you can hear the answer on.
             assert_eq!(
                 translate(
-                    &op(InputEvent::Gesture(GestureEvent::TripleTap {
-                        id: 0,
-                        x: 0,
-                        y: 0,
-                        end_x: 0,
-                        end_y: 0,
-                        held_ms: 0,
-                    })),
+                    &op(InputEvent::Button(ButtonEvent::TripleClick)),
                     &on_speaker()
                 ),
                 BusinessIntent::TogglePage
@@ -1083,7 +1253,6 @@ mod tests {
                 InputEvent::Button(ButtonEvent::Click),
                 InputEvent::Button(ButtonEvent::LongPress),
                 tap_gesture(0),
-                double_tap(),
                 long_press_gesture(),
             ] {
                 assert_ne!(
@@ -1414,6 +1583,393 @@ mod tests {
             let rainbow = COLOR_GROUPS[1];
             assert_eq!(rainbow.group_len, expected.len() as u8);
             assert_eq!(rainbow.group, expected);
+        }
+    }
+
+    mod network_page {
+        use super::*;
+        use crate::drivers::network::{AccessPoint, ApList, Ssid};
+        use crate::keyboard::{self, Key};
+
+        fn ap(ssid: &[u8], rssi: i8) -> AccessPoint {
+            AccessPoint {
+                ssid: Ssid::from_octets(ssid),
+                bssid: [1, 2, 3, 4, 5, 6],
+                channel: 6,
+                rssi,
+                secured: true,
+            }
+        }
+
+        /// The page with one network in range and the link still off, which is how the product
+        /// ships: the list is the only content, and the keyboard is what a band opens.
+        fn on_network() -> DeviceState {
+            DeviceState {
+                aps: Some(ApList::from_ranked(&[ap(b"neighbour", -55)])),
+                ..state_on(DisplayPage::Network, DEFAULT_BREATH)
+            }
+        }
+
+        fn typing() -> DeviceState {
+            DeviceState {
+                setup: crate::state::NetworkSetup {
+                    selected: Some(ap(b"neighbour", -55)),
+                    entry: Some(crate::state::Entry::default()),
+                    keyboard: true,
+                    ..Default::default()
+                },
+                ..on_network()
+            }
+        }
+
+        fn tap_at(x: u16, y: u16) -> InputEvent {
+            InputEvent::Gesture(GestureEvent::Tap {
+                id: 0,
+                x,
+                y,
+                held_ms: 40,
+                at_ms: 1_000,
+            })
+        }
+
+        /// A finger that stays where it landed, which is the gesture the page reads as "about this
+        /// row" rather than "this row".
+        fn long_press_at(x: u16, y: u16) -> InputEvent {
+            InputEvent::Gesture(GestureEvent::LongPress {
+                id: 0,
+                x,
+                y,
+                held_ms: u16::from(crate::drivers::input::FINGER_LONG_PRESS) + 100,
+            })
+        }
+
+        /// The page with a question on it, which is its third state: the list and the strip are
+        /// behind the box, and only the box's own two answers mean anything.
+        fn asking() -> DeviceState {
+            DeviceState {
+                setup: crate::state::NetworkSetup {
+                    confirm: Some(crate::state::Confirm::Forget(ap(b"neighbour", -55))),
+                    ..Default::default()
+                },
+                ..on_network()
+            }
+        }
+
+        fn swipe(direction: SwipeDirection) -> InputEvent {
+            InputEvent::Gesture(GestureEvent::Swipe {
+                id: 0,
+                direction,
+                x: 100,
+                y: 100,
+                end_x: 100,
+                end_y: 40,
+                held_ms: 60,
+                distance_px: 60,
+            })
+        }
+
+        /// The middle of the key in `cell`, as a finger would land on it. The geometry does not
+        /// depend on the layer — a key is one cell of the grid wherever the labels have moved to —
+        /// which is the half of "a label and its target are the same cell" a tap can assert.
+        fn key_tap(cell: usize) -> InputEvent {
+            let rect = keyboard::key_box(cell).expect("a cell of the grid");
+            tap_at((rect.x + rect.w / 2) as u16, (rect.y + rect.h / 2) as u16)
+        }
+
+        #[test]
+        fn a_tap_on_a_band_is_that_band_of_the_list() {
+            // Every row from the first band to the bottom of the page is a band of some kind: the
+            // pixels below the last row's glyphs are part of it, because a touch target with dead
+            // strips in it is a list a thumb keeps missing.
+            let state = on_network();
+            let first = keyboard::LIST_TOP as u16;
+            assert_eq!(
+                translate(&op(tap_at(30, first)), &state),
+                BusinessIntent::Row(0),
+                "the list's first band is band 0"
+            );
+            assert_eq!(
+                translate(&op(tap_at(30, first + keyboard::LIST_ROW_H as u16)), &state),
+                BusinessIntent::Row(1),
+                "a band down is the next band"
+            );
+            assert_eq!(
+                translate(
+                    &op(tap_at(30, first + keyboard::LIST_ROW_H as u16 - 1)),
+                    &state
+                ),
+                BusinessIntent::Row(0),
+                "and the pixels below a band's glyphs still belong to that band"
+            );
+            assert_eq!(
+                translate(&op(tap_at(30, 5)), &state),
+                BusinessIntent::Invalid,
+                "while the page's own header is not a band"
+            );
+        }
+
+        #[test]
+        fn a_slide_moves_the_list_and_only_while_the_keyboard_is_down() {
+            let state = on_network();
+            assert_eq!(
+                translate(&op(swipe(SwipeDirection::Up)), &state),
+                BusinessIntent::ListSlide(true),
+                "a finger pushing the list up walks down it"
+            );
+            assert_eq!(
+                translate(&op(swipe(SwipeDirection::Down)), &state),
+                BusinessIntent::ListSlide(false)
+            );
+            assert_eq!(
+                translate(&op(swipe(SwipeDirection::Left)), &state),
+                BusinessIntent::Invalid,
+                "the list is one column, so there is nothing to slide sideways to"
+            );
+            // A passphrase has the keyboard up, and the list is not what the finger is on: a
+            // slide there must not page a list the user cannot see.
+            assert_eq!(
+                translate(&op(swipe(SwipeDirection::Up)), &typing()),
+                BusinessIntent::Invalid
+            );
+        }
+
+        #[test]
+        fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
+            // One control under the list, and every column of it is the same control: the page's
+            // own action is a band rather than a button in a band. The bands above it stop at it,
+            // so a tap that means the strip can never be read as a row.
+            let state = on_network();
+            let strip = keyboard::toolbar_box();
+            for x in [0, strip.w / 2, strip.w - 1] {
+                for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
+                    assert_eq!(
+                        translate(&op(tap_at(x as u16, y as u16)), &state),
+                        BusinessIntent::Toolbar,
+                        "({x}, {y}) is the strip"
+                    );
+                }
+            }
+            assert_eq!(
+                translate(&op(tap_at(160, (keyboard::TOOLBAR_TOP - 1) as u16)), &state),
+                BusinessIntent::Row(keyboard::LIST_ROWS as u8 - 1),
+                "the row above the strip is still the list's own last band"
+            );
+        }
+
+        #[test]
+        fn a_hold_on_a_band_is_that_band_asked_about() {
+            // The second verb for a row: the same geometry as a tap, because the finger is aiming
+            // at the page either way — what differs is the question, and the state layer's.
+            let state = on_network();
+            let first = keyboard::LIST_TOP as u16;
+            assert_eq!(
+                translate(&op(long_press_at(30, first)), &state),
+                BusinessIntent::RowHold(0)
+            );
+            assert_eq!(
+                translate(
+                    &op(long_press_at(30, first + keyboard::LIST_ROW_H as u16)),
+                    &state
+                ),
+                BusinessIntent::RowHold(1)
+            );
+            assert_eq!(
+                translate(&op(long_press_at(30, 5)), &state),
+                BusinessIntent::Invalid,
+                "the header is not a row to ask about"
+            );
+            assert_eq!(
+                translate(
+                    &op(long_press_at(160, keyboard::TOOLBAR_TOP as u16)),
+                    &state
+                ),
+                BusinessIntent::Invalid,
+                "and neither is the strip"
+            );
+            assert_eq!(
+                translate(&op(long_press_at(30, first)), &typing()),
+                BusinessIntent::Invalid,
+                "while the keyboard is up there is no list under the finger to hold"
+            );
+        }
+
+        #[test]
+        fn a_question_is_answered_by_where_a_finger_lands_and_by_nothing_else() {
+            // The one gesture that does what the page is asking about is the tap on the box's own
+            // action button. Everything else a finger can do to the page means the action is left
+            // undone, which is what makes the mistake cheap enough to ask at all.
+            let state = asking();
+            let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
+            let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
+            assert_eq!(
+                translate(
+                    &op(tap_at(
+                        (act.x + act.w / 2) as u16,
+                        (act.y + act.h / 2) as u16
+                    )),
+                    &state
+                ),
+                BusinessIntent::Confirm,
+                "the action's own button is the whole of the yes"
+            );
+            assert_eq!(
+                translate(
+                    &op(tap_at(
+                        (keep.x + keep.w / 2) as u16,
+                        (keep.y + keep.h / 2) as u16
+                    )),
+                    &state
+                ),
+                BusinessIntent::Dismiss,
+                "and the button that says no says no"
+            );
+            for (x, y) in [
+                (30, 5),
+                (30, keyboard::LIST_TOP as u16 + 2),
+                (160, keyboard::TOOLBAR_TOP as u16 + 2),
+                (
+                    (keyboard::DIALOG_X + 2) as u16,
+                    (keyboard::DIALOG_TOP + 2) as u16,
+                ),
+            ] {
+                assert_eq!(
+                    translate(&op(tap_at(x, y)), &state),
+                    BusinessIntent::Dismiss,
+                    "({x}, {y}) leaves the question undone"
+                );
+            }
+            // A gesture that is not a tap answers the same way: the question is answered by the
+            // answer rather than by the shape of the finger's travel.
+            assert_eq!(
+                translate(&op(swipe(SwipeDirection::Up)), &state),
+                BusinessIntent::Dismiss,
+                "a swipe under the box does not slide a list it cannot see"
+            );
+            assert_eq!(
+                translate(
+                    &op(long_press_at(30, keyboard::LIST_TOP as u16 + 2)),
+                    &state
+                ),
+                BusinessIntent::Dismiss
+            );
+            // And the strip's own intent is not raised while the page is asking: the answer that
+            // is not the action is a dismissal rather than a second action.
+            assert_eq!(
+                translate(&op(tap_at(160, keyboard::TOOLBAR_TOP as u16 + 2)), &state),
+                BusinessIntent::Dismiss
+            );
+        }
+
+        #[test]
+        fn a_tap_off_the_page_s_own_content_is_nothing() {
+            // The page draws a readout on a black fill instead of the light's colour, so a tap
+            // that misses every band and every key does nothing at all: there is no colour walk to
+            // fall back on where the page never shows the colour. The gesture that leaves the
+            // page is the button's triple click (see `intent`'s page gate).
+            let header = tap_at(30, 5);
+            assert_eq!(
+                translate(&op(header), &on_network()),
+                BusinessIntent::Invalid,
+                "the page's header is not a control and not a colour walk"
+            );
+            let state = typing();
+            assert_eq!(
+                translate(&op(tap_at(30, 5)), &state),
+                BusinessIntent::Invalid,
+                "and the keyboard's own header is not a key"
+            );
+        }
+
+        #[test]
+        fn a_tap_while_the_keyboard_is_up_types_the_key_under_it() {
+            let state = typing();
+            // A character key, a control, and the way out: all three read back through the
+            // geometry the panel draws with, so a label and the target that types it are the same
+            // cell.
+            assert_eq!(
+                translate(&op(key_tap(1)), &state),
+                BusinessIntent::Key {
+                    key: Key::Char(b'2'),
+                    at_ms: 1_000,
+                },
+                "the phone layer's second key is the one printed 2"
+            );
+            assert_eq!(
+                translate(
+                    &op(key_tap(
+                        keyboard::cell_of(Key::Shift).expect("a control's own cell")
+                    )),
+                    &state
+                ),
+                BusinessIntent::Key {
+                    key: Key::Shift,
+                    at_ms: 1_000,
+                }
+            );
+            assert_eq!(
+                translate(
+                    &op(key_tap(
+                        keyboard::cell_of(Key::Cancel).expect("a control's own cell")
+                    )),
+                    &state
+                ),
+                BusinessIntent::Key {
+                    key: Key::Cancel,
+                    at_ms: 1_000,
+                }
+            );
+            assert_eq!(
+                translate(
+                    &op(key_tap(
+                        keyboard::cell_of(Key::Reveal).expect("a control's own cell")
+                    )),
+                    &state
+                ),
+                BusinessIntent::Key {
+                    key: Key::Reveal,
+                    at_ms: 1_000,
+                }
+            );
+            // Above the keyboard is the page's own text, which is not a key: a tap that missed
+            // types nothing rather than walking the colour under a keyboard in use.
+            assert_eq!(
+                translate(&op(tap_at(30, 5)), &state),
+                BusinessIntent::Invalid
+            );
+            // Nor is anything below the last row, which the FPS strip owns.
+            assert_eq!(
+                translate(
+                    &op(tap_at(
+                        30,
+                        (keyboard::KEYBOARD_TOP + keyboard::ROWS * keyboard::KEY_H) as u16
+                    )),
+                    &state
+                ),
+                BusinessIntent::Invalid
+            );
+        }
+
+        #[test]
+        fn the_clock_at_the_lift_is_what_the_key_carries() {
+            // The multi-tap window is measured from one tap to the next, so the tap's own clock
+            // reading has to travel with the key: a key that arrived without it would be typed as
+            // the first candidate of every character.
+            assert_eq!(
+                translate(
+                    &op(InputEvent::Gesture(GestureEvent::Tap {
+                        id: 0,
+                        x: keyboard::KEY_W as u16 / 2,
+                        y: (keyboard::KEYBOARD_TOP + keyboard::KEY_H / 2) as u16,
+                        held_ms: 40,
+                        at_ms: 4_321,
+                    })),
+                    &typing()
+                ),
+                BusinessIntent::Key {
+                    key: Key::Char(b'1'),
+                    at_ms: 4_321,
+                }
+            );
         }
     }
 }

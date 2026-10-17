@@ -4,6 +4,20 @@ tags: ['iot']
 env:
   CARGO_ESP_TARGET: 'riscv32imac-unknown-none-elf'
 
+# What the tasks that compile this project read, for the ones that go through a
+# repo-root script. Declaring `inputs` *replaces* moon's default for a task, and the
+# default is what those tasks had: every file of this project. `**/*` keeps exactly
+# that coverage (dotfiles and the non-Rust inputs — `assets/*.mid`, `partitions/*.csv`,
+# `linker/*.x` — all still reach the hash) instead of listing globs that would have to
+# be kept in step by hand. The script is here because no glob can leave the project
+# (`..` is not a legal input) and iot-xtensa.sh decides what those tasks compile;
+# without it, editing the dispatcher leaves a cached check passing and a cached probe
+# image on disk that the dispatcher no longer describes.
+fileGroups:
+  build-inputs:
+    - '**/*'
+    - '/scripts/iot-xtensa.sh'
+
 tasks:
   bump:
     script: |
@@ -44,6 +58,10 @@ tasks:
       - 'target/$CARGO_ESP_TARGET/release/vanling'
     deps:
       - ~:check
+    options:
+      # `vanling` reads `IOT_WIFI_SSID`/`IOT_WIFI_PSK` with `option_env!` — see
+      # `build-s3` for why that costs the cache.
+      cache: false
 
   # `iot-app`'s own tests run on the host backend rather than bare metal: the
   # demand publisher is a task-boundary concern rather than a chip one, and
@@ -56,7 +74,7 @@ tasks:
   test-bsp:
     command: >-
       cargo test -p iot-bsp-esp --no-default-features
-      --features qmi8658,pca9557,es7210,es8311,gc2145
+      --features qmi8658,pca9557,es7210,es8311,gc2145,ft6336
     deps:
       - ~:check
 
@@ -80,8 +98,20 @@ tasks:
   # the other.
   check-features:
     script: 'bash ../../scripts/iot-feature-check.sh'
+    inputs:
+      - '@group(build-inputs)'
+      - '/scripts/iot-feature-check.sh'
     options:
-      cache: false
+      # Cached, and that is the point of the group above. The matrix is real
+      # compiling — fifteen subsets, six on the host and nine against the bare-metal
+      # targets, where each one is a feature set cargo has not seen (~15s apiece; the
+      # container start is 0.5s, so none of it is dispatch overhead). `cache: false`
+      # therefore bought nothing and cost 2m20s on every `moon run`, changed files or
+      # not, where an unchanged tree now returns in ~0.1s. A change re-runs the whole
+      # matrix, which is the only moment the answer can have changed. Both scripts are
+      # named for the reason on `build-inputs`, and this one also names the script it
+      # runs.
+      cache: true
 
   lint:
     command: 'cargo clippy -p iot-app --bin vanling --target $CARGO_ESP_TARGET -- -D warnings'
@@ -118,7 +148,10 @@ tasks:
     deps:
       - ~:check-host
     options:
-      cache: false
+      # Cached like the checks, for the same reason: the same content runs the same
+      # smoke. A replay prints the recorded log behind moon's `cached` marker, and
+      # `moon run --force` is how to watch it happen again.
+      cache: true
 
   flash:
     command: 'cargo run -p iot-app --release --target $CARGO_ESP_TARGET'
@@ -159,14 +192,37 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
 
+  # The C6 is the one of the two parts that is checked on the toolchain which
+  # produces its image, rather than through iot-xtensa.sh: `riscv32imac-unknown-none-elf`
+  # ships a prebuilt `core`/`alloc` (rust-toolchain.toml installs the target), so this
+  # needs neither the esp fork nor `-Z build-std`, and `build` / `image-c6` — the tasks
+  # that do link this board's firmware — already run on this toolchain. Through the
+  # container this check cost 1m12s per run to type-check the same source against the
+  # same target in a 4 GB VM; on the host it is seconds. The inputs are the same list
+  # `check` declares, because this is `check` plus `wifi-probe` — the one bin whose
+  # `required-features` are the `wifi` feature, and the reason both checks name it.
+  # The S3 keeps the container: Xtensa has no prebuilt rust-std at all. The
+  # dispatcher's own non-S3 path does not go uncovered by this: the C6 subsets in
+  # `check-features` stay on it, which is what holds the S3-only data-cache export
+  # honest (see that script).
   check-c6:
-    script: |
-      bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin vanling --bin wifi-probe \
-        --target riscv32imac-unknown-none-elf \
-        -Z build-std=core,alloc \
-        --no-default-features --features esp32c6-devkitc-1,console-auto
+    command: >-
+      cargo check -p iot-app --bin vanling --bin wifi-probe
+      --no-default-features --features esp32c6-devkitc-1,console-auto
+      --target $CARGO_ESP_TARGET
+    inputs:
+      - '$CARGO_ESP_TARGET'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'moon.yml'
+      - '.cargo/config.toml'
+      - 'crates/**/*.rs'
+      - 'crates/**/Cargo.toml'
+    deps:
+      - ~:format
 
   build-s3:
     script: |
@@ -181,6 +237,14 @@ tasks:
     deps:
       - ~:check-s3
     options:
+      # `vanling` reads the credentials this build was given with `option_env!` (`IOT_WIFI_SSID`
+      # / `IOT_WIFI_PSK`, forwarded by `scripts/iot-xtensa.sh`), and moon keys its cache on
+      # files and the environment variables a task names — not on the environment the shell
+      # happens to have. Cached, a changed password would come back as the previous build's
+      # image: right network in the log, wrong one on the air. Cargo tracks `option_env!`
+      # itself, so all a new password needs is the build being re-run. `probe-wifi-s3` is
+      # uncached for the same reason.
+      cache: false
       runInCI: false
 
   # The same product, booting onto the camera page. A page that would otherwise need a
@@ -197,6 +261,10 @@ tasks:
   # Kept off CI: it is the same firmware with a different starting page.
   build-s3-camera:
     script: |
+      # `set -e` because the build sits between the copy that saves the product image and the
+      # copy that publishes this task's variant: a failed build would otherwise publish the
+      # stale product as the variant, and the task would report success for it.
+      set -e
       out=target/xtensa-esp32s3-none-elf/release/vanling
       if [ -f "$out" ]; then cp "$out" "$out.product"; fi
       IOT_BOOT_PAGE=camera bash ../../scripts/iot-xtensa.sh build --release \
@@ -211,6 +279,8 @@ tasks:
     deps:
       - ~:check-s3
     options:
+      # Uncached for `build-s3`'s reason: this is `vanling`, with the credentials compiled in.
+      cache: false
       runInCI: false
 
   # The product with two planes turned down — the only shipped path that both gates a
@@ -219,6 +289,10 @@ tasks:
   # a different product.
   build-s3-thrift:
     script: |
+      # `set -e` because the build sits between the copy that saves the product image and the
+      # copy that publishes this task's variant: a failed build would otherwise publish the
+      # stale product as the variant, and the task would report success for it.
+      set -e
       out=target/xtensa-esp32s3-none-elf/release/vanling
       if [ -f "$out" ]; then cp "$out" "$out.product"; fi
       IOT_DEMAND='audio=off,display=on-change,motion=on:30000' \
@@ -234,6 +308,8 @@ tasks:
     deps:
       - ~:check-s3
     options:
+      # Uncached for `build-s3`'s reason: this is `vanling`, with the credentials compiled in.
+      cache: false
       runInCI: false
 
   # Every S3 image is flashed against this repository's partition table rather than
@@ -272,6 +348,61 @@ tasks:
       cache: false
       runInCI: false
 
+  # The product holding its own keyboard: the credential this build is given is typed on the panel
+  # at boot, at the cells `crates/core/src/keyboard.rs` draws them in, and through the same intent
+  # ring a finger's taps arrive on. What it proves is the chain the setup path is end to end —
+  # a tap picks the row, the keys fill the draft, `OK` hands a credential to the state, the render
+  # loop publishes it and the radio associates — none of which a host test can reach, because all of
+  # it is decided against panel coordinates.
+  #
+  # The two variables are the bench's own input, and they are the same two `probe-wifi-s3` takes:
+  #
+  #   IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:flash-panel-typing-s3
+  #
+  # `IOT_BOOT_PAGE=network` is part of the bench rather than a convenience: the survey only asks the
+  # radio while that page is on the panel, and the list the row is picked from is what it fills.
+  # `IOT_PANEL_BENCH` is what makes the product come up unconfigured — a build that was handed its
+  # credentials would join them without touching the panel at all.
+  panel-typing-s3:
+    script: |
+      # `set -e` because the build sits between the copy that saves the product image and the
+      # copy that publishes this task's variant: a failed build would otherwise publish the
+      # stale product as the variant, and the task would report success for it.
+      set -e
+      out=target/xtensa-esp32s3-none-elf/release/vanling
+      if [ -f "$out" ]; then cp "$out" "$out.product"; fi
+      IOT_PANEL_BENCH=1 IOT_BOOT_PAGE=network \
+        bash ../../scripts/iot-xtensa.sh build --release \
+        -p iot-app --bin vanling \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+      cp "$out" "$out-panel"
+      if [ -f "$out.product" ]; then mv "$out.product" "$out"; fi
+    outputs:
+      - 'target/xtensa-esp32s3-none-elf/release/vanling-panel'
+    deps:
+      - ~:check-s3
+    options:
+      # Uncached for `build-s3`'s reason: this is `vanling`, with the credentials compiled in.
+      cache: false
+      runInCI: false
+
+  flash-panel-typing-s3:
+    script: |
+      espflash flash --chip esp32s3 \
+        --flash-size 16mb \
+        --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        -a watchdog-reset \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/xtensa-esp32s3-none-elf/release/vanling-panel
+    deps:
+      - ~:panel-typing-s3
+    options:
+      persistent: true
+      cache: false
+      runInCI: false
+
   # Bench images: one peripheral each, so a fault belongs to a path rather than to the
   # product's three tasks contending for one executor. None is produced by build-s3, which
   # names only the product's own bins, so the product's artifacts and its flash task are
@@ -289,6 +420,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/audio-probe'
     options:
@@ -300,6 +433,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/camera-probe'
     options:
@@ -311,6 +446,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/multicore-s3'
     options:
@@ -322,6 +459,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/aec-probe'
     options:
@@ -344,6 +483,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/echo-probe'
     deps:
@@ -367,6 +508,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/clock-probe'
     options:
@@ -481,6 +624,8 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+    inputs:
+      - '@group(build-inputs)'
     outputs:
       - 'target/xtensa-esp32s3-none-elf/release/demand-probe'
     options:

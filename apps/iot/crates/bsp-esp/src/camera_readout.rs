@@ -7,13 +7,22 @@
 //! different pages, before this had a test.
 //!
 //! Not camera-specific despite the module name: the panel's own coordinate formatting is here
-//! too, because it is the same arithmetic and the panel is the only surface that draws it. The
-//! camera's additions are marked, and the module is unconditional — a gate would leave
-//! `display-light` naming a function only some features define.
+//! too, because it is the same arithmetic and the panel is the only surface that draws it, and
+//! so is the Network page's — a phase word, an address and a name are the same kind of thing as
+//! a coordinate pair, and the rule they all share is that a reading wider than its buffer
+//! indexes past the end. The camera's additions are marked, and the module is unconditional — a
+//! gate would leave `display-light` naming a function only some features define.
 //!
 //! The layout — which block each reading sits in and at what row — belongs to the panel, which
 //! is the only thing that knows where the columns are. What is here is how a number becomes
 //! the characters that will go in one.
+
+use iot_core::drivers::network::{
+    AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES,
+};
+use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
+use iot_core::overlay::GLYPH_PITCH;
+use iot_core::state::Confirm;
 
 /// A coordinate pair written `x y`.
 ///
@@ -88,6 +97,257 @@ pub fn write_ratio(buf: &mut [u8; 6], subsample: u8) -> &[u8] {
     &buf[..3]
 }
 
+/// Glyphs a network name is given on a scan-list row.
+///
+/// The panel is [`PANEL_COLUMNS`](iot_core::overlay::PANEL_COLUMNS) wide and a list row puts a
+/// name at the page's own left edge with its signal bars right-aligned against the panel, so this
+/// is what fits between them with room for the marker an open network carries. Every name is
+/// formatted through a width like it, because a row that drew as far as it happened to reach would
+/// let a long name run under the bars and off the edge.
+pub const NETWORK_NAME_GLYPHS: usize = 24;
+
+/// The link's phase as one four-glyph word, and a failure as what failed rather than as the
+/// fact of failing: the driver logs its own error code with the call that produced it, so the
+/// panel's job is to say which of the kinds it was. A `NoMemory` here is the one reading
+/// that means "this build's heap budget is wrong", and it has to be tellable from a busy radio;
+/// `NOAP` and `AUTH` are the two a user can act on — walk closer, or look at the passphrase.
+pub fn format_phase(phase: LinkPhase, buf: &mut [u8; 4]) -> &[u8] {
+    let word: &[u8] = match phase {
+        LinkPhase::Off => b"OFF",
+        LinkPhase::Scanning => b"SCAN",
+        LinkPhase::Connecting => b"JOIN",
+        LinkPhase::Connected => b"UP",
+        LinkPhase::Failed(NetworkError::Busy) => b"BUSY",
+        LinkPhase::Failed(NetworkError::InvalidArguments) => b"NAME",
+        LinkPhase::Failed(NetworkError::NoMemory) => b"MEM",
+        LinkPhase::Failed(NetworkError::NotFound) => b"NOAP",
+        LinkPhase::Failed(NetworkError::Credentials) => b"AUTH",
+        LinkPhase::Failed(NetworkError::Driver) => b"DRV",
+    };
+    buf[..word.len()].copy_from_slice(word);
+    &buf[..word.len()]
+}
+
+/// The address DHCP handed out, as a dotted quad, or a single dash while there is none.
+///
+/// A dash and not `0.0.0.0`: the two are different states — no lease yet, against a lease that
+/// covers the whole network — and the phase beside it is what says which.
+pub fn format_address(address: Option<Ipv4>, buf: &mut [u8; 16]) -> &[u8] {
+    let Some(address) = address else {
+        buf[0] = b'-';
+        return &buf[..1];
+    };
+    let mut n = 0;
+    for (index, octet) in address.octets().iter().enumerate() {
+        if index > 0 {
+            buf[n] = b'.';
+            n += 1;
+        }
+        n = write_u16(u16::from(*octet), buf, n);
+    }
+    &buf[..n]
+}
+
+/// Signal strength as four glyphs, filled for each bar the reading earns.
+///
+/// The bars on a list row and on the access point the link is actually on, so the two are read
+/// against the same scale (`bars_for`), and as glyphs rather than as drawn bars because a list
+/// is text: a row is a name with its strength in front of it.
+pub fn format_bars(bars: u8, buf: &mut [u8; 4]) -> &[u8] {
+    let bars = bars.min(4);
+    for (index, glyph) in buf.iter_mut().enumerate() {
+        *glyph = if (index as u8) < bars { b'#' } else { b'.' };
+    }
+    &buf[..]
+}
+
+/// A row's name: the SSID when the font can draw it, and the BSSID when it cannot.
+///
+/// The fallback is [`Ssid::as_display_text`](iot_core::drivers::network::Ssid::as_display_text)'s
+/// decision, made once in the driver module rather than per surface — a name in an encoding
+/// this font has no glyphs for is still a real network, and the address of the radio is what
+/// stays drawable. Truncation keeps the head and marks it with a `~`: two networks whose names
+/// differ past the fold would otherwise draw the same row, and the row a user picks from is
+/// the one thing this list is for.
+///
+/// Takes the access point by value because it is [`Copy`] and the row is drawn from the state's
+/// own copy of it: a borrow would give this function two references in and one out, and the
+/// answer comes from the buffer rather than from the row.
+pub fn format_network_name(ap: AccessPoint, glyphs: usize, buf: &mut [u8; SSID_BYTES]) -> &[u8] {
+    let glyphs = match ap.ssid.as_display_text() {
+        Some(name) => write_name(name.as_bytes(), glyphs, buf),
+        None => write_bssid(&ap.bssid, buf),
+    };
+    &buf[..glyphs]
+}
+
+/// The verb a confirmation's question and its action share: what the page would do.
+///
+/// One word for both places, because the button has to be the word the question asked with — a box
+/// that asked `LEAVE "cafe"?` and offered a button saying anything else would be a finger reading
+/// one action and pressing another.
+pub fn format_verb(confirm: Confirm) -> &'static [u8] {
+    match confirm {
+        Confirm::Leave => LEAVE_VERB,
+        Confirm::Forget(_) => FORGET_VERB,
+    }
+}
+
+/// The consequence under the question: what the action costs, in the box's own width.
+///
+/// Said at all because both actions are the kind that cannot be undone — a link that is down is a
+/// passphrase away from up, and a forgotten network is one the next boot does not join — and a
+/// question that named no cost would be a dialog a user learns to dismiss.
+pub fn format_body(confirm: Confirm) -> &'static [u8] {
+    match confirm {
+        Confirm::Leave => LEAVE_BODY,
+        Confirm::Forget(_) => FORGET_BODY,
+    }
+}
+
+const LEAVE_VERB: &[u8] = b"LEAVE";
+const FORGET_VERB: &[u8] = b"FORGET";
+const LEAVE_BODY: &[u8] = b"THE LINK GOES DOWN";
+const FORGET_BODY: &[u8] = b"THE SAVED KEY IS ERASED";
+
+/// What the box says while the radio is on its way: the two stages, which are two different waits.
+///
+/// Told apart because they are what the user is actually waiting on and they end differently — the
+/// first ends in a link or in a refusal, the second in an address or in a link with none — and a
+/// single word for both would have the panel say the same thing about a radio that has not answered
+/// yet and one that has an access point and no lease.
+const ASSOCIATING_BODY: &[u8] = b"WAIT FOR THE NETWORK";
+const ASSOCIATED_BODY: &[u8] = b"WAIT FOR AN ADDRESS";
+
+/// The word the join box's title opens with, at each of the two stages.
+const JOINING_WORD: &[u8] = b"JOINING";
+const JOINED_WORD: &[u8] = b"JOINED";
+
+const _: () = assert!(
+    LEAVE_BODY.len() <= DIALOG_GLYPHS && FORGET_BODY.len() <= DIALOG_GLYPHS,
+    "a confirmation's consequence is wider than the line the box gives it"
+);
+const _: () = assert!(
+    LEAVE_VERB.len() * GLYPH_PITCH <= DIALOG_ANSWER_W
+        && FORGET_VERB.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
+    "a confirmation's own button cannot hold the word of the action it performs"
+);
+const _: () = assert!(
+    ASSOCIATING_BODY.len() <= DIALOG_GLYPHS && ASSOCIATED_BODY.len() <= DIALOG_GLYPHS,
+    "what the radio is waiting on is wider than the line the box gives it"
+);
+const _: () = assert!(
+    DIALOG_GLYPHS <= SSID_BYTES,
+    "a name folded into the box's line does not fit the buffer it is folded in"
+);
+const _: () = assert!(
+    JOINING_WORD.len() + 2 <= DIALOG_GLYPHS && JOINED_WORD.len() + 2 <= DIALOG_GLYPHS,
+    "the join box's own word leaves no room for the network it is about, and its space between"
+);
+
+/// The question itself: the verb, and the network it is about in quotes.
+///
+/// The name is folded to what is left of the line after the verb and its punctuation, which is
+/// narrower than the header's own slot. That is the header's job rather than this one's: the whole
+/// name stays on the row the question is about, and the question reads with it in view — what the
+/// box cannot show is the whole name, and what it must not do is drop the quotes or the question
+/// mark that make the line a question.
+pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
+    let verb = format_verb(confirm);
+    buf[..verb.len()].copy_from_slice(verb);
+    let mut n = verb.len();
+    let Some(ap) = confirm.network(link) else {
+        // A link that went down under the box: the question is still the verb, and the box is on
+        // its way out — a title that named nothing is better than one naming a network the page is
+        // no longer about.
+        return &buf[..n];
+    };
+    buf[n] = b' ';
+    buf[n + 1] = b'"';
+    n += 2;
+    // The closing quote and the question mark are the box's own glyphs and are always drawn; what
+    // gives way is the name.
+    let mut name = [0u8; SSID_BYTES];
+    let name = format_network_name(ap, DIALOG_GLYPHS - n - 2, &mut name);
+    buf[n..n + name.len()].copy_from_slice(name);
+    n += name.len();
+    buf[n] = b'"';
+    buf[n + 1] = b'?';
+    &buf[..n + 2]
+}
+
+/// The join box's own title: the word for the stage the radio has reached, and the network the
+/// attempt is for.
+///
+/// The stage comes from [`LinkStatus::ap`](iot_core::drivers::network::LinkStatus::ap) being there
+/// at all rather than from a second argument: the radio fills it in the moment it is on the
+/// network, and empty is the whole of what "still being accepted" looks like from here. A title
+/// that named no network is a build whose credential nobody typed on the panel — it joined a name
+/// out of its own flash or its own build inputs — and the box says the word alone rather than
+/// inventing one.
+pub fn format_joining_title(ap: Option<AccessPoint>, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
+    let word = if ap.is_some() {
+        JOINED_WORD
+    } else {
+        JOINING_WORD
+    };
+    buf[..word.len()].copy_from_slice(word);
+    let mut n = word.len();
+    let Some(ap) = ap else {
+        return &buf[..n];
+    };
+    buf[n] = b' ';
+    n += 1;
+    let mut name = [0u8; SSID_BYTES];
+    let name = format_network_name(ap, DIALOG_GLYPHS - n, &mut name);
+    buf[n..n + name.len()].copy_from_slice(name);
+    &buf[..n + name.len()]
+}
+
+/// What the join box says under the word: which of the two things the attempt is waiting on.
+///
+/// One function rather than two, because which line it is and which word the title carries are one
+/// fact about the radio and two drawings of it. See [`ASSOCIATING_BODY`].
+pub fn format_joining_body(ap: Option<AccessPoint>) -> &'static [u8] {
+    if ap.is_some() {
+        ASSOCIATED_BODY
+    } else {
+        ASSOCIATING_BODY
+    }
+}
+
+/// The name, head-first, into `buf`; returns how many glyphs it occupies.
+///
+/// The width is the caller's, because it is a surface's question: the scan list has the whole row
+/// for a name and the row a passphrase is typed on shares its one row with a phase word and the
+/// draft, so the same network is folded differently in the two places.
+fn write_name(name: &[u8], glyphs: usize, buf: &mut [u8; SSID_BYTES]) -> usize {
+    if name.len() <= glyphs {
+        buf[..name.len()].copy_from_slice(name);
+        return name.len();
+    }
+    let kept = glyphs - 1;
+    buf[..kept].copy_from_slice(&name[..kept]);
+    buf[kept] = b'~';
+    glyphs
+}
+
+/// The BSSID as `aa:bb:cc:dd:ee:ff`; returns how many glyphs it occupies.
+fn write_bssid(bssid: &[u8; 6], buf: &mut [u8; SSID_BYTES]) -> usize {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut n = 0;
+    for (index, octet) in bssid.iter().enumerate() {
+        if index > 0 {
+            buf[n] = b':';
+            n += 1;
+        }
+        buf[n] = HEX[usize::from(octet >> 4)];
+        buf[n + 1] = HEX[usize::from(octet & 0x0f)];
+        n += 2;
+    }
+    n
+}
+
 /// Bytes between fingerprint samples. Prime and over the frame's length, so the walk visits a
 /// spread of rows instead of one stride's worth of them.
 pub const FINGERPRINT_STRIDE: usize = 997;
@@ -108,9 +368,250 @@ pub fn frame_fingerprint(frame: &[u8]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_pair, format_u32, frame_fingerprint, write_ratio, write_u64};
+    use super::{
+        NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
+        format_joining_title, format_network_name, format_pair, format_phase, format_question,
+        format_u32, format_verb, frame_fingerprint, write_ratio, write_u64,
+    };
     use alloc::vec;
     use alloc::vec::Vec;
+    use iot_core::drivers::network::{
+        AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, Ssid,
+    };
+    use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
+    use iot_core::overlay::GLYPH_PITCH;
+    use iot_core::state::Confirm;
+
+    #[test]
+    fn a_phase_and_a_failure_are_both_four_glyphs() {
+        let mut buf = [0u8; 4];
+        assert_eq!(format_phase(LinkPhase::Off, &mut buf), b"OFF");
+        assert_eq!(format_phase(LinkPhase::Scanning, &mut buf), b"SCAN");
+        assert_eq!(format_phase(LinkPhase::Connecting, &mut buf), b"JOIN");
+        assert_eq!(format_phase(LinkPhase::Connected, &mut buf), b"UP");
+        // Six kinds, six words: a heap that ran out and a radio that said no are the two a
+        // reader has to be able to tell apart, and one word for two of them would hide that.
+        let words = [
+            (NetworkError::Busy, b"BUSY".as_slice()),
+            (NetworkError::InvalidArguments, b"NAME".as_slice()),
+            (NetworkError::NoMemory, b"MEM".as_slice()),
+            (NetworkError::NotFound, b"NOAP".as_slice()),
+            (NetworkError::Credentials, b"AUTH".as_slice()),
+            (NetworkError::Driver, b"DRV".as_slice()),
+        ];
+        for (kind, word) in words {
+            assert_eq!(format_phase(LinkPhase::Failed(kind), &mut buf), word);
+        }
+    }
+
+    #[test]
+    fn an_address_is_a_dotted_quad_and_no_address_is_a_dash() {
+        let mut buf = [0u8; 16];
+        assert_eq!(format_address(None, &mut buf), b"-");
+        // The reading that overflowed nothing but a lazy buffer: fifteen glyphs is the widest
+        // an IPv4 address can be, and this is the one the bench actually hands out.
+        assert_eq!(
+            format_address(Some(Ipv4::from_octets([192, 168, 1, 136])), &mut buf),
+            b"192.168.1.136"
+        );
+        assert_eq!(
+            format_address(Some(Ipv4::from_octets([255, 255, 255, 255])), &mut buf),
+            b"255.255.255.255"
+        );
+        assert_eq!(
+            format_address(Some(Ipv4::from_octets([0, 0, 0, 0])), &mut buf),
+            b"0.0.0.0",
+            "a lease of zero is a reading, not an absence"
+        );
+    }
+
+    #[test]
+    fn bars_are_four_glyphs_of_which_the_reading_fills_some() {
+        let mut buf = [0u8; 4];
+        assert_eq!(format_bars(0, &mut buf), b"....");
+        assert_eq!(format_bars(2, &mut buf), b"##..");
+        assert_eq!(format_bars(4, &mut buf), b"####");
+        // Clamped rather than trusted: the bar count comes off the wire, and a fifth glyph in a
+        // four-glyph buffer is what this function would index past the end on.
+        assert_eq!(format_bars(9, &mut buf), b"####");
+    }
+
+    #[test]
+    fn a_name_that_is_not_text_draws_as_the_address_of_its_radio() {
+        let mut buf = [0u8; SSID_BYTES];
+        let named = ap(b"neighbour", [0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        assert_eq!(
+            format_network_name(named, NETWORK_NAME_GLYPHS, &mut buf),
+            b"neighbour"
+        );
+
+        let mut latin1 = [0u8; 32];
+        latin1[..4].copy_from_slice(&[0x63, 0x61, 0x66, 0xe9]);
+        let unnamed = AccessPoint {
+            ssid: Ssid::from_octets(&latin1[..4]),
+            ..named
+        };
+        assert_eq!(
+            format_network_name(unnamed, NETWORK_NAME_GLYPHS, &mut buf),
+            b"02:00:00:00:00:01",
+            "the row keeps its address when its name cannot be drawn"
+        );
+        assert_eq!(
+            format_network_name(named, 5, &mut buf),
+            b"neig~",
+            "and a narrower surface folds it to its own width"
+        );
+    }
+
+    #[test]
+    fn a_name_longer_than_the_row_keeps_its_head_and_says_so() {
+        let mut buf = [0u8; SSID_BYTES];
+        let long = ap(b"neighbour-extension-2.4GHz", [1, 2, 3, 4, 5, 6]);
+        let drawn = format_network_name(long, NETWORK_NAME_GLYPHS, &mut buf);
+        assert_eq!(drawn.len(), NETWORK_NAME_GLYPHS);
+        assert_eq!(
+            &drawn[..NETWORK_NAME_GLYPHS - 1],
+            b"neighbour-extension-2.4"
+        );
+        assert_eq!(drawn[NETWORK_NAME_GLYPHS - 1], b'~');
+
+        // Exactly the row's width is not truncated: the marker says "there is more", and a name
+        // that ends where the row does has no more to show.
+        let exact = ap(&[b'x'; NETWORK_NAME_GLYPHS], [1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            format_network_name(exact, NETWORK_NAME_GLYPHS, &mut buf),
+            &[b'x'; NETWORK_NAME_GLYPHS][..]
+        );
+    }
+
+    #[test]
+    fn a_question_names_the_network_it_is_about_within_the_boxes_own_line() {
+        let mut buf = [0u8; DIALOG_GLYPHS];
+        let named = ap(b"neighbour", [1, 2, 3, 4, 5, 6]);
+        let link = LinkStatus {
+            phase: LinkPhase::Connected,
+            ap: Some(named),
+            address: None,
+        };
+        assert_eq!(
+            format_question(Confirm::Leave, link, &mut buf),
+            b"LEAVE \"neighbour\"?"
+        );
+
+        // A name wider than what is left of the line is folded, and the box's own punctuation
+        // stays: the quotes and the question mark are what make the line a question, and a title
+        // that gave them up to fit a name would be a row rather than a question.
+        let long = ap(b"neighbour-extension-2.4GHz", [1, 2, 3, 4, 5, 6]);
+        let drawn = format_question(
+            Confirm::Leave,
+            LinkStatus {
+                ap: Some(long),
+                ..link
+            },
+            &mut buf,
+        );
+        assert_eq!(drawn.len(), DIALOG_GLYPHS);
+        assert_eq!(&drawn[..7], b"LEAVE \"");
+        assert_eq!(&drawn[drawn.len() - 2..], b"\"?");
+        assert_eq!(drawn[DIALOG_GLYPHS - 3], b'~', "the fold is marked");
+
+        // A forget's question is about the row the finger held rather than about the link, which is
+        // the whole reason the confirmation carries its own network.
+        assert_eq!(
+            format_question(Confirm::Forget(named), LinkStatus::default(), &mut buf),
+            b"FORGET \"neighbour\"?"
+        );
+    }
+
+    #[test]
+    fn a_question_without_a_network_is_the_verb_alone() {
+        // A link that went down under the box: the question is still the verb, drawn rather than
+        // naming a network the page is no longer about.
+        let mut buf = [0u8; DIALOG_GLYPHS];
+        assert_eq!(
+            format_question(Confirm::Leave, LinkStatus::default(), &mut buf),
+            b"LEAVE"
+        );
+    }
+
+    #[test]
+    fn the_join_box_says_which_stage_of_the_attempt_and_which_network() {
+        // Two stages, two lines: what the user waits on is the network accepting the credential,
+        // and then the network handing out an address. The word and the line under it are one fact
+        // about the radio, so both are driven by the same thing — whether there is an access point
+        // to name yet.
+        let mut buf = [0u8; DIALOG_GLYPHS];
+        let named = ap(b"neighbour", [1, 2, 3, 4, 5, 6]);
+        assert_eq!(format_joining_title(None, &mut buf), b"JOINING");
+        assert_eq!(format_joining_body(None), b"WAIT FOR THE NETWORK");
+        assert_eq!(
+            format_joining_title(Some(named), &mut buf),
+            b"JOINED neighbour"
+        );
+        assert_eq!(format_joining_body(Some(named)), b"WAIT FOR AN ADDRESS");
+
+        // The name gives way rather than the word: what the line is about is the attempt, and a
+        // box whose title dropped to a fold marker would say nothing about what it was doing.
+        let long = ap(b"neighbour-extension-2.4GHz", [1, 2, 3, 4, 5, 6]);
+        let drawn = format_joining_title(Some(long), &mut buf);
+        assert_eq!(drawn.len(), DIALOG_GLYPHS);
+        assert_eq!(&drawn[..7], b"JOINED ");
+        assert_eq!(drawn[DIALOG_GLYPHS - 1], b'~', "the fold is marked");
+    }
+
+    #[test]
+    fn both_of_the_join_boxes_lines_fit_the_line_the_box_gives_them() {
+        for ap in [None, Some(ap(b"neighbour", [1, 2, 3, 4, 5, 6]))] {
+            let mut buf = [0u8; DIALOG_GLYPHS];
+            assert!(
+                format_joining_title(ap, &mut buf).len() <= DIALOG_GLYPHS,
+                "the title is wider than the box's own line: {ap:?}"
+            );
+            assert!(
+                format_joining_body(ap).len() <= DIALOG_GLYPHS,
+                "what the radio is waiting on is wider than the box's own line"
+            );
+        }
+    }
+
+    #[test]
+    fn the_boxes_words_are_the_verbs_own_and_fit_the_box() {
+        // The button and the question share their word: a finger that read `LEAVE "cafe"?` and
+        // pressed a button saying anything else would be pressing an action it did not read.
+        let cafe = ap(b"cafe", [1, 2, 3, 4, 5, 6]);
+        let link = LinkStatus {
+            phase: LinkPhase::Connected,
+            ap: Some(cafe),
+            address: None,
+        };
+        for confirm in [Confirm::Leave, Confirm::Forget(cafe)] {
+            let verb = format_verb(confirm);
+            let mut buf = [0u8; DIALOG_GLYPHS];
+            let question = format_question(confirm, link, &mut buf);
+            assert!(
+                question.starts_with(verb),
+                "the question is asked with the button's own word"
+            );
+            assert!(
+                verb.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
+                "the word of the action does not fit the button that performs it"
+            );
+            assert!(
+                format_body(confirm).len() <= DIALOG_GLYPHS,
+                "the consequence does not fit the line under the question"
+            );
+        }
+    }
+
+    fn ap(ssid: &[u8], bssid: [u8; 6]) -> AccessPoint {
+        AccessPoint {
+            ssid: Ssid::from_octets(ssid),
+            bssid,
+            channel: 6,
+            rssi: -55,
+            secured: true,
+        }
+    }
 
     #[test]
     fn a_pair_holds_the_widest_reading_a_sensor_reports() {

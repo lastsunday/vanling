@@ -49,7 +49,7 @@ CHIP_COMPONENTS=(
   # component to reach a crate (`iot-chip-esp`) that pulls in `esp-println`, whose
   # build script fails unless both a chip and a console are named — which an image
   # normally does on the app's behalf.
-  "wifi,esp-hal/esp32s3,esp-radio/esp32s3,iot-chip-esp/esp32s3,iot-chip-esp/console-auto"
+  "wifi,esp-hal/esp32s3,esp-radio/esp32s3,esp-storage/esp32s3,iot-chip-esp/esp32s3,iot-chip-esp/console-auto"
 )
 
 # The radio is the one component that reaches a part's memory layout as well as its
@@ -57,7 +57,7 @@ CHIP_COMPONENTS=(
 # build that checks one part's wiring has checked half of what the component assumes.
 # Named per chip rather than per feature because only this one is per chip.
 C6_COMPONENTS=(
-  "wifi,esp-hal/esp32c6,esp-radio/esp32c6,iot-chip-esp/esp32c6,iot-chip-esp/console-auto"
+  "wifi,esp-hal/esp32c6,esp-radio/esp32c6,esp-storage/esp32c6,iot-chip-esp/esp32c6,iot-chip-esp/console-auto"
 )
 
 failed=()
@@ -82,6 +82,13 @@ for component in "${CHIP_COMPONENTS[@]}"; do
   fi
 done
 
+# The C6 subsets stay on the dispatcher even though this target has a prebuilt
+# `core`/`alloc` and the container therefore buys the *check* nothing: with
+# `check-c6` now on the host toolchain, they are the only task that runs in CI
+# handing iot-xtensa.sh a non-S3 target, and that is what holds the S3-only
+# `ESP_HAL_CONFIG_DATA_CACHE_SIZE` export honest. The failure is loud when it
+# breaks (esp-config rejects an option that is inactive for the chip), but nothing
+# else would raise it — `probe-wifi-c6` is neither in CI nor in `moon check`.
 for component in "${C6_COMPONENTS[@]}"; do
   if (cd "$ROOT/apps/iot" && bash "$ROOT/scripts/iot-xtensa.sh" check \
         -p "$BSP" --no-default-features --features "$component" \

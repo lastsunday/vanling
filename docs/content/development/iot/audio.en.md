@@ -3,7 +3,7 @@ title = "Audio Metering Semantics"
 weight = 260
 sort_by = "weight"
 [extra]
-source_file_hash = "bbf13df20a96c813d0b87f0838f6761b36c8d837"
+source_file_hash = "a6ca81a9d24dad0512071a1186898ef21e3ae1f1"
 translated_at = "2026-10-14T15:19:04Z"
 +++
 
@@ -17,7 +17,7 @@ The capture driver never stops. It is always folding the samples the I2S deliver
 
 Reading `ST` as "the recorder is running / stopped" gets two things wrong at once: recording makes the driver do no additional work, and stopping it makes the driver do no less.
 
-A capture poll is pure data plane: it refreshes the envelope and raises zero semantics. Starting and stopping are decided only by a business-side click (`ToggleRecord` in `intent.rs`), and only on the Audio page — a click on any other page still cycles the color.
+A capture poll is pure data plane: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot plane the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a business-side click (`ToggleRecord` in `intent.rs`), and only on the Audio page — a click on any other page still cycles the color.
 
 There are three phases: `IDLE` (nothing captured, the panel draws only `TAP TO REC` and no sweep), `REC` (follows the live envelope), and `STOP` (draws the latched copy). A click on either `IDLE` or `STOP` goes straight back to `REC`.
 

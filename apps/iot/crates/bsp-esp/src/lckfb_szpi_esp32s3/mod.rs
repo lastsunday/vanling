@@ -25,23 +25,25 @@ use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_rx_buffer, dma_tx_buffer};
+use esp_storage::FlashStorage;
 use iot_core::config::MotionConfig;
 use iot_core::demand::PlaneKey;
-use iot_core::drivers::audio::{AudioInput, CAPTURE_MS};
+use iot_core::drivers::audio::{AudioInput, CAPTURE_MS, CaptureSink};
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
-    TouchGestures, TouchMap,
+    TouchGestures,
 };
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
+use crate::components::credentials::CredentialStore;
 use crate::components::es7210::{ES7210_I2C_ADDR, Es7210};
 use crate::components::es8311::{ChipId, ES8311_I2C_ADDR, ES8311_I2C_ADDR_ALT, Es8311};
-use crate::components::ft6336::{FT6336_I2C_ADDR, Ft6336};
+use crate::components::ft6336::{self, FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
 use crate::components::qmi8658::{
     MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi, SUPPORTED_CONFIGS,
@@ -322,6 +324,14 @@ pub struct Board<'d> {
     /// `new` because the driver's start needs the scheduler, and the scheduler is
     /// the app's to start — see [`HasWifi`].
     radio: Option<WIFI<'static>>,
+    /// The saved networks, over the partition the table in `partitions/` gives them. Read
+    /// at bring-up; handed to the link by [`Board::take_credentials`].
+    ///
+    /// Boxed because of where it travels: the link's futures are polled inside the one task
+    /// the whole product shares, so every frame that carries the list by value is that many
+    /// hundred bytes of the main stack's own region — and the region is what the static data
+    /// around a 64 KB stack has to fit in.
+    credentials: Option<Box<CredentialStore>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
@@ -384,8 +394,23 @@ impl Board<'static> {
             // The radio, kept for `HasWifi::take_wifi`: the driver's start needs the
             // scheduler, which the app starts after this returns.
             WIFI,
+            FLASH,
             ..
         } = peripherals;
+
+        // Read before anything else is brought up, so a partition that will not read is
+        // said while the boot still has the frame for the table. The store is what the
+        // panel's own credential goes into and what a boot with no build input comes up
+        // with.
+        //
+        // Auto-parking the other core is the difference between this part and the C6: a
+        // write needs the flash to itself, and this one has a second core that could be
+        // running code out of it. This build never starts that core, but nothing above this
+        // layer can tell, and a strategy that has to be revisited when something does is a
+        // strategy that will be forgotten.
+        let credentials =
+            crate::components::credentials::load(FlashStorage::new(FLASH).multicore_auto_park())
+                .map(Box::new);
 
         let (bus, mut pca9557) = bring_up_i2c(
             i2c_master::I2c::new(I2C0, i2c_master::Config::default())
@@ -441,7 +466,7 @@ impl Board<'static> {
         let touch = Ft6336::new(
             I2cDevice::new(bus),
             FT6336_I2C_ADDR,
-            TouchMap::IDENTITY,
+            ft6336::LANDSCAPE_MAP,
             LCD_WIDTH,
             LCD_HEIGHT,
         );
@@ -595,6 +620,7 @@ impl Board<'static> {
                 speaker,
                 camera,
                 radio: Some(WIFI),
+                credentials,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -653,6 +679,9 @@ impl Board<'static> {
                 speaker: None,
                 camera: None,
                 radio: None,
+                // The store's peripheral is the probe path's too, but a probe has nothing to
+                // keep: it reads its own numbers and exits.
+                credentials: None,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -734,6 +763,7 @@ impl Board<'static> {
                 // wires the speaker alone, so it must hand over none.
                 camera: None,
                 radio: None,
+                credentials: None,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
@@ -749,6 +779,15 @@ impl Board<'static> {
     /// registers itself and counting what that caused.
     pub fn take_motion_driver(&mut self) -> Option<Qmi8658<SharedI2cDevice>> {
         self.motion.take()
+    }
+
+    /// The saved networks, for the link that keeps them.
+    ///
+    /// Taken rather than borrowed: the task that holds the link is the one that writes a
+    /// credential the panel named, and it is the only writer there is — a second handle
+    /// would be a second copy of a list the flash has one of.
+    pub fn take_credentials(&mut self) -> Option<Box<CredentialStore>> {
+        self.credentials.take()
     }
 
     /// The capture driver itself, for a probe that has to read the canceller's own
@@ -834,12 +873,12 @@ impl HasPlayback for Board<'static> {
 }
 
 impl HasAudio for Board<'static> {
-    fn take_audio(&mut self) -> Option<PollEntry> {
+    fn take_audio(&mut self, sink: &'static dyn CaptureSink) -> Option<PollEntry> {
         self.audio.take().map(|audio| {
             PollEntry::new(
                 2,
                 PlaneKey::AUDIO,
-                Box::new(AudioInput::new(audio)),
+                Box::new(AudioInput::new(audio, sink)),
                 Box::new(PassThrough),
                 CAPTURE_MS,
             )

@@ -466,7 +466,6 @@ impl EchoReport {
 /// did. Taken by the board's `take_capture`, beside `take_motion_driver` and for
 /// the same reason — the driver is the only thing that can reach the part.
 pub trait EchoCapture {
-    /// One poll: drain, pair against the reference, and report.
     /// Whether the canceller is currently running. A probe has to see this: every
     /// figure it reports is zero when it is off, and a run of zero ERLE lines
     /// means nothing at all without knowing which of the two happened.

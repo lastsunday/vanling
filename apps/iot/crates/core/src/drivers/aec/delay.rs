@@ -56,7 +56,7 @@ const REFRESH_SAMPLES: usize = 16 * WINDOW;
 /// [`WINDOW`] — both of which cost capability rather than just time: the first
 /// the range of delays findable, the second the pitch structure the correlation
 /// locks onto. What is left instead is the interval above.
-/// The lag grid is every sample, for the reason above. Named so that a reader
+/// Named so that a reader
 /// reaching for a stride has to delete a statement that says why not.
 const LAG_STEP: usize = 1;
 
@@ -195,8 +195,6 @@ impl DelayEstimator {
         self.searches
     }
 
-    /// Folds one sample of each in, and recomputes the delay once the history is
-    /// full and the refresh interval has passed. `None` means nothing new.
     /// Where the strongest match sits over a range far wider than [`SEARCH`],
     /// found on a coarse grid, and how strong it is.
     ///

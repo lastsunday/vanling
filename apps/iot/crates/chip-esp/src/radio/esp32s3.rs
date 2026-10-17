@@ -18,15 +18,25 @@ const RECLAIMED_BYTES: usize = 32 * 1024;
 static mut RECLAIMED_MEM: [core::mem::MaybeUninit<u8>; RECLAIMED_BYTES] =
     [const { core::mem::MaybeUninit::uninit() }; RECLAIMED_BYTES];
 
-/// The driver's share of `dram_seg`, the only internal DRAM left that nothing has to be
-/// traded for.
+/// The driver's share of `dram_seg`: what the main stack can spare, not a preference.
 ///
-/// **32 KiB, not the documented 47–57 KiB**, which the reclaimed region above makes up. This
-/// part is where that split was measured: the app's own heap moved to PSRAM, which took the
-/// main stack from 63,788 B (1,748 B under the asserted floor) to 125,788 B with 39,809 B in
-/// use — and the stack is the one thing on this part whose peak is instrumented, so giving
-/// away half of it is a measurement rather than a gamble.
-const INTERNAL_BYTES: usize = 32 * 1024;
+/// **16 KiB, 48 KiB together with the reclaimed region above** — the total the C6 ships, and a
+/// total this part's driver has already run against: under the 64 KiB this used to ask for, the
+/// probe read 32,204 B free after a scan, an association and 40 s of lease renewals; at 48 KiB
+/// it reads 15,820 B across the same stages.
+///
+/// The 32 KiB this part used to add on top was paying for the Wi-Fi blob's IRAM code: 31,980 B
+/// of it links into the product, and esp-hal's `.rwdata_dummy` reserves those same bytes out of
+/// `dram_seg`, because the same SRAM answers both addresses. With the product's own statics
+/// beside it the data cursor overruns `RWDATA`'s end, leaving the main stack 12,264 B short of
+/// the floor `ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM` asserts — putting the 32 KiB back
+/// reproduces that failure in one line.
+///
+/// Sending that IRAM code to flash would pay the difference back without a cut here, and this
+/// repository cannot do it: the rule has to be parsed between the chip script's
+/// `.rotext_dummy` and its `rwtext.x`, and esp-hal generates both in the same file. The
+/// measured ledger is in `@/records/iot/wifi.md`.
+const INTERNAL_BYTES: usize = 16 * 1024;
 
 /// The `dram_seg` half, a plain static: `dram_seg` is internal DRAM like any other, and this
 /// is the only place left on this part that is not already spoken for.

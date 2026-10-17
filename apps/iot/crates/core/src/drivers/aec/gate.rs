@@ -68,7 +68,6 @@ const HOLD_SAMPLES: u32 = 128;
 /// number no measurement can check.
 pub const MAX_STEP_Q30: i64 = 1 << (COEFFICIENT_SHIFT - 1);
 
-/// Fractional bits the coherence is reported at.
 const COHERENCE_FRACTION: u32 = 15;
 
 /// Whether the filter may adapt this sample, and by how much.

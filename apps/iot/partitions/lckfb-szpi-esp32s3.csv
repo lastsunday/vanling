@@ -20,8 +20,9 @@
 #   reached on this part and the partition is worth having — it is where the driver
 #   keeps the calibration it writes on the first boot. `@/records/iot/wifi.md`.
 #
-# `nvs` stays: it is where the driver's saved state and any credentials the
-# product keeps will live, and both need somewhere to be.
+# `nvs` stays: it is where the driver's saved state lives, and the product's
+# credentials need somewhere of their own — which is the `creds` partition below,
+# not this one.
 #
 # Offsets after `nvs` are omitted, so each partition starts where the previous one
 # ended — the form the ESP-IDF documentation uses, and the one that cannot drift
@@ -36,3 +37,7 @@
 nvs,data,nvs,0x9000,0x6000,
 phy_init,data,phy,,0x1000,
 factory,app,factory,,6M,
+# The saved networks: two 4 KB slots, which is the whole region the store in
+# `core/src/drivers/credentials.rs` is built for. Last, because it is the only
+# partition the firmware writes and nothing above it depends on it.
+creds,data,undefined,,0x2000,

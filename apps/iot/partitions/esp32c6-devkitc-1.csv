@@ -21,3 +21,7 @@
 nvs,data,nvs,0x9000,0x6000,
 phy_init,data,phy,,0x1000,
 factory,app,factory,,1M,
+# The saved networks: two 4 KB slots, which is the whole region the store in
+# `core/src/drivers/credentials.rs` is built for. Last, because it is the only
+# partition the firmware writes and nothing above it depends on it.
+creds,data,undefined,,0x2000,

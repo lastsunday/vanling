@@ -11,12 +11,13 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
-use iot_app::{SpeakerRunner, run};
+use iot_app::render::{FORGET, JOIN, RESCAN, SCAN};
+use iot_app::{Link, SpeakerRunner, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandField, PlaneKey, Speed, SpeedTable};
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::audio::{
-    AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL,
+    AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL, CaptureSink,
     SAMPLES_PER_COLUMN, SampleStream, dbfs,
 };
 use iot_core::drivers::board::{
@@ -33,8 +34,12 @@ use iot_core::drivers::motion::{
     MOTION_SCAN_MS, MotionCapabilities, MotionError, MotionEvents, MotionInput, MotionReading,
     MotionSample, MotionScale, MotionSource,
 };
+use iot_core::drivers::network::{
+    AccessPoint, ApList, Credentials, JoinRequest, SavedNetworks, Ssid,
+};
 use iot_core::drivers::playback::{Recovery, Sound, Speaker, SpeakerFault};
-use iot_core::intent::PALETTE;
+use iot_core::intent::{BusinessIntent, Intent, PALETTE};
+use iot_core::keyboard::Key;
 use iot_core::state::{DisplayPage, PlaybackPhase};
 
 /// Recorded paint operations per surface, so the smoke can assert what `run`
@@ -60,6 +65,19 @@ static AUDIO_POLLS: AtomicUsize = AtomicUsize::new(0);
 /// to have travelled the whole input → intent → state → sink path and not just
 /// to have been served by the source.
 static AUDIO_COLUMNS: AtomicUsize = AtomicUsize::new(0);
+
+/// The most access points any diagnostics snapshot carried, so a list published on the link's
+/// own plane is proven to have travelled the whole plane → state → sink path. Zero is what a
+/// snapshot says before anything has scanned, so the maximum is the reading that matters.
+static NETWORK_APS: AtomicUsize = AtomicUsize::new(0);
+
+/// The most glyphs any snapshot's passphrase draft carried, so a key typed on the panel's
+/// keyboard is proven to reach a snapshot — which is to say that it is drawn — rather than
+/// stopping in the state layer.
+static NETWORK_TYPED: AtomicUsize = AtomicUsize::new(0);
+
+/// How many names the store's own report carried into the panel's snapshot.
+static NETWORK_SAVED: AtomicUsize = AtomicUsize::new(0);
 
 /// The highest repair count any sink saw, so the smoke can prove the count
 /// reaches the panel rather than stopping at the state layer.
@@ -333,6 +351,22 @@ impl iot_core::diagnostics::DiagnosticsSink for HostLight {
             Ordering::SeqCst,
         );
         AUDIO_DBA_LSB.fetch_max(usize::from(diagnostics.audio.dba_lsb), Ordering::SeqCst);
+        NETWORK_APS.fetch_max(
+            diagnostics.aps.map_or(0, |list| list.len()),
+            Ordering::SeqCst,
+        );
+        NETWORK_TYPED.fetch_max(
+            diagnostics.setup.entry.map_or(0, |entry| entry.len()),
+            Ordering::SeqCst,
+        );
+        NETWORK_SAVED.fetch_max(
+            diagnostics.aps.map_or(0, |list| {
+                (0..list.len())
+                    .filter(|&index| list.is_saved(index))
+                    .count()
+            }),
+            Ordering::SeqCst,
+        );
         PLAYBACK_PLAYS.fetch_max(usize::from(diagnostics.playback.plays), Ordering::SeqCst);
         PLAYBACK_DROPPED.fetch_max(usize::from(diagnostics.playback.dropped), Ordering::SeqCst);
         if diagnostics.playback.muted {
@@ -349,7 +383,7 @@ struct HostBoard {
     lights: Option<Vec<HostLight>>,
     input: Option<Vec<PollEntry>>,
     motion: Option<PollEntry>,
-    audio: Option<PollEntry>,
+    audio: Option<HostAudio>,
     playback: Option<HostSpeaker>,
     camera: Option<Box<dyn FrameSource>>,
 }
@@ -394,17 +428,11 @@ impl HostBoard {
                 Box::new(PassThrough),
                 MOTION_SCAN_MS,
             )),
-            audio: Some(PollEntry::new(
-                3,
-                PlaneKey::AUDIO,
-                Box::new(AudioInput::new(HostAudio {
-                    envelope: AudioEnvelope::ZERO,
-                    stream: SampleStream::new(),
-                    phase: 0,
-                })),
-                Box::new(PassThrough),
-                CAPTURE_MS,
-            )),
+            audio: Some(HostAudio {
+                envelope: AudioEnvelope::ZERO,
+                stream: SampleStream::new(),
+                phase: 0,
+            }),
             playback: Some(HostSpeaker { feeds_left: 0 }),
             camera: Some(Box::new(HostCamera { frames: 0 })),
         }
@@ -438,8 +466,16 @@ impl HasMotion for HostBoard {
 }
 
 impl HasAudio for HostBoard {
-    fn take_audio(&mut self) -> Option<PollEntry> {
-        self.audio.take()
+    fn take_audio(&mut self, sink: &'static dyn CaptureSink) -> Option<PollEntry> {
+        self.audio.take().map(|source| {
+            PollEntry::new(
+                3,
+                PlaneKey::AUDIO,
+                Box::new(AudioInput::new(source, sink)),
+                Box::new(PassThrough),
+                CAPTURE_MS,
+            )
+        })
     }
 }
 
@@ -566,7 +602,12 @@ async fn main(_spawner: Spawner) {
     // Host has no interrupt executor to hand the feed's cadence to, and the
     // scenarios assert against a loop they can observe, so the feed is joined
     // onto this executor exactly as it was before the split.
-    match select(run(board, HostClock, SpeakerRunner::Inline), scenario()).await {
+    match select(
+        run(board, HostClock, SpeakerRunner::Inline, Link::Wired),
+        scenario(),
+    )
+    .await
+    {
         Either::First(never) => match never {},
         Either::Second(()) => {}
     }
@@ -853,6 +894,163 @@ async fn scenario() {
         PAINTED.lock().unwrap().len() > painted_before,
         "no fill reached the surface after leaving the camera page"
     );
+
+    // 12. The Network page, which comes after the camera one in the cycle and exists because
+    //     the entry point said a station came up. Nothing here wires a radio — the host has
+    //     none — so what is asserted is the composition's half: the capability reaches the
+    //     state machine, the page is drawn, and a scan published on the link's own plane
+    //     arrives in the snapshot a sink reads.
+    assert!(
+        page_seen(DisplayPage::Network),
+        "the link's page was never reached by the cycle"
+    );
+
+    let list = ApList::from_ranked(&[AccessPoint {
+        ssid: Ssid::from_octets(b"neighbour"),
+        bssid: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
+        channel: 11,
+        rssi: -55,
+        secured: true,
+    }]);
+    SCAN.publish(list);
+
+    attempts = 0;
+    while NETWORK_APS.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert_eq!(
+        NETWORK_APS.load(Ordering::SeqCst),
+        1,
+        "a scan published on the link's plane never reached the panel's snapshot"
+    );
+
+    // 13. The keyboard, driven the way the panel would drive it and asserted the way the
+    //     network task reads it. The host wires no touch panel, so the taps are sent as the
+    //     business intents `translate` produces from them — which is the half of the path the
+    //     composition owns; the hit test and the multi-tap are core's, and pinned there.
+    let send = |intent: BusinessIntent| {
+        let _ = iot_app::input::INTENT_BUS.try_send(Intent::Business(intent));
+    };
+
+    // Picking a band opens the keyboard on the network that band showed, and the phrase it starts
+    // with is empty: `NETWORK_TYPED` counts a draft of no glyphs as nothing typed.
+    send(BusinessIntent::Row(0));
+    Timer::after(Duration::from_millis(100)).await;
+
+    // Typing reaches the snapshot, which is what makes a key visible on the panel. `hat` is the
+    // two shapes a finger makes that no single tap shows: `h` is the `ghi` key tapped twice, which
+    // is the key's own character cycling rather than a second character, and the capital is a
+    // one-shot shift spent on the `t` after it.
+    let mut at_ms = 100;
+    for key in [
+        Key::Char(b'4'),
+        Key::Char(b'4'),
+        Key::Char(b'2'),
+        Key::Shift,
+        Key::Char(b'8'),
+    ] {
+        send(BusinessIntent::Key { key, at_ms });
+        at_ms += 100;
+    }
+    attempts = 0;
+    while NETWORK_TYPED.load(Ordering::SeqCst) < 3 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert_eq!(
+        NETWORK_TYPED.load(Ordering::SeqCst),
+        3,
+        "the keyboard's draft never reached the panel's snapshot"
+    );
+
+    // ... and connect hands it to the plane the network task reads from. The passphrase is
+    // compared here and written nowhere: the smoke's output carries it no further.
+    send(BusinessIntent::Key {
+        key: Key::Connect,
+        at_ms,
+    });
+    attempts = 0;
+    let mut handed = JOIN.take();
+    while handed.is_none() && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        handed = JOIN.take();
+        attempts += 1;
+    }
+    let handed = handed.expect("connect never reached the join plane");
+    // The page hands over one of two shapes, and this is the one a keyboard's own key produces: a
+    // passphrase, printed nowhere.
+    let JoinRequest::Typed(handed) = handed else {
+        panic!("connect handed over a row's name rather than the passphrase it was given");
+    };
+    assert_eq!(
+        handed.ssid.as_bytes(),
+        b"neighbour",
+        "the credential did not carry the row that was picked"
+    );
+    assert_eq!(
+        handed.password.as_bytes(),
+        b"haT",
+        "the credential did not carry what was typed"
+    );
+
+    // 14. The page's own controls, on the planes the network task reads, and the marks the store
+    //     puts on the list coming back the other way. The host wires neither a radio nor a
+    //     partition, so what is asserted is the composition's half: the loop publishes what the
+    //     state was asked for, and a list marked the way the network task marks one lands in the
+    //     snapshot the panel draws its marks from.
+    send(BusinessIntent::Key {
+        key: Key::Cancel,
+        at_ms,
+    });
+    Timer::after(Duration::from_millis(100)).await;
+
+    // The list the network task publishes, with the marks the store would put on its rows: the
+    // snapshot the panel draws its marks from carries them on the list itself, and a mark drawn
+    // from anything else would be a guess.
+    let mut store = SavedNetworks::empty();
+    store.remember(
+        &Credentials::from_text("neighbour", "haT").expect("a credential the radio takes"),
+    );
+    let mut marked = list;
+    let marks = store.mask(&marked);
+    marked.mark_saved(marks);
+    SCAN.publish(marked);
+    attempts = 0;
+    while NETWORK_SAVED.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert_eq!(
+        NETWORK_SAVED.load(Ordering::SeqCst),
+        1,
+        "a marked list published on the link's plane never reached the panel's snapshot"
+    );
+
+    // The strip with no link on it: one request, and it lands on the survey's own plane. A tap that
+    // reached the state and stopped there would be a panel that asks and a radio that never hears.
+    send(BusinessIntent::Toolbar);
+    assert!(
+        select(RESCAN.ready(), Timer::after(Duration::from_secs(1)))
+            .await
+            .is_first(),
+        "the strip's request to look around never reached the survey's plane"
+    );
+
+    // And the row a finger holds: the question, its answer, and the name on the plane the network
+    // task erases from. The network is the one the store reported, which is what makes the hold a
+    // question at all.
+    send(BusinessIntent::RowHold(0));
+    Timer::after(Duration::from_millis(100)).await;
+    send(BusinessIntent::Confirm);
+    match select(FORGET.ready(), Timer::after(Duration::from_secs(1))).await {
+        Either::First(ssid) => assert_eq!(
+            ssid.as_bytes(),
+            b"neighbour",
+            "the forget named a network other than the row that was held"
+        ),
+        Either::Second(()) => panic!("the hold's answer never reached the store's plane"),
+    }
 
     std::process::exit(0);
 }
