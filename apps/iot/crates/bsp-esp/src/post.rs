@@ -3,12 +3,9 @@
 //! A desktop prints this during POST; an embedded board usually does not, and
 //! that is a real loss — **a part that is present and broken is invisible**, and
 //! a log that reports only failures cannot tell "nothing is wrong" from "nothing
-//! was ever tried".
-//!
-//! [`State`] splits a fit from a failure rather than letting one answer stand for
-//! both, because a device that was never fitted and a device whose init failed
-//! are otherwise the same observation, and a log that only reports failures
-//! cannot tell "nothing is wrong" from "nothing was ever tried".
+//! was ever tried". [`State`](crate::post::State) splits the two: a device that
+//! was never fitted and a device whose init failed are otherwise the same
+//! observation.
 //!
 //! Deliberately *not* here: **flash capacity.** Reading it means the JEDEC
 //! `RDID`, which needs the SPI bus — on this board the panel's, held by the panel
@@ -16,8 +13,9 @@
 //! from `espflash board-info` on the host and lives in the documentation. A
 //! number that costs a bus fight to recover is not worth an inventory line.
 //!
-//! Gated on the board features, because only a board's bring-up has an inventory
-//! to report and `check-features` builds every other feature alone.
+//! Ungated, unlike the board modules around it: only [`identity`](crate::post::identity) needs a chip and that
+//! one function carries its own gate, so the states and the reporting can be built and
+//! tested on a host.
 // The only part of this module that needs a chip, and gated so the rest can be
 // built and tested on a host: everything below the identity reads no
 // peripheral, and a host test is the only place `is_ready` gets exercised.

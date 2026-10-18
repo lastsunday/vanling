@@ -3,8 +3,8 @@ title = "Input and Touch Implementation Record"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "7bea578524dfb85bd30dda882536f49fa48510fe"
-translated_at = "2026-10-16T12:52:00Z"
+source_file_hash = "8f56a82581811e4db3339ce3153bb19e58c78945"
+translated_at = "2026-10-18T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -30,7 +30,7 @@ The verdict over one run of 46 transitions:
 - all five pages appeared
 - one physical tap = one transition, which is what the zero repeated pages proves
 
-`[test]` `every_page_the_board_can_back_is_shown_on_the_way_round` (`core/src/state.rs`) has pinned the order table on the host for a while, so what this measurement adds is not "is the order right" but that **the driver, the recognizer, the intent, the state and the renderer really do advance one step at a time on hardware.**
+`[test]` `every_page_the_board_can_back_is_shown_on_the_way_round` (`core/src/state/mod.rs`) has pinned the order table on the host for a while, so what this measurement adds is not "is the order right" but that **the driver, the recognizer, the intent, the state and the renderer really do advance one step at a time on hardware.**
 
 `[measured]` One **wrong reading** is worth recording, because it changed how I read logs: `[DISPLAY]`'s cost report is a **2-second window** and only names the page at the end of it. `Ambient → Attitude → Audio` can all happen inside one window, and from "the window ended on Audio" I concluded the pages were jumping. **The person was right and the 2-second window was not** — the same suspicious observation was settled by eye.
 

@@ -345,7 +345,7 @@ fn cell(x: usize, y: usize) -> Option<usize> {
 /// The cell a key owns, in pixels: the one mapping both the drawing and the hit test read.
 ///
 /// Every key is exactly one cell — the grid is the layout table read as rows either way — so this
-/// is [`cell`]'s own arithmetic read backwards and nothing else.
+/// is `cell`'s own arithmetic read backwards and nothing else.
 pub fn key_box(cell: usize) -> Option<ControlRect> {
     (cell < KEYS).then(|| ControlRect {
         x: (cell % COLUMNS) * KEY_W,

@@ -1,12 +1,15 @@
 use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 
 use crate::heap::Window;
-use embassy_executor::SendSpawner;
+use embassy_executor::{SendSpawner, Spawner};
 use esp_bootloader_esp_idf::esp_app_desc;
 use esp_hal::clock::CpuClock;
-use esp_hal::peripherals::{FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, PSRAM, Peripherals, SYSTEM};
+use esp_hal::peripherals::{
+    CPU_CTRL, FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, PSRAM, Peripherals, SYSTEM,
+};
 use esp_hal::psram::{Psram, PsramConfig};
 use esp_hal::rom::ets_update_cpu_frequency_rom;
+use esp_hal::system::Stack;
 use iot_core::demand::{DemandField, Speed, SpeedTable};
 
 /// Brings the chip up, optionally at a clock other than [`CpuClock`]'s default.
@@ -287,4 +290,31 @@ static FEED_EXECUTOR: esp_hal::__macro_implementation::static_cell::StaticCell<
 pub fn start_feed_executor(intr1: FROM_CPU_INTR1<'static>) -> SendSpawner {
     let executor = FEED_EXECUTOR.init(esp_rtos::embassy::InterruptExecutor::new(intr1));
     executor.start(esp_hal::interrupt::Priority::Priority2)
+}
+
+/// The second APP core's thread-mode executor. A `StaticCell` because `esp_rtos::embassy::Executor::run`
+/// borrows its executor for as long as it runs, which is forever.
+static SECOND_CORE_EXECUTOR: esp_hal::__macro_implementation::static_cell::StaticCell<
+    esp_rtos::embassy::Executor,
+> = esp_hal::__macro_implementation::static_cell::StaticCell::new();
+
+/// Boots the second APP core and runs `init` on a thread-mode executor there.
+///
+/// Lives beside [`start_rtos`]/[`start_feed_executor`] because starting a core is this
+/// layer's job, not a probe's: the caller owns only the stack it hands in — a probe picks
+/// that size on purpose, and a larger one would hide the reservation mistake the multicore
+/// probe exists to expose — while building the executor and reaching for `esp_rtos` stays
+/// here.
+///
+/// `intr1` is the SMP scheduler's, and the scheduler must already be running ([`start_rtos`]).
+pub fn start_second_core<const STACK_SIZE: usize>(
+    cpu_control: CPU_CTRL<'static>,
+    intr1: FROM_CPU_INTR1<'static>,
+    stack: &'static mut Stack<STACK_SIZE>,
+    init: impl FnOnce(Spawner) + Send + 'static,
+) {
+    esp_rtos::start_second_core(cpu_control, intr1, stack, move || {
+        let executor = SECOND_CORE_EXECUTOR.init(esp_rtos::embassy::Executor::new());
+        executor.run(init);
+    });
 }

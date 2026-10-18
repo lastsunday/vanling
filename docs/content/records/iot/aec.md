@@ -670,7 +670,7 @@ wire_position = pushed_frames − (ring_frames − free_bytes / frame_bytes)
 
 `[实测]` 同一类的第二个错，同样静默。麦克风是**正着走**的（`scratch_mic[0]` 是本次排空里最老的一帧），参考日志只能**倒着读**（`out[0]` 是此刻线缆上的那一帧，也就是最新麦克风听到的那一帧）。这两段直接 zip，**最老的麦克风配上了最新的参考**——每一对都错了整段那么远，而滤波器照样会收敛到**某个东西**上，于是 ERLE 仍是一个看着合理的数，不会是刺眼的 0。
 
-修法是在 `pair_and_cancel` 里把参考**反转回时间序**再喂。`[测试]` `a_reference_run_read_newest_first_pairs_once_reversed` 钉住「反转一次回到对齐配对」与「不反转明显更差」两条；`Reference::read_backwards` 的文档里也写明了这个方向，免得下一个读它的人重踩。
+修法是在 `pair` 里把参考**反转回时间序**再喂（随后 `cancel_pairing` 才把它交给消除器）。`[测试]` `a_reference_run_read_newest_first_pairs_once_reversed` 钉住「反转一次回到对齐配对」与「不反转明显更差」两条；`Reference::read_backwards` 的文档里也写明了这个方向，免得下一个读它的人重踩。
 
 两处都留在记录里，因为它们是**同一类**：`RING_BYTES - free` 看着像位置其实是占用量，而 `read_backwards` 看着该直接配对其实要先反转。**两个都是「读起来完全正常、结果全是垃圾」**——这正是这条路径上唯一真正危险的一类缺陷，也是为什么配对的每一列都跟着 ERLE 一起报。
 

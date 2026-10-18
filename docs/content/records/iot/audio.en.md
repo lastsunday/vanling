@@ -3,8 +3,8 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "d8620f1c8dc6eaa4e8262a1f58e5cacd6f99c66c"
-translated_at = "2026-10-11T08:52:24Z"
+source_file_hash = "40a393d107c1e9e5f8b90df50562bec31261892f"
+translated_at = "2026-10-18T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -95,7 +95,7 @@ Two conclusions:
 
 There is also a trap in the method itself: differencing yields a **marginal** cost, and it depends on context. The 12.52% above was measured with the panel dark and the 15.73% with it awake — one configuration, two numbers. So a differenced row is not "what this plane costs" but "what this plane adds in this scenario", and cited as the former it stops being true as soon as the scenario changes. Take the lit reading (157_300), because the expensive context is the one that counts.
 
-`[test]` `an_isolated_row_would_still_not_be_addable_to_a_device_row`, `the_row_is_the_device_reading_and_the_probe_only_found_the_floor`, `the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from` (`core/src/demand.rs`) pin that the three units cannot be mixed.
+`[test]` (**removed with that model**, kept here as a record) `an_isolated_row_would_still_not_be_addable_to_a_device_row`, `the_row_is_the_device_reading_and_the_probe_only_found_the_floor`, `the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from` (the `core/src/demand.rs` of the day) used to pin that the three units cannot be mixed; with the cost model gone the constraint is left as a requirement on the method, with no code keeping it.
 
 ## Throttling moves executor from one place to another, it does not save any
 
@@ -127,6 +127,8 @@ That is the same constraint the `audio=off` bug had, reached by two different ro
 
 ## The poll side scales by cadence, and agrees with the device at both ends
 
+> This section's **prediction** layer (`Price`/`PolledCadence`: turning a per-poll cost into a rate by the cadence) was removed whole with that model; what replaced it is `MAX_SINGLE_HOLD_MS`, the bound on a single tick (see the [architecture doc](@/development/iot/architecture.md#需求模型（要什么_/_多频繁_/_多敏感）)). The `[DEMAND]` poll-side column below comes from that build, and **today's firmware no longer prints it**; the `[INPUT] held` measurements are unaffected.
+
 A cost row is a rate *at the plane's board cadence*, so a batched plane is cheaper. The premise of that scaling — a cadence changes how often this happens, not what one of them costs — is measured rather than assumed: `probe-demand-s3` reads **2281 µs per poll** at the board's 20 ms against **2282 µs** at 200 ms, 0.04% apart. The probe was changed to run each cell at its own cadence, printing MEASURED where a 20 s window allows it and DERIVED where it does not.
 
 `[measured]` The scaled poll side against whole-device runs, 8 windows of 5 s per build:
@@ -138,7 +140,7 @@ A cost row is a rate *at the plane's board cadence*, so a batched plane is cheap
 
 Before the scaling, the batched row reported 497,300 (motion counted at 20 ms) against a measured 354,800 — **40% high**.
 
-`[test]` `the_cadence_scaled_poll_side_predicts_what_the_device_measures` (`core/src/demand.rs`) pins both ends with a 5% tolerance.
+`[test]` (**removed with that model**, kept here as a record) `the_cadence_scaled_poll_side_predicts_what_the_device_measures` (the `core/src/demand.rs` of the day) used to pin both ends with a 5% tolerance.
 
 ## The three backlog depths come from measurement
 

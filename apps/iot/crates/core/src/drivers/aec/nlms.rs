@@ -45,7 +45,7 @@ const MAX_STEP_GAIN: i64 = MAX_COEFF as i64 >> (15 - STEP_FRACTION);
 /// there is no evidence a larger stride is safe.
 const UPDATE_STRIDE: usize = 4;
 
-/// Longest filter this crate builds, in taps: 8 ms at [`SAMPLE_RATE_HZ`].
+/// Longest filter this crate builds, in taps: 8 ms at [`super::SAMPLE_RATE_HZ`].
 pub const MAX_TAPS: usize = 128;
 
 /// How far ahead of the filter window the reference may sit, in samples: 4 ms,
@@ -66,10 +66,6 @@ const DELTA_PER_TAP: i64 = 16;
 pub struct Coef(i32);
 
 impl Coef {
-    pub const fn from_q30(raw: i32) -> Self {
-        Self(raw)
-    }
-
     pub const fn to_q30(self) -> i32 {
         self.0
     }

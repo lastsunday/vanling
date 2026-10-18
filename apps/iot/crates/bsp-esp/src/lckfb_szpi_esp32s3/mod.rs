@@ -775,7 +775,7 @@ impl Board<'static> {
 impl Board<'static> {
     /// The IMU driver itself, for a probe that walks configurations.
     ///
-    /// Not [`HasMotion::take_motion`]: a probe walks the configurations by writing the
+    /// Not [`HasMotion::take_motion`](iot_core::drivers::board::HasMotion::take_motion): a probe walks the configurations by writing the
     /// registers itself and counting what that caused.
     pub fn take_motion_driver(&mut self) -> Option<Qmi8658<SharedI2cDevice>> {
         self.motion.take()

@@ -16,6 +16,7 @@ weight = 20
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名与 run 分发，每板一个 `#[cfg(feature)]` 分支
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`sounds.rs`（哪个 `Sound` 是哪个 `.mid`）、`camera_readout.rs`（读数到字形的换算）、`post.rs`（启动清单）不认板也不认芯片，宿主机可测。放 `bsp` 而不放 `core` 是因为只有 bsp 的元件与板模块用它们，进 `core` 只会给公共 API 添一个没有第二个使用者的面；`core` 里同类的 `overlay`/`stamp`/`keyboard` 落在那，是因为面板与 `intent` 两边都要读
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 

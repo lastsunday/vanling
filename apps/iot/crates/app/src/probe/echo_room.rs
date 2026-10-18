@@ -1,6 +1,6 @@
 //! What the linear AEC does on a **real room**, through the product's own pairing.
 //! Every other AEC figure in the tree comes from a synthetic room on the host or
-//! from the canceller with no peripheral at all ([`echo`](super::echo)), so none of
+//! from the canceller with no peripheral at all ([`echo`](crate::probe::echo)), so none of
 //! them says anything about **this board**.
 //!
 //! | Figure | Answers |

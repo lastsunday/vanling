@@ -60,14 +60,9 @@ static TO_CORE0: Signal<CriticalSectionRawMutex, u32> = Signal::new();
 /// its macros rather than a declared dependency of its own.
 type StaticCell<T> = esp_hal::__macro_implementation::static_cell::StaticCell<T>;
 
-/// The second core's stack, in a `StaticCell` because [`esp_rtos::start_second_core`] wants
-/// a `&'static mut` and the stack has to outlive the executor that runs on it.
+/// The second core's stack, in a `StaticCell` because the bring-up wants a
+/// `&'static mut` and the stack has to outlive the executor that runs on it.
 static CORE1_STACK: StaticCell<Stack<CORE1_STACK_BYTES>> = StaticCell::new();
-
-/// The second core's thread-mode executor, built inside the closure that runs there. A
-/// static rather than a local because `Executor::run` borrows its executor for as long as it
-/// runs, which is forever.
-static CORE1_EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
 
 /// The second core's half: echo back whatever core 0 sends.
 #[embassy_executor::task]
@@ -156,7 +151,18 @@ async fn main(spawner: Spawner) -> ! {
     };
 
     iot_chip_esp::start_rtos(TimerGroup::new(TIMG0).timer0, FROM_CPU_INTR0);
-    start_core1(CPU_CTRL, FROM_CPU_INTR1);
+    // `intr1` is the SMP scheduler's. This probe wires no speaker, so the interrupt the
+    // product gives the speaker's feed is free here, and taking it keeps the probe from
+    // having to change which interrupt the board hands back.
+    iot_chip_esp::start_second_core(
+        CPU_CTRL,
+        FROM_CPU_INTR1,
+        CORE1_STACK.init(Stack::new()),
+        |spawner| {
+            log::info!("[MC] second core closure running");
+            spawner.spawn(core1_echo().expect("a task of this shape fits its pool slot"));
+        },
+    );
     log::info!("[MC] second core started");
     spawner.spawn(core0_echo(board).expect("a task of this shape fits its pool slot"));
     park().await
@@ -169,23 +175,4 @@ async fn park() -> ! {
     loop {
         core::future::pending::<()>().await
     }
-}
-
-/// Boots the second core and gives it [`core1_echo`].
-///
-/// `intr1` is the SMP scheduler's. This probe wires no speaker, so the interrupt the
-/// product gives the speaker's feed is free here, and taking it keeps the probe from
-/// having to change which interrupt the board hands back.
-fn start_core1(
-    cpu_control: esp_hal::peripherals::CPU_CTRL<'static>,
-    intr1: esp_hal::peripherals::FROM_CPU_INTR1<'static>,
-) {
-    let stack = CORE1_STACK.init(Stack::new());
-    esp_rtos::start_second_core(cpu_control, intr1, stack, || {
-        log::info!("[MC] second core closure running");
-        let executor = CORE1_EXECUTOR.init(esp_rtos::embassy::Executor::new());
-        executor.run(|spawner| {
-            spawner.spawn(core1_echo().expect("a task of this shape fits its pool slot"));
-        });
-    });
 }

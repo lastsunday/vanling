@@ -48,7 +48,7 @@ pub const CAPTURE_BYTES_PER_FRAME: usize = BYTES_PER_SAMPLE as usize;
 /// Bytes one whole I2S frame occupies on the wire: its slots, each one sample
 /// wide. The unit a playback ring is measured in, and the reason a mono source
 /// has to be widened before it reaches the DMA rather than sized for one slot —
-/// see [`playback::interleave_mono`], which is what puts a mono frame on the wire.
+/// see [`crate::drivers::playback::interleave_mono`], which is what puts a mono frame on the wire.
 pub const BYTES_PER_FRAME: usize = SLOTS_PER_FRAME as usize * BYTES_PER_SAMPLE as usize;
 
 /// Capture cadence: how often the input loop polls the capture, and so how much
@@ -163,7 +163,7 @@ fn log2_16(value: u16) -> i32 {
     LOG2_16_PER_OCTAVE * octave as i32 + mantissa as i32 + LOG2_16_CHORD_ERROR[mantissa] as i32
 }
 
-/// A peak in LSB as a `0..=255` bar height, over [`SCOPE_FLOOR_LOG2_16`] up to
+/// A peak in LSB as a `0..=255` bar height, over `SCOPE_FLOOR_LOG2_16` up to
 /// full scale. Here rather than beside the panel because the mapping has to be
 /// checkable: the sweep is the one drawing that can be silently useless, since a
 /// bar height that is always zero looks exactly like silence.
@@ -221,7 +221,7 @@ pub fn released_peak(measured: u16, previous: u16) -> u16 {
 /// (see [`scope_height`]). The RMS of the same window rides beside the peak, and
 /// sliding rather than growing keeps the envelope a fixed-size `Copy`.
 ///
-/// Every column also keeps its A-weighted twin ([`weighting`]): the raw columns
+/// Every column also keeps its A-weighted twin (`weighting`): the raw columns
 /// stay the bench reading, the twin is the level a listener would call it, so a
 /// low-frequency codec floor draws as a flat line instead of a solid band.
 #[derive(Debug, Clone, Copy)]
@@ -762,7 +762,7 @@ impl<A: Armed> Chain<A> {
 /// continuously and says nothing — which is what a line at two polls did, on a
 /// ring that holds three.
 ///
-/// Levels are in [`BYTES_PER_POLL`] for the same reason [`ring_fill_ms`] is:
+/// Levels are in [`BYTES_PER_POLL`] for the same reason `ring_fill_ms` is:
 /// a ring is drained on the poll, and the wire moves two slots a frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaptureBacklog {

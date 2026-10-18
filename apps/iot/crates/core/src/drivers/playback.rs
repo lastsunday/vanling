@@ -88,7 +88,7 @@ pub trait SampleSource {
 }
 
 /// Widens mono frames into the bytes the I2S DMA transmits: each frame is
-/// [`SLOTS_PER_FRAME`] slots wide and carries the same sample in every one,
+/// [`crate::drivers::audio::SLOTS_PER_FRAME`] slots wide and carries the same sample in every one,
 /// because a mono source into a two-slot frame has to look stereo to the codec
 /// or only half the frame would be ours. Returns the bytes written, so a driver
 /// can hand this straight to a ring's fill callback.
@@ -585,7 +585,7 @@ pub struct Tone {
 }
 
 impl Tone {
-    /// A voice sounding `score` on the family [`TIMBRE`].
+    /// A voice sounding `score` on the family `TIMBRE`.
     pub fn playing(score: Vec<Note>) -> Self {
         Self::on(score, &TIMBRE)
     }
@@ -594,7 +594,7 @@ impl Tone {
     ///
     /// # Panics
     ///
-    /// On a timbre that is empty or longer than [`MAX_PARTIALS`]: the first
+    /// On a timbre that is empty or longer than `MAX_PARTIALS`: the first
     /// would make a silent voice the second would silently drop partials, and a
     /// sound quieter than the score asked for is the harder of the two to hear
     /// coming.

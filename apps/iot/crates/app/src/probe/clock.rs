@@ -198,7 +198,7 @@ fn local_reading() -> u64 {
 static REQ: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static DONE: Signal<CriticalSectionRawMutex, u64> = Signal::new();
 
-/// Runs on the second core, once [`second_core`] asks.
+/// Runs on the second core, once `second_core` asks.
 pub async fn core1_task() {
     REQ.wait().await;
     DONE.signal(local_reading());

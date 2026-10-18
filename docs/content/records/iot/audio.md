@@ -94,7 +94,7 @@ sort_by = "weight"
 
 还有一条口径上的坑：差分给出的是**边际**代价，且依赖上下文。上表里 `motion` 的 12.52% 是在 `audio` 关着且面板黑着时测的，15.73% 是在面板醒着时测的——同一个配置，两个数。所以差分得到的数字不是「这个平面的代价」，是「这个平面在这个场景里的增量」，被当成前者引用就会在换场景时失效。要贵的那个上下文：亮面板那个读数（157_300）。
 
-`[测试]` `an_isolated_row_would_still_not_be_addable_to_a_device_row`、`the_row_is_the_device_reading_and_the_probe_only_found_the_floor`、`the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from`（`core/src/demand.rs`）钉住这三种口径不可混用。
+`[测试]`（**已随该模型删除**，此处仅留档）`an_isolated_row_would_still_not_be_addable_to_a_device_row`、`the_row_is_the_device_reading_and_the_probe_only_found_the_floor`、`the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from`（当时的 `core/src/demand.rs`）曾钉住这三种口径不可混用；成本模型删除后这一约束只剩方法上的要求，不再有代码守着。
 
 ## 节流把执行器从一处搬到另一处，不省设备总量
 
@@ -126,6 +126,8 @@ motion 让出 14.0 点，render 循环拿走 13.2 点，设备总量基本不动
 
 ## poll 侧按节奏缩放，两端都与实测对上
 
+> 这一节的**预测**层（`Price`/`PolledCadence`：按节奏把 poll 成本折算成速率）已随该模型整体删除，取代它的是 `MAX_SINGLE_HOLD_MS` 的单次 tick 上界（见[架构文档](@/development/iot/architecture.md#需求模型（要什么_/_多频繁_/_多敏感）)）。下表 `[DEMAND]` poll 侧一列来自当时那次构建，**今天的固件不再打印它**；`[INPUT] held` 一列的实测值不受影响。
+
 平面在**板级节奏下的速率**才是它的单位，所以被批处理的平面更便宜。缩放的前提——「节奏改变的是多久一次，不是一次有多贵」——由探针实测：板级 20 ms 下每次 poll **2281 µs**，200 ms 的格子里 **2282 µs**，差 0.04%。探针为此改成在每个格子自己的节奏上跑，够得着的实测、够不着的印 DERIVED。
 
 `[实测]` 缩放后 poll 侧与整机实测的对照（各 8 个 5 s 窗口）：
@@ -137,7 +139,7 @@ motion 让出 14.0 点，render 循环拿走 13.2 点，设备总量基本不动
 
 缩放之前 thrift 那一栏报 497,300（motion 按 20 ms 算），对着实测的 354,800 高 **40%**。
 
-`[测试]` `the_cadence_scaled_poll_side_predicts_what_the_device_measures`（`core/src/demand.rs`）把两端与 5% 的容差一起钉住。
+`[测试]`（**已随该模型删除**，此处仅留档）`the_cadence_scaled_poll_side_predicts_what_the_device_measures`（当时的 `core/src/demand.rs`）曾把两端与 5% 的容差一起钉住。
 
 ## 采集积压判据的三档深度来自实测
 

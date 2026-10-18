@@ -60,8 +60,6 @@ type StaticCell<T> = esp_hal::__macro_implementation::static_cell::StaticCell<T>
 
 static CORE1_STACK: StaticCell<Stack<CORE1_STACK_BYTES>> = StaticCell::new();
 
-static CORE1_EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
-
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
     // SAFETY: called exactly once before any allocation; the region is a
@@ -85,7 +83,17 @@ async fn main(_spawner: Spawner) -> ! {
     } = iot_chip_esp::chip_init_at(CLOCK);
     iot_chip_esp::init_logging();
     iot_chip_esp::start_rtos(TimerGroup::new(TIMG0).timer0, FROM_CPU_INTR0);
-    start_core1(CPU_CTRL, FROM_CPU_INTR1);
+    // `intr1` is the SMP scheduler's. This probe drives no speaker, so the interrupt the
+    // product gives the speaker's feed is free here, and taking it keeps the probe from
+    // having to change which interrupt the board hands back.
+    iot_chip_esp::start_second_core(
+        CPU_CTRL,
+        FROM_CPU_INTR1,
+        CORE1_STACK.init(Stack::new()),
+        |spawner| {
+            spawner.spawn(core1_measure().expect("a task of this shape fits its pool slot"));
+        },
+    );
     log::info!("[ECHO] brought up at {CLOCK:?}");
 
     let cpu_hz = u64::from(esp_hal::clock::cpu_clock().as_hz());
@@ -120,22 +128,4 @@ async fn core1_measure() {
     loop {
         core::hint::spin_loop();
     }
-}
-
-/// Boots the second core and gives it [`core1_measure`].
-///
-/// `intr1` is the SMP scheduler's. This probe drives no speaker, so the interrupt
-/// the product gives the speaker's feed is free here, and taking it keeps the probe
-/// from having to change which interrupt the board hands back.
-fn start_core1(
-    cpu_control: esp_hal::peripherals::CPU_CTRL<'static>,
-    intr1: esp_hal::peripherals::FROM_CPU_INTR1<'static>,
-) {
-    let stack = CORE1_STACK.init(Stack::new());
-    esp_rtos::start_second_core(cpu_control, intr1, stack, || {
-        let executor = CORE1_EXECUTOR.init(esp_rtos::embassy::Executor::new());
-        executor.run(|spawner| {
-            spawner.spawn(core1_measure().expect("a task of this shape fits its pool slot"));
-        });
-    });
 }

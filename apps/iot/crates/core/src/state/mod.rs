@@ -3,161 +3,53 @@ use alloc::vec::Vec;
 use crate::demand::{
     DemandField, EffectiveDemand, Mode, Override, PlaneDemand, PlaneKey, Sensitivity,
 };
+
 use crate::drivers::audio::{AudioEnvelope, AudioSample};
+
 use crate::drivers::input::{
     FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP, FingerLast, GestureEvent, InputEvent,
     MAX_TRACKED_POINTS, MOVE_DEADBAND_PX, SwipeDirection, TouchEvent, TouchStatus,
     direction_between,
 };
+
 use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
+
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
+
 use crate::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError,
     PASSWORD_BYTES, Password, Ssid,
 };
+
 use crate::drivers::playback::Sound;
+
 use crate::intent::{BusinessIntent, OperationIntent};
+
 use crate::keyboard::{Cycling, Key, LIST_ROWS, Layer, MULTITAP_WINDOW_MS};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DisplayPage {
-    #[default]
-    Ambient,
-    Attitude,
-    Audio,
-    Speaker,
-    /// The camera feed, which replaces the background rather than sitting on one: the panel
-    /// shows the sensor's picture and prints its readout over it, so there is no fill behind
-    /// it and the light's colour is not drawn here.
-    Camera,
-    /// The link: which access point it is on, the address it holds and — while the build is
-    /// unconfigured, which is how the product ships — what a scan can see. The page the
-    /// panel will take credentials on; until then it is a readout, and the readout is what
-    /// makes "the link came up" a thing the bench can see rather than log.
-    Network,
-}
+mod audio;
 
-/// The page cycle, in order.
-///
-/// The list is the definition of the order rather than a set of jumps written page to page: a
-/// cycle spelled as transitions between pairs can close through the wrong page and lose one,
-/// which is how `Ambient` stopped being reachable once the camera joined — the camera left for
-/// "a page the board can back" that was not the start, and every later page skipped the start
-/// too, so nothing returned to it. Walking one list and wrapping cannot skip an entry the
-/// board can back, so every page in it is reachable from every other.
-const CYCLE: [DisplayPage; 6] = [
-    DisplayPage::Ambient,
-    DisplayPage::Attitude,
-    DisplayPage::Audio,
-    DisplayPage::Speaker,
-    DisplayPage::Camera,
-    DisplayPage::Network,
-];
+mod entry;
 
-impl DisplayPage {
-    /// The next page in cycle order, skipping pages the board cannot back.
-    ///
-    /// Walks [`CYCLE`] from just after this page and wraps, so the order is the one declared
-    /// there and the start is a page like any other. Self-healing: a page the wiring cannot
-    /// back is stepped over rather than landed on, and `Ambient` needs no capability, so a
-    /// board that lost one mid-cycle always has somewhere to go.
-    pub const fn next_page(
-        &self,
-        motion_enabled: bool,
-        audio_enabled: bool,
-        playback_enabled: bool,
-        camera_enabled: bool,
-        network_enabled: bool,
-    ) -> Self {
-        let mut step = 1;
-        while step <= CYCLE.len() {
-            let candidate = CYCLE[(self.cycle_index() + step) % CYCLE.len()];
-            if candidate.is_backed(
-                motion_enabled,
-                audio_enabled,
-                playback_enabled,
-                camera_enabled,
-                network_enabled,
-            ) {
-                return candidate;
-            }
-            step += 1;
-        }
-        // Only reachable if the board backs nothing at all, which `Ambient` contradicts.
-        *self
-    }
+mod light;
 
-    /// Whether the wiring can back this page at all. `Ambient` is the answer for every board,
-    /// which is what makes it the cycle's fixed point.
-    const fn is_backed(
-        &self,
-        motion_enabled: bool,
-        audio_enabled: bool,
-        playback_enabled: bool,
-        camera_enabled: bool,
-        network_enabled: bool,
-    ) -> bool {
-        match self {
-            Self::Ambient => true,
-            Self::Attitude => motion_enabled,
-            Self::Audio => audio_enabled,
-            Self::Speaker => playback_enabled,
-            Self::Camera => camera_enabled,
-            Self::Network => network_enabled,
-        }
-    }
+mod network;
 
-    const fn cycle_index(&self) -> usize {
-        match self {
-            Self::Ambient => 0,
-            Self::Attitude => 1,
-            Self::Audio => 2,
-            Self::Speaker => 3,
-            Self::Camera => 4,
-            Self::Network => 5,
-        }
-    }
+mod page;
 
-    /// What this page asks of the planes a board declares.
-    ///
-    /// The plane list is the board's, not this page's: a plane no board wires is never
-    /// claimed, so the same page code serves a board with a microphone and one without.
-    ///
-    /// The mode and the class follow the page, not the plane: a mode says whether a plane
-    /// runs, a class says how stale a reading this page can put up with, and only the page
-    /// knows that.
-    pub fn demand(&self, planes: &[PlaneKey]) -> EffectiveDemand {
-        let mut demand = EffectiveDemand::none();
-        for key in planes {
-            demand.set(*key, self.claim_for(*key));
-        }
-        demand
-    }
+mod playback;
 
-    /// What this page asks of one plane. The match is the page's claim and is exhaustive by
-    /// construction: a plane this page has no opinion of is claimed off, never unclaimed.
-    fn claim_for(&self, key: PlaneKey) -> PlaneDemand {
-        let motion_class = match self {
-            Self::Attitude => Sensitivity::Primary,
-            _ => Sensitivity::Secondary,
-        };
-        let audio_class = match self {
-            Self::Audio => Sensitivity::Primary,
-            _ => Sensitivity::Secondary,
-        };
-        match key.field() {
-            DemandField::Motion => PlaneDemand::new(Mode::Continuous, 0, motion_class),
-            DemandField::Audio => PlaneDemand::new(Mode::Continuous, 0, audio_class),
-            DemandField::Camera => match self {
-                Self::Camera => PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
-                _ => PlaneDemand::off(),
-            },
-            DemandField::Display => PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
-            // Nothing gates the interaction path, so no page claims it.
-            DemandField::Interaction => PlaneDemand::off(),
-        }
-    }
-}
+pub use self::audio::{AudioPhase, AudioState};
+
+pub use self::entry::Entry;
+
+pub use self::light::{Breath, LightState};
+
+pub use self::network::{Confirm, NetworkSetup};
+
+pub use self::page::DisplayPage;
+
+pub use self::playback::{PlaybackPhase, PlaybackState};
 
 /// A live contact slot: the tracker `id` that owns it plus where it last
 /// landed, in framebuffer space.
@@ -300,509 +192,6 @@ impl DeviceState {
     /// something to refine and somewhere to write back what the part could actually meet.
     pub fn demand(&self, planes: &[PlaneKey]) -> EffectiveDemand {
         self.page.demand(planes)
-    }
-}
-
-/// A breathing schedule: brightness envelope plus the hue path it travels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Breath {
-    pub period_ms: u32,
-    pub hue_period_ms: u32,
-    /// Hue sweep width; `0` means a static standalone color. Ignored when
-    /// `group_len > 0`.
-    pub hue_span: u8,
-    /// Trough value of the brightness envelope. A nonzero floor keeps the
-    /// breathing glow lit instead of fading fully to black.
-    pub min_brightness: u8,
-    pub max_brightness: u8,
-    pub saturation: u8,
-    /// Base hue the sweep starts from (or holds when `hue_span == 0`). Ignored
-    /// when `group_len > 0`.
-    pub hue: u8,
-    /// Color waypoints on the 256-step hue wheel. `group_len` picks the
-    /// trajectory: `0` = the `hue`/`hue_span` sweep above; `1` = a static
-    /// standalone color, `group[0]`; `>=2` = rotate through the waypoints,
-    /// walking each `group[i] -> group[i+1]` segment over
-    /// `hue_period_ms / group_len` and wrapping `group[last] -> group[0]`.
-    pub group: [u8; Self::MAX_GROUP],
-    pub group_len: u8,
-}
-
-impl Breath {
-    pub const MAX_GROUP: usize = GROUP_CAPACITY;
-}
-
-/// Light behavior, read by the render loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LightState {
-    Off,
-    Solid { color: Rgb, brightness: u8 },
-    Breath(Breath),
-}
-
-impl LightState {
-    pub const fn boot() -> Self {
-        LightState::Breath(Breath {
-            period_ms: DeviceManager::DEFAULT_PERIOD_MS,
-            hue_period_ms: DeviceManager::DEFAULT_HUE_PERIOD_MS,
-            hue_span: DeviceManager::DEFAULT_HUE_SPAN,
-            min_brightness: DeviceManager::DEFAULT_MIN_BRIGHTNESS,
-            max_brightness: DeviceManager::DEFAULT_MAX_BRIGHTNESS,
-            saturation: DeviceManager::DEFAULT_SATURATION,
-            hue: DeviceManager::DEFAULT_HUE,
-            group: DeviceManager::DEFAULT_GROUP,
-            group_len: DeviceManager::DEFAULT_GROUP_LEN,
-        })
-    }
-}
-
-impl Default for LightState {
-    fn default() -> Self {
-        LightState::boot()
-    }
-}
-
-/// Capture phase the Audio page drives. The capture driver never stops — it
-/// keeps folding samples into its envelope — so a phase only decides which
-/// envelope the panel draws and whether the sweep follows the live one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AudioPhase {
-    /// Nothing captured yet: the panel draws no sweep, only the tap hint.
-    #[default]
-    Idle,
-    /// Capturing: the panel follows the live envelope.
-    Recording,
-    /// A capture that ran and stopped: the panel shows the latched envelope.
-    Stopped,
-}
-
-/// Capture state behind the Audio page. The envelopes are summaries from the
-/// driver, never samples, so this stays small enough to sit in the state and
-/// its derived diagnostics snapshot alike.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AudioState {
-    pub phase: AudioPhase,
-    /// The most recent capture poll, always current even while stopped — the
-    /// driver keeps running underneath, so resuming picks the sweep up wherever
-    /// it has moved to rather than where the previous capture left it.
-    pub live: AudioSample,
-    /// The poll latched when a capture stopped, so a stopped capture keeps
-    /// showing what it caught instead of following the still-running scope.
-    pub captured: AudioSample,
-}
-
-impl Default for AudioState {
-    fn default() -> Self {
-        Self::boot()
-    }
-}
-
-impl AudioState {
-    /// The state a board boots into: idle, with a blank envelope on both sides
-    /// so the Audio page draws a flat line until a capture runs.
-    pub const BOOT: Self = Self {
-        phase: AudioPhase::Idle,
-        live: AudioSample {
-            envelope: AudioEnvelope::ZERO,
-            elapsed_ms: 0,
-            restarts: 0,
-            dba_lsb: 0,
-        },
-        captured: AudioSample {
-            envelope: AudioEnvelope::ZERO,
-            elapsed_ms: 0,
-            restarts: 0,
-            dba_lsb: 0,
-        },
-    };
-
-    pub const fn boot() -> Self {
-        Self::BOOT
-    }
-}
-
-/// Playback phase the Speaker page drives. A sound is a one-shot: the driver
-/// reports it finished, and only then is the next tap heard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PlaybackPhase {
-    /// Nothing sounding: the next tap starts the page's sound.
-    #[default]
-    Idle,
-    /// A sound is sounding. A tap in this phase is counted, not heard.
-    Playing,
-}
-
-/// Playback state behind the Speaker page.
-///
-/// Small enough to sit in the state and its diagnostics snapshot alike: the
-/// sounds themselves are the driver's, and this only records which one the page
-/// holds, whether the output is latched quiet, and what the taps did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlaybackState {
-    pub phase: PlaybackPhase,
-    /// The sound a tap plays, and the page's `SRC` row. Advances on every
-    /// accepted tap, so the page shows what the *next* tap will play rather
-    /// than echoing the last one.
-    pub sound: Sound,
-    /// The output latch. Held here rather than in the driver so a codec that
-    /// resets itself cannot un-mute the speaker behind the panel's back.
-    pub muted: bool,
-    /// Sounds actually started; the panel's `PLY` row.
-    pub plays: u16,
-    /// Taps that arrived while a sound was sounding and were therefore not
-    /// heard; the panel's second `PLY` figure, so a busy finger is visible as a
-    /// number rather than as a sound that did not happen.
-    pub dropped: u16,
-}
-
-impl Default for PlaybackState {
-    fn default() -> Self {
-        Self::boot()
-    }
-}
-
-impl PlaybackState {
-    /// The state a board boots into: idle, on the first sound, audible. Mute
-    /// starts off because a boot that is silent would read as a dead speaker,
-    /// and the codec's own reset already leaves the DAC unmuted.
-    pub const BOOT: Self = Self {
-        phase: PlaybackPhase::Idle,
-        sound: Sound::Tap,
-        muted: false,
-        plays: 0,
-        dropped: 0,
-    };
-
-    pub const fn boot() -> Self {
-        Self::BOOT
-    }
-}
-
-/// A passphrase being typed on the Network page's keyboard.
-///
-/// A draft rather than a [`Password`], because the two are different jobs: a `Password` is
-/// what the radio stores and what has been checked against its limits, this is text a finger
-/// is entering and can be wrong. The cap is the radio's own — one byte short of
-/// [`PASSWORD_BYTES`], which is the length the driver refuses — so a keystroke past it is
-/// dropped rather than producing a credential the radio will not take as typed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Entry {
-    octets: [u8; PASSWORD_BYTES - 1],
-    len: u8,
-    /// What the shift key is set to: off, the one letter a tap capitalises, or the lock a second
-    /// tap inside the window sets.
-    shift: Shift,
-    layer: Layer,
-    /// The character the last character key typed, while a repeat of that key can still cycle it.
-    /// What the panel draws a key's candidates from: the key being cycled is the one that knows
-    /// what the next tap of it would type.
-    pending: Option<Pending>,
-    /// When the shift was last tapped, while a second tap could still lock it.
-    shift_at: Option<u32>,
-}
-
-/// The shift key's three states.
-///
-/// A one-shot rather than a latch, because that is what a thumb expects of a shift: a single
-/// capital is the common case and a lock is one tap away from it, which is cheaper than a lock
-/// every time and a mode to escape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-enum Shift {
-    #[default]
-    Off,
-    /// The next letter typed comes out upper case, and then this is off again.
-    OneShot,
-    /// Letters come out upper case until shift is tapped again.
-    Locked,
-}
-
-/// A character key whose character a repeat tap inside [`MULTITAP_WINDOW_MS`] can still change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Pending {
-    /// The face of the key: that key tapped again cycles, and any other key starts a character.
-    face: u8,
-    /// Where in the key's candidates the character on the panel came from, so the next tap of
-    /// that key replaces it with the one after.
-    index: u8,
-    /// Whether the run's character is a capital.
-    ///
-    /// The run's rather than the tap's: a letter three taps down a key is still that run's
-    /// character, so a shift spent on the first tap of it would leave `S` reachable only by locking
-    /// the shift for everything after it.
-    shifted: bool,
-    at_ms: u32,
-}
-
-impl Default for Entry {
-    /// An empty draft on the alphabet layer, which is where naming a network starts.
-    fn default() -> Self {
-        Self {
-            octets: [0; PASSWORD_BYTES - 1],
-            len: 0,
-            shift: Shift::Off,
-            layer: Layer::Abc,
-            pending: None,
-            shift_at: None,
-        }
-    }
-}
-
-impl Entry {
-    /// Type one key.
-    ///
-    /// The two that end an entry — connect and cancel — are the state's decisions rather than
-    /// the draft's, so they are not here: this type only knows what text a key adds.
-    ///
-    /// `at_ms` is the touch panel's own clock, and it is what decides whether a repeat of a key
-    /// is the same character cycling or a new one — which is the whole of what a multi-tap
-    /// keyboard needs a clock for.
-    pub fn edit(&mut self, key: Key, at_ms: u32) {
-        match key {
-            Key::Char(face) => self.tap(face, at_ms),
-            Key::Backspace => {
-                self.end();
-                self.len = self.len.saturating_sub(1);
-            }
-            Key::Layer => {
-                self.end();
-                self.layer = self.layer.next();
-            }
-            Key::Shift => self.shift_tap(at_ms),
-            // The two that end an entry end the run of taps with it: neither is a character, and a
-            // `pending` kept past one would let a later tap of that key cycle a character the user
-            // has already moved on from. Showing the draft is the third: it changes what the panel
-            // draws, not what the draft holds.
-            Key::Connect | Key::Cancel | Key::Reveal => self.end(),
-        }
-    }
-
-    /// One character key: the same key tapped again inside the window moves the character on,
-    /// and anything else starts a new one.
-    fn tap(&mut self, face: u8, at_ms: u32) {
-        let candidates = self.layer.candidates_of(face);
-        if candidates.is_empty() {
-            return;
-        }
-        // A tap of the same key cycles while the window is open; every other key ends the run by
-        // replacing what the last one typed, which is why nothing here has to remember more than
-        // the one character. A layer whose keys type one character each has nothing to cycle, so
-        // a repeat of one of them is the second character — a passphrase with `00` in it.
-        let cycling = candidates.len() > 1
-            && self.pending.is_some_and(|pending| {
-                pending.face == face && at_ms.saturating_sub(pending.at_ms) <= MULTITAP_WINDOW_MS
-            });
-        let index = match (cycling, self.pending) {
-            (true, Some(pending)) => (pending.index + 1) % candidates.len() as u8,
-            _ => 0,
-        };
-        if cycling {
-            // The character on the panel is replaced rather than followed: that is what makes a
-            // phone keypad's second tap type `b` where the first typed `a`.
-            self.len = self.len.saturating_sub(1);
-        }
-        // The case belongs to the run, not to the tap that opened it: `Z` is four taps of one key
-        // with the shift set, and a shift spent on the first of them would leave the capital on a
-        // character the fourth tap replaces.
-        let shifted = match (cycling, self.pending) {
-            (true, Some(pending)) => pending.shifted,
-            _ => self.spend_shift(candidates[usize::from(index)]),
-        };
-        let candidate = candidates[usize::from(index)];
-        let byte = if shifted {
-            candidate.to_ascii_uppercase()
-        } else {
-            candidate
-        };
-        if self.push(byte) {
-            self.pending = Some(Pending {
-                face,
-                index,
-                shifted,
-                at_ms,
-            });
-        } else {
-            // A draft at the cap took nothing, and a `pending` kept here would make the next
-            // tap of this key erase the character it could not replace.
-            self.pending = None;
-        }
-    }
-
-    /// A shift tap: one shot from off, a lock from a second tap inside the window, and off from
-    /// the lock. The phone's own shift, on the window every other key already uses.
-    fn shift_tap(&mut self, at_ms: u32) {
-        self.end();
-        let repeated = self
-            .shift_at
-            .is_some_and(|at| at_ms.saturating_sub(at) <= MULTITAP_WINDOW_MS);
-        self.shift = match (self.shift, repeated) {
-            (Shift::Locked, _) => Shift::Off,
-            (Shift::OneShot, true) => Shift::Locked,
-            _ => Shift::OneShot,
-        };
-        self.shift_at = Some(at_ms);
-    }
-
-    /// Ends the run of character-key taps, so that a later tap of the same key starts a new
-    /// character instead of cycling one that some other key has already moved on from.
-    fn end(&mut self) {
-        self.pending = None;
-    }
-
-    /// Whether `candidate` is the letter a one-shot shift is spent on.
-    ///
-    /// Punctuation has no case, so a shift tapped before one is still there for the letter after
-    /// it: a finger that means to capitalise is not aiming at the key it landed on.
-    fn spend_shift(&mut self, candidate: u8) -> bool {
-        let letter = candidate.to_ascii_uppercase() != candidate;
-        match self.shift {
-            Shift::Off => false,
-            Shift::OneShot if letter => {
-                self.shift = Shift::Off;
-                true
-            }
-            // A shift no letter has spent yet is still set for the one that comes, and a lock is
-            // never spent.
-            Shift::OneShot | Shift::Locked => letter,
-        }
-    }
-
-    fn push(&mut self, byte: u8) -> bool {
-        if self.len as usize >= self.octets.len() {
-            return false;
-        }
-        self.octets[self.len as usize] = byte;
-        self.len += 1;
-        true
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.octets[..self.len as usize]
-    }
-
-    pub fn len(&self) -> usize {
-        self.len as usize
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    /// Whether letters type upper case.
-    pub fn shift(&self) -> bool {
-        self.shift != Shift::Off
-    }
-
-    pub fn layer(&self) -> Layer {
-        self.layer
-    }
-
-    /// The character key a repeat tap would cycle, and which of the characters printed on it the
-    /// panel is holding: the keyboard's own feedback, and never the passphrase itself.
-    pub fn cycling(&self) -> Option<Cycling> {
-        let pending = self.pending?;
-        Some(Cycling {
-            face: pending.face,
-            candidates: self.layer.candidates_of(pending.face),
-            index: pending.index,
-        })
-    }
-
-    /// What this draft would hand the radio, for the name the user picked it for.
-    pub fn credentials(&self, ssid: Ssid) -> Credentials {
-        Credentials {
-            ssid,
-            password: Password::from_bytes(self.as_bytes()),
-        }
-    }
-}
-
-/// What the Network page is in the middle of: the row a passphrase is being typed for, the
-/// draft itself, and the last refusal.
-///
-/// Part of the state and of the diagnostics because the page draws all of it — the list is
-/// what a tap picks from, the keyboard is what picking opens, and the refusal is what the page
-/// has to keep saying while the survey's own phase reports overwrite each other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NetworkSetup {
-    /// The scanned row the user picked, whose name the draft goes with.
-    pub selected: Option<AccessPoint>,
-    /// The draft, and with it what a passphrase is being typed for.
-    ///
-    /// Kept while the keyboard is *down* as well as up: a credential the radio refused is the one
-    /// a user has to edit, and a draft dropped on the way out would make them type the whole thing
-    /// again to change one character.
-    pub entry: Option<Entry>,
-    /// Whether the keyboard is up, which is what the page's two states are.
-    ///
-    /// Separate from the draft because the two come apart exactly while an attempt is in flight:
-    /// the credential has been handed to the radio, the page goes back to the list so the phase and
-    /// the address have somewhere to be read, and what was typed is still there to come back to.
-    ///
-    /// Never up without a draft: the keys are drawn *from* the draft, and the page hides the strip
-    /// while they are, so a keyboard with nothing under it is a page that drew nothing at all where
-    /// the list and the strip should be — black, and with no control left on it. Every write of
-    /// this field is therefore conditional on [`Self::entry`] being `Some`.
-    pub keyboard: bool,
-    /// Whether the draft is drawn as it was typed rather than masked.
-    pub revealed: bool,
-    /// The last association the radio refused, kept until another attempt starts.
-    pub refused: Option<NetworkError>,
-    /// The first scan row the list is showing. The list is [`LIST_ROWS`] rows tall and eight rows
-    /// long at most, so a finger slides it a row at a time rather than seeing it all at once.
-    pub list_top: u8,
-    /// The confirmation the page is asking, if it is asking one.
-    ///
-    /// The page's third state: while it is up the list and the action strip are not drawn at all
-    /// and the only thing a tap can mean is one of the two answers — see [`crate::page::Part`],
-    /// which is where both halves of that rule live. Drawn, so it rides the snapshot.
-    pub confirm: Option<Confirm>,
-    /// Whether the action strip is waiting for a survey round it asked for.
-    ///
-    /// The strip's one word for "asked, not answered yet". A round is a fraction of a second of
-    /// radio time and the phase it publishes is what clears this, so the strip says `WAIT` rather
-    /// than inviting a second tap that would ask for the same round again.
-    pub rescan_wait: bool,
-}
-
-/// The action a confirmation is standing in front of.
-///
-/// Two, and both are the kind of thing a page asks about before doing: a link that goes down
-/// cannot be put back without the passphrase, and a forgotten network is one the next boot will
-/// not join. The rest of what this page does — picking a row, typing, looking around again — is
-/// either reversible or asks for nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Confirm {
-    /// Leave the network the link is on.
-    ///
-    /// The network is the link's own, read when the question is drawn and again when it is
-    /// answered, so a link that dropped under the box takes the question with it rather than
-    /// taking down a link that is no longer there.
-    Leave,
-    /// Forget a saved network, named by the row the finger held.
-    Forget(AccessPoint),
-}
-
-impl Confirm {
-    /// The network this question is about, which is the row the page highlights behind it.
-    pub fn network(&self, link: LinkStatus) -> Option<AccessPoint> {
-        match self {
-            Confirm::Leave => link.ap,
-            Confirm::Forget(ap) => Some(*ap),
-        }
-    }
-}
-
-impl NetworkSetup {
-    /// The phase the page should show.
-    ///
-    /// The link's own phase whenever it says anything about an attempt, and the last refusal
-    /// while it does not: a survey round lands within a second of a refused association and
-    /// would otherwise print `Off` over the one moment the user has to be told.
-    pub fn phase(&self, link: LinkPhase) -> LinkPhase {
-        match (self.refused, link) {
-            (Some(kind), LinkPhase::Off | LinkPhase::Scanning) => LinkPhase::Failed(kind),
-            (_, link) => link,
-        }
     }
 }
 
@@ -995,8 +384,7 @@ impl DeviceManager {
     /// otherwise.
     pub fn with_boot_page(mut self, page: DisplayPage) -> Self {
         // The same gate the cycle walks with, so a page a build can name is a page the board
-        // can show. It used to be a hand-written match that left `Attitude` out, which meant
-        // `IOT_BOOT_PAGE=attitude` landed on a page the wiring cannot back.
+        // can show.
         let page = match page.is_backed(
             self.state.motion_enabled,
             self.state.audio_enabled,
@@ -1685,6 +1073,7 @@ mod tests {
         AccessPoint, ApList, Credentials, Ipv4, LinkPhase, SavedNetworks, Ssid,
     };
     use crate::intent::translate;
+    use crate::state::page::CYCLE;
 
     const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
 
@@ -1759,6 +1148,14 @@ mod tests {
 
     fn press(id: u8, x: u16, y: u16) -> OperationIntent {
         op(InputEvent::Gesture(GestureEvent::Press { id, x, y }))
+    }
+
+    /// Applies one operation and the business intent it resolves to, the way the
+    /// render loop does.
+    fn apply_page(manager: &mut DeviceManager, operation: OperationIntent) {
+        manager.apply_operation(operation);
+        let business = translate(&operation, &manager.state());
+        manager.apply_business(business);
     }
 
     mod demand {
@@ -2073,12 +1470,6 @@ mod tests {
                 sample: sample(),
                 events: batch,
             })));
-        }
-
-        fn apply_page(manager: &mut DeviceManager, operation: OperationIntent) {
-            manager.apply_operation(operation);
-            let business = translate(&operation, &manager.state());
-            manager.apply_business(business);
         }
 
         /// Reads one bucket, so a case names the field it means instead of
@@ -2451,8 +1842,7 @@ mod tests {
 
         #[test]
         fn the_boot_page_joins_the_cycle_it_was_asked_for() {
-            // A build that names a page starts on it and then cycles by the declared order,
-            // so a bench page is not a dead end the way a bespoke jump used to be.
+            // A build that names a page starts on it and then cycles by the declared order.
             let mut manager = DeviceManager::with_motion(true, ALL_CAPS)
                 .with_audio(true)
                 .with_playback(true)
@@ -2721,14 +2111,6 @@ mod tests {
             }
             assert_eq!(manager.state().page, DisplayPage::Speaker);
             manager
-        }
-
-        /// Applies one operation and the business intent it resolves to, the
-        /// way the render loop does.
-        fn apply_page(manager: &mut DeviceManager, operation: OperationIntent) {
-            manager.apply_operation(operation);
-            let business = translate(&operation, &manager.state());
-            manager.apply_business(business);
         }
 
         /// The Speaker page's play verb, from the panel or the button.

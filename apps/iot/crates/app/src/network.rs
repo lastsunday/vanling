@@ -31,9 +31,9 @@
 //! past.
 //!
 //! The panel can name a network with or without a passphrase — a row it typed a passphrase for, or a
-//! row whose copy is already in the flash — which is [`JoinRequest`]'s two shapes. The second is this
+//! row whose copy is already in the flash — which is [`JoinRequest`](iot_core::drivers::network::JoinRequest)'s two shapes. The second is this
 //! module's own lookup, and what a name the flash does not hold is answered with is
-//! [`BusinessIntent::NoCopy`], because a passphrase is something only a person at the panel can
+//! [`BusinessIntent::NoCopy`](iot_core::intent::BusinessIntent::NoCopy), because a passphrase is something only a person at the panel can
 //! supply. What neither shape does is write: the copy a store join uses is the one already on the
 //! part, and a build's or a panel's credential is kept where it is joined.
 

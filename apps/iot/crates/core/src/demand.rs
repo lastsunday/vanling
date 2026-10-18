@@ -28,14 +28,14 @@ pub enum Speed {
     Normal,
     /// The default, because every deadline this board has measured needs the
     /// fastest clock it has. That is a measurement, not a preference: see
-    /// [`speed_for`].
+    /// [`SpeedTable::speed_for`].
     #[default]
     Fast,
 }
 
 /// What a page asks for, before anything is arbitrated.
 ///
-/// `Auto` is the only variant that consults [`speed_for`]. The other three are
+/// `Auto` is the only variant that consults [`SpeedTable::speed_for`]. The other three are
 /// the page's decision and are taken as given, so a page that says
 /// [`Speed::Slow`] gets `Slow` even where a deadline says otherwise — and
 /// [`speed_shortfall`] names what that costs, so the breakage points at the page
@@ -201,10 +201,6 @@ impl PlaneKey {
 
     pub const fn field(self) -> DemandField {
         self.field
-    }
-
-    pub const fn instance_index(self) -> u8 {
-        self.instance
     }
 
     pub const MOTION: Self = Self::of(DemandField::Motion);
@@ -425,7 +421,7 @@ pub fn parse_override(text: &str) -> Override {
 /// The clock the chip should run at for this demand.
 ///
 /// A page's explicit choice is taken as given — that is the whole point of
-/// letting it state one. Only [`SpeedRequest::Auto`] reads [`speed_for`], and it
+/// letting it state one. Only [`SpeedRequest::Auto`] reads [`SpeedTable::speed_for`], and it
 /// reads the collecting planes and takes the highest.
 ///
 /// Downclocking stretches durations and changes nothing else: the peripheral bus

@@ -1,7 +1,6 @@
 use embedded_hal::i2c::I2c;
 
 pub const PCA9557_REG_OUTPUT: u8 = 0x01;
-pub const PCA9557_REG_INPUT: u8 = 0x00;
 pub const PCA9557_REG_CONFIG: u8 = 0x03;
 
 /// PCA9557 8-bit I2C GPIO expander, parameterized over any embedded-hal I2C

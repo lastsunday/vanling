@@ -10,7 +10,7 @@
 //! instead of the minute a finger's own timing needs. The render loop drains what has been published
 //! before it steps this, so each tap is seen before the next is decided.
 //!
-//! Compiled out of every other build: [`BENCH`] is a `const`, so the call that steps this disappears
+//! Compiled out of every other build: [`BENCH`](crate::panel::BENCH) is a `const`, so the call that steps this disappears
 //! along with everything it would reach. What it walks after the association is the page's *own*
 //! controls — the row under a link, the action strip, the question a confirmation asks, and the row a
 //! finger holds to forget a saved network: the paths that end on planes only a task can see.

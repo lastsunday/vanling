@@ -1,3 +1,9 @@
+//! The Espressif-family runtime layer: chip bring-up, logging, the RTOS entry point, the
+//! radio heap, and the per-part panic handler.
+//!
+//! The only layer that names a chip. Above it `iot-bsp-esp` wires boards and `iot-app`
+//! holds the product; below it there is nothing of ours.
+
 #![no_std]
 
 use esp_backtrace as _;
@@ -45,5 +51,5 @@ pub(crate) mod esp32s3;
 #[cfg(feature = "esp32s3")]
 pub use esp32s3::{
     Table, chip_init, chip_init_at, init_logging, set_cpu_clock, set_speed, start_feed_executor,
-    start_rtos,
+    start_rtos, start_second_core,
 };

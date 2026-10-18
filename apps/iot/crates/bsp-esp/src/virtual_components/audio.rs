@@ -4,7 +4,7 @@
 //! this module drains it, never waiting on the DMA — it only asks how much has
 //! been finished. The engine stops on its own once the ring is full and nothing
 //! restarts it, so draining alone does not keep a capture alive; see
-//! [`Es7210Rx::restart`].
+//! `Es7210Rx::restart`.
 
 use esp_hal::Blocking;
 use esp_hal::dma::DmaRxStreamBuf;
@@ -459,7 +459,7 @@ impl EchoReport {
 }
 
 /// A capture a probe can poll directly, rather than through the product's
-/// [`PollEntry`].
+/// [`PollEntry`](iot_core::drivers::input::PollEntry).
 ///
 /// Only the canceller's own numbers need this: the product reads an envelope off
 /// an intent, and a probe needs the driver itself so it can ask what the pairing
@@ -628,10 +628,10 @@ impl<C, const R: usize> Es7210Rx<C, R> {
     /// Turns the canceller on or off, for a bench build that wants its numbers.
     ///
     /// Not part of the capture's business: the product leaves it where
-    /// [`AEC_ENABLED`] put it, and a probe asks for it explicitly. On, this costs
-    /// [`AEC_TAPS`]-tap cancellation per decimated sample — see
+    /// `AEC_ENABLED` put it, and a probe asks for it explicitly. On, this costs
+    /// `AEC_TAPS`-tap cancellation per decimated sample — see
     /// [`Es7210Rx::cancel_echo`] for why that is off by default. **The pairing it
-    /// is fed does not stop with it**: see [`Self::pair`].
+    /// is fed does not stop with it**: see `pair`.
     ///
     /// Turning it off resets the decimator's phase, so a run that was stopped
     /// halfway does not leave the next one pairing from a different frame of every

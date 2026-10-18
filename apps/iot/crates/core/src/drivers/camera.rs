@@ -97,7 +97,7 @@ pub struct WindowGeometry {
 /// trait is what lets the renderer hold a panel without naming either the panel or a sensor.
 ///
 /// Separate from [`crate::drivers::light::RgbLight`] because a camera is not a colour, and
-/// because only some surfaces have a frame buffer: a WS2812 strip implements [`RgbLight`]
+/// because only some surfaces have a frame buffer: a WS2812 strip implements `RgbLight`
 /// and nothing more, so a board with no panel needs no camera either.
 pub trait CameraTarget {
     /// Advance the bound camera and ship a frame if a whole one arrived. Returns whether it

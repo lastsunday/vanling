@@ -186,8 +186,7 @@ mod tests {
 
     #[test]
     fn the_catalogue_weighs_a_few_hundred_bytes() {
-        // What the move to MIDI bought: five sounds that used to need a stored sample
-        // each.
+        // Synthesized rather than sampled: five sounds inside a kilobyte.
         let total: usize = Sound::ALL
             .iter()
             .map(|&sound| file_of(sound).unwrap().len())

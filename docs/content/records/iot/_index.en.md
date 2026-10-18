@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "06e6886ccd1d823a271d1050f3451798d358cff9"
-translated_at = "2026-10-17T08:56:39Z"
+source_file_hash = "323765c3b7a73ee4a8bb15d91a098e98eef6a94f"
+translated_at = "2026-10-18T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -186,6 +186,7 @@ Read on for derivations, the full list of rejected alternatives, and reproductio
 | [Motion record](@/records/iot/motion.en.md) | Rejected tap approaches, where the thresholds come from, No-Motion is a level not an event |
 | [Input and touch record](@/records/iot/input.en.md) | Page cycle measured on hardware, 2 s windows cannot show page order, only one of four polled sources may be switched off |
 | [Echo cancellation record](@/records/iot/aec.en.md) | Why Espressif's vectors cannot measure AEC, why the step must not be scaled by the residual, coherence as the freeze criterion, the delay search's confidence and rate limit, steady-state against whole-file ERLE |
+| [Runtime CPU clock record](@/records/iot/clock.en.md) | esp-hal's frozen clock frequencies, the off-path register route measured at 1 : 2.00 : 2.95, a switch costing 1–50 us, no difference on the second core or outside the CPU, the table following the chip, one existing defect in the way |
 | [Wi-Fi record](@/records/iot/wifi.en.md) | No lwIP in this generation, only esp-radio plus embassy-net; "connected" means an address; three connection defaults copied from the reference firmware; how the DRAM budget was made to fit; the PHY calibration `todo!()` and the partition table's workaround |
 | [Check tasks and caching record](@/records/iot/tasks.en.md) | What moon's cache key is made of and the script blind spot, `check-features` gaining a cache, the C6 check moving to the host, the rejected container merge |
 

@@ -1,9 +1,9 @@
 //! Acquisition configuration: *how* a part is wired to produce what a demand asks for.
 //!
 //! A configuration is deliberately not part of a [`crate::demand`]. A page asks for a
-//! [`Mode`](crate::demand::Mode) and a period; the driver picks the registers, the transport
+//! [`Mode`] and a period; the driver picks the registers, the transport
 //! and the on-chip engines that meet it. Naming a configuration is the probe's business, and
-//! its cost is the table in [`crate::cost`].
+//! its cost is measured there (`demand-probe`) rather than derived here.
 //!
 //! Whether a driver can actually leave a part in a configuration is a property of that
 //! part's register table, decided where the table is open. Naming one here is a claim that

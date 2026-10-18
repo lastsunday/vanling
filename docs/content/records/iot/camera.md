@@ -159,7 +159,7 @@ write_reg(sensor->slv_addr, 0x0f, L8(win_w + 16));
 
 ## 环的 150 KB 曾挂在 feature 组成上，现在不挂了
 
-`[实测]` 产品里这 150 KB 现在是**面板帧缓冲本身**。`FRAME_ARENA`（原 `FRAME_RING`）无条件在 `.bss` 里，`camera` 已并入板 feature，`--gc-sections` 不再有机会把它丢掉 —— 于是 150 KB 从"取决于一次链接期 GC"变成链接期确定事实。`cargo check` 不链接、`check-s3` 看不见，仍然只有 `moon run iot:check-image-s3` 那条路能证伪它。
+`[实测]` 产品里这 150 KB 现在是**面板帧缓冲本身**。`FRAME_ARENA`（原 `FRAME_RING`）无条件在 `.bss` 里，`camera` 已并入板 feature，`--gc-sections` 不再有机会把它丢掉 —— 于是 150 KB 从"取决于一次链接期 GC"变成链接期确定事实。`cargo check` 不链接、`check-s3` 看不见，仍然只有 `moon run iot:image` / `build-s3` 那条路能证伪它。
 
 `[实测]` 省下的是每帧 150 KB 的 memcpy（实测帧率 5.5 fps，约 4.5 ms/次），而不是 DRAM：面板原来那份 `Vec` 变成这个静态 arena，两者尺寸相同，`.bss` 净增 14,336 B。DRAM 上"合一"与"两份并存"等价，差别在 CPU 时间与所有权耦合。
 

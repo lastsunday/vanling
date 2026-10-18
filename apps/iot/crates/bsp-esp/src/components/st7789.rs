@@ -181,7 +181,7 @@ pub struct St7789 {
 impl St7789 {
     /// Brings the panel up to take a `width` x `height` buffer: the shape a frame is
     /// written into, 320x240 for this module. It is deliberately *not* what mipidsi is
-    /// told — see [`MADCTL_LANDSCAPE`].
+    /// told — see `MADCTL_LANDSCAPE`.
     pub fn new(
         block_spi: spi_master::SpiDma<'static, Blocking>,
         dc: Output<'static>,

@@ -449,7 +449,7 @@ where
     ///
     /// Called even when nothing is playing: the idle stream carrying the capture's
     /// clocks must be fed silence too. A drain is only *recorded* here, so the
-    /// priming push is load-bearing for [`restart`](Self::restart). A sound is
+    /// priming push is load-bearing for `restart`. A sound is
     /// done once its source is spent and the last frames it queued have played out.
     ///
     /// The play cursor is advanced *before* the push, from the state the DMA was

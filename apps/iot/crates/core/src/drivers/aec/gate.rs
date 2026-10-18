@@ -122,7 +122,7 @@ impl AdaptationGate {
     }
 
     /// How much of the active pair's first signal the second accounts for, in
-    /// Q15. See [`coherence`].
+    /// Q15.
     pub fn coherence(&self) -> u32 {
         let rms_e = self.residual.level().unsigned_abs().isqrt().max(1);
         let rms_x = self.reference.level().unsigned_abs().isqrt().max(1);

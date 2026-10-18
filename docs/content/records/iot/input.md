@@ -27,7 +27,7 @@ sort_by = "weight"
 - 五个页全部出现
 - 一次物理点击 = 一次跃迁（重复页为 0 即证明）
 
-`[测试]` `every_page_the_board_can_back_is_shown_on_the_way_round`（`core/src/state.rs`）早就在 host 上钉住了次序表，所以这条实测的价值不在于「次序对不对」，而在于**驱动、识别、意图、状态、渲染整条链在硬件上确实只走一格**。
+`[测试]` `every_page_the_board_can_back_is_shown_on_the_way_round`（`core/src/state/mod.rs`）早就在 host 上钉住了次序表，所以这条实测的价值不在于「次序对不对」，而在于**驱动、识别、意图、状态、渲染整条链在硬件上确实只走一格**。
 
 `[实测]` 一次**错误判断**值得记下来，因为它改变了我读日志的方法：`[DISPLAY]` 的成本报告是 **2 秒窗口**，只反映窗口结束时的页。同一个窗口里 `Ambient → Attitude → Audio` 完全可能发生，而我从「窗口末是 Audio」读成了「跳过了 Attitude」，据此说过页面在乱跳。**人是准的，2 秒窗口不是**——同一个可疑现象，人眼观察直接推翻了我的日志结论。
 

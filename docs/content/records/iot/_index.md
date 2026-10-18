@@ -181,6 +181,7 @@ IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 | [运动实现记录](@/records/iot/motion.md) | 敲击判定的被否方案、门限来源、No-Motion 是电平不是事件 |
 | [输入与触摸实现记录](@/records/iot/input.md) | 页面循环硬件实测、2 秒窗口看不出页序、四路轮询里只有一路可关 |
 | [回声消除实现记录](@/records/iot/aec.md) | 乐鑫向量为何测不了 AEC、步长不能按残余缩放、相干度冻结判据、延迟搜索的置信度与限频、ERLE 稳态与全程的差 |
+| [运行期改 CPU 频率记录](@/records/iot/clock.md) | esp-hal 的 Frozen Clock Frequencies、越界写寄存器实测比值 1 : 2.00 : 2.95、切频 1–50 µs、第二个核与外围无差异、表跟着芯片走、挡路的既有缺陷 |
 | [检查任务与缓存记录](@/records/iot/tasks.md) | moon 缓存键的组成与脚本盲点、`check-features` 开缓存、C6 检查改宿主、被否的容器合并 |
 
 > 节流的完整推导、实测对照与方法在[架构文档](@/development/iot/architecture.md)，不在这份记录里。

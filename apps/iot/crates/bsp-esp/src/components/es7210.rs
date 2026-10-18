@@ -121,8 +121,8 @@ const MIC_POWER: u8 = 0x08;
 /// How far this microphone's full scale sits above 0 dB SPL: 0 dBFS is 102 dB SPL.
 ///
 /// From the two datasheets. ES7210: full scale is AVDD/3.3 Vrms, so at
-/// [`ANALOG_POWER_RUN`] it is 1.0 Vrms, not the 2 Vrms "headroom" would suggest.
-/// ZTS6216: −38 dBV/Pa is 12.59 mV/Pa, which through [`GAIN_30DB`] is 397.8 mV/Pa at
+/// `ANALOG_POWER_RUN` it is 1.0 Vrms, not the 2 Vrms "headroom" would suggest.
+/// ZTS6216: −38 dBV/Pa is 12.59 mV/Pa, which through `GAIN_30DB` is 397.8 mV/Pa at
 /// the converter — so full scale is 2.51 Pa, or 101.98 dB against the 20 µPa
 /// reference.
 ///

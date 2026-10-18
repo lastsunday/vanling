@@ -178,12 +178,12 @@ use render::{
 /// Where the feed loop runs, because the feed has a deadline the rest of the app can
 /// break and the board may or may not be able to defend it.
 ///
-/// The feed writes the DMA ring every [`FEED_MS`], and since this board hangs the
+/// The feed writes the DMA ring every [`FEED_MS`](iot_core::drivers::playback::FEED_MS), and since this board hangs the
 /// capture's clock off the transmit unit, that write also keeps the microphone's clock
 /// alive — a late feed is a gap in the speaker *and* a stalled capture. Input, render
 /// and the control loop share one cooperative executor where a task that does not
 /// `.await` holds the others, long enough to overrun the ring's whole runway. An
-/// [`InterruptExecutor`] preempts it. One that has none — the host, a board with no
+/// `InterruptExecutor` preempts it. One that has none — the host, a board with no
 /// speaker — takes [`Inline`](Self::Inline).
 ///
 /// The measurements behind that choice are in the record, not here.

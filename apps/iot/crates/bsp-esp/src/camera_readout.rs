@@ -307,7 +307,7 @@ pub fn format_joining_title(ap: Option<AccessPoint>, buf: &mut [u8; DIALOG_GLYPH
 /// What the join box says under the word: which of the two things the attempt is waiting on.
 ///
 /// One function rather than two, because which line it is and which word the title carries are one
-/// fact about the radio and two drawings of it. See [`ASSOCIATING_BODY`].
+/// fact about the radio and two drawings of it. See `ASSOCIATING_BODY`.
 pub fn format_joining_body(ap: Option<AccessPoint>) -> &'static [u8] {
     if ap.is_some() {
         ASSOCIATED_BODY

@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "15b7fb03758e1e92a93be59d687664de754f150f"
-translated_at = "2026-10-15T02:29:35Z"
+source_file_hash = "ade76bf20927ced23ec9bc8a23ca4fc269943480"
+translated_at = "2026-10-18T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -671,7 +671,7 @@ wire_position = pushed_frames − (ring_frames − free_bytes / frame_bytes)
 
 `[measured]` The second bug of the same class, and equally silent. The microphone is walked **forwards** (`scratch_mic[0]` is the oldest frame the drain saw) while the log can only be read **backwards** (`out[0]` is the frame on the wire *now*, which is what the newest microphone sample heard). Zipped as they stand, **the oldest microphone is paired with the newest reference** — every pair wrong by the length of the run — and the filter still converges on *something*, so the ERLE stays a plausible number rather than an obvious zero.
 
-The fix reverses the reference back into time order in `pair_and_cancel` before it is fed. `[test]` `a_reference_run_read_newest_first_pairs_once_reversed` pins both halves: reversing a reversed run recovers the aligned pairing exactly, and not reversing it is clearly worse. `Reference::read_backwards`'s own doc now states the direction, so the next person to read it does not have to rediscover it.
+The fix reverses the reference back into time order in `pair` before it is fed (it is `cancel_pairing` that then hands it to the canceller). `[test]` `a_reference_run_read_newest_first_pairs_once_reversed` pins both halves: reversing a reversed run recovers the aligned pairing exactly, and not reversing it is clearly worse. `Reference::read_backwards`'s own doc now states the direction, so the next person to read it does not have to rediscover it.
 
 Both are kept here because they are **the same kind** of thing: `RING_BYTES - free` looks like a position and is an occupancy, and `read_backwards` looks like something to zip and needs reversing first. **Both read entirely normally and produce nothing but garbage** — which is the only genuinely dangerous class of defect on this path, and the reason every pairing column is reported beside the ERLE rather than instead of it.
 

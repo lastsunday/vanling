@@ -15,18 +15,19 @@
 //! poisons the evidence rather than merely misbehaving.
 //!
 //! The host targets do not go through Docker, so neither symptom shows up in a compile, and
-//! nothing else in the repository covers it. Hence this.
+//! nothing else in the repository covers it. Hence this — and here rather than in `iot-core`
+//! because it is a fact about this source tree, which is what `iot-tool` exists to read.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// `crates/core`, four levels below the repository root.
+/// `crates/tool`, four levels below the repository root.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(4)
-        .expect("crates/core is always four levels below the root")
+        .expect("a crate under apps/iot/crates is always four levels below the root")
         .to_path_buf()
 }
 

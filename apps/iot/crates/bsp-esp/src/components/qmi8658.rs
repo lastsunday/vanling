@@ -551,7 +551,7 @@ impl<D: I2c> Qmi8658<D> {
     /// Enters `wanted` without the soft reset a full bring-up needs.
     ///
     /// The reset gives a part that has never run a clean start; it is not part of changing
-    /// configuration. [`Self::configure`] already quiets the part before writing and restores
+    /// configuration. `Self::configure` already quiets the part before writing and restores
     /// it afterwards, so resetting on top of that only adds a window in which the part is
     /// deaf. Reconfiguring a running part stays destructive either way — the recognizer's
     /// baseline does not survive a change of filtering or scale — but the deafness does not

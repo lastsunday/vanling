@@ -27,7 +27,7 @@ const SEARCH: usize = super::MAX_DELAY;
 pub(crate) const HISTORY: usize = 512;
 
 /// Samples the correlation is summed over. Half the history, so the oldest
-/// [`SEARCH`] samples stay available to cover a negative lag — a microphone
+/// `SEARCH` samples stay available to cover a negative lag — a microphone
 /// whose echo somehow arrives first.
 ///
 /// **The one remaining place decimating the search could still save work, and the
@@ -52,7 +52,7 @@ const REFRESH_SAMPLES: usize = 16 * WINDOW;
 /// where a path delayed by none peaks at 1000, and stepping the grid leaves no
 /// candidate above the gate at all.
 ///
-/// So the lag grid is every sample, and the two knobs left are [`SEARCH`] and
+/// So the lag grid is every sample, and the two knobs left are `SEARCH` and
 /// [`WINDOW`] — both of which cost capability rather than just time: the first
 /// the range of delays findable, the second the pitch structure the correlation
 /// locks onto. What is left instead is the interval above.
@@ -70,7 +70,7 @@ const MIN_REFERENCE_POWER: i64 = 1 << 16;
 /// Correlation, in thousandths, below which no lag is believed.
 ///
 /// This is the half that a power gate cannot do. A path further away than
-/// [`SEARCH`] correlates at nothing in every lag inside the window, so the
+/// `SEARCH` correlates at nothing in every lag inside the window, so the
 /// largest of them all is noise — and the largest is what a search returns.
 /// Without this gate a delay beyond the window is answered with whichever lag
 /// noise happened to favour, and the caller has no way to tell that from a real
@@ -106,7 +106,7 @@ const _: () = assert!(SEARCH == super::MAX_DELAY);
 ///
 /// **This is not an impulse response and must not be read as one.** It is the
 /// wide scan's own per-lag correlations summed by where they landed, so it is
-/// smeared by the [`WINDOW`] the correlation was taken over and quantised to a
+/// smeared by the `WINDOW` the correlation was taken over and quantised to a
 /// band. What it is for is a question a band is the right resolution for: *how
 /// much of the path sits beyond what a filter of a given length can hold.* Finer
 /// bands would report where individual reflections are, and no tap count turns
@@ -195,7 +195,7 @@ impl DelayEstimator {
         self.searches
     }
 
-    /// Where the strongest match sits over a range far wider than [`SEARCH`],
+    /// Where the strongest match sits over a range far wider than `SEARCH`,
     /// found on a coarse grid, and how strong it is.
     ///
     /// **The fine search answers "can I cancel this?"; this answers "where is
@@ -204,7 +204,7 @@ impl DelayEstimator {
     /// which is indistinguishable from a room with no echo until something looks
     /// further out. So this scans wide and says where. It is four times the work
     /// of [`Self::update`]'s search, which is why it is a separate call and not
-    /// a wider [`SEARCH`]: the fine search runs every refresh and this does not
+    /// a wider `SEARCH`: the fine search runs every refresh and this does not
     /// have to.
     pub fn scan_wide(&mut self, reach: usize) -> (usize, i64) {
         let mut best = 0usize;
@@ -332,8 +332,8 @@ impl DelayEstimator {
     /// **What it answers is the lock, not the search.** A delay that tracks the
     /// search moves the filter's window with it, spending taps on re-alignment
     /// and none on the path — so after the first answer a search may only pull
-    /// the lock by [`DRIFT_SAMPLES`], and only gives its position up after
-    /// [`MISSES_BEFORE_MOVING`] searches in a row disagree.
+    /// the lock by `DRIFT_SAMPLES`, and only gives its position up after
+    /// `MISSES_BEFORE_MOVING` searches in a row disagree.
     pub fn update(&mut self, mic: i16, reference: i16) -> Option<usize> {
         self.reference[self.head] = reference;
         self.microphone[self.head] = mic;

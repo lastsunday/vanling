@@ -129,7 +129,7 @@ impl<const L: usize> EchoStage<L> {
     ///
     /// **A caller runs this when `delay` is `None`, not on every poll**: it is
     /// four times the search's work, and the question it answers — is there no
-    /// path, or is the path further back than [`MAX_DELAY`] — is worth asking
+    /// path, or is the path further back than [`super::MAX_DELAY`] — is worth asking
     /// once and then again slowly, not per buffer.
     pub fn scan_wide(&mut self) -> (usize, i64) {
         self.canceller.scan_wide()

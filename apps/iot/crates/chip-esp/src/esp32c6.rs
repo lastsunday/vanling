@@ -35,7 +35,7 @@ impl SpeedTable for Table {
 /// Accepts the request and does not move the clock: esp-hal offers no runtime
 /// clock change on this part.
 ///
-/// [`CpuClock`] here is `_80MHz` and `_160MHz`, so [`Speed::Fast`] and
+/// [`esp_hal::clock::CpuClock`] here is `_80MHz` and `_160MHz`, so [`Speed::Fast`] and
 /// [`Speed::Normal`] are the same clock and [`Speed::Slow`] is the only other one.
 /// Every arm answers `Normal` — the clock stays where [`chip_init`] left it, and
 /// the caller is told which of the two it would have had.

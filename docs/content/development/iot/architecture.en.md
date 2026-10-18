@@ -2,8 +2,8 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "f9bbaf699fca5d92aa0f3493406d94720f76d7ea"
-translated_at = "2026-10-15T02:45:17Z"
+source_file_hash = "64db3a4412bbc1d90cce882e2eec07e5b84cb198"
+translated_at = "2026-10-17T14:58:50Z"
 +++
 
 # Layering and Composition
@@ -19,6 +19,7 @@ translated_at = "2026-10-15T02:45:17Z"
 - **iot-bsp-esp**: board differences converge in the `type Board` alias plus run dispatch; one `#[cfg(feature)]` branch per board.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
+- **Pure-logic modules used only inside bsp stay in bsp**: `sounds.rs` (which `Sound` is which `.mid`), `camera_readout.rs` (readings to glyphs), and `post.rs` (the boot inventory) know neither board nor chip and are host-testable. They live in `bsp` rather than `core` because only bsp's components and board modules read them, and promoting them to `core` would add a public surface with no second consumer; the peers in `core` (`overlay`/`stamp`/`keyboard`) are there because both the panel and `intent` read them.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
