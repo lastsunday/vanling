@@ -25,7 +25,8 @@
 //! `@/records/iot/wifi.md`.
 
 use crate::drivers::network::{
-    Credentials, MAX_SAVED_NETWORKS, PASSWORD_BYTES, Password, SSID_BYTES, SavedNetworks, Ssid,
+    Credentials, LinkHint, MAX_SAVED_NETWORKS, PASSWORD_BYTES, Password, SSID_BYTES, SavedNetworks,
+    Ssid,
 };
 
 /// The erase granularity of the parts this product is built for, and so the size of one
@@ -47,10 +48,13 @@ pub const REGION_BYTES: u32 = SLOT_BYTES * SLOTS as u32;
 ///
 /// Fixed-width rather than packed because the sector is mostly empty either way, and
 /// because entries that move when a name gets shorter would have to be parsed before the
-/// record's own checksum could be trusted to say the parse was worth doing. The two spare
-/// bytes are what keeps an entry — and so a whole record — a whole number of words, which
-/// is what every write to this part has to be.
-const ENTRY_BYTES: usize = 1 + SSID_BYTES + 1 + PASSWORD_BYTES + 2;
+/// record's own checksum could be trusted to say the parse was worth doing. The spare bytes are
+/// what keeps an entry — and so a whole record — a whole number of words, which is what every
+/// write to this part has to be.
+///
+/// The eight bytes after the passphrase are [`LinkHint`]: the access point's BSSID, the channel it
+/// answered on, and one reserved byte — and the entry's two spare bytes follow them.
+const ENTRY_BYTES: usize = 1 + SSID_BYTES + 1 + PASSWORD_BYTES + 2 + 8;
 
 /// The bytes before the entries: magic, version, entry count, body length, sequence.
 const HEADER_BYTES: usize = 12;
@@ -65,7 +69,11 @@ const CRC_BYTES: usize = 4;
 const MAGIC: [u8; 4] = *b"VLNC";
 
 /// The encoding this file writes, and the only one it reads.
-const VERSION: u8 = 1;
+///
+/// Version 2 added the per-entry [`LinkHint`]. Version 1 records are not read: a device still
+/// carrying one opens blank and keeps nothing, which is the offline-first boot rather than a stuck
+/// one — it simply has to be set up again once.
+const VERSION: u8 = 2;
 
 /// The most a record can occupy.
 pub const RECORD_BYTES: usize = HEADER_BYTES + MAX_SAVED_NETWORKS * ENTRY_BYTES + CRC_BYTES;
@@ -196,6 +204,31 @@ impl<R: FlashRegion> Store<R> {
         Ok(replaced)
     }
 
+    /// Add a network that has just been associated with, recording where it was found in the same
+    /// write rather than writing the list twice.
+    pub fn remember_with_hint(
+        &mut self,
+        credentials: &Credentials,
+        hint: LinkHint,
+    ) -> Result<bool, RegionError> {
+        let replaced = self.networks.remember(credentials);
+        if hint.is_known() {
+            self.networks.set_hint(&credentials.ssid, hint);
+        }
+        self.write_out()?;
+        Ok(replaced)
+    }
+
+    /// Record where a saved network was found. Returns whether the hint changed: a link that did
+    /// not move must not wear the flash on every association.
+    pub fn learn(&mut self, ssid: &Ssid, hint: LinkHint) -> Result<bool, RegionError> {
+        if !self.networks.set_hint(ssid, hint) {
+            return Ok(false);
+        }
+        self.write_out()?;
+        Ok(true)
+    }
+
     /// Drop every saved network with this name and write the whole list to the other slot.
     ///
     /// Returns whether anything was dropped, so a caller can say "forgotten" rather than claim a
@@ -262,7 +295,11 @@ fn encode(networks: &SavedNetworks, sequence: u32, record: &mut [u8; RECORD_BYTE
     record[5] = networks.len() as u8;
     record[6..8].copy_from_slice(&(body as u16).to_le_bytes());
     record[8..12].copy_from_slice(&sequence.to_le_bytes());
-    for (index, credentials) in networks.iter().enumerate() {
+    for index in 0..networks.len() {
+        let Some(credentials) = networks.get(index) else {
+            continue;
+        };
+        let hint = networks.hint(index);
         let entry = HEADER_BYTES + index * ENTRY_BYTES;
         let ssid = credentials.ssid.as_bytes();
         let password = credentials.password.as_bytes();
@@ -271,6 +308,9 @@ fn encode(networks: &SavedNetworks, sequence: u32, record: &mut [u8; RECORD_BYTE
         record[entry + 1 + SSID_BYTES] = password.len() as u8;
         record[entry + 2 + SSID_BYTES..entry + 2 + SSID_BYTES + password.len()]
             .copy_from_slice(password);
+        let hint_at = entry + 2 + SSID_BYTES + PASSWORD_BYTES;
+        record[hint_at..hint_at + 6].copy_from_slice(&hint.bssid);
+        record[hint_at + 6] = hint.channel;
     }
     let end = HEADER_BYTES + body;
     let checksum = crc32(&record[..end]).to_le_bytes();
@@ -313,12 +353,22 @@ fn decode(record: &[u8]) -> Option<(u32, SavedNetworks)> {
         if ssid_len > SSID_BYTES || password_len > PASSWORD_BYTES {
             return None;
         }
+        let hint_at = entry + 2 + SSID_BYTES + PASSWORD_BYTES;
+        let hint = LinkHint::new(
+            record[hint_at..hint_at + 6].try_into().ok()?,
+            record[hint_at + 6],
+        );
         networks.place(
             index,
             Ssid::from_octets(&record[entry + 1..entry + 1 + ssid_len]),
             Password::from_bytes(
                 &record[entry + 2 + SSID_BYTES..entry + 2 + SSID_BYTES + password_len],
             ),
+            if hint.is_known() {
+                hint
+            } else {
+                LinkHint::NONE
+            },
         );
     }
     Some((sequence, networks))
@@ -425,6 +475,79 @@ mod tests {
             Some(Fake::network("neighbour", "hunter2"))
         );
         assert_eq!(store.networks().get(1), None);
+    }
+
+    #[test]
+    fn a_hint_survives_a_reset_and_a_retyped_password() {
+        let mut fake = Fake::blank();
+        let ssid = Fake::network("neighbour", "hunter2").ssid;
+        let hint = LinkHint::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x07], 6);
+        {
+            let (mut store, _) = Store::open(&mut fake);
+            store
+                .remember_with_hint(&Fake::network("neighbour", "hunter2"), hint)
+                .expect("writable");
+        }
+
+        let (mut store, opened) = Store::open(&mut fake);
+        assert_eq!(opened, Opened::Loaded);
+        assert_eq!(store.networks().hint_of(&ssid), hint);
+
+        // A passphrase retyped for the same access point keeps the hint: the network did not
+        // move, and paying the full scan again for a new secret would be a regression, not a
+        // fresh start.
+        store
+            .remember(&Fake::network("neighbour", "other"))
+            .expect("writable");
+        let (store, _) = Store::open(&mut fake);
+        assert_eq!(store.networks().hint_of(&ssid), hint);
+        assert_eq!(
+            store.networks().get(0),
+            Some(Fake::network("neighbour", "other"))
+        );
+    }
+
+    #[test]
+    fn learning_a_channel_writes_once_and_only_when_it_moves() {
+        let mut fake = Fake::blank();
+        let network = Fake::network("neighbour", "hunter2");
+        let first = LinkHint::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x07], 6);
+        let second = LinkHint::new([0x02, 0x00, 0x00, 0x00, 0x00, 0x08], 11);
+        let (mut store, _) = Store::open(&mut fake);
+        store.remember(&network).expect("writable");
+        assert_eq!(store.networks().hint_of(&network.ssid), LinkHint::NONE);
+
+        assert_eq!(store.learn(&network.ssid, first), Ok(true));
+        assert_eq!(
+            store.learn(&network.ssid, first),
+            Ok(false),
+            "the same access point on the same channel is not a new write"
+        );
+        assert_eq!(store.learn(&network.ssid, second), Ok(true));
+        let (store, _) = Store::open(&mut fake);
+        assert_eq!(store.networks().hint_of(&network.ssid), second);
+    }
+
+    #[test]
+    fn a_version_one_record_is_read_as_nothing() {
+        // Version 2 added the hint, and the old layout is not guessed at: a device still carrying
+        // a version 1 record boots offline and is set up again once, rather than being handed a
+        // list whose entries this parser would read from the wrong offsets.
+        let mut fake = Fake::blank();
+        let network = Fake::network("neighbour", "hunter2");
+        let mut networks = SavedNetworks::empty();
+        networks.remember(&network);
+        let mut record = [0u8; RECORD_BYTES];
+        let written = encode(&networks, 1, &mut record);
+        record[4] = 1;
+        let end = HEADER_BYTES + networks.len() * ENTRY_BYTES;
+        let checksum = crc32(&record[..end]).to_le_bytes();
+        record[end..end + CRC_BYTES].copy_from_slice(&checksum);
+        fake.bytes[..written].copy_from_slice(&record[..written]);
+
+        let (store, opened) = Store::open(&mut fake);
+        assert_eq!(opened, Opened::Blank);
+        assert!(store.networks().is_empty());
     }
 
     #[test]

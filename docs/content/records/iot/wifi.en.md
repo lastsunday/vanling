@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "dfd4a736f6867881145553a289276930db362c96"
-translated_at = "2026-10-17T12:56:45Z"
+source_file_hash = "be08ce7834ef7d992d923b21465d26110f1335ed"
+translated_at = "2026-10-22T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -42,7 +42,23 @@ path" and the later runs). What it proves is the state machine and the geometry,
 touch's feel and the black ground are still a human's to confirm** (only the FT6336 produces
 panel coordinates on this board; touch cannot be synthesised in software). The state layer also
 gained a **reachable-state sweep** (35 moves, 8,800 states, four invariants — see "Tapping back
-into the row a link was left from, and one dropped list correction"). The loose ends are at the
+into the row a link was left from, and one dropped list correction"). **A board with no panel has a
+front door now too**: `iot-core::provision` is the protocol (45 host tests), `iot-app::provision`
+wires it to an open access point + DHCP + an answer-everything name server + a config page, and
+`configure` races it against the panel's own path through `select` (see "How a board with no panel
+gets configured"); the panel's path itself is untouched. **Both boards have since walked that door on
+the bench** (the C6 end to end, the S3 after three fixes — see "The bench: from link, to phone, with
+four corrections").**One way back into setup mode is the splash page**: both boards draw it for 3 s at boot, holding
+BOOT during it asks for the mode and lands on the network page, and **no link is built during those
+3 s** (see "Getting back to setup: hold BOOT on the splash page"). **No credentials means an offline
+device**: no setup mode of its own and no access point, the panel's page scans only while somebody is
+on it (it still offers `SCAN | AP`, and `AP` is what raises the access point — secured on a board
+with a panel), and a saved network carries its BSSID/channel so the next boot goes straight there
+(`fast_connect`). The config page is on its third version: **the first list is embedded, the icon is
+inline, a reload costs one connection, and only the button wakes a scan** — the language switch sits in
+the header, the passphrase is a bottom sheet and each row carries its BSSID (see "Seven or eight
+reloads and the page goes white"); the panel's list rows gained that network's own BSSID on the same
+day (a second line under the name, same section). The loose ends are at the
 [bottom](#Still_to_do_([not_done])).
 
 ## What the bench said
@@ -59,7 +75,7 @@ else).
 | **association** | **2184 / 2203 / 2189 ms** (three boots) | **3246 / 3261 ms** (two boots) |
 | **DHCP** | **546 / 22 / 44 ms** | **31 / 548 ms** |
 | link up | 9428–9789 ms after boot | 10325–10995 ms after boot |
-| address | `192.168.1.136` | `192.168.1.158` |
+| address | `192.168.1.10` | `192.168.1.11` |
 | driver's C heap | **32,204 B free of 65,536 B**, unchanged for 40 s | **14,124 B free of 49,152 B** |
 | `phase Connected` | steady | steady |
 
@@ -69,7 +85,7 @@ else).
 > credentials, through the same scan + association + DHCP:
 >
 > - driver init plus six scan rounds pass at 48 KiB, with no `OutOfMemory`;
-> - association takes **2,228 ms**, then **42 ms** to the address `192.168.1.136` (link up
+> - association takes **2,228 ms**, then **42 ms** to the address `192.168.1.10` (link up
 >   9,337 ms after boot);
 > - once connected the driver heap is **15,820 B free of 49,152 B** (32.2%), the same reading
 >   38 times over 85 s — the table's 32,204 B on the S3 was a 64 KiB-budget reading;
@@ -77,7 +93,7 @@ else).
 >   `associated`, `phase Connected`, no panic.
 
 Both boards see the same access points (`<ssid>` strongest at −45…−50 dBm, then `ap1`,
-`ap5`, `ap6`, `ap7`, `aa:00:00:00:00:01`), so what differs between the two columns
+`ap5`, `ap6`, `ap7`, `AA:00:00:00:00:01`), so what differs between the two columns
 is the part, not the room.
 
 esp-radio's documented heap need for a station is **47–57 KiB** with the default
@@ -87,7 +103,7 @@ on the S3 and 35,028 B on the C6: **the C6 needs 1,696 B more**, so one source n
 budgets. See [the section on that](#One_source,_two_parts).
 
 Access points around the bench (union of 12 rounds and 6 more, strongest per row). **Names and
-BSSIDs are placeholders** (`ap1`…, `aa:00:…`); channel, signal and security are measured:
+BSSIDs are placeholders** (`ap1`…, `AA:00:…`); channel, signal and security are measured:
 
 | Name / BSSID | Channel | Strongest | Security |
 | --- | --- | --- | --- |
@@ -95,8 +111,8 @@ BSSIDs are placeholders** (`ap1`…, `aa:00:…`); channel, signal and security 
 | `ap2` | 11 | −80 dBm | secured |
 | `ap1` | 6 | −81 dBm | secured |
 | ap3 | 6 | −82 dBm | secured |
-| `aa:00:00:00:00:01` | 1 | −78 dBm | secured |
-| `aa:00:00:00:00:02` | 8 | −84 dBm | secured |
+| `AA:00:00:00:00:01` | 1 | −78 dBm | secured |
+| `AA:00:00:00:00:02` | 8 | −84 dBm | secured |
 | ap4 | 1 | −87 dBm | secured |
 
 A name that is not printable ASCII shows as its BSSID by design: the panel's glyph table
@@ -708,8 +724,8 @@ and by whether a confirmation is up (the draft stays in `entry` across all of th
 
 | State | What is drawn | Gestures |
 | --- | --- | --- |
-| list (keyboard down) | a three-row header — `NETWORK`, `ST <phase>`, `IP <addr>` (the window `n-m/8` in the third column) — and below it **3 rows × 47 px** of list (name plus bars; an open network carries `OPEN` at its right edge; **a stored network carries `*` after its name**; **the selected row is reversed edge to edge**), then **an action strip** (`LEAVE` when there is a link, `SCAN` otherwise) | tapping a row picks it; **a row this device has saved (the one drawn with `*`) raises no keyboard** — it hands that row's **name** to the network task, which joins it with the copy the store keeps (and the keyboard comes back only when the store has no copy of that name, on a report from the radio); an **open network** raises nothing either, an empty passphrase is handed straight over; every other row raises the keyboard. Swipe up/down **slides the list one row**; **a long press on a row asks whether to forget it**; **tapping the strip** asks whether to leave when there is a link, and rescans at once (no question) when there is not; switching page is the **hardware triple click** only. **While a link can be left (`Connecting`/`Connected`) a tap on a row is refused outright**: nothing is picked, no keyboard rises and no credential is handed over (the `OPEN` rows too), while the long press and the slide are untouched (**they are not taken either while the joining box is up**: a list that is not drawn cannot be aimed at, see below) |
-| typing (keyboard up) | **the same three rows** of header (`NETWORK` + `ST <phase>` / `AP <name>` + bars / `PSK <draft>`, one reading a row) and below it the **4 × 4** keyboard (**80 × 46 px** keys) | keys only: a character key tapped again cycles its candidates, `123`/`#&?` switch layer, Shift, backspace, OK, X, SHOW (reveal); every other intent is `Invalid` |
+| list (keyboard down) | a three-row header, **one subject a row**: `NETWORK` + **this board's MAC** (right-aligned) / `AP <name>` + `ST <phase>` + bars / `IP <addr>` + **that network's MAC** (right-aligned); the list's window `n-m/8` sits in the **action strip's left corner** — and below it **3 rows × 47 px** of list (**two lines per row: the name above, that network's own BSSID below** — a name that cannot be drawn *is* the address, and that row draws one line; an open network carries `OPEN` at its name line's right edge; **a stored network carries `*` after its name**; the bars sit at the right of the name line; **the selected row is reversed edge to edge**), then **an action strip** (`LEAVE` when there is a link, `SCAN` otherwise) | tapping a row picks it; **a row this device has saved (the one drawn with `*`) raises no keyboard** — it hands that row's **name** to the network task, which joins it with the copy the store keeps (and the keyboard comes back only when the store has no copy of that name, on a report from the radio); an **open network** raises nothing either, an empty passphrase is handed straight over; every other row raises the keyboard. Swipe up/down **slides the list one row**; **a long press on a row asks whether to forget it**; **tapping the strip** asks whether to leave when there is a link, and rescans at once (no question) when there is not; switching page is the **hardware triple click** only. **While a link can be left (`Connecting`/`Connected`) a tap on a row is refused outright**: nothing is picked, no keyboard rises and no credential is handed over (the `OPEN` rows too), while the long press and the slide are untouched (**they are not taken either while the joining box is up**: a list that is not drawn cannot be aimed at, see below) |
+| typing (keyboard up) | **the same three rows** of header (`NETWORK` + this board's MAC / `AP <name>` + `ST <phase>` + bars / `PSK <draft>`, one reading a row; this board's MAC is drawn in this state too) and below it the **4 × 4** keyboard (**80 × 46 px** keys) | keys only: a character key tapped again cycles its candidates, `123`/`#&?` switch layer, Shift, backspace, OK, X, SHOW (reveal); every other intent is `Invalid` |
 | confirmation (over the list) | **neither the list nor the strip is drawn** (`page::Part::hidden`); only a 256 × 118 px modal sits over the list: the title `LEAVE "<name>"?` / `FORGET "<name>"?`, the body `THE LINK GOES DOWN` / `THE SAVED KEY IS ERASED`, and below it two answers, `KEEP` and the verb (`LEAVE`/`FORGET`, 100 × 44 px each) | the two answers only; **every other gesture and tap is a cancel** (one `answer_at` decides) |
 | joining (over the list, strip kept) | **the list is not drawn, the strip is** (`page::Part::hidden`): the same 256 × 118 px box, **with no answer in it**, titled `JOINING <name>` / `JOINED <name>` over the body `WAIT FOR THE NETWORK` / `WAIT FOR AN ADDRESS` | the strip only: `LEAVE` is still the one way out. **When a question is up at the same time the question is what the box holds** (`Overlay` is one rectangle, and the question wins); it is not drawn while a keyboard is up either — what the finger is doing then is typing |
 
@@ -1292,6 +1308,1107 @@ erased, and never reaches it: what backs it is that `hold`'s call sites pass `St
 and the tapped row) and `Named` (a passphrase from the build or the panel), and `keep` is called on
 the `Named` path alone (`app/src/network.rs`).
 
+## How a board with no panel gets configured: an open AP behind a page (`[measured]`/`[test]`)
+
+The C6 carries a WS2812 and a Boot key, and `LightRenderer::page_ground()` only lays down black when
+`light.draws_pages()` — a WS2812 draws no pages, so `DisplayPage::Network` on that board is **neither
+visible nor operable**. What was added is another front door: the device brings up an **open** access
+point, hands out addresses over DHCP, answers **every** name with itself (which is what turns a
+phone's "this network has no internet" check into the page opening by itself), and serves the config
+page over HTTP. The panel's door is untouched: on the S3 the panel still leads with the page
+alongside it, and the C6 has the page alone.
+
+| Layer | Where | What it is | Who tests it |
+| --- | --- | --- | --- |
+| Protocol | `iot-core::provision` (`http`/`dns`/`route`/`scan`/`wire`, plus two `include_str!` HTML files and an icon under `assets/`) | request parsing, routing, answers, what a name gets answered with, the list as JSON — **and no allocation anywhere** (form fields decode into the caller's stack buffers) | host: **45** tests (the `#[test]`s in `provision/*.rs`) |
+| Device | `iot-app::provision` | four loops (DHCP server, name server, page, `embassy-net` runner) wired to sockets | the bench (still-to-do 8) |
+| Wiring | `configure` in `iot-app::network` | raises the AP, races the page against the panel, hands the credential back to the `JOIN` plane | the bench (still-to-do 8) |
+
+Routes: `GET /` (and `/index.html`) for the page (**with the list embedded**), `GET /scan` for the
+list as JSON, `GET /rescan` for that same list and **a wake for the next survey round**, `POST
+/submit` to take a credential and answer **inline** with the done page, `GET /done` (and
+`/done.html`) for that same page, `GET /favicon.svg` for the icon (cached for a day), `GET
+/favicon.ico` for a `204`, and **everything else 302s to `BASE_URL`** — that last one is the feature
+rather than a fallback: the paths a phone probes with (connectivity checks, assorted probes) get a
+redirect, and the page is what that answer is for.
+
+On the radio side the `Station` trait gained `begin_setup`/`end_setup`, and the bsp lands them on
+`Config::AccessPointStation(StationConfig::default(), ap)` (**APSTA**, so scanning still runs while
+the access point is up) and `Config::Station(...)`. The access point is
+`AuthenticationMethodConfig::Open` (checked against `impl Default for AccessPointConfig` in
+`esp-radio 1.0.0-beta.1`), and its name comes from the board's own address
+(`vanling-<last two MAC octets>`, with three `[test]`s pinning the format, the dedupe and the zero
+padding) rather than from a build constant: one image flashed to two boards is two networks in one
+room.
+
+### The answer reaches the phone before setup mode ends
+
+`provision::serve` returns `Infallible`, so in `configure` it races the panel's own path
+(`setup_credential`) through `select`: **whichever names a credential first ends setup mode**, the
+page's future is dropped with the `select`, and the access point goes down with its `Runner`. The
+credential travels the existing `JOIN` plane, so `hold`, the store and `Provenance` are reused
+unchanged — the page and the panel are the same path at the level of "where a credential came from".
+
+The page publishes the credential only after writing the answer **and waiting for the peer to
+acknowledge it** (`TcpSocket::flush`, semantics read off `tcp.rs` and its docs in
+`embassy-net 0.9.1`). That is not caution; it is a race that **loses every time**: publishing to
+`JOIN` means `select` resolves at once and the page's future goes with the AP's `Runner`, so there is
+**no next `interface.poll`** — bytes sitting in the socket's buffer that never reached the medium
+vanish with the stack, and the phone sees a request that is never answered. `/submit` therefore
+answers with the done page inline in a 200 rather than redirecting to `/done`: a redirect needs a
+second request, and the stack that second request would wait on is already gone.
+
+### An idle exit, and the `/exit` that is still not built
+
+The previous version of this section said "the AP stays up until somebody hands over a credential":
+the reference firmware's "reopen the AP after a while" and its `/exit` (`78__esp-wifi-connect` in
+`../xiaozhi-esp32`) both read as identity operations. The first half stopped being true once setup
+mode became two front ends — the access point is now **a front end raised for a phone**, and one left
+up with nobody reading it is a configurable device for anyone in range; "reopen it" is still
+meaningless, because the answer is to take it down:
+
+- **`SETUP_IDLE_MS = 180_000`**: the clock starts when the access point front comes up and restarts
+  with every request the page answers (`provision::page_read()` is a latest-value window, see
+  `page_idle`). A phone filling the form in is not an idle access point.
+- **The clock is always armed** (`page_idle()`, no more `armed`): a board with a screen goes back
+  to the panel front; a board without one goes back to the network it keeps (`return None`, `link()`
+  associates again); a board with **neither** (no screen, no saved network) takes the access point
+  down too and lands in `browsing()`'s offline state. The old "neither → no clock" exception is gone
+  with the third cut of the entry: a board with a screen also gets in through the offline page's `AP`
+  cell, a board without one only through the explicit reset-then-hold, and a factory device's open
+  access point should not keep beaconing (see "Getting back to setup: hold BOOT on the splash page").
+- **`/exit` is still not built**: the page has no place for it, the panel's
+  `LEAVE`/`CLOSE`/`CANCEL` say the same thing more completely, and the C6's way in is the hold on
+  the splash page (see "Getting back to setup: hold BOOT on the splash page"), not a link in the
+  page. (The page's own two timeouts wait on "the first byte" and "one request", not on idleness —
+  see ④ under "The bench: from link, to phone, with four corrections".)
+
+### Scanning no longer waits for the panel
+
+`[measured]`: in setup mode `survey` scans **unconditionally** (the round's own pacing is unchanged —
+see "The rhythm of a round"), replacing the "wait for the panel to arrive" gate
+(`PAGE.wait_for_list()`) with a non-blocking `PAGE.shows_list()` plus a rising edge. The reason: on
+the C6 nobody ever reaches that page, and the page is reading exactly this list.
+`SurveyHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
+is unchanged.
+
+The list exists **twice**, one per reader: the panel's rides the `SCAN` plane (which the render loop
+*takes*), the page's rides `provision::LATEST`. The page must not take the panel's copy, and
+`LATEST` is a window where only the newest value means anything, so it is a `Mutex<RefCell<...>>`
+rather than a channel.
+
+### Dependencies and versions
+
+`edge-dhcp 0.8.0` (`io` only) + `edge-nal 0.7.0` + `edge-nal-embassy 0.9.0` (`udp` and `proto-ipv4`
+only), with `embassy-net`'s features gaining `dhcpv4`/`tcp`/`udp`. The versions have to line up with
+`embassy-net 0.9`: `edge-nal-embassy` 0.8.x is built against `embassy-net 0.8`, and the two do not
+compile together. `udp` is for DHCP alone (it takes its socket through `edge-nal`'s `UdpBind`); the
+name server and the page use `embassy-net`'s own `UdpSocket`/`TcpSocket`, so `edge-nal-embassy`'s
+`tcp`/`dns`/`icmp` are off — they would be code every board links and no board calls. HTTP is
+hand-written (HTTP/1.0, `Connection: close`, `Content-Length` always set): **`picoserve` was
+rejected**, it needs nightly's `impl_trait_in_assoc_type` and this repository pins stable 1.95.0.
+
+`proto-ipv4` is **this crate's own** feature; having `embassy-net`'s copy on does not count — that is
+what knocked it out when the dependency was written as "nothing but `udp`", and what the cost and the
+reading were is in the next section.
+
+Both HTML pages go into `.rodata` through `include_str!`, and on this target `.rodata` lands in DROM
+(`0x3c01xxxx` under `nm`) — the flash-mapped region, which does not come out of `dram_seg`.
+
+### Memory: the feature hit the static wall on the S3, and how it pays for itself (`[measured]`)
+
+One ruler (`nm` for `_stack_start_cpu0 − _stack_end_cpu0`), one command (`--bin vanling
+--no-default-features --features lckfb-szpi-esp32s3,console-auto`):
+
+| Step | POOL | Main stack |
+| --- | --- | --- |
+| HEAD rebuilt (same command) | 43,336 B | 65,976 B (440 B of margin) |
+| setup mode wired in, the page's future inline | 50,984 B | **link failure**: `stack.x:13 cannot move location counter backwards` |
+| the page's future `Box::pin`ned | 43,552 B | 65,464 B (72 B short of the 65,536 B assertion floor) |
+| `LATEST` boxed + `&Ssid`/`&ApList` | 43,408 B | 65,592 B (56 B of margin) |
+| `SurveyHistory` boxed | 42,728 B | **66,264 B (728 B of margin)** |
+
+Both boxings reuse the rule this record already has (see the `Store` under "The account for the main
+stack"): **every frame that carries a large value by value is a fixed static's worth of the product's
+one task**. The page's four loops plus their socket buffers are **7,432 B** of future, which
+`Box::pin` moves wholesale to the heap (PSRAM on the S3, that 64 KiB app heap on the C6);
+`SurveyHistory` is another ~700 B (the 344 B `LATEST` was boxed too at one point, and on the bench one
+338 B allocation per round is what killed the S3; it is a static again — see the next section). The
+last row ends up **288 B above HEAD's margin**: the whole feature
+nets the static budget back about 300 B, and both the C6 and the S3 link.
+
+**The ruler's resolution has to be on the record**: summing `.bss`+`.data` symbol by symbol through
+`nm`, the second row differs from the first by only 80 B, while the location counter moved 384 B —
+the difference is **section alignment**, not data. Shrinking `LATEST` from 344 B to 8 B mid-way
+bought back only 128 B, for the same reason. So this budget is measured on `_stack_end`, not on the
+sum of symbols.
+
+Flash is a separate account, also measured: `moon run iot:image` puts the S3 at
+`997,376 / 6,291,456 B` (15.85%, a 6 MB partition) and **the C6 at `776,016 / 1,048,576 B`
+(74.01%, a 1 MB factory partition)**. The same tree with setup mode removed (after a `git stash`,
+same command) puts the C6 at `706,704 B` (67.40%), so **the feature costs 69,312 B of flash
+(+6.61 points)**. The two HTML pages are 4,725 B between them; the rest lands in smoltcp's
+`tcp`/`udp` (the old image's networking stayed on the IP layer — a DHCP client touches no TCP) and in
+`edge-dhcp`/`edge-nal`. That is inherent to "serve a page over HTTP", not part of the hand-written
+half that could be trimmed.
+
+### The bench: from link, to phone, with four corrections (`[measured]`, 2026-10-19)
+
+The C6 went through first: a phone joined `vanling-1234`, took a lease, and the page opened **by
+itself** (the name server answers every name with `192.168.4.1`); then `GET /` → `GET /scan` (the
+neighbouring networks) → `POST /submit` (a real passphrase) → `phase Connected`. With the credential
+on flash, **reflashing the same image still booted straight into the link**. The S3 then turned up two
+problems that only show with a radio in the loop, and two more where the page's own answer was too
+slow.
+
+**① A 338 B allocation per survey round kills the S3**: the first `/scan` panicked — `memory
+allocation of 338 bytes failed`, with 1,632 B free on the heap. That allocation was a copy of the list
+(`Box<ApList>`, four neighbours). The fix is **not** to make it smaller but to remove it: the page's
+copy of the list is a window where only the newest value means anything, so it should have been a
+static all along, and it is a `Mutex<RefCell<ApList>>` again — a cost that was fatal at runtime traded
+for one the linker accounts for. The same round took the page sockets' send and receive buffers from
+512 down to 256.
+
+**② One socket is one connection, and a phone holds more than one**: `Connection: close` makes every
+fetch a new connection, while the phone also runs a connectivity check (`generate_204`), `mmtls` and
+preconnects in the background. On one socket `/scan` waits for a slot to come free — 2 to 3 answers
+in a 40 s window; two sockets were still 2 to 3; **three** is what it takes. The third socket's
+`StackResources` comes from the **heap** (`Box::leak`), so `.bss` did not grow by a byte
+(`SETUP_SOCKETS` is still 5).
+
+**③ A socket in hand is being served, not re-armable**: `armable(state)` accepts only `Closed` and
+`TimeWait`; a socket that came out of `accept()` stays in the loop's hand until its answer is
+written, and an `accept()` in the meantime only gets `InvalidState`. Re-listening while writing was
+expected to answer more — measured, the opposite: it refused the page's own `/scan`, its favicon and
+the phone's probes.
+
+**④ Two timeouts, not one**: from the connection coming up to its first byte waits
+`PENDING_TIMEOUT = 1 s` (that is where a phone's preconnect and an abandoned connection sit), and
+after the first byte `CONNECTION_TIMEOUT = 10 s` takes over. The pick order changed too: **a held
+socket with data goes first** (`can_recv()`), then any held socket, and only then a new one — a real
+request should not queue behind an idle connection.
+
+**Readings** (S3): 14 `GET /`, 10 `/scan`, 1 `POST /submit` (the whole round 6,858 ms, of which the
+page's own write was 1,900–2,100 ms), which is why the log reads
+`… answered Ok, 4468 B of body, in 2111 ms`; a connection that cannot be read prints
+`a request would not be read after N ms: <err>` (a socket timeout and a peer RST cannot be told apart
+in the log, so the log is read by elapsed time). The page's own `/scan` retry ladder is 5 × 320 ms,
+which is what crosses the queueing in ②.
+
+**The static wall**: the same ruler (`nm` for `_stack_start_cpu0 − _stack_end_cpu0`) reads **65,880 B**
+after these four, against the 65,536 B floor — **344 B of margin**; the render loop's own reading,
+`[DISPLAY] stack peak 38592 B of 65880 B`, agrees with it. Trimming this branch's comments and shapes
+afterwards (and making the POST path allocation-free) moved `[DISPLAY] main stack` to **65,912 B**
+(**376 B** of margin), with the peak still 38,592 B. `[HEAP] … free with setup mode's future up` prints
+on every boot: S3 1,632 B, C6 **41,056 B** (about a third of that 64 KiB window in use).
+
+That round's `moon run iot:image` put the S3 at `1,004,848 / 6,291,456 B` (15.97%) and the C6 at
+`782,272 / 1,048,576 B` (74.60%); rebuilding after the trim gives S3 `1,003,904` (15.96%), C6 `781,984`
+(74.58%) — **smaller**, not bigger. Nearly all of the difference is `percent_decode`: both call sites
+inlined it, and `#[inline(never)]` taking it back to one copy saves the C6 1,296 B of image (1,314 B of
+`nm` symbol sum) and the S3 1,216 B. **Whether flash grew is a question for the symbol sum: one small
+function inlined twice can eat a whole trim's gain.** That round's page, `assets/portal.html`, is
+4,468 B (the third version is 14,819 B, see the next section), and its inline CSS/JS is
+**deliberate**: one connection fetches the page, at the cost of not being able to fetch half of it.
+
+### Seven or eight reloads and the page goes white: how many connections one reload is worth (`[measured]`/`[test]`, 2026-10-20)
+
+What came back from the bench was "seven or eight reloads and the page goes white (spinning or an
+error)" — **the page fails to arrive, the phone does not drop off**. The previous round raised each
+page socket's buffers from 256 B to 1,460 B, which fixed **how many round trips one page costs**
+(18 → 4); it did not touch any of this round's three accounts:
+
+| Account | Before this round | Now |
+| --- | --- | --- |
+| Connections per reload | page + `/scan` + icon (including the `.ico` 204) + the phone's own connectivity checks = **3 to 6**, against 3 page sockets; the extra handshakes are refused **silently** by the stack | **1** (the page itself: the icon is inline as a `data:` URI and the first list is embedded in the document); the phone's own probes are still their own connections and get one 302 |
+| What the page does to the radio | reads `/scan` every 4 s, and the device called `RESCAN.request()` on **every** `/scan` — a page left open meant a radio scanning continuously | only the **Scan again** button goes through `GET /rescan`; reading the list (`/scan`) no longer wakes the survey |
+| What the first paint waits for | the document, then an XHR for the list before any row can be tapped | the list is in the document, so the first paint is already tappable |
+
+**Why "the page scanning on its own" hurts**: the setup access point is APSTA, and a channel-by-channel
+scan interrupts clients — exactly what ESP-IDF's documents warn about and what this record's comparison
+table marked as "the difference was not reproduced here". Three to six connections per reload, each
+followed by another immediate rescan, is how seven or eight reloads end with a phone looking at a
+network nobody answers. This round removes both, which turns that `[as-reported]` from "scanning may
+interrupt a client" into "a page must not press scan on its own".
+
+**The embedded list is a slot, not a template**: `route::SEED_AT` (`/*scan*/`) marks the position, the
+page puts a `[]` that **stands on its own** in that slot (unsubstituted it is an empty list, not a
+syntax error), and at send time `send_page` writes `LATEST`'s JSON into the slot while
+`Content-Length` is computed as `page_len(aps) = PAGE.len() − SEED_SLOT + scan_json_len(aps)`. This is
+the one place where "what the head says" and "what goes out" can part ways, so both halves have tests:
+`the_head_of_the_page_names_the_page_with_the_list_in_it` (against `json()`'s actual length) and
+`the_page_leaves_one_slot_for_the_list_and_it_stands_on_its_own`. The address is still a
+length-preserving substitution (`MAC_TOKEN`); the list is not — hence the fixed order, address first
+and list second, each appearing once.
+
+**The page, third version** (`portal.html`, 14,819 B; the inline CSS/JS is still deliberate): the
+language switch moved from the footer to a segmented control in the **top right**; the passphrase went
+from an inline field to a `<dialog>` sheet that slides up from the bottom (with show/hide and
+`minlength=8`, backdrop or Esc to cancel, an `open`-attribute fallback for older browsers); a row is
+now the name + **that network's own BSSID** (small, tabular, so two mesh or repeater radios stop
+looking alike) + four signal bars + lock/open + a `Saved` chip; under the list is **Scan again**
+(`GET /rescan` → wait 1.8 s for that round → read `/scan`). `done.html` only swapped its icon and
+keeps reading the same language key.
+
+The byte account: the page went from **4,468 to 14,819 B** (+10,351: the i18n dictionary, the dialog,
+the card layout, a BSSID per row, the inline icon), while **a reload went from 3 to 6 connections down
+to 1** and the first paint no longer waits for an XHR. `/favicon.svg` is still served by name (cached
+for a day) and `/favicon.ico` is still a 204.
+
+**The panel's list carries the BSSID too.** The phone's rows had the address, the panel's three did
+not: a row is 47 px and the name (24 glyphs = 215 px) already spends the width, so 17 more glyphs
+(149 px) do not fit beside it. A row is **two lines** now — the name above, the address below — and
+the pair costs 20 px, centred with 13/14 px left top and bottom, so the 47 px tap is unchanged
+(`keyboard::band_lines_top`, pinned by a host test and a compile-time assertion that the second line
+does not reach the next row). The reason is usability, not typography: a mesh node and its own base,
+or two repeaters with one name, used to be guessable only from the bars; the address can now be read
+character by character against the phone's row.
+
+An address is **upper case** (`AA:BB:CC:DD:EE:FF`). Three formatters used two spellings: the panel's
+header and address line used `mac_text` (upper), while the page's per-row BSSID (`scan`'s
+`hex_digit`) and the panel's own line for **a name that cannot be drawn, which falls back to the
+address** (`camera_readout::write_bssid`) were lower — one person holding two screens read one value
+in two spellings, and on the panel the two could meet **inside one row**. Both were brought to the
+upper case the panel already used; `ap_name` (`vanling-a1b2`) was left alone, because that is the
+access point's name rather than a drawing of its address and changing its case renames the device.
+Each formatter gained a test with **a lettered octet**, since every existing fixture was all zeroes
+or all digits and could not tell the two cases apart. One more thing fell out of it: when a name
+cannot be drawn the name line *is* the address, so that row no longer draws a second line — the same
+string printed twice a line apart is one printing too many.
+
+**The header's board address moved a row.** It used to take the network's row (where `AP <name>`
+goes), so picking a row or a link coming up pushed it aside — exactly when someone goes looking for
+it. It now shares the `IP <addr>` row (address on the left, MAC right-aligned) and row 1 belongs to
+`AP <name>` and the bars alone. The widths are accounted for: the address runs from the block's left
+edge with `IP ` written inline (this row skips the four-glyph label slot, the one place on the page
+that does) for 158 px, ending at 168, and the MAC's 17 glyphs start at 171 — a compile-time assertion
+pins that they cannot meet (the first draft kept the label slot and the assertion went red by six
+pixels). The typing state needs the whole row for `PSK <draft>`, so the address is not drawn there and
+comes back when the keyboard closes. A hole in `diag_repaint_due` was closed at the same time:
+`DisplayPage::Network` compared `link`/`aps`/`setup` and **not `mac`** — the address arrives after the
+radio's first report, while the survey's normal answer is "the list is unchanged, so the page is not
+redrawn", so that cell could stay blank for good. The diff now includes `prev.mac != next.mac`, with a
+test that changes only the MAC and requires a Network repaint.
+
+**The bench's first boot** (C6, `[measured]`): `Get / answered Ok, 15314 B of body, in 72 ms` (four
+APs embedded; `page_len` computes 14,819 − 2 + 497), and the log holds **no `/scan` and no
+`/favicon.svg`** — a reload is one connection and the list does not wait for an XHR. The boot's
+`[HEAP] … free with setup mode's future up` is the ruler for that: **33,384 B** before the buffer
+change, **32,104 B** at 2,048 — exactly 1,280 B less, which is what puts the buffer in setup mode's
+future (the heap) rather than on the main stack. The same reading was 41,056 B the previous round.
+
+**A real defect the same log caught**: `a request filled the buffer without ending`. Chrome Android's
+request headers (user agent + client hints + `sec-fetch-*`) run 700–1,000 B against a
+`REQUEST_BYTES` of 768 — a request that does not fit is **closed without an answer**, which on the
+phone looks exactly like "spins once, white page, fine after another reload". Raised to **2,048 B**;
+that buffer lives in setup mode's future (the heap), so the S3's static wall did not move by a byte.
+The check is not reasoning: re-flash and re-capture, and that warning is gone.
+
+**This round's sizes**: `iot:image` gave the S3 `1,020,848 / 6,291,456 B` (16.23%) and the C6
+`796,864 / 1,048,576 B` (75.99%), up 5,456 B and 5,424 B from the previous round (the page's
++5,155 B is most of it; the rest is the panel's second line per row). The `IOT_BOOT_PAGE=network` S3
+image is `1,022,736 B` (16.26%) and is what the bench board runs (it boots into the list). **The
+static wall did not move**: `nm`'s `_stack_start_cpu0 − _stack_end_cpu0` is **65,816 B** against a
+65,536 B floor, **280 B to spare** — the same number for both builds and before and after
+`REQUEST_BYTES` (the buffer is on the heap), and the board's own boot prints
+`[DISPLAY] main stack 65816 B` with a 38,672 B peak. Setup mode's heap on the S3 reads 25,560 B this
+round (32,104 B on the C6).
+
+### The header re-cut to one subject a row: the two addressed devices get a row each (`[test]`, pixels to be looked at)
+
+What the bench asked for was row 0 `NETWORK … mac`, row 1 `AP <name> bars`, row 2 `IP mac`. The
+previous cut could not do it, and **that is not taste but pixels on top of one another**:
+`AA:BB:CC:DD:EE:FF` is 17 glyphs = 149 px and, right-aligned, occupies **x=171…319**; the phase word's
+value starts at 150 and its longest word ends at **182**, overlapping the MAC by 11 px; the list's
+window counter is drawn at **x=218**, inside the same span. A row is 35 cells, and the four items
+(title 7 + phase 7 + window 5 + MAC 17 = 36 cells) never fit anyway.
+
+Two things moved, both for a geometric reason:
+
+- **The phase word moved to row 1** (`AP <name> ST <phase>`): it says where the link *to that access
+  point* got to, so it belongs beside the name. The name slot is 17 glyphs, ending at 194, and the
+  phase starts at a fixed **x=199** (the name's length does not move that column), seven glyphs at
+  its widest ending at 258; the bars sit at 288…319.
+- **The list's window counter moved into the action strip's left corner**: `1-3/6` starts at x=10
+  while `SCAN`/`LEAVE` stays centred (about 139…180), so the two never meet. It is still drawn by the
+  branch that draws the list (a question over the list takes the counter with it); only its position
+  changed.
+
+| Row | What it holds | Width (px) |
+| --- | --- | --- |
+| 0 | `NETWORK` + **this board's MAC** | title 10…69, MAC 171…319 |
+| 1 | `AP <name ≤17>` + `ST <phase ≤4>` + bars | name 46…194, phase 199…258, bars 288…319 |
+| 2 | `IP <addr ≤15>` + **the connected network's MAC** | address 10…168 (`IP ` inline, skipping the label slot), MAC 171…319 |
+| strip | `n-m/8` … `SCAN`/`LEAVE` | counter 10…51, verb centred |
+
+The two MACs are told apart **by their rows**: row 0 is this board (the title's row, given up by no
+state, and drawn while typing too), row 2 is the network it is on (whose name the row above just
+printed). Three compile-time assertions pin the pairs that must not meet (title vs this board's MAC,
+name vs phase, address vs the network's MAC), and the phase-to-bars assertion counts the three glyphs
+of `ST `.
+
+**Why the phase could not stay on row 0**: its value starts at 150 and four glyphs end at 182, which
+always overlaps this board's MAC at 171; narrowing the label slot only lets a two-glyph word like `UP`
+through, while `SCAN`/`JOIN`/`AUTH` all run past. So row 0 can carry one of the two, and this board's
+MAC is what the bench goes looking for.
+
+The phone page's per-row line gained a `BSSID ` prefix (the page head already says `Device <this
+board's MAC>`, so neither MAC is a bare value on its own any more). Since 2026-10-21 that label
+reads `AP MAC` — same value, same small line, no term (see "The link-up cell goes back to
+`LEAVE`").
+
+**Sizes**: `portal.html` 14,819 → **15,128 B** (+309: the prefix and its comment). `iot:image` gave
+the S3 `1,021,728 / 6,291,456 B` (16.24%) and the C6 `797,168 / 1,048,576 B` (76.02%), up 880 B and
+304 B (the page's 309 B plus the panel header's new constants and code). The `IOT_BOOT_PAGE=network`
+S3 image is **1,023,616 B** (16.27%). **The static wall did not move a byte**: `nm` still reads
+**65,816 B** (280 B to spare) and the board's boot prints `[DISPLAY] main stack 65816 B`; setup mode's
+heap on the C6 still reads 32,104 B (that buffer was not touched this round).
+
+**Not yet read** (`[unfinished]`): whether the 100 px between the title and this board's MAC on row 0
+reads as "this device", the gap between the name and the phase word on row 1, and whether the strip's
+left-corner counter is mistaken for something tappable — only the panel can answer those three; the
+phone page's prefix and its *Scan again* wait on the bench as well. The bench board runs the
+`IOT_BOOT_PAGE=network` image with one network still in its `creds` partition, so it comes up **with a
+link up** — which is exactly the state that shows both MACs (row 0 and row 2) at once; seeing setup
+mode (typing, the dialog) needs that stored network erased first.
+
+### `abort()` straight after the answer: the RST throws away what the phone has not read (`[measured]`, 2026-10-20, evening)
+
+What came back from the bench was an **occasional** `ERR_CONNECTION_RESET`: the page sometimes failed
+to appear, and reloading fixed it. Every one of those runs is `Get / answered Ok, 15,425 B of body, in
+88–196 ms` on the device's side — the bytes really were written, and what was wrong is **how the
+connection ended**:
+
+- `close()` + `flush()` only waits for **our own FIN to be acknowledged** (`FinWait2`). The peer has
+  not sent its FIN, which means it may still be reading.
+- The `abort()` right after sets the socket `Closed`; the stack sees `remote_endpoint` still there and
+  sends a **RST** (the `rst_pending` test in `flush()`).
+- A RST makes the peer's kernel **discard receive-queue bytes its application has not read yet** — and
+  the browser reports `ERR_CONNECTION_RESET`.
+
+Three things beside it: 0 B answers (`generate_204`, the `/mmtls` 302) never failed once (one segment,
+no "not read yet" window); a large page takes several segments every time; both boards share this
+code, so both boards fail.
+
+**The first fix was wrong, and usefully so**: waiting for the peer's FIN before releasing the socket,
+bounded at 500 ms, brought `ERR_CONNECTION_REFUSED` straight back from the bench. A socket waiting for
+a FIN **is not listening**: one of the three page sockets sits in that wait, the phone opens six
+connections per reload, and by the time the page's own connection is fourth in line there is no
+listener left, so its SYN is answered with a RST. Those minutes read exactly that way: three `Get /`
+lines, everything else `generate_204` retries.
+
+**The measurement settled what the wait costs**: the peer's FIN is **already in** when `flush()`
+returns (`TimeWait after 0 ms`, 451 of 455 connections), so waiting for it costs nothing; the bound
+came down to **100 ms**, which 4 of 455 reached (still `FinWait2`, and that RST lands long after the
+peer stopped reading). Accepted on the bench: **55 page requests, 0 failures** (`could not accept` 0,
+`did not finish` 0).
+
+The same build turned `send`'s silent `Ok(0)` into `an answer stopped N B short`: it catches **three
+peer-side** resets mid-body (the body stopped at 9,171 of 15,710 B), which used to be silent.
+`CONNECTION_TIMEOUT` came down from 10 s to **3 s** as well: a request that only half arrived must not
+hold one of three page sockets for ten seconds (a page takes ~100 ms).
+
+**One hypothesis the same logs overturned**: the scan was worked on first — every answered request
+raised `PAGE_READ`, and the survey's pause restarted on seeing it, on the grounds that a per-channel
+scan takes the radio off the access point's channel (a round ≈1.15 s against a 5 s pause, so the first
+few rounds spent ~19% of the time off-channel). It did take effect: **zero `survey found`** lines across
+nine reloads, and the rounds either side moved from 31 s to 47 s. The page **failed anyway**, so the
+scan was not the cause. The gate stays (a radio should not scan while somebody is reading a page), but
+it is not what fixed this.
+
+**Sizes**: the product image on the S3 is `1,025,680 / 6,291,456 B` (16.30%), the
+`IOT_BOOT_PAGE=network` one **1,027,424 B** (16.33%). The static wall got **smaller** this round: the
+product build reads **65,720 B** (184 B to spare) and the network build **65,688 B** (152 B to spare) —
+the same board printed 65,816 B last round, and where those 96/128 B went is not measured (not the wait
+for a FIN: that lives in setup mode's future, which is heap). With three digits to spare, it belongs in
+the record.
+
+### Against ESP-IDF's provisioning (three trades)
+
+Read off ESP-IDF's own Wi-Fi Provisioning documents (`wifi_prov_mgr`, `wifi_prov_scheme_softap`).
+Three places where we **differ from it**:
+
+| Question | What ESP-IDF does | What this device does | The price |
+| --- | --- | --- | --- |
+| When the service stops | after the device **is connected**, with the client able to read the status | **as soon as a credential arrives** (first past `select` wins, see "The answer reaches the phone before setup mode ends") | a wrong passphrase drops the phone off the AP, and only the device itself can bring setup mode back. On the panel's path a refusal is measured at 37.6 s (`AUTH`, still-to-do 5④); this side of it is **unmeasured** |
+| Scanning under a SoftAP | the documents warn that scanning channel by channel interrupts the client's connection, so a grouped sweep is offered (`[as-reported]`; the difference was not reproduced on this device) | channel by channel (APSTA) | the phone stayed on through several bench rounds (`[measured]`); worth re-checking on another board. On the page's side this is settled: the page no longer presses scan on its own (the third version drops the rescan every `/scan` used to trigger — see the previous section) |
+| How a credential travels | a protocomm session + proof of possession + encryption | **an open AP and a plain-text form** | anyone on the same network can read that passphrase, and can hand the device a different one — a known trade; the splash entry's AP is open (the panel's `PASS` switches to WPA2), while a running panel starts it secured, so this trade sits on the default path only for the splash round; a one-time PIN would close it further |
+
+## Setup mode becomes a gear the panel can see and leave (`[measured]`/`[test]`, 2026-10-20)
+
+Until now setup mode was **implicit**: no credential, a `LEAVE`, or a refusal sent the network task
+into `unconfigured()` for good, and the only thing the panel could say was the phase word on the
+header. Two things were impossible because of it: **seeing that the device is being set up** (an AP
+that is up and a link that is retrying drew the same page), and **coming back out** — after `LEAVE`
+the only way on was scanning the list again.
+
+This round turns it into a gear that is visible and reversible:
+
+| Thing | Before | Now |
+| --- | --- | --- |
+| Into setup mode from a link | strip `LEAVE`, a box asking "leave?" | strip `LEAVE`, a box asking `LEAVE "cafe"?` / `THE LINK GOES DOWN` (it was called `SETUP` for one round and then put back — see "The link-up cell goes back to `LEAVE`") |
+| Out of setup mode | not possible (`unconfigured` diverged) | strip `CANCEL` → the `CANCEL_SETUP` plane → `unconfigured` returns → `link` retries what it holds |
+| Knowing the mode is on | no such field | `LinkStatus.setup` / `setup_cancellable`, header `ST SETUP` |
+| The header's network | the link's access point (none in setup) | `AP vanling-xxxx` derived from the MAC — the same name the phone's list shows, not a second copy in the state |
+| The address row | the station's address (none in setup) | `IP 192.168.4.1` |
+| First entry | silent | one `SETUP MODE` / `AP vanling-xxxx` / `CLOSE` box, dismissed by any tap, once per boot |
+| Sound | none | `Rise` on entering setup mode, `Tap` on connected, `Error` on refused (the existing MIDI cues; no PCM, no on-device TTS) |
+| The button | `Click` on the Network page was `Invalid` | the strip's own verb (`LEAVE`/`CANCEL`/`SCAN`) |
+| The `n-m/8` counter | the strip band's left corner | the title row's gap between `NETWORK` and the MAC |
+
+Four rules were settled here, and each is pinned by a test in core:
+
+- **`CANCEL` is only offered when there is a way back**: `setup_cancellable` is computed by the
+  caller (`link` asks whether the saved list is non-empty; the build-named path is always true),
+  not by the network task reading the store — the store is still mutable inside `unconfigured`,
+  and "where does a cancel go" is the caller's question. Without a way back the strip falls back
+  to `SCAN`: on a device that was never set up, `CANCEL` would only take its own AP down and raise
+  it again, which a phone sees as the page disappearing.
+- **The mode is not a phase**: `LinkPhase` stays the radio's (it is `Off`/`Scanning` in setup mode)
+  and `setup` is a bit beside it; folding a non-phase into the phase enum would fork every
+  `Connected`/`Failed` decision.
+- **The first announcement is not "every time the AP comes up"**: `seen` is one bit per boot, and
+  a refusal raises the AP again — that second time must not drop the box back over the keys a
+  passphrase is being retyped on.
+- **Sounds are started in the state's transitions**, not by a page: the network task is the only
+  thing that knows "just connected / just refused", and all it publishes is a `LinkStatus`.
+
+`[test]` Host-pinned behaviour: the strip's two verbs and `take_setup_cancel` handing over once;
+no way back falling to scanning; the announcement appearing once, `Dismiss` closing it, a later
+re-entry not bringing it back; `Part::hidden` covering the list and the strip while it is up;
+`Click` on the Network page = `Toolbar`; any tap (a long press included) = `Dismiss` while it is
+up; the `Rise`/`Tap`/`Error` transitions; `format_question(Leave)` = `LEAVE "cafe"?`; the
+announcement's second line = `AP vanling-2fc8` (a synthetic MAC).
+
+`[measured]` Gates: `cargo fmt --check`, `moon run iot:test` (core 651, bsp 112, app 34),
+`iot:lint`, `iot:check-host`, `iot:check-s3`, `iot:check-c6` — all pass.
+
+`[measured]` The static wall (one ruler: `nm` for `_stack_start_cpu0 − _stack_end_cpu0`, floor
+65,536 B):
+
+| Tree | Main stack | Spare |
+| --- | --- | --- |
+| HEAD `b61479d` rebuilt (`git stash` of the uncommitted work) | 66,008 B | 472 B |
+| Before this round's work (an earlier reading this session) | 65,720 B | 184 B |
+| After this round | **65,688 B** | **152 B** |
+
+So the feature itself costs **32 B** (65,720 → 65,688), and most of the 320 B against HEAD is the
+uncommitted portal/RST round. The board's own line agrees with `nm`: `[DISPLAY] main stack 65688 B`,
+`[DISPLAY] stack peak 38520 B of 65688 B`.
+
+Flash: `moon run iot:image` gives S3 **1,031,168 / 6,291,456 B (16.39%)**, **5,488 B** more than the
+previous round's 1,025,680 B product image; the C6 image of the same name is in `dist/`.
+
+`[measured]` On the board (product image, `IOT_PORT=/dev/cu.usbmodem1422301`):
+
+```
+[WIFI] this build was given no network and this device has saved none, so the setup access point and the panel are both open until one of them names one
+[WIFI] setup mode for "vanling-2fc8" is open
+[HEAP] 25560 B free with setup mode's future up
+[WIFI] survey found 3 access points
+[DISPLAY] main stack 65688 B
+```
+
+`[not done]` What this round did **not** do:
+
+- **The headless board's entry** (xiaozhi's "press Boot while unlinked to enter setup + a blue
+  blink"): the entry is the hold on the splash page (see the third cut of "Getting back to setup");
+  **not done** are the blue blink and the click entry (the C6's click is still the light's colour
+  walk — the LED *is* the light).
+- **Pixels and touch**: the box, `ST SETUP`, the `AP`/`IP` rows, the counter's new home and the
+  width of `CANCEL` all need a human eye; `LEAVE`/`CANCEL` need a human thumb once.
+- **A wrong passphrase in setup mode**: still the previous round's unmeasured item; this round did
+  not change that path — it only removed the reboot that used to be the way out of setup mode.
+
+## Two front ends of setup mode, one at a time (`[measured]`/`[test]`, 2026-10-20, evening)
+
+> The row above that says "one `SETUP MODE` / `AP` / `CLOSE` box, dismissed by any tap, once per
+> boot" is superseded by this section: that box is now **the access point front's face**, and it is drawn
+> only while the access point front is up.
+>
+> The table's "a board with no panel boots on the access point front" is superseded in turn by the
+> third cut of "Getting back to setup: hold BOOT on the splash page": **a device with no credentials
+> boots offline**, with no scan and no access point. The access point front comes up only after the
+> reset-then-hold, the panel's `LEAVE`, or a refusal, and the 180 s idle clock takes it down. The two
+> fronts themselves are unchanged.
+
+The last round made setup mode a gear on the panel, but both entrances were **live at once**: the AP
+stayed up and the panel's list kept scanning. So one radio kept changing roles, and a device merely
+sitting on a desk was broadcasting a configuration page anyone could join.
+
+This round splits it into **two front ends, one at a time**:
+
+| Thing | Before | Now |
+| --- | --- | --- |
+| A board with a panel entering setup mode | AP and panel list both live | the panel's front first (`Front::Panel`), no AP |
+| Switching to a phone | join the AP | strip's right cell `AP`: the AP comes up, the list is covered by a box |
+| Back to the panel | not possible | `CLOSE` in the box, or the strip's right cell `PANEL`: the AP goes down, the list is back |
+| A board with no panel (C6) | AP always up | boots on `Front::AccessPoint`, an **open** AP (see the note after this section) |
+| Whether the AP has a passphrase | always open | **per entry**: open from the splash page; on a running board with a panel, the AP starts on WPA2 with a random 10 characters (not remembered); the C6 has no screen, so it can only be open |
+| Nobody reading the page | AP stays up | 3 minutes without a page request takes the AP down and returns to the panel |
+| A broken touch panel | power-cycle only | a Boot long press **on any page** in setup mode switches fronts |
+
+The rules settled here:
+
+- **Two fronts, not two paths**: both share `setup_credential`, `SurveyHistory`, the list, the page,
+  `JOIN`/`FORGET`/`CANCEL`; `Front` only decides which one is open. Splitting the code would make
+  "switch back" a second implementation.
+- **The station makes and holds the passphrase**: `begin_setup(ssid, secured)` says which kind of AP
+  to raise in one call, and `status()` reports `setup_password`. The panel reads it off the link
+  status and draws it; the page never sees it, and the log records its length only, never its value.
+- **`SetupPass` is a fixed-width narrow type** (`[u8; 10]`), not an `Ssid`: the link status is copied
+  every window, and a 32-byte name field holding a 10-byte value is 22 bytes the main task pays for
+  nothing. It is also one of the ways this round pays for itself on the static wall (table below).
+- **The alphabet drops `0/o/1/l`**: `23456789abcdefghjkmnpqrstuvwxyz`, 31 symbols × 10 characters
+  ≈ 49.5 bits. Copying that off a 320 px line into a phone's keyboard, look-alike characters are the
+  only place it goes wrong.
+- **The default passphrase depends on the entry, and is not remembered**: the splash page's BOOT
+  hold still raises an open AP, so a phone joins by tapping the network's name. Every entry made
+  from a running device — the Network page's `AP`, a `LEAVE`, a refusal — starts on WPA2 with a
+  random 10 characters on a board with a panel; the box shows `PASS …`, and `NO PASS` opens it for
+  that entry. `PASS`/`NO PASS` last for one visit; going away and back restores the entry's default.
+  The C6 has no screen to show a passphrase, so it can only be open. The price is that the splash
+  entry takes anyone in range for 180 s and the form is plain text; the running entry at least costs
+  a passer-by the ten characters read off the panel.
+- **`CLOSE` and `CANCEL` are different things**: the box's right answer `CLOSE` only takes the AP
+  down (back to the panel front); the strip's left cell `CANCEL` leaves setup mode to rejoin the
+  saved network. The latter is drawn only when there is a way back (`setup_cancellable`); with no
+  saved network the panel front's left cell becomes `SCAN` and the access point front's strip is one
+  `PANEL` box — a blank device goes panel → access point → panel without ever touching "leave".
+- **A stray tap in the box does not take the AP down**: `answer_at` returns `None` outside the two
+  answers, so the strip underneath still answers. This front has no "any tap dismisses", because a
+  finger wandering across the box must not tear down the AP a phone is being walked onto.
+- **The access point front does not survey on a clock**: `survey_pause_after(Front::AccessPoint, …)` returns
+  `None` — not a zero-length pause but no clock at all. Entering the front surveys once to fill the
+  page; after that only the page's own `RESCAN` asks for a round.
+- **3 minutes** (`SETUP_IDLE_MS`): every page read resets it, `CLOSE` takes the AP down at once. It
+  prices the one thing the access point front costs that the panel front does not — a network **anyone in
+  range can join**. The price paid for that is discoverability: a device straight out of the box is
+  **invisible** in a phone's list until somebody taps `AP` on the panel. A board with no panel has no
+  cell to tap, so its way in is the reset-then-hold on the splash page (see the third cut), and a
+  device out of the box is just as invisible on it.
+
+Geometry and wording:
+
+- The strip's two cells live in core (`ToolbarCell` / `toolbar_cell` / `toolbar_cell_at`):
+  `PANEL_COLUMNS/2 - TOOLBAR_GAP` = **152 px** per cell, and the 8 px seam is taken out of the cells
+  rather than added outside them; `PANEL_COLUMNS` dividing evenly into two cells and one cell being
+  at least `TOUCH_MIN` are both compile-time assertions. The seam belongs to neither cell, but taps
+  are cut on the middle column: `x < PANEL_COLUMNS/2` is the left cell, the rest is the right one —
+  no dead band inside the 8 px.
+- Left cell: `CANCEL` when there is a way back, `SCAN` (`WAIT` while a round is in flight) on the
+  panel front when there is not, and absent on the access point front with no way back; right cell always
+  `AP`/`PANEL` — a switch names the destination, not the current state; the link-up cell is the
+  exception, because `LEAVE` names what happens to the link (see "The link-up cell goes back to
+  `LEAVE`").
+- The box: title `SETUP MODE`, two body rows `AP vanling-xxxx` + `PASS …` (or
+  `OPEN, NO PASSWORD`), two answers `NO PASS`/`PASS` and `CLOSE`. The body's second row must end
+  above the answer box, a compile-time assertion
+  (`DIALOG_BODY_TOP + ROW_PITCH + FONT_H <= answer.y`); so is `PASS ` + 10 characters fitting
+  `DIALOG_GLYPHS`.
+- The panel front draws **no fake** `AP`/`IP` rows: no AP means no name and no address, so the
+  header keeps `ST SETUP` and the list.
+
+`[test]` What the host pins: `LinkStatus.front` and `shows_setup_box()` (= setup mode and the access point
+front); `survey_pause_after(AccessPoint, …) == None` while the other three gears keep their clocks; the
+two cells' geometry (equal width, seam inside the cells, `toolbar_cell_at` on both halves and on the
+boundary); `switch_front`/`toggle_pass` only acting in the right front, and `take_*` handing the
+request over once; the box's two answers and "outside them is `None`"; the Boot long press on any
+page while setup mode lands on the right cell; the box hiding `Part::Content` while **not** hiding
+`Part::Controls`; `format_setup_pass` in both shapes (`PASS k3mq9t7w2x`, `OPEN, NO PASSWORD`).
+
+`[measured]` Gates: `cargo fmt --check`, `moon run iot:test` (core **656**, app 34),
+`iot:test-bsp` (bsp **113**), `iot:lint`, `iot:check-host`, `iot:check-s3`, `iot:check-c6`,
+`moon run iot:image` all pass.
+
+`[measured]` The static wall (same ruler: `nm`, `_stack_start_cpu0 − _stack_end_cpu0`, floor
+65,536 B):
+
+| Tree | Main stack | Spare |
+| --- | --- | --- |
+| After the last round | 65,688 B | 152 B |
+| This round (two fronts + passphrase + merged request plane) | **65,592 B** | **56 B** |
+
+A net **96 B** spent. Two savings are explicit: `CANCEL_SETUP` folded into `SETUP_ASK` (one plane,
+one `Signal`, one static and one `select` arm fewer), and `setup_password` narrowed from
+`Option<Ssid>` to `Option<SetupPass>` (34 → 11 bytes). The on-board reading matches `nm` exactly:
+`[DISPLAY] main stack 65592 B`, `stack peak 38696 B of 65592 B`.
+
+`[measured]` The access point front on the bench: to see this front without a finger, the S3 branch's
+initial front was changed to `Front::AccessPoint` **temporarily** (one line, reverted after measuring; the
+product still starts on the panel front):
+
+```
+[WIFI] this build was given no network and this device has saved none, so setup mode opens
+       on the front this build starts with until it names one
+[WIFI] setup access point up as vanling-1234 (under a passphrase)
+[WIFI] setup mode for "vanling-1234" is open, under a passphrase
+[WIFI] setup mode: an access point, a lease for whoever joins it, and the page at http://192.168.4.1/
+[WIFI] survey found 1 access points
+[DISPLAY] main stack 65592 B
+```
+
+(The AP name is written as the synthetic `vanling-1234`: it is derived from the MAC's last two
+octets, and the real octets do not go into the record. The survey on entry is what fills the page;
+there is no clock behind it.)
+
+`[measured]` The **product** (an S3 starting on the panel front), same board and same empty `creds`
+partition, broadcasts nothing on that first screen: there is no `setup access point up` line at all,
+and the list surveys every 5–6 s as usual:
+
+```
+[WIFI] this build was given no network and this device has saved none, so setup mode opens
+       on the front this build starts with until it names one
+[WIFI] survey found 3 access points
+[DISPLAY] main stack 65592 B
+```
+
+That is the evidence behind "the first screen does not broadcast": a device straight out of the box
+is invisible in a phone's list until somebody taps `AP` on the panel.
+
+`[measured]` The 3-minute idle close:
+
+```
+[WIFI] nobody read the page in 180 s; the access point goes down
+```
+
+After that the panel front's survey rhythm returns to the log — one round every 5–6 s at first,
+slower as idle rounds accumulate — and neither `nm` nor the on-board main stack moves.
+
+### Three things that did not hold on the real board: the switch cell, the scan cell, the box closing itself (`[measured]`/`[test]`, 2026-10-20, evening, second cut)
+
+With the product image flashed, three things on the panel did not hold: no switch cell in sight, no
+`SCAN`, and the box that opens on `AP` closing itself again. Each has a definite code path; none
+of it is a matter of feel:
+
+- **Left cell not drawn, right cell filling the whole strip**. `stamp_strip` used to draw only the
+  right cell when `!setup_cancellable`, and that cell used `toolbar_box()` across the whole strip
+  carrying `AP` alone — so `SCAN` vanished entirely and the switch did not look like a cell
+  either. This board's `creds` is empty (no saved network), so `setup_cancellable == false` is the
+  normal case here, not a corner.
+- **The box closing itself**. `SetupAsk` is an `embassy_sync::Signal`: raising the AP takes ≈ 1 s,
+  and a second tap on `AP` during it (or one tap read twice) leaves a `Front` request on the
+  plane; the next reader is the **access point** front's loop, which reads `Front` as "back to the panel" —
+  the box opens and closes at once. The plane does not remember **which front** a request was made
+  on.
+- **Fix one: two cells, always two cells** (strip option A). Left cell = `CANCEL` when there is a way
+  back; on the panel front with no way back, `SCAN` (`WAIT` while a round is in flight — the same
+  word the strip carries outside the mode); on the access point front with no way back the left cell is not
+  drawn and the right one fills the strip — the access point front has no list to scan, and an empty half
+  cell would be a control that does nothing. The right cell is always `AP`/`PANEL`.
+  `state::toolbar` reads the same conditions: left cell = cancel / scan / switch.
+- **Fix two: the request carries the front it was made on**
+  (`SetupAsk::{Cancel, Front, Pass} { from: Front }`). The render loop publishes the current
+  `link.front`; each front's loop takes only requests where `applies_to(its own front)`, drops the
+  rest and logs one line: `dropped a setup request made on the panel's front; the access point stays
+  up` (the other direction is `... made on the access point's front; the box is not open`). No time window:
+  a request was either made on this front or it was not.
+
+`[test]` What pins it: `a_setup_request_only_answers_the_front_end_it_was_made_on` (six
+combinations); `the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back` (panel
+front, no way back: left cell = `SCAN`, `rescan_wait` set, right cell still the switch); the access point
+front's test renamed to `..._has_only_the_front_switch_on_the_access_points_front`.
+
+`[measured]` Gates: `cargo fmt --check`, `moon run iot:test` (core **657**, app 35),
+`iot:test-bsp` (113), `iot:lint`, `iot:check-host`, `iot:check-s3`, `iot:check-c6`,
+`moon run iot:image` all pass; `nm` is still **65,592 B** (56 B left), since this round touched a few
+lines of code and two `Front` fields and no stack. Flashed and booted: `[DISPLAY] main stack 65592
+B`, `stack peak 38696 B`, with no `setup access point up` (the product still starts on the panel
+front).
+
+`[not done]` What this round did **not** do:
+
+- **Pixels and feel**: the two cells' widths, the glyph widths of `AP`/`PANEL`/`NO PASS`/`PASS`/
+  `CLOSE`, where the box's second row sits, and the `AP`/`IP` rows left blank on the panel front —
+  a person has to look; and a person has to press the `AP` cell, the box's two answers, and the
+  Boot long press in setup mode.
+- **The box no longer closing itself, and the two cells being visible**: the first needs a finger
+  (the code path and its tests are there, but "a second tap inside the second the AP takes" only
+  reproduces by hand); the second is pixels and needs an eye.
+- **The C6's open AP**: the policy and the code are there (`serve(..., Front::AccessPoint, false)`),
+  `iot:check-c6` compiles it, but the C6 has no product path, so it is **not measured**.
+- **A no-hands walk of the front switch**: this round tried adding one to `IOT_PANEL_BENCH` (tap the
+  right cell → the box rises → tap `NO PASS` → tap the right cell back to the panel, all through the
+  intent ring), **but the bench variant no longer links**: `vanling-panel`'s `.data` is 160 B larger
+  than the product's (identical symbol sizes — an alignment hole the bench's extra `format_args!`
+  drags in), which drops the main stack to 65,432 B, 104 B under the floor. The walk was therefore
+  not kept: a walk that cannot be built is worse than none. Restoring it means making the bench
+  variant pay for those 160 B first.
+
+### Every survey round wrote the panel front back: the station's status does not know its front (`[measured]`/`[test]`, 2026-10-21)
+
+The previous section put "the box closes itself" on a stale `SetupAsk`; `applies_to` stopped that one
+(there is a `dropped ...` in the log at 05:24), but what happened **every round** was another line:
+
+```
+[WIFI] setup access point up as vanling-1234 (under a passphrase)
+[WIFI] setup mode for "vanling-1234" is open, under a passphrase
+        <- the box appears here
+[WIFI] survey found 2 access points
+        <- the state's front is the panel again, the box is gone (the radio still beacons)
+```
+
+Entering the access point front surveys once, and `survey()` published
+`LinkStatus { setup: true, ..station.status() }`. The station's own status only knows the radio half
+(phase, AP, address, passphrase) and **does not know which front it is on**: `front` is the default
+`Panel` and `setup_cancellable` is `false`. So every round overwrote those two fields — `shows_setup_box()`
+read "not on the access point front" and the box vanished; on a board with a saved network, `CANCEL`
+would have become `SCAN` every five seconds as well. It also explains the shape of the report: **nobody
+touched it.**
+
+Fix: `LinkStatus::on_setup_face(front, cancellable)` (core) writes the front and the way back in one
+place and passes phase/AP/address/passphrase through untouched; the network task's four publishes
+(panel front, access point front, survey ok, survey failed) all go through it, and `survey()` takes the
+same `Face`.
+
+`[measured]` The no-hands reading: the S3 branch's initial front was changed to `Front::AccessPoint`
+temporarily (one line, reverted after measuring), and the serial log shows one front change and no
+flip back after the scan:
+
+```
+[WIFI] setup mode is offered on the AccessPoint front
+[WIFI] survey found 2 access points
+```
+
+The product image, back on `Front::Panel`, boots with no `setup access point up` and no front-change
+line, and surveys every 5–6 s. The render loop now logs
+`[WIFI] setup mode is offered on the {front:?} front` whenever the front changes — that line is the
+reading that does not need an eye on the box.
+
+`[test]` `a_publish_from_setup_reports_its_own_face_not_the_stations_default`: both fronts, cancellable
+or not, covering `front`/`setup_cancellable`/`setup`, and asserting that phase, AP, address and
+passphrase do not move.
+
+`[measured]` Gates: core **658**, app 35, bsp **113**, `iot:lint` / `iot:check-host` / `iot:check-s3` /
+`iot:check-c6` / `iot:image` all pass; `nm` is unchanged at 65,592 B (56 B left).
+
+### The name: `PHONE` → `AP` (same round)
+
+`PHONE` was the only one of the three names that named **what you happen to hold**: it is wrong for a
+laptop and it is not the industry word. Espressif calls the whole thing *provisioning* (with SoftAP and
+WEB transports), WLED, Tasmota and Shelly all say **AP mode**, and the box's first line was already
+`AP vanling-xxxx`. So: the strip's right cell is `AP`, the variant is `Front::AccessPoint`,
+`PHONE_LABEL` became `AP_LABEL`, and `phone_idle` became `page_idle` (it waits for page requests, not
+for a phone). Prose about configuring **from** a phone stays as it is — that names the method, not the
+front.
+
+**Still needs eyes or a finger**: the above proves the front no longer flips, not that the box is drawn.
+Still owed: one tap on `AP` with the box staying up, the two cells' widths and `AP`'s glyph width, the
+box's two answers, and the strip being one `CANCEL` cell on the access point front against
+`SCAN | AP` on the panel front.
+
+### The link-up cell goes back to `LEAVE`; the page's row says `AP MAC` (`[measured]`/`[test]`, 2026-10-21)
+
+What was wrong on the bench was two words, not two mechanisms:
+
+- **`SETUP` did not say the link would go down.** The link-up cell had been named for its
+  destination, but the panel front raises no access point, so entering setup mode *is* leaving the
+  link — a word about the destination hid the cost. It is `LEAVE` again: the box asks
+  `LEAVE "cafe"?`, the body is still `THE LINK GOES DOWN`, the two answers are `KEEP` | `LEAVE`.
+  Where it lands has not moved (`Hold::Left` → `unconfigured()`'s panel front), and the left cell
+  inside the mode is `CANCEL`, which joins the saved network back — `LEAVE`/`CANCEL` are a pair.
+  The front switch still names destinations (`AP`/`PANEL`): you cannot judge a front you have not
+  switched to, while the whole point of leaving **is** the cost, so this is the one exception.
+- **The page's row label is `AP MAC` rather than `BSSID`.** The page head already says
+  `Device <this board's MAC>`, and the row's value is the **access point's** MAC. `AP MAC` says
+  whose it is without a term and without colliding with the head. The wire field stays `"bssid"` —
+  that is the protocol, not a label.
+- **Leaving a link lands on the panel front, not on the phone's page.** `front` was
+  `let mut front = front;` in `link()`, as long-lived as the task, and only the panel's
+  `AP`/`PANEL` cells changed it — a link coming up or going down never reset it. A device that had
+  been configured through the phone's page therefore kept `front` on the access point, and a
+  `LEAVE` tapped at the panel reopened the access point: a tap made at the panel opening the mode
+  on the phone. `Setup`'s comment only promised the carry *across refused credentials* (a passphrase
+  retyped on the phone stays on the phone's page), never across a successful join. The fix is
+  `front_after_link(start, current, ended)`: `Left` and `Named` go back to the build's answer (the
+  panel where there is one, the access point where there is not), and `Refused` stays where it is.
+  Both entry logs now name the front (`on the {:?} front`), because the next report of this kind
+  could not be answered from the serial log without it.
+- **`AP MAC` and the address read as one run.** The label and the value were a **single**
+  `textContent` (`'AP MAC ' + bssid`); one plain space at `.72rem` and `--dim` is about 3 px, so the
+  line read `AP MACA4:CF:…`. They are two spans now (`.tag` + `.addr`), the space is a
+  `gap: .5rem` the layout owns, and the address is `--ink`; the head's `Device <MAC>` lifted its
+  `<b>` to the same colour, so both lines read "dim label, lit value".
+
+`[test]` `a_leave_names_the_network_the_link_is_on`: `format_question(Leave, link)` is
+`LEAVE "cafe"?`; a link the radio has not accepted yet (`Connecting`, no `ap`) is asked about with
+the verb alone; `Confirm::Leave.network(link)` is the link's own access point, so the row the box
+highlights and the row the question names cannot come apart. The verb and the body are unchanged
+(`LEAVE` / `THE LINK GOES DOWN`). The cell now draws `format_verb(Confirm::Leave)` — the same
+source as the box's answer, so the invitation and the button cannot drift apart (`the_boxes_words_are_the_verbs_own_and_fit_the_box` reads both).
+
+`[measured]` Gates: core **658** / app 35 / bsp **113**; `iot:lint`, `iot:check-host`,
+`iot:check-s3`, `iot:check-c6` and `iot:image` all pass; `nm` is still **65,592 B** (56 B left) —
+this passed one more `LinkStatus` into two synchronous functions and added no state across an
+`await`.
+
+**Still owed to an eye or a thumb**: with a link up the cell reads `LEAVE`, its box asks
+`LEAVE "cafe"?`, answering `LEAVE` lands back on the **panel front** (the list with `CANCEL` on the
+left and `AP` on the right; the serial log should say `setup mode opens on the Panel front`); and
+the page's `AP MAC` has a visible gap before the address, which is a shade brighter than the label.
+
+`[unfinished]` `front_after_link` has no host test: `network.rs` sits behind the `wifi` feature,
+which pulls in `iot-bsp-esp/wifi`, and no host build compiles it (`iot:test`'s `host` feature has no
+`wifi`). The evidence is the serial log of one `LEAVE` and the front the panel shows; pinning this
+in a test would first need a fake-`Station` harness for the link task.
+
+### A reload no longer earns `ERR_CONNECTION_REFUSED`: keep-alive, six listeners and half a second (`[measured]`/`[test]`, 2026-10-21)
+
+On the C6 bench a phone opened the setup page and the browser said `ERR_CONNECTION_REFUSED`. A
+capture after a reset (the phone came back by itself) showed:
+
+```
+[WIFI] Get /generate_204_<uuid> answered Redirect, 0 B of body, in 0 ms
+[WIFI] a request would not be read after 0 ms: ConnectionReset
+[WIFI] a request would not be read after 0 ms: ConnectionReset
+```
+
+The probe was answered with a 302, two connections beside it were reset by the phone, and not one
+`Get /` appeared — the page never arrived. "One reload is one connection" counted the document and
+not what the phone opens beside it: preconnects and the system's connectivity check send their SYNs
+within milliseconds, and `SETUP_SOCKETS = 5` was DHCP 1 + DNS 1 + the page's **3**. The fourth SYN
+finds no listener and **the stack answers it with a RST**, which the app never sees; Chrome marks the
+host as refusing connections and drops the two it had already opened (those are the two
+`ConnectionReset` lines).
+
+Three changes:
+
+1. **Keep-alive** (`[test]`): answers go from `HTTP/1.0 … Connection: close` to `HTTP/1.1 …
+   Connection: keep-alive`, with `Response::write_head(out, close)` making the caller's word the only
+   one; `answer()` reads the next request on the same connection, with an idle window of
+   `KEEP_ALIVE = 2 s`. A phone's own `Connection: close` (`Request::close`, including a comma list
+   that names `close`) or a request that names a network (`Action::Join`, the access point goes down
+   right after the answer) ends it. A reload therefore reuses the connection it has instead of
+   spending a listener. **Pipelining is not read**: a second request in the same segment is dropped
+   with the connection's buffer, and no browser sends one.
+2. **The page's listeners 3 → 6** (`PAGE_SOCKETS = 6`, `SETUP_SOCKETS = 2 + PAGE_SOCKETS = 8`): six
+   is Chrome's own per-host ceiling, and it covers this burst of probe + preconnects + page.
+3. **`PENDING_TIMEOUT` 1 s → 500 ms**: a preconnect that never says anything hands its listener back
+   sooner.
+
+**The heap** (`[measured]`, C6 boot): `[HEAP] 32048 → 22168 B free with setup mode's future up`, 9,880
+B less — three pairs of 1,460 B buffers are 8,760 B, and the rest is the three extra slots in
+`StackResources`. The page's future is still boxed on the heap, so **the static wall did not move**:
+`nm` over `_stack_start_cpu0 − _stack_end_cpu0` reads **65,592 B** (65,536 B floor, 56 B left). The S3
+reading was not retaken (that board keeps a saved network and does not enter setup mode); the same
+difference puts it at 25,560 − 9,880 ≈ 15,680 B.
+
+**Sizes**: `iot:image` puts the S3 at `1,049,120 / 6,291,456 B` (16.68%) and the C6 at
+`813,424 / 1,048,576 B` (77.57%).
+
+`[unfinished]` The phone side: the C6 was flashed with this image (boot prints `[HEAP] 22168 B`) and
+needs a person to open the page and reload it ten times — the expectation is ten
+`Get / answered Ok` lines, no `ConnectionReset` and no `would not be read`; the S3 setup-mode heap
+reading belongs to the same pass.
+
+### Submit: the access point outlives the answer by two seconds (`[measured]`, 2026-10-21)
+
+With keep-alive in place a reload was fine, but the **submit** reported `ERR_CONNECTION_RESET` on the
+phone. The capture (C6, 44.8 s after a reset) has a device side that did everything right:
+
+```
+[WIFI] Post /submit answered Ok, 2469 B of body, in 10 ms
+[WIFI] the page named a network, so the link is joining it
+[WIFI] a request would not be read after 0 ms: ConnectionReset   ×5
+[WIFI] joining the network setup named: "…"
+[WIFI] setup mode is offered on the Panel front
+```
+
+- No `the answer's socket was still FinWait2 after 100 ms` and no `an answer did not finish`: the
+  2,469 B done page went out, the phone acknowledged it, and **the phone's own FIN was in within
+  7 ms** — the 100 ms `CLOSE_WAIT` was never used;
+- the five `ConnectionReset` lines are not the submit's connection: the same `×5` shape appears after
+  the 302 for `generate_204` and after the one for `/mmtls`, and it is Chrome dropping its pooled
+  connections as the navigation starts;
+- the gap is in the last two lines: **68 ms** between the answer and the access point coming down
+  (`…853` → `…921`). An ACK is the phone's kernel holding the bytes, not the browser having drawn
+  them — and "the setup network goes away with it" was made true before the done page was on screen.
+
+The change is `LEAVE_GRACE = 2 s`: `page()` waits it out before `JOIN.publish`, so the access point
+stays two seconds longer. After publishing it parks on `pending().await`, so a second submit inside
+the grace cannot put another credential on the join plane — the link would otherwise be pulled away
+by the request that arrived late. The cost is one timer and **the static wall does not move** (`nm`
+still 65,592 B); the C6's `[HEAP]` goes 22,168 → 22,048 B (−120 B) and `iot:image-c6` **813,904 /
+1,048,576 B** (77.62%), `iot:image-s3` **1,049,568 / 6,291,456 B** (16.68%).
+
+**Accepted** (`[measured]`, phone side and serial):
+
+```
+[WIFI] Post /submit answered Ok, 2469 B of body, in 17 ms
+[WIFI] the page named a network, so the link is joining it
+        ← 2,058 ms
+[WIFI] joining the network setup named: "…"
+[WIFI] setup mode is offered on the Panel front
+[WIFI] phase Connected, address Some([…]), 0 windows without one
+```
+
+The done page appeared and the device joined the network. The phone side cannot tell whether those
+68 ms failed because the browser had not drawn the page or because Android dropped the
+captive-portal navigation; the only thing that changed between the two runs is the two seconds, so it
+is recorded as too fast a teardown. The same window has four completed `Get /` answers and a few
+`an answer stopped … B short: ConnectionReset` lines — a reload cancels the load still being written,
+and the new one is answered as usual (a GET is retried, a POST is not, which is why only submit
+showed it).
+
+### Getting back to setup: hold BOOT on the splash page (`[test]`/`[measured]`, 2026-10-21, third cut)
+
+The entry point is unchanged: **both boards draw a three-second splash page at boot, and holding Boot
+during it is how setup mode is asked for**. So are the reasons — on a working device the same finger
+is the page's own verb (Ambient cycles the mode, Speaker mutes), and the C6 wants a **deliberate
+ceremony** (reset, then hold inside the window), not a side door any long press could spend every
+three minutes.
+
+What this cut changes is **where that press lands** and **what the radio does during the splash**:
+
+| Thing | Previous cut | This cut |
+| --- | --- | --- |
+| Long press on the splash | `Toolbar(Right)`: leave the link if there is one, `Invalid` otherwise | `BusinessIntent::Setup`: the request is only **latched** (`setup_wanted`); no page change, no access point |
+| The splash closing | back to `boot_page` | asked for and `network_enabled` → **`Network`**; otherwise `boot_page` |
+| The link during the splash | read a credential and associate; the hold then tears it down | **no link at all**: `link()` waits on `PAGE.wait_for_splash_end()` before reading a credential |
+| After the request | associate, then leave | skip association: `Front::AccessPoint` goes straight into setup mode |
+| What decides it | `is_leavable()` on the link | nothing about the link: a press inside the window counts, the same answer on both boards |
+| A device with no credentials at boot | enters setup mode by itself and raises the access point | **works offline**: no setup mode, no access point |
+| The page the press lands on | the box drawn on top of the splash | the page lands on `Network` first; `link()` raises the access point front afterwards, and nothing is ever stacked on the splash |
+
+The rules:
+
+- **`SPLASH_MS = 3_000`**. The reference is OpenWrt's failsafe window of 2–4 s (`[as-reported]`: not
+  reproduced on OpenWrt here, the numbers come from its documentation); 3 s sits in the middle —
+  a full hold above the long-press threshold (1 s), and not so slow that every boot feels like it.
+- **What counts is the press starting inside the window, not the release**: when the clock runs out
+  with a finger still down (`InputSource::held()`, including a release still in debounce), the splash
+  **waits for the release before closing** (`app/src/input.rs`). A press at 2.9 s released at 3.6 s
+  still counts; the clock does not pull the page out from under the finger.
+- **One-shot is structural**: `Splash` is not in `CYCLE`, `next_page(Splash)` answers `Ambient`,
+  `with_boot_page` refuses it, and the only exit is the input task's `BusinessIntent::SplashOver`
+  when the clock runs out (retried on the next tick if the bus is full). No gesture can get back to
+  the page once the device has booted.
+- **The landing is `boot_page` unless the hold asked**: `with_boot_page()` still only records the
+  page the splash lands on (the build input `IOT_BOOT_PAGE`, default `Ambient`; a page the wiring
+  cannot back falls back to `Ambient`). `SplashOver` reads `setup_wanted`: asked for and the board
+  wired a network means `Network`, anything else means `boot_page`. The splash itself never writes
+  `state.page`, so a bench build with `IOT_BOOT_PAGE=network` still lands on the network page.
+- **No link is built during the splash** (`[measured]`): the first thing `link()` does is wait on
+  `PAGE.wait_for_splash_end()`; until it resolves, neither a credential is read nor the radio
+  touched — the splash window produces no `joining`/`leaving` line. When the request is there the
+  path goes straight into `Front::AccessPoint`, with no association at all; an "associate, then tear
+  down" implementation would leave two lines in that window and put the access point front 2–3 s
+  later.
+- **No credentials means an offline device**: when `first_saved()` is empty, `browsing()` takes the
+  device. It scans only while `PAGE.shows_list()` (the panel sitting on Network), stops when the page
+  leaves, and only `JOIN` leads to `hold` — which is where the write happens. No setup mode, no
+  access point: an unwrapped device is invisible in a phone's list. The panel page still carries both
+  cells, and `AP` is what raises the access point. The C6 has no panel, so configuring it still means
+  reset, then hold BOOT on the splash; that is its only way in.
+- **The panel's page is resident**: scanning, the list, the keyboard and `JOIN` were split out of the
+  setup loop (`setup_credential`), and `link.setup` now means **the page is on the setup face**: the
+  panel front raises no access point, the access point front does. On an S3 with no credentials,
+  three taps to Network give a live list (`browsing()`) with `SCAN | AP`; tapping `AP` raises it, and
+  a row picked sends `JOIN`, which `hold` receives.
+- **The ways in remain**: the offline page's `AP` cell, the panel's `LEAVE` on a live link
+  (`Hold::Left`) and a saved credential that is refused (`Hold::Refused`) all enter setup mode — each
+  is the finger's own doing.
+- **The idle clock is always armed**: `page_idle()` no longer takes `armed`; the access point front
+  starts 180 s, every page request restarts it, and the exit goes back to the panel front or, on a
+  board without one, to the saved network. The old "no screen and nothing saved → no clock" exception
+  is gone: a board with no screen gets in only by reset-then-hold, while a board with a panel also has
+  the offline page's `AP` cell, and a factory device's open access point should not keep beaconing.
+- **A board with a screen draws three lines** (`VANLING` / `HOLD BOOT` / `SETUP`, `stamp_splash` in
+  `bsp-esp`), `3 × FONT_H` apart and centred from `width`/`height`. A board without a screen (the C6)
+  has no page to look at; the state still moves, and the Boot press latches the same request.
+
+`fast_connect` (new in this cut, `[test]`):
+
+- Every saved network also carries a `LinkHint { bssid: [u8; 6], channel: u8 }` (`NONE` = unknown).
+  An association hands it to the driver through `Station::begin_connect_hinted`: `EspStation`
+  overrides it with `config_for(credentials, hint)` — `ScanMethod::Fast` plus
+  `with_bssid`/`with_channel` — so the driver goes to that channel for that BSSID instead of scanning
+  every channel.
+- **A failed hint falls back and is re-learned**: when the hinted attempt fails (the driver refuses
+  it, or the association times out) the hint is `take()`n and the loop `continue`s into a full scan;
+  a successful association writes the new BSSID/channel back from `status().ap` (`learn`). `learn`
+  writes only when the value changed — the same network on the same channel costs no flash wear.
+- **Against ESP-IDF**: `wifi_sta_config_t` carries the same three facts — `bssid_set`, `bssid`,
+  `channel` — plus `scan_method = WIFI_FAST_SCAN`; this repository stores those three next to the
+  credential but does not "trust what was remembered": when the access point moves channel, or a
+  mesh node with the same name changes BSSID, the fallback makes the hint one attempt rather than a
+  hard constraint. That is the half step the reference implementation leaves out.
+- **The credential record moves to v2**: `VERSION = 2`, `ENTRY_BYTES = 108` (the hint takes 8 B: six
+  for the BSSID, one for the channel, one for alignment). **No v1 compatibility in development**: a
+  v1 record reads as `Opened::Blank` (the same as no saved network) and has to be provisioned again;
+  `a_version_one_record_is_read_as_nothing` pins that answer.
+
+`[test]`: `the_splash_page_is_where_the_button_asks_for_setup_mode`,
+`the_splash_page_answers_nothing_but_the_hold`,
+`a_splash_long_press_asks_for_setup_mode_on_every_board`,
+`the_splash_lands_on_the_page_that_offers_setup_when_it_was_asked_for`,
+`the_splash_lands_on_the_build_page_when_nothing_was_asked`,
+`a_board_with_no_radio_lands_on_its_page_even_after_the_hold`,
+`a_long_press_after_the_splash_is_the_pages_own_verb`, `the splash's clock` in the state layer's
+reachability sweep, and the three on the hint side: `a_hint_survives_a_reset_and_a_retyped_password`
+(a changed passphrase keeps the hint), `learning_a_channel_writes_once_and_only_when_it_moves`,
+`a_version_one_record_is_read_as_nothing`.
+
+`[measured]` On the boards (product images, both reset once without BOOT held): the C6 prints
+`the splash page is over 3000 ms into the input clock` at `00:00:03.353`, the S3 at
+`00:00:04.258` (its input clock starts 1.26 s in); neither board logs a single `joining`/`leaving`
+during the splash, and only after the page closes does
+`this build was given no network ... it runs offline` appear. The S3's
+`[DISPLAY] main stack 65720 B` matches `nm` to the byte; both boards' `creds` are empty, so the
+landing without the hold is `boot_page` on each (Ambient on the S3, no page to draw on the C6) and no
+access point comes up.
+
+`[measured]` Gates and the static wall: after the splash round, this round's futures grew past the
+wall again — **72 B** short. The fix is not cutting a feature but keeping a credential out of every
+frame: `hold` now takes `&Credentials`, `Hold::Named` carries `Box<Credentials>`, and the credential
+`link` holds is boxed (one allocation per credential, not per window). `nm` reads
+`_stack_end_cpu0 = 0x3fcd9658`, `_stack_start_cpu0 − _stack_end_cpu0` = **65,720 B** (floor 65,536,
+184 B left), and the main task's `POOL` = 42,704 B. `.cargo/config.toml` carries no
+`--noinhibit-exec`: `iot:build-s3` links on its own. Images: S3 `1,057,424 / 6,291,456 B` (16.81%),
+C6 `820,384 / 1,048,576 B` (78.24%).
+
+`[not done]`:
+
+- **The hold itself needs a finger**: hold BOOT within 3 s of reset, and the landing should be
+  `Network` in `Front::AccessPoint`, with no `joining` in the log and `setup mode ... is open`
+  instead. Once on each board.
+- **The S3's three-line pixels and the 3 s wait need a person**: the layout is covered by tests (the
+  three lines land on the panel, the pitch and the centring), but whether the font reads well and
+  whether 3 s is too slow is a matter of eyes.
+- **The boot timing after provisioning**: both boards' `creds` are empty right now, so where
+  `joining`/`associated` land right after the splash has no reading yet; each needs one provisioning
+  pass first.
+
+### The default passphrase depends on the entry; the offline page keeps both cells; the glyph table is Spleen 5×8 (`[test]`/`[measured]`, 2026-10-22)
+
+- **The default passphrase depends on the entry**: `setup_ap_starts_secured(panel, from_splash)`
+  decides `secure_on_entry`. The splash entry is open (`OPEN, NO PASSWORD` + `PASS`); the running
+  entries — the offline page's `AP`, a `LEAVE`, a refusal, a named build's `LEAVE` — start on WPA2
+  with a random 10 characters where there is a panel (`PASS …` + `NO PASS`). Both buttons last for
+  one visit; going away and back restores the entry's default. The C6 has no screen, so it is
+  always open.
+- **The offline page keeps both cells**: `Face::browsing()` reports the panel's setup face
+  (`front: Panel`, `setup: true`, `setup_cancellable: false`), so the Network page is again
+  `ST SETUP` with `SCAN | AP`. `SETUP_ASK` catches `AP` and hands back to `link()`, which enters
+  `unconfigured()` with `Front::AccessPoint`; only then does the AP come up. Offline still means no
+  automatic setup mode and no AP, and the 180 s idle clock still closes it.
+- **Glyphs**: Spleen 5×8 (Frederic Cambus, BSD-2-Clause), natively five columns by eight rows, so
+  `m/M/w/W`, `0` and `\\` share one face; `FONT_H` stays 8, `OVERLAY_ROW_GAP` 5, pitch 9×13. The
+  licence and regression are in `hardware-constraints.md` under "The panel's glyph table".
+- **On the boards** (2026-10-21 product image, both reset once without BOOT held): the S3's splash
+  ends at `00:00:03.367`, `[DISPLAY] main stack 65720 B` matches `nm`, and
+  `[WIFI] this build was given no network and this device has saved none; it runs offline` follows;
+  the C6's splash ends at `00:00:03.346` and is likewise offline with no AP. Both boards' `creds`
+  are still empty.
+- **Image and wall** (2026-10-22 cut): S3 `1,057,616 / 6,291,456 B` (16.81%), C6
+  `821,328 / 1,048,576 B` (78.33%); the `+128 B` / `+64 B` against the previous cut is code layout
+  across the entry rule and the reset line, not itemised. `_stack_start_cpu0 − _stack_end_cpu0` is
+  **65,688 B** (`0x3fce9710 − 0x3fcd9678`, 152 B left).
+- **Not measured**: the normal entry's `[WIFI] setup mode for "vanling-1234" is open, under a
+  passphrase` and the splash hold's `..., open` each need one finger; how the table reads at 1× on
+  the panel (the counters, the density of `m/w`, the descenders) only a person can answer; and the
+  offline page's `SCAN | AP` cells and the `PASS`/`NO PASS` box behind `AP` still need one tap.
+
 ## The pure-logic part (host-testable)
 
 Three rules in `iot-core::drivers::network` are product decisions rather than plumbing, so
@@ -1416,3 +2533,17 @@ where the stored list is the answer to "this device has been set up".
    `dram_seg` back, and this repository's script cannot sit between the two rules esp-hal
    generates — esp-hal needs a hook that can hold this first. See the driver's heap under
    "One source, two parts".
+8. **Setup mode**: **both boards have walked it on the bench** (the C6 end to end; the S3, after the
+   three fixes — "a 338 B allocation per round", "one socket is not enough", "the timeouts and the
+   pick order" — 14 `/` and 10 `/scan` with no panic; see "The bench: from link, to phone, with four
+   corrections"). On the panel it is now an **explicit gear**: it can be entered (`LEAVE`), left
+   (`CANCEL`, offered only while the device keeps a network) and seen (`ST SETUP` plus the
+   announcement box — see "Setup mode becomes a gear the panel can see and leave", and this round's
+   "Two front ends of setup mode, one at a time"). Several things still have no reading: **whether
+   the device brings setup mode back by itself when the passphrase is wrong** (the panel's path is
+   known to refuse in 37.6 s, this one needs a person with a phone and a bad passphrase), one real
+   reading of an **open** access point (the bench's neighbours all have passphrases — the same item
+   as 5⑤), the **headless board's entry** (reset, then hold Boot on the splash page — see the third
+   cut of "Getting back to setup: hold BOOT on the splash page"; the previous cut's "a Boot long
+   press leaves the link" is gone), and **fingers**: the front-switch cell, the box's two answers,
+   and the Boot long press on any page in setup mode.

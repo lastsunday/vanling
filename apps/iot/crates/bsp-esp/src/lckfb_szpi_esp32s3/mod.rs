@@ -412,6 +412,14 @@ impl Board<'static> {
             crate::components::credentials::load(FlashStorage::new(FLASH).multicore_auto_park())
                 .map(Box::new);
 
+        // The backlight is the one indicator that survives a failed bring-up, so it is
+        // brought up first and kept dark until a frame has actually reached the panel.
+        // The panel retains its GRAM across an MCU reset; lighting it before the first
+        // write would show the previous run's picture as though this one had drawn it,
+        // which is what made a boot that died before its first paint look frozen.
+        let mut backlight = panel_backlight(LEDC, GPIO42)?;
+        backlight.set_level_pct(0);
+
         let (bus, mut pca9557) = bring_up_i2c(
             i2c_master::I2c::new(I2C0, i2c_master::Config::default())
                 .map_err(BoardError::I2cConfig)?
@@ -447,12 +455,7 @@ impl Board<'static> {
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
         // The surface owns the frame buffer and the camera borrows it, so the two DMAs
         // address one region rather than two.
-        let mut light = DisplayLight::new(
-            0,
-            panel,
-            panel_backlight(LEDC, GPIO42)?,
-            &mut frame_arena().0,
-        );
+        let mut light = DisplayLight::new(0, panel, backlight, &mut frame_arena().0);
         // A sensor that is not fitted is a board without a camera, not a board that cannot
         // boot: the page that needs it stays dark and the rest are unaffected.
         let camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {

@@ -43,10 +43,11 @@ pub const OVERLAY_GAP: usize = 4;
 /// Distance between the left edges of adjacent glyph columns.
 pub const GLYPH_PITCH: usize = FONT_W + OVERLAY_GAP;
 
-/// Rows one glyph cell occupies, matching the 5x7 font the panel draws with.
-pub const FONT_H: usize = 7;
+/// Rows one glyph cell occupies, matching the 5x8 font the panel draws with: seven rows of cap
+/// and x-height, and the one descender row the cell has.
+pub const FONT_H: usize = 8;
 /// Vertical gap between diagnostics rows.
-pub const OVERLAY_ROW_GAP: usize = 6;
+pub const OVERLAY_ROW_GAP: usize = 5;
 /// Distance between the top edges of adjacent diagnostics rows.
 pub const ROW_PITCH: usize = FONT_H + OVERLAY_ROW_GAP;
 /// Top edge of the first diagnostics row, in panel rows.

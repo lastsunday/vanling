@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "f1001465bf08432688d83ac7a70965c69e7ba019"
-translated_at = "2026-10-06T05:35:23Z"
+source_file_hash = "a4c24e0c5fa0f064020a8787043288e7f9518564"
+translated_at = "2026-10-21T14:10:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -136,3 +136,32 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 ```
 
 The software canary checks the sentinel below the stack floor on every context switch and panics naming the offending task — better than silently corrupting memory.
+
+---
+
+## The panel's glyph table: Spleen 5×8, one face (`[test]`, 2026-10-22)
+
+The table lives in `apps/iot/crates/bsp-esp/src/font.rs`: 95 printable ASCII glyphs, five columns by
+eight rows, column-major, bit 0 the top row. The pitch is still 9×13 (`FONT_W 5 + OVERLAY_GAP 4`,
+`FONT_H 8 + OVERLAY_ROW_GAP 5`).
+
+- **The first swap was for the counters**: Adafruit `glcdfont` leaves 1 px openings in `a/e/g/p/r/t/y`
+  at 5×7, and network names and passphrases are read slowly through them. m5x7 (Daniel Linssen, CC0)
+  draws 2 px openings in the same five columns — but its `m/M/w/W` are seven columns wide, its `0`
+  is its `O`, and `\` is missing; those five had to keep the Adafruit shapes, so any word carrying
+  `m` or `w` mixed two faces and read worse on the panel than the table it replaced (feedback,
+  2026-10-22).
+- **It is Spleen 5×8 now** (Frederic Cambus, BSD-2-Clause): the 5×8 cut carries printable ASCII
+  only, and every glyph is natively five columns by eight rows — `m/M/w/W`, `0` and `\` are all from
+  the same face, with no borrowed shapes and no cropped descender row.
+- **One row more, nothing else**: `FONT_H` 7→8 and `OVERLAY_ROW_GAP` 6→5 keep `ROW_PITCH` at 13.
+  The FPS badge at `232 + 8 = 240` fills the footer exactly, and the Audio page's `WAVE_TOP 42` sits
+  exactly under the second row — both are compile-time equality assertions, so a cell change stops
+  there first.
+- **Regression**: `iot:test-bsp` holds "every printable glyph has ink", "look-alike pairs are not one
+  bitmap" (`l/1`, `I/l`, `0/O`, `c/e`, `u/v`, `g/q`, `p/q`, `y/v`, `m/w`, `M/W`) and "the descenders
+  reach the bottom row" (`g/p/q/y/j`). The `0/O` pair was in fact identical after the first swap, and
+  the second test is what reported it.
+
+The table is flash: `[u8; 95 × 5] = 475 B`, the same size as the old one; the static wall is 65,720 B
+before and after (floor 65,536 B, 184 B spare).

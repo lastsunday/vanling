@@ -11,6 +11,8 @@
 //! parts with different budgets are better served by callers that say what they need than by
 //! one number that fits whichever part happens to compile.
 
+use core::sync::atomic::{AtomicPtr, Ordering};
+
 use embedded_alloc::Heap;
 
 #[cfg(feature = "esp32c6")]
@@ -22,6 +24,15 @@ mod esp32s3;
 use esp32c6::window;
 #[cfg(feature = "esp32s3")]
 use esp32s3::window;
+
+/// The allocator [`init_heap`] was given, for the one question anything above this layer asks
+/// of it: how much is left.
+///
+/// A raw pointer rather than a reference, because the heap belongs to a `static` its own crate
+/// holds and a second reference to it here would be a second owner of it. It is written once,
+/// before anything allocates, and read afterwards — the pair of orderings is what makes the
+/// write visible to a task on the other core.
+static HEAP: AtomicPtr<Heap> = AtomicPtr::new(core::ptr::null_mut());
 
 /// A window of memory an allocator may be pointed at.
 ///
@@ -53,9 +64,26 @@ pub fn init_heap(allocator: &Heap, bytes: usize) {
     // module owns or memory `chip_init_at` mapped and read a pattern back through, and
     // nothing else is handed it — the allocator taking it over is this call.
     unsafe { allocator.init(window.start, bytes) };
+    HEAP.store(core::ptr::from_ref(allocator).cast_mut(), Ordering::Release);
     log::info!(
         "[HEAP] {bytes} B at {:#x} in {source}, of a {}-byte window",
         window.start,
         window.len
     );
+}
+
+/// What is left of the general-purpose heap.
+///
+/// Zero before [`init_heap`] has run, which no build reaches: the entry point that owns the
+/// runtime calls that before the product starts, so a reader of this is a reader of a heap
+/// that is already there — the same contract the driver's own heap report is under.
+pub fn heap_free() -> usize {
+    let heap = HEAP.load(Ordering::Acquire);
+    if heap.is_null() {
+        return 0;
+    }
+    // SAFETY: the pointer is the one `init_heap` was handed, which its owner keeps alive for
+    // the life of the program. `free` reads the allocator's own bookkeeping and nothing here
+    // writes through this pointer at all.
+    unsafe { (*heap).free() }
 }

@@ -6,6 +6,8 @@ extern crate alloc;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use iot_core::drivers::board::HasWifi;
+use iot_core::drivers::network::Front;
+use iot_core::state::Panel;
 
 /// The board this firmware is wired for. One alias because the board features
 /// are mutually exclusive, so `iot-bsp-esp` re-exports a single `Board` name
@@ -16,17 +18,24 @@ type Board = iot_bsp_esp::Board<'static>;
 #[global_allocator]
 static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
 
-/// Sized for the renderer registry, the device state and the driver's own buffers.
+/// Sized for the renderer registry, device state and the driver's buffers.
 ///
 /// No longer holds the frame buffer: that is the board's static now — the camera's DMA and
 /// the panel's SPI share it — so it is 150 KB out of DRAM that this used to duplicate on the
 /// heap. What is left is small allocations, and the heap that fits them leaves the main stack
 /// the rest. Measured against `@/records/iot/hardware-constraints.md`.
 ///
-/// The same number on both parts, which is not the same cost: on the S3 it is a slice of
-/// mapped PSRAM, on the C6 it is all of the internal DRAM the chip layer offers a heap, so
-/// asking for more there is a reset with the reason in the log.
+/// The two parts ask for different numbers because they are different memories. On the S3 the
+/// heap is a slice of mapped PSRAM, and the page's six socket buffers are sized to a whole
+/// segment each rather than to a window — 256 B windows cost a round trip apiece, which is what
+/// made a refresh look like a page that never loaded (`@/records/iot/wifi.md`). On the C6 the
+/// heap is all the internal DRAM the chip layer offers, and 64 KB is what setup mode was measured
+/// to fit in with the page's future on it; asking for more there is a reset with the reason in
+/// the log.
+#[cfg(feature = "esp32c6")]
 const HEAP_BYTES: usize = 64 * 1024;
+#[cfg(feature = "esp32s3")]
+const HEAP_BYTES: usize = 96 * 1024;
 
 #[cfg(feature = "esp32c6")]
 #[esp_rtos::main]
@@ -37,6 +46,8 @@ async fn main(_spawner: Spawner) -> ! {
     // the station starts, and where those regions are is this part's business.
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
+    // What is left of it, for the link to report once setup mode's own frame is on the heap.
+    iot_app::network::report_heap_free(iot_chip_esp::heap_free);
 
     log::info!("[IOT] boot ok");
 
@@ -70,8 +81,13 @@ async fn main(_spawner: Spawner) -> ! {
             iot_chip_esp::Part,
             iot_app::SpeakerRunner::Inline,
             iot_app::Link::of(station.is_some()),
+            Panel::Absent,
         ),
-        iot_app::network::serve(station, saved),
+        // No panel on this part, so the access point is the only way setup mode can be reached:
+        // it is up from the first second a device with nothing configured boots, and there is no
+        // list here to offer instead. A build that never reaches this branch with a product's
+        // credentials is why the access point's front is the value rather than a runtime choice.
+        iot_app::network::serve(station, saved, Front::AccessPoint, false),
     )
     .await {}
 }
@@ -89,9 +105,13 @@ async fn main(_spawner: Spawner) -> ! {
     // the station starts, and where those regions are is this part's business.
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
+    // What is left of it, for the link to report once setup mode's own frame is on the heap.
+    iot_app::network::report_heap_free(iot_chip_esp::heap_free);
 
     log::info!("[IOT] boot ok");
-    // A transient boot NACK must not leave the screen black: reset and retry.
+    // A transient boot NACK is retried from a clean chip. The panel is still dark
+    // here, so a failure that repeats reads as a dark screen instead of the last
+    // run's frame.
     let (mut board, timg0, from_cpu_intr, feed_intr) = match Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
@@ -120,8 +140,12 @@ async fn main(_spawner: Spawner) -> ! {
             iot_chip_esp::Part,
             iot_app::SpeakerRunner::Interrupt(feed),
             iot_app::Link::of(station.is_some()),
+            Panel::Wired,
         ),
-        iot_app::network::serve(station, saved),
+        // The panel is the front end a device with one starts on: the access point is a network
+        // anybody in range can join, and it is up only while somebody has asked for its page. The
+        // list needs no radio of its own beyond the scan it already runs.
+        iot_app::network::serve(station, saved, Front::Panel, true),
     )
     .await {}
 }

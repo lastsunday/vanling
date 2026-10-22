@@ -18,10 +18,11 @@
 //! the characters that will go in one.
 
 use iot_core::drivers::network::{
-    AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES,
+    AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass,
 };
 use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
 use iot_core::overlay::GLYPH_PITCH;
+use iot_core::provision::SETUP_PASS_LEN;
 use iot_core::state::Confirm;
 
 /// A coordinate pair written `x y`.
@@ -219,6 +220,74 @@ const FORGET_BODY: &[u8] = b"THE SAVED KEY IS ERASED";
 const ASSOCIATING_BODY: &[u8] = b"WAIT FOR THE NETWORK";
 const ASSOCIATED_BODY: &[u8] = b"WAIT FOR AN ADDRESS";
 
+/// The announcement that opens setup mode: what the device is doing, and the name a phone has to
+/// join. The address is not part of it — the header's `IP` row carries it for as long as the mode
+/// lasts, and a captive portal opens the page without one being typed.
+const SETUP_NOTICE_TITLE: &[u8] = b"SETUP MODE";
+const SETUP_NOTICE_PREFIX: &[u8] = b"AP ";
+
+/// The announcement's title, which is the same line every time.
+pub fn format_setup_notice_title() -> &'static [u8] {
+    SETUP_NOTICE_TITLE
+}
+
+/// The setup access point's own name, derived from the board's address here rather than carried in
+/// the state: the network task derives it the same way, and two copies of one name are one copy too
+/// many.
+pub fn format_setup_name(mac: Option<[u8; 6]>, buf: &mut [u8; SSID_BYTES]) -> &[u8] {
+    let Some(mac) = mac else {
+        return b"";
+    };
+    let name = iot_core::provision::ap_name(mac);
+    let Some(text) = name.as_display_text() else {
+        return b"";
+    };
+    let text = text.as_bytes();
+    let taken = text.len().min(buf.len());
+    buf[..taken].copy_from_slice(&text[..taken]);
+    &buf[..taken]
+}
+
+/// The announcement's second line: the access point a phone has to join.
+pub fn format_setup_notice_body(mac: Option<[u8; 6]>, buf: &mut [u8; SSID_BYTES]) -> &[u8] {
+    let mut name = [0u8; SSID_BYTES];
+    let name = format_setup_name(mac, &mut name);
+    if name.is_empty() {
+        return b"";
+    }
+    let taken = name.len().min(buf.len() - SETUP_NOTICE_PREFIX.len());
+    buf[..SETUP_NOTICE_PREFIX.len()].copy_from_slice(SETUP_NOTICE_PREFIX);
+    buf[SETUP_NOTICE_PREFIX.len()..SETUP_NOTICE_PREFIX.len() + taken]
+        .copy_from_slice(&name[..taken]);
+    &buf[..SETUP_NOTICE_PREFIX.len() + taken]
+}
+
+/// The passphrase's own line: the label, then the value, or the state said out loud.
+///
+/// `OPEN, NO PASSWORD` rather than a word or a dash, because an access point with no passphrase is
+/// one anybody in range can configure, and the line is where the person who asked for that is told
+/// what they asked for. The passphrase is the one thing on this panel that is not the product's own
+/// — made per boot, shown rather than remembered.
+const SETUP_PASS_PREFIX: &[u8] = b"PASS ";
+const SETUP_PASS_OPEN: &[u8] = b"OPEN, NO PASSWORD";
+
+/// The access point's passphrase, or the fact that it has none.
+pub fn format_setup_pass<'a>(
+    password: Option<&SetupPass>,
+    buf: &'a mut [u8; SSID_BYTES],
+) -> &'a [u8] {
+    let Some(password) = password else {
+        let taken = SETUP_PASS_OPEN.len().min(buf.len());
+        buf[..taken].copy_from_slice(&SETUP_PASS_OPEN[..taken]);
+        return &buf[..taken];
+    };
+    let text = password.as_bytes();
+    let taken = text.len().min(buf.len() - SETUP_PASS_PREFIX.len());
+    buf[..SETUP_PASS_PREFIX.len()].copy_from_slice(SETUP_PASS_PREFIX);
+    buf[SETUP_PASS_PREFIX.len()..SETUP_PASS_PREFIX.len() + taken].copy_from_slice(&text[..taken]);
+    &buf[..SETUP_PASS_PREFIX.len() + taken]
+}
+
 /// The word the join box's title opens with, at each of the two stages.
 const JOINING_WORD: &[u8] = b"JOINING";
 const JOINED_WORD: &[u8] = b"JOINED";
@@ -244,6 +313,15 @@ const _: () = assert!(
     JOINING_WORD.len() + 2 <= DIALOG_GLYPHS && JOINED_WORD.len() + 2 <= DIALOG_GLYPHS,
     "the join box's own word leaves no room for the network it is about, and its space between"
 );
+const _: () = assert!(
+    SETUP_NOTICE_TITLE.len() <= DIALOG_GLYPHS && SETUP_NOTICE_PREFIX.len() + 12 <= DIALOG_GLYPHS,
+    "the setup announcement is wider than the box it is drawn in"
+);
+const _: () = assert!(
+    SETUP_PASS_PREFIX.len() + SETUP_PASS_LEN <= DIALOG_GLYPHS
+        && SETUP_PASS_OPEN.len() <= DIALOG_GLYPHS,
+    "the setup passphrase is wider than the line the box gives it"
+);
 
 /// The question itself: the verb, and the network it is about in quotes.
 ///
@@ -257,9 +335,9 @@ pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG
     buf[..verb.len()].copy_from_slice(verb);
     let mut n = verb.len();
     let Some(ap) = confirm.network(link) else {
-        // A link that went down under the box: the question is still the verb, and the box is on
-        // its way out — a title that named nothing is better than one naming a network the page is
-        // no longer about.
+        // A link the radio has not accepted yet, or one that went down under the box: the question
+        // is still the verb, and the box is on its way out — a title that named nothing is better
+        // than one naming a network the page is no longer about.
         return &buf[..n];
     };
     buf[n] = b' ';
@@ -332,9 +410,14 @@ fn write_name(name: &[u8], glyphs: usize, buf: &mut [u8; SSID_BYTES]) -> usize {
     glyphs
 }
 
-/// The BSSID as `aa:bb:cc:dd:ee:ff`; returns how many glyphs it occupies.
+/// The BSSID as `AA:BB:CC:DD:EE:FF`; returns how many glyphs it occupies.
+///
+/// Upper case because this is the same address the header's own line prints ([`mac_text`]), and the
+/// row under it that fell back to an address is read against that line.
+///
+/// [`mac_text`]: iot_core::provision::mac_text
 fn write_bssid(bssid: &[u8; 6], buf: &mut [u8; SSID_BYTES]) -> usize {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut n = 0;
     for (index, octet) in bssid.iter().enumerate() {
         if index > 0 {
@@ -371,12 +454,13 @@ mod tests {
     use super::{
         NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
         format_joining_title, format_network_name, format_pair, format_phase, format_question,
-        format_u32, format_verb, frame_fingerprint, write_ratio, write_u64,
+        format_setup_notice_body, format_setup_notice_title, format_setup_pass, format_u32,
+        format_verb, frame_fingerprint, write_ratio, write_u64,
     };
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{
-        AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, Ssid,
+        AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass, Ssid,
     };
     use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
     use iot_core::overlay::GLYPH_PITCH;
@@ -456,6 +540,16 @@ mod tests {
             b"02:00:00:00:00:01",
             "the row keeps its address when its name cannot be drawn"
         );
+        // And in the same case as the header's own line: the fallback is the one drawing where a
+        // user reads two addresses side by side, and `02:00:…` cannot tell two cases apart.
+        let lettered = AccessPoint {
+            bssid: [0xaa, 0x0f, 0x5c, 0x00, 0xff, 0x01],
+            ..unnamed
+        };
+        assert_eq!(
+            format_network_name(lettered, NETWORK_NAME_GLYPHS, &mut buf),
+            b"AA:0F:5C:00:FF:01"
+        );
         assert_eq!(
             format_network_name(named, 5, &mut buf),
             b"neig~",
@@ -488,30 +582,14 @@ mod tests {
     fn a_question_names_the_network_it_is_about_within_the_boxes_own_line() {
         let mut buf = [0u8; DIALOG_GLYPHS];
         let named = ap(b"neighbour", [1, 2, 3, 4, 5, 6]);
-        let link = LinkStatus {
-            phase: LinkPhase::Connected,
-            ap: Some(named),
-            address: None,
-        };
-        assert_eq!(
-            format_question(Confirm::Leave, link, &mut buf),
-            b"LEAVE \"neighbour\"?"
-        );
 
         // A name wider than what is left of the line is folded, and the box's own punctuation
         // stays: the quotes and the question mark are what make the line a question, and a title
         // that gave them up to fit a name would be a row rather than a question.
         let long = ap(b"neighbour-extension-2.4GHz", [1, 2, 3, 4, 5, 6]);
-        let drawn = format_question(
-            Confirm::Leave,
-            LinkStatus {
-                ap: Some(long),
-                ..link
-            },
-            &mut buf,
-        );
+        let drawn = format_question(Confirm::Forget(long), LinkStatus::default(), &mut buf);
         assert_eq!(drawn.len(), DIALOG_GLYPHS);
-        assert_eq!(&drawn[..7], b"LEAVE \"");
+        assert_eq!(&drawn[..8], b"FORGET \"");
         assert_eq!(&drawn[drawn.len() - 2..], b"\"?");
         assert_eq!(drawn[DIALOG_GLYPHS - 3], b'~', "the fold is marked");
 
@@ -524,13 +602,60 @@ mod tests {
     }
 
     #[test]
-    fn a_question_without_a_network_is_the_verb_alone() {
-        // A link that went down under the box: the question is still the verb, drawn rather than
-        // naming a network the page is no longer about.
+    fn a_leave_names_the_network_the_link_is_on() {
+        // The network is the link's, read when the question is drawn rather than carried: the row
+        // behind the box is the one the link is on, so the question and the highlight cannot come
+        // apart. A link with no access point yet is asked about with the verb alone.
         let mut buf = [0u8; DIALOG_GLYPHS];
+        let named = ap(b"cafe", [1, 2, 3, 4, 5, 6]);
+        let link = LinkStatus {
+            ap: Some(named),
+            ..LinkStatus::default()
+        };
+        assert_eq!(
+            format_question(Confirm::Leave, link, &mut buf),
+            b"LEAVE \"cafe\"?"
+        );
+        assert_eq!(Confirm::Leave.network(link), Some(named));
         assert_eq!(
             format_question(Confirm::Leave, LinkStatus::default(), &mut buf),
             b"LEAVE"
+        );
+        assert_eq!(Confirm::Leave.network(LinkStatus::default()), None);
+    }
+
+    #[test]
+    fn the_setup_announcement_names_the_access_point_this_board_raises() {
+        // Derived from the address the header already draws, so the phone's list and the panel
+        // name the same device without the state carrying a second copy of the name.
+        let mut buf = [0u8; SSID_BYTES];
+        assert_eq!(format_setup_notice_title(), b"SETUP MODE");
+        assert_eq!(
+            format_setup_notice_body(Some([0x24, 0x6f, 0x28, 0x1a, 0x2f, 0xc8]), &mut buf),
+            b"AP vanling-2fc8"
+        );
+        assert_eq!(
+            format_setup_notice_body(None, &mut buf),
+            b"",
+            "a board with no address has no access point to name"
+        );
+    }
+
+    #[test]
+    fn the_box_says_the_passphrase_or_that_there_is_none() {
+        // The one line the phone's side cannot be used without, and the state named out loud when
+        // there is nothing to type: `NO PASS` would be a word to read past on a network anybody in
+        // range can configure.
+        let mut buf = [0u8; SSID_BYTES];
+        let pass = SetupPass::from_array(*b"k3mq9t7w2x");
+        assert_eq!(format_setup_pass(Some(&pass), &mut buf), b"PASS k3mq9t7w2x");
+        assert_eq!(format_setup_pass(None, &mut buf), b"OPEN, NO PASSWORD");
+        // The value is the station's, at exactly the length it generates; there is no shorter or
+        // longer form for this line to cut or to pad.
+        let other = SetupPass::from_array(*b"abcdefghij");
+        assert_eq!(
+            format_setup_pass(Some(&other), &mut buf),
+            b"PASS abcdefghij"
         );
     }
 
@@ -579,15 +704,10 @@ mod tests {
         // The button and the question share their word: a finger that read `LEAVE "cafe"?` and
         // pressed a button saying anything else would be pressing an action it did not read.
         let cafe = ap(b"cafe", [1, 2, 3, 4, 5, 6]);
-        let link = LinkStatus {
-            phase: LinkPhase::Connected,
-            ap: Some(cafe),
-            address: None,
-        };
         for confirm in [Confirm::Leave, Confirm::Forget(cafe)] {
             let verb = format_verb(confirm);
             let mut buf = [0u8; DIALOG_GLYPHS];
-            let question = format_question(confirm, link, &mut buf);
+            let question = format_question(confirm, LinkStatus::default(), &mut buf);
             assert!(
                 question.starts_with(verb),
                 "the question is asked with the button's own word"

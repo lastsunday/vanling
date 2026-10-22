@@ -34,7 +34,7 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 
 ## 工作方式
 
-- **验证覆盖改动**: 投入与改动成比例——用前先确认命令真的编译/检查了改动的模块，查证规模随交付物走，不随主题走。IoT 单组件 feature 的 `cargo build -p iot-bsp-esp --features gc2145` 编不到 `virtual_components`、`lckfb_szpi_esp32s3`；S3 目标以 `moon run iot:check-s3` 为准。构建期取值（`IOT_BOOT_PAGE`、`IOT_DEMAND`）与文档复现命令不在任何 check 覆盖内——`option_env!` 漏改只会静默退回默认值，`parse_override` 认不出的项只丢自己那项而构建照过——改完 grep 调用方、验 `strings` 里的字面量，并钉一条测试；**只有被验证的是像素或驱动时才请人上手，其余一律写测试**——把验证甩回手指同时丢掉可重复性与证据
+- **验证覆盖改动**: 投入与改动成比例——用前先确认命令真的编译/检查了改动的模块，查证规模随交付物走，不随主题走。IoT 单组件 feature 的 `cargo build -p iot-bsp-esp --features gc2145` 编不到 `virtual_components`、`lckfb_szpi_esp32s3`；S3 目标以 `moon run iot:check-s3` 为准（**只 type-check、不链接**：静态量撞主栈断言只有 `moon run iot:build-s3`/`iot:image` 看得见）。构建期取值（`IOT_BOOT_PAGE`、`IOT_DEMAND`）与文档复现命令不在任何 check 覆盖内——`option_env!` 漏改只会静默退回默认值，`parse_override` 认不出的项只丢自己那项而构建照过——改完 grep 调用方、验 `strings` 里的字面量，并钉一条测试；**只有被验证的是像素或驱动时才请人上手，其余一律写测试**——把验证甩回手指同时丢掉可重复性与证据。IoT 的静态预算同样是硬墙（S3 产品镜像只余几百 B）：量它认 `_stack_end`（`nm`）不认符号和，`async fn` 按值携带的大值（凭据库、扫描历史、整段 future）都算进那一个任务的 `POOL`，**装箱一次**即可 —— 细节见 `docs/content/records/iot/wifi.md`
 - **反复推翻去查证**: 同一结论被数据推翻两次以上就去查文档、依赖源码或寄存器手册，不要继续推理；**抄来的机制先问「这块板子能不能兑现」**——本板 IMU 无 FIFO，「晚点报」只能换成「少采样」，于是任何按 class 换算延迟的查表层恒等于直接写节奏，却多一层间接和一处仲裁错向（`max` 让最不急的赢，页面说了不算）。这类层默认惰性、只在测试里出现过，就是该删的信号
 - **汇报附证据**: 报结论时附实际执行的命令与结果；没跑过的检查不写成通过，跳过的步骤写「未完成」与阻碍，不把没做的事写成「建议」
 - **只问阻塞问题**: 请求、规则或证据已解决的直接做；只有阻塞且代价高的选择才问，一次问完并附默认选项

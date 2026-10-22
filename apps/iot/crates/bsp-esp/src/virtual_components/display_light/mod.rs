@@ -20,33 +20,37 @@ use iot_core::drivers::light::{
 };
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::drivers::network::SSID_BYTES;
-use iot_core::drivers::network::{AccessPoint, ApList, LinkStatus};
+use iot_core::drivers::network::{AccessPoint, ApList, Front, Ipv4, LinkStatus};
 use iot_core::horizon::{SCALE, horizon};
 use iot_core::keyboard::{
-    self, ControlRect, DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP,
-    DIALOG_W, DIALOG_X, KEY_H, KEYBOARD_TOP, Key, LIST_ROW_H, LIST_ROWS, LIST_TOP, Layer,
-    MAX_CANDIDATES, ROWS,
+    self, ControlRect, DIALOG_ANSWER_W, DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET,
+    DIALOG_TITLE_TOP, DIALOG_W, DIALOG_X, KEY_H, KEYBOARD_TOP, Key, LIST_ROW_H, LIST_ROWS,
+    LIST_TOP, Layer, MAX_CANDIDATES, ROWS, band_lines_top,
 };
+
 use iot_core::overlay::{
     Block, CONTENT_BOTTOM, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS,
     RIGHT_EDGE_X, ROW_PITCH, block_value_x, block_x, level_columns, overlay_row_top,
 };
 use iot_core::page::{Part, walk};
+use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 use iot_core::render::{
     MODE_BREATH, MODE_SOLID, diag_repaint_due, windowed_percent, windowed_rate,
 };
 use iot_core::stamp::{fill_surface, invert_rgb565, rgb565};
-use iot_core::state::{AudioPhase, DisplayPage, Entry, NetworkSetup, PlaybackPhase};
+use iot_core::state::{AudioPhase, Confirm, DisplayPage, Entry, NetworkSetup, PlaybackPhase};
 
 use crate::camera_readout::format_pair;
 use crate::camera_readout::{
     NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
-    format_joining_title, format_network_name, format_phase, format_question, format_verb,
+    format_joining_title, format_network_name, format_phase, format_question, format_setup_name,
+    format_setup_notice_body, format_setup_notice_title, format_setup_pass, format_verb,
 };
 use crate::camera_readout::{format_u32, frame_fingerprint, write_ratio};
 use crate::components::backlight::Backlight;
 use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::components::st7789::St7789;
+use crate::font::FONT;
 use crate::sounds::label_of;
 use core::sync::atomic::{AtomicU32, Ordering};
 use esp_hal::time::{Duration, Instant};
@@ -188,14 +192,50 @@ const SAVED_MARKER_RIGHT: isize =
 /// on it is what says what it means.
 const SAVED_MARKER: &[u8] = b"*";
 
-/// The action strip's three words, which are the three things its one control can mean.
+/// The action strip's words, which are what its cells can mean.
 ///
-/// `WAIT` is the strip's own state rather than a fourth action: a round of the survey is a fraction
+/// `LEAVE` is what a link can be traded for: the link goes down and setup mode opens in its place.
+/// The word names what happens to the link rather than where the page lands, because the loss is
+/// the part a person has to agree to; the box under it says the cost in full. It is not a constant
+/// here: the cell draws [`camera_readout::format_verb`](crate::camera_readout::format_verb) for the
+/// action it opens, so the strip and the box's own answer cannot drift apart. `CANCEL` is the
+/// other direction, and it is only offered while there is a saved network to go back to.
+///
+/// `AP` and `PANEL` are the front switch, and they name the end they go to rather than the one
+/// the page is showing: a switch is about the destination. `AP` is the access point a phone
+/// joins; `PANEL` is this screen's own list.
+///
+/// `WAIT` is the strip's own state rather than a fifth action: a round of the survey is a fraction
 /// of a second of radio time, and a strip that went on offering `SCAN` through it would be inviting
 /// a second tap that asks for the same round again.
-const LEAVE_LABEL: &[u8] = b"LEAVE";
+const CANCEL_LABEL: &[u8] = b"CANCEL";
 const SCAN_LABEL: &[u8] = b"SCAN";
 const WAIT_LABEL: &[u8] = b"WAIT";
+const AP_LABEL: &[u8] = b"AP";
+const PANEL_LABEL: &[u8] = b"PANEL";
+
+/// The box's passphrase answer, either way round: what the tap does, named by what it makes.
+const NO_PASS_LABEL: &[u8] = b"NO PASS";
+const PASS_LABEL: &[u8] = b"PASS";
+
+/// The strip's words have to fit the cells the tap geometry gives them: the narrowest cell is the
+/// split strip's, and `CANCEL` is its longest word.
+const _: () = assert!(
+    CANCEL_LABEL.len() * GLYPH_PITCH - OVERLAY_GAP
+        <= keyboard::toolbar_cell(keyboard::ToolbarCell::Left).w,
+    "the way out of setup mode does not fit the cell the strip gives it"
+);
+const _: () = assert!(
+    AP_LABEL.len() * GLYPH_PITCH - OVERLAY_GAP
+        <= keyboard::toolbar_cell(keyboard::ToolbarCell::Right).w
+        && PANEL_LABEL.len() * GLYPH_PITCH - OVERLAY_GAP
+            <= keyboard::toolbar_cell(keyboard::ToolbarCell::Right).w,
+    "the front switch does not fit the cell the strip gives it"
+);
+const _: () = assert!(
+    NO_PASS_LABEL.len() * GLYPH_PITCH - OVERLAY_GAP <= DIALOG_ANSWER_W,
+    "the box's own answer cannot hold the word of what it does"
+);
 
 /// Gap between the two lines of a key's own label: the face a phone keypad prints above the
 /// characters the key cycles.
@@ -225,13 +265,65 @@ const _: () = assert!(
     block_value_x(Block::First) + PSK_MASK_GLYPHS * GLYPH_PITCH - OVERLAY_GAP <= PANEL_COLUMNS,
     "the draft a passphrase is typed into runs off the row's own right edge"
 );
+/// The widest link address the header's address row can put on the left: a dotted quad at its
+/// longest (`255.255.255.255`).
+const HEADER_ADDRESS_GLYPHS: usize = 15;
+
+/// Glyphs the header's network row gives the name it is about, narrower than a list row's own slot:
+/// the phase word shares that row.
+///
+/// A name that does not fit is folded to this width rather than allowed to run under the word beside
+/// it, so where the phase starts does not move with the name printed before it.
+const HEADER_NAME_GLYPHS: usize = 17;
+
+/// Where the phase word starts on the header's network row: the cell after the name slot's last one.
+const HEADER_PHASE_X: usize = block_value_x(Block::First) + HEADER_NAME_GLYPHS * GLYPH_PITCH;
+
+/// The phase word with the label that says what it is, at its widest: `ST` and one space, then the
+/// longest word [`format_phase`] writes.
+const HEADER_PHASE_GLYPHS: usize = 3 + 4;
+
+/// The widest the signal bars are drawn on a header or a list row.
+const BARS_GLYPHS: usize = 4;
+
+const _: () = assert!(
+    HEADER_PHASE_X + HEADER_PHASE_GLYPHS * GLYPH_PITCH - OVERLAY_GAP
+        <= PANEL_COLUMNS - (BARS_GLYPHS * GLYPH_PITCH - OVERLAY_GAP),
+    "the phase word runs into the signal bars on the header's network row"
+);
+const _: () = assert!(
+    block_value_x(Block::First) + HEADER_NAME_GLYPHS * GLYPH_PITCH - OVERLAY_GAP < HEADER_PHASE_X,
+    "the name of the header's network runs into the phase word beside it"
+);
+/// The title the header's first row prints, which is what the list's own window starts after.
+const LIST_TITLE_GLYPHS: usize = b"NETWORK".len();
+
+/// The widest the list's window is drawn: two digits either side of the mark, and the count.
+const LIST_WINDOW_GLYPHS: usize = 8;
+
+const _: () = assert!(
+    block_x(Block::First) + LIST_TITLE_GLYPHS * GLYPH_PITCH - OVERLAY_GAP
+        <= PANEL_COLUMNS - (MAC_TEXT_BYTES * GLYPH_PITCH - OVERLAY_GAP),
+    "the page's title runs into this board's own address on the header's title row"
+);
+const _: () = assert!(
+    block_x(Block::First) + (LIST_TITLE_GLYPHS + 1 + LIST_WINDOW_GLYPHS) * GLYPH_PITCH
+        - OVERLAY_GAP
+        <= PANEL_COLUMNS - (MAC_TEXT_BYTES * GLYPH_PITCH - OVERLAY_GAP),
+    "the list's window runs into this board's own address on the header's title row"
+);
+const _: () = assert!(
+    block_x(Block::First) + (3 + HEADER_ADDRESS_GLYPHS) * GLYPH_PITCH - OVERLAY_GAP
+        <= PANEL_COLUMNS - (MAC_TEXT_BYTES * GLYPH_PITCH - OVERLAY_GAP),
+    "the link's address runs into the address of the network its own row names"
+);
 const _: () = assert!(
     block_x(Block::First) + NETWORK_NAME_GLYPHS * GLYPH_PITCH - OVERLAY_GAP + GLYPH_PITCH
         <= OPEN_MARKER_RIGHT as usize + 1 - (OPEN_MARKER.len() * GLYPH_PITCH - OVERLAY_GAP),
     "an open network's marker runs into the name of the row it is on"
 );
 const _: () = assert!(
-    (OPEN_MARKER_RIGHT as usize) < PANEL_COLUMNS - 4 * GLYPH_PITCH,
+    (OPEN_MARKER_RIGHT as usize) < PANEL_COLUMNS - BARS_GLYPHS * GLYPH_PITCH,
     "an open network's marker runs into the signal bars of the row it is on"
 );
 const _: () = assert!(
@@ -338,45 +430,6 @@ const _: () = assert!(
     "the attitude dial is not inside the third text block it is anchored to"
 );
 
-/// Printable ASCII 5×7 glyphs (`0x20`–`0x7E`, 95 × 5 column bytes), column-major,
-/// bit 0 the top row: the Adafruit GFX `glcdfont` layout, drawn the way the panel
-/// warms up. Indexing: `FONT[(ch - 0x20) * 5 ..][..5]`.
-///
-/// Table transcribed from Adafruit GFX 1.x `glcdfont.c`, BSD-3-Clause:
-/// <https://github.com/adafruit/Adafruit-GFX-Library/blob/master/glcdfont.c>
-const FONT: [u8; 95 * 5] = [
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5F, 0x00, 0x00, 0x00, 0x07, 0x00, 0x07, 0x00, 0x14,
-    0x7F, 0x14, 0x7F, 0x14, 0x24, 0x2A, 0x7F, 0x2A, 0x12, 0x23, 0x13, 0x08, 0x64, 0x62, 0x36, 0x49,
-    0x56, 0x20, 0x50, 0x00, 0x08, 0x07, 0x03, 0x00, 0x00, 0x1C, 0x22, 0x41, 0x00, 0x00, 0x41, 0x22,
-    0x1C, 0x00, 0x2A, 0x1C, 0x7F, 0x1C, 0x2A, 0x08, 0x08, 0x3E, 0x08, 0x08, 0x00, 0x80, 0x70, 0x30,
-    0x00, 0x08, 0x08, 0x08, 0x08, 0x08, 0x00, 0x00, 0x60, 0x60, 0x00, 0x20, 0x10, 0x08, 0x04, 0x02,
-    0x3E, 0x51, 0x49, 0x45, 0x3E, 0x00, 0x42, 0x7F, 0x40, 0x00, 0x72, 0x49, 0x49, 0x49, 0x46, 0x21,
-    0x41, 0x49, 0x4D, 0x33, 0x18, 0x14, 0x12, 0x7F, 0x10, 0x27, 0x45, 0x45, 0x45, 0x39, 0x3C, 0x4A,
-    0x49, 0x49, 0x31, 0x41, 0x21, 0x11, 0x09, 0x07, 0x36, 0x49, 0x49, 0x49, 0x36, 0x46, 0x49, 0x49,
-    0x29, 0x1E, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x40, 0x34, 0x00, 0x00, 0x00, 0x08, 0x14, 0x22,
-    0x41, 0x14, 0x14, 0x14, 0x14, 0x14, 0x00, 0x41, 0x22, 0x14, 0x08, 0x02, 0x01, 0x59, 0x09, 0x06,
-    0x3E, 0x41, 0x5D, 0x59, 0x4E, 0x7C, 0x12, 0x11, 0x12, 0x7C, 0x7F, 0x49, 0x49, 0x49, 0x36, 0x3E,
-    0x41, 0x41, 0x41, 0x22, 0x7F, 0x41, 0x41, 0x41, 0x3E, 0x7F, 0x49, 0x49, 0x49, 0x41, 0x7F, 0x09,
-    0x09, 0x09, 0x01, 0x3E, 0x41, 0x41, 0x51, 0x73, 0x7F, 0x08, 0x08, 0x08, 0x7F, 0x00, 0x41, 0x7F,
-    0x41, 0x00, 0x20, 0x40, 0x41, 0x3F, 0x01, 0x7F, 0x08, 0x14, 0x22, 0x41, 0x7F, 0x40, 0x40, 0x40,
-    0x40, 0x7F, 0x02, 0x1C, 0x02, 0x7F, 0x7F, 0x04, 0x08, 0x10, 0x7F, 0x3E, 0x41, 0x41, 0x41, 0x3E,
-    0x7F, 0x09, 0x09, 0x09, 0x06, 0x3E, 0x41, 0x51, 0x21, 0x5E, 0x7F, 0x09, 0x19, 0x29, 0x46, 0x26,
-    0x49, 0x49, 0x49, 0x32, 0x03, 0x01, 0x7F, 0x01, 0x03, 0x3F, 0x40, 0x40, 0x40, 0x3F, 0x1F, 0x20,
-    0x40, 0x20, 0x1F, 0x3F, 0x40, 0x38, 0x40, 0x3F, 0x63, 0x14, 0x08, 0x14, 0x63, 0x03, 0x04, 0x78,
-    0x04, 0x03, 0x61, 0x59, 0x49, 0x4D, 0x43, 0x00, 0x7F, 0x41, 0x41, 0x41, 0x02, 0x04, 0x08, 0x10,
-    0x20, 0x00, 0x41, 0x41, 0x41, 0x7F, 0x04, 0x02, 0x01, 0x02, 0x04, 0x40, 0x40, 0x40, 0x40, 0x40,
-    0x00, 0x03, 0x07, 0x08, 0x00, 0x20, 0x54, 0x54, 0x78, 0x40, 0x7F, 0x28, 0x44, 0x44, 0x38, 0x38,
-    0x44, 0x44, 0x44, 0x28, 0x38, 0x44, 0x44, 0x28, 0x7F, 0x38, 0x54, 0x54, 0x54, 0x18, 0x00, 0x08,
-    0x7E, 0x09, 0x02, 0x18, 0xA4, 0xA4, 0x9C, 0x78, 0x7F, 0x08, 0x04, 0x04, 0x78, 0x00, 0x44, 0x7D,
-    0x40, 0x00, 0x20, 0x40, 0x40, 0x3D, 0x00, 0x7F, 0x10, 0x28, 0x44, 0x00, 0x00, 0x41, 0x7F, 0x40,
-    0x00, 0x7C, 0x04, 0x78, 0x04, 0x78, 0x7C, 0x08, 0x04, 0x04, 0x78, 0x38, 0x44, 0x44, 0x44, 0x38,
-    0xFC, 0x18, 0x24, 0x24, 0x18, 0x18, 0x24, 0x24, 0x18, 0xFC, 0x7C, 0x08, 0x04, 0x04, 0x08, 0x48,
-    0x54, 0x54, 0x54, 0x24, 0x04, 0x04, 0x3F, 0x44, 0x24, 0x3C, 0x40, 0x40, 0x20, 0x7C, 0x1C, 0x20,
-    0x40, 0x20, 0x1C, 0x3C, 0x40, 0x30, 0x40, 0x3C, 0x44, 0x28, 0x10, 0x28, 0x44, 0x4C, 0x90, 0x90,
-    0x90, 0x7C, 0x44, 0x64, 0x54, 0x4C, 0x44, 0x00, 0x08, 0x36, 0x41, 0x00, 0x00, 0x00, 0x77, 0x00,
-    0x00, 0x00, 0x41, 0x36, 0x08, 0x00, 0x02, 0x01, 0x02, 0x04, 0x02,
-];
-
 /// ST7789 panel framed as an `RgbLight` surface.
 ///
 /// The frame buffer is the board's, not this type's: it is a static because it has to outlive
@@ -400,12 +453,18 @@ pub struct DisplayLight {
     /// outside the value that holds it.
     owner: FrameOwner,
     backlight: Backlight,
-    /// Diagnostic overlay payload: touch counters, light mode, and motion (see
-    /// [`Diagnostics`]). A bump repaints via [`Self::paint`], which the
-    /// [`FrameOwner::painted_color`] guard would otherwise skip.
     /// Ceiling every `set_backlight` is clamped to, so a demand can hold the panel dim
     /// without the animation loop having to know it.
     backlight_ceiling: u8,
+    /// The backlight level the renderer last asked for. Kept aside until the first
+    /// frame reaches the panel: applying it earlier lights the previous run's GRAM.
+    requested_backlight: u8,
+    /// Whether a frame has actually been written since boot, which is what allows
+    /// [`Self::requested_backlight`] to reach the LEDC channel.
+    lit: bool,
+    /// Diagnostic overlay payload: touch counters, light mode, and motion (see
+    /// [`Diagnostics`]). A bump repaints via [`Self::paint`], which the
+    /// [`FrameOwner::painted_color`] guard would otherwise skip.
     diagnostics: Diagnostics,
     /// Panel repaint rate over the last window, `0` while nothing repaints.
     fps: u8,
@@ -442,16 +501,16 @@ impl CameraTarget for DisplayLight {
 }
 
 impl DisplayLight {
-    /// Raise the backlight to full as part of bring-up; the LEDC PWM channel
-    /// keeps the active-low pin pulled low (bright) until a renderer write.
+    /// Takes the backlight dark and keeps it there until the first frame reaches
+    /// the panel. The caller turns the LEDC channel off before the fallible part of
+    /// bring-up; this type raises it only after a write succeeds.
     pub fn new(
         instance: u8,
         panel: St7789,
-        mut backlight: Backlight,
+        backlight: Backlight,
         frame: &'static mut [u8],
     ) -> Self {
-        backlight.set_level_pct(100);
-        log::info!("[DISPLAY] backlight raised");
+        log::info!("[DISPLAY] backlight held dark until the first frame");
         log::info!("[DISPLAY] main stack {} B", main_stack_bytes());
         Self {
             instance,
@@ -460,6 +519,8 @@ impl DisplayLight {
             camera: None,
             owner: FrameOwner::NeedsPaint,
             backlight,
+            requested_backlight: 0,
+            lit: false,
             backlight_ceiling: 100,
             diagnostics: Diagnostics::default(),
             fps: 0,
@@ -506,12 +567,19 @@ impl RgbLight for DisplayLight {
     }
 
     fn set_backlight(&mut self, level_pct: u8) {
-        self.backlight
-            .set_level_pct(level_pct.min(self.backlight_ceiling));
+        self.requested_backlight = level_pct.min(100);
+        if self.lit {
+            self.backlight
+                .set_level_pct(self.requested_backlight.min(self.backlight_ceiling));
+        }
     }
 
     fn set_backlight_ceiling(&mut self, level_pct: u8) {
-        self.backlight_ceiling = level_pct;
+        self.backlight_ceiling = level_pct.min(100);
+        if self.lit {
+            self.backlight
+                .set_level_pct(self.requested_backlight.min(self.backlight_ceiling));
+        }
     }
 
     fn set_fill(&mut self, fill: Fill, color: Rgb) {
@@ -620,7 +688,9 @@ impl DisplayLight {
         } else {
             (mine.brightness, mine.hue)
         };
-        if self.diagnostics.page == DisplayPage::Attitude {
+        if self.diagnostics.page == DisplayPage::Splash {
+            self.stamp_splash(width, usize::from(height));
+        } else if self.diagnostics.page == DisplayPage::Attitude {
             self.stamp_attitude(width, usize::from(height));
         } else if self.diagnostics.page == DisplayPage::Audio {
             self.stamp_audio(width, usize::from(height));
@@ -646,9 +716,27 @@ impl DisplayLight {
         let write_start = Instant::now();
         if let Err(e) = self.panel.write_frame(self.frame) {
             log::error!("[DISPLAY] frame write failed: {e:?}");
+            // Stay dark and let the next fill retry: waking the panel now would
+            // show the frame this write failed to replace.
+            self.owner = FrameOwner::NeedsPaint;
+        } else {
+            self.note_frame_shipped();
         }
         self.sample_frame_cost(render, write_start.elapsed());
         self.sample_fps();
+    }
+
+    /// Raises the backlight once a frame has actually reached the panel.
+    ///
+    /// Until then the controller is still scanning whatever its own GRAM held
+    /// before this boot, so lighting it early would present that picture as this
+    /// run's first frame.
+    fn note_frame_shipped(&mut self) {
+        if !self.lit {
+            self.lit = true;
+            self.backlight
+                .set_level_pct(self.requested_backlight.min(self.backlight_ceiling));
+        }
     }
 
     /// Folds one frame's two costs into the current window and reports the peaks

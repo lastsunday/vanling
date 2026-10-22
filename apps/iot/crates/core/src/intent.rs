@@ -135,67 +135,46 @@ pub enum BusinessIntent {
     /// Never raised by [`translate`]: it is a business intent that comes back
     /// from the plane it commands.
     PlaybackFinished,
+    /// The clock's report that the splash is over. A report, not a target: the page leaves on time,
+    /// and the state layer holds the page the build named.
+    SplashOver,
+    /// The splash's hold: a request to be configured, decided when the splash ends.
+    Setup,
     /// Where the link stands, sent by the network task.
     ///
     /// A report rather than a target, like [`Self::PlaybackFinished`]: the radio is
     /// the only thing that has been on the air, so nothing above it can reconstruct
     /// an association or a lease. Never raised by [`translate`].
     Link(LinkStatus),
-    /// The radio's answer to a network the panel asked it to join with the copy this device keeps:
-    /// there is no such copy.
-    ///
-    /// A report rather than a target, like [`Self::Link`]: the store is the network task's, and
-    /// nothing above it can tell a name the device holds from one it does not. What the state does
-    /// with it is put the page back where a passphrase can be typed for that row, which is the only
-    /// way such a network gets on the air.
+    /// The radio's answer that a name the panel asked for has no saved copy. It puts the page back
+    /// where a passphrase can be typed for that row.
     NoCopy(Ssid),
-    /// A key of the Network page's keyboard, tapped where the page draws that key, with the
-    /// input clock's reading at the lift.
-    ///
-    /// Raised only on that page and only while its keyboard is up. What a key *means* is the state
-    /// layer's call — it owns the draft a character goes into, and the clock reading is what tells a
-    /// repeat of a key that it is cycling a character rather than typing another.
+    /// The board's own address, sent once at boot. It never changes.
+    Mac([u8; 6]),
+    /// A key of the Network page's keyboard, with the clock at the lift. The state layer decides
+    /// what it types; the clock tells a repeat that it is cycling rather than typing.
     Key {
         key: Key,
         at_ms: u32,
     },
-    /// The band of the Network page's scan list a tap landed on, counted from the top of what
-    /// the page is showing.
-    ///
-    /// A band with no network in it is not a selection: the tap landed on the page's own
-    /// background, and the state layer drops a band it can show nothing for.
+    /// A band of the Network page's scan list; an empty band is background, not a selection.
     Row(u8),
-    /// Slide the Network page's scan list a row forward or back.
-    ///
-    /// Raised by a swipe across the list, and only while the keyboard is down: while a passphrase is
-    /// being typed, the rows are not what the finger is on. One row a swipe, like every other list of
-    /// rows: a step of a whole window cannot land on a list whose end does not fill one.
+    /// Slide the scan list one row. Raised only while the keyboard is down; a window-sized step
+    /// cannot land on a partial last page.
     ListSlide(bool),
-    /// A tap on the Network page's action strip: the one control under the list.
-    ///
-    /// Which action that is belongs to the state layer, because it is a question about the link —
-    /// there is something to leave while one is up, and something to look around for while one is
-    /// not. Raised only while the page is asking nothing: with a confirmation up, the strip is one of
-    /// the many places that mean [`Self::Dismiss`].
-    Toolbar,
-    /// The action button inside a confirmation: the tap that says yes to the question.
-    ///
-    /// The only gesture on this page that does what the page is asking about. Every other one is
-    /// [`Self::Dismiss`], so the answer that is not the action is the one a finger finds wherever
-    /// it lands — the mistake a dialog exists to make cheap.
+    /// A tap on the action strip and its cell. The state layer decides the action from the link;
+    /// the cell matters only in setup mode. With a confirmation up, the strip means [`Self::Dismiss`].
+    Toolbar(keyboard::ToolbarCell),
+    /// The action button in a confirmation: the only gesture that says yes. Every other gesture is
+    /// [`Self::Dismiss`].
     Confirm,
-    /// Leave the question the page is asking undone.
-    ///
-    /// Raised for everything a finger can do to a page that is asking: the box's own `KEEP`, a tap
-    /// on the strip under it, on the header, on a row, or a swipe. One intent for all of them
-    /// because they all mean the same thing, and the page's own question is the only state they
-    /// touch.
+    /// Toggle the setup access point between open and passphrase-protected. The radio is the
+    /// authority on which state it is in.
+    TogglePass,
+    /// Leave the page's question undone. Every gesture on a page that is asking means this.
     Dismiss,
-    /// A long press on one of the list's bands: the row a finger held.
-    ///
-    /// A hold rather than a tap because it is a different question about the same row: a tap picks
-    /// the network, a hold asks about the copy this device keeps of it. Which network a band holds
-    /// is the state layer's own offset, as [`Self::Row`] is.
+    /// A long press on a band: the row a finger held, which asks about the saved copy rather than
+    /// picking the network.
     RowHold(u8),
 }
 
@@ -221,11 +200,9 @@ pub fn recognize(event: InputEvent, source: u8) -> OperationIntent {
     OperationIntent { source, event }
 }
 
-/// Interpret an operation against the current device state into an absolute
-/// business target. The target computation stays here: buttons advance their
-/// own surface (the slot the wiring order names), touch gestures always move
-/// the first surface (one device-level panel drives surface 0). Pulses and raw
-/// snapshots only ever record diagnostics, so they land on [`BusinessIntent::Invalid`].
+/// Interpret an operation against the current state into an absolute target. Buttons advance
+/// their own surface; touch gestures move the first. Pulses and raw snapshots only record
+/// diagnostics, so they land on [`BusinessIntent::Invalid`].
 pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
     let slot = light_slot(current, op.source);
     let light = current.lights[slot];
@@ -239,6 +216,31 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
     //
     // Every page match below therefore carries the Network page as a no-op of its own, which is
     // what keeps a page added later from silently inheriting a gesture here.
+
+    // The splash page is the one page whose subject is not a light: a device on it has just booted
+    // and is not doing anything yet, so the button's hold is the way setup mode is asked for — the
+    // deliberate ceremony (reset the board, then hold) rather than a press any impatient finger
+    // could spend on a working link. Nothing else on the page answers: no page switch, no colour
+    // walk, no gesture. That is what makes it a splash rather than a page, and it is also why it is
+    // not in the cycle — once the clock has moved the device on, there is no way back to it.
+    //
+    // The request is not a leave: nothing has been associated yet, because the link waits for this
+    // page to close before it reads a credential at all. A board with nothing saved and a board
+    // with a network therefore ask the same question here, and the answer is the same page.
+    if current.page == DisplayPage::Splash {
+        return match op.event {
+            InputEvent::Button(ButtonEvent::LongPress) => BusinessIntent::Setup,
+            _ => BusinessIntent::Invalid,
+        };
+    }
+
+    // In setup mode the same hold is the front-end switch, on every page and at any time: the mode
+    // is what the press is about while it is on, and it is the one gesture a panel with no working
+    // touch has left. It is not on the Network page's own matcher because the reason it exists is a
+    // panel that cannot be used — a digit that stopped answering cannot reach that page.
+    if current.link.setup && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)) {
+        return BusinessIntent::Toolbar(keyboard::ToolbarCell::Right);
+    }
     if current.page == DisplayPage::Network {
         return match op.event {
             InputEvent::Gesture(GestureEvent::Tap { x, y, at_ms, .. }) => {
@@ -270,6 +272,13 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                     _ => BusinessIntent::Invalid,
                 }
             }
+            // The strip's own verb, so a board with a button has the same switch a finger has:
+            // `SETUP` on a link, `CANCEL` or the front switch in setup mode, `SCAN` otherwise. The
+            // right cell because it is the one a strip with a single verb has, and the click is a
+            // one-liner rather than a place to aim at.
+            InputEvent::Button(ButtonEvent::Click) => {
+                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+            }
             InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
             _ => BusinessIntent::Invalid,
         };
@@ -289,6 +298,9 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
             DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
                 target_for(advance_color(light), slot)
             }
+            // Unreachable while the splash rule above stands, and the floor if it ever moves:
+            // no gesture on that page is a page's own.
+            DisplayPage::Splash => BusinessIntent::Invalid,
             DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
@@ -307,6 +319,9 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 instance: slot as u8,
                 state: cycle_mode(light),
             },
+            // Unreachable while the splash rule above stands, and the floor if it ever moves:
+            // no gesture on that page is a page's own.
+            DisplayPage::Splash => BusinessIntent::Invalid,
             DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Gesture(GestureEvent::Press { .. }) => BusinessIntent::Invalid,
@@ -327,6 +342,9 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
             DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
                 target_for(advance_color(light), 0)
             }
+            // Unreachable while the splash rule above stands, and the floor if it ever moves:
+            // no gesture on that page is a page's own.
+            DisplayPage::Splash => BusinessIntent::Invalid,
             DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
@@ -341,24 +359,18 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 instance: 0,
                 state: cycle_mode(light),
             },
+            // Unreachable while the splash rule above stands, and the floor if it ever moves:
+            // no gesture on that page is a page's own.
+            DisplayPage::Splash => BusinessIntent::Invalid,
             DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Touch(_) => BusinessIntent::Invalid,
     }
 }
 
-/// What a tap on the Network page means: a key while its keyboard is up, an answer while the page
-/// is asking a question, the action strip, and otherwise a band of the scan list.
-///
-/// The bands, the strip and the keys are read off the same geometry the panel draws them at, which
-/// is what [`keyboard`] exists for: a tap that landed on a label and started something else would
-/// be a control that does not do what it looks like.
-///
-/// The state layer decides what picking a band *does* — that it opens the keyboard, and which of
-/// the scan's rows that band is showing — because the list's own offset is its state. This only
-/// says which band, which key, or which answer, the tap was on. What the page is not drawing is not
-/// aimed at either: the box an attempt in flight is drawn in is over the list, so the bands under it
-/// are the box's paper rather than rows ([`Part::showing`]).
+/// What a tap on the Network page means: a key, an answer, the strip, or a band. All three are read
+/// off the geometry the panel draws, so a tap does what it looks like. The state layer decides what
+/// a band does. Anything the page is not drawing is not aimed at ([`Part::showing`]).
 fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessIntent {
     // The keyboard is up exactly when there is a draft under it, and it is the page's whole state
     // while it is: a tap anywhere else on this page is a key, or nothing at all.
@@ -375,8 +387,8 @@ fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessInt
     }
     // The strip first, because it is the one part of the page that stays offered under the box: it
     // is not read off the list, and it is where the page's own action lives.
-    if keyboard::toolbar_at(y) {
-        return BusinessIntent::Toolbar;
+    if let Some(cell) = keyboard::toolbar_cell_at(x, y) {
+        return BusinessIntent::Toolbar(cell);
     }
     if !Part::Content.showing(current.setup, current.link) {
         return BusinessIntent::Invalid;
@@ -387,18 +399,8 @@ fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessInt
     }
 }
 
-/// What a long press on the Network page means: the row a finger held, or an answer to the
-/// question the page is asking.
-///
-/// A hold is a second verb for a row rather than a second way to pick one, so it never reaches the
-/// list's own selection: what the state does with it is ask about the saved copy, and a hold
-/// anywhere the page has nothing saved to say is nothing at all.
-///
-/// The answer comes before the row for the same reason it does for a tap, and it is the one gesture
-/// the question does not take the whole page for: everything outside its two buttons leaves the
-/// action undone. The box an attempt in flight is drawn in is not a question, so what it covers is
-/// simply not there — a forget asked of a row nobody can see would be a memory erased off a screen
-/// the finger was not looking at.
+/// What a long press means: the held row, or an answer. A hold asks about the saved copy rather
+/// than picking. An answer comes first, and a box over the list covers the rows it hides.
 fn network_hold(current: &DeviceState, x: u16, y: u16) -> BusinessIntent {
     if current.setup.keyboard {
         return BusinessIntent::Invalid;
@@ -415,14 +417,24 @@ fn network_hold(current: &DeviceState, x: u16, y: u16) -> BusinessIntent {
     }
 }
 
-/// The answer a gesture at `(x, y)` gives to a question the page is asking, or `None` when the page
-/// is asking nothing.
-///
-/// One rule for both gestures, because a question is answered by where a finger lands rather than by
-/// how it moved: the action button says yes, and every other point on the page — the box's own
-/// `KEEP`, the strip under it, the header, the rows, the seams — leaves the action undone. Which is
-/// the whole point of asking: the tap that undoes it is the one that lands anywhere.
+/// The answer a gesture gives to the page's question, or `None` when it asks nothing. The action
+/// button says yes; every other point leaves it undone, which is the point of asking.
 fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
+    // The box a phone's setup is read in asks one question — "with a passphrase, or without?" —
+    // and its other answer is the way back to the panel. A tap that lands on neither is nothing:
+    // this is a mode rather than a question, and a stray finger must not close the access point a
+    // phone is being walked onto.
+    if current.link.shows_setup_box() {
+        return match keyboard::dialog_choice_at(x, y) {
+            Some(keyboard::DialogChoice::Keep) => Some(BusinessIntent::TogglePass),
+            Some(keyboard::DialogChoice::Act) => {
+                Some(BusinessIntent::Toolbar(keyboard::ToolbarCell::Right))
+            }
+            // Not an answer: the strip under the box is still the page's own control, and the
+            // caller looks there next.
+            None => None,
+        };
+    }
     // A page that is asking nothing answers nothing: the question is the only thing that makes a
     // tap an answer.
     current.setup.confirm?;
@@ -633,7 +645,8 @@ mod tests {
     };
     use crate::drivers::light::MAX_LIGHTS;
     use crate::drivers::motion::{MotionCapabilities, MotionCounts};
-    use crate::state::{AudioState, PlaybackState};
+    use crate::drivers::network::Front;
+    use crate::state::{AudioState, Panel, PlaybackState};
 
     const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 
@@ -658,10 +671,15 @@ mod tests {
             lights: [light; MAX_LIGHTS],
             page,
             link: LinkStatus::default(),
+            mac: None,
             aps: None,
             setup: crate::state::NetworkSetup::default(),
+            setup_wanted: false,
             join: None,
             leave: false,
+            setup_cancel: false,
+            switch_front: false,
+            toggle_pass: false,
             scan_now: false,
             forget: None,
             motion_enabled: true,
@@ -674,6 +692,7 @@ mod tests {
             playback: PlaybackState::default(),
             camera_enabled: true,
             network_enabled: true,
+            panel: Panel::Wired,
             touch: None,
             touch_points: [None; MAX_TRACKED_POINTS],
             live_dir: [0; MAX_TRACKED_POINTS],
@@ -697,6 +716,12 @@ mod tests {
         recognize(event, 0)
     }
 
+    /// The button's long press, as the pages that own a verb read it. What it means on the splash
+    /// is decided by the page the state is on, not by the event.
+    fn long_press() -> InputEvent {
+        InputEvent::Button(ButtonEvent::LongPress)
+    }
+
     /// The `SetLight` target `translate` yields for surface 0, or `None` when
     /// the gesture is an `Invalid` no-op.
     fn target(event: InputEvent, current: LightState) -> Option<LightState> {
@@ -712,13 +737,17 @@ mod tests {
             | BusinessIntent::PlayNext
             | BusinessIntent::ToggleMute
             | BusinessIntent::PlaybackFinished
+            | BusinessIntent::SplashOver
+            | BusinessIntent::Setup
             | BusinessIntent::Link(_)
             | BusinessIntent::NoCopy(_)
+            | BusinessIntent::Mac(_)
             | BusinessIntent::Key { .. }
             | BusinessIntent::Row(_)
             | BusinessIntent::ListSlide(_)
-            | BusinessIntent::Toolbar
+            | BusinessIntent::Toolbar(_)
             | BusinessIntent::Confirm
+            | BusinessIntent::TogglePass
             | BusinessIntent::Dismiss
             | BusinessIntent::RowHold(_) => None,
         }
@@ -871,10 +900,7 @@ mod tests {
         fn long_press_cycles_the_mode_ring() {
             // Off wakes to the default breath.
             assert_eq!(
-                translate(
-                    &op(InputEvent::Button(ButtonEvent::LongPress)),
-                    &state(LightState::Off)
-                ),
+                translate(&op(long_press()), &state(LightState::Off)),
                 BusinessIntent::SetLight {
                     instance: 0,
                     state: DEFAULT_BREATH,
@@ -886,10 +912,7 @@ mod tests {
                 ..BREATH_BASE
             };
             assert_eq!(
-                translate(
-                    &op(InputEvent::Button(ButtonEvent::LongPress)),
-                    &state(LightState::Breath(slow))
-                ),
+                translate(&op(long_press()), &state(LightState::Breath(slow))),
                 BusinessIntent::SetLight {
                     instance: 0,
                     state: LightState::Solid {
@@ -901,7 +924,7 @@ mod tests {
             // Solid powers back off from any brightness.
             assert_eq!(
                 translate(
-                    &op(InputEvent::Button(ButtonEvent::LongPress)),
+                    &op(long_press()),
                     &state(LightState::Solid {
                         color: PALETTE[0],
                         brightness: 255,
@@ -914,11 +937,11 @@ mod tests {
             );
             // A full ring returns home: off → breathing → solid → off.
             let mut light = LightState::Off;
-            light = target(InputEvent::Button(ButtonEvent::LongPress), light).unwrap();
+            light = target(long_press(), light).unwrap();
             assert!(matches!(light, LightState::Breath(_)));
-            light = target(InputEvent::Button(ButtonEvent::LongPress), light).unwrap();
+            light = target(long_press(), light).unwrap();
             assert!(matches!(light, LightState::Solid { .. }));
-            light = target(InputEvent::Button(ButtonEvent::LongPress), light).unwrap();
+            light = target(long_press(), light).unwrap();
             assert_eq!(light, LightState::Off);
         }
 
@@ -1193,10 +1216,7 @@ mod tests {
                 BusinessIntent::PlayNext
             );
             assert_eq!(
-                translate(
-                    &op(InputEvent::Button(ButtonEvent::LongPress)),
-                    &on_speaker()
-                ),
+                translate(&op(long_press()), &on_speaker()),
                 BusinessIntent::ToggleMute
             );
         }
@@ -1251,7 +1271,7 @@ mod tests {
             // so no input can raise it and the driver owns the only path in.
             for event in [
                 InputEvent::Button(ButtonEvent::Click),
-                InputEvent::Button(ButtonEvent::LongPress),
+                long_press(),
                 tap_gesture(0),
                 long_press_gesture(),
             ] {
@@ -1503,10 +1523,7 @@ mod tests {
             );
             // A long press from source 1 cycles surface 1's own mode: solid off.
             assert_eq!(
-                translate(
-                    &recognize(InputEvent::Button(ButtonEvent::LongPress), 1),
-                    &two_lights()
-                ),
+                translate(&recognize(long_press(), 1), &two_lights()),
                 BusinessIntent::SetLight {
                     instance: 1,
                     state: LightState::Off,
@@ -1735,16 +1752,22 @@ mod tests {
 
         #[test]
         fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
-            // One control under the list, and every column of it is the same control: the page's
-            // own action is a band rather than a button in a band. The bands above it stop at it,
-            // so a tap that means the strip can never be read as a row.
+            // One band under the list, and every column of it is the strip: the page's own action
+            // is a band rather than a button in a band. The bands above it stop at it, so a tap
+            // that means the strip can never be read as a row. The strip is split only while setup
+            // mode carries two verbs; with one, both halves are the same control.
             let state = on_network();
             let strip = keyboard::toolbar_box();
-            for x in [0, strip.w / 2, strip.w - 1] {
+            for (x, cell) in [
+                (0, keyboard::ToolbarCell::Left),
+                (strip.w / 2 - 1, keyboard::ToolbarCell::Left),
+                (strip.w / 2, keyboard::ToolbarCell::Right),
+                (strip.w - 1, keyboard::ToolbarCell::Right),
+            ] {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
                         translate(&op(tap_at(x as u16, y as u16)), &state),
-                        BusinessIntent::Toolbar,
+                        BusinessIntent::Toolbar(cell),
                         "({x}, {y}) is the strip"
                     );
                 }
@@ -1753,6 +1776,145 @@ mod tests {
                 translate(&op(tap_at(160, (keyboard::TOOLBAR_TOP - 1) as u16)), &state),
                 BusinessIntent::Row(keyboard::LIST_ROWS as u8 - 1),
                 "the row above the strip is still the list's own last band"
+            );
+        }
+
+        #[test]
+        fn the_button_is_the_strip_verb_and_the_setup_box_asks_about_its_passphrase() {
+            // The page paints no colour fill, so a click has nothing to walk: it is the strip's
+            // verb instead, which is the switch a board with a button and no thumb needs.
+            assert_eq!(
+                translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_network()),
+                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+            );
+
+            // The box a phone's setup is read in asks one question, and both of its answers are
+            // buttons: `CLOSE` goes back to the panel, the other puts the access point up open. A
+            // tap on the box's own paper is nothing — the access point a phone is walking onto
+            // must not close under a stray finger.
+            let announcing = DeviceState {
+                link: LinkStatus {
+                    setup: true,
+                    front: Front::AccessPoint,
+                    setup_password: Some(crate::drivers::network::SetupPass::from_array(
+                        *b"k3mq9t7w2x",
+                    )),
+                    ..Default::default()
+                },
+                ..on_network()
+            };
+            let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
+            let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
+            assert_eq!(
+                translate(
+                    &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
+                    &announcing
+                ),
+                BusinessIntent::TogglePass
+            );
+            assert_eq!(
+                translate(&op(tap_at(act.x as u16 + 1, act.y as u16 + 1)), &announcing),
+                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+            );
+            assert_eq!(
+                translate(&op(tap_at(10, 10)), &announcing),
+                BusinessIntent::Invalid
+            );
+            assert_eq!(
+                translate(&op(long_press_at(10, 10)), &announcing),
+                BusinessIntent::Invalid
+            );
+        }
+
+        #[test]
+        fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
+            // The reason it is not on the Network page's own matcher: a panel whose touch stopped
+            // answering cannot reach that page, and setup mode is the one state where a button is
+            // the only way in.
+            let setup = DeviceState {
+                link: LinkStatus {
+                    setup: true,
+                    ..LinkStatus::default()
+                },
+                ..state_on(DisplayPage::Ambient, LightState::Off)
+            };
+            assert_eq!(
+                translate(&op(long_press()), &setup),
+                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+            );
+        }
+
+        #[test]
+        fn the_splash_page_is_where_the_button_asks_for_setup_mode() {
+            // The page is the whole of the window: a device on it has just booted, so a hold there
+            // is the request rather than the page's own verb — on every board, because whether the
+            // link is up is not a question this page can answer (it waits for the page to close
+            // before it reads a credential at all).
+            let booting = state_on(DisplayPage::Splash, LightState::Off);
+            assert_eq!(
+                translate(&op(long_press()), &booting),
+                BusinessIntent::Setup
+            );
+        }
+
+        #[test]
+        fn the_splash_page_answers_nothing_but_the_hold() {
+            // No page switch, no colour walk, no gesture: the page is a splash, and the one thing
+            // a finger can do on it is ask for setup mode. The triple click is here because it is
+            // the page switch, and the point is that a device that just started cannot be walked
+            // into a page before its own clock has said so.
+            let booting = state_on(DisplayPage::Splash, LightState::Off);
+            for event in [
+                InputEvent::Button(ButtonEvent::Click),
+                InputEvent::Button(ButtonEvent::DoubleClick),
+                InputEvent::Button(ButtonEvent::TripleClick),
+                tap_gesture(0),
+                swipe_event(SwipeDirection::Up),
+                InputEvent::Gesture(GestureEvent::LongPress {
+                    id: 0,
+                    x: 0,
+                    y: 0,
+                    held_ms: 800,
+                }),
+            ] {
+                assert_eq!(
+                    translate(&op(event), &booting),
+                    BusinessIntent::Invalid,
+                    "{event:?} on the splash"
+                );
+            }
+            // And the hold is the same request whether the board has a link, nothing saved, or no
+            // radio at all: the link is not read until this page is over.
+            let with_link = DeviceState {
+                link: LinkStatus {
+                    phase: crate::drivers::network::LinkPhase::Connected,
+                    ..LinkStatus::default()
+                },
+                ..state_on(DisplayPage::Splash, LightState::Off)
+            };
+            assert_eq!(
+                translate(&op(long_press()), &with_link),
+                BusinessIntent::Setup
+            );
+        }
+
+        #[test]
+        fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
+            // The window is the page and nothing else: a device that has moved on gives the same
+            // hold to the page, so a working link is never spent by an idle finger.
+            let on_air = DeviceState {
+                link: LinkStatus {
+                    phase: crate::drivers::network::LinkPhase::Connected,
+                    ..LinkStatus::default()
+                },
+                ..state_on(DisplayPage::Ambient, LightState::Off)
+            };
+            assert_eq!(
+                translate(&op(long_press()), &on_air),
+                BusinessIntent::SetLight {
+                    instance: 0,
+                    state: DEFAULT_BREATH,
+                }
             );
         }
 

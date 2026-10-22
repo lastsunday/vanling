@@ -113,6 +113,9 @@ pub struct Diagnostics {
     /// into the state layer. The list is `None` until something has scanned, which is
     /// the state a build that holds its own credentials stays in.
     pub link: LinkStatus,
+    /// The board's own address, for the Network page's header. `None` on a board with no radio,
+    /// and until the network task's first report.
+    pub mac: Option<[u8; 6]>,
     pub aps: Option<ApList>,
     /// What the Network page is in the middle of taking: the row a passphrase is being typed
     /// for, the draft, and the last refusal. The credential the draft produced is not here —

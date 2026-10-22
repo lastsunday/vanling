@@ -52,13 +52,13 @@ pub struct NetworkSetup {
 
 /// The action a confirmation is standing in front of.
 ///
-/// Two, and both are the kind of thing a page asks about before doing: a link that goes down
-/// cannot be put back without the passphrase, and a forgotten network is one the next boot will
-/// not join. The rest of what this page does — picking a row, typing, looking around again — is
-/// either reversible or asks for nothing.
+/// Two, and each is the kind of thing a page asks about before doing: a link that goes down cannot
+/// be put back without the passphrase, and a forgotten network is one the next boot will not join.
+/// The rest of what this page does — picking a row, typing, looking around again — is either
+/// reversible or asks for nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Confirm {
-    /// Leave the network the link is on.
+    /// Leave the network the link is on, which is how setup mode is entered from a link.
     ///
     /// The network is the link's own, read when the question is drawn and again when it is
     /// answered, so a link that dropped under the box takes the question with it rather than
@@ -70,6 +70,11 @@ pub enum Confirm {
 
 impl Confirm {
     /// The network this question is about, which is the row the page highlights behind it.
+    ///
+    /// A leave is about the link's own network, so it is read off the link rather than carried: the
+    /// row the box is over is the one the link is on, and it stays that row until the question is
+    /// answered. A link the radio has not accepted yet has no access point, and the question then
+    /// names nothing rather than naming the wrong one.
     pub fn network(&self, link: LinkStatus) -> Option<AccessPoint> {
         match self {
             Confirm::Leave => link.ap,

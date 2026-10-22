@@ -259,7 +259,7 @@ impl PanelBench {
     /// same band of the panel, so a strip drawn with the keys stamps its own word across the row that
     /// ends an entry) and the **list while the radio is joining** (what is over it then is the box that
     /// says the attempt is in flight, because an association can take half a minute). The strip stays
-    /// offered under that box: the box asks nothing, and `LEAVE` is the page's one way off the attempt.
+    /// offered under that box: the box asks nothing, and `SETUP` is the page's one way off the attempt.
     ///
     /// One more is about a keyboard standing over no draft at all: the keys are drawn *from* the draft,
     /// so with none they are nothing — and with the strip hidden they are all the page has below its
@@ -1029,6 +1029,9 @@ mod tests {
         // proves is that each act's read-back is a claim the page really makes — a walk whose acts
         // were decided against the wrong state would end somewhere other than the end of the list.
         let mut manager = DeviceManager::new().with_network(true);
+        // The splash is behind the page the bench is about, as it is behind every walk the render
+        // loop runs: the clock ends it before a finger can reach the list.
+        manager.apply_business(BusinessIntent::SplashOver);
         // The page the bench's own script leaves: nothing is saved yet, so the row is one to type
         // for; the passphrase goes in, and the store's marks follow the association it won — which is
         // the order the board runs in, and the reason the row under the link is a saved one.
@@ -1044,6 +1047,7 @@ mod tests {
             phase: LinkPhase::Connected,
             ap: Some(ap("target")),
             address: None,
+            ..LinkStatus::default()
         }));
         assert!(
             manager.state().setup.selected.is_some() && !manager.state().setup.keyboard,
@@ -1107,6 +1111,7 @@ mod tests {
                     phase: LinkPhase::Connecting,
                     ap: Some(ap("target")),
                     address: None,
+                    ..LinkStatus::default()
                 }));
             }
             if manager.take_scan_now() {

@@ -142,6 +142,7 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         lights: state.lights.map(light_snapshot),
         page: state.page,
         link: state.link,
+        mac: state.mac,
         aps: state.aps,
         setup: state.setup,
         motion_enabled: state.motion_enabled,
@@ -228,9 +229,20 @@ pub fn diag_repaint_due(
         // user cannot see arrive. The marks ride the list itself, so `aps` covers them: a save or a
         // forget is a new list from the network task, and the survey's own list deliberately does
         // not republish a round it read the same.
+        //
+        // The board's address is here for the same reason the rest is: it arrives once, after the
+        // radio's first report, and a header that drew before it landed would keep a blank cell
+        // for as long as the list stayed the same — which the survey makes a point of doing.
         DisplayPage::Network => {
-            prev.link != next.link || prev.aps != next.aps || prev.setup != next.setup
+            prev.link != next.link
+                || prev.aps != next.aps
+                || prev.setup != next.setup
+                || prev.mac != next.mac
         }
+        // The splash draws the device's own name and what the button is for, and neither changes
+        // while it is up: entering and leaving it are the page change itself, which repaints
+        // without asking here.
+        DisplayPage::Splash => false,
     }
 }
 
@@ -436,8 +448,29 @@ mod tests {
         seen
     }
 
+    /// A device that has left its splash: what the diagnostics describe, so the comparison is the
+    /// page a running board is on.
+    fn landed() -> DeviceManager {
+        let mut manager = DeviceManager::new();
+        manager.apply_business(BusinessIntent::SplashOver);
+        manager
+    }
+
     fn diagnostics_for(light: LightState) -> Diagnostics {
         light_diagnostics(&state(light), &EffectiveDemand::default())
+    }
+
+    #[test]
+    fn the_board_address_reaches_the_panel_with_the_rest_of_the_header() {
+        // The panel draws it from the snapshot like every other header reading, so it has to survive
+        // the fold rather than be asked of the state through a second path.
+        let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
+        let mut state = state(LightState::boot());
+        state.mac = Some(mac);
+        assert_eq!(
+            light_diagnostics(&state, &EffectiveDemand::default()).mac,
+            Some(mac)
+        );
     }
 
     fn live_envelope() -> AudioEnvelope {
@@ -627,6 +660,24 @@ mod tests {
                  overlay off"
             );
         }
+    }
+
+    #[test]
+    fn diag_repaint_network_takes_the_board_address_the_first_time_it_arrives() {
+        // The address is sent once, by the network task's first report, and by then the page has
+        // usually drawn itself already — the list being the same round after round is exactly what
+        // the survey tries to do. Without this in the diff the header keeps its blank cell for as
+        // long as nothing else moves.
+        let base = Diagnostics::default();
+        let mut addressed = base.clone();
+        addressed.mac = Some([0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef]);
+        assert!(diag_repaint_due(
+            DisplayPage::Network,
+            &base,
+            &addressed,
+            DIAG_REPAINT_STEP_MS,
+            false
+        ));
     }
 
     #[test]
@@ -1039,7 +1090,7 @@ mod tests {
     fn press_and_frame_diagnostics_carry_coordinates() {
         // A raw press leaves its coordinates in the live point list.
         let mut ctl = RenderController::new();
-        let mut manager = crate::state::DeviceManager::new();
+        let mut manager = landed();
         collect(&mut ctl, &manager.state());
         manager.apply_operation(crate::intent::recognize(
             crate::drivers::input::InputEvent::Gesture(
@@ -1061,7 +1112,7 @@ mod tests {
         );
         // The raw-frame heartbeat rides the diagnostics with its live point.
         let mut ctl = RenderController::new();
-        let mut manager = crate::state::DeviceManager::new();
+        let mut manager = landed();
         collect(&mut ctl, &manager.state());
         manager.apply_operation(crate::intent::recognize(
             crate::drivers::input::InputEvent::Touch(crate::drivers::input::TouchEvent {
@@ -1343,7 +1394,12 @@ mod tests {
                     PlaneKey::DISPLAY
                 ])
                 .with_audio(true)
-                .with_camera(true);
+                .with_camera(true)
+                .with_boot_page(DisplayPage::Audio);
+        // The demand follows the page that is up, and a device starts on its splash: ask what the
+        // landed device's own page claims.
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_eq!(manager.state().page, DisplayPage::Audio);
         let quiet = manager.demand().clone();
         assert_eq!(
             quiet.plane(PlaneKey::AUDIO).mode,

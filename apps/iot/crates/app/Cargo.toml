@@ -121,7 +121,14 @@ camera = ["iot-bsp-esp/camera"]
 # The radio on its own, with the IP stack on top of it. Same shape as `camera`: the board
 # feature carries the driver's wiring and this is the pair the isolation bring-up and the
 # network probe ask for, so `check-features` can build the path alone.
-wifi = ["iot-bsp-esp/wifi", "iot-chip-esp?/radio", "dep:embassy-net"]
+#
+# The setup access point's services come with it rather than behind a feature of their own:
+# a board that has a radio and no screen has no other way to be configured, so the portal is
+# part of "has a radio", not an option a build can leave out. See `iot/features.md`.
+wifi = [
+  "iot-bsp-esp/wifi", "iot-chip-esp?/radio", "dep:embassy-net",
+  "dep:edge-dhcp", "dep:edge-nal", "dep:edge-nal-embassy",
+]
 
 # Log console routing for esp_println. `console-auto` mirrors device behavior:
 # USB-Serial/JTAG when a host is attached, UART otherwise. `console-uart` forces
@@ -144,6 +151,9 @@ host = [
 
 [dependencies]
 critical-section = { workspace = true, optional = true }
+edge-dhcp = { workspace = true, optional = true }
+edge-nal = { workspace = true, optional = true }
+edge-nal-embassy = { workspace = true, optional = true }
 embassy-executor = { workspace = true }
 embassy-futures = { workspace = true }
 embassy-net = { workspace = true, optional = true }

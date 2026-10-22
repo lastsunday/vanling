@@ -17,7 +17,7 @@ use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 
 use crate::drivers::network::{
-    AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError,
+    AccessPoint, ApList, Credentials, Front, JoinRequest, LinkPhase, LinkStatus, NetworkError,
     PASSWORD_BYTES, Password, Ssid,
 };
 
@@ -25,7 +25,7 @@ use crate::drivers::playback::Sound;
 
 use crate::intent::{BusinessIntent, OperationIntent};
 
-use crate::keyboard::{Cycling, Key, LIST_ROWS, Layer, MULTITAP_WINDOW_MS};
+use crate::keyboard::{Cycling, Key, LIST_ROWS, Layer, MULTITAP_WINDOW_MS, ToolbarCell};
 
 mod audio;
 
@@ -60,6 +60,25 @@ pub struct LivePoint {
     pub y: u16,
 }
 
+/// Whether the board has a panel: the screen pages are drawn on and questions are put on. Without
+/// one, a verb acts instead of raising a box nobody can answer.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Panel {
+    /// A screen: the pages are drawn on it, and so is the box a hold or a leave asks in.
+    #[default]
+    Wired,
+    /// No screen. The pages are still state — the link still reports, the list still ranks — but
+    /// nothing is drawn and no question can be answered.
+    Absent,
+}
+
+impl Panel {
+    /// Whether the pages have somewhere to be drawn, and a question somewhere to be asked.
+    pub const fn is_wired(self) -> bool {
+        matches!(self, Self::Wired)
+    }
+}
+
 /// All state owned by the device manager. The light surfaces come as one
 /// array slot per instance (`MAX_LIGHTS` cap); unwired slots sit in the boot
 /// state. Touch stays device-level: one panel per device, its digits and
@@ -72,30 +91,41 @@ pub struct DeviceState {
     /// `Off` on a board that wired no radio, which is what makes "has this device been on
     /// the air" answerable without asking the driver.
     pub link: LinkStatus,
-    /// The ranked scan list the network task last published, or `None` while nothing has
-    /// scanned at all.
-    ///
-    /// `None` and an empty list are different states and draw differently: a build that holds
-    /// its own credentials associates instead of looking around, so it has no list and nothing
-    /// to say about what is in range — while a build that did look and found nothing is saying
-    /// something about the room. A report like [`Self::link`], not a request: the page draws it.
+    /// The board's own address, as the network task reported it at boot: `None` until then, and
+    /// for good with no radio. Drawn on the header and written into the setup page.
+    pub mac: Option<[u8; 6]>,
+    /// The ranked scan list the network task last published; `None` means nothing has scanned.
+    /// `None` and an empty list draw differently: one says nothing about the room, the other says
+    /// it is empty. A report, not a request.
     pub aps: Option<ApList>,
     /// What the page is in the middle of taking: the row that was picked, the passphrase being
     /// typed on its keyboard, and the last refusal. Drawn, so it rides the diagnostics snapshot
     /// with the list.
     pub setup: NetworkSetup,
-    /// What the panel asked the link for, waiting for the render loop to carry it to the network
-    /// task. The one command this path produces, and so not in [`Self::setup`]: the panel draws
-    /// that, and a secret waiting to be sent is not something to print.
-    ///
-    /// A typed credential and a name for one the device already keeps are the same command with
-    /// different amounts of help, which is why they are one field and one plane: the page's own
-    /// answer for a row is the store's, and the store is the network task's.
+    /// Whether the button asked for setup mode on the splash, read once when the clock ends it.
+    pub setup_wanted: bool,
+    /// What the panel asked the link for, waiting for the network task. A command, not drawn state;
+    /// the two shapes differ only in how much help they carry.
     pub join: Option<JoinRequest>,
-    /// The panel's request to leave the network the link is on, waiting the same way and for the
-    /// same reason: a command, not a state the page draws. A latch rather than a value because a
-    /// leave has nothing to carry — the network to leave is the one the link is on.
+    /// The panel's request to leave the current link. A latch, because there is nothing to carry.
+    /// Leaving is how setup mode is entered from a link.
     pub leave: bool,
+    /// The panel's request to close setup mode and go back to the network this device keeps.
+    ///
+    /// The other half of [`Self::leave`], and a flag of its own because it is read by a different
+    /// loop: a leave is acted on by the link that is up, a cancel by the access point that is.
+    pub setup_cancel: bool,
+    /// The panel's request to offer setup mode through its other front end.
+    ///
+    /// One request rather than a direction, because the direction is the link's: the page switches
+    /// from whatever it is showing to whatever it is not, and the network task publishes which.
+    pub switch_front: bool,
+    /// The panel's request to put the setup access point up without a passphrase, or back with one.
+    ///
+    /// A toggle for the same reason: the passphrase is the station's, and whether it is on is read
+    /// off the link rather than remembered here — a second copy of that answer would be a panel
+    /// that could disagree with the radio about whether the network is open.
+    pub toggle_pass: bool,
     /// The panel's request to look around now, which is the action strip's other verb.
     ///
     /// A latch for the leave's reason: the survey is the radio's own loop, and what the panel can
@@ -133,6 +163,11 @@ pub struct DeviceState {
     /// `camera_enabled` gates the Camera page: a build with no radio has no link to
     /// show, and its `link` phase stays `Off` for ever.
     pub network_enabled: bool,
+    /// Whether this board has a screen. Not a page gate like the four above — the pages are still
+    /// state without one — but the answer to whether a question can be asked at all: a box needs
+    /// somewhere to be drawn and a finger to answer it. What reads it is the strip's `LEAVE`, which
+    /// a board with no screen takes rather than asks about.
+    pub panel: Panel,
     /// Most recent touch snapshot, mirroring the lights' absolute-target
     /// contract: the render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -207,15 +242,14 @@ struct GestureRecord {
     end: Option<(u16, u16)>,
 }
 
-/// Single owner of device state. Producers apply absolute target states
-/// wholesale, so the device never needs to remember "last breath".
-///
-/// `Clone` is for the sweep in the tests and is not part of the firmware: a device with two copies
-/// of its state is the thing this type is the single owner of. Forking one is how that sweep walks
-/// every move from every state it reaches, one move at a time.
+/// Single owner of device state. Producers apply absolute target states wholesale, so the device
+/// never remembers "last breath". `Clone` is test-only, for the sweep over reachable moves.
 #[cfg_attr(test, derive(Clone))]
 pub struct DeviceManager {
     state: DeviceState,
+    /// Where the device lands after the splash: `IOT_BOOT_PAGE`, gated on the board's capabilities.
+    /// Apart from [`DeviceState::page`] because the first page is always the splash.
+    boot_page: DisplayPage,
     /// The planes this board wires. What the device can be asked about at all, so a page
     /// claims only these and the demand layer never has to know what devices exist.
     planes: Vec<PlaneKey>,
@@ -263,12 +297,20 @@ impl DeviceManager {
     pub fn with_motion(motion_enabled: bool, motion_caps: MotionCapabilities) -> Self {
         let state = DeviceState {
             lights: [LightState::boot(); MAX_LIGHTS],
-            page: DisplayPage::Ambient,
+            // Every device starts on the splash: the page is the one window in which the button
+            // asks for setup mode, and a build's own page is what it lands on afterwards.
+            page: DisplayPage::Splash,
             link: LinkStatus::default(),
+            mac: None,
             aps: None,
+            panel: Panel::default(),
             setup: NetworkSetup::default(),
+            setup_wanted: false,
             join: None,
             leave: false,
+            setup_cancel: false,
+            switch_front: false,
+            toggle_pass: false,
             scan_now: false,
             forget: None,
             motion_enabled,
@@ -301,6 +343,7 @@ impl DeviceManager {
         let demand = Self::proposed(&state, &[], &Override::none());
         Self {
             state,
+            boot_page: DisplayPage::Ambient,
             planes: Vec::new(),
             override_: Override::none(),
             demand,
@@ -370,34 +413,51 @@ impl DeviceManager {
         self
     }
 
-    /// Puts the device on `page` at boot, so a page that would otherwise need a
-    /// triple-tap is reachable by flashing a build that asks for it.
+    /// Chains the panel on, which the other four do not imply: a build can carry a screen and none
+    /// of the surfaces, and the C6 carries the radio and the light with no screen at all.
     ///
-    /// Falls back to `Ambient` when the board cannot back it, so asking for a
-    /// page the wiring does not have leaves the device on a page it can draw
-    /// rather than on one whose driver never exists.
-    ///
-    /// This is a build-time convenience and nothing else: the product decides
-    /// what it can do from the board's capabilities, and nothing reads this back
-    /// to change that. A camera feature is not a boot-page switch, and a board
-    /// that mounts a sensor still starts on `Ambient` unless a build asks
-    /// otherwise.
-    pub fn with_boot_page(mut self, page: DisplayPage) -> Self {
-        // The same gate the cycle walks with, so a page a build can name is a page the board
-        // can show.
-        let page = match page.is_backed(
-            self.state.motion_enabled,
-            self.state.audio_enabled,
-            self.state.playback_enabled,
-            self.state.camera_enabled,
-            self.state.network_enabled,
-        ) {
-            true => page,
-            false => DisplayPage::Ambient,
-        };
-        self.state.page = page;
-        self.propose_demand();
+    /// Nothing is re-proposed: the panel is what draws a demand rather than something to meet.
+    pub fn with_panel(mut self, panel: Panel) -> Self {
+        self.state.panel = panel;
         self
+    }
+
+    /// Name the page the device lands on after the splash. A page the board cannot back falls back
+    /// to `Ambient`, and so does the splash, which the landing report would otherwise have to leave
+    /// again. This is a build-time convenience; the product's capabilities still decide.
+    pub fn with_boot_page(mut self, page: DisplayPage) -> Self {
+        // The same gate the cycle walks with, so a page a build can name is a page the board can
+        // show.
+        let page = match page {
+            DisplayPage::Splash => DisplayPage::Ambient,
+            page if page.is_backed(
+                self.state.motion_enabled,
+                self.state.audio_enabled,
+                self.state.playback_enabled,
+                self.state.camera_enabled,
+                self.state.network_enabled,
+            ) =>
+            {
+                page
+            }
+            _ => DisplayPage::Ambient,
+        };
+        self.boot_page = page;
+        self
+    }
+
+    /// The page this device lands on once the splash is over. See [`Self::with_boot_page`].
+    pub const fn boot_page(&self) -> DisplayPage {
+        self.boot_page
+    }
+
+    /// Whether the button asked for setup mode while the splash was up.
+    ///
+    /// Read by the render loop when it reports the splash over, so the network task starts setup
+    /// mode instead of joining: one answer for the landing and the link rather than two readers of
+    /// a page that is gone.
+    pub const fn setup_wanted(&self) -> bool {
+        self.state.setup_wanted
     }
 
     /// Apply an absolute target to the `instance`-th light surface, clamped to
@@ -535,28 +595,17 @@ impl DeviceManager {
         }
     }
 
-    /// Apply the capture's data plane: the window the newest poll folded.
-    ///
-    /// A capture poll reports no operation — it is a window, and a window rides its own plane
-    /// rather than the intent ring — so this is where the state hears one at all. The enable
-    /// check stays because the state, not the poll, is what the panel reads: a window handed
-    /// up after the plane was switched off is dropped like any other.
+    /// Apply the capture's data plane. A poll is a window, not an operation, so it rides its own
+    /// plane; a window arriving after the plane was switched off is dropped.
     pub fn apply_capture(&mut self, sample: AudioSample) {
         if self.state.audio_enabled {
             self.state.audio.live = sample;
         }
     }
 
-    /// Apply the link's data plane: the ranked scan list the network task last published.
-    ///
-    /// On its own plane rather than the intent ring, for the reason the capture window is:
-    /// a scan list is a window rather than an event, only its newest value means anything,
-    /// and it is a few hundred bytes wide — the ring prices every slot at its widest
-    /// message, so carrying lists there would buy eight of them for the one a page draws.
-    ///
-    /// The enable check stays, like the capture's: the state, not the producer, is what the
-    /// panel reads, so a list handed up by a build with no link is dropped rather than drawn
-    /// on a page that build cannot show.
+    /// Apply the link's data plane: the ranked scan list the network task last published. It rides
+    /// its own plane because a list is a window and a few hundred bytes wide. The enable check
+    /// stays with the state, which is what the panel reads.
     pub fn apply_scan(&mut self, list: ApList) {
         if self.state.network_enabled {
             self.state.aps = Some(list);
@@ -581,6 +630,7 @@ impl DeviceManager {
     /// Apply a business-plane intent: an absolute target the device moves to.
     /// A new business intent variant only grows this match, never the
     /// consuming task.
+    ///
     pub fn apply_business(&mut self, intent: BusinessIntent) {
         match intent {
             BusinessIntent::Invalid => {}
@@ -667,16 +717,61 @@ impl DeviceManager {
                     self.state.setup.revealed = false;
                 }
                 // A question about the link does not outlive the link it was about: a drop under
-                // the box takes the question with it, rather than leaving a `LEAVE` on offer for a
+                // the box takes the question with it, rather than leaving the action on offer for a
                 // link that is already down.
                 if !status.is_leavable() && self.state.setup.confirm == Some(Confirm::Leave) {
                     self.state.setup.confirm = None;
+                }
+                // Setup mode's own news is the sound and the mode's name on the header: the box a
+                // phone is walked through is the mode itself rather than an announcement, so there
+                // is nothing to show once and nothing to remember having shown.
+                if status.setup && !self.state.link.setup {
+                    self.ring(Sound::Rise);
+                }
+                // The way out, heard as well as read: a device that joined the network a phone
+                // named says so once, and one that was refused says that instead.
+                if status.phase == LinkPhase::Connected
+                    && self.state.link.phase != LinkPhase::Connected
+                {
+                    self.ring(Sound::Tap);
+                } else if matches!(status.phase, LinkPhase::Failed(_))
+                    && self.state.link.phase != status.phase
+                {
+                    self.ring(Sound::Error);
                 }
                 // And the strip stops waiting: a report about the link is a survey round's own
                 // publish, which is what the round the strip asked for ends with.
                 self.state.setup.rescan_wait = false;
                 self.state.link = status;
             }
+            // The button's request while the splash is up. Latching it here rather than acting on
+            // it is what keeps the page up for its whole window: the landing below is the one thing
+            // that reads it, so a finger that held on the splash cannot shorten the splash.
+            BusinessIntent::Setup => {
+                if self.state.page == DisplayPage::Splash {
+                    self.state.setup_wanted = true;
+                }
+            }
+            // The clock's report that the splash is over, and the only thing that ends it: the page
+            // is what makes the button's hold mean setup mode, so nothing a finger can do may leave
+            // it. Ends once — a second report is not a second landing — and only from the splash,
+            // because a device that has moved on has no page to come back to.
+            //
+            // The request decides the landing: a device asked to be configured lands on the page
+            // that offers it, and one that was not lands on the page its build named. An ask on a
+            // board with no radio lands like no ask, because there is nothing a page could set up.
+            BusinessIntent::SplashOver => {
+                if self.state.page == DisplayPage::Splash {
+                    self.state.page = if self.state.setup_wanted && self.state.network_enabled {
+                        DisplayPage::Network
+                    } else {
+                        self.boot_page
+                    };
+                }
+            }
+            // Also a report, and the one that never changes: kept as it came, so the page can be
+            // drawn the first time it is reached rather than after a second round from the radio.
+            BusinessIntent::Mac(mac) => self.state.mac = Some(mac),
             // The store's own answer to a join the page asked it for: the row is one to type for,
             // which is where that tap would have landed had the store shown no mark on it.
             BusinessIntent::NoCopy(ssid) => self.no_copy(ssid),
@@ -684,8 +779,9 @@ impl DeviceManager {
             BusinessIntent::Row(band) => self.pick_row(usize::from(band)),
             BusinessIntent::RowHold(band) => self.hold_row(usize::from(band)),
             BusinessIntent::ListSlide(forward) => self.slide_list(forward),
-            BusinessIntent::Toolbar => self.toolbar(),
+            BusinessIntent::Toolbar(cell) => self.toolbar(cell),
             BusinessIntent::Confirm => self.confirm(),
+            BusinessIntent::TogglePass => self.toggle_pass(),
             // The one thing a question's own answer can be other than yes. Nothing else to do:
             // there is no state but the question, and dropping it is the whole of the answer.
             BusinessIntent::Dismiss => self.state.setup.confirm = None,
@@ -732,14 +828,8 @@ impl DeviceManager {
         }
     }
 
-    /// Put the keyboard back over whatever draft the page is holding, starting one if there is none.
-    ///
-    /// Not `entry = Some(Entry::default())`: a refused passphrase comes back to the text it was
-    /// refused for, because the likely mistake is one character rather than the whole thing.
-    ///
-    /// A row with no draft is the case a credential the *store* handed over leaves behind — that tap
-    /// opened no draft — and the keys are drawn *from* the draft, so a keyboard with nothing under it
-    /// would be a page that drew nothing below its header.
+    /// Put the keyboard back over the draft, starting one if needed. A refused passphrase returns
+    /// to its text; a store-handed credential left no draft, and keys are drawn from one.
     fn reopen_entry(&mut self) {
         // Cleared here rather than at the draw: a question about the list has nowhere left to be
         // answered from under the keyboard, and the state the page holds is the state it shows.
@@ -750,25 +840,10 @@ impl DeviceManager {
         self.state.setup.keyboard = self.state.setup.entry.is_some();
     }
 
-    /// Pick the network shown in one of the list's bands, opening the keyboard on it.
-    ///
-    /// A band the list has nothing in is not a selection: the tap landed on the page's own
-    /// background rather than on a control, and the band counts from the page's top row rather than
-    /// from the scan's, because the page is what the finger aimed at.
-    ///
-    /// Two rows are handed straight over rather than typed for: one that is open, and one this device
-    /// keeps a passphrase for. What goes with the second is the row's *name*: the store is the network
-    /// task's, so a page that asked for the copy could not name it if the store turned out to hold
-    /// none — the tap asks for the network, and the radio is the one that answers.
-    ///
-    /// Picking the row that is already picked keeps the draft, which is what makes a refused
-    /// passphrase editable: the survey rewrites every row a second later, so what is compared is the
-    /// network, not the reading. A row with *no* draft opens a fresh one — a link that came up dropped
-    /// the draft on purpose and left the row it was for picked, and a keyboard over nothing is a page
-    /// that drew nothing below its header (see [`NetworkSetup::keyboard`]).
-    ///
-    /// A pick is read only while there is no link to disturb, and "not this one any more" is the
-    /// strip's business rather than a row's: the strip is the one way off a link.
+    /// Pick the network shown in a band and open the keyboard on it. An empty band is background,
+    /// not a selection. Open rows and rows with a stored passphrase are handed straight over; the
+    /// second carries the name, and the radio answers. Re-picking the picked row keeps its draft;
+    /// a row with no draft starts one. A pick is ignored while a link is up.
     fn pick_row(&mut self, band: usize) {
         if self.state.link.is_leavable() {
             return;
@@ -850,22 +925,57 @@ impl DeviceManager {
         self.state.setup.confirm = Some(Confirm::Forget(ap));
     }
 
-    /// The action strip's own verb: the one thing this page can do to the radio from here.
-    ///
-    /// One action at a time, and the link decides which. A link that is up or on its way is one to
-    /// take down — and there is nothing to look around for while there is one, so the strip never
-    /// has a choice and never has to say "and also".
-    ///
-    /// Leaving is asked about rather than done, because a link that goes down cannot be put back
-    /// without the passphrase. Looking around is done at once: it changes nothing but what is
-    /// drawn, and a question in front of it would be a question in front of the page's own job.
-    fn toolbar(&mut self) {
+    /// The action strip's cell. Setup mode offers the way back when this device keeps a network,
+    /// and the switch to the other front; a live link offers leave; otherwise the list's next
+    /// round. Leave is asked about only where a panel can answer, and looking around acts at once.
+    /// A single box takes either half, because the geometry has no dead side.
+    fn toolbar(&mut self, cell: ToolbarCell) {
+        if self.state.link.setup {
+            match (
+                cell,
+                self.state.link.front,
+                self.state.link.setup_cancellable,
+            ) {
+                // The way out of the mode is only drawn where there is one.
+                (ToolbarCell::Left, _, true) => self.state.setup_cancel = true,
+                // With no way back the panel's left half is the strip's own "look around" rather
+                // than a dead cell: the mode's list is live, and asking for a round now is the one
+                // verb the strip has outside the mode.
+                (ToolbarCell::Left, Front::Panel, false) => {
+                    self.state.scan_now = true;
+                    self.state.setup.rescan_wait = true;
+                }
+                // The phone's strip is one box holding `PANEL` when there is no way back, so
+                // either half of it is the switch.
+                _ => self.state.switch_front = true,
+            }
+            return;
+        }
         if self.state.link.is_leavable() {
-            self.state.setup.confirm = Some(Confirm::Leave);
+            // The question is asked only where it can be drawn and answered: a build with no screen
+            // has neither, and the link is taken down on the verb itself. The button's long press is
+            // how such a device reaches this (see `translate`), and the confirm box it would
+            // otherwise raise is one nothing on that board could dismiss.
+            if self.state.panel.is_wired() {
+                self.state.setup.confirm = Some(Confirm::Leave);
+            } else {
+                self.state.leave = true;
+            }
             return;
         }
         self.state.scan_now = true;
         self.state.setup.rescan_wait = true;
+    }
+
+    /// The setup box's left answer: the same access point, with or without a passphrase.
+    ///
+    /// Asked only while the phone's box is up. An open access point is the one thing this mode can
+    /// offer that lets anyone in range in, so it is not a setting reachable from anywhere else, and
+    /// it is not remembered: the next entry into setup mode is under a passphrase again.
+    fn toggle_pass(&mut self) {
+        if self.state.link.shows_setup_box() {
+            self.state.toggle_pass = true;
+        }
     }
 
     /// The confirmation's own action button: do what the question asked.
@@ -883,16 +993,20 @@ impl DeviceManager {
         }
     }
 
-    /// Slide the scan list by one row, or stay where it is at either end.
-    ///
-    /// One row rather than a page of them: a page-sized step cannot land on a list whose last rows
-    /// do not fill one, so the end of the list would be a window that jumped back over rows the
-    /// finger had already passed — and the row a finger is looking for is as likely to be the
-    /// fourth of eight as the first. The window is still [`LIST_ROWS`] rows tall; what moved by one
-    /// is where it starts.
-    ///
-    /// Nothing here reads the finger's direction: which way is "on" is the page's own order and
-    /// belongs to the side that read the swipe.
+    /// Start a sound if the speaker is idle. This is the device reporting a transition; the render
+    /// loop carries it to the driver. A sound already out is not cut short.
+    fn ring(&mut self, sound: Sound) {
+        if !self.state.playback_enabled || self.state.playback.phase != PlaybackPhase::Idle {
+            return;
+        }
+        self.state.playback.sound = sound;
+        self.state.playback.phase = PlaybackPhase::Playing;
+        self.state.playback.plays = self.state.playback.plays.saturating_add(1);
+    }
+
+    /// Slide the scan list by one row, or stay at either end. A page-sized step cannot land on a
+    /// partial last page; the window is still [`LIST_ROWS`] tall, only its start moves. Direction
+    /// belongs to the swipe's reader.
     fn slide_list(&mut self, forward: bool) {
         let top = if forward {
             self.state.setup.list_top.saturating_add(1)
@@ -920,11 +1034,30 @@ impl DeviceManager {
         core::mem::take(&mut self.state.leave)
     }
 
+    /// Take the panel's request to close setup mode and go back to what this device keeps.
+    ///
+    /// Taken for the leave's reason: a command, and a second take must not cancel twice.
+    pub fn take_setup_cancel(&mut self) -> bool {
+        core::mem::take(&mut self.state.setup_cancel)
+    }
+
     /// Take the panel's request to look around now, if there is one.
     ///
     /// Taken for the leave's reason: a command, and a survey round asked for twice is one round.
     pub fn take_scan_now(&mut self) -> bool {
         core::mem::take(&mut self.state.scan_now)
+    }
+
+    /// Take the panel's request to offer setup through its other front end.
+    ///
+    /// Taken for the leave's reason.
+    pub fn take_switch_front(&mut self) -> bool {
+        core::mem::take(&mut self.state.switch_front)
+    }
+
+    /// Take the panel's request to put the setup access point up open, or back under a passphrase.
+    pub fn take_toggle_pass(&mut self) -> bool {
+        core::mem::take(&mut self.state.toggle_pass)
     }
 
     /// Take the panel's request to forget a saved network, if there is one.
@@ -1158,6 +1291,16 @@ mod tests {
         manager.apply_business(business);
     }
 
+    /// A manager with its splash behind it: the device every test but the splash's own is about.
+    ///
+    /// Every device boots through the splash (see [`DisplayPage::Splash`]), and the page is left by
+    /// the input task's clock — so a test that is about what a running device does starts here.
+    fn landed(mut manager: DeviceManager) -> DeviceManager {
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_ne!(manager.state().page, DisplayPage::Splash);
+        manager
+    }
+
     mod demand {
         use super::*;
         use crate::config::{MotionConfig, Unreachable};
@@ -1200,23 +1343,14 @@ mod tests {
             // Everywhere else the reading is background to what is on screen, so a budget may
             // batch it.
             for page in CYCLE {
-                if page == DisplayPage::Camera {
+                if matches!(page, DisplayPage::Attitude | DisplayPage::Camera) {
                     continue;
                 }
-                if page != DisplayPage::Attitude {
-                    assert_eq!(
-                        page.demand(ALL_PLANES).plane(PlaneKey::MOTION).class,
-                        Sensitivity::Secondary,
-                        "{page:?}"
-                    );
-                }
-                if page != DisplayPage::Audio {
-                    assert_eq!(
-                        page.demand(ALL_PLANES).plane(PlaneKey::AUDIO).class,
-                        Sensitivity::Secondary,
-                        "{page:?}"
-                    );
-                }
+                assert_eq!(
+                    page.demand(ALL_PLANES).plane(PlaneKey::MOTION).class,
+                    Sensitivity::Secondary,
+                    "{page:?}"
+                );
             }
 
             // The mode is unchanged by any of this: the class decides how long a reading
@@ -1267,6 +1401,24 @@ mod tests {
         }
 
         #[test]
+        fn only_the_page_that_draws_the_envelope_claims_the_microphone() {
+            // The capture is due every tick and is the most expensive of the input task's four
+            // sources, so a page that reads no samples must not keep it running.
+            for page in CYCLE {
+                let claimed = page.demand(ALL_PLANES).plane(PlaneKey::AUDIO);
+                if page == DisplayPage::Audio {
+                    assert_eq!(claimed.mode, Mode::Continuous, "{page:?}");
+                } else {
+                    assert_eq!(
+                        claimed.mode,
+                        Mode::Off,
+                        "{page:?} draws no envelope, so it must not claim the microphone"
+                    );
+                }
+            }
+        }
+
+        #[test]
         fn two_of_one_kind_can_be_demanded_apart() {
             // The reason the key carries an instance: two sensors of one type are two planes
             // the product can name separately.
@@ -1301,7 +1453,7 @@ mod tests {
 
         #[test]
         fn demand_follows_the_page_instead_of_lagging_it() {
-            let mut manager = fully_wired();
+            let mut manager = landed(fully_wired());
             let before = manager.demand().clone();
 
             manager.apply_business(BusinessIntent::TogglePage);
@@ -1324,7 +1476,7 @@ mod tests {
             // fields are everything a proposal is derived from, so every write path that
             // touches one has to re-derive — going through the public entry points rather
             // than poking `state` is what makes a missed recompute visible here.
-            let mut by_page = fully_wired();
+            let mut by_page = landed(fully_wired());
             by_page.apply_business(BusinessIntent::TogglePage);
             assert_eq!(
                 by_page.demand(),
@@ -1349,7 +1501,8 @@ mod tests {
         fn a_committed_demand_survives_being_read_back() {
             // What the configurator writes is what everyone downstream must see, even
             // though a fresh derivation would say otherwise.
-            let mut manager = fully_wired().with_boot_page(DisplayPage::Camera);
+            let mut manager = landed(fully_wired().with_boot_page(DisplayPage::Camera));
+            assert_eq!(manager.state().page, DisplayPage::Camera);
             assert_eq!(
                 manager.demand().plane(PlaneKey::CAMERA).mode,
                 Mode::Continuous
@@ -1375,7 +1528,7 @@ mod tests {
             // What the render loop does with a refusal: the plane it names stops being claimed,
             // so no consumer downstream reads a promise the part cannot keep. The other planes
             // are untouched, and the interaction path is untouched whatever it says.
-            let mut manager = fully_wired();
+            let mut manager = landed(fully_wired());
             let refused = Unreachable {
                 key: PlaneKey::MOTION,
                 mode: Mode::OnChange,
@@ -1386,7 +1539,7 @@ mod tests {
 
             assert_eq!(manager.demand().plane(PlaneKey::MOTION).mode, Mode::Off);
             assert_eq!(
-                manager.demand().plane(PlaneKey::AUDIO).mode,
+                manager.demand().plane(PlaneKey::DISPLAY).mode,
                 Mode::Continuous,
                 "one plane going unmet is not a reason to drop the others"
             );
@@ -1402,7 +1555,7 @@ mod tests {
             // A committed demand is a statement about now. The next page is a new claim, and
             // the proposal has to come back — otherwise one refusal would silence the plane for
             // as long as the device is on.
-            let mut manager = fully_wired();
+            let mut manager = landed(fully_wired());
             manager.commit_demand(manager.demand().without(PlaneKey::MOTION));
             assert_eq!(manager.demand().plane(PlaneKey::MOTION).mode, Mode::Off);
 
@@ -1478,11 +1631,11 @@ mod tests {
 
         #[test]
         fn the_page_switch_skips_pages_the_board_lacks() {
-            let mut disabled = DeviceManager::new();
+            let mut disabled = landed(DeviceManager::new());
             apply_page(&mut disabled, triple_click());
             assert_eq!(disabled.state().page, DisplayPage::Ambient);
 
-            let mut enabled = DeviceManager::with_motion(true, ALL_CAPS);
+            let mut enabled = landed(DeviceManager::with_motion(true, ALL_CAPS));
             apply_page(&mut enabled, triple_click());
             assert_eq!(enabled.state().page, DisplayPage::Attitude);
             apply_page(&mut enabled, triple_click());
@@ -1647,7 +1800,7 @@ mod tests {
         /// A board with both capabilities cycles to the audio page in two
         /// page turns, so the tests start from there and tap on it.
         fn on_audio_page() -> DeviceManager {
-            let mut manager = DeviceManager::with_motion(true, ALL_CAPS).with_audio(true);
+            let mut manager = landed(DeviceManager::with_motion(true, ALL_CAPS).with_audio(true));
             apply(&mut manager, triple_click());
             apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Audio);
@@ -1688,7 +1841,7 @@ mod tests {
 
         #[test]
         fn the_page_switch_reaches_the_audio_page_and_back() {
-            let mut manager = DeviceManager::new().with_audio(true);
+            let mut manager = landed(DeviceManager::new().with_audio(true));
             apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Audio);
             apply(&mut manager, triple_click());
@@ -1843,11 +1996,13 @@ mod tests {
         #[test]
         fn the_boot_page_joins_the_cycle_it_was_asked_for() {
             // A build that names a page starts on it and then cycles by the declared order.
-            let mut manager = DeviceManager::with_motion(true, ALL_CAPS)
-                .with_audio(true)
-                .with_playback(true)
-                .with_camera(true)
-                .with_boot_page(DisplayPage::Camera);
+            let mut manager = landed(
+                DeviceManager::with_motion(true, ALL_CAPS)
+                    .with_audio(true)
+                    .with_playback(true)
+                    .with_camera(true)
+                    .with_boot_page(DisplayPage::Camera),
+            );
             assert_eq!(manager.state().page, DisplayPage::Camera);
             apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Ambient);
@@ -1859,22 +2014,26 @@ mod tests {
         fn the_boot_page_falls_back_for_every_capability_not_wired() {
             // The clamp used to name Camera, Audio and Speaker by hand and miss `Attitude`,
             // so a build asking for a page the board cannot show landed on it anyway.
-            let bare = DeviceManager::new();
+            let bare = landed(DeviceManager::new());
             let default_page = bare.state().page;
             for page in CYCLE {
-                let landed = DeviceManager::new().with_boot_page(page).state().page;
+                let boot_page = landed(DeviceManager::new().with_boot_page(page))
+                    .state()
+                    .page;
                 assert_eq!(
-                    landed, default_page,
+                    boot_page, default_page,
                     "{page:?} needs no capability, so a board with nothing wired still lands \
                      on the same page either way"
                 );
             }
-            let with_motion = DeviceManager::with_motion(true, ALL_CAPS);
+            let with_motion = landed(DeviceManager::with_motion(true, ALL_CAPS));
             assert_eq!(
-                DeviceManager::with_motion(true, ALL_CAPS)
-                    .with_boot_page(DisplayPage::Attitude)
-                    .state()
-                    .page,
+                landed(
+                    DeviceManager::with_motion(true, ALL_CAPS)
+                        .with_boot_page(DisplayPage::Attitude)
+                )
+                .state()
+                .page,
                 DisplayPage::Attitude,
                 "the one capability it does have"
             );
@@ -1891,7 +2050,7 @@ mod tests {
                 !DeviceManager::new().state().camera_enabled,
                 "not declared until a board declares it"
             );
-            let mut manager = DeviceManager::new().with_camera(true);
+            let mut manager = landed(DeviceManager::new().with_camera(true));
             assert!(manager.state().camera_enabled);
             apply(&mut manager, triple_click());
             assert_eq!(manager.state().page, DisplayPage::Camera);
@@ -1902,7 +2061,7 @@ mod tests {
         #[test]
         fn a_board_without_a_camera_never_lands_on_its_page() {
             // Every other capability present, so the cycle would be full without it.
-            let mut manager = DeviceManager::new().with_audio(true).with_playback(true);
+            let mut manager = landed(DeviceManager::new().with_audio(true).with_playback(true));
             for _ in 0..8 {
                 apply(&mut manager, triple_click());
                 assert_ne!(
@@ -2086,6 +2245,7 @@ mod tests {
                     secured: true,
                 }),
                 address: Some(Ipv4::from_octets([192, 168, 1, 136])),
+                ..LinkStatus::default()
             };
             manager.apply_business(BusinessIntent::Link(status));
             assert_eq!(manager.state().link, status);
@@ -2100,9 +2260,11 @@ mod tests {
         /// taps are looped rather than counted so the helper does not have to be
         /// rewritten when a page is added.
         fn on_speaker() -> DeviceManager {
-            let mut manager = DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
-                .with_audio(true)
-                .with_playback(true);
+            let mut manager = landed(
+                DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
+                    .with_audio(true)
+                    .with_playback(true),
+            );
             for _ in 0..=3 {
                 if manager.state().page == DisplayPage::Speaker {
                     break;
@@ -2283,7 +2445,7 @@ mod tests {
 
         #[test]
         fn a_board_without_a_speaker_plays_nothing() {
-            let mut manager = DeviceManager::new();
+            let mut manager = landed(DeviceManager::new());
             manager.apply_business(BusinessIntent::TogglePage);
             assert_eq!(manager.state().page, DisplayPage::Ambient, "no page either");
             manager.apply_business(BusinessIntent::PlayNext);
@@ -3020,7 +3182,7 @@ mod tests {
         /// A build that wired a radio, sitting on the page with two networks in range — the
         /// state the product spends its first minutes in.
         fn on_network_page() -> DeviceManager {
-            let mut manager = DeviceManager::new().with_network(true);
+            let mut manager = landed(DeviceManager::new().with_network(true));
             manager.apply_scan(ApList::from_ranked(&[ap(b"neighbour"), ap(b"cafe")]));
             // A board with no other capability cycles straight to the link's page.
             manager.apply_business(BusinessIntent::TogglePage);
@@ -3099,6 +3261,17 @@ mod tests {
         }
 
         #[test]
+        fn the_address_the_radio_reports_is_the_one_the_page_draws() {
+            // One report at boot and nothing after it: the panel's header and the setup page's own
+            // line are the same number, and neither asks the radio again.
+            let mut manager = on_network_page();
+            assert_eq!(manager.state().mac, None, "nothing has reported one yet");
+            let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
+            manager.apply_business(BusinessIntent::Mac(mac));
+            assert_eq!(manager.state().mac, Some(mac));
+        }
+
+        #[test]
         fn a_script_types_its_own_text_through_the_keyboard() {
             // The whole typing chain without a finger: each of the script's cells reads back as a
             // key through the same `key_of` the panel draws with, and the entry those keys fill is
@@ -3151,7 +3324,7 @@ mod tests {
         fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
             // Eight rows through a window of three: the band is the page's row rather than the
             // scan's, so the same finger position is a different network as the list slides.
-            let mut manager = DeviceManager::new().with_network(true);
+            let mut manager = landed(DeviceManager::new().with_network(true));
             let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
             manager.apply_scan(ApList::from_ranked(&aps));
             manager.apply_business(BusinessIntent::TogglePage);
@@ -3314,7 +3487,7 @@ mod tests {
         /// A build sitting on the page with eight networks in range, which is a list with more rows
         /// than the window holds.
         fn eight_rows() -> DeviceManager {
-            let mut manager = DeviceManager::new().with_network(true);
+            let mut manager = landed(DeviceManager::new().with_network(true));
             let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
             manager.apply_scan(ApList::from_ranked(&aps));
             manager.apply_business(BusinessIntent::TogglePage);
@@ -3396,6 +3569,15 @@ mod tests {
             );
         }
 
+        /// The strip's other cell: the way back, drawn only while the device keeps a network.
+        fn tap_strip_left(manager: &mut DeviceManager) {
+            tap_on(
+                manager,
+                40,
+                (keyboard::TOOLBAR_TOP + keyboard::TOOLBAR_H / 2) as u16,
+            );
+        }
+
         /// Hold the middle of the band the list's `band`-th visible row is drawn in, through the
         /// same translate the render loop runs a classified long press through.
         fn hold_band(manager: &mut DeviceManager, band: usize) {
@@ -3432,6 +3614,7 @@ mod tests {
                 phase,
                 ap: Some(ap(ssid)),
                 address: None,
+                ..LinkStatus::default()
             }));
         }
 
@@ -3490,6 +3673,7 @@ mod tests {
                         phase,
                         ap: named,
                         address: None,
+                        ..LinkStatus::default()
                     }));
                     tap_strip(&mut manager);
                     assert_eq!(
@@ -3512,6 +3696,119 @@ mod tests {
                     "{phase:?} is not a link, so the strip looks around instead"
                 );
             }
+        }
+
+        /// The hardware button's long press, through the same translate the render loop runs it
+        /// through, so the test reads the rule the product does and not a copy of it.
+        fn long_press_the_button(manager: &mut DeviceManager) {
+            let operation = op(InputEvent::Button(ButtonEvent::LongPress));
+            manager.apply_operation(operation);
+            let business = translate(&operation, &manager.state());
+            manager.apply_business(business);
+        }
+
+        #[test]
+        fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
+            // The splash is the whole of the setup window, and the request is the same one on both
+            // fronts: the board that can draw the mode draws it when the page ends, and the board
+            // that cannot still has the mode to enter. Nothing about a link is involved, because a
+            // device on this page has not read a credential yet.
+            for panel in [Panel::Wired, Panel::Absent] {
+                let mut manager = DeviceManager::new().with_network(true).with_panel(panel);
+                long_press_the_button(&mut manager);
+                assert!(manager.setup_wanted(), "{panel:?}: the request is latched");
+                assert_eq!(
+                    manager.state().setup.confirm,
+                    None,
+                    "{panel:?}: the splash carries no question"
+                );
+                assert!(
+                    !manager.take_leave(),
+                    "{panel:?}: the request is not a leave"
+                );
+                assert_eq!(
+                    manager.state().page,
+                    DisplayPage::Splash,
+                    "{panel:?}: the page keeps its window"
+                );
+            }
+        }
+
+        #[test]
+        fn the_splash_lands_on_the_page_that_offers_setup_when_it_was_asked_for() {
+            // The one thing the request does: the landing is the mode's page rather than the one
+            // the build named, so a person who held the button sees the list the phone is on.
+            let mut manager = DeviceManager::new()
+                .with_network(true)
+                .with_camera(true)
+                .with_boot_page(DisplayPage::Camera);
+            long_press_the_button(&mut manager);
+            manager.apply_business(BusinessIntent::SplashOver);
+            assert_eq!(manager.state().page, DisplayPage::Network);
+        }
+
+        #[test]
+        fn the_splash_lands_on_the_build_page_when_nothing_was_asked() {
+            // And without a request the build's page is the landing, which is the whole reason the
+            // splash is not a page in the cycle: it is a window, not a place.
+            let mut manager = landed(
+                DeviceManager::new()
+                    .with_network(true)
+                    .with_camera(true)
+                    .with_boot_page(DisplayPage::Camera),
+            );
+            assert_eq!(manager.state().page, DisplayPage::Camera);
+            assert!(!manager.setup_wanted());
+        }
+
+        #[test]
+        fn a_board_with_no_radio_lands_on_its_page_even_after_the_hold() {
+            // There is nothing a page could set up, so the request is not a request: the hold is
+            // inert on a build that wired no network.
+            let mut manager = DeviceManager::new();
+            long_press_the_button(&mut manager);
+            manager.apply_business(BusinessIntent::SplashOver);
+            assert_eq!(manager.state().page, DisplayPage::Ambient);
+        }
+
+        #[test]
+        fn a_long_press_after_the_splash_is_the_pages_own_verb() {
+            // The splash is the whole of what makes the setup request. A press made once the device
+            // is up and running is the page's own verb — even on a board with no screen, whose
+            // button is the only control surface it has.
+            let mut manager = landed(
+                DeviceManager::new()
+                    .with_network(true)
+                    .with_panel(Panel::Absent),
+            );
+            link_up(&mut manager, b"neighbour");
+            let before = manager.state().lights[0];
+
+            long_press_the_button(&mut manager);
+            assert_eq!(
+                manager.state().setup.confirm,
+                None,
+                "the press never raises the question the strip raises"
+            );
+            assert!(!manager.take_leave(), "and it takes nothing down");
+            assert_ne!(
+                manager.state().lights[0],
+                before,
+                "the press is still the page's own verb"
+            );
+        }
+
+        #[test]
+        fn a_strip_leave_on_a_board_with_no_screen_is_done_rather_than_asked_about() {
+            // The other way into the same cell: a build that reaches it without a long press — a
+            // probe, or a board that grows a button later — still must not leave a question up that
+            // nothing on that board can answer.
+            let mut manager = on_network_page().with_panel(Panel::Absent);
+            link_up(&mut manager, b"neighbour");
+
+            tap_strip(&mut manager);
+            assert_eq!(manager.state().setup.confirm, None);
+            assert!(manager.take_leave(), "the strip's verb is the leave itself");
         }
 
         #[test]
@@ -3550,6 +3847,7 @@ mod tests {
                 phase: LinkPhase::Failed(NetworkError::NotFound),
                 ap: None,
                 address: None,
+                ..LinkStatus::default()
             }));
             assert_eq!(
                 manager.state().setup.confirm,
@@ -3655,6 +3953,7 @@ mod tests {
                 phase: LinkPhase::Failed(NetworkError::Credentials),
                 ap: Some(ap(b"neighbour")),
                 address: None,
+                ..LinkStatus::default()
             }));
 
             tap_band(&mut manager, 0);
@@ -3696,7 +3995,7 @@ mod tests {
 
         #[test]
         fn a_scan_that_shrank_pulls_the_list_back_to_its_own_end() {
-            let mut manager = DeviceManager::new().with_network(true);
+            let mut manager = landed(DeviceManager::new().with_network(true));
             let eight: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
             manager.apply_scan(ApList::from_ranked(&eight));
             manager.apply_business(BusinessIntent::TogglePage);
@@ -3844,6 +4143,7 @@ mod tests {
                 phase: LinkPhase::Failed(NetworkError::Credentials),
                 ap: Some(ap(b"neighbour")),
                 address: None,
+                ..LinkStatus::default()
             }));
             assert!(manager.state().setup.keyboard, "the refusal asks for a fix");
             assert_eq!(manager.state().setup.entry, Some(Entry::default()));
@@ -4277,6 +4577,162 @@ mod tests {
                 Some(Ssid::from_octets(b"neighbour"))
             );
         }
+        fn setup_mode(manager: &mut DeviceManager, cancellable: bool) {
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                setup: true,
+                setup_cancellable: cancellable,
+                front: crate::drivers::network::Front::AccessPoint,
+                setup_password: Some(crate::drivers::network::SetupPass::from_array(
+                    *b"k3mq9t7w2x",
+                )),
+                ..LinkStatus::default()
+            }));
+        }
+
+        #[test]
+        fn the_strip_trades_a_link_for_setup_mode_and_closes_it_again() {
+            let mut manager = on_network_page();
+            link_up(&mut manager, b"neighbour");
+            tap_strip(&mut manager);
+            tap_answer(&mut manager, keyboard::DialogChoice::Act);
+            assert!(manager.take_leave(), "the question is asked, and answered");
+
+            // And the mode the radio reports once the access point is up has the other verbs: the
+            // way back on the left, and the front switch on the right.
+            setup_mode(&mut manager, true);
+            tap_strip_left(&mut manager);
+            assert!(
+                manager.take_setup_cancel(),
+                "a device that keeps a network has a way back to it"
+            );
+            assert!(
+                !manager.take_setup_cancel(),
+                "a command is handed over once, like every other"
+            );
+            // The other cell is the front switch, and it is one request rather than a direction:
+            // the radio publishes which end it went to.
+            tap_strip(&mut manager);
+            assert!(manager.take_switch_front());
+            assert!(!manager.take_switch_front());
+        }
+
+        #[test]
+        fn a_device_with_nothing_saved_has_only_the_front_switch_on_the_access_points_front() {
+            // Nothing to go back to: cancelling would take the access point down and raise it
+            // again, which a phone sees as the page disappearing. So the left cell is not drawn
+            // on this front, and the one box the switch fills is both halves of the strip.
+            let mut manager = on_network_page();
+            setup_mode(&mut manager, false);
+            tap_strip_left(&mut manager);
+            assert!(!manager.take_setup_cancel());
+            assert!(
+                manager.take_switch_front(),
+                "the strip's one action is the other front end"
+            );
+        }
+
+        #[test]
+        fn the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back() {
+            // The panel's own front has a live list under it, so its left half is the strip's
+            // "look around" rather than a cell that does nothing — the same verb the strip carries
+            // outside the mode. The right half is the switch, whatever the device keeps.
+            let mut manager = on_network_page();
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                setup: true,
+                front: Front::Panel,
+                ..LinkStatus::default()
+            }));
+            tap_strip_left(&mut manager);
+            assert!(!manager.take_setup_cancel());
+            assert!(
+                manager.take_scan_now(),
+                "a device with no way back still asks the radio to look around"
+            );
+            assert!(manager.state().setup.rescan_wait, "and the strip says so");
+            assert!(!manager.take_switch_front());
+
+            tap_strip(&mut manager);
+            assert!(manager.take_switch_front(), "the right half is the switch");
+            assert!(!manager.take_scan_now());
+        }
+
+        #[test]
+        fn the_box_belongs_to_the_access_points_front_and_not_to_a_boot() {
+            // The box is the mode's face rather than an announcement: it is up while the phone's
+            // front is, and the panel's own front is a list with nothing over it.
+            let mut manager = on_network_page();
+            setup_mode(&mut manager, true);
+            assert!(manager.state().link.shows_setup_box());
+
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                setup: true,
+                front: crate::drivers::network::Front::Panel,
+                ..LinkStatus::default()
+            }));
+            assert!(
+                !manager.state().link.shows_setup_box(),
+                "the list is what the panel's own front shows"
+            );
+
+            // And a refusal raises the access point again under the same front: the box is the
+            // mode, so it comes back with it rather than being announced once.
+            manager.apply_business(BusinessIntent::Link(LinkStatus::default()));
+            setup_mode(&mut manager, true);
+            assert!(manager.state().link.shows_setup_box());
+        }
+
+        #[test]
+        fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
+            let mut manager = on_network_page();
+            setup_mode(&mut manager, true);
+            tap_answer(&mut manager, keyboard::DialogChoice::Keep);
+            assert!(manager.take_toggle_pass());
+            assert!(!manager.take_toggle_pass());
+
+            // And it is not reachable outside the box: a panel's own front has no open access
+            // point to ask for.
+            manager.apply_business(BusinessIntent::Link(LinkStatus {
+                setup: true,
+                front: crate::drivers::network::Front::Panel,
+                ..LinkStatus::default()
+            }));
+            manager.apply_business(BusinessIntent::TogglePass);
+            assert!(!manager.take_toggle_pass());
+        }
+
+        #[test]
+        fn the_radio_s_three_moments_are_heard() {
+            let mut manager = on_network_page().with_playback(true);
+
+            setup_mode(&mut manager, true);
+            assert_eq!(manager.playback_state().phase, PlaybackPhase::Playing);
+            assert_eq!(
+                manager.playback_state().sound,
+                Sound::Rise,
+                "entering setup mode"
+            );
+
+            // The driver's word ends a sound; the state only starts them.
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            link_up(&mut manager, b"neighbour");
+            assert_eq!(
+                manager.playback_state().sound,
+                Sound::Tap,
+                "the network answered"
+            );
+
+            manager.apply_business(BusinessIntent::PlaybackFinished);
+            link_at(
+                &mut manager,
+                LinkPhase::Failed(NetworkError::Credentials),
+                b"neighbour",
+            );
+            assert_eq!(
+                manager.playback_state().sound,
+                Sound::Error,
+                "the network refused"
+            );
+        }
     }
 
     /// The page's moves, walked exhaustively rather than along the paths a test happened to pick.
@@ -4600,6 +5056,11 @@ mod tests {
         fn triple_click(manager: &mut DeviceManager) {
             applied(manager, InputEvent::Button(ButtonEvent::TripleClick));
         }
+        /// The input task's clock ending the splash: a report rather than a gesture, and the only
+        /// way off the page.
+        fn splash_over(manager: &mut DeviceManager) {
+            manager.apply_business(BusinessIntent::SplashOver);
+        }
         fn click(manager: &mut DeviceManager) {
             applied(manager, InputEvent::Button(ButtonEvent::Click));
         }
@@ -4627,6 +5088,7 @@ mod tests {
                     phase: LinkPhase::Connecting,
                     ap: None,
                     address: None,
+                    ..LinkStatus::default()
                 },
             );
         }
@@ -4637,6 +5099,7 @@ mod tests {
                     phase: LinkPhase::Connecting,
                     ap: Some(neighbour()),
                     address: None,
+                    ..LinkStatus::default()
                 },
             );
         }
@@ -4647,6 +5110,7 @@ mod tests {
                     phase: LinkPhase::Connected,
                     ap: Some(neighbour()),
                     address: Some(Ipv4::from_octets([10, 0, 0, 2])),
+                    ..LinkStatus::default()
                 },
             );
         }
@@ -4657,6 +5121,7 @@ mod tests {
                     phase: LinkPhase::Failed(NetworkError::Credentials),
                     ap: Some(neighbour()),
                     address: None,
+                    ..LinkStatus::default()
                 },
             );
         }
@@ -4667,6 +5132,7 @@ mod tests {
                     phase: LinkPhase::Failed(NetworkError::Driver),
                     ap: None,
                     address: None,
+                    ..LinkStatus::default()
                 },
             );
         }
@@ -4829,6 +5295,10 @@ mod tests {
                 Move {
                     name: "a long press of the button",
                     run: hold_the_button
+                },
+                Move {
+                    name: "the splash's clock",
+                    run: splash_over
                 },
                 Move {
                     name: "the radio reporting nothing on the air",

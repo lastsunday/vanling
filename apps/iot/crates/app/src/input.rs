@@ -9,7 +9,7 @@ use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{DemandField, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS};
 use iot_core::drivers::audio::{AudioSample, CaptureSink};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
-use iot_core::intent::{Intent, recognize};
+use iot_core::intent::{BusinessIntent, Intent, recognize};
 
 use crate::SharedDemand;
 use iot_core::config::{Configuration, Configurator};
@@ -146,6 +146,18 @@ fn apply(
     moved
 }
 
+/// How long the splash page stays up after the input clock starts.
+///
+/// Three seconds is the window routers have used for the same ceremony: OpenWrt's failsafe with a
+/// button is a "pre-defined 2-4 second window" (two seconds through 23.05, four from 24.10), and
+/// the button is one finger away from reset here too. Short on purpose — the page is a splash, not
+/// a menu, and the hold it answers is a request to take a working link down.
+///
+/// Measured from this task's clock, which is the one the button's own events are clocked against:
+/// the page's first reader is this loop, so "since boot" and "since the first tick" are the same
+/// three seconds to a finger.
+const SPLASH_MS: u64 = 3_000;
+
 /// Drains every input source at the shared base tick, gating each source to
 /// its own cadence, and forwards recognized operations onto the intent bus.
 /// `try_send` drops intents when the bus is full: dropping a press is preferable
@@ -168,6 +180,10 @@ pub async fn input_task(
     let mut window_worst_hold_ms: u64 = 0;
     let mut window_ticks: u32 = 0;
     let mut last_report = Instant::now();
+    // Whether the splash page is still up, so the one report that ends it is sent once. The page
+    // itself is the state's (see [`iot_core::state::DisplayPage::Splash`]); what this task owns is
+    // its clock — this is the task that has one, and the hold the page answers is its own event.
+    let mut splash_open = true;
     loop {
         // Ticks stay anchored to the base clock even when a source takes
         // inconsistent time to sample, so slow devices never alias.
@@ -196,6 +212,23 @@ pub async fn input_task(
             if let Some(seen) = polled.get_mut(index) {
                 *seen = true;
             }
+        }
+        // The splash is over `SPLASH_MS` after the clock starts — or as soon as the press in
+        // progress is let go, if one is. Deferring on a held button is what keeps a hold that began
+        // inside the window (press at 2.9 s, lift at 3.6 s) a press on the splash page: this check
+        // runs after the poll above, so the event lands before the report that ends the page.
+        if splash_open
+            && now_ms >= SPLASH_MS
+            && !sources.iter().any(|entry| entry.held())
+            && intent_bus
+                .try_send(Intent::Business(BusinessIntent::SplashOver))
+                .is_ok()
+        {
+            splash_open = false;
+            log::info!(
+                "[INPUT] the splash page is over {} ms into the input clock",
+                SPLASH_MS
+            );
         }
         // The whole `for` body runs without awaiting, so its wall time is
         // exactly how long the other tasks on the shared executor wait.

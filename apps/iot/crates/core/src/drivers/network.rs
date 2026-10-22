@@ -67,33 +67,71 @@ pub const SURVEY_IDLE_MAX_PAUSE_MS: u64 = 30_000;
 /// which is about as long as a user looks at a list before deciding.
 pub const SURVEY_IDLE_ROUNDS: u8 = 3;
 
-/// How long to rest after a survey round, given how many rounds in a row have found nothing and
-/// how many rounds in a row nobody has acted on.
+/// How long to rest after a survey round, given empty rounds and idle rounds in a row. Only an
+/// empty round is retried soon; otherwise the pause grows in three steps as nobody acts, because a
+/// room that is not changing does not need a new list every five seconds.
 ///
-/// A round that found something is the survey working, so it rests the whole pause; only an
-/// empty round is retried soon. Zero is that first case — there is no empty round to retry — which
-/// is why the fast pause covers one through [`SURVEY_EMPTY_RETRIES`] and not zero.
-///
-/// Where nothing is empty and nobody acts, the pause itself lengthens: a device waiting to be set
-/// up in a room that is not going to change does not need the list every five seconds, and the
-/// list it has drawn is still the truth about the room. Three steps rather than a curve, because
-/// what a user perceives is "it came up at once" against "it was already there" — and the first
-/// scan after the page is entered is not on this clock at all, since entering it is an act.
-pub fn survey_pause_after(empty_rounds: u8, idle_rounds: u8) -> u64 {
-    if matches!(empty_rounds, 1..=SURVEY_EMPTY_RETRIES) {
-        return SURVEY_EMPTY_PAUSE_MS;
+/// `None` is the access point's front, which scans only when the page asks: a round takes the radio
+/// off the access point.
+pub fn survey_pause_after(front: Front, empty_rounds: u8, idle_rounds: u8) -> Option<u64> {
+    // A phone reading the page and a radio scanning the room are one radio: a round takes the
+    // access point off the air for its length, and a request that lands in one is a page the
+    // phone reports as missing. So the access point's front does not rest and then look again — it
+    // looks when the page asks it to, which is the page's own "look around" and nothing else.
+    if front == Front::AccessPoint {
+        return None;
     }
-    match idle_rounds / SURVEY_IDLE_ROUNDS {
+    if matches!(empty_rounds, 1..=SURVEY_EMPTY_RETRIES) {
+        return Some(SURVEY_EMPTY_PAUSE_MS);
+    }
+    Some(match idle_rounds / SURVEY_IDLE_ROUNDS {
         0 => SURVEY_PAUSE_MS,
         1 => SURVEY_IDLE_PAUSE_MS,
         _ => SURVEY_IDLE_MAX_PAUSE_MS,
-    }
+    })
+}
+
+/// Whether the access point this setup raises starts under a passphrase.
+///
+/// The splash entry starts open so a phone joins by tapping the name, with `PASS` one tap away.
+/// A running entry starts secured where a screen can show the passphrase; a board with no screen
+/// stays open, because a secret nobody can read is a network nobody can join.
+pub const fn setup_ap_starts_secured(panel: bool, from_splash: bool) -> bool {
+    panel && !from_splash
 }
 
 /// How many networks the device remembers, strongest-first, newest at the front —
 /// the same slot count and ordering the reference firmware uses, so a device that
 /// has been to three places reconnects without being told which.
 pub const MAX_SAVED_NETWORKS: usize = 10;
+
+/// Characters in the setup access point's passphrase.
+///
+/// Ten symbols from the alphabet the station generates it from: about 50 bits, which is what a
+/// phone's own keypad can be expected to take without a second look, and long enough that a
+/// captured handshake is not the afternoon of a GPU's time that six would be.
+pub const SETUP_PASS_LEN: usize = 10;
+
+/// The setup access point's passphrase, as the panel may show it.
+///
+/// Fixed length rather than an [`Ssid`]: the station generates it at [`SETUP_PASS_LEN`], and this is
+/// copied with the link status on every window of every loop, so a 32-byte name field for a
+/// ten-byte value is 22 bytes of the main task's own frame paid wherever the link is handled.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct SetupPass {
+    octets: [u8; SETUP_PASS_LEN],
+}
+
+impl SetupPass {
+    /// The generated value, of exactly the length the station makes.
+    pub const fn from_array(octets: [u8; SETUP_PASS_LEN]) -> Self {
+        Self { octets }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.octets
+    }
+}
 
 /// A network name as the radio reports it: up to [`SSID_BYTES`] octets, which is
 /// not necessarily text.
@@ -102,7 +140,6 @@ pub struct Ssid {
     octets: [u8; SSID_BYTES],
     len: u8,
 }
-
 impl Ssid {
     pub const EMPTY: Self = Self {
         octets: [0; SSID_BYTES],
@@ -225,22 +262,11 @@ pub fn rank_aps(raw: &[AccessPoint], limit: usize) -> Vec<AccessPoint> {
     ranked
 }
 
-/// The ranked list as the device state holds it.
+/// The ranked list as the device state holds it: a fixed-capacity value, never the driver's
+/// `Vec`, because the state is snapshotted into every page and diagnostics.
 ///
-/// A value rather than the driver's `Vec`: the state is snapshotted into every page
-/// and copied into diagnostics, so a list that borrowed the driver would be a borrow
-/// the panel has to keep alive, and one that owned a `Vec` would make the snapshot
-/// allocation. Fixed capacity is the same decision the rest of the driver types make.
-///
-/// Built from what [`rank_aps`] returned, never from a raw scan: the ranking rule is
-/// the module's, and this is only where the list is stored.
-///
-/// The rows carry a mark each for whether this device holds a passphrase for them, and it is part of
-/// the list rather than a field beside it: a mark is a fact about *these* rows in *this* order, and
-/// one that travelled on its own could be read against a list it was not made for. A mark is a bit
-/// rather than a name for the reason the page's own shape gives — the page marks the rows in front
-/// of it and asks nothing else, so what it needs is one bit per row rather than the store's names,
-/// which are three hundred bytes a frame and none of them a frame's business.
+/// Each row's saved mark travels with the list: it is a fact about these rows in this order, and
+/// one bit per row is all the page asks for.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ApList {
     entries: [AccessPoint; MAX_LISTED_APS],
@@ -382,16 +408,9 @@ impl SurveyHistory {
         *self = Self::new();
     }
 
-    /// Fold one round in, and answer the list as the page should now show it.
-    ///
-    /// `None` while the page would draw the same rows it already has: a round that moved readings
-    /// within the bars they draw is nothing to redraw, and on this panel a redraw is a whole frame.
-    /// The marks are part of that answer rather than beside it — the page draws them, so a round
-    /// that changed only which rows are saved is a round the page draws differently.
-    ///
-    /// The store is optional because the part is: a board with no credential partition has nothing
-    /// to mark with, which is `None` and not an empty store — an empty store is a thousand bytes of
-    /// names a build with no partition would carry to say nothing with.
+    /// Fold one round in and answer the list the page should now show. `None` means the page
+    /// would draw the same rows; marks count, because the page draws them. The store is optional
+    /// because the partition is: `None` says no marks without carrying an empty store.
     pub fn observe(
         &mut self,
         round: &[AccessPoint],
@@ -527,10 +546,38 @@ fn drawn_the_same(left: &ApList, right: &ApList) -> bool {
         })
 }
 
+/// Where a saved network was last found: the access point's address and channel.
+///
+/// A hint, not a fact: every use may be wrong and the association retries without it. It saves a
+/// full-band scan, which on this radio is seconds rather than milliseconds. [`Self::NONE`] is "not
+/// known"; channel 0 is not a channel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct LinkHint {
+    pub bssid: [u8; 6],
+    pub channel: u8,
+}
+
+impl LinkHint {
+    /// No shortcut: scan the whole band, which is what a first association does.
+    pub const NONE: Self = Self {
+        bssid: [0; 6],
+        channel: 0,
+    };
+
+    pub const fn new(bssid: [u8; 6], channel: u8) -> Self {
+        Self { bssid, channel }
+    }
+
+    /// Whether this names a channel a radio could be on.
+    pub const fn is_known(self) -> bool {
+        self.channel != 0
+    }
+}
+
 /// The remembered networks, newest at the front.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct SavedNetworks {
-    entries: [(Ssid, Password); MAX_SAVED_NETWORKS],
+    entries: [(Ssid, Password, LinkHint); MAX_SAVED_NETWORKS],
     len: u8,
 }
 
@@ -544,7 +591,7 @@ impl SavedNetworks {
     /// A store that holds nothing, for the callers that have no store at all: what they report to
     /// the page is the empty set of marks, which is the truth on a board with no partition.
     pub const EMPTY: Self = Self {
-        entries: [(Ssid::EMPTY, Password::EMPTY); MAX_SAVED_NETWORKS],
+        entries: [(Ssid::EMPTY, Password::EMPTY, LinkHint::NONE); MAX_SAVED_NETWORKS],
         len: 0,
     };
 
@@ -552,19 +599,17 @@ impl SavedNetworks {
         Self::EMPTY
     }
 
-    /// Remember a network at the front, replacing an entry with the same name.
-    ///
-    /// Front, because a device is usually being set up for the room it is in; the
-    /// full list is what reconnect walks when none of them are in range. Returns
-    /// whether it replaced one, so a caller can tell "saved" from "updated" — the
-    /// two are the same write and the page words them differently.
+    /// Remember a network at the front, replacing one with the same name. Returns whether it
+    /// replaced, so the page can say "saved" or "updated". A known name keeps its hint; a new one
+    /// starts at [`LinkHint::NONE`].
     pub fn remember(&mut self, credentials: &Credentials) -> bool {
+        let hint = self.hint_of(&credentials.ssid);
         let replaced = self.forget_named(&credentials.ssid);
         let last = MAX_SAVED_NETWORKS - 1;
         for index in (1..=last).rev() {
             self.entries[index] = self.entries[index - 1];
         }
-        self.entries[0] = (credentials.ssid, credentials.password);
+        self.entries[0] = (credentials.ssid, credentials.password, hint);
         self.len = (self.len + 1).min(MAX_SAVED_NETWORKS as u8);
         replaced
     }
@@ -575,11 +620,33 @@ impl SavedNetworks {
     /// [`remember`](Self::remember) is the wrong shape for a stored list: it inserts at
     /// the front, so replaying a record entry by entry through it would reverse the list
     /// on every load. Where an entry sits is something the record already says.
-    pub(crate) fn place(&mut self, index: usize, ssid: Ssid, password: Password) {
+    pub(crate) fn place(&mut self, index: usize, ssid: Ssid, password: Password, hint: LinkHint) {
         if index < MAX_SAVED_NETWORKS {
-            self.entries[index] = (ssid, password);
+            self.entries[index] = (ssid, password, hint);
             self.len = self.len.max(index as u8 + 1);
         }
+    }
+
+    /// The hint this device keeps for `ssid`, or [`LinkHint::NONE`] for a name it does not hold.
+    pub fn hint_of(&self, ssid: &Ssid) -> LinkHint {
+        (0..self.len as usize)
+            .find(|index| self.entries[*index].0 == *ssid)
+            .map_or(LinkHint::NONE, |index| self.entries[index].2)
+    }
+
+    /// Record a hint for a name this device holds. Returns whether it changed, which is what keeps
+    /// a link that did not move from writing the flash on every association.
+    pub fn set_hint(&mut self, ssid: &Ssid, hint: LinkHint) -> bool {
+        for index in 0..self.len as usize {
+            if self.entries[index].0 == *ssid {
+                if self.entries[index].2 == hint {
+                    return false;
+                }
+                self.entries[index].2 = hint;
+                return true;
+            }
+        }
+        false
     }
 
     /// Drop every entry with this name. Returns whether anything was dropped, so
@@ -616,6 +683,15 @@ impl SavedNetworks {
             ssid: entry.0,
             password: entry.1,
         })
+    }
+
+    /// The hint beside entry `index`, or [`LinkHint::NONE`] past the end.
+    pub fn hint(&self, index: usize) -> LinkHint {
+        if index < self.len as usize {
+            self.entries[index].2
+        } else {
+            LinkHint::NONE
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Credentials> + '_ {
@@ -794,6 +870,25 @@ pub enum NetworkError {
     Driver,
 }
 
+/// Which of the two ways into setup mode the device is offering.
+///
+/// One mode, two front ends, and one of them at a time: the panel's own list and the access point
+/// whose page a phone fills in answer the same question — which network to join — and both end on
+/// the same [`Credentials`] plane. What differs is the radio: the page is served over the access
+/// point, and the access point shares the radio with the scan the list is made of, so a device
+/// that is being typed on at the panel has no reason to beacon a network nobody is using.
+///
+/// Which one is offered is the build's answer at boot and the person's after that, so this is the
+/// value a decision travels in rather than a mode the radio switches on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Front {
+    /// The panel: the scan list, the keys, and no access point.
+    #[default]
+    Panel,
+    /// The access point: its setup page fills the screen, and the panel's list waits behind the box.
+    AccessPoint,
+}
+
 /// The link as the rest of the device reads it: one snapshot, copied rather than
 /// shared so the panel can hold it without borrowing the driver.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -803,24 +898,48 @@ pub struct LinkStatus {
     pub ap: Option<AccessPoint>,
     /// The address DHCP handed out, which is what makes the phase `Connected`.
     pub address: Option<Ipv4>,
+    /// Whether setup mode is what the page is about: the access point is up when
+    /// [`Self::front`] is [`Front::AccessPoint`]. The network task owns this; every reader is
+    /// already reading the link.
+    pub setup: bool,
+    /// Whether setup mode has somewhere to go back to. `CANCEL` is only offered when it has:
+    /// otherwise it would take the access point down and raise it again.
+    pub setup_cancellable: bool,
+    /// Which front is offering setup, and with it whether the access point is up. See [`Front`].
+    pub front: Front,
+    /// The passphrase the setup access point is up with, when it has one.
+    ///
+    /// `None` is open: what a board with no screen can offer, or what a panel asked for. The
+    /// station generates it once per boot and it leaves only on the panel; logging it or writing
+    /// it into the page would let anyone in range read it.
+    pub setup_password: Option<SetupPass>,
 }
 
 impl LinkStatus {
-    /// Whether there is a link here for the page to take down: an attempt in flight, or one
-    /// that worked.
-    ///
-    /// One rule for three readers, because they are one question — the strip's own verb, whether
-    /// a `LEAVE` on offer still has anything to ask about, and whether the list takes a pick at
-    /// all. The phase is the whole of the answer: an attempt the radio has not accepted yet is
-    /// still an attempt, and [`Self::ap`] is not part of it — that field is set only once the
-    /// radio has accepted, so asking about it would make the answer about the association report
-    /// rather than about the link.
-    ///
-    /// The survey is only reached while there is no link to hold, so the same two phases are the
-    /// ones there is nothing to look around for in: "something to leave" and "nothing to scan for"
-    /// are one fact about one pair of phases.
+    /// Whether there is a link to take down: an attempt in flight or one that worked. The same two
+    /// phases are the ones with nothing to scan for. [`Self::ap`] is not part of it, because it is
+    /// set only after the radio accepts.
     pub fn is_leavable(&self) -> bool {
         matches!(self.phase, LinkPhase::Connecting | LinkPhase::Connected)
+    }
+
+    /// Whether the phone's setup box is the page's screen: the access point is up and a phone is
+    /// the front it is up for. One answer for what to draw, what a tap means, and whether the
+    /// access point should exist.
+    pub fn shows_setup_box(&self) -> bool {
+        self.setup && self.front == Front::AccessPoint
+    }
+
+    /// This status as one setup front reports it. The station cannot answer `front` or the way
+    /// back, so a publish that set only `setup` would close the box a second after it opened and
+    /// turn `CANCEL` into `SCAN`.
+    pub fn on_setup_face(self, front: Front, cancellable: bool) -> Self {
+        Self {
+            setup: true,
+            setup_cancellable: cancellable,
+            front,
+            ..self
+        }
     }
 
     /// This status with the stack's current address folded in — the definition in
@@ -853,18 +972,22 @@ pub trait Station {
     /// the panel has already said what it wants.
     fn scan(&mut self) -> impl Future<Output = Result<Vec<AccessPoint>, NetworkError>>;
 
-    /// Set the credential on the station and put it on its way to associating: the radio has been
-    /// told what to join and has not answered yet.
-    ///
-    /// Split from [`Self::await_connected`] because the phase is what the panel draws for the whole
-    /// of the attempt, and an attempt runs long — a passphrase that is wrong is refused only when
-    /// the handshake times out. A caller that could read the status only once the whole association
-    /// had returned would be showing the attempt's *previous* phase for all of it: a strip still
-    /// offering `SCAN` and a list that still took a pick while the radio was busy.
-    ///
-    /// A credential the driver itself rejects fails here rather than in the wait, and the phase is
-    /// the refusal, for the same reason: the panel has nowhere else to read it.
+    /// Set the credential and start associating. Split from [`Self::await_connected`] so the panel
+    /// can draw the attempt while it runs; a wrong passphrase is refused only when the handshake
+    /// times out. A credential the driver rejects fails here, and the phase is the refusal.
     fn begin_connect(&mut self, credentials: &Credentials) -> Result<(), NetworkError>;
+
+    /// [`Self::begin_connect`] with the access point and channel this network was last found on.
+    /// The hint may be stale; the caller retries once with [`LinkHint::NONE`] rather than treating
+    /// the credential as refused. The default ignores it.
+    fn begin_connect_hinted(
+        &mut self,
+        credentials: &Credentials,
+        hint: LinkHint,
+    ) -> Result<(), NetworkError> {
+        let _ = hint;
+        self.begin_connect(credentials)
+    }
 
     /// Wait for the radio's own answer to the attempt [`Self::begin_connect`] started. Returns once
     /// the radio has made the decision, which is not the same as having an address — see
@@ -886,6 +1009,22 @@ pub trait Station {
 
     /// Hand the frame-level device over. `None` once taken.
     fn take_device(&mut self) -> Option<Self::Device>;
+
+    /// Raise setup's access point under `ssid`, WPA2 when `secured`, and hand over its frame
+    /// interface. It is a second device beside [`Self::take_device`]'s, because the page's list is
+    /// a scan and the scan is the station's. Dropping it releases the access point; the mode is
+    /// [`Self::end_setup`]'s.
+    ///
+    /// The name comes from the caller because it carries a board's identity. The passphrase stays
+    /// in the station: it is this boot's random value and the panel reads it from [`Self::status`].
+    fn begin_setup(&mut self, ssid: &Ssid, secured: bool) -> Result<Self::Device, NetworkError>;
+
+    /// Put the radio back in station mode on its own, taking the access point down.
+    ///
+    /// Separate from dropping the device because the two belong to different owners: the
+    /// device is the stack's and the mode is the controller's, so a caller that dropped the
+    /// one without the other would leave a beaconed network nothing is serving.
+    fn end_setup(&mut self) -> Result<(), NetworkError>;
 }
 
 #[cfg(test)]
@@ -1086,6 +1225,7 @@ mod tests {
             phase: LinkPhase::Connecting,
             ap: None,
             address: None,
+            ..LinkStatus::default()
         };
 
         let connected = connecting.with_address(Some(address));
@@ -1107,6 +1247,7 @@ mod tests {
             phase: LinkPhase::Failed(NetworkError::InvalidArguments),
             ap: None,
             address: None,
+            ..LinkStatus::default()
         }
         .with_address(Some(Ipv4::from_octets([10, 0, 0, 2])));
 
@@ -1121,8 +1262,7 @@ mod tests {
         for phase in [LinkPhase::Off, LinkPhase::Scanning, LinkPhase::Connecting] {
             let status = LinkStatus {
                 phase,
-                ap: None,
-                address: None,
+                ..LinkStatus::default()
             };
             assert_eq!(
                 status.with_address(None).phase,
@@ -1133,10 +1273,76 @@ mod tests {
     }
 
     #[test]
+    fn an_access_point_starts_secured_only_from_a_running_panel() {
+        for (panel, from_splash, secured) in [
+            (true, false, true),
+            (true, true, false),
+            (false, false, false),
+            (false, true, false),
+        ] {
+            assert_eq!(
+                setup_ap_starts_secured(panel, from_splash),
+                secured,
+                "panel {panel}, splash {from_splash}"
+            );
+        }
+    }
+
+    #[test]
     fn a_survey_that_found_something_rests_the_whole_pause() {
         // The count is of rounds in a row that found nothing, so zero means the last round found
         // something — the survey working, and no reason to ask the radio again a second later.
-        assert_eq!(survey_pause_after(0, 0), SURVEY_PAUSE_MS);
+        assert_eq!(
+            survey_pause_after(Front::Panel, 0, 0),
+            Some(SURVEY_PAUSE_MS)
+        );
+    }
+
+    #[test]
+    fn the_access_points_front_never_rests_into_another_round() {
+        // A phone reading the page and a radio scanning the room are one radio. What looks again
+        // is the page's own request, so no clock here asks for a round — not after an empty place,
+        // and not after a room nobody acts on.
+        for (empty, idle) in [(0, 0), (1, 0), (u8::MAX, 0), (0, u8::MAX)] {
+            assert_eq!(
+                survey_pause_after(Front::AccessPoint, empty, idle),
+                None,
+                "{empty} empty, {idle} idle rounds"
+            );
+        }
+    }
+
+    #[test]
+    fn a_publish_from_setup_reports_its_own_face_not_the_stations_default() {
+        // The station's status knows the radio's half of the link and neither of the two fields the
+        // panel's strip and its box are drawn from. A publish that spread it and set only `setup`
+        // would report the panel's front with no way out on every scan round — a box that closes
+        // itself a second after it opens, and a `CANCEL` that turns into `SCAN` on the same clock.
+        let station = LinkStatus {
+            phase: LinkPhase::Connected,
+            ap: Some(ap("neighbour", [1, 2, 3, 4, 5, 6], -50)),
+            address: Some(Ipv4::from_octets([192, 168, 4, 2])),
+            setup_password: Some(SetupPass::from_array(*b"k3mq9t7w2x")),
+            ..LinkStatus::default()
+        };
+        for (front, cancellable) in [
+            (Front::Panel, true),
+            (Front::Panel, false),
+            (Front::AccessPoint, true),
+            (Front::AccessPoint, false),
+        ] {
+            let published = station.on_setup_face(front, cancellable);
+
+            assert_eq!(published.front, front);
+            assert_eq!(published.setup_cancellable, cancellable);
+            assert!(published.setup, "a publish from setup mode says so");
+            // And the radio's half is handed through untouched: a phase, an address or a
+            // passphrase lost here would be a page a round behind the truth.
+            assert_eq!(published.phase, station.phase);
+            assert_eq!(published.ap, station.ap);
+            assert_eq!(published.address, station.address);
+            assert_eq!(published.setup_password, station.setup_password);
+        }
     }
 
     #[test]
@@ -1147,18 +1353,18 @@ mod tests {
         // set up.
         for rounds in 1..=SURVEY_EMPTY_RETRIES {
             assert_eq!(
-                survey_pause_after(rounds, 0),
-                SURVEY_EMPTY_PAUSE_MS,
+                survey_pause_after(Front::Panel, rounds, 0),
+                Some(SURVEY_EMPTY_PAUSE_MS),
                 "{rounds} empty rounds"
             );
         }
         assert_eq!(
-            survey_pause_after(SURVEY_EMPTY_RETRIES + 1, 0),
-            SURVEY_PAUSE_MS
+            survey_pause_after(Front::Panel, SURVEY_EMPTY_RETRIES + 1, 0),
+            Some(SURVEY_PAUSE_MS)
         );
         assert_eq!(
-            survey_pause_after(u8::MAX, 0),
-            SURVEY_PAUSE_MS,
+            survey_pause_after(Front::Panel, u8::MAX, 0),
+            Some(SURVEY_PAUSE_MS),
             "a count that long is still an empty place"
         );
     }
@@ -1176,12 +1382,20 @@ mod tests {
             (u8::MAX, SURVEY_IDLE_MAX_PAUSE_MS),
         ];
         for (idle, pause) in steps {
-            assert_eq!(survey_pause_after(0, idle), pause, "{idle} idle rounds");
+            assert_eq!(
+                survey_pause_after(Front::Panel, 0, idle),
+                Some(pause),
+                "{idle} idle rounds"
+            );
         }
         // An empty place backs off too — on the idle clock, once the retries are spent.
         assert_eq!(
-            survey_pause_after(SURVEY_EMPTY_RETRIES + 1, 2 * SURVEY_IDLE_ROUNDS),
-            SURVEY_IDLE_MAX_PAUSE_MS
+            survey_pause_after(
+                Front::Panel,
+                SURVEY_EMPTY_RETRIES + 1,
+                2 * SURVEY_IDLE_ROUNDS
+            ),
+            Some(SURVEY_IDLE_MAX_PAUSE_MS)
         );
     }
 

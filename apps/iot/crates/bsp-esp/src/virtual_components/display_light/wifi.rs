@@ -5,24 +5,20 @@ use super::draw::{
 use super::*;
 
 impl DisplayLight {
-    /// The page's readings: the title, the phase, the network it is about, and either the address
-    /// the link is on or the draft being typed.
+    /// The page's readings, one row per subject; the rows are the labels, so the title carries this
+    /// board's address and the row under the network's name carries that network's.
     ///
-    /// The header keeps three rows while nothing is being typed and four while something is,
-    /// because the four rows a thumb on the keys needs are the digits' own block and the row that
-    /// ends the entry: a key too small to hit is no keyboard at all, and the phase and the address
-    /// are what the finger is not looking at. So the draft takes the row the list state gives the
-    /// address, and neither state has to move for the other.
-    ///
-    /// The phase word is where a refusal stays: the alternative was a row of its own, and a key a
-    /// thumb cannot reach is worse than a reason that shares a row with what it is about.
+    /// Three rows idle, four while typing: a thumb needs the digits' block and the row that ends
+    /// the entry, and a key too small to hit is no keyboard. The draft takes the link address's
+    /// row, so neither state moves; the phase word shares the network's row, its column fixed.
     pub(super) fn stamp_header(
         &mut self,
         setup: NetworkSetup,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
-        width: usize,
-        height: usize,
+        mac: Option<[u8; 6]>,
+        list_len: Option<usize>,
+        (width, height): (usize, usize),
     ) {
         self.stamp_text(
             b"NETWORK",
@@ -31,25 +27,79 @@ impl DisplayLight {
             width,
             height,
         );
-        self.stamp_left(
-            b"ST",
-            // Not the link's raw phase: the page's own says the last refusal until something
-            // else is tried, because the survey republishes the phase every round.
-            format_phase(setup.phase(link.phase), &mut [0u8; 4]),
-            Block::Second,
-            0,
-            width,
-            height,
-        );
-        if let Some(ap) = shown_ap {
+        // Which rows of the scan the list is showing, in the title row's gap: the strip is where
+        // the page's action is, and a reading drawn beside the action reads as part of it. The
+        // title's own row is the one row that is about the page rather than about the network, and
+        // its middle is empty because the address is right-aligned against the panel.
+        if let Some(rows) = list_len {
+            self.stamp_text(
+                format_window(setup.list_top, rows, &mut [0u8; 12]),
+                block_x(Block::First) + (LIST_TITLE_GLYPHS + 1) * GLYPH_PITCH,
+                overlay_row_top(0),
+                width,
+                height,
+            );
+        }
+        // This board's own address on the title's row: it is the row no network ever takes over and
+        // the row whose right half nothing else uses, so the one reading about the page itself sits
+        // on the page's own row.
+        if let Some(mac) = mac {
+            let mut text = [0u8; MAC_TEXT_BYTES];
+            self.stamp_text_right(
+                mac_text(mac, &mut text),
+                PANEL_RIGHT,
+                overlay_row_top(0),
+                width,
+                height,
+            );
+        }
+        if link.setup {
+            // The access point the page is about while the device is being set up is this board's
+            // own, named from its address: there is no scanned row to show, and a header that
+            // named nothing would leave the phone's list and the panel's page with no shared word.
+            //
+            // Only while the access point's front is the one up: the panel's own front raises no access
+            // point, and a name on that row would say a network is on the air when none is.
+            if link.shows_setup_box()
+                && let Some(mac) = mac
+            {
+                let mut name = [0u8; SSID_BYTES];
+                let name = format_setup_name(Some(mac), &mut name);
+                self.stamp_left(b"AP", name, Block::First, 1, width, height);
+            }
+        } else if let Some(ap) = shown_ap {
             self.stamp_left(
                 b"AP",
-                format_network_name(ap, NETWORK_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
+                format_network_name(ap, HEADER_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
                 Block::First,
                 1,
                 width,
                 height,
             );
+        }
+        // The phase word is drawn whether or not there is a network to put beside it, and it is the
+        // page's own phase: not the link's raw one, because the page's says the last refusal until
+        // something else is tried and the survey republishes the link every round. Setup mode is
+        // the one mode that is not a phase of the radio, so it is said here rather than derived.
+        let mut text = [0u8; 3 + 5];
+        text[..3].copy_from_slice(b"ST ");
+        let mut phase_buf = [0u8; 4];
+        let word: &[u8] = if link.setup {
+            b"SETUP"
+        } else {
+            format_phase(setup.phase(link.phase), &mut phase_buf)
+        };
+        text[3..3 + word.len()].copy_from_slice(word);
+        self.stamp_text(
+            &text[..3 + word.len()],
+            HEADER_PHASE_X,
+            overlay_row_top(1),
+            width,
+            height,
+        );
+        if let Some(ap) = shown_ap
+            && !link.setup
+        {
             self.stamp_text_right(
                 format_bars(ap.bars(), &mut [0u8; 4]),
                 PANEL_RIGHT,
@@ -71,26 +121,60 @@ impl DisplayLight {
                 height,
             );
         } else {
-            self.stamp_left(
-                b"IP",
-                format_address(link.address, &mut [0u8; 16]),
-                Block::First,
-                2,
-                width,
-                height,
-            );
+            // `IP ` and the address as one run at the block's left edge, rather than a label and a
+            // value in its own slot: that slot costs four glyphs, six pixels more than the widest
+            // dotted quad leaves beside the address of the network the row names. This is the only
+            // row that prints two readings at once, so it is the only row that pays for it.
+            let mut quad = [0u8; 16];
+            // In setup mode the address on this row is the access point's own, which is fixed: the
+            // page is reached at it, so it is the one reading a person needs from the panel while
+            // they are being told to open it. `link.address` is the station's and there is none.
+            // The panel's own front has raised no access point, so it has no address to print and
+            // says nothing rather than the label of a reading it does not have.
+            let address = if link.setup {
+                if link.shows_setup_box() {
+                    Some(Ipv4::from_octets(iot_core::provision::ADDRESS))
+                } else {
+                    None
+                }
+            } else {
+                link.address
+            };
+            if address.is_some() || !link.setup {
+                let quad = format_address(address, &mut quad);
+                let mut text = [0u8; 3 + 16];
+                text[..3].copy_from_slice(b"IP ");
+                text[3..3 + quad.len()].copy_from_slice(quad);
+                self.stamp_text(
+                    &text[..3 + quad.len()],
+                    block_x(Block::First),
+                    overlay_row_top(2),
+                    width,
+                    height,
+                );
+            }
+            // And the address of the network this row answers for, which is the row above's own
+            // subject seen from the other end of the link: `IP ` is what this board was given, and
+            // the right half is the address of the radio that gave it. Setup mode has no such
+            // radio: its access point is this board.
+            if let Some(ap) = shown_ap
+                && !link.setup
+            {
+                let mut text = [0u8; MAC_TEXT_BYTES];
+                self.stamp_text_right(
+                    mac_text(ap.bssid, &mut text),
+                    PANEL_RIGHT,
+                    overlay_row_top(2),
+                    width,
+                    height,
+                );
+            }
         }
     }
 
-    /// The page's content: the keyboard a picked row opened, or the scan's bands in its place.
-    ///
-    /// The bands are the page's content rather than a reading beside a label: name from the left
-    /// edge and bars against the right, because a full-width name is the one thing a user picks a
-    /// network by.
-    ///
-    /// Three states the list draws differently, and they are not the same state: nothing has
-    /// scanned (a build that holds its own credentials and associates instead), a scan that
-    /// found nothing, and the scan's own bands.
+    /// The page's content: the keyboard a picked row opened, or the scan's bands. A full-width name
+    /// is what a user picks by, with the address on a second line because two rows can share a
+    /// name. Three distinct states: not scanned, scanned empty, and the bands.
     pub(super) fn stamp_content(
         &mut self,
         setup: NetworkSetup,
@@ -109,15 +193,6 @@ impl DisplayLight {
             None => self.stamp_band(b"NOT SCANNED", width, height),
             Some(list) if list.is_empty() => self.stamp_band(b"NO NETWORKS", width, height),
             Some(list) => {
-                // Which of the scan's networks these bands hold, because a page of a list that a
-                // finger scrolled to is one the finger has to be told the position of.
-                self.stamp_text(
-                    format_window(setup.list_top, list.len(), &mut [0u8; 12]),
-                    block_x(Block::Third),
-                    overlay_row_top(0),
-                    width,
-                    height,
-                );
                 for band in 0..LIST_ROWS {
                     let index = usize::from(setup.list_top) + band;
                     let Some(ap) = list.get(index) else {
@@ -135,7 +210,7 @@ impl DisplayLight {
                     if marked.is_some_and(|marked| marked.is_same_network(&ap)) {
                         self.stamp_band_fill(band, width, height);
                     }
-                    let top = band_top(band);
+                    let top = band_lines_top(band);
                     self.stamp_text(
                         format_network_name(ap, NETWORK_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
                         block_x(Block::First),
@@ -143,6 +218,21 @@ impl DisplayLight {
                         width,
                         height,
                     );
+                    // The address on a line of its own, under the name: the name already spends the
+                    // band's width, and this is what tells two rows with one name apart — a mesh
+                    // node and its base, a repeater. It is read against a phone's own list, so it
+                    // is the whole address rather than its last octets. A name that could not be
+                    // drawn *is* the address, so that row already carries it and gets no second
+                    // line: one string printed twice two rows apart is one string too many.
+                    if ap.ssid.as_display_text().is_some() {
+                        self.stamp_text(
+                            mac_text(ap.bssid, &mut [0u8; MAC_TEXT_BYTES]),
+                            block_x(Block::First),
+                            top + ROW_PITCH,
+                            width,
+                            height,
+                        );
+                    }
                     // And a network that asks for nothing says so, because the tap that picks it is
                     // the whole handover: a user who expected a keyboard would read the list coming
                     // back as a failure.
@@ -196,16 +286,12 @@ impl DisplayLight {
         fill_surface(self.frame, rect, fill, color, width, height);
     }
 
-    /// The page's action strip: one control, and the word for what it would do.
+    /// The action strip: one box, or two while setup mode has two verbs. Hollow, like keys and
+    /// question answers, because a surface means "this row" or "this question". Drawn from
+    /// [`keyboard::toolbar_cell`], the same boxes the tap is resolved through.
     ///
-    /// Hollow, like the keys and the two answers on a question, because a surface is what this page
-    /// says "this row" and "this question" with: a control that filled its own box would read as one
-    /// of those. Drawn from [`keyboard::toolbar_box`], the same box the tap that acts on it is
-    /// resolved through.
-    ///
-    /// Which word is the link's answer rather than the page's: a link to leave is a link to leave,
-    /// so the two never both apply and the strip never has to choose. `WAIT` is the third, and it is
-    /// the strip's own state rather than a third action — a round that is already on its way.
+    /// A link offers leave, setup mode close or phone, otherwise the list's round. `WAIT` is a
+    /// state, not an action.
     pub(super) fn stamp_strip(
         &mut self,
         setup: NetworkSetup,
@@ -213,14 +299,41 @@ impl DisplayLight {
         width: usize,
         height: usize,
     ) {
-        let rect = keyboard::toolbar_box();
-        let label: &[u8] = if link.is_leavable() {
-            LEAVE_LABEL
-        } else if setup.rescan_wait {
-            WAIT_LABEL
-        } else {
-            SCAN_LABEL
-        };
+        if link.setup {
+            let (left, right) = setup_strip_labels(setup, link);
+            match left {
+                Some(label) => {
+                    self.stamp_cell(
+                        keyboard::toolbar_cell(keyboard::ToolbarCell::Left),
+                        label,
+                        width,
+                        height,
+                    );
+                }
+                // One verb, one box: a half-drawn box would read as a cell that is not offered.
+                None => {
+                    self.stamp_cell(keyboard::toolbar_box(), right, width, height);
+                    return;
+                }
+            }
+            self.stamp_cell(
+                keyboard::toolbar_cell(keyboard::ToolbarCell::Right),
+                right,
+                width,
+                height,
+            );
+            return;
+        }
+        self.stamp_cell(
+            keyboard::toolbar_box(),
+            strip_label(link, setup),
+            width,
+            height,
+        );
+    }
+
+    /// One cell of the strip: its frame, and the word it carries centred in it.
+    fn stamp_cell(&mut self, rect: ControlRect, label: &[u8], width: usize, height: usize) {
         self.stamp_frame(rect, width, height);
         self.stamp_text(
             label,
@@ -243,26 +356,94 @@ impl DisplayLight {
         setup: NetworkSetup,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
+        mac: Option<[u8; 6]>,
         width: usize,
         height: usize,
     ) {
         if setup.confirm.is_some() {
             self.stamp_confirm(setup, link, width, height);
+        } else if link.shows_setup_box() {
+            self.stamp_notice(link, mac, width, height);
         } else {
             self.stamp_joining(shown_ap, width, height);
         }
     }
 
-    /// The box the radio's own attempt is drawn in: what the page says between the panel's own tap
-    /// and an address.
-    ///
-    /// The same paper as a question's, and for the same reason: it is over the list, so the list is
-    /// not drawn under it. What it does not have is an answer — nothing is being asked, and the way
-    /// off the attempt is the strip's own `LEAVE`, which stays where it is.
-    ///
-    /// The network is the page's own `shown_ap`, so the box and the header name the same one: while
-    /// there is nothing on the air yet it is the row that was picked, and once the radio is on the
-    /// network it is the radio's report of it.
+    /// The box a phone's setup is read in: the mode's name, the access point, and the passphrase or
+    /// the fact that there is none. Two answers: close and return to the list, or open the access
+    /// point for this visit. The box says which state it is in, because open means anyone in range
+    /// can configure it. The address stays on the header's `IP` row.
+    fn stamp_notice(
+        &mut self,
+        link: LinkStatus,
+        mac: Option<[u8; 6]>,
+        width: usize,
+        height: usize,
+    ) {
+        self.stamp_fill(
+            ControlRect {
+                x: DIALOG_X,
+                y: keyboard::DIALOG_TOP,
+                w: DIALOG_W,
+                h: DIALOG_H,
+            },
+            width,
+            height,
+        );
+        let title_left = DIALOG_X + DIALOG_INSET;
+        self.stamp_text(
+            format_setup_notice_title(),
+            title_left,
+            DIALOG_TITLE_TOP,
+            width,
+            height,
+        );
+        let mut body = [0u8; SSID_BYTES];
+        self.stamp_text(
+            format_setup_notice_body(mac, &mut body),
+            title_left,
+            DIALOG_BODY_TOP,
+            width,
+            height,
+        );
+        self.stamp_text(
+            format_setup_pass(link.setup_password.as_ref(), &mut body),
+            title_left,
+            DIALOG_BODY_TOP + ROW_PITCH,
+            width,
+            height,
+        );
+        // The two answers, in the same boxes a question's are: the passphrase's on the left, and
+        // the way back on the right.
+        let swap = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
+        let swap_label: &[u8] = if link.setup_password.is_some() {
+            NO_PASS_LABEL
+        } else {
+            PASS_LABEL
+        };
+        self.stamp_frame(swap, width, height);
+        self.stamp_text(
+            swap_label,
+            text_left(swap, swap_label),
+            swap.y + swap.h.saturating_sub(FONT_H) / 2,
+            width,
+            height,
+        );
+        let close = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
+        self.stamp_frame(close, width, height);
+        let label: &[u8] = b"CLOSE";
+        self.stamp_text(
+            label,
+            text_left(close, label),
+            close.y + close.h.saturating_sub(FONT_H) / 2,
+            width,
+            height,
+        );
+    }
+
+    /// The box the radio's attempt is drawn in, on the same paper as a question and over the list.
+    /// It asks nothing: the way out is the strip's own `LEAVE`. `shown_ap` keeps the box and header
+    /// naming the same network, first the picked row, then the radio's report.
     fn stamp_joining(&mut self, shown_ap: Option<AccessPoint>, width: usize, height: usize) {
         self.stamp_fill(
             ControlRect {
@@ -291,16 +472,9 @@ impl DisplayLight {
         );
     }
 
-    /// The question the page is asking, drawn over the list.
-    ///
-    /// A filled box with the words stamped into it, which is the panel's own way of drawing ink on
-    /// paper: the fill is one inversion of the page's ground, so it reads as the light surface, and
-    /// a glyph stamped into it is a second inversion — the ground's own colour, which reads as the
-    /// dark ink. The two answers are drawn hollow inside the box, the way a key is, so the button a
-    /// finger presses is the button it reads.
-    ///
-    /// Nothing is drawn under the box — [`Part::hidden`] — because the box's paper is the same
-    /// paper as a marked row's band, so a band showing either side of it would read as part of it.
+    /// The question, drawn over the list. The box inverts the ground once and the glyphs invert it
+    /// again, so they read as dark ink; the answers are hollow like keys. Nothing is drawn under
+    /// it ([`Part::hidden`]), because its paper matches a marked row's band.
     fn stamp_confirm(
         &mut self,
         setup: NetworkSetup,
@@ -375,17 +549,10 @@ impl DisplayLight {
         self.stamp_text(text, block_x(Block::First), band_top(0), width, height);
     }
 
-    /// Overdraws the keyboard, one key at a time.
-    ///
-    /// Every key's cell comes from [`keyboard::key_box`] — the same call the tap that types it
-    /// is resolved through, so a key is exactly where it looks like it is. Drawn hollow rather
-    /// than filled because stamping inverts: a filled cell with a glyph stamped into it would
-    /// leave the glyph in the cell's own ink, which is to say invisible.
-    ///
-    /// The characters a key cycles are printed on it, and the one a repeat tap would type is
-    /// boxed; the two keys that are *states* rather than characters — the shift and the reveal —
-    /// say their own state on themselves. That is the whole of what a finger needs to spell a
-    /// passphrase on a keypad.
+    /// Overdraw the keyboard one key at a time. Every cell comes from [`keyboard::key_box`], the
+    /// same call a tap is resolved through. Keys are hollow because stamping inverts: a filled cell
+    /// would hide its glyph. A key prints its cycle and boxes the next character; shift and reveal
+    /// print their own state.
     fn stamp_keyboard(&mut self, entry: Entry, revealed: bool, width: usize, height: usize) {
         let layer = entry.layer();
         let shift = entry.shift();
@@ -435,12 +602,8 @@ impl DisplayLight {
         }
     }
 
-    /// One key: its frame, then the face it is printed with, with the characters it types under
-    /// the face where it types more than one.
-    ///
-    /// A key that types a single character prints only its face, because the face *is* what it
-    /// types — which is the phone keypad's own arrangement, where the digit and its letters are
-    /// one key and the face is the digit.
+    /// One key: frame, face, and the characters it types under the face when there is more than
+    /// one. A one-character key prints only its face, as a phone keypad does.
     fn stamp_key(
         &mut self,
         rect: ControlRect,
@@ -495,4 +658,44 @@ impl DisplayLight {
         }
         self.stamp_text(text, left, top, width, height);
     }
+}
+
+/// The strip's word outside setup mode: what a tap on it would do from here.
+///
+/// A link that can be left is one the tap leaves, and the cell is drawn with the word the box it
+/// opens will answer with: a cell saying one thing and a button saying another is a finger pressing
+/// an action it did not read. A round already on its way is `WAIT` rather than a second invitation
+/// to ask for it; the rest of the time it is the round the list is waiting for. Free rather than
+/// written inside the drawing so the choice has a name.
+fn strip_label(link: LinkStatus, setup: NetworkSetup) -> &'static [u8] {
+    if link.is_leavable() {
+        format_verb(Confirm::Leave)
+    } else if setup.rescan_wait {
+        WAIT_LABEL
+    } else {
+        SCAN_LABEL
+    }
+}
+
+/// What setup mode's strip says: the left half when the device offers one, and the right always.
+///
+/// The left half is the way out where the device has one, and the strip's own "look around" where
+/// it does not — the panel's front has a live list under it, and a blank cell would be a control
+/// that does nothing. The access point's front has no list to ask about: its left half is the way
+/// out or nothing, and "nothing" is the one box the right verb fills.
+fn setup_strip_labels(
+    setup: NetworkSetup,
+    link: LinkStatus,
+) -> (Option<&'static [u8]>, &'static [u8]) {
+    let right = match link.front {
+        Front::Panel => AP_LABEL,
+        Front::AccessPoint => PANEL_LABEL,
+    };
+    let left = match (link.front, link.setup_cancellable) {
+        (_, true) => Some(CANCEL_LABEL),
+        (Front::Panel, false) if setup.rescan_wait => Some(WAIT_LABEL),
+        (Front::Panel, false) => Some(SCAN_LABEL),
+        (Front::AccessPoint, false) => None,
+    };
+    (left, right)
 }

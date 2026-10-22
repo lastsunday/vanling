@@ -630,10 +630,51 @@ impl DisplayLight {
         };
 
         walk(setup, link, |part| match part {
-            Part::Header => self.stamp_header(setup, link, shown_ap, width, height),
+            Part::Header => self.stamp_header(
+                setup,
+                link,
+                shown_ap,
+                self.diagnostics.mac,
+                aps.filter(|list| !list.is_empty()).map(|list| list.len()),
+                (width, height),
+            ),
             Part::Content => self.stamp_content(setup, link, aps, width, height),
             Part::Controls => self.stamp_strip(setup, link, width, height),
-            Part::Overlay => self.stamp_box(setup, link, shown_ap, width, height),
+            Part::Overlay => {
+                self.stamp_box(setup, link, shown_ap, self.diagnostics.mac, width, height)
+            }
         });
     }
+
+    /// The splash page: its three lines, centred, and nothing else.
+    ///
+    /// The page is the whole of the window in which the button means setup mode (see
+    /// [`DisplayPage::Splash`]), so its content is that window's own rule in the order a person
+    /// needs it — the device, the verb, and what the verb asks for. No readout, because a device
+    /// that has just booted has nothing to read yet.
+    pub(super) fn stamp_splash(&mut self, width: usize, height: usize) {
+        // The three lines held on the stack rather than in a table: a table of fat pointers is a
+        // relocatable object in DRAM, and the page is worth no static memory at all.
+        let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
+        let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;
+        let top = height.saturating_sub(block) / 2;
+        for (line, text) in lines.iter().enumerate() {
+            let ink = text.len() * GLYPH_PITCH - OVERLAY_GAP;
+            let left = width.saturating_sub(ink) / 2;
+            self.stamp_text(text, left, top + line * SPLASH_PITCH, width, height);
+        }
+    }
 }
+
+/// How many lines the splash draws, top to bottom: the device, the button's verb, and what that
+/// verb asks for.
+const SPLASH_LINES: usize = 3;
+
+/// Distance between the tops of two splash lines: wider than the readout grid's row pitch, because
+/// the page has the panel to itself and these three lines are its whole content.
+const SPLASH_PITCH: usize = 3 * FONT_H;
+
+const _: () = assert!(
+    b"HOLD BOOT".len() * GLYPH_PITCH - OVERLAY_GAP <= PANEL_COLUMNS,
+    "the widest splash line has to fit the panel"
+);

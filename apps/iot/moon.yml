@@ -320,11 +320,16 @@ tasks:
   # `--flash-size 16mb` comes with the table: the board is a 16 MB part and espflash
   # would otherwise assume 4 MB, which cannot hold a 6 MB factory slot — it then fails
   # on the table rather than on the image.
+  #
+  # `-a watchdog-reset` on every S3 flash: a plain DTR reset is a core reset on native USB
+  # and does not re-sample the boot strapping pins, so the chip stays in the ROM downloader
+  # instead of starting the application.
   flash-s3:
     script: |
       espflash flash --chip esp32s3 \
         --flash-size 16mb \
         --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        -a watchdog-reset \
         ${IOT_PORT:+--port $IOT_PORT} \
         target/xtensa-esp32s3-none-elf/release/vanling
     deps:
@@ -339,12 +344,25 @@ tasks:
       espflash flash --chip esp32s3 \
         --flash-size 16mb \
         --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        -a watchdog-reset \
         ${IOT_PORT:+--port $IOT_PORT} \
         target/xtensa-esp32s3-none-elf/release/vanling-camera
     deps:
       - ~:build-s3-camera
     options:
       persistent: true
+      cache: false
+      runInCI: false
+
+  # The no-replug way out of the ROM downloader: a physical RST can leave the chip there because
+  # the native-USB reset path does not re-sample strapping. The watchdog reset is a full system
+  # reset, so the application starts without unplugging the board.
+  reset-s3:
+    script: |
+      espflash reset --chip esp32s3 \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        -a watchdog-reset
+    options:
       cache: false
       runInCI: false
 
@@ -646,6 +664,7 @@ tasks:
       espflash flash --chip esp32s3 \
         --flash-size 16mb \
         --partition-table partitions/lckfb-szpi-esp32s3.csv \
+        -a watchdog-reset \
         ${IOT_PORT:+--port $IOT_PORT} \
         target/xtensa-esp32s3-none-elf/release/vanling-thrift
     deps:

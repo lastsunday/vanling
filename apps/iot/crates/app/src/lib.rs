@@ -16,33 +16,18 @@ use iot_core::drivers::board::{
     Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPlayback,
 };
 use iot_core::drivers::playback::Speaker;
-use iot_core::state::{DeviceManager, DisplayPage};
+use iot_core::state::{DeviceManager, DisplayPage, Panel};
 
-/// The demand a running device is under, read by the tasks that schedule against it and
-/// written by the one that derives it.
-///
-/// Shared state rather than a message because a demand **is** state: idempotent, with only the
-/// latest value meaning anything. Carrying it on a channel would need a one-deep queue,
-/// change detection on the writer, and a retry for a refused send — three mechanisms that
-/// exist only because a channel cannot hold a value.
-///
-/// The [`RefCell`] is inside the critical section because embassy-sync's blocking mutex
-/// lends out `&T`. Holding it never spans an await, so a reader sees a whole demand and
-/// never a torn one.
+/// The demand a running device is under, read by the tasks that schedule against it and written
+/// by the one that derives it. Shared state, because a demand is idempotent and only its latest
+/// value matters. The [`RefCell`] inside the mutex is never held across an await.
 pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
-/// The page the device comes up on, named by `IOT_BOOT_PAGE` at build time.
+/// The page the device comes up on, named by `IOT_BOOT_PAGE` at build time. It says nothing about
+/// what the board can do; [`DeviceManager::with_boot_page`] drops a page the wiring lacks.
 ///
-/// A build-time convenience, so a page that would otherwise need a triple-tap on the hardware
-/// is reachable by flashing a build that names it. It says nothing about what the board can do
-/// — that comes from the capabilities declared below, and [`DeviceManager::with_boot_page`]
-/// drops the request if the wiring is not there.
-///
-/// Parsed from a string rather than a feature because the value is an enum, and a feature can
-/// only be present or absent: five pages would be five mutually exclusive features, and a build
-/// naming two of them would be resolved by the order of the `cfg` arms rather than by anything
-/// the caller wrote. One name with several values is the same shape the chip crates use for
-/// their own configuration in `.cargo/config.toml`.
+/// A string rather than a feature, because the value is an enum and mutually exclusive features
+/// would be resolved by `cfg` order. This is the shape the chip crates use in `.cargo/config.toml`.
 fn boot_page() -> DisplayPage {
     boot_page_from_env(option_env!("IOT_BOOT_PAGE"))
 }
@@ -70,16 +55,9 @@ const BOOT_PAGE_NAMES: [(&str, DisplayPage); 6] = [
     ("network", DisplayPage::Network),
 ];
 
-/// Resolves a boot page name, falling back to [`DisplayPage::Ambient`].
-///
-/// Every way this can fail falls back rather than fails the build: unset, empty, or a name that
-/// is not a page. A mistyped variable is a build-time mistake, and a firmware that refuses to
-/// link over it is harder to diagnose than one that comes up on the default page and says so.
-///
-/// Case-insensitive and space-tolerant, because a variable set from a shell or a CI job arrives
-/// in whatever case the author typed, and a page that only booted when spelled exactly right
-/// would be a page nobody reaches. Neither check can be `const`: both walk the name, and a
-/// `const` cannot.
+/// Resolve a boot page name, falling back to [`DisplayPage::Ambient`]. Unset and empty names fall
+/// back silently; an unknown one falls back with a warning. Case and surrounding space are
+/// ignored; both checks walk the name, so neither can be `const`.
 fn boot_page_from_env(name: Option<&str>) -> DisplayPage {
     let Some(name) = name else {
         return DisplayPage::Ambient;
@@ -93,6 +71,51 @@ fn boot_page_from_env(name: Option<&str>) -> DisplayPage {
     }
     log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Ambient");
     DisplayPage::Ambient
+}
+
+/// The wiring a build can get wrong without failing to build, held by a test instead.
+///
+/// Every entry here is a dependency feature that changes behaviour rather than the API: the
+/// crate compiles, the code runs, and the mistake shows up only against hardware. Reading the
+/// manifest is the one place a host test can see the feature list, since Cargo does not expose
+/// a dependency's features to the crate that depends on it.
+#[cfg(test)]
+mod wiring_tests {
+    const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
+
+    /// Whether one dependency's entry names a feature. An entry may be wrapped over several
+    /// lines by `cargo fmt`, so this reads from the name through the line that closes the
+    /// inline table rather than looking at a single line.
+    fn dependency_names(name: &str, feature: &str) -> bool {
+        let mut inside = false;
+        for line in WORKSPACE_MANIFEST.lines() {
+            inside |= line.starts_with(name);
+            if !inside {
+                continue;
+            }
+            if line.contains(feature) {
+                return true;
+            }
+            if line.contains('}') {
+                return false;
+            }
+        }
+        panic!("the workspace declares {name}");
+    }
+
+    #[test]
+    fn the_dhcp_server_can_address_an_ipv4_reply() {
+        // Sending the reply is the one thing setup mode's DHCP server does, and the address it
+        // sends to is where `edge-nal-embassy` gates the conversion on **its own** `proto-ipv4`,
+        // not on the `embassy-net` feature of the same name. With it off, `to_emb_addr` answers
+        // `None` for every IPv4 address and the reply comes back `UnsupportedProto` — while the
+        // build, the bind and the receive are all silent. A phone that joined the access point
+        // then never gets an address and sits on "connecting".
+        assert!(
+            dependency_names("edge-nal-embassy", "\"proto-ipv4\""),
+            "edge-nal-embassy without its own proto-ipv4 cannot address a DHCP reply"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -167,26 +190,25 @@ pub mod network;
 pub mod panel;
 pub mod playback;
 pub mod probe;
+/// Setup mode's device side: the access point, the page on it, and the services behind both.
+/// Behind `wifi` with the link it belongs to — a build with no radio has no access point to
+/// put up, and the protocol half of it ([`iot_core::provision`]) is the part a host test drives.
+#[cfg(feature = "wifi")]
+pub mod provision;
 pub mod render;
 
 use input::{CAPTURE, INTENT_BUS, input_task};
 use playback::{PLAYBACK_BUS, control_loop, feed_task, share};
 use render::{
-    FORGET, JOIN, LEAVE, LightRenderer, PAGE, RENDER_BUS, RESCAN, Render, SCAN, render_loop,
+    FORGET, JOIN, LEAVE, LightRenderer, PAGE, RENDER_BUS, RESCAN, Render, SCAN, SETUP_ASK,
+    render_loop,
 };
 
-/// Where the feed loop runs, because the feed has a deadline the rest of the app can
-/// break and the board may or may not be able to defend it.
-///
-/// The feed writes the DMA ring every [`FEED_MS`](iot_core::drivers::playback::FEED_MS), and since this board hangs the
-/// capture's clock off the transmit unit, that write also keeps the microphone's clock
-/// alive — a late feed is a gap in the speaker *and* a stalled capture. Input, render
-/// and the control loop share one cooperative executor where a task that does not
-/// `.await` holds the others, long enough to overrun the ring's whole runway. An
-/// `InterruptExecutor` preempts it. One that has none — the host, a board with no
-/// speaker — takes [`Inline`](Self::Inline).
-///
-/// The measurements behind that choice are in the record, not here.
+/// Where the feed loop runs. It writes the DMA ring every
+/// [`FEED_MS`](iot_core::drivers::playback::FEED_MS), which also keeps the microphone's clock
+/// alive; a late feed is a gap in the speaker and a stalled capture. An interrupt executor
+/// preempts the cooperative one, where a task that does not `.await` can overrun the runway. A
+/// board with no interrupt executor takes [`Inline`](Self::Inline).
 pub enum SpeakerRunner {
     /// Run the feed on a higher-priority interrupt executor, so a long
     /// cooperative holder cannot delay it.
@@ -195,14 +217,9 @@ pub enum SpeakerRunner {
     Inline,
 }
 
-/// Whether the entry point got a station off the board.
-///
-/// A wiring fact handed in like [`SpeakerRunner`], and for a reason of the same shape: the
-/// station is taken by the entry point, because its start needs the scheduler — so by the time
-/// `run` is called, the board no longer has a radio to look at.
-///
-/// What it gates is the Network page. A build with no link has none to show, and the phase it
-/// would draw stays `Off` for ever.
+/// Whether the entry point got a station off the board. The station is taken before `run` because
+/// its start needs the scheduler, so this is the only wiring fact left. It gates the Network page:
+/// a build with no link has none to show.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Link {
     /// A station came up: the page belongs in the cycle.
@@ -223,11 +240,19 @@ impl Link {
     }
 }
 
-/// Application composition: takes the board's light and input sources,
-/// registers one light renderer per wired surface, and runs the persistent tasks.
-/// Generic over capabilities, so every board wiring the same capabilities is
-/// served by this single copy.
-pub async fn run<B, C>(mut board: B, mut clock: C, speaker_runner: SpeakerRunner, link: Link) -> !
+/// Application composition: take the board's light and input sources, register one renderer per
+/// wired surface, and run the persistent tasks. Generic over capabilities, so every board with the
+/// same wiring shares this copy.
+///
+/// `panel` is handed in beside [`Link`] because a screen is neither a source nor a surface. It
+/// decides whether setup mode's leave is asked about or done.
+pub async fn run<B, C>(
+    mut board: B,
+    mut clock: C,
+    speaker_runner: SpeakerRunner,
+    link: Link,
+    panel: Panel,
+) -> !
 where
     B: BoardTrait + HasLight + HasInput + HasMotion + HasAudio + HasPlayback + HasCamera + 'static,
     C: ClockSink,
@@ -314,11 +339,12 @@ where
             // board like the three above: the station's start needs the scheduler, so the
             // entry point takes it before this runs. See [`Link`].
             .with_network(link.is_wired())
+            .with_panel(panel)
             .with_boot_page(boot_page())
             .with_override(override_),
     );
-    if manager.state().page != DisplayPage::Ambient {
-        log::info!("[IOT] boot page is {:?}", manager.state().page);
+    if manager.boot_page() != DisplayPage::Ambient {
+        log::info!("[IOT] boot page is {:?}", manager.boot_page());
     }
     // What the board's parts can be left in. The configurator holds this so the decision
     // has the parts' answer at the moment a demand is made, rather than needing a lookup
@@ -363,6 +389,7 @@ where
                     &JOIN,
                     &LEAVE,
                     &RESCAN,
+                    &SETUP_ASK,
                     &FORGET,
                     &PAGE,
                     &RENDER_BUS,
@@ -385,6 +412,7 @@ where
                 &JOIN,
                 &LEAVE,
                 &RESCAN,
+                &SETUP_ASK,
                 &FORGET,
                 &PAGE,
                 &RENDER_BUS,
@@ -407,6 +435,7 @@ where
                 &JOIN,
                 &LEAVE,
                 &RESCAN,
+                &SETUP_ASK,
                 &FORGET,
                 &PAGE,
                 &RENDER_BUS,

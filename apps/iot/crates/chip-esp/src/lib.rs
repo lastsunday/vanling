@@ -15,7 +15,7 @@ pub(crate) mod logging;
 #[cfg(feature = "radio")]
 mod radio;
 
-pub use heap::init_heap;
+pub use heap::{heap_free, init_heap};
 
 #[cfg(feature = "radio")]
 pub use radio::{init_radio_heap, radio_heap_free, radio_heap_total, ungate_radio};

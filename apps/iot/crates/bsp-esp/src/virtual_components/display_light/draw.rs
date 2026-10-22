@@ -168,7 +168,7 @@ pub(super) fn stamp_pixel(frame: &mut [u8], x: isize, y: isize, width: usize, he
     frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
 }
 
-/// Overdraws one 5×7 `ch` at `left`/`top` with inverted pixels; bytes outside
+/// Overdraws one cell of `ch` at `left`/`top` with inverted pixels; bytes outside
 /// the printable ASCII block draw nothing.
 fn stamp_char(frame: &mut [u8], ch: u8, left: usize, top: usize, width: usize, height: usize) {
     if !(0x20..=0x7E).contains(&ch) {

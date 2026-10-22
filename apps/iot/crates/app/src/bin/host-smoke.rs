@@ -40,7 +40,8 @@ use iot_core::drivers::network::{
 use iot_core::drivers::playback::{Recovery, Sound, Speaker, SpeakerFault};
 use iot_core::intent::{BusinessIntent, Intent, PALETTE};
 use iot_core::keyboard::Key;
-use iot_core::state::{DisplayPage, PlaybackPhase};
+use iot_core::keyboard::ToolbarCell;
+use iot_core::state::{DisplayPage, Panel, PlaybackPhase};
 
 /// Recorded paint operations per surface, so the smoke can assert what `run`
 /// drew and on which instance.
@@ -603,7 +604,13 @@ async fn main(_spawner: Spawner) {
     // scenarios assert against a loop they can observe, so the feed is joined
     // onto this executor exactly as it was before the split.
     match select(
-        run(board, HostClock, SpeakerRunner::Inline, Link::Wired),
+        run(
+            board,
+            HostClock,
+            SpeakerRunner::Inline,
+            Link::Wired,
+            Panel::Wired,
+        ),
         scenario(),
     )
     .await
@@ -620,6 +627,11 @@ async fn scenario() {
         !PAINTED.lock().unwrap().is_empty(),
         "boot breath did not paint any frame"
     );
+
+    // Before the walk: the splash owns the first three seconds, and a long press on it asks for
+    // setup mode rather than changing a palette, so the scenario waits for the clock to hand the
+    // page back.
+    Timer::after(Duration::from_millis(3_200)).await;
 
     // 2. Long-press button 0: breathing → solid `PALETTE[0]` on surface 0.
     PRESSED[0].store(true, Ordering::SeqCst);
@@ -912,7 +924,7 @@ async fn scenario() {
         rssi: -55,
         secured: true,
     }]);
-    SCAN.publish(list);
+    SCAN.publish(&list);
 
     attempts = 0;
     while NETWORK_APS.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -1015,7 +1027,7 @@ async fn scenario() {
     let mut marked = list;
     let marks = store.mask(&marked);
     marked.mark_saved(marks);
-    SCAN.publish(marked);
+    SCAN.publish(&marked);
     attempts = 0;
     while NETWORK_SAVED.load(Ordering::SeqCst) == 0 && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
@@ -1029,7 +1041,7 @@ async fn scenario() {
 
     // The strip with no link on it: one request, and it lands on the survey's own plane. A tap that
     // reached the state and stopped there would be a panel that asks and a radio that never hears.
-    send(BusinessIntent::Toolbar);
+    send(BusinessIntent::Toolbar(ToolbarCell::Right));
     assert!(
         select(RESCAN.ready(), Timer::after(Duration::from_secs(1)))
             .await

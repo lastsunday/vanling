@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#101014">
+<title data-t="title">Vanling setup</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4'/%3E%3Cpath d='M4.5 5.5 8 11l3.5-5.5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f8; --card: #fff; --line: rgb(0 0 0 / .1); --dim: rgb(0 0 0 / .55);
+    --ink: #14141a; --accent: #3b5bdb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101014; --card: #1a1a21; --line: rgb(255 255 255 / .12); --dim: rgb(255 255 255 / .55);
+      --ink: #ececf2; --accent: #7b93ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 1rem 1.5rem; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+    max-width: 32rem; margin-inline: auto;
+  }
+  .top { display: flex; align-items: center; gap: .6rem; padding: 1.1rem 0 .9rem; }
+  .mark { width: 26px; height: 26px; flex: none; }
+  h1 { font-size: 1.15rem; margin: 0; flex: 1; letter-spacing: -.01em; }
+  .lang { display: flex; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+  .lang button {
+    border: 0; background: none; color: var(--dim); font: inherit; font-size: .8rem;
+    padding: .22rem .6rem; border-radius: 999px; cursor: pointer;
+  }
+  .lang button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .lead { margin: 0 0 .3rem; color: var(--dim); font-size: .95rem; }
+  .id { margin: 0 0 1.1rem; font-size: .78rem; color: var(--dim); }
+  .id b { font-weight: 500; color: var(--ink); letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+  .list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+  .row {
+    display: flex; align-items: center; gap: .75rem; width: 100%; padding: .7rem .8rem;
+    font: inherit; color: inherit; text-align: left; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); border-radius: .85rem;
+  }
+  .row:active { transform: scale(.99); }
+  .about { flex: 1; min-width: 0; }
+  .name { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The label and the address are two elements rather than one string: a plain space at this size
+     and colour is thin enough to read as part of the address, while a gap the layout owns is not. */
+  .mac { display: flex; align-items: baseline; gap: .5rem; font-size: .72rem; color: var(--dim); }
+  .mac .tag { letter-spacing: .06em; }
+  .mac .addr { color: var(--ink); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+  .meta { display: flex; align-items: center; gap: .45rem; flex: none; }
+  .bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+  .bars i { width: 3px; border-radius: 1px; background: currentColor; opacity: .22; }
+  .bars i:nth-child(1) { height: 4px; }
+  .bars i:nth-child(2) { height: 7px; }
+  .bars i:nth-child(3) { height: 10px; }
+  .bars i:nth-child(4) { height: 14px; }
+  .bars[data-bars="1"] i:nth-child(-n+1), .bars[data-bars="2"] i:nth-child(-n+2),
+  .bars[data-bars="3"] i:nth-child(-n+3), .bars[data-bars="4"] i:nth-child(-n+4) { opacity: 1; }
+  .ico { display: block; width: 14px; height: 14px; opacity: .8; }
+  .chip {
+    font-size: .68rem; letter-spacing: .04em; text-transform: uppercase; color: var(--dim);
+    padding: .05rem .35rem; border: 1px solid var(--line); border-radius: .35rem;
+  }
+  .status { margin: 1rem 0 0; color: var(--dim); font-size: .9rem; text-align: center; }
+  .wide {
+    width: 100%; margin-top: 1rem; padding: .8rem; font: inherit; font-weight: 600;
+    border: 1px solid var(--line); border-radius: .85rem; background: var(--card); color: var(--ink);
+  }
+  .wide:disabled { opacity: .5; }
+  dialog {
+    width: min(100%, 32rem); margin: auto auto 0; padding: 1.1rem 1rem calc(1.1rem + env(safe-area-inset-bottom));
+    border: 1px solid var(--line); border-radius: 1.1rem 1.1rem 0 0; background: var(--card); color: var(--ink);
+  }
+  dialog::backdrop { background: rgb(0 0 0 / .45); }
+  dialog h2 { font-size: 1.05rem; margin: 0 0 .9rem; overflow-wrap: anywhere; }
+  label { display: block; margin-bottom: .35rem; font-size: .85rem; color: var(--dim); }
+  .field { display: flex; gap: .5rem; }
+  .field input {
+    flex: 1; min-width: 0; padding: .7rem .75rem; font: inherit; color: inherit;
+    background: transparent; border: 1px solid var(--line); border-radius: .7rem;
+  }
+  #eye {
+    padding: 0 .7rem; font: inherit; font-size: .85rem; color: var(--dim);
+    background: transparent; border: 1px solid var(--line); border-radius: .7rem;
+  }
+  .actions { display: flex; gap: .5rem; margin-top: 1rem; }
+  .actions button {
+    flex: 1; padding: .75rem; font: inherit; font-weight: 600; color: var(--ink);
+    background: transparent; border: 1px solid var(--line); border-radius: .8rem;
+  }
+  .actions .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (min-width: 40rem) { dialog { margin: auto; border-radius: 1.1rem; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="4"/><path d="M4.5 5.5 8 11l3.5-5.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <h1 data-t="heading">Connect Vanling</h1>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="en" aria-pressed="false">EN</button>
+    <button type="button" data-lang="zh" aria-pressed="false">&#20013;&#25991;</button>
+  </div>
+</div>
+
+<p class="lead" data-t="choose">Choose the network this device should join.</p>
+<p class="id"><span data-t="device">Device</span> <b>00:00:00:00:00:00</b></p>
+
+<ul id="list" class="list" aria-live="polite"></ul>
+<p id="status" class="status" hidden></p>
+
+<button type="button" id="rescan" class="wide" data-t="rescan">Scan again</button>
+
+<form id="open" method="post" action="/submit" hidden>
+  <input type="hidden" name="ssid" id="open-ssid">
+  <input type="hidden" name="password" value="">
+</form>
+
+<dialog id="ask">
+  <form method="post" action="/submit">
+    <h2 id="ask-name"></h2>
+    <label for="psk" data-t="passphrase">Passphrase</label>
+    <div class="field">
+      <input type="password" name="password" id="psk" required minlength="8" autocomplete="off"
+             autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button type="button" id="eye" data-t="show">Show</button>
+    </div>
+    <input type="hidden" name="ssid" id="ask-ssid">
+    <div class="actions">
+      <button type="button" id="cancel" data-t="cancel">Cancel</button>
+      <button type="submit" class="primary" data-t="connect">Connect</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  var S = {
+    en: {
+      title: 'Vanling setup', heading: 'Connect Vanling',
+      choose: 'Choose the network this device should join.', device: 'Device',
+      passphrase: 'Passphrase', connect: 'Connect', cancel: 'Cancel', show: 'Show', hide: 'Hide',
+      rescan: 'Scan again', scanning: 'Scanning\u2026',
+      none: 'No networks in range. Move the device closer to the router.',
+      unreadable: 'Could not read the list. Try again.',
+      signal: '%n of 4 bars', locked: 'secured', open: 'open', saved: 'saved'
+    },
+    zh: {
+      title: 'Vanling 配网', heading: '连接 Vanling',
+      choose: '选择要连接的网络。', device: '设备',
+      passphrase: '密码', connect: '连接', cancel: '取消', show: '显示', hide: '隐藏',
+      rescan: '重新扫描', scanning: '正在扫描\u2026',
+      none: '附近没有网络。把设备靠近路由器。',
+      unreadable: '读不到列表，请重试。',
+      signal: '%n/4 格信号', locked: '加密', open: '开放', saved: '已保存'
+    }
+  };
+  var LOCK = '<svg class="ico" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 5.4V4a2 2 0 0 1 4 0v1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="2.6" y="5.4" width="6.8" height="4.6" rx="1.2" fill="currentColor"/></svg>';
+  var OPENED = '<svg class="ico" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 5.4V4a2 2 0 0 1 4 0" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="2.6" y="5.4" width="6.8" height="4.6" rx="1.2" fill="currentColor"/></svg>';
+  // The list as the device sent it. A page that fetched its own first list would spend one of the
+  // device's few connections on a request that could have been answered inside this document.
+  var APS = /*scan*/[];
+
+  var list = document.getElementById('list');
+  var status = document.getElementById('status');
+  var rescan = document.getElementById('rescan');
+  var ask = document.getElementById('ask');
+  var askName = document.getElementById('ask-name');
+  var askSsid = document.getElementById('ask-ssid');
+  var psk = document.getElementById('psk');
+  var eye = document.getElementById('eye');
+  var open = document.getElementById('open');
+  var openSsid = document.getElementById('open-ssid');
+
+  var language = pick();
+  var networks = APS || [];
+  var said = null;
+  var scanning = false;
+
+  function pick() {
+    var kept = null;
+    try { kept = localStorage.getItem('lang'); } catch (e) {}
+    if (kept && S[kept]) { return kept; }
+    var spoken = navigator.languages || [navigator.language || 'en'];
+    for (var i = 0; i < spoken.length; i++) {
+      if (String(spoken[i]).toLowerCase().indexOf('zh') === 0) { return 'zh'; }
+    }
+    return 'en';
+  }
+
+  function t(key, number) {
+    var word = (S[language] && S[language][key]) || S.en[key] || key;
+    return number === undefined ? word : word.replace('%n', number);
+  }
+
+  function each(selector, visit) {
+    var nodes = document.querySelectorAll(selector);
+    for (var i = 0; i < nodes.length; i++) { visit(nodes[i]); }
+  }
+
+  function say(key) {
+    said = key;
+    status.hidden = !key;
+    if (key) { status.textContent = t(key); }
+  }
+
+  function speak() {
+    document.documentElement.lang = language === 'zh' ? 'zh-Hans' : 'en';
+    each('[data-t]', function (node) { node.textContent = t(node.getAttribute('data-t')); });
+    each('[data-lang]', function (button) {
+      button.setAttribute('aria-pressed', String(button.getAttribute('data-lang') === language));
+    });
+    eye.textContent = t(psk.type === 'password' ? 'show' : 'hide');
+    draw();
+    say(said);
+  }
+
+  function setNetworks(found) {
+    networks = found;
+    say(networks.length ? null : 'none');
+    draw();
+  }
+
+  function draw() {
+    list.textContent = '';
+    networks.forEach(function (ap) {
+      var item = document.createElement('li');
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'row';
+
+      var about = document.createElement('span');
+      about.className = 'about';
+      var name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = ap.ssid || ap.bssid;
+      about.appendChild(name);
+      if (ap.bssid) {
+        var mac = document.createElement('span');
+        mac.className = 'mac';
+        // The label is what tells this line apart from the board's own address at the top of the
+        // page: two MACs on one page and nothing said about which is which is a page that asks the
+        // user to guess. `AP MAC` says whose it is in plain words rather than in a term, and `MAC`
+        // is the same word in every language, so neither is translated.
+        var tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'AP MAC';
+        var addr = document.createElement('span');
+        addr.className = 'addr';
+        addr.textContent = ap.bssid;
+        mac.appendChild(tag);
+        mac.appendChild(addr);
+        about.appendChild(mac);
+      }
+
+      var meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.title = t('signal', ap.bars) + ', ' + t(ap.secured ? 'locked' : 'open');
+      var bars = document.createElement('span');
+      bars.className = 'bars';
+      bars.setAttribute('data-bars', ap.bars);
+      for (var bar = 0; bar < 4; bar++) { bars.appendChild(document.createElement('i')); }
+      var lock = document.createElement('span');
+      lock.innerHTML = ap.secured ? LOCK : OPENED;
+      meta.appendChild(bars);
+      meta.appendChild(lock);
+      if (ap.saved) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = t('saved');
+        meta.appendChild(chip);
+      }
+
+      row.appendChild(about);
+      row.appendChild(meta);
+      row.addEventListener('click', function () { choose(ap); });
+      item.appendChild(row);
+      list.appendChild(item);
+    });
+  }
+
+  function choose(ap) {
+    if (!ap.secured) {
+      openSsid.value = ap.ssid;
+      open.submit();
+      return;
+    }
+    askSsid.value = ap.ssid;
+    askName.textContent = ap.ssid || ap.bssid;
+    psk.value = '';
+    psk.type = 'password';
+    eye.textContent = t('show');
+    if (ask.showModal) { ask.showModal(); } else { ask.setAttribute('open', ''); }
+    setTimeout(function () { psk.focus(); }, 30);
+  }
+
+  function shut() {
+    if (ask.close) { ask.close(); } else { ask.removeAttribute('open'); }
+  }
+
+  function wait(ms) {
+    return new Promise(function (done) { setTimeout(done, ms); });
+  }
+
+  function load(attempt) {
+    return fetch('/scan', { cache: 'no-store' })
+      .then(function (response) { return response.json(); })
+      .then(function (found) { setNetworks(found); })
+      .catch(function () {
+        // A connection the device could not take is one that was never answered, so asking again
+        // is the only way to tell it from a page that has nothing to show yet.
+        if (attempt < 4) {
+          return wait(320).then(function () { return load(attempt + 1); });
+        }
+        say('unreadable');
+      });
+  }
+
+  each('[data-lang]', function (button) {
+    button.addEventListener('click', function () {
+      language = button.getAttribute('data-lang');
+      try { localStorage.setItem('lang', language); } catch (e) {}
+      speak();
+    });
+  });
+
+  rescan.addEventListener('click', function () {
+    if (scanning) { return; }
+    scanning = true;
+    rescan.disabled = true;
+    say('scanning');
+    // A round the radio has to run: the list it answers with here is the one from before it, so
+    // the page reads again once the round has had time to finish.
+    fetch('/rescan', { cache: 'no-store' })
+      .catch(function () {})
+      .then(function () { return wait(1800); })
+      .then(function () { return load(0); })
+      .then(function () {
+        scanning = false;
+        rescan.disabled = false;
+        rescan.blur();
+      });
+  });
+
+  eye.addEventListener('click', function () {
+    var hidden = psk.type === 'password';
+    psk.type = hidden ? 'text' : 'password';
+    eye.textContent = t(hidden ? 'hide' : 'show');
+    psk.focus();
+  });
+
+  document.getElementById('cancel').addEventListener('click', shut);
+  ask.addEventListener('click', function (event) { if (event.target === ask) { shut(); } });
+
+  speak();
+  // A device asked before its first survey has finished has nothing to send, so it gets one list
+  // the honest way — a second connection, paid only by the page that had nothing to draw.
+  if (!networks.length) {
+    say('none');
+    setTimeout(function () { load(0); }, 1200);
+  }
+})();
+</script>
+</body>
+</html>

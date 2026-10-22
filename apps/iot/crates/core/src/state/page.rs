@@ -19,6 +19,17 @@ pub enum DisplayPage {
     /// panel will take credentials on; until then it is a readout, and the readout is what
     /// makes "the link came up" a thing the bench can see rather than log.
     Network,
+    /// The page a device shows while it is still starting, and the one page whose subject is not a
+    /// light: nothing on it moves, no gesture but the button's hold answers, and the only way off it
+    /// is the clock.
+    ///
+    /// The hold is how setup mode is asked for on a board that has no other way in — reset, then
+    /// hold — and the page is what keeps that request out of every other long press: a device that
+    /// is up and running gives the page's own verb to the same hold, so the way back into the mode
+    /// is the deliberate ceremony rather than a gesture any impatient finger could spend on a
+    /// working link. Deliberately not in [`CYCLE`], so there is no way back to it: a device that
+    /// wrapped round to the splash would be showing a page nobody can use.
+    Splash,
 }
 
 /// The page cycle, in order.
@@ -53,6 +64,12 @@ impl DisplayPage {
         camera_enabled: bool,
         network_enabled: bool,
     ) -> Self {
+        // The splash is left by its clock and not by a gesture, and it is not a candidate below:
+        // a cycle that could wrap round to it would offer a page with nothing on it. The answer
+        // is the cycle's fixed point, which every board backs.
+        if matches!(self, Self::Splash) {
+            return Self::Ambient;
+        }
         let mut step = 1;
         while step <= CYCLE.len() {
             let candidate = CYCLE[(self.cycle_index() + step) % CYCLE.len()];
@@ -88,9 +105,18 @@ impl DisplayPage {
             Self::Speaker => playback_enabled,
             Self::Camera => camera_enabled,
             Self::Network => network_enabled,
+            // Every board backs the splash: it asks for no surface, which is why it is also not a
+            // page a build may name as its own (see `DeviceManager::with_boot_page`).
+            Self::Splash => true,
         }
     }
 
+    /// Position in [`CYCLE`], the order `next_page` walks.
+    ///
+    /// Out of line on purpose: the match lowers to a jump table, and inlined it sits beside every
+    /// caller — 456 B of DRAM for the seventh variant, measured with `nm` against the S3's main
+    /// stack budget (`@/records/iot/wifi.md`).
+    #[inline(never)]
     pub(super) const fn cycle_index(&self) -> usize {
         match self {
             Self::Ambient => 0,
@@ -99,6 +125,9 @@ impl DisplayPage {
             Self::Speaker => 3,
             Self::Camera => 4,
             Self::Network => 5,
+            // Never read: `next_page` answers for the splash before it indexes the cycle, and no
+            // other caller of this maps a page to a position.
+            Self::Splash => 0,
         }
     }
 
@@ -120,18 +149,22 @@ impl DisplayPage {
 
     /// What this page asks of one plane. The match is the page's claim and is exhaustive by
     /// construction: a plane this page has no opinion of is claimed off, never unclaimed.
+    ///
+    /// The picture and the envelope are claimed only by the page that draws them: a page that
+    /// reads neither has no use for the part, and on this board both are paid for by polling
+    /// (`@/records/iot/input.md`). Motion stays claimed on every page because nothing has yet
+    /// exercised the IMU's stop and re-arm.
     fn claim_for(&self, key: PlaneKey) -> PlaneDemand {
         let motion_class = match self {
             Self::Attitude => Sensitivity::Primary,
             _ => Sensitivity::Secondary,
         };
-        let audio_class = match self {
-            Self::Audio => Sensitivity::Primary,
-            _ => Sensitivity::Secondary,
-        };
         match key.field() {
             DemandField::Motion => PlaneDemand::new(Mode::Continuous, 0, motion_class),
-            DemandField::Audio => PlaneDemand::new(Mode::Continuous, 0, audio_class),
+            DemandField::Audio => match self {
+                Self::Audio => PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+                _ => PlaneDemand::off(),
+            },
             DemandField::Camera => match self {
                 Self::Camera => PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
                 _ => PlaneDemand::off(),

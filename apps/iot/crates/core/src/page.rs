@@ -40,6 +40,9 @@ impl Part {
     /// Whether `setup` is not showing this part at all.
     pub fn hidden(self, setup: NetworkSetup, link: LinkStatus) -> bool {
         let question = setup.confirm.is_some();
+        // The box a phone's setup is read in covers the list: it is the page's subject while the
+        // access point is up, and the list under it is the front end that is not being used.
+        let boxed = question || link.shows_setup_box();
         let joining = joining(setup, link);
         match self {
             // The question holds the only two answers there are, so the strip's own verb would be
@@ -52,14 +55,18 @@ impl Part {
             // that drew both would stamp the strip's own word across the keys that end an entry.
             // An entry in progress is what the finger is doing, and the strip is not a control
             // while it is typed on — [`crate::intent`] sends every point to the keys.
+            //
+            // The setup box is not a question and does not take the strip: `CANCEL` and the front
+            // switch are the two ways out of the mode, and a box that covered them would leave the
+            // panel with one answer where the page has two.
             Part::Controls => question || setup.keyboard,
             // The box the radio's own attempt is drawn in covers the list the same way a question
-            // does. What stays under it is the strip: the box asks nothing, and `LEAVE` is still
+            // does. What stays under it is the strip: the box asks nothing, and `SETUP` is still
             // the page's one way off a link.
-            Part::Content => question || joining,
-            // A question is the finger's own screen and the join box is the radio's, so when both
-            // are up it is the question the box holds.
-            Part::Overlay => !question && !joining,
+            Part::Content => boxed || joining,
+            // A question is the finger's own screen, the setup box is the page's, and the join
+            // box is the radio's, so when they are up at once it is the question the box holds.
+            Part::Overlay => !boxed && !joining,
             Part::Header => false,
         }
     }
@@ -178,7 +185,7 @@ mod tests {
     #[test]
     fn a_join_in_flight_is_a_box_over_the_list_with_the_strip_still_offered() {
         // The box the radio's attempt is drawn in is not a question: it wants nothing from the
-        // finger, so the strip stays where it is and `LEAVE` stays the way off the link.
+        // finger, so the strip stays where it is and `SETUP` stays the way off the link.
         let setup = NetworkSetup::default();
         let link = attempting();
         assert!(
@@ -190,6 +197,44 @@ mod tests {
             "the strip is not the box's to take"
         );
         assert!(Part::Overlay.showing(setup, link));
+    }
+
+    #[test]
+    fn the_setup_box_covers_the_list_and_leaves_the_strip_offered() {
+        // The box a phone's setup is read in is the page's own screen rather than a question: the
+        // strip under it still carries the way back and the front switch, and a box that covered
+        // them would leave the panel with one answer where the page has two.
+        let setup = NetworkSetup::default();
+        let link = LinkStatus {
+            setup: true,
+            front: crate::drivers::network::Front::AccessPoint,
+            ..LinkStatus::default()
+        };
+        assert!(Part::Content.hidden(setup, link));
+        assert!(
+            Part::Controls.showing(setup, link),
+            "the strip is how the panel gets back"
+        );
+        assert!(
+            !Part::Header.hidden(setup, link),
+            "the mode's name stays on the header behind the box"
+        );
+        assert!(Part::Overlay.showing(setup, link));
+    }
+
+    #[test]
+    fn a_phone_less_front_has_no_box_over_the_list() {
+        // The panel's own setup draws the list and nothing else: there is no access point, so
+        // there is nothing to announce about one.
+        let setup = NetworkSetup::default();
+        let link = LinkStatus {
+            setup: true,
+            ..LinkStatus::default()
+        };
+        assert!(!link.shows_setup_box());
+        assert!(Part::Content.showing(setup, link));
+        assert!(Part::Controls.showing(setup, link));
+        assert!(Part::Overlay.hidden(setup, link));
     }
 
     #[test]

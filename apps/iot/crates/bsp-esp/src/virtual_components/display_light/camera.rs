@@ -290,6 +290,8 @@ impl DisplayLight {
         let write_start = Instant::now();
         if let Err(error) = self.panel.write_frame(&self.frame[..bytes]) {
             log::error!("[DISPLAY] camera frame write failed: {error:?}");
+        } else {
+            self.note_frame_shipped();
         }
         self.sample_frame_cost(render, write_start.elapsed());
         self.sample_fps();

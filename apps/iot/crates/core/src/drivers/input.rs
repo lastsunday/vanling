@@ -368,6 +368,17 @@ fn isqrt_u32(n: u32) -> u32 {
 pub trait InputSource {
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent>;
 
+    /// Whether this source's control is down right now.
+    ///
+    /// Asked outside the poll cadence, by the one reader that has to know whether a deadline may
+    /// pass: the input task holds the splash page's window back while a press is in progress, so a
+    /// hold that began inside it still lands after it (see `crate::intent`'s splash rule). A
+    /// control nobody can hold — a sensor, a touch surface with contacts rather than a button —
+    /// answers `false`.
+    fn held(&self) -> bool {
+        false
+    }
+
     /// Told that the demand has switched this source's plane off or back on.
     ///
     /// Separate from [`Self::poll`] because a plane that is off is not polled, so a source
@@ -1177,6 +1188,12 @@ impl PollEntry {
             self.next_at_ms = self.next_at_ms.wrapping_add(self.cadence_ms);
         }
     }
+
+    /// Whether the control behind this source is down right now, which the poll cadence cannot
+    /// answer between two due readings. See [`InputSource::held`].
+    pub fn held(&self) -> bool {
+        self.source.held()
+    }
 }
 
 /// Debounced button scanner, distinguishing clicks from long-presses by
@@ -1231,6 +1248,15 @@ impl<B: Button> ButtonScanner<B> {
 impl<B: Button> InputSource for ButtonScanner<B> {
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent> {
         self.read(now_ms).map(InputEvent::Button)
+    }
+
+    /// The raw pin, or a debounced press still waiting out its release: either way the finger is
+    /// on the button, and a window that closed now would be a window that dropped the hold it is
+    /// about. The release needs [`DEBOUNCE_SAMPLES`] samples to be believed, and the event that
+    /// ends the press is what those samples produce — so this answer keeps the window open until
+    /// after that event and not merely until the pin goes up.
+    fn held(&self) -> bool {
+        self.pressed || self.button.is_pressed()
     }
 }
 
@@ -1319,6 +1345,32 @@ mod tests {
             assert_eq!(hold_and_release(610), Some(ButtonEvent::LongPress));
             assert_eq!(hold_and_release(800), Some(ButtonEvent::LongPress));
             assert_eq!(LONG_PRESS_MS, 600);
+        }
+
+        #[test]
+        fn a_held_button_stays_held_through_the_release_debounce() {
+            // The reader that asks this is deciding whether a deadline may pass, so the answer has
+            // to stay true until the press's own event exists: the pin going up is not the lift
+            // yet, because the scanner needs `DEBOUNCE_SAMPLES` samples to believe the release.
+            let pressed = Cell::new(false);
+            let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
+            assert!(!scanner.held(), "nothing has been pressed");
+            pressed.set(true);
+            for sample in 0..3 {
+                assert!(scanner.poll(1_000 + sample * 10).is_none());
+            }
+            assert!(scanner.held(), "down, and nothing emitted yet");
+            pressed.set(false);
+            assert!(
+                scanner.held(),
+                "the pin is up but the lift is still being debounced"
+            );
+            for sample in 0..3 {
+                if scanner.poll(1_800 + sample * 10).is_some() {
+                    break;
+                }
+            }
+            assert!(!scanner.held(), "the press resolved, so the hold is over");
         }
 
         #[test]

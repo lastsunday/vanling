@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-t="title">Vanling setup</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='4'/%3E%3Cpath d='M4.5 5.5 8 11l3.5-5.5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0 auto; max-width: 30rem; padding: 3rem 1rem;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+  p { margin: 0 0 1rem; opacity: .8; }
+  .id { font-size: .85rem; opacity: .65; font-variant-numeric: tabular-nums; }
+  .id b { font-weight: 600; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<h1 data-t="title">Connecting&hellip;</h1>
+<p data-t="body">The device is joining the network now. This page will not come back &mdash; the setup network goes away with it. You can close the tab.</p>
+<p class="id"><span data-t="device">Device</span> <b>00:00:00:00:00:00</b></p>
+<script>
+(function () {
+  // Same choice the setup page made, so a phone that was reading that page in Chinese keeps
+  // reading this one in Chinese; this page has no switch because the device is already leaving.
+  var S = {
+    en: {
+      title: 'Vanling setup', device: 'Device',
+      body: 'The device is joining the network now. This page will not come back \u2014 the setup network goes away with it. You can close the tab.'
+    },
+    zh: {
+      title: 'Vanling 配网', device: '设备',
+      body: '设备正在连接网络。这个页面不会再回来——配网热点会随之消失。可以关闭标签页了。'
+    }
+  };
+  var language = 'en';
+  try {
+    if (S[localStorage.getItem('lang')]) { language = localStorage.getItem('lang'); }
+  } catch (e) {}
+  if (language === 'en') {
+    var spoken = navigator.languages || [navigator.language || 'en'];
+    for (var i = 0; i < spoken.length; i++) {
+      if (String(spoken[i]).toLowerCase().indexOf('zh') === 0) { language = 'zh'; break; }
+    }
+  }
+  document.documentElement.lang = language === 'zh' ? 'zh-Hans' : 'en';
+  var nodes = document.querySelectorAll('[data-t]');
+  for (var i = 0; i < nodes.length; i++) {
+    nodes[i].textContent = S[language][nodes[i].getAttribute('data-t')];
+  }
+})();
+</script>
+</body>
+</html>

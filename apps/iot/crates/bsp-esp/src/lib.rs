@@ -32,6 +32,15 @@ pub mod components;
 /// that only some features define.
 pub mod camera_readout;
 
+/// The panel's glyph table, and the shapes a five-column cell has to keep apart.
+///
+/// Its own module because it is plain bytes with no peripheral in it: the host tests can hold
+/// the table to "every glyph draws something" and "the look-alike pairs differ", which is the
+/// only check a table swap gets before the pixels do. Gated on the surface that draws it, apart
+/// from the tests, so a board with no panel does not carry the table.
+#[cfg(any(feature = "display-light", test))]
+pub mod font;
+
 /// Who this board is, and what came up on it — a boot inventory, printed at the
 /// end of a board's bring-up.
 ///
