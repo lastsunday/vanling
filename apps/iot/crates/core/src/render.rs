@@ -61,6 +61,17 @@ impl SlotAppearance {
     }
 }
 
+/// What each surface actually shows: the page's own light, with a light-only board's status
+/// lamp standing in for the first surface. [`DeviceState::status_light`] answers `None` on a
+/// board with a screen, so the substitution costs that board nothing.
+fn status_lights(state: &DeviceState) -> [LightState; MAX_LIGHTS] {
+    let mut lights = state.lights;
+    if let Some(status) = state.status_light() {
+        lights[0] = status;
+    }
+    lights
+}
+
 /// Appearance of the light under `state`, without time information.
 pub fn light_appearance(state: LightState) -> LightAppearance {
     match state {
@@ -327,7 +338,7 @@ impl RenderController {
     ) -> bool {
         let next = Snapshot {
             diagnostics: light_diagnostics(state, demand),
-            lights: state.lights,
+            lights: status_lights(state),
         };
         let changed = self.last.as_deref() != Some(&next);
         if changed {
@@ -418,7 +429,7 @@ mod tests {
         assert_eq!(windowed_percent(4_000_000, 2_000_000), 100);
         assert_eq!(windowed_percent(7_000, 0), 100);
     }
-    use crate::drivers::network::{AccessPoint, ApList, Ipv4, LinkPhase, Ssid};
+    use crate::drivers::network::{AccessPoint, ApList, Front, Ipv4, LinkPhase, LinkStatus, Ssid};
     use crate::drivers::playback::Sound;
     use crate::intent::{BusinessIntent, CaptureAction};
     use crate::state::{DeviceManager, PlaybackPhase};
@@ -1379,6 +1390,41 @@ mod tests {
             DIAG_REPAINT_STEP_MS * 4,
             false
         ));
+    }
+
+    #[test]
+    fn a_lamp_only_board_gets_the_status_on_its_first_surface_only() {
+        // The setup lamp stands in for the page's first surface on a board that has no page to
+        // draw it. Every other surface keeps whatever it declared.
+        let mut ctl = RenderController::new();
+        let status = DeviceState {
+            lights: [LightState::Off, LightState::Off],
+            network_enabled: true,
+            panel: crate::state::Panel::Absent,
+            link: LinkStatus {
+                setup: true,
+                front: Front::AccessPoint,
+                ..LinkStatus::default()
+            },
+            ..DeviceState::default()
+        };
+        collect(&mut ctl, &status);
+        assert_eq!(
+            ctl.current(Slot::Light(0)),
+            Some(SlotAppearance::Light {
+                instance: 0,
+                appearance: light_appearance(LightState::SETUP),
+            }),
+            "the lamp says the access point is up even though the page's light is off"
+        );
+        assert_eq!(
+            ctl.current(Slot::Light(1)),
+            Some(SlotAppearance::Light {
+                instance: 1,
+                appearance: LightAppearance::Off,
+            }),
+            "the substitution does not leak onto a second surface"
+        );
     }
 
     #[test]

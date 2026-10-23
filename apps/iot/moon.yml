@@ -153,8 +153,26 @@ tasks:
       # `moon run --force` is how to watch it happen again.
       cache: true
 
+  # Flashed against this repository's partition table rather than the one `espflash`
+  # writes by default: the default table has no `creds` partition, so the device
+  # came up with no saved networks on every boot and never reconnected. The table
+  # also carries `phy_init`, which the Wi-Fi driver restores its calibration from —
+  # see `partitions/esp32c6-devkitc-1.csv`.
+  #
+  # An explicit `espflash` rather than `cargo run`: the cargo runner in
+  # `.cargo/config.toml` cannot receive `--partition-table`, and passing it to
+  # `cargo run` would hand it to the firmware instead.
+  #
+  # `--flash-size 8mb` is the part's measured size; without it espflash assumes
+  # 4 MB and the table's last partition no longer matches the flash it writes.
   flash:
-    command: 'cargo run -p iot-app --release --target $CARGO_ESP_TARGET'
+    script: |
+      espflash flash --chip esp32c6 \
+        --flash-size 8mb \
+        --partition-table partitions/esp32c6-devkitc-1.csv \
+        --monitor \
+        ${IOT_PORT:+--port $IOT_PORT} \
+        target/$CARGO_ESP_TARGET/release/vanling
     deps:
       - ~:build
     options:

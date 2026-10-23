@@ -134,6 +134,9 @@ struct Face {
     cancellable: bool,
     /// Whether this is setup mode. The page is drawn either way; only a mode says so.
     setup: bool,
+    /// Whether this is the offline list rather than a mode. The page offers `SCAN | AP`; a hold
+    /// does nothing, and only `AP` leaves this end.
+    browsing: bool,
 }
 
 impl Face {
@@ -142,18 +145,22 @@ impl Face {
         if self.setup {
             station.on_setup_face(self.front, self.cancellable)
         } else {
-            station
+            LinkStatus {
+                browsing: self.browsing,
+                ..station
+            }
         }
     }
 
     /// The list's page outside setup mode: the survey a device with nothing configured runs while
-    /// somebody is looking. It reports the panel's setup face because the page still offers the
-    /// same `SCAN | AP` cells; `AP` leaves this end and opens the mode on its own front.
+    /// somebody is looking. It is not setup mode: the page offers `SCAN | AP`, and only `AP`
+    /// leaves this end and raises the access point.
     const fn browsing() -> Self {
         Self {
             front: Front::Panel,
             cancellable: false,
-            setup: true,
+            setup: false,
+            browsing: true,
         }
     }
 }
@@ -196,6 +203,10 @@ where
     // change while the device is on.
     MAC.lock(|cell| cell.set(octets));
     let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::Mac(octets)));
+    // The boot's own reading, before any attempt: a lamp-only board has to know whether this
+    // device keeps a network from the first second, and the radio's first report otherwise
+    // arrives after the splash to answer a question asked before it.
+    publish(station.status(), has_saved(&saved));
     // The stack borrows its resources for as long as it runs and every loop below is inside
     // that borrow, so they have to outlive this frame. Leaked rather than put in a `static`
     // cell: this is the only place that ever asks for them, and one allocation of a few
@@ -307,6 +318,13 @@ where
         // device boots into. What browsing returns is the first credential to hold.
         let (credentials, mut origin) = match first_saved(&saved) {
             Some(chosen) => chosen,
+            // A board with no panel has no page to browse and no cell to open the access point
+            // from: nothing is saved, so there is nothing it can do but wait. Setup mode is still
+            // reachable from the splash, which is the only entry this board accepts.
+            None if !panel => {
+                log::info!("[WIFI] no panel and no saved network; waiting offline");
+                core::future::pending().await
+            }
             None => {
                 log::info!(
                     "[WIFI] this build was given no network and this device has saved none; it runs \
@@ -401,9 +419,7 @@ where
 /// Whether this device keeps a network to go back to, which is what makes setup mode's `CANCEL` a
 /// way out rather than a door that opens onto the same room.
 fn has_saved<R: FlashRegion>(saved: &Option<Box<Store<R>>>) -> bool {
-    saved
-        .as_ref()
-        .is_some_and(|store| !store.networks().is_empty())
+    keeps_any(saved.as_deref().map(|store| store.networks()))
 }
 
 /// The network reconnect tries first, or `None` when there is nothing saved.
@@ -612,7 +628,10 @@ where
                 continue;
             }
             log::error!("[WIFI] the radio would not take that credential: {error:?}");
-            publish(station.status());
+            publish(
+                station.status(),
+                keeps_any(saved.as_deref().map(|store| store.networks())),
+            );
             if refusal == Refusal::GiveBack {
                 return Hold::Refused;
             }
@@ -625,7 +644,10 @@ where
         // here the page went on showing the phase the attempt started from — a strip offering
         // `SCAN` and a list that still took a pick. It is the station's own reading, taken the
         // moment the radio has one.
-        publish(station.status());
+        publish(
+            station.status(),
+            keeps_any(saved.as_deref().map(|store| store.networks())),
+        );
         if let Err(error) = station.await_connected().await {
             if hint.take().is_some() {
                 log::warn!(
@@ -635,7 +657,10 @@ where
                 continue;
             }
             log::error!("[WIFI] the radio would not associate: {error:?}");
-            publish(station.status());
+            publish(
+                station.status(),
+                keeps_any(saved.as_deref().map(|store| store.networks())),
+            );
             if refusal == Refusal::GiveBack {
                 return Hold::Refused;
             }
@@ -699,7 +724,10 @@ where
             Either::Second(()) => None,
         };
         station.note_address(address);
-        publish(station.status());
+        publish(
+            station.status(),
+            keeps_any(saved.as_deref().map(|store| store.networks())),
+        );
         if address.is_none() {
             log::error!("[WIFI] no address within {ADDRESS_BUDGET_MS} ms");
         }
@@ -736,7 +764,10 @@ where
                     // Reported here rather than by a later window: the wait above is what the
                     // last report was made on, and the page has to say `Off` the moment there is
                     // no link rather than a window later.
-                    publish(station.status());
+                    publish(
+                        station.status(),
+                        keeps_any(saved.as_deref().map(|store| store.networks())),
+                    );
                     return Hold::Left;
                 }
                 // Not this link's business, and acted on all the same: a forget is about the copy
@@ -756,7 +787,10 @@ where
             // — and the only way the loop learns the address went away.
             station.note_address(address);
             let status = station.status();
-            publish(status);
+            publish(
+                status,
+                keeps_any(saved.as_deref().map(|store| store.networks())),
+            );
             log::info!(
                 "[WIFI] phase {:?}, address {:?}, {} windows without one",
                 status.phase,
@@ -898,8 +932,9 @@ where
                     front: Front::Panel,
                     cancellable,
                     setup: true,
+                    browsing: false,
                 };
-                publish(face.status(station.status()));
+                publish(face.status(station.status()), has_saved(saved));
                 match select(
                     setup_credential(station, history, saved, face, false),
                     SETUP_ASK.ready(),
@@ -962,8 +997,9 @@ where
                         front: Front::AccessPoint,
                         cancellable,
                         setup: true,
+                        browsing: false,
                     };
-                    publish(face.status(station.status()));
+                    publish(face.status(station.status()), has_saved(saved));
 
                     // The page's future is boxed rather than held inline, and that is a memory
                     // decision rather than a convenience: it is four server loops with their socket
@@ -1060,6 +1096,11 @@ where
                                  and the saved network is tried again",
                                 SETUP_IDLE_MS / 1_000
                             );
+                            // The access point is gone, so a lamp still reading the last
+                            // `setup` report would stay blue about a mode that is no longer
+                            // on. This is the last word this path publishes: a board with no
+                            // panel and nothing saved waits in `browsing` without scanning.
+                            publish(station.status(), has_saved(saved));
                             return None;
                         }
                     }
@@ -1225,7 +1266,7 @@ where
             // leave the page a round behind what it is showing. The mode is this loop's own
             // premise — it is only ever reached with the access point up — so it is said here
             // rather than left to a station that does not know about it.
-            publish(face.status(station.status()));
+            publish(face.status(station.status()), keeps_any(saved));
             if let Some(list) = history.observe(&ranked, saved) {
                 crate::render::SCAN.publish(&list);
                 // The page's copy of the same list: the plane above is taken by the render
@@ -1238,7 +1279,7 @@ where
         }
         Err(error) => {
             log::error!("[WIFI] the radio would not scan: {error:?}");
-            publish(face.status(station.status()));
+            publish(face.status(station.status()), keeps_any(saved));
             false
         }
     };
@@ -1315,8 +1356,17 @@ async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
 ///
 /// A drop on a full bus is the right failure: a link snapshot is state, the next window
 /// supersedes it, and a producer that waited for room would hold the radio behind the panel.
-fn publish(status: LinkStatus) {
+///
+/// `saved` is the store's answer to "does this device keep a network", which the radio knows
+/// nothing about; it rides here because every reader of the link is also a reader of that.
+fn publish(status: LinkStatus, saved: bool) {
+    let status = LinkStatus { saved, ..status };
     let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::LinkReport(status)));
+}
+
+/// Whether the store holds at least one network.
+fn keeps_any(saved: Option<&SavedNetworks>) -> bool {
+    saved.is_some_and(|networks| !networks.is_empty())
 }
 
 /// Write the network the link just joined to the part it is kept in, whichever path named it.

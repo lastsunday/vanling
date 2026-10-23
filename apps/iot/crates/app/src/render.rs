@@ -25,7 +25,7 @@ use iot_core::render::{
     Activity, LightAppearance, RenderController, Renderer, Slot, SlotAppearance,
 };
 use iot_core::state::{
-    Breath, DeviceManager, DeviceState, DisplayPage, PlaybackPhase, PlaybackState,
+    Breath, DeviceManager, DeviceState, DisplayPage, LightState, PlaybackPhase, PlaybackState,
 };
 
 /// Frame cadence of the render loop.
@@ -703,6 +703,9 @@ pub async fn render_loop<C: ClockSink>(
     // the strip and the box are drawn from: a publish that moved it would be a control changing
     // under the finger, which is invisible in any other line.
     let mut last_front = manager.state().link.front;
+    // The lamp's last frame, for the same reason as the page and the front: a light-only board's
+    // whole language is in these transitions, and a WS2812 cannot be read back.
+    let mut last_lamp = manager.state().status_light();
     let mut next_frame: Instant = Instant::now();
     // This loop's, not a static: what the chip was last asked for belongs to the one
     // loop that asks it, so a second `run` in one process does not answer for the first.
@@ -747,6 +750,30 @@ pub async fn render_loop<C: ClockSink>(
                 "[WIFI] setup mode is offered on the {:?} front",
                 manager.state().link.front
             );
+        }
+        // The lamp is the only surface a board without a screen has, and nothing on the bench can
+        // read a WS2812 back: log the frames it is handed, transitions only, so a flash is a
+        // countable pair of lines rather than a claim about what the eye should have seen.
+        let lamp = manager.state().status_light();
+        if lamp != last_lamp {
+            match lamp {
+                None => log::info!("[LAMP] the page's own light"),
+                Some(LightState::Off) => log::info!("[LAMP] dark"),
+                Some(LightState::Solid { color, brightness }) => log::info!(
+                    "[LAMP] solid {} {} {} at {}",
+                    color.0,
+                    color.1,
+                    color.2,
+                    brightness
+                ),
+                Some(LightState::Breath(breath)) => log::info!(
+                    "[LAMP] breathing over {} ms, {}..{}",
+                    breath.period_ms,
+                    breath.min_brightness,
+                    breath.max_brightness
+                ),
+            }
+            last_lamp = lamp;
         }
         // The page, for the one reader that cannot see the state: the network task asks whether
         // the list it would survey is on the panel at all. Published after the intents, so a page
@@ -849,6 +876,10 @@ pub async fn render_loop<C: ClockSink>(
             );
             forget.request(ssid);
         }
+        // The lamp's one-shot news is stepped by this loop's clock; nothing in the state owns
+        // time. Stepped after the intents, so a report that landed this pass is drawn from its
+        // first step rather than the next one.
+        manager.tick_notice(elapsed_ms);
         let state = manager.state();
         // The page is the product's declaration of what it wants, so the demand follows it
         // here rather than each consumer deriving its own. The polling loop reads
@@ -869,7 +900,7 @@ pub async fn render_loop<C: ClockSink>(
             }
             log::info!("[CLOCK] running at {:?}", applied.running);
         }
-        let active = render.tick(&state, manager.demand(), elapsed_ms);
+        let active = render.tick(&state, manager.demand(), elapsed_ms) || manager.notice_active();
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
         if active {
             // Absolute deadline: work between frames never piles drift onto

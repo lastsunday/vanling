@@ -393,6 +393,272 @@ mod boot {
     }
 }
 
+mod lamp {
+    use super::*;
+    use crate::drivers::network::Front;
+
+    fn lamp_only() -> DeviceManager {
+        DeviceManager::new()
+            .with_network(true)
+            .with_panel(Panel::Absent)
+    }
+
+    fn report(manager: &mut DeviceManager, status: LinkStatus) {
+        manager.apply_business(BusinessIntent::LinkReport(status));
+    }
+
+    fn setup(manager: &mut DeviceManager) {
+        report(
+            manager,
+            LinkStatus {
+                setup: true,
+                front: Front::AccessPoint,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn connecting(manager: &mut DeviceManager, saved: bool) {
+        report(
+            manager,
+            LinkStatus {
+                phase: LinkPhase::Connecting,
+                saved,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn connected(manager: &mut DeviceManager) {
+        report(
+            manager,
+            LinkStatus {
+                phase: LinkPhase::Connected,
+                address: Some(Ipv4::from_octets([192, 168, 4, 2])),
+                saved: true,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn failed(manager: &mut DeviceManager, kind: NetworkError, saved: bool) {
+        report(
+            manager,
+            LinkStatus {
+                phase: LinkPhase::Failed(kind),
+                saved,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    /// Run the announcement out in frame steps, asserting it ends inside a budget.
+    fn drain(manager: &mut DeviceManager, budget_ms: u32) {
+        manager.tick_notice(0);
+        let mut elapsed = 0;
+        while manager.notice_active() {
+            manager.tick_notice(elapsed);
+            elapsed += 20;
+            assert!(elapsed < budget_ms, "the announcement never ended");
+        }
+    }
+
+    const GREEN: LightState = LightState::Solid {
+        color: Rgb(0, 255, 0),
+        brightness: 64,
+    };
+    const AMBER: LightState = LightState::Solid {
+        color: Rgb(255, 155, 0),
+        brightness: 96,
+    };
+    const RED: LightState = LightState::Solid {
+        color: Rgb(255, 0, 0),
+        brightness: 96,
+    };
+
+    #[test]
+    fn the_status_lamp_belongs_to_a_board_with_a_radio_and_no_screen() {
+        // An unconfigured device is not a mode: its news is the splash's amber burst, and after
+        // that the page owns the surface. The same device state on a board with a screen is the
+        // page's, not the lamp's, and a board with no radio has no link to report.
+        assert_eq!(lamp_only().state().status_light(), None);
+        let screened = DeviceManager::new()
+            .with_network(true)
+            .with_panel(Panel::Wired);
+        assert_eq!(screened.state().status_light(), None);
+        let no_radio = DeviceManager::new()
+            .with_network(false)
+            .with_panel(Panel::Absent);
+        assert_eq!(no_radio.state().status_light(), None);
+    }
+
+    #[test]
+    fn the_lamp_tells_the_mode_from_the_attempt_and_from_the_resting_state() {
+        let mut manager = lamp_only();
+        setup(&mut manager);
+        assert_eq!(manager.state().status_light(), Some(LightState::SETUP));
+
+        // A credential is in hand and the radio is acting on it: the same blue, a step quicker.
+        connecting(&mut manager, false);
+        assert_eq!(manager.state().status_light(), Some(LightState::JOINING));
+
+        // A credential the store already keeps is the product's own reconnect, not a mode: the
+        // page keeps its light while the radio tries.
+        connecting(&mut manager, true);
+        assert_eq!(manager.state().status_light(), None);
+
+        // And a device that keeps a network and is merely off it is not news either.
+        report(
+            &mut manager,
+            LinkStatus {
+                phase: LinkPhase::Off,
+                saved: true,
+                ..LinkStatus::default()
+            },
+        );
+        assert_eq!(manager.state().status_light(), None);
+    }
+
+    #[test]
+    fn a_join_that_worked_is_green_and_then_hands_the_lamp_back() {
+        let mut manager = lamp_only();
+        connecting(&mut manager, true);
+        connected(&mut manager);
+        assert_eq!(manager.state().status_light(), Some(GREEN));
+
+        manager.tick_notice(0);
+        assert_eq!(
+            manager.state().status_light(),
+            Some(GREEN),
+            "the announcement is drawn before it is stepped away"
+        );
+        drain(&mut manager, 2_000);
+        assert!(!manager.notice_active(), "the news is over");
+        assert_eq!(
+            manager.state().status_light(),
+            None,
+            "a saved device that is connected has nothing left to announce"
+        );
+    }
+
+    #[test]
+    fn the_news_outranks_the_mode_it_arrived_in() {
+        // The green lands first and the radio's next report still says the access point is up:
+        // the newest news is what the lamp is for, not the mode it interrupts.
+        let mut manager = lamp_only();
+        setup(&mut manager);
+        connected(&mut manager);
+        setup(&mut manager);
+        assert_eq!(manager.state().status_light(), Some(GREEN));
+    }
+
+    #[test]
+    fn a_refusal_flashes_and_ends_and_the_same_phase_does_not_restart_it() {
+        let mut manager = lamp_only();
+        failed(&mut manager, NetworkError::Credentials, false);
+        assert_eq!(
+            manager.state().status_light(),
+            Some(RED),
+            "a refusal starts lit"
+        );
+        manager.tick_notice(0);
+        let announced = manager.state().notice;
+        assert_eq!(
+            announced.and_then(|notice| notice.started_ms),
+            Some(0),
+            "the first frame stamps the announcement"
+        );
+
+        // The survey republishes the same refusal every round; that is one event, not a new one.
+        failed(&mut manager, NetworkError::Credentials, false);
+        assert_eq!(manager.state().notice, announced);
+
+        drain(&mut manager, 2_000);
+        assert_eq!(
+            manager.state().status_light(),
+            None,
+            "a refusal is an event, not the lamp's resting colour"
+        );
+    }
+
+    #[test]
+    fn a_boot_with_nothing_saved_flashes_amber_and_then_shows_the_page() {
+        let mut manager = lamp_only();
+        assert_eq!(manager.state().page, DisplayPage::Splash);
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
+        assert_eq!(manager.state().status_light(), Some(AMBER));
+
+        drain(&mut manager, 2_000);
+        assert_eq!(
+            manager.state().status_light(),
+            None,
+            "the page owns the lamp again once the news is over"
+        );
+        assert_eq!(manager.state().page, DisplayPage::Ambient);
+    }
+
+    #[test]
+    fn a_splash_hold_opens_setup_instead_of_flashing_offline() {
+        // The hold is the answer to an unconfigured device: the access point is the mode it
+        // lands in, so there is nothing to announce as missing.
+        let mut manager = lamp_only();
+        manager.apply_business(BusinessIntent::RequestSetup);
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_eq!(manager.state().notice, None);
+        assert_eq!(manager.state().page, DisplayPage::Network);
+    }
+
+    #[test]
+    fn a_missing_network_is_amber_and_a_refused_credential_is_red() {
+        // Not found is the one failure a person fixes by moving the device; a refused credential
+        // is the one they fix by typing again.
+        let mut missing = lamp_only();
+        failed(&mut missing, NetworkError::NotFound, true);
+        assert_eq!(
+            missing.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
+        assert_eq!(missing.state().status_light(), Some(AMBER));
+
+        let mut refused = lamp_only();
+        failed(&mut refused, NetworkError::Credentials, false);
+        assert_eq!(
+            refused.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Refused)
+        );
+        assert_eq!(refused.state().status_light(), Some(RED));
+    }
+
+    #[test]
+    fn a_retried_failure_is_announced_once_until_the_link_connects() {
+        let mut manager = lamp_only();
+        failed(&mut manager, NetworkError::NotFound, true);
+        drain(&mut manager, 2_000);
+
+        // The retry leaves `Failed`, tries again and fails the same way: one outage, one burst.
+        connecting(&mut manager, true);
+        failed(&mut manager, NetworkError::NotFound, true);
+        assert_eq!(manager.state().notice, None, "the retry is not new news");
+
+        // Coming back clears the latch, so the next outage is news again.
+        connected(&mut manager);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Joined)
+        );
+        drain(&mut manager, 2_000);
+        failed(&mut manager, NetworkError::NotFound, true);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
+    }
+}
+
 mod motion {
     use super::*;
     use crate::drivers::motion::{MotionBatch, MotionEvent, MotionEvents, TiltDir};
@@ -3410,6 +3676,45 @@ mod network_page {
         tap_strip(&mut manager);
         assert!(manager.take_switch_front());
         assert!(!manager.take_switch_front());
+    }
+
+    #[test]
+    fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
+        // Nothing is saved, so the page is the list and offers `SCAN | AP`. `AP` is a tap: the one
+        // explicit way into setup from a running device.
+        let mut manager = landed(DeviceManager::new().with_network(true));
+        manager.apply_business(BusinessIntent::LinkReport(LinkStatus {
+            browsing: true,
+            ..LinkStatus::default()
+        }));
+        manager.apply_business(BusinessIntent::SwitchFront);
+        assert!(manager.take_switch_front(), "the cell is still the way in");
+
+        // A hold is not: setup opens only from the splash, so a press on a running device is the
+        // page's own verb rather than an access point nobody asked for.
+        let operation = op(InputEvent::Button(ButtonEvent::LongPress));
+        let business = translate(&operation, &manager.state());
+        assert_ne!(
+            business,
+            BusinessIntent::SwitchFront,
+            "a hold outside setup mode does not switch the front"
+        );
+    }
+
+    #[test]
+    fn a_board_with_no_panel_has_no_front_to_switch_to() {
+        // The switch exists for a panel whose touch stopped answering: it is how setup mode is
+        // reached without a working page. A board with no panel has no second front to offer, and
+        // answering the hold would drop the access point a phone is using.
+        let mut manager = DeviceManager::new()
+            .with_network(true)
+            .with_panel(Panel::Absent);
+        setup_mode(&mut manager, false);
+        manager.apply_business(BusinessIntent::SwitchFront);
+        assert!(
+            !manager.take_switch_front(),
+            "a lamp-only board has nowhere to switch to"
+        );
     }
 
     #[test]

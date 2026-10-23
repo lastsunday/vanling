@@ -91,6 +91,26 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
         };
         return Strip { left, right };
     }
+    // The offline list: no access point yet, and the only way in is the `AP` cell. `SCAN` stays
+    // on the left so a person can ask for a round without leaving.
+    if link.browsing {
+        let left = Control {
+            label: if setup.rescan_wait {
+                WAIT_LABEL
+            } else {
+                SCAN_LABEL
+            },
+            command: ScanNow,
+        };
+        let right = Control {
+            label: AP_LABEL,
+            command: SwitchFront,
+        };
+        return Strip {
+            left: Some(left),
+            right,
+        };
+    }
     let right = if link.is_leavable() {
         Control {
             label: LEAVE_LABEL,
@@ -191,6 +211,21 @@ mod tests {
         assert!(split.is_split());
         assert_eq!(split.label(ToolbarCell::Left), CANCEL_LABEL);
         assert_eq!(split.command(ToolbarCell::Left), CloseSetup);
+        assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
+        assert_eq!(split.command(ToolbarCell::Right), SwitchFront);
+    }
+
+    #[test]
+    fn the_offline_list_keeps_both_cells() {
+        // Nothing saved and no mode: the list is still the page, and `AP` is the explicit way in.
+        let browsing = LinkStatus {
+            browsing: true,
+            ..LinkStatus::default()
+        };
+        let split = strip(NetworkSetup::default(), browsing);
+        assert!(split.is_split());
+        assert_eq!(split.label(ToolbarCell::Left), SCAN_LABEL);
+        assert_eq!(split.command(ToolbarCell::Left), ScanNow);
         assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
         assert_eq!(split.command(ToolbarCell::Right), SwitchFront);
     }

@@ -708,6 +708,8 @@ mod tests {
     fn state_on(page: DisplayPage, light: LightState) -> DeviceState {
         DeviceState {
             lights: [light; MAX_LIGHTS],
+            notice: None,
+            outage_announced: false,
             page,
             link: LinkStatus::default(),
             mac: None,

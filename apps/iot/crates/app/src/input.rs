@@ -148,15 +148,15 @@ fn apply(
 
 /// How long the splash page stays up after the input clock starts.
 ///
-/// Three seconds is the window routers have used for the same ceremony: OpenWrt's failsafe with a
-/// button is a "pre-defined 2-4 second window" (two seconds through 23.05, four from 24.10), and
-/// the button is one finger away from reset here too. Short on purpose — the page is a splash, not
-/// a menu, and the hold it answers is a request to take a working link down.
+/// Long enough for the finger that just let go of reset to reach the button, short enough that a
+/// device nobody asked to configure lands on its page quickly: the page is a splash, not a menu.
+/// A hold that begins inside the window keeps the page up until it is let go, so the window is
+/// "begin the hold within this", not "finish it within this".
 ///
 /// Measured from this task's clock, which is the one the button's own events are clocked against:
 /// the page's first reader is this loop, so "since boot" and "since the first tick" are the same
-/// three seconds to a finger.
-const SPLASH_MS: u64 = 3_000;
+/// window to a finger.
+const SPLASH_MS: u64 = 1_500;
 
 /// Drains every input source at the shared base tick, gating each source to
 /// its own cadence, and forwards recognized operations onto the intent bus.

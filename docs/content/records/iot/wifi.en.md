@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "9ce16901d2909d1ad4b452f4b350e5c31fe9a6e0"
-translated_at = "2026-10-23T04:20:00Z"
+source_file_hash = "46b367cd47b2342260e5c56dcd0c720abcded822"
+translated_at = "2026-10-23T07:57:48Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -48,9 +48,9 @@ wires it to an open access point + DHCP + an answer-everything name server + a c
 `configure` races it against the panel's own path through `select` (see "How a board with no panel
 gets configured"); the panel's path itself is untouched. **Both boards have since walked that door on
 the bench** (the C6 end to end, the S3 after three fixes — see "The bench: from link, to phone, with
-four corrections").**One way back into setup mode is the splash page**: both boards draw it for 3 s at boot, holding
+four corrections").**One way back into setup mode is the splash page**: both boards draw it for 1.5 s at boot, holding
 BOOT during it asks for the mode and lands on the network page, and **no link is built during those
-3 s** (see "Getting back to setup: hold BOOT on the splash page"). **No credentials means an offline
+1.5 s** (see "Getting back to setup: hold BOOT on the splash page"). **No credentials means an offline
 device**: no setup mode of its own and no access point, the panel's page scans only while somebody is
 on it (it still offers `SCAN | AP`, and `AP` is what raises the access point — secured on a board
 with a panel), and a saved network carries its BSSID/channel so the next boot goes straight there
@@ -1813,12 +1813,71 @@ previous round's 1,025,680 B product image; the C6 image of the same name is in 
 
 - **The headless board's entry** (xiaozhi's "press Boot while unlinked to enter setup + a blue
   blink"): the entry is the hold on the splash page (see the third cut of "Getting back to setup");
-  **not done** are the blue blink and the click entry (the C6's click is still the light's colour
-  walk — the LED *is* the light).
+  **not done** is the click entry (the C6's click is still the light's colour walk — the LED *is* the
+  light). The lamp itself is the next section.
 - **Pixels and touch**: the box, `ST SETUP`, the `AP`/`IP` rows, the counter's new home and the
   width of `CANCEL` all need a human eye; `LEAVE`/`CANCEL` need a human thumb once.
 - **A wrong passphrase in setup mode**: still the previous round's unmeasured item; this round did
   not change that path — it only removed the reboot that used to be the way out of setup mode.
+
+### The headless board's lamp (`[test]`, 2026-10-23)
+
+The C6 has one WS2812 and no screen, so provisioning state can only be spoken by that one lamp. The
+language lives in core's state layer (`DeviceState::status_light`) and applies only to a board with a
+radio and no panel; the S3 keeps drawing its own pages and boxes on its screen.
+
+| Device state | Lamp | Why |
+| --- | --- | --- |
+| Never provisioned (after the splash) | Three amber flashes (160 ms on / 160 ms off, about 0.8 s), then the page light | Factory/offline and waiting to be set up; this is an announcement, not a mode, and the surface goes back to the page when it ends |
+| AP up, waiting for a phone | Blue slow breath (2 s, 8→48) | This is setup mode; a slow breath says waiting is not an error |
+| An unsaved credential associating/waiting for an address | Blue faster breath (0.8 s, 16→64) | The copy the phone just submitted; a saved credential's automatic reconnect does not take this path |
+| Join succeeded (`Connected`) | Three green flashes (100 ms on / 100 ms off, about 0.5 s) | Success is an event, not a mode; the page light takes over when it ends |
+| Failure: AP not found (`NotFound`) | Three amber flashes | A person fixes this by moving the device, not by retyping a passphrase |
+| Failure: a refused credential or anything else (`Failed`) | Three red flashes (120 ms on / 120 ms off, about 0.6 s) | The AP is already down and the phone cannot see the device; red says "refused" |
+| Provisioned and online | No override; the page's own light shows | Normal idle |
+| Provisioned but temporarily offline | No override; one announcement per outage | "Has a network, merely off it" is an event, not a mode; retries do not flash again, and the page light is always underneath |
+
+Priority is **one-shot notice > setup AP > unsaved-credential attempt > page light**. Success and
+failure fire only on the phase transition; one outage is latched by `outage_announced`, announced
+exactly once, and the latch is cleared by `Connected`, so a five-second retry does not keep covering
+the lamp. A saved credential's automatic reconnect (`saved == true`) never shows the blue
+"connecting" mode: the product light is there from the first second. The notice clock belongs to the
+render loop (`tick_notice`); the state layer only keeps the frame to draw, which is what lets host
+tests drive it with plain numbers. The last flash ends on its lit edge, with no dark pause after it.
+
+When the access point's 180 s idle clock expires, a board with no panel and no saved network takes
+the AP down and returns to offline `browsing`; that path now publishes one more link report with
+`setup = false`, so the lamp goes from blue back to the **page light** instead of claiming a mode
+that is no longer up.
+
+`[test]`: `cargo test -p iot-core` pins the lamp's modes and priority, all three flash schedules
+(including the last flash having no trailing dark), the `NotFound` versus refused split, the single
+amber announcement at the splash's landing, a splash hold not reporting offline, a retried failure
+being announced once and re-armed by a reconnect, and "the status light overrides only the first
+surface and never a board with a screen".
+
+`[measured]` (2026-10-23, C6, product image, reset without pressing the button): the splash ended at
+`00:00:01.848` (1500 ms), `[WIFI] no panel and no saved network; waiting offline` followed, and the
+lamp frames were —
+
+| Time | Lamp |
+| --- | --- |
+| 01.848 | `[LAMP] solid 255 155 0 at 96` — first amber flash |
+| 02.028 | `[LAMP] dark` |
+| 02.188 | `[LAMP] solid 255 155 0 at 96` — second flash |
+| 02.348 | `[LAMP] dark` |
+| 02.508 | `[LAMP] solid 255 155 0 at 96` — third flash |
+| 02.668 | `[LAMP] the page's own light` — the last flash ends on its lit edge and the page takes over |
+
+The render loop logs `[LAMP]` only when the status light **changes** (a breathing page light does not
+write every frame), so the bench can count the flashes and their lengths without an eye: the
+180/160/160 ms above are each within one frame (`STEP_MS = 20`) of the designed 160 ms.
+
+`[measured]` (2026-10-23, C6, by eye): the three amber flashes did hand the lamp back to the product
+light, a BOOT click changed the colour with the page (so nothing was holding the surface), and a long
+press after the splash opened no AP. Brightness and colour are acceptable. **The green and red kinds
+are still unmeasured**: they need one real provisioning round (`Connected` green, a refused
+credential's red); the host tests pin the frame table, not the hardware.
 
 ## Two front ends of setup mode, one at a time (`[measured]`/`[test]`, 2026-10-20, evening)
 
@@ -2252,7 +2311,7 @@ showed it).
 
 ### Getting back to setup: hold BOOT on the splash page (`[test]`/`[measured]`, 2026-10-21, third cut)
 
-The entry point is unchanged: **both boards draw a three-second splash page at boot, and holding Boot
+The entry point is unchanged: **both boards draw a 1.5-second splash page at boot, and holding Boot
 during it is how setup mode is asked for**. So are the reasons — on a working device the same finger
 is the page's own verb (Ambient cycles the mode, Speaker mutes), and the C6 wants a **deliberate
 ceremony** (reset, then hold inside the window), not a side door any long press could spend every
@@ -2272,12 +2331,12 @@ What this cut changes is **where that press lands** and **what the radio does du
 
 The rules:
 
-- **`SPLASH_MS = 3_000`**. The reference is OpenWrt's failsafe window of 2–4 s (`[as-reported]`: not
-  reproduced on OpenWrt here, the numbers come from its documentation); 3 s sits in the middle —
-  a full hold above the long-press threshold (1 s), and not so slow that every boot feels like it.
+- **`SPLASH_MS = 1_500`**. Down from 3 s: the long-press threshold is 600 ms, so 1.5 s still fits a
+  full hold, while a finger that just left reset can already reach the button; anything longer only
+  makes every boot wait. The window is "begin the hold within 1.5 s", not "finish it within 1.5 s".
 - **What counts is the press starting inside the window, not the release**: when the clock runs out
   with a finger still down (`InputSource::held()`, including a release still in debounce), the splash
-  **waits for the release before closing** (`app/src/input.rs`). A press at 2.9 s released at 3.6 s
+  **waits for the release before closing** (`app/src/input.rs`). A press at 1.4 s released at 2.1 s
   still counts; the clock does not pull the page out from under the finger.
 - **One-shot is structural**: `Splash` is not in `CYCLE`, `next_page(Splash)` answers `Ambient`,
   `with_boot_page` refuses it, and the only exit is the input task's `BusinessIntent::SplashOver`
@@ -2349,14 +2408,12 @@ reachability sweep, and the three on the hint side: `a_hint_survives_a_reset_and
 (a changed passphrase keeps the hint), `learning_a_channel_writes_once_and_only_when_it_moves`,
 `a_version_one_record_is_read_as_nothing`.
 
-`[measured]` On the boards (product images, both reset once without BOOT held): the C6 prints
-`the splash page is over 3000 ms into the input clock` at `00:00:03.353`, the S3 at
-`00:00:04.258` (its input clock starts 1.26 s in); neither board logs a single `joining`/`leaving`
-during the splash, and only after the page closes does
-`this build was given no network ... it runs offline` appear. The S3's
-`[DISPLAY] main stack 65720 B` matches `nm` to the byte; both boards' `creds` are empty, so the
-landing without the hold is `boot_page` on each (Ambient on the S3, no page to draw on the C6) and no
-access point comes up.
+`[measured]` On the bench (2026-10-23, product images, both boards reset once without BOOT held):
+the C6 prints `the splash page is over 1500 ms into the input clock` at `00:00:01.848`, followed by
+`[WIFI] no panel and no saved network; waiting offline`; the S3 closes it at `00:00:02.748` (its
+input clock starts about 1.25 s in), prints `[DISPLAY] main stack 66264 B`, and takes the offline
+`browsing` path. Neither board logs `joining`/`leaving` during the splash, and no access point comes
+up.
 
 `[measured]` Gates and the static wall: after the splash round, this round's futures grew past the
 wall again — **72 B** short. The fix is not cutting a feature but keeping a credential out of every
@@ -2369,12 +2426,13 @@ C6 `820,384 / 1,048,576 B` (78.24%).
 
 `[not done]`:
 
-- **The hold itself needs a finger**: hold BOOT within 3 s of reset, and the landing should be
+- **The hold itself needs a finger**: hold BOOT within 1.5 s of reset, and the landing should be
   `Network` in `Front::AccessPoint`, with no `joining` in the log and `setup mode ... is open`
   instead. Once on each board.
-- **The S3's three-line pixels and the 3 s wait need a person**: the layout is covered by tests (the
-  three lines land on the panel, the pitch and the centring), but whether the font reads well and
-  whether 3 s is too slow is a matter of eyes.
+- **The S3's three-line pixels need a person**: the layout is covered by tests (the three lines land
+  on the panel, the pitch and the centring) and the 1.5 s timing is measured (closes at
+  `00:00:02.748`), but whether the font reads well and whether 1.5 s feels too rushed is a matter of
+  eyes.
 - **The boot timing after provisioning**: both boards' `creds` are empty right now, so where
   `joining`/`associated` land right after the splash has no reading yet; each needs one provisioning
   pass first.
@@ -2387,11 +2445,12 @@ C6 `820,384 / 1,048,576 B` (78.24%).
   with a random 10 characters where there is a panel (`PASS …` + `NO PASS`). Both buttons last for
   one visit; going away and back restores the entry's default. The C6 has no screen, so it is
   always open.
-- **The offline page keeps both cells**: `Face::browsing()` reports the panel's setup face
-  (`front: Panel`, `setup: true`, `setup_cancellable: false`), so the Network page is again
-  `ST SETUP` with `SCAN | AP`. `SETUP_ASK` catches `AP` and hands back to `link()`, which enters
-  `unconfigured()` with `Front::AccessPoint`; only then does the AP come up. Offline still means no
-  automatic setup mode and no AP, and the 180 s idle clock still closes it.
+- **The offline page keeps both cells**: `Face::browsing()` reports `browsing: true` and
+  `setup: false` (`front` stays `Panel`), so the Network page still offers `SCAN | AP`, but the
+  header draws the link's phase rather than `ST SETUP`, and a hold no longer switches fronts.
+  `SETUP_ASK` catches `AP` and hands back to `link()`, which enters `unconfigured()` with
+  `Front::AccessPoint`; only then does the AP come up. Offline still means no automatic setup mode
+  and no AP, and the 180 s idle clock still closes it.
 - **Glyphs**: Spleen 5×8 (Frederic Cambus, BSD-2-Clause), natively five columns by eight rows, so
   `m/M/w/W`, `0` and `\\` share one face; `FONT_H` stays 8, `OVERLAY_ROW_GAP` 5, pitch 9×13. The
   licence and regression are in `hardware-constraints.md` under "The panel's glyph table".
@@ -2436,6 +2495,62 @@ The product's credentials are typed on the panel and kept in the `creds` partiti
 credential lives"); they must never be compiled into firmware. A build input outranks the stored
 list: a build that names a network has that one path to try (changing it means changing the build),
 where the stored list is the answer to "this device has been set up".
+
+## A hold outside the splash no longer opens the AP; the C6 keeps its credential and rejoins after reset (`[test]`, board pending, 2026-10-23)
+
+Both defects came from the same habit: a boolean standing in for a mode, then a page reading the
+approximation.
+
+- **A hold outside the splash opened the AP**: `Face::browsing()` reported the offline list as
+  `setup: true`, so `link.setup` stayed true after setup mode ended; the hold gate in `intent.rs`
+  reads only `link.setup`, so every hold became `SwitchFront`. The lamp stayed amber because
+  `status_light()` only says `SETUP` for `setup && front == AccessPoint` — hence "not in setup
+  mode, yet a hold raises the AP".
+- **The C6 did not rejoin after reset**: `iot:flash` ran `cargo run`, whose runner is
+  `espflash flash --monitor` without `--partition-table`. espflash's default table has no `creds`
+  partition, so `Store::open` found nothing on every boot and the device read as "never
+  provisioned". The S3's `flash-s3` and `iot:image` both pass the table, which is why only the C6
+  was affected.
+
+The fix:
+
+- `LinkStatus` gains `browsing: bool`; `Face::browsing()` reports `setup: false`, `browsing: true`.
+  `controls::strip` draws `SCAN | AP` for `browsing`, and the header draws the link's phase rather
+  than `ST SETUP`.
+- `SwitchFront` accepts `setup || browsing` but still requires `panel.is_wired()`. The hold gate
+  stays on `link.setup`, so only the splash's 1.5 seconds and real setup mode answer a hold; the
+  offline page enters setup only by an explicit tap on `AP`.
+- With no panel and nothing saved, `link()` no longer enters `browsing()`: it waits in place.
+  There is no page to browse and no cell to tap, and the splash is the only entry this board
+  accepts. Everything else in the C6's link path is the S3's.
+- `iot:flash` is now an explicit `espflash flash --chip esp32c6 --flash-size 8mb
+  --partition-table partitions/esp32c6-devkitc-1.csv --monitor`, with `moon.yml` saying why
+  `cargo run` cannot carry the table.
+
+`[test]`: `a_board_with_no_panel_has_no_front_to_switch_to` (`SwitchFront` is a no-op without a
+panel), `an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one` (the `AP` cell still
+works, the hold does not switch), and `controls::tests::the_offline_list_keeps_both_cells`. All
+691 `iot-core` tests pass, and `check-s3`, `check-c6` and `check-host` pass.
+
+`[measured]` (2026-10-23, C6, the new `iot:flash`):
+
+- The flashed partition table's third entry is `creds` (`00110000 00002000`), and boot prints
+  `[CREDS] no network saved on this device yet` rather than "this board's table has no `creds`
+  partition".
+- After one network was provisioned and saved, a reset printed `[CREDS] 1 saved network(s)` →
+  `joining ...` → `associated ... channel 11`; the first DHCP wait timed out at 30 s, the retry
+  associated again and reached `Connected` with an address. Auto-reconnect holds.
+- With `creds` erased and the board reset, `waiting offline` follows; a button press after the
+  splash produced no `setup mode ... is open` and no AP. The lamp stayed at the unprovisioned
+  status colour, because a headless board's status lamp overrides the page light, so lamp colour
+  cannot decide this test. The log's `page is now Ambient` shows the press reached the state
+  machine; the hold gate itself is covered by `a_board_with_no_panel_has_no_front_to_switch_to`
+  and the offline-page test.
+
+`[not done]`: the same run on the S3 (only the C6 is enumerated on the bench right now); after
+provisioning the C6 again, a hold on Ambient should visibly cycle the page light (the status lamp
+yields), which needs a person's eye; and `creds` is now erased by this test, so the C6 boots
+unprovisioned until it is set up again.
 
 ## Still to do (`[not done]`)
 

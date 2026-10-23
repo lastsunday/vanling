@@ -14,7 +14,7 @@ sort_by = "weight"
 
 ## 状态
 
-**两颗芯片的探针都在台架上跑完**（扫描 + 关联 + DHCP）。产品页分两片：**只读的那一片已落地**（`DisplayPage::Network`：阶段 + 当前 AP + 地址 + 扫描列表），**第二片也落了盘**（4×4 键盘、回显键、逐行滑动的列表、列表迟滞与缓存、选中行反色、开放网络、失败分档、扫描门控与退避，以及**工具条**：有链路时一个 `LEAVE` 按钮、无链路时一个 `SCAN` 按钮，前者执行前问一次、后者不问 —— 见「产品页」），**凭据已落盘**（`creds` 分区 + 自控槽格式，开机自己读回来、关联成功即写，见「凭据落在哪」），**已存网络在列表里画 `*`、长按那一行 = 忘记**，**点一下已存的那一行就用设备自己存的那份口令去连**（见「点已存的一行就用库里的口令」）。后四轮报来的缺陷与两处结构修正还在这份记录里。面板这条路有一条**不需要手指**的验法：`IOT_PANEL_BENCH` 构建开机后按面板自己的坐标把口令打一遍，再按工具条与确认框的坐标走完断开、点回那一行、断开、忘记、点回那一行、取消与重扫（见「按面板路径打字」与后四轮的读数）；它证明的是状态机与几何，而**触摸手感与纯黑/背光仍要人点一次面板才算验过**（板上只有 FT6336 产面板坐标，软件合成不了触摸）。状态层另有一层**可达状态穷举**（35 个动作、8,800 个状态、四条不变量，见「离开后点回那一行、以及一次丢掉的列表修正」）。**没有面板的板子也有了一扇前门**：`iot-core::provision` 是协议（45 条宿主机测试），`iot-app::provision` 把它接在「开放 AP + DHCP + 全答 DNS + 配置页」上，与面板那扇门在 `configure` 里 `select` 竞争（见「没有面板的板子怎么配网」）；面板那条路一点没动。**这一扇门两块板都已在台架上跑通**（C6 全链路、S3 修掉三处之后，见「台架：从链接到手机，再到四轮修正」）。**回到设置模式的入口之一是启动页**：两块板开机先画 3 s，按住 BOOT 才进设置模式，落 network 页；启动页这 3 s 里一条链路都不建（见「回到设置模式：启动页上按住 BOOT」）。**没有凭据 = 离线设备**：不自动进设置模式、不广播 AP，面板页只在有人看时扫描（页上保留 `SCAN | AP` 两格，按 `AP` 才起接入点，有屏板这一档默认带口令）；存盘网络带 BSSID/信道提示，下次开机直接去那个信道（`fast_connect`）。配置页已有第三版：**首屏列表内嵌、图标内联、一次刷新只开一条连接、只有按钮才唤醒扫描**，语言切换在页头、密码走底部弹窗、每行带 BSSID（见「刷新七八次就白屏」）；面板的列表行也在同一天补上了该网络自己的 BSSID（名字下一行，见同节）。未完成的事在[文末](#待办（[未完成]）)；其余都在下面。
+**两颗芯片的探针都在台架上跑完**（扫描 + 关联 + DHCP）。产品页分两片：**只读的那一片已落地**（`DisplayPage::Network`：阶段 + 当前 AP + 地址 + 扫描列表），**第二片也落了盘**（4×4 键盘、回显键、逐行滑动的列表、列表迟滞与缓存、选中行反色、开放网络、失败分档、扫描门控与退避，以及**工具条**：有链路时一个 `LEAVE` 按钮、无链路时一个 `SCAN` 按钮，前者执行前问一次、后者不问 —— 见「产品页」），**凭据已落盘**（`creds` 分区 + 自控槽格式，开机自己读回来、关联成功即写，见「凭据落在哪」），**已存网络在列表里画 `*`、长按那一行 = 忘记**，**点一下已存的那一行就用设备自己存的那份口令去连**（见「点已存的一行就用库里的口令」）。后四轮报来的缺陷与两处结构修正还在这份记录里。面板这条路有一条**不需要手指**的验法：`IOT_PANEL_BENCH` 构建开机后按面板自己的坐标把口令打一遍，再按工具条与确认框的坐标走完断开、点回那一行、断开、忘记、点回那一行、取消与重扫（见「按面板路径打字」与后四轮的读数）；它证明的是状态机与几何，而**触摸手感与纯黑/背光仍要人点一次面板才算验过**（板上只有 FT6336 产面板坐标，软件合成不了触摸）。状态层另有一层**可达状态穷举**（35 个动作、8,800 个状态、四条不变量，见「离开后点回那一行、以及一次丢掉的列表修正」）。**没有面板的板子也有了一扇前门**：`iot-core::provision` 是协议（45 条宿主机测试），`iot-app::provision` 把它接在「开放 AP + DHCP + 全答 DNS + 配置页」上，与面板那扇门在 `configure` 里 `select` 竞争（见「没有面板的板子怎么配网」）；面板那条路一点没动。**这一扇门两块板都已在台架上跑通**（C6 全链路、S3 修掉三处之后，见「台架：从链接到手机，再到四轮修正」）。**回到设置模式的入口之一是启动页**：两块板开机先画 1.5 s，按住 BOOT 才进设置模式，落 network 页；启动页这 1.5 s 里一条链路都不建（见「回到设置模式：启动页上按住 BOOT」）。**没有凭据 = 离线设备**：不自动进设置模式、不广播 AP，面板页只在有人看时扫描（页上保留 `SCAN | AP` 两格，按 `AP` 才起接入点，有屏板这一档默认带口令）；存盘网络带 BSSID/信道提示，下次开机直接去那个信道（`fast_connect`）。配置页已有第三版：**首屏列表内嵌、图标内联、一次刷新只开一条连接、只有按钮才唤醒扫描**，语言切换在页头、密码走底部弹窗、每行带 BSSID（见「刷新七八次就白屏」）；面板的列表行也在同一天补上了该网络自己的 BSSID（名字下一行，见同节）。未完成的事在[文末](#待办（[未完成]）)；其余都在下面。
 
 ## 台架实测（`[实测]`，2026-10-15）
 
@@ -833,9 +833,45 @@ flash：`moon run iot:image` 出 S3 **1,031,168 / 6,291,456 B（16.39%）**，�
 
 `[未完成]` 这一轮**没有**做的：
 
-- **无屏板的入口**（xiaozhi 那条「无链路时按一下 Boot 进配网 + LED 蓝闪」）：入口在启动页上按住 Boot（见「回到设置模式：启动页上按住 BOOT」第三版）；**未做**的是 LED 蓝闪与单击入口（C6 的单击仍是光源换色，LED 就是那盏灯）。
+- **无屏板的入口**：入口在启动页上按住 Boot（见「回到设置模式：启动页上按住 BOOT」第三版）；**未做**的是单击入口（C6 的单击仍是光源换色，LED 就是那盏灯）。灯语本身见下一节。
 - **像素与手感**：弹窗、`ST SETUP`、`AP`/`IP` 两行、计数的新位置、`CANCEL` 的字宽都要人看一眼；`LEAVE`/`CANCEL` 的触摸要人按一次。
 - **设置模式下错口令**：仍是上一轮留下的未测项，这一轮没改它的路径，只是现在退出设置模式不用重启。
+
+### 无屏板的灯语（`[测试]`，2026-10-23）
+
+C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说。灯语定在 core 的状态层（`DeviceState::status_light`），只在「有射频、无屏幕」的板上生效；S3 的屏幕照旧画它自己的页面与框。
+
+| 设备状态 | 灯 | 为什么 |
+| --- | --- | --- |
+| 从未配网（启动页结束之后） | 琥珀闪 3 下（160 ms 亮 / 160 ms 灭，约 0.8 s），随后页面灯 | 出厂/离线待配网；这是公告，不是模式，亮完就把灯还给页面 |
+| AP 已开，等待手机 | 蓝色慢呼吸（2 s，8→48） | 正处于配网模式；慢呼吸表示等待不是错误 |
+| 未存盘的凭据正在关联/等地址 | 蓝色快呼吸（0.8 s，16→64） | 手机刚提交的那一份；已存凭据的自动重连不走这条 |
+| 关联成功（进入 `Connected`） | 绿色闪 3 下（100 ms 亮 / 100 ms 灭，约 0.5 s） | 成功是事件，不是模式；闪完页面灯接管 |
+| 失败：找不到 AP（`NotFound`） | 琥珀闪 3 下 | 人挪一下设备就能解决，不是口令错 |
+| 失败：口令被拒等（其余 `Failed`） | 红色闪 3 下（120 ms 亮 / 120 ms 灭，约 0.6 s） | AP 已经拆掉，手机看不到设备；红色表示「被拒绝」 |
+| 已配网且在线 | 不覆盖，显示页面自己的灯 | 正常待机 |
+| 已配网但暂时掉线 | 不覆盖；一次断网只公告一次 | 「有网络、只是不在线」是事件不是模式；重试不再反复闪，页面灯一直是底 |
+
+优先级是**一次性通知 > AP 配网模式 > 未存盘凭据的连接尝试 > 页面灯**。成功/失败只在相位跳变的那一拍触发；一次断网由 `outage_announced` 锁住，幂等地只公告一次，`Connected` 时解锁，所以重试不会每 5 s 又把灯盖住。已存凭据的自动重连（`saved == true`）从不显示蓝色「连接中」，从开机第一秒起就是产品灯。通知的时钟属于渲染循环（`tick_notice`），状态层只保存当前该画哪一帧，因此宿主机测试能用普通数字驱动它。最后一闪在亮的边沿结束，不再留一段黑场。
+
+接入点的 180 s 空闲时钟到点后，无屏且无存量网络的板子会收掉 AP、回到离线 `browsing`；这一路径在收 AP 后补发一条 `setup = false` 的链路报告，灯从蓝色回到**页面灯**，不再对已经关掉的模式继续说「配网中」。
+
+`[测试]`：`cargo test -p iot-core` 钉住灯的模式与优先级、三种公告的闪法（含最后一闪不留黑场）、`NotFound` 与口令被拒的颜色分档、启动页落页时的一次琥珀公告、启动页按住时不误报离线、重试只公告一次且重连后解锁，以及「状态灯只覆盖第一个光源、有屏板不覆盖」。
+
+`[实测]`（2026-10-23，C6，产品镜像，复位不按键）：启动页在 `00:00:01.848` 结束（1500 ms），随后 `[WIFI] no panel and no saved network; waiting offline`，灯语逐帧如下 ——
+
+| 时刻 | 灯 |
+| --- | --- |
+| 01.848 | `[LAMP] solid 255 155 0 at 96` — 第一下琥珀 |
+| 02.028 | `[LAMP] dark` |
+| 02.188 | `[LAMP] solid 255 155 0 at 96` — 第二下 |
+| 02.348 | `[LAMP] dark` |
+| 02.508 | `[LAMP] solid 255 155 0 at 96` — 第三下 |
+| 02.668 | `[LAMP] the page's own light` — 最后一闪在亮的边沿结束，页面灯接管 |
+
+渲染循环只在状态灯**变化**时打 `[LAMP]`（呼吸的页面灯不会刷屏），所以台架上不用眼睛也能数出闪了几下、每下多长：上面的 180/160/160 ms 比设计的 160 ms 各多不到一帧（`STEP_MS = 20`）。
+
+`[实测]`（2026-10-23，C6，目视）：三下琥珀之后确实回到产品灯；单击 BOOT 灯色随页面变化，说明灯没有被状态层长期压住；启动页之后再长按不开 AP。亮度与颜色可以接受。**绿色与红色两档仍未实测**：要一次真实配网（`Connected` 的绿、错口令的 `Credentials` 红），宿主机测试只钉住帧表，不钉住实物。
 
 ## 设置模式的两档前端：一次只开一档（`[实测]`/`[测试]`，2026-10-20 夜）
 
@@ -1063,7 +1099,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 ### 回到设置模式：启动页上按住 BOOT（`[测试]`/`[实测]`，2026-10-21 第三版）
 
-入口没变：**两块板开机都先画 3 s 的启动页，按住 Boot 才进设置模式**。理由照旧 —— 同一根手指在一台工作的设备上已经是页面自己的动词（Ambient 换模式、Speaker 静音），而 C6 要的是一次**故意的仪式**（先复位，再在窗口里按住），不是一条每三分钟能被一次长按打断的旁路。
+入口没变：**两块板开机都先画 1.5 s 的启动页，按住 Boot 才进设置模式**。理由照旧 —— 同一根手指在一台工作的设备上已经是页面自己的动词（Ambient 换模式、Speaker 静音），而 C6 要的是一次**故意的仪式**（先复位，再在窗口里按住），不是一条每三分钟能被一次长按打断的旁路。
 
 这一版换掉的是这一按**落到哪**、以及启动页期间**射频做什么**：
 
@@ -1079,8 +1115,8 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 几条规则：
 
-- **`SPLASH_MS = 3_000`**。参照是 OpenWrt 的 failsafe 窗口 2–4 s（`[据称]`：本仓没在 OpenWrt 上复现，取的是它文档里的数字），3 s 在中间 —— 比长按阈值（1 s）高出一段完整的按住，又不至于让每次开机都慢到被察觉。
-- **判据是按下时刻在窗口内，不是松手在窗口内**：时钟到期时若手指还按着（`InputSource::held()`，含去抖中尚未上报的释放），启动页**等松手再关**（`app/src/input.rs`）。2.9 s 按下、3.6 s 抬起那一下仍然算数，不会在按住的时候被时钟从手指下面抽走。
+- **`SPLASH_MS = 1_500`**。从 3 s 收到 1.5 s：长按阈值是 600 ms，1.5 s 仍容得下一次完整的按住；而手指刚离开复位键就能按到 Boot，再长只是让每次开机都慢一拍。窗口是「在 1.5 s 内**开始**按住」，不是「在 1.5 s 内按完」。
+- **判据是按下时刻在窗口内，不是松手在窗口内**：时钟到期时若手指还按着（`InputSource::held()`，含去抖中尚未上报的释放），启动页**等松手再关**（`app/src/input.rs`）。1.4 s 按下、2.1 s 抬起那一下仍然算数，不会在按住的时候被时钟从手指下面抽走。
 - **一次性是结构上的**：`Splash` 不在 `CYCLE` 里，`next_page(Splash)` 直接回 `Ambient`，`with_boot_page` 拒绝它，唯一的出口是输入任务到期报的 `BusinessIntent::SplashOver`（总线满时下一拍重试）。开机之后没有任何手势能回到这一页。
 - **落点是 `boot_page`，除非请求过**：`with_boot_page()` 只记「启动页关掉之后落在哪」（构建输入 `IOT_BOOT_PAGE`、默认 `Ambient`；未 back 的页退回 `Ambient`）。`SplashOver` 读 `setup_wanted`：请求过且这块板开着网络，就落 `Network`；否则落 `boot_page`。启动页本身不改 `state.page`，所以 `IOT_BOOT_PAGE=network` 的 bench 构建照旧落在网络页。
 - **启动页期间一条链路都不建**（`[实测]`）：`link()` 的第一件事是 `PAGE.wait_for_splash_end()`，它没结束时既不读凭据也不碰射频 —— 启动页窗口里不会出现 `joining`/`leaving`。请求过就直接 `Front::AccessPoint` 进设置模式，一次关联也不做；「先连上再拆掉」的写法会在这个窗口里留下两条日志，也会让 AP 档晚 2–3 s 才起来。
@@ -1099,24 +1135,48 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 `[测试]`：`the_splash_page_is_where_the_button_asks_for_setup_mode`、`the_splash_page_answers_nothing_but_the_hold`、`a_splash_long_press_asks_for_setup_mode_on_every_board`、`the_splash_lands_on_the_page_that_offers_setup_when_it_was_asked_for`、`the_splash_lands_on_the_build_page_when_nothing_was_asked`、`a_board_with_no_radio_lands_on_its_page_even_after_the_hold`、`a_long_press_after_the_splash_is_the_pages_own_verb`、可达性穷举里的 `the splash's clock`，以及 hint 那一侧的三条：`a_hint_survives_a_reset_and_a_retyped_password`（改口令不丢 hint）、`learning_a_channel_writes_once_and_only_when_it_moves`、`a_version_one_record_is_read_as_nothing`。
 
-`[实测]` 上板（产品镜像，两块板各复位一次、都不按 BOOT）：C6 在 `00:00:03.353` 打出 `the splash page is over 3000 ms into the input clock`，S3 在 `00:00:04.258`（输入时钟起点晚 1.26 s）；两块板的启动页期间都**没有一条 `joining`/`leaving`**，页关掉之后才出现 `this build was given no network ... it runs offline`。S3 的 `[DISPLAY] main stack 65720 B` 与 `nm` 一字不差；两块板的 `creds` 都是空的，所以不按 BOOT 的落点都是 `boot_page`（S3 是 Ambient，C6 没有页可画），没有 AP 起来。
+`[实测]` 上板（2026-10-23，产品镜像，两块板各复位一次、不按 BOOT）：C6 在 `00:00:01.848` 打出 `the splash page is over 1500 ms into the input clock`，随后 `[WIFI] no panel and no saved network; waiting offline`；S3 在 `00:00:02.748` 结束（输入时钟起点晚约 1.25 s），`[DISPLAY] main stack 66264 B`，随后走离线 `browsing`。两块板的启动页期间都没有 `joining`/`leaving`，也没有 AP。
 
 `[实测]` 门禁与静态墙：启动页那一轮之后，这一轮的 future 又长过墙 —— 差 **72 B**。收法不是删功能，而是让一个凭据不再跟着每个帧走：`hold` 改成收 `&Credentials`，`Hold::Named` 装 `Box<Credentials>`，`link` 手里那份凭据装箱（每个凭据一次分配，而不是每个窗口一次）。`nm` 读数 `_stack_end_cpu0 = 0x3fcd9658`，`_stack_start_cpu0 − _stack_end_cpu0` = **65,720 B**（下限 65,536，余量 184 B），主任务 `POOL` = 42,704 B。`.cargo/config.toml` 里没有 `--noinhibit-exec`：`iot:build-s3` 自己链接通过。镜像：S3 `1,057,424 / 6,291,456 B`（16.81%）、C6 `820,384 / 1,048,576 B`（78.24%）。
 
 `[未完成]`：
 
-- **按住那条要手指**：复位后的 3 s 内按住 BOOT，应落 `Network` 并进 `Front::AccessPoint`，串口里不出现 `joining`，直接是 `setup mode ... is open`。两块板各一次。
-- **S3 的三行像素与 3 s 时长要人看**：`stamp_splash` 的布局有测试（三行都落在面板内、行距与居中），但字模好不好看、3 s 会不会太慢，只有眼睛知道。
+- **按住那条要手指**：复位后的 1.5 s 内按住 BOOT，应落 `Network` 并进 `Front::AccessPoint`，串口里不出现 `joining`，直接是 `setup mode ... is open`。两块板各一次。
+- **S3 的三行像素要人看**：`stamp_splash` 的布局有测试（三行都落在面板内、行距与居中），1.5 s 的时序也已实测（`00:00:02.748` 结束），但字模好不好看、这 1.5 s 感觉是否太赶，只有眼睛知道。
 - **配网之后的开机时序**：两块板的 `creds` 现在都是空的，`joining`/`associated` 落在启动页之后的那一刻还没有读数，要先各配一次网。
 
 ### AP 的默认口令按入口分开；离线页恢复两格；字模换成 Spleen 5×8（`[测试]`/`[实测]`，2026-10-22）
 
 - **AP 的默认口令按入口**：`setup_ap_starts_secured(panel, from_splash)` 决定 `secure_on_entry`。启动页进档开放（`OPEN, NO PASSWORD` + `PASS`）；运行中的 `AP`、`LEAVE`、被拒与命名构建的 `LEAVE` 在有屏板上默认 WPA2 + 随机 10 位（`PASS …` + `NO PASS`）。两个按钮只改这一轮，切走再回恢复入口默认；C6 无屏，始终开放。
-- **离线页恢复两格**：`Face::browsing()` 按面板设置面上报（`front: Panel`、`setup: true`、`setup_cancellable: false`），Network 页仍是 `ST SETUP` + `SCAN | AP`。`AP` 由 `SETUP_ASK` 接住，交回 `link()` 以 `Front::AccessPoint` 进 `unconfigured()` 才起 AP；离线不自动进档、不广播，180 s 空闲仍由 `page_idle()` 收 AP。
+- **离线页恢复两格**：`Face::browsing()` 报 `browsing: true`、`setup: false`（`front` 仍是 `Panel`），Network 页因此仍是 `SCAN | AP`，但表头画的是链路相位而不是 `ST SETUP`，长按也不再是切档。`AP` 由 `SETUP_ASK` 接住，交回 `link()` 以 `Front::AccessPoint` 进 `unconfigured()` 才起 AP；离线不自动进档、不广播，180 s 空闲仍由 `page_idle()` 收 AP。
 - **字模**：Spleen 5×8（Frederic Cambus，BSD-2-Clause），原生 5×8，`m/M/w/W`、`0`、`\` 同一套；`FONT_H` 8、`OVERLAY_ROW_GAP` 5、节距 9×13 不变。许可证与回归见 `hardware-constraints.md` 的「面板的字模」。
 - **上板读数**（2026-10-21 产品镜像，两块板各复位、不按 BOOT）：S3 启动页 `00:00:03.367` 结束，`[DISPLAY] main stack 65720 B` 与 `nm` 一致，随后 `[WIFI] this build was given no network and this device has saved none; it runs offline`；C6 `00:00:03.346` 结束，同样离线、无 AP。两块 `creds` 仍为空。
 - **镜像与墙**（2026-10-22）：S3 `1,057,616 / 6,291,456 B`（16.81%），C6 `821,328 / 1,048,576 B`（78.33%）；相对上一版 `+128 B` / `+64 B` 是入口判定与复位那几行的布局差异，未逐项拆分。`_stack_start_cpu0 − _stack_end_cpu0` = **65,688 B**（`0x3fce9710 − 0x3fcd9678`，余量 152 B）。
 - **未实测**：正常入口点 `AP` 后的 `[WIFI] setup mode for "vanling-1234" is open, under a passphrase`，与启动页按住 BOOT 后的 `..., open`，各要一次手指；Spleen 在 1× 面板上的观感（小写开口、`m/w` 的密度、降部）只有人眼能给答案；离线页的 `SCAN | AP` 两格、点 `AP` 后的 `PASS`/`NO PASS` 框也要手指点一次。
+
+## 启动页之外的长按不再开 AP；C6 的凭据又能存住并自动重连（`[测试]`，真机待验，2026-10-23）
+
+两处缺陷来自同一类问题：状态用布尔近似，页面又拿近似值当模式。
+
+- **长按在启动页之外开了 AP**：`Face::browsing()` 把离线列表报成 `setup: true`，于是 `link.setup` 从配网结束起一直为真；`intent.rs` 的长按门只看 `link.setup`，任何一次长按都成了 `SwitchFront`。灯仍是琥珀色，因为 `status_light()` 只认 `setup && front == AccessPoint`，于是现象是「没进设置模式，长按却把 AP 起来了」。
+- **C6 复位后不自动连**：`iot:flash` 走 `cargo run`，runner 是 `espflash flash --monitor`，没有 `--partition-table`；espflash 的默认表没有 `creds`，`Store::open` 每次开机都读不到分区，设备就永远像「从未配过网」。S3 的 `flash-s3` 与 `iot:image` 都带表，所以只有 C6 中招。
+
+改法：
+
+- `LinkStatus` 新增 `browsing: bool`，`Face::browsing()` 报 `setup: false`、`browsing: true`。`controls::strip` 为 `browsing` 单独画 `SCAN | AP`；表头因此画链路相位而不是 `ST SETUP`。
+- `SwitchFront` 接 `setup || browsing`，但仍要求 `panel.is_wired()`；长按门仍是 `link.setup`，所以只有启动页那 1.5 s 和真正的设置模式会响应长按，离线页只有显式点 `AP` 才进档。
+- 无面板且无存盘网络时，`link()` 不再进 `browsing()`，而是原地等：没有页面可浏览，也没有格子可点，设置模式只剩启动页这一条入口。C6 的其余链路逻辑与 S3 相同。
+- `iot:flash` 改成显式的 `espflash flash --chip esp32c6 --flash-size 8mb --partition-table partitions/esp32c6-devkitc-1.csv --monitor`，并在 `moon.yml` 里写明为什么不能继续用 `cargo run`。
+
+`[测试]`：`a_board_with_no_panel_has_no_front_to_switch_to`（无面板时 `SwitchFront` 不生效）、`an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one`（`browsing` 的 `AP` 格仍可点，长按不切档）、`controls::tests::the_offline_list_keeps_both_cells`。`iot-core` 691 条测试全过，`check-s3`、`check-c6`、`check-host` 全过。
+
+`[实测]`（2026-10-23，C6，新的 `iot:flash`）：
+
+- 烧录后的分区表第 3 项是 `creds`（`00110000 00002000`），开机打 `[CREDS] no network saved on this device yet`，不再是「表里没有 `creds` 分区」。
+- 配网存下一份凭据后复位：`[CREDS] 1 saved network(s)` → `joining ...` → `associated ... channel 11`；第一次 DHCP 30 s 超时，重关联后 `Connected` 并拿到地址。自动重连这条通了。
+- 擦掉 `creds` 后再复位：`waiting offline`；启动页之后按键，日志里没有 `setup mode ... is open`，也没有 AP。灯仍是未配网的状态色 —— 无屏板的状态灯覆盖页面灯，所以灯色不能作为这条的判据；日志里的 `page is now Ambient` 说明按键确实到达了状态机。长按门本身由 `a_board_with_no_panel_has_no_front_to_switch_to` 等测试覆盖。
+
+`[未完成]`：S3 的同类复测（当前台架只枚举到 C6）；C6 重新配一次网后，长按 Ambient 应能看到页面灯换档（状态灯让位），这条要人看；以及 `creds` 现在已被测试擦空，C6 复位后会停在未配网状态。
 
 ## 待办（`[未完成]`）
 

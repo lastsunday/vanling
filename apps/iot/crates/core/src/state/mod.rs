@@ -17,7 +17,7 @@ use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 
 use crate::drivers::network::{
-    AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError,
+    AccessPoint, ApList, Credentials, Front, JoinRequest, LinkPhase, LinkStatus, NetworkError,
     PASSWORD_BYTES, Password, Ssid,
 };
 
@@ -43,7 +43,7 @@ pub use self::audio::{AudioPhase, AudioState};
 
 pub use self::entry::Entry;
 
-pub use self::light::{Breath, LightState};
+pub use self::light::{Breath, LightState, Notice, NoticeKind};
 
 pub use self::network::{Confirm, NetworkSetup};
 
@@ -86,6 +86,16 @@ impl Panel {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceState {
     pub lights: [LightState; MAX_LIGHTS],
+    /// The one-shot news a board with no screen says with its lamp instead of a page: a join
+    /// that worked, a link that is not there, or a refusal that just landed. `None` is the
+    /// ordinary case, and it is what hands the surface back to the page's own light. See
+    /// [`Self::status_light`].
+    pub notice: Option<Notice>,
+    /// Whether this boot has already announced that the link is down. An outage is news once,
+    /// not once per retry: a saved network that cannot associate republishes `Failed` every
+    /// few seconds, and a flash each time would keep the product light off the surface the
+    /// user is looking at. Cleared when the link connects. See [`Self::status_light`].
+    pub outage_announced: bool,
     pub page: DisplayPage,
     /// The link: the phase, the access point and the address the network task last saw.
     /// `Off` on a board that wired no radio, which is what makes "has this device been on
@@ -222,6 +232,35 @@ pub struct DeviceState {
 }
 
 impl DeviceState {
+    /// What a board with no screen has instead of one: the lamp reporting the link.
+    ///
+    /// `None` hands the surface back to the page. A board with a screen says all of this on
+    /// it — and its light is the surface the pages draw — so the readout is a light-only
+    /// board's, not a product-wide rule. A device that keeps a network and is merely off it is
+    /// not a mode either: it gets one announcement and then the page's own light back.
+    ///
+    /// Priority is the news, then the mode, then the attempt:
+    /// * [`Notice`] — a join, a missing link or a refusal, a second or so and then gone;
+    /// * [`LightState::SETUP`] — the access point is up and a phone is being waited for;
+    /// * [`LightState::JOINING`] — a credential the store does not keep yet is being tried.
+    ///   A saved credential is not this: booting to a network is the product's own work, and
+    ///   the page keeps its light while it runs.
+    pub fn status_light(&self) -> Option<LightState> {
+        if self.panel.is_wired() || !self.network_enabled {
+            return None;
+        }
+        if let Some(notice) = self.notice {
+            return Some(notice.light);
+        }
+        if self.link.setup && self.link.front == Front::AccessPoint {
+            return Some(LightState::SETUP);
+        }
+        if self.link.phase == LinkPhase::Connecting && !self.link.saved {
+            return Some(LightState::JOINING);
+        }
+        None
+    }
+
     /// The page's demand with the board's wiring clamped on top.
     ///
     /// The single place a proposed demand is derived. [`DeviceManager`] holds the result as
@@ -300,6 +339,8 @@ impl DeviceManager {
     pub fn with_motion(motion_enabled: bool, motion_caps: MotionCapabilities) -> Self {
         let state = DeviceState {
             lights: [LightState::boot(); MAX_LIGHTS],
+            notice: None,
+            outage_announced: false,
             // Every device starts on the splash: the page is the one window in which the button
             // asks for setup mode, and a build's own page is what it lands on afterwards.
             page: DisplayPage::Splash,
@@ -748,6 +789,22 @@ impl DeviceManager {
                 {
                     self.ring(Sound::Error);
                 }
+                // The same edges as the sounds above, on the lamp a board with no screen has
+                // instead of a page. One outage is announced once: a retried credential
+                // republishes `Failed` every few seconds, so `outage_announced` keeps a lamp
+                // from flashing at the page's own light until the link is up again.
+                if status.phase == LinkPhase::Connected
+                    && self.state.link.phase != LinkPhase::Connected
+                {
+                    self.state.outage_announced = false;
+                    self.announce(NoticeKind::Joined);
+                } else if let LinkPhase::Failed(kind) = status.phase
+                    && self.state.link.phase != status.phase
+                    && !self.state.outage_announced
+                {
+                    self.state.outage_announced = true;
+                    self.announce(NoticeKind::for_failure(kind));
+                }
                 // And the strip stops waiting: a report about the link is a survey round's own
                 // publish, which is what the round the strip asked for ends with.
                 self.state.setup.rescan_wait = false;
@@ -776,6 +833,19 @@ impl DeviceManager {
                     } else {
                         self.boot_page
                     };
+                    // A device that boots with nothing to join has nothing to say after the
+                    // splash except that: one amber burst, then the page's own light. A hold that
+                    // asked for setup is not this — the access point is the answer to it, and the
+                    // mode has its own colour.
+                    if !self.state.setup_wanted
+                        && self.state.network_enabled
+                        && !self.state.link.saved
+                        && !self.state.link.setup
+                        && !self.state.outage_announced
+                    {
+                        self.state.outage_announced = true;
+                        self.announce(NoticeKind::Offline);
+                    }
                 }
             }
             // Also a report, and the one that never changes: kept as it came, so the page can be
@@ -792,9 +862,14 @@ impl DeviceManager {
             BusinessIntent::Answer(confirm) => self.answer(confirm),
             BusinessIntent::CloseSetup => self.close_setup(),
             // A request made while setup mode was up can still be in the bus when the radio
-            // reports the mode gone; switching then would ask a front end nobody is showing.
+            // reports the mode gone; switching then would ask a front end nobody is showing. And
+            // only a wired panel has another front to switch to: on a board without one, the hold
+            // is not a way into the access point. `browsing` keeps the offline page's `AP` cell
+            // working — that one is an explicit tap, not a hold.
             BusinessIntent::SwitchFront => {
-                if self.state.link.setup {
+                if (self.state.link.setup || self.state.link.browsing)
+                    && self.state.panel.is_wired()
+                {
                     self.state.switch_front = true;
                 }
             }
@@ -1019,6 +1094,42 @@ impl DeviceManager {
         self.state.playback.sound = sound;
         self.state.playback.phase = PlaybackPhase::Playing;
         self.state.playback.plays = self.state.playback.plays.saturating_add(1);
+    }
+
+    /// Put one-shot news on the lamp a board with no screen has instead of a page.
+    ///
+    /// Dropped rather than queued on a board with a screen: the page and its box are where the
+    /// same news is read, and that board's light is the surface the pages draw. A new
+    /// announcement supersedes one still running, which is the newest news either way.
+    fn announce(&mut self, kind: NoticeKind) {
+        if self.state.panel.is_wired() || !self.state.network_enabled {
+            return;
+        }
+        self.state.notice = Some(Notice::new(kind));
+    }
+
+    /// Step the lamp's announcement to `now_ms`, dropping it once it is over.
+    ///
+    /// The clock lives in the render loop, which owns time for every other animation; keeping
+    /// it out of the state is what lets a host test drive the steps with plain numbers.
+    pub fn tick_notice(&mut self, now_ms: u32) {
+        let Some(mut notice) = self.state.notice else {
+            return;
+        };
+        let started = *notice.started_ms.get_or_insert(now_ms);
+        match notice.kind.light_at(now_ms.wrapping_sub(started)) {
+            Some(light) => {
+                notice.light = light;
+                self.state.notice = Some(notice);
+            }
+            None => self.state.notice = None,
+        }
+    }
+
+    /// Whether an announcement is still running. The render loop keeps stepping while one is,
+    /// because a lamp that is not breathing would otherwise park and leave the news frozen.
+    pub fn notice_active(&self) -> bool {
+        self.state.notice.is_some()
     }
 
     /// Move the scan list's window by `rows`, positive down, stopping at either end. The window is

@@ -902,9 +902,17 @@ pub struct LinkStatus {
     /// [`Self::front`] is [`Front::AccessPoint`]. The network task owns this; every reader is
     /// already reading the link.
     pub setup: bool,
+    /// Whether the page is the offline list: nothing is saved, no setup mode is running, and
+    /// `SCAN | AP` is still offered. `AP` is the one explicit way into setup from here — a hold
+    /// is not, because a device outside setup mode must not raise an access point by accident.
+    pub browsing: bool,
     /// Whether setup mode has somewhere to go back to. `CANCEL` is only offered when it has:
     /// otherwise it would take the access point down and raise it again.
     pub setup_cancellable: bool,
+    /// Whether this device keeps at least one network. The store's answer, filled in by the
+    /// caller that holds it for the same reason [`Self::setup_cancellable`] is: a board with no
+    /// screen reads it as "this device has never been set up", which is amber on its lamp.
+    pub saved: bool,
     /// Which front is offering setup, and with it whether the access point is up. See [`Front`].
     pub front: Front,
     /// The passphrase the setup access point is up with, when it has one.
