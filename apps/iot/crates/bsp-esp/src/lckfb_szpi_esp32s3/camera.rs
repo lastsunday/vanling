@@ -26,6 +26,25 @@ use crate::virtual_components::camera::{self as dvp, FrameRing, Gc2145Capture};
 /// The sensor this board mounts, reached over the shared bus.
 type BoardCamera = Gc2145Capture<Gc2145<SharedI2cDevice>>;
 
+/// The panel's whole surface in bytes: the arena the two DMAs share. The camera fills all of
+/// it and the page stamps its readout over the same bytes.
+const PANEL_BYTES: usize = LCD_WIDTH as usize * LCD_HEIGHT as usize * 2;
+
+// The camera frame is the panel frame: same width, same height, same byte count, so the
+// picture fills the glass and the page stamps its readout over the same bytes.
+const _: () = assert!(
+    dvp::FRAME_WIDTH == LCD_WIDTH,
+    "the camera's frame is not the panel's width"
+);
+const _: () = assert!(
+    dvp::FRAME_HEIGHT == LCD_HEIGHT,
+    "the camera's frame is not the panel's height"
+);
+const _: () = assert!(
+    dvp::RING_BYTES == PANEL_BYTES,
+    "the camera's ring is not exactly the panel's frame buffer"
+);
+
 /// The panel's frame buffer, in internal DRAM: `dvp::RING_BYTES` explains why DRAM rather
 /// than PSRAM. It is a static rather than a heap allocation because it has to outlive the
 /// transfer the peripheral keeps running, and because its size is part of the board's memory
@@ -35,13 +54,13 @@ type BoardCamera = Gc2145Capture<Gc2145<SharedI2cDevice>>;
 /// alignment. `dvp::DMA_ALIGNMENT_BYTES` is that line; this is deliberately stricter than
 /// what esp-hal requires, which on this part is four bytes.
 #[repr(C, align(32))]
-pub(super) struct FrameArena(pub(super) [u8; dvp::RING_BYTES]);
+pub(super) struct FrameArena(pub(super) [u8; PANEL_BYTES]);
 
 /// `static mut` because the ring reaches the DMA as a raw pointer, which is the only way
 /// to express a DMA buffer in this HAL — and the same reason the probes' heaps are
 /// `static mut`. Safety rests on `FrameRing::new`'s contract plus there being exactly one
 /// camera, derived here and nowhere else.
-static mut FRAME_ARENA: FrameArena = FrameArena([0; dvp::RING_BYTES]);
+static mut FRAME_ARENA: FrameArena = FrameArena([0; PANEL_BYTES]);
 
 /// Hands out the one region both the camera's DMA and the panel's DMA address.
 ///
@@ -166,7 +185,7 @@ impl Board<'static> {
         .with_data7(pins.GPIO9))
     }
 
-    /// Brings up the sensor over the shared bus and arms the capture onto the arena.
+    /// Brings up the sensor over the shared bus and arms the capture onto the frame `arena`.
     ///
     /// The DVP peripheral must already exist — see the module header for why that ordering is
     /// a hardware fact rather than a style choice.
@@ -176,8 +195,12 @@ impl Board<'static> {
         arena: &mut [u8],
     ) -> Result<BoardCamera, CameraError> {
         log::info!(
-            "[CAM] frame ring is {} KB in internal DRAM over {} descriptors",
-            dvp::RING_BYTES / 1024,
+            "[CAM] camera frame is {}x{} in internal DRAM, the panel's {} KB frame buffer, \
+             {} B over {} descriptors",
+            dvp::FRAME_WIDTH,
+            dvp::FRAME_HEIGHT,
+            PANEL_BYTES / 1024,
+            dvp::RING_BYTES,
             dvp::DESCRIPTOR_COUNT
         );
 
@@ -223,8 +246,8 @@ impl Board<'static> {
             u8::from(geometry.crop_enabled),
         );
 
-        // SAFETY: `arena` is the board's frame buffer — one region, nothing else names it,
-        // and it cannot move or be freed while the ring is in use.
+        // SAFETY: `arena` is the board's frame buffer — one region, nothing else names it, and
+        // it cannot move or be freed while the ring is in use.
         let ring = unsafe { FrameRing::new(arena.as_mut_ptr()) }.map_err(BoardError::Dma)?;
         let transfer = dvp_peripheral
             .receive(ring)

@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "a4c24e0c5fa0f064020a8787043288e7f9518564"
-translated_at = "2026-10-21T14:10:00Z"
+source_file_hash = "3809493b8b59cd3b9d140dd91bf63eb4d9d44479"
+translated_at = "2026-10-22T13:00:35Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -141,7 +141,7 @@ The software canary checks the sentinel below the stack floor on every context s
 
 ## The panel's glyph table: Spleen 5×8, one face (`[test]`, 2026-10-22)
 
-The table lives in `apps/iot/crates/bsp-esp/src/font.rs`: 95 printable ASCII glyphs, five columns by
+The table lives in `apps/iot/crates/ui/src/font.rs`: 95 printable ASCII glyphs, five columns by
 eight rows, column-major, bit 0 the top row. The pitch is still 9×13 (`FONT_W 5 + OVERLAY_GAP 4`,
 `FONT_H 8 + OVERLAY_ROW_GAP 5`).
 
@@ -158,7 +158,7 @@ eight rows, column-major, bit 0 the top row. The pitch is still 9×13 (`FONT_W 5
   The FPS badge at `232 + 8 = 240` fills the footer exactly, and the Audio page's `WAVE_TOP 42` sits
   exactly under the second row — both are compile-time equality assertions, so a cell change stops
   there first.
-- **Regression**: `iot:test-bsp` holds "every printable glyph has ink", "look-alike pairs are not one
+- **Regression**: `iot:test` holds "every printable glyph has ink", "look-alike pairs are not one
   bitmap" (`l/1`, `I/l`, `0/O`, `c/e`, `u/v`, `g/q`, `p/q`, `y/v`, `m/w`, `M/W`) and "the descenders
   reach the bottom row" (`g/p/q/y/j`). The `0/O` pair was in fact identical after the first swap, and
   the second test is what reported it.

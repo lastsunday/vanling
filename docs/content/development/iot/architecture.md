@@ -7,16 +7,17 @@ weight = 20
 
 ## 分层
 
-`iot-core(纯逻辑) → iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(单任务二进制)`
+`iot-core(纯逻辑) → iot-ui(页面渲染) / iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(单任务二进制)`
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
-- **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `DisplayLight` 把 ST7789 面板适配成 `RgbLight`）。板模块只做选引脚与装配，元件本身跨板通用
+- **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `RgbLight` 表面）。板模块只做选引脚与装配，元件本身跨板通用
+- **iot-ui 是页面层**：`Canvas` 只持有帧缓冲、尺寸与 ground，`Surface` 在它之上借用 `&Diagnostics`、灯位、FPS、调试开关、SPL 偏移与可选的平台栈探针，页面以立即模式绘制。它不认芯片、板卡或传感器；`bsp-esp` 只负责帧缓冲、DMA、面板与相机采样，然后把页面的字节写出去。页面因此在宿主机可测，`iot-ui` 的测试不依赖面板
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名与 run 分发，每板一个 `#[cfg(feature)]` 分支
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`sounds.rs`（哪个 `Sound` 是哪个 `.mid`）、`camera_readout.rs`（读数到字形的换算）、`post.rs`（启动清单）不认板也不认芯片，宿主机可测。放 `bsp` 而不放 `core` 是因为只有 bsp 的元件与板模块用它们，进 `core` 只会给公共 API 添一个没有第二个使用者的面；`core` 里同类的 `overlay`/`stamp`/`keyboard` 落在那，是因为面板与 `intent` 两边都要读
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`sounds.rs`（哪个 `Sound` 是哪个 `.mid`）与 `post.rs`（启动清单）不认板也不认芯片，宿主机可测。读数到字形、字模和页面布局已随页面层进入 `iot-ui`；`core` 里留下 `overlay`/`stamp`/`keyboard`，因为页面与 `intent` 两边都要读
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
@@ -27,7 +28,7 @@ weight = 20
 - **组合点 = bin 板清单**：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
-- **渲染层运行时可插拔**：core 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调），app 里一个堆上的注册表（`embedded-alloc` 32 KB 堆）。boot LED 在任务内注册，跨任务的 renderer 走 `RENDER_BUS` 并要求 `Send`
+- **渲染层运行时可插拔**：core 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调），app 里一个堆上的 `Render` 注册表（`embedded-alloc` 32 KB 堆）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 
@@ -92,9 +93,9 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ### 更改：复用现有 intent 管道
 
-`apply_business` 已经是唯一改状态的入口，`BusinessIntent::TogglePage` 是唯一改 `page` 的地方。
+`apply_business` 已经是唯一改状态的入口；手势改页只有 `BusinessIntent::NextPage`，`SplashOver` 只在启动页结束时落到 build 的页。
 
-新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后求 `EffectiveDemand`（取最大值聚合）。不新造机制。
+新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
 ### 传输：三条下行路径，性质不同
 
@@ -110,7 +111,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 ```
 DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
   → RenderController::reconcile → LightRenderer::on_appearance
-  → DisplayLight::consume → camera.pause() / released()
+  → Screen::consume → camera.pause() / released()
 ```
 
 所以 `Demand` 只需长在同一快照上，display 与 camera 部分零新增。
@@ -165,7 +166,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 实测（S3，8 个 5 秒窗口）单次 tick 17–25 ms。`MAX_SINGLE_HOLD_MS = 30`，留一个 poll 周期的余量。`[INPUT]` 每窗口打印 `worst single hold N ms (bound 30 ms)`，越界直接可见。
 
-这个数字是在 **80 MHz** 下测的，不是数据手册的 240：`CpuClock` 的默认臂是 `_80MHz`，而 `chip_init` 走的是 `esp_hal::init(Config::default())`，仓库里没有任何地方显式设过时钟。`[实测]` `aec-probe` 的 `esp_hal::clock::cpu_clock()` 读回 80,000,000 Hz。esp-hal 对 160/240 预设有一条注释说换 PLL 会影响 USB Serial/JTAG，而本仓库控制台正是它，所以这档位是否可用未测。**读上面任何一个毫秒数都要带上这个 3 倍的余量。**
+这组 17–25 ms 是在 **80 MHz** 下测的。产品 S3 现在由 `chip_init_for_product()` 以 240 MHz 启动（`chip_init_at(CpuClock::_240MHz)`），`chip_init()` 仍是 80 MHz 的探针入口；这组 tick 没有在 240 MHz 下重跑，240 下只会更短，但上面的数字仍应按 80 MHz 的量级读。240 MHz 的验证与代价见 [运行期改 CPU 频率](@/records/iot/clock.md)。
 
 总量不是风险项：Ambient 花掉 94.8% 且一切正常。一次 25 ms 的阻塞才是。播放喂数跑在独立的高优先级 executor 上、由 DMA 驱动，碰不到这种阻塞。
 
@@ -198,7 +199,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 配置器随需求一起兑现，`[DEMAND]` 报的是这次排程的结果。
 
-需求按平面索引，不按字段枚举。`EffectiveDemand` 是 `BTreeMap<PlaneKey, PlaneDemand>`，键是「器件类型 + 第几个」，所以 `plane`、`without`、`aggregate` 与 `Override::apply` 全是查表，新增一个传感器不需要改动需求机械的任何一行。
+需求按平面索引，不按字段枚举。`EffectiveDemand` 是 `BTreeMap<PlaneKey, PlaneDemand>`，键是「器件类型 + 第几个」，所以 `plane`、`without` 与 `Override::apply` 全是查表，新增一个传感器不需要改动需求机械的任何一行。
 
 两个同型号器件可以分开提需求（`PlaneKey::instance(Audio, 0)` 与 `…, 1`）。
 
@@ -210,7 +211,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 理由只有一个：配置器要有东西可以改。`commit_demand` 把可达的那份写回同一处，下游读的都是被改过的那份。
 
-仲裁由 `EffectiveDemand::aggregate` 逐键取最大值，测试断言它是逐平面取胜而非整表取胜。
+仲裁由 `resolve_speed` 在采集平面上取最高要求，测试断言它按平面取最高速，而不是整表一个常量。
 
 接线：
 

@@ -24,7 +24,7 @@ st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
 # panel's own brightness channel, and this surface drives it to follow the
 # breathing envelope, so the component is named here rather than left to the
 # board aggregation that happens to enable it today.
-display-light = ["st7789", "es7210", "backlight"]
+screen = ["st7789", "es7210", "backlight"]
 # The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
 # `embassy-sync` is the shared cell the reference between the two audio halves
 # sits in — the capture reads it from the cooperative input loop while the
@@ -62,13 +62,14 @@ esp32c6-devkitc-1 = ["button", "ws2812", "wifi", "esp-radio/esp32c6", "esp-stora
 # chip feature is contributed: `esp-radio/<chip>` picks the blob for this part, the
 # same way the app's family alias picks the HAL's. Both boards have a radio soldered
 # to them, so both carry the component; the parts differ in what the component costs.
-lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "display-light", "backlight", "ft6336", "audio", "audio-out", "camera", "wifi", "esp-radio/esp32s3", "esp-storage/esp32s3"]
+lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "screen", "backlight", "ft6336", "audio", "audio-out", "camera", "wifi", "esp-radio/esp32s3", "esp-storage/esp32s3"]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }
 embassy-embedded-hal = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 iot-core = { workspace = true }
+iot-ui = { workspace = true }
 # Only for the `wifi` feature's heap, and only when the chip layer is already in the
 # graph — hence the `?`.
 iot-chip-esp = { workspace = true, optional = true }

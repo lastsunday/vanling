@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "ade76bf20927ced23ec9bc8a23ca4fc269943480"
-translated_at = "2026-10-18T00:00:00Z"
+source_file_hash = "fda4eb8defa8c16de125026b872c841634add3fb"
+translated_at = "2026-10-22T10:04:49Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -366,7 +366,7 @@ The probe gained a deliberately plain loop: a 256-coefficient, 1024-sample **int
 
 I expected it to land near 1.7 cycles per MAC. It came out at **12**. A loop simpler than the canceller running 193× slower than it means the problem is not in the canceller's code.
 
-### The CPU is at 80 MHz
+### The CPU was at 80 MHz
 
 `esp_hal::clock::cpu_clock()` reads back **80,000,000 Hz**. The reason is in esp-hal 1.2's own source:
 
@@ -496,7 +496,7 @@ So Espressif's 1.69 cycles/MAC is out of reach here, and "switch to float" is no
 
 ### The clock: 80 → 240 MHz, and the console survived
 
-`CpuClock`'s default arm is `_80MHz`, so the whole board has been running at a third of its rated clock. esp-hal notes that its 160/240 presets move the PLL off the 480 MHz the chip boots on and that this "breaks USB Serial/JTAG" — which is this repository's console. **`[reported]`, never tested.**
+`CpuClock`'s default arm is `_80MHz`, so at the time the whole board ran at a third of its rated clock. esp-hal notes that its 160/240 presets move the PLL off the 480 MHz the chip boots on and that this "breaks USB Serial/JTAG" — which is this repository's console. **`[reported]`, never tested.**
 
 `[measured]` **Tested: 240 MHz runs, and the USB Serial/JTAG console is fine throughout.** (Measured once; that is the whole of its evidence.)
 

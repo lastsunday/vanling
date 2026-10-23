@@ -18,10 +18,10 @@ pub use audio::{EchoCapture, EchoReport, Es7210Rx};
 pub mod audio_out;
 #[cfg(feature = "audio-out")]
 pub use audio_out::{Es8311Tx, REFERENCE_SAMPLES, SWEEP_MS};
-#[cfg(feature = "display-light")]
-pub mod display_light;
-#[cfg(feature = "display-light")]
-pub use display_light::DisplayLight;
+#[cfg(feature = "screen")]
+pub mod screen;
+#[cfg(feature = "screen")]
+pub use screen::Screen;
 
 #[cfg(feature = "camera")]
 pub mod camera;

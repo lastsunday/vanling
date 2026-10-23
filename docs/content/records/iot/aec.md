@@ -361,7 +361,7 @@ cd apps/iot && cargo test -p iot-core --test aec_erle -- --nocapture
 
 我预期它跑在 1.7 cycles/MAC 附近。实际 **12 cycles/MAC**。一条比 AEC 滤波器更简单的循环慢 193 倍，说明问题不在 AEC 的代码。
 
-### CPU 跑在 80 MHz
+### CPU 当时跑在 80 MHz
 
 `esp_hal::clock::cpu_clock()` 读回 **80,000,000 Hz**。原因在 esp-hal 1.2 自己的源码里：
 
@@ -486,7 +486,7 @@ FFT 蝶形是这批里**最干净的一段代码**——没有钳位、没有 `&
 
 ### 时钟：80 → 240 MHz，控制台没坏
 
-`CpuClock` 的默认臂是 `_80MHz`，整块板一直跑在数据手册上限的三分之一。esp-hal 对 160/240 预设有一条注释说换 PLL 会影响 USB Serial/JTAG，而本仓库控制台正是它——**`[据称]`，一直没测。**
+`CpuClock` 的默认臂是 `_80MHz`，整块板当时一直跑在数据手册上限的三分之一。esp-hal 对 160/240 预设有一条注释说换 PLL 会影响 USB Serial/JTAG，而本仓库控制台正是它——**`[据称]`，一直没测。**
 
 `[实测]` **测了，240 MHz 跑通，USB Serial/JTAG 控制台全程正常。**（只测过一次，这是它唯一的后续风险。）
 

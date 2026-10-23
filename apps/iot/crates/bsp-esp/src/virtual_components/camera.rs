@@ -59,7 +59,8 @@ fn window_geometry<S: WindowReadable>(sensor: &mut S) -> Option<WindowGeometry> 
 /// reaches it with no conversion, and there is no memory for a frame-sized one.
 const BYTES_PER_PIXEL: usize = 2;
 
-/// The panel's geometry, which the sensor is configured to match.
+/// The camera's frame: the panel's full width and height, so the picture fills the glass and
+/// the readout is stamped over it. The board hands the capture the panel's whole frame buffer.
 pub const FRAME_WIDTH: u16 = 320;
 pub const FRAME_HEIGHT: u16 = 240;
 
@@ -75,12 +76,14 @@ const DESCRIPTORS_PER_FRAME: usize = FRAME_BYTES / CHUNK_BYTES;
 /// One, and deliberately so: two would let the peripheral refill while the panel reads the
 /// first, which is the only thing that would raise the frame rate — and the frame period is
 /// set by the sensor's readout, not by how fast the chain is drained. Doubling the ring buys
-/// nothing here and costs another 150 KB of DRAM, which does not fit. Measured frame rates
+/// nothing here and costs another 153,600 B of DRAM, which does not fit. Measured frame rates
 /// per ratio are in `@/records/iot/camera.md`.
 const RING_FRAMES: usize = 1;
 
-/// 150 KB, of a `dram_seg` that is 333 KB before `.rwtext` and the panel's SPI buffers take
-/// their share — a probe's heap is sized against what is left.
+/// 153,600 B: the panel's whole 150 KB frame buffer, which the board hands the capture. It is
+/// not a second allocation — the camera fills the frame and the page stamps its readout over
+/// it, so this ring costs no memory of its own. The arena it sits in is what a probe's heap is
+/// sized against once `.rwtext` and the panel's SPI buffers take their share of `dram_seg`.
 ///
 /// DRAM rather than PSRAM not for want of the 8 MB this part has: Espressif gates the receive
 /// descriptor and data burst bits on `//internal SRAM only` and esp-hal cannot express that
@@ -120,11 +123,6 @@ const _: () = assert!(
     "the DMA pads a receive to its alignment, and a chunk that is not a whole multiple is padded \
      to a size the frame geometry did not account for"
 );
-const _: () = assert!(
-    DESCRIPTOR_COUNT.is_multiple_of(DESCRIPTORS_PER_FRAME),
-    "the chain must be a whole number of frames or a re-arm lands mid-frame"
-);
-
 /// XCLK the sensor runs at, and the peripheral's pixel clock: 24 MHz, the datasheet's master
 /// clock. Not a free choice — off it the sensor's PLL does not lock and the part streams
 /// correctly framed noise, which no register read reports. `@/records/iot/camera.md`.
@@ -182,7 +180,6 @@ impl FrameRing {
         }
         // Walk it the way the DMA will: a bad link stops the DMA there, which looks like a
         // sensor or a stall and is neither.
-        let mut cursor = base;
         let mut walked = 0usize;
         while walked < DESCRIPTOR_COUNT {
             let Some(descriptor) = self.descriptors.get(walked) else {
@@ -208,9 +205,8 @@ impl FrameRing {
                 return;
             }
             walked += 1;
-            cursor = descriptor.next as usize;
         }
-        log::info!("[CAM] chain verified: {walked} descriptors, ending at 0x{cursor:08x}");
+        log::info!("[CAM] chain verified: {walked} descriptors, ending at null");
     }
 
     /// Lays the ring out over `arena`: [`RING_BYTES`] of internal DRAM the caller owns for the
@@ -241,8 +237,10 @@ impl FrameRing {
         //
         // The three-argument form: the two-argument one's second argument is the *TX*
         // total size, so it would cut the receive side into the HAL's default 4092-byte
-        // chunks and overrun the ring.
-        let (descriptors, _) = dma_descriptors_chunk_size!(RING_BYTES, RING_BYTES, CHUNK_BYTES);
+        // chunks and overrun the ring. The TX size is zero because the camera only
+        // receives, and the macro would otherwise allocate a second static list the size
+        // of this one — which the product's stack region cannot spare.
+        let (descriptors, _) = dma_descriptors_chunk_size!(RING_BYTES, 0, CHUNK_BYTES);
         let descriptors = DmaAlignedMut::new(descriptors)?;
         assert_eq!(
             descriptors.len(),

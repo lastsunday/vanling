@@ -4,7 +4,7 @@
 # `features.md` rule 5 requires every feature subset to compile, and the rule was
 # written down without anything enforcing it: a virtual component that reaches for
 # a part its own feature list does not name still compiles as long as every board
-# feature happens to enable both. That is how `display-light` was found importing
+# feature happens to enable both. That is how `screen` was found importing
 # the backlight while not depending on it — a class of defect the documented
 # builds cannot see, because a board feature is by construction the union of the
 # things a board wires.
@@ -36,7 +36,7 @@ CHIP_COMPONENTS=(
   "button"
   "ws2812"
   "st7789"
-  "display-light"
+  "screen"
   "audio"
   "audio-out"
   "camera"

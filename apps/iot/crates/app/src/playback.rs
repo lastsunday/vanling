@@ -13,10 +13,10 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
-use iot_core::intent::{BusinessIntent, Intent};
+use iot_core::intent::{BusinessIntent, Intent, PlaybackAction};
 
-/// Cross-task playback commands: the render loop's diff of the playback state,
-/// as absolute targets like every other business move.
+/// Cross-task playback commands: the render loop's diff against what the
+/// driver has been told, so a dropped play is asked for again next pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackCommand {
     /// Start this sound from the beginning, replacing anything playing.
@@ -255,6 +255,8 @@ pub async fn control_loop(
 /// Hand the page its sound's end, waiting for room rather than dropping it.
 async fn finished(intent_bus: &'static IntentBus) {
     intent_bus
-        .send(Intent::Business(BusinessIntent::PlaybackFinished))
+        .send(Intent::Business(BusinessIntent::Playback(
+            PlaybackAction::Finished,
+        )))
         .await;
 }

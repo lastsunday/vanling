@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "323765c3b7a73ee4a8bb15d91a098e98eef6a94f"
-translated_at = "2026-10-18T00:00:00Z"
+source_file_hash = "c595432d266c5e2d5893f52e67319d4a9b55be53"
+translated_at = "2026-10-22T10:04:49Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -80,7 +80,7 @@ The system description lives in [development docs / IoT firmware](@/development/
 | **The 15 dB bar** | **It is about the path, not the algorithm.** With the tail longer than the filter the offline optimum itself is 14.4 dB | no 128-tap linear filter can reach 15 |
 | A generated path needs a direct reflection | Otherwise it has no onset, the delay search has nothing to lock onto, and it reports a noise peak | without one: a 12-tap path reported 15, a 4-tap one 22, ERLE **0.4 dB**; with one every delay hits exactly, 61 dB |
 | The freeze stops continued damage, not the first half second | The coherence meter has a ~512-sample time constant and the filter has already run through them | freeze covers 98%; energy past the path grows **3.7e6×**; no growth after the freeze. **Unfixed** |
-| **CPU: measure the clock first** | **The whole board runs at 80 MHz, not 240.** `CpuClock`'s default arm *is* `_80MHz`; `Config::default()` never sets the maximum | `esp_hal::clock::cpu_clock()` = 80,000,000 Hz |
+| **CPU: measure the clock first** | **At the time the whole board ran at 80 MHz, not 240.** `CpuClock`'s default arm *is* `_80MHz`; `Config::default()` never sets the maximum | `esp_hal::clock::cpu_clock()` = 80,000,000 Hz |
 | The measurement used the wrong clock | The first version's "219 cycles/MAC" was converted at 240 MHz and is wrong. **A reference loop caught it** — a trivial integer loop should be faster, yet ran 193× slower | reference FIR **12** cycles/MAC @80 MHz |
 | **Block adaptation: it passes** | **Coefficients updated once every four samples.** Steady-state ERLE bit-identical; convergence slower | **L=16 9,680 µs ≤ 10 ms**; L=128 70,945 → **34,911 µs** |
 | Frequency-domain MDF (best practice) | Wrote the 512-point fixed-point FFT, measured it before discussing the architecture, **then deleted it** (no caller on the product path). **The transform alone is 1.8× over budget**; partitioning and filtering not yet counted | 3,046 µs each = **182% of budget**; RAM 3,064 B → 6 KB (no RAM saved) |

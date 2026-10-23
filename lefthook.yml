@@ -20,7 +20,7 @@ pre-commit:
       glob: "**/*.rs"
       root: apps/iot/
       # Everything the job above cannot reach: the target alone decides what a clippy
-      # can see, and behind `lckfb-szpi-esp32s3` sit the panel's display_light, two
+      # can see, and behind `lckfb-szpi-esp32s3` sit the screen, two
       # probe modules and six bins that a riscv clippy never compiles — nothing had
       # ever linted them. One `-p iot-app --bins` is the whole graph: clippy lints
       # every workspace member it compiles, not only the selected one. Through

@@ -7,6 +7,12 @@ pub fn chip_init() -> Peripherals {
     esp_hal::init(esp_hal::Config::default())
 }
 
+/// The same bring-up every image on this part uses: the product and its probes share one
+/// clock because this part offers no runtime change to choose between.
+pub fn chip_init_for_product() -> Peripherals {
+    chip_init()
+}
+
 pub fn init_logging() {
     log::set_logger(&crate::logging::LOGGER).expect("logger already set");
     log::set_max_level(log::LevelFilter::Info);

@@ -396,7 +396,6 @@ impl<D: I2c> Es7210<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
     use iot_core::drivers::audio::SCOPE_FLOOR_DECIBELS;
 
     use crate::components::mock_i2c::{MockI2c, NACK};

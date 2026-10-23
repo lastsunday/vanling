@@ -40,8 +40,7 @@ use iot_core::drivers::network::{
 use iot_core::drivers::playback::{Recovery, Sound, Speaker, SpeakerFault};
 use iot_core::intent::{BusinessIntent, Intent, PALETTE};
 use iot_core::keyboard::Key;
-use iot_core::keyboard::ToolbarCell;
-use iot_core::state::{DisplayPage, Panel, PlaybackPhase};
+use iot_core::state::{Confirm, DisplayPage, Panel, PlaybackPhase};
 
 /// Recorded paint operations per surface, so the smoke can assert what `run`
 /// drew and on which instance.
@@ -263,6 +262,10 @@ impl RgbLight for HostLight {
     }
 
     fn set_backlight(&mut self, _level_pct: u8) {}
+
+    fn page_draws_frames(&self, page: DisplayPage) -> bool {
+        page == DisplayPage::Camera
+    }
 }
 
 /// A camera with no sensor behind it: it reports frames without filling anything, which is
@@ -704,6 +707,14 @@ async fn scenario() {
         AUDIO_POLLS.load(Ordering::SeqCst) > 0,
         "the capture source was never polled"
     );
+    // The page can be on screen before the state layer has committed a column:
+    // the poll and the commit are separate passes, so wait for the column the
+    // assertion below is about rather than sampling the instant the page lands.
+    attempts = 0;
+    while AUDIO_COLUMNS.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
     assert!(
         AUDIO_COLUMNS.load(Ordering::SeqCst) > 0,
         "no capture poll ever reached the state layer"
@@ -947,7 +958,7 @@ async fn scenario() {
 
     // Picking a band opens the keyboard on the network that band showed, and the phrase it starts
     // with is empty: `NETWORK_TYPED` counts a draft of no glyphs as nothing typed.
-    send(BusinessIntent::Row(0));
+    send(BusinessIntent::Choose(list.get(0).expect("a row to pick")));
     Timer::after(Duration::from_millis(100)).await;
 
     // Typing reaches the snapshot, which is what makes a key visible on the panel. `hat` is the
@@ -1041,7 +1052,7 @@ async fn scenario() {
 
     // The strip with no link on it: one request, and it lands on the survey's own plane. A tap that
     // reached the state and stopped there would be a panel that asks and a radio that never hears.
-    send(BusinessIntent::Toolbar(ToolbarCell::Right));
+    send(BusinessIntent::ScanNow);
     assert!(
         select(RESCAN.ready(), Timer::after(Duration::from_secs(1)))
             .await
@@ -1052,9 +1063,13 @@ async fn scenario() {
     // And the row a finger holds: the question, its answer, and the name on the plane the network
     // task erases from. The network is the one the store reported, which is what makes the hold a
     // question at all.
-    send(BusinessIntent::RowHold(0));
+    send(BusinessIntent::AskForget(
+        list.get(0).expect("a row to ask about"),
+    ));
     Timer::after(Duration::from_millis(100)).await;
-    send(BusinessIntent::Confirm);
+    send(BusinessIntent::Answer(Confirm::Forget(
+        list.get(0).expect("the row the question named"),
+    )));
     match select(FORGET.ready(), Timer::after(Duration::from_secs(1))).await {
         Either::First(ssid) => assert_eq!(
             ssid.as_bytes(),

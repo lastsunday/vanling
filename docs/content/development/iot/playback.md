@@ -26,7 +26,7 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 C6 和 host 没有第二个软件中断，走 `SpeakerRunner::Inline`，两个循环 `join4` 在同一个 executor 上，语义不变。
 
-`PlaybackFinished` 由播放任务送回 intent 总线，不是轮询出来的标志位。
+`BusinessIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
 
 页面相位只在驱动自己开口时才离开 `Playing`。让页面和驱动各说各话，出现的就是「看着还在放，其实早就放完」，而此后每一次轻点都会被当成重播丢弃。
 
@@ -34,7 +34,7 @@ C6 和 host 没有第二个软件中断，走 `SpeakerRunner::Inline`，两个�
 
 打断会在两段音频的中间留下一个台阶——那是 click，而 click 比「这一下没听见」难解释得多。丢弃要能被看见，所以它单独占一个读数（`DRP`）而不是被悄悄合并。
 
-`ToggleMute` 锁存输出，不是停止播放。
+`PlaybackAction::SetMuted` 锁存输出，不是停止播放。
 
 静音中的触发照样放完、照样报完成：静音是耳朵的事，不是声音的事。把两者混在一起会让 `ST` 在静音时读成 `IDLE` 而声音其实还在放。
 

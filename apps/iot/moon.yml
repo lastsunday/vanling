@@ -67,7 +67,7 @@ tasks:
   # demand publisher is a task-boundary concern rather than a chip one, and
   # `--lib` keeps the `vanling` bin out of it, since that one needs a board.
   test:
-    script: 'cargo test -p iot-core && cargo test -p iot-app --lib --no-default-features --features host'
+    script: 'cargo test -p iot-core && cargo test -p iot-ui && cargo test -p iot-app --lib --no-default-features --features host'
     deps:
       - ~:check
 
@@ -127,7 +127,7 @@ tasks:
       - ~:check
 
   lint-host:
-    command: 'cargo clippy -p iot-core --all-targets -- -D warnings'
+    command: 'cargo clippy -p iot-core -p iot-ui --all-targets -- -D warnings'
     deps:
       - ~:check
 

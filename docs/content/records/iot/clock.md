@@ -1,13 +1,9 @@
 +++
 title = "运行期改 CPU 频率"
+description = "esp-hal 文档写明频率被冻结；绕过它写寄存器在这块板上真的能把频率切到 80/160/240，比值实测 1 : 2.00 : 2.95。切频 1-50 µs，tick 不受影响，两个核都对。"
 weight = 72
 sort_by = "weight"
 +++
-title: "运行期改 CPU 频率：能，但走的是越界路径"
-description: "esp-hal 文档写明频率被冻结；绕过它写寄存器在这块板上真的能把频率切到 80/160/240，比值实测 1 : 2.00 : 2.95。切频 1-50 µs，tick 不受影响，两个核都对。"
-source_file_hash = ""
-translated_at = ""
----
 
 <!-- doc-audience: ai -->
 
@@ -66,7 +62,7 @@ esp-hal 1.2.2 的时钟文档有一节叫 **Frozen Clock Frequencies**：
 
 起始频率曾被认为有影响——esp-hal 的偏置分两套（240 那套约 dbias 28，非 240 那套约 27），以 80 MHz 启动后升到 240 就是**欠驱动**。这是可以便宜验证的：失败模式是复位，不是损坏。
 
-**探针以 80 MHz 启动（即产品 `chip_init()` 的配置）跑完整轮，与 240 MHz 启动逐位一致：**
+**探针以 80 MHz 启动（即 `chip_init()` 的默认；产品入口现在走 `chip_init_for_product()`，S3 为 240 MHz）跑完整轮，与 240 MHz 启动逐位一致：**
 
 | 量 | 240 MHz 启动 | 80 MHz 启动 |
 |---|---:|---:|

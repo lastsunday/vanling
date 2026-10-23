@@ -1,21 +1,19 @@
-//! Turning readings into the glyphs a panel draws.
+//! Turning readings into the glyphs a page draws.
 //!
-//! Separated from [`crate::virtual_components::display_light`] so it can be built and tested
-//! on the development machine: this is arithmetic over glyph buffers and frame bytes, with no
-//! peripheral in it, and the arithmetic is where the bugs were. A reading that formats wider
-//! than its buffer indexes past the end, and that only shows up on hardware — twice, in two
-//! different pages, before this had a test.
+//! Arithmetic over glyph buffers and frame bytes, with no peripheral in it, so the pages that
+//! read it build and test on the development machine. A reading that formats wider than its
+//! buffer indexes past the end, and that only shows up on hardware — twice, in two different
+//! pages, before this had a test.
 //!
-//! Not camera-specific despite the module name: the panel's own coordinate formatting is here
-//! too, because it is the same arithmetic and the panel is the only surface that draws it, and
-//! so is the Network page's — a phase word, an address and a name are the same kind of thing as
-//! a coordinate pair, and the rule they all share is that a reading wider than its buffer
-//! indexes past the end. The camera's additions are marked, and the module is unconditional — a
-//! gate would leave `display-light` naming a function only some features define.
+//! The panel's coordinate formatting shares this module with the Network page's: a phase word,
+//! an address and a name are the same kind of thing as a coordinate pair, and the rule they all
+//! share is that a reading wider than its buffer indexes past the end. The module is
+//! unconditional — a gate would leave the page layer naming a function only some features
+//! define.
 //!
-//! The layout — which block each reading sits in and at what row — belongs to the panel, which
-//! is the only thing that knows where the columns are. What is here is how a number becomes
-//! the characters that will go in one.
+//! Which block each reading sits in belongs to [`crate::layout`], because that is what knows
+//! where the panel's columns are. What is here is how a number becomes the characters that will
+//! go in one.
 
 use iot_core::drivers::network::{
     AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass,
@@ -188,10 +186,7 @@ pub fn format_network_name(ap: AccessPoint, glyphs: usize, buf: &mut [u8; SSID_B
 /// that asked `LEAVE "cafe"?` and offered a button saying anything else would be a finger reading
 /// one action and pressing another.
 pub fn format_verb(confirm: Confirm) -> &'static [u8] {
-    match confirm {
-        Confirm::Leave => LEAVE_VERB,
-        Confirm::Forget(_) => FORGET_VERB,
-    }
+    iot_core::controls::confirm_verb(confirm)
 }
 
 /// The consequence under the question: what the action costs, in the box's own width.
@@ -206,8 +201,6 @@ pub fn format_body(confirm: Confirm) -> &'static [u8] {
     }
 }
 
-const LEAVE_VERB: &[u8] = b"LEAVE";
-const FORGET_VERB: &[u8] = b"FORGET";
 const LEAVE_BODY: &[u8] = b"THE LINK GOES DOWN";
 const FORGET_BODY: &[u8] = b"THE SAVED KEY IS ERASED";
 
@@ -297,8 +290,8 @@ const _: () = assert!(
     "a confirmation's consequence is wider than the line the box gives it"
 );
 const _: () = assert!(
-    LEAVE_VERB.len() * GLYPH_PITCH <= DIALOG_ANSWER_W
-        && FORGET_VERB.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
+    iot_core::controls::LEAVE_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W
+        && iot_core::controls::FORGET_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
     "a confirmation's own button cannot hold the word of the action it performs"
 );
 const _: () = assert!(
@@ -447,6 +440,19 @@ pub fn frame_fingerprint(frame: &[u8]) -> u32 {
         hash = (hash ^ byte as u32).wrapping_mul(0x0100_0193);
     }
     hash >> 16
+}
+
+/// The label the Speaker page prints for a sound.
+pub const fn sound_label(sound: iot_core::drivers::playback::Sound) -> &'static [u8] {
+    use iot_core::drivers::playback::Sound;
+    match sound {
+        Sound::Tap => b"TAP",
+        Sound::Notice => b"NOTICE",
+        Sound::Warn => b"WARN",
+        Sound::Error => b"ERROR",
+        Sound::Rise => b"RISE",
+        Sound::Sweep => b"SWEEP",
+    }
 }
 
 #[cfg(test)]

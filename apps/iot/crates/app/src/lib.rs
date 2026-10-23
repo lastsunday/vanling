@@ -200,8 +200,7 @@ pub mod render;
 use input::{CAPTURE, INTENT_BUS, input_task};
 use playback::{PLAYBACK_BUS, control_loop, feed_task, share};
 use render::{
-    FORGET, JOIN, LEAVE, LightRenderer, PAGE, RENDER_BUS, RESCAN, Render, SCAN, SETUP_ASK,
-    render_loop,
+    FORGET, JOIN, LEAVE, LightRenderer, PAGE, RESCAN, Render, SCAN, SETUP_ASK, render_loop,
 };
 
 /// Where the feed loop runs. It writes the DMA ring every
@@ -316,15 +315,15 @@ where
         // kept alive on a surface that cannot draw it.
         match camera.take() {
             Some(taken) if instance == 0 => {
-                let _ = render.register(Box::new(renderer.with_camera(taken)), 0);
+                render.register(Box::new(renderer.with_camera(taken)), 0);
             }
             Some(taken) => {
                 log::info!("[CAM] surface {instance} has no frame buffer, dropping the camera");
                 drop(taken);
-                let _ = render.register(Box::new(renderer), 0);
+                render.register(Box::new(renderer), 0);
             }
             None => {
-                let _ = render.register(Box::new(renderer), 0);
+                render.register(Box::new(renderer), 0);
             }
         }
     }
@@ -392,7 +391,6 @@ where
                     &SETUP_ASK,
                     &FORGET,
                     &PAGE,
-                    &RENDER_BUS,
                     &PLAYBACK_BUS,
                     render,
                     &mut manager,
@@ -415,7 +413,6 @@ where
                 &SETUP_ASK,
                 &FORGET,
                 &PAGE,
-                &RENDER_BUS,
                 &PLAYBACK_BUS,
                 render,
                 &mut manager,
@@ -438,7 +435,6 @@ where
                 &SETUP_ASK,
                 &FORGET,
                 &PAGE,
-                &RENDER_BUS,
                 &PLAYBACK_BUS,
                 render,
                 &mut manager,

@@ -3,8 +3,8 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "917164e29c047db6298ef404e5b752a672eb6c7d"
-translated_at = "2026-10-15T02:47:25Z"
+source_file_hash = "f5263efc4ce0d7d84fdf3f76857d134ab60af2b2"
+translated_at = "2026-10-22T12:29:02Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -41,7 +41,7 @@ Tone::fill
 
 `[measured]` Reproduction:
 
-1. The firmware sends `Intent::Business(BusinessIntent::PlayNext)` into `INTENT_BUS` every 1.2 s after boot — the same path a real tap takes
+1. The firmware sends `Intent::Business(BusinessIntent::PlayNext)` into `INTENT_BUS` every 1.2 s after boot — the name of the day; it is `Playback(PlaybackAction::Next)` today — the same path a real tap takes
 2. `[PLAY] Asset` is fine; `[PLAY] Chime` is immediately followed by a panic (both names are the ones of the day; the catalogue grew to five sounds later, see [Sound recipes](#Sound_recipes))
 3. The first chime frame crashes it — there is no cumulative process
 
@@ -227,7 +227,7 @@ Against Google's own sound library (`material_product_sounds`) we line up as:
 | `ERROR` | `alert_error-*` |
 | `RISE` | none (Material has `hero_simple-celebration` here) |
 
-**The one Material has that we do not**: its `ui_lock`/`ui_unlock` are a paired state flip, while `ToggleMute` is entirely silent today — nothing on the speaker, only a `MUTE` on the panel. Adding that pair is a feature change and outside this one.
+**The one Material has that we do not**: its `ui_lock`/`ui_unlock` are a paired state flip, while `PlaybackAction::SetMuted` is entirely silent today — nothing on the speaker, only a `MUTE` on the panel. Adding that pair is a feature change and outside this one.
 
 Material's three-part naming (`notification_simple`) cannot be copied: the panel's value slot is seven glyphs and that is twenty.
 

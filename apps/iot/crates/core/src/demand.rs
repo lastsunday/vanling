@@ -13,8 +13,8 @@
 //! name a configuration at all.
 //!
 //! A demand is a map keyed by [`PlaneKey`], and that is the whole reason the machinery below
-//! never names a device: `plane`, `without`, `aggregate` and [`Override::apply`] all work by
-//! lookup, so a board adding a sensor declares one more key and touches none of them.
+//! never names a device: `plane`, `without` and [`Override::apply`] all work by lookup, so a
+//! board adding a sensor declares one more key and touches none of them.
 
 use alloc::collections::BTreeMap;
 
@@ -138,31 +138,6 @@ impl PlaneDemand {
             class: self.class,
         }
     }
-
-    /// Two claims on one component: the more demanding wins, and the class follows it so the
-    /// latency cannot be widened past the demand that justifies it.
-    ///
-    /// More demanding is the higher [`Mode`], then the shorter period, then the fresher
-    /// class; a claim on `Auto` (`period_ms = 0`) outranks any specific slower one.
-    pub fn max(self, other: Self) -> Self {
-        if other.demands_more_than(self) {
-            other
-        } else {
-            self
-        }
-    }
-
-    fn demands_more_than(self, other: Self) -> bool {
-        (
-            self.mode,
-            core::cmp::Reverse(self.period_ms),
-            core::cmp::Reverse(self.class),
-        ) > (
-            other.mode,
-            core::cmp::Reverse(other.period_ms),
-            core::cmp::Reverse(other.class),
-        )
-    }
 }
 
 /// One device type, independent of how many of them are wired.
@@ -214,7 +189,7 @@ impl PlaneKey {
 /// What the device is asked for, plane by plane.
 ///
 /// A map, not a struct with one field per device, so that the machinery here — `plane`,
-/// `without`, `aggregate`, [`Override::apply`] — is generic over the key. A board that wires
+/// `without`, [`Override::apply`] — is generic over the key. A board that wires
 /// a sensor nobody else has adds a key and changes none of them; only the board's own list
 /// and the page that claims it grow.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -639,8 +614,11 @@ impl InputLimiter {
 /// [`architecture`](../../../../../docs/content/development/iot/architecture.md).
 pub const MAX_SINGLE_HOLD_MS: u32 = 30;
 
-/// Every plane this crate names. A board declares a shorter list of what it actually wires;
-/// this is what a caller asks about when it means the product rather than one board.
+/// Every plane this crate names, for tests that mean the product rather than one board.
+///
+/// A board declares the shorter list it actually wires; this walks all of them so a page
+/// that forgets one is caught.
+#[cfg(test)]
 pub const ALL_PLANES: &[PlaneKey] = &[
     PlaneKey::MOTION,
     PlaneKey::AUDIO,
@@ -694,20 +672,6 @@ impl EffectiveDemand {
             demand.planes.insert(key, PlaneDemand::off());
         }
         demand
-    }
-
-    /// The arbitration rule: per plane, the most demanding claim wins.
-    ///
-    /// Not a priority order. Android's sensor stack documents both halves of why: a consumer
-    /// asking for zero latency puts every other consumer into continuous mode, and one asking
-    /// for a slow rate still receives events at the fastest requester's rate.
-    pub fn aggregate(claims: &[Self]) -> Self {
-        let mut out = Self::none();
-        for (key, demand) in claims.iter().flat_map(|claim| claim.planes.iter()) {
-            let merged = out.plane(*key).max(*demand);
-            out.planes.insert(*key, merged);
-        }
-        out
     }
 }
 
@@ -796,59 +760,16 @@ mod tests {
     }
 
     #[test]
-    fn a_claim_wins_on_mode_then_period_in_either_argument_order() {
-        let off = PlaneDemand::new(Mode::Off, 0, Sensitivity::Primary);
-        let continuous = PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Background);
-        assert_eq!(off.max(continuous), continuous);
-        assert_eq!(continuous.max(off), continuous);
-
-        let auto = PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Background);
-        let slow = PlaneDemand::new(Mode::Continuous, 500, Sensitivity::Primary);
+    fn an_unset_demand_is_not_a_dark_device() {
         assert_eq!(
-            auto.max(slow),
-            auto,
-            "a faster request outranks a slower one"
+            EffectiveDemand::none().plane(PlaneKey::DISPLAY).mode,
+            Mode::Off
         );
-        assert_eq!(slow.max(auto), auto);
-    }
-
-    #[test]
-    fn aggregation_is_per_component_not_whole_vector() {
-        let camera_only = {
-            let mut demand = EffectiveDemand::none();
-            demand.set(
-                PlaneKey::CAMERA,
-                PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
-            );
-            demand
-        };
-        let motion_only = {
-            let mut demand = EffectiveDemand::none();
-            demand.set(
-                PlaneKey::MOTION,
-                PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Secondary),
-            );
-            demand
-        };
-
-        let merged = EffectiveDemand::aggregate(&[camera_only, motion_only]);
-
-        assert_eq!(merged.plane(PlaneKey::CAMERA).mode, Mode::Continuous);
-        assert_eq!(merged.plane(PlaneKey::MOTION).mode, Mode::Continuous);
-        assert_eq!(merged.plane(PlaneKey::DISPLAY).mode, Mode::Off);
-        assert_eq!(merged.plane(PlaneKey::AUDIO).mode, Mode::Off);
-    }
-
-    #[test]
-    fn a_fast_consumer_lifts_every_other_consumer_of_that_component() {
-        // The winning class is the one attached to the winning claim, not the slowest.
-        let eager = PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary);
-        let patient = PlaneDemand::new(Mode::OnChange, 0, Sensitivity::Background);
-
-        let winner = patient.max(eager);
-
-        assert_eq!(winner.mode, Mode::Continuous);
-        assert_eq!(winner.class, Sensitivity::Primary);
+        assert_eq!(
+            EffectiveDemand::default().plane(PlaneKey::DISPLAY).mode,
+            Mode::Continuous,
+            "an unset demand is not a dark device"
+        );
     }
 
     #[test]
@@ -932,20 +853,6 @@ mod tests {
         let eager = poll_plan_of(PlaneKey::MOTION, &demand, 20);
         let patient = poll_plan_of(PlaneKey::AUDIO, &demand, 20);
         assert_eq!(eager.cadence_ms, patient.cadence_ms);
-    }
-
-    #[test]
-    fn aggregating_nothing_yields_nothing_demanded() {
-        assert_eq!(EffectiveDemand::aggregate(&[]), EffectiveDemand::none());
-        assert_eq!(
-            EffectiveDemand::none().plane(PlaneKey::DISPLAY).mode,
-            Mode::Off
-        );
-        assert_eq!(
-            EffectiveDemand::default().plane(PlaneKey::DISPLAY).mode,
-            Mode::Continuous,
-            "an unset demand is not a dark device"
-        );
     }
 
     #[test]

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/core",
+  "crates/ui",
   "crates/chip-esp",
   "crates/bsp-esp",
   "crates/app",
@@ -97,6 +98,7 @@ libm = { version = "0.2", default-features = false }
 mipidsi = "0.10.0"
 smart-leds = "0.4.0"
 iot-core = { path = "crates/core" }
+iot-ui = { path = "crates/ui" }
 iot-chip-esp = { path = "crates/chip-esp", default-features = false }
 iot-bsp-esp = { path = "crates/bsp-esp", default-features = false }
 

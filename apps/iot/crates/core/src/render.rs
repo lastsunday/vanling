@@ -272,8 +272,8 @@ pub enum Activity {
 /// decides *what* to show (central state diff), the renderer answers *how*,
 /// including whether it needs time-driven frames. A renderer subscribes to the
 /// slots it owns (a panel: its light instance plus device diagnostics). Not
-/// `Send`: renderers stay in the render task; cross-task registration wraps
-/// them in `Box<dyn Renderer + Send>` at the app seam.
+/// `Send`: a renderer is built beside the surface it drives and moves into the
+/// render task as part of the registry.
 pub trait Renderer {
     /// The device slots this renderer subscribes to, in diff order.
     fn slots(&self) -> &[Slot];
@@ -420,7 +420,7 @@ mod tests {
     }
     use crate::drivers::network::{AccessPoint, ApList, Ipv4, LinkPhase, Ssid};
     use crate::drivers::playback::Sound;
-    use crate::intent::BusinessIntent;
+    use crate::intent::{BusinessIntent, CaptureAction};
     use crate::state::{DeviceManager, PlaybackPhase};
 
     const BOOT_BREATH: crate::state::Breath = crate::state::Breath {
@@ -724,8 +724,8 @@ mod tests {
             AudioPhase::Idle,
             "polling alone never starts a capture"
         );
-        manager.apply_business(BusinessIntent::ToggleRecord);
-        manager.apply_business(BusinessIntent::TogglePage);
+        manager.apply_business(BusinessIntent::Capture(CaptureAction::Start));
+        manager.apply_business(BusinessIntent::NextPage);
         let recording = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
@@ -738,7 +738,7 @@ mod tests {
              recovered from still reads as a capture that simply went quiet"
         );
 
-        manager.apply_business(BusinessIntent::ToggleRecord);
+        manager.apply_business(BusinessIntent::Capture(CaptureAction::Stop));
         let stopped = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(

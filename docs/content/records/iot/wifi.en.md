@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "be08ce7834ef7d992d923b21465d26110f1335ed"
-translated_at = "2026-10-22T00:00:00Z"
+source_file_hash = "9ce16901d2909d1ad4b452f4b350e5c31fe9a6e0"
+translated_at = "2026-10-23T04:20:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -783,20 +783,20 @@ Every decision sits where a test can reach it:
 | The strip is not drawn while a finger types | `page::Part::hidden` gives `Controls` one more term, `\|\| setup.keyboard`, and the same predicates reach `intent` through `Part::showing` | the strip's box (y 188–232) and the keyboard's **last row** of keys (y 185–231) are the same band of the panel: with both up, `SCAN`'s three glyphs land on the row holding the `OK` that ends an entry (the label row is 206), and `intent` sends every point to the keys at that moment — so the strip was dead pixels. **This was not a z-order problem, it was drawing something that should not be drawn**, and its root cause is "drawn" and "hit" being said twice; the hit rule now reads the same `page` answer (one test in `page.rs` pins the overlap itself — once the two bands are apart, this rule has to be read again) |
 | An attempt in flight has to be visible | `Station::connect` splits into a synchronous `begin_connect()` (sets the config and the phase, **including when setting it fails**) and `await_connected()` (waits for the radio's answer), with `hold` publishing `station.status()` between the two; the page draws a **non-modal** joining box and keeps the strip | the whole association used to sit behind `connect().await`: from the `OK` tap to the address arriving, the page's phase was the old one (the strip drawing `SCAN`, `ST` still the previous word) and `is_leavable()` was false, so `pick_row`'s gate was **open through that window** — a tap could start a new draft. The worst measured case is **37.6 s** (a wrong passphrase plus the driver's four-way-handshake timeout). Reporting a failed `set_config` as a phase fixed `NAME`/`DRV` never being drawn as well. The box is **not modal**: what is wanted here is not a confirmation but "it is under way" plus a way out, and the way out is the strip's own `LEAVE` |
 | The two sentences in that box | the title `JOINING`/`JOINED` plus the name, the body `WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS` — all four decided by whether `LinkStatus.ap` has a value (the name is the page's `shown_ap`, the same one the header draws) | the two lines are two different waits that end differently (one ends in a link or a refusal, the other in an address or in a link with none), so one word for both would have the panel say the same thing about a radio that has not answered yet and a network with no lease. When the network came from a build input, nobody typed its name on the panel (`ap` is empty) and the box keeps the word alone rather than inventing a name |
-| A long press on a row forgets it | `Touch::Hold` → `Intent::RowHold(band)`: only a row that is **stored** opens the `FORGET` confirmation, and the record is erased only when the verb is answered | forgetting is not reversible (the passphrase has to be typed from the start), which is why only it asks; a long press rather than another button, because it holds for few rows and drawing it would take the row's right edge. The name in the confirmation comes from that row's `ApList` entry, and the erase goes through `Store::forget` (the whole record rewritten, the two slots still written in turn) |
+| A long press on a row forgets it | `Touch::Hold` → `BusinessIntent::AskForget(ap)`: only a row that is **stored** opens the `FORGET` confirmation, and the record is erased only when the verb is answered | forgetting is not reversible (the passphrase has to be typed from the start), which is why only it asks; a long press rather than another button, because it holds for few rows and drawing it would take the row's right edge. The name in the confirmation comes from that row's `ApList` entry, and the erase goes through `Store::forget` (the whole record rewritten, the two slots still written in turn) |
 | A rescan does not ask | with no link the strip is `SCAN`, and a tap sends a `RESCAN` signal to the survey task at once | scanning is read-only and repeatable, so there is nothing irreversible to confirm; with a link up there is **no `SCAN`**, because `survey` is not reached at all while a link is held (`setup` is awaiting `hold` at that point), so the two actions never hold at once and the strip need not say "and" about them |
-| Sliding the list | swipe up/down is `BusinessIntent::ListSlide`, moving `list_top ± 1` and pulling the end back to the last full window | paging left the last page of a short list blank and made the window reading jump by three; a row a slide makes every row reachable and keeps `n-m/8` continuous |
+| Sliding the list | swipe up/down is `BusinessIntent::Scroll { rows: ±1 }`, moving `list_top ± 1` and pulling the end back to the last full window | paging left the last page of a short list blank and made the window reading jump by three; a row a slide makes every row reachable and keeps `n-m/8` continuous |
 | Why the list does not jump | the ordering policy lives in core (`SurveyHistory`: 4 dB of hysteresis, a row surviving 2 missed rounds, published only when what is drawn changed) | every scan reading wobbles (σ≈3.1 dB on channel 11), so reordering on a single reading is the list jumping. The mechanism and the evidence are in "Why the list does not jump" |
 | Failure classes | `NetworkError` splits into `NotFound` (`NOAP`) / `Credentials` (`AUTH`) / `Busy` (`BUSY`) / `InvalidArguments` (`NAME`) / `NoMemory` (`MEM`) / `Driver` (`DRV`); a failure **raises the keyboard again** and draws its word in the typing row's middle slot | the four-glyph words are drawn the same way the phase word is (the four-glyph test on `format_phase`). Only the driver's enumerable reasons that can be argued for are mapped; the rest fall to `Driver` — **the mapping as measured is below** |
-| What the page's ground is | `DiagnosticsSink::draws_pages()` (default `false`) is overridden to `true` by `DisplayLight`; `app::render::LightRenderer` gives a black fill, 100% backlight and no breathing when "the surface draws pages && the page is Network" | deriving an appearance from the page in core would be wrong: not every light has a screen (the C6's WS2812 is light instance 0 too), and whether a surface draws pages is something only the surface knows |
+| What the page's ground is | `DiagnosticsSink::draws_pages()` (default `false`) is overridden to `true` by `Screen`; `app::render::LightRenderer` gives a black fill, 100% backlight and no breathing when "the surface draws pages && the page is Network" | deriving an appearance from the page in core would be wrong: not every light has a screen (the C6's WS2812 is light instance 0 too), and whether a surface draws pages is something only the surface knows |
 | Hit testing and drawing share one source | `keyboard::{key_of, key_at, key_box, list_band_at}` | where a key is drawn and where a tap lands are the same functions, so a geometry change cannot miss the hits |
-| An intent reports what the page shows | `BusinessIntent::Row(u8)` is the **band number on the page**, and `Key { key, at_ms }` carries the lift's clock | the state layer should not know which row the list is scrolled to; `at_ms` is the only clock the multi-tap rule needs. `ListSlide` reports no target either: one slide is one row, and whether the end was reached is the state layer's own business |
+| An intent reports what the page shows | `BusinessIntent::Choose(ap)` carries the full `AccessPoint`, and `Key { key, at_ms }` carries the lift's clock | the state layer looks the row up again by BSSID rather than trusting an index left by the page; `at_ms` is the only clock the multi-tap rule needs. `Scroll` reports no target either: one slide is one row, and whether the end was reached is the state layer's own business |
 
 What gets drawn is decided by `diag_repaint_due`'s Network predicate: any change of phase,
 access point, address, list or entry repaints, while the envelope and the touch counters do not
 (`[test]` two tests, one per direction).
 
-The arithmetic that turns readings into glyphs all lives in `bsp-esp/src/camera_readout.rs`
+The arithmetic that turns readings into glyphs all lives in `apps/iot/crates/ui/src/text.rs`
 (where every page's drawing arithmetic lives, and where the host can test it; this page's
 `[test]` ten): the phase word (a failure draws one of six — `NOAP`/`AUTH`/`BUSY`/`NAME`/`MEM`/`DRV`,
 where `MEM` is the one reading that means "this build's heap budget is wrong"), the dotted
@@ -1050,7 +1050,7 @@ Two freshly reported defects, one in what is drawn and one in the phase — and 
 
 All of the structure is on the host-testable side: `page::walk(setup, link, draw)` (`Content` is
 hidden by a question **or by the joining box**; `Overlay` is not drawn when neither is up; when both
-are, the question is what the box holds) and `camera_readout::{format_joining_title,
+are, the question is what the box holds) and `text::{format_joining_title,
 format_joining_body}` (`JOINING`/`JOINED` plus the name, `WAIT FOR THE NETWORK`/`WAIT FOR AN
 ADDRESS`, all four decided by whether `LinkStatus.ap` has a value — two new tests).
 
@@ -1567,7 +1567,7 @@ character by character against the phone's row.
 An address is **upper case** (`AA:BB:CC:DD:EE:FF`). Three formatters used two spellings: the panel's
 header and address line used `mac_text` (upper), while the page's per-row BSSID (`scan`'s
 `hex_digit`) and the panel's own line for **a name that cannot be drawn, which falls back to the
-address** (`camera_readout::write_bssid`) were lower — one person holding two screens read one value
+address** (`text::write_bssid`) were lower — one person holding two screens read one value
 in two spellings, and on the panel the two could meet **inside one row**. Both were brought to the
 upper case the panel already used; `ap_name` (`vanling-a1b2`) was left alone, because that is the
 access point's name rather than a drawing of its address and changing its case renames the device.
@@ -1912,7 +1912,7 @@ Geometry and wording:
 `[test]` What the host pins: `LinkStatus.front` and `shows_setup_box()` (= setup mode and the access point
 front); `survey_pause_after(AccessPoint, …) == None` while the other three gears keep their clocks; the
 two cells' geometry (equal width, seam inside the cells, `toolbar_cell_at` on both halves and on the
-boundary); `switch_front`/`toggle_pass` only acting in the right front, and `take_*` handing the
+boundary); `switch_front`/`take_setup_open` only acting in the right front, and `take_*` handing the
 request over once; the box's two answers and "outside them is `None`"; the Boot long press on any
 page while setup mode lands on the right cell; the box hiding `Part::Content` while **not** hiding
 `Part::Controls`; `format_setup_pass` in both shapes (`PASS k3mq9t7w2x`, `OPEN, NO PASSWORD`).
@@ -2262,7 +2262,7 @@ What this cut changes is **where that press lands** and **what the radio does du
 
 | Thing | Previous cut | This cut |
 | --- | --- | --- |
-| Long press on the splash | `Toolbar(Right)`: leave the link if there is one, `Invalid` otherwise | `BusinessIntent::Setup`: the request is only **latched** (`setup_wanted`); no page change, no access point |
+| Long press on the splash | `Toolbar(Right)`: leave the link if there is one, `Invalid` otherwise | `BusinessIntent::RequestSetup`: the request is only **latched** (`setup_wanted`); no page change, no access point |
 | The splash closing | back to `boot_page` | asked for and `network_enabled` → **`Network`**; otherwise `boot_page` |
 | The link during the splash | read a credential and associate; the hold then tears it down | **no link at all**: `link()` waits on `PAGE.wait_for_splash_end()` before reading a credential |
 | After the request | associate, then leave | skip association: `Front::AccessPoint` goes straight into setup mode |
@@ -2491,7 +2491,7 @@ where the stored list is the answer to "this device has been set up".
      stored network by itself**; the logs are in "Where a credential lives").
    - **⑥ Marking and forgetting a stored network** (**landed**): a `*` on a stored
      network's row in the list, and a long press on that row to forget it (`Touch::Hold` →
-     `Intent::RowHold`, opening the `FORGET` confirmation only for a stored row). The
+     `BusinessIntent::AskForget(ap)`, opening the `FORGET` confirmation only for a stored row). The
      implementation did **not** take the route of "a plane carrying the stored names into
      `DeviceState`": against the S3's static-memory wall, a `SavedNetworks` (~980 B) landing in the
      app either by value or as an `&EMPTY` blows it, so the **mask travels with the list itself**

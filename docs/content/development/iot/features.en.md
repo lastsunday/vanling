@@ -2,8 +2,8 @@
 title = "Cargo Feature Criteria and Cohesion"
 weight = 10
 [extra]
-source_file_hash = "3fa35bd4a2d0b9eeeea50dd89d4629411e4e502c"
-translated_at = "2026-10-15T16:10:00Z"
+source_file_hash = "1e69b7e92c7e2ba7de867cabdb44f18d9a1db53c"
+translated_at = "2026-10-22T14:46:39Z"
 +++
 
 # Cargo Feature Criteria and Cohesion
@@ -60,8 +60,9 @@ Cargo features are **additive** (union; enabling one must not disable another) a
 
 ```
 iot-core     — no [features]
+iot-ui       — no [features]
 iot-bsp-esp  — component features (backlight / button / pca9557 / qmi8658 / es7210 / es8311 /
-                             ft6336 / ws2812 / st7789 / wifi / display-light / audio / audio-out)
+                             ft6336 / ws2812 / st7789 / wifi / screen / audio / audio-out)
                board features (esp32c6-devkitc-1 / lckfb-szpi-esp32s3) = component aggregate
 iot-chip-esp — chip features (esp32c6 / esp32s3) + a component feature (radio: the C heap the
                Wi-Fi driver links against, and the scheduler integration it needs, which the
@@ -70,7 +71,7 @@ iot-app      — esp32c6 (chip alias) / esp32c6-devkitc-1 (default) / lckfb-szpi
 ```
 
 - **Component features are a module axis**: one feature = one component module (gated once at the `mod` declaration in `components/`; off means the file does not exist). Board features only aggregate the components their wiring needs, with no loose dependencies. Empty features (e.g. `button = []`) are legalized by module endorsement (rule 1/6 "module endorsement"); they are not the pure cfg switches removed earlier.
-- **A virtual component feature must be self-sufficient**: `display-light` / `audio` / `audio-out` are assembled from real components, so each has to name everything it reads rather than leaning on a board aggregate happening to enable it — `display-light` once imported `backlight` without depending on it, and compiled only because every board enabled both. `moon run iot:check-features` builds each feature alone to hold that line.
-- **Two-axis naming** (rule 6 "distinct roots" in practice): the hardware axis uses chip/board product names as roots (`esp32c6`, `esp32s3`, `esp32c6-devkitc-1`, `lckfb-szpi-esp32s3`); the module axis uses bare component names (`button`, `ft6336`, `pca9557`, `st7789`, `ws2812`, `display-light`). Mutually-exclusive vs additive semantics are clear from the name alone; no `cmp-`/`board-`/`chip-` prefix; only consider a prefix after a real collision (e.g. a board name that equals a component name).
+- **A virtual component feature must be self-sufficient**: `screen` / `audio` / `audio-out` are assembled from real components, so each has to name everything it reads rather than leaning on a board aggregate happening to enable it — `screen` once imported `backlight` without depending on it, and compiled only because every board enabled both. `moon run iot:check-features` builds each feature alone to hold that line.
+- **Two-axis naming** (rule 6 "distinct roots" in practice): the hardware axis uses chip/board product names as roots (`esp32c6`, `esp32s3`, `esp32c6-devkitc-1`, `lckfb-szpi-esp32s3`); the module axis uses bare component names (`button`, `ft6336`, `pca9557`, `st7789`, `ws2812`, `screen`). Mutually-exclusive vs additive semantics are clear from the name alone; no `cmp-`/`board-`/`chip-` prefix; only consider a prefix after a real collision (e.g. a board name that equals a component name).
 - **Board features are the hardware axis**: mutually exclusive, exactly one at a time, set by the physical board; `iot-core` still has zero cfg, with capabilities injected via traits at the composition point (board wiring).
 - CI uses a fixed `--no-default-features --features <board>`, building the fully-featured firmware for that board; standalone compilability of the component features is covered by `check-features`. Any future capability/behavior-axis soft feature must satisfy the four criteria plus the six rules again, and add matrix validation.

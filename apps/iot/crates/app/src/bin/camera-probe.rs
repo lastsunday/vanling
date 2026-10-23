@@ -47,7 +47,7 @@ const FINGERPRINT_STRIDE: usize = 997;
 
 /// A fold over a frame's bytes, so "a new picture" can be told from "the same one again".
 ///
-/// Sparse on purpose: a frame is 150 KiB, so this reads about 150 of its bytes rather than
+/// Sparse on purpose: a frame is 150 KiB, so this reads about 77 of its bytes rather than
 /// walking all of them, which is what lets it run on every painted frame without costing the
 /// capture anything measurable.
 struct Fingerprint {

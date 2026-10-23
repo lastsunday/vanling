@@ -385,18 +385,18 @@ X  0  OK | SHOW
 | 打字态不画工具条 | `page::Part::hidden` 里 `Controls` 多一个 `\|\| setup.keyboard`；同一批判据经 `Part::showing` 给 `intent` 用 | 工具条的盒子（y 188–232）与键盘**最后一行**的键盒（y 185–231）是面板上同一条带：两者都在时 `SCAN` 那三个字形正落在结束输入的 `OK` 那一排上（标签行 206），而那时 `intent` 把所有点都发给键 ⇒ 工具条是死像素。**不是 z 序问题，是画了不该画的东西**；根因是「画」与「点」各说一遍，所以命中规则也收进 `page` 一处（`page.rs` 里一条测试把重叠本身钉住 —— 几何一旦分开，这条规则就该重读） |
 | 连接中要看得见 | 拆 `Station::connect` 为同步的 `begin_connect()`（`set_config` + 置相位，**失败也置**）与 `await_connected()`（等射频答复），`hold` 在两者之间 `publish(station.status())`；页面画**非模态**连接框，工具条留着 `LEAVE` | 原来整段关联挡在 `connect().await` 里：从按 OK 到地址到手之间页面相位是旧的（工具条画 `SCAN`、`ST` 是上一个词），而 `is_leavable()` 为假 ⇒ `pick_row` 的门在这段窗口是漏的（能点行起新草稿）。最坏实测 **37.6 s**（错口令 + 四步握手超时）。`set_config` 失败也置相位，顺带修了 `NAME`/`DRV` 从不显示。框**非模态**：这一次要的不是确认，是「在做了」加一个出口，而出口就是工具条那个 `LEAVE` |
 | 框里的两句话 | 标题 `JOINING`/`JOINED` + 名字，正文 `WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`；四个词都由 `LinkStatus.ap` 有没有值定（名字取 `shown_ap`，与表头同一个） | 两句话是两种不同的等待，结束方式也不同（一个结束于链路或拒绝，一个结束于地址或「有链路、没地址」）；一个词概括两种，面板就会对「射频还没答复」与「已上网络但没有租约」说同一句。构建输入带来的网络没人打过名字时（`ap` 空）只留词，不编一个名字出来 |
-| 长按一行 = 忘记 | `Touch::Hold` → `Intent::RowHold(band)`：只有那一行**已存**才弹 `FORGET` 确认框，答「动词」才擦 | 忘记不可逆（口令要从头再打一遍），所以只对它问；长按而不是再给一个按钮，是因为它只对少数行成立，画出来会占掉行右端。确认框里的名字来自那一行的 `ApList` 项，擦除走 `Store::forget`（整条记录重写，双槽轮写照旧） |
+| 长按一行 = 忘记 | `Touch::Hold` → `BusinessIntent::AskForget(ap)`：只有那一行**已存**才弹 `FORGET` 确认框，答「动词」才擦 | 忘记不可逆（口令要从头再打一遍），所以只对它问；长按而不是再给一个按钮，是因为它只对少数行成立，画出来会占掉行右端。确认框里的名字来自那一行的 `ApList` 项，擦除走 `Store::forget`（整条记录重写，双槽轮写照旧） |
 | 重扫不问 | 无链路时工具条是 `SCAN`，点它立刻发一个 `RESCAN` 信号给扫描任务 | 扫描是只读的、可再来的，没有不可逆的东西要确认；有链路时**不给 `SCAN`**：链路在手上时 `survey` 根本不会被调到（那时 `setup` 在 `hold` 里等它下来），两个动作从不同时成立，工具条不必二选一地说「而且」 |
-| 列表滑一行 | 上/下滑 = `BusinessIntent::ListSlide`，`list_top ± 1` 并把末端对齐到最后一个完整窗口 | 一页一页翻时短列表的末页会留空、窗口读数会跳 3；一行一格让每一行都滑得到，`n-m/8` 也是连续的 |
+| 列表滑一行 | 上/下滑 = `BusinessIntent::Scroll { rows: ±1 }`，`list_top ± 1` 并把末端对齐到最后一个完整窗口 | 一页一页翻时短列表的末页会留空、窗口读数会跳 3；一行一格让每一行都滑得到，`n-m/8` 也是连续的 |
 | 列表为什么不跳 | 排序政策在 core（`SurveyHistory`：4 dB 迟滞 + 掉轮留 2 轮 + 只在画出来变了才 publish） | 扫描读数每轮都在抖（信道 11 的 σ≈3.1 dB），拿单轮读数重排就是列表一直跳。机制与证据见「列表为什么不跳」一节 |
 | 失败分档 | `NetworkError` 分 `NotFound`（`NOAP`）/`Credentials`（`AUTH`）/`Busy`（`BUSY`）/`InvalidArguments`（`NAME`）/`NoMemory`（`MEM`）/`Driver`（`DRV`）；失败**自动重开键盘**并把词画在打字态中槽 | 4 字形词与阶段词同一套画法（`format_phase` 的四字形测试）。分档表只认驱动枚举里能辩护的那几种，其余落 `Driver` —— **真机映射未实测**，见待办 5④ |
-| 页面底色由表面声明 | `DiagnosticsSink::draws_pages()`（默认 `false`）由 `DisplayLight` 覆写为 `true`；`app::render::LightRenderer` 在「表面画页 && 页 == Network」时给纯黑填充 + 背光 100% + 不呼吸 | 由 core 按页派生外观是错的：不是每个光源都有屏幕（C6 那颗 WS2812 也是 light instance 0），而「我画不画页」只有表面自己知道 |
+| 页面底色由表面声明 | `DiagnosticsSink::draws_pages()`（默认 `false`）由 `Screen` 覆写为 `true`；`app::render::LightRenderer` 在「表面画页 && 页 == Network」时给纯黑填充 + 背光 100% + 不呼吸 | 由 core 按页派生外观是错的：不是每个光源都有屏幕（C6 那颗 WS2812 也是 light instance 0），而「我画不画页」只有表面自己知道 |
 | 命中与绘制同源 | `keyboard::{key_of, key_at, key_box, list_band_at}` 一套几何 | 画在哪和点到哪是同一组函数，改几何不会漏掉命中 |
-| 意图只报页面显示的 | `BusinessIntent::Row(u8)` 是**页面上的 band 序号**，`Key { key, at_ms }` 带抬指时刻 | 状态层不该知道滑动滑到哪一条；`at_ms` 是多击判断唯一需要的时钟。`ListSlide` 同样不报目标位置：滑一次就是一格，抵到末端与否是状态层自己的事 |
+| 意图只报页面显示的 | `BusinessIntent::Choose(ap)` 带完整的 `AccessPoint`，`Key { key, at_ms }` 带抬指时刻 | 状态层按 BSSID 回查当前列表，不信任页面留下的序号；`at_ms` 是多击判断唯一需要的时钟。`Scroll` 同样不报目标位置：滑一次就是一格，抵到末端与否是状态层自己的事 |
 
 画什么由 `diag_repaint_due` 的 Network 谓词定：阶段、当前 AP、地址、列表、打字态任一有变就重画，包络与触摸计数不重画（`[测试]` 两条，两个方向）。
 
-数字到字形的换算全在 `bsp-esp/src/camera_readout.rs`（跨页的绘制算术都在那，宿主机可测；本页的 `[测试]` 10 条）：阶段词（失败画六种之一：`NOAP`/`AUTH`/`BUSY`/`NAME`/`MEM`/`DRV`，`MEM` 是「这个构建的堆预算错了」唯一的读数）、点分地址（无地址是 `-`，不是 `0.0.0.0`）、信号条 `#`/`.`（与列表同一把尺子 `bars_for`）、名字（画不出 ASCII 就显示 BSSID；超过 24 字形保留头部并以 `~` 标记，否则折在同一处的两个网络会画成同一行）、请求框的标题与两个答案词、以及连接框的标题与正文（`JOINING`/`JOINED` + 名字、`WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`；名字超出剩余宽度时折的是名字，`JOINING`/`JOINED` 那个词不动）。
+数字到字形的换算全在 `apps/iot/crates/ui/src/text.rs`（跨页的绘制算术都在那，宿主机可测；本页的 `[测试]` 10 条）：阶段词（失败画六种之一：`NOAP`/`AUTH`/`BUSY`/`NAME`/`MEM`/`DRV`，`MEM` 是「这个构建的堆预算错了」唯一的读数）、点分地址（无地址是 `-`，不是 `0.0.0.0`）、信号条 `#`/`.`（与列表同一把尺子 `bars_for`）、名字（画不出 ASCII 就显示 BSSID；超过 24 字形保留头部并以 `~` 标记，否则折在同一处的两个网络会画成同一行）、请求框的标题与两个答案词、以及连接框的标题与正文（`JOINING`/`JOINED` + 名字、`WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`；名字超出剩余宽度时折的是名字，`JOINING`/`JOINED` 那个词不动）。
 
 ### 手势删减：延迟在分类器里，不在面板
 
@@ -509,7 +509,7 @@ bench 的 `Act` 序列在前面加了一步（打字关联 → **点 band 0（�
 - **打字时工具条压在键盘最后一行上**。工具条的盒子（y 188–232）与键盘第 4 行键盒（y 185–231）重叠 43/46 px，`SCAN` 那三个字形落在 y=206 —— 正是结束输入那一排。而 `intent` 在 `setup.keyboard` 时把所有点都发给键，所以那三个字形**画出来也点不到**。判据收进 `page::Part::hidden`（`Controls` 多一个 `|| setup.keyboard`），命中侧读同一个答案（`Part::showing`），`page.rs` 里一条测试把重叠本身钉住。
 - **连接期间页面不说自己在连接**。`Station::connect` 拆成同步的 `begin_connect()`（`set_config` + 置相位）与 `await_connected()`，`hold` 在两者之间 publish 一次状态；页面画一条**非模态**的连接框，工具条留着 `LEAVE`。顺带修了 `set_config` 失败时相位不变（`NAME`/`DRV` 因此从不显示）。
 
-结构侧全在宿主机可测的层：`page::walk(setup, link, draw)`（`Content` 被问题**或被连接框**藏；`Overlay` 二者皆无时不画；两条同时在场画问题）、`camera_readout::{format_joining_title, format_joining_body}`（`JOINING`/`JOINED` + 名字、`WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`，四个词都由 `LinkStatus.ap` 有没有值定，2 条新测试）。
+结构侧全在宿主机可测的层：`page::walk(setup, link, draw)`（`Content` 被问题**或被连接框**藏；`Overlay` 二者皆无时不画；两条同时在场画问题）、`text::{format_joining_title, format_joining_body}`（`JOINING`/`JOINED` + 名字、`WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`，四个词都由 `LinkStatus.ap` 有没有值定，2 条新测试）。
 
 同一个 `IOT_PANEL_BENCH` 构建（先擦空 `creds`，28 击），S3 一次开机读到：
 
@@ -713,7 +713,7 @@ C6 先跑通：手机连上 `vanling-1234`、拿到租约、页面**自己**打�
 
 **面板列表也补了 BSSID**：手机页每行有地址，面板那 3 行没有 —— 一行只有 47 px，名字（24 字形 = 215 px）已占满宽度，同排再放 17 字形（149 px）放不下。改成**每行两行字**：名字在上、地址在下，两行共 20 px，居中后上下各 13/14 px，47 px 的击点不变（`keyboard::band_lines_top`，几何由一条宿主机测试与一条编译期断言钉住，第二行不许越到下一行）。理由是可用性而不是排版：同名的 mesh 节点与它自己、同名中继，原本只能靠信号条猜；地址与手机页那一行可以逐个字符对照。
 
-地址一律**大写**（`AA:BB:CC:DD:EE:FF`）。三个格式化器原本两套写法：面板表头与地址行是 `mac_text`（大写），手机页每行的 BSSID（`scan` 的 `hex_digit`）与面板上**画不出的 SSID 退回成地址**那一行（`camera_readout::write_bssid`）是小写 —— 同一个人手里两块屏对着同一个值看到两种拼法，面板上还可能在**同一条行内**撞上。统一到面板本来就在用的大写；`ap_name`（`vanling-a1b2`）不动，那是接入点的名字而不是地址显示，改大小写等于给设备改名。两个格式化器各补一条**带字母的八位组**的测试（原来的夹具全是全零/全数字地址，大小写根本分不出来）。顺带：名字画不出时名字行**就是**那个地址，那一行不再画第二行 —— 同一个字符串隔一行印两遍是多印的那一遍。
+地址一律**大写**（`AA:BB:CC:DD:EE:FF`）。三个格式化器原本两套写法：面板表头与地址行是 `mac_text`（大写），手机页每行的 BSSID（`scan` 的 `hex_digit`）与面板上**画不出的 SSID 退回成地址**那一行（`text::write_bssid`）是小写 —— 同一个人手里两块屏对着同一个值看到两种拼法，面板上还可能在**同一条行内**撞上。统一到面板本来就在用的大写；`ap_name`（`vanling-a1b2`）不动，那是接入点的名字而不是地址显示，改大小写等于给设备改名。两个格式化器各补一条**带字母的八位组**的测试（原来的夹具全是全零/全数字地址，大小写根本分不出来）。顺带：名字画不出时名字行**就是**那个地址，那一行不再画第二行 —— 同一个字符串隔一行印两遍是多印的那一遍。
 
 **表头的设备 MAC 换了一行**：它原来占「网络」那行（`AP <名字>` 的位置），于是只要有一行被选中、或一条链路在连，它就让位 —— 正是有人要找它的时候。现在它与 `IP <地址>` 同排（地址在左、MAC 右对齐），第 1 行只属于 `AP <名字>` + 信号条。宽度是算过的：地址从块左缘起、`IP ` 连写（省掉四字形的标签槽，这是这一行唯一的破例）后最长 158 px 止于 168，MAC 17 字形 149 px 起于 171 —— 编译期断言钉住两者不相撞（第一版用标签槽，断言当场判红：差 6 px）。打字态 `PSK <草稿>` 要整行，所以那一态不画 MAC，键盘一放下就回来。同时补上 `diag_repaint_due` 的漏项：`DisplayPage::Network` 原本只比 `link`/`aps`/`setup`、**不比 `mac`** —— MAC 是射频第一份报告之后才到的，而扫描恰恰以「列表没变，不重画」为常态，那一格就可能一直空着。判据加上 `prev.mac != next.mac`，并有一条只改 MAC 的测试要求 `Network` 页重画。
 
@@ -876,7 +876,7 @@ flash：`moon run iot:image` 出 S3 **1,031,168 / 6,291,456 B（16.39%）**，�
 - 框：标题 `SETUP MODE`，两行正文 `AP vanling-xxxx` + `PASS …`（或 `OPEN, NO PASSWORD`），两答 `NO PASS`/`PASS` 与 `CLOSE`。两行正文的底边要压在框内答案之上，这是编译期断言（`DIALOG_BODY_TOP + ROW_PITCH + FONT_H <= answer.y`），`PASS ` + 10 位 ≤ `DIALOG_GLYPHS` 也是。
 - 面板档**不画**假的 `AP`/`IP` 行：没有 AP 就没有名字和地址，表头只剩 `ST SETUP` 与列表。
 
-`[测试]` 宿主机钉住的：`LinkStatus.front` 与 `shows_setup_box()`（= 设置模式且接入点档）；`survey_pause_after(AccessPoint, …) == None` 而其余三档仍是三个时钟；两格几何（同宽、缝在格内、`toolbar_cell_at` 两半与边界）；`switch_front`/`toggle_pass` 只在对应档位生效且 `take_*` 只交一次；框的两答与「两答之外返回 `None`」；设置模式下任意页 Boot 长按落在右格；框起时 `Part::hidden` 盖住列表、**不**盖工具条；`format_setup_pass` 的 `PASS k3mq9t7w2x` 与 `OPEN, NO PASSWORD` 两种形态。
+`[测试]` 宿主机钉住的：`LinkStatus.front` 与 `shows_setup_box()`（= 设置模式且接入点档）；`survey_pause_after(AccessPoint, …) == None` 而其余三档仍是三个时钟；两格几何（同宽、缝在格内、`toolbar_cell_at` 两半与边界）；`switch_front`/`take_setup_open` 只在对应档位生效且 `take_*` 只交一次；框的两答与「两答之外返回 `None`」；设置模式下任意页 Boot 长按落在右格；框起时 `Part::hidden` 盖住列表、**不**盖工具条；`format_setup_pass` 的 `PASS k3mq9t7w2x` 与 `OPEN, NO PASSWORD` 两种形态。
 
 `[实测]` 门禁：`cargo fmt --check`、`moon run iot:test`（core **656**、app 34）、`iot:test-bsp`（bsp **113**）、`iot:lint`、`iot:check-host`、`iot:check-s3`、`iot:check-c6`、`moon run iot:image` 全过。
 
@@ -1069,7 +1069,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 | 事 | 上一版 | 这一版 |
 | --- | --- | --- |
-| 启动页上长按 | `Toolbar(Right)`：有链路就离开，没有就 `Invalid` | `BusinessIntent::Setup`：**只记请求**（`setup_wanted`），不改页、不开 AP |
+| 启动页上长按 | `Toolbar(Right)`：有链路就离开，没有就 `Invalid` | `BusinessIntent::RequestSetup`：**只记请求**（`setup_wanted`），不改页、不开 AP |
 | 启动页关闭 | 回 `boot_page` | 请求过且 `network_enabled` → **落 `Network`**；否则回 `boot_page` |
 | 启动页期间的链路 | 读凭据、关联，长按再把它拆掉 | **一条链路都不建**：`link()` 先等 `PAGE.wait_for_splash_end()` 才读凭据 |
 | 请求过之后 | 先关联、再离开 | 跳过关联：`Front::AccessPoint` 直接进设置模式 |
@@ -1128,7 +1128,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
     - **① 真机验证**：**整条「点一行 → 输口令 → OK → 关联 → 拿到地址 → 断开 → 忘记」已由 `IOT_PANEL_BENCH` 构建在板上走通**，也含「链路在飞时点那一行没有反应」「打字态不画工具条」「连接框在射频答复之前就画出来」（见「按面板路径打字」「工具条、确认框与忘记」「连上时点行不接、弹窗盖住列表」「打字态没有工具条、连接中有一个框」，全程不需要手指），以及第五轮那条「点回已存的那一行 → 库那份口令自己把链路接回来 → 页面什么都没问」（见「点已存的一行就用库里的口令」）。剩下非得人来的只有两件：4×4 键、列表行与工具条的**触摸手感**（含第四行键现在不再被工具条压着）、纯黑底色与背光 100%、以及连接框的观感与它出现/消失的时机 —— 这些是像素与触感。弹窗**盖没盖住列表**与**连接框挂没挂在那儿**都不是这两件之一 —— 它们是宿主机可测的事实（`Part::hidden`、`Part::showing`、`page::walk`、`Part::IN_ORDER`、`stamp::fill_surface`）。
     - **② 存**（**已落地**，格式、槽规则与写盘策略见「凭据落在哪」）：接线撞上的三件事都在不烧板的前提下定完 —— ① **MD5 条目 espflash 自己会写**：表里前三条 96 B 的 MD5 = `5b7fb69b103d49aee6dd86b70ccdddcf`，`esp-bootloader-esp-idf` 的 `validation` 找的正是它，**不用改**；② **双核写**：本应用从不启动第二核，默认策略今天也能写，仍选 `multicore_auto_park()`（每次写前停另一核、写完放开，几毫秒），换来以后真起第二核不会踩到；③ **多一条 `data` 分区**：子类型必须写**名字**（`creds,data,undefined,,0x2000,` 转出来是 `01 06`），写十六进制会让 `esp-idf-part` 在 `unwrap()` 上 panic。板上三次开机验过（空盘写下来、以及**产品镜像不带任何构建输入自己连回已存网络**，日志见「凭据落在哪」）。
-    - **⑥ 已存网络的标识与忘记**（**已落地**）：列表里给已存网络画 `*`、长按那一行 = 忘记（`Touch::Hold` → `Intent::RowHold`，只对已存行弹 `FORGET` 确认框）。实现没有走「把名字集经一个平面送进 `DeviceState`」那条路：S3 静态内存墙下 `SavedNetworks`（约 980 B）在 app 里落成值或 `&EMPTY` 都会顶爆，于是**掩码跟着列表自己走**（`ApList.saved: u8`，一位一行），`SurveyHistory::{observe, marked}` 收 `Option<&SavedNetworks>` 以免在 app 里造值。代价是两份列表各自持一份，`SCAN` 平面因此必须投得进去也丢不掉（见第四轮）。擦除走 `Store::forget`，板上验过（见「凭据落在哪」第 4 次）。
+    - **⑥ 已存网络的标识与忘记**（**已落地**）：列表里给已存网络画 `*`、长按那一行 = 忘记（`Touch::Hold` → `BusinessIntent::AskForget(ap)`，只对已存行弹 `FORGET` 确认框）。实现没有走「把名字集经一个平面送进 `DeviceState`」那条路：S3 静态内存墙下 `SavedNetworks`（约 980 B）在 app 里落成值或 `&EMPTY` 都会顶爆，于是**掩码跟着列表自己走**（`ApList.saved: u8`，一位一行），`SurveyHistory::{observe, marked}` 收 `Option<&SavedNetworks>` 以免在 app 里造值。代价是两份列表各自持一份，`SCAN` 平面因此必须投得进去也丢不掉（见第四轮）。擦除走 `Store::forget`，板上验过（见「凭据落在哪」第 4 次）。
     - **③ 细节**（已完成）：选中行整条反色、失败词画在打字态中槽、失败后自动重开键盘并保留草稿、`SHOW`/`HIDE` 回显、开放网络的 `OPEN` 标记与免键盘直连。
     - **④ 失败分档的真机映射**（已实测）：错口令 → 驱动 reason `FourWayHandshakeTimeout` → `NetworkError::Credentials` → 面板画 `AUTH`，从交出凭据到被拒 **37.6 s**（等的是驱动自己那次四步握手的超时）。映射表 `kind_of_disconnect` 只认能辩护的几种（`NoAccessPointFound|BeaconTimeout` → `NotFound`、`AuthenticationFailed|FourWayHandshakeTimeout|HandshakeTimeout` → `Credentials`），其余 `Driver`；`NotFound` 那半仍**未实测**（要一次把 AP 关掉的台架）。
     - **⑤ 开放网络的真机读数**：bsp 的 `Open` 修好之后这一支仍**没有台架证据**（台架上没有开放网络），目前只有状态机测试与代码审读。WPA3-only 的网由驱动版本决定连不上（见「连接策略」），不是待办而是范围。

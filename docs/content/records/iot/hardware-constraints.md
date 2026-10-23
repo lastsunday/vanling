@@ -137,11 +137,11 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 
 ## 面板的字模：Spleen 5×8，一套字（`[测试]`，2026-10-22）
 
-字模在 `apps/iot/crates/bsp-esp/src/font.rs`：95 个可打印 ASCII，5 列 × 8 行、列优先、bit 0 是顶行；节距仍是 9×13（`FONT_W 5 + OVERLAY_GAP 4`、`FONT_H 8 + OVERLAY_ROW_GAP 5`）。
+字模在 `apps/iot/crates/ui/src/font.rs`：95 个可打印 ASCII，5 列 × 8 行、列优先、bit 0 是顶行；节距仍是 9×13（`FONT_W 5 + OVERLAY_GAP 4`、`FONT_H 8 + OVERLAY_ROW_GAP 5`）。
 
 - **第一次换是因为开口**：Adafruit `glcdfont` 的 `a/e/g/p/r/t/y` 在 5×7 里只剩 1 px 的开口，网络名和口令读不快。m5x7（Daniel Linssen，CC0）在同样的 5 列里画出 2 px 开口 —— 但它的 `m/M/w/W` 是 7 列、`0` 与 `O` 同形、`\` 缺字，这五处只能沿用 Adafruit，一句带 `m`/`w` 的话就混了两套笔画，上板后比换之前更难看（2026-10-22 的使用反馈）。
 - **现在是 Spleen 5×8**（Frederic Cambus，BSD-2-Clause）：5×8 版本只含可打印 ASCII，字形原生就是 5 列 8 行，`m/M/w/W`、`0`、`\` 全在同一套里；不用拼字，也没有被裁掉的降部行。
 - **只加一行**：`FONT_H` 7→8、`OVERLAY_ROW_GAP` 6→5，`ROW_PITCH` 仍是 13。FPS 徽标 `232 + 8 = 240` 刚好填满页脚，音频页 `WAVE_TOP 42` 刚好落在第二行字下方 —— 两处都是编译期等号断言，改字号时先断在这里。
-- **回归**：`iot:test-bsp` 钉「非空格有墨」「形近字不同形」（`l/1`、`I/l`、`0/O`、`c/e`、`u/v`、`g/q`、`p/q`、`y/v`、`m/w`、`M/W`）与「降部到得了底行」（`g/p/q/y/j`）。换表时 `0/O` 真的同形，是第二条测试先报的。
+- **回归**：`iot:test` 钉「非空格有墨」「形近字不同形」（`l/1`、`I/l`、`0/O`、`c/e`、`u/v`、`g/q`、`p/q`、`y/v`、`m/w`、`M/W`）与「降部到得了底行」（`g/p/q/y/j`）。换表时 `0/O` 真的同形，是第二条测试先报的。
 
 字模在 flash：`[u8; 95 × 5] = 475 B`，与旧表同尺寸；静态墙前后都是 65,720 B（下限 65,536 B，余量 184 B）。

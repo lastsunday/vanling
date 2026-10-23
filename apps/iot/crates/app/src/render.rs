@@ -6,7 +6,7 @@ use core::sync::atomic::{AtomicU8, Ordering};
 use crate::SharedDemand;
 use crate::input::{CapturePlane, IntentBus};
 use crate::playback::{PlaybackBus, PlaybackCommand};
-use embassy_futures::select::select4;
+use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, TrySendError};
 use embassy_sync::signal::Signal;
@@ -30,32 +30,6 @@ use iot_core::state::{
 
 /// Frame cadence of the render loop.
 pub const STEP_MS: u32 = 20;
-
-/// Capacity of the cross-task render bus.
-pub const RENDER_BUS_CAPACITY: usize = 8;
-
-/// Cross-task render messages: renderers register when their resource exists and
-/// unregister when it disappears. The render task is the single owner draining
-/// this bus.
-pub enum RenderMsg {
-    /// Cross-task renderers must be `Send`; in-task boot renderers (the light)
-    /// register directly with [`Render::register`].
-    Register(Box<dyn Renderer + Send>),
-    Unregister(RenderToken),
-}
-
-/// Opaque handle to a registered renderer, assigned by the render layer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RenderToken(pub u64);
-
-/// Cross-task render channel type. The render task consumes it via an explicit
-/// argument (never a hidden global); producers on other tasks send to
-/// [`RENDER_BUS`].
-pub type RenderBus = Channel<CriticalSectionRawMutex, RenderMsg, RENDER_BUS_CAPACITY>;
-
-/// Single shared render bus: storage for the cross-task renderer registry and
-/// the producers' global entry point.
-pub static RENDER_BUS: RenderBus = RenderBus::new();
 
 /// The link's data plane: the newest ranked scan list, and the wake that says there is one.
 ///
@@ -180,8 +154,9 @@ pub enum SetupAsk {
     Cancel { from: Front },
     /// The strip's right cell: offer the access point instead of the list, or the other way round.
     Front { from: Front },
-    /// The box's other answer: put the access point up without a passphrase, or back with one.
-    Pass { from: Front },
+    /// The box's other answer: put the access point up open (`true`) or back under a passphrase
+    /// (`false`). The target travels so a re-read cannot reverse a request already answered.
+    Pass { from: Front, open: bool },
 }
 
 impl SetupAsk {
@@ -190,7 +165,7 @@ impl SetupAsk {
     /// front; without this the box would open and close at once.
     pub fn applies_to(self, front: Front) -> bool {
         let from = match self {
-            Self::Cancel { from } | Self::Front { from } | Self::Pass { from } => from,
+            Self::Cancel { from } | Self::Front { from } | Self::Pass { from, .. } => from,
         };
         from == front
     }
@@ -371,16 +346,14 @@ impl PagePlane {
 pub static PAGE: PagePlane = PagePlane::new();
 
 struct Entry {
-    token: RenderToken,
     activity: Activity,
     renderer: Box<dyn Renderer>,
 }
 
-/// Render-layer host: central controller, renderer registry, cross-task bus.
+/// Render-layer host: central controller and renderer registry.
 pub struct Render {
     controller: RenderController,
     renderers: Vec<Entry>,
-    next_token: u64,
 }
 
 impl Render {
@@ -388,15 +361,11 @@ impl Render {
         Self {
             controller: RenderController::new(),
             renderers: Vec::new(),
-            next_token: 0,
         }
     }
 
-    pub fn register(&mut self, renderer: Box<dyn Renderer>, now_ms: u32) -> RenderToken {
-        let token = RenderToken(self.next_token);
-        self.next_token += 1;
+    pub fn register(&mut self, renderer: Box<dyn Renderer>, now_ms: u32) {
         let mut entry = Entry {
-            token,
             activity: Activity::Idle,
             renderer,
         };
@@ -409,26 +378,12 @@ impl Render {
             }
         }
         self.renderers.push(entry);
-        token
-    }
-
-    pub fn unregister(&mut self, token: RenderToken) {
-        if let Some(index) = self.renderers.iter().position(|e| e.token == token) {
-            self.renderers.remove(index);
-        }
     }
 
     /// One frame: reconcile `state` against the controller, fan changes out to
     /// matching renderers, then step time-driven animations. Returns `true`
     /// while any renderer still animates.
-    pub fn tick(
-        &mut self,
-        bus: &RenderBus,
-        state: &DeviceState,
-        demand: &EffectiveDemand,
-        now_ms: u32,
-    ) -> bool {
-        self.drain_bus(bus, now_ms);
+    pub fn tick(&mut self, state: &DeviceState, demand: &EffectiveDemand, now_ms: u32) -> bool {
         let controller = &mut self.controller;
         let entries = &mut self.renderers;
         controller.reconcile(state, demand, |appearance| {
@@ -449,17 +404,6 @@ impl Render {
             }
         }
         any
-    }
-
-    fn drain_bus(&mut self, bus: &RenderBus, now_ms: u32) {
-        while let Ok(msg) = bus.try_receive() {
-            match msg {
-                RenderMsg::Register(renderer) => {
-                    self.register(renderer, now_ms);
-                }
-                RenderMsg::Unregister(token) => self.unregister(token),
-            }
-        }
     }
 }
 
@@ -548,15 +492,17 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
 
     /// The ground a page draws for itself, on the surfaces that draw pages: the Network page is
     /// a setup screen — a list, a keyboard, a status line — and the fill behind it is that
-    /// screen's black, at full backlight and holding still. The light surface sharing the panel
-    /// is that fill, so on this page it is neither coloured nor breathing.
+    /// screen's black, at full backlight and holding still. The Camera page's ground is that
+    /// same black, so its starting readout has a paper before the first frame; once a frame
+    /// arrives the camera fills the whole panel and the readout is stamped over it. The light
+    /// surface sharing the panel is that fill, so on these pages it is neither coloured nor
+    /// breathing.
     ///
     /// Asked of the page rather than derived in the state, because the light is not what
     /// changed: it is the same light it was, and it comes back exactly as it was when the page
     /// does — see [`Self::present`] and the diagnostics arm of [`Renderer::on_appearance`].
     fn page_ground(&self) -> Option<Rgb> {
-        (self.light.draws_pages() && self.page == Some(DisplayPage::Network))
-            .then_some(Rgb(0, 0, 0))
+        self.page.and_then(|page| self.light.page_ground(page))
     }
 
     /// Shows the appearance the light declared — or, on a page that draws its own ground, the
@@ -692,7 +638,8 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
 
 impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
     fn on_camera_page(&self) -> bool {
-        self.page == Some(DisplayPage::Camera)
+        self.page
+            .is_some_and(|page| self.light.page_draws_frames(page))
     }
 }
 
@@ -742,7 +689,6 @@ pub async fn render_loop<C: ClockSink>(
     setup_ask: &'static SetupAskPlane,
     forget: &'static ForgetPlane,
     page: &'static PagePlane,
-    render_bus: &'static RenderBus,
     playback_bus: &'static PlaybackBus,
     mut render: Render,
     manager: &mut DeviceManager,
@@ -882,9 +828,15 @@ pub async fn render_loop<C: ClockSink>(
             log::info!("[WIFI] the panel asked for setup mode's other front end");
             setup_ask.request(SetupAsk::Front { from: asked_on });
         }
-        if manager.take_toggle_pass() {
-            log::info!("[WIFI] the panel asked for the setup access point to be open or closed");
-            setup_ask.request(SetupAsk::Pass { from: asked_on });
+        if let Some(open) = manager.take_setup_open() {
+            log::info!(
+                "[WIFI] the panel asked for the setup access point to be {}",
+                if open { "open" } else { "under a passphrase" },
+            );
+            setup_ask.request(SetupAsk::Pass {
+                from: asked_on,
+                open,
+            });
         }
         if manager.take_scan_now() {
             log::info!("[WIFI] the panel asked to look around now");
@@ -917,7 +869,7 @@ pub async fn render_loop<C: ClockSink>(
             }
             log::info!("[CLOCK] running at {:?}", applied.running);
         }
-        let active = render.tick(render_bus, &state, manager.demand(), elapsed_ms);
+        let active = render.tick(&state, manager.demand(), elapsed_ms);
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
         if active {
             // Absolute deadline: work between frames never piles drift onto
@@ -927,13 +879,7 @@ pub async fn render_loop<C: ClockSink>(
         } else {
             // The wake is a readiness signal, not a receive: it never pops, so
             // the drain at the top of the next pass sees the message.
-            select4(
-                intent_bus.ready_to_receive(),
-                render_bus.ready_to_receive(),
-                capture.ready(),
-                scan.ready(),
-            )
-            .await;
+            select3(intent_bus.ready_to_receive(), capture.ready(), scan.ready()).await;
             // Re-anchor so missed frames while parked do not replay as a burst
             // when the light resumes animating.
             next_frame = Instant::now();
@@ -1058,6 +1004,15 @@ mod tests {
         fn set_backlight_ceiling(&mut self, level_pct: u8) {
             self.ceiling = level_pct;
             self.backlight = self.backlight.min(level_pct);
+        }
+
+        fn page_ground(&self, page: DisplayPage) -> Option<Rgb> {
+            (self.pages && matches!(page, DisplayPage::Network | DisplayPage::Camera))
+                .then_some(Rgb(0, 0, 0))
+        }
+
+        fn page_draws_frames(&self, page: DisplayPage) -> bool {
+            self.pages && page == DisplayPage::Camera
         }
     }
 
@@ -1193,7 +1148,10 @@ mod tests {
         for ask in [
             SetupAsk::Front { from: Front::Panel },
             SetupAsk::Cancel { from: Front::Panel },
-            SetupAsk::Pass { from: Front::Panel },
+            SetupAsk::Pass {
+                from: Front::Panel,
+                open: true,
+            },
         ] {
             assert!(
                 ask.applies_to(Front::Panel),
@@ -1213,6 +1171,7 @@ mod tests {
             },
             SetupAsk::Pass {
                 from: Front::AccessPoint,
+                open: false,
             },
         ] {
             assert!(
@@ -1262,6 +1221,32 @@ mod tests {
             1_200,
         );
         assert_eq!(r.light.color, Rgb(0, 0, 0));
+        assert_eq!(r.light.backlight, 100);
+    }
+
+    #[test]
+    fn the_camera_page_grounds_the_panel_black() {
+        let mut r = renderer(FakePanel::panel());
+        r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 0);
+        r.on_appearance(
+            SlotAppearance::Light {
+                instance: 0,
+                appearance: LightAppearance::Color(Rgb(10, 20, 30)),
+            },
+            0,
+        );
+        assert_eq!(r.light.color, Rgb(10, 20, 30));
+
+        assert_eq!(
+            r.on_appearance(panel_on(DisplayPage::Camera, Mode::Continuous), 1),
+            Activity::TimeDriven,
+            "a camera page is driven by arriving frames, not by the light"
+        );
+        assert_eq!(
+            r.light.color,
+            Rgb(0, 0, 0),
+            "the camera page's ground is the page's black, not the light's colour"
+        );
         assert_eq!(r.light.backlight, 100);
     }
 

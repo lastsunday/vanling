@@ -40,7 +40,7 @@ const HEAP_BYTES: usize = 96 * 1024;
 #[cfg(feature = "esp32c6")]
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    let peripherals = iot_chip_esp::chip_init();
+    let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
     // The driver's heap before the app's: the radio allocates from its own regions the moment
     // the station starts, and where those regions are is this part's business.
@@ -58,7 +58,7 @@ async fn main(_spawner: Spawner) -> ! {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[IOT] board init failed, resetting: {error:?}");
-            esp_hal::system::software_reset();
+            iot_chip_esp::reset();
         }
     };
 
@@ -95,11 +95,7 @@ async fn main(_spawner: Spawner) -> ! {
 #[cfg(feature = "esp32s3")]
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    // 240 MHz, not the 80 MHz `chip_init` hands back: the AEC's delay search alone
-    // busts the 30 ms audio tick at 80 MHz, and the governor may only lower from
-    // here. `set_cpu_clock` never raises the bias, so starting lower would leave
-    // the speed the product needs most without one trimmed for it.
-    let peripherals = iot_chip_esp::chip_init_at(esp_hal::clock::CpuClock::_240MHz);
+    let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
     // The driver's heap before the app's: the radio allocates from its own regions the moment
     // the station starts, and where those regions are is this part's business.
@@ -116,7 +112,7 @@ async fn main(_spawner: Spawner) -> ! {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[IOT] board init failed, resetting: {error:?}");
-            esp_hal::system::software_reset();
+            iot_chip_esp::reset();
         }
     };
 

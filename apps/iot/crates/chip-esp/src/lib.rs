@@ -17,6 +17,14 @@ mod radio;
 
 pub use heap::{heap_free, init_heap};
 
+/// Restarts the part from a clean boot.
+///
+/// A bring-up failure is not recoverable in place: the panel is still dark, so a reset reads
+/// as a retry rather than as a hang.
+pub fn reset() -> ! {
+    esp_hal::system::software_reset()
+}
+
 #[cfg(feature = "radio")]
 pub use radio::{init_radio_heap, radio_heap_free, radio_heap_total, ungate_radio};
 
@@ -43,13 +51,13 @@ impl iot_core::demand::ClockSink for Part {
 pub(crate) mod esp32c6;
 
 #[cfg(feature = "esp32c6")]
-pub use esp32c6::{Table, chip_init, init_logging, set_speed, start_rtos};
+pub use esp32c6::{Table, chip_init, chip_init_for_product, init_logging, set_speed, start_rtos};
 
 #[cfg(feature = "esp32s3")]
 pub(crate) mod esp32s3;
 
 #[cfg(feature = "esp32s3")]
 pub use esp32s3::{
-    Table, chip_init, chip_init_at, init_logging, set_cpu_clock, set_speed, start_feed_executor,
-    start_rtos, start_second_core,
+    Table, chip_init, chip_init_at, chip_init_for_product, init_logging, set_cpu_clock, set_speed,
+    start_feed_executor, start_rtos, start_second_core,
 };

@@ -1,9 +1,12 @@
+use crate::controls;
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::drivers::light::{GROUP_CAPACITY, Rgb};
-use crate::drivers::network::{LinkStatus, Ssid};
+use crate::drivers::network::{AccessPoint, LinkStatus, Ssid};
 use crate::keyboard::{self, Key};
 use crate::page::Part;
-use crate::state::{Breath, DeviceManager, DeviceState, DisplayPage, LightState};
+use crate::state::{
+    AudioPhase, Breath, Confirm, DeviceManager, DeviceState, DisplayPage, LightState,
+};
 
 /// Standard-color palette for solid mode, cycled by a single click or a
 /// horizontal swipe: seven hues spanning the wheel
@@ -102,9 +105,9 @@ pub struct OperationIntent {
     pub event: InputEvent,
 }
 
-/// A business intent: an absolute target the device should move to. Producers
-/// compute it from the pipeline context (the manager holds the current state);
-/// the two light-bearing planes never share a message.
+/// A business intent: a command for the state layer, or a report from the plane it commands.
+/// Producers compute it from the pipeline context (the manager holds the current state); the two
+/// light-bearing planes never share a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BusinessIntent {
     /// A no-op: the operation recorded its diagnostics but moves nothing
@@ -112,40 +115,28 @@ pub enum BusinessIntent {
     /// pulse/read-back that is diagnostic-only by nature).
     Invalid,
     /// Set the `instance`-th light surface to an absolute target state.
-    SetLight {
-        instance: u8,
-        state: LightState,
-    },
-    TogglePage,
+    SetLight { instance: u8, state: LightState },
+    /// The button's triple click: the next page in the cycle.
+    NextPage,
     /// Start or stop the capture behind the Audio page. Reached from a tap or
     /// the button's click on that page, so whichever one-liner control the user
     /// reaches for drives the recording, and neither shadows a gesture that
     /// means something on the other pages.
-    ToggleRecord,
-    /// Play the next sound in the catalogue, reached from a tap or the button's
-    /// click on the Speaker page. Whether it is heard is the state layer's call:
-    /// over a sounding one it is tallied and dropped, so the intent names the
-    /// request and not the outcome.
-    PlayNext,
-    /// Flip the output's mute latch. A long press on the Speaker page, because
-    /// muting is a decision rather than a one-liner verb and should not be
-    /// reachable by the gesture that plays.
-    ToggleMute,
-    /// The driver's report that a sound ran out, sent by the playback task.
-    /// Never raised by [`translate`]: it is a business intent that comes back
-    /// from the plane it commands.
-    PlaybackFinished,
+    Capture(CaptureAction),
+    /// What the Speaker page asks of the output: one sound, the mute latch, or the driver's own
+    /// report that a sound ran out.
+    Playback(PlaybackAction),
     /// The clock's report that the splash is over. A report, not a target: the page leaves on time,
     /// and the state layer holds the page the build named.
     SplashOver,
     /// The splash's hold: a request to be configured, decided when the splash ends.
-    Setup,
+    RequestSetup,
     /// Where the link stands, sent by the network task.
     ///
-    /// A report rather than a target, like [`Self::PlaybackFinished`]: the radio is
-    /// the only thing that has been on the air, so nothing above it can reconstruct
-    /// an association or a lease. Never raised by [`translate`].
-    Link(LinkStatus),
+    /// A report rather than a target, like [`PlaybackAction::Finished`]: the radio is the only thing
+    /// that has been on the air, so nothing above it can reconstruct an association or a lease.
+    /// Never raised by [`translate`].
+    LinkReport(LinkStatus),
     /// The radio's answer that a name the panel asked for has no saved copy. It puts the page back
     /// where a passphrase can be typed for that row.
     NoCopy(Ssid),
@@ -153,29 +144,56 @@ pub enum BusinessIntent {
     Mac([u8; 6]),
     /// A key of the Network page's keyboard, with the clock at the lift. The state layer decides
     /// what it types; the clock tells a repeat that it is cycling rather than typing.
-    Key {
-        key: Key,
-        at_ms: u32,
-    },
-    /// A band of the Network page's scan list; an empty band is background, not a selection.
-    Row(u8),
-    /// Slide the scan list one row. Raised only while the keyboard is down; a window-sized step
-    /// cannot land on a partial last page.
-    ListSlide(bool),
-    /// A tap on the action strip and its cell. The state layer decides the action from the link;
-    /// the cell matters only in setup mode. With a confirmation up, the strip means [`Self::Dismiss`].
-    Toolbar(keyboard::ToolbarCell),
-    /// The action button in a confirmation: the only gesture that says yes. Every other gesture is
+    Key { key: Key, at_ms: u32 },
+    /// Pick the network a finger tapped: the row itself, not the band it occupied. A band is a
+    /// page coordinate that moves when the list slides; the access point is what the tap meant.
+    Choose(AccessPoint),
+    /// Ask about the saved copy of the network a finger held. A hold on a row the store does not
+    /// hold asks nothing.
+    AskForget(AccessPoint),
+    /// Move the scan list by `rows`, positive down. Raised only while the keyboard is down; a
+    /// window-sized step cannot land on a partial last page.
+    Scroll { rows: i8 },
+    /// Leave the link that is up, which is how setup mode is entered.
+    Leave,
+    /// The action button in a confirmation: the only gesture that says yes. The question travels
+    /// with the answer, so a stale tap cannot confirm a newer one. Every other gesture is
     /// [`Self::Dismiss`].
-    Confirm,
-    /// Toggle the setup access point between open and passphrase-protected. The radio is the
-    /// authority on which state it is in.
-    TogglePass,
+    Answer(Confirm),
+    /// Close setup mode and go back to the network this device keeps.
+    CloseSetup,
+    /// Switch setup mode to its other front end.
+    SwitchFront,
+    /// Ask the survey for a round now rather than wait out its pause.
+    ScanNow,
+    /// Put the setup access point up open (`true`) or under its passphrase (`false`). The radio is
+    /// the authority on which state it is in; the command names the target.
+    SetOpenAccessPoint(bool),
     /// Leave the page's question undone. Every gesture on a page that is asking means this.
     Dismiss,
-    /// A long press on a band: the row a finger held, which asks about the saved copy rather than
-    /// picking the network.
-    RowHold(u8),
+}
+
+/// The Audio page's one transition: a recording starts, or the one in progress stops and keeps
+/// what it captured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureAction {
+    Start,
+    Stop,
+}
+
+/// What the Speaker page asks of the output, or the report that comes back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackAction {
+    /// Play the next sound in the catalogue. Whether it is heard is the state layer's call: over a
+    /// sounding one it is tallied and dropped, so the command names the request, not the outcome.
+    Next,
+    /// Move the mute latch to this exact state. A long press on the Speaker page, because muting
+    /// is a decision rather than a one-liner verb and should not be reachable by the gesture that
+    /// plays.
+    SetMuted(bool),
+    /// The driver's report that a sound ran out, sent by the playback task. Never raised by
+    /// [`translate`]: it is a report that comes back from the plane it commands.
+    Finished,
 }
 
 /// The management-pipe message: one pipe carries both planes. The operation
@@ -200,7 +218,7 @@ pub fn recognize(event: InputEvent, source: u8) -> OperationIntent {
     OperationIntent { source, event }
 }
 
-/// Interpret an operation against the current state into an absolute target. Buttons advance
+/// Interpret an operation against the current state into the business intent it means. Buttons advance
 /// their own surface; touch gestures move the first. Pulses and raw snapshots only record
 /// diagnostics, so they land on [`BusinessIntent::Invalid`].
 pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
@@ -229,7 +247,7 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
     // with a network therefore ask the same question here, and the answer is the same page.
     if current.page == DisplayPage::Splash {
         return match op.event {
-            InputEvent::Button(ButtonEvent::LongPress) => BusinessIntent::Setup,
+            InputEvent::Button(ButtonEvent::LongPress) => BusinessIntent::RequestSetup,
             _ => BusinessIntent::Invalid,
         };
     }
@@ -239,7 +257,7 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
     // touch has left. It is not on the Network page's own matcher because the reason it exists is a
     // panel that cannot be used — a digit that stopped answering cannot reach that page.
     if current.link.setup && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)) {
-        return BusinessIntent::Toolbar(keyboard::ToolbarCell::Right);
+        return BusinessIntent::SwitchFront;
     }
     if current.page == DisplayPage::Network {
         return match op.event {
@@ -267,19 +285,19 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
                 // the radio rather than to the finger, and a slide under it would move rows nobody
                 // can see.
                 match direction {
-                    SwipeDirection::Up => BusinessIntent::ListSlide(true),
-                    SwipeDirection::Down => BusinessIntent::ListSlide(false),
+                    SwipeDirection::Up => BusinessIntent::Scroll { rows: 1 },
+                    SwipeDirection::Down => BusinessIntent::Scroll { rows: -1 },
                     _ => BusinessIntent::Invalid,
                 }
             }
-            // The strip's own verb, so a board with a button has the same switch a finger has:
-            // `SETUP` on a link, `CANCEL` or the front switch in setup mode, `SCAN` otherwise. The
-            // right cell because it is the one a strip with a single verb has, and the click is a
-            // one-liner rather than a place to aim at.
+            // The strip's own verb, so a board with a button has the same action a finger has:
+            // `LEAVE` on a link, the front switch in setup mode, `SCAN` otherwise. The right cell
+            // because it is the one a strip with a single verb has, and the click is a one-liner
+            // rather than a place to aim at.
             InputEvent::Button(ButtonEvent::Click) => {
-                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+                controls::strip(current.setup, current.link).command(keyboard::ToolbarCell::Right)
             }
-            InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
+            InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::NextPage,
             _ => BusinessIntent::Invalid,
         };
     }
@@ -290,8 +308,8 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         // button are the same verb there, and neither takes a gesture away from
         // the other pages.
         InputEvent::Button(ButtonEvent::Click) => match current.page {
-            DisplayPage::Audio => BusinessIntent::ToggleRecord,
-            DisplayPage::Speaker => BusinessIntent::PlayNext,
+            DisplayPage::Audio => BusinessIntent::Capture(capture_target(current.audio.phase)),
+            DisplayPage::Speaker => BusinessIntent::Playback(PlaybackAction::Next),
             // The camera page draws the sensor's picture rather than a fill, so a colour
             // walk is not visible here — but the state still moves, because the light is
             // still the light's and the page the user leaves onto shows where it landed.
@@ -304,12 +322,14 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
             DisplayPage::Network => BusinessIntent::Invalid,
         },
         InputEvent::Button(ButtonEvent::DoubleClick) => target_for(advance_step(light), slot),
-        InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::TogglePage,
+        InputEvent::Button(ButtonEvent::TripleClick) => BusinessIntent::NextPage,
         // Cycles the light mode; always resolves, so any state is the way back
         // on — except on the Speaker page, where the long press is the mute
         // latch instead of a mode move.
         InputEvent::Button(ButtonEvent::LongPress) => match current.page {
-            DisplayPage::Speaker => BusinessIntent::ToggleMute,
+            DisplayPage::Speaker => {
+                BusinessIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
+            }
             // Camera included for the click's reason: the mode changes either way, and a
             // mode with no page to show it on still needs a way back to `Solid`.
             DisplayPage::Ambient
@@ -336,8 +356,8 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
         // the play control on Speaker — and both leave the color walk to the
         // pages that have no use for it.
         InputEvent::Gesture(GestureEvent::Tap { .. }) => match current.page {
-            DisplayPage::Audio => BusinessIntent::ToggleRecord,
-            DisplayPage::Speaker => BusinessIntent::PlayNext,
+            DisplayPage::Audio => BusinessIntent::Capture(capture_target(current.audio.phase)),
+            DisplayPage::Speaker => BusinessIntent::Playback(PlaybackAction::Next),
             // As the button's click: the camera page hides the fill but not the state.
             DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
                 target_for(advance_color(light), 0)
@@ -351,7 +371,9 @@ pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent 
             target_for(swipe(light, direction), 0)
         }
         InputEvent::Gesture(GestureEvent::LongPress { .. }) => match current.page {
-            DisplayPage::Speaker => BusinessIntent::ToggleMute,
+            DisplayPage::Speaker => {
+                BusinessIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
+            }
             DisplayPage::Ambient
             | DisplayPage::Attitude
             | DisplayPage::Audio
@@ -388,13 +410,13 @@ fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessInt
     // The strip first, because it is the one part of the page that stays offered under the box: it
     // is not read off the list, and it is where the page's own action lives.
     if let Some(cell) = keyboard::toolbar_cell_at(x, y) {
-        return BusinessIntent::Toolbar(cell);
+        return controls::strip(current.setup, current.link).command(cell);
     }
     if !Part::Content.showing(current.setup, current.link) {
         return BusinessIntent::Invalid;
     }
     match keyboard::list_band_at(y) {
-        Some(band) => BusinessIntent::Row(band as u8),
+        Some(band) => ap_at(current, band).map_or(BusinessIntent::Invalid, BusinessIntent::Choose),
         None => BusinessIntent::Invalid,
     }
 }
@@ -412,7 +434,9 @@ fn network_hold(current: &DeviceState, x: u16, y: u16) -> BusinessIntent {
         return BusinessIntent::Invalid;
     }
     match keyboard::list_band_at(y) {
-        Some(band) => BusinessIntent::RowHold(band as u8),
+        Some(band) => {
+            ap_at(current, band).map_or(BusinessIntent::Invalid, BusinessIntent::AskForget)
+        }
         None => BusinessIntent::Invalid,
     }
 }
@@ -425,11 +449,10 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
     // this is a mode rather than a question, and a stray finger must not close the access point a
     // phone is being walked onto.
     if current.link.shows_setup_box() {
+        let answers = controls::answers(current.link);
         return match keyboard::dialog_choice_at(x, y) {
-            Some(keyboard::DialogChoice::Keep) => Some(BusinessIntent::TogglePass),
-            Some(keyboard::DialogChoice::Act) => {
-                Some(BusinessIntent::Toolbar(keyboard::ToolbarCell::Right))
-            }
+            Some(keyboard::DialogChoice::Keep) => Some(answers.keep.command),
+            Some(keyboard::DialogChoice::Act) => Some(answers.act.command),
             // Not an answer: the strip under the box is still the page's own control, and the
             // caller looks there next.
             None => None,
@@ -437,11 +460,27 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
     }
     // A page that is asking nothing answers nothing: the question is the only thing that makes a
     // tap an answer.
-    current.setup.confirm?;
+    let confirm = current.setup.confirm?;
     Some(match keyboard::dialog_choice_at(x, y) {
-        Some(keyboard::DialogChoice::Act) => BusinessIntent::Confirm,
+        Some(keyboard::DialogChoice::Act) => BusinessIntent::Answer(confirm),
         Some(keyboard::DialogChoice::Keep) | None => BusinessIntent::Dismiss,
     })
+}
+
+/// The access point a band of the page's window is showing. The band is a page coordinate; the list
+/// may have slid under it since the finger landed.
+fn ap_at(current: &DeviceState, band: usize) -> Option<AccessPoint> {
+    let index = usize::from(current.setup.list_top) + band;
+    current.aps.and_then(|list| list.get(index))
+}
+
+/// The transition the Audio page's control asks for, read from the phase it is in now.
+fn capture_target(phase: AudioPhase) -> CaptureAction {
+    if phase == AudioPhase::Recording {
+        CaptureAction::Stop
+    } else {
+        CaptureAction::Start
+    }
 }
 
 /// Fold an optional table step into a business intent: `None` means the mode
@@ -679,7 +718,7 @@ mod tests {
             leave: false,
             setup_cancel: false,
             switch_front: false,
-            toggle_pass: false,
+            setup_open: None,
             scan_now: false,
             forget: None,
             motion_enabled: true,
@@ -732,24 +771,25 @@ mod tests {
         match translate(&op(event), current) {
             BusinessIntent::SetLight { state, .. } => Some(state),
             BusinessIntent::Invalid
-            | BusinessIntent::TogglePage
-            | BusinessIntent::ToggleRecord
-            | BusinessIntent::PlayNext
-            | BusinessIntent::ToggleMute
-            | BusinessIntent::PlaybackFinished
+            | BusinessIntent::NextPage
+            | BusinessIntent::Capture(_)
+            | BusinessIntent::Playback(_)
             | BusinessIntent::SplashOver
-            | BusinessIntent::Setup
-            | BusinessIntent::Link(_)
+            | BusinessIntent::RequestSetup
+            | BusinessIntent::LinkReport(_)
             | BusinessIntent::NoCopy(_)
             | BusinessIntent::Mac(_)
             | BusinessIntent::Key { .. }
-            | BusinessIntent::Row(_)
-            | BusinessIntent::ListSlide(_)
-            | BusinessIntent::Toolbar(_)
-            | BusinessIntent::Confirm
-            | BusinessIntent::TogglePass
-            | BusinessIntent::Dismiss
-            | BusinessIntent::RowHold(_) => None,
+            | BusinessIntent::Choose(_)
+            | BusinessIntent::AskForget(_)
+            | BusinessIntent::Scroll { .. }
+            | BusinessIntent::Leave
+            | BusinessIntent::Answer(_)
+            | BusinessIntent::CloseSetup
+            | BusinessIntent::SwitchFront
+            | BusinessIntent::ScanNow
+            | BusinessIntent::SetOpenAccessPoint(_)
+            | BusinessIntent::Dismiss => None,
         }
     }
 
@@ -855,7 +895,7 @@ mod tests {
             let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_audio),
-                BusinessIntent::ToggleRecord,
+                BusinessIntent::Capture(CaptureAction::Start),
                 "on the audio page the button is the record control, the same as the tap"
             );
             // The camera page has no one-liner control, so it keeps the colour walk even
@@ -1126,7 +1166,7 @@ mod tests {
             let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_audio),
-                BusinessIntent::ToggleRecord,
+                BusinessIntent::Capture(CaptureAction::Start),
                 "on the audio page the tap is the record control"
             );
             // The same tap off that page is still the color move, so the
@@ -1203,21 +1243,21 @@ mod tests {
             // The two verbs the page owns, from the panel...
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_speaker()),
-                BusinessIntent::PlayNext
+                BusinessIntent::Playback(PlaybackAction::Next)
             );
             assert_eq!(
                 translate(&op(long_press_gesture()), &on_speaker()),
-                BusinessIntent::ToggleMute
+                BusinessIntent::Playback(PlaybackAction::SetMuted(true))
             );
             // ...and from the hardware button, which is the same verb on this
             // page exactly as the record control is on the Audio page.
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_speaker()),
-                BusinessIntent::PlayNext
+                BusinessIntent::Playback(PlaybackAction::Next)
             );
             assert_eq!(
                 translate(&op(long_press()), &on_speaker()),
-                BusinessIntent::ToggleMute
+                BusinessIntent::Playback(PlaybackAction::SetMuted(true))
             );
         }
 
@@ -1251,7 +1291,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::TripleClick)),
                     &on_speaker()
                 ),
-                BusinessIntent::TogglePage
+                BusinessIntent::NextPage
             );
         }
 
@@ -1277,7 +1317,7 @@ mod tests {
             ] {
                 assert_ne!(
                     translate(&op(event), &on_speaker()),
-                    BusinessIntent::PlaybackFinished,
+                    BusinessIntent::Playback(PlaybackAction::Finished),
                     "{event:?} must not fake a driver report"
                 );
             }
@@ -1609,9 +1649,13 @@ mod tests {
         use crate::keyboard::{self, Key};
 
         fn ap(ssid: &[u8], rssi: i8) -> AccessPoint {
+            ap_with(ssid, rssi, 6)
+        }
+
+        fn ap_with(ssid: &[u8], rssi: i8, last: u8) -> AccessPoint {
             AccessPoint {
                 ssid: Ssid::from_octets(ssid),
-                bssid: [1, 2, 3, 4, 5, 6],
+                bssid: [1, 2, 3, 4, 5, last],
                 channel: 6,
                 rssi,
                 secured: true,
@@ -1698,24 +1742,30 @@ mod tests {
             // Every row from the first band to the bottom of the page is a band of some kind: the
             // pixels below the last row's glyphs are part of it, because a touch target with dead
             // strips in it is a list a thumb keeps missing.
-            let state = on_network();
+            let state = DeviceState {
+                aps: Some(ApList::from_ranked(&[
+                    ap(b"neighbour", -55),
+                    ap_with(b"cafe", -60, 7),
+                ])),
+                ..on_network()
+            };
             let first = keyboard::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(tap_at(30, first)), &state),
-                BusinessIntent::Row(0),
-                "the list's first band is band 0"
+                BusinessIntent::Choose(ap(b"neighbour", -55)),
+                "the list's first band is the first network"
             );
             assert_eq!(
                 translate(&op(tap_at(30, first + keyboard::LIST_ROW_H as u16)), &state),
-                BusinessIntent::Row(1),
-                "a band down is the next band"
+                BusinessIntent::Choose(ap_with(b"cafe", -60, 7)),
+                "a band down is the next network"
             );
             assert_eq!(
                 translate(
                     &op(tap_at(30, first + keyboard::LIST_ROW_H as u16 - 1)),
                     &state
                 ),
-                BusinessIntent::Row(0),
+                BusinessIntent::Choose(ap(b"neighbour", -55)),
                 "and the pixels below a band's glyphs still belong to that band"
             );
             assert_eq!(
@@ -1730,12 +1780,12 @@ mod tests {
             let state = on_network();
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                BusinessIntent::ListSlide(true),
+                BusinessIntent::Scroll { rows: 1 },
                 "a finger pushing the list up walks down it"
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Down)), &state),
-                BusinessIntent::ListSlide(false)
+                BusinessIntent::Scroll { rows: -1 }
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Left)), &state),
@@ -1756,9 +1806,16 @@ mod tests {
             // is a band rather than a button in a band. The bands above it stop at it, so a tap
             // that means the strip can never be read as a row. The strip is split only while setup
             // mode carries two verbs; with one, both halves are the same control.
-            let state = on_network();
+            let state = DeviceState {
+                aps: Some(ApList::from_ranked(&[
+                    ap(b"neighbour", -55),
+                    ap_with(b"cafe", -60, 7),
+                    ap_with(b"bakery", -65, 8),
+                ])),
+                ..on_network()
+            };
             let strip = keyboard::toolbar_box();
-            for (x, cell) in [
+            for (x, _cell) in [
                 (0, keyboard::ToolbarCell::Left),
                 (strip.w / 2 - 1, keyboard::ToolbarCell::Left),
                 (strip.w / 2, keyboard::ToolbarCell::Right),
@@ -1767,14 +1824,14 @@ mod tests {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
                         translate(&op(tap_at(x as u16, y as u16)), &state),
-                        BusinessIntent::Toolbar(cell),
+                        BusinessIntent::ScanNow,
                         "({x}, {y}) is the strip"
                     );
                 }
             }
             assert_eq!(
                 translate(&op(tap_at(160, (keyboard::TOOLBAR_TOP - 1) as u16)), &state),
-                BusinessIntent::Row(keyboard::LIST_ROWS as u8 - 1),
+                BusinessIntent::Choose(ap_with(b"bakery", -65, 8)),
                 "the row above the strip is still the list's own last band"
             );
         }
@@ -1785,7 +1842,7 @@ mod tests {
             // verb instead, which is the switch a board with a button and no thumb needs.
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_network()),
-                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+                BusinessIntent::ScanNow
             );
 
             // The box a phone's setup is read in asks one question, and both of its answers are
@@ -1810,11 +1867,11 @@ mod tests {
                     &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
                     &announcing
                 ),
-                BusinessIntent::TogglePass
+                BusinessIntent::SetOpenAccessPoint(true)
             );
             assert_eq!(
                 translate(&op(tap_at(act.x as u16 + 1, act.y as u16 + 1)), &announcing),
-                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+                BusinessIntent::SwitchFront
             );
             assert_eq!(
                 translate(&op(tap_at(10, 10)), &announcing),
@@ -1840,7 +1897,7 @@ mod tests {
             };
             assert_eq!(
                 translate(&op(long_press()), &setup),
-                BusinessIntent::Toolbar(keyboard::ToolbarCell::Right)
+                BusinessIntent::SwitchFront
             );
         }
 
@@ -1853,7 +1910,7 @@ mod tests {
             let booting = state_on(DisplayPage::Splash, LightState::Off);
             assert_eq!(
                 translate(&op(long_press()), &booting),
-                BusinessIntent::Setup
+                BusinessIntent::RequestSetup
             );
         }
 
@@ -1894,7 +1951,7 @@ mod tests {
             };
             assert_eq!(
                 translate(&op(long_press()), &with_link),
-                BusinessIntent::Setup
+                BusinessIntent::RequestSetup
             );
         }
 
@@ -1922,18 +1979,24 @@ mod tests {
         fn a_hold_on_a_band_is_that_band_asked_about() {
             // The second verb for a row: the same geometry as a tap, because the finger is aiming
             // at the page either way — what differs is the question, and the state layer's.
-            let state = on_network();
+            let state = DeviceState {
+                aps: Some(ApList::from_ranked(&[
+                    ap(b"neighbour", -55),
+                    ap_with(b"cafe", -60, 7),
+                ])),
+                ..on_network()
+            };
             let first = keyboard::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &state),
-                BusinessIntent::RowHold(0)
+                BusinessIntent::AskForget(ap(b"neighbour", -55))
             );
             assert_eq!(
                 translate(
                     &op(long_press_at(30, first + keyboard::LIST_ROW_H as u16)),
                     &state
                 ),
-                BusinessIntent::RowHold(1)
+                BusinessIntent::AskForget(ap_with(b"cafe", -60, 7))
             );
             assert_eq!(
                 translate(&op(long_press_at(30, 5)), &state),
@@ -1971,7 +2034,7 @@ mod tests {
                     )),
                     &state
                 ),
-                BusinessIntent::Confirm,
+                BusinessIntent::Answer(crate::state::Confirm::Forget(ap(b"neighbour", -55))),
                 "the action's own button is the whole of the yes"
             );
             assert_eq!(

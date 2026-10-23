@@ -49,8 +49,8 @@ use crate::components::qmi8658::{
     MOTION_CAPABILITIES, QMI8658_I2C_ADDR, Qmi8658, RecoverableQmi, SUPPORTED_CONFIGS,
 };
 use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
-pub use crate::virtual_components::DisplayLight;
 use crate::virtual_components::Es7210Rx;
+pub use crate::virtual_components::Screen;
 use crate::virtual_components::audio as capture;
 use crate::virtual_components::audio_out as playback;
 use crate::virtual_components::reference;
@@ -313,7 +313,7 @@ fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<
 
 /// Board-level support for the LCKFB SZPI ESP32-S3 display board.
 pub struct Board<'d> {
-    light: Option<DisplayLight>,
+    light: Option<Screen>,
     button: Option<PullButton<'d>>,
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
@@ -453,9 +453,9 @@ impl Board<'static> {
         pca9557.set_output(DVP_PWDN_BIT)?;
 
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
-        // The surface owns the frame buffer and the camera borrows it, so the two DMAs
+        // The surface owns the frame buffer and the camera fills all of it, so the two DMAs
         // address one region rather than two.
-        let mut light = DisplayLight::new(0, panel, backlight, &mut frame_arena().0);
+        let mut light = Screen::new(0, panel, backlight, &mut frame_arena().0);
         // A sensor that is not fitted is a board without a camera, not a board that cannot
         // boot: the page that needs it stays dark and the rest are unaffected.
         let camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {
@@ -813,7 +813,7 @@ impl Board<'static> {
 impl BoardTrait for Board<'static> {}
 
 impl iot_core::drivers::board::HasLight for Board<'static> {
-    type Light = DisplayLight;
+    type Light = Screen;
 
     fn take_lights(&mut self) -> Option<Vec<Self::Light>> {
         self.light.take().map(|light| vec![light])

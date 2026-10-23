@@ -2,24 +2,25 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "64db3a4412bbc1d90cce882e2eec07e5b84cb198"
-translated_at = "2026-10-17T14:58:50Z"
+source_file_hash = "92281b514d862727e4a40d78edcd8deb9b29d282"
+translated_at = "2026-10-22T14:46:39Z"
 +++
 
 # Layering and Composition
 
 ## Layers
 
-`iot-core (pure logic) → iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (single-task binary)`
+`iot-core (pure logic) → iot-ui (page rendering) / iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (single-task binary)`
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
-- **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `DisplayLight` adapting an ST7789 panel into an `RgbLight`). The board module only picks pins and assembles; the components themselves are shared across boards.
-- **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`display-light`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
+- **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into an `RgbLight` surface). The board module only picks pins and assembles; the components themselves are shared across boards.
+- **iot-ui is the page layer**: `Canvas` owns only the frame buffer, its dimensions and its ground; `Surface` adds a borrowed `&Diagnostics`, the light instance, FPS, the debug switch, the SPL offset and an optional platform stack probe, and pages draw in immediate mode. It names no chip, board or sensor. `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, then ships the page bytes; pages are therefore host-testable without a panel.
+- **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
 - **iot-bsp-esp**: board differences converge in the `type Board` alias plus run dispatch; one `#[cfg(feature)]` branch per board.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
-- **Pure-logic modules used only inside bsp stay in bsp**: `sounds.rs` (which `Sound` is which `.mid`), `camera_readout.rs` (readings to glyphs), and `post.rs` (the boot inventory) know neither board nor chip and are host-testable. They live in `bsp` rather than `core` because only bsp's components and board modules read them, and promoting them to `core` would add a public surface with no second consumer; the peers in `core` (`overlay`/`stamp`/`keyboard`) are there because both the panel and `intent` read them.
+- **Pure-logic modules used only inside bsp stay in bsp**: `sounds.rs` (which `Sound` is which `.mid`) and `post.rs` (the boot inventory) know neither board nor chip and are host-testable. Reading-to-glyph arithmetic, the font and page layout moved with the page layer into `iot-ui`; the peers left in `core` (`overlay`/`stamp`/`keyboard`) are there because both the pages and `intent` read them.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
@@ -30,7 +31,7 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Composition point = bin board manifest**: capabilities injected by move, generic over capabilities, shared by boards with the same capability set; enabling a module that lacks a capability is a compile error, never silent.
 - **Product tier = feature alias**: the tier fixes the module set, the board fixes the supported set, and the intersection is trimmed and checked at compile time.
 - **Module configurability** = feature switch + const parameters.
-- **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback) plus `iot-app`'s heap `Vec<Box<dyn Renderer>>` registry (`embedded-alloc` 32KB heap; boot LED registered in-task; cross-task Web/Audio renderers go over `RENDER_BUS` + `Send`).
+- **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback) plus `iot-app`'s heap `Render` registry (`embedded-alloc` 32KB heap). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus.
 
 ## The demand model (what / how often / how sensitive)
 
@@ -100,9 +101,9 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 ### Changing: reuse the existing intent pipeline
 
-`apply_business` is already the single place state changes, and `BusinessIntent::TogglePage` is the only thing that moves `page`.
+`apply_business` is already the single place state changes; the only gesture-driven page change is `BusinessIntent::NextPage`, and `SplashOver` lands on the build's page when the splash ends.
 
-A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` (max-aggregated) is computed right after `apply_business`. No new mechanism.
+A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_business`. No new mechanism.
 
 ### Transport: three downstream paths, of different kinds
 
@@ -120,7 +121,7 @@ The camera's chain runs end to end today:
 ```
 DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
   → RenderController::reconcile → LightRenderer::on_appearance
-  → DisplayLight::consume → camera.pause() / released()
+  → Screen::consume → camera.pause() / released()
 ```
 
 So `Demand` only has to grow on the same snapshot, and the display and camera parts add nothing.
@@ -177,7 +178,7 @@ The object being bounded is the whole tick, not the largest contributor within i
 
 Measured (S3, 8 windows of 5 s) a single tick runs 17–25 ms. `MAX_SINGLE_HOLD_MS = 30`, one poll period of margin above the measured bound. `[INPUT]` prints `worst single hold N ms (bound 30 ms)` every window, so a breach is visible without anyone comparing figures.
 
-That figure was measured at **80 MHz**, not the datasheet's 240: `CpuClock`'s default arm is `_80MHz`, `chip_init` goes through `esp_hal::init(Config::default())`, and nothing in this repository sets the clock explicitly. `[measured]` `aec-probe` reads 80,000,000 Hz back from `esp_hal::clock::cpu_clock()`. esp-hal notes on its 160/240 presets that changing the PLL affects USB Serial/JTAG, which is this repository's console, so whether those are usable is untested. **Read every millisecond figure above with that 3× of headroom in mind.**
+These 17–25 ms figures were measured at **80 MHz**. The product S3 now boots at 240 MHz through `chip_init_for_product()` (`chip_init_at(CpuClock::_240MHz)`); `chip_init()` remains the 80 MHz probe entry. This tick measurement has not been re-run at 240 MHz, so the numbers above are still 80 MHz figures and only get shorter there. For the 240 MHz evidence and its cost, see [Changing the CPU clock at runtime](@/records/iot/clock.en.md).
 
 The total is not the risk: Ambient spends 94.8% and behaves. A single 25 ms block is. Playback feeding runs on its own higher-priority executor, driven by DMA, so such a block cannot reach it.
 
@@ -214,7 +215,7 @@ But the parts live in `input_task`, which `render_loop` cannot reach, so the con
 
 The configurator is realised alongside the demand, and `[DEMAND]` reports the resulting schedule.
 
-The demand is keyed by plane, not by enumerated fields. `EffectiveDemand` is a `BTreeMap<PlaneKey, PlaneDemand>` where the key is a device type plus which of them is meant, so `plane`, `without`, `aggregate` and `Override::apply` are all lookups and adding a sensor changes no line of the demand machinery.
+The demand is keyed by plane, not by enumerated fields. `EffectiveDemand` is a `BTreeMap<PlaneKey, PlaneDemand>` where the key is a device type plus which of them is meant, so `plane`, `without` and `Override::apply` are all lookups and adding a sensor changes no line of the demand machinery.
 
 Two devices of one kind can be demanded apart (`PlaneKey::instance(Audio, 0)` and `…, 1`).
 
@@ -226,7 +227,7 @@ The demand state is held, not re-derived. `DeviceManager` holds `demand` beside 
 
 There is exactly one reason for holding it: the configurator needs something to change, and `commit_demand` writes the achievable demand back to the same place so everything downstream reads the amended version.
 
-Arbitration: `EffectiveDemand::aggregate` takes the maximum per key; a test holds it to being per plane rather than whole-map-wins.
+Arbitration: `resolve_speed` takes the highest requirement among collecting planes; a test holds it to being per plane rather than one constant for the whole map.
 
 Wiring:
 

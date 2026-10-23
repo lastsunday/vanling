@@ -1,16 +1,13 @@
 +++
 title = "Changing the CPU clock at runtime"
+description = "esp-hal's docs state the frequencies are frozen; bypassing it and writing the registers really does move this board between 80/160/240, measured 1 : 2.00 : 2.95. A switch costs 1–50 us, the tick is unaffected, and both cores agree."
 weight = 72
 sort_by = "weight"
+
 [extra]
-source_file_hash = "5250dfdb400d960a21f9fa95d92b13f2dce3f791"
-translated_at = "2026-10-13T04:12:17Z"
+source_file_hash = "8346dfae07a2bc1ef13ca94f05b5abc8cf6ac850"
+translated_at = "2026-10-22T09:55:58Z"
 +++
-title: "Changing the CPU clock at runtime: yes, but off the documented path"
-description: "esp-hal's docs state the frequencies are frozen; bypassing it and writing the registers really does move this board between 80/160/240, measured 1 : 2.00 : 2.95. A switch costs 1–50 us, the tick is unaffected, and both cores agree."
-source_file_hash = "5250dfdb400d960a21f9fa95d92b13f2dce3f791"
-translated_at = "2026-10-13T04:12:17Z"
----
 
 <!-- doc-audience: ai -->
 
@@ -69,7 +66,7 @@ Note: `esp_hal::clock::cpu_clock()` still reports 240 MHz at all three — it re
 
 The starting frequency looked like it might matter: esp-hal keeps two bias values (about dbias 28 for 240, 27 for below it), so climbing to 240 from an 80 MHz boot is *under-driven*. That is cheap to check — the failure mode is a reset, not damage.
 
-**The probe boots at 80 MHz (which is what the product's `chip_init()` does) and the whole run matches a 240 MHz boot digit for digit:**
+**The probe boots at 80 MHz (which is `chip_init()`'s default; the product entry now uses `chip_init_for_product()`, 240 MHz on the S3) and the whole run matches a 240 MHz boot digit for digit:**
 
 | Quantity | 240 MHz boot | 80 MHz boot |
 |---|---:|---:|

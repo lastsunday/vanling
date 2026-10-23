@@ -10,6 +10,7 @@
 extern crate alloc;
 
 pub mod config;
+pub mod controls;
 pub mod demand;
 pub mod diagnostics;
 pub mod drivers;

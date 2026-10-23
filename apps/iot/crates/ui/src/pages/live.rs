@@ -1,18 +1,29 @@
-//! The live pages: diagnostics, attitude, audio, speaker and network.
-use super::draw::{
+//! The live pages: diagnostics, attitude, audio and speaker.
+use iot_core::drivers::audio::{dbfs, spl};
+use iot_core::drivers::motion::MotionCapabilities;
+use iot_core::overlay::{
+    Block, FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, ROW_PITCH, block_x, overlay_row_top,
+};
+use iot_core::page::{Part, walk};
+use iot_core::render::{MODE_BREATH, MODE_SOLID};
+use iot_core::state::{AudioPhase, PlaybackPhase};
+
+use crate::layout::*;
+use crate::pages::draw::{
     direction_arrow, format_dba, format_i32, format_tenths, format_u16, gesture_glyph, mode_word,
     write_u16,
 };
-use super::*;
+use crate::surface::Surface;
+use crate::text::{format_pair, sound_label};
 
-impl DisplayLight {
+impl Surface<'_> {
     /// Overdraws the ambient overlay as three blocks of inverted-pixel rows,
     /// which is what the landscape panel's extra width is for. First block: the
     /// gesture counters, `DIR`, and the two gesture coordinate pairs. Second
     /// block: the per-finger readouts and the two rows that say whether the input
     /// path is alive. Third block: the active mode's own rows, breathing rows
     /// tracking the live color.
-    pub(super) fn stamp_diagnostics(&mut self, width: usize, height: usize, live: (u8, u8)) {
+    pub(crate) fn stamp_diagnostics(&mut self, live: (u8, u8)) {
         let touch = self.diagnostics.touch;
         let light = self.diagnostics.lights[usize::from(self.instance)];
         let mut buf = [0u8; 6];
@@ -26,29 +37,22 @@ impl DisplayLight {
             (b"SWP".as_slice(), u16::from(touch.swipes)),
         ];
         for (row, (label, value)) in counters.into_iter().enumerate() {
-            self.stamp_left(
-                label,
-                format_u16(value, &mut buf),
-                Block::First,
-                row,
-                width,
-                height,
-            );
+            self.stamp_left(label, format_u16(value, &mut buf), Block::First, row);
         }
 
         let mut dir = [b' '; 8];
         dir[0] = direction_arrow(touch.last_swipe_dir);
         dir[1] = b' ';
         let nd = write_u16(touch.last_swipe_dist, &mut dir, 2);
-        self.stamp_left(b"DIR", &dir[..nd], Block::First, 8, width, height);
+        self.stamp_left(b"DIR", &dir[..nd], Block::First, 8);
 
         let mut ref_buf = [0u8; 12];
         let origin = format_pair(touch.last_gesture_origin, &mut ref_buf);
-        self.stamp_left(b"XY", origin, Block::First, 9, width, height);
+        self.stamp_left(b"XY", origin, Block::First, 9);
 
         let mut end_buf = [0u8; 12];
         let end = format_pair(touch.last_gesture_end, &mut end_buf);
-        self.stamp_left(b"XY2", end, Block::First, 10, width, height);
+        self.stamp_left(b"XY2", end, Block::First, 10);
 
         /// Overlay row label quartet for one finger slot: coordinate, resolved
         /// gesture digit, its value, and the live movement arrow.
@@ -74,7 +78,7 @@ impl DisplayLight {
                     1
                 }
             };
-            self.stamp_left(xy_label, &xy[..n], Block::Second, base, width, height);
+            self.stamp_left(xy_label, &xy[..n], Block::Second, base);
 
             let last = touch.finger[slot];
             let mut value = [b'-'; 6];
@@ -86,29 +90,13 @@ impl DisplayLight {
                 digits.len()
             };
             let gesture = [gesture_glyph(last.kind)];
-            self.stamp_left(
-                gesture_label,
-                &gesture,
-                Block::Second,
-                base + 1,
-                width,
-                height,
-            );
-            self.stamp_left(
-                value_label,
-                &value[..value_len],
-                Block::Second,
-                base + 2,
-                width,
-                height,
-            );
+            self.stamp_left(gesture_label, &gesture, Block::Second, base + 1);
+            self.stamp_left(value_label, &value[..value_len], Block::Second, base + 2);
             self.stamp_left(
                 dir_label,
                 &[direction_arrow(touch.live_dir[slot])],
                 Block::Second,
                 base + 3,
-                width,
-                height,
             );
         }
 
@@ -117,18 +105,9 @@ impl DisplayLight {
             format_u16(u16::from(touch.chip_gesture_id), &mut buf),
             Block::Second,
             8,
-            width,
-            height,
         );
 
-        self.stamp_left(
-            b"FRM",
-            format_u16(touch.frames, &mut buf),
-            Block::Second,
-            9,
-            width,
-            height,
-        );
+        self.stamp_left(b"FRM", format_u16(touch.frames, &mut buf), Block::Second, 9);
 
         let mut lo_hi = [0u8; 8];
         let mut n = write_u16(u16::from(light.breath.min_brightness), &mut lo_hi, 0);
@@ -137,106 +116,67 @@ impl DisplayLight {
 
         match light.mode {
             MODE_BREATH => {
-                self.stamp_left(
-                    mode_word(light.mode),
-                    b"MOD",
-                    Block::Third,
-                    0,
-                    width,
-                    height,
-                );
+                self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0);
                 self.stamp_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
                     Block::Third,
                     1,
-                    width,
-                    height,
                 );
-                self.stamp_left(&lo_hi[..n], b"LO HI", Block::Third, 2, width, height);
+                self.stamp_left(&lo_hi[..n], b"LO HI", Block::Third, 2);
                 self.stamp_left(
                     format_u16(light.breath.period_ms, &mut buf),
                     b"PER",
                     Block::Third,
                     3,
-                    width,
-                    height,
                 );
                 self.stamp_left(
                     format_u16(u16::from(live.1), &mut buf),
                     b"HUE",
                     Block::Third,
                     4,
-                    width,
-                    height,
                 );
                 self.stamp_left(
                     format_u16(light.breath.hue_period_ms, &mut buf),
                     b"HPR",
                     Block::Third,
                     5,
-                    width,
-                    height,
                 );
                 self.stamp_left(
                     format_u16(u16::from(light.breath.hue_span), &mut buf),
                     b"SPN",
                     Block::Third,
                     6,
-                    width,
-                    height,
                 );
                 self.stamp_left(
                     format_u16(u16::from(light.breath.group_len), &mut buf),
                     b"GRP",
                     Block::Third,
                     7,
-                    width,
-                    height,
                 );
                 self.stamp_left(
                     format_u16(u16::from(light.breath.saturation), &mut buf),
                     b"SAT",
                     Block::Third,
                     8,
-                    width,
-                    height,
                 );
             }
             MODE_SOLID => {
-                self.stamp_left(
-                    mode_word(light.mode),
-                    b"MOD",
-                    Block::Third,
-                    0,
-                    width,
-                    height,
-                );
+                self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0);
                 self.stamp_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
                     Block::Third,
                     1,
-                    width,
-                    height,
                 );
                 self.stamp_left(
                     format_u16(u16::from(live.1), &mut buf),
                     b"HUE",
                     Block::Third,
                     2,
-                    width,
-                    height,
                 );
             }
-            _ => self.stamp_left(
-                mode_word(light.mode),
-                b"MOD",
-                Block::Third,
-                0,
-                width,
-                height,
-            ),
+            _ => self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0),
         }
     }
 
@@ -250,23 +190,17 @@ impl DisplayLight {
     /// dial. A block holds eighteen rows and the axis rows alone are fifteen, so
     /// the second block is where the estimators went rather than a fourth column.
     /// Labels, fields and thresholds: `docs/content/development/iot/motion.md`.
-    pub(super) fn stamp_attitude(&mut self, width: usize, height: usize) {
-        self.stamp_text(
-            b"ATTITUDE",
-            block_x(Block::First),
-            overlay_row_top(0),
-            width,
-            height,
-        );
+    pub(crate) fn stamp_attitude(&mut self) {
+        self.stamp_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
         let Some(sample) = self.diagnostics.motion else {
-            self.stamp_left(b"ERR", b"WAIT", Block::First, 1, width, height);
+            self.stamp_left(b"ERR", b"WAIT", Block::First, 1);
             return;
         };
         if !sample.valid {
-            self.stamp_left(b"ERR", b"READ", Block::First, 1, width, height);
+            self.stamp_left(b"ERR", b"READ", Block::First, 1);
             return;
         }
-        self.stamp_horizon(&sample, width, height);
+        self.stamp_horizon(&sample);
 
         // The label prefix carries the channel, the unit picks the formatter, and
         // `first_row` is where the block starts.
@@ -286,8 +220,6 @@ impl DisplayLight {
                     value,
                     Block::First,
                     first_row + axis,
-                    width,
-                    height,
                 );
             }
         }
@@ -296,8 +228,6 @@ impl DisplayLight {
             format_u16(u16::from(sample.status), &mut [0; 6]),
             Block::Second,
             0,
-            width,
-            height,
         );
         // What the recognizer's estimators decided on, which the raw axes cannot
         // show: a settled reading is near zero by definition, so a threshold has
@@ -308,24 +238,18 @@ impl DisplayLight {
             format_i32(sample.gravity_deviation_mg, &mut [0; 12]),
             Block::Second,
             1,
-            width,
-            height,
         );
         self.stamp_left(
             b"SR",
             format_i32(sample.shake_residual_mg, &mut [0; 12]),
             Block::Second,
             2,
-            width,
-            height,
         );
         self.stamp_left(
             b"TR",
             format_i32(sample.tap_residual_mg, &mut [0; 12]),
             Block::Second,
             3,
-            width,
-            height,
         );
         let counts = self.diagnostics.motion_counts;
         let caps = self.diagnostics.motion_caps;
@@ -391,14 +315,7 @@ impl DisplayLight {
             } else {
                 NOT_AVAILABLE
             };
-            self.stamp_left(
-                label,
-                value,
-                Block::Second,
-                ESTIMATOR_ROWS + index,
-                width,
-                height,
-            );
+            self.stamp_left(label, value, Block::Second, ESTIMATOR_ROWS + index);
         }
     }
 
@@ -408,7 +325,7 @@ impl DisplayLight {
     /// what is drawn, because the state layer already resolved which envelope
     /// that is. Readouts, scale and their meanings:
     /// `docs/content/development/iot/audio.md`.
-    pub(super) fn stamp_audio(&mut self, width: usize, height: usize) {
+    pub(crate) fn stamp_audio(&mut self) {
         // The snapshot is read in place rather than copied into a local: the
         // embedded `AudioEnvelope` is 1.6 KB, which on this stack was a large
         // slice of what a repaint could afford. Reading through `self` in the
@@ -419,41 +336,24 @@ impl DisplayLight {
         // of it. The hint below stands in the ruler's top label's own rows, which
         // is safe only because the two are never drawn together: the hint is the
         // idle page's, and the idle page returns before the sweep.
-        self.stamp_text(
-            b"AUDIO",
-            block_x(Block::First),
-            overlay_row_top(0),
-            width,
-            height,
-        );
+        self.stamp_text(b"AUDIO", block_x(Block::First), overlay_row_top(0));
         // The corner readout is the number this page shows a human: the
         // A-weighted sound level of the same capture, counted in the same
         // decibels the SPL column uses, with its unit spelled out so a glance
         // answers "is it loud?" without converting dBFS. It heads the readouts on
         // the right, which is the same position it held against the title.
+        let dba_lsb = self.diagnostics.audio.dba_lsb;
+        let offset = self.spl_offset_db;
         self.stamp_text_right(
-            format_dba(
-                spl(dbfs(self.diagnostics.audio.dba_lsb), SPL_OFFSET_DECIBELS),
-                &mut [0u8; 12],
-            ),
+            format_dba(spl(dbfs(dba_lsb), offset), &mut [0u8; 12]),
             PANEL_RIGHT,
             overlay_row_top(0),
-            width,
-            height,
         );
-        self.stamp_level(
-            b"PK",
-            dbfs(self.diagnostics.audio.envelope.loudest()),
-            1,
-            width,
-            height,
-        );
+        self.stamp_level(b"PK", dbfs(self.diagnostics.audio.envelope.loudest()), 1);
         self.stamp_level(
             b"RMS",
             dbfs(self.diagnostics.audio.envelope.loudest_rms()),
             2,
-            width,
-            height,
         );
         self.stamp_left(
             b"ST",
@@ -464,8 +364,6 @@ impl DisplayLight {
             },
             Block::RightEdge,
             1,
-            width,
-            height,
         );
         self.stamp_left(
             b"MS",
@@ -475,8 +373,6 @@ impl DisplayLight {
             ),
             Block::RightEdge,
             2,
-            width,
-            height,
         );
         // What the sweep cannot say about itself. `COL` climbing with a peak that
         // does not is a quiet room, and `COL` climbing under a −60 dBFS peak is
@@ -489,8 +385,6 @@ impl DisplayLight {
             ),
             Block::RightEdge,
             3,
-            width,
-            height,
         );
         // How many times the capture had to be re-armed: what separates a quiet
         // room from a capture that keeps breaking, both of which draw a still
@@ -500,8 +394,6 @@ impl DisplayLight {
             format_u16(self.diagnostics.audio.restarts, &mut [0u8; 6]),
             Block::RightEdge,
             4,
-            width,
-            height,
         );
         // A clip is an absolute statement about the whole window, not a level reading,
         // so it says so in words and not only as a mark. It takes a row of its own
@@ -509,29 +401,17 @@ impl DisplayLight {
         // reads in has no room for a fourth column — and a latch that appears and
         // clears must not push anything it appears next to.
         if self.diagnostics.audio.envelope.clipped() {
-            self.stamp_text(
-                b"CLIP",
-                block_x(Block::RightEdge),
-                overlay_row_top(5),
-                width,
-                height,
-            );
+            self.stamp_text(b"CLIP", block_x(Block::RightEdge), overlay_row_top(5));
         }
         if self.diagnostics.audio.phase == AudioPhase::Idle {
-            self.stamp_text(
-                b"TAP TO REC",
-                block_x(Block::First),
-                WAVE_TOP as usize,
-                width,
-                height,
-            );
+            self.stamp_text(b"TAP TO REC", block_x(Block::First), WAVE_TOP as usize);
             return;
         }
         let envelope = &self.diagnostics.audio.envelope;
         let peaks = envelope.weighted_released_peaks();
         let levels = envelope.weighted_rms_columns();
         let clip_age = envelope.clipped_age();
-        self.stamp_sweep(&peaks, &levels, clip_age, width, height);
+        self.stamp_sweep(&peaks, &levels, clip_age);
     }
 
     /// Overdraws the Speaker page: the phase, the sound a tap would play, the
@@ -539,15 +419,9 @@ impl DisplayLight {
     /// nothing here to animate — a sound is a one-shot and the state layer owns
     /// the whole of it — so the page is a readout plus its two gestures, spelled
     /// out so neither has to be discovered.
-    pub(super) fn stamp_speaker(&mut self, width: usize, height: usize) {
+    pub(crate) fn stamp_speaker(&mut self) {
         let playback = self.diagnostics.playback;
-        self.stamp_text(
-            b"SPKR",
-            block_x(Block::First),
-            overlay_row_top(0),
-            width,
-            height,
-        );
+        self.stamp_text(b"SPKR", block_x(Block::First), overlay_row_top(0));
         self.stamp_left(
             b"ST",
             match playback.phase {
@@ -556,55 +430,30 @@ impl DisplayLight {
             },
             Block::First,
             1,
-            width,
-            height,
         );
-        self.stamp_left(
-            b"SRC",
-            label_of(playback.sound),
-            Block::First,
-            2,
-            width,
-            height,
-        );
+        self.stamp_left(b"SRC", sound_label(playback.sound), Block::First, 2);
         // The latch is four glyphs, which is a glyph more than a block's label
         // slot, so it heads the second block rather than sitting beside the row
         // it latches: a latch that appears and clears must not push anything it
         // appears next to.
         if playback.muted {
-            self.stamp_text(
-                b"MUTE",
-                block_x(Block::Second),
-                overlay_row_top(1),
-                width,
-                height,
-            );
+            self.stamp_text(b"MUTE", block_x(Block::Second), overlay_row_top(1));
         }
         self.stamp_left(
             b"PLY",
             format_u16(playback.plays, &mut [0u8; 6]),
             Block::First,
             3,
-            width,
-            height,
         );
         self.stamp_left(
             b"DRP",
             format_u16(playback.dropped, &mut [0u8; 6]),
             Block::First,
             4,
-            width,
-            height,
         );
         let hint = overlay_row_top(6);
-        self.stamp_text(b"TAP PLAY", block_x(Block::First), hint, width, height);
-        self.stamp_text(
-            b"HOLD MUTE",
-            block_x(Block::First),
-            hint + ROW_PITCH,
-            width,
-            height,
-        );
+        self.stamp_text(b"TAP PLAY", block_x(Block::First), hint);
+        self.stamp_text(b"HOLD MUTE", block_x(Block::First), hint + ROW_PITCH);
     }
 
     /// Overdraws the Network page, one part at a time.
@@ -612,7 +461,7 @@ impl DisplayLight {
     /// Which parts there are and what order they are drawn in are [`walk`]'s, because which of them
     /// covers which is a fact about the page rather than about the panel — and the panel is the only
     /// place a wrong answer to it is invisible. All that is left here is what each part looks like.
-    pub(super) fn stamp_network(&mut self, width: usize, height: usize) {
+    pub(crate) fn stamp_network(&mut self) {
         let link = self.diagnostics.link;
         // Copied rather than borrowed: the borrow would be of `self.diagnostics`, and every
         // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
@@ -636,32 +485,29 @@ impl DisplayLight {
                 shown_ap,
                 self.diagnostics.mac,
                 aps.filter(|list| !list.is_empty()).map(|list| list.len()),
-                (width, height),
             ),
-            Part::Content => self.stamp_content(setup, link, aps, width, height),
-            Part::Controls => self.stamp_strip(setup, link, width, height),
-            Part::Overlay => {
-                self.stamp_box(setup, link, shown_ap, self.diagnostics.mac, width, height)
-            }
+            Part::Content => self.stamp_content(setup, link, aps),
+            Part::Controls => self.stamp_strip(setup, link),
+            Part::Overlay => self.stamp_box(setup, link, shown_ap, self.diagnostics.mac),
         });
     }
 
     /// The splash page: its three lines, centred, and nothing else.
     ///
     /// The page is the whole of the window in which the button means setup mode (see
-    /// [`DisplayPage::Splash`]), so its content is that window's own rule in the order a person
+    /// `Splash`), so its content is that window's own rule in the order a person
     /// needs it — the device, the verb, and what the verb asks for. No readout, because a device
     /// that has just booted has nothing to read yet.
-    pub(super) fn stamp_splash(&mut self, width: usize, height: usize) {
+    pub(crate) fn stamp_splash(&mut self) {
         // The three lines held on the stack rather than in a table: a table of fat pointers is a
         // relocatable object in DRAM, and the page is worth no static memory at all.
         let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
         let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;
-        let top = height.saturating_sub(block) / 2;
+        let top = self.height().saturating_sub(block) / 2;
         for (line, text) in lines.iter().enumerate() {
             let ink = text.len() * GLYPH_PITCH - OVERLAY_GAP;
-            let left = width.saturating_sub(ink) / 2;
-            self.stamp_text(text, left, top + line * SPLASH_PITCH, width, height);
+            let left = self.width().saturating_sub(ink) / 2;
+            self.stamp_text(text, left, top + line * SPLASH_PITCH);
         }
     }
 }

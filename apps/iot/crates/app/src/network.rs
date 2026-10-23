@@ -1022,9 +1022,11 @@ where
                             break;
                         }
                         // The same access point, open or under its passphrase again: a phone that
-                        // was already told which network to join has to join it again.
-                        Either4::Third(SetupAsk::Pass { .. }) => {
-                            secured = !secured;
+                        // was already told which network to join has to join it again. The target
+                        // comes from the request rather than from a flip, so a duplicate cannot
+                        // undo the answer it repeats.
+                        Either4::Third(SetupAsk::Pass { open, .. }) => {
+                            secured = !open;
                             log::info!(
                                 "[WIFI] the setup access point is being put up again, {}",
                                 if secured {
@@ -1314,7 +1316,7 @@ async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
 /// A drop on a full bus is the right failure: a link snapshot is state, the next window
 /// supersedes it, and a producer that waited for room would hold the radio behind the panel.
 fn publish(status: LinkStatus) {
-    let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::Link(status)));
+    let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::LinkReport(status)));
 }
 
 /// Write the network the link just joined to the part it is kept in, whichever path named it.

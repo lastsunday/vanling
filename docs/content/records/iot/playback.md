@@ -38,7 +38,7 @@ Tone::fill
 
 `[实测]` 复现步骤：
 
-1. 固件启动后每 1.2 s 往 `INTENT_BUS` 发一次 `Intent::Business(BusinessIntent::PlayNext)`，走与真实轻点完全相同的链路
+1. 固件启动后每 1.2 s 往 `INTENT_BUS` 发一次 `Intent::Business(BusinessIntent::PlayNext)`（当时的命令名，今为 `Playback(PlaybackAction::Next)`），走与真实轻点完全相同的链路
 2. `[PLAY] Asset` 正常，`[PLAY] Chime` 之后立即 panic（这两个名字是当时的；目录后来扩到五个声音，见[音效配方](#音效配方)）
 3. 第一次 chime **首帧**就崩，不存在累积过程
 
@@ -224,7 +224,7 @@ watchdog 的方向错法同类，但更贵：`tx_idle` 在 FIFO 瞬时空的那�
 | `ERROR` | `alert_error-*` |
 | `RISE` | 无对应（Material 这里是 `hero_simple-celebration`） |
 
-**Material 那一类我们缺**：它的 `ui_lock`/`ui_unlock` 是成对的状态翻转音，而 `ToggleMute` 现在完全静默——喇叭不出声，只有屏幕上的 `MUTE`。补这一对是功能改动，不在本次范围。
+**Material 那一类我们缺**：它的 `ui_lock`/`ui_unlock` 是成对的状态翻转音，而 `PlaybackAction::SetMuted` 现在完全静默——喇叭不出声，只有屏幕上的 `MUTE`。补这一对是功能改动，不在本次范围。
 
 Material 的三段式命名（`notification_simple`）搬不过来：面板的值槽是 7 个字位，20 字放不下。
 

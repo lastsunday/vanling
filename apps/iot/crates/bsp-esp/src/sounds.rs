@@ -29,17 +29,11 @@ pub const fn file_of(sound: Sound) -> Option<&'static [u8]> {
     }
 }
 
-/// The Speaker page's name for a sound. Here rather than in the panel because
-/// whether it fits the block is not something the panel can check on a host.
+/// The Speaker page's name for a sound. The text itself lives in `iot-ui`, where
+/// whether it fits the block is checkable on a host; this keeps the board's
+/// catalogue spelling one call away from its files.
 pub const fn label_of(sound: Sound) -> &'static [u8] {
-    match sound {
-        Sound::Tap => b"TAP",
-        Sound::Notice => b"NOTICE",
-        Sound::Warn => b"WARN",
-        Sound::Error => b"ERROR",
-        Sound::Rise => b"RISE",
-        Sound::Sweep => b"SWEEP",
-    }
+    iot_ui::text::sound_label(sound)
 }
 
 #[cfg(test)]

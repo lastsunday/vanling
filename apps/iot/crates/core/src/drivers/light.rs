@@ -18,6 +18,8 @@ pub enum Fill {
 /// the boot state until a board fills them.
 pub const MAX_LIGHTS: usize = 2;
 
+use crate::state::DisplayPage;
+
 /// Abstraction over a light surface that accepts an RGB color.
 pub trait RgbLight {
     fn set_rgb(&mut self, color: Rgb) {
@@ -39,6 +41,21 @@ pub trait RgbLight {
     /// surfaces return a step > 0 to skip imperceptible drift.
     fn repaint_step(&self) -> u8 {
         0
+    }
+
+    /// The ground a page draws for itself, on a surface that has pages. A light-only surface
+    /// keeps the light it was; a panel says which pages are screens rather than colours. Asked
+    /// here rather than derived in the renderer because how a surface presents a page is a fact
+    /// only that surface knows.
+    fn page_ground(&self, _page: DisplayPage) -> Option<Rgb> {
+        None
+    }
+
+    /// Whether `page` is drawn by frames arriving rather than by the light's own animation. The
+    /// render loop has to keep stepping such a surface even when the light is parked, because
+    /// polling is what makes the next frame arrive.
+    fn page_draws_frames(&self, _page: DisplayPage) -> bool {
+        false
     }
 }
 

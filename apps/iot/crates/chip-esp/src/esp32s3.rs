@@ -35,6 +35,15 @@ pub fn chip_init() -> Peripherals {
     chip_init_at(CpuClock::_80MHz)
 }
 
+/// The clock the product boots at: 240 MHz, not the 80 the part's default picks.
+///
+/// The AEC's delay search alone busts the 30 ms audio tick at 80 MHz, and the governor may
+/// only lower from here. `set_cpu_clock` never raises the bias, so starting lower would leave
+/// the speed the product needs most without one trimmed for it.
+pub fn chip_init_for_product() -> Peripherals {
+    chip_init_at(CpuClock::_240MHz)
+}
+
 /// What [`psram_window`] found on this part, for [`crate::heap`]. Three answers because the two failures lead
 /// apart: no PSRAM on the module is hardware to go looking for, a window that does not
 /// read back is this build's SPI timing.

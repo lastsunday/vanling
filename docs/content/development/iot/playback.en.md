@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 270
 sort_by = "weight"
 [extra]
-source_file_hash = "a2b4cf9fa057211abe5279b162ffeea22ba9b699"
-translated_at = "2026-10-15T16:10:00Z"
+source_file_hash = "cea6b3e07546b164b806bc1538a3182ad399ba09"
+translated_at = "2026-10-22T12:18:13Z"
 +++
 
 # Playback Semantics
@@ -33,7 +33,7 @@ That is why `Speaker` demands `Send + 'static`, and why its error is the named `
 
 The C6 and the host have no second software interrupt, so they take `SpeakerRunner::Inline` and the two loops are `join4`ed on one executor, with the same semantics.
 
-`PlaybackFinished` travels back over the intent bus from the playback task; it is not a polled flag.
+`BusinessIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
 
 The phase leaves `Playing` only when the driver itself says so. Letting the page and the driver each tell their own story produces "it still looks like it is playing, but it finished ages ago", and every later tap is then dropped as a replay of a sound that had already ended.
 
@@ -41,7 +41,7 @@ A trigger that lands on `Playing` only increments `dropped`; it does not interru
 
 Interrupting leaves a step between two stretches of audio — that is a click, and a click is much harder to explain than "that tap went unheard". The drop has to be visible, so it gets a readout of its own (`DRP`) instead of being quietly folded into another number.
 
-`ToggleMute` latches the output; it does not stop playback.
+`PlaybackAction::SetMuted` latches the output; it does not stop playback.
 
 A trigger while muted still plays to the end and still reports completion: muting is the ear's business, not the sound's. Conflating the two makes `ST` read `IDLE` while the sound is still going.
 

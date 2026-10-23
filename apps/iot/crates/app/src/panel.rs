@@ -1036,14 +1036,19 @@ mod tests {
         // for; the passphrase goes in, and the store's marks follow the association it won — which is
         // the order the board runs in, and the reason the row under the link is a saved one.
         manager.apply_scan(marked(&["target"], &[]));
-        manager.apply_business(BusinessIntent::TogglePage);
-        manager.apply_business(BusinessIntent::Row(0));
+        manager.apply_business(BusinessIntent::NextPage);
+        let picked = manager
+            .state()
+            .aps
+            .and_then(|list| list.get(0))
+            .expect("the row the bench's scan published");
+        manager.apply_business(BusinessIntent::Choose(picked));
         assert!(
             manager.state().setup.keyboard,
             "the pick is there to begin with"
         );
         manager.apply_scan(marked(&["target"], &["target"]));
-        manager.apply_business(BusinessIntent::Link(LinkStatus {
+        manager.apply_business(BusinessIntent::LinkReport(LinkStatus {
             phase: LinkPhase::Connected,
             ap: Some(ap("target")),
             address: None,
@@ -1090,7 +1095,7 @@ mod tests {
             // with the copy the store holds for it, which is the association the radio reports.
             if manager.take_leave() {
                 leaves += 1;
-                manager.apply_business(BusinessIntent::Link(LinkStatus::default()));
+                manager.apply_business(BusinessIntent::LinkReport(LinkStatus::default()));
             }
             if manager.take_forget().is_some() {
                 forgets += 1;
@@ -1107,7 +1112,7 @@ mod tests {
                     Ssid::from_octets(b"target"),
                     "the row the walk tapped"
                 );
-                manager.apply_business(BusinessIntent::Link(LinkStatus {
+                manager.apply_business(BusinessIntent::LinkReport(LinkStatus {
                     phase: LinkPhase::Connecting,
                     ap: Some(ap("target")),
                     address: None,
@@ -1116,7 +1121,7 @@ mod tests {
             }
             if manager.take_scan_now() {
                 rounds += 1;
-                manager.apply_business(BusinessIntent::Link(LinkStatus::default()));
+                manager.apply_business(BusinessIntent::LinkReport(LinkStatus::default()));
             }
             if bench.act == Act::ReopenTheRowJustLeft && manager.state().setup.keyboard {
                 assert!(
