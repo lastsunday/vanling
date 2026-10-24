@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
 use rubato::audioadapter_buffers::direct::SequentialSliceOfVecs;
-use rubato::{Fft, FixedSync, Indexing, Resampler};
+use rubato::{Fft, FixedSync, Indexing, Resampler, WindowFunction};
 
 use crate::pipeline::{EventStream, Node, NodeContext, PipelineEvent, ReleaseMode};
 
@@ -36,12 +36,13 @@ impl ResampleState {
     /// 送一段解码后 PCM，返回重采样到 16k 的输出（可能为空，因内部缓冲）。
     fn push(&mut self, source_rate: u32, samples: &[f32]) -> Vec<f32> {
         let resampler = self.resampler.get_or_insert_with(|| {
-            Fft::new(
+            Fft::new_custom(
                 source_rate as usize,
                 OUTPUT_SAMPLE_RATE as usize,
                 RESAMPLER_CHUNK_SIZE,
                 RESAMPLER_SUB_CHUNKS,
                 RESAMPLER_CHANNELS,
+                WindowFunction::BlackmanHarris2,
                 FixedSync::Input,
             )
             .expect("failed to build resampler")

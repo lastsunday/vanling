@@ -38,7 +38,7 @@ use embassy_futures::join::join;
 use embassy_futures::select::{Either, select};
 use embassy_net::{Config, Stack, StackResources};
 use embassy_time::{Duration, Instant, Timer};
-use embedded_alloc::Heap;
+use embedded_alloc::LlffHeap as Heap;
 use iot_core::drivers::board::HasWifi;
 use iot_core::drivers::network::{Credentials, Ipv4, LinkPhase, Station};
 

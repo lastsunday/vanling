@@ -66,6 +66,14 @@ jobs:
           -k GITHUB_TOKEN
           --command espup install --name esp -v 1.95.0.0
 
+      - name: Verify lockfiles are in sync
+        run: >
+          nix develop
+          --ignore-env
+          -k HOME
+          --command bash -c 'cargo metadata --locked --format-version 1 > /dev/null &&
+          cd apps/iot && cargo metadata --locked --format-version 1 > /dev/null'
+
       - name: Moon CI pipeline (affected)
         run: >
           nix develop

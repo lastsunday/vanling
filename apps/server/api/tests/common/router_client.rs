@@ -198,7 +198,7 @@ impl StreamableHttpClient for RouterClient {
     async fn get_stream(
         &self,
         uri: Arc<str>,
-        session_id: Arc<str>,
+        session_id: Option<Arc<str>>,
         last_event_id: Option<String>,
         auth_header: Option<String>,
         custom_headers: HashMap<HeaderName, HeaderValue>,
@@ -217,8 +217,10 @@ impl StreamableHttpClient for RouterClient {
                     mime::TEXT_EVENT_STREAM.as_ref(),
                 ]
                 .join(", "),
-            )
-            .header(HEADER_SESSION_ID, session_id.as_ref());
+            );
+        if let Some(session_id) = session_id {
+            builder = builder.header(HEADER_SESSION_ID, session_id.as_ref());
+        }
         builder = builder.header(http::header::HOST, "localhost");
         if let Some(auth_token) = auth_header {
             builder = builder.header(http::header::AUTHORIZATION, format!("Bearer {auth_token}"));

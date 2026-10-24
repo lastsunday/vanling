@@ -24,8 +24,8 @@ lto = true
 codegen-units = 1
 
 [workspace.dependencies]
-critical-section = { version = "1.1", default-features = false }
-embedded-alloc = "0.5.1"
+critical-section = { version = "1.2.0", default-features = false }
+embedded-alloc = { version = "0.7.0", default-features = false, features = ["llff"] }
 embedded-graphics-core = { version = "0.4.1", default-features = false }
 embedded-hal = { version = "1.0.0", default-features = false }
 # `compat` only: the Wi-Fi driver links prebuilt C that allocates through
@@ -94,7 +94,7 @@ embassy-embedded-hal = { version = "0.6.0", default-features = false }
 embassy-sync = "0.8.0"
 embassy-time = "0.5.1"
 log = "0.4.34"
-libm = { version = "0.2", default-features = false }
+libm = { version = "0.2.16", default-features = false }
 mipidsi = "0.10.0"
 smart-leds = "0.4.0"
 iot-core = { path = "crates/core" }

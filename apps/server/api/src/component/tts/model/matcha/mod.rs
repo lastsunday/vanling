@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use framework::error::AppError;
 use futures::Stream;
 use rubato::audioadapter_buffers::direct::SequentialSliceOfVecs;
-use rubato::{Fft, FixedSync, Indexing, Resampler};
+use rubato::{Fft, FixedSync, Indexing, Resampler, WindowFunction};
 use service::component::tts::{Tts, TtsPacket};
 use service::pipeline::AudioSpec;
 use sherpa_onnx::{
@@ -287,12 +287,13 @@ impl Tts for TtsMatcha {
 
                 let mut resampler = if needs_resample {
                     Some(
-                        Fft::<f32>::new(
+                        Fft::<f32>::new_custom(
                             pcm_sample_rate as usize,
                             encode_sr as usize,
                             RESAMPLER_CHUNK_SIZE,
                             RESAMPLER_SUB_CHUNKS,
                             RESAMPLER_CHANNELS,
+                            WindowFunction::BlackmanHarris2,
                             FixedSync::Input,
                         )
                         .expect("Failed to create resampler"),

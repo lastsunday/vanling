@@ -398,6 +398,7 @@ async fn test_chat_mcp(text: &str) -> anyhow::Result<()> {
                             role: Role::User,
                             parts: vec![ContentPart::ToolResult {
                                 id: id.clone(),
+                                name: name.clone(),
                                 output,
                             }],
                         });

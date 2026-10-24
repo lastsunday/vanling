@@ -5,14 +5,16 @@ use futures::{Stream, StreamExt};
 use futures_channel::mpsc::channel;
 use futures_util::SinkExt;
 use rig_core::{
-    OneOrMany,
-    client::CompletionClient,
     completion::{
-        CompletionModel, CompletionRequest as RigCompletionRequest, ToolDefinition as RigToolDef,
-        message::{AssistantContent, Message as RigMessage, ToolResultContent, UserContent},
+        CompletionRequest as RigCompletionRequest, ToolDefinition as RigToolDef,
+        message::{
+            AssistantContent, AssistantMessage, CallId, Message as RigMessage, ToolName,
+            ToolResultContent, UserContent,
+        },
     },
-    providers::openai::CompletionsClient,
-    streaming::StreamedAssistantContent,
+    driver::Model,
+    providers::openai::{OpenAIConfig, wire::Chat},
+    streaming::{Item, StreamEvent},
 };
 use service::component::llm::{
     CompletionEvent, CompletionRequest, ContentPart, InputState, Llm, Message, Role, ToolDef,
@@ -26,24 +28,16 @@ const LLM_STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct OpenAiCompatible {
-    model: rig_core::providers::openai::completion::CompletionModel,
+    model: Model<Chat>,
 }
 
 impl OpenAiCompatible {
     pub fn new(api_url: &str, api_key: &str, api_model: &str) -> Result<Self, ModelError> {
-        let client = CompletionsClient::builder()
-            .base_url(api_url)
-            .api_key(api_key)
-            .build()
-            .map_err(|e| {
-                ModelError::ModelInitFailure(format!(
-                    "failed to build OpenAI-compatible client: {e}"
-                ))
-            })?;
+        let client = OpenAIConfig::new(api_key).with_base_url(api_url).client();
 
-        let model = client.completion_model(api_model.to_owned());
-
-        Ok(Self { model })
+        Ok(Self {
+            model: client.chat(api_model),
+        })
     }
 }
 
@@ -58,35 +52,41 @@ fn convert_messages_to_rig(messages: &[Message], preamble: &Option<String>) -> V
                 let mut contents = Vec::new();
                 for part in &msg.parts {
                     match part {
-                        ContentPart::Text(t) => {
-                            contents.push(UserContent::text(t));
-                        }
-                        ContentPart::ToolResult { id, output } => {
+                        ContentPart::Text(t) => contents.push(UserContent::text(t)),
+                        ContentPart::ToolResult { id, name, output } => {
+                            let Some(name) = ToolName::new(name.as_str()).ok() else {
+                                continue;
+                            };
                             contents.push(UserContent::tool_result(
-                                id.clone(),
-                                OneOrMany::one(ToolResultContent::text(output)),
+                                CallId::from_wire(id.clone()),
+                                name,
+                                vec![ToolResultContent::text(output)],
                             ));
                         }
                         _ => {}
                     }
                 }
-                if let Ok(content) = OneOrMany::many(contents) {
-                    result.push(RigMessage::User { content });
+                if !contents.is_empty() {
+                    result.push(RigMessage::User { content: contents });
                 }
             }
             Role::Assistant => {
                 let mut contents = Vec::new();
                 for part in &msg.parts {
                     match part {
-                        ContentPart::Text(t) => {
-                            contents.push(AssistantContent::text(t));
-                        }
+                        ContentPart::Text(t) => contents.push(AssistantContent::text(t)),
                         ContentPart::ToolCall {
                             id,
                             name,
                             arguments,
                         } => {
-                            contents.push(AssistantContent::tool_call(id, name, arguments.clone()));
+                            if let Ok(name) = ToolName::new(name.as_str()) {
+                                contents.push(AssistantContent::tool_call(
+                                    id,
+                                    name,
+                                    arguments.clone(),
+                                ));
+                            }
                         }
                         ContentPart::Reasoning(text) => {
                             contents.push(AssistantContent::reasoning(text));
@@ -94,8 +94,8 @@ fn convert_messages_to_rig(messages: &[Message], preamble: &Option<String>) -> V
                         _ => {}
                     }
                 }
-                if let Ok(content) = OneOrMany::many(contents) {
-                    result.push(RigMessage::Assistant { id: None, content });
+                if !contents.is_empty() {
+                    result.push(RigMessage::Assistant(AssistantMessage::new(contents)));
                 }
             }
         }
@@ -106,31 +106,60 @@ fn convert_messages_to_rig(messages: &[Message], preamble: &Option<String>) -> V
 fn convert_tools_to_rig(tools: &[ToolDef]) -> Vec<RigToolDef> {
     tools
         .iter()
-        .map(|t| RigToolDef {
-            name: t.name.clone(),
-            description: t.description.clone(),
-            parameters: t.input_schema.clone(),
+        .filter_map(|t| {
+            Some(RigToolDef::new(
+                ToolName::new(t.name.as_str()).ok()?,
+                &t.description,
+                t.input_schema.clone(),
+            ))
         })
         .collect()
 }
 
 fn build_rig_request(request: CompletionRequest) -> RigCompletionRequest {
-    let messages = convert_messages_to_rig(&request.messages, &request.preamble);
-    let chat_history =
-        OneOrMany::many(messages).unwrap_or_else(|_| OneOrMany::one(RigMessage::user("")));
-    let tools = convert_tools_to_rig(&request.tools);
+    let mut messages = convert_messages_to_rig(&request.messages, &request.preamble);
+    let prompt = if messages.is_empty() {
+        RigMessage::user("")
+    } else {
+        messages.remove(0)
+    };
 
-    RigCompletionRequest {
-        model: None,
-        preamble: None,
-        chat_history,
-        documents: vec![],
-        tools,
-        temperature: request.temperature,
-        max_tokens: request.max_tokens,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
+    RigCompletionRequest::new(prompt)
+        .messages(messages)
+        .tools(convert_tools_to_rig(&request.tools))
+        .temperature(request.temperature)
+        .max_tokens(request.max_tokens)
+}
+
+fn completion_event(item: Item<StreamEvent>) -> Option<CompletionEvent> {
+    match item {
+        Item::Event(StreamEvent::Text { text, .. }) => Some(CompletionEvent::Text(text)),
+        Item::Event(StreamEvent::Reasoning { text, .. }) => Some(CompletionEvent::Reasoning(text)),
+        Item::Event(StreamEvent::End {
+            content: AssistantContent::ToolCall(call),
+            ..
+        }) => Some(CompletionEvent::ToolCall {
+            id: call.id.to_string(),
+            name: call.function.name.to_string(),
+            arguments: serde_json::Value::Object(call.function.arguments),
+        }),
+        Item::Event(event) => {
+            debug!(
+                component = "OPENAI_MODEL",
+                event = "unknown_stream_event",
+                variant = event.name(),
+                "unhandled streaming event skipped"
+            );
+            None
+        }
+        Item::Unknown(payload) => {
+            debug!(
+                component = "OPENAI_MODEL", event = "unknown_stream_payload",
+                payload = ?payload,
+                "unhandled streaming payload skipped"
+            );
+            None
+        }
     }
 }
 
@@ -147,7 +176,7 @@ impl Llm for OpenAiCompatible {
         let rig_model = self.model.clone();
 
         tokio::spawn(async move {
-            let stream = match rig_model.stream(rig_request).await {
+            let stream = match rig_model.stream(rig_request) {
                 Ok(s) => s,
                 Err(e) => {
                     error!(component = "OPENAI_MODEL", event = "stream_init_error", error = %e, "LLM stream init failed");
@@ -161,44 +190,30 @@ impl Llm for OpenAiCompatible {
                 tokio::select! {
                     item = tokio::time::timeout(LLM_STREAM_TIMEOUT, stream.next()) => {
                         match item {
-                            Ok(Some(item)) => {
-                                let event = match item {
-                                    Ok(StreamedAssistantContent::Text(text)) => {
-                                        Ok(CompletionEvent::Text(text.text))
-                                    }
-                                    Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
-                                        Ok(CompletionEvent::Reasoning(reasoning))
-                                    }
-                                    Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
-                                        Ok(CompletionEvent::Reasoning(reasoning.display_text()))
-                                    }
-                                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
-                                        Ok(CompletionEvent::ToolCall {
-                                            id: tool_call.id,
-                                            name: tool_call.function.name,
-                                            arguments: tool_call.function.arguments,
-                                        })
-                                    }
-                                    Ok(StreamedAssistantContent::Final(response)) => Ok(CompletionEvent::Final {
-                                        prompt_tokens: response.usage.prompt_tokens,
-                                        total_tokens: response.usage.total_tokens,
-                                    }),
-                                    Ok(other) => {
-                                        debug!(
-                                            component = "OPENAI_MODEL", event = "unknown_stream_event",
-                                            variant = std::any::type_name_of_val(&other),
-                                            "unhandled streaming event skipped"
-                                        );
-                                        continue;
-                                    }
-                                    Err(e) => Ok(CompletionEvent::Error(e.to_string())),
+                            Ok(Some(Ok(item))) => {
+                                let Some(event) = completion_event(item) else {
+                                    continue;
                                 };
-                                if tx.send(event).await.is_err() {
+                                if tx.send(Ok(event)).await.is_err() {
                                     break;
                                 }
                             }
+                            Ok(Some(Err(e))) => {
+                                let _ = tx.send(Ok(CompletionEvent::Error(e.to_string()))).await;
+                                break;
+                            }
                             Ok(None) => {
-                                // Stream ended normally
+                                let usage = stream.partial().usage;
+                                let prompt_tokens = usage.input_tokens.unwrap_or(0);
+                                let total_tokens = usage.total_tokens.unwrap_or_else(|| {
+                                    prompt_tokens + usage.output_tokens.unwrap_or(0)
+                                });
+                                let _ = tx
+                                    .send(Ok(CompletionEvent::Final {
+                                        prompt_tokens: prompt_tokens as usize,
+                                        total_tokens: total_tokens as usize,
+                                    }))
+                                    .await;
                                 break;
                             }
                             Err(_) => {

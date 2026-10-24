@@ -1,5 +1,3 @@
-use rand::Rng;
-use rand::rngs::OsRng;
 use std::sync::{Mutex, OnceLock};
 
 const POOL_SIZE: usize = 1_000_000;
@@ -35,7 +33,7 @@ impl ActivationPool {
     }
 
     pub fn draw(&mut self) -> u32 {
-        let n = OsRng.gen_range(0..self.free);
+        let n = rand::random_range(0..self.free);
         let code = self.select_zero(n);
         let (idx, bit) = (code as usize / 64, 1u64 << (code as usize % 64));
         self.bits[idx] |= bit;

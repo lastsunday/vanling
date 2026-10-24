@@ -21,7 +21,7 @@ extern crate alloc;
 
 use embassy_executor::Spawner;
 use embassy_time::Instant;
-use embedded_alloc::Heap;
+use embedded_alloc::LlffHeap as Heap;
 use iot_bsp_esp::SharedI2cDevice;
 use iot_bsp_esp::components::gc2145::Gc2145;
 use iot_bsp_esp::components::st7789::St7789;

@@ -5,9 +5,11 @@ packages:
 allowBuilds:
   "@swc/core": true
 minimumReleaseAgeExclude:
-  - '@iconify/json@2.2.498'
-  - i18next@26.3.6
-  - react-i18next@17.0.9
-  - seroval@1.6.0
-  - seroval-plugins@1.6.0
-  - vite@8.1.4
+  - '@moonrepo/cli@2.6.4'
+  - '@moonrepo/core-linux-arm64-gnu@2.6.4'
+  - '@moonrepo/core-linux-arm64-musl@2.6.4'
+  - '@moonrepo/core-linux-x64-gnu@2.6.4'
+  - '@moonrepo/core-linux-x64-musl@2.6.4'
+  - '@moonrepo/core-macos-arm64@2.6.4'
+  - '@moonrepo/core-macos-x64@2.6.4'
+  - '@moonrepo/core-windows-x64-msvc@2.6.4'

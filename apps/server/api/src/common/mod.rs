@@ -4,7 +4,7 @@ use candle_core::{
 };
 use framework::err;
 use framework::error::{AppError, critical_code::CriticalErrorCode};
-use rig_core::completion::CompletionError;
+use rig_core::error::ProviderError;
 
 use framework::prelude::error;
 
@@ -83,8 +83,8 @@ impl From<Error> for ModelError {
     }
 }
 
-impl From<CompletionError> for ModelError {
-    fn from(value: CompletionError) -> Self {
+impl From<ProviderError> for ModelError {
+    fn from(value: ProviderError) -> Self {
         ModelError::ModelCompletionError(value.to_string())
     }
 }
@@ -95,9 +95,9 @@ impl From<regex::Error> for ModelError {
     }
 }
 
-impl From<ModelError> for CompletionError {
+impl From<ModelError> for ProviderError {
     fn from(value: ModelError) -> Self {
-        CompletionError::ResponseError(value.to_string())
+        ProviderError::Response(value.to_string())
     }
 }
 

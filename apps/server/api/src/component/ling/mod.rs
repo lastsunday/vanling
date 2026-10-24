@@ -279,6 +279,7 @@ impl LingCore {
                                                         role: Role::User,
                                                         parts: vec![ContentPart::ToolResult {
                                                             id: id.clone(),
+                                                            name: name.clone(),
                                                             output: result,
                                                         }],
                                                     });

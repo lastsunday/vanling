@@ -469,12 +469,13 @@ pub fn opus_pipeline(samples: &[f32], sample_rate: i32, encode_sr: u32) -> Vec<f
     let chunk_size = 4096.min(samples.len());
 
     let (pcm, sr) = if sample_rate as u32 != encode_sr {
-        let mut resampler = rubato::Fft::<f32>::new(
+        let mut resampler = rubato::Fft::<f32>::new_custom(
             sample_rate as usize,
             encode_sr as usize,
             chunk_size,
             1,
             1,
+            rubato::WindowFunction::BlackmanHarris2,
             rubato::FixedSync::Input,
         )
         .expect("Failed to create resampler");

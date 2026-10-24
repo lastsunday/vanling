@@ -6,8 +6,8 @@ import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import WaveSurfer from 'wavesurfer.js';
-import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions';
-import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline';
+import RegionsPlugin from 'wavesurfer.js/plugins/regions';
+import TimelinePlugin from 'wavesurfer.js/plugins/timeline';
 
 interface TimelineProps {
   roundId: string;
@@ -295,7 +295,7 @@ export function Timeline({ roundId, dataItems }: TimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
   const blobUrlRef = useRef<string | null>(null);
-  const regionsRef = useRef<RegionsPlugin | null>(null);
+  const regionsRef = useRef<InstanceType<typeof RegionsPlugin> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [showFrames, setShowFrames] = useState(false);

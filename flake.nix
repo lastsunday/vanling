@@ -21,8 +21,8 @@
       let
         # ── Versions ──────────────────────────────────────────────────────
         versions = {
-          moon = "2.4.4";
-          sherpaOnnx = "1.13.4";
+          moon = "2.6.4";
+          sherpaOnnx = "2.0.0";
           # Xtensa Rust toolchain for ESP32-S3; must match the
           # espressif/idf-rust:esp32s3_${xtensaRust} container tag used by
           # scripts/iot-xtensa.sh so CI (native) and macOS Intel (Docker)
@@ -40,27 +40,27 @@
         platformData = {
           x86_64-linux = {
             moonTarget = "x86_64-unknown-linux-gnu";
-            moonSha256 = "e2d59a8f3b7c69f05424fd3de255da26d775847299ae5651bd6364dc4a729c11";
+            moonSha256 = "a8e403a03ecf8133ec3d4740d806108eb885ffa40652f61d38a6e727fb452016";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-linux-x64-static-lib.tar.bz2";
-            sherpaOnnxHash = "sha256-bGDnnCS3JQoltQ7FDi4k6ozt20B3Xasu54/UIExSKjQ=";
+            sherpaOnnxHash = "sha256-nPgb0UH82vJIn0yMmLXbEoxqsLNYiyfokO1wLuyOIg4=";
           };
           aarch64-linux = {
             moonTarget = "aarch64-unknown-linux-gnu";
-            moonSha256 = "df85955ddc177c7ca3454a579e5deee8113aeeb9347e99765f2de9047dbf91f2";
+            moonSha256 = "25135ec696c451bbbc66e3dd594ac9e6e392ac1162afbc3f8dba181a1e7fd63a";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-linux-aarch64-static-lib.tar.bz2";
-            sherpaOnnxHash = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
+            sherpaOnnxHash = "sha256-dThQGI06bzxgFqWjmM/Pv1EefOShyLzEkmMYRK6CtGY=";
           };
           x86_64-darwin = {
             moonTarget = "x86_64-apple-darwin";
-            moonSha256 = "728ff28e7625269d314770a248fb58572b2443328d4e422073ae66338d7e4cf2";
+            moonSha256 = "8e2353e208a77a41494dd0f9efcad5bfa9c0126332365f8e418ee0ca3c60e47f";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-osx-x64-static-lib.tar.bz2";
-            sherpaOnnxHash = "sha256-RXSXvLMxdACgZZRpHY8oNb/H6cJn3izY19+jfJt7AOA=";
+            sherpaOnnxHash = "sha256-hTAyCl2KWOOgkc0uULKnjH3PVZgpToqNX6hGEZIWr7w=";
           };
           aarch64-darwin = {
             moonTarget = "aarch64-apple-darwin";
-            moonSha256 = "d3c2e3a81a3c9569db1637c3d079958862df7dbf246bb6678043263193d21b8f";
+            moonSha256 = "3f2283247a723e26fc8462323ad48bfac01ac31b9f8b48cf210418bc1d8fec73";
             sherpaOnnxArchive = "sherpa-onnx-v${versions.sherpaOnnx}-osx-arm64-static-lib.tar.bz2";
-            sherpaOnnxHash = "sha256-n9foeCcAesFJT1RcCgW4a3xFGaSy3Qw+/6CVcVeiiD0=";
+            sherpaOnnxHash = "sha256-w68/D0CSsck56kKG0KV+2eoPJk0SVZbNFIiOMMd3+ZE=";
           };
         };
 
@@ -109,7 +109,7 @@
         # aarch64-linux sherpa-onnx prebuilt static library (for cross-compilation)
         sherpaOnnxLibArm64 = pkgs.fetchzip {
           url = "${sherpaOnnxUrlBase}/sherpa-onnx-v${versions.sherpaOnnx}-linux-aarch64-static-lib.tar.bz2";
-          hash = "sha256-PQiDQxMuFU31NIzqaDIiAstfbB/OpPAxg7mlyvoERu0=";
+          hash = "sha256-dThQGI06bzxgFqWjmM/Pv1EefOShyLzEkmMYRK6CtGY=";
           stripRoot = true;
         };
 
@@ -294,7 +294,6 @@
               git-cliff
               lefthook
               protobuf
-              sccache
               fvm
               curl
               unzip
@@ -441,10 +440,8 @@
               echo "  Node:    $(node --version)"
               echo "  pnpm:   $(pnpm --version)"
               echo "  Flutter: $(flutter --version 2>/dev/null | head -1 || echo 'run fvm install')"
-              echo "  sccache: $(sccache --version | head -1)"
               echo ""
               echo "  Run: moon run <task>"
-              export CARGO_BUILD_RUSTC_WRAPPER=sccache
             '';
           };
 
@@ -457,7 +454,6 @@
               pkgs.pkg-config
               pkgs.ninja
               moon
-              pkgs.sccache
             ];
 
             buildInputs = [
@@ -471,7 +467,6 @@
               export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${pkgs.stdenv.cc}/bin/cc"
               export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${if pkgs.stdenv.isLinux then "${pkgs.glibc.static}/lib" else ""}"
 
-              export CARGO_BUILD_RUSTC_WRAPPER=sccache
               echo "✦ vanling gnu64 static-compilation shell"
               echo "  Target: x86_64-unknown-linux-gnu"
               echo "  CC: $CC_x86_64_unknown_linux_gnu"
@@ -488,7 +483,6 @@
               pkgsArm64.pkg-config
               pkgsArm64.ninja
               moon
-              pkgs.sccache
             ];
 
             buildInputs = [
@@ -503,7 +497,6 @@
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${pkgsArm64.stdenv.cc}/bin/${pkgsArm64.stdenv.cc.targetPrefix}gcc"
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-feature=+crt-static -L ${if pkgsArm64.stdenv.isLinux then "${pkgsArm64.glibc.static}/lib -L ${pkgsArm64.stdenv.cc.cc.lib}/lib" else ""}"
 
-              export CARGO_BUILD_RUSTC_WRAPPER=sccache
               echo "✦ vanling gnu64-arm64 cross-compilation shell"
               echo "  Target: aarch64-unknown-linux-gnu"
               echo "  CC: $CC_aarch64_unknown_linux_gnu"

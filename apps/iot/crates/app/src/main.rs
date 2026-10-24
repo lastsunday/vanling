@@ -16,7 +16,7 @@ type Board = iot_bsp_esp::Board<'static>;
 
 /// Heap for the pluggable renderer registry and other runtime allocation.
 #[global_allocator]
-static HEAP: embedded_alloc::Heap = embedded_alloc::Heap::empty();
+static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
 
 /// Sized for the renderer registry, device state and the driver's buffers.
 ///

@@ -2,7 +2,7 @@ use framework::error::AppError;
 use framework::error::critical_code::CriticalErrorCode;
 use nnnoiseless::DenoiseState;
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
-use rubato::{Fft, FixedSync, Resampler};
+use rubato::{Fft, FixedSync, Resampler, WindowFunction};
 
 const INPUT_FRAME_16KHZ: usize = 160;
 const INPUT_FRAME_48KHZ: usize = 480;
@@ -21,17 +21,33 @@ pub struct RnnoisePreprocessor {
 
 impl RnnoisePreprocessor {
     pub fn new() -> Result<Self, AppError> {
-        let upsampler = Fft::<f32>::new(16000, 48000, INPUT_FRAME_16KHZ, 2, 1, FixedSync::Input)
-            .map_err(|e| {
-                AppError::from_code(CriticalErrorCode::InternalError)
-                    .with_extra(format!("Failed to create upsampler: {e}"))
-            })?;
+        let upsampler = Fft::<f32>::new_custom(
+            16000,
+            48000,
+            INPUT_FRAME_16KHZ,
+            2,
+            1,
+            WindowFunction::BlackmanHarris2,
+            FixedSync::Input,
+        )
+        .map_err(|e| {
+            AppError::from_code(CriticalErrorCode::InternalError)
+                .with_extra(format!("Failed to create upsampler: {e}"))
+        })?;
 
-        let downsampler = Fft::<f32>::new(48000, 16000, INPUT_FRAME_48KHZ, 2, 1, FixedSync::Input)
-            .map_err(|e| {
-                AppError::from_code(CriticalErrorCode::InternalError)
-                    .with_extra(format!("Failed to create downsampler: {e}"))
-            })?;
+        let downsampler = Fft::<f32>::new_custom(
+            48000,
+            16000,
+            INPUT_FRAME_48KHZ,
+            2,
+            1,
+            WindowFunction::BlackmanHarris2,
+            FixedSync::Input,
+        )
+        .map_err(|e| {
+            AppError::from_code(CriticalErrorCode::InternalError)
+                .with_extra(format!("Failed to create downsampler: {e}"))
+        })?;
 
         Ok(Self {
             denoiser: DenoiseState::new(),

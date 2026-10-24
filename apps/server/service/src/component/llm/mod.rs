@@ -33,6 +33,7 @@ pub enum ContentPart {
     },
     ToolResult {
         id: String,
+        name: String,
         output: String,
     },
     Reasoning(String),

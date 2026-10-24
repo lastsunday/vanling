@@ -13,7 +13,7 @@
 
 use core::sync::atomic::{AtomicPtr, Ordering};
 
-use embedded_alloc::Heap;
+use embedded_alloc::LlffHeap as Heap;
 
 #[cfg(feature = "esp32c6")]
 mod esp32c6;

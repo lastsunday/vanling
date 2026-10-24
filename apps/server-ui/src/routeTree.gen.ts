@@ -13,10 +13,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PathlessLayoutIndexRouteImport } from './routes/_pathlessLayout/index'
 import { Route as PathlessLayoutAdminRouteRouteImport } from './routes/_pathlessLayout.admin/route'
 import { Route as PathlessLayoutAdminIndexRouteImport } from './routes/_pathlessLayout.admin/index'
-import { Route as PathlessLayoutAdminSessionsIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/index'
-import { Route as PathlessLayoutAdminSecurityIndexRouteImport } from './routes/_pathlessLayout.admin/security/index'
-import { Route as PathlessLayoutAdminDevicesIndexRouteImport } from './routes/_pathlessLayout.admin/devices/index'
 import { Route as PathlessLayoutAdminAccessLogsIndexRouteImport } from './routes/_pathlessLayout.admin/access-logs/index'
+import { Route as PathlessLayoutAdminDevicesIndexRouteImport } from './routes/_pathlessLayout.admin/devices/index'
+import { Route as PathlessLayoutAdminSecurityIndexRouteImport } from './routes/_pathlessLayout.admin/security/index'
+import { Route as PathlessLayoutAdminSessionsIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/index'
 import { Route as PathlessLayoutAdminSessionsIdIndexRouteImport } from './routes/_pathlessLayout.admin/sessions/$id/index'
 
 const LoginRoute = LoginRouteImport.update({
@@ -41,16 +41,10 @@ const PathlessLayoutAdminIndexRoute =
     path: '/',
     getParentRoute: () => PathlessLayoutAdminRouteRoute,
   } as any)
-const PathlessLayoutAdminSessionsIndexRoute =
-  PathlessLayoutAdminSessionsIndexRouteImport.update({
-    id: '/sessions/',
-    path: '/sessions/',
-    getParentRoute: () => PathlessLayoutAdminRouteRoute,
-  } as any)
-const PathlessLayoutAdminSecurityIndexRoute =
-  PathlessLayoutAdminSecurityIndexRouteImport.update({
-    id: '/security/',
-    path: '/security/',
+const PathlessLayoutAdminAccessLogsIndexRoute =
+  PathlessLayoutAdminAccessLogsIndexRouteImport.update({
+    id: '/access-logs/',
+    path: '/access-logs/',
     getParentRoute: () => PathlessLayoutAdminRouteRoute,
   } as any)
 const PathlessLayoutAdminDevicesIndexRoute =
@@ -59,10 +53,16 @@ const PathlessLayoutAdminDevicesIndexRoute =
     path: '/devices/',
     getParentRoute: () => PathlessLayoutAdminRouteRoute,
   } as any)
-const PathlessLayoutAdminAccessLogsIndexRoute =
-  PathlessLayoutAdminAccessLogsIndexRouteImport.update({
-    id: '/access-logs/',
-    path: '/access-logs/',
+const PathlessLayoutAdminSecurityIndexRoute =
+  PathlessLayoutAdminSecurityIndexRouteImport.update({
+    id: '/security/',
+    path: '/security/',
+    getParentRoute: () => PathlessLayoutAdminRouteRoute,
+  } as any)
+const PathlessLayoutAdminSessionsIndexRoute =
+  PathlessLayoutAdminSessionsIndexRouteImport.update({
+    id: '/sessions/',
+    path: '/sessions/',
     getParentRoute: () => PathlessLayoutAdminRouteRoute,
   } as any)
 const PathlessLayoutAdminSessionsIdIndexRoute =
@@ -176,18 +176,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PathlessLayoutAdminIndexRouteImport
       parentRoute: typeof PathlessLayoutAdminRouteRoute
     }
-    '/_pathlessLayout/admin/sessions/': {
-      id: '/_pathlessLayout/admin/sessions/'
-      path: '/sessions'
-      fullPath: '/admin/sessions/'
-      preLoaderRoute: typeof PathlessLayoutAdminSessionsIndexRouteImport
-      parentRoute: typeof PathlessLayoutAdminRouteRoute
-    }
-    '/_pathlessLayout/admin/security/': {
-      id: '/_pathlessLayout/admin/security/'
-      path: '/security'
-      fullPath: '/admin/security/'
-      preLoaderRoute: typeof PathlessLayoutAdminSecurityIndexRouteImport
+    '/_pathlessLayout/admin/access-logs/': {
+      id: '/_pathlessLayout/admin/access-logs/'
+      path: '/access-logs'
+      fullPath: '/admin/access-logs/'
+      preLoaderRoute: typeof PathlessLayoutAdminAccessLogsIndexRouteImport
       parentRoute: typeof PathlessLayoutAdminRouteRoute
     }
     '/_pathlessLayout/admin/devices/': {
@@ -197,11 +190,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PathlessLayoutAdminDevicesIndexRouteImport
       parentRoute: typeof PathlessLayoutAdminRouteRoute
     }
-    '/_pathlessLayout/admin/access-logs/': {
-      id: '/_pathlessLayout/admin/access-logs/'
-      path: '/access-logs'
-      fullPath: '/admin/access-logs/'
-      preLoaderRoute: typeof PathlessLayoutAdminAccessLogsIndexRouteImport
+    '/_pathlessLayout/admin/security/': {
+      id: '/_pathlessLayout/admin/security/'
+      path: '/security'
+      fullPath: '/admin/security/'
+      preLoaderRoute: typeof PathlessLayoutAdminSecurityIndexRouteImport
+      parentRoute: typeof PathlessLayoutAdminRouteRoute
+    }
+    '/_pathlessLayout/admin/sessions/': {
+      id: '/_pathlessLayout/admin/sessions/'
+      path: '/sessions'
+      fullPath: '/admin/sessions/'
+      preLoaderRoute: typeof PathlessLayoutAdminSessionsIndexRouteImport
       parentRoute: typeof PathlessLayoutAdminRouteRoute
     }
     '/_pathlessLayout/admin/sessions/$id/': {

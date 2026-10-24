@@ -18,7 +18,7 @@
 extern crate alloc;
 
 use embassy_executor::Spawner;
-use embedded_alloc::Heap;
+use embedded_alloc::LlffHeap as Heap;
 use esp_hal::clock::CpuClock;
 use esp_hal::system::{Cpu, Stack};
 use esp_hal::timer::timg::TimerGroup;
