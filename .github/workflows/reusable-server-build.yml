@@ -35,7 +35,7 @@ jobs:
   build-ui:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -55,7 +55,7 @@ jobs:
           MOON_LOG: error
 
       - name: Upload UI dist
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: server-ui-dist
           path: apps/server-ui/dist
@@ -74,12 +74,12 @@ jobs:
         shell: bash
         working-directory: ${{ env.ROOT_DIR }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
       - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: server-ui-dist
           path: apps/server-ui/dist
@@ -90,7 +90,7 @@ jobs:
         uses: ./.github/actions/setup-nix
 
       - name: Cache model files
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/server/data
           key: models-${{ hashFiles('apps/server/src/downloader/manifests/**') }}
@@ -120,14 +120,14 @@ jobs:
         run: nix build .#docker-arm64 --out-link result-arm64 --quiet
 
       - name: Upload binary (amd64)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BIN_NAME }}-${{ inputs.version }}-linux-amd64
           path: ${{ github.workspace }}/target/x86_64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-amd64*
           retention-days: 7
 
       - name: Upload binary (arm64)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BIN_NAME }}-${{ inputs.version }}-linux-arm64
           path: ${{ github.workspace }}/target/aarch64-unknown-linux-gnu/release/${{ env.BIN_NAME }}-linux-arm64*
@@ -162,14 +162,14 @@ jobs:
 
       - name: Login to Docker Hub
         if: ${{ !inputs.dry-run }}
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Login to ghcr.io
         if: ${{ !inputs.dry-run }}
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -178,7 +178,7 @@ jobs:
       - name: Extract metadata
         if: ${{ !inputs.dry-run }}
         id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
             ${{ env.USER_NAME }}/${{ env.IMAGE_NAME }}
@@ -208,7 +208,7 @@ jobs:
 
       - name: Generate artifact attestation
         if: ${{ !inputs.dry-run }}
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.USER_NAME }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.manifest.outputs.digest }}
@@ -232,12 +232,12 @@ jobs:
             targetOSAndARCH: window-amd64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -247,7 +247,7 @@ jobs:
           restore-keys: cargo-registry-${{ runner.os }}-
 
       - name: Download UI dist
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: server-ui-dist
           path: apps/server-ui/dist
@@ -258,7 +258,7 @@ jobs:
           rm -rf ./web/dist
           mv ../server-ui/dist ./web/dist
 
-      - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6
+      - uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         with:
           bin: ${{ env.BIN_NAME }}
           archive: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.target }}
@@ -276,7 +276,7 @@ jobs:
           mv "$src" "$dst"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BIN_NAME }}-${{ inputs.version }}-${{ matrix.targetOSAndARCH }}
           path: ${{ github.workspace }}/target/${{ matrix.target }}/release/${{ env.BIN_NAME }}-${{ matrix.targetOSAndARCH }}*
@@ -289,7 +289,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ !inputs.prerelease }}
         with:
           fetch-depth: 1
@@ -312,7 +312,7 @@ jobs:
           } > /tmp/RELEASE_BODY.md
 
       - name: Download all binaries
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: release-binaries
           pattern: ${{ env.BIN_NAME }}-${{ inputs.version }}-*
@@ -324,7 +324,7 @@ jobs:
           gh release delete "$TAG" --yes 2>/dev/null || true
           gh api -X DELETE "/repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" 2>/dev/null || true
 
-      - uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           token: ${{ github.token }}
           body_path: /tmp/RELEASE_BODY.md

@@ -9,12 +9,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: cachix/install-nix-action@v31
+    - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # 31.11.3
       with:
         extra_nix_config: |
           accept-flake-config = true
     - if: inputs.cache == 'true'
-      uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+      uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
       with:
         primary-key: nix-${{ runner.os }}-${{ hashFiles('**/flake.nix', '**/flake.lock') }}
         restore-prefixes-first-match: nix-${{ runner.os }}-

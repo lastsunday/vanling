@@ -26,7 +26,7 @@ jobs:
       checks: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ inputs.ref || github.ref }}
@@ -36,7 +36,7 @@ jobs:
       - uses: ./.github/actions/setup-nix
 
       - name: Cache model files
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: data
           key: models-${{ hashFiles('apps/server/src/downloader/manifests/**') }}
@@ -45,7 +45,7 @@ jobs:
 
       - name: Restore Xtensa Rust toolchain
         id: xtensa-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.rustup/toolchains/esp
@@ -85,58 +85,17 @@ jobs:
           MOON_OUTPUT_STYLE: buffer-only-failure
           MOON_LOG: error
 
-      - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6
+      - uses: moonrepo/run-report-action@bbe7e99bf2aca819ec660ec01fc59d84bdd492d6 # v1.10.0
         if: success() || failure()
         with:
           access-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check if extension e2e reports exist
-        id: e2e-report
-        if: ${{ !cancelled() }}
-        run: |
-          if [ -d "apps/extension/allure-results" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: (allure-report) Load test report history
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-        if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
-        continue-on-error: true
-        with:
-          ref: gh-test
-          path: gh-test
-          fetch-depth: 1
-
-      - name: (allure-report) Build test report
-        uses: simple-elf/allure-report-action@e463a472d3b1d750f9544369d60589ff1964c820
-        if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
-        with:
-          gh_pages: gh-test
-          allure_history: gh-test
-          allure_results: apps/extension/allure-results
-
-      - name: (allure-report) Upload test report to action artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
-        with:
-          name: extension-e2e-tests-allure-report
-          path: allure-report/
-          retention-days: 30
-
-      - name: (cucumber-report) Upload test report to action artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: ${{ steps.e2e-report.outputs.exists == 'true' && !cancelled() }}
-        with:
-          name: extension-e2e-tests-cucumber-report
-          path: apps/extension/cucumber-report/
-          retention-days: 30
 
   docs-check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ inputs.ref || github.ref }}
@@ -164,7 +123,7 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           ref: ${{ inputs.ref || github.ref }}
@@ -186,7 +145,7 @@ jobs:
           MOON_LOG: error
 
       - name: Deploy GitHub Pages
-        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs/public-gh
