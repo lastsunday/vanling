@@ -169,83 +169,74 @@ void main() {
     expect(response.body(), "pong");
   });
 
-  test(
-    'Should throw AuthorizedDeniedException when received 403 from the GET request',
-    () async {
-      when(mockDio.get<String>("/ping")).thenThrow(
-        DioException(
+  test('Should throw AuthorizedDeniedException when received 403 from the GET request', () async {
+    when(mockDio.get<String>("/ping")).thenThrow(
+      DioException(
+        requestOptions: RequestOptions(path: ''),
+        response: Response(
           requestOptions: RequestOptions(path: ''),
-          response: Response(
-            requestOptions: RequestOptions(path: ''),
-            statusCode: 304,
-          ),
-          error: 'Http status error [403]',
+          statusCode: 304,
         ),
-      );
-      expect(
-        () async => await instance.get<String>("/ping"),
-        throwsA(const TypeMatcher<AuthorizedDeniedException>()),
-      );
-    },
-  );
+        error: 'Http status error [403]',
+      ),
+    );
+    expect(
+      () async => await instance.get<String>("/ping"),
+      throwsA(const TypeMatcher<AuthorizedDeniedException>()),
+    );
+  });
 
-  test(
-    'Should throw AuthorizedDeniedException when received 403 from the POST request',
-    () async {
-      when(
-        mockDio.post<String>(
-          "/ping",
-          data: {},
-          queryParameters: null,
-          options: null,
-          cancelToken: null,
-          onSendProgress: null,
-          onReceiveProgress: null,
-        ),
-      ).thenThrow(
-        DioException(
+  test('Should throw AuthorizedDeniedException when received 403 from the POST request', () async {
+    when(
+      mockDio.post<String>(
+        "/ping",
+        data: {},
+        queryParameters: null,
+        options: null,
+        cancelToken: null,
+        onSendProgress: null,
+        onReceiveProgress: null,
+      ),
+    ).thenThrow(
+      DioException(
+        requestOptions: RequestOptions(path: ''),
+        response: Response(
           requestOptions: RequestOptions(path: ''),
-          response: Response(
-            requestOptions: RequestOptions(path: ''),
-            statusCode: 304,
-          ),
-          error: 'Http status error [403]',
+          statusCode: 304,
         ),
-      );
-      expect(
-        () async => await instance.post<String>("/ping", {}),
-        throwsA(const TypeMatcher<AuthorizedDeniedException>()),
-      );
-    },
-  );
+        error: 'Http status error [403]',
+      ),
+    );
+    expect(
+      () async => await instance.post<String>("/ping", {}),
+      throwsA(const TypeMatcher<AuthorizedDeniedException>()),
+    );
+  });
 
-  test(
-    'Should throw AuthorizedDeniedException when received 403 from the PUT request',
-    () async {
-      when(
-        mockDio.put<String>(
-          "/ping",
-          data: {},
-          queryParameters: null,
-          options: null,
-          cancelToken: null,
-          onSendProgress: null,
-          onReceiveProgress: null,
-        ),
-      ).thenThrow(
-        DioException(
+  test('Should throw AuthorizedDeniedException when received 403 from the PUT request', () async {
+    when(
+      mockDio.put<String>(
+        "/ping",
+        data: {},
+        queryParameters: null,
+        options: null,
+        cancelToken: null,
+        onSendProgress: null,
+        onReceiveProgress: null,
+      ),
+    ).thenThrow(
+      DioException(
+        requestOptions: RequestOptions(path: ''),
+        response: Response(
           requestOptions: RequestOptions(path: ''),
-          response: Response(
-            requestOptions: RequestOptions(path: ''),
-            statusCode: 304,
-          ),
-          error: 'Http status error [403]',
+          statusCode: 304,
         ),
-      );
-      expect(
-        () async => await instance.put<String>("/ping", {}),
-        throwsA(const TypeMatcher<AuthorizedDeniedException>()),
-      );
-    },
-  );
+        error: 'Http status error [403]',
+      ),
+    );
+    expect(
+      () async => await instance.put<String>("/ping", {}),
+      throwsA(const TypeMatcher<AuthorizedDeniedException>()),
+    );
+  });
 }

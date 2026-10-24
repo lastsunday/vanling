@@ -7,8 +7,10 @@ import 'package:app/core/domain/token.dart';
 import 'package:app/core/local_storage.dart';
 import 'package:app/core/log_helper.dart';
 
-typedef FetchUserByTokenCallback =
-    Future<User> Function(String baseUrl, Token token);
+typedef FetchUserByTokenCallback = Future<User> Function(
+  String baseUrl,
+  Token token,
+);
 
 class ConnectionProvider extends ChangeNotifier {
   static ConnectionProvider _instance = ConnectionProvider._internal();
@@ -45,11 +47,11 @@ class ConnectionProvider extends ChangeNotifier {
       connection.token = token;
       _connections.add(connection);
       notifyListeners();
-      return Future.value({"success": true, "message": ""});
+      return {"success": true, "message": ""};
     } catch (e, stackTrace) {
       LogHelper.err(e.toString(), stackTrace);
       notifyListeners();
-      return Future.value({"success": false, "message": "$e"});
+      return {"success": false, "message": "$e"};
     }
   }
 

@@ -52,7 +52,7 @@ class _AboutPageState extends State<AboutPage> {
       storeController: UpgraderStoreController(
         onAndroid: () => UpgraderAppcastStore(
           appcastURL: Env.config.appcastURL,
-          osVersion: Version(0, 0, 0),
+          osVersion: '0.0.0',
         ),
       ),
     );
@@ -177,18 +177,19 @@ class _AboutPageState extends State<AboutPage> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(3),
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primaryContainer,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer,
                                 child: Text(
                                   AppLocalizations.of(context)!.newVersion,
                                   style: TextStyle(
-                                    fontSize: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall!.fontSize,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.secondary,
+                                    fontSize: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall!
+                                        .fontSize,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondary,
                                   ),
                                 ),
                               ),

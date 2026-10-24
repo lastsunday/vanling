@@ -63,11 +63,11 @@ class LoginModel {
         },
       );
       _onAuthTokenRequest = false;
-      return Future.value(true);
+      return true;
     } catch (e, stackTrace) {
       LogHelper.err(e.toString(), stackTrace);
       _onAuthTokenRequest = false;
-      return Future.error(e);
+      rethrow;
     }
   }
 

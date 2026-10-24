@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'global_key_extension.dart';
 
 class BackgroundOverlay extends AnimatedWidget {

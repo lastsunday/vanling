@@ -146,9 +146,8 @@ class ApplyTextOptions extends StatelessWidget {
     final textScaleFactor = options.textScaleFactor(context);
 
     Widget widget = MediaQuery(
-      data: MediaQuery.of(
-        context,
-      ).copyWith(textScaler: TextScaler.linear(textScaleFactor)),
+      data: MediaQuery.of(context)
+          .copyWith(textScaler: TextScaler.linear(textScaleFactor)),
       child: child,
     );
     // return textDirection == null

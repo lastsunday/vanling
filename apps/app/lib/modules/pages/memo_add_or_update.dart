@@ -228,9 +228,8 @@ class _MemoAddOrUpdatePageState extends State<MemoAddOrUpdatePage> {
 
   void _fileOpen() async {
     UI.showLoading(text: AppLocalizations.of(context)!.selectFile);
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null) {
-      PlatformFile selectFile = result.files.first;
+    PlatformFile? selectFile = await FilePicker.pickFile();
+    if (selectFile != null) {
       File file = File(selectFile.path!);
       var fileTotalLength = file.lengthSync();
       List<int> dataLoaded = [];

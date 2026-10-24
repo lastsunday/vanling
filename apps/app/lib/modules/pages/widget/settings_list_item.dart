@@ -240,9 +240,8 @@ class _SettingsListItemState<T> extends State<SettingsListItem<T?>>
                       displayOption.subtitle!,
                       style: theme.textTheme.bodyLarge!.copyWith(
                         fontSize: 12,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onPrimary.withValues(alpha: 0.8),
+                        color: Theme.of(context).colorScheme.onPrimary
+                            .withValues(alpha: 0.8),
                       ),
                     ),
                 ],

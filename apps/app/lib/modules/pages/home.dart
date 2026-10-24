@@ -422,7 +422,7 @@ class _HomePageState extends State<HomePage> {
                 storeController: UpgraderStoreController(
                   onAndroid: () => UpgraderAppcastStore(
                     appcastURL: Env.config.appcastURL,
-                    osVersion: Version(0, 0, 0),
+                    osVersion: '0.0.0',
                   ),
                 ),
                 messages: UpgraderMessages(

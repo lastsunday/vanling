@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:app/third_party/flutter_speed_dial/src/circle_layout.dart';
@@ -11,8 +12,9 @@ import 'background_overlay.dart';
 import 'speed_dial_child.dart';
 import 'speed_dial_direction.dart';
 
-typedef AsyncChildrenBuilder =
-    Future<List<SpeedDialChild>> Function(BuildContext context);
+typedef AsyncChildrenBuilder = Future<List<SpeedDialChild>> Function(
+  BuildContext context,
+);
 
 /// Builds the Speed Dial
 class SpeedDial extends StatefulWidget {

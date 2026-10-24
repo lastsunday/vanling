@@ -59,10 +59,10 @@ class Connection {
         queryParameters: queryParameters,
         headers: headers,
       );
-      return Future.value(true);
+      return true;
     } catch (e) {
       LogHelper.err('RefreshToken error', e);
-      return Future.value(false);
+      return false;
     } finally {
       Connections.onAuthTokenRequest = false;
       LogHelper.info("Refresh completed.");

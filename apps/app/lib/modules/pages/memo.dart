@@ -553,17 +553,16 @@ class _MemoPageState extends State<MemoPage>
                               children: [
                                 Text(
                                   AppLocalizations.of(context)!.qrcodeNotShow,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.displayMedium,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .displayMedium,
                                 ),
                                 Text(
-                                  AppLocalizations.of(
-                                    context,
-                                  )!.qrcodeContentToLong(
-                                    item.content.length,
-                                    2953,
-                                  ),
+                                  AppLocalizations.of(context)!
+                                      .qrcodeContentToLong(
+                                        item.content.length,
+                                        2953,
+                                      ),
                                   style: Theme.of(context).textTheme.bodyMedium,
                                 ),
                               ],
@@ -940,9 +939,8 @@ class _BottomAppBar extends StatelessWidget {
                             context.pop();
                           },
                           decoration: InputDecoration(
-                            hintText: AppLocalizations.of(
-                              context,
-                            )!.inputSearchHint,
+                            hintText: AppLocalizations.of(context)!
+                                .inputSearchHint,
                             border: const OutlineInputBorder(
                               borderRadius: BorderRadius.all(
                                 Radius.circular(9),

@@ -61,11 +61,11 @@ class Oauth2CodeLoginModel {
         }),
       );
       _onAuthTokenRequest = false;
-      return Future.value(true);
+      return true;
     } catch (e) {
       LogHelper.err('Oauth2CodeLoginModel exchangeToken error', e);
       _onAuthTokenRequest = false;
-      return Future.value(false);
+      return false;
     }
   }
 
