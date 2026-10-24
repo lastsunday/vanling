@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/iot/flashing">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">统一管道重构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;research&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">客户端</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link active">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">分层与组合</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link active leaf">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD 与 Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio 调试</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/iot/flashing/#固件安装">固件安装</a></li>
+    
+  </ul>
+  
+  <h1 id="固件安装">固件安装</h1>
+<p>本页说明如何将 vanling 固件安装到开发板上。也有<a href="../../../flasher/index.html">浏览器一键安装入口</a>可用。</p>
+<h2 id="前置条件">前置条件</h2>
+<ul>
+<li>一块受支持的开发板（esp32c6：<code>esp32c6-devkitc-1</code>；esp32s3：<code>lckfb-szpi-esp32s3</code>）</li>
+<li>一个固件产物。发布产物（含 <code>merged.bin</code>）来自 CD release（tag <code>vanling-iot@x.y.z</code>）；本地则用：<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 在 apps/iot 下</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run build</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> save-image --chip esp32c6 --merge</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  --flash-size 8mb --flash-mode dio --flash-freq 40mhz</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  target/riscv32imac-unknown-none-elf/debug/vanling</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  vanling-merged.bin</span></span></code></pre>
+<blockquote>
+<p><strong>8mb 是实测值</strong>（<code>espflash board-info</code> 读出来的，实物就是 8 MB），此前写的 <code>4mb</code> 与板子对不上。
+两块板各自的实测值：<strong>C6 = 8 MB</strong>、<strong>S3 = 16 MB</strong>（<code>espflash board-info</code> 的 <code>Flash size</code> 行）。</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="台架上有哪些板，各自是什么定位">台架上有哪些板，各自是什么定位</h2>
+<p>不要假设没有硬件——台架上一直接着两块。<strong>端口名每次插拔都会变，不能当标识。</strong></p>
+<table><thead><tr><th>板</th><th>仓库 feature</th><th>定位</th></tr></thead><tbody>
+<tr><td>立创·实战派 ESP32-S3</td><td><code>lckfb-szpi-esp32s3</code></td><td><strong>产品靶</strong>：320×240 屏、FT6336 触摸、双麦+喇叭、QMI8658、PCA9557、GC2145 摄像头</td></tr>
+<tr><td>ESP32-C6-DevKitC-1</td><td><code>esp32c6-devkitc-1</code></td><td><strong>冒烟/仿真靶</strong>：只有 WS2812 和 Boot 键。<code>UnwiredSpeaker</code>、面板、Audio 页全是 <code>None</code>，<strong>产品路径在它上面不存在</strong>，两者不可互相代替</td></tr>
+</tbody></table>
+<p>已实测的硬件事实（结论与复现见<a href="https://lastsunday.github.io/vanling/records/iot/">开发记录</a>）：</p>
+<ul>
+<li><strong>摄像头是 GC2145，不是立创 wiki 写的 GC0308</strong>（<code>sensor id 0x2145</code>，读窗口 1616×1208 @5:5）</li>
+<li><strong>AEC 延迟锁得住，消除量仍无读数</strong>：延迟搜索两次实测全程只动一次；固件的 ERLE 计量器在板上从未出过非零数，唯一的 12.3 dB 来自一次已删除、不可复现的离线 dump</li>
+</ul>
+<h2 id="两块板同时插着时">两块板同时插着时</h2>
+<p><code>espflash</code> 会自己挑一个端口，<strong>有可能挑错</strong>（<code>--chip esp32c6</code> 配 S3 会直接失败）。先认板再烧 —— 认的是 <code>board-info</code> 的 <code>Chip</code> 行：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> board-info --port /dev/cu.usbmodem14401</span><span class="z-punctuation z-definition z-comment z-comment">   # Chip: esp32c6 → C6</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> board-info --port /dev/cu.usbmodem1422301</span><span class="z-punctuation z-definition z-comment z-comment"> # Chip: esp32s3 → S3</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-source">IOT_PORT</span><span class="z-keyword z-operator">=</span><span class="z-string">/dev/cu.usbmodem1422301</span><span class="z-entity z-name z-function"> moon</span><span class="z-string"> run iot:flash-s3</span></span>
+<span class="giallo-l"><span class="z-source">IOT_PORT</span><span class="z-keyword z-operator">=</span><span class="z-string">/dev/cu.usbmodem1422301</span><span class="z-entity z-name z-function"> moon</span><span class="z-string"> run iot:flash-probe-echo-s3</span></span></code></pre>
+<p>不设 <code>IOT_PORT</code> 时任务行为与从前一致（<code>espflash</code> 自己挑），但两块板都插着时必须设。</p>
+<h2 id="产物本地生成">产物本地生成</h2>
+<p>产物流程在 GitHub Action（<code>reusable-iot-build.yml</code>）与本地等价可运行：Action 异常时，可用本地产物替补生成并上传 release 工件。一键命令（在 <code>apps/iot</code> 下）：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:image</span><span class="z-punctuation z-definition z-comment z-comment">           # 全部板：ELF + merged.bin</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:image-c6</span><span class="z-punctuation z-definition z-comment z-comment">        # 仅 esp32c6-devkitc-1</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:image-s3</span><span class="z-punctuation z-definition z-comment z-comment">        # 仅 lckfb-szpi-esp32s3</span></span></code></pre>
+<blockquote>
+<p>s3 的 Xtensa 构建经 <code>scripts/iot-xtensa.sh</code> 按环境分发：espup <code>esp</code> 1.95.0.0 工具链齐备（CI/发布）时原生编译；否则本地自动回退 <code>espressif/idf-rust:esp32s3_1.95.0.0</code> 容器（macOS Intel）。同版本工具链，产物字节一致。</p>
+</blockquote>
+<blockquote>
+<p>依赖缓存：容器按 <code>-Z build-std</code> 解析 esp 工具链自带的 <code>library/Cargo.lock</code>（含 memchr 2.7.6 等与项目 <code>Cargo.lock</code> 不同的版本）。离线缓存不全时，首次构建会自动在线引导补齐一次（日志提示 <code>bootstrapping once online</code>），此后构建保持 <code>--offline</code>、字节一致，无需手工预热。</p>
+</blockquote>
+<p><code>iot:image</code> 依赖各板的 <code>build-*</code> 任务，产物写入仓库根 <code>dist/</code>，命名与 CI 逐字符一致：</p>
+<table><thead><tr><th>产物</th><th>命名</th></tr></thead><tbody>
+<tr><td>ELF</td><td><code>vanling-iot-&lt;board&gt;-&lt;version&gt;-&lt;target&gt;.elf</code></td></tr>
+<tr><td>整片镜像</td><td><code>vanling-iot-&lt;board&gt;-&lt;version&gt;-merged.bin</code></td></tr>
+</tbody></table>
+<p><code>version</code> 经 <code>scripts/version.sh</code>（读取 <code>apps/iot/Cargo.toml</code>）生成，与 CI 的 <code>DEV_VERSION</code>（<code>iot-dev-release.yml</code>）同源，本地为 <code>x.y.z-dev.&lt;run&gt;.&lt;date&gt;.&lt;sha&gt;</code>。</p>
+<h2 id="单一设备安装">单一设备安装</h2>
+<h3 id="1._浏览器直刷（推荐）">1. 浏览器直刷（推荐）</h3>
+<p>打开 <a href="../../../flasher/index.html">Vanling 固件安装器</a>（Chrome / Edge 桌面版）：</p>
+<ol>
+<li>拖入 <code>merged.bin</code></li>
+<li>检查解析出的目标芯片与版本信息</li>
+<li>USB 连接开发板</li>
+<li>点「连接设备」，确认芯片比对通过后点「写入固件」</li>
+</ol>
+<p>浏览器直刷基于 WebSerial 与 esptool-js，无需安装任何本地工具。</p>
+<h3 id="2._ESP_Flash_Download_Tool（GUI）">2. ESP Flash Download Tool（GUI）</h3>
+<ul>
+<li>Windows：Espressif 官方 <a rel="external" href="https://www.espressif.com/en/support/download/other-tools">ESP Flash Download Tool</a></li>
+<li>地址填写与 <code>save-image --merge</code> 相同：整片镜像写 <code>0x0</code></li>
+<li>选择合适 SPI 参数（4MB / DIO / 40MHz）</li>
+</ul>
+<h3 id="3._esptool_命令行">3. esptool 命令行</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">python</span><span class="z-string"> -m esptool --chip esp32c6 write_flash</span><span class="z-constant z-numeric"> 0x0</span><span class="z-string"> vanling-merged.bin</span></span></code></pre>
+<p><code>merged.bin</code> 已是整片镜像，只需写 <code>0x0</code> 一个地址。</p>
+<h2 id="批量安装">批量安装</h2>
+<ul>
+<li>逐台并行运行 esptool（同一 PC 多 USB 口）：<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-keyword">for</span><span class="z-source"> p</span><span class="z-keyword"> in</span><span class="z-string"> /dev/ttyUSB</span><span class="z-source">{</span><span class="z-entity z-name z-function">0..3}</span><span class="z-punctuation">;</span><span class="z-keyword"> do</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">  python</span><span class="z-string z-punctuation z-definition z-string"> -m esptool --port &quot;</span><span class="z-variable z-other z-normal z-shell">$p</span><span class="z-punctuation z-definition z-string z-string">&quot; --baud</span><span class="z-constant z-numeric"> 921600</span><span class="z-string"> write_flash</span><span class="z-constant z-numeric"> 0x0</span><span class="z-string"> vanling-merged.bin</span><span class="z-punctuation"> &amp;</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">done</span><span class="z-punctuation">;</span><span class="z-support z-function z-builtin"> wait</span></span></code></pre></li>
+<li>工厂模式：烧录器支持 CRC32/数据校验，可接入治具流水线；esptool 自带 <code>mass_mfg</code>（只读工厂镜像批量烧录模板）可配置 MAC/序列号变量。</li>
+</ul>
+<h2 id="调试用（开发者）">调试用（开发者）</h2>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># apps/iot 下直接编译并烧录（espflash 在 devShell 提供）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run flash</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 或手动</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> build</span><span class="z-punctuation"> &amp;&amp;</span><span class="z-entity z-name z-function"> espflash</span><span class="z-string"> flash target/.../vanling</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> monitor</span><span class="z-punctuation z-definition z-comment z-comment">   # console 内带回车重启</span></span></code></pre>
+<p><code>espflash monitor</code> 需要真 tty（picocom 在这台机器上认不出自己的参数）。macOS 的 <code>script -q &lt;log&gt; &lt;cmd&gt;</code> 会给它一个 pty 并顺带录一份，所以 monitor 要包在 <code>script</code> 里跑。</p>
+<blockquote>
+<p><code>[实测，2026-10-15 更正]</code> <strong>不要让人去按 RESET 键，也不要「烧录完立刻抓」</strong>（后者是我早先的错误结论）。</p>
+<p>这块板子走<strong>原生 USB</strong>（USB-Serial/JTAG），DTR/RTS 触发的是 <em>core reset</em>，<strong>不重新采样 strapping 引脚</strong>，所以任何软件复位都必然落回 <code>boot:0x23 (DOWNLOAD(USB/UART0))</code>，刷完根本起不来应用。esptool 的 ESP32-S3 文档（<em>Leaving Download Mode in USB-Serial/JTAG Mode</em>）给了出路：<code>-a watchdog-reset</code> 劫持 RTC WDT 做一次<strong>真正的系统复位</strong>，strapping 重新采样，于是正常启动（ROM 打 <code>boot:0x2b (SPI_FAST_FLASH_BOOT)</code>）。</p>
+<p>抓完整开机日志（先接上、再复位，不丢任何一行）：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> flash --chip esp32s3 --flash-size 16mb</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  --partition-table partitions/lckfb-szpi-esp32s3.csv</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  --port /dev/cu.usbmodem1422301 -a watchdog-reset target/.../wifi-probe</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation">(</span><span class="z-source">{ sleep 4; printf &#39;\\x12&#39;; sleep 30; } | script -q -t 35 /tmp/boot.log \</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">   espflash</span><span class="z-string"> monitor --chip esp32s3 --port /dev/cu.usbmodem1422301 -a no-reset</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> &gt;</span><span class="z-entity z-name z-function">/dev/null</span><span class="z-keyword z-operator"> 2&gt;&amp;1</span></span></code></pre>
+<p>那个 <code>printf '\\x12'</code> 是 monitor 里的 <code>CTRL+R Reset chip</code>，从同一个 pty 喂进去 = 已接上 + 立即复位；它比烧录时那次复位晚几秒，所以 ROM 第一行也在日志里。<code>script</code> 给 monitor 一个 pty 并顺手录一份，加 <code>&gt; /tmp/x.log</code> 存盘，别用管道刷屏。</p>
+</blockquote>
+<p><code>[实测]</code> <strong>C6 是反过来的</strong>：它<strong>不需要</strong> <code>-a watchdog-reset</code>，普通 DTR 复位就正常启动，ROM 打 <code>rst:0x15 (USB_UART_HPSYS),boot:0x1c (SPI_FAST_FLASH_BOOT)</code>。espflash 会直接拒绝这个选项（<code>The esp32c6 does not support watchdog reset</code>），所以 <code>flash-probe-*-c6</code> 的任务里不能带它 —— 带了会在最后一步失败，前面的烧录照样写完。</p>
+<h2 id="构建失败先看_Docker，再看别的">构建失败先看 Docker，再看别的</h2>
+<p>S3 的构建走 <code>scripts/iot-xtensa.sh</code>：先试本机 esp 工具链，不全则回退容器。本机那份通常是不全的（<code>~/.espressif</code> 下只有 <code>xtensa-esp-elf</code> 的 gcc，缺 <code>bin/cargo</code> 与 <code>lib/rustlib/src/rust/library</code>，<code>has_native_esp</code> 因此判否），所以实际构建<strong>依赖 Docker 守护进程</strong>。</p>
+<blockquote>
+<p><code>[实测]</code> 守护进程挂掉时的报错是 <code>docker: request returned 500 Internal Server Error ... /docker.sock/_ping</code>，退出码 125，<strong>不是</strong>任何编译错误。<code>open -a Docker</code> 在无 GUI 会话的 shell 里起不来；要直接跑 <code>/Applications/Docker.app/Contents/MacOS/Docker</code>，等 <code>com.docker.backend</code> 出现。</p>
+<p>它的危险之处在于<strong>构建失败后旧二进制仍在</strong>，<code>espflash flash</code> 会若无其事地把上一次的镜像刷进板子。退出码被 <code>grep '^error'</code> 一过滤就什么都看不见，于是连测三轮才发现。<strong>每次烧录前用 <code>strings &lt;elf&gt; | grep &lt;新加的日志字面量&gt;</code> 确认产物是新的</strong>，不要只看命令退出码。</p>
+</blockquote>
+<h2 id="启动页与_bench_镜像">启动页与 bench 镜像</h2>
+<p><code>IOT_BOOT_PAGE</code>（<code>.cargo/config.toml</code>，默认 <code>ambient</code>）决定固件开机停在哪一页 —— <code>ambient</code> / <code>attitude</code> / <code>audio</code> / <code>speaker</code> / <code>camera</code> / <code>network</code>，非法值退回 <code>ambient</code>。它是 <code>option_env!</code>，在<strong>编译时</strong>展开，所以要经 Docker 构建时得转发给容器（<code>scripts/iot-xtensa.sh</code> 的 <code>FORWARDED_ENV</code>）；<code>moon run iot:build-s3-camera</code> 把它设成 <code>camera</code>，对应 <code>moon run iot:flash-s3-camera</code>。<code>network</code> 没有对应的 moon 任务，同一条命令手写：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-support z-function z-builtin">cd</span><span class="z-string"> apps/iot</span></span>
+<span class="giallo-l"><span class="z-source">IOT_BOOT_PAGE</span><span class="z-keyword z-operator">=</span><span class="z-string">network</span><span class="z-entity z-name z-function"> bash</span><span class="z-string"> ../../scripts/iot-xtensa.sh build --release</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  --no-default-features --features lckfb-szpi-esp32s3,console-auto</span></span></code></pre>
+<p><code>[实测]</code> 这一版<strong>不带构建时凭据</strong>，所以设备停在 <code>setup</code> 一直扫；<code>moon run iot:flash-s3</code> 会重新构建产品镜像并把 <code>target/xtensa-esp32s3-none-elf/release/vanling</code> 覆盖回去。开机日志里有一行 <code>[IOT] boot page is Network</code>（停 <code>ambient</code> 时不打），所以「这一版真的停在那页」不用猜。</p>
+<blockquote>
+<p><code>[实测]</code> 这两个任务<strong>不能</strong>共用一个产物路径。<code>build-s3-camera</code> 与 <code>build-s3</code> 曾都声明 <code>target/.../release/vanling</code>，而 <code>flash-s3</code> 和 <code>scripts/iot-image.sh</code> 都读那个文件 —— 谁最后跑谁决定刷进去的是什么，moon 命中缓存时不会把自己的写回去，于是"烧产品固件"实际烧的是 camera 固件。现在 bench 构建前后保存/还原产品镜像，另存 <code>vanling-camera</code>，两个镜像并存。</p>
+</blockquote>
+<blockquote>
+<p><code>[实测]</code> <code>option_env!</code> 确实被 cargo 指纹跟踪：同一份源码只改 <code>IOT_BOOT_PAGE</code> 就会重编，两个产物字节不同。因此上面的问题只是共享路径，不是缓存键 —— 不需要 <code>touch</code> 源文件。</p>
+</blockquote>
+<h2 id="固件构成">固件构成</h2>
+<p>发布产物的 <code>merged.bin</code>（<code>save-image --merge</code>）为整片 Flash 镜像：</p>
+<table><thead><tr><th>段</th><th>地址</th><th>说明</th></tr></thead><tbody>
+<tr><td>bootloader</td><td><code>0x0</code></td><td>二级引导程序，固定脚本产物</td></tr>
+<tr><td>partition</td><td><code>0x8000</code></td><td>分区表</td></tr>
+<tr><td>app</td><td>见分区表</td><td>vanling 应用 + 数据</td></tr>
+</tbody></table>
+<blockquote>
+<p>布局以产出 bin 时实际分区表为准；安装时整片写 <code>0x0</code> 即可，不必单个段分别写。</p>
+</blockquote>
+<p><strong>分区表由本仓库提供</strong>：<code>apps/iot/partitions/&lt;board&gt;.csv</code>，<code>flash-*</code> 与 <code>scripts/iot-image.sh</code>
+都显式传 <code>--partition-table</code>。两处必须指向同一张表 —— 镜像任务与烧录任务各写一份时，谁最后跑决定设备上是什么布局，而两边都编译通过。</p>
+<p>S3 那张表有两处不是默认值，各有原因（详见该文件内的注释与
+<a href="https://lastsunday.github.io/vanling/records/iot/wifi/">Wi-Fi 实现记录</a>）：</p>
+<ul>
+<li><strong>factory 6 MB</strong>（espflash 默认 1 MB）：链接了 Wi-Fi 驱动的预编译 blob，固件放不进 1 MB。S3 是 16 MB。</li>
+<li><strong>没有 <code>phy_init</code></strong>：esp-radio 的 Xtensa 构建把驱动的标定恢复钩子实现为 <code>todo!()</code>，而驱动会去找标定分区；没有这个分区就不走那条路，代价是每次开机重新标定。</li>
+</ul>
+<h2 id="浏览器安装原理">浏览器安装原理</h2>
+<p>安装器页面是完全静态的（托管于 GitHub Pages）。<code>docs/static/flasher/</code> 内含：</p>
+<ul>
+<li><code>index.html</code> + <code>main.js</code>：自解析镜像头（magic <code>0xE9</code>、chip ID、flash 参数、段表、XOR 交叉校验、app 描述符 <code>0xABCD5432</code>）。</li>
+<li><code>vendor/esptool-js@0.6.0.bundle.js</code>：Espressif 官方 WebSerial 烧录内核（Apache-2.0）。</li>
+</ul>
+<p>不受 OTA（联网升级）影响：安装器解决首次刷入与整机还原，OTA 解决后续增量升级。</p>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/records/iot/aec">中文</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;" class="sidebar-section-title">User Guide</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">Quick Start</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">Installation</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">User Manual</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;roadmap&#x2F;" class="sidebar-section-title">Roadmap</a>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;" class="sidebar-section-title">Development Documentation</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">Server</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">Core Architecture</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">Dialogue Flow</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket Communication Protocol</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">Models and Deployment</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;todo&#x2F;" class="sidebar-link">TODO</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;pipeline-redesign&#x2F;" class="sidebar-link">Pipeline Redesign</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">Components and Module Layout</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;research&#x2F;" class="sidebar-link">Positioning and Trade-off Reference</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">Clients</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">App Client</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;esp32&#x2F;" class="sidebar-link">ESP32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">Admin UI</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">Shared Client Protocol</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">Page Implementation</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT Firmware</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;cheatsheet&#x2F;" class="sidebar-link">Cheat Sheet</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature Criteria and Cohesion</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">Layering and Composition</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">Firmware Installation</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">Hardware-free Emulation and Regression Smoke</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">Motion Semantic Framework</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">Audio Metering Semantics</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">Playback Semantics</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">Debugging</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;vad-listener&#x2F;" class="sidebar-link">VAD and Listener</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;audio-debug&#x2F;" class="sidebar-link">Audio Debugging</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR Speech Recognition</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">Related Projects</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32&#x2F;" class="sidebar-link">xiaozhi-esp32</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server-java&#x2F;" class="sidebar-link">xiaozhi-esp32-server-java</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;xiaozhi-android-client&#x2F;" class="sidebar-link">xiaozhi-android-client</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">Resources</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">Resource Files</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">Model Downloader</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;" class="sidebar-section-title">Design Discussions</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">Protocol Documentation Three-Layer Model and Human-AI分工</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;" class="sidebar-section-title active">Development Records</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link active">IoT Implementation Records</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">Playback Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">Hardware Constraint Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">Camera Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">Audio Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">Motion Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">Input and Touch Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link active leaf">Echo Cancellation Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">Changing the CPU clock at runtime</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">Check tasks and caching record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">Logging Implementation Record</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;faq&#x2F;" class="sidebar-section-title">FAQ</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/en/records/iot/aec/#Echo_Cancellation_Implementation_Record">Echo Cancellation Implementation Record</a></li>
+    
+  </ul>
+  
+  <!-- doc-audience: ai -->
+<h1 id="Echo_Cancellation_Implementation_Record">Echo Cancellation Implementation Record</h1>
+<p>Judgements and rejected approaches from <code>apps/iot/crates/core/src/drivers/aec/</code>. <strong>AI-produced, not reviewed by a human</strong> — see the <a href="https://lastsunday.github.io/vanling/en/records/">parent note</a>.</p>
+<p>Each judgement is marked with its basis: <strong><code>[test]</code></strong> a unit test backs it, <strong><code>[measured]</code></strong> a measurement with a way to reproduce, <strong><code>[reported]</code></strong> not reproduced, kept only for the record.</p>
+<p>Linear AEC does one thing: model the acoustic path from the samples sent to the speaker, and subtract it from the microphone. Nonlinear suppression is not part of it — see the module documentation in <code>aec/mod.rs</code>.</p>
+<h2 id="The_first_board_numbers:_the_pairing_holds,_the_cancellation_does_not">The first board numbers: the pairing holds, the cancellation does not</h2>
+<p><code>[measured]</code> Reproduce: <code>moon run iot:probe-echo-s3</code>, flash to the LCKFB S3, <code>moon run iot:flash-probe-echo-s3</code> (<strong>with two boards plugged in that task carries no <code>--port</code> and will pick one for itself</strong>), then capture 30 s of serial.</p>
+<table><thead><tr><th>Figure</th><th>Measured</th><th>Verdict</th></tr></thead><tbody>
+<tr><td>paired / unpaired</td><td>160–200 / <strong>0</strong></td><td>✅ the two streams are in step; log 160 of 2944, well inside its runway</td></tr>
+<tr><td>worst single poll</td><td>15.3–16.6 ms of a 30 ms bound</td><td>✅ it fits, but at half the budget</td></tr>
+<tr><td>feed</td><td>200/s, 0 late, worst work 142–428 µs</td><td>✅ steady</td></tr>
+<tr><td><strong>ERLE</strong></td><td><strong>0 dB for all 60 s, not once moved</strong></td><td>❌</td></tr>
+<tr><td>delay</td><td>None → 16 → 50 → 6, wandering the whole 64-sample window</td><td>❌</td></tr>
+</tbody></table>
+<p><strong>The delay search wandering is the finding here, not the zero ERLE.</strong> A real acoustic path has a <em>fixed</em> delay: it converges and stays there. A delay that changes every second says there is no stable relationship between the reference and the microphone — so the filter never converges on anything, and it converges <strong>quietly</strong>.</p>
+<h3 id="A/B:_the_microphone_does_hear_the_speaker,_and_&quot;it_does_not&quot;_was_an_artifact_I_measured">A/B: the microphone does hear the speaker, and "it does not" was an artifact I measured</h3>
+<p><code>[measured]</code> An ERLE of 0 means two completely different things: the reference is mispaired, or <strong>there is no echo to cancel at all</strong>. The probe separates them by <strong>flipping the amplifier's mute every 6 s</strong> (<code>probe/echo_room.rs</code>).</p>
+<p>The first A/B said: with the amplifier on the microphone sat at −76…−90 dBFS against −43 dBFS off — <strong>a 45 dB difference</strong> — and concluded there was no measurable acoustic path on this board.</p>
+<p><strong>That conclusion was wrong, and it was an artifact of how the measurement was built.</strong> The envelope level is a rolling window of 200 columns × 20 ms = <strong>four seconds</strong>, while the first version flipped every 1 s — so every window straddled two complete cycles, both states got averaged, and what came out was a beat. After moving to a 6 s flip and withholding the reading until the window lies wholly inside one state, the same figure did not reproduce.</p>
+<p>Printing the <strong>per-poll peak</strong> (20 ms, immune to the window) instead gives a continuous trace, and it <strong>moves with the reference peak</strong>:</p>
+<table><thead><tr><th>Reference peak LSB</th><th>Microphone peak LSB</th></tr></thead><tbody>
+<tr><td>22971</td><td>2180 / 2375</td></tr>
+<tr><td>17100</td><td>2220</td></tr>
+<tr><td>9178</td><td>1413 / 1454</td></tr>
+<tr><td>8884</td><td>1513</td></tr>
+</tbody></table>
+<p><strong>The microphone follows the speaker — the acoustic path is real</strong>, roughly 15 dB below the reference.</p>
+<p>The conclusion therefore narrows: <strong>an ERLE of 0 with a wandering delay is the canceller's own problem, not a missing acoustic path.</strong> The filter is holding a reference that genuinely exists and genuinely correlates, and still converging on nothing — which is the same silent-failure road, just one layer deeper than before.</p>
+<h3 id="The_capture_only_hands_over_half_the_audio_—_which_is_why_the_delay_search_cannot_lock">The capture only hands over half the audio — which is why the delay search cannot lock</h3>
+<p><code>[measured]</code> The probe now reports capture throughput (<code>capture rate</code>), which gives a number that needs no inference:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>41 polls in 1007 ms, 8424 paired = 8365 samples/s of the 16000 the canceller runs, 205 per poll</span></span></code></pre>
+<p><strong>A poll period of 24.6 ms, pairing 205 decimated samples.</strong> At 16 kHz, 24.6 ms should be 394 — it is 52% of that, <strong>almost exactly half</strong>.</p>
+<p>That number is what breaks the search. The delay estimator correlates over 256 ms of history (<code>REFRESH_SAMPLES = 4096</code>), and the microphone now hands over half of real time on every poll: <strong>the two streams cover spans that are not proportional, so the "same moment" the estimator pairs is not the same moment.</strong> The correlation peak therefore lands on no grid point, <code>best_lag</code> picks noise out of the window every time, and the delay wanders <code>None → 16 → 50 → 6</code>.</p>
+<p><strong>Two candidates, neither excluded:</strong></p>
+<ol>
+<li><strong>The RX is configured at half the rate.</strong> 24.6 ms × 24000 = 590 frames → 197 decimated samples, which matches the measured 205 closely.</li>
+<li><strong>The drain stops early.</strong> <code>drain</code> takes about 2460 bytes per poll where the period says the ring should hold about 4723.</li>
+</ol>
+<blockquote>
+<p>The next section settles both of these and gives the real cause.</p>
+</blockquote>
+<h3 id="Root_cause:_the_RX_holds_one_sample_per_frame;_the_driver_counted_two">Root cause: the RX holds one sample per frame; the driver counted two</h3>
+<p><code>[measured]</code> How it was decided: count, in the drain, how often the two halves of a four-byte group carry the same sample.</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>slots: 2/480 = 4 per mille</span></span>
+<span class="giallo-l"><span>slots: 9/543 = 16 per mille</span></span></code></pre>
+<p><strong>Effectively zero</strong> — the two halves of a four-byte group are not the same sample. The receive buffer holds <strong>one sample per two bytes</strong>, while the driver used <code>chunks_exact(BYTES_PER_FRAME = 4)</code> and took <code>frame[0..2]</code>, so it <strong>kept one of every two consecutive samples and threw the other half of the microphone away</strong>.</p>
+<p>The source is esp-hal 1.2.2's <code>Channels</code> documentation, on the same page as the <code>Channels::MONO</code> definition:</p>
+<blockquote>
+<p><code>mask</code> ... <strong>Inactive channels do not consume or write data in the DMA buffer.</strong>
+<code>fill</code> ... <strong>This field is ignored in the receiver unit.</strong></p>
+</blockquote>
+<p><code>MONO = new_impl(2, 0b01, None)</code> — slot 0 is active and slot 1 <strong>does not occupy the DMA buffer in the receiver</strong>. So <strong>the two directions have different frame widths to begin with</strong>:</p>
+<table><thead><tr><th>Direction</th><th>Per frame</th><th>Mechanism</th></tr></thead><tbody>
+<tr><td>TX</td><td>2 samples = 4 B</td><td><code>fill=None</code>, so an inactive channel <strong>repeats</strong> the last active one</td></tr>
+<tr><td>RX</td><td><strong>1 sample = 2 B</strong></td><td>the inactive channel <strong>consumes no</strong> DMA data</td></tr>
+</tbody></table>
+<p>The arithmetic closes: 48000 ÷ 2 ÷ 3 = <strong>8000</strong>, matching the measured 8000 samples/s exactly.</p>
+<p><strong>Where the wrong model lived</strong> is the <code>SLOTS_PER_FRAME</code> doc comment in core, which asserts that <code>Channels::MONO</code> is only a slot selection, that both slots reach the DMA, and so that the capture moves twice <code>SAMPLE_RATE_HZ</code> samples per second. <strong>That comment is wrong, in core, and the driver only copied it</strong> — so what got fixed is the model, not one multiplication.</p>
+<h3 id="After_the_fix">After the fix</h3>
+<p><code>[measured]</code> Same probe, same flash:</p>
+<table><thead><tr><th></th><th>Before</th><th>After</th></tr></thead><tbody>
+<tr><td>capture rate</td><td>8000 samples/s</td><td><strong>15 561 samples/s</strong> (target 16000)</td></tr>
+<tr><td>paired / poll</td><td>205</td><td><strong>442</strong></td></tr>
+<tr><td>unpaired</td><td>0</td><td>0</td></tr>
+<tr><td>delay</td><td><code>None→16→50→6</code>, wandering</td><td><code>Some(16)…Some(64)</code>, <code>None</code> no longer appears</td></tr>
+<tr><td><strong>ERLE</strong></td><td>0 dB</td><td><strong>still 0 dB</strong></td></tr>
+</tbody></table>
+<p><strong>The capture rate is fixed; the pairing is not.</strong> The delay search now answers every time (wandering over 16–64) instead of picking noise out of the window — but the ERLE is still zero, so <strong>alignment is a separate problem that remains</strong>.</p>
+<h3 id="A_second_failure_met_while_fixing_it">A second failure met while fixing it</h3>
+<p>The probe panicked immediately after the frame width was corrected (<code>LoadProhibited</code>, in <code>Es8311Tx::new</code>). A bisect showed it was <strong>not the frame width</strong>: the real cause was <code>BYTES_PER_POLL</code>, which also used <code>SLOTS_PER_FRAME</code> to size <strong>capture</strong> bytes, so every capture-side buffer derived from it was twice as large, the pairing scratch grew from 1601 to 3201 <code>i16</code>, and <code>Board::new</code> returns that struct by value on the stack — which overflowed the main task's stack.</p>
+<p><strong><code>BYTES_PER_POLL</code> is the root constant</strong>: the capture ring's depth, a poll's drain budget, the lag conversion and the scratch all derive from it. Changing it from <code>SAMPLE_RATE_HZ × SLOTS_PER_FRAME × BYTES_PER_SAMPLE × CAPTURE_MS</code> to <code>SAMPLE_RATE_HZ × CAPTURE_BYTES_PER_FRAME × CAPTURE_MS</code> (3840 → <strong>1920</strong>) put the scratch back to size and the panic went away.</p>
+<p><code>[test]</code> Two tests written against the old constants then failed (<code>7708/7934/8188</code>, <code>9600/7680</code>). What they assert is a depth <strong>in polls</strong> — their own comment says "2.13 polls" — so the fix was not to copy the new observed numbers but to <strong>rewrite them in polls</strong> (<code>BYTES_PER_POLL * 2 + offset</code>), so the next frame-width correction cannot silently invalidate them again.</p>
+<h3 id="Also_found:_the_envelope&#39;s_time_axis_has_been_running_at_half_speed">Also found: the envelope's time axis has been running at half speed</h3>
+<p><code>[measured]</code> <code>SAMPLES_PER_COLUMN</code> used <code>SLOTS_PER_FRAME</code> too, while <code>SampleStream::push_bytes</code> decodes one sample per two bytes — <strong>so every column held half the samples its own stated duration claims</strong>. The Audio page's window has been drawn at <strong>half speed in every build so far</strong>. Unrelated to the AEC: the same mistake's other victim.</p>
+<h3 id="The_delay_search_is_not_&quot;measuring_a_large_delay&quot;;_it_has_no_peak_at_all">The delay search is not "measuring a large delay"; it has no peak at all</h3>
+<p><code>[measured]</code> Widening <code>MAX_DELAY</code> from 64 to 256 (diagnostic, since reverted — 8x the search cost would not fit the poll budget) sent the reported delay straight to <strong>223–255</strong>.</p>
+<p><strong>It pegs at whatever edge it is given</strong>: window 64 reports 64, window 256 reports 255.</p>
+<p>That is not "the true offset exceeds the window" — it is <strong>the search returning the window boundary itself</strong>. <code>best_lag</code> takes the highest-scoring grid point, and the score climbs monotonically toward the edge, which means <strong>there is no correlation peak, only a ramp</strong>.</p>
+<p>The likeliest mechanism (<strong>unverified</strong>): if both signals carry a DC offset, <code>cross·1000/(√ref_pow·√mic_pow)</code> comes out near ±1000 at <strong>every</strong> lag — far above the 0.3 confidence gate. The search then takes the first grid point strictly greater than the running maximum over a flat line, so the answer is decided by traversal order and noise, and it appears as "always at the window edge".</p>
+<p><strong>That accounts for every observation so far</strong>: ERLE pinned at 0, the delay wandering, and the post-frame-width change from "<code>None</code>, wandering" to "stably 64" — all one symptom seen from different sides. <strong>So the next step is not more lag tuning; it is to see what the correlation actually looks like.</strong></p>
+<p>The smallest criterion: report <code>best_lag</code>'s winning score next to its lag. A score near 1000 says DC offset; a low score that still lands on the edge says the traversal or indexing is wrong.</p>
+<h3 id="The_criterion:_the_correlation_peak_reaches_only_78-271_per_mille,_and_the_gate_is_300">The criterion: the correlation peak reaches only 78-271 per mille, and the gate is 300</h3>
+<p><code>[measured]</code> Reporting <code>best_lag</code>'s winning score (<code>delay_peak</code>) settles the whole chain of symptoms at once:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>delay None     peak 215 per mille</span></span>
+<span class="giallo-l"><span>delay Some(53) peak  89</span></span>
+<span class="giallo-l"><span>delay Some(64) peak 271</span></span>
+<span class="giallo-l"><span>delay Some(60) peak  78</span></span>
+<span class="giallo-l"><span>delay Some(55) peak 193</span></span></code></pre>
+<p><strong>The gate <code>MIN_CORRELATION = 300</code> is never crossed.</strong> So <code>estimate</code> is never updated, and <strong>every reported <code>delay</code> is stale</strong> — the "stably 64" seen after the frame-width fix was not convergence, it was a leftover.</p>
+<p><strong>The DC-offset hypothesis is refuted</strong>: that would score near 1000 at every lag, and the highest reading is 271.</p>
+<p><strong>What is actually true: the microphone and the reference are barely correlated within ±64 samples</strong>, and the best point the search finds is 0.08-0.27. The delay search is not broken — it is correctly answering "no measurable correlation here".</p>
+<p><code>MIN_CORRELATION</code>'s own comment said <strong><code>[reported]</code> 0.3 is a guess with headroom, and wants a bench number</strong>. That number now exists: <strong>this board's acoustic path reaches only 78-271 per mille.</strong> The gate should be re-set from the measurement rather than the lag tuned further — which is precisely what that comment said not to do.</p>
+<hr />
+<p><strong>This record is ordered algorithm first, hardware cost second.</strong> I got that causality backwards once — measured the CPU, then used a synthetic room's number to argue the algorithm was fine. The order only works one way, because "is the algorithm worth doing" decides "is it worth spending CPU on", and not the reverse.</p>
+<hr />
+<h2 id="There_is_no_usable_public_recording:_three_measured_unusable,_a_fourth_unverifiable">There is no usable public recording: three measured unusable, a fourth unverifiable</h2>
+<p><code>[measured]</code> The plan called for "measuring how many dB a fixed-point linear AEC takes off, using the official test vectors". After searching: <strong>no clean (reference, microphone) recording of a real linear acoustic echo path exists publicly.</strong></p>
+<p><strong>Espressif's <code>docs/_static/aec_in_far.wav</code> / <code>aec_in_near.wav</code>.</strong> Labelled "far-end signal (playback reference)" and "near-end signal (microphone containing echo)", and the pair a reader reaches for first. <strong>Not synchronous</strong>: over the whole 53 s at every lag the best normalised cross-correlation is <strong>0.137</strong>, a single-tap fit accounts for <strong>0.08 dB</strong>, envelope correlation is 0.35, and the spectral centroids differ (1301 Hz against 2620 Hz). This canceller reports <strong>−14.4 dB</strong> on them — exactly what subtracting an unrelated signal does.</p>
+<p><strong>Espressif's <code>audio_mic_file</code> / <code>audio_ref_file</code>.</strong> What Espressif's own <code>test_afe.cpp</code> feeds to <code>aec_process</code>. Synchronous (correlation 0.743, single-tap gain 0.9956) — <strong>but with no echo path in it</strong>. Offline least squares, which bounds any stationary linear canceller:</p>
+<table><thead><tr><th>Taps</th><th>ERLE, whole file</th><th>Kernel peak</th></tr></thead><tbody>
+<tr><td>32</td><td>−1.04 dB</td><td>1.02, on the <strong>last</strong> tap</td></tr>
+<tr><td>64</td><td>+0.04 dB</td><td>1.03, on the <strong>last</strong> tap</td></tr>
+<tr><td>128</td><td>+0.42 dB</td><td>1.02, on the <strong>last</strong> tap</td></tr>
+<tr><td>256</td><td>−4.97 dB</td><td>1.02, on the <strong>last</strong> tap</td></tr>
+</tbody></table>
+<p>A kernel whose energy sits on the final tap, with no decaying structure and no bulk delay, is not an acoustic path. Fitting on the first half and testing on the second gives +5.08 dB against +6.15 dB in-sample — the relationship is persistent, it just is not an echo.</p>
+<p><strong>Microsoft's ICASSP AEC-Challenge <code>real_doubled</code>.</strong> The field's actual reference dataset, 10,000 real environments. <strong>Forty GUIDs scanned and not one has a linear echo relationship</strong>: the best offline Wiener bound over 128 taps is <strong>−0.42 dB</strong>, and the best correlation anywhere is 0.137. <strong>This is documented behaviour.</strong> Cutler et al., <em>ICASSP 2023 AEC Challenge</em> (arXiv:2309.12553), §4.1:</p>
+<blockquote>
+<p>Even though our application uses the WASAPI raw audio mode to bypass built-in audio effects, the PC can still include Audio DSP on the receive signal [...] it can also include <strong>Audio DSP on the send signal, such as AEC and noise suppression</strong>.</p>
+</blockquote>
+<p>A consumer stack that already runs its own canceller between the loopback tap and the file leaves a <em>linear</em> model nothing to predict. The same section says ERLE is not this dataset's metric either (<strong>PCC 0.31</strong> with subjective quality).</p>
+<p><strong>ITU-T G.168 (04/2015)</strong> was the next answer and pointed exactly the right way: Annex D gives eight echo-path models <code>m_i(k)</code> as <strong>explicit impulse response tables</strong> with scaling factors <code>K_i</code>, so the reference material genuinely needs no audio files at all. The PDF is publicly downloadable (154 pages). <strong>It is not used</strong>, because the transcription could not be verified:</p>
+<ul>
+<li>On some pages text extraction loses the first column of each row (m1's first value sits 1–2 pt above the rest of its row)</li>
+<li>The reading order is ambiguous ("to be read in columns"); column-major and row-major differ by a factor of two</li>
+<li><strong>Both readings violate the standard's own invariant</strong> — that the scaled path's magnitude response must not exceed 0 dB — by 1 to 11 dB</li>
+</ul>
+<p>A table that cannot be checked is not something a test should be built on. Same reason the software clock calibration was deleted rather than shipped: <strong>a number you cannot stand behind is worse than no number.</strong></p>
+<p>G.168 does settle one thing, in its Test 12 note:</p>
+<blockquote>
+<p>This test may be enhanced by the future addition of test vectors that represent real acoustic echo signals. <strong>This enhancement is for further study.</strong></p>
+</blockquote>
+<p>The standards body says the real acoustic test vectors do not exist either.</p>
+<h3 id="So_the_reference_is_an_offline_optimum_on_the_same_path">So the reference is an offline optimum on the same path</h3>
+<p>Not a borrowed path: for each path the test <strong>solves the least-squares problem there and then</strong> and reports what the best filter of the same length could reach. That number is computed rather than transcribed, so it cannot be wrong, and it answers the question a linear adaptive filter exists to answer: <strong>did it find the optimal linear solution, and how close is it?</strong></p>
+<p>To reproduce (no external assets, no network):</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-support z-function z-builtin">cd</span><span class="z-string"> apps/iot</span><span class="z-punctuation"> &amp;&amp;</span><span class="z-entity z-name z-function"> cargo</span><span class="z-string"> test -p iot-core --test aec_erle -- --nocapture</span></span></code></pre><table><thead><tr><th>Path</th><th style="text-align: right">Taps</th><th style="text-align: right">Offline optimum</th><th style="text-align: right">This implementation</th><th style="text-align: right">Gap</th></tr></thead><tbody>
+<tr><td>short, fast decay</td><td style="text-align: right">16</td><td style="text-align: right">62.9</td><td style="text-align: right">61.0</td><td style="text-align: right">1.9</td></tr>
+<tr><td>medium, moderate decay</td><td style="text-align: right">48</td><td style="text-align: right">58.8</td><td style="text-align: right">57.2</td><td style="text-align: right">1.6</td></tr>
+<tr><td>long tail, slow decay</td><td style="text-align: right">192</td><td style="text-align: right">38.9</td><td style="text-align: right">38.8</td><td style="text-align: right"><strong>0.1</strong></td></tr>
+<tr><td><strong>tail longer than the filter</strong></td><td style="text-align: right">256</td><td style="text-align: right"><strong>14.4</strong></td><td style="text-align: right">13.2</td><td style="text-align: right">1.2</td></tr>
+</tbody></table>
+<h3 id="The_15_dB_bar_turns_out_to_be_about_the_path,_not_the_algorithm">The 15 dB bar turns out to be about the path, not the algorithm</h3>
+<p><strong>When the tail is longer than the filter, the offline optimum itself is 14.4 dB.</strong> No 128-tap linear filter can reach 15, so asking the algorithm to is asking it to be wrong.</p>
+<p>The gate is therefore stated as <strong>a gap to the offline optimum (≤ 3 dB)</strong>, with the 15 dB bar applied only to paths the filter can hold in full. That distinction is something only a self-verifying reference can give: a borrowed path cannot tell you who set the ceiling.</p>
+<p>Two caveats stay attached. Clearing 15 dB is <strong>necessary, not sufficient</strong> (PCC 0.31). And the paths are generated, so they test the contract rather than a room — this board's loop gain, delay and thresholds still need this board.</p>
+<hr />
+<h2 id="A_generated_path_needs_a_direct_reflection,_or_the_delay_search_has_nothing_to_lock_onto">A generated path needs a direct reflection, or the delay search has nothing to lock onto</h2>
+<p><code>[measured]</code> The first version made <strong>every tap the same order of random noise</strong>, so the path had no onset: every lag correlated about equally, the delay search had nothing to hold and reported wherever the noise happened to peak. A 12-sample path reported 15 and a 4-sample one reported 22 (cross-checked offline, where the peak genuinely was), and the filter reached <strong>0.4 dB</strong> because it was aiming at the wrong place.</p>
+<p>A real room impulse response has <strong>one loud direct arrival</strong> above every reflection after it. With that added (direct 30,000, reflections ±8,000) the correlation peak lands <strong>exactly on the true delay</strong> for all four paths (8/12/6/4), and the ERLE goes from 0.4 dB to 61 dB.</p>
+<p>The same mistake appeared once in an assertion: the original check that "the talker was not learned as an echo" measured the <strong>share</strong> of filter energy past the end of the path — but a 128-tap filter on a 48-tap path already carries 46% of its energy there, as many small coefficients. <strong>The quantity is growth, not share.</strong></p>
+<hr />
+<h2 id="The_freeze_stops_the_damage_but_not_the_first_half_second_of_it">The freeze stops the damage but not the first half second of it</h2>
+<p><code>[measured]</code> A new test found this. The coherence estimate has a time constant of about 512 samples, so after a talker begins the filter still adapts at <strong>full speed</strong> for roughly 543 samples, and then the freeze locks in whatever state that produced.</p>
+<table><thead><tr><th></th><th>Value</th></tr></thead><tbody>
+<tr><td>Coverage of the freeze</td><td>31,457 / 32,000 samples (98%)</td></tr>
+<tr><td>Energy past the path, quiet</td><td>3.203e10</td></tr>
+<tr><td>When the freeze took hold</td><td><strong>1.176e17 (3.7e6×)</strong></td></tr>
+<tr><td>At the end</td><td>1.176e17 (<strong>no further growth once frozen</strong>)</td></tr>
+</tbody></table>
+<p>So the design is <strong>partly</strong> effective: the freeze does stop the damage growing, but it does not stop the beginning of it. In Q30 that is about 3.6% of gain learned into taps that should be zero — not nothing, and not everything.</p>
+<p><strong>The cause is the meter's lag, not the threshold.</strong> Coherence takes hundreds of samples to read "incoherent", and the filter has already run through them. Shortening the hold does not fix it, because coherence is no faster. The real fix needs a <strong>shorter meter dedicated to the freeze decision</strong>, which is a design change and was not made during a validation pass.</p>
+<p><code>[reported]</code> How bad that half second sounds has not been measured on this board.</p>
+<hr />
+<h2 id="The_step_must_not_be_scaled_by_the_residual">The step must not be scaled by the residual</h2>
+<p><code>[measured]</code> Valin's variable-step MDF/NLMS (TASLP 2007) does scale the step by the residual, and that is the obvious reading of "derive the step from the residual". <strong>But before the filter has learned anything, the residual is the microphone itself</strong> — it is not a quantity with any relation to the filter. It is the loudest thing in the room.</p>
+<p>On a room at 12 000 LSB that put the opening step at 1/48 of full speed, and the filter reached <strong>−0.5 dB</strong>; the same loop at a constant full-speed step reached 20 dB. A slow start does not cost a little accuracy — it costs the entire convergence.</p>
+<p>So the step in <code>gate.rs</code> is a <strong>constant</strong>: full speed, or zero while frozen. The residual is used only for the one decision it can answer unambiguously.</p>
+<p>"Full speed" is a choice, not a default: NLMS is stable anywhere in <code>(0, 2)</code>, and <code>1 &lt;&lt; 29</code> (0.5 in Q30) is the conventional pick with room left below it.</p>
+<hr />
+<h2 id="Freezing_cannot_look_at_the_residual_level_alone:_a_converging_filter_and_a_talking_person_both_leave_a_large_error">Freezing cannot look at the residual level alone: a converging filter and a talking person both leave a large error</h2>
+<p><code>[test]</code> This is the same failure above, arriving from the other side. An absolute threshold on the residual freezes the filter during its own startup.</p>
+<p>What separates the two is <strong>coherence</strong>:</p>
+<ul>
+<li>While the filter is still converging, the error is mostly <strong>echo it has not yet accounted for</strong>, and is therefore highly correlated with the reference (coherence ≈ 1);</li>
+<li>While someone is talking, the error is speech, and is not (coherence ≈ 0).</li>
+</ul>
+<p>That is Gänsler's coherence-based double-talk detector (JASIP 2015 calls out its two drawbacks: a threshold that depends on background noise and on the talker's level). It lives beside the filter rather than as a second detector beside that, because the filter already computes everything it needs: three running means, one extra multiply per sample.</p>
+<p>Both thresholds in <code>gate.rs</code> are marked <code>[reported]</code>: <code>LEAKAGE_FREEZE = 1&lt;&lt;24</code> (~4096 LSB RMS, taken from the 30 cm speech peaking to 80 dB SPL calibration in the <a href="https://lastsunday.github.io/vanling/en/records/iot/audio/">audio record</a>) and <code>MAX_COHERENCE = 0.6</code>. Both want re-measuring on a bench with a person in the room. The freeze is confirmed working on a synthetic talker — 98% coverage — but see the onset burst above.</p>
+<p><strong>The <code>has_path</code> layer was removed.</strong> It used "is the echo estimate large enough" in place of coherence, and a filter that predicts the entire microphone also has a large echo estimate — it has learned nothing. Coherence alone is enough.</p>
+<hr />
+<h2 id="The_numerator_of_coherence_is_a_signed_mean,_not_a_squared_one">The numerator of coherence is a signed mean, not a squared one</h2>
+<p><code>[test]</code> <code>coherence = |E[e·x]| / (rms_e · rms_x)</code>. The first version squared <code>e·x</code> before averaging, giving <strong>magnitude-squared coherence</strong> — which cannot tell an inverted path from an absent one, and those have to be told apart here.</p>
+<p>It costs the same one multiply. So <code>power.rs</code> gained a <code>SignedMeter</code>, at the same shift and for the same reason as <code>PowerMeter</code>: the ±1 floor when the shift truncates is the only thing that lets it actually reach its target rather than stopping half a step short, and on a signed value that matters twice over — a mean that cannot cross zero is not a mean.</p>
+<hr />
+<h2 id="Noise::new(seed_|_1)_folds_neighbouring_seeds_onto_the_same_sequence"><code>Noise::new(seed | 1)</code> folds neighbouring seeds onto the same sequence</h2>
+<p><code>[test]</code> An xorshift is stuck at zero forever if it starts there, and zero is the one seed a caller is likely to write — so it needed substituting. <strong>But it needs nonzero, not odd.</strong></p>
+<p>The original <code>seed | 1</code> folded 2 onto 3 and 3 onto 3. Two "independent" noise sources were then the same signal, coherence read 1.0, and the correct answer is 0. The danger is that it is entirely silent: the tests still run, they just assert a false number.</p>
+<p><code>signal.rs</code> now has a test that pins this specifically.</p>
+<p>Found in the same rewrite: an <code>i32</code> LCG with <code>n &gt;&gt; 16</code> used to generate uniform noise is wrong. The arithmetic shift makes half the values negative, <code>% 16000</code> keeps the sign, subtracting 8000 then leaves the sample range at [−24000, −1] — mean square 6.8× too large, which made the freeze threshold meaningless. Everything now uses <code>signal::Noise</code>.</p>
+<hr />
+<h2 id="The_delay_search_needs_a_confidence_gate">The delay search needs a confidence gate</h2>
+<p><code>[test]</code> A path further away than the window correlates at nothing in every lag inside it, and a search returns the <strong>largest</strong> of those — a maximum over noise. A power gate cannot catch this case: two rooms that are not silent still produce a peak.</p>
+<p>Without a gate, a path beyond the search range was answered with a random lag inside it (measured: 2, true 84) and the caller had no way to tell. <code>MIN_CORRELATION = 300</code> (per thousand) makes the same input answer "not found", with <code>settled()</code> staying false.</p>
+<p>Returning the window edge is equally wrong — that is a confident wrong number. It now returns <code>None</code>.</p>
+<hr />
+<h2 id="The_delay_search_must_be_rate-limited:_it_costs_more_than_the_filter_that_uses_it">The delay search must be rate-limited: it costs more than the filter that uses it</h2>
+<p><code>[measured]</code> One search is <code>(2·SEARCH + 1)·WINDOW = 65 × 256 = 16,640</code> products, about two thirds of what the adaptive filter does on the same sample. <strong>Running it per sample makes finding the delay cost more than cancelling with it.</strong></p>
+<p>The delay is a property of where the board is sitting, not of the audio, so it runs every 40 ms (<code>REFRESH_SAMPLES = 16 × WINDOW</code>). The first search fires the moment the history is full rather than one interval later — the delay is the thing worth having early.</p>
+<p>Before the throttle <code>cargo test -p iot-core aec</code> took 45 s (quadratic over 851,940 samples); after, 0.14 s. <code>DelayEstimator::searches()</code> reports the real count, because whoever raises that rate is entitled to know what they bought.</p>
+<hr />
+<h2 id="Steady-state_ERLE_and_whole-file_ERLE_are_different_quantities">Steady-state ERLE and whole-file ERLE are different quantities</h2>
+<p><code>[measured]</code> Same audio, same filter, two numbers that are both correct and answer different questions. <strong>The AEC Challenge rule agrees</strong> (Cutler et al., §7):</p>
+<blockquote>
+<p>For the far end single talk scenario, we evaluate the <strong>second half</strong> of each clip, to avoid initial degradations from initialization, convergence periods, and initial delay estimation.</p>
+</blockquote>
+<p>So <strong>reporting the second half only is the standard practice</strong>, and the whole-file figure is demoted to an aside.</p>
+<p>The first version compared the whole-file sum against the end-of-file instantaneous reading, saw 51 dB of disagreement, and went looking for a broken meter. The actual lesson: <strong>convergence and steady state have to be reported separately</strong>, or one of them will always be mistaken for the other. The per-second curve (16 → 19 → 21 dB) is the evidence for how fast it converges — a single end-point number cannot distinguish "converged fast" from "converged after twenty seconds", and that difference decides whether the first half of a call is usable.</p>
+<p>The meter's own reading (63.0 dB) and the summed samples (57.2 dB) differ by 6 dB, within tolerance; the windows differ, one being a ~30 ms exponential average and the other the whole record.</p>
+<hr />
+<h2 id="Arithmetic_places_this_implementation_got_wrong_first">Arithmetic places this implementation got wrong first</h2>
+<p><code>[test]</code> Each was wrong, then refuted by a measurement, then changed:</p>
+<p><strong>A <code>PowerMeter</code> step floor cannot use <code>max</code>.</strong> <code>max</code> takes the <strong>larger</strong> value, so a falling level moves 1 LSB per sample instead of 2⁹ and the meter holds the level for about 1000× too long. A residual settled at 389 against a true 900. The floor applies only where the shift produced nothing at all.</p>
+<p><strong>The ring must advance before it writes.</strong> Otherwise <code>head</code> points one slot past the newest sample, <code>tap(0)</code> reads the wrong slot, and every peak lands a tap late.</p>
+<p><strong>Integer <code>log2</code> tail extraction.</strong> When squaring the mantissa, the carry bit has to be separated from the scaled value: the carry is <code>squared &gt;&gt; 1</code>, not <code>squared &gt;&gt; (LOG_FRACTION + 1)</code>.</p>
+<p><strong><code>ErleMeter</code>'s ratio should not be Q-scaled.</strong> Scaling the numerator by 2¹⁶ comes back out of the logarithm as sixteen extra octaves. Integer division truncates under half a decibel.</p>
+<p><strong>The hold counter must be capped.</strong> Left free-running, <code>above</code> saturates to <code>u32::MAX</code> during a long stretch of speech, and since coming back costs one decrement per sample from wherever it stopped, the filter can never be released again — a permanent freeze.</p>
+<hr />
+<h2 id="CPU:_measure_the_clock_before_talking_about_anything_else._80_MHz,_not_240">CPU: measure the clock before talking about anything else. 80 MHz, not 240</h2>
+<p><code>[measured]</code> The first version of this section carried a table I could not stand behind. It said L=128 costs 74.7 ms/tick and "219 cycles per MAC", converted using a clock off the datasheet. <strong>Both were wrong, and for the same reason: I had never read what this part is actually configured to.</strong></p>
+<h3 id="A_reference_loop_caught_it">A reference loop caught it</h3>
+<p>The probe gained a deliberately plain loop: a 256-coefficient, 1024-sample <strong>integer</strong> FIR, no bounds checks, no <code>&amp;mut self</code> — <strong>the verbatim case of Espressif's published <code>dsps_fir_f32</code> benchmark</strong>, so the number is directly comparable.</p>
+<p>I expected it to land near 1.7 cycles per MAC. It came out at <strong>12</strong>. A loop simpler than the canceller running 193× slower than it means the problem is not in the canceller's code.</p>
+<h3 id="The_CPU_was_at_80_MHz">The CPU was at 80 MHz</h3>
+<p><code>esp_hal::clock::cpu_clock()</code> reads back <strong>80,000,000 Hz</strong>. The reason is in esp-hal 1.2's own source:</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> CpuClock</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 80 MHz CPU clock</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">    #</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">default</span><span class="z-punctuation">]</span></span>
+<span class="giallo-l"><span class="z-source">    _80MHz  </span><span class="z-keyword z-operator">=</span><span class="z-constant z-numeric"> 80</span><span class="z-punctuation">,</span></span></code></pre>
+<p><code>Config</code> derives <code>Default</code>, and <code>CpuClock</code>'s default arm is <code>_80MHz</code>. <strong><code>esp_hal::init(Config::default())</code> gives 80 MHz.</strong> The claim I quoted earlier — that <code>Config::default()</code> sets the maximum frequency — came from a blog about Arduino-ESP32, not from esp-hal.</p>
+<p>At 80 MHz the reference loop is 12 cycles/MAC, while Espressif's <strong>float</strong> assembly at 240 MHz is 1.69 — 36 when folded to 80 MHz. <strong>My integer loop does better than that. The platform, clock, timer and build are all sound.</strong></p>
+<h3 id="The_corrected_numbers">The corrected numbers</h3>
+<table><thead><tr><th></th><th style="text-align: right">µs / tick (L=128)</th><th style="text-align: right">cycles/MAC @80 MHz</th></tr></thead><tbody>
+<tr><td><strong>Reference FIR</strong> (trivial integer loop)</td><td style="text-align: right">—</td><td style="text-align: right"><strong>12</strong></td></tr>
+<tr><td>AEC convolution</td><td style="text-align: right">16,206</td><td style="text-align: right">31.6</td></tr>
+<tr><td><strong>AEC coefficient update</strong></td><td style="text-align: right">48,941</td><td style="text-align: right"><strong>119</strong></td></tr>
+</tbody></table>
+<p><strong>Not 219.</strong> But so is the attribution I gave for the remaining gap — that it came from bounds checks and the per-iteration stack reload <code>&amp;mut self</code> forces. <strong>That is wrong too</strong>, and the next section is why.</p>
+<h3 id="Block_adaptation:_it_passes">Block adaptation: it passes</h3>
+<p>The coefficient update is the largest single item — 7.7 ms at L=16, 49 ms at L=128 — and it does not have to happen on every sample. Once every four (<code>UPDATE_STRIDE</code>, counted off <code>head</code> so it carries no state of its own):</p>
+<p><code>[measured]</code> <strong>L=16 falls from 15,531 to 9,680 µs, under the ≤10 ms bar.</strong></p>
+<table><thead><tr><th></th><th style="text-align: right">per sample</th><th style="text-align: right">stride 4</th></tr></thead><tbody>
+<tr><td>L=16 coefficient update</td><td style="text-align: right">7,699 µs</td><td style="text-align: right"><strong>1,880 µs</strong> (−76%)</td></tr>
+<tr><td>L=16 whole filter</td><td style="text-align: right">9,803</td><td style="text-align: right"><strong>3,945</strong> (−60%)</td></tr>
+<tr><td><strong>L=16 whole canceller</strong></td><td style="text-align: right">15,531</td><td style="text-align: right"><strong>9,680 µs</strong></td></tr>
+<tr><td>L=32</td><td style="text-align: right">22,892</td><td style="text-align: right">13,528</td></tr>
+<tr><td>L=64</td><td style="text-align: right">36,772</td><td style="text-align: right">20,448</td></tr>
+<tr><td>L=128</td><td style="text-align: right">70,945</td><td style="text-align: right"><strong>34,911 µs</strong> (−51%)</td></tr>
+</tbody></table>
+<p>What it costs shows up in ERLE: <strong>steady state is bit-identical</strong> (the gap to the offline optimum is still 1.9 / 1.6 / 0.1 / 1.2 across four paths, and a path that moves is still tracked across a six-sample shift), <strong>but the whole-file reading falls 20.9 → 16.2 dB.</strong> Convergence is slower; what comes after convergence is not.</p>
+<p>The convolution is now half the filter (2,065 against 1,880) and the update is no longer the dominant cost.</p>
+<h3 id="The_frequency-domain_route:_the_FFT_is_written,_and_the_answer_is_no">The frequency-domain route: the FFT is written, and the answer is no</h3>
+<p>Best practice points at MDF / partitioned block frequency-domain NLMS. <code>arduino-audio-tools</code> happens to carry both side by side (time-domain NLMS alongside a port of speexdsp's MDF), and its verdict on the time-domain one is:</p>
+<blockquote>
+<p>O(filter_len) work per sample, no FFT … <strong>a reasonable fit for small microcontrollers with a short, simple echo path</strong>
+cost grows linearly with it — <strong>this is not the right tool for a long, reverberant echo tail</strong></p>
+</blockquote>
+<p>So the plan held: write the FFT and measure it before discussing any architecture. A 512-point radix-2 fixed-point transform whose twiddles come from binary exponentiation (filling the table by repeated multiplication drifts; this way each entry is at most 9 roundings deep), with seven tests, one of which checks every bin against an independent f64 direct DFT.</p>
+<p><code>[removed]</code> <strong>The FFT was deleted after it was measured.</strong> The finding stays; the code does not — it had no caller on the product path, and a record carrying "the transform costs 182% of the budget" is worth more than a transform nobody uses. <strong>The numbers below are measured, not inferred.</strong></p>
+<p><code>[measured]</code>:</p>
+<table><thead><tr><th></th><th style="text-align: right"></th></tr></thead><tbody>
+<tr><td>512-point forward transform</td><td style="text-align: right"><strong>3,046 µs</strong></td></tr>
+<tr><td>cycles/butterfly</td><td style="text-align: right"><strong>105.8</strong></td></tr>
+<tr><td>transforms one 320-sample tick needs</td><td style="text-align: right">2 blocks × 3 = 6</td></tr>
+<tr><td><strong>Cost of the transform alone</strong></td><td style="text-align: right"><strong>18,276 µs = 182% of the AEC's entire budget</strong></td></tr>
+</tbody></table>
+<p><strong>The transform alone is 1.8× over budget, before a single line of partitioned convolution, filter update or delay search exists to be counted.</strong></p>
+<p>Smaller frames do not rescue it: the per-sample cost goes as 3·5·2M·log(2M)/M = <strong>15·log(2M)</strong> — 135 at M=256, 120 at 128, 90 at 32 — which <strong>asymptotes rather than falling.</strong> Packing a real input into a half-length complex transform halves it to 9.1 ms (91%), leaving 9% for the filter, which is not an arrangement. RAM goes the same way: 2 KB of twiddles plus the caller's 4 KB of working buffer, against <strong>3,064 B</strong> for the whole time-domain canceller — so frequency domain loses on CPU by 1.8× and on RAM it is merely a wash, which is not a reason to buy it.</p>
+<h3 id="The_second_core:_identical_to_the_digit">The second core: identical to the digit</h3>
+<p><code>FROM_CPU_INTR1</code> is a second timer interrupt source on the <em>same</em> core (<code>InterruptExecutor&lt;1&gt;</code>), not a second core — <strong>the product runs entirely on core 0 and core 1 is idle.</strong> The probe now runs the same measurement on both, one after the other (never overlapping, which would compete for the very memory the question is about):</p>
+<table><thead><tr><th></th><th style="text-align: right">cpu 0</th><th style="text-align: right">cpu 1</th></tr></thead><tbody>
+<tr><td>FFT forward transform</td><td style="text-align: right">3,046 µs</td><td style="text-align: right"><strong>3,046 µs</strong></td></tr>
+<tr><td>cycles/butterfly</td><td style="text-align: right">105</td><td style="text-align: right"><strong>105</strong></td></tr>
+<tr><td>Reference FIR</td><td style="text-align: right">34,628 µs</td><td style="text-align: right"><strong>34,628 µs</strong></td></tr>
+<tr><td>L=128 whole canceller</td><td style="text-align: right">70,945 µs</td><td style="text-align: right"><strong>70,945 µs</strong></td></tr>
+<tr><td>Coefficient update</td><td style="text-align: right">48,939 µs</td><td style="text-align: right"><strong>48,939 µs</strong></td></tr>
+</tbody></table>
+<p>Twenty-odd independent measurements, across four tap counts, means and worst cases: <strong>all of them identical to the digit.</strong></p>
+<p><strong>A second core is worth nothing here</strong>, and that closes the diagnostic question left open earlier. Two independent LX7 cores run into the same shared resource; the per-access latency is the same and the operation count is the same, so the total must be. <strong>This is not "core 0 is busy" — it is a bottleneck the two cores share.</strong></p>
+<h3 id="IRAM:_not_that_either">IRAM: not that either</h3>
+<p>The butterfly was pulled out on its own into <code>.rwtext</code>, which the linker maps to 0x4037a4c4 in IRAM — confirmed not to be flash's 0x42010020:</p>
+<table><thead><tr><th></th><th style="text-align: right">flash</th><th style="text-align: right">IRAM</th></tr></thead><tbody>
+<tr><td>FFT forward transform</td><td style="text-align: right">3,046 µs</td><td style="text-align: right"><strong>3,235 µs</strong></td></tr>
+<tr><td>cycles/butterfly</td><td style="text-align: right">105</td><td style="text-align: right"><strong>112</strong></td></tr>
+</tbody></table>
+<p><strong>Putting it there made it 6% slower. Instruction fetch is not the bottleneck.</strong></p>
+<h3 id="Four_loops,_all_at_an_IPC_of_0.1–0.33">Four loops, all at an IPC of 0.1–0.33</h3>
+<table><thead><tr><th>Loop</th><th style="text-align: right">cycles</th><th style="text-align: right">instructions (approx)</th><th style="text-align: right">IPC</th></tr></thead><tbody>
+<tr><td>Reference FIR</td><td style="text-align: right">12 /MAC</td><td style="text-align: right">4</td><td style="text-align: right">0.33</td></tr>
+<tr><td>Convolution</td><td style="text-align: right">31.6 /MAC</td><td style="text-align: right">5</td><td style="text-align: right">0.16</td></tr>
+<tr><td>Coefficient update (per sample)</td><td style="text-align: right">119 /MAC</td><td style="text-align: right">12</td><td style="text-align: right">0.10</td></tr>
+<tr><td><strong>FFT butterfly</strong></td><td style="text-align: right"><strong>105.8</strong></td><td style="text-align: right"><strong>10</strong></td><td style="text-align: right"><strong>0.09</strong></td></tr>
+</tbody></table>
+<p>The butterfly is the <strong>cleanest code of the four</strong> — no clamps, no <code>&amp;mut self</code>, no 64-bit accumulator chain — and it has the lowest IPC. Fetch is ruled out and a second core is ruled out, so what is left is the memory system itself. <code>[reported]</code> Whether it is the flash controller, an absent data cache, or un-pipelined multiplication is untested.</p>
+<h3 id="The_delay_search:_the_grid_cannot_be_thinned,_and_it_is_the_last_fixed_cost">The delay search: the grid cannot be thinned, and it is the last fixed cost</h3>
+<p><code>[measured]</code> One search costs about <strong>32 ms</strong> and runs once every 256 ms (<code>REFRESH_SAMPLES = 4096</code>), which is <strong>3.0 ms per tick</strong> amortised — 31% of L=16's 9,680 µs. <strong>And on its own it can exceed the product's 30 ms <code>MAX_SINGLE_HOLD_MS</code> bound.</strong></p>
+<p>The obvious move is to thin the lag grid to every fourth sample, quartering the search. <strong>Tried; it does not work.</strong> On this module's own reference signal:</p>
+<table><thead><tr><th>True delay</th><th style="text-align: right">Highest score on the grid</th></tr></thead><tbody>
+<tr><td>0</td><td style="text-align: right">lag 0, <strong>1000</strong></td></tr>
+<tr><td>1</td><td style="text-align: right">lag −48, <strong>146</strong></td></tr>
+<tr><td>7</td><td style="text-align: right">lag 56, <strong>101</strong></td></tr>
+</tbody></table>
+<p>With a one-sample delay, <strong>not even the adjacent lags 0 and 4 correlate.</strong> Against a broadband reference <strong>the correlation peak is one sample wide</strong>, so not one grid point may be dropped. "It only costs a few taps of slack" was wrong.</p>
+<p>What is left is <code>SEARCH</code> (the range of delays findable) and <code>WINDOW</code> (the pitch structure the correlation locks onto) — <strong>both trade capability for time rather than being free.</strong> <code>delay.rs</code> keeps <code>LAG_STEP = 1</code> and a <code>const _: () = assert!</code> so that anyone reaching for a stride has to delete a statement that says why not.</p>
+<h3 id="One_more:_the_FPU_is_off_on_this_target">One more: the FPU is off on this target</h3>
+<p><code>[measured]</code> A same-shaped f32 reference loop in the probe ran <strong>over 120 seconds</strong> while its i32 twin ran in 140 ms, and the binary carries libgcc's whole soft-float complement (<code>__mulsf3</code>, <code>__addsf3</code>, …). <strong>Float runs in software emulation on <code>xtensa-esp32s3-none-elf</code>.</strong></p>
+<p>So Espressif's 1.69 cycles/MAC is out of reach here, and "switch to float" is not a shortcut. The f32 twin was removed from the probe — otherwise every run costs two extra minutes — and the result is recorded here instead.</p>
+<h3 id="The_clock:_80_→_240_MHz,_and_the_console_survived">The clock: 80 → 240 MHz, and the console survived</h3>
+<p><code>CpuClock</code>'s default arm is <code>_80MHz</code>, so at the time the whole board ran at a third of its rated clock. esp-hal notes that its 160/240 presets move the PLL off the 480 MHz the chip boots on and that this "breaks USB Serial/JTAG" — which is this repository's console. <strong><code>[reported]</code>, never tested.</strong></p>
+<p><code>[measured]</code> <strong>Tested: 240 MHz runs, and the USB Serial/JTAG console is fine throughout.</strong> (Measured once; that is the whole of its evidence.)</p>
+<table><thead><tr><th></th><th style="text-align: right">@80 MHz</th><th style="text-align: right">@240 MHz</th></tr></thead><tbody>
+<tr><td>L=16 whole canceller</td><td style="text-align: right">9,735 µs</td><td style="text-align: right"><strong>3,248 µs</strong></td></tr>
+<tr><td><strong>L=16 worst tick</strong></td><td style="text-align: right"><strong>39,594 µs (over the 30 ms bound)</strong></td><td style="text-align: right"><strong>13,287 µs</strong></td></tr>
+<tr><td><strong>Delay search, worst</strong></td><td style="text-align: right"><strong>32,870 µs (over the bound on its own)</strong></td><td style="text-align: right"><strong>10,957 µs</strong></td></tr>
+<tr><td>L=32 / L=64 / L=128 whole</td><td style="text-align: right">13,528 / 20,448 / 34,911</td><td style="text-align: right">4,511 / 6,818 / <strong>11,639</strong></td></tr>
+<tr><td>L=128 worst tick</td><td style="text-align: right">—</td><td style="text-align: right"><strong>21,614 µs</strong> (inside the 30 ms bound)</td></tr>
+<tr><td>FFT / reference FIR</td><td style="text-align: right">3,235 / 34,629 µs</td><td style="text-align: right">1,079 / 11,549 µs</td></tr>
+<tr><td><strong>cycles/butterfly</strong></td><td style="text-align: right">112</td><td style="text-align: right"><strong>112 (unchanged)</strong></td></tr>
+<tr><td><strong>Reference FIR cycles/MAC</strong></td><td style="text-align: right">12</td><td style="text-align: right"><strong>12 (unchanged)</strong></td></tr>
+</tbody></table>
+<p>Two things are true at once: <strong>the worst-tick problem removes itself</strong> (the delay search goes from 32.9 ms to 11.0 ms, inside the bound on its own), and <strong>not one cycle count moves</strong> — the clock is only a divisor.</p>
+<p><code>chip_init_at(CpuClock)</code> is now in <code>iot-chip-esp</code>, and the probe switches between the two with a single constant, so <strong>both tables come from the same source tree and differ only there.</strong></p>
+<h3 id="The_data_cache:_not_reachable,_and_not_because_it_is_simply_&quot;off&quot;">The data cache: not reachable, and not because it is simply "off"</h3>
+<p>The sdkconfig ESPHome uses for AEC on the ESP32-S3 is:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: &quot;y&quot;</span></span>
+<span class="giallo-l"><span>CONFIG_ESP32S3_DATA_CACHE_64KB: &quot;y&quot;</span></span>
+<span class="giallo-l"><span>CONFIG_ESP32S3_DATA_CACHE_LINE_64B: &quot;y&quot;</span></span></code></pre>
+<p>The last two match the footnote on ESP-SR's AEC performance table <strong>verbatim</strong>, and without them ESP-SR <strong>refuses to start</strong> (<code>E (4) SR_SYS: Data cache should be 64KB</code>). Datasheet 3.1.5: the data cache is 32 KB in one bank or <strong>64 KB in two</strong>.</p>
+<p><strong>But that road is closed here</strong>: esp-hal 1.2 exposes no S3 cache configuration, and esp-metadata exposes no eFuse field for it. <strong>ESP-SR refusing rather than configuring is itself the tell that the size is a property the chip has at boot, not one software sets.</strong></p>
+<p>And the IPC puzzle is not explained by it either. Ordered by whether they write rather than by working-set size:</p>
+<table><thead><tr><th>Loop</th><th style="text-align: right">working set</th><th>access</th><th style="text-align: right">cycles</th></tr></thead><tbody>
+<tr><td>Reference FIR</td><td style="text-align: right">5.2 KB</td><td><strong>read-only</strong></td><td style="text-align: right">12</td></tr>
+<tr><td>Convolution</td><td style="text-align: right">450 B</td><td><strong>read-only</strong></td><td style="text-align: right">31.6</td></tr>
+<tr><td>FFT butterfly</td><td style="text-align: right">6 KB</td><td><strong>read+write</strong></td><td style="text-align: right">105.8</td></tr>
+<tr><td>Coefficient update</td><td style="text-align: right">450 B</td><td><strong>read+write</strong></td><td style="text-align: right">119</td></tr>
+</tbody></table>
+<p><strong>The smallest working set is not the fastest, and the read-only loops beat the read-write ones.</strong> The S3's data cache is write-back, and an inner loop that writes back the same location every sample per tap is the worst case for one — which is also why stride 4 bought 76% outright: the writes divided by four.</p>
+<p><code>[reported]</code> Whether this board has a 64 KB data cache was not read out. <strong>But after the clock change it no longer decides whether the AEC fits</strong> — the cycles are unchanged, only the wall clock divides by three.</p>
+<h2 id="The_timer:_three_folded_calibrations,_and_a_replacement_that_is_stronger">The timer: three folded calibrations, and a replacement that is stronger</h2>
+<p><code>[test]</code> The probe first reported cycles per MAC and needed a clock calibration. <strong>Three versions were rejected:</strong></p>
+<ol>
+<li>An <code>acc += 1</code> chain strength-reduces to <code>acc += 64</code>, and read <strong>85 GHz</strong>.</li>
+<li>An <code>acc = acc * M + C</code> chain (an LCG) is exactly what InstCombine's <strong>pop idiom</strong> recognises; equally folded, reading <strong>251 MHz</strong>.</li>
+<li><code>black_box</code> inside the chain stops the folding, but each <code>black_box</code> itself costs ~100 cycles, reading <strong>2.34 MHz</strong>.</li>
+</ol>
+<p><strong>The software calibration was removed.</strong> esp-hal exposes no cycle counter on this target, and every calibration I could write was either folded or dominated by its own barrier cost.</p>
+<p><strong>Its replacement is the reference loop</strong>, and it is stronger than a calibration: it does not guess the clock, it <strong>runs a known amount of work in the same image, on the same board, under the same build</strong> and gives the ratio back. The clock itself is read directly with <code>esp_hal::clock::cpu_clock()</code>.</p>
+<p>Microseconds are trustworthy: the systimer runs off the crystal (40 MHz × 0.4 = 16 MHz, <code>ticks &gt;&gt; 4</code>), independent of the CPU clock, and the log's wall clock agrees with it.</p>
+<hr />
+<h2 id="Literature_alignment:_three_routes_killed_by_evidence,_and_one_planned_change_that_should_not_have_happened">Literature alignment: three routes killed by evidence, and one planned change that should not have happened</h2>
+<p>This section records the things that were <strong>decided against</strong> after reading outside sources, and why.</p>
+<h3 id="Proportionate_NLMS_(PNLMS_/_IPNLMS):_rejected">Proportionate NLMS (PNLMS / IPNLMS): rejected</h3>
+<p>The obvious refactor — step size allocated per tap by magnitude. Duttweiler 2000 and the secondary literature's statement of where it pays:</p>
+<blockquote>
+<p>The true benefits of using the PNLMS algorithm (faster convergence) are achieved when echo paths are sparse. Therefore, predominant applications of PNLMS algorithms are in Line/Network echo cancellers (LEC/NEC), as the typical hybrid-related echo paths are sparse. <strong>Otherwise, for dispersive echo paths (typically observed in acoustical environment) there are hardly [any benefits].</strong></p>
+</blockquote>
+<p>This board is an acoustic environment. Copying the mechanism in buys nothing.</p>
+<h3 id="Round-robin_subset_partial_update:_rejected,_and_it_is_a_downgrade">Round-robin subset partial update: rejected, and it is a downgrade</h3>
+<p>The plan was to replace "update all taps every 4th sample" with "update a quarter of the taps every sample, round robin" — identical multiply-accumulate count, apparently strictly better. The Partial Update LMS paper compares exactly these two:</p>
+<blockquote>
+<p>The updates after every Pth iteration result in exactly the same filter as obtained from LMS with P updates done every iteration. <strong>Therefore, the algorithm suffers no degradation with respect to convergence.</strong></p>
+</blockquote>
+<p>The subset variant <em>does</em> degrade, and pays for it by dropping the step from 0.004 to 0.001. <strong>The implementation is already the better of the two.</strong> Nothing to change.</p>
+<h3 id="Hybrid_open/closed-loop_double-talk_detection:_implemented,_then_withdrawn">Hybrid open/closed-loop double-talk detection: implemented, then withdrawn</h3>
+<p>The literature (IRISA; Benesty et al. 2000) splits double-talk detection into open loop (microphone × excitation, independent of the filter, usable before convergence) and closed loop (microphone × the filter's estimate, sharpest after convergence and meaningless before it), and recommends <strong>open loop until sufficient convergence, then closed loop</strong>. The current implementation is neither: it correlates <code>residual × reference</code>, and the residual is <code>mic − echo</code>, so filter state is already in it.</p>
+<p>All three statistics were implemented and compared sample by sample on one room path:</p>
+<table><thead><tr><th>Talker peak</th><th style="text-align: right">False freezes</th><th style="text-align: right">Onset</th><th style="text-align: right">Missed</th><th style="text-align: right">Residual mean square</th><th>Passes <code>LEAKAGE_FREEZE</code></th></tr></thead><tbody>
+<tr><td>8000</td><td style="text-align: right">0</td><td style="text-align: right">752</td><td style="text-align: right">751</td><td style="text-align: right">26 038 827</td><td>yes</td></tr>
+<tr><td>4000</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">7 366 231</td><td>no, 43% under</td></tr>
+<tr><td>2000</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">1 841 437</td><td>no, 89% under</td></tr>
+<tr><td>1000</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">460 200</td><td>no</td></tr>
+<tr><td>500</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">114 877</td><td>no</td></tr>
+</tbody></table>
+<p><strong>All three agree to the sample at every level.</strong> The binding constraint is the <code>loud</code> level gate, not the correlation: <code>LEAKAGE_FREEZE = 1&lt;&lt;24</code> is a mean square (RMS 4096 LSB), and at a 4000 LSB talker peak the residual measures 7 366 231, <strong>43% under the threshold</strong>. The correlation is never consulted.</p>
+<p>So at this threshold setting the hybrid buys <strong>nothing</strong>. It was withdrawn and <code>update</code> keeps two arguments. What remains is not a mechanism but a <strong>pinned blind spot</strong>: <code>a_talker_below_the_level_gate_is_not_detected</code> in <code>gate.rs</code> asserts that a 2000 LSB talker measures under the gate and the gate does not move, so moving the threshold is a deliberate act rather than a side effect.</p>
+<p>It also says the thing that actually needs fixing is the threshold — and the threshold is marked <code>[据称]</code>, reasoned from the calibration in <code>audio.md</code> rather than measured on a bench.</p>
+<h3 id="Bi-LMSM:_deferred">Bi-LMSM: deferred</h3>
+<p>Gänsler 2000 notes it is, unlike PNLMS, not dependent on the sparse-path assumption, which is what an acoustic scene wants. But it needs two coefficient sets plus a per-sample choice, doubling the multiply-accumulates. This board's steady-state ERLE is 61.0 dB against G.168's 15 dB bar, so <strong>there is no problem for it to solve.</strong></p>
+<h3 id="Frequency-domain_/_multidelay_filter:_rejection_stands">Frequency-domain / multidelay filter: rejection stands</h3>
+<p>The 512-point fixed-point FFT was written, measured at 3,046 µs per tick — 182% of the 10 ms budget — and deleted. Nothing in the literature overturns that.</p>
+<h2 id="The_memory_accounting_was_a_lie">The memory accounting was a lie</h2>
+<p><code>state_bytes()</code> is documented as what a board reads to know the cost without asking. It counted <code>ring + taps</code> and <strong>covered only the filter</strong>:</p>
+<table><thead><tr><th></th><th style="text-align: right">old function reported</th><th style="text-align: right">measured on the board</th><th style="text-align: right">measured on host</th><th style="text-align: right">under-reported</th></tr></thead><tbody>
+<tr><td>L=16</td><td style="text-align: right">450 B</td><td style="text-align: right"><strong>2 592 B</strong></td><td style="text-align: right">2 616 B</td><td style="text-align: right">5.8×</td></tr>
+<tr><td>L=128</td><td style="text-align: right">898 B</td><td style="text-align: right"><strong>3 040 B</strong></td><td style="text-align: right">3 064 B</td><td style="text-align: right">3.4×</td></tr>
+</tbody></table>
+<p>The board reads 24 B under the host because <code>size_of</code> follows the target's word size — <code>usize</code> is 4 bytes on Xtensa. <strong>Quoting this figure has to say which target it was measured on</strong>: the host number is not this board's cost. The probe prints the true figure for the target it is built for.</p>
+<p>What it missed is <code>DelayEstimator</code>'s <strong>2 096 B</strong> — two <code>[i16; 512]</code> history buffers. And <code>assert!(state_bytes(MAX_TAPS) &lt; 1024, "a kilobyte was budgeted")</code> in <code>nlms.rs</code> <strong>was built on that number and passed.</strong> The probe has been logging <code>[ECHO] --- L=16, 450 B of state ---</code> throughout.</p>
+<p>Two tests let it survive, because they assert the wrong function's definition:</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-entity z-name z-function z-macro z-rust">assert_eq!</span><span class="z-punctuation">(</span><span class="z-source">bytes</span><span class="z-punctuation">,</span><span class="z-source"> ring</span><span class="z-keyword z-operator"> +</span><span class="z-source"> taps</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-string z-string"> &quot;the estimate counts something twice&quot;</span><span class="z-punctuation">);</span><span class="z-punctuation z-definition z-comment z-comment">  // vacuous</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function z-macro z-rust">assert!</span><span class="z-punctuation">(</span><span class="z-source">bytes</span><span class="z-keyword z-operator"> &lt;</span><span class="z-constant z-numeric"> 1024</span><span class="z-punctuation">,</span><span class="z-keyword z-operator"> ...</span><span class="z-punctuation">);</span><span class="z-punctuation z-definition z-comment z-comment">                                             // passes on the lie</span></span></code></pre>
+<p><code>state_bytes&lt;L&gt;()</code> is now <code>size_of::&lt;Canceller&lt;L&gt;&gt;()</code>, with <code>L</code> a const generic rather than a runtime argument — <strong>a runtime argument let callers pass a number the compiler could not check, which is exactly how it drifted.</strong> The new <code>the_reported_size_covers_the_whole_canceller_not_just_the_filter</code> asserts the reported figure is at least large enough to hold the filter and the delay estimator together.</p>
+<h2 id="The_reference_is_wired_in,_and_&quot;take_it_from_render_slice&quot;_was_the_wrong_answer">The reference is wired in, and "take it from <code>render_slice</code>" was the wrong answer</h2>
+<p><code>[measured]</code> The line in the list below — "the digital tap comes from <code>audio_out::render_slice</code>" — turned out not to work, and the reason is the same class of error this file keeps running into: the number was right and the place was wrong.</p>
+<p><code>render_slice</code> is the <strong>write</strong> side. The transmit ring is 24 descriptors × 960 B = 23 040 B = 5 760 frames, which at 48 kHz is <strong>120 ms of audio still in flight</strong>. A tap taken there is a reference up to 120 ms <em>ahead</em> of the echo it has to cancel, while the delay search covers <code>MAX_DELAY = 64</code> samples — 4 ms at 16 kHz. That is <strong>thirty times outside the window</strong>: the search answers "nothing found", and the filter converges on whichever noise the correlation grid favours, looking entirely normal throughout.</p>
+<p><code>[test]</code> The difference is pinned on the host, and it pins the <strong>threshold rather than a slogan</strong> (<code>aec/stage.rs::a_small_misalignment_is_absorbed_and_a_large_one_is_not</code>):</p>
+<table><thead><tr><th>Reference's offset from the microphone</th><th>Result</th></tr></thead><tbody>
+<tr><td>0 frames</td><td>cancelled</td></tr>
+<tr><td><strong>1 frame</strong></td><td><strong>still cancelled</strong></td></tr>
+<tr><td><code>MAX_DELAY + 1</code> = 65 frames</td><td>the echo survives essentially intact</td></tr>
+</tbody></table>
+<p>A one-frame mismatch is <strong>recoverable</strong>: the delay search's ±64-sample window plus the filter's own sliding window learn the path one tap over. So "one frame off ruins it" was never true, and the test written to assert it said the correct thing instead — the boundary is <strong>outside the search window, not at one frame</strong>.</p>
+<p>So the wiring is shaped by that:</p>
+<ul>
+<li>The <strong>write</strong> side taps as before (one sample per <strong>frame</strong> in <code>render_slice</code> — both slots carry the same stream, so a tap per slot halves the rate), and the <strong>read</strong> side goes through a play cursor: <code>Es8311Tx::advance_play_cursor</code> derives how far the wire has travelled from the DMA's own free space and feeds the delta to <code>ReferenceLog::played</code>. That is the answer to "<code>Speaker</code> has no <code>played_frames()</code>" — <strong>no method is added to <code>Speaker</code></strong>. What is added is a shared cell the speaker publishes into, one direction only.</li>
+<li>The cell <strong>crosses two executors</strong>: the feed is on a Priority2 interrupt, the folding is in the cooperative <code>input_task</code>, so it is a <code>CriticalSectionRawMutex</code> cell, taken <strong>once per feed and once per poll, never once per sample</strong> — a lock per sample at 48 kHz would cost more than the canceller it is feeding.</li>
+<li><strong>Where it sits</strong>: the decimator in core (<code>drivers/audio/decimator.rs</code>, indexed by frame number rather than a free-running counter, since a phase mismatch between the two streams is a silent failure), the reference shadow log in core (<code>drivers/aec/reference.rs</code>), the tap in the bsp transmit side, the pairing in the bsp capture side, the wire between them in the board module's <code>Board::new</code>. <strong><code>Speaker</code> gained nothing</strong> — a method there would pull a data-plane coupling back across the interrupt boundary its contract exists to prevent.</li>
+<li><strong>Sized from geometry</strong>: <code>REFERENCE_SAMPLES = ⌈(5 760 + 2 880 + 192) / 3⌉ = 2 944</code>, with a <code>const _: () = assert!</code> holding that it spans the whole runway. The capture side asserts separately that its ring really is three poll periods deep — <strong>two modules each spelling out one number is free to drift</strong>, and a stale copy makes the log quietly lap.</li>
+</ul>
+<p><code>[test]</code> The most important of <code>ReferenceLog</code>'s 14 tests is the <strong>index unit</strong> in <code>at_play_cursor</code>: the ring is addressed in <em>kept samples</em> while the counters count <em>frames</em>. The first version used <code>written % N</code> with <code>written</code> incrementing per frame, so only one slot in three was ever written — <strong>every test green, every sample zero</strong>. It now asserts <strong>specific sample values</strong> (<code>frames(n) = n × 97</code>) rather than indices, because a wrong index looks like a right one.</p>
+<h3 id="Free_space_is_an_occupancy,_not_a_position_—_off_by_a_whole_ring">Free space is an <em>occupancy</em>, not a position — off by a whole ring</h3>
+<p><code>[measured]</code> Found after the first <code>advance_play_cursor</code> was written, and it is the most dangerous bug in this whole section: <strong>the output still looked entirely normal.</strong></p>
+<p>The DMA frees ring bytes and the CPU refills them at once, so "free" measures how much audio is <strong>queued</strong> (<code>ring − (pushed − played)</code>), not how far along the stream the wire is. Read as a position, it puts the wire a whole ring ahead at boot — the ring holds a full ring of prefilled silence that the DMA has not sent a byte of — so <code>played</code> starts at 5 760 and <code>at_play_cursor</code> returns either <code>None</code> or the oldest thing in the ring. <strong>Every pair is garbage, and every log line looks like the system is working.</strong></p>
+<p>The fix moves the arithmetic into core as <code>wire_position</code> and counts the <strong>prefill</strong> with everything else in <code>pushed_frames</code>:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>wire_position = pushed_frames − (ring_frames − free_bytes / frame_bytes)</span></span></code></pre>
+<p><code>[test]</code> Two tests hold it: at boot (a whole ring pushed, nothing freed) it must read <strong>0</strong>, not 5 760; and a free-space reading larger than anything pushed must never report the wire ahead of the pushed count, which is the guarantee the driver's own saturating delta then builds on. Writing those two tests I got it wrong once as well — mixing the free space from <em>before</em> a push with the pushed count from <em>after</em> it, which of course does not agree. <strong>The two numbers have to come from the same instant</strong>, which is now in the comment too.</p>
+<h3 id="The_two_streams_run_in_opposite_directions,_and_zipping_them_pairs_the_whole_run_wrong">The two streams run in opposite directions, and zipping them pairs the whole run wrong</h3>
+<p><code>[measured]</code> The second bug of the same class, and equally silent. The microphone is walked <strong>forwards</strong> (<code>scratch_mic[0]</code> is the oldest frame the drain saw) while the log can only be read <strong>backwards</strong> (<code>out[0]</code> is the frame on the wire <em>now</em>, which is what the newest microphone sample heard). Zipped as they stand, <strong>the oldest microphone is paired with the newest reference</strong> — every pair wrong by the length of the run — and the filter still converges on <em>something</em>, so the ERLE stays a plausible number rather than an obvious zero.</p>
+<p>The fix reverses the reference back into time order in <code>pair</code> before it is fed (it is <code>cancel_pairing</code> that then hands it to the canceller). <code>[test]</code> <code>a_reference_run_read_newest_first_pairs_once_reversed</code> pins both halves: reversing a reversed run recovers the aligned pairing exactly, and not reversing it is clearly worse. <code>Reference::read_backwards</code>'s own doc now states the direction, so the next person to read it does not have to rediscover it.</p>
+<p>Both are kept here because they are <strong>the same kind</strong> of thing: <code>RING_BYTES - free</code> looks like a position and is an occupancy, and <code>read_backwards</code> looks like something to zip and needs reversing first. <strong>Both read entirely normally and produce nothing but garbage</strong> — which is the only genuinely dangerous class of defect on this path, and the reason every pairing column is reported beside the ERLE rather than instead of it.</p>
+<h3 id="The_microphone_ring&#39;s_latency_was_not_applied_—_a_60_ms_skew">The microphone ring's <strong>latency</strong> was not applied — a 60 ms skew</h3>
+<p><code>[measured]</code> The worst of the three, and the only one where leaving it unfixed throws away the whole thing.</p>
+<p>When a capture ring is drained, <strong>how long ago was its newest frame captured?</strong> Answer: however deep the ring is — three poll periods on this board, 60 ms. And <code>far[0]</code> is the frame the wire was carrying <em>at the moment the poll runs</em>. Pairing those two directly hands every sample a reference <strong>up to 60 ms newer than it</strong>:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>worst skew   960 samples @16 kHz = 60 ms</span></span>
+<span class="giallo-l"><span>search window 64 samples @16 kHz =  4 ms</span></span></code></pre>
+<p><strong>Fifteen times outside the window.</strong> The delay search still answers "nothing found", the filter still converges on something, and the ERLE is still a plausible low number.</p>
+<p><code>[measured]</code> The fix passes the ring depth measured <em>before</em> the drain (<code>produced / BYTES_PER_FRAME</code> — the number <code>poll</code> was already computing) into the pairing as a <strong>lag</strong>, and reads the reference from <code>play_cursor − lag</code>. Converting to kept samples <strong>rounds up</strong> (<code>lag_in_samples</code>): rounding down reaches back a little too little and leaves the pair out by less than a sample; rounding up reaches back at least as far, overshoots by less than a sample, and is still inside the window.</p>
+<p>The <strong>sizing had already paid for this</strong>. The log is sized from <code>5 760 + 2 880 + 192</code> frames into 2 944 samples, which covers the transmit runway, the capture latency and the search window together. <code>2 944 − 960 = 1 984</code> samples of headroom after reaching back. So this is <strong>not extra memory — it is using a term the sizing formula already contained and nobody read</strong>. That is the argument for deriving sizes from geometry rather than quoting them: the number that was silently unused was the one that would have flagged the bug.</p>
+<p><code>[test]</code> <code>a_capture_ring_s_lag_rounds_up_into_whole_samples</code> pins the rounding direction and checks across a range that the samples converted back out never fall short of the frames they came from.</p>
+<p><strong>L is fixed at 16</strong>, because at 240 MHz an L=128 tick is 21.6 ms in the worst case, the input tick already takes 17–25 ms, and <code>MAX_SINGLE_HOLD_MS</code> is 30 — <strong>128 taps do not fit in this poll</strong>. Going larger is either a slower tap count in the filter or a tick that stops folding everything else: a design change, not a constant.</p>
+<h3 id="The_product_firmware_leaves_it_off">The product firmware leaves it <strong>off</strong></h3>
+<p><code>[measured]</code> A problem this work introduced in itself, and the easiest one to make while wiring a path like this: <strong>the envelope still folds the raw microphone, so the canceller's output was being discarded</strong> — while the canceller ran on every poll. That is precisely the quadrant <code>architecture.md</code> calls unexpressible: low fidelity at high cost.</p>
+<p><strong>The cause is not the arithmetic, it is the rates</strong>: the canceller works at 16 kHz while the envelope is specified on 48 kHz with two slots a frame. Folding the residual in means resampling back, and <strong>resampling back to feed a level meter is a measurement decision nobody has made</strong> — the 6th-order A-weighting cascade would be looking at a staircase. Until something reads it, running it is 3 248 µs a tick for an output nobody looks at.</p>
+<p>So it gets a <strong>compile-time switch, default false</strong>, in the same shape as <code>HPF_CORNER_WALK</code> and <code>CAL_SPL_LOG</code> already in this file — not a Cargo feature, because this is a measurement being taken rather than a product variant (<code>features.md</code> criterion 1). The wiring stays in the tree either way, <code>echo-probe</code> turns it on explicitly and reads the numbers, and the state stays resident at 2.6 KB (against a board already carrying a 150 KB frame arena), which buys back the <em>time</em> without a feature or a second code path.</p>
+<p>There is <strong>no ERLE row on the panel</strong> either. Same reason: the cell would read zero today, and adding a row to a layout <code>audio.md</code> records as "a column computed wrong looks like a considered design" for a number that cannot be validated yet is spending the most expensive thing available on the least verifiable one.</p>
+<h3 id="12.7_KB_of_new_resident_RAM">12.7 KB of new resident RAM</h3>
+<p><code>[measured]</code> Derived from this board's geometry rather than estimated:</p>
+<table><thead><tr><th>Part</th><th style="text-align: right">Bytes</th><th>Note</th></tr></thead><tbody>
+<tr><td>Reference log</td><td style="text-align: right">5,888</td><td>2,944 <code>i16</code>, a <code>&amp;'static</code> cell</td></tr>
+<tr><td>Canceller at L=16</td><td style="text-align: right">2,592</td><td>measured on the board, above</td></tr>
+<tr><td>Microphone scratch</td><td style="text-align: right">1,282</td><td>a poll's worst drain over the decimation</td></tr>
+<tr><td>Reference scratch</td><td style="text-align: right">3,202</td><td><strong>960 of ring latency + 641 of run</strong>, see above</td></tr>
+<tr><td><strong>Total</strong></td><td style="text-align: right"><strong>12,964 (12.7 KB)</strong></td><td></td></tr>
+</tbody></table>
+<p>For scale, the board already carries a 150 KB frame arena (the panel's DMA and the camera share it) plus a 64 KB heap. <strong>The 12.7 KB is resident and off the heap</strong> — <code>feed</code> may not allocate, which is exactly why the log is fixed-length and its size is written down rather than grown. PSRAM is still off (measure first, per the earlier decision) and these 12.7 KB do not need it.</p>
+<p><code>[measured]</code> Both images link with this in place: the product <code>vanling</code> (<code>.bss</code> 303,688 B / <code>.data</code> 9,316 B) and the <code>echo-probe</code> (<code>.bss</code> 259,872 B / <code>.data</code> 8,644 B, smaller because it paints no panel and so carries no frame arena).</p>
+<h2 id="Open,_and_the_edges_of_this">Open, and the edges of this</h2>
+<ul>
+<li><strong>CPU passes.</strong> Block adaptation (<code>UPDATE_STRIDE = 4</code>) puts <strong>L=16 at 9,680 µs against a ≤10 ms bar</strong>, L=32 at 13.5 ms. The cost is slower convergence (whole-file 20.9 → 16.2 dB) with steady-state ERLE bit-identical. <strong>The road is open again</strong>, but only as far as L=16/L=32. <code>aec/mod.rs</code> with its 44 unit tests and <code>tests/aec_erle.rs</code> all stay in the tree, as the evidence that the road does not go and as proof the algorithm itself is correct; <code>aec-probe</code> stays in <code>check-s3</code>'s bin list, so a build failure means the cost moved again.</li>
+<li><strong>The clock has moved to 240 MHz, product firmware included</strong> (<code>app/src/main.rs</code> calls <code>chip_init_at(_240MHz)</code>). An earlier version of this list said it was probe-only — that is out of date, and so is the 17–25 ms input-tick figure it was read against, which was measured at 80 MHz and needs the 3× headroom. What 240 MHz costs is power, the PLL, and the long-term stability of USB Serial/JTAG (measured once, which is not a long-term result).</li>
+<li><strong>The update's 119 cycles/MAC is still unexplained.</strong> Decimation routes around it; the cause is untouched. Fetch is ruled out (IRAM is 6% slower) and a second core is ruled out (both cores report identical digits), which leaves the memory system itself. <code>[reported]</code> Flash controller, absent data cache, or un-pipelined multiplication is untested.</li>
+<li><strong>The onset burst is a known, unfixed defect.</strong> The freeze stops the damage growing but not its first half second, because the coherence meter needs ~512 samples to read "incoherent" and the filter has already run through them. A shorter meter dedicated to the freeze decision is the fix, and it is a design change that was not made here.</li>
+<li><strong><code>[reported]</code> <code>LEAKAGE_FREEZE</code> and <code>MAX_COHERENCE</code> are not calibrated on this board</strong>; every threshold still comes from the microphone calibration in <code>audio.md</code>.</li>
+<li><strong>RAM measures 3,040 B on the board</strong> (<code>state_bytes::&lt;128&gt;()</code>; 2,592 B at L=16) against a 4 KB budget. 3,064 B on host. That is the main advantage over ESP-SR's 30.9 KB internal + 90 KB PSRAM.</li>
+<li><strong><code>state_bytes()</code> under-reported by 3.4–5.8×</strong> until it was changed to measure the whole canceller. See <em>The memory accounting was a lie</em> below.</li>
+<li><strong>The reference is wired up</strong>, through a play cursor rather than the write pointer; see <em>The reference is wired in</em> above. <strong>It has not yet run against a real room</strong> — <code>echo-probe</code> is the build for that, below.</li>
+<li><strong>PSRAM is still off</strong>, per the decision to measure first. 3 KB does not need it.</li>
+<li><strong>No nonlinear/residual suppression.</strong> The ERLE measured here is the value before it.</li>
+<li><strong>The delay locks; the amount cancelled still has no number.</strong> See <em>Once the delay is locked: it locks, ERLE still has no number</em> above: across two measurements delay moved exactly once (26; elsewhere 53 → 42), while the firmware's ERLE meter has <strong>never returned a non-zero reading on hardware</strong>. The 12.3 dB computed midway came from an offline dump that has since been deleted and cannot be reproduced, so it does not count. <strong>L=16 is still from a synthetic host room and an offline optimum</strong> — nothing measured on this board has changed the tap count.</li>
+<li><strong><code>echo-probe</code> reports the case where the ERLE looks fine and the pairing is broken</strong>, so the columns cannot be read apart: a zero pair count pins ERLE at zero (a meter that has not moved has measured nothing), while a lapped log can leave ERLE looking normal. <code>EchoReport</code> bundles them so no caller can read them separately. The probe also confirms <strong>the canceller is actually running</strong> on every line — a run of zeros is the same output from a broken pairing and from a canceller that never ran.</li>
+<li><strong>The product firmware leaves the canceller off</strong> (a compile-time switch, above), so every one of those figures reads zero in the product image. <strong>Only <code>echo-probe</code> produces real numbers.</strong></li>
+<li><strong>The decimation phase is 0 on both sides today</strong> (the transmit unit is armed before the capture, so frame 0 pairs to frame 0). A board that armed the microphone first has to state its offset to <em>both</em> the reference log's phase and the capture's decimator, and the delay search covers the remainder — <strong>this is not automatic</strong>, it is a constant that fails silently by one tap.</li>
+</ul>
+<h2 id="MIC3_as_a_hardware_reference:_the_registers_are_right_and_the_link_is_still_silent">MIC3 as a hardware reference: the registers are right and the link is still silent</h2>
+<p>The Lichuang Shizhianpai board wires the ES8311's output to MIC3, and the vendor's own example asks for <code>tdm_enable = true</code>. This round took that route to the end and three of the results <strong>overturn what was believed before</strong>.</p>
+<h3 id="The_first_repair_was_a_misreading_of_the_datasheet,_sitting_in_the_code">The first repair was a misreading of the datasheet, sitting in the code</h3>
+<p><code>es7210.rs</code> carried the comment "bit1 of <code>REG_SDP_INTERFACE2</code> selects TDM", and the name <code>SDP2_NO_TDM</code> fixed the mistake in place. What the datasheet says:</p>
+<ul>
+<li><strong>Bit 1 of register 0x12 is <code>TDMIN_PDN_OFF</code> — the TDMIN pin's internal pull-down, not a serial format select.</strong> Writing <code>0x02</code> turns the pull-down off, the part stops driving the data line, and the capture reads zeros.</li>
+<li>The format is <strong><code>SP_PROTOCAL</code>, bits 1:0 of register 0x11</strong>, where <code>11</code> is DSP mode.</li>
+<li>The channel count is <strong><code>LRCK_RATE_MODE</code>, bits 7:4 of register 0x08</strong>, where <code>2</code> means four channels — <strong>and it only means anything once <code>SP_PROTOCAL</code> is <code>11</code></strong>.</li>
+</ul>
+<p>The old code wrote <code>0x00</code>, which kept the pull-down: <strong>right result, wrong reason.</strong> That accounts for the earlier readings of zero and zero — the hardware was never the broken part.</p>
+<h3 id="All_three_registers_land_correctly_and_the_part_is_still_silent">All three registers land correctly and the part is still silent</h3>
+<p><code>init</code> now reads the serial registers back and prints them, because <strong>a wrong serial format has no other symptom</strong>: the part keeps driving, the receiver sees silence, and each half of that is individually plausible.</p>
+<p><code>[measured]</code> With TDM on, the part holds <code>mode 0x20</code> (<code>LRCK_RATE_MODE = 2</code>, four channels), <code>serial 0x63</code> (<code>SP_PROTOCAL = 11</code>) and <code>interface 0x00</code> (pull-down kept) — <strong>exactly what the datasheet specifies.</strong> The capture still reads zero on <strong>all four slots</strong>, over the same clock table the two-channel path uses.</p>
+<p>The read-back also confirms the field decoding itself: with TDM off the part holds <code>mode 0x10</code> (<code>LRCK_RATE_MODE = 1</code>, which the datasheet lists under "0/1 – 2 channels").</p>
+<p><strong>The suspect is therefore on the receiver's half of the link</strong> — whether esp-hal's slot count and MCLK divider stop the ES7210's sample-rate detector from locking — rather than in the registers. <strong>The route is closed for now and the MIC3 reference stays off</strong>, with the reasoning on <code>USE_MIC3_REFERENCE</code>.</p>
+<h3 id="What_the_diagnostic_is_worth:_a_peak_cannot_tell_a_copy_from_a_channel">What the diagnostic is worth: a peak cannot tell a copy from a channel</h3>
+<p>Under the two-slot configuration all four slots read almost bit-for-bit equal at every frame width tried (2557/2558, 946/949) — which is equally what two different signals look like and what one microphone's sample duplicated across left and right looks like. So the drain now also reports the <strong>peak of the difference between the two slots</strong>: if one is a copy, that figure is zero. Peaks cannot separate the two cases; the difference can.</p>
+<h2 id="The_delay_is_measured_for_the_first_time,_and_measuring_it_needs_a_switch_that_used_to_be_off_by_default">The delay is measured for the first time, and measuring it needs a switch that used to be off by default</h2>
+<p><code>A_B_RUN</code> defaulted to off, on the grounds that only a muted run measures the microphone's floor with no echo present. That is true, and it hid something: <strong>with the amplifier silent for the whole run the canceller is handed a silent reference, there is nothing to correlate against, and the delay search cannot return an estimate however good the room is.</strong> <code>[measured]</code> Every run of a muted-speaker probe sat at <code>delay None</code> — which reads exactly like a board with no echo path at all.</p>
+<p>With the alternation on:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>[amplifier on — reference peaked 22876 LSB, microphone peaked 936 LSB]</span></span>
+<span class="giallo-l"><span>321 paired this poll | ERLE 0 dB, delay Some(17), tap 13 ..., adapting</span></span></code></pre>
+<p><strong>The delay settles at 17 samples — 1.06 ms at 16 kHz</strong>, which is a desk-to-speaker distance plus a codec round trip, and the correlation clears the gate. <strong>The path exists and the pairing works</strong>; both are established now. The earlier "no echo path" conclusion came from the probe's configuration, not from the hardware.</p>
+<p>So the alternation is now the default: the muted floor is still reported every window, but the delay is no longer blocked by a silent reference.</p>
+<h2 id="A_wide_scan,_to_separate_&quot;no_path&quot;_from_&quot;path_beyond_the_filter&quot;">A wide scan, to separate "no path" from "path beyond the filter"</h2>
+<p><code>SEARCH</code> is only <code>MAX_DELAY = 64</code> samples, which is <strong>4 ms</strong> at 16 kHz. Nothing could tell "this room has no echo" from "the echo is further away than that" — both are no peak inside the search.</p>
+<p><code>DelayEstimator::scan_wide(reach)</code> closes it, scanning out to <code>HISTORY - WINDOW</code> (256 samples, 16 ms) <strong>on a grid of every single sample</strong>. That is not a preference but this module's own documented finding: against a broadband reference the correlation peak is one sample wide, so a coarse grid can only return the largest of a few noise samples. The new tests pin that, and also pin that noise is not read as a path and that a path past the scan's reach is not found by it.</p>
+<h2 id="The_new_blocker:_the_capture_stream_has_holes">The new blocker: the capture stream has holes</h2>
+<p>ERLE is still 0 and the <strong>loudest tap keeps moving</strong> (13/14/1/13/14/9/6/13/12/15) — coefficients dominated by noise, not a filter converging. The same log says why:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>ring 1920 B arrived, 2400 B drained</span></span>
+<span class="giallo-l"><span>capture rate: 12611 paired = 12400 samples/s of the 16000 the canceller runs</span></span></code></pre>
+<p><strong>The real rate is 77% of target.</strong> An adaptive filter cannot converge on gapped data — which sits alongside a correct delay without contradiction: the delay was measured across a continuous stretch, but convergence has to happen over the whole stream.</p>
+<p><strong>The cause is not the link. It is one constant divided by the wrong frame width.</strong> <code>DECIMATED_PER_POLL</code> and two neighbours are derived from the <em>transmit</em> <code>BYTES_PER_FRAME</code> (4 bytes) while the capture delivers <code>CAPTURE_BYTES_PER_FRAME</code> (2 bytes):</p>
+<table><thead><tr><th>constant</th><th>was</th><th>is</th><th>consequence</th></tr></thead><tbody>
+<tr><td><code>DECIMATED_PER_POLL</code></td><td>321</td><td><strong>641</strong></td><td>a poll's budget produces 400 decimated samples into 321</td></tr>
+<tr><td><code>DECIMATED_RING_LATENCY</code></td><td>480</td><td><strong>960</strong></td><td>the microphone ring's latency counted at half</td></tr>
+<tr><td><code>lag_frames</code></td><td><code>produced / 4</code></td><td><code>produced / 2</code></td><td>the reference reached back half as far as it should</td></tr>
+</tbody></table>
+<p><code>if *frames_this_pass &lt; DECIMATED_PER_POLL</code> was <strong>silently dropping the last 79 samples of every poll — 4.9 ms contiguous</strong>, not scattered: one hole every 25 ms. 321/400 = 80%, and the measured rate was <code>12400/16000</code> = 77.5%.</p>
+<p><strong>The doc on <code>BYTES_PER_POLL</code> already says "this figure is the root every capture-side size is derived from"</strong> — and all three derivations used the wrong width anyway.</p>
+<p><code>[measured]</code> After the fix: <code>paired this poll</code> 321 → <strong>400/413</strong>, the rate → <strong>15 130–15 515 / 16 000</strong>, and the delay 17 (jumping) → <strong>41 (steady)</strong>. All three match the arithmetic predicted beforehand.</p>
+<p>The silent drop went with it, replaced by a compile-time assertion: a wrong size must fail the build rather than quietly lose data.</p>
+<h2 id="The_algorithm_is_right_—_that_rules_it_out">The algorithm is right — that rules it out</h2>
+<p><code>core/tests/aec_erle.rs</code> runs the canceller against the <strong>offline least-squares optimum</strong> on every path, on the host. <code>[measured]</code>:</p>
+<table><thead><tr><th>path</th><th>taps</th><th>offline</th><th>canceller</th><th>gap</th></tr></thead><tbody>
+<tr><td>short, fast decay</td><td>16</td><td>62.9 dB</td><td>61.0 dB</td><td>1.9</td></tr>
+<tr><td>medium, moderate decay</td><td>48</td><td>58.8 dB</td><td>57.2 dB</td><td>1.6</td></tr>
+<tr><td>long tail, slow decay</td><td>192</td><td>38.9 dB</td><td>38.8 dB</td><td>0.0</td></tr>
+<tr><td>tail longer than the filter</td><td>256</td><td>14.4 dB</td><td>13.2 dB</td><td>1.2</td></tr>
+</tbody></table>
+<p>All four land within 0–1.9 dB of the optimum, and none beats it (<code>the_canceller_does_not_beat_the_offline_optimum</code> pins that — exceeding the optimum can only be overfitting or an arithmetic error). The delay is found correctly on every path.</p>
+<p><strong>So ERLE = 0 on the hardware is not an algorithm problem.</strong> It is still 0 after the sample loss is fixed, and the variable still missing is <strong>how long this room's path is</strong> — L=16 was chosen against a synthetic room, and nobody has measured how long the tail is in the room this board is actually in.</p>
+<h2 id="Measuring_the_impulse_response_was_itself_the_wrong_road,_twice">Measuring the impulse response was itself the wrong road, twice</h2>
+<p>The missing variable above was the room's impulse response, so it went to being measured — by dumping the microphone out and deconvolving it on the host. It broke in the same place twice, and neither time in the code.</p>
+<h3 id="First:_clipping,_and_the_conclusion_drawn_was_that_the_sweep&#39;s_clock_was_unreliable">First: clipping, and the conclusion drawn was that the sweep's clock was unreliable</h3>
+<p><code>[measured]</code> the sweep first ran at half rail (<code>SWEEP_PEAK_LSB</code> was 11 500) and the microphone recorded <strong>32 767</strong> — the ADC was clipping. Four analyses of the same recording gave four answers that contradicted each other.</p>
+<p>The reason given at the time was that a sweep decorrelates the moment playback and capture slip by one sample — 45° of phase at 6 kHz — so it needs two independent crystals aligned, and every alignment gave a different answer. So the <strong>excitation was replaced with a 1 kHz tone</strong>.</p>
+<p><strong>That reason does not hold on this board, and the code that refutes it is in the same repository:</strong></p>
+<ul>
+<li><code>components/audio_clock.rs:3</code>: "Both codecs are slaves of one host MCLK", with a test pinning it;</li>
+<li><code>es8311.rs:55</code> / <code>es7210.rs:50,56</code>: both parts are slaves, MCLK comes from a pin;</li>
+<li><code>lckfb_szpi_esp32s3/mod.rs:481-493</code>: <strong>one <code>i2s_master::I2s::new(I2S0, DMA_CH1, shared_tdm_config()).with_mclk(GPIO38)</code>, with <code>tx</code> and <code>rx</code> built from the same handle.</strong></li>
+</ul>
+<p>One <code>I2S0</code> peripheral and one MCLK pin means the sample handed to the DAC and the sample the ADC returns are the same sample index in the same clock. The literature's failure mode — sweep and MLS deconvolution breaking under unsynchronised clocks — is real, but it requires two clocks that are <em>not</em> synchronised. This board has one.</p>
+<p>And a tone is an <strong>excitation that cannot measure a path</strong>: its energy sits at one frequency, so it gives that frequency's transfer function and nothing else — no path length, no tail, and no answer to "how many taps does this room need".</p>
+<p>Lowering <code>SWEEP_PEAK_LSB</code> from 11 500 to <strong>2 500</strong> was the actual fix. Clipping's harmonics <strong>cannot be undone by deconvolution</strong>, because the harmonics are in the recording. The sweep went back.</p>
+<h3 id="Second:_this_console_cannot_carry_16_kHz">Second: this console cannot carry 16 kHz</h3>
+<p>The dump had a larger premise underneath it that nobody ever checked: <strong>whether this console can carry paired samples out at 16 kHz continuously.</strong></p>
+<p>The capture script was <code>B115200</code>, no flow control, and slept 50 ms whenever a read came back empty. On the board, one line per sixteen samples, sixty-four hex characters per half. <code>log::info!</code> waits on the USB FIFO, so a host that reads slowly blocks the firmware — on the very executor that still has to poll the capture. The capture ring is 60 ms deep, and one overrunning drain loses it.</p>
+<p>The first version of this route <strong>did not even report the loss</strong>: the probe printed a pair count and nothing else, so a hole in the recording was invisible from the recording itself — and a signal with a hole in it deconvolves into <em>the room's shape smeared by the length of the hole</em>, which reads as an ordinary, slightly wrong answer.</p>
+<p><code>[claimed]</code> How much is actually lost was never measured. The direction is enough to reject the route: its only deliverable is a number that <strong>has to prove it has no holes before it can be believed</strong>, and the proof would have to come over the same console that is already struggling.</p>
+<h3 id="So_the_measurement_moved_back_onto_the_board:_the_path_profile">So the measurement moved back onto the board: the path profile</h3>
+<p><code>DelayEstimator::scan_wide</code> <strong>already</strong> computes a normalised correlation at every lag, then keeps the maximum and throws the rest away. Accumulating them <strong>by which lag they landed on</strong> costs almost nothing — one multiply-add per lag, in an inner loop that is already dividing.</p>
+<p><code>PROFILE_BANDS = 8</code>, <code>PROFILE_BAND = 32</code> — 2 ms per band at 16 kHz, covering the scan's whole 256-sample reach. <code>DelayEstimator::unreachable_by(taps)</code> reports <strong>the share of the correlated path a filter of <code>taps</code> cannot reach</strong>, in hundredths — the input to the tap budget. <code>echo-probe</code> prints one line once the wide scan has located a path:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>[PATH] out of reach of a filter of — 16 taps N%, 64 taps N%, 128 taps N%, 256 taps N%.</span></span></code></pre>
+<p><strong>No dump, so no hole; no deconvolution, so nothing reconstructed; beside the correlation that produced it, so it has 79 unit tests.</strong></p>
+<h3 id="What_this_measure_can_and_cannot_say">What this measure can and cannot say</h3>
+<p>Written down because it is coarser than an impulse response, and is one step away from being read as one:</p>
+<ul>
+<li><strong>It is not an impulse response.</strong> It is the scan's own correlations accumulated by lag, smeared by <code>WINDOW</code> (the 256-sample correlation window) and quantised to a band. Its job is <em>how much of the path lies past what a filter of a given length can hold</em>, and a band is the right resolution for that.</li>
+<li><strong>It must not be accumulated behind a per-lag gate</strong>, and that is measured. A gate at 300‰ admits only the main lobe: the correlation at lag <em>L</em> is the path's own autocorrelation at <em>L</em>, so <strong>holding a lag to 300‰ holds the path's energy at <em>L</em> to nearly the direct sound's</strong> — which no room is. Every room came back with a tail of nothing. So it is accumulated whole, and the noise floor is removed when the numbers are read: the quietest band is taken as the floor and taken off every band.</li>
+<li><strong>The bottom resolves only to a few percent.</strong> A strong band smears some of itself into the bands after it. So "near zero" means "below what this can resolve", not "none". <strong>What it resolves is the difference between rooms</strong>, and that difference is what a budget turns on.</li>
+<li><strong>It counts the correlated share.</strong> Energy that does not correlate with the reference is not something a linear filter can hold either, so leaving it out costs the measurement nothing; anything a filter would have reached is inside the number.</li>
+<li><strong>Resolution is one band</strong> (2 ms). Two tap counts less than a band apart cannot be told apart by it.</li>
+</ul>
+<p><code>[test]</code> What is pinned is the contract it can actually carry: more taps never reach less; a damped room leaves far less over than a live one (<code>quiet[2] = 3%</code> against <code>loud[2] = 12%</code>); no path and no scan both return −1 rather than 0 — because 0 would be read as "everything reached"; and the loudest band is the one the direct reflection falls in.</p>
+<p><strong>Those four numbers have not been produced on the board yet.</strong> <code>PATH_RUN</code> is a compile-time switch, off by default; turned on it plays the sweep, leaves the canceller off, and prints that line once the wide scan has located a path. <strong>It answers "how many taps does this room need", not "what the impulse response looks like"</strong> — the latter still does not exist, and the former is already enough to decide L.</p>
+<h2 id="Once_the_delay_is_locked:_it_locks,_ERLE_still_has_no_number">Once the delay is locked: it locks, ERLE still has no number</h2>
+<p>The <strong>delay</strong> half of the "pairing holds, cancellation is zero" section above ends here. Locking the delay (first search takes the lock; after that it may only be pulled by <code>DRIFT_SAMPLES</code>, and only yields after <code>MISSES_BEFORE_MOVING</code> searches in a row disagree) changes the same measurement to:</p>
+<table><thead><tr><th>Reading</th><th>Before</th><th>After</th></tr></thead><tbody>
+<tr><td>delay</td><td>None → 16 → 50 → 6, jumping across the 64-sample window</td><td><strong>26, not once</strong>; measured again elsewhere on the desk, 53 → 42, still one move</td></tr>
+</tbody></table>
+<p><code>[measured]</code> Reproduce: <code>moon run iot:probe-echo-s3</code> → <code>IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3</code> → attach the serial port after the reset, read for 30 s or more, and count the distinct values delay takes. Across both runs, 28 polls, two distinct values, and the single transition came exactly after four consecutive searches agreed on the new one.</p>
+<p><strong>So "the delay search jumps around" is closed. The ERLE half is not.</strong></p>
+<h3 id="A_12.3_dB_figure_that_does_not_count">A 12.3 dB figure that does not count</h3>
+<p>One intermediate firmware dumped three channels of 512 samples each (reference, microphone, residual) once the delay was locked. Over that data <code>mic_rms = 20.7</code> and <code>res_rms = 5.0</code>, i.e. 12.3 dB.</p>
+<p><strong>But the probe's own ERLE column read <code>--</code> on that run, not 12.</strong> The 12.3 came from computing it on the PC side from the CSV, not from the firmware. And:</p>
+<ul>
+<li>the dump code has since been removed and that log is gone, so <strong>the number cannot be reproduced</strong>;</li>
+<li>the firmware's ERLE meter has <strong>never produced a non-zero reading on hardware</strong> — the recheck run reported <code>ERLE 0 dB</code> on all 36 polls, including the phases where the amplifier was on.</li>
+</ul>
+<p>The residual-waveform approach is still the right one (ERLE is a ratio: it says how much went, not whether what went was echo), but <strong>it needs a reproducible measurement, and that run was not one.</strong> Making it one means the dump becomes a standing output of the probe rather than throwaway debug code.</p>
+<h3 id="What_this_does_and_does_not_establish">What this does and does not establish</h3>
+<ul>
+<li><strong>It does</strong>: on this board the delay locks. Two measurements, two placements, one move each.</li>
+<li><strong>It still does not</strong>: how much the linear AEC cancels on the board. The firmware's meter has never produced a number, and the single 12.3 dB came from an offline calculation that can no longer be repeated.</li>
+<li><strong>Whether 12 dB is enough</strong> is a question about how it sounds, and nothing here measured that. This device is quiet, and in a quiet room that difference is the most audible one there is.</li>
+<li><strong>Still absent</strong>: nonlinear suppression, the other half (<code>aec_nlp_process</code>). A class-D amplifier near clipping produces harmonics no linear model can predict, so they remain in the residual even once the linear part has converged.</li>
+<li><strong>The next thing to measure is the ERLE meter itself</strong>, not the filter: it has never returned a number on hardware, so find out why it does not accumulate.</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>
