@@ -8,6 +8,7 @@ sort_by = "weight"
 
 Vanling 自有 ESP32 固件（`apps/iot`）的分层、组合与 Cargo feature 判据。
 
+- [速查](@/development/iot/cheatsheet.md) — 常用命令、两块板的端口与复位、编译期变量、症状首查、检查盲区
 - [Cargo Feature 判据与内聚](@/development/iot/features.md) — 硬/软 feature 定义、引入四判据、内聚六规则、本次删除决策记录
 - [分层与组合](@/development/iot/architecture.md) — 分层、三轴正交组合、渲染插拔、新增板/芯片流程
 - [运动语义框架](@/development/iot/motion.md) — 数据面/语义面双平面、三 family 仲裁、能力声明、QMI8658A 寄存器绑定、新增来源

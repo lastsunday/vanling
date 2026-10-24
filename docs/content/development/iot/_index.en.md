@@ -3,14 +3,15 @@ title = "IoT Firmware"
 weight = 250
 sort_by = "weight"
 [extra]
-source_file_hash = "d80052b2d86605546665c7353129a3facec56e29"
-translated_at = "2026-10-14T17:44:00Z"
+source_file_hash = "11fb44df6fcb7508ad8b1973dd2d9af73f4e2bc7"
+translated_at = "2026-10-24T02:34:00Z"
 +++
 
 # IoT Firmware
 
 Layer structure, composition, and Cargo feature criteria for the Vanling ESP32 firmware (`apps/iot`).
 
+- [Cheat Sheet](@/development/iot/cheatsheet.en.md) — common commands, the two boards' ports and resets, build-time variables, symptom triage, what the checks do not prove
 - [Cargo Feature Criteria and Cohesion](@/development/iot/features.en.md) — hard/soft feature definitions, four introduction criteria, six cohesion rules, and the decision record for this removal
 - [Layering and Composition](@/development/iot/architecture.en.md) — layers, three-axis orthogonal composition, render plugability, add-board/chip-family flows
 - [Motion Semantic Framework](@/development/iot/motion.en.md) — the data/semantic dual plane, three-family arbitration, capability declaration, the QMI8658A register binding, adding a source
