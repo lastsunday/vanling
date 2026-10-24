@@ -12,8 +12,8 @@ use embassy_net::driver::Driver;
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    Credentials, Front, Ipv4, LinkEnding, LinkHint, Ssid, Station, SurveyHistory, front_after_link,
-    setup_ap_starts_secured,
+    Credentials, Front, Ipv4, LinkEnding, LinkHint, LinkPhase, Ssid, Station, SurveyHistory,
+    front_after_link, setup_ap_starts_secured,
 };
 
 use super::setup::{Face, Setup, asked_for, setup_credential, unconfigured};
@@ -142,7 +142,7 @@ where
         let ended = loop {
             if origin == Provenance::Stored {
                 log::info!(
-                    "[WIFI] this device saved a network; joining {:?}",
+                    "[WIFI] this device saved a network; joining \"{}\"",
                     credentials
                         .ssid
                         .as_display_text()
@@ -269,7 +269,7 @@ where
             park().await
         }
     };
-    log::info!("[WIFI] this build joins the network named {ssid:?}");
+    log::info!("[WIFI] this build joins the network named \"{ssid}\"");
     let mut saved = saved;
     // The build's answer, kept for the same reason `link` keeps it: the panel's leave is a tap
     // made at the panel.
@@ -441,10 +441,6 @@ where
             Timer::after(Duration::from_millis(RETRY_MS)).await;
             continue;
         }
-        log::info!(
-            "[WIFI] associated; up to {ADDRESS_BUDGET_MS} ms for an address, then reported as \
-             associated and not connected"
-        );
         // Saved on the association rather than on the address: the passphrase is what this write
         // is about, and the answer to it is in hand here. Waiting for DHCP would put a link that
         // never gets an address between a working passphrase and the next boot's copy of it.
@@ -507,6 +503,10 @@ where
         }
 
         let mut missing_windows: u8 = 0;
+        // The phase and address last reported at `info`. Every window is read either way —
+        // that is how the loop learns the address went away — but a reading that has not
+        // moved is telemetry, not news.
+        let mut last_seen: Option<(LinkPhase, Option<Ipv4>)> = None;
         loop {
             // Waiting on the credential plane as well as the window, so a panel that names
             // another network is heard even while this one is up: the list takes no pick under a
@@ -565,12 +565,27 @@ where
                 status,
                 keeps_any(saved.as_deref().map(|store| store.networks())),
             );
-            log::info!(
-                "[WIFI] phase {:?}, address {:?}, {} windows without one",
-                status.phase,
-                address.map(|address| address.octets()),
-                missing_windows,
-            );
+            let seen = (status.phase, address);
+            let level = if last_seen == Some(seen) {
+                log::Level::Debug
+            } else {
+                last_seen = Some(seen);
+                log::Level::Info
+            };
+            match address {
+                Some(address) => {
+                    let [a, b, c, d] = address.octets();
+                    log::log!(level, "[WIFI] {:?}, address {a}.{b}.{c}.{d}", status.phase);
+                }
+                // The counter is the reason this window exists: a phase that says
+                // `Connected` with no address is the one reading that looks healthy and is not.
+                None => log::log!(
+                    level,
+                    "[WIFI] {:?}, no address for {} windows",
+                    status.phase,
+                    missing_windows,
+                ),
+            }
             if address.is_some() {
                 missing_windows = 0;
                 continue;

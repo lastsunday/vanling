@@ -166,7 +166,7 @@ impl FrameRing {
             let Some(descriptor) = self.descriptors.get(index) else {
                 continue;
             };
-            log::info!(
+            log::debug!(
                 "[CAM] descriptor {index}: buffer=0x{:08x} size={} next=0x{:08x} owner={}",
                 descriptor.buffer as usize,
                 descriptor.size(),
@@ -411,7 +411,7 @@ type Transfer = CameraTransfer<'static, FrameRing>;
 pub fn report_peripheral_config(label: &str) {
     let ctrl1 = esp_hal::peripherals::LCD_CAM::regs().cam_ctrl1().read();
     let ctrl = esp_hal::peripherals::LCD_CAM::regs().cam_ctrl().read();
-    log::info!(
+    log::debug!(
         "[CAM] {label}: bytelen={} (want {EOF_BYTE_LEN}) stop_en={} vs_eof_en={} two_byte={} \
          vh_de={} start={}",
         ctrl1.cam_rec_data_bytelen().bits(),

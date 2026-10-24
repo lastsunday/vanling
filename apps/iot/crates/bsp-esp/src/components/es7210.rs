@@ -348,10 +348,26 @@ impl<D: I2c> Es7210<D> {
         let mode = register_seq::read_reg(&mut self.i2c, self.addr, REG_MODE_CONFIG)?;
         let serial = register_seq::read_reg(&mut self.i2c, self.addr, REG_SDP_INTERFACE1)?;
         let interface = register_seq::read_reg(&mut self.i2c, self.addr, REG_SDP_INTERFACE2)?;
-        log::warn!(
-            "[MIC] ES7210 holds mode 0x{mode:02X} (channels {}), serial 0x{serial:02X} (protocol {}), interface 0x{interface:02X}",
+        // The readback is a fault only when it differs from what the bring-up wrote: the
+        // fields are decoded here rather than printed raw, because `0x60` is a width and a
+        // frame at once and reading it as a protocol number was reporting a healthy part as
+        // broken.
+        let width_ok = serial & SDP_WIDTH_MASK == SDP_16BIT;
+        let frame = match serial & SDP_FRAME_MASK {
+            SDP_I2S => "I2S",
+            SDP_DSP => "DSP",
+            _ => "unknown framing",
+        };
+        let frame_ok = frame != "unknown framing";
+        log::log!(
+            if width_ok && frame_ok {
+                log::Level::Info
+            } else {
+                log::Level::Warn
+            },
+            "[AUDIO] ES7210 serial: {} word, {frame}, LRCK rate {}, interface 0x{interface:02X}",
+            if width_ok { "16-bit" } else { "NOT 16-bit" },
             (mode & LRCK_RATE_MASK) >> 4,
-            serial & SDP_FRAME_MASK,
         );
         self.start()?;
         self.running = true;

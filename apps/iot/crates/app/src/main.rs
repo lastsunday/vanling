@@ -49,7 +49,7 @@ async fn main(_spawner: Spawner) -> ! {
     // What is left of it, for the link to report once setup mode's own frame is on the heap.
     iot_app::network::report_heap_free(iot_chip_esp::heap_free);
 
-    log::info!("[IOT] boot ok");
+    log::info!("[IOT] boot complete");
 
     // A transient boot NACK must not leave the screen black: reset and retry.
     // This board's bring-up hands back no second software interrupt, and it drives
@@ -104,7 +104,7 @@ async fn main(_spawner: Spawner) -> ! {
     // What is left of it, for the link to report once setup mode's own frame is on the heap.
     iot_app::network::report_heap_free(iot_chip_esp::heap_free);
 
-    log::info!("[IOT] boot ok");
+    log::info!("[IOT] boot complete");
     // A transient boot NACK is retried from a clean chip. The panel is still dark
     // here, so a failure that repeats reads as a dark screen instead of the last
     // run's frame.

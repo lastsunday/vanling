@@ -15,6 +15,12 @@ const FPS_WINDOW_MS: u64 = 500;
 /// Frame-cost sampling window.
 const COST_WINDOW_MS: u64 = 2_000;
 
+/// How much deeper the stack has to get before the peak is worth another line. The window
+/// closes every 500 ms and the peak changes only when a page draws deeper, so without a step
+/// the one number would repeat for the life of the device; a kilobyte is the resolution the
+/// board's budget is read at.
+const STACK_PEAK_STEP_BYTES: usize = 1_024;
+
 /// One closed cost window, as the log line reports it.
 pub(super) struct CostSample {
     pub(super) frames: u32,
@@ -37,6 +43,9 @@ pub(super) struct Metrics {
     worst_render: Duration,
     worst_write: Duration,
     hold: Duration,
+    /// The deepest stack the log has already reported, so a peak is news once rather than
+    /// once per rate window.
+    reported_high_water: usize,
 }
 
 impl Metrics {
@@ -50,6 +59,7 @@ impl Metrics {
             worst_render: Duration::ZERO,
             worst_write: Duration::ZERO,
             hold: Duration::ZERO,
+            reported_high_water: 0,
         }
     }
 
@@ -100,6 +110,20 @@ impl Metrics {
         self.fps = windowed_rate(self.fps_frames, window.as_millis());
         self.fps_frames = 0;
         self.fps_anchor = now;
+        true
+    }
+
+    /// Whether `high` is a peak the log has not reported yet, by at least
+    /// [`STACK_PEAK_STEP_BYTES`]. A first sample of zero is not a depth, so it is not news.
+    pub(super) fn fold_stack_peak(&mut self, high: usize) -> bool {
+        if high
+            < self
+                .reported_high_water
+                .saturating_add(STACK_PEAK_STEP_BYTES)
+        {
+            return false;
+        }
+        self.reported_high_water = high;
         true
     }
 }

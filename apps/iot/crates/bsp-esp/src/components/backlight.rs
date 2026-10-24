@@ -18,7 +18,7 @@ impl Backlight {
         let level = u8::min(level_pct, 100);
         let duty_pct = 100 - level;
         if let Err(e) = self.channel.set_duty(duty_pct) {
-            log::error!("[BACKLIGHT] set_duty failed: {e:?}");
+            log::error!("[DISPLAY] set_duty failed: {e:?}");
         }
     }
 }

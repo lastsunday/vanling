@@ -147,35 +147,59 @@ impl Screen {
     }
 
     /// Folds one frame's costs and rate into their windows, reporting a closed cost window and
-    /// the stack peak when the rate window closes.
+    /// the stack peak on that same window.
     pub(super) fn account_frame(&mut self, render: Duration, write: Duration) {
         if let Some(cost) = self.metrics.fold_frame(render, write) {
-            log::info!(
+            let percent = windowed_percent(cost.hold.as_micros(), cost.window.as_micros());
+            // A window is telemetry; one this expensive is the fault the report exists for,
+            // and the one shape worth waking a reader with.
+            let over_budget = percent > 25 || cost.worst_write.as_millis() > 20;
+            log::log!(
+                if over_budget {
+                    log::Level::Warn
+                } else {
+                    log::Level::Debug
+                },
                 "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst write {} ms; asked {}",
                 self.diagnostics.page,
                 cost.frames,
                 cost.window.as_millis(),
                 cost.hold.as_millis(),
-                windowed_percent(cost.hold.as_micros(), cost.window.as_micros()),
+                percent,
                 cost.worst_render.as_millis(),
                 cost.worst_write.as_millis(),
                 self.diagnostics.demand,
             );
-        }
-        if self.metrics.fold_fps() {
+            // On the window the cost line closes rather than on the repaint rate: the peak
+            // only moves when a page draws deeper, and the rate window repeated the same
+            // number twice a second.
             self.report_stack_high_water();
         }
+        self.metrics.fold_fps();
     }
 
-    /// Reports the deepest main-stack use seen so far, once per repaint window.
-    /// Sampled here rather than at bring-up because the peak belongs to whichever
-    /// page drew deepest, and the Audio page's sweep is the frame that decides
-    /// whether the stack still fits.
-    fn report_stack_high_water(&self) {
-        log::info!(
-            "[DISPLAY] stack peak {} B of {} B",
-            high_water(),
-            main_stack_bytes()
+    /// Reports the deepest main-stack use seen so far, when it is news.
+    ///
+    /// Sampled here rather than at bring-up because the peak belongs to whichever page drew
+    /// deepest, and the Audio page's sweep is the frame that decides whether the stack still
+    /// fits. A window repeats while nothing new is drawn deeper, so the line follows the peak
+    /// rather than the window: once at every kilobyte gained, and on `debug` for the unchanged
+    /// reading a record may need to quote.
+    fn report_stack_high_water(&mut self) {
+        let high = high_water();
+        // Zero is the sampler before the first frame has used the stack, not a depth.
+        if high == 0 {
+            return;
+        }
+        let total = main_stack_bytes();
+        let grew = self.metrics.fold_stack_peak(high);
+        log::log!(
+            if grew {
+                log::Level::Info
+            } else {
+                log::Level::Debug
+            },
+            "[DISPLAY] stack peak {high} B of {total} B",
         );
     }
 }

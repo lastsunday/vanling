@@ -267,7 +267,7 @@ impl Station for EspStation {
         let rows = found.iter().map(Self::row).collect::<Vec<_>>();
         let ranked = rank_aps(&rows, MAX_LISTED_APS);
         for row in &ranked {
-            log::info!(
+            log::debug!(
                 "[WIFI] {:>4} dBm {} bars  channel {}  {}",
                 row.rssi,
                 row.bars(),
@@ -322,7 +322,7 @@ impl Station for EspStation {
                     secured: connected.authmode != AuthenticationMethod::None,
                 });
                 log::info!(
-                    "[WIFI] associated with {:?} on channel {}",
+                    "[WIFI] associated with {} on channel {}",
                     connected.ssid.as_str(),
                     connected.channel
                 );
@@ -397,15 +397,6 @@ impl Station for EspStation {
         // and `None` when it answers with nothing. Published rather than kept, because the panel
         // is a different crate and the screen is the only place it may appear.
         self.status.setup_password = secured.then_some(self.setup_pass);
-        log::info!(
-            "[WIFI] setup access point up as {} ({})",
-            ssid.as_display_text().unwrap_or("<not drawable>"),
-            if secured {
-                "under a passphrase"
-            } else {
-                "open"
-            }
-        );
         Ok(interface)
     }
 

@@ -111,7 +111,7 @@ impl<D: I2c> Ft6336<D> {
             .write(self.addr, &[REG_THGROUP, TOUCH_THRESHOLD])
             .is_err()
         {
-            log::warn!("[TOUCH] threshold write failed");
+            log::warn!("[INPUT] threshold write failed");
         }
     }
 
@@ -124,7 +124,7 @@ impl<D: I2c> Ft6336<D> {
             (REG_DISTANCE_ZOOM, GESTURE_DISTANCE_FACTORY_ZOOM),
         ] {
             if self.i2c.write(self.addr, &[reg, wanted]).is_err() {
-                log::warn!("[TOUCH] gesture distance write failed (0x{reg:02X})");
+                log::warn!("[INPUT] gesture distance write failed (0x{reg:02X})");
             }
         }
         if self
@@ -132,14 +132,14 @@ impl<D: I2c> Ft6336<D> {
             .write(self.addr, &[REG_CTRL_MODE, CTRL_KEEP_ACTIVE])
             .is_err()
         {
-            log::warn!("[TOUCH] active-mode lock write failed");
+            log::warn!("[INPUT] active-mode lock write failed");
         }
         if self
             .i2c
             .write(self.addr, &[REG_G_MODE, G_MODE_POLLING])
             .is_err()
         {
-            log::warn!("[TOUCH] polling-mode lock write failed");
+            log::warn!("[INPUT] polling-mode lock write failed");
         }
     }
 
@@ -216,7 +216,7 @@ where
             }
             Err(e) => {
                 if !self.error_logged {
-                    log::warn!("[TOUCH] i2c read failed: {e:?}");
+                    log::warn!("[INPUT] i2c read failed: {e:?}");
                     self.error_logged = true;
                     return Some(InputEvent::Gesture(GestureEvent::Ghost));
                 }

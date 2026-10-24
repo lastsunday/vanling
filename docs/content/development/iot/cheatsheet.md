@@ -44,10 +44,21 @@ IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3 # 两块都插着时必�
 | --- | --- | --- |
 | `IOT_BOOT_PAGE` | 开机停在哪一页 | `ambient` |
 | `IOT_DEMAND` | 各数据面的开关与节奏 | 固件里的默认档 |
+| `IOT_LOG_LEVEL` | 串口打多细：`error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | 编进固件的凭据 | 不编，设备停在配网页 |
 | `IOT_PANEL_BENCH` | 强制未配置，逼一次面板输密码 | 无 |
 
 `IOT_PORT` 不属于这一类：它只给 espflash 用，不进固件。
+
+## 日志
+
+产品默认 `info`：开机清单、状态迁移、用户动作各一行，**稳态可以长时间零行**——串口安静是正常，不是死机。周期遥测（帧成本与栈水位、feed 节奏、链路相位与地址、扫描列表）全在 `debug`：
+
+```sh
+IOT_LOG_LEVEL=debug IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
+```
+
+记录里引用的 `[DISPLAY] stack peak …`、`[PLAY] … feeds …`、`[WIFI] … address …` 都只在 `debug` 镜像里逐窗口出现；要复现先按上面重编。`warn` 只在真的越过阈值时出现（执行器单次持有超 30 ms、单帧写超 20 ms 或占空超 25%、feed 迟到或低于额定 95%），所以**出现一条 warn 就值得读**。开机第一行 `[IOT] log level …` 是这一版实际生效的级别，先看它再怀疑日志缺失。
 
 ## 烧之前
 

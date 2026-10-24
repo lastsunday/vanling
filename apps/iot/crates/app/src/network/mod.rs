@@ -144,7 +144,7 @@ where
     let setup_resources = Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new()));
     let (stack, mut runner) =
         embassy_net::new(device, Config::dhcpv4(Default::default()), resources, seed);
-    log::info!("[WIFI] stack up");
+    log::info!("[WIFI] network stack up, DHCP requested");
 
     match join(
         runner.run(),

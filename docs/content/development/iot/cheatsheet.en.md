@@ -2,8 +2,8 @@
 title = "Cheat Sheet"
 weight = 5
 [extra]
-source_file_hash = "4e3bb8e8beaf2a9dae83cbdb0da3f89c0f4180ad"
-translated_at = "2026-10-24T02:40:55Z"
+source_file_hash = "abf8d7253bbce8ee202ab24b402a3d21800b9f99"
+translated_at = "2026-10-24T00:00:00Z"
 +++
 
 # Cheat Sheet
@@ -47,10 +47,21 @@ IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3 # mandatory when both boa
 | --- | --- | --- |
 | `IOT_BOOT_PAGE` | Which page the device comes up on | `ambient` |
 | `IOT_DEMAND` | Which data planes, at what cadence | The firmware's defaults |
+| `IOT_LOG_LEVEL` | How much the serial port prints: `error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | Credentials compiled in | None; the device stays on the setup page |
 | `IOT_PANEL_BENCH` | Force the unconfigured state so a password has to be typed on the panel | None |
 
 `IOT_PORT` is not one of these: it only tells espflash where to write, and never enters the firmware.
+
+## Logging
+
+The product defaults to `info`: the boot inventory, each state transition and each user action are one line, and **a steady state may print nothing at all** — a quiet port is normal, not a hang. Periodic telemetry (frame cost and stack peak, feed cadence, link phase and address, scan lists) is all `debug`:
+
+```sh
+IOT_LOG_LEVEL=debug IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
+```
+
+The `[DISPLAY] stack peak …`, `[PLAY] … feeds …` and `[WIFI] … address …` lines a record quotes only appear per window in a `debug` image; rebuild with the line above to reproduce one. `warn` is reserved for a bound actually crossed (a single executor hold over 30 ms, a frame write over 20 ms or 25% duty, a late feed or under 95% of the nominal rate), so **any warn line is worth reading**. The first line, `[IOT] log level …`, is the level this image really carries — check it before suspecting a missing log.
 
 ## Before flashing
 

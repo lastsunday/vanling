@@ -306,7 +306,7 @@ fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<
     } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
         es8311_alt.init().ok().map(|()| es8311_alt)
     } else {
-        log::warn!("[SPEAKER] ES8311 not found, {absent_note}");
+        log::warn!("[PLAY] ES8311 not found, {absent_note}");
         None
     }
 }
@@ -561,7 +561,7 @@ impl Board<'static> {
                         {
                             Ok(speaker) => Some(Box::new(speaker)),
                             Err(error) => {
-                                log::error!("[SPEAKER] stream would not start: {error:?}");
+                                log::error!("[PLAY] stream would not start: {error:?}");
                                 None
                             }
                         }
@@ -746,7 +746,7 @@ impl Board<'static> {
                 ) {
                     Ok(speaker) => Some(Box::new(speaker)),
                     Err(error) => {
-                        log::error!("[SPEAKER] stream would not start: {error:?}");
+                        log::error!("[PLAY] stream would not start: {error:?}");
                         None
                     }
                 }

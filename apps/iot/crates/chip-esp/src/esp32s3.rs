@@ -130,7 +130,7 @@ fn init_psram() {
                 (PSRAM_READY, Some(window))
             } else {
                 log::error!(
-                    "[PSRAM] mapped {} B at {:#x}, and the pattern did not read back",
+                    "[HEAP] mapped {} B at {:#x}, and the pattern did not read back",
                     window.len,
                     window.start
                 );
@@ -211,11 +211,22 @@ pub fn set_speed(speed: Speed) -> Speed {
 }
 
 const fn clock_for(speed: Speed) -> CpuClock {
+    preset_for(speed).0
+}
+
+/// What [`clock_for`] runs at. The pair lives in one function because a mapping written twice
+/// is a mapping that can disagree with the clock the part is actually on.
+const fn preset_for(speed: Speed) -> (CpuClock, u32) {
     match speed {
-        Speed::Slow => CpuClock::_80MHz,
-        Speed::Normal => CpuClock::_160MHz,
-        Speed::Fast => CpuClock::_240MHz,
+        Speed::Slow => (CpuClock::_80MHz, 80),
+        Speed::Normal => (CpuClock::_160MHz, 160),
+        Speed::Fast => (CpuClock::_240MHz, 240),
     }
+}
+
+/// The frequency this part runs at for `speed`, for a line that names MHz rather than a preset.
+pub(crate) const fn clock_mhz(speed: Speed) -> u32 {
+    preset_for(speed).1
 }
 
 /// Moves the CPU to another preset while the chip is running.
@@ -267,11 +278,6 @@ pub unsafe fn set_cpu_clock(clock: CpuClock) {
             .modify(|_, w| unsafe { w.ldo_slave().bits(0x7 >> (mhz / 80)) });
         ets_update_cpu_frequency_rom(mhz);
     })
-}
-
-pub fn init_logging() {
-    log::set_logger(&crate::logging::LOGGER).expect("logger already set");
-    log::set_max_level(log::LevelFilter::Info);
 }
 
 pub fn start_rtos(timer: impl esp_rtos::TimerSource, int0: FROM_CPU_INTR0<'static>) {

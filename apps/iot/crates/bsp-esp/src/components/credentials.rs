@@ -60,10 +60,13 @@ pub fn load(mut flash: FlashStorage<'static>) -> Option<CredentialStore> {
 
     let (store, opened) = Store::open(CredsRegion { flash, base, len });
     match opened {
-        Opened::Loaded => log::info!(
-            "[CREDS] {} saved network(s) on this device",
-            store.networks().len()
-        ),
+        Opened::Loaded => {
+            let count = store.networks().len();
+            log::info!(
+                "[CREDS] {count} saved network{} on this device",
+                if count == 1 { "" } else { "s" }
+            );
+        }
         Opened::Blank => log::info!("[CREDS] no network saved on this device yet"),
         Opened::Unreadable(error) => log::warn!(
             "[CREDS] the saved networks would not read ({error:?}), so nothing will be kept"

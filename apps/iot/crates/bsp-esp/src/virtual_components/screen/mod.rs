@@ -79,8 +79,10 @@ impl Screen {
         backlight: Backlight,
         frame: &'static mut [u8],
     ) -> Self {
-        log::info!("[DISPLAY] backlight held dark until the first frame");
-        log::info!("[DISPLAY] main stack {} B", main_stack_bytes());
+        log::info!(
+            "[DISPLAY] backlight dark until the first frame; main stack {} B",
+            main_stack_bytes()
+        );
         Self {
             instance,
             panel: Panel::new(driver, backlight),

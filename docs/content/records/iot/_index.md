@@ -116,6 +116,16 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 | **PHY 标定恢复在 S3 上是 `todo!()`** | `PROVIDE(misc_nvs_restore = __esp_radio_misc_restore)` 把它绑到 `#[cfg(xtensa)]` 的 `todo!()`，而 blob 对它是未定义引用 | 规避手段：**分区表不写 `phy_init`**（代价：每次开机重标定） |
 | 分区表 | espflash 默认 factory 1 MB，而固件加 Wi-Fi 前已 630 KB | factory **6 MB**；16 MB 板 |
 
+### 日志
+
+| 发现 | 结论 | 数字 |
+| --- | --- | --- |
+| 默认级别 | `info` 只留**事件**，稳态可以长时间零行，静默不是死机 | 169 行/43.8 s → 35 行/80 s；最后一行在第 6.2 s |
+| 一个旋钮 | `IOT_LOG_LEVEL`，认不出的名字退回 `info` 而不是静音；级别只由 `log::max_level()` 持有 | 开机首行 `[IOT] log level …` 是唯一凭据 |
+| 周期遥测 | 帧成本、栈水位、feed 节奏、链路心跳、扫描列表全在 `debug`；越界的那一次升 `warn` | 同源码 `debug` 构建 40 s 内 102 条 DEBUG |
+| 删行买到什么 | **不是 CPU，是读的人的时间**：USB CDC 的串口写不进执行器持有账 | 1426 → 1417 ms / 5 s 窗口 |
+| 标签 | **一个模块一个标签**，不是一种外设一个 | `[MIC]`→`[AUDIO]`、`[SPEAKER]`→`[PLAY]`、`[TOUCH]`→`[INPUT]`、`[RADIO]`→`[WIFI]`、`[PSRAM]`→`[HEAP]`、`[BACKLIGHT]`→`[DISPLAY]` |
+
 ## 探针
 
 **每个探针是独立 bin，把框架里的一层单独接到真硬件上。改驱动之前先看这里——「哪个问题跑哪个探针」在这一层就该结束。**
@@ -183,5 +193,6 @@ IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 | [回声消除实现记录](@/records/iot/aec.md) | 乐鑫向量为何测不了 AEC、步长不能按残余缩放、相干度冻结判据、延迟搜索的置信度与限频、ERLE 稳态与全程的差 |
 | [运行期改 CPU 频率记录](@/records/iot/clock.md) | esp-hal 的 Frozen Clock Frequencies、越界写寄存器实测比值 1 : 2.00 : 2.95、切频 1–50 µs、第二个核与外围无差异、表跟着芯片走、挡路的既有缺陷 |
 | [检查任务与缓存记录](@/records/iot/tasks.md) | moon 缓存键的组成与脚本盲点、`check-features` 开缓存、C6 检查改宿主、被否的容器合并 |
+| [日志实现记录](@/records/iot/logging.md) | 默认 `info` 的实测依据、`IOT_LOG_LEVEL` 单点持有、事件/遥测/越界三档判据、标签统一、post-mortem 缺口 |
 
 > 节流的完整推导、实测对照与方法在[架构文档](@/development/iot/architecture.md)，不在这份记录里。

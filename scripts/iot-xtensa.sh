@@ -68,7 +68,7 @@ run_native() {
 # is only seen if the compiler runs with it. Listed by name because forwarding the whole
 # environment would forward whatever the host happens to export, and a stray one would
 # silently become a build input.
-FORWARDED_ENV=(IOT_BOOT_PAGE IOT_DEMAND IOT_PANEL_BENCH IOT_WIFI_SSID IOT_WIFI_PSK)
+FORWARDED_ENV=(IOT_BOOT_PAGE IOT_DEMAND IOT_LOG_LEVEL IOT_PANEL_BENCH IOT_WIFI_SSID IOT_WIFI_PSK)
 
 # This part's data cache, halved, and the reason it lives here rather than in
 # `apps/iot/.cargo/config.toml` next to the other esp-hal settings.

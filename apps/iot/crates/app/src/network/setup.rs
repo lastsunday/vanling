@@ -130,7 +130,7 @@ pub(super) async fn unconfigured<S, R>(
             }
         };
         log::info!(
-            "[WIFI] joining the network setup named: {:?}",
+            "[WIFI] joining the network setup named: \"{}\"",
             credentials
                 .ssid
                 .as_display_text()
@@ -249,7 +249,7 @@ where
                     let (stack, runner) =
                         embassy_net::new(device, crate::provision::setup_config(), resources, seed);
                     log::info!(
-                        "[WIFI] setup mode for {:?} is open, {}",
+                        "[WIFI] setup access point \"{}\" is up, {}",
                         setup_name.as_display_text().unwrap_or("<not drawable>"),
                         if secured {
                             "under a passphrase"

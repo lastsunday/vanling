@@ -13,11 +13,6 @@ pub fn chip_init_for_product() -> Peripherals {
     chip_init()
 }
 
-pub fn init_logging() {
-    log::set_logger(&crate::logging::LOGGER).expect("logger already set");
-    log::set_max_level(log::LevelFilter::Info);
-}
-
 /// Hands the scheduler the timer and interrupt line wired up by the board.
 pub fn start_rtos(timer: impl esp_rtos::TimerSource, int0: FROM_CPU_INTR0<'static>) {
     esp_rtos::start(timer, int0);
@@ -47,4 +42,10 @@ impl SpeedTable for Table {
 /// the caller is told which of the two it would have had.
 pub fn set_speed(_speed: Speed) -> Speed {
     Speed::Normal
+}
+
+/// The frequency this part boots at and stays at: [`set_speed`] moves nothing here, so this is
+/// the only number a report can name.
+pub(crate) const fn clock_mhz(_speed: Speed) -> u32 {
+    160
 }

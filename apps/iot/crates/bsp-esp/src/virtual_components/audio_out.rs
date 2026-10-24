@@ -368,13 +368,13 @@ impl<C> Es8311Tx<C> {
                 self.pushed_frames = PUSH_FRAMES;
                 self.played_frames = 0;
                 log::warn!(
-                    "[SPEAKER] restarted the outgoing DMA, recovery {}",
+                    "[PLAY] restarted the outgoing DMA, recovery {}",
                     self.restarts
                 );
                 self.transfer = Some(transfer);
             }
             Err((error, _, _)) => {
-                log::error!("[SPEAKER] the outgoing DMA refused the ring: {error:?}");
+                log::error!("[PLAY] the outgoing DMA refused the ring: {error:?}");
                 self.voice = None;
                 self.tail = false;
             }
@@ -390,7 +390,7 @@ impl<C> Es8311Tx<C> {
     fn recover_drained(&mut self, recovery: Recovery) {
         let sound = if recovery.playing { "playing" } else { "idle" };
         log::warn!(
-            "[SPEAKER] the outgoing DMA ran the ring dry after {} ms idle, {} of {RING_BYTES} bytes free, sound {sound}",
+            "[PLAY] the outgoing DMA ran the ring dry after {} ms idle, {} of {RING_BYTES} bytes free, sound {sound}",
             self.watchdog.idle_limit_ms(),
             recovery.free_bytes,
         );

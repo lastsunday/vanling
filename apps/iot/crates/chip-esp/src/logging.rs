@@ -17,16 +17,33 @@
 //!
 //! The HAL's `Instant` does not advance in light sleep, so the prefix
 //! under-counts if an image is ever slept.
+//!
+//! What prints is [`configured_level`]: `IOT_LOG_LEVEL` at build time, `info` when that is
+//! unset or not a level name. The product keeps its steady state quiet at `info`, and a
+//! `debug` image is how the periodic telemetry — frame cost, feed cadence, link phase —
+//! comes back when a record needs it. See `docs/content/development/iot/cheatsheet.md`.
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
-pub static LOGGER: UptimeLogger = UptimeLogger(LevelFilter::Info);
+pub static LOGGER: UptimeLogger = UptimeLogger;
 
-pub struct UptimeLogger(LevelFilter);
+pub struct UptimeLogger;
+
+/// The highest level `IOT_LOG_LEVEL` names, or [`LevelFilter::Info`].
+///
+/// An unrecognised name falls back to the default rather than silencing the log: a typo
+/// should cost the telemetry it was meant to raise, not every line the product prints.
+pub fn configured_level() -> LevelFilter {
+    option_env!("IOT_LOG_LEVEL")
+        .and_then(|name| name.parse().ok())
+        .unwrap_or(LevelFilter::Info)
+}
 
 impl Log for UptimeLogger {
+    /// The global filter, not a copy of it: `log::set_max_level` is the one place the
+    /// level lives, so the logger and the macros that skip formatting cannot disagree.
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= self.0
+        metadata.level() <= log::max_level()
     }
 
     fn log(&self, record: &Record) {

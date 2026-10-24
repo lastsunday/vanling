@@ -236,15 +236,20 @@ pub async fn control_loop(
         let window_ms = now.saturating_duration_since(last_report).as_millis();
         if window_ms >= CADENCE_REPORT_MS {
             let (feeds, worst_gap_ms, late_gaps, worst_work_us) = take_stats(shared);
-            log::info!(
-                "[PLAY] {} feeds in {} ms = {} mHz, worst gap {} ms, {} gaps over {} ms, worst work {} us",
-                feeds,
-                window_ms,
-                u64::from(feeds) * 1_000_000 / window_ms,
-                worst_gap_ms,
-                late_gaps,
+            // What the window was worth, not the raw rate: `mHz` was a number nobody can
+            // divide, and the ratio is the question the report answers.
+            let expected = (window_ms / u64::from(FEED_MS)).max(1) as u32;
+            let percent = u64::from(feeds) * 100 / u64::from(expected);
+            let late = late_gaps > 0 || percent < 95;
+            log::log!(
+                if late {
+                    log::Level::Warn
+                } else {
+                    log::Level::Debug
+                },
+                "[PLAY] cadence {feeds} feeds in {window_ms} ms ({percent}% of nominal), \
+                 {late_gaps} gaps over {} ms, worst gap {worst_gap_ms} ms, worst work {worst_work_us} us",
                 FEED_LATE_MS,
-                worst_work_us,
             );
             last_report = now;
         }

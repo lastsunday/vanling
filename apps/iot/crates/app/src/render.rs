@@ -727,16 +727,19 @@ pub async fn render_loop<C: ClockSink>(
                     manager.apply_operation(op);
                     let business = iot_core::intent::translate(&op, &manager.state());
                     manager.apply_business(business);
-                    // A page change, one line: the cost report names a page once per window,
-                    // which cannot show whether a gesture advanced one page or three.
-                    if manager.state().page != last_page {
-                        log::info!("[INPUT] page is now {:?}", manager.state().page);
-                        last_page = manager.state().page;
-                    }
                 }
                 // A producer that already speaks business (e.g. a network
                 // drive) goes straight to the state.
                 Intent::Business(business) => manager.apply_business(business),
+            }
+            // A page change, one line, whoever caused it: the cost report names a page once per
+            // window, which cannot show whether a gesture advanced one page or three. Outside
+            // the match because the splash's end arrives as a business intent, and a check that
+            // lived in the operation arm reported that transition against the *next* tap
+            // instead — a page named twenty seconds after it had already been drawn.
+            if manager.state().page != last_page {
+                log::info!("[INPUT] page is now {:?}", manager.state().page);
+                last_page = manager.state().page;
             }
             // What travels to the driver is the diff against what the driver
             // has been told, and not the intent: the state layer is what decides
@@ -760,14 +763,13 @@ pub async fn render_loop<C: ClockSink>(
                 None => log::info!("[LAMP] the page's own light"),
                 Some(LightState::Off) => log::info!("[LAMP] dark"),
                 Some(LightState::Solid { color, brightness }) => log::info!(
-                    "[LAMP] solid {} {} {} at {}",
+                    "[LAMP] solid rgb({}, {}, {}), brightness {brightness} of 255",
                     color.0,
                     color.1,
-                    color.2,
-                    brightness
+                    color.2
                 ),
                 Some(LightState::Breath(breath)) => log::info!(
-                    "[LAMP] breathing over {} ms, {}..{}",
+                    "[LAMP] breathing over {} ms, brightness {}..{}",
                     breath.period_ms,
                     breath.min_brightness,
                     breath.max_brightness
@@ -892,17 +894,18 @@ pub async fn render_loop<C: ClockSink>(
         // it sits beside the parts.
         demand.lock(|current| *current.borrow_mut() = manager.demand().clone());
         // The governor returns what it did; the wording and the channel are this layer's.
-        if let Some(applied) = governor.apply(manager.demand(), clock) {
-            if let Some(short) = applied.undercuts {
-                log::warn!(
-                    "[CLOCK] a page asked for {:?}, but {:?} is running and needs {:?} \
-                     — applying the page's choice",
-                    applied.asked,
-                    short.plane,
-                    short.needed,
-                );
-            }
-            log::info!("[CLOCK] running at {:?}", applied.running);
+        // The clock itself is reported by the part that moves it, in MHz rather than preset:
+        // `Speed` is this layer's vocabulary, not a frequency anyone can check.
+        if let Some(applied) = governor.apply(manager.demand(), clock)
+            && let Some(short) = applied.undercuts
+        {
+            log::warn!(
+                "[CLOCK] a page asked for {:?}, but {:?} is running and needs {:?} \
+                 — applying the page's choice",
+                applied.asked,
+                short.plane,
+                short.needed,
+            );
         }
         let active = render.tick(&state, manager.demand(), elapsed_ms) || manager.notice_active();
         elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);

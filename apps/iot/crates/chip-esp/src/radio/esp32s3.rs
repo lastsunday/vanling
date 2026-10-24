@@ -114,8 +114,8 @@ pub fn ungate_radio() {
         .modify(|_, w| w.wifi_force_iso().clear_bit());
     esp_hal::rtc_cntl::WakeLock::acquire();
 
-    log::info!(
-        "[RADIO] modem clocks {clocks_before:#010x} -> {:#010x}, dig_pwc {pwc_before:#010x} -> {:#010x} \
+    log::debug!(
+        "[WIFI] modem clocks {clocks_before:#010x} -> {:#010x}, dig_pwc {pwc_before:#010x} -> {:#010x} \
          (esp-radio's uncalled init())",
         clocks(),
         pwc()

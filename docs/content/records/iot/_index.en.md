@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "c595432d266c5e2d5893f52e67319d4a9b55be53"
-translated_at = "2026-10-22T10:04:49Z"
+source_file_hash = "868e841fff05812e389925cc6ae96d7f0655719f"
+translated_at = "2026-10-24T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -122,6 +122,16 @@ The system description lives in [development docs / IoT firmware](@/development/
 | **PHY calibration restore is `todo!()` on the S3** | `PROVIDE(misc_nvs_restore = __esp_radio_misc_nvs_restore)` binds the blob's undefined reference to a `#[cfg(xtensa)]` `todo!()`, and this is an Xtensa target | Workaround: **no `phy_init` partition** (at the cost of calibrating at every boot) |
 | Partition table | `espflash` defaults to a 1 MB factory partition and the firmware was already 630 KB before the Wi-Fi blobs | factory **6 MB**; a 16 MB part |
 
+### Logging
+
+| Finding | Conclusion | Numbers |
+| --- | --- | --- |
+| Default level | `info` carries **events only**; a steady state may print nothing for a long time, and silence is not a hang | 169 lines/43.8 s → 36 lines/70 s; zero lines in the 62 s after the 8 s mark |
+| One knob | `IOT_LOG_LEVEL`; a name it does not recognise falls back to `info` rather than going silent, and `log::max_level()` is the only holder of the level | The boot line `[IOT] log level …` is the only evidence |
+| Periodic telemetry | Frame cost, stack peak, feed cadence, link heartbeat and scan lists are all `debug`; the window that crosses a bound is raised to `warn` | 102 DEBUG lines in 40 s from the same source at `debug` |
+| What removing lines bought | **The reader's time, not CPU**: a UART write over USB CDC does not enter the executor-hold account | 1426 → 1417 ms per 5 s window |
+| Tags | **One tag per module**, not one per peripheral | `[MIC]`→`[AUDIO]`, `[SPEAKER]`→`[PLAY]`, `[TOUCH]`→`[INPUT]`, `[RADIO]`→`[WIFI]`, `[PSRAM]`→`[HEAP]`, `[BACKLIGHT]`→`[DISPLAY]` |
+
 ## Probes
 
 **Each probe is a standalone bin that wires one layer of the framework straight to real hardware. Consult this before touching a driver — the question "which probe answers this" should end here.**
@@ -189,5 +199,6 @@ Read on for derivations, the full list of rejected alternatives, and reproductio
 | [Runtime CPU clock record](@/records/iot/clock.en.md) | esp-hal's frozen clock frequencies, the off-path register route measured at 1 : 2.00 : 2.95, a switch costing 1–50 us, no difference on the second core or outside the CPU, the table following the chip, one existing defect in the way |
 | [Wi-Fi record](@/records/iot/wifi.en.md) | No lwIP in this generation, only esp-radio plus embassy-net; "connected" means an address; three connection defaults copied from the reference firmware; how the DRAM budget was made to fit; the PHY calibration `todo!()` and the partition table's workaround |
 | [Check tasks and caching record](@/records/iot/tasks.en.md) | What moon's cache key is made of and the script blind spot, `check-features` gaining a cache, the C6 check moving to the host, the rejected container merge |
+| [Logging record](@/records/iot/logging.en.md) | The measurement behind the default `info`, `IOT_LOG_LEVEL` held in one place, the event/telemetry/crossed-bound split, unified tags, the post-mortem gap |
 
 > The full derivation of throttling, with measurements and method, is in the [architecture doc](@/development/iot/architecture.en.md).

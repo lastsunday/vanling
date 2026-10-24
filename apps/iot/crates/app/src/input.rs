@@ -125,23 +125,24 @@ fn apply(
         entry.set_active(plan.active);
         entry.set_cadence_ms(plan.cadence_ms);
         moved |= (entry.is_active(), entry.cadence_ms()) != before;
-        // The plane rather than the source id: this line is read by someone who wants to
-        // know what stopped.
-        let _ = write!(
-            report,
-            "{}{} {} {} ms",
-            if index == 0 { "" } else { ", " },
-            entry.key(),
-            if plan.active { "on" } else { "off" },
-            plan.cadence_ms
-        );
+        // The source rather than the plane: two sources share the interaction plane, and a
+        // report naming the plane twice (`input on 10 ms, input on 10 ms`) could not say
+        // which of them stopped. The source is also the unit the schedule applies to. A
+        // source that is off has no cadence in force, so it prints none.
+        let separator = if index == 0 { "" } else { ", " };
+        let name = SOURCE_NAMES.get(index).copied().unwrap_or("?");
+        if plan.active {
+            let _ = write!(report, "{separator}{name} on {} ms", plan.cadence_ms);
+        } else {
+            let _ = write!(report, "{separator}{name} off");
+        }
     }
     let motion_config = match configuration.motion {
         Some(config) => format!("{config:?}"),
         None => String::from("none"),
     };
     if moved {
-        log::info!("[DEMAND] {report} | motion config {motion_config}");
+        log::info!("[DEMAND] schedule: {report} | motion config {motion_config}");
     }
     moved
 }
@@ -225,10 +226,6 @@ pub async fn input_task(
                 .is_ok()
         {
             splash_open = false;
-            log::info!(
-                "[INPUT] the splash page is over {} ms into the input clock",
-                SPLASH_MS
-            );
         }
         // The whole `for` body runs without awaiting, so its wall time is
         // exactly how long the other tasks on the shared executor wait.
@@ -254,7 +251,15 @@ pub async fn input_task(
                     worst_us[index] / 1_000,
                 );
             }
-            log::warn!(
+            // A healthy window is telemetry; a hold past the bound is the fault this report
+            // exists for and the only shape worth waking a reader with.
+            let over_bound = window_worst_hold_ms >= u64::from(MAX_SINGLE_HOLD_MS);
+            log::log!(
+                if over_bound {
+                    log::Level::Warn
+                } else {
+                    log::Level::Debug
+                },
                 "[INPUT] held the executor {} ms of {} ms over {} ticks; worst single hold {} ms (bound {} ms); worst source: {}",
                 window_hold_us / 1_000,
                 window_ms,

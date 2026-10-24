@@ -44,7 +44,6 @@ where
     let empty = match station.scan().await {
         Ok(ranked) => {
             let empty = ranked.is_empty();
-            log::info!("[WIFI] survey found {} access points", ranked.len());
             // The phase first: the scan leaves the station `Off`, and the page draws the
             // list under that word, so a publish that carried only one of the two would
             // leave the page a round behind what it is showing. The mode is this loop's own
@@ -52,12 +51,15 @@ where
             // rather than left to a station that does not know about it.
             publish(face.status(station.status()), keeps_any(saved));
             if let Some(list) = history.observe(&ranked, saved) {
+                log::info!("[WIFI] {} access points, the page redraws", list.len());
                 crate::render::SCAN.publish(&list);
                 // The page's copy of the same list: the plane above is taken by the render
                 // loop, and the page is a reader that must not take it.
                 crate::provision::publish_scan(&list);
             } else {
-                log::info!("[WIFI] the list is unchanged, so the page is not redrawn");
+                // A round that changed nothing is the normal case while the page is up, and
+                // the list it did not change is already on the panel.
+                log::debug!("[WIFI] {} access points, unchanged", ranked.len());
             }
             empty
         }

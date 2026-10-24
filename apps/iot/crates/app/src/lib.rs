@@ -262,9 +262,9 @@ where
     let motion_enabled = motion.is_some();
     let motion_caps = board.motion_capabilities();
     log::info!(
-        "[MOTION] declared capabilities 0x{:X}, source {}",
+        "[MOTION] {}, capabilities 0x{:X}",
+        if motion_enabled { "wired" } else { "absent" },
         motion_caps.bits(),
-        if motion_enabled { "wired" } else { "absent" }
     );
     // The capture is just another polled source: it joins the same tick rather
     // than a task of its own, so a slow poll costs envelope columns and nothing
@@ -365,7 +365,7 @@ where
     // existence is what supplies the microphone's clock, so handing it a gate would
     // make the one thing nothing may switch off the one thing a page could switch.
     let demand = SharedDemand::new(RefCell::new(manager.demand().clone()));
-    log::info!("[IOT] opening demand {}", manager.demand());
+    log::info!("[IOT] demand {}", manager.demand());
 
     // A board without a speaker still has to run the tasks it has, so the playback
     // loops are only ever started when there is one: parking on buses nothing

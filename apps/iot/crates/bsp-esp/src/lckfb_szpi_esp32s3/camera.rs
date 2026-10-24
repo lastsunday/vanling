@@ -194,16 +194,6 @@ impl Board<'static> {
         bus: &'static SharedI2cBus,
         arena: &mut [u8],
     ) -> Result<BoardCamera, CameraError> {
-        log::info!(
-            "[CAM] camera frame is {}x{} in internal DRAM, the panel's {} KB frame buffer, \
-             {} B over {} descriptors",
-            dvp::FRAME_WIDTH,
-            dvp::FRAME_HEIGHT,
-            PANEL_BYTES / 1024,
-            dvp::RING_BYTES,
-            dvp::DESCRIPTOR_COUNT
-        );
-
         let mut delay = Delay::new();
         let mut sensor = Gc2145::new(I2cDevice::new(bus), GC2145_I2C_ADDR);
         sensor.init(&mut delay).map_err(CameraError::Sensor)?;
@@ -238,7 +228,7 @@ impl Board<'static> {
         );
         // Register by register, because the part reports the window it was
         // given, not the picture it produced.
-        log::info!(
+        log::debug!(
             "[CAM] decim regs: 0x99=0x{:02x} 0x9a=0x{:02x} bins={:02x?} crop={}",
             geometry.subsample,
             geometry.subsample_mode,
