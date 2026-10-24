@@ -621,7 +621,7 @@ version, a count, a body length) plus `1 + 32 + 1 + 64 + 2` bytes per network pl
 `RECORD_BYTES = 1016`, with two `const _: () = assert!(...)` pinning that it fits one sector; nine
 host tests pin the slot rules, a save interrupted by power loss, and how a bad CRC reads.
 
-**When it is read and written** (both in `Board::new` and in `app/src/network.rs`):
+**When it is read and written** (both in `Board::new` and in `app/src/network/{link,store}.rs`):
 
 | Moment | Where | Why there |
 | --- | --- | --- |
@@ -1306,7 +1306,7 @@ backstop for the "do not trust the mark, ask the store" rule and today only host
 only (see still-to-do 5) — the latter is code-reading because this boot is the panel arm, with `creds`
 erased, and never reaches it: what backs it is that `hold`'s call sites pass `Stored` (the boot entry
 and the tapped row) and `Named` (a passphrase from the build or the panel), and `keep` is called on
-the `Named` path alone (`app/src/network.rs`).
+the `Named` path alone (`app/src/network/{link,store}.rs`).
 
 ## How a board with no panel gets configured: an open AP behind a page (`[measured]`/`[test]`)
 
@@ -1730,7 +1730,7 @@ Three places where we **differ from it**:
 
 | Question | What ESP-IDF does | What this device does | The price |
 | --- | --- | --- | --- |
-| When the service stops | after the device **is connected**, with the client able to read the status | **as soon as a credential arrives** (first past `select` wins, see "The answer reaches the phone before setup mode ends") | a wrong passphrase drops the phone off the AP, and only the device itself can bring setup mode back. On the panel's path a refusal is measured at 37.6 s (`AUTH`, still-to-do 5④); this side of it is **unmeasured** |
+| When the service stops | after the device **is connected**, with the client able to read the status | **as soon as a credential arrives** (first past `select` wins, see "The answer reaches the phone before setup mode ends") | a wrong passphrase drops the phone off the AP, and only the device itself can bring setup mode back. On the panel's path a refusal is measured at 37.6 s (`AUTH`, still-to-do 5④); the setup page's side is measured too (2026-10-24, C6): the device brought the AP back by itself after the refusal (by eye, no serial reading this round) |
 | Scanning under a SoftAP | the documents warn that scanning channel by channel interrupts the client's connection, so a grouped sweep is offered (`[as-reported]`; the difference was not reproduced on this device) | channel by channel (APSTA) | the phone stayed on through several bench rounds (`[measured]`); worth re-checking on another board. On the page's side this is settled: the page no longer presses scan on its own (the third version drops the rescan every `/scan` used to trigger — see the previous section) |
 | How a credential travels | a protocomm session + proof of possession + encryption | **an open AP and a plain-text form** | anyone on the same network can read that passphrase, and can hand the device a different one — a known trade; the splash entry's AP is open (the panel's `PASS` switches to WPA2), while a running panel starts it secured, so this trade sits on the default path only for the splash round; a one-time PIN would close it further |
 
@@ -1817,10 +1817,12 @@ previous round's 1,025,680 B product image; the C6 image of the same name is in 
   light). The lamp itself is the next section.
 - **Pixels and touch**: the box, `ST SETUP`, the `AP`/`IP` rows, the counter's new home and the
   width of `CANCEL` all need a human eye; `LEAVE`/`CANCEL` need a human thumb once.
-- **A wrong passphrase in setup mode**: still the previous round's unmeasured item; this round did
-  not change that path — it only removed the reboot that used to be the way out of setup mode.
+- **A wrong passphrase in setup mode** (measured, 2026-10-24, C6): a wrong passphrase typed on the
+  setup page is refused, the red lamp is normal, and the device brings setup mode back by itself (the
+  AP is visible again); this round did not change that path — it only removed the reboot that used to
+  be the way out of setup mode. By eye; no serial reading this round.
 
-### The headless board's lamp (`[test]`, 2026-10-23)
+### The headless board's lamp (`[test]`/`[measured]`, 2026-10-23/24)
 
 The C6 has one WS2812 and no screen, so provisioning state can only be spoken by that one lamp. The
 language lives in core's state layer (`DeviceState::status_light`) and applies only to a board with a
@@ -1873,11 +1875,34 @@ The render loop logs `[LAMP]` only when the status light **changes** (a breathin
 write every frame), so the bench can count the flashes and their lengths without an eye: the
 180/160/160 ms above are each within one frame (`STEP_MS = 20`) of the designed 160 ms.
 
+`[measured]` (same day, C6 reset into an automatic reconnect with one saved network): association
+succeeded at `05.481`, and `[LAMP]` gave the three green flashes —
+
+| Time | Lamp |
+| --- | --- |
+| 05.516 | `[LAMP] solid 0 255 0 at 64` — first green flash |
+| 05.636 | `[LAMP] dark` |
+| 05.736 | `[LAMP] solid 0 255 0 at 64` — second flash |
+| 05.836 | `[LAMP] dark` |
+| 05.936 | `[LAMP] solid 0 255 0 at 64` — third flash |
+| 06.036 | `[LAMP] the page's own light` — handed back 100 ms later |
+
+Every segment is exactly 100 ms, as designed; the reading also re-confirms that a saved credential's
+automatic reconnect never shows the blue attempt and puts the product light up from the first second.
+
+**This round of readings found a defect**: the announcement was originally timed on the render loop's
+**frame counter**. The association holds the executor for a few hundred milliseconds, and the loop
+then replays the skipped frames at full speed to catch up, so the three 100 ms green flashes were
+compressed to 19 ms on the hardware (`03.581`–`03.600`, six `[LAMP]` lines). `tick_notice` now takes
+the **wall clock** (the render loop passes `Instant::now()`), while the frame counter stays with the
+renderers; the re-test is the 100 ms table above. Host tests still drive the state layer with plain
+numbers and are unaffected.
+
 `[measured]` (2026-10-23, C6, by eye): the three amber flashes did hand the lamp back to the product
 light, a BOOT click changed the colour with the page (so nothing was holding the surface), and a long
-press after the splash opened no AP. Brightness and colour are acceptable. **The green and red kinds
-are still unmeasured**: they need one real provisioning round (`Connected` green, a refused
-credential's red); the host tests pin the frame table, not the hardware.
+press after the splash opened no AP. Brightness and colour are acceptable. **The red kind (a refused
+credential) was confirmed on the bench** (2026-10-24, by eye; no serial reading was kept this round);
+the green kind is pinned by the reconnect reading above.
 
 ## Two front ends of setup mode, one at a time (`[measured]`/`[test]`, 2026-10-20, evening)
 
@@ -2206,10 +2231,15 @@ this passed one more `LinkStatus` into two synchronous functions and added no st
 left and `AP` on the right; the serial log should say `setup mode opens on the Panel front`); and
 the page's `AP MAC` has a visible gap before the address, which is a shade brighter than the label.
 
-`[unfinished]` `front_after_link` has no host test: `network.rs` sits behind the `wifi` feature,
-which pulls in `iot-bsp-esp/wifi`, and no host build compiles it (`iot:test`'s `host` feature has no
-`wifi`). The evidence is the serial log of one `LEAVE` and the front the panel shows; pinning this
-in a test would first need a fake-`Station` harness for the link task.
+`[test]` `front_after_link` used to have no host test: it lived in `network.rs` behind the `wifi`
+feature, which pulls in `iot-bsp-esp/wifi`, and no host build compiled it (`iot:test`'s `host` has no
+`wifi`). Splitting `network` into four files moved this pure decision into core (`LinkEnding` and
+`front_after_link` in `core/src/drivers/network.rs`), and two host tests now pin it:
+`a_leave_or_a_pick_opens_setup_where_the_build_put_it` (the six cells of start front × current front
+× `Named`/`Left` all return to the start) and `a_refused_credential_keeps_the_front_it_was_typed_on`
+(`Refused` keeps the current front). The `link`/`configure` loops themselves still have no host
+harness: that would first need a fake-`Station` bench for the link task, so the evidence for them
+remains the serial log of one `LEAVE` and the front the panel shows.
 
 ### A reload no longer earns `ERR_CONNECTION_REFUSED`: keep-alive, six listeners and half a second (`[measured]`/`[test]`, 2026-10-21)
 
@@ -2410,10 +2440,24 @@ reachability sweep, and the three on the hint side: `a_hint_survives_a_reset_and
 
 `[measured]` On the bench (2026-10-23, product images, both boards reset once without BOOT held):
 the C6 prints `the splash page is over 1500 ms into the input clock` at `00:00:01.848`, followed by
-`[WIFI] no panel and no saved network; waiting offline`; the S3 closes it at `00:00:02.748` (its
-input clock starts about 1.25 s in), prints `[DISPLAY] main stack 66264 B`, and takes the offline
+`[WIFI] no panel and no saved network; waiting offline`; the S3 closes it at `00:00:02.752` (its
+input clock starts about 1.25 s in), prints `[DISPLAY] main stack 66200 B`, and takes the offline
 `browsing` path. Neither board logs `joining`/`leaving` during the splash, and no access point comes
-up.
+up. (`66200` is the reading after `network` was split into four files
+(`network/{mod,link,setup,survey,store}.rs`), 64 B less than before the split; it is the same device
+code, only the module boundary moved.)
+
+`[measured]` (2026-10-24, the same split build, both boards flashed once and their serial read):
+the S3 prints `[DISPLAY] main stack 66200 B`, exactly what `nm` gives for
+`_stack_start_cpu0 − _stack_end_cpu0` (`0x3fce9710 − 0x3fcd9478` = **66,200 B**, floor 65,536 B,
+**664 B** of margin), then `[CREDS] no network saved on this device yet` and the offline `browsing`
+path; the C6 keeps its `creds` partition across the flash (`[CREDS] 1 saved network(s)`) and
+reconnects on reset — `joining` → `associated ... on channel 11` → `Connected` — with the three
+green flashes still 100 ms each (starting at `03.622`/`03.856`/`04.056`, a `dark` segment between).
+Images: S3 `1,059,888 / 6,291,456 B` (16.85%), C6 `826,976 / 1,048,576 B` (78.87%). The split's own
+cost was measured too: folding `network` back into one file on the same tree (keeping the
+`tick_notice` wall-clock change) builds the C6 at `826,752 B`, against `826,976 B` split, so the
+module boundary costs **+224 B**.
 
 `[measured]` Gates and the static wall: after the splash round, this round's futures grew past the
 wall again — **72 B** short. The fix is not cutting a feature but keeping a credential out of every
@@ -2496,7 +2540,7 @@ credential lives"); they must never be compiled into firmware. A build input out
 list: a build that names a network has that one path to try (changing it means changing the build),
 where the stored list is the answer to "this device has been set up".
 
-## A hold outside the splash no longer opens the AP; the C6 keeps its credential and rejoins after reset (`[test]`, board pending, 2026-10-23)
+## A hold outside the splash no longer opens the AP; the C6 keeps its credential and rejoins after reset (`[test]`/`[measured]`, 2026-10-23/24)
 
 Both defects came from the same habit: a boolean standing in for a mode, then a page reading the
 approximation.
@@ -2547,10 +2591,12 @@ works, the hold does not switch), and `controls::tests::the_offline_list_keeps_b
   machine; the hold gate itself is covered by `a_board_with_no_panel_has_no_front_to_switch_to`
   and the offline-page test.
 
-`[not done]`: the same run on the S3 (only the C6 is enumerated on the bench right now); after
-provisioning the C6 again, a hold on Ambient should visibly cycle the page light (the status lamp
-yields), which needs a person's eye; and `creds` is now erased by this test, so the C6 boots
-unprovisioned until it is set up again.
+`[not done]`: after provisioning the C6 again, a hold on Ambient should visibly cycle the page light
+(the status lamp yields), which needs a person's eye. Both boards' links are confirmed working on the
+bench (2026-10-24; the S3 is provisioned — **auto-reconnect was not read off the serial this round**).
+The C6's `creds` holds one network — the 2026-10-24 reset reconnected (`[CREDS] 1 saved network(s)` →
+`joining` → `associated ... channel 11` → `Connected`, see the reading above) — so it is no longer
+the erased state.
 
 ## Still to do (`[not done]`)
 
@@ -2654,11 +2700,11 @@ unprovisioned until it is set up again.
    corrections"). On the panel it is now an **explicit gear**: it can be entered (`LEAVE`), left
    (`CANCEL`, offered only while the device keeps a network) and seen (`ST SETUP` plus the
    announcement box — see "Setup mode becomes a gear the panel can see and leave", and this round's
-   "Two front ends of setup mode, one at a time"). Several things still have no reading: **whether
-   the device brings setup mode back by itself when the passphrase is wrong** (the panel's path is
-   known to refuse in 37.6 s, this one needs a person with a phone and a bad passphrase), one real
+   "Two front ends of setup mode, one at a time"). Several things still have no reading: one real
    reading of an **open** access point (the bench's neighbours all have passphrases — the same item
    as 5⑤), the **headless board's entry** (reset, then hold Boot on the splash page — see the third
    cut of "Getting back to setup: hold BOOT on the splash page"; the previous cut's "a Boot long
    press leaves the link" is gone), and **fingers**: the front-switch cell, the box's two answers,
-   and the Boot long press on any page in setup mode.
+   and the Boot long press on any page in setup mode. **Whether the device brings setup mode back by
+   itself after a wrong passphrase** does have a reading now: 2026-10-24 on the C6's setup page, the
+   AP was visible again after the refusal.

@@ -100,6 +100,34 @@ pub const fn setup_ap_starts_secured(panel: bool, from_splash: bool) -> bool {
     panel && !from_splash
 }
 
+/// How a link stopped being held, as far as [`front_after_link`] is concerned.
+///
+/// The credential's own fate stays in the app; what travels here is the part of it that decides
+/// where setup mode opens next. Three cases because the radio and the panel each end a link, and
+/// they are not answered the same way.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LinkEnding {
+    /// The panel named another network while this one was up.
+    Named,
+    /// The radio would not take the credential.
+    Refused,
+    /// The panel asked to leave the link.
+    Left,
+}
+
+/// Which front the next stretch of setup mode opens on.
+///
+/// A leave or a pick at the panel is an act made while standing at a front, so it opens where the
+/// build put it — the panel on a board that has one, and the access point on a board that does
+/// not. A refusal is about the credential rather than about the front it was typed on: the page
+/// that was typed on keeps serving, so the person does not have to find it again.
+pub const fn front_after_link(start: Front, current: Front, ending: LinkEnding) -> Front {
+    match ending {
+        LinkEnding::Named | LinkEnding::Left => start,
+        LinkEnding::Refused => current,
+    }
+}
+
 /// How many networks the device remembers, strongest-first, newest at the front —
 /// the same slot count and ordering the reference firmware uses, so a device that
 /// has been to three places reconnects without being told which.
@@ -1293,6 +1321,41 @@ mod tests {
                 secured,
                 "panel {panel}, splash {from_splash}"
             );
+        }
+    }
+
+    #[test]
+    fn a_leave_or_a_pick_opens_setup_where_the_build_put_it() {
+        // Both are acts of somebody at a front: they picked a row, or asked for the link to go
+        // down. Whichever front that was, the mode that follows belongs where the build started —
+        // a board with a panel goes back to its list, and a board without one goes back to the
+        // access point, which is its only page.
+        for start in [Front::Panel, Front::AccessPoint] {
+            for current in [Front::Panel, Front::AccessPoint] {
+                for ending in [LinkEnding::Named, LinkEnding::Left] {
+                    assert_eq!(
+                        front_after_link(start, current, ending),
+                        start,
+                        "{ending:?} from {current:?} with the build on {start:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_refused_credential_keeps_the_front_it_was_typed_on() {
+        // A refusal is the radio's answer about the credential, not about the front: the page
+        // that was typed on is the one the person is looking at, and sending them to the other
+        // one would ask them to find the mode again before they can correct a passphrase.
+        for start in [Front::Panel, Front::AccessPoint] {
+            for current in [Front::Panel, Front::AccessPoint] {
+                assert_eq!(
+                    front_after_link(start, current, LinkEnding::Refused),
+                    current,
+                    "refused with the build on {start:?}"
+                );
+            }
         }
     }
 

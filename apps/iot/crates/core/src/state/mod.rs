@@ -1110,8 +1110,10 @@ impl DeviceManager {
 
     /// Step the lamp's announcement to `now_ms`, dropping it once it is over.
     ///
-    /// The clock lives in the render loop, which owns time for every other animation; keeping
-    /// it out of the state is what lets a host test drive the steps with plain numbers.
+    /// The clock is the caller's: the render loop passes the wall clock, because a flash is a
+    /// duration rather than a count of frames — the loop's frame counter catches up after a stall
+    /// and would compress the news. Keeping time out of the state is what lets a host test drive
+    /// the steps with plain numbers.
     pub fn tick_notice(&mut self, now_ms: u32) {
         let Some(mut notice) = self.state.notice else {
             return;

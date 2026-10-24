@@ -876,10 +876,14 @@ pub async fn render_loop<C: ClockSink>(
             );
             forget.request(ssid);
         }
-        // The lamp's one-shot news is stepped by this loop's clock; nothing in the state owns
-        // time. Stepped after the intents, so a report that landed this pass is drawn from its
-        // first step rather than the next one.
-        manager.tick_notice(elapsed_ms);
+        // The lamp's news is stepped on the wall clock, not the frame counter. The counter is a
+        // logical animation clock: after another future holds the executor (the radio's
+        // association does, for a few hundred milliseconds), the deadline below is in the past and
+        // the loop replays the skipped steps at full speed to catch up. An announcement measured
+        // in frames would then be over before it was seen — measured on the C6, three 100 ms
+        // flashes collapsed into 19 ms right after an association. The renderers keep the counter;
+        // a flash is a duration the user's eye measures.
+        manager.tick_notice(Instant::now().as_millis() as u32);
         let state = manager.state();
         // The page is the product's declaration of what it wants, so the demand follows it
         // here rather than each consumer deriving its own. The polling loop reads
