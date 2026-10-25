@@ -42,11 +42,8 @@ tasks:
     options:
       cache: false
 
-  # Two test threads, not one per core: every `session_test` case builds its own ASR, VAD and
-  # Matcha TTS, and CI runs this task beside `test-pg`, so the default width puts several model
-  # sets on the same cores and the 60s recv timeout fires on `stt result` rather than on a bug.
-  # `RUST_TEST_THREADS` rather than `-- --test-threads`: `feature_auth_test` runs cucumber, which
-  # parses argv itself and rejects the flag.
+  # `session_test` builds its own models per case; with `test-pg` running beside it, a wider
+  # pool starves the 60s recv timeout. (cucumber rejects `--test-threads`, hence the env var.)
   test:
     command: 'cargo test --package vanling-server --package api'
     env:

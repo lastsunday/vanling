@@ -420,13 +420,18 @@
                 rustup default stable
               fi
 
-              # Auto-install Xtensa Rust toolchain via espup (for ESP32-S3 / xtensa targets)
+              # Auto-install Xtensa Rust toolchain via espup (for ESP32-S3 / xtensa targets).
+              # Intel Macs have no x86_64-apple-darwin build at ${versions.xtensaRust}, so
+              # the S3 is built in the idf-rust container instead.
               if command -v espup &>/dev/null; then
                 ESPUP_HOME="''${RUSTUP_HOME:-$HOME/.rustup}"
                 ESPUP_TOOLCHAIN_DIR="$ESPUP_HOME/toolchains/esp"
-                if [ ! -f "$ESPUP_TOOLCHAIN_DIR/bin/rustc" ]; then
+                if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "x86_64" ]; then
+                  echo "  [espup] skipped on Intel Mac; S3 builds use the idf-rust container"
+                elif [ ! -f "$ESPUP_TOOLCHAIN_DIR/bin/rustc" ]; then
                   echo "  [espup] Installing Xtensa Rust toolchain ${versions.xtensaRust}..."
-                  espup install --name esp -v ${versions.xtensaRust}
+                  espup install --name esp -v ${versions.xtensaRust} ||
+                    echo "  [espup] install failed; xtensa builds fall back to the idf-rust container"
                 fi
                 ESPUP_EXPORT="''${ESPUP_EXPORT_FILE:-$HOME/export-esp.sh}"
                 if [ -f "$ESPUP_EXPORT" ]; then
