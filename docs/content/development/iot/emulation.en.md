@@ -2,8 +2,8 @@
 title = "Hardware-free Emulation and Regression Smoke"
 weight = 40
 [extra]
-source_file_hash = "55601da3df5ea200471e3d709726fc36f55d9e66"
-translated_at = "2026-09-12T00:00:00Z"
+source_file_hash = "ef56169a681ea9fb1b9ef4b1a48689387280fe57"
+translated_at = "2026-10-24T15:16:46Z"
 +++
 
 # Hardware-free Emulation and Regression Smoke
@@ -11,7 +11,7 @@ translated_at = "2026-09-12T00:00:00Z"
 Hardware-free CI regression smoke testing works on two layers, prioritizing behavior coverage with optional silicon-layer smoke:
 
 - **Host harness** (mainline): iot-app runs on the host machine with the std backend; a fake `HostBoard` drives the real `run<B>` pipeline and asserts intent → state → render. C6 and S3 share the same logic, so behavior coverage and architecture consistency are validated here.
-- **esp-emu silicon smoke** (optional enhancement, esp32c6 only): the real firmware image boots in the esp-emu emulator up to `[IOT] boot ok`. esp-emu does not support Xtensa, so S3 behavior relies on the host harness and the driver loop relies on real hardware.
+- **esp-emu silicon smoke** (optional enhancement, esp32c6 only): the real firmware image boots in the esp-emu emulator up to `[IOT] boot complete`. esp-emu does not support Xtensa, so S3 behavior relies on the host harness and the driver loop relies on real hardware.
 
 Real-device HIL (espflash flashing + on-device smoke) stays on the roadmap (P1) and is not a CI gate.
 
@@ -38,7 +38,7 @@ Smoke tasks are orchestrated via moon, equally runnable in CI (`reusable-iot-bui
 
 ```sh
 moon run iot:smoke-host      # host harness: intent → state → render behavior assertions
-moon run iot:emu-smoke       # C6 silicon: esp-emu boots merged image to [IOT] boot ok
+moon run iot:emu-smoke       # C6 silicon: esp-emu boots merged image to [IOT] boot complete
 ```
 
 - `smoke-host` depends on `check-host` (`cargo check --no-default-features --features host`); `emu-smoke` depends on `build-c6-emu`.

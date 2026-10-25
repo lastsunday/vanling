@@ -20,7 +20,7 @@ CACHE_DIR="${HOME}/.cache/vanling/esp-emu"
 EMU_VERSION="0.42.0"
 EMU_BIN="$CACHE_DIR/esp-emu"
 TIMEOUT="${2:-10s}"
-EXIT_ON='[IOT] boot ok'
+EXIT_ON='[IOT] boot complete'
 
 # ---- 1. ensure esp-emu binary is cached -------------------------------------
 ensure_emu() {

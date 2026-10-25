@@ -78,7 +78,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           -k GITHUB_TOKEN
@@ -89,8 +88,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run iot:check iot:lint iot:lint-smoke iot:smoke-host
@@ -104,8 +101,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run iot:build
@@ -120,8 +115,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run iot:build-s3
@@ -139,8 +132,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command espflash save-image
@@ -155,8 +146,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run iot:emu-smoke

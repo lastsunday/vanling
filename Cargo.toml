@@ -122,7 +122,9 @@ earshot = "1.2.2"
 nnnoiseless = "0.5.2"
 # vad end
 # tts + asr start
-sherpa-onnx = "2.0.0"
+# 2.0 removed espeak-ng; matcha-icefall-zh-en's lexicon is Chinese-only, so English text
+# then tokenizes to nothing and synthesizes silence.
+sherpa-onnx = "1.13.8"
 sentencex = "0.1.32"
 oximedia-audio-analysis = "0.2.1"
 # tts + asr end

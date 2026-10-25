@@ -729,7 +729,7 @@ tasks:
 
   # C6 emulator smoke: builds with the esp-println UART console (esp-emu only
   # scans UART0; see docs/content/development/iot/emulation.md) and boots the
-  # merged image through esp-emu, asserting `[IOT] boot ok`.
+  # merged image through esp-emu, asserting `[IOT] boot complete`.
   build-c6-emu:
     script: 'bash ../../scripts/iot-emu-image.sh'
     outputs:

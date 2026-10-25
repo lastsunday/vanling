@@ -8,7 +8,7 @@ weight = 40
 无硬件 CI 回归冒烟分两层，行为覆盖优先、硅层冒烟可选的增强：
 
 - **宿主 harness**（主线）：iot-app 以 std 后端跑在开发机上，虚构 `HostBoard` 驱动真实 `run<B>` 管线，断言意图→状态→渲染。C6 与 S3 共享同一套逻辑，行为覆盖与架构一致性都在这一层验证。
-- **esp-emu 硅层冒烟**（可选增强，仅 esp32c6）：真实固件镜像在 esp-emu 模拟器里引导到 `[IOT] boot ok`。esp-emu 不支持 Xtensa，S3 的行为覆盖依赖宿主 harness、驱动回路依赖真机。
+- **esp-emu 硅层冒烟**（可选增强，仅 esp32c6）：真实固件镜像在 esp-emu 模拟器里引导到 `[IOT] boot complete`。esp-emu 不支持 Xtensa，S3 的行为覆盖依赖宿主 harness、驱动回路依赖真机。
 
 真机 HIL（espflash 烧录 + 实机 smoke）保留在 roadmap（P1），不作为 CI 门槛。
 
@@ -35,7 +35,7 @@ weight = 40
 
 ```sh
 moon run iot:smoke-host      # 宿主 harness：意图→状态→渲染 行为断言
-moon run iot:emu-smoke       # C6 硅层：esp-emu 引导 merged 镜像至 [IOT] boot ok
+moon run iot:emu-smoke       # C6 硅层：esp-emu 引导 merged 镜像至 [IOT] boot complete
 ```
 
 - `smoke-host` 依赖 `check-host`（`cargo check --no-default-features --features host`），`emu-smoke` 依赖 `build-c6-emu`。

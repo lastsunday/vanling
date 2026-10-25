@@ -53,8 +53,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           -k ANDROID_KEYSTORE_FILE
@@ -100,8 +98,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run app:build-web
@@ -139,8 +135,6 @@ jobs:
           nix develop
           --ignore-env
           -k HOME
-          -k CARGO_BUILD_RUSTC_WRAPPER
-          -k SCCACHE_GHA_ENABLED
           -k ACTIONS_CACHE_URL
           -k ACTIONS_RUNTIME_TOKEN
           --command moon run app:build-linux
