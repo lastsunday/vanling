@@ -277,13 +277,16 @@ pub struct Session {
 
 impl Session {
     pub async fn start(mut self) {
-        let mut audio_pacer: Option<tokio::time::Interval> = None;
+        // Playback pacing: earliest instant the next audio frame may be dequeued.
+        let mut next_audio_at: Option<tokio::time::Instant> = None;
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         tick.tick().await; // discard first immediate tick
 
         loop {
             select! {
                 msg = self.session_rx.recv() => {
+                    // Drain queued events first: barge-in must not skip an unpromoted shadow.
+                    self.drain_round_events().await;
                     match msg {
                         Some(Frame::Close(_)) | None => {
                             self.stop(SessionEndReason::ClientDisconnect).await;
@@ -303,7 +306,13 @@ impl Session {
                         break;
                     }
                 }
-                msg = self.output_rx_inner.recv() => {
+                // Gate dequeueing, not sending: one frame in flight bounds barge-in latency.
+                _ = tokio::time::sleep_until(
+                    next_audio_at.unwrap_or_else(tokio::time::Instant::now)
+                ), if next_audio_at.is_some() => {
+                    next_audio_at = None;
+                }
+                msg = self.output_rx_inner.recv(), if next_audio_at.is_none() => {
                     let Some(msg) = msg else {
                         self.stop(SessionEndReason::ChannelClosed).await;
                         break;
@@ -341,21 +350,12 @@ impl Session {
                     // so the connection isn't treated idle while a response is still playing.
                     self.idle_since = None;
 
-                    if matches!(msg.payload, FrameResult::AudioResult(_)) {
-                        if let Some(frame_duration) =
-                            self.audio_spec.as_ref().map(|s| s.frame_duration_ms)
-                        {
-                            let pacer = audio_pacer.get_or_insert_with(|| {
-                                tokio::time::interval_at(
-                                    tokio::time::Instant::now()
-                                        + tokio::time::Duration::from_millis(frame_duration),
-                                    tokio::time::Duration::from_millis(frame_duration),
-                                )
-                            });
-                            pacer.tick().await;
-                        }
-                    } else {
-                        audio_pacer = None;
+                    if matches!(msg.payload, FrameResult::AudioResult(_))
+                        && let Some(frame_duration) = self.audio_spec.as_ref().map(|s| s.frame_duration_ms)
+                    {
+                        next_audio_at = Some(
+                            tokio::time::Instant::now() + Duration::from_millis(frame_duration),
+                        );
                     }
 
                     if self.output_tx_outer.send(msg).is_err() {
@@ -552,6 +552,33 @@ impl Session {
                     session_id = %self.id,
                     "round finished speaking"
                 );
+            }
+        }
+    }
+
+    /// Applies already-queued `RoundEvent`s.
+    ///
+    /// Events and output frames travel on separate channels, so a barge-in handled first would see
+    /// a shadow that `TurnComplete` has not promoted yet.
+    async fn drain_round_events(&mut self) {
+        loop {
+            let received = match self.active_events.as_mut() {
+                Some(rx) => rx.try_recv(),
+                None => return,
+            };
+            match received {
+                Ok(ev) => self.handle_round_event(ev).await,
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty) => return,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(skipped)) => {
+                    tracing::warn!(
+                        component = "SESSION", event = "round_event_lagged",
+                        session_id = %self.id, skipped, "round event receiver lagged"
+                    );
+                }
+                Err(tokio::sync::broadcast::error::TryRecvError::Closed) => {
+                    self.active_events = None;
+                    return;
+                }
             }
         }
     }

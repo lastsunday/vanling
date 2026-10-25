@@ -314,6 +314,12 @@ pub struct Round {
   - `TurnComplete{text, prob}` → `on_turn_complete`：`shadow→running` 升级、相位 Speaking、ListenStop，
     并**立即新建下一轮 shadow**（`new_shadow_round`）以支持说话中 / 连续输入监听
   - `SpokenEnd` → 表达结束（shadow 相位处理 / 空闲计时）
+- **取输入帧前先消化已入队的 `RoundEvent`**：生命周期事件走 broadcast、该轮输出帧走输出通道，
+  两条通道各自排队。不先消化，barge-in 可能在 `TurnComplete` 之前被处理，看到尚未升级的 shadow
+  （`running_round == None`）就放弃打断，整段已排队 TTS 继续播。
+- **节奏门控的是取帧而不是发送**：`frame_duration_ms` 只决定「下一帧何时允许从输出队列取出」，
+  任意时刻最多一帧在途。先取后等会把整段 TTS 预取进转发循环，让每帧都与输入帧争用 `select`，
+  barge-in 因此可能被推迟 N 帧。
 - Session 不持有 `drain_hearing` / `handle_hearing_event` / `active_hearing`：响应逻辑在 Round 观察者里。
 - `with_node_templates(Vec<Arc<dyn Node>>)` 注入**裸原型集合**（api 站点动态组，决定链的阶段/顺序）。
 - 握手（`handle_connect`）回包 `audio_params` 由构建时 look up 的 `AudioSpec` 决定；无 TTS 节点则下发

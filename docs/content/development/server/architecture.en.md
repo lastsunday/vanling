@@ -2,8 +2,8 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "7838974fc9e1565ef13144535fe586737f515c31"
-translated_at = "2026-09-09T00:00:00Z"
+source_file_hash = "f09a7f1ed7bdee21bc57400cb5decd949e865e1b"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Core Architecture
@@ -201,9 +201,10 @@ Sessions implement no-activity timeout via idle timestamp tracking in the main l
 Users can interrupt TTS playback:
 
 1. Client sends `Abort` frame or new `ListenStart`
-2. Session receives it, calls `stop_round(RoundStopReason::BargeIn)`
-3. Current Running Round is cancelled
-4. Epoch is incremented, stale OutputMessages are discarded
+2. Session drains queued `RoundEvent`s before checking activity — the round may already be expressing while
+   `TurnComplete` has not been handled yet
+3. If a Running Round exists, calls `stop_round(RoundStopReason::BargeIn)`
+4. Epoch is incremented, stale OutputMessages are discarded; pacing guarantees at most one audio frame is in flight
 5. New Shadow Round upgrades to Running Round
 
 ## Logging and Observability

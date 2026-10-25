@@ -198,9 +198,9 @@ Session 在主循环中通过空闲时间戳实现无活动超时：
 用户可打断 TTS 播放：
 
 1. 客户端发送 `Abort` 帧或新的 `ListenStart`
-2. Session 收到后调用 `stop_round(RoundStopReason::BargeIn)`
-3. 当前 Running Round 被取消
-4. Epoch 递增，后续过期的 OutputMessage 被丢弃
+2. Session 先消化已入队的 `RoundEvent`，再判活——该轮可能已开始表达、但 `TurnComplete` 还没被处理
+3. 存在 Running Round 则调用 `stop_round(RoundStopReason::BargeIn)`
+4. Epoch 递增，后续过期的 OutputMessage 被丢弃；节奏门控保证任意时刻最多一帧音频在途
 5. 新 Shadow Round 升级为 Running Round
 
 ## 日志与可观测性

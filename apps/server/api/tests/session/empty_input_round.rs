@@ -1045,8 +1045,8 @@ async fn test_barge_in_drops_leftover_audio_immediately() -> anyhow::Result<()> 
             FrameResult::AudioResult(_) => {
                 leftover_audio += 1;
                 assert!(
-                    leftover_audio < BARGE_BATCH_PACKETS,
-                    "barge-in 后残留音频未被丢弃，已收到 {leftover_audio}（batch={BARGE_BATCH_PACKETS}）"
+                    leftover_audio <= 1,
+                    "only one audio frame may be in flight after barge-in, got {leftover_audio}"
                 );
             }
             FrameResult::TTSResult(ref m) if m.state == Some(TtsState::Stop) => break,

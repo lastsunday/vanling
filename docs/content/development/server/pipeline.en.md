@@ -3,7 +3,7 @@ title = "Unified Pipeline"
 weight = 202
 
 [extra]
-source_file_hash = "bc3bd2d4b4a91d5a939f5888a248503a2e6ab80a"
+source_file_hash = "1a0855fe663dae3d28ea1e2265348b1da7483cce"
 translated_at = "2026-10-25T00:00:00Z"
 +++
 
@@ -348,6 +348,14 @@ pub struct Round {
   - `TurnComplete{text, prob}` → `on_turn_complete`: `shadow→running` upgrade, phase Speaking, ListenStop,
     then immediately spawns the **next shadow round** (`new_shadow_round`) to keep listening during / between utterances
   - `SpokenEnd` → expression finished (shadow phase / idle accounting)
+- **Drain queued `RoundEvent`s before handling an input frame**: lifecycle events travel on the broadcast,
+  that round's output frames on the output channel, and the two queues are independent. Without draining
+  first, a barge-in can be handled before `TurnComplete`, see a shadow that has not been promoted yet
+  (`running_round == None`), give up on interrupting, and let the whole queued TTS batch play.
+- **Pacing gates dequeueing, not sending**: `frame_duration_ms` only decides "when may the next frame be taken
+  from the output queue", so at most one frame is in flight at any instant. Taking first and waiting afterwards
+  prefetches the whole TTS batch into the forwarding loop, making every frame compete with input frames in
+  `select!` and delaying barge-in by N frames.
 - Session holds no `drain_hearing` / `handle_hearing_event` / `active_hearing`: the response logic lives in the
   Round observer.
 - `with_node_templates(Vec<Arc<dyn Node>>)` injects the **bare prototype set** (api sites assemble it
