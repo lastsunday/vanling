@@ -106,7 +106,7 @@ impl Screen {
             let rgb565 = rgb565(colors(row as u16));
             let hi = (rgb565 >> 8) as u8;
             let lo = rgb565 as u8;
-            for pixel in px.chunks_exact_mut(2) {
+            for pixel in px.as_chunks_mut::<2>().0 {
                 pixel[0] = hi;
                 pixel[1] = lo;
             }

@@ -97,8 +97,8 @@ pub trait SampleSource {
 /// a partial frame on the wire is a click.
 pub fn interleave_mono(frames: &[i16], out: &mut [u8]) -> usize {
     let mut written = 0;
-    for (&frame, slots) in frames.iter().zip(out.chunks_exact_mut(BYTES_PER_FRAME)) {
-        for slot in slots.chunks_exact_mut(2) {
+    for (&frame, slots) in frames.iter().zip(out.as_chunks_mut::<BYTES_PER_FRAME>().0) {
+        for slot in slots.as_chunks_mut::<2>().0 {
             slot.copy_from_slice(&frame.to_le_bytes());
         }
         written += BYTES_PER_FRAME;
@@ -1711,7 +1711,7 @@ mod tests {
         assert_eq!(written, bytes.len());
         for (index, &frame) in frames.iter().enumerate() {
             let frame_bytes = &bytes[index * BYTES_PER_FRAME..][..BYTES_PER_FRAME];
-            for slot in frame_bytes.chunks_exact(2) {
+            for slot in frame_bytes.as_chunks::<2>().0 {
                 assert_eq!(
                     i16::from_le_bytes([slot[0], slot[1]]),
                     frame,

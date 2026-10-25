@@ -820,7 +820,7 @@ impl<C, const R: usize> Es7210Rx<C, R> {
                 // Every slot is measured, and slot 1 is fed nothing: the point
                 // of this pass is to learn whether the reference channel carries
                 // a signal at all, before anything is built on it.
-                for frame in descriptor[..len].chunks_exact(CAPTURE_FRAME_BYTES) {
+                for frame in descriptor[..len].as_chunks::<CAPTURE_FRAME_BYTES>().0 {
                     // **A copy and a second channel look identical in a peak.**
                     // Both slots peaked within a count of each other in every
                     // frame width tried, which is equally what duplicated
@@ -839,12 +839,11 @@ impl<C, const R: usize> Es7210Rx<C, R> {
                             *peak = (*peak).max(raw.unsigned_abs());
                         }
                     }
-                    if frame.len() > SLOT_REFERENCE * BYTES_PER_SAMPLE as usize {
+                    // Sliced rather than indexed because `frame` is a fixed-size array
+                    // now, and with one slot configured there is no reference to read.
+                    if let Some(reference) = frame.get(SLOT_REFERENCE * 2..SLOT_REFERENCE * 2 + 2) {
                         let a = i16::from_le_bytes([frame[SLOT_MIC * 2], frame[SLOT_MIC * 2 + 1]]);
-                        let b = i16::from_le_bytes([
-                            frame[SLOT_REFERENCE * 2],
-                            frame[SLOT_REFERENCE * 2 + 1],
-                        ]);
+                        let b = i16::from_le_bytes([reference[0], reference[1]]);
                         *slot_gap = (*slot_gap).max((a as i32 - b as i32).unsigned_abs() as u16);
                     }
                 }
@@ -852,7 +851,7 @@ impl<C, const R: usize> Es7210Rx<C, R> {
                 // wants the microphone paired against the reference is not a
                 // different path, it is this one with the cancellation switched
                 // off.
-                for frame in descriptor[..len].chunks_exact(CAPTURE_FRAME_BYTES) {
+                for frame in descriptor[..len].as_chunks::<CAPTURE_FRAME_BYTES>().0 {
                     let sample = i16::from_le_bytes([frame[0], frame[1]]);
                     if let Some(kept) = decimator.push(sample) {
                         scratch_mic[*frames_this_pass] = kept;

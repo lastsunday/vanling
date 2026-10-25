@@ -113,8 +113,7 @@ tokenizers = "0.23.2"
 fancy-regex = "0.20.0"
 intel-mkl-src = "0.8.1"
 accelerate-src = "0.3.2"
-# 0.45 needs rustc 1.97.1; the toolchain here is 1.95.0.
-rig-core = { version = "=0.44.0", features = ["reqwest"] }
+rig-core = { version = "=0.45.0", features = ["reqwest"] }
 bindgen_cuda = "=0.1.5"
 # llm end
 # vad start

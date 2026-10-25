@@ -91,7 +91,7 @@ mod tests {
     fn painted() -> alloc::vec::Vec<u8> {
         let mut frame = alloc::vec![0u8; WIDTH * HEIGHT * 2];
         let ground = rgb565(GROUND).to_be_bytes();
-        for pixel in frame.chunks_exact_mut(2) {
+        for pixel in frame.as_chunks_mut::<2>().0 {
             pixel.copy_from_slice(&ground);
         }
         frame

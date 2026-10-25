@@ -576,7 +576,7 @@ impl SampleStream {
         }
         let mut samples = [0_i16; DECODE_BATCH];
         let mut filled = 0;
-        for pair in rest.chunks_exact(2) {
+        for pair in rest.as_chunks::<2>().0 {
             let sample = i16::from_le_bytes([pair[0], pair[1]]);
             samples[filled] = sample;
             filled += 1;

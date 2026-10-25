@@ -151,7 +151,7 @@ struct HostAudio {
 impl AudioSource for HostAudio {
     fn sample(&mut self, now_ms: u64) -> AudioSample {
         let mut bytes = [0u8; HOST_POLL_SAMPLES * 2];
-        for (i, pair) in bytes.chunks_exact_mut(2).enumerate() {
+        for (i, pair) in bytes.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             let sample = if (self.phase + i) % (2 * HOST_TONE_HALF_PERIOD) < HOST_TONE_HALF_PERIOD {
                 HOST_LOUD
             } else {

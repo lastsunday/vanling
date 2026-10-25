@@ -94,7 +94,7 @@ mod tests {
     /// need it, and a face cut to seven rows would lose the tail silently.
     #[test]
     fn the_descenders_reach_the_bottom_row() {
-        for code in [b'g', b'p', b'q', b'y', b'j'] {
+        for &code in b"gpqyj" {
             assert!(
                 glyph(code).iter().any(|column| column & 0x80 != 0),
                 "{} has no descender row",
