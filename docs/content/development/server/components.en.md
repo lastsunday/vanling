@@ -1,24 +1,23 @@
 +++
 title = "Components and Module Layout"
-weight = 206
+weight = 201
 
 [extra]
-translated_at = "2026-08-31T00:00:00Z"
-source_file_hash = "08f55bb7504325e0e1d3395cf1f41fc85b5f5277"
+source_file_hash = "f293dfd9bb6a1d1d1d13be0e2535b1b7dc509b89"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Components and Module Layout
 
-> **This document describes the target architecture**: the core skeleton hierarchy, the dual-layer
-> `component/` organization, the `ling` special-node semantics, and the phase-2 sub-pipeline plan.
-> Use this as ground truth when opening a new session to continue.
+> The server's layers and module ownership: the core skeleton, the dual-layer `component/`, and `ling` as a special node.
+> Why the layers look like this: [pipeline evolution record](@/records/server/pipeline-evolution.en.md).
 
-## Target Core Skeleton
+## Core Skeleton
 
 The data-flow / containment hierarchy, top to bottom:
 
 ```
-socket / other → filter → session → round → pipeline → ling → sub-pipeline
+socket / other → filter → session → round → pipeline → ling
 ```
 
 - **socket**: transport entry (WebSocket / Matrix). `api/src/ws/`, `api/src/matrix/`
@@ -31,20 +30,16 @@ socket / other → filter → session → round → pipeline → ling → sub-pi
   `PipelineEvent` framework. `service/src/pipeline/`
 - **ling**: the decision core (special node); receives recognized results → decides → produces
   expression intents. `service/src/ling/`; implementation in `api/src/component/ling/`
-- **sub-pipeline**: ling's internal decision sub-pipeline (**phase 2**, not yet implemented).
-  See "sub-pipeline (phase 2)" below.
 
-## service/src Fully Flat
-
-The service crate **drops the `ling/` umbrella namespace** and flattens to top-level modules:
+## service/src top-level modules
 
 ```
 service/src/
-  lib.rs        # pub mod component; pub mod ling; pub mod message; pub mod pipeline; pub mod session;
+  lib.rs        # pub mod component; pub mod frame; pub mod ling; pub mod message; pub mod pipeline; pub mod session; pub mod types;
   component/    # engine contracts: vad.rs  asr.rs  tts.rs  llm/{mod,token_converter}.rs  mcp/{mod,registry}.rs
   ling/         # Ling decision engine (special node): Ling trait (ask → OutputBlock stream)
-  pipeline/     # Node framework: mod.rs (the former pipeline.rs) + nodes/
-  session/      # session / round / history; TurnEvent merged into round.rs
+  pipeline/     # Node framework: mod.rs + nodes/
+  session/      # session / round / history; TurnEvent lives in round.rs
   message/      # transport protocol: hello/audio/close/llm/mcp/stt/tts + Message/Type/Transport/AudioFormat
   frame.rs      # Frame / FrameResult / OutputMessage (transport presentation layer)
   types.rs      # shared types: EmptyKind / Sentence / Input / OutputBlock / ContentBlock
@@ -52,15 +47,15 @@ service/src/
 
 Key points:
 
-- **`component/`** = engine contracts (trait + types). **Runs standalone**: attached to the outer
-  pipeline and to ling's sub-pipeline (phase 2).
+- **`component/`** = engine contracts (trait + types), not bound to a specific model; referenced by
+  pipeline nodes and ling.
 - **`ling/`** = only the `Ling` trait (decision engine). As it must judge/handle everything, it is a
   **special node** and must explicitly define every possible node (see "Ling special node" below).
-- **`types.rs`** = the shared types split out of the former `ling/core.rs` (`EmptyKind`/`Sentence`/
-  `Input`/`OutputBlock`/`ContentBlock`), referenced cross-layer by pipeline, session, component, and api.
+- **`types.rs`** = cross-layer shared types (`EmptyKind`/`Sentence`/`Input`/`OutputBlock`/
+  `ContentBlock`), referenced by pipeline, session, component, and api.
 - **`message/` + `frame.rs`** = the transport protocol/presentation layer, mapping to the outermost
   "socket" of the skeleton.
-- `TurnEvent` has been merged into `session/round.rs` (a turn event belongs to the Round lifecycle).
+- `TurnEvent` lives in `session/round.rs` (a turn event belongs to the Round lifecycle).
 
 ## Dual-Layer component
 
@@ -87,35 +82,8 @@ chain, but unlike ordinary pure-transform nodes:
   explicitly define every node that can appear inside it.
 - The implementation side is `LingCore` in `api/src/component/ling/` (LLM + MCP + history + splitter
   orchestration), producing per-sentence expression intents.
-- When data is missing it can declare `NeedsInfo` (Stage E data loop), orchestrated by Session to loop
-  back and decide again.
-
-## sub-pipeline (phase 2)
-
-**This phase only reorganizes containers**; the sub-pipeline is **not implemented** (node-ized in phase 2).
-
-Current state: ~200 lines of imperative `while has_next_step` loop inside `LingCore` (LLM stream + MCP
-tool + history + splitter). Phase 2 pulls this out into ling's internal **decision sub-pipeline**,
-node-ized for parallelism/orchestration:
-
-```
-web_node / agent_node / data_node / re_decision_node ...
-```
-
-Then each data/tool node likewise reuses the `service/src/component/` contracts to form a pluggable
-sub-pipeline.
-
-## Convention fixes
-
-- **`pipeline.rs` → `pipeline/mod.rs`**: unify the `X/mod.rs` convention.
-- **`StreamingOpusEncoder` split into its own file**: moved out of `api/src/component/tts/mod.rs` into
-  `api/src/component/tts/opus_encoder.rs`.
-- **`NodeCapability` as a type alias** (Solution A): `pub type NodeCapability = dyn Any + Send + Sync;`,
-  `capabilities() -> Vec<Box<NodeCapability>>`, consumers use `c.downcast_ref::<T>()` directly. The
-  custom-trait + `as_any()` approach is dropped (the blanket impl loses `TypeId` through `dyn` dynamic
-  dispatch, making `downcast_ref` return `None`).
 
 ## Related Docs
 
-- [Core Architecture](@/development/server/architecture.md): Session/Round/pipeline semantics
-- [Pipeline Redesign](@/development/server/pipeline-redesign.md): single-chain + observer protocol, capability look up, node lifecycle
+- [Core Architecture](@/development/server/architecture.en.md): Session/Round/pipeline semantics
+- [Unified Pipeline](@/development/server/pipeline.en.md): single-chain + observer protocol, capability look up, node lifecycle

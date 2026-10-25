@@ -1,9 +1,9 @@
 +++
 title = "Layering and Composition"
-weight = 20
+weight = 10
 [extra]
-source_file_hash = "f6a9e0d94c66ec9140e06f684eddf4d0830db4f5"
-translated_at = "2026-10-25T03:41:27Z"
+source_file_hash = "12e11173e9da1b4005732c1d6e1abcdc4123f97c"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Layering and Composition

@@ -2,13 +2,11 @@
 title = "Core Architecture"
 weight = 200
 [extra]
-source_file_hash = "c0b2cc141cc2f781c22d1312c3e0534308c7ddf2"
+source_file_hash = "7838974fc9e1565ef13144535fe586737f515c31"
 translated_at = "2026-09-09T00:00:00Z"
 +++
 
 # Core Architecture
-
-> **Note**: This is an overview-layer document reflecting the author's mental model of the system. See the [documentation style guide](@/discussions/documentation-style.en.md) for context.
 
 ## Session Overview
 
@@ -66,7 +64,7 @@ Listening for input.
 - `Frame::Voice { data }` → forwarded as `PipelineEvent::AudioFrame` to the chain head of the Shadow Round (VAD detects speech boundaries inside the chain)
 - `Frame::Input { text, mode }` → text input (`mode=Wake` marks wake context), feeds `TurnText`; Shadow Round upgrades to Running, transitions to **Speaking**
 - `Frame::ListenStart` → if a Running Round exists, BargeIn interrupts it; updates listen parameters (barge-in / voice-break detection)
-- `Frame::ListenStop` → feeds `FinishTurn` to the chain; empty input (no valid speech) is classified by the Session into an `EmptyKind` and graded: manual no-voice injects `Prompt{Manual, count}` to trigger a "didn't catch that" guide; auto spoke-but-empty is `AutoSpoke`, total silence is `Silence`, and continued listening after a reply is `Continuing` (silent, no prompt) — see the "Silence / No-Input Discrimination" subsection in `pipeline-redesign.en.md`
+- `Frame::ListenStop` → feeds `FinishTurn` to the chain; empty input (no valid speech) is classified by the Session into an `EmptyKind` and graded — criteria and prompt levels live in [Dialogue Flow](@/development/server/dialogue-flow.en.md)
 
 ### Speaking
 
@@ -98,20 +96,7 @@ This design allows seamless BargeIn handling — new requests start preparing im
 
 ### Round Internal Flow
 
-A Round owns a single node chain and, as the inner observer, subscribes to the broadcast to consume it uniformly:
-
-```
-Session │
-        ↓ (RoundEvent: SpeechStarted / TurnComplete / EmptyTurn / SpokenEnd)
-Round owns a NodeChain (opus→vad→asr→turn→ling→tts)
-  ├── VAD/ASR produce TurnText → TurnNode closes the turn as TurnComplete → sends STT + notifies Session to upgrade
-  ├── Ling text → TTS produces AudioOut (per-sentence forwarding: SentenceStart / Audio / SentenceEnd)
-  └── Inner broadcast handles uniformly: TTS state machine / barge-in (with lockout) / timeout / tail Err
-        ↓ (OutputMessage)
-     Client
-```
-
-A Round outputs via `OutputMessage`; the Session only makes lifecycle decisions (shadow→running upgrade / phase / interruption) and no longer polls the chain.
+A Round holds one node chain (`opus→vad→asr→turn→ling→tts`) and, as the **inner observer**, subscribes to the chain's broadcast to consume barge-in (with lockout), per-sentence `AudioOut` forwarding, the TTS state machine and timeouts uniformly. The Session is the **outer observer** and only makes lifecycle decisions (shadow→running upgrade / phase / interruption); it never polls the chain. Event names, the split of duties between the two observer layers, and the in-chain boundaries live in [Unified Pipeline](@/development/server/pipeline.en.md).
 
 ## LingCore
 
@@ -130,81 +115,34 @@ Pipeline:
 1. LLM streaming response → if it returns a ToolCall → mcp tool call → result fed back to LLM
 2. Text is split by `Sentence`, emitted per sentence as `TextChunk { text, emotion }` → TTS node
 
-## Turn-End Detection: Silence Confirm + Transport Stall
+## Turn Termination
 
-Turn-end detection lives in **AsrNode (audio-time silence confirm)** and **Session (wall-clock transport stall)**.
-Both apply only when `streaming=true` (`auto`/`realtime`); **manual push-to-talk (`ListenMode{streaming:false}`) never answers early** — it pre-decodes the stream frame-by-frame while the button is held but emits nothing, and commits the recognition only when the device sends `listen(stop)` (which feeds `FinishTurn`). See [`dialogue-flow.en.md`](@/development/server/dialogue-flow.en.md).
+Turn termination is decided by two gates: **silence confirm** (`AsrNode`, counting consumed audio samples, 200 ms) and **transport stall** (Session, wall clock, 1200 ms without new audio). Both apply only when `streaming=true` (`auto`/`realtime`); push-to-talk (`manual`) honours only the device's `listen(stop)` and no timeout at all. Criteria, threshold provenance and "why this layer uses this clock" live in [VAD and Turn Detection](@/development/server/vad.en.md).
 
-### 1. Audio-Time Silence Confirm (AsrNode)
-
-`AsrNode` (`service/src/pipeline/nodes/asr_node.rs`) measures the silence duration using **consumed audio sample count** instead of `Local::now()` wall clock:
-
-- `spoken: bool` — whether VAD has ever detected speech
-- `silence_samples: u64` — silent audio sample count accumulated after speech ends, zeroed on each speech frame
-- `SILENCE_CONFIRM_MS` (200ms) — `streaming && spoken && !speech_active && silence_samples >= threshold * sample_rate / 1000` → `finish()` the current round immediately
-- `streaming: bool` — toggled by `ListenMode{streaming}` (injected on `listen(start)`). When `false` (manual), the node **still feeds the stream frame-by-frame to pre-decode** (`accept_waveform` + `decode`) but suppresses `PartialTranscript` emission and silence confirm; `FinishTurn` runs the same `finish_stream()`, only draining tail frames for a near-instant result — decoding cost is spread across the hold instead of a cold whole-clip decode after stop
-
-Three finish outcomes: valid input → `TurnText`; stream but empty text → `EmptyInput` (triggers a prompt); no stream → `Nothing`.
-Manual reuses the same three outcomes; with no stream (VAD never detected speech) `finish_stream` returns `Nothing`, letting the Session's empty-input logic (`EmptyKind::Manual`) be the single driver of the prompt — avoiding a double-trigger with the in-chain `EmptyInput`.
-
-### 2. Transport Stall Detection (Session)
-
-When the client stops sending audio, `silence_samples` cannot grow, so a wall-clock fallback is needed: `check_transport_stall()` (`session/mod.rs`) feeds `FinishTurn` to the chain to force a wrap-up when `spoken` is still active and `last_audio_received.elapsed() >= silence_voice_timeout` (1200ms).
-**Manual mode skips this check** (returns early when Listening and `is_voice_break_detect == false`) — the device's `stop` is the sole turn boundary, so the server never "jumps in" on silence timeout.
-
-**Why not wall clock for silence confirm**: In tests and CI, audio can be injected instantaneously (no real-time pacing), decoupling wall clock from audio stream time, which caused premature turn finishing on slow machines under fast injection. Audio-sample counting makes the trigger depend only on decoded content, independent of consumption speed.
-
-**Why wall clock for transport stall**: Audio-time counting can only tally samples that actually arrive. When the client stops sending audio entirely, there are no samples to count, so a wall-clock fallback is necessary to detect the stalled transport.
-
-This matches the OpenAI Realtime (`silence_duration_ms` audio-level + `idle_timeout_ms` wall-clock-level) layered pattern.
+Interruption is the third path; see "Interruption (BargeIn)" below.
 
 ## Input and Output Filters
 
-### InputFilter trait
+Inbound `Frame`s and outbound `OutputMessage`s each pass a filter chain between `ProtocolTranslator` and the `Session`; the chains do cross-cutting work only and contain no business judgement:
 
-```rust
-#[async_trait]
-trait InputFilter: Send + Sync {
-    async fn process(&self, ctx: &FilterCtx, frame: Frame) -> FilterAction<Frame>;
-}
-```
+| Layer | trait | Built-in implementations |
+| --- | --- | --- |
+| Inbound | `InputFilter::process(&FilterCtx, Frame)` | `McpRouterFilter` (intercepts client MCP messages, routes them to `DeviceMcpSession`), `RecorderInputFilter` (records inbound frames) |
+| Outbound | `OutputFilter::process(&FilterCtx, OutputMessage)` | `RecorderOutputFilter` (records outbound frames) |
 
-Returns `FilterAction::Continue(frame)` to continue, `FilterAction::Consumed` to intercept, or `FilterAction::Break` to abort the pipeline.
-
-Built-in filters:
-- **McpRouterFilter**: Intercepts client MCP messages, routes to DeviceMcpSession
-- **RecorderInputFilter**: Records inbound frames
-
-### OutputFilter trait
-
-```rust
-#[async_trait]
-trait OutputFilter: Send + Sync {
-    async fn process(&self, ctx: &FilterCtx, msg: OutputMessage) -> FilterAction<OutputMessage>;
-}
-```
-
-Built-in filters:
-- **RecorderOutputFilter**: Records outbound frames
+`process` returns `FilterAction::Continue` (pass), `Consumed` (swallow) or `Break` (abort the pipeline). Adding a filter never requires touching the Session.
 
 ## SessionBuilder
-
-Sessions are constructed using the Builder pattern, injecting a **raw node prototype collection** (the api site assembles the chain dynamically per config, deciding the chain's stages/order):
 
 ```rust
 SessionBuilder::new()
     .with_id(session_id)
-    .with_node_templates(templates)   // Vec<Arc<dyn Node>>: opus→vad→asr→turn→ling→tts
+    .with_node_templates(templates)   // Vec<Arc<dyn Node>>: raw prototypes, the caller assembles the chain
     .with_config(session_config)
-    .build()  // returns SessionContext
+    .build()  // → SessionContext { session, input_tx, output_rx }
 ```
 
-`build()` looks up the downlink audio capability via `capabilities()` (`downcast_ref::<AudioSpec>()`): without a TTS node, the handshake does not declare `audio_params` (no downlink voice capability, no pacer constructed). Removed old parameters: `with_listener` / `with_ling` / `with_tts` / `with_audio_config`.
-
-`SessionContext` contains:
-- `session`: The Session instance
-- `input_tx`: Channel to send Frames to Session
-- `output_rx`: Channel to receive OutputMessages from Session
+`build()` looks up the downlink audio capability from the templates' `capabilities()`; without a TTS node the handshake does not declare `audio_params`. The capability protocol, template→per-round instance chain building and node lifecycle live in [Unified Pipeline](@/development/server/pipeline.en.md).
 
 ## Startup Sequence
 

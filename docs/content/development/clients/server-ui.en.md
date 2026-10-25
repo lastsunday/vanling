@@ -1,9 +1,9 @@
 +++
 title = "Admin UI"
-weight = 302
+weight = 301
 [extra]
-source_file_hash = "fbb24b9c9afc30fadd6a6cec2422f9aceef73a93"
-translated_at = "2026-09-09T00:00:00Z"
+source_file_hash = "bc7fbda74b05ff979a202f8ea543c82bc23ef7a4"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Admin UI

@@ -3,7 +3,7 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "f5263efc4ce0d7d84fdf3f76857d134ab60af2b2"
+source_file_hash = "a0f00b949e8f297f24ad192fccd555495a28a91c"
 translated_at = "2026-10-22T12:29:02Z"
 +++
 
@@ -295,3 +295,13 @@ Procedure: temporarily change the product code, run that test, restore, then com
 An earlier pass grouped four tests as "suspected duplicates" by name similarity (the three `never_runs_backwards` monotonicity tests, and the two `off_…` full-path ones). Reading each showed they cover different objects — `spl()` calls `dbfs()` internally, so it exercises a second path, and the two `off_…` tests assert different tallies. **Deleting tests by name deletes real coverage.**
 
 The count was never the problem; readability was. 342 tests cannot be read, so the "Testing" sections of `audio.md` and `playback.md` became invariant index tables: one row per invariant, naming the test that holds it, with the verification column above. A new test must land in some row, and the day a row stops turning red it is no longer a test but decoration.
+
+---
+
+## `signal_loopback` was once judged backwards because the measurement premise was wrong
+
+`[measured]` The earlier documentation said `with_signal_loopback(false)` and asserted that `signal_loopback(true)` "restarts the capture DMA over and over and, measured on the device, breaks capture".
+
+That measurement was taken while RX still owned the BCLK/WS pins. `rx_slave_mod=1` then makes RX drive the pins while simultaneously being a slave unit, which is self-contradictory — what broke was the pin-ownership-plus-slave pairing, not loopback. With the pins handed back to TX, `loopback=true` is the only arrangement that feeds both codecs at once (the four-way comparison table is in the [playback development doc](@/development/iot/playback.en.md)).
+
+The conclusion got reversed once, so that cell in the development doc now explains the mechanism rather than recording "measured: it blows up".

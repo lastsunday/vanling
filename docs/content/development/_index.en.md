@@ -3,63 +3,26 @@ title = "Development Documentation"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "92116a6527d84006574c8fcb866cc7b4b0a5e627"
-translated_at = "2026-10-06T13:18:00Z"
+source_file_hash = "8b3543f7c59b7f5c79e42f26ba37e13c24f607cc"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Development Documentation
 
-Development guides for the Vanling server and related projects.
+System documentation organised by "which part you need to touch": it describes **what is true now**. How it became that way, and what was rejected, lives in the [development records](@/records/_index.en.md).
 
-## [Server](@/development/server/architecture.en.md)
+Reading path:
 
-Server architecture design, business data flow, protocol reference, model specifications, and deployment.
+1. [Server](@/development/server/_index.en.md) — core architecture first, then the pipeline and dialogue flow, then protocol and model deployment as needed.
+2. [Clients](@/development/clients/_index.en.md) — shared semantics live in one place; everything else is per platform.
+3. [IoT Firmware](@/development/iot/_index.en.md) — layers first, then feature criteria, then flashing and each path's semantics.
 
-- [Core Architecture](@/development/server/architecture.en.md) — Session state machine, concurrency model, factory pattern
-- [Dialogue Flow](@/development/server/dialogue-flow.en.md) — Handshake, communication, Listen Mode, MCP flow
-- [WebSocket Protocol](@/development/server/websocket-protocol.en.md) — Protocol field reference
-- [Models and Deployment](@/development/server/models-and-deployment.en.md) — Model specifications, CUDA installation, reference specifications
-- [TODO](@/development/server/TODO.en.md) — Completed/in-progress checklist (work entry point)
-- [Positioning and Trade-off Reference](@/development/server/research.en.md) — Feature exploration, technology selection, reference projects
+As needed:
 
-## [Client](@/development/clients/app.en.md)
-
-Client application development documentation.
-
-- [App (Flutter)](@/development/clients/app.en.md)
-- [Admin Panel (React)](@/development/clients/server-ui.en.md)
-- [ESP32](@/development/clients/esp32.en.md)
-
-## [Debugging](@/development/debugging/vad-listener.en.md)
-
-Debugging and diagnostics documentation.
-
-- [VAD and Listener](@/development/debugging/vad-listener.en.md)
-- [Audio Debugging](@/development/debugging/audio-debug.en.md)
-- [ASR Debugging](@/development/debugging/asr-debug.en.md)
-
-## [IoT Firmware](@/development/iot/features.en.md)
-
-Development documentation for the Vanling ESP32 firmware (`apps/iot`).
-
-- [Layering and Composition](@/development/iot/architecture.en.md) — layering, the three composition axes, the two demand axes and their transport, implementation order
-- [Cargo Feature Criteria and Cohesion](@/development/iot/features.en.md) — hard/soft feature definitions, introduction criteria, cohesion rules
-- [Hardware-free Emulation and Regression Smoke](@/development/iot/emulation.en.md) — host harness + esp-emu, decision matrix
-
-How the implementation became what it is, and what was rejected, is in the [development records](@/records/_index.en.md) (AI-produced, not reviewed by a human).
-
-## [Model Download](@/development/downloader.en.md)
-
-Usage instructions for the model download tool.
-
-## Related Projects
-
-Documentation for ecosystem-related projects.
-
-- [xiaozhi-esp32](@/development/related-project/xiaozhi-esp32.en.md)
-- [xiaozhi-esp32-server](@/development/related-project/xiaozhi-esp32-server.en.md)
-- [xiaozhi-esp32-server-java](@/development/related-project/xiaozhi-esp32-server-java.en.md)
-- [xiaozhi-android-client](@/development/related-project/xiaozhi-android-client.en.md)
+- [Debugging](@/development/debugging/_index.en.md) — ASR benchmarks and debugging entry points, TTS audio quality evaluation
+- [Model Downloader](@/development/downloader.en.md) — manifests, downloads, verification
+- [Related Projects](@/development/related-project/_index.en.md) — call chains in upstream implementations worth comparing against
+- [Resources](@/development/resource/_index.en.md) — measured properties of the test samples
 
 ## Multilingual Documentation
 

@@ -2,7 +2,7 @@
 title = "Quick Start"
 weight = 100
 [extra]
-source_file_hash = "bfc4b9739d583df4b7d613e57a790f743d096394"
+source_file_hash = "ca69f5aa9d66cfe5be4a970c797969c20cf82621"
 translated_at = "2026-07-30T00:00:00Z"
 +++
 
@@ -13,11 +13,13 @@ translated_at = "2026-07-30T00:00:00Z"
 #### Server
 
 ```shell
-pnpm i
 moon run server-ui:build
-vanling-server download
-# using cuda: moon run server:run --features cuda
+moon run server:downloader-install
 moon run server:run
+
+# with CUDA, in place of the last line (moon cannot forward --features):
+cd apps/server && cargo run -p vanling-server --features cuda -- \
+  -O 'address=0.0.0.0' -O 'data_dir=../../data' --config=application.toml
 ```
 
 - Homepage <http://127.0.0.1:3000>

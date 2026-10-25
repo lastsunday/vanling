@@ -1,182 +1,127 @@
 +++
 title = "ASR Speech Recognition"
 weight = 402
+sort_by = "weight"
 [extra]
-source_file_hash = "679d5e50c8c56055f2112dce383ea3f4d118023b"
-translated_at = "2026-07-24T00:00:00Z"
+source_file_hash = "6c63ce613850e8bc6f9f2ae6fbb571e2feed06ab"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # ASR Speech Recognition
 
+(This page is the recognizer's debugging and benchmark entry point; its place in the chain and turn detection live in [VAD and Turn Detection](@/development/server/vad.en.md).)
+
 ## Architecture
 
-The ASR module lives at `apps/server/api/src/asr/`, using the **Manager singleton pattern** for model instance management, with **sherpa-onnx**'s `OfflineRecognizer` under the hood.
-
-### Manager Pattern
+The ASR trait lives in `service/src/component/asr.rs`, while the engine implementation and singleton live in `api/src/component/asr/`, backed by **sherpa-onnx**.
 
 ```rust
-AsrManager::init(config).await;                             // Initialize at application startup
-let mut model = AsrManager::global().default().lock().await; // Get Arc<Mutex<Box<dyn Asr>>>
-let result = model.transcribe(sample_rate, &samples).await;
-```
-
-Initialization is at `api/src/lib.rs:121`, consumption points at `ws/session/listener.rs:238` (WebSocket real-time speech) and `matrix/client.rs` (Matrix protocol).
-
-### Asr trait
-
-```rust
-#[async_trait]
 pub trait Asr: Send + Sync {
-    async fn transcribe(
-        &mut self,
-        sample_rate: u32,
-        samples: &[f32],
-    ) -> Result<RecognizerResult, ModelError>;
+    fn create_stream(&self) -> Box<dyn AsrStream>;
+    async fn transcribe(&self, sample_rate: u32, samples: &[f32])
+        -> Result<RecognizerResult, AppError>;
 }
 ```
 
-All models share `RecognizerResult { text: String, prob: f32 }` as output.
+`RecognizerResult { text: String, prob: f32 }` is the shared output of both paths. The streaming path is `AsrStream`: `accept_waveform` / `decode` / `is_endpoint` / `get_partial` / `finish` / `reset`.
 
-## Model Overview
+```rust
+AsrManager::init(config).await;          // initialise at startup
+let model = AsrManager::global().default(); // Arc<dyn Asr>, shareable across turns
+let mut stream = model.create_stream();
+stream.accept_waveform(&samples);
+stream.decode();
+```
 
-| Model | Config Name | Model File | Size | Languages | Architecture |
-|-------|-------------|------------|------|-----------|-------------|
-| **XAsr** | `x_asr` | `model.int8.onnx` | 228MB | zh/en/ja/ko/yue | OfflineXAsr |
-| **Void** | `void` | None (no-op) | 0 | — | — |
+Initialisation happens in the server startup path; there are two consumers: `AsrNode` (the real-time voice chain) and the Matrix client (whole-utterance transcription).
 
-All models come from <https://github.com/k2-fsa/sherpa-onnx>, managed via downloader manifests.
+## Models
+
+| Model | Config | Location | Notes |
+| --- | --- | --- | --- |
+| **XAsr** | `x_asr` | `data/asr/model/x_asr/default/` | zh/en/ja/ko/yue; usable both streaming and whole-utterance |
+| **Void** | `void` | no files | Returns fixed text `"void"` and confidence 1.0 for testing the chain |
+
+Models come from <https://github.com/k2-fsa/sherpa-onnx> and are managed by downloader manifests:
 
 ```shell
-# Download the currently configured ASR model
 moon run server:downloader -- asr
-
-# Download a specific ASR model
 moon run server:downloader -- asr x_asr
 ```
 
-## Performance Benchmarks
+## Benchmarks and diagnostics
 
-Test conditions: debug mode, MatchaTTS generates ~11.84s Chinese-English mixed audio, looped back into ASR for transcription.
+`api/tests/common/asr.rs` turns each test's timing into one diagnostic line:
 
-| Model | CER | WER | RTF | ASR Time | Accuracy | Performance | Total | Verdict |
-|-------|-----|-----|-----|---------|---------|-------------|-------|---------|
-| **XAsr** | **0.00%(A)** | 0.00% | 0.110 | 1.3s | 100% | 89.0% | 96.7% | ✅ Suitable for daily use |
-
-**Conclusion: Only XAsr currently meets usable quality; it is the default model.**
-
-| Observation | Description |
-|-------------|-------------|
-| XAsr accuracy | TTS loopback CER is 0% — perfect recognition of synthetic speech |
-| Performance | RTF < 0.12 (debug mode), faster in release mode |
-
-### TTS-ASR Loopback Test
-
-Synthesize `TEST_TTS_TEXT` via MatchaTTS, then feed into ASR for transcription, computing CER/WER:
-
-| Test Name | ASR Model | Threshold |
-|-----------|-----------|-----------|
-| `test_tts_asr_loopback` | XAsr | CER < 6% (actual 0%) |
-
-**TTS generation time**: ~6.1-6.2s (debug) → equivalent to RTF=0.52 (TTS generation + ASR transcription)
-
-## Testing Framework
-
-### Diagnostic Metrics (`common/asr.rs`)
-
-```
+```text
 CER=XX.X%(X) WER=XX.X% Acc=XX.X% Perf=XX.X% Total=XX.X% | RTF=X.XXX ASR=X.Xs Audio=X.XXs <verdict>
 ```
 
-| Metric | Calculation |
-|--------|-------------|
-| **CER** | Character-level Levenshtein distance / reference text length |
-| **WER** | Word-level Levenshtein distance / reference word count |
-| **RTF** | ASR time / audio duration |
-| **Accuracy** | 1.0 - CER |
-| **Score** | Accuracy × 70 + (1 - min(RTF,1)) × 30 |
+| Metric | Computation |
+| --- | --- |
+| CER | Character-level Levenshtein distance / reference length |
+| WER | Word-level Levenshtein distance / reference word count |
+| RTF | ASR time / audio duration |
+| Accuracy | 1 − CER |
+| Score | Accuracy × 70 + (1 − min(RTF, 1)) × 30 |
 
-### CER Grades
+| Grade | CER | RTF |
+| --- | --- | --- |
+| A | < 3% | < 0.05 |
+| B | 3–6% | 0.05–0.10 |
+| C | 6–10% | 0.10–0.20 |
+| D | 10–20% | 0.20–0.50 |
+| F | ≥ 20% | ≥ 0.50 |
 
-| Grade | Range | Meaning |
-|-------|-------|---------|
-| A | < 3% | Excellent |
-| B | 3–6% | Good |
-| C | 6–10% | Fair |
-| D | 10–20% | Poor |
-| F | ≥ 20% | Unusable |
+> The old page's "TTS loopback CER 0%, RTF 0.110" were measurements from before the refactor and were **not re-measured this round**; the commands below are how to find out what they are now.
 
-### RTF Grades
+## Tests
 
-| Grade | Range | Meaning |
-|-------|-------|---------|
-| A | < 0.05 | Very fast |
-| B | 0.05–0.10 | Fast |
-| C | 0.10–0.20 | Normal |
-| D | 0.20–0.50 | Slow |
-| F | ≥ 0.50 | Unusable |
+`api/tests/asr_test.rs` has five, all calling `AsrManager::create_model` directly:
 
-## All Tests
+| Test | Model | Assertion |
+| --- | --- | --- |
+| `test_asr_model_void` | Void | `text == "void"`, `prob == 1.0` |
+| `test_asr_model_void_stream` | Void | Streaming surface works: no endpoint, no partial, finish returns the same |
+| `test_asr_model_x_asr_transcribe` | XAsr | Whole-utterance transcription non-empty, `prob > 0` |
+| `test_asr_model_x_asr_streaming` | XAsr | Feed every 100 ms; at least one partial and a non-empty finish |
+| `test_asr_transcribe_short_audio` | XAsr | Diagnostic comparison of 1 s truncation, +300 ms silence, and the full file |
 
-| Test File | Test Name | Model | Assertion |
-|-----------|-----------|-------|-----------|
-| `asr_test.rs` | `test_asr` | XAsr | None (diagnostic) |
-| `asr_test.rs` | `test_asr_model_void` | Void | text=="" prob==1.0 |
-| `asr_test.rs` | `test_asr_with_reference_audio` | XAsr | Contains expected substrings (zh/en/yue) |
-| `asr_test.rs` | `test_tts_asr_loopback` | XAsr | CER < 6% |
-
-### Session Integration Tests
-
-| Test Name | ASR Role | Description |
-|-----------|----------|-------------|
-| `test_asr_voice_input_manual` | XAsr + Echo LLM | Send JFK WAV audio, assert STT text exact match |
-| `test_chat_flow_listen_auto` | XAsr (full pipeline) | VAD detects speech end → ASR → LLM → TTS |
-| `test_chat_flow_listen_realtime` | XAsr (full pipeline) | Real-time mode, send audio + Detect text |
-| `test_chat_flow_listen_realtime_silent_voice_connection_timeout` | Void (disconnect test) | Silence timeout disconnect, no real ASR needed |
-| `test_chat_flow_handle_text_message` | XAsr (full pipeline) | Text input → LLM → TTS |
-| `test_chat_flow_handle_text_message_multiple_time` | XAsr (full pipeline) | 19 rounds of text conversation |
-| `test_chat_flow_break` | Void (interruption test) | Interrupt and resume, no real ASR needed |
-
-### Test Commands
+The XAsr tests need `data/asr/model/x_asr/default/` downloaded (`moon run server:downloader -- asr`).
 
 ```shell
-# Void model test (no model file needed, not ignored)
-cargo test --package api --test asr_test -- test_asr_model_void --nocapture
+# Void: no model files needed
+cargo test --package api --test asr_test -- test_asr_model_void
 
-# XAsr basic transcription
-cargo test --package api --test asr_test -- test_asr --ignored --nocapture
+# XAsr: model required
+cargo test --package api --test asr_test -- test_asr_model_x_asr_transcribe --nocapture
+cargo test --package api --test asr_test -- test_asr_model_x_asr_streaming --nocapture
 
-# Reference audio test
-cargo test --package api --test asr_test -- test_asr_with_reference_audio --ignored --nocapture
-
-# TTS-ASR loopback test
-cargo test --package api --test asr_test -- test_tts_asr_loopback --ignored --nocapture
-
-# release mode (faster)
-cargo test --package api --test asr_test --release -- test_asr --ignored --nocapture
-
-# All ASR tests
-cargo test --package api --test asr_test -- --ignored --nocapture
+# release is faster
+cargo test --package api --test asr_test --release -- test_asr_model_x_asr_streaming --nocapture
 ```
 
-## Adding a New ASR Model
+Chain-level regression lives in `api/tests/session/`: `test_chat_flow_listen_manual`, `test_chat_flow_listen_auto`, `test_chat_flow_listen_realtime`, `test_chat_flow_voice_text_voice_round_trips`, `test_chat_flow_resample_48k_multi_round`.
 
-1. **Create manifest**: `apps/server/src/downloader/manifests/asr/<model>.json`
-2. **Implement model module**: `apps/server/api/src/asr/model/<model>/mod.rs`, implement the `Asr` trait
-3. **Register model**: Add `pub mod <model>` in `api/src/asr/model/mod.rs`
-4. **Add enum variant**: Add `<Model>` to the `AsrModel` enum in `api/src/config/mod.rs`
-5. **Register Manager**: Add match arm in `create_model()` in `api/src/asr/mod.rs`
-6. **Add tests**: Add reference audio and loopback tests in `api/tests/asr_test.rs`
+## Adding an ASR model
 
-## Key Files
+1. **Manifest**: `apps/server/src/downloader/manifests/asr/<model>.json`
+2. **Implementation**: `api/src/component/asr/model/<model>/mod.rs`, implementing `Asr` (and `AsrStream` if streaming)
+3. **Register the module**: add `pub mod <model>` in `api/src/component/asr/model/mod.rs`
+4. **Enum**: add a variant to `AsrModel` in `api/src/config/mod.rs`
+5. **Factory**: add a match arm in `create_model()` in `api/src/component/asr/mod.rs`
+6. **Tests**: add whole-utterance and streaming cases in `api/tests/asr_test.rs`, at least asserting non-empty output and a partial
 
-| File | Role |
-|------|------|
-| `apps/server/api/src/asr/mod.rs` | Asr trait, Manager, RecognizerResult |
-| `apps/server/api/src/asr/model/x_asr/mod.rs` | XAsr model implementation |
-| `apps/server/api/src/asr/model/void/mod.rs` | Void no-op model |
-| `apps/server/api/src/config/asr.rs` | AsrConfig struct |
-| `apps/server/api/src/config/mod.rs` | AsrModel enum |
+## Key files
+
+| File | Purpose |
+| --- | --- |
+| `apps/server/service/src/component/asr.rs` | `Asr` / `AsrStream` traits, `RecognizerResult` |
+| `apps/server/api/src/component/asr/mod.rs` | Manager singleton and model factory |
+| `apps/server/api/src/component/asr/model/x_asr/` | XAsr implementation |
+| `apps/server/api/src/component/asr/model/void/` | Void stand-in |
+| `apps/server/api/src/config/asr.rs` | `AsrConfig` |
+| `apps/server/api/src/config/mod.rs` | `AsrModel` enum |
 | `apps/server/src/downloader/manifests/asr/` | Download manifests |
-| `apps/server/api/tests/asr_test.rs` | 3 ASR integration tests |
-| `apps/server/api/tests/common/asr.rs` | AsrDiagnostics system |
-| `apps/server/api/tests/session/asr.rs` | Session integration ASR tests |
+| `apps/server/api/tests/asr_test.rs` | The five tests above |
+| `apps/server/api/tests/common/asr.rs` | Diagnostics and scoring |

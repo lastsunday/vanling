@@ -4,6 +4,8 @@ weight = 70
 sort_by = "weight"
 +++
 
+<!-- doc-audience: ai -->
+
 # 回声消除实现记录
 
 `apps/iot/crates/core/src/drivers/aec/` 的实现判断与被否方案。**AI 产出，未经人类审阅**，见[上级说明](@/records/_index.md)。

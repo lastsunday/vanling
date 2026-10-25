@@ -1,6 +1,6 @@
 +++
 title = "放音语义"
-weight = 270
+weight = 70
 sort_by = "weight"
 +++
 
@@ -158,9 +158,7 @@ Speaker 页没有动画，也因此不在 `is_live_page()` 里：它的相位每
 
 一个 I2S 外设的 TX 与 RX 跑在各自独立的分频器上，共享 BCLK/WS 就要求把 RX 设成从模式去跟随 TX。esp-hal 的 HIL 测试里数据是物理环回的（用 `dout.split()` 把同一个物理引脚劈成 DOUT 和 DIN），这正好说明 `signal_loopback` 不会把播放数据塞进 RX。
 
-曾经记错过，方向相反，这里保留证据。之前这里写的是 `with_signal_loopback(false)`，并断言 `signal_loopback(true)`「实测会反复重启采集 DMA、让采集瘫痪」。
-
-那次测量是在 RX 仍拥有 BCLK/WS 引脚的前提下做的：那时 `rx_slave_mod=1` 会让 RX 一边驱动引脚一边又变成从单元，组合本身自相矛盾，坏掉的是「引脚归属 + 从模式」这一对，不是 loopback。
+「RX 引脚 + `loopback=true`」这一格坏掉的不是 loopback，而是**引脚归属 + 从模式**这一对：让 RX 一边驱动 BCLK/WS 一边又变成从单元，组合本身自相矛盾。
 
 两种排法各自只能满足一个 codec：
 

@@ -1,9 +1,9 @@
 +++
 title = "Dialogue Flow"
-weight = 201
+weight = 204
 [extra]
-source_file_hash = "aeb77229543cb70879ceee334f42737a866dad3b"
-translated_at = "2026-08-31T00:00:00Z"
+source_file_hash = "e70166d91de3aff0d2d285fee6044331fb62a235"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Dialogue Flow
@@ -119,39 +119,37 @@ sequenceDiagram
 
 ### Listen Modes
 
-The listen mode is decided by the **`mode` field on the `listen(start)` frame** (`auto`/`manual`/`realtime`,
-mapped to `barge_in` + `is_voice_break_detect`), not by a global Hello field. All three modes share the same
-node chain (`opus→vad→asr→turn→ling→tts`); `auto`/`realtime` process frame-by-frame with streaming VAD + ASR (emitting live partials), while `manual` keeps pre-decoding via `ListenMode{streaming:false}` but suppresses emission until `listen(stop)`. See [VAD & Listener](@/development/debugging/vad-listener.en.md) for details.
+The listen mode is decided by the **`mode` field on the `listen(start)` frame** (`auto`/`manual`/`realtime`, mapped to `barge_in` + `is_voice_break_detect`), not by a global Hello field. All three modes share the same node chain (`opus→vad→asr→turn→ling→tts`).
 
 #### Auto
 
-The device continuously sends audio → the server automatically detects the end of speech (silence timeout) → triggers ASR + LLM processing. Suitable for hands-free conversation scenarios.
+The device sends audio continuously; the server decides the utterance is over via silence confirmation, then runs ASR + LLM + TTS. The default for hands-free conversation.
 
 #### Manual
 
-The device independently controls the start and end of audio transmission; the server starts receiving on `listen(start)`. **Manual never answers early**: while the button is held the ASR node keeps pouring frames into the stream to pre-decode (`ListenMode{streaming:false}` warm-up), but **suppresses partials and silence confirm** — no output at all; a final recognition (drain `FinishTurn` residual frames → `finish()`, near-instant) happens only when the device sends **`listen(stop)`** — i.e. "the server never jumps in, it waits for the device's `stop`". Pausing mid-hold does not trigger early either. Compared to a cold whole-clip decode after stop, warming spread the decode over the hold so recognition lands almost immediately on release. Suitable for push-to-talk scenarios.
-
-If the button is pressed but no speech is captured (VAD detects no speech, the buffer is treated as silence), the hub classifies it as empty input (`EmptyKind::Manual`) and plays a guiding prompt once after `stop` (`Prompt{Manual, 1}` → LLM/Echo produces a "didn't catch that" utterance) to avoid silent no-response; **every keypress with no speech prompts once** (event-driven, not gated by Rule of three), then returns to listening-wait so the next keypress triggers again; see [Empty-Input Behavior](#empty-input-behavior) below.
+The server **never answers early**: the device controls when audio starts and stops, receiving on `listen(start)` and committing only on `listen(stop)`. While the button is held the ASR node keeps feeding frames to pre-decode but emits no partials and performs no silence confirmation, so a mid-hold pause cannot truncate the utterance and recognition lands almost instantly on release (the decode was spread across the hold). With no speech it prompts once via `EmptyKind::Manual`; see [Empty-Input Behavior](#empty-input-behavior). Mechanics are in [VAD and Turn Detection](@/development/server/vad.en.md).
 
 #### Realtime
 
-Low-latency mode. VAD detection directly triggers audio streaming without waiting for silence timeout before starting LLM inference and TTS streaming output. Suitable for real-time devices like ESP32.
+Low-latency mode: VAD onset immediately starts LLM inference and TTS streaming without waiting for silence confirmation. Suited to real-time devices like the ESP32.
 
 ### Empty-Input Behavior {#empty-input-behavior}
 
-Empty input (no valid speech) is classified and graded by the hub (Session) — `Wake`/`AutoSpoke`/`Silence`
-follow Rule of three (max 3), while `Manual` is event-driven and prompts on every keypress; the generation
-layer only renders wording. Classification is based on mode + previous turn (`EmptyKind`: `Manual` / `Wake` / `AutoSpoke` / `Silence` / `Continuing`).
+Empty input (no valid speech) is classified by the hub (Session) and prompted at graded levels; the generation layer only renders wording — a "hub decides, NLG renders" split: the Session classifies, counts and decides, while `Ling` / Echo only words the `Act`. Classification uses mode + previous turn:
 
-| Scenario | kind | Behavior |
+| kind | Criterion | Behavior |
 | --- | --- | --- |
-| Push-to-talk no voice | `Manual` | plays 1 guiding prompt on each keypress ("didn't catch that, please repeat"), then back to listening-wait |
-| No speech after wake word | `Wake` | guiding prompt ("what can I help you with?"), escalating, back to idle after 3 |
-| Hands-free spoke but unclear | `AutoSpoke` | "didn't catch that, please repeat" → give example → graceful close |
-| Hands-free total silence | `Silence` | gentle guide with no blame, escalating, back to idle after 3 |
-| Continued listening after reply | `Continuing` | silent wait, no repeated prompting, back to idle on timeout |
+| `Manual` | push-to-talk: `ListenStop` with no speech detected (`!is_voice_break_detect` and `!speech_active`) | one prompt per keypress ("didn't catch that, please repeat"), then back to listening |
+| `Wake` | empty input on the first listen after the wake word (`Input{mode:Wake}`) | guiding prompt ("what can I help you with?"), escalating, back to idle after 3 |
+| `AutoSpoke` | hands-free auto: VAD triggered but ASR text empty (`asr_node` emits `EmptyInput`) | "didn't catch that, please repeat" → give an actionable example → graceful close |
+| `Silence` | hands-free auto/realtime total silence: VAD never triggered, no ASR stream (`Nothing`) | gentle guide with no blame, escalating, back to idle after 3 |
+| `Continuing` | empty input while listening again after a reply (realtime `Speaking→Listening`) | silent wait, no repeated prompting, back to idle on timeout |
 
-A real LLM generates naturally from the act (`Prompt{kind, count}`); the Echo model returns a graded fixed sentence by kind/count.
+**Counting (Rule of three)**: the Session keeps `empty_count`, incrementing on every `EmptyTurn` and resetting on real input (`TurnComplete`); it converges after at most 3. `Manual` is the exception: event-driven, it prompts once per voiceless keypress and then resets, not limited to 3.
+
+**Decision**: after observing `(After, EmptyInput)` / `(After, EmptyTurn)` the Session emits one of three actions — `Prompt{kind, count}` re-injected at the chain head (nodes pass the unrecognised event through, `Ling` renders the wording), `Silence` with no expression injected (silent wait / back to idle), or `GiveUp` back to `Idle`. A real LLM composes its prompt from the Act; the Echo model returns a graded fixed sentence by kind/count.
+
+The `Manual` prompt has exactly one source: in manual mode `finish_stream` returns `Nothing` when VAD detected no speech, so `EmptyKind::Manual` drives it and no double-trigger with the in-chain `EmptyInput` is possible. ASR-side outcomes and thresholds are in [VAD and Turn Detection](@/development/server/vad.en.md).
 
 ### MCP Handle
 

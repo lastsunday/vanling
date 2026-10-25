@@ -3,8 +3,8 @@ title = "Development Records"
 weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "cf1533e05b11c9c492e5395f0a8c47f1eb6d422d"
-translated_at = "2026-10-01T07:37:04Z"
+source_file_hash = "6d81e7d0e505db5a352694ba1454b8edc01504e5"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -34,3 +34,4 @@ The [development docs](@/development/_index.en.md) describe what the system **is
 | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
 | [Playback Implementation Record](@/records/iot/playback.en.md)          | The `Cp0Disabled` investigation, rejected approaches, feed cadence ownership, the ISR/cooperative split |
 | [Hardware Constraint Record](@/records/iot/hardware-constraints.en.md) | Microphone front-end write order and calibration, motion detection, where the stack size came from |
+| [Server Records](@/records/server/_index.en.md)                        | Server investigations and evolution: the TTS stutter root cause, the TODO triage and the conclusions dropped |

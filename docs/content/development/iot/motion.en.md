@@ -1,10 +1,10 @@
 +++
 title = "Motion Semantic Framework"
-weight = 250
+weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "f1a2adfcdc2c0d328e849e1d89f5435bc1797c4d"
-translated_at = "2026-10-15T02:29:35Z"
+source_file_hash = "a6c8e9274bc3dba13611d4baed1b9f2282210a96"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Motion Semantic Framework
@@ -357,40 +357,13 @@ The `0x07` OR logic reports still as soon as one axis settles, so a device that 
 
 `AnyMotionX/Y/ZThr = 0x00` is a placeholder value rather than a chosen threshold. A real 0 would make the engine fire on any deviation at all, and that is exactly why it stays disabled and is pinned there by a test.
 
-### The dead-end tap-engine post-mortem
+### Taps do not go through the silicon engine
 
-The attempt to put `Tap` on the silicon engine was carried to the end: the bench asserts it is unreachable. The post-mortem follows, so that nobody later retries along the same old line of thinking.
+The QMI8658A's tap engine is unreachable under this product's polling scheme; the tap criterion runs on core's 20 ms stream (see `Tap` under "Recognizer thresholds" above), the driver keeps only No-Motion and does not declare a `TAP` capability.
 
-ODR being too slow was suspected first. §10.4 recommends a tap-detection ODR > 200 Hz, while the old firmware sat at 224.2 Hz — only a little above the floor, so the impulse of one knock landed on just 2–5 samples.
+`ODR = 896.8 Hz` is not kept for taps; it serves the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic.
 
-The combinations of three window lengths (5/9/18) × two `UDMThr` tiers (`0x0190`/`0x0300`) behaved absolutely identically at 224.2 Hz.
-
-So the ODR was raised from 224.2 Hz to 896.8 Hz (the first 6DOF tier above 500 Hz), and the parameters went back to the manual's example value `UDMThr = 0x0190` with an 80 ms window, lining up with the only working public reference, WaveShare's TapDetectionExample.
-
-The impulse now lands on a wide enough surface, but the behavior does not move at all.
-
-Next, a mirrored reference driver was used to verify the signal against the thresholds: inside the driver it mirrors the engine's per-axis Alpha mean and Gamma energy, and prints `sq` (the squared residual) and `pk` (the energy) to the bench.
-
-A real knock lands at 2.4–4.9 g², runs straight past the 0.8 g² `PeakMagThr`, and the energy then falls back below 0.4 g². The signal, the threshold and the timing all hold.
-
-The real variable is the state machine itself: the power-on transient latches `STATUS1.TAP` in the set state (from about 0.4 s after power-on it is permanently 0x02/0x42), `TAP_STATUS` is frozen at 0xB0 (`TAP_NUM = 0`, with the polarity/axis bits flipping over and over), and a real knock can no longer get into the register.
-
-Meanwhile the driver only publishes a Tap event on a 0→1 rising edge, so a latched bit never falls and the publish path never fires. All three window lengths × both threshold tiers were tried one by one, and the blocker is not any parameter gate.
-
-Conclusion: the chip's tap engine is unreachable under this product's polling scheme.
-
-But the mirror also proved that the same math does hold on core's 20 ms stream. So the tap criterion is moved back into the core recognizer (see [Recognizer thresholds](#Recognizer_thresholds)), and the driver drops the hardware engine and its parameters, keeping only No-Motion.
-
-The ODR stays at 896.8 Hz no longer for the tap, but for the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic.
-
-Checklist:
-
-- Knock once and watch `TAP` count 1 with `2T`/`3T` unmoved, while `TR` on that poll should jump to about 250–4800 mG (the peak-threshold square root of 250 as the floor, thousands to the ~4850 clip for a deliberate knock)
-- Knock twice quickly and `2T` counts 1; knock three times and `3T` counts 1
-- A pick-up-hold-place must not report `TAP`
-- After settling `STL` counts only 1 (no longer incrementing at frame rate)
-- An ordinary lift/place (no need to swing it) counts `LFT` and `PLC` once each
-- At rest `LR` should sit at tens of mG
+The investigation, register readings and the two hypotheses that were overturned are in [Motion implementation record](@/records/iot/motion.en.md).
 
 ## Cadence and I²C budget
 

@@ -1,341 +1,73 @@
 +++
-title = "App Client"
+title = "Flutter App"
 weight = 300
 [extra]
-source_file_hash = "4a38b7e72e07577d721ed55a0fbd49a57c84808b"
-translated_at = "2026-07-30T00:00:00Z"
+source_file_hash = "914b1bc76162e7171829d26c93ed2d49a132ff69"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
-# App Client
+# Flutter App
 
-## Environment Requirements
+The Flutter client (`apps/app`) is currently a **skeleton**: no vanling business features are wired up yet. Cross-client semantics live in [Shared Client Protocol](@/development/clients/shared-protocol.en.md); page structure lives in [Page Implementation](@/development/clients/pages.en.md).
 
-### Prerequisites
+## Current capabilities
 
-| Tool | Description | Installation |
-|------|-------------|-------------|
-| Xcode | iOS/macOS build | Download from App Store, run `sudo xcode-select --switch /Applications/Xcode.app` |
-| Android Studio | Android SDK management | [Official site](https://developer.android.com/studio), install SDK (API 34/35) on first launch |
-| Chrome | Web debugging | If already installed, `flutter run -d chrome` is available |
+| Capability | Status |
+| --- | --- |
+| Theme, adaptive layout (incl. desktop detection), text scaling, i18n | Present |
+| Network layer (Dio) / database (Sqlite) / event bus / unique IDs (nanoid2) | Present |
+| Environment config (dev / prod) | Present |
+| Auth (Spring-authorization-server) | Present |
+| Auto-update | Android only |
+| Logging | Rotating log files (except on Web); export/upload not implemented |
+| Release | Android and Web present; iOS, Windows (portable exe), Linux, macOS absent |
+| User profile / integration tests / CI code-quality and tests | Not implemented |
 
-### Nix Development Environment
+## Requirements
 
-Enter the project root and use `nix develop` — the Flutter toolchain is included:
+| Tool | Notes |
+| --- | --- |
+| Xcode | iOS/macOS builds; afterwards `sudo xcode-select --switch /Applications/Xcode.app` |
+| Android Studio | Manages the Android SDK; install SDK API 34/35 on first launch |
+| Chrome | Web debugging via `flutter run -d chrome` |
 
-```shell
-nix develop
-flutter test
-flutter analyze
-flutter build apk
-flutter doctor
-```
+The toolchain ships with `nix develop`; once inside the shell, `flutter test` / `flutter analyze` / `flutter build apk` all work.
 
-### First Use
+First run: `nix develop` → `flutter doctor --android-licenses` → `flutter pub get` → `flutter doctor` to confirm.
 
-1. Install prerequisites (Xcode, Android Studio, Chrome)
-2. Enter Nix shell: `nix develop`
-3. Accept Android licenses: `flutter doctor --android-licenses`
-4. Install project dependencies: `flutter pub get`
-5. Run `flutter doctor` to verify the environment is ready
+## Releasing on Android
 
-> [!WARNING]
-> The App does not yet implement vanling business functionality; it is currently a basic framework.
-
-## Framework
-
-- [x] Theme framework
-- [x] Responsive layout
-  - [x] Desktop detection
-- [x] Text scaling
-- [x] Internationalization
-- [x] Network layer
-  - [x] Dio
-- [x] Database
-  - [x] Sqlite
-- [x] Utilities
-  - [x] Unique ID
-    - [x] nanoid2
-- [x] Event bus
-- [x] Auto-update
-  - [x] Android
-- [ ] Logging
-  - [x] Rotating log files (excluding Web)
-  - [ ] Export/upload log files
-- [ ] Distribution
-  - [x] Android
-  - [ ] iOS
-  - [ ] Windows
-    - [x] exe (portable)
-  - [ ] Linux
-  - [ ] macOS
-  - [x] Web
-- [x] Environment configuration
-  - [x] Development
-  - [x] Production
-
-## Advanced
-
-- [x] Authentication
-  - [x] Spring-authorization-server
-- [ ] User info
-
-## Development Workflow
-
-- [x] Changelog
-- [ ] CI
-  - [x] Build
-  - [ ] Code quality
-  - [ ] Tests
-- [ ] Testing
-  - [x] Unit tests (example)
-  - [x] Widget tests (example)
-  - [ ] Integration tests
-
-## Coding
-
-### Database Versioning
-
-> lib\modules\app\app_store.dart
-
-```dart
-//DB init
-DbManager.instance().init([ChangeLogV1()]);
-Database db = await DbManager.instance().open();
-```
-
-### Database Record To View Model
-
-> Example
-
-```dart
-class MemoMapper{
-    static Future<List<MemoEntity>> selectAll() async {
-        List<Map<String, dynamic>> findResult =
-            await DbManager.instance().find(MemoEntity.tableName);
-        return Future.value(findResult.map((e) => MemoEntity.fromJson(e)).toList());
-  }
-}
-
-class AppStore{
-    Future<List<MemoModel>> getMemoList() async {
-        List<MemoEntity> memoEntityList = await MemoMapper.selectAll();
-        return Future(() =>
-            memoEntityList.map((e) => MemoModel.fromJson(e.toJson())).toList());
-      }
-}
-
-class _MemoPageState{
-
-    void initState() {
-        super.initState();
-        Provider.of<AppStore>(context, listen: false).getMemoList().then((value) {
-          setState(() {
-            memoModelList = value;
-          });
-        });
-      }
-}
-```
-
-### Pagging(Pull refresh and load more)
-
-> Example
-
-```dart
-class _MemoPageState extends State<MemoPage> {
-  List<MemoModel> _memoModelList = [];
-  late EasyRefreshController _controller;
-  late int _pageNum;
-  late int _pageSize;
-  late int _total;
-
-  @override
-  void initState() {
-    super.initState();
-    resetPageInfo();
-    _controller = EasyRefreshController(
-      controlFinishRefresh: true,
-      controlFinishLoad: true,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void resetPageInfo() {
-    setState(() {
-      _pageNum = 1;
-      _pageSize = 10;
-      _total = 0;
-      _memoModelList = [];
-    });
-  }
-
-  Future<PageResult> _loadData() async {
-    var result = await Provider.of<AppStore>(context, listen: false).pageMemo(
-        PageParam(
-            pageNum: _pageNum, pageSize: _pageSize, orderBy: " datetime desc"));
-    if (!mounted) {
-      return Future.value(result);
-    }
-    _memoModelList.addAll(result.rows);
-    _total = result.total;
-    LogHelper.debug(
-        "[Memo] loadData pageNum = $_pageNum,pageSize = $_pageSize,total = $_total");
-    return Future.value(result);
-  }
-
-  void _refreshList() async {
-    resetPageInfo();
-    await _loadData();
-    setState(() {});
-    _controller.finishRefresh();
-    _controller.resetFooter();
-  }
-
-  void _loadList() async {
-    _pageNum++;
-    PageResult result = await _loadData();
-    setState(() {});
-    if (result.hasNext) {
-      _controller.finishLoad(IndicatorResult.success);
-    } else {
-      _controller.finishLoad(IndicatorResult.noMore);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-        body: EasyRefresh(
-            refreshOnStart: true,
-            controller: _controller,
-            header: RefreshHeader(context),
-            footer: RefreshFooter(context),
-            onRefresh: _refreshList,
-            onLoad: _loadList,
-            child: CustomScrollView(slivers: [
-              SliverGrid(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  return _createMemoItem(_memoModelList[index]);
-                }, childCount: _memoModelList.length),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 210),
-              )
-            ])),
-        floatingActionButton: _getFloatingActionButton());
-  }
-}
-```
-
-### HttpRequest
-
-```dart
-Response result = await HttpClient.instance().get("/");
-LogHelper.info(result.body().toString());
-```
-
-## JSON Model Generation
-
-```shell
-dart run build_runner build
-```
-
-## Distribution
-
-### Android
-
-> [Build and release an Android app | Flutter](https://docs.flutter.dev/deployment/android)
-
-1. Create keystore
+1. Create a keystore
 
    ```shell
    keytool -genkey -v -keystore .\android-app-keystore.jks -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias android-app
    ```
 
-2. Create `[project]/android/key.properties` referencing the keystore
+2. Create `[project]/android/key.properties` pointing at it
 
    ```properties
-   storePassword=<password from previous step>
-   keyPassword=<password from previous step>
+   storePassword=<password from step 1>
+   keyPassword=<password from step 1>
    keyAlias=android-app
-   storeFile=<keystore file path>
+   storeFile=<keystore path>
    ```
 
-3. Run the release command (production as example)
+3. Build (production flavour)
 
    ```shell
    flutter build apk --dart-define=DART_DEFINE_APP_ENV=prod
    ```
 
-## Commit Convention
+## Coding conventions
 
-> <https://www.conventionalcommits.org/en/v1.0.0/>
+- Run `dart run build_runner build` after changing JSON models.
+- Sqlite3 on Web needs its binary first: `dart run sqflite_common_ffi_web:setup` writes `sqlite3.wasm` and `sqflite_sw.js` into `web/`; re-run with `--force` after upgrading sqlite3.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
 
-## Web Sqlite3
+## Coordinate systems
 
-> sqflite_common_ffi_web
+The server stores coordinates as WGS84; the client renders with AMap (GCJ-02) and converts via `coordtransform_dart`. Any cross-boundary coordinate read or write must convert here — do not assume the other side's datum.
 
-### Install Binary Files
+## Known issues
 
-Place [sqlite3.wasm](https://github.com/simolus3/sqlite3.dart/releases) and related worker files in the web directory:
-
-```bash
-dart run sqflite_common_ffi_web:setup
-```
-
-This will create in the web directory:
-
-- `sqlite3.wasm`
-- `sqflite_sw.js`
-
-After updating the sqlite3 version, reinstall with `--force`:
-
-```bash
-dart run sqflite_common_ffi_web:setup --force
-```
-
-## Offline Maps
-
-1. Generate XYZ tiles with QGIS: Toolbox → Generate XYZ Tiles (Directory)
-2. Generate `pubspec.yaml` asset paths
-
-```bash
-ls -R assets | grep ':'
-```
-
-## Coordinate System
-
-1. Server stores coordinates in WGS84 format
-2. Client uses Amap (GCJ-02 coordinate system)
-3. Use [coordtransform_dart](https://pub-web.flutter-io.cn/packages/coordtransform_dart) for coordinate conversion
-
-## FAQ
-
-Q1. setState() or markNeedsBuild() called during build
-
-> <https://fluttercorner.com/setstate-or-markneedsbuild-called-during-build-a-vertical-renderflex-overflowed/>
-
-Solution: Use a callback to delay setState
-
-```dart
-WidgetsBinding.instance.addPostFrameCallback((_){
-  // your code
-});
-```
-
-## Miscellaneous
-
-1. pod install is slow
-
-```shell
-cd ./ios/
-# Uncomment below if using a proxy
-# export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 all_proxy=socks5://127.0.0.1:7890
-pod install --verbose
-```
-
-## Related Projects
+If `pod install` is slow, `cd ios/` and run `pod install --verbose`; export `https_proxy` / `http_proxy` / `all_proxy` if a proxy is needed.

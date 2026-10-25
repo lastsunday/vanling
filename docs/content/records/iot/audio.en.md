@@ -3,7 +3,7 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "40a393d107c1e9e5f8b90df50562bec31261892f"
+source_file_hash = "c17eb2ded6aabda7de2ca2c6b8b08d10f2541b56"
 translated_at = "2026-10-18T00:00:00Z"
 +++
 
@@ -189,3 +189,13 @@ Core measures dBFS, and the offset belongs to the board (`SPL_OFFSET_DECIBELS` i
 Only the conclusions and the code locations are kept here. The measurement tables, why the price is reported on two sides, why `Sensitivity` moves no cadence on this board, why the bound is a single hold rather than a percentage, and every reproduction build and command are in the [architecture document](@/development/iot/architecture.en.md).
 
 Three code-side hard constraints are explained there as well: why `Cost::basis` is a field rather than a comment, why the panel row is a residual that cannot be added, and why the capture plane answers `false` for `InputSource::accepts_slower_poll()` (only `sample()` drains the ring, so throttling does not make a reading staler — it stops the I2S clock).
+
+---
+
+## The two HPF registers cannot be swapped by stage order
+
+`[measured]` Exchanging the values of `0x22` (`REG_ADC12_FILTER_SET`, holding `0x2A`) and `0x23` (`REG_ADC12_FILTER_CLEAR`, holding `0x0A`) raised `PK` in a quiet room from about `-40` to about `-30` — a floor about 10 dB higher, the opposite of what a fix for residual offset would do.
+
+The premise at the time was that the two registers addressed the first and second filter stages, though nothing public determines which stage comes first. The two values differ only in bit 5, and bit 5 carries no cutoff-frequency meaning, so the swap did not exchange stage order at all — it selected a different mode, and the bench says that mode is worse.
+
+The driver is back on the byte order `esp-bsp` emits (the one with bit 5 cleared first, then the set one), and the registers are named after the bits they carry rather than after a stage.

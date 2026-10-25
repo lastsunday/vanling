@@ -94,7 +94,7 @@ IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
 
 > 深度知识与操作流程见 `docs/content/development/`；卡住时先读对应域，再 `rg` 搜索 + 参照同类测试。
 
-- **server**: `server/architecture.md` — 架构与数据流 / AI Manager / 新增模块路径；`server/TODO.md` — 已完成/未完成清单（开工入口）；`server/research.md` — 定位与取舍参考
-- **iot**: `iot/cheatsheet.md` — 常用命令速查 / 端口与复位 / 症状首查；`iot/architecture.md` — 分层与组合 / 新增板 / 新增芯片；`iot/features.md` — 软 feature 判据与内聚；`iot/flashing.md` — 台架有哪些板 / 烧录 / 抓串口
+- **server**: `server/architecture.md` — 架构与数据流 / AI Manager / 新增模块路径；`roadmap/_index.md` — 唯一的优先级与待办清单（开工入口）；`discussions/positioning.md` — 定位与取舍参考
+- **iot**: `roadmap/cheatsheet.md` — 常用命令速查 / 端口与复位 / 症状首查；`iot/architecture.md` — 分层与组合 / 新增板 / 新增芯片；`iot/features.md` — 软 feature 判据与内聚；`iot/flashing.md` — 台架有哪些板 / 烧录 / 抓串口
 - **clients**: `clients/server-ui.md` — 新增页面路径
 - **多语文档**: 维护规则见 `development/_index.md`

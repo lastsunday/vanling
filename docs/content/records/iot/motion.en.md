@@ -3,7 +3,7 @@ title = "Motion Implementation Record"
 weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "67d8ef61ebbb4b509d80cf9ed5bec9d2a302e0d4"
+source_file_hash = "8cda2a0a5a0e6bac0e56b332c69f9f74b92bde63"
 translated_at = "2026-10-06T05:35:23Z"
 +++
 
@@ -19,9 +19,26 @@ Each judgement is labelled by its evidence: **`[test]`** a unit test covers it, 
 
 ## The QMI8658A tap engine is unusable, so knock detection moved to core
 
-`[reported]` The part's tap engine latched a stuck tap bit and a frozen `TAP_NUM` **at its enable transient** and never resolved a real blow. Not reproduced this time.
+`[measured]` The part's tap engine latches a tap bit that never releases **at its enable transient**, and freezes `TAP_NUM`: from about 0.4 s after power-on `STATUS1.TAP` is permanently `0x02`/`0x42`, `TAP_STATUS` is frozen at `0xB0` (`TAP_NUM = 0`, polarity/axis bits flipping over and over), and a real knock can no longer get into the register. The driver publishes a Tap event only on a 0→1 rising edge, so a latched bit never falls and the publish path never fires.
 
-Hence `CTRL8` arms only No-Motion and the knock contract is carried by `core/src/drivers/motion/recognizer.rs`; `QMI8658_CAPABILITIES` therefore does not claim `TAP` either. Attributing a core-side computation to hardware is the one way to break what the capability set is for — letting a panel tell "this semantic cannot be reported" apart from "its threshold never fired".
+Investigation order and the hypotheses that were overturned:
+
+1. **Is the ODR too slow?** §10.4 recommends a tap-detection ODR > 200 Hz; the old firmware sat at 224.2 Hz, so one knock's impulse landed on just 2–5 samples. Three window lengths (5/9/18) × two `UDMThr` tiers (`0x0190`/`0x0300`) behaved identically at 224.2 Hz.
+2. **Raise it to 896.8 Hz** (the first 6DOF tier above 500 Hz), parameters back to the manual's example `UDMThr = 0x0190` with an 80 ms window, matching the only working public reference, WaveShare's TapDetectionExample. The impulse now lands on a wide enough surface; behaviour still does not move.
+3. **Do the signal and thresholds even hold?** A mirrored reference driver printed the engine's per-axis Alpha mean and Gamma energy as `sq` (squared residual) and `pk` (energy) to the bench: a real knock lands at 2.4–4.9 g², runs past the 0.8 g² `PeakMagThr`, and the energy falls back below 0.4 g². Signal, threshold and timing all hold.
+
+The blocker sits outside every parameter gate, in the state machine itself. The same math does hold on core's 20 ms stream, so the knock contract moved to `core/src/drivers/motion/recognizer.rs`; `QMI8658_CAPABILITIES` therefore does not claim `TAP` — attributing a core-side computation to hardware is the one way to break what the capability set is for (letting a panel tell "this semantic cannot be reported" apart from "its threshold never fired").
+
+`ODR` stays at 896.8 Hz no longer for taps, but for the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic.
+
+Bench checklist (the first three target the silicon engine itself, which the driver no longer uses — kept only for re-verifying chip behaviour; the last three cover paths still in use):
+
+- Knock once and watch `TAP` count 1 with `2T`/`3T` unmoved, while `TR` on that poll should jump to about 250–4800 mG (the peak-threshold square root of 250 as the floor, thousands to the ~4850 clip for a deliberate knock)
+- Knock twice quickly and `2T` counts 1; knock three times and `3T` counts 1
+- A pick-up-hold-place must not report `TAP`
+- After settling `STL` counts only 1 (no longer incrementing at frame rate)
+- An ordinary lift/place (no need to swing it) counts `LFT` and `PLC` once each
+- At rest `LR` should sit at tens of mG
 
 ---
 

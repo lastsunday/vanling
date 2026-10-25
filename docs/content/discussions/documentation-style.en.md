@@ -1,8 +1,8 @@
 +++
 title = "Protocol Documentation Three-Layer Model and Human-AI分工"
-weight = 100
+weight = 10
 [extra]
-source_file_hash = "9ae07a4c7d7c7920db52c3ca4546ba66176c202b"
+source_file_hash = "066caab1195e7bf184c3616b979bf3c2672e425e"
 translated_at = "2026-06-28T18:00:00Z"
 +++
 

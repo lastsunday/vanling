@@ -324,6 +324,13 @@ sort_by = "weight"
 | ------ | ---- | ---- | ----------------- | --------------------------------------------------------- | ---- |
 | 🔴 P0  | ✅   | ✅   | Bearer Token 验证 | Authorization header + query param fallback，JWT 解码验证 |      |
 
+#### Token 生命周期
+
+| 优先级 | 状态 | 测试 | 项目        | 描述                                              | 链接 |
+| ------ | ---- | ---- | ----------- | ------------------------------------------------- | ---- |
+| 🟠 P1  | ❌   | ❌   | Refresh 吊销 | refresh token 无吊销机制，logout 仅客户端丢弃     |      |
+| 🟠 P1  | ❌   | ❌   | Token 日志   | access/refresh token 以明文写进 tracing span 字段 |      |
+
 ### Activate&Bind
 
 #### OTA 激活
@@ -374,6 +381,15 @@ sort_by = "weight"
 | 🔴 P0  | ✅   | ✅   | Voice Break 检测       | 静音超时触发 TurnComplete                  |      |
 | 🟠 P1  | ✅   | ✅   | Continued Conversation | auto/realtime 模式，TTS 后自动进入语音监听 |      |
 | 🟡 P2  | ❌   | ❌   | 语义 VAD / 分层轮次    | 仅 Layer1 Silero，缺标点/语义层            |      |
+| 🟠 P1  | ❌   | ❌   | 声纹识别               | 与 ASR 并行识别说话人并注入 LLM；需注册/管理流程 + 声纹向量 + 上下文注入 |      |
+| 🟠 P1  | ❌   | ❌   | 动态 VAD 参数          | 静音阈值/门限目前固定，需按对话状态运行时调整 |      |
+| 🟠 P1  | ❌   | ❌   | ASR Settle + Reopen    | VAD 静音后立即 ASR 可能丢尾部音素；无 reopen 机制 |      |
+| 🟠 P1  | ❌   | ❌   | 多 ASR Provider        | 只有一套 sherpa-onnx 实现，无模型切换与回退    |      |
+| 🟡 P2  | ❌   | ❌   | 填充词/犹豫检测        | ASR 输出 uh/um/呃/嗯 + 短音频（<3 s）不触发 LLM |      |
+| 🟡 P2  | ❌   | ❌   | 环境监听模式           | 非唤醒词触发的被动监听 + 主动响应，需隐私架构（不存原始音频） |      |
+| 🟡 P2  | ❌   | ❌   | ASR 输入约束           | 仅 16 kHz 单声道；`Asr` 无 `Sync`，不能跨线程共享 |      |
+| 🔵 P3  | ❌   | ❌   | Speaker Diarization    | 多人场景说话人分离                             |      |
+| 🔵 P3  | ❌   | ❌   | AEC 服务端降噪         | 当前仅客户端 AEC，服务端无回声消除             |      |
 
 #### Round
 
@@ -384,6 +400,7 @@ sort_by = "weight"
 | 🟠 P1  | ✅   | ✅   | Epoch 消息过滤        | 过时轮次消息丢弃，保留 TTS 状态通知   |      |
 | 🔴 P0  | ✅   | —    | stop_round 竞态       | 已修复，5s 超时兜底                   |      |
 | 🟠 P1  | ✅   | ✅   | AudioPacer            | 按 output_frame_duration 限速音频输出 |      |
+| 🟠 P1  | ❌   | ❌   | Opus-to-PCM 预缓冲     | 下行无预缓冲，网络抖动直接表现为播放卡顿 |      |
 
 #### LingCore
 
@@ -395,6 +412,12 @@ sort_by = "weight"
 | 🟠 P1  | ✅   | ✅   | History 管理         | 上下文截断 (max_prompt_len) 及持久化   |      |
 | 🟡 P2  | ⚠️   | ❌   | 情绪识别             | 始终返回 "happy"，无真实分析           |      |
 | 🟡 P2  | ❌   | ❌   | 个性化记忆           | 长期偏好/用户画像存储未实现            |      |
+| 🟠 P1  | ❌   | ❌   | RAG 知识库           | MCP 可接入，但无内置向量检索           |      |
+| 🟠 P1  | ❌   | ❌   | Intent 识别          | 无独立 intent 层，意图全靠 LLM 单次生成 |      |
+| 🟠 P1  | ❌   | ❌   | LLM 历史阻塞         | 会话历史 DB 落盘阻塞整条生成线程       |      |
+| 🟡 P2  | ❌   | ❌   | Agent 任务编排       | LLM + MCP 工具链自主执行多步任务       |      |
+| 🔵 P3  | ❌   | ❌   | describe O(n)        | 每次实时构建全量消息历史               |      |
+| 🔵 P3  | ❌   | ❌   | 引导式推理对话       | 教育 AI 引导模式，需 prompt 工程 + 对话状态 |      |
 
 #### TTS
 
@@ -404,6 +427,18 @@ sort_by = "weight"
 | 🟠 P1  | ✅   | ✅   | 两阶段流式       | token 级首包快速发出 + 句子级稳态 |      |
 | 🟡 P2  | ✅   | ❌   | TTFA/RTF 埋点    | 首包延迟/实时率性能监控           |      |
 | 🔵 P3  | ✅   | ❌   | Fade-out         | 尾部淡出消除 click                |      |
+| 🟠 P1  | ❌   | ❌   | Piper/Kokoro 引擎 | 可替换或补充 MatchaTTS；Piper 适合边缘，Kokoro 质量/体积比更好 |      |
+| 🟠 P1  | ❌   | ❌   | 多语言 TTS       | 当前仅单语言；ESP32 端 ASR 已支持 25+ 语言 |      |
+| 🟠 P1  | ❌   | ❌   | 多 TTS Provider  | 只有一套实现，无引擎切换与回退          |      |
+| 🟠 P1  | ❌   | ❌   | Quick Reply      | LLM 推理期间先播"我在"/"来了"，降低感知延迟 |      |
+| 🟠 P1  | ❌   | ❌   | 动态音色切换     | 基于声纹识别自动切换 TTS 音色           |      |
+| 🟠 P1  | ❌   | ❌   | 尾部 Hold Buffer | ~240 ms 帧缓存，避免末音节被切（fade-out 已实现） |      |
+| 🟡 P2  | ❌   | ❌   | 句间静音优化     | 固定静音 → 按标点调整（逗号 0.3 s / 句号 0.6 s） |      |
+| 🟡 P2  | ❌   | ❌   | 对话韵律         | 呼吸/犹豫/笑声等韵律，让语音更像真人    |      |
+| 🟡 P2  | ❌   | ❌   | 情绪自适应语调   | 检测情感标签并调整语气                  |      |
+| 🔵 P3  | ❌   | ❌   | 声音克隆         | MatchaTTS 支持 reference audio，缺配置接口 |      |
+| 🔵 P3  | ❌   | ❌   | TTS 克隆开销     | `Arc<str>` 与 `String` 之间的克隆风暴   |      |
+| 🔵 P3  | ❌   | ❌   | 音频标准化集成   | `adaptive_normalize()` 已实现，未接入 TTS 输出 |      |
 
 ### McpSession
 
@@ -431,6 +466,21 @@ sort_by = "weight"
 | ------ | ---- | ---- | ------------- | ------------------------------------- | ---- |
 | 🔴 P0  | ✅   | ✅   | /mcp 端点认证 | Bearer JWT 认证 + rmcp 默认 Host 校验 |      |
 
+#### 工具生态
+
+| 优先级 | 状态 | 测试 | 项目                | 描述                                             | 链接 |
+| ------ | ---- | ---- | ------------------- | ------------------------------------------------ | ---- |
+| 🟠 P1  | ❌   | ❌   | 家居集成            | Home Assistant 等智能家居场景，经 MCP 接入        |      |
+| 🟠 P1  | ❌   | ❌   | 设备间通话          | 设备像电话一样互呼，需 MQTT gateway + 通讯录管理  |      |
+| 🟠 P1  | ❌   | ❌   | 音乐播放            | 行业标配；需 LRC 歌词同步                        |      |
+| 🟠 P1  | ❌   | ❌   | Timer/提醒/闹钟     | 当前无任何定时/提醒机制                          |      |
+| 🟡 P2  | ❌   | ❌   | 插件系统            | 无插件架构，扩展需改核心代码                      |      |
+| 🟡 P2  | ❌   | ❌   | MCP Market          | 第三方工具市场聚合 + 一键导入 + 热加载            |      |
+| 🟡 P2  | ❌   | ❌   | MCP 调试控制台      | 每 Agent 独立端点，实时调用测试 + per-agent 过滤  |      |
+| 🟡 P2  | ❌   | ❌   | MCP 工具聚合        | 预置工具库（钉钉/QQ/系统监控/WebPilot/计算）      |      |
+| 🟡 P2  | ❌   | ❌   | MQTT 网关           | MQTT+UDP → WS 桥接：分布式部署 + 负载均衡 + HMAC  |      |
+| 🟡 P2  | ❌   | ❌   | 配置向导 + 全链路测试 | 首次运行向导 + 每组件延迟测试 + 可视化          |      |
+
 ### Output Filter
 
 #### Recorder (输出)
@@ -438,6 +488,7 @@ sort_by = "weight"
 | 优先级 | 状态 | 测试 | 项目     | 描述                      | 链接 |
 | ------ | ---- | ---- | -------- | ------------------------- | ---- |
 | 🟡 P2  | ✅   | ✅   | 输出落库 | 帧/轮次数据持久化到数据库 |      |
+| 🟠 P1  | ❌   | ❌   | Recorder 上限 | `Vec<RecordEntry>` 无大小限制，高并发下内存无界增长 |      |
 
 ### Restful
 
@@ -454,6 +505,7 @@ sort_by = "weight"
 | 🔴 P0  | ✅   | ✅   | GET /api/security/rate_limit  | 认证内省端点，返回 auth/ota/core 配额与实时用量，本身不消耗配额                                                                                         |      |
 | 🟡 P2  | ❌   | ❌   | Invite Code 系统              | 注册邀请码生成/验证未实现                                                                                                                               |      |
 | 🟠 P1  | ✅   | ❌   | 设备管理 CRUD                 | 列表/激活（按码/按ID）/禁用/启用/删除端点已实现（缺详情）                                                                                               |      |
+| 🔵 P3  | ❌   | ❌   | Session 导出/删除             | Session 仅可查看，不可导出或删除                                                                                                                        |      |
 
 ### 后台管理
 
@@ -474,6 +526,7 @@ sort_by = "weight"
 | 🟠 P1  | ❌   | ❌   | 共享客户端协议 | device 身份接入（与 IoT 同构），WS 语音 + 遥测 + MCP 工具面 | [规格](../../development/clients/shared-protocol.md) |
 | 🟡 P2  | ❌   | ❌   | USB 外设遥测   | Android 先行（OTG/USB-Host），iOS 仅语音 + 屏               |                                                      |
 | 🟡 P2  | ❌   | ❌   | CI/CD          | iOS/Android 构建/签名/发布流水线未实现                      |                                                      |
+| 🟠 P1  | ❌   | ❌   | Flutter WS/认证集成 | 脚手架已存在，WS 连接与认证未接入                        |                                                      |
 
 ### IoT
 
@@ -518,3 +571,6 @@ sort_by = "weight"
 | 🔴 P0  | ✅   | ✅   | 优雅关闭顺序      | Server CancellationToken 统一驱动 axum/WS/Matrix 按序优雅退出   |      |
 | 🔴 P0  | ✅   | —    | Runtime 竞态      | build() 同步执行，set() happens-before 任何 worker 线程，无竞态 |      |
 | 🟠 P1  | ✅   | ✅   | 时间戳自动填充    | Config 实体补齐 before_save，create/update 时间戳自动填充       |      |
+| 🟠 P1  | ❌   | ❌   | 外键约束          | 缺 `round.session_id`、`round_data.round_id`、`frame.round_id` 的 FK |      |
+| 🟠 P1  | ⚠️   | ❌   | MCP 锁顺序        | 原 `mcp_host.rs` 已不存在；现组件无跨实例锁，重新引入多端聚合前需复查 |      |
+| 🔵 P3  | ❌   | ❌   | MCP 错误处理      | 错误映射与重试不完善                             |      |

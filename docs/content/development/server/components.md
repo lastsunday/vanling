@@ -1,19 +1,19 @@
 +++
 title = "组件与模块结构"
-weight = 206
+weight = 201
 +++
 
 # 组件与模块结构（Components & Module Layout）
 
-> **本文档描述目标架构**：核心骨架层级、双层 `component/` 组织、`ling` 特殊节点语义，以及二期
-> sub-pipeline 规划。若需新开会话推进，以此为准。
+> 服务端的分层与模块归属：核心骨架、双层 `component/`、`ling` 作为特殊节点。
+> 这些层级为什么长成这样，见[管道演进记录](@/records/server/pipeline-evolution.md)。
 
-## 目标核心骨架
+## 核心骨架
 
 数据流/包含层级自上而下：
 
 ```
-socket / other → filter → session → round → pipeline → ling → sub-pipeline
+socket / other → filter → session → round → pipeline → ling
 ```
 
 - **socket**：传输入口（WebSocket / Matrix）。`api/src/ws/`、`api/src/matrix/`
@@ -25,19 +25,16 @@ socket / other → filter → session → round → pipeline → ling → sub-pi
   框架。`service/src/pipeline/`
 - **ling**：决策中枢（特殊节点），接收已识别结果 → 决策 → 产出表达意图。`service/src/ling/`；
   实现位于 `api/src/component/ling/`
-- **sub-pipeline**：ling 内部决策子管道（**二期**，暂未实现）。见下文「sub-pipeline（二期）」
 
-## service/src 全面平铺
-
-service crate **去掉 `ling/` 总命名空间**，全面平铺为顶层模块：
+## service/src 顶层模块
 
 ```
 service/src/
-  lib.rs        # pub mod component; pub mod ling; pub mod message; pub mod pipeline; pub mod session;
+  lib.rs        # pub mod component; pub mod frame; pub mod ling; pub mod message; pub mod pipeline; pub mod session; pub mod types;
   component/    # 引擎契约：vad.rs  asr.rs  tts.rs  llm/{mod,token_converter}.rs  mcp/{mod,registry}.rs
   ling/         # Ling 决策引擎（特殊节点）：Ling trait（ask → OutputBlock stream）
-  pipeline/     # Node 框架：mod.rs（即原 pipeline.rs）+ nodes/
-  session/      # session / round / history；TurnEvent 并入 round.rs
+  pipeline/     # Node 框架：mod.rs + nodes/
+  session/      # session / round / history；TurnEvent 在 round.rs
   message/      # 传输协议：hello/audio/close/llm/mcp/stt/tts + Message/Type/Transport/AudioFormat
   frame.rs      # Frame / FrameResult / OutputMessage（传输呈现层）
   types.rs      # 共享类型：EmptyKind / Sentence / Input / OutputBlock / ContentBlock
@@ -45,14 +42,13 @@ service/src/
 
 要点：
 
-- **`component/`** = 引擎契约（trait + 类型）。**可独立使用**：既挂外层 pipeline，也挂 ling 的
-  sub-pipeline（二期）。
+- **`component/`** = 引擎契约（trait + 类型），不绑定具体模型；被 pipeline 节点与 ling 引用。
 - **`ling/`** = 仅 `Ling` trait（决策引擎）。因需判断/处理一切，作为**特殊节点**必须显式定义全部
   可能 node（见下文「Ling 特殊节点」）。
-- **`types.rs`** = 从原 `ling/core.rs` 拆出的共享类型（`EmptyKind`/`Sentence`/`Input`/
-  `OutputBlock`/`ContentBlock`），被 pipeline、session、component、api 等跨层引用。
+- **`types.rs`** = 跨层共享类型（`EmptyKind`/`Sentence`/`Input`/`OutputBlock`/`ContentBlock`），被
+  pipeline、session、component、api 引用。
 - **`message/` + `frame.rs`** = 传输协议/呈现层，对应骨架最外层的「socket」。
-- `TurnEvent` 已并入 `session/round.rs`（回合事件属 round 生命周期）。
+- `TurnEvent` 在 `session/round.rs`（回合事件属 round 生命周期）。
 
 ## 双层 component
 
@@ -78,32 +74,8 @@ service/src/
   全部 node。
 - 实现侧是 `api/src/component/ling/` 的 `LingCore`（LLM + MCP + history + splitter 编排），产出
   逐句表达意图。
-- 缺数据时可声明 `NeedsInfo`（Stage E 数据回路），由 Session 编排回流再决策。
-
-## sub-pipeline（二期）
-
-**本期只做容器重组**，sub-pipeline **不实现**（二期 node 化）。
-
-现状：`LingCore` 内约 200 行命令式 `while has_next_step` 循环（LLM 流 + MCP tool + history +
-splitter）。二期将其抽成 ling 内部的**决策子管道**，节点化并行/编排：
-
-```
-web_node / agent_node / data_node / re_decision_node ...
-```
-
-届时各数据/工具节点同样复用 `service/src/component/` 契约，构成可插拔的 sub-pipeline。
-
-## 惯例修复
-
-- **`pipeline.rs` → `pipeline/mod.rs`**：统一 `X/mod.rs` 惯例。
-- **`StreamingOpusEncoder` 独立成文件**：从 `api/src/component/tts/mod.rs` 拆出到
-  `api/src/component/tts/opus_encoder.rs`。
-- **`NodeCapability` 为类型别名**（方案 A）：`pub type NodeCapability = dyn Any + Send + Sync;`，
-  `capabilities() -> Vec<Box<NodeCapability>>`，消费端直接 `c.downcast_ref::<T>()`。
-  不再使用自定义 trait + `as_any()`（因 blanket impl 经 `dyn` 动态分派会丢失 `TypeId`，导致
-  `downcast_ref` 返回 `None`）。
 
 ## 相关文档
 
 - [核心架构](@/development/server/architecture.md)：Session/Round/pipeline 语义
-- [统一管道重构](@/development/server/pipeline-redesign.md)：单链 + 观察者协议、能力 look up、节点生命周期
+- [统一管道](@/development/server/pipeline.md)：单链 + 观察者协议、能力 look up、节点生命周期

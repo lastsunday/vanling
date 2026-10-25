@@ -1,10 +1,10 @@
 +++
 title = "Audio Metering Semantics"
-weight = 260
+weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "227ef5018f6b426eda487a3ce8342d8573d4101f"
-translated_at = "2026-10-22T12:41:11Z"
+source_file_hash = "edea08c7ac23895fa8e90eb6a70d765458dc13d3"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Audio Metering Semantics
@@ -222,9 +222,7 @@ The clash between the constant names and the write order is therefore removed ra
 
 The two assumptions the walk rests on (the values differ only in bit 5, and they share the low three bits as a corner) are pinned by `const _: () = assert!(...)`: what would change them is a datasheet, not a refactor.
 
-Swapping them was tried once, and it made things worse. With the `0x22`/`0x23` values exchanged, `PK` in a quiet room rose from about `-40` to about `-30` — the floor went up by roughly 10 dB, the opposite of what a fix for residual offset would do.
-
-Since bit 5 is not the cutoff, the swap only changed a mode, and the bench says that mode is the worse one. The driver is back on the `esp-bsp` baseline.
+**Do not guess at a "stage order" and swap these two values**: the bench measured a floor about 10 dB higher after the swap (`PK` went from about `-40` to about `-30`). Bit 5 is not the cutoff, so swapping only selects a different, worse mode. The measurement and the reasoning of the time are in the [Audio record](@/records/iot/audio.en.md).
 
 ### Walking the HPF corner once at boot
 

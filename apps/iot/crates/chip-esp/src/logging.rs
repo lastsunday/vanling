@@ -21,7 +21,7 @@
 //! What prints is [`configured_level`]: `IOT_LOG_LEVEL` at build time, `info` when that is
 //! unset or not a level name. The product keeps its steady state quiet at `info`, and a
 //! `debug` image is how the periodic telemetry — frame cost, feed cadence, link phase —
-//! comes back when a record needs it. See `docs/content/development/iot/cheatsheet.md`.
+//! comes back when a record needs it. See `docs/content/roadmap/cheatsheet.md`.
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 

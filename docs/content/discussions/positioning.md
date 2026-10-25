@@ -1,47 +1,11 @@
 +++
 title = "定位与取舍参考"
-weight = 207
+weight = 20
 +++
 
 # 定位与取舍参考
 
-> **⚠️ 说明：本文档为功能探索性梳理，参考了行业标准（Alexa+、Gemini、Siri AI）和参考项目实现（xiaozhi-esp32-server、xiaozhi-esp32-server-java、xiaozhi-server-go）。大部分条目不会全部实现，仅作为 vanling 定位和取舍的参考依据。实际开发优先级以项目 Roadmap 为准，当前待办见 [TODO](@/development/server/TODO.md) 的未完成清单。**
-
-## 待确认 / 探索
-
-| 项目 | 描述 | 开源方案/类库 |
-|------|------|------|
-| 声纹方案选择 | 3D-Speaker (xinnan-tech 使用) vs sherpa-onnx speaker ID (已在技术栈中) vs pyannote。sherpa-onnx 最佳：无需新依赖，支持 ECAPA-TDNN/WeSpeaker/CAM++ 多种模型 | 已有: `sherpa-onnx` |
-| 插件架构设计 | xinnan-tech 有 13 内置插件 + 热加载。vanling 是否需要类似机制，还是通过 MCP 扩展即可？ | 建议: `wasmtime` — WASI 沙箱 + Component Model |
-| 多 Provider 扩展策略 | 参考项目支持 12+ ASR / 18+ TTS provider。vanling 是否需要多 provider 架构，还是保持精简？ | 建议: trait 抽象 (`AsrProvider`/`TtsProvider`) |
-| 音乐播放 | 行业标配（Spotify/Apple Music 集成），需确认实现方式：MCP tool 调用外部 API / 内置音频播放 / TTS 扩展 | 建议: `rodio` |
-| ESP32 CI/CD | 独立项目 (xiaozhi-esp32)，非本仓库范围，vanling 作为后端提供 WS + OTA 接口即可 | — |
-| Token 持久化存储 | 考虑用 DB 表存储 refresh token 支持多设备管理 | 已有: `sea-orm` + `redis-rs` |
-| Smart Home 集成 | Alexa+ / Google Home 核心能力。参考项目有 3 种 HA 集成方式，需评估 vanling 作为 hub 的定位 | 已有: `rmcp` (HA MCP) |
-| Agentic 能力 | Alexa+ "Experts" / Gemini Spark 24/7 代理，可自主浏览网页/填表/下单。LLM + MCP 工具调用已有基础，需评估实现深度 | 已有: `rig-core` |
-| 语音情感 TTS | Gemini 2.5 / Cartesia Sonic-3 支持根据情绪调整 TTS 语气。MatchaTTS 需评估是否支持 style/prosody 控制 | 建议: `voirs-emotion` |
-| 本地隐私处理 | 行业趋势：Echo/Fire 设备向本地处理迁移。vanling 已有 local Qwen3，可扩展 local ASR/TTS 全链路 | 已有: `sherpa-onnx` + `candle` |
-| 视觉能力 | 参考项目 xinnan-tech 支持 VLLM（GLM-4V/Qwen-VL）拍照识物。vanling 是否需要视觉能力？ | 建议: `reqwest` → Ollama/vLLM |
-| MCP Market 架构设计 | 参考项目黑客365 Go 版实现 MCP 工具"应用商店"（聚合多市场+热加载）。vanling 是否需要 MCP 工具发现/聚合机制？ | 已有: `rmcp` |
-| 动态 TTS 声音切换方案 | 参考项目黑客365 Go 版基于声纹识别自动切换 TTS 音色。vanling 声纹识别后如何联动 TTS？ | 已有: `sherpa-onnx` |
-| 配置向导设计 | 参考项目黑客365 Go 版有首次运行向导 + 全链路延迟测试。vanling 是否需要部署向导降低使用门槛？ | — |
-| MQTT 网关架构 | 分布式部署需要 MQTT+UDP 桥接 + 动态负载均衡（参考 xinnan-tech/xiaozhi-mqtt-gateway）。vanling 是否需要 MQTT 网关层？ | 建议: `rumqttc` |
-| MCP 工具聚合策略 | 参考项目有预置工具库（钉钉/QQ/系统监控/WebPilot/数学计算等），vanling 是否需要内置 MCP 工具包？ | 已有: `rmcp` |
-| 端到端 S2S 架构 | OpenAI/Hume/Sesame 使用单模型处理音频输入输出（非级联 STT→LLM→TTS），vanling 当前级联方案是否需要演进？ | 建议: `csm.rs` (AGPL-3.0) 或 `moshi` (Apache 2.0) |
-| 语义 VAD 实现方案 | OpenAI 的模型级轮替检测 vs 传统 VAD，vanling 如何实现更智能的中断/轮替判断？ | 建议: `wavekat-vad` |
-| 对话韵律 TTS | Sesame CSM 开源模型（Apache 2.0）可直接使用，vanling TTS 是否集成呼吸/犹豫/笑声等韵律？ | 建议: `csm.rs` (AGPL-3.0) |
-| 隐私策略设计 | Always-listening 设备的隐私架构（Bee 无音频存储 / Omi 本地处理），vanling 如何平衡功能与隐私？ | 已有: `sherpa-onnx` (全链路本地) |
-| SSM 架构 TTS | Cartesia 使用 State Space Model 替代 Transformer 实现 <90ms TTS，vanling TTS 是否考虑 SSM 架构？ | — (无 Rust 实现) |
-| Piper/Kokoro 评估 | 开源 TTS 模型 Piper（20M 参数/MIT）和 Kokoro（82M/Apache 2.0）是否适合替换或补充当前 MatchaTTS？Piper 适合边缘部署，Kokoro 是最佳质量/体积比 | 建议: `sherpa-onnx` (Piper ONNX) |
-| Step-Audio-TTS-3B 集成 | 阶跃星辰开源中文 TTS（Apache 2.0、情绪控制、方言支持），是否作为服务端 TTS 候选？需评估 GPU 需求和延迟 | 建议: `reqwest` → StepFun API |
-| 环境监听架构 | 医疗 AI 的被动监听模式（非唤醒词），vanling 是否支持？隐私如何保障？参考 Nabla（不存储原始音频）架构 | — |
-| Matter 协议支持 | 智能家居 Hub 标准协议（Matter 1.3+Thread 1.4），ESP32 已有 Thread 支持。vanling 是否需要完整 Matter SDK 集成以实现跨平台设备兼容？ | 建议: `rs-matter` |
-| Proactive 主动建议 | Gemini Daily Brief / Alexa+ 主动提醒交通/降价/日程。需定时任务 + 用户上下文推理 | 建议: `tokio-cron-scheduler` |
-| 跨设备连续性 | Alexa+: Echo→手机→电脑无缝切换对话上下文。需 session 状态同步机制 | — (需自定义：SQLite + WS delta 同步) |
-| UGC 角色市场 | 参考项目 Character.AI 有 1000万+ 用户创建角色；Doubao 智能体平台支持无代码创建 AI 角色。vanling 可支持用户自定义 AI 人格 + 声音 + 背景故事 | — |
-| 多模态（语音+屏幕+视频） | Gemini 2.5 / GPT-Realtime / Siri AI 均支持摄像头/屏幕输入。vanling 当前纯语音 | 建议: `webrtc-rs` (v0.17.x) |
-
----
+行业产品与开源实现的横向参照，用于判断 vanling 该做什么、不该做什么。优先级与待办只在 [Roadmap](@/roadmap/_index.md) 维护，本文不构成承诺。
 
 ## 开源语音模型
 

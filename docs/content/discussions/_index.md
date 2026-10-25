@@ -4,10 +4,12 @@ weight = 40
 sort_by = "weight"
 +++
 
-# Discussions
+# 设计讨论
 
-设计讨论、研究记录、开放问题存档。有结论的条目会在 AGENTS.md 中引用。
+讨论过程与取舍依据。有结论的部分沉淀到 `development/` 与 `AGENTS.md`，这里保留推理与参照。
 
-| 文件                                                        | 状态      | 简介                                                       |
-| ----------------------------------------------------------- | --------- | ---------------------------------------------------------- |
-| [documentation-style](@/discussions/documentation-style.md) | ✅ 有结论 | 协议文档三层模型——概览/图示/参考，人手写概览的认知对齐理由 |
+| 文件 | 简介 |
+| --- | --- |
+| [documentation-style](@/discussions/documentation-style.md) | 协议文档三层模型——概览/图示/参考，以及为什么概览要人写 |
+| [positioning](@/discussions/positioning.md) | 行业产品与开源实现的参照系，定位取舍的依据 |
+| [dependency-candidates](@/discussions/dependency-candidates.md) | 尚未批准的外部依赖：候选、服务于什么、需要谁决定 |

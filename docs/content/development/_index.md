@@ -6,57 +6,20 @@ sort_by = "weight"
 
 # 开发文档
 
-Vanling 服务端和相关项目的开发指南。
+按"要动哪一部分"组织的系统说明：这里只写**现在是什么样**。怎么变成这样、被否过什么，在[开发记录](@/records/_index.md)。
 
-## [服务端](@/development/server/architecture.md)
+阅读路径：
 
-服务端架构设计、业务数据流、协议参考、模型规格与部署。
+1. [服务端](@/development/server/_index.md) — 先核心架构，再管道与对话流程，最后按需要查协议和模型部署。
+2. [客户端](@/development/clients/_index.md) — 跨端语义只有一份，其余按端展开。
+3. [IoT 固件](@/development/iot/_index.md) — 先分层，再 feature 判据，然后才是烧录与各路语义。
 
-- [核心架构](@/development/server/architecture.md) — 会话状态机、并发模型、工厂模式
-- [对话流程](@/development/server/dialogue-flow.md) — 握手、通讯、Listen Mode、MCP 流程
-- [WebSocket 协议](@/development/server/websocket-protocol.md) — 协议字段参考
-- [模型与部署](@/development/server/models-and-deployment.md) — 模型规格、CUDA 安装、参考规范
-- [TODO](@/development/server/TODO.md) — 已完成 / 未完成清单（开工入口）
-- [定位与取舍参考](@/development/server/research.md) — 功能探索、技术选型与参考项目
+按需查阅：
 
-## [客户端](@/development/clients/app.md)
-
-客户端应用开发文档。
-
-- [App（Flutter）](@/development/clients/app.md)
-- [管理后台（React）](@/development/clients/server-ui.md)
-- [ESP32](@/development/clients/esp32.md)
-
-## [调试](@/development/debugging/vad-listener.md)
-
-调试和诊断相关文档。
-
-- [VAD 与 Listener](@/development/debugging/vad-listener.md)
-- [Audio 调试](@/development/debugging/audio-debug.md)
-- [ASR 调试](@/development/debugging/asr-debug.md)
-
-## [IoT 固件](@/development/iot/features.md)
-
-Vanling 自有 ESP32 固件（`apps/iot`）开发文档。
-
-- [分层与组合](@/development/iot/architecture.md) — 分层、组合三轴、需求两轴模型与传输、实施顺序
-- [Cargo Feature 判据与内聚](@/development/iot/features.md) — 硬/软 feature 定义、引入判据、内聚规则
-- [无硬件仿真与回归冒烟](@/development/iot/emulation.md) — 宿主 harness + esp-emu、决策矩阵
-
-实现怎么变成现在这样、被否过什么，在[开发记录](@/records/_index.md)（AI 产出，未经人类审阅）。
-
-## [模型下载](@/development/downloader.md)
-
-模型下载工具的使用说明。
-
-## 相关项目
-
-生态相关项目文档。
-
-- [xiaozhi-esp32](@/development/related-project/xiaozhi-esp32.md)
-- [xiaozhi-esp32-server](@/development/related-project/xiaozhi-esp32-server.md)
-- [xiaozhi-esp32-server-java](@/development/related-project/xiaozhi-esp32-server-java.md)
-- [xiaozhi-android-client](@/development/related-project/xiaozhi-android-client.md)
+- [调试](@/development/debugging/_index.md) — ASR 的基准与调试入口、TTS 音质评估
+- [模型下载器](@/development/downloader.md) — manifest、下载与校验
+- [相关项目](@/development/related-project/_index.md) — 上游实现里值得对照的调用链
+- [资源](@/development/resource/_index.md) — 测试样本的实测属性
 
 ## 多语文档
 

@@ -3,23 +3,24 @@ title = "Server"
 weight = 100
 sort_by = "weight"
 [extra]
-source_file_hash = "fcca62e811b0f20f5cc84bc6456e78ab6fe4bfb8"
-translated_at = "2026-09-09T00:00:00Z"
+source_file_hash = "134196443378b12a9ba6442d6c6977f9644085b5"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Server
 
-vanling server is built with Rust + axum, implementing the Xiaozhi smart speaker protocol with real-time voice conversation capabilities.
+The vanling server is built with Rust + axum, implementing the Xiaozhi smart speaker protocol with real-time voice conversation capabilities.
 
-This section contains the following documents:
+Reading order: core architecture first (Session and Round lifetimes), then components and the pipeline (how one turn's data flows), then VAD/turn detection, dialogue flow and protocol details; deployment is for reference as needed.
 
-| Page | Weight | Description |
-|------|--------|-------------|
-| [Core Architecture](@/development/server/architecture.en.md) | 200 | Overall architecture, Session state machine, Round lifecycle |
-| [Dialogue Flow](@/development/server/dialogue-flow.en.md) | 201 | Complete sequence diagrams for handshake and communication phases |
-| [WebSocket Protocol](@/development/server/websocket-protocol.en.md) | 202 | Protocol field definitions and binary format |
-| [Models and Deployment](@/development/server/models-and-deployment.en.md) | 203 | AI model specs, config system, Downloader, CUDA deployment |
-| [TODO](@/development/server/TODO.en.md) | 204 | Completed/in-progress checklist (work entry point) |
-| [Pipeline Redesign](@/development/server/pipeline-redesign.en.md) | 205 | Unified pipeline refactor plan (PipelineNode replaces Ling/Tts/Listener) |
-| [Components and Module Layout](@/development/server/components.en.md) | 206 | Core skeleton hierarchy, dual-layer component, ling special node, sub-pipeline plan |
-| [Positioning and Trade-off Reference](@/development/server/research.en.md) | 207 | Feature exploration, technology selection, reference projects |
+| Page | Description |
+| --- | --- |
+| [Core Architecture](@/development/server/architecture.en.md) | Overall architecture, Session state machine, Round lifecycle, filters and construction entry points |
+| [Components and Module Layout](@/development/server/components.en.md) | Core skeleton hierarchy, dual-layer components, the ling special node |
+| [Unified Pipeline](@/development/server/pipeline.en.md) | Node contract, chain assembly and release, event-stream conventions |
+| [VAD and Turn Detection](@/development/server/vad.en.md) | Speech onset/offset criteria, the two silence gates, turn-termination paths, parameter reference |
+| [Dialogue Flow](@/development/server/dialogue-flow.en.md) | Handshake and communication sequence diagrams, listen modes, empty-input behaviour |
+| [WebSocket Protocol](@/development/server/websocket-protocol.en.md) | Protocol field definitions and binary format |
+| [Models and Deployment](@/development/server/models-and-deployment.en.md) | AI model specs, config system, asset installation, CUDA deployment |
+
+There is exactly one backlog: the [Roadmap](@/roadmap/_index.en.md). Positioning and technology references are in [Positioning and Trade-off Reference](@/discussions/positioning.en.md); for why the old TODO was split up, see the [server records](@/records/server/todo-triage.en.md).

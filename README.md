@@ -48,11 +48,13 @@ You can find user development documentation on [here](./docs/src/development/REA
 #### apps/server
 
 ```shell
-pnpm i
 moon run server-ui:build
-vanling-server download
-# using cuda: moon run server:run --features cuda
+moon run server:downloader-install
 moon run server:run
+
+# with CUDA, in place of the last line (moon cannot forward --features):
+cd apps/server && cargo run -p vanling-server --features cuda -- \
+  -O 'address=0.0.0.0' -O 'data_dir=../../data' --config=application.toml
 ```
 
 - Access home page <http://127.0.0.1:3000>

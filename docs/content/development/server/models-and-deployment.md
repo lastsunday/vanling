@@ -1,6 +1,6 @@
 +++
 title = "模型与部署"
-weight = 203
+weight = 206
 +++
 
 # 模型与部署
@@ -54,15 +54,7 @@ apps/server/
 
 ## 数据流
 
-```
-Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilters → ProtocolTranslator → WS
-                ┌─────────────────┐     ┌──────────────────┐
-                │ McpRouterFilter  │     │ RecorderFilter   │
-                │ RecorderFilter   │     │ (frame recording)│
-                └─────────────────┘     └──────────────────┘
-```
-
-详见 [对话流程](@/development/server/dialogue-flow.md)。
+客户端消息经 `ProtocolTranslator` 转成内部 `Frame`、过入站过滤器后进入 Session，出站反向经过滤器与 translator 回到 WebSocket。链路图与各段职责见[核心架构](@/development/server/architecture.md)。
 
 ## 配置系统
 
@@ -95,18 +87,9 @@ Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilt
 
 完整配置示例见 `application-example.toml`。
 
-## Downloader 系统
+## 资产安装
 
-`vanling-server downloader` 子命令提供模型资产下载能力：
-
-- **Manifest 驱动**：模型定义在 `src/downloader/manifests/` 下的 TOML 文件中，包含 URL、变体、checksum
-- **分类安装**：`--category tts|asr|llm|vad|reference`
-- **交互式向导**：`vanling-server downloader wizard` 引导式安装
-- **镜像支持**：`--mirror hf-mirror.com` 为国内用户加速
-- **校验**：自动 SHA256 校验下载文件
-- **路径派生**：安装后的路径通过 `derive_tts_path` / `derive_asr_path` / `derive_llm_path` 自动注入配置
-
-使用示例：
+`vanling-server downloader` 按 manifest 拉取模型并校验 SHA256，安装路径再经 `derive_*_path` 注入配置；子命令、manifest 格式、镜像回退与交互式向导见[模型下载器](@/development/downloader.md)。
 
 ```shell
 # 从 apps/server/ 目录执行

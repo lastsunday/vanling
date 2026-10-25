@@ -1,10 +1,10 @@
 +++
 title = "Playback Semantics"
-weight = 270
+weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "cea6b3e07546b164b806bc1538a3182ad399ba09"
-translated_at = "2026-10-22T12:18:13Z"
+source_file_hash = "0c78b0ec8fc095ae1aa5006c5be3c5411755f917"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Playback Semantics
@@ -177,11 +177,7 @@ TX and RX inside one I2S peripheral run on their own independent dividers, so sh
 
 In the esp-hal HIL test the data is looped back physically (via `dout.split()`, which cuts one physical pin into DOUT and DIN), which is precisely what shows that `signal_loopback` does not push playback samples into RX.
 
-This was once written the wrong way round, and the evidence is kept here.
-
-This section used to say `with_signal_loopback(false)` and assert that `signal_loopback(true)` "restarts the capture DMA over and over and, measured on the device, breaks capture".
-
-That measurement was taken while RX still owned the BCLK/WS pins: `rx_slave_mod=1` then makes RX drive the pins while simultaneously being a slave, which is self-contradictory. What broke was the pin-ownership-plus-slave pairing, not loopback.
+The `RX pins + loopback=true` cell does not fail because of loopback but because of **pin ownership + slave mode**: forcing RX to drive BCLK/WS while simultaneously being a slave unit is self-contradictory.
 
 Either arrangement can only satisfy one codec:
 

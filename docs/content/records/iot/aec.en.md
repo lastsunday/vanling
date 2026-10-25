@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "fda4eb8defa8c16de125026b872c841634add3fb"
-translated_at = "2026-10-22T10:04:49Z"
+source_file_hash = "4d5b8bfbd9f482b758905abc76d917d8e906ce5b"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

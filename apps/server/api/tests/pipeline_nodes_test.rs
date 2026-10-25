@@ -1,16 +1,17 @@
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use framework::error::AppError;
 use futures::stream::{self, Stream, StreamExt};
 use service::component::asr::{Asr, AsrStream, RecognizerResult};
 use service::component::tts::{Tts, TtsPacket};
+use service::component::vad::{Vad, VadPool};
 use service::ling::Ling;
 use service::message::{AudioFormat, hello::AudioParam};
 use service::pipeline::{
     AsrNode, AudioSpec, EventStream, LingNode, Node, NodeContext, OpusDecodeNode, PipelineEvent,
-    TtsNode,
+    TtsNode, VadNode,
 };
 use service::types::{EmptyKind, Input, OutputBlock};
 use tokio_util::sync::CancellationToken;
@@ -536,4 +537,173 @@ fn tts_node_reports_audio_spec_capability() {
     assert_eq!(spec.sample_rate, 16000);
     assert_eq!(spec.channel, 1);
     assert_eq!(spec.frame_duration_ms, 60);
+}
+
+/// VAD 替身：累计样本数达到 `trigger_at` 后才报语音。
+struct SpeechAfter {
+    fed: usize,
+    trigger_at: usize,
+}
+
+impl Vad for SpeechAfter {
+    fn accept_waveform(&mut self, samples: &[f32]) -> Result<f32, AppError> {
+        self.fed += samples.len();
+        Ok(if self.fed >= self.trigger_at {
+            1.0
+        } else {
+            0.0
+        })
+    }
+
+    fn is_speech(&mut self) -> bool {
+        self.fed >= self.trigger_at
+    }
+
+    fn clear(&mut self) {
+        self.fed = 0;
+    }
+
+    fn window_size(&self) -> usize {
+        256
+    }
+}
+
+struct SpeechAfterPool {
+    trigger_at: usize,
+}
+
+impl VadPool for SpeechAfterPool {
+    fn acquire(&self) -> Box<dyn Vad> {
+        Box::new(SpeechAfter {
+            fed: 0,
+            trigger_at: self.trigger_at,
+        })
+    }
+
+    fn release(&self, _vad: Box<dyn Vad>) {}
+}
+
+/// 记录 ASR 流收到的第一批样本数，即 VadNode 交出的语音前缀长度。
+#[derive(Clone, Default)]
+struct PrefixRecorder {
+    first_len: Arc<Mutex<Option<usize>>>,
+}
+
+struct RecordingAsr {
+    recorder: PrefixRecorder,
+}
+
+struct RecordingStream {
+    recorder: PrefixRecorder,
+}
+
+impl AsrStream for RecordingStream {
+    fn accept_waveform(&self, samples: &[f32]) {
+        let mut guard = self.recorder.first_len.lock().unwrap();
+        if guard.is_none() {
+            *guard = Some(samples.len());
+        }
+    }
+
+    fn decode(&self) {}
+
+    fn is_endpoint(&self) -> bool {
+        false
+    }
+
+    fn get_partial(&self) -> Option<String> {
+        None
+    }
+
+    fn finish(&self) -> Option<RecognizerResult> {
+        None
+    }
+
+    fn reset(&self) {}
+}
+
+#[async_trait]
+impl Asr for RecordingAsr {
+    fn create_stream(&self) -> Box<dyn AsrStream> {
+        Box::new(RecordingStream {
+            recorder: self.recorder.clone(),
+        })
+    }
+
+    async fn transcribe(
+        &self,
+        _sample_rate: u32,
+        _samples: &[f32],
+    ) -> Result<RecognizerResult, AppError> {
+        Ok(RecognizerResult {
+            text: String::new(),
+            prob: 0.0,
+        })
+    }
+}
+
+/// `SpeechStarted` 必须排在触发它的那一块 `PcmFrame` 之后，下游前缀才含起始音。
+#[tokio::test]
+async fn vad_emits_speech_started_after_triggering_chunk() {
+    let ctx = NodeContext::new(CancellationToken::new());
+    let node = VadNode::new(Arc::new(SpeechAfterPool { trigger_at: 1 })).new_instance();
+    node.on_acquire();
+
+    let upstream: EventStream = Box::pin(stream::iter(vec![Ok(PipelineEvent::PcmFrame(
+        vec![0.1; 512],
+        16000,
+    ))]));
+    let out: Vec<Result<PipelineEvent, AppError>> =
+        Box::pin(node.stream(upstream, &ctx)).collect().await;
+    node.on_release();
+
+    assert_eq!(
+        out.len(),
+        3,
+        "expected two chunks plus one boundary, got {out:?}"
+    );
+    assert!(matches!(out[0], Ok(PipelineEvent::PcmFrame(ref s, 16000)) if s.len() == 256));
+    assert!(
+        matches!(out[1], Ok(PipelineEvent::SpeechStarted)),
+        "SpeechStarted must follow the chunk that triggered it, got {out:?}"
+    );
+    assert!(matches!(out[2], Ok(PipelineEvent::PcmFrame(ref s, 16000)) if s.len() == 256));
+}
+
+/// 语音前缀上限 9600 样本：触发前收得再多，下游 ASR 首批也只拿到 9600。
+#[tokio::test]
+async fn vad_caps_prefix_to_9600_samples_before_asr() {
+    let ctx = NodeContext::new(CancellationToken::new());
+    let vad = VadNode::new(Arc::new(SpeechAfterPool { trigger_at: 16000 })).new_instance();
+    vad.on_acquire();
+
+    let recorder = PrefixRecorder::default();
+    let asr = AsrNode::new(Arc::new(RecordingAsr {
+        recorder: recorder.clone(),
+    }));
+
+    let upstream: EventStream = Box::pin(stream::iter(vec![Ok(PipelineEvent::PcmFrame(
+        vec![0.1; 16000],
+        16000,
+    ))]));
+    let mut out = asr.stream(vad.stream(upstream, &ctx), &ctx);
+    while let Some(_item) = out.next().await {}
+    vad.on_release();
+
+    assert_eq!(
+        *recorder.first_len.lock().unwrap(),
+        Some(9600),
+        "ASR must receive exactly the capped prefix"
+    );
+}
+
+/// TODO: 客户端把上行采样率声明成 0 时，`ropus::Decoder::new(0, …)` 返回 `Err(BadArg)`，
+/// `reconfigure` 的 `unwrap` 实测在 `opus_node.rs:230` panic，整轮 task 随之崩掉。
+/// 期望是忽略非法 `Configure`（保留上一次有效采样率）或返回错误。
+/// 修好后删掉 `#[ignore]`，这条就是回归守卫。
+#[tokio::test]
+#[ignore = "Configure(sample_rate = 0) 会在 opus decoder 构造处 panic"]
+async fn opus_configure_zero_sample_rate_does_not_panic() {
+    let node = OpusDecodeNode::new();
+    node.on_configure(&PipelineEvent::Configure(audio_param(0)));
 }

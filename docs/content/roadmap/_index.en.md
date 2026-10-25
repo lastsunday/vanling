@@ -3,8 +3,8 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "75b3cdbef309552ba9bc82a38054fbea3a7f7aed"
-translated_at = "2026-10-10T17:09:06Z"
+source_file_hash = "cf90f5e4e75ebed044fff7cd1f3b9d737eba56b1"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 ## Overview
@@ -327,6 +327,13 @@ Priority reference:
 | -------- | ------ | ---- | -------------------- | --------------------------------------------------------------- | ---- |
 | 🔴 P0    | ✅     | ✅   | Bearer Token validation | Authorization header + query param fallback, JWT decode validation |      |
 
+#### Token lifecycle
+
+| Priority | Status | Test | Item          | Description                                                   | Link |
+| -------- | ------ | ---- | ------------- | ------------------------------------------------------------- | ---- |
+| 🟠 P1    | ❌     | ❌   | Refresh revocation | Refresh tokens cannot be revoked; logout only drops them client-side |      |
+| 🟠 P1    | ❌     | ❌   | Token logging | Access/refresh tokens written in plain text into tracing span fields |      |
+
 ### Activate & Bind
 
 #### OTA Activation
@@ -377,6 +384,15 @@ Priority reference:
 | 🔴 P0    | ✅     | ✅   | Voice Break detection     | Silence timeout triggers TurnComplete            |      |
 | 🟠 P1    | ✅     | ✅   | Continued Conversation    | auto/realtime modes, auto re-enter voice listening after TTS |      |
 | 🟡 P2    | ❌     | ❌   | Semantic VAD / layered turn | Layer1 Silero only; missing punctuation/semantic layer |      |
+| 🟠 P1    | ❌     | ❌   | Voiceprint            | Identify the speaker alongside ASR and inject into the LLM; needs registration/management, voiceprint vectors and context injection |      |
+| 🟠 P1    | ❌     | ❌   | Dynamic VAD parameters | Silence thresholds are fixed; need runtime adjustment by dialogue state |      |
+| 🟠 P1    | ❌     | ❌   | ASR settle + reopen   | ASR right after VAD silence can lose the final phonemes; no turn reopen |      |
+| 🟠 P1    | ❌     | ❌   | Multiple ASR providers | Only one sherpa-onnx implementation; no model switching or fallback |      |
+| 🟡 P2    | ❌     | ❌   | Filler/hesitation detection | ASR `uh/um/呃/嗯` + short audio (<3 s) should not trigger the LLM |      |
+| 🟡 P2    | ❌     | ❌   | Ambient listening mode | Passive listening without a wake word + active response; needs a privacy design (no raw audio stored) |      |
+| 🟡 P2    | ❌     | ❌   | ASR input constraints | 16 kHz mono only; `Asr` is not `Sync`, so it cannot be shared across threads |      |
+| 🔵 P3    | ❌     | ❌   | Speaker diarization   | Separate speakers in multi-person scenes                    |      |
+| 🔵 P3    | ❌     | ❌   | Server-side AEC       | Client-side AEC only; no echo cancellation on the server    |      |
 
 #### Round
 
@@ -387,6 +403,7 @@ Priority reference:
 | 🟠 P1    | ✅     | ✅   | Epoch message filtering | Stale round messages dropped; keeps TTS status notifications |      |
 | 🔴 P0    | ✅     | —    | stop_round race       | Fixed; 5s timeout fallback                       |      |
 | 🟠 P1    | ✅     | ✅   | AudioPacer            | Throttles audio output by output_frame_duration  |      |
+| 🟠 P1    | ❌     | ❌   | Opus-to-PCM prebuffer | No downlink prebuffer, so network jitter shows up directly as playback stalls |      |
 
 #### LingCore
 
@@ -398,6 +415,12 @@ Priority reference:
 | 🟠 P1    | ✅     | ✅   | History management   | Context truncation (max_prompt_len) and persistence |      |
 | 🟡 P2    | ⚠️     | ❌   | Emotion detection    | Always returns "happy"; no real analysis       |      |
 | 🟡 P2    | ❌     | ❌   | Personalized memory  | Long-term preferences/user profile storage not implemented |      |
+| 🟠 P1    | ❌     | ❌   | RAG knowledge base   | MCP can connect, but there is no built-in vector retrieval |      |
+| 🟠 P1    | ❌     | ❌   | Intent detection     | No separate intent layer; intent comes from a single LLM pass |      |
+| 🟠 P1    | ❌     | ❌   | LLM history blocking | Writing session history to the DB blocks the whole generation thread |      |
+| 🟡 P2    | ❌     | ❌   | Agent orchestration  | LLM + MCP tool chain autonomously executing multi-step tasks |      |
+| 🔵 P3    | ❌     | ❌   | describe O(n)        | Rebuilds the full message history on every call             |      |
+| 🔵 P3    | ❌     | ❌   | Guided reasoning dialogue | Education-mode guidance; needs prompt engineering + dialogue state |      |
 
 #### TTS
 
@@ -407,6 +430,18 @@ Priority reference:
 | 🟠 P1    | ✅     | ✅   | Two-stage streaming | token-level fast first packet + sentence-level steady state |      |
 | 🟡 P2    | ✅     | ❌   | TTFA/RTF instrumentation | Time-to-first-audio/real-time-factor performance monitoring |      |
 | 🔵 P3    | ✅     | ❌   | Fade-out         | Tail fade-out eliminates click           |      |
+| 🟠 P1    | ❌     | ❌   | Piper/Kokoro engines | Replace or supplement MatchaTTS; Piper suits the edge, Kokoro has the better quality/size ratio |      |
+| 🟠 P1    | ❌     | ❌   | Multilingual TTS     | Single language today; the ESP32 ASR side already supports 25+ languages |      |
+| 🟠 P1    | ❌     | ❌   | Multiple TTS providers | Only one implementation; no engine switching or fallback |      |
+| 🟠 P1    | ❌     | ❌   | Quick Reply          | Play "I'm here" while the LLM thinks, lowering perceived latency |      |
+| 🟠 P1    | ❌     | ❌   | Dynamic voice switching | Switch TTS voice automatically from voiceprint recognition |      |
+| 🟠 P1    | ❌     | ❌   | Tail hold buffer     | ~240 ms frame cache so the final syllable is not cut (fade-out is implemented) |      |
+| 🟡 P2    | ❌     | ❌   | Inter-sentence silence | Fixed silence → punctuation-driven (comma 0.3 s / period 0.6 s) |      |
+| 🟡 P2    | ❌     | ❌   | Conversational prosody | Breath/hesitation/laughter prosody to sound more human     |      |
+| 🟡 P2    | ❌     | ❌   | Emotion-adaptive tone | Detect emotion labels and adjust tone                       |      |
+| 🔵 P3    | ❌     | ❌   | Voice cloning        | MatchaTTS supports reference audio; the config surface is missing |      |
+| 🔵 P3    | ❌     | ❌   | TTS clone overhead   | `Arc<str>` vs `String` clone storm                          |      |
+| 🔵 P3    | ❌     | ❌   | Audio normalization  | `adaptive_normalize()` exists but is not wired into the TTS output |      |
 
 ### McpSession
 
@@ -434,6 +469,21 @@ Priority reference:
 | -------- | ------ | ---- | -------------------- | ------------------------------------------ | ---- |
 | 🔴 P0    | ✅     | ✅   | /mcp endpoint authentication | Bearer JWT auth + rmcp default Host validation |      |
 
+#### Tool ecosystem
+
+| Priority | Status | Test | Item                   | Description                                            | Link |
+| -------- | ------ | ---- | ---------------------- | ------------------------------------------------------ | ---- |
+| 🟠 P1    | ❌     | ❌   | Home integration       | Home Assistant and similar, reached through MCP        |      |
+| 🟠 P1    | ❌     | ❌   | Device-to-device calls | Devices call each other like phones; needs an MQTT gateway + contacts |      |
+| 🟠 P1    | ❌     | ❌   | Music playback         | A baseline feature; needs LRC lyric sync               |      |
+| 🟠 P1    | ❌     | ❌   | Timer/reminder/alarm   | No scheduling or reminder mechanism at all             |      |
+| 🟡 P2    | ❌     | ❌   | Plugin system          | No plugin architecture; extensions require changing core code |      |
+| 🟡 P2    | ❌     | ❌   | MCP Market             | Third-party tool aggregation + one-click import + hot reload |      |
+| 🟡 P2    | ❌     | ❌   | MCP debug console      | Per-agent endpoints, live call testing + per-agent filtering |      |
+| 🟡 P2    | ❌     | ❌   | MCP tool aggregation   | Preset tool library (DingTalk/QQ/system monitoring/WebPilot/math) |      |
+| 🟡 P2    | ❌     | ❌   | MQTT gateway           | MQTT+UDP → WS bridge: distributed deployment + balancing + HMAC |      |
+| 🟡 P2    | ❌     | ❌   | Config wizard + end-to-end test | First-run wizard + per-component latency tests + visualization |      |
+
 ### Output Filter
 
 #### Recorder (Output)
@@ -441,6 +491,7 @@ Priority reference:
 | Priority | Status | Test | Item              | Description                       | Link |
 | -------- | ------ | ---- | ----------------- | --------------------------------- | ---- |
 | 🟡 P2    | ✅     | ✅   | Output persistence | Frame/round data persisted to database |      |
+| 🟠 P1    | ❌     | ❌   | Recorder cap | `Vec<RecordEntry>` is unbounded, so concurrent load grows memory without limit |      |
 
 ### Restful
 
@@ -457,6 +508,7 @@ Priority reference:
 | 🔴 P0    | ✅     | ✅   | GET /api/security/rate_limit    | Auth introspection endpoint, returns auth/ota/core quotas & live usage; does not consume quota itself |      |
 | 🟡 P2    | ❌     | ❌   | Invite Code system              | Registration invite code generation/validation not implemented          |      |
 | 🟠 P1    | ✅     | ❌   | Device management CRUD          | List/activate (by code/by ID)/disable/enable/delete endpoints implemented (missing detail view) |      |
+| 🔵 P3    | ❌     | ❌   | Session export/delete           | Sessions can only be viewed, not exported or deleted                                            |      |
 
 ### Admin UI
 
@@ -477,6 +529,7 @@ Priority reference:
 | 🟠 P1    | ❌     | ❌   | Shared client protocol | device identity integration (isomorphic with IoT), WS voice + telemetry + MCP tool surface | [Spec](../../development/clients/shared-protocol.md) |
 | 🟡 P2    | ❌     | ❌   | USB peripheral telemetry | Android first (OTG/USB-Host); iOS voice + screen only        |                                                      |
 | 🟡 P2    | ❌     | ❌   | CI/CD              | iOS/Android build/sign/release pipeline not implemented      |                                                      |
+| 🟠 P1    | ❌     | ❌   | Flutter WS/auth integration | Scaffold exists; WS connection and authentication are not wired in |                                                      |
 
 ### IoT
 
@@ -521,3 +574,6 @@ Priority reference:
 | 🔴 P0    | ✅     | ✅   | Graceful shutdown ordering    | Server CancellationToken drives axum/WS/Matrix orderly graceful shutdown |      |
 | 🔴 P0    | ✅     | —    | Runtime race                  | build() runs synchronously; set() happens-before any worker thread; race-free |      |
 | 🟠 P1    | ✅     | ✅   | Automatic timestamp fill      | before_save added to Config entities; create/update timestamps auto-filled |      |
+| 🟠 P1    | ❌     | ❌   | Foreign keys                  | Missing FKs for `round.session_id`, `round_data.round_id`, `frame.round_id` |      |
+| 🟠 P1    | ⚠️     | ❌   | MCP lock ordering             | The old `mcp_host.rs` is gone and the current component takes no cross-instance locks; re-check before reintroducing multi-endpoint aggregation |      |
+| 🔵 P3    | ❌     | ❌   | MCP error handling            | Error mapping and retries are incomplete                       |      |

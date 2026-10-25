@@ -1,65 +1,32 @@
 +++
-title = "Pipeline Redesign"
-weight = 205
+title = "Unified Pipeline"
+weight = 202
 
 [extra]
-translated_at = "2026-08-31T00:00:00Z"
-source_file_hash = "2f678bf34b8a7ffa6018688ce3932ceffe401b76"
+source_file_hash = "bc3bd2d4b4a91d5a939f5888a248503a2e6ab80a"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
-# Pipeline Redesign
+# Unified Pipeline
 
-> **This document describes the target architecture** (validated against the current implementation). Use this
-> as ground truth when opening a new session to continue.
-> Structure: background & motivation → roles & ownership → single-chain + observer protocol → engine
-> auto-broadcast → chain construction → Round unified consumption → turn coordination & data loop → Session
-> orchestration → verification → divergence → related files → risks & controls.
+> The whole chain for one turn: `opus → vad → asr → turn → ling → tts`. Nodes are pure stream transforms; the engine broadcasts at every node boundary, Round consumes the inner broadcast, and Session subscribes only to Round's lifecycle events.
+> Why the chain looks like this and what it replaced: [pipeline evolution record](@/records/server/pipeline-evolution.en.md).
 
-## Background and Motivation
+## Design constraints
 
-Unify engines such as VAD / ASR / LLM / TTS from "hard-coded orchestration" into a "pluggable node chain",
-flowing a unified `PipelineEvent` through the whole chain. The core claim: **streams are inherently
-one-directional** (`audio → ASR → text → LLM → text → TTS → audio`), just a series of nodes chained end to
-end. Therefore **every node should be a homogeneous stream transform**, and the chain is their nested fold—
-"the previous node's output = the next node's input".
-
-This blueprint resolves the structural problems left over from the current implementation:
-
-1. **Parallel Vecs + magic indices**: the old `InputChain{nodes, resettable, reconfigurable}` were three
-   parallel Vecs aligned by fixed indices (`nodes[2]`=ASR, `resettable[1]`=ASR). Reordering silently
-   misaligns them—invisible to the compiler.
-2. **ling/tts privilege**: Ling and TTS were treated as a privileged pair that always appeared together
-   (`with_ling_node` next to `with_tts_node`), tearing apart the homogeneous essence that "they are just a
-   few ordinary nodes in the chain".
-3. **Hearing/speaking two chains**: `build_hearing` (`opus→vad→asr→turn`) + `build_speaking` (`ling→tts`)
-   were treated as two separate chains—Session polled the hearing tail while Round spun a long task to
-   consume the speaking tail: **two lifecycles, two consumer stacks**.
-4. **Factory layering redundancy**: `PipelineFactory` trait + `NodeFactory` struct were two layers added only
-   to keep "service from importing api concrete types"; the real need is just "build a chain per Round".
-5. **Misplaced responsibility**: Session did both total orchestration and drove the recognition/output
-   chains, overlapping with Round's per-turn processing responsibility.
-
-### Design principles
-
-- **One chain per Round**: `opus→vad→asr→turn→ling→tts` end to end; `TurnComplete` flows into `ling→tts`
-  **inside the chain**, no two-chain split, no Session polling.
-- **All nodes are homogeneous**: unified into a single `Node::stream(upstream, ctx)` stream transform; remove
-  capability sub-traits, `InputChain`, and the privileged ling/tts pairing.
-- **Observer built into the abstraction layer**: `NodeContext` carries the observer registration point
-  (Round injects `EventSink`) plus `session_id` (for node log correlation / state attribution);
-  **business nodes are completely unaware**, broadcasting is done by the engine.
-- **Engines as references + pooling**: ASR is a shared engine (`create_stream()` is naturally concurrent);
-  VAD is a serial state machine reused via an **object pool** (`clear()` before use), not built per turn.
-- **The old Round keeps running by default**: interrupted only when a new turn must occupy the output
-  channel / interrupt ongoing speech / grab the websocket (reusing epoch anti-crosstalk semantics).
+- **One chain per Round**: `opus→vad→asr→turn→ling→tts` end to end; `TurnComplete` flows into `ling→tts` inside the chain.
+- **All nodes are homogeneous**: a single `Node::stream(upstream, ctx)` transform; no capability sub-traits, no `InputChain`, no privileged ling/tts pairing.
+- **Observer built into the abstraction layer**: `NodeContext` carries the observer registration point (Round injects `EventSink`) plus `session_id` (node log correlation / state attribution); **business nodes are completely unaware**, broadcasting is done by the engine.
+- **Engines as references + pooling**: ASR is a shared engine (`create_stream()` is naturally concurrent); VAD is a serial state machine reused through an **object pool** (`clear()` before use).
+- **The previous Round keeps running by default**: interrupted only when a new turn must occupy the output channel / cut off ongoing speech / grab the websocket (epoch prevents stale output).
 
 ## Roles & Ownership
 
 | Role | Responsibility | Key |
 |---|---|---|
-| **Session (total orchestrator)** | connection / phase / Round lifecycle (shadow/upgrade/stop) / idle timeout; turns inbound audio into `PipelineEvent` and sends it to the active Round's chain head | converges to **lifecycle management**, no longer drives/polls the chain; looks up `capabilities()` from templates at build time to drive the handshake declaration |
+| **Session (total orchestrator)** | connection / phase / Round lifecycle (shadow/upgrade/stop) / idle timeout; turns inbound audio into `PipelineEvent` and sends it to the active Round's chain head | does **lifecycle management** only — it drives neither recognition nor output and does not poll the chain; looks up `capabilities()` from templates at build time to drive the handshake declaration |
 | **Round (single processor)** | **owns one chain**, auto-injects itself as observer, subscribes to the broadcast; centrally responds to barge-in / turn advance / per-sentence audio forwarding / timeout / errors | one utterance per turn; chain is internal implementation |
-| **Ling (decision-core trait)** | receives recognized results → decides → produces expression intents; references LLM / DB / sensors / web | implementations may be LLM/agent · state machine · mixed · passthrough; declares missing data via `NeedsInfo` (Stage E) |
+| **Ling (decision-core trait)** | receives recognized results → decides → produces expression intents; references LLM / DB / sensors / web | implementations may be LLM/agent · state machine · mixed · passthrough |
 | **Node (engine adapter)** | Opus decode / VAD / ASR / turn / LLM / TTS / data acquisition | unified `Node::stream` stream transform, **business nodes unaware of the observer**, pluggable composition; `capabilities()` generalizes session-level capability declaration, plus `release_mode`/`on_acquire`/`on_release` lifecycle |
 
 ```
@@ -75,8 +42,6 @@ Session (total orchestrator) — manages Round lifecycle; forwards Frame::Voice 
             │ outer: Session registers as Round's observer → shadow→running upgrade / phase switch / epoch / ListenStop
             ▼
         OutputMessage ──> client
-
-   Data loop (NeedsInfo, Stage E): end the turn → orchestrate data nodes → route back around to Ling → decide again → new turn
 ```
 
 ## Single Chain + Observer Protocol
@@ -93,13 +58,11 @@ pub enum PipelineEvent {
     PartialTranscript(String),
     TurnText { text: String, prob: f32 },  // gateway: one recognition finished (ASR produces)
     TurnComplete { text: String, prob: f32 }, // turn boundary (turn node closes the turn; boundary detection lives in AsrNode + Session)
-    Configure(AudioParam),                 // replaces the Reconfigurable capability: in-stream event
+    Configure(AudioParam),                 // downlink audio params, applied through an in-stream event
     FinishTurn,                            // internal control: request ASR to finish now
     // Expression
     TextChunk { text: String, emotion: Option<String> },
     AudioOut { audio: Vec<Vec<u8>>, is_first: bool, is_last: bool },
-    // Stage E: multimodal & data loop
-    // ImageInput / VideoInput / Command(String) / VideoOut / NeedsInfo{query, via}
 }
 
 pub struct NodeContext {
@@ -162,8 +125,8 @@ pub struct Tapped { pub point: TapPoint, pub event: PipelineEvent }
 
 **Semantics**:
 
-- **Single `Node`**: remove `Resetable` / `Reconfigurable` / `StreamingNode`. reset is not public—VAD is
-  per-Round (cleared from the pool before use); reconfigure is two-layered: Session forwards the in-stream
+- **A single `Node` trait**: capabilities are declared through `capabilities()`; no capability sub-traits split the
+  node kinds. reset is not public—VAD is per-Round (cleared from the pool before use); reconfigure is two-layered: Session forwards the in-stream
   `Configure` event to the **template** (`Node::on_configure`) at hello, and the template clones its
   configured state into each per-Round instance via `new_instance`.
 - `NodeContext` carries `cancel` + `emit` (the observer entry) + `session_id` (injected by Round, used by nodes
@@ -228,9 +191,8 @@ impl Node for TtsNode {
   (`AudioResult` only comes from TTS, so it can never fire).
 - **Extensibility**: adding a capability (e.g. an uplink format or a per-session token budget) only requires
   boxing the concrete type into `capabilities()`; the Node trait is unchanged.
-- **Cross-layer copy removed**: `session::AudioConfig` / `SessionBuilder::with_audio_config` / api
-  `to_audio_config()` are all removed; the real config source api `config::audio::AudioConfig`
-  (feeding `TtsManager`/`TtsMatcha`) stays unchanged.
+- **One config source**: api `config::audio::AudioConfig` (feeding `TtsManager`/`TtsMatcha`); the session side keeps
+  no second copy of the audio config.
 
 ### Node lifecycle (framework-enforced resource release)
 
@@ -284,26 +246,22 @@ The resulting chain shape: `opus → vad → asr → turn → ling → tts`.
 Assemblers provide only **bare prototypes** `Vec<Arc<dyn Node>>`; `with_observer` is fully
 transparent to them, handled uniformly inside `compose_chain` (each leaf broadcasts exactly once).
 
-## Chain Construction (Prototype + compose_chain, no Factory / NodeDeps / closure injection)
+## Chain Construction (prototypes + per-Round instances)
 
-- Remove the `PipelineFactory` trait, the `NodeFactory` struct, the `build_chain` function, the
-  `NodeDeps` struct, and `ChainBuilder` (the `with_chain_builder` closure injection).
+- **Three layers only**: the template set → per-Round `new_instance` → `compose_chain`. There is no
+  `PipelineFactory` / `NodeFactory` / `NodeDeps` / `ChainBuilder` layer in between.
 - **`Node` = prototype**: each node carries `new_instance(&self) -> Arc<dyn Node>` and clones an
   instance using itself as the template. The template holds the shared references it needs
   (`Arc<VadPool>` / `Arc<dyn Asr>` / `Arc<dyn Ling>` / `Arc<dyn Tts>`), and `new_instance` clones out
   a fresh per-Round entity. Nodes do **not** self-store a per-session `session_id`—the session id is
   injected by Round into `NodeContext.session_id`, and nodes only read it from `ctx` for log correlation.
-- **`compose_chain(Vec<Arc<dyn Node>>)`** (service `pipeline/mod.rs`) builds chains uniformly: it wraps each
-  leaf with `with_observer` internally then `reduce(compose)`. Assemblers provide only **bare prototypes**;
-  broadcast stays transparent to them.
 - **Session** holds the bare prototype set `Vec<Arc<dyn Node>>` (`SessionBuilder::with_node_templates`);
   per Round: `templates.iter().map(|t| t.new_instance())` → `compose_chain(...)`.
 - **Session looks up the session-level audio capability from templates at build time**: in each template's
   `capabilities()` via `downcast_ref::<AudioSpec>()` (see "Capability Look Up"), driving the handshake
   audio declaration and the pacer; with no TTS node no downlink audio is declared (`audio_params: None`).
-- **Callers (api sites ws / matrix / tests)** dynamically assemble a bare-prototype `Vec`—conditionally
-  `push`/reorder by config, as `Arc::new(X) as Arc<dyn Node>`—**no `with_observer`, no `NodeDeps`,
-  no builder closure**.
+- **Callers (api sites ws / matrix / tests)** assemble a bare-prototype `Vec<Arc<dyn Node>>` from config:
+  conditional `push` / reordering decides which stages the chain has and in what order.
 - One chain per Round = each `new_instance` acquires one new VAD instance from the pool.
 
 ## Node Ownership
@@ -316,7 +274,6 @@ transparent to them, handled uniformly inside `compose_chain` (each leaf broadca
 | `TurnNode` | `service/src/pipeline/nodes/turn_node.rs` | `TurnText→TurnComplete`; normalizes the ASR stream and direct text input (`TurnText`) paths into one explicit turn-close marker (boundary detection lives in AsrNode silence confirm and Session control events) |
 | `LingNode` | `service/src/pipeline/nodes/ling_node.rs` | `TurnComplete\|TurnText→TextChunk` (unfold inner stream; direct text input also goes here) |
 | `TtsNode` | `service/src/pipeline/nodes/tts_node.rs` | `TextChunk→{TextChunk, AudioOut}` (unified `Node::stream`); `capabilities()` reports `AudioSpec` (`Tts::audio_spec()`) |
-| `DataNode` (MCP/DB/sensor) | new | responds to `NeedsInfo`, returns data events (Stage E) |
 
 All nodes are **pure transforms**: unaware of observer/broadcast; `TtsNode` balances emotion in **FIFO**
 order, encoding errors pass through as `Err`.
@@ -345,7 +302,7 @@ order, encoding errors pass through as `Err`.
   `RoundEvent` broadcast channel; **Session registers as its subscriber** (unique per Round). Round decides
   signals and **forwards output inline** (STT/LLM/TTS/Audio → `output_tx`) + maintains the TTS state machine;
   Session only does **lifecycle decisions** (shadow→running upgrade / phase switch / epoch / interrupt
-  stop_round / ListenStop) and **no longer polls the chain tail**.
+  stop_round / ListenStop).
 
 ### File: `service/src/session/round.rs`
 
@@ -369,7 +326,7 @@ pub struct Round {
 - Round's `start()` spawns an observer task: `select!` over { tail.next() (drive + Err) / tap_rx.recv()
   (control) / cancel }, consuming uniformly and forwarding per-sentence output.
 
-## Turn Coordination and the Data Loop
+## Turn Coordination
 
 - The turn boundary is settled in **AsrNode's silence confirm** (`SILENCE_CONFIRM_MS=200`; AsrNode `finish()`es
   after VAD reports non-speech) and **Session control events** (`FinishTurn`: `ListenStop` / silence timeout /
@@ -377,24 +334,22 @@ pub struct Round {
 - **Rule-based boundary (default)**: AsrNode ends a complete intent by the silence-confirm threshold
   (200ms) — after VAD reports non-speech, once `silence_samples >= SILENCE_CONFIRM_MS*sample_rate/1000`,
   it finishes; plus silence timeout, transport stall, `FinishTurn` control event, and prefix.
-- **Old Round semantics**: it **keeps running** by default; interrupted only on output/chatter/websocket
+- **Handling the previous Round**: it keeps running by default; interrupted only on output/chatter/websocket
   contention—reusing `RoundStopReason::Upgrade/BargeIn` + epoch anti-stale output.
-- **Ling missing data (Stage E)**: `NeedsInfo{query, via}` flows out of Ling → data nodes fetch → loop around
-  back to Ling → decide → new turn (Session-orchestrated loop, not Ling commanding Session in reverse).
 
 ## Session Total Orchestration (Round Lifecycle Management)
 
 - The phase state machine stays in Session: `Idle` / `Listening` / `Speaking`.
 - `on_listening(Frame::Voice)` → forwards `AudioFrame` to the active Round's chain head (D1).
-- **Session registers as the current Round's outer observer**: `select!` on the `RoundEvent` channel
-  (replacing the old chain-tail polling) and makes **lifecycle decisions** on each signal:
+- **Session registers as the current Round's outer observer**: `select!` on the `RoundEvent` channel and
+  makes **lifecycle decisions** on each signal:
   - `SpeechStarted` → barge-in: `next_round_epoch()` + `stop_round(BargeIn)` (the current shadow continues
     hearing the interrupt; its `TurnComplete` upgrades it — no `new_shadow_round`)
   - `TurnComplete{text, prob}` → `on_turn_complete`: `shadow→running` upgrade, phase Speaking, ListenStop,
     then immediately spawns the **next shadow round** (`new_shadow_round`) to keep listening during / between utterances
   - `SpokenEnd` → expression finished (shadow phase / idle accounting)
-- Session has **no `drain_hearing` / `handle_hearing_event` / `active_hearing`** (responses moved to the
-  Round observer).
+- Session holds no `drain_hearing` / `handle_hearing_event` / `active_hearing`: the response logic lives in the
+  Round observer.
 - `with_node_templates(Vec<Arc<dyn Node>>)` injects the **bare prototype set** (api sites assemble it
   dynamically to decide which stages the chain has and in what order).
 - The handshake (`handle_connect`) reply `audio_params` is decided by the `AudioSpec` looked up at build time;
@@ -402,90 +357,46 @@ pub struct Round {
   pacer timing takes `frame_duration_ms` (not built when there is no spec).
 - epoch anti-crosstalk preserved; output forwarding counts as activity (resets `idle_since`).
 
-### Silence / No-Input Discrimination (Hub Gatekeeper)
+### Empty-Input Decision (Hub Gatekeeper)
 
-Empty input (no valid speech) is **discerned and reacted to by the hub (Session)** via conversation acts;
-the generation layer only renders wording. This follows the industry "hub decides, NLG renders" split:
-Session owns discrimination + counting + decision; `Ling`/Echo (NLG) only phrases an act.
+The classification table, counting and prompt grading live in [Dialogue Flow](@/development/server/dialogue-flow.en.md#empty-input-behavior); only the mechanism stays here. On entering `Listening` the Session derives an `EmptyKind` from "mode + previous turn" and, after observing `(After, EmptyInput)` / `(After, EmptyTurn)`, emits `Prompt{kind, count}` (re-injected at the chain head; nodes pass unrecognised events through), `Silence` (no expression injected) or `GiveUp` (back to `Idle`). `Ling` only composes a prompt from the Act and Echo only looks up a fixed sentence by kind/count — classification and rendering never cross.
 
-**Discrimination (`EmptyKind`)** — Session decides on entering `Listening` from mode + previous turn:
+## Tests
 
-| kind | condition |
-| --- | --- |
-| `Manual` | push-to-talk: `ListenStop` with no speech detected (`!is_voice_break_detect` && `!speech_active`) |
-| `Wake` | empty input on the first listen after the wake word (`Input{mode:Wake}`) |
-| `AutoSpoke` | hands-free auto: VAD triggered but ASR text empty (spoke but unclear; `asr_node` emits `EmptyInput`) |
-| `Silence` | hands-free auto/realtime total silence: VAD never triggered, ASR `Nothing` |
-| `Continuing` | empty input during continued listening after a reply (realtime `Speaking→Listening`) |
+| Layer | Test | Assertion |
+| --- | --- | --- |
+| Broadcast | `service/src/pipeline/mod.rs` `with_observer_broadcasts_before_and_after_once_per_leaf` | Each leaf sees exactly one `Tapped{Before}` and one `Tapped{After}` per event |
+| Broadcast | `nested_compose_does_not_duplicate_broadcast` | Nested `compose` does not broadcast the same event twice |
+| Composition | `new_instance_reproduces_fresh_instance_and_compose_chain_broadcasts_once` | `new_instance` yields an independent instance while `compose_chain` still broadcasts once overall |
+| Lifecycle | `lifecycle_immediate_releases_at_stream_end_deferred_at_finish` | Immediate releases at stream end, Deferred on `finish()`, exactly once each |
+| Nodes | `api/tests/pipeline_nodes_test.rs` (16 + 1 `#[ignore]`) | Resampling to 16k, VAD onset and prefix cap, ASR empty input, TTS encoding and `AudioSpec` capability, ling cancellation |
+| End to end | `api/tests/session/` (`chat.rs`, `empty_input_round.rs`) | Handshake `audio_params`, listen/speak rotation, barge-in, no-input prompt tiers |
 
-**Counting (Rule of three)**: Session keeps `empty_count`, `count++` on each `EmptyTurn`,
-reset on a successful `TurnComplete` (real input); converges after at most 3.
-Exception — `Manual`: event-driven, prompts on **every** keypress with no speech, then resets
-`empty_count` back to 0 (not gated by Rule of three), so each new keypress gets a fresh prompt
-without nagging during a quick re-press.
-
-**Decision (conversation act)** — Session observes `(After, EmptyInput)`/`(After, EmptyTurn)` and picks:
-
-- `Prompt{kind, count}` → re-inject into the chain head (nodes pass through unknown events), `Ling` renders the prompt
-- `Silence` → no expression (silent-wait / back to idle; used for `Continuing` to avoid nagging)
-- `GiveUp` → stop prompting, return to `Idle`
-
-**Prompt grading** (real LLM composes a prompt from the act; Echo returns a graded fixed sentence by kind/count):
-
-| kind | count 1 | count 2 | count 3 |
-| --- | --- | --- | --- |
-| `Manual` | gentle "didn't catch that, please repeat" (prompts on every keypress; then back to listening-wait) | same | same |
-| `Wake` | guiding "what can I help you with?" | more specific | back to idle |
-| `AutoSpoke` | "didn't catch that, please repeat" | give actionable example | graceful close, silent |
-| `Silence` | gentle guide, no blame | more specific | back to idle |
-| `Continuing` | silent wait (no prompt) | silence | back to idle |
-
-## Verification
-
-- `cargo check --workspace --all-targets` / `cargo fmt --all` / `cargo clippy -p service -p api` zero warnings.
-- `cargo test -p service -p api` all green; add:
-  - engine **timing-broadcast** test: feed one event → the chain broadcasts both `Tapped{Before,ev}` and
-    `Tapped{After,ev}` to the observer, verifying labels and contents;
-  - capability **look-up** test: `TtsNode` reports `AudioSpec`, Session resolves via
-    `capabilities()` + `downcast_ref::<AudioSpec>()` (asserts the three `audio_params` handshake fields);
-    `audio_params` is `None` when there is no TTS template;
-  - single-chain (`opus→vad→asr→turn→ling→tts`) construction + full-chain consumption test;
-  - VAD pool / turn semantics keep the existing baseline.
-
-## Divergence (relative to the current implementation)
-
-| Dimension | Current implementation | New blueprint (single chain + observer) |
-|---|---|---|
-| Chain structure | hearing `build_hearing` + speaking `build_speaking` two segments | **single chain** `opus→vad→asr→turn→ling→tts` |
-| Chain abstraction | `PipelineFactory` trait + `NodeFactory` struct | **`Node` self-carried prototype (`new_instance`) + `compose_chain` unified builder** + `with_node_templates` injecting the bare prototype set |
-| Observer | none (Session polls the hearing tail; Round long task consumes the speaking tail) | **two-layer**: inner Round ← pipeline broadcast (`Tapped`); outer Session ← `RoundEvent` (Round observable subject) |
-| Broadcast timing | none | `Tapped{Before, After}` both timings, labeled by engine, business nodes unaware |
-| Session driver source | polls the hearing tail (`drain_hearing`/`handle_hearing_event`/`active_hearing`) | **registers/subscribes to `RoundEvent`**, `select!`s only on RoundEvent for lifecycle decisions |
-| Session responsibility | drives recognition (poll) + drives output | **Round lifecycle only** (shadow/upgrade/stop/phase/idle); no longer polls the chain |
-| Round | long task consuming the speaking chain | **two-layer observer**: inner unified consumption (barge-in/advance/forward/timeout/errors); outer exposes `RoundEvent` for Session to subscribe |
+```shell
+cargo test -p service --lib pipeline
+cargo test -p api --test pipeline_nodes_test
+cargo test -p api --test session
+```
 
 ## Related Files
 
-| Path | Change | Role |
-|---|---|---|
-| `service/src/pipeline/mod.rs` | edit | `NodeContext{ cancel, emit, session_id }` + `EventSink`/`Tapped`/`TapPoint`; remove `PipelineFactory`; `Node::new_instance` prototype + `on_configure` template-level downlink config + `NodeCapability`/`capabilities()` generalized capability look up + lifecycle (`release_mode`/`on_acquire`/`on_release`); `compose_chain` unified builder; engine broadcast |
-| `service/src/session/mod.rs` | edit | converge Round lifecycle; register/subscribe `RoundEvent`; remove `drain_hearing`/`handle_hearing_event`/`active_hearing`/`ChainBuilder`/`AudioConfig`/`with_audio_config`; look up `capabilities()` (`downcast_ref::<AudioSpec>()`) at build time; `with_node_templates`; `handle_connect` forwards `Configure` to templates once |
-| `service/src/session/round.rs` | edit | own one chain + inner subscribe `Tapped` broadcast unified consumption; outer expose `RoundEvent` (`SpeechStarted`/`TurnComplete`/`EmptyTurn`/`SpokenEnd`) for Session to subscribe |
-| `service/src/component/tts.rs` | edit | `Tts` gains `audio_spec() -> AudioSpec` (engine self-report; `AudioSpec` defined in pipeline) |
-| `service/src/pipeline/nodes/mod.rs` | edit | remove `NodeFactory` / `NodeDeps` / `build_chain` |
-| `service/src/pipeline/nodes/*.rs` | edit | pure transforms + implement `Node::new_instance` prototype cloning; adapt to `NodeContext` (business-unaware broadcast); `TtsNode` reports `AudioSpec`; `OpusDecodeNode` overrides `on_configure` + resamples decoded PCM to 16k + `new_instance` inherits config |
-| `api/src/component/tts/model/*` | edit | `TtsMatcha`/`TtsMute` implement `audio_spec()` (matcha from fields / mute default 16000·1·60) |
-| `api/src/component/tts/mod.rs` | edit | `StreamingOpusEncoder` split into sibling `opus_encoder.rs` (`mod opus_encoder; pub use`); `component/tts/model/matcha/` uses the new path |
-| `api/src/ws/mod.rs`、`matrix/client.rs` | edit | dynamically assemble **bare prototypes** `Vec<Arc<dyn Node>>` + `with_node_templates`; remove `to_audio_config`/Session `AudioConfig` cross-layer copy |
-| `api/tests/*` | edit | adapt; add timing-broadcast / `compose_chain` / `capabilities` look up / single-chain cases |
+| Path | Purpose |
+| --- | --- |
+| `service/src/pipeline/mod.rs` | `PipelineEvent`, `NodeContext{cancel, emit, session_id}`, `EventSink`/`Tapped`/`TapPoint`, the `Node` trait (prototype + `on_configure` + `capabilities()` + lifecycle), `compose`/`compose_chain` and the boundary broadcast |
+| `service/src/pipeline/nodes/` | The six nodes: `opus` / `vad` / `asr` / `turn` / `ling` / `tts`, all pure `stream` transforms plus `new_instance` cloning |
+| `service/src/session/mod.rs` | Round lifecycle (shadow/upgrade/stop/phase/idle), `with_node_templates` taking bare prototypes, `AudioSpec` look up at build time, `handle_connect` forwarding `Configure` to the templates once |
+| `service/src/session/round.rs` | Holds the single chain; subscribes to `Tapped` for inner consumption; broadcasts `RoundEvent` (`SpeechStarted`/`TurnComplete`/`EmptyTurn`/`SpokenEnd`) outward |
+| `service/src/component/tts.rs` | The `Tts` trait, including `audio_spec() -> AudioSpec` (`AudioSpec` is defined in pipeline) |
+| `api/src/component/tts/model/` | `TtsMatcha` reports `audio_spec()` from its own fields; `TtsMute` returns 16000·1·60 |
+| `api/src/component/tts/opus_encoder.rs` | `StreamingOpusEncoder` |
+| `api/src/ws/mod.rs`, `api/src/matrix/client.rs` | Assemble bare prototypes `Vec<Arc<dyn Node>>` from config and hand them to `with_node_templates` |
+| `api/tests/pipeline_nodes_test.rs` | Node-level contracts: resampling, VAD onset and prefix, ASR empty input, TTS encoding and capability declaration |
+| `api/tests/session/` | End to end: handshake audio declaration, listen/speak rotation, barge-in, no-input prompt tiers |
 
-## Risks and Controls
+## Hard constraints
 
-- **VAD pool recycling race**: serial state machine; require strict acquire/release pairing so it is held by
-  at most one Round at a time.
-- **Turn-state migration**: the original Session silence/stall logic moves into the turn node + Round
-  observer, using existing unit tests as the baseline to guarantee unchanged behavior.
-- **Broadcast ordering**: Before/After tags must exactly match the engine broadcast points so the observer
-  does not receive out-of-order signals.
-- **epoch / termination**: mechanism fully preserved, unchanged by this redesign.
-- **emotion**: TTS FIFO balancing, not relying on text-key mapping.
+- **VAD pool discipline**: VAD is a serial state machine; acquire/release pair strictly, and one instance is held by at most one Round at a time.
+- **Who decides the turn boundary**: the boundary comes from AsrNode's silence confirmation plus Session control events (`FinishTurn` / silence timeout / transport stall); `TurnNode` only marks `TurnComplete`.
+- **Broadcast order**: Before/After labels are affixed by the engine at node boundaries only; nodes never call `ctx.emit` themselves, otherwise observers see out-of-order or duplicate signals.
+- **epoch and termination**: epoch prevents stale output and does not change with the chain layout.
+- **emotion**: TTS balances emotion through a FIFO, never a text-key map.

@@ -1,51 +1,15 @@
 +++
 title = "Positioning and Trade-off Reference"
-weight = 207
+weight = 20
 
 [extra]
-translated_at = "2026-09-09T00:00:00Z"
-source_file_hash = "bf8bdef6d4f726ce73cbd748a9a1cdb0df5ec7b0"
+translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "15656ad7a263f1d16effd17c1a93c54d33ab959c"
 +++
 
 # Positioning and Trade-off Reference
 
-> **⚠️ Note: This is an exploratory feature document. It references industry standards (Alexa+, Gemini, Siri AI) and reference project implementations (xiaozhi-esp32-server, xiaozhi-esp32-server-java, xiaozhi-server-go). Most items will NOT be implemented — this serves as reference for vanling positioning and trade-offs. Actual development priorities follow the project Roadmap; current backlog lives in the [TODO](@/development/server/TODO.en.md) in-progress list.**
-
-## Pending / Exploration
-
-| Item | Description | Open Source / Libraries |
-|------|------|------|
-| Speaker ID approach | 3D-Speaker (used by xinnan-tech) vs sherpa-onnx speaker ID (already in tech stack) vs pyannote. sherpa-onnx is best: no new deps, supports ECAPA-TDNN/WeSpeaker/CAM++ | Existing: `sherpa-onnx` |
-| Plugin architecture | xinnan-tech has 13 built-in plugins + hot-reload. Does vanling need a similar mechanism, or is MCP sufficient? | Suggest: `wasmtime` — WASI sandbox + Component Model |
-| Multi-provider strategy | Reference projects support 12+ ASR / 18+ TTS providers. Does vanling need multi-provider architecture, or stay lean? | Suggest: trait abstraction (`AsrProvider`/`TtsProvider`) |
-| Music playback | Industry standard (Spotify/Apple Music integration). Determine approach: MCP tool calling external API / built-in playback / TTS extension | Suggest: `rodio` |
-| ESP32 CI/CD | Separate project (xiaozhi-esp32), outside this repo's scope. vanling provides WS + OTA interfaces as backend only | — |
-| Token persistent storage | Consider DB table for refresh tokens to support multi-device management | Existing: `sea-orm` + `redis-rs` |
-| Smart Home integration | Alexa+/Google Home core capability. Reference projects have 3 HA integration methods — evaluate vanling positioning as hub | Existing: `rmcp` (HA MCP) |
-| Agentic capabilities | Alexa+ "Experts" / Gemini Spark 24/7 agents browse web/forms/orders autonomously. LLM + MCP tool chain has foundation — evaluate depth | Existing: `rig-core` |
-| Voice emotion TTS | Gemini 2.5 / Cartesia Sonic-3 adjust TTS tone by emotion. Evaluate if MatchaTTS supports style/prosody control | Suggest: `voirs-emotion` |
-| Local privacy processing | Industry trend: Echo/Fire devices moving toward local processing. vanling already has local Qwen3 — can expand to local ASR/TTS full chain | Existing: `sherpa-onnx` + `candle` |
-| Vision capability | Reference project xinnan-tech supports VLLM (GLM-4V/Qwen-VL) photo recognition. Does vanling need vision? | Suggest: `reqwest` → Ollama/vLLM |
-| MCP Market architecture | hacker365 Go version implements an MCP tool "app store" (multi-market aggregation + hot-reload). Does vanling need MCP discovery/aggregation? | Existing: `rmcp` |
-| Dynamic TTS voice switching | hacker365 Go version auto-switches TTS voice by speaker ID. How should vanling link voiceprint to TTS? | Existing: `sherpa-onnx` |
-| Configuration wizard | hacker365 Go version has first-run wizard + full-chain latency tests. Should vanling add a wizard to lower adoption barrier? | — |
-| MQTT gateway architecture | Distributed deployment needs MQTT+UDP bridging + dynamic load balancing (xinnan-tech/xiaozhi-mqtt-gateway). Does vanling need an MQTT gateway layer? | Suggest: `rumqttc` |
-| MCP tool aggregation strategy | Reference projects ship pre-built tool libraries (DingTalk/QQ/system monitor/WebPilot/math). Should vanling include built-in MCP tool packs? | Existing: `rmcp` |
-| End-to-end S2S architecture | OpenAI/Hume/Sesame use a single model for audio in/out (not cascaded STT→LLM→TTS). Should vanling evolve beyond cascaded approach? | Suggest: `csm.rs` (AGPL-3.0) or `moshi` (Apache 2.0) |
-| Semantic VAD approach | OpenAI's model-level turn-taking vs traditional VAD — how should vanling implement smarter interruption/turn-taking? | Suggest: `wavekat-vad` |
-| Conversational prosody TTS | Sesame CSM open-source model (Apache 2.0) adds breathing/hesitation/laughter. Should vanling TTS integrate prosody? | Suggest: `csm.rs` (AGPL-3.0) |
-| Privacy strategy | Always-listening devices need privacy architecture (Bee: no audio storage / Omi: local processing). How should vanling balance features with privacy? | Existing: `sherpa-onnx` (full-chain local) |
-| SSM architecture TTS | Cartesia uses State Space Model instead of Transformer for <90ms TTS. Should vanling TTS consider SSM? | — (no Rust implementation) |
-| Piper/Kokoro evaluation | Open-source TTS models Piper (20M params/MIT) and Kokoro (82M/Apache 2.0) — replace or supplement MatchaTTS? Piper for edge, Kokoro for quality/size ratio | Suggest: `sherpa-onnx` (Piper ONNX) |
-| Step-Audio-TTS-3B integration | StepFun open-source Chinese TTS (Apache 2.0, emotion control, dialects) — candidate for server TTS? Evaluate GPU requirements and latency | Suggest: `reqwest` → StepFun API |
-| Ambient listening architecture | Medical AI passive listening (non-wake-word). Should vanling support this? Privacy? Reference Nabla (no raw audio storage) | — |
-| Matter protocol support | Smart home Hub standard (Matter 1.3+Thread 1.4). ESP32 has Thread. Full Matter SDK for cross-platform compatibility? | Suggest: `rs-matter` |
-| Proactive suggestions | Gemini Daily Brief / Alexa+ proactive reminders for traffic/deals/calendar. Needs scheduled tasks + user context reasoning | Suggest: `tokio-cron-scheduler` |
-| Cross-device continuity | Alexa+: seamless Echo→phone→computer context switching. Needs session state sync | — (custom: SQLite + WS delta sync) |
-| UGC character marketplace | Character.AI has 10M+ user-created characters; Doubao supports no-code AI character creation. vanling could support user-defined persona + voice + backstory | — |
-| Multimodal (voice+screen+video) | Gemini 2.5 / GPT-Realtime / Siri AI support camera/screen input. vanling is voice-only | Suggest: `webrtc-rs` (v0.17.x) |
-
----
+Cross-reference of industry products and open-source implementations, used to decide what vanling should and should not do. Priorities and the backlog live only in the [Roadmap](@/roadmap/_index.en.md); nothing here is a commitment.
 
 ## Open Source Voice Models
 

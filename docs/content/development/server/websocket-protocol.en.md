@@ -1,9 +1,9 @@
 +++
 title = "WebSocket Communication Protocol"
-weight = 202
+weight = 205
 [extra]
-source_file_hash = "d1b45503f388651df4991ff98149cfb78123e77a"
-translated_at = "2026-08-30T00:00:00Z"
+source_file_hash = "5bb2888ed852462a6012161b1e5a54f010fb3472"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # WebSocket Communication Protocol

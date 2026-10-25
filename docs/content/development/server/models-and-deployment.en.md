@@ -1,9 +1,9 @@
 +++
 title = "Models and Deployment"
-weight = 203
+weight = 206
 [extra]
-source_file_hash = "2060981544dc4698ac844c7f5b563872ccc6e6ce"
-translated_at = "2026-08-31T00:00:00Z"
+source_file_hash = "698f44617e809db22f15a492f9149ac57d74dbb0"
+translated_at = "2026-10-25T00:00:00Z"
 +++
 
 # Models and Deployment
@@ -57,15 +57,7 @@ apps/server/
 
 ## Data Flow
 
-```
-Client → WS → ProtocolTranslator → InputFilters → Session → OutputFilters → ProtocolTranslator → WS
-                ┌─────────────────┐     ┌──────────────────┐
-                │ McpRouterFilter  │     │ RecorderFilter   │
-                │ RecorderFilter   │     │ (frame recording)│
-                └─────────────────┘     └──────────────────┘
-```
-
-See [Dialogue Flow](@/development/server/dialogue-flow.en.md).
+Client messages become internal `Frame`s through `ProtocolTranslator`, pass the inbound filters into the Session, and travel back out through the outbound filters and translator to the WebSocket. The chain diagram and each segment's duty are in [Core Architecture](@/development/server/architecture.en.md).
 
 ## Configuration System
 
@@ -98,18 +90,9 @@ Configuration uses [figment](https://docs.rs/figment) with layered loading, lowe
 
 See `application-example.toml` for the full configuration reference.
 
-## Downloader System
+## Asset Installation
 
-The `vanling-server downloader` subcommand provides model asset downloading:
-
-- **Manifest-driven**: Model definitions in `src/downloader/manifests/` TOML files with URLs, variants, checksums
-- **Category installation**: `--category tts|asr|llm|vad|reference`
-- **Interactive wizard**: `vanling-server downloader wizard` for guided installation
-- **Mirror support**: `--mirror hf-mirror.com` for users in China
-- **Verification**: Automatic SHA256 checksum verification
-- **Path derivation**: Installed paths auto-injected via `derive_tts_path` / `derive_asr_path` / `derive_llm_path`
-
-Usage:
+`vanling-server downloader` pulls models per manifest and verifies SHA256, then injects the install paths via `derive_*_path`; subcommands, manifest format, mirror fallback and the interactive wizard live in [Model Downloader](@/development/downloader.en.md).
 
 ```shell
 # Run from apps/server/ directory

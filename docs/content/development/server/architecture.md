@@ -5,8 +5,6 @@ weight = 200
 
 # 核心架构
 
-> **注意**：此为概览层文档，反映作者对系统架构的理解。详见[文档风格指南](@/discussions/documentation-style.md)。
-
 ## 会话概览
 
 vanling 服务端使用 **Session + Round** 模型管理对话：
@@ -63,7 +61,7 @@ Idle → Listening ⇄ Speaking
 - `Frame::Voice { data }` → 转发为 `PipelineEvent::AudioFrame` 到 Shadow Round 链首（VAD 在链内检测语音边界）
 - `Frame::Input { text, mode }` → 文本输入（`mode=Wake` 标记唤醒语境），投喂 `TurnText`；Shadow Round 升级为 Running，迁移至 **Speaking**
 - `Frame::ListenStart` → 已有 Running Round 则 BargeIn 中断；更新监听参数（barge-in / 断音检测）
-- `Frame::ListenStop` → 向链投喂 `FinishTurn`；空输入（无有效语音）由 Session 辨别类型（`EmptyKind`）分级提示：manual 无人声注入 `Prompt{Manual, count}` 触发"没听清"引导语；auto 说了但 ASR 空为 `AutoSpoke`、完全静默为 `Silence`、回复后连续监听为 `Continuing`（静默不提示）——详见 `pipeline-redesign.md`「静音 / 空输入判别」子章节
+- `Frame::ListenStop` → 向链投喂 `FinishTurn`；空输入（无有效语音）由 Session 辨别类型（`EmptyKind`）分级提示，判别条件与提示语分级见[对话流程](@/development/server/dialogue-flow.md)
 
 ### Speaking
 
@@ -95,20 +93,7 @@ Shadow Round    Running Round
 
 ### Round 内部流程
 
-Round 拥有单条节点链，并以内层观察者身份订阅广播统一消费：
-
-```
-Session │
-        ↓ (RoundEvent: SpeechStarted / TurnComplete / EmptyTurn / SpokenEnd)
-Round 拥有 NodeChain (opus→vad→asr→turn→ling→tts)
-  ├── VAD/ASR 产 TurnText → TurnNode 关回合为 TurnComplete → 发 STT + 通知 Session 升级
-  ├── Ling 文案 → TTS 产 AudioOut（逐句转发：SentenceStart / Audio / SentenceEnd）
-  └── 内层广播统一处理：TTS 状态机 / barge-in（含 lockout）/ 超时 / tail Err
-        ↓ (OutputMessage)
-     客户端
-```
-
-Round 通过 `OutputMessage` 输出；Session 只做生命周期决策（shadow→running 升级 / 相位 / 打断），不再轮询链。
+Round 持有一条节点链（`opus→vad→asr→turn→ling→tts`），并以**内层观察者**身份订阅链上广播，统一消费 barge-in（含 lockout）、逐句 `AudioOut` 转发、TTS 状态机与超时；Session 作为**外层观察者**只做生命周期决策（shadow→running 升级 / 相位 / 打断），不轮询链。事件命名、两层观察者的分工与链内边界见[统一管道](@/development/server/pipeline.md)。
 
 ## LingCore
 
@@ -127,85 +112,34 @@ LingCore
 1. LLM 流式响应 → 若返回 ToolCall → mcp 工具调用 → 结果回喂 LLM
 2. 文本按 `Sentence` 分割，逐句产出 `TextChunk { text, emotion }` → TTS 节点
 
-## 回合终止判定：静默确认 + 传输停滞
+## 回合终止
 
-回合终止判定位于 **AsrNode（音频时间静默确认）** 与 **Session（墙钟传输停滞）** 两层；
-两者均只对 `streaming=true`（`auto`/`realtime`）生效，**按键录音（`manual`，`ListenMode{streaming:false}`）不实时识别**，
-仅缓冲整段音频，待设备 `listen(stop)` 投喂 `FinishTurn` 时一次性识别（见 [`dialogue-flow.md`](@/development/server/dialogue-flow.md)）。
+回合终止由两层闸门决定：**静音确认**（`AsrNode`，按已消费的音频样本计数，200 ms）与**传输停滞**（Session，按墙钟，1200 ms 无新音频）。两者只对 `streaming=true`（`auto`/`realtime`）生效；按键录音（`manual`）只认设备的 `listen(stop)`，不吃任何超时。判据、阈值来源与「为什么这一层用这个时钟」见 [VAD 与回合判定](@/development/server/vad.md)。
 
-### 1. 音频时间静默确认（AsrNode）
-
-`AsrNode`（`service/src/pipeline/nodes/asr_node.rs`）以**已消费的音频样本数**度量静默时长，而非 `Local::now()` 墙钟：
-
-- `spoken: bool` — VAD 是否曾检测到语音
-- `silence_samples: u64` — 语音结束后累计的静音样本数，语音帧时清零
-- `SILENCE_CONFIRM_MS`（200ms）— `streaming && spoken && !speech_active && 静音样本 ≥ 阈值·sample_rate/1000` → 立即 `finish()` 本轮
-- `streaming: bool` — 由 `ListenMode{streaming}`（`listen(start)` 时注入）切换。`false`（manual）时**仍逐帧喂流预解码**（`accept_waveform`+`decode`），但抑制 `PartialTranscript` 发射与静音确认；`FinishTurn` 走同一 `finish_stream()`，只 drain 残留帧，近瞬成文——把解码摊到按住期间，避免 stop 后冷启动整段识别
-
-finish 三态：有效输入 → `TurnText`；有流但空文本 → `EmptyInput`（触发提示语）；无流 → `Nothing`。
-manual 复用同三态，唯其**无流（VAD 未检到语音）时 `finish_stream` 返回 `Nothing`**——
-由 Session 空输入逻辑（`EmptyKind::Manual`）唯一驱动提示语，避免与链内 `EmptyInput` 双触发。
-
-### 2. 传输停滞检测（Session）
-
-当客户端停止发送音频时，`silence_samples` 无法增长，用墙上时钟兜底：`check_transport_stall()`
-（`session/mod.rs`）在 `spoken` 仍活动且 `last_audio_received.elapsed() ≥ silence_voice_timeout`（1200ms）时向链投喂 `FinishTurn` 强制收尾。
-**manual 模式跳过该检测**（Listening 且 `is_voice_break_detect == false` 时直接返回）——设备的 stop 是唯一回合边界，绝不因静默超时"抢答"。
-
-**为什么不用墙钟做静默确认**：测试和 CI 环境下音频可被瞬间注入（无实时速率），墙钟与音频流时间解耦，导致静默判定在慢机器上提前触发。音频计数方式让触发点仅取决于已解码内容，与消费速度无关。
-
-**为什么需要墙钟做传输停滞检测**：音频时间计数只能统计已到达的样本。当客户端完全停止发送音频后，没有样本可计数，必须用墙上时钟检测流断。
-
-与 OpenAI Realtime（`silence_duration_ms` 音频级 + `idle_timeout_ms` 墙钟级）分层一致。
+打断是第三条路径，见下文「中断（BargeIn）」。
 
 ## 输入输出过滤器
 
-### InputFilter trait
+入站 `Frame` 与出站 `OutputMessage` 各有一层过滤器链，位于 `ProtocolTranslator` 与 `Session` 之间，只做横切处理、不含业务判断：
 
-```rust
-#[async_trait]
-trait InputFilter: Send + Sync {
-    async fn process(&self, ctx: &FilterCtx, frame: Frame) -> FilterAction<Frame>;
-}
-```
+| 层 | trait | 内置实现 |
+| --- | --- | --- |
+| 入站 | `InputFilter::process(&FilterCtx, Frame)` | `McpRouterFilter`（截获客户端 MCP 消息路由到 `DeviceMcpSession`）、`RecorderInputFilter`（记录入站帧） |
+| 出站 | `OutputFilter::process(&FilterCtx, OutputMessage)` | `RecorderOutputFilter`（记录出站帧） |
 
-返回 `FilterAction::Continue(frame)` 继续传递，`FilterAction::Consumed` 拦截，或 `FilterAction::Break` 中断管道。
-
-内置过滤器：
-- **McpRouterFilter**：截获客户端的 MCP 消息，路由到 DeviceMcpSession
-- **RecorderInputFilter**：记录入站帧
-
-### OutputFilter trait
-
-```rust
-#[async_trait]
-trait OutputFilter: Send + Sync {
-    async fn process(&self, ctx: &FilterCtx, msg: OutputMessage) -> FilterAction<OutputMessage>;
-}
-```
-
-内置过滤器：
-- **RecorderOutputFilter**：记录出站帧
+`process` 返回 `FilterAction::Continue`（放行）、`Consumed`（吞掉）或 `Break`（中断管道）。新增过滤器不需要改 Session。
 
 ## SessionBuilder
-
-Session 通过 Builder 模式构造，注入**裸节点原型集合**（api 站点按配置动态组链，决定链的阶段/顺序）：
 
 ```rust
 SessionBuilder::new()
     .with_id(session_id)
-    .with_node_templates(templates)   // Vec<Arc<dyn Node>>：opus→vad→asr→turn→ling→tts
+    .with_node_templates(templates)   // Vec<Arc<dyn Node>>：裸原型，链由调用方组装
     .with_config(session_config)
-    .build()  // 返回 SessionContext
+    .build()  // → SessionContext { session, input_tx, output_rx }
 ```
 
-`build()` 时从模板 `capabilities()`（`downcast_ref::<AudioSpec>()`）look up 下行音频能力：无 TTS 节点则握手不声明
-`audio_params`（无下行语音能力、不构造 pacer）。已删除的旧参数：`with_listener` / `with_ling` / `with_tts` / `with_audio_config`。
-
-`SessionContext` 包含：
-- `session`：Session 实例
-- `input_tx`：向 Session 发送 Frame 的通道
-- `output_rx`：从 Session 接收 OutputMessage 的通道
+`build()` 时从模板 `capabilities()` look up 下行音频能力，无 TTS 节点则握手不声明 `audio_params`。能力协议、模板→每轮实例的链构建与节点生命周期见[统一管道](@/development/server/pipeline.md)。
 
 ## 启动流程
 
