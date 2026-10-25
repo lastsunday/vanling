@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "b780131e6cd7ab820964ea59c63b4595c766ee1a"
-translated_at = "2026-10-25T02:21:57Z"
+source_file_hash = "9b736f49366b83af2cdd2f37e5bce7a1d9400bd9"
+translated_at = "2026-10-25T03:41:27Z"
 +++
 
 # Firmware Installation
@@ -63,7 +63,9 @@ moon run iot:image-c6        # esp32c6-devkitc-1 only
 moon run iot:image-s3        # lckfb-szpi-esp32s3 only
 ```
 
-> s3 builds dispatch via `scripts/iot-xtensa.sh`: a fully installed espup `esp` 1.95.0.0 toolchain (CI/release) compiles natively; otherwise the `espressif/idf-rust:esp32s3_1.95.0.0` container is used. Both use the same toolchain version, so artifacts are byte-identical. Intel Macs have no `x86_64-apple-darwin` asset at 1.95.0.0, so `espup install` can only 404 there; the devShell skips it and S3 builds go straight to the container.
+> s3 builds dispatch via `scripts/iot-xtensa.sh`: a fully installed espup `esp` 1.98.1.0 toolchain (CI/release) compiles natively; otherwise the local `vanling/xtensa:esp32s3_1.98.1.0` image is used, built once by `moon run iot:xtensa-image` (10–20 min, then reused). Both use the same toolchain version, so artifacts are byte-identical. Intel Macs have no `x86_64-apple-darwin` asset at 1.98.1.0, so `espup install` can only 404 there; the devShell skips it.
+>
+> 1.99.0.0 does not work yet: `check` passes, but linking fails in `__pre_init` with `dangerous relocation: l32r` (reproduced with GCC 15.2 and 16.2); esp-hal 1.2.2 / xtensa-lx-rt 0.23.0 have not caught up with that codegen change.
 
 > Dependency cache: container builds resolve `-Z build-std` against the esp toolchain's own `library/Cargo.lock` (e.g. memchr 2.7.6, which differs from the project `Cargo.lock`). When the offline cache is incomplete, the first build boots online once automatically (see `bootstrapping once online`); later builds stay `--offline` and byte-identical, so no manual pre-warming is needed.
 

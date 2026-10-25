@@ -25,7 +25,7 @@ pre-commit:
       # ever linted them. One `-p iot-app --bins` is the whole graph: clippy lints
       # every workspace member it compiles, not only the selected one. Through
       # `iot-xtensa.sh` rather than a bare cargo, because the xtensa target needs the
-      # espup toolchain (or the pinned container) and a bare `cargo --target
+      # espup toolchain (or the pinned image) and a bare `cargo --target
       # xtensa-...` fails without it.
       run: bash ../../scripts/iot-xtensa.sh clippy -p iot-app --bins --no-default-features --features lckfb-szpi-esp32s3,console-auto --target xtensa-esp32s3-none-elf -Z build-std=core,alloc -- -D warnings
     iot-clippy-host:

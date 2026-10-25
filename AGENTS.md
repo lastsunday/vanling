@@ -57,7 +57,7 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 - **IoT 组合**: 组合点 = bin 板清单（能力 move 注入，缺能力即编译错）；产品档 = feature 别名；渲染层运行时可插拔（`RenderController` + renderer 注册表）。详见 architecture.md
 - **IoT 日志**: 只用 `log` façade，输出通道由家族 `iot-chip-esp` 初始化（esp 为 `esp_println::logger`）；业务代码禁止 `println!` / `esp_println::println!`
 - **IoT 软 feature**: 一个 feature = 一个模块（`mod` 处门控一次、off 即文件不存在）；消费者文件禁 `#[cfg(feature=...)]`（能力经 trait 注入）；新增须每子集独立编译过测；判据与六规则见 `iot/features.md`
-- **IoT 产物**: `moon run iot:image` 生成的 ELF + merged.bin 与 CI 同名同版本；s3 的 Xtensa 构建在 espup 工具链缺失时自动回退同版本容器。详见 `iot/flashing.md`
+- **IoT 产物**: `moon run iot:image` 生成的 ELF + merged.bin 与 CI 同名同版本；s3 的 Xtensa 构建在 espup 工具链缺失时用同版本镜像（`moon run iot:xtensa-image` 建一次）。详见 `iot/flashing.md`
 
 ### ⚠️ Ask First
 

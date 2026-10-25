@@ -180,10 +180,20 @@ tasks:
       cache: false
       runInCI: false
 
+  # Builds the image the S3 tasks fall back to on hosts without a native espup
+  # toolchain. Idempotent: an existing tag is reused, so the build happens once
+  # per toolchain version.
+  xtensa-image:
+    script: bash ../../scripts/iot-xtensa-image.sh
+    options:
+      cache: false
+      runInCI: false
+
   # s3 (xtensa-esp32s3): dispatched by scripts/iot-xtensa.sh. Uses the espup
-  # "esp" toolchain natively (pinned to 1.95.0.0) when fully installed
-  # (CI/release); otherwise falls back to the espressif/idf-rust:esp32s3_1.95.0.0
-  # container (macOS Intel, where esp-rs stopped shipping toolchains at v1.91+).
+  # "esp" toolchain natively (pinned to 1.98.1.0) when fully installed
+  # (CI/release); otherwise the local vanling/xtensa:esp32s3_1.98.1.0 image
+  # (macOS Intel, where esp-rs stopped shipping toolchains at v1.91+), built
+  # once by `~:xtensa-image`.
   # The esp nightly fork ships no prebuilt Xtensa rust-std, hence -Z build-std.
   # Names every bin so each probe is type-checked on every run. Only `vanling` is
   # linked by `build-s3`, but a probe nothing compiles can rot in place: each one

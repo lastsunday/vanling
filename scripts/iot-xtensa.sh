@@ -4,24 +4,30 @@ set -euo pipefail
 # Runs a cargo command for the xtensa-esp32s3 target, dispatching by
 # environment so one moon task serves both CI/release and macOS (Intel):
 #
-#   - native: a complete espup "esp" toolchain (pinned to 1.95.0.0, matching
-#     the Docker image below) is available -> run cargo directly. Handles both
-#     the unified xtensa-esp-elf layout (espup 0.17+) and the legacy per-chip
+#   - native: a complete espup "esp" toolchain (pinned to the version below,
+#     matching the image) is available -> run cargo directly. Handles both the
+#     unified xtensa-esp-elf layout (espup 0.17+) and the legacy per-chip
 #     xtensa-esp32s3-elf layout. The esp fork is a nightly build, so the
 #     -Z build-std flags in the moon tasks work here; it is invoked by its
 #     absolute path because a plain `cargo` in this nix shell resolves to the
 #     stable toolchain, which rejects -Z;
 #   - docker: esp toolchain missing/incomplete (e.g. macOS Intel, where esp-rs
-#     stopped shipping toolchains at v1.91+) -> fall back to the
-#     espressif/idf-rust container;
+#     stopped shipping toolchains at v1.91+) -> run in the image built by
+#     scripts/iot-xtensa-image.sh;
 #   - otherwise: fail with a hint instead of guessing.
 #
 # Args are forwarded verbatim to cargo (e.g. `check -p iot-app --target ...`).
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT/apps/iot"
-IMAGE="espressif/idf-rust:esp32s3_1.95.0.0"
+XTENSA_VERSION="${IOT_XTENSA_VERSION:-1.98.1.0}"
+IMAGE="${IOT_XTENSA_IMAGE:-vanling/xtensa:esp32s3_$XTENSA_VERSION}"
 ESP_DIR="${ESPUP_TOOLCHAIN_DIR:-$HOME/.rustup/toolchains/esp}"
+
+if [ "${1:-}" = "--image" ]; then
+  echo "$IMAGE"
+  exit 0
+fi
 
 # Resolves the bin dir of the esp GCC linked into a complete espup install.
 # Works with both the unified xtensa-esp-elf layout (espup 0.17+, nested as
@@ -130,6 +136,10 @@ docker_env_args() {
 }
 
 run_docker() {
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "image $IMAGE is missing; build it once with: moon run iot:xtensa-image" >&2
+    exit 1
+  fi
   local log status
   log="$(mktemp "${TMPDIR:-/tmp}/iot-xtensa.XXXXXX")"
   set +e
@@ -172,6 +182,6 @@ elif has_docker; then
   echo "[iot-xtensa] docker fallback ($IMAGE)" >&2
   run_docker "$@"
 else
-  echo "no esp toolchain (espup install -n esp -v 1.95.0.0) nor docker available" >&2
+  echo "no esp toolchain (espup install -n esp -v $XTENSA_VERSION) nor docker available" >&2
   exit 1
 fi

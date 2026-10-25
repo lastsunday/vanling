@@ -23,11 +23,10 @@
         versions = {
           moon = "2.6.4";
           sherpaOnnx = "2.0.0";
-          # Xtensa Rust toolchain for ESP32-S3; must match the
-          # espressif/idf-rust:esp32s3_${xtensaRust} container tag used by
-          # scripts/iot-xtensa.sh so CI (native) and macOS Intel (Docker)
-          # build byte-identical firmware.
-          xtensaRust = "1.95.0.0";
+          # Xtensa Rust toolchain for ESP32-S3; must match XTENSA_VERSION in
+          # scripts/iot-xtensa.sh so CI (native espup) and macOS Intel (the image
+          # scripts/iot-xtensa-image.sh builds) use the same compiler.
+          xtensaRust = "1.98.1.0";
           android = {
             buildTools = "36.0.0";
             ndk = "28.2.13676358";
@@ -422,16 +421,16 @@
 
               # Auto-install Xtensa Rust toolchain via espup (for ESP32-S3 / xtensa targets).
               # Intel Macs have no x86_64-apple-darwin build at ${versions.xtensaRust}, so
-              # the S3 is built in the idf-rust container instead.
+              # the S3 is built in the local image instead.
               if command -v espup &>/dev/null; then
                 ESPUP_HOME="''${RUSTUP_HOME:-$HOME/.rustup}"
                 ESPUP_TOOLCHAIN_DIR="$ESPUP_HOME/toolchains/esp"
                 if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "x86_64" ]; then
-                  echo "  [espup] skipped on Intel Mac; S3 builds use the idf-rust container"
+                  echo "  [espup] skipped on Intel Mac; S3 builds use the local Xtensa image"
                 elif [ ! -f "$ESPUP_TOOLCHAIN_DIR/bin/rustc" ]; then
                   echo "  [espup] Installing Xtensa Rust toolchain ${versions.xtensaRust}..."
                   espup install --name esp -v ${versions.xtensaRust} ||
-                    echo "  [espup] install failed; xtensa builds fall back to the idf-rust container"
+                    echo "  [espup] install failed; xtensa builds fall back to the local Xtensa image"
                 fi
                 ESPUP_EXPORT="''${ESPUP_EXPORT_FILE:-$HOME/export-esp.sh}"
                 if [ -f "$ESPUP_EXPORT" ]; then

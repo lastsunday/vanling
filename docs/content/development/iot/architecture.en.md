@@ -2,8 +2,8 @@
 title = "Layering and Composition"
 weight = 20
 [extra]
-source_file_hash = "92281b514d862727e4a40d78edcd8deb9b29d282"
-translated_at = "2026-10-22T14:46:39Z"
+source_file_hash = "f6a9e0d94c66ec9140e06f684eddf4d0830db4f5"
+translated_at = "2026-10-25T03:41:27Z"
 +++
 
 # Layering and Composition
@@ -327,7 +327,7 @@ A log reporting a configuration nothing is running is worse than no log.
 1. Add the board module to `bsp-esp/` (Board + HasXxx traits) with feature gating.
 2. Add the `type Board` / run-dispatch cfg branch in `app/src/main.rs`.
 3. Forward the app feature `iot-bsp-esp/<board>`.
-4. Add the board to the `platforms` default JSON in `reusable-iot-build.yml` and the `platforms` input of `iot-dev-release.yml`. Xtensa boards need `use-xtensa-toolchain: true` and go through the `build-s3` task: the espup native `esp` 1.95.0.0 toolchain on CI/release, falling back to the same-version Docker image locally on macOS Intel
+4. Add the board to the `platforms` default JSON in `reusable-iot-build.yml` and the `platforms` input of `iot-dev-release.yml`. Xtensa boards need `use-xtensa-toolchain: true` and go through the `build-s3` task: the espup native `esp` 1.98.1.0 toolchain on CI/release, with a same-version Docker image locally on macOS Intel
 5. Verify: `cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`
 
 ## Adding a chip family

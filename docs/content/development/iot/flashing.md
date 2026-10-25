@@ -60,7 +60,9 @@ moon run iot:image-c6        # 仅 esp32c6-devkitc-1
 moon run iot:image-s3        # 仅 lckfb-szpi-esp32s3
 ```
 
-> s3 的 Xtensa 构建经 `scripts/iot-xtensa.sh` 按环境分发：espup `esp` 1.95.0.0 工具链齐备（CI/发布）时原生编译；否则回退 `espressif/idf-rust:esp32s3_1.95.0.0` 容器。同版本工具链，产物字节一致。Intel Mac 上 1.95.0.0 没有 `x86_64-apple-darwin` 资产，espup 必然 404，devShell 会跳过它、S3 直接走容器。
+> s3 的 Xtensa 构建经 `scripts/iot-xtensa.sh` 按环境分发：espup `esp` 1.98.1.0 工具链齐备（CI/发布）时原生编译；否则用本地 `vanling/xtensa:esp32s3_1.98.1.0` 镜像，首次由 `moon run iot:xtensa-image` 构建（10–20 分钟，之后复用）。同一版本工具链，产物字节一致。Intel Mac 上 1.98.1.0 没有 `x86_64-apple-darwin` 资产，espup 必然 404，devShell 会跳过它。
+>
+> 1.99.0.0 目前不可用：`check` 能过，但链接时 `__pre_init` 报 `dangerous relocation: l32r`（GCC 15.2 与 16.2 都复现），esp-hal 1.2.2 / xtensa-lx-rt 0.23.0 尚未跟上这次 codegen 变化。
 
 > 依赖缓存：容器按 `-Z build-std` 解析 esp 工具链自带的 `library/Cargo.lock`（含 memchr 2.7.6 等与项目 `Cargo.lock` 不同的版本）。离线缓存不全时，首次构建会自动在线引导补齐一次（日志提示 `bootstrapping once online`），此后构建保持 `--offline`、字节一致，无需手工预热。
 

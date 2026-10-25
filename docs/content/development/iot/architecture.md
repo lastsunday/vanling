@@ -300,7 +300,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 1. `bsp-esp/` 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 `components/` 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配
 2. `app/src/main.rs` 加 `type Board`/run 分发 cfg 分支
 3. app feature 透传 `iot-bsp-esp/<board>`
-4. `reusable-iot-build.yml` 的 `platforms` 默认 JSON 与 `iot-dev-release.yml` 的 `platforms` 输入里加该板（xtensa 板需标 `use-xtensa-toolchain: true`，经 `build-s3` 任务构建：CI/发布用 espup 原生 `esp` 1.95.0.0 工具链，macOS Intel 本地自动回退同版本 Docker 容器）
+4. `reusable-iot-build.yml` 的 `platforms` 默认 JSON 与 `iot-dev-release.yml` 的 `platforms` 输入里加该板（xtensa 板需标 `use-xtensa-toolchain: true`，经 `build-s3` 任务构建：CI/发布用 espup 原生 `esp` 1.98.1.0 工具链，macOS Intel 本地用同版本 Docker 镜像）
 5. 验证：`cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`
 
 ## 新增芯片家族
