@@ -1,9 +1,9 @@
 +++
 title = "Cheat Sheet"
-weight = 21
+weight = 22
 [extra]
-source_file_hash = "803f78c5bb459de9b3934470f677d4bc446ab44d"
-translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "523c655bab2cbf2358d40566597950cdaec0377d"
+translated_at = "2026-10-26T00:00:00Z"
 +++
 
 # Cheat Sheet

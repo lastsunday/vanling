@@ -1,6 +1,6 @@
 +++
 title = "速查"
-weight = 21
+weight = 22
 +++
 
 # 速查

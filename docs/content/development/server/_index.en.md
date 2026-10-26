@@ -3,8 +3,8 @@ title = "Server"
 weight = 100
 sort_by = "weight"
 [extra]
-source_file_hash = "134196443378b12a9ba6442d6c6977f9644085b5"
-translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "18719742fcf486fa075d906fa750a8ac179ef14b"
+translated_at = "2026-10-26T00:00:00Z"
 +++
 
 # Server
@@ -23,4 +23,4 @@ Reading order: core architecture first (Session and Round lifetimes), then compo
 | [WebSocket Protocol](@/development/server/websocket-protocol.en.md) | Protocol field definitions and binary format |
 | [Models and Deployment](@/development/server/models-and-deployment.en.md) | AI model specs, config system, asset installation, CUDA deployment |
 
-There is exactly one backlog: the [Roadmap](@/roadmap/_index.en.md). Positioning and technology references are in [Positioning and Trade-off Reference](@/discussions/positioning.en.md); for why the old TODO was split up, see the [server records](@/records/server/todo-triage.en.md).
+There is exactly one backlog: [Work Items](@/roadmap/worksheet.en.md). Positioning and technology references are in [Positioning and Trade-off Reference](@/discussions/positioning.en.md); for why the old TODO was split up, see the [server records](@/records/server/todo-triage.en.md).

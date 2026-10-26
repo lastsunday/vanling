@@ -3,13 +3,13 @@ title = "Positioning and Trade-off Reference"
 weight = 20
 
 [extra]
-translated_at = "2026-10-25T00:00:00Z"
-source_file_hash = "15656ad7a263f1d16effd17c1a93c54d33ab959c"
+translated_at = "2026-10-26T00:00:00Z"
+source_file_hash = "937589e0c87b9a64b8bc8b89a401a35ff3b2f103"
 +++
 
 # Positioning and Trade-off Reference
 
-Cross-reference of industry products and open-source implementations, used to decide what vanling should and should not do. Priorities and the backlog live only in the [Roadmap](@/roadmap/_index.en.md); nothing here is a commitment.
+Cross-reference of industry products and open-source implementations, used to decide what vanling should and should not do. Priorities and the backlog live only in [Work Items](@/roadmap/worksheet.en.md); nothing here is a commitment.
 
 ## Open Source Voice Models
 

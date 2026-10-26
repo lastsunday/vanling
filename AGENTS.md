@@ -66,7 +66,7 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 - 新增/回归 IoT 软 feature（非硬件轴的能力/行为开关）——先过 `iot/features.md` 四判据
 - 数据库 schema 变更或修改已有迁移
 - 删除已有文件或模块
-- 为 TODO/roadmap 文档分配或修改优先级：语义依据 `docs/content/roadmap/_index.md` 的「优先级说明」；**分辨不清时必须问人类，禁止自行推断**
+- 为 TODO/roadmap 文档分配或修改优先级：语义依据 `docs/content/roadmap/worksheet.md` 的「优先级说明」；**分辨不清时必须问人类，禁止自行推断**
 
 ### Definition of Done
 
@@ -94,7 +94,7 @@ IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-s3
 
 > 深度知识与操作流程见 `docs/content/development/`；卡住时先读对应域，再 `rg` 搜索 + 参照同类测试。
 
-- **server**: `server/architecture.md` — 架构与数据流 / AI Manager / 新增模块路径；`roadmap/_index.md` — 唯一的优先级与待办清单（开工入口）；`discussions/positioning.md` — 定位与取舍参考
+- **server**: `server/architecture.md` — 架构与数据流 / AI Manager / 新增模块路径；`roadmap/worksheet.md` — 唯一的优先级与待办清单（开工入口）；`roadmap/_index.md` — 结构与流程图；`discussions/positioning.md` — 定位与取舍参考
 - **iot**: `roadmap/cheatsheet.md` — 常用命令速查 / 端口与复位 / 症状首查；`iot/architecture.md` — 分层与组合 / 新增板 / 新增芯片；`iot/features.md` — 软 feature 判据与内聚；`iot/flashing.md` — 台架有哪些板 / 烧录 / 抓串口
 - **clients**: `clients/server-ui.md` — 新增页面路径
 - **多语文档**: 维护规则见 `development/_index.md`

@@ -20,4 +20,4 @@ vanling 服务端基于 Rust + axum 构建，实现 Xiaozhi 智能音箱协议�
 | [WebSocket 通信协议](@/development/server/websocket-protocol.md) | 协议字段定义与二进制格式 |
 | [模型与部署](@/development/server/models-and-deployment.md) | AI 模型规格、配置系统、资产安装、CUDA 部署 |
 
-待办只有一处：[路线图](@/roadmap/_index.md)。定位与选型参照在[定位与取舍参考](@/discussions/positioning.md)；为什么原来的 TODO 被拆掉，见[服务端记录](@/records/server/todo-triage.md)。
+待办只有一处：[工作项](@/roadmap/worksheet.md)。定位与选型参照在[定位与取舍参考](@/discussions/positioning.md)；为什么原来的 TODO 被拆掉，见[服务端记录](@/records/server/todo-triage.md)。
