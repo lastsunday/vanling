@@ -22,14 +22,12 @@ const REG_STATUS0: u8 = 0x2E;
 const REG_STATUS1: u8 = 0x2F;
 const REG_AX_L: u8 = 0x35;
 const REG_RESET: u8 = 0x60;
-/// Section 5.9 and section 7.4 disagree on the reset byte — the register table
-/// says 0xB0 while the prose says 0x0B, which are bit reversals of each other.
-/// Table 27 describes the register itself, so 0xB0 is used, and the 0x4D flag
-/// below turns the ambiguity into a checked outcome instead of a silent one: if
-/// the byte is wrong the part never reports a completed reset.
+// Section 5.9 and section 7.4 disagree on the reset byte — the register table
+// says 0xB0 while the prose says 0x0B, which are bit reversals of each other.
+// Table 27 describes the register itself, so 0xB0 is used, and the 0x4D flag
+// below turns the ambiguity into a checked outcome instead of a silent one: if
+// the byte is wrong the part never reports a completed reset.
 const RESET_VALUE: u8 = 0xB0;
-/// Datasheet 5.9: reads 0x80 after a successful power-on or soft reset. It is
-/// overwritten by later operations, so it has to be read straight afterwards.
 const REG_RESET_FLAG: u8 = 0x4D;
 const RESET_FLAG_READY: u8 = 0x80;
 
@@ -37,20 +35,16 @@ const WHO_AM_I_VALUE: u8 = 0x05;
 const CTRL1_VALUE: u8 = 0x40;
 const CTRL2_VALUE: u8 = 0x13;
 const CTRL3_VALUE: u8 = 0x53;
-/// Datasheet Table 22: bit4 `gLPF_EN` clear, bit0 `aLPF_EN` clear. The
-/// accelerometer low-pass filter is off, keeping the full 896.8 Hz bandwidth
-/// for the knock's broadband transient, and the core recognizer's bars (peak
-/// 250 mG / quiet 150 mG) were calibrated on this unfiltered stream. The gyro
-/// filter stays off because nothing reads the gyro path for peaks.
+// Datasheet Table 22: bit4 `gLPF_EN` clear, bit0 `aLPF_EN` clear. The
+// accelerometer low-pass filter is off, keeping the full 896.8 Hz bandwidth
+// for the knock's broadband transient, and the core recognizer's bars (peak
+// 250 mG / quiet 150 mG) were calibrated on this unfiltered stream. The gyro
+// filter stays off because nothing reads the gyro path for peaks.
 const CTRL5_VALUE: u8 = 0x00;
 const CTRL7_VALUE: u8 = 0x03;
 
 const CTRL8_NO_MOTION_EN: u8 = 1 << 2;
-/// This board wires no INT line, so the CTRL9 handshake has to be polled
-/// through `STATUSINT.bit7` instead of waiting on the INT1 pin.
 const CTRL8_STATUSINT_HANDSHAKE: u8 = 1 << 7;
-/// The tap engine is left disarmed on purpose; the knock contract lives in the
-/// core recognizer. Only No-Motion is armed here.
 const CTRL8_VALUE: u8 = CTRL8_NO_MOTION_EN | CTRL8_STATUSINT_HANDSHAKE;
 
 const STATUS1_NO_MOTION: u8 = 1 << 6;
@@ -61,47 +55,29 @@ const CTRL_CMD_CONFIGURE_MOTION: u8 = 0x0E;
 
 const CMD_DONE_ATTEMPTS: u16 = 1_000;
 const CMD_DONE_POLL_US: u32 = 1_000;
-/// Datasheet 7.4 puts 15ms as the worst case for the reset process, so the
-/// budget is that plus margin. A blind fixed wait would be a guess in both
-/// directions: too short leaves the part mid-reset when the first configuration
-/// write lands, too long just delays boot.
+// Datasheet 7.4 puts 15ms as the worst case for the reset process, so the
+// budget is that plus margin. A blind fixed wait would be a guess in both
+// directions: too short leaves the part mid-reset when the first configuration
+// write lands, too long just delays boot.
 const RESET_POLL_ATTEMPTS: u8 = 100;
 const RESET_POLL_US: u32 = 200;
 
-/// This firmware enables both sensors, where note 13 makes the gyro set the
-/// rate for both, so `0b0011` is the 6DOF ODR of 896.8 Hz. The No-Motion
-/// engine counts samples while the product reasons in milliseconds, so the
-/// index is pinned here to stop a retuned ODR from silently rescaling every
-/// window.
+// This firmware enables both sensors, where note 13 makes the gyro set the
+// rate for both, so `0b0011` is the 6DOF ODR of 896.8 Hz. The No-Motion
+// engine counts samples while the product reasons in milliseconds, so the
+// index is pinned here to stop a retuned ODR from silently rescaling every
+// window.
 const ODR_INDEX: u8 = 0b0011;
 const ODR_HZ_X10: u32 = 8_968;
 const _: () = assert!(CTRL2_VALUE & 0x0F == ODR_INDEX && CTRL3_VALUE & 0x0F == ODR_INDEX);
 
-/// Converts a window from milliseconds into the sample count the No-Motion engine expects.
-/// The rate is a parameter because the part's two ODR tables do not agree: with both sensors
-/// on the gyro sets the rate for both, alone the accelerometer follows its own oscillator. A
-/// window converted through the wrong table is a window of the wrong length.
 const fn odr_samples(ms: u16, odr_hz_x10: u32) -> u16 {
     ((ms as u32 * odr_hz_x10 + 5_000) / 10_000) as u16
 }
 
-// Motion parameter values, datasheet Table 32; byte positions from Table 34.
-// NoMotionX/Y/ZThr carry five fractional bits of 0.03125 g, so 0x08 is 0.25 g
-// of slope; the windows count accel samples.
 const NO_MOTION_THR: u8 = 0x08;
 const NO_MOTION_WINDOW_MS: u16 = 80;
-/// Bits 0-2 enable the AnyMotion axes, 4-6 the NoMotion axes, and bit 7 picks
-/// whether the engine ANDs or ORs the enabled axes. Only NoMotion is armed,
-/// and ANDing all three is the stricter reading of a still device: every axis
-/// has to stay under its slope threshold for the whole window. Leaving bit 7
-/// clear would let one settled axis report still while the device is turning.
 const MOTION_MODE_CTRL: u8 = 0b1111_0111;
-// AnyMotion and SignificantMotion stay disabled in CTRL8, so their thresholds
-// and windows are never consulted; they are still written to keep the two
-// command sets shaped the way the datasheet describes. 0x00 is a placeholder
-// rather than a chosen threshold: a real AnyMotion setting of zero would fire on
-// any deviation at all, which is exactly why the engine is left disarmed and a
-// test pins it there.
 const ANY_MOTION_THR: u8 = 0x00;
 const ANY_MOTION_WINDOW_MS: u16 = 80;
 const SIG_MOTION_WAIT_WINDOW: u16 = 0;
@@ -115,9 +91,6 @@ const SCALE: MotionScale = MotionScale::from_ranges(ACCEL_LSB_PER_G, GYRO_LSB_PE
 const DATA_BYTES: usize = 12;
 const DATA_READY_MASK: u8 = 0x03;
 
-/// One configuration's register set and the conversion that goes with it. The scale
-/// lives here rather than in a `const` because it is derived from the full-scale
-/// fields in CTRL2 and CTRL3.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct SensorConfig {
     ctrl2: u8,
@@ -128,18 +101,18 @@ struct SensorConfig {
     scale: MotionScale,
 }
 
-/// The register set a configuration needs, or `None` when this driver cannot reach it without
-/// guessing. Only the configurations that stay on the bring-up arrangement are spelled out:
-///
-/// - `WakeDetector` needs the accelerometer alone, which changes both the power-mode fields in
-///   CTRL7 and which of the part's two ODR tables applies; the datasheet publishes both
-///   tables' frequencies but not the index each uses, and the engine windows below are
-///   wrong by exactly that much if guessed.
-/// - `Fifo` needs the FIFO, whose registers start at the same 0x0B this driver writes
-///   motion calibration through — a sequencing problem, not a register write.
-///
-/// Refusing is the point: each is reachable by adding one encoding with the register table
-/// open, none by writing a plausible byte.
+// The register set a configuration needs, or `None` when this driver cannot reach it without
+// guessing. Only the configurations that stay on the bring-up arrangement are spelled out:
+//
+// - `WakeDetector` needs the accelerometer alone, which changes both the power-mode fields in
+//   CTRL7 and which of the part's two ODR tables applies; the datasheet publishes both
+//   tables' frequencies but not the index each uses, and the engine windows below are
+//   wrong by exactly that much if guessed.
+// - `Fifo` needs the FIFO, whose registers start at the same 0x0B this driver writes
+//   motion calibration through — a sequencing problem, not a register write.
+//
+// Refusing is the point: each is reachable by adding one encoding with the register table
+// open, none by writing a plausible byte.
 const fn config_for(config: MotionConfig) -> Option<SensorConfig> {
     let both_sensors = SensorConfig {
         ctrl2: CTRL2_VALUE,
@@ -152,8 +125,6 @@ const fn config_for(config: MotionConfig) -> Option<SensorConfig> {
 
     match config {
         MotionConfig::PolledRegisters => Some(both_sensors),
-        // Same axes and rate, only the filters come on — a different stream
-        // from the one the core recognizer's bars were calibrated against.
         MotionConfig::FilteredRegisters => Some(SensorConfig {
             ctrl5: 0x11,
             ..both_sensors
@@ -162,12 +133,7 @@ const fn config_for(config: MotionConfig) -> Option<SensorConfig> {
     }
 }
 
-/// Every configuration at which this driver can leave the chip, low to high. A probe
-/// walks this rather than a ladder, so cells it cannot measure come out unreachable rather
-/// than carrying a number nobody measured.
-///
-/// Off is absent: it is honoured by not polling, which is the consumer's side, and
-/// configuring the part *for* off is a separate question.
+/// Every configuration at which this driver can leave the chip, low to high.
 pub const SUPPORTED_CONFIGS: &[MotionConfig] = &[
     MotionConfig::PolledRegisters,
     MotionConfig::FilteredRegisters,
@@ -191,13 +157,8 @@ pub const MOTION_CAPABILITIES: MotionCapabilities =
 pub enum Qmi8658Error<E> {
     Bus(E),
     Identity(u8),
-    /// The part never reported a completed soft reset, so nothing downstream can
-    /// be trusted: the reset byte was rejected or the chip is not responding.
     ResetIncomplete,
     EngineConfig,
-    /// The demanded configuration needs a register encoding this driver does not carry.
-    /// Answering it with a plausible byte would put the part into a mode nobody has read a
-    /// datasheet row for.
     UnsupportedConfig(MotionConfig),
 }
 
@@ -211,26 +172,19 @@ pub struct Qmi8658<D> {
     i2c: D,
     addr: u8,
     initialized: bool,
-    /// The configuration the part is running, and its conversion. Runtime because the
-    /// scale is derived from the full-scale fields.
     config: MotionConfig,
     scale: MotionScale,
     last_sample_ms: Option<u64>,
     last_sample: Option<MotionSample>,
     yaw_deg_x10: i16,
-    /// Previous STATUS1 value, so a level-true engine flag is reported on its
-    /// rising edge instead of once per poll it holds.
     last_status: u8,
     error_logged: bool,
-    /// Bus transactions this part has issued, so a cost report can state a measured rate
-    /// instead of counting what the driver was written to do.
     transactions: u32,
 }
 
 impl<D: I2c> Qmi8658<D> {
     /// Boots at [`MotionConfig::PolledRegisters`], the configuration the board's bring-up
-    /// validated. A board that wants a different one says so with [`Self::init_at`] before
-    /// its first poll.
+    /// validated.
     pub const fn new(i2c: D, addr: u8) -> Self {
         let mut scale = SCALE;
         if let Some(config) = config_for(MotionConfig::PolledRegisters) {
@@ -285,9 +239,6 @@ impl<D: I2c> Qmi8658<D> {
         self.config = config;
         self.scale = register_set.scale;
         self.initialized = true;
-        // The recognizer's peaks, yaw integral and stillness edge all describe the stream
-        // that was running before the switch, so carrying them across makes the core read
-        // the gap as motion.
         self.last_sample = None;
         self.last_sample_ms = None;
         self.yaw_deg_x10 = 0;
@@ -296,9 +247,7 @@ impl<D: I2c> Qmi8658<D> {
     }
 
     /// Reconfigure a part that is already running, under the same rules as `init_at`: a
-    /// sample straddling the switch is discarded rather than converted. Returns the
-    /// configuration unchanged when the part was never initialized, so a board that failed
-    /// at boot and recovers through the poll side lands on the demanded configuration.
+    /// sample straddling the switch is discarded rather than converted.
     pub fn set_config(
         &mut self,
         config: MotionConfig,
@@ -311,9 +260,6 @@ impl<D: I2c> Qmi8658<D> {
         self.init_at(config, delay)
     }
 
-    /// Datasheet 5.9 and 7.4: 0x4D reads 0x80 once the reset process finished,
-    /// and the host is expected to read it immediately because enabling the
-    /// sensors or issuing a CTRL9 command overwrites it.
     fn await_reset(&mut self, delay: &mut impl DelayNs) -> Result<(), Qmi8658Error<D::Error>> {
         for _ in 0..RESET_POLL_ATTEMPTS {
             if self.read_reg(REG_RESET_FLAG)? & RESET_FLAG_READY != 0 {
@@ -399,18 +345,13 @@ impl<D: I2c> Qmi8658<D> {
         ] {
             self.write(&[reg, value]).map_err(bus)?;
         }
-        // The CTRL9 protocol requires both sensors quiet, and the engines only
-        // arm once their parameters have landed.
         self.write(&[REG_CTRL7, 0x00]).map_err(bus)?;
         self.write(&[REG_CTRL8, CTRL8_STATUSINT_HANDSHAKE])
             .map_err(bus)?;
 
-        // The windows count samples the part actually produces, so they follow the selected
-        // rate.
         let no_motion_window = odr_samples(NO_MOTION_WINDOW_MS, config.odr_hz_x10) as u8;
         let any_motion_window = odr_samples(ANY_MOTION_WINDOW_MS, config.odr_hz_x10) as u8;
 
-        // Motion, datasheet Table 34.
         let motion_first = [
             ANY_MOTION_THR,
             ANY_MOTION_THR,
@@ -467,11 +408,6 @@ impl<D: I2c> Qmi8658<D> {
 
     fn decode_events(&mut self, events: &mut MotionEvents) -> Result<u8, D::Error> {
         let status = self.read_reg(REG_STATUS1)?;
-        // STATUS1 flags are levels, not events: the NoMotion engine asserts
-        // every poll it still considers the device still, so publishing the bit
-        // itself re-reported stillness at the frame rate on the bench. Only the
-        // 0→1 rise is a transition into the state and worth an event; a bit
-        // held high across polls stays out, and a later rise is a new one.
         if status & STATUS1_NO_MOTION != 0 && self.last_status & STATUS1_NO_MOTION == 0 {
             events.push(MotionEvent::Still);
         }
@@ -479,7 +415,6 @@ impl<D: I2c> Qmi8658<D> {
         Ok(status)
     }
 
-    /// One register write, counted.
     fn write(&mut self, bytes: &[u8]) -> Result<(), D::Error> {
         self.transactions = self.transactions.saturating_add(1);
         self.i2c.write(self.addr, bytes)
@@ -497,14 +432,10 @@ impl<D: I2c> Qmi8658<D> {
     }
 }
 
-/// A parameter set is selected by the high nibble of CAL4_H; the engine needs
-/// both halves written before it will accept new parameters.
 const CAL_SET_FIRST: u8 = 0x01;
 const CAL_SET_SECOND: u8 = 0x02;
 
 impl<D: I2c> MotionSource for Qmi8658<D> {
-    /// No delay, so no switch. Already being in `wanted` still answers, because that part is
-    /// true of a part that was brought up here.
     fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,
@@ -528,31 +459,15 @@ impl<D: I2c> MotionSource for Qmi8658<D> {
         self.error_logged = false;
         result
     }
-
-    // `configure_for` is not overridden here. This driver holds no delay, so it cannot
-    // complete a switch, and the trait has no default to fall back on precisely so that a
-    // driver asked to switch and unable to would have to say so. `RecoverableQmi` is what
-    // production configures through, because it carries the delay this one lacks.
 }
 
 impl<D: I2c> Qmi8658<D> {
     /// Enters `wanted` without the soft reset a full bring-up needs.
-    ///
-    /// The reset gives a part that has never run a clean start; it is not part of changing
-    /// configuration. `Self::configure` already quiets the part before writing and restores
-    /// it afterwards, so resetting on top of that only adds a window in which the part is
-    /// deaf. Reconfiguring a running part stays destructive either way — the recognizer's
-    /// baseline does not survive a change of filtering or scale — but the deafness does not
-    /// have to be part of the price.
     pub fn enter(
         &mut self,
         wanted: MotionConfig,
         delay: &mut impl DelayNs,
     ) -> Result<MotionConfig, MotionConfig> {
-        // Being in `wanted` is only the answer if the part is actually running in it. `config`
-        // is the target the driver last wrote, so before the first bring-up it already reads as
-        // `PolledRegisters` while nothing has been brought up at all — short-circuiting there
-        // leaves a silent part that every later poll reads as "no new data".
         if self.config == wanted && self.initialized {
             return Ok(wanted);
         }
@@ -560,8 +475,6 @@ impl<D: I2c> Qmi8658<D> {
             return Err(wanted);
         };
         if !self.initialized {
-            // Never came up, so there is no baseline to preserve and no state to lose: a full
-            // bring-up is the honest way to reach a configuration the part never held.
             return self
                 .set_config(wanted, delay)
                 .map_err(|_| wanted)
@@ -570,9 +483,6 @@ impl<D: I2c> Qmi8658<D> {
         self.configure(&register_set, delay).map_err(|_| wanted)?;
         self.config = wanted;
         self.scale = register_set.scale;
-        // The recognizer's peaks, yaw integral and stillness edge all describe the stream
-        // that was running before the switch, so carrying them across makes the core read the
-        // gap as motion.
         self.last_sample = None;
         self.last_sample_ms = None;
         self.yaw_deg_x10 = 0;
@@ -584,8 +494,7 @@ impl<D: I2c> Qmi8658<D> {
 pub const MOTION_REINIT_MS: u64 = 1_000;
 
 /// Poll-side recovery when boot init did not complete: re-attempts `init` at
-/// [`MOTION_REINIT_MS`] cadence so a cold-boot NACK heals within the first
-/// seconds. Embedded-hal only, so host tests cover it with a mock bus/delay.
+/// [`MOTION_REINIT_MS`] cadence so a cold-boot NACK heals within the first seconds.
 pub struct RecoverableQmi<D, Del> {
     inner: Qmi8658<D>,
     delay: Del,
@@ -603,8 +512,6 @@ impl<D, Del> RecoverableQmi<D, Del> {
 }
 
 impl<D: I2c, Del: DelayNs> MotionSource for RecoverableQmi<D, Del> {
-    /// This is the wrapper production configures through: it already holds the delay the
-    /// inner driver refuses to switch without.
     fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,
@@ -655,7 +562,6 @@ impl<D: I2c> crate::hardware::SelfCheck for Qmi8658<D> {
         use crate::hardware::Status;
         match self.validate_id() {
             Err(Qmi8658Error::Bus(_)) => Status::silent(),
-            // A part that answers with the wrong ID is present and broken: degraded, not absent.
             Err(Qmi8658Error::Identity(_)) => Status::refused("not a QMI8658"),
             Err(_) => Status::refused("bring-up failed"),
             Ok(()) if self.initialized => Status::answered(),
@@ -794,8 +700,6 @@ mod tests {
         Qmi8658::new(i2c, QMI8658_I2C_ADDR)
     }
 
-    /// Sentinel value marking a read in the shared access trace. Register
-    /// writes are data, so no configuration value can collide with it.
     const READ: u8 = u8::MAX;
 
     fn writes(history: &[(u8, u8)]) -> Vec<(u8, u8)> {
@@ -872,8 +776,6 @@ mod tests {
 
     #[test]
     fn bring_up_traffic_is_counted_separately_from_polling() {
-        // Per-read only: a cost report divides the delta over a window by the window, so a
-        // counter shared with the polls would show up as a steady rate.
         let mut driver = driver(MockI2c::new());
         let before = driver.transactions();
         settle(&mut driver);
@@ -944,10 +846,6 @@ mod tests {
 
     #[test]
     fn entering_a_configuration_leaves_a_part_that_answers_polls() {
-        // The assertion that matters is not which registers were written but whether the part
-        // still produces afterwards. A switch that writes the table and returns before the
-        // part starts is silent, and every poll after it reads "no new data" — which looks
-        // like a configuration that costs almost nothing rather than one that had not landed.
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         let mut delay = NoDelay;
@@ -966,9 +864,6 @@ mod tests {
 
     #[test]
     fn entering_a_configuration_does_not_soft_reset_the_part() {
-        // The distinction `enter` exists for. `set_config` resets because it must also bring
-        // up a part that never ran; a change of configuration does not need that, and the
-        // reset is a window in which the part is deaf and its identity is re-established.
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         let resets_before = driver.i2c.state.control_writes(REG_RESET).len();
@@ -993,9 +888,6 @@ mod tests {
 
     #[test]
     fn entering_a_configuration_drops_the_state_that_described_the_stream_before_it() {
-        // Same reason `init_at` clears it, reached the other way: the recognizer's baseline
-        // describes the stream that was running, so carrying it across makes the core read the
-        // gap as motion.
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         driver.last_sample = Some(MotionSample::from_raw([1, 2, 3], [4, 5, 6], SCALE, 0, 0));
@@ -1034,10 +926,6 @@ mod tests {
 
     #[test]
     fn entering_the_boot_configuration_of_a_part_that_never_ran_still_brings_it_up() {
-        // The target the driver was constructed with is already `PolledRegisters` before
-        // anything has been written. Reading that as "already there" returns success without
-        // bringing the part up, and the first grid of a measurement then reads as a
-        // configuration that costs almost nothing.
         let mut driver = driver(MockI2c::new());
         assert!(
             !driver.initialized,
@@ -1084,9 +972,6 @@ mod tests {
             .set_config(MotionConfig::FilteredRegisters, &mut delay)
             .expect("FilteredRegisters is reachable");
 
-        // The core's recognizer compares each sample against the last one and reads the
-        // gap as a peak, so carrying any of this across the switch turns a configuration
-        // change into a knock.
         assert_eq!(driver.last_sample, None);
         assert_eq!(driver.last_sample_ms, None);
         assert_eq!(driver.yaw_deg_x10, 0);
@@ -1095,9 +980,6 @@ mod tests {
 
     #[test]
     fn an_engine_window_follows_the_rate_the_part_was_told_to_run_at() {
-        // The window counts samples the part actually produces, so a part running four
-        // times slower needs a quarter as many: the engine reports stillness four times as
-        // often as it was asked to otherwise.
         assert_eq!(odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10), 72);
         assert_eq!(odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10 / 4), 18);
         assert_eq!(odr_samples(NO_MOTION_WINDOW_MS, ODR_HZ_X10 * 2), 143);
@@ -1163,9 +1045,6 @@ mod tests {
             0
         );
         assert_eq!(state.registers[register(REG_CAL1_L + 7)], CAL_SET_SECOND);
-        // Pinning the whole layout rather than a few interesting bytes is the
-        // point: the tables interleave unrelated fields, so a plausible-looking
-        // subset hides a misfiled threshold.
         assert_eq!(
             state.calibrations,
             vec![
@@ -1206,9 +1085,6 @@ mod tests {
             driver.init(&mut delay),
             Err(Qmi8658Error::ResetIncomplete)
         ));
-        // The part is not in a known state, so nothing may be written past the
-        // reset itself. Configuring it anyway is how a rejected reset byte turns
-        // into mysterious motion data much later.
         assert_eq!(
             writes(&driver.i2c.state.history),
             vec![(REG_RESET, RESET_VALUE)],
@@ -1366,7 +1242,6 @@ mod tests {
         ));
         assert_eq!(init_attempts(&wrapped.inner.i2c), 2);
 
-        // The part starts answering; the next window boundary recovers.
         wrapped.inner.i2c.state.completes_reset = true;
         wrapped.inner.i2c.state.registers[register(REG_RESET_FLAG)] = RESET_FLAG_READY;
         let reading = MotionSource::sample(&mut wrapped, MOTION_REINIT_MS * 3)
@@ -1433,12 +1308,6 @@ mod tests {
 
     #[test]
     fn the_status_register_travels_with_the_frame_it_was_decoded_from() {
-        // `ST` on the attitude page is the only way to tell a latched event bit
-        // from one the engine is genuinely re-raising, so the register the events
-        // were decoded from has to ride along with the frame instead of being
-        // dropped once the events are known. Bit 0 is reserved and powers up
-        // zero, so setting it here is how a readout that masks the register down
-        // to just the bits it cares about gets caught.
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         let status = STATUS1_NO_MOTION | 0x01;
@@ -1505,7 +1374,6 @@ mod tests {
         assert_eq!(integrate_yaw(1_700, 1_000, 1_000), -900);
         assert_eq!(integrate_yaw(-1_700, -1_000, 1_000), 900);
         assert_eq!(integrate_yaw(1_790, 1_000, 100), -1_710);
-        // A stall cannot spin the heading away: the step is bounded.
         assert_eq!(integrate_yaw(0, 1_000, 5_000), 1_000);
     }
 

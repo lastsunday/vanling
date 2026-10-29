@@ -18,19 +18,11 @@ use iot_core::drivers::board::{
 use iot_core::drivers::playback::Speaker;
 use iot_core::state::{DeviceManager, DisplayPage};
 
-/// The demand a running device is under, read by the tasks that schedule against it and written
-/// by the one that derives it. Shared state, because a demand is idempotent and only its latest
-/// value matters. The [`RefCell`] inside the mutex is never held across an await.
+/// The demand a running device is under, read by the tasks that schedule against it and
+/// written by the one that derives it.
 pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
-/// The page the device comes up on, named by `IOT_BOOT_PAGE` at build time. It says nothing about
-/// what the board can do; [`DeviceManager::with_boot_page`] drops a page the wiring lacks.
-///
-/// A string rather than a feature, because the value is an enum and mutually exclusive features
-/// would be resolved by `cfg` order. This is the shape the chip crates use in `.cargo/config.toml`.
 fn boot_page() -> DisplayPage {
-    // Resolved while the build runs, not at boot: the run-time form moved the main task's frame
-    // by four kilobytes, enough to put the Wi-Fi join below the stack floor.
     if let Some(name) = UNKNOWN_BOOT_PAGE {
         log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Ambient");
     }
@@ -45,7 +37,6 @@ fn boot_override() -> Override {
     parsed
 }
 
-/// The variant name each page answers to, which is what `IOT_BOOT_PAGE` spells.
 const BOOT_PAGE_NAMES: [(&str, DisplayPage); 6] = [
     ("ambient", DisplayPage::Ambient),
     ("attitude", DisplayPage::Attitude),
@@ -106,19 +97,10 @@ const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
     true
 }
 
-/// The wiring a build can get wrong without failing to build, held by a test instead.
-///
-/// Every entry here is a dependency feature that changes behaviour rather than the API: the
-/// crate compiles, the code runs, and the mistake shows up only against hardware. Reading the
-/// manifest is the one place a host test can see the feature list, since Cargo does not expose
-/// a dependency's features to the crate that depends on it.
 #[cfg(test)]
 mod wiring_tests {
     const WORKSPACE_MANIFEST: &str = include_str!("../../../Cargo.toml");
 
-    /// Whether one dependency's entry names a feature. An entry may be wrapped over several
-    /// lines by `cargo fmt`, so this reads from the name through the line that closes the
-    /// inline table rather than looking at a single line.
     fn dependency_names(name: &str, feature: &str) -> bool {
         let mut inside = false;
         for line in WORKSPACE_MANIFEST.lines() {
@@ -138,12 +120,6 @@ mod wiring_tests {
 
     #[test]
     fn the_dhcp_server_can_address_an_ipv4_reply() {
-        // Sending the reply is the one thing setup mode's DHCP server does, and the address it
-        // sends to is where `edge-nal-embassy` gates the conversion on **its own** `proto-ipv4`,
-        // not on the `embassy-net` feature of the same name. With it off, `to_emb_addr` answers
-        // `None` for every IPv4 address and the reply comes back `UnsupportedProto` — while the
-        // build, the bind and the receive are all silent. A phone that joined the access point
-        // then never gets an address and sits on "connecting".
         assert!(
             dependency_names("edge-nal-embassy", "\"proto-ipv4\""),
             "edge-nal-embassy without its own proto-ipv4 cannot address a DHCP reply"
@@ -158,8 +134,6 @@ mod boot_page_tests {
 
     #[test]
     fn every_page_is_reachable_by_name() {
-        // The table is the whole mechanism, so a page missing from it is a page no build can
-        // start on -- and nothing else would say so.
         for (name, expected) in BOOT_PAGE_NAMES {
             assert_eq!(
                 boot_page_from_env(Some(name)),
@@ -171,8 +145,6 @@ mod boot_page_tests {
 
     #[test]
     fn a_name_survives_case_and_stray_whitespace() {
-        // A variable set from a shell or a CI job arrives in whatever case was typed, and a
-        // page reachable only by exact spelling is a page nobody reaches.
         for name in ["CAMERA", "Camera", "  camera  ", "\tcamera\n"] {
             assert_eq!(
                 boot_page_from_env(Some(name)),
@@ -184,9 +156,6 @@ mod boot_page_tests {
 
     #[test]
     fn anything_unusable_lands_on_ambient() {
-        // Every way this can be wrong falls back rather than failing the link: a firmware that
-        // refuses to build over a mistyped variable is harder to diagnose than one that says so
-        // and comes up on the default page.
         assert_eq!(boot_page_from_env(None), DisplayPage::Ambient, "unset");
         assert_eq!(boot_page_from_env(Some("")), DisplayPage::Ambient, "empty");
         assert_eq!(
@@ -217,9 +186,6 @@ mod boot_page_tests {
 
     #[test]
     fn the_default_and_the_named_page_are_different_pages() {
-        // Guards the reason this exists: if every name resolved to Ambient the feature would
-        // compile and quietly do nothing, which is the failure a bench would report as "the
-        // page is not there".
         assert_eq!(boot_page_from_env(None), DisplayPage::Ambient);
         assert_ne!(boot_page_from_env(Some("camera")), DisplayPage::Ambient);
     }
@@ -227,20 +193,17 @@ mod boot_page_tests {
 
 pub mod frame;
 pub mod input;
-/// The link lives behind the `wifi` feature rather than inside `run`: it is the one part of the
-/// product that needs the radio's own types, and a build without a radio still compiles the
-/// rest of the app.
+/// The link lives behind the `wifi` feature rather than inside `run`: it is the one part of
+/// the product that needs the radio's own types, and a build without a radio still compiles
+/// the rest of the app.
 #[cfg(feature = "wifi")]
 pub mod network;
-/// The bench that replays a credential through the panel's own path. Always compiled, because the
-/// render loop steps it unconditionally and [`panel::BENCH`] is what makes it nothing: a build
-/// named for the bench types, and every other build's loop has the call folded away.
+/// The bench that replays a credential through the panel's own path.
 pub mod panel;
 pub mod playback;
 pub mod probe;
-/// Setup mode's device side: the access point, the page on it, and the services behind both.
-/// Behind `wifi` with the link it belongs to — a build with no radio has no access point to
-/// put up, and the protocol half of it ([`iot_core::provision`]) is the part a host test drives.
+/// Setup mode's device side: the access point, the page on it, and the services behind
+/// both.
 #[cfg(feature = "wifi")]
 pub mod provision;
 pub mod render;
@@ -250,24 +213,15 @@ use input::{CAPTURE, INTENT_BUS, input_task};
 use playback::{PLAYBACK_BUS, control_loop, feed_task, share};
 use render::{INBOUND, LightRenderer, OUTBOUND, Render, render_loop};
 
-/// Where the feed loop runs. It writes the DMA ring every
-/// [`FEED_MS`](iot_core::drivers::playback::FEED_MS), which also keeps the microphone's clock
-/// alive; a late feed is a gap in the speaker and a stalled capture. An interrupt executor
-/// preempts the cooperative one, where a task that does not `.await` can overrun the runway. A
-/// board with no interrupt executor takes [`Inline`](Self::Inline).
+/// Where the feed loop runs.
 pub enum Feed {
-    /// Run the feed on a higher-priority interrupt executor, so a long
-    /// cooperative holder cannot delay it.
     Interrupt(SendSpawner),
-    /// Run the feed on the caller's own executor, joined with everything else.
     Inline,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Network {
-    /// A station came up: the page belongs in the cycle.
     Present,
-    /// No radio, or none that started: the page is skipped.
     Absent,
 }
 
@@ -289,9 +243,8 @@ pub struct Wiring<C> {
     pub network: Network,
 }
 
-/// Application composition: take the board's light and input sources, register one renderer per
-/// wired surface, and run the persistent tasks. Generic over capabilities, so every board with the
-/// same wiring shares this copy.
+/// Application composition: take the board's light and input sources, register one renderer
+/// per wired surface, and run the persistent tasks.
 pub async fn run<B, C>(mut board: B, wiring: Wiring<C>) -> !
 where
     B: BoardTrait
@@ -332,20 +285,12 @@ where
         demand_keys.push(DemandKey::AUDIO);
     }
 
-    // Unlike the capture, playback is a task of its own: a sound has to keep
-    // being fed while it plays, and a task is what makes that independent of how
-    // often anything else is polled. A board with no speaker contributes no
-    // task — the page is gated off and the bus stays empty.
     let speaker = board.take_playback();
     let playback_enabled = speaker.is_some();
     if !playback_enabled {
         log::info!("[PLAY] no speaker wired");
     }
 
-    // The camera goes to the panel surface rather than to a renderer of its own: a frame has
-    // nowhere to be seen except the panel, so a separate renderer would have to share the one
-    // buffer with the surface that already owns it. The surface is also the only thing that
-    // knows how to park the chain before painting a colour under it.
     let mut camera = board.take_camera();
     let camera_enabled = camera.is_some();
     if camera_enabled {
@@ -358,9 +303,6 @@ where
     let mut render = Render::new();
     for (instance, light) in lights.into_iter().enumerate() {
         let renderer = LightRenderer::new(instance as u8, light);
-        // Instance 0 is the panel — the one surface with a frame buffer to fill. A strip on a
-        // board that also mounts a sensor takes nothing, and the camera is dropped rather than
-        // kept alive on a surface that cannot draw it.
         match camera.take() {
             Some(taken) if instance == 0 => {
                 render.register(Box::new(renderer.with_camera(taken)), 0);
@@ -390,9 +332,6 @@ where
     if manager.boot_page() != DisplayPage::Ambient {
         log::info!("[IOT] boot page is {:?}", manager.boot_page());
     }
-    // What the board's parts can be left in. The configurator holds this so the decision
-    // has the parts' answer at the moment a demand is made, rather than needing a lookup
-    // threaded down to whoever polls them.
     let configurator = Configurator::new(board.motion_configurations());
     // Both playback loops reach the driver through one shared handle rather than
     // owning it, because they run on different executors: the feed has to be

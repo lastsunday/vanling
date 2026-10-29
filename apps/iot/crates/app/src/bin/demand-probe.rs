@@ -1,8 +1,6 @@
 //! Motion demand matrix: walks every (configuration × cadence) cell the driver can reach
 //! reports what each one costs, so the cost table carries measurements rather than
 //! arithmetic done from a datasheet.
-//!
-//! A bench image, never a product one: no panel, no pages, no intent bus, no speaker.
 
 #![no_std]
 #![no_main]
@@ -14,7 +12,6 @@ use embedded_alloc::LlffHeap as Heap;
 
 type Board = iot_bsp_esp::Board<'static>;
 
-/// Only the log line's formatting and the driver's own buffers.
 static mut HEAP_MEM: [u8; 16 * 1024] = [0; 16 * 1024];
 
 #[global_allocator]
@@ -34,8 +31,6 @@ async fn main(_spawner: Spawner) -> ! {
     let peripherals = iot_chip_esp::chip_init();
     iot_chip_esp::init_logging();
 
-    // No initialisation: a bring-up that already wrote one would make the first cell
-    // measure a switch nobody asked for.
     let (mut board, timg0, from_cpu_intr, _feed_intr) = match Board::new_motion_only(peripherals) {
         Ok(startup) => startup,
         Err(error) => {

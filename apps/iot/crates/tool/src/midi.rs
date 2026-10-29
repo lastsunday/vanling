@@ -1,33 +1,16 @@
-//! The sound catalogue as source files: the recipes, and the MIDI files built
-//! from them.
-//!
-//! Why the catalogue is MIDI at all, and why these particular notes, is in the
-//! [playback record](@/records/iot/playback.md). What cannot be found there is
-//! the one constraint below that belongs to this file: the milliseconds have to
-//! survive the trip out to ticks and back, or a recipe disagrees with its own
-//! file and nobody can say by how much.
+//! The sound catalogue as source files: the recipes, and the MIDI files built from them.
 
 use std::path::{Path, PathBuf};
 
-/// Stands for silence in a [`Recipe`]. MIDI has no rest event, so a rest is the
-/// gap between two notes, and a note number of zero is not one.
+/// Stands for silence in a [`Recipe`].
 pub const REST: u8 = 0;
 
-/// What one sound is made of: its name, the track name a DAW shows when the file
-/// is opened, and `(MIDI note, ms)` pairs in play order, with [`REST`] for a gap.
-///
-/// Named after the file rather than the notes because the file is what someone
-/// opens and edits.
+/// What one sound is made of: its name, the track name a DAW shows when the file is opened,
+/// and `(MIDI note, ms)` pairs in play order, with [`REST`] for a gap.
 pub type Recipe = (&'static str, &'static str, &'static [(u8, u16)]);
 
 /// Every sound, and what its file has to contain.
-///
-/// The source of truth: `cargo run -p iot-tool -- midi` builds the files from
-/// these rows, and a row edited without running it fails
-/// `the_files_are_what_the_recipes_generate`.
 pub const RECIPES: [Recipe; 5] = [
-    // Three notes where every other sound has one, two or four: the count is
-    // the strongest thing telling these apart, so it is spent on the tap.
     (
         "Tap",
         "vanling tap - a minor third rising, the only three-note figure",
@@ -47,7 +30,6 @@ pub const RECIPES: [Recipe; 5] = [
             (93, 87),
         ],
     ),
-    // The only figure that falls, which is the whole of what "error" has to say.
     (
         "Error",
         "vanling error - a major third falling",
@@ -71,11 +53,10 @@ pub fn file_name(sound: &str) -> String {
     format!("{}.mid", sound.to_lowercase())
 }
 
-/// A Standard MIDI File for one recipe: format 0, one track, 480 ticks a
-/// quarter, 120 BPM, a track name a DAW can show.
+/// A Standard MIDI File for one recipe: format 0, one track, 480 ticks a quarter, 120 BPM,
+/// a track name a DAW can show.
 pub fn mid(track_name: &str, notes: &[(u8, u16)]) -> Vec<u8> {
     const DIV: u32 = 480;
-    /// What the tempo event below says, in milliseconds.
     const QUARTER_MS: u32 = 500;
 
     let vlq = |n: u32| -> Vec<u8> {
@@ -91,9 +72,6 @@ pub fn mid(track_name: &str, notes: &[(u8, u16)]) -> Vec<u8> {
     // 99 and the table stops matching its own file.
     let ticks = |ms: u16| (u32::from(ms) * DIV + QUARTER_MS / 2) / QUARTER_MS;
 
-    // The leading zero is a delta time like any other: every event in a track
-    // is preceded by one, a meta event included, and a file that omits it reads
-    // its own status byte as part of a duration.
     let mut track = vec![0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20];
     let name = track_name.as_bytes();
     track.extend([0x00, 0xff, 0x03, name.len() as u8]);
@@ -111,8 +89,6 @@ pub fn mid(track_name: &str, notes: &[(u8, u16)]) -> Vec<u8> {
         track.extend(vlq(ticks(ms)));
         track.extend([0x80, note, 0x40]);
     }
-    // And the same at the end of the track: the end-of-track event is an event,
-    // and events are preceded by delta times.
     track.extend([0x00, 0xff, 0x2f, 0x00]);
 
     let mut file = b"MThd".to_vec();

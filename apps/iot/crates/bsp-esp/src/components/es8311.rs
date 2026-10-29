@@ -3,10 +3,7 @@ use embedded_hal::i2c::I2c;
 use super::register_seq;
 use register_seq::{Step, merge, write};
 
-/// Datasheet 2.1: the seven-bit write address. The part has a single address
-/// pin, so a board that straps it the other way lands on
-/// [`ES8311_I2C_ADDR_ALT`]; the board probes both rather than trusting a
-/// schematic it cannot read back.
+/// Datasheet 2.1: the seven-bit write address.
 pub const ES8311_I2C_ADDR: u8 = 0x18;
 /// The same part with its address pin strapped high.
 pub const ES8311_I2C_ADDR_ALT: u8 = 0x19;
@@ -43,41 +40,24 @@ const REG_GP: u8 = 0x45;
 const REG_CHIP_ID1: u8 = 0xFD;
 const REG_CHIP_ID2: u8 = 0xFE;
 
-/// The clock and rate this part is configured from the table's row for. Declared
-/// once for the whole board and re-exported here, because the capture codec is
-/// programmed from the same row and a second copy of either value would be a
-/// capture and a speaker a few hertz apart with nothing to say so.
+/// The clock and rate this part is configured from the table's row for.
 pub use super::audio_clock::{MCLK_HZ, SAMPLE_RATE_HZ};
 
-/// Reset register: bit 7 releases the digital block, bit 6 selects master. Bit 7
-/// is written as part of the bring-up rather than as a reset pulse, so the part
-/// comes up configured; bit 6 is read-modify-written because the host drives
-/// MCLK, BCLK and LRCK and the part must not be allowed to generate them.
 const RESET_DIGITAL: u8 = 0x80;
 const MASTER_BIT: u8 = 0x40;
 
-/// Clock manager: 0x3F is every clock gate open, and the two top bits are the
-/// MCLK source and MCLK inversion. Both are cleared — MCLK comes from the pin
-/// and is not inverted — which is why the bring-up writes the whole byte here
-/// and every later clock write goes through a mask that preserves it.
 const CLOCKS_ALL_RUN: u8 = 0x3F;
 const MCLK_SOURCE_MASK: u8 = 0x80;
 const MCLK_INVERT_MASK: u8 = 0x40;
-/// BCLK inversion, cleared: the host emits BCLK rising-edge aligned.
 const BCLK_INVERT_MASK: u8 = 0x20;
 const BCLK_DIV_MASK: u8 = 0x1F;
-/// The part of `0x03` and `0x04` the clock table owns: the fractional-speed bit
-/// pair and the OSR the row names. Every row the reference table holds is an OSR
-/// of `0x10` or `0x20`, so the low nibble is the same zero the table's values
-/// leave there — writing it outright is what lets a retune actually land instead
-/// of OR-ing a new OSR onto the one the part is already running.
 const CLOCK_FIELD_MASK: u8 = 0xF0;
 
-/// The 12288000/48000 row of the reference driver's clock table: pre-divider 1,
-/// pre-multiplier 1, ADC divide 1, DAC divide 1, no fractional part, LRCK
-/// divider 0x00:0xFF, BCLK divide 4, and an OSR of 0x10 on both converters. With
-/// a 12.288 MHz MCLK that is exactly 48 kHz, and it is the same row the capture
-/// half programs, so both codecs come up on one clock.
+// The 12288000/48000 row of the reference driver's clock table: pre-divider 1,
+// pre-multiplier 1, ADC divide 1, DAC divide 1, no fractional part, LRCK
+// divider 0x00:0xFF, BCLK divide 4, and an OSR of 0x10 on both converters. With
+// a 12.288 MHz MCLK that is exactly 48 kHz, and it is the same row the capture
+// half programs, so both codecs come up on one clock.
 const COEFF_48K: Coeff = Coeff {
     pre_div: 1,
     pre_multi: 1,
@@ -91,9 +71,6 @@ const COEFF_48K: Coeff = Coeff {
     dac_osr: 0x10,
 };
 
-/// One row of the codec's clock table, as the fields the reference driver names,
-/// so a rate retune is one row rather than a hand-computed set of masked writes
-/// spread across six registers.
 struct Coeff {
     pre_div: u8,
     pre_multi: u8,
@@ -108,8 +85,6 @@ struct Coeff {
 }
 
 impl Coeff {
-    /// The byte `0x02` carries: the pre-divider in bits 7-5 and the multiplier in
-    /// bits 4-3, with the multiplier encoded as its log2.
     const fn div_mult(self) -> u8 {
         let multiplier = match self.pre_multi {
             1 => 0,
@@ -120,14 +95,10 @@ impl Coeff {
         ((self.pre_div - 1) << 5) | (multiplier << 3)
     }
 
-    /// The byte `0x05` carries: the ADC divider in bits 4-1 and the DAC divider
-    /// in bits 0, each biased by one because zero means "no division".
     const fn adc_dac_div(self) -> u8 {
         ((self.adc_div - 1) << 4) | (self.dac_div - 1)
     }
 
-    /// The byte `0x03` carries: the fractional part in bits 7-6 and the ADC OSR
-    /// below it.
     const fn adc(self) -> u8 {
         (self.fs_mode << 6) | self.adc_osr
     }
@@ -136,10 +107,6 @@ impl Coeff {
         self.dac_osr
     }
 
-    /// The byte `0x06` carries, with the divider's encoding split the way the
-    /// reference driver splits it: below 19 the field is `div - 1`, from 19 up it
-    /// is `div`. The ES8311 datasheet is not distributed, so this encoding is
-    /// taken from the reference driver rather than derived.
     const fn bclk(self) -> u8 {
         if self.bclk_div < 19 {
             self.bclk_div - 1
@@ -149,16 +116,16 @@ impl Coeff {
     }
 }
 
-/// The serial ports. Bit 6 is the run bit the reference driver clears to let a
-/// module out of reset, bits 3-2 are the word width — 0b11 is 16 bit, which is
-/// what the host port emits — and bits 1-0 are the frame — 0b00 is standard I2S,
-/// which is what the host peripheral emits in Philips mode. A width left at its
-/// power-on value is not to be trusted: the reference driver sets it for every
-/// sample format it configures, and a DAC told 24 bit treats each 16-bit host
-/// frame as a different word and holds its output silent. Both ports are written
-/// through masks because the DAC is the only one this board runs, and a
-/// whole-byte write would carry the ADC's power-on bits into a port the ADC
-/// never uses.
+// The serial ports. Bit 6 is the run bit the reference driver clears to let a
+// module out of reset, bits 3-2 are the word width — 0b11 is 16 bit, which is
+// what the host port emits — and bits 1-0 are the frame — 0b00 is standard I2S,
+// which is what the host peripheral emits in Philips mode. A width left at its
+// power-on value is not to be trusted: the reference driver sets it for every
+// sample format it configures, and a DAC told 24 bit treats each 16-bit host
+// frame as a different word and holds its output silent. Both ports are written
+// through masks because the DAC is the only one this board runs, and a
+// whole-byte write would carry the ADC's power-on bits into a port the ADC
+// never uses.
 const SDP_RUN_MASK: u8 = 0x40;
 const SDP_WIDTH_MASK: u8 = 0x0C;
 const SDP_16_BIT: u8 = 0x0C;
@@ -173,11 +140,6 @@ const SDP_I2S: u8 = 0x00;
 /// still what a listener reaches for.
 pub const DAC_VOLUME_60: u8 = 0x97;
 
-/// DAC mute: bits 5-6 are the soft mute. Named as the field this driver owns, so
-/// a read-modify-write leaves every other bit of the register exactly as the part
-/// holds it — the reference driver states the same thing with the polarity
-/// flipped, keeping `read & 0x9F` and OR-ing `0x60` in, which is the same mask
-/// written as "the bits to preserve" rather than "the bits to change".
 const DAC_MUTE_FIELD: u8 = 0x60;
 const DAC_MUTED: u8 = 0x60;
 
@@ -201,13 +163,8 @@ impl ChipId {
     }
 }
 
-/// I2C noise immunity, written twice. The reference driver does this because the
-/// part intermittently drops the first write after power-up; the second write is
-/// not redundant, it is the one that has to land.
 const BRING_UP_NOISE_IMMUNITY: &[Step] = &[write(REG_GPIO, 0x08), write(REG_GPIO, 0x08)];
 
-/// Whole-register writes: the part has just been reset and the reference
-/// driver's values are its power-on state with the ports held idle.
 const BRING_UP_POWER_ON: &[Step] = &[
     write(REG_CLK_ENABLE, 0x30),
     write(REG_CLK_DIV_MULT, 0x00),
@@ -221,20 +178,12 @@ const BRING_UP_POWER_ON: &[Step] = &[
     write(REG_SYSTEM_11, 0x7F),
 ];
 
-/// Slave mode and every clock gate open. The digital block is released and the
-/// master bit cleared in one read-modify-write, because the bit the part holds
-/// after the reset write is the one field of `0x00` that is not a power-on
-/// value.
 const BRING_UP_SLAVE: &[Step] = &[
     write(REG_RESET, RESET_DIGITAL),
     merge(REG_RESET, MASTER_BIT, 0x00),
     write(REG_CLK_ENABLE, CLOCKS_ALL_RUN),
 ];
 
-/// The clock table row for this board's MCLK and rate, plus the source and
-/// inversion bits cleared. Every one of these is a masked write: the bring-up
-/// opened the clock gates in the same register the MCLK source lives in, and
-/// `0x03`/`0x04`/`0x06` carry bits the reference driver deliberately preserves.
 const BRING_UP_CLOCKS: &[Step] = &[
     merge(REG_CLK_ENABLE, MCLK_SOURCE_MASK, 0x00),
     merge(REG_CLK_ENABLE, MCLK_INVERT_MASK, 0x00),
@@ -248,11 +197,11 @@ const BRING_UP_CLOCKS: &[Step] = &[
     merge(REG_CLK_BCLK, BCLK_INVERT_MASK, 0x00),
 ];
 
-/// The DAC's serial port in standard I2S, the mixed-signal and gain defaults the
-/// reference driver writes, and the analog power-up. The frame is merged rather
-/// than written so the run state and word width the bring-up has not committed
-/// to yet stay as the part holds them; `START` pins the width to 16 bit the
-/// moment the port comes out of reset.
+// The DAC's serial port in standard I2S, the mixed-signal and gain defaults the
+// reference driver writes, and the analog power-up. The frame is merged rather
+// than written so the run state and word width the bring-up has not committed
+// to yet stay as the part holds them; `START` pins the width to 16 bit the
+// moment the port comes out of reset.
 const BRING_UP_DAC: &[Step] = &[
     merge(REG_SDP_DAC, SDP_FRAME_MASK, SDP_I2S),
     write(REG_SYSTEM_13, 0x10),
@@ -268,10 +217,6 @@ const BRING_UP: &[&[Step]] = &[
     BRING_UP_DAC,
 ];
 
-/// Releases the DAC out of reset with its port running, at unity volume and
-/// unmuted. Separate from `init` so a part that lost its clocks can be restarted
-/// without a full re-init, and separate from the mute latch so a listener's
-/// choice survives a restart.
 const START: &[Step] = &[
     merge(
         REG_SDP_DAC,
@@ -286,23 +231,15 @@ const START: &[Step] = &[
     write(REG_ADC_15, 0x40),
     write(REG_DAC_RAMP, 0x08),
     write(REG_GP, 0x00),
-    // The internal reference signal, on the register the datasheet calls
-    // "dac2adc for test" — it is the path the DAC output is compared against, and
-    // leaving it off is a DAC that starts but never settles.
     write(REG_GPIO, 0x58),
     write(REG_DAC_VOLUME, DAC_VOLUME_60),
     merge(REG_DAC_MUTE, DAC_MUTE_FIELD, 0x00),
 ];
 
-/// What playback needs from a codec driver: the mute latch and nothing else. The
-/// bring-up, the clock row and the registers stay behind I2C in the driver, so
-/// the transport never names a register or a bus.
+/// What playback needs from a codec driver: the mute latch and nothing else.
 pub trait Mute {
-    /// What a mute write reports, named so a transport can log it without being
-    /// able to name a bus error type.
     type MuteError;
 
-    /// Latches the output quiet, or audible again.
     fn set_muted(&mut self, muted: bool) -> Result<(), Self::MuteError>;
 }
 
@@ -341,11 +278,6 @@ impl<D: I2c> Es8311<D> {
     }
 
     /// Reads the part's ID registers.
-    ///
-    /// A separate step from `init` because it answers a different question — is
-    /// there a codec at this address at all — and a board that has to try two
-    /// addresses needs to ask that before it commits to a bring-up it cannot
-    /// unwrite.
     pub fn chip_id(&mut self) -> Result<ChipId, Es8311Error<D::Error>> {
         Ok(ChipId {
             first: register_seq::read_reg(&mut self.i2c, self.addr, REG_CHIP_ID1)?,
@@ -353,9 +285,7 @@ impl<D: I2c> Es8311<D> {
         })
     }
 
-    /// Brings the part up and starts its DAC. Idempotent, so a board that wires
-    /// the speaker into more than one bring-up path does not re-reset a running
-    /// codec underneath a playing sound.
+    /// Brings the part up and starts its DAC.
     pub fn init(&mut self) -> Result<(), Es8311Error<D::Error>> {
         if self.running {
             return Ok(());
@@ -372,10 +302,6 @@ impl<D: I2c> Es8311<D> {
     }
 
     /// Latches the DAC output quiet, or audible again.
-    ///
-    /// A read-modify-write of the soft-mute bits rather than a literal, because
-    /// the same register carries the volume ramp and the power state, and a
-    /// literal would clear both — which is audible as a click on every unmute.
     pub fn write_mute_latch(&mut self, muted: bool) -> Result<(), Es8311Error<D::Error>> {
         let value = if muted { DAC_MUTED } else { 0x00 };
         Ok(register_seq::update(
@@ -420,8 +346,6 @@ mod tests {
 
     fn mock() -> Mock {
         Mock::new(|registers| {
-            // The ID registers matter too: a zeroed bus would make `chip_id`
-            // report an absent part.
             registers[REG_RESET as usize] = 0x00;
             registers[REG_CLK_ENABLE as usize] = 0x00;
             registers[REG_SDP_DAC as usize] = 0x83;
@@ -464,8 +388,6 @@ mod tests {
     #[test]
     fn the_clock_manager_keeps_every_gate_open_through_the_row_write() {
         let codec = settle();
-        // The row writes are masked, so the gate-open byte the slave stage wrote
-        // has to survive them.
         assert_eq!(
             codec.i2c.writes_of(REG_CLK_ENABLE).last().copied(),
             Some(CLOCKS_ALL_RUN)
@@ -474,9 +396,6 @@ mod tests {
 
     #[test]
     fn the_row_produces_12_288_mhz_over_256_at_48_khz() {
-        // The row's LRCK divider and pre-division are the arithmetic the sample
-        // rate actually comes from, so they are pinned here rather than trusted
-        // to have been transcribed right.
         assert_eq!(
             MCLK_HZ / (u32::from(COEFF_48K.lrck_l) + 1),
             SAMPLE_RATE_HZ,

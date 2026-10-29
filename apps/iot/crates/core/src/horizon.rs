@@ -1,5 +1,5 @@
-//! Attitude-dial geometry: rolls/pitches to a normalized horizon line,
-//! keeping sign conventions host-testable so the panel layer only stamps.
+//! Attitude-dial geometry: rolls/pitches to a normalized horizon line, keeping sign
+//! conventions host-testable so the panel layer only stamps.
 
 use core::f32::consts::PI;
 use libm::{cosf, roundf, sinf};
@@ -7,20 +7,20 @@ use libm::{cosf, roundf, sinf};
 /// Fixed-point scale of the normalized geometry: `1_000` = one dial radius.
 pub const SCALE: i32 = 1_000;
 
-/// The horizon line, normalized to the dial radius (`1_000` units) so any
-/// panel just multiplies by its own radius.
+/// The horizon line, normalized to the dial radius (`1_000` units) so any panel just
+/// multiplies by its own radius.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Horizon {
-    /// Unit direction along the line (`cos(-roll)`, `sin(-roll)`) so the
-    /// horizon stays level with the world while the dial frame rolls.
+    /// Unit direction along the line (`cos(-roll)`, `sin(-roll)`) so the horizon stays
+    /// level with the world while the dial frame rolls.
     pub unit: (i32, i32),
-    /// Pitch shift along the vertical axis (one radius = `1_000`); a nose-up
-    /// pitch moves the line toward the dial's bottom edge.
+    /// Pitch shift along the vertical axis (one radius = `1_000`); a nose-up pitch moves
+    /// the line toward the dial's bottom edge.
     pub offset: i32,
 }
 
-/// Builds the horizon from `tilt_deg_x10` (`roll`, `pitch` in tenths of a
-/// degree): slope `-roll`, vertical shift `sin(pitch)`.
+/// Builds the horizon from `tilt_deg_x10` (`roll`, `pitch` in tenths of a degree): slope
+/// `-roll`, vertical shift `sin(pitch)`.
 pub fn horizon(roll_deg_x10: i16, pitch_deg_x10: i16) -> Horizon {
     let roll = f32::from(roll_deg_x10) / 10.0 * PI / 180.0;
     let unit = (

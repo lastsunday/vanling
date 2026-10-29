@@ -18,10 +18,10 @@ pub use recognizer::{
 
 pub const MOTION_SCAN_MS: u64 = 20;
 
-/// A quiet device must still refresh the readout, but a moving one need not
-/// publish every intermediate frame. Emitting only past these deltas keeps a
-/// 50 Hz stream from saturating the intent bus while the recognizer below still
-/// sees every poll.
+// A quiet device must still refresh the readout, but a moving one need not
+// publish every intermediate frame. Emitting only past these deltas keeps a
+// 50 Hz stream from saturating the intent bus while the recognizer below still
+// sees every poll.
 const EMIT_DELTA_MG: i32 = 20;
 const EMIT_DELTA_DPS_X10: i32 = 50;
 
@@ -37,20 +37,15 @@ pub struct MotionSample {
     pub raw_gyro: [i16; 3],
     pub accel_mg: [i32; 3],
     pub gyro_dps_x10: [i32; 3],
-    /// Roll, pitch, then an integrated yaw. Without a magnetometer the yaw
-    /// drifts without bound, so it is a diagnostic readout only and no semantic
-    /// or business decision may read it.
+    /// Roll, pitch, then an integrated yaw.
     pub tilt_deg_x10: [i16; 3],
     pub status: u8,
-    /// The gravity-removed accelerometer magnitude's root against the tap
-    /// baseline, in mG. This is the number the squared-domain peak bar
-    /// (`TAP_PEAK_MAG_MG2`) decides on.
+    /// The gravity-removed accelerometer magnitude's root against the tap baseline, in mG.
     pub tap_residual_mg: i32,
-    /// How far the measured magnitude sits from one g, in mG. This is the
-    /// number the lift/place still band measures in the squared domain.
+    /// How far the measured magnitude sits from one g, in mG.
     pub gravity_deviation_mg: i32,
-    /// The gravity-removed accelerometer magnitude against the shake estimate,
-    /// taken as a vector length. This is the number [`SHAKE_ON_MG`] decides on.
+    /// The gravity-removed accelerometer magnitude against the shake estimate, taken as a
+    /// vector length.
     pub shake_residual_mg: i32,
     pub valid: bool,
 }
@@ -116,9 +111,6 @@ impl MotionSample {
         }
     }
 
-    /// Whether a poll moved far enough to be worth publishing. Validity drives
-    /// this alone, so a fault surfaces on the frame it appears and clears on
-    /// the frame it clears.
     fn materially_changed(&self, previous: &Self) -> bool {
         self.valid != previous.valid
             || axis_spread(self.accel_mg, previous.accel_mg) > EMIT_DELTA_MG
@@ -170,25 +162,21 @@ impl MotionReading {
     }
 }
 
-/// A motion source in whatever position it occupies on the bus. An
-/// implementation may report a hardware engine's verdict, raw telemetry, or
-/// both; the framework never assumes which.
+/// A motion source in whatever position it occupies on the bus.
 pub trait MotionSource {
-    /// `Ok(None)` means the sensor had no new frame, which is ordinary at this
-    /// cadence and must not be reported as a fault.
     fn sample(&mut self, now_ms: u64) -> Result<Option<MotionReading>, MotionError>;
 
-    /// Leaves the part in `wanted`, answering what it is now in, or reporting the
-    /// configuration it cannot enter.
-    ///
-    /// No delay is passed because none is the caller's to give: waiting out a part's reset is
-    /// the part's business, and a driver with no way to wait has no way to switch. Such a
-    /// driver answers `Err` for a configuration it is not already in, which is the truth
-    /// rather than a reconfiguration it would silently skip.
-    ///
-    /// The switch is destructive on a part that has to reset to change configuration: it
-    /// loses whatever was in flight and drops whatever baseline it had accumulated. Being
-    /// already in `wanted` is therefore success and not work.
+    // Leaves the part in `wanted`, answering what it is now in, or reporting the
+    // configuration it cannot enter.
+    //
+    // No delay is passed because none is the caller's to give: waiting out a part's reset is
+    // the part's business, and a driver with no way to wait has no way to switch. Such a
+    // driver answers `Err` for a configuration it is not already in, which is the truth
+    // rather than a reconfiguration it would silently skip.
+    //
+    // The switch is destructive on a part that has to reset to change configuration: it
+    // loses whatever was in flight and drops whatever baseline it had accumulated. Being
+    // already in `wanted` is therefore success and not work.
     fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,

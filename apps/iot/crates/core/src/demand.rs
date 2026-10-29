@@ -1,44 +1,21 @@
 //! Demand: what the product wants of each data plane, and when.
-//!
-//! A claim is a temporal contract — whether a plane runs ([`Mode`]) and how often
-//! ([`Claim::period_ms`]). [`Sensitivity`] asks how stale a reading may be, and this board cannot
-//! act on it: batching means "sample on schedule, report later", which needs a hardware FIFO to
-//! hold the event meanwhile, and the IMU here has none. A late report can therefore only be bought
-//! by sampling less often, which is `period_ms` said out loud.
-//!
-//! A demand is a map keyed by [`DemandKey`], which is why the machinery below never names a device:
-//! `claim`, `without` and [`Override::apply`] all work by lookup, so a board adding a sensor
-//! declares one more key and touches none of them.
 
 use alloc::collections::BTreeMap;
 
 /// How fast the chip has to run for one piece of work to meet its deadline.
-///
-/// Chip-independent on purpose: `CpuClock` lives in esp-hal and this crate does
-/// not depend on it, so `iot-chip-esp` is what turns these into clocks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Speed {
     Slow,
     Normal,
-    /// The default, because every deadline this board has measured needs the
-    /// fastest clock it has. That is a measurement, not a preference: see
-    /// [`SpeedTable::speed_for`].
     #[default]
     Fast,
 }
 
 /// What a page asks for, before anything is arbitrated.
-///
-/// `Auto` is the only variant that consults [`SpeedTable::speed_for`]. The other three are
-/// the page's decision and are taken as given, so a page that says
-/// [`Speed::Slow`] gets `Slow` even where a deadline says otherwise — and
-/// [`speed_shortfall`] names what that costs, so the breakage points at the page
-/// that asked for it rather than at nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SpeedRequest {
     #[default]
     Auto,
-    /// As named.
     Fixed(Speed),
 }
 
@@ -48,12 +25,9 @@ pub trait SpeedTable {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Mode {
-    /// Not produced.
     #[default]
     Off,
-    /// Produced when it changes.
     OnChange,
-    /// Produced on a clock.
     Continuous,
 }
 
@@ -63,21 +37,16 @@ impl Mode {
     }
 }
 
-/// The cadence a thumbnail request asks for, and the point the camera's cost row keys on: at
-/// or slower than this the consumer's repaint gate makes it a thumbnail, faster a preview.
+/// The cadence a thumbnail request asks for, and the point the camera's cost row keys on:
+/// at or slower than this the consumer's repaint gate makes it a thumbnail, faster a
+/// preview.
 pub const CAMERA_THUMBNAIL_PERIOD_MS: u32 = 200;
 
-/// How wrong a stale reading may be before it matters. Moves no cadence here; it breaks
-/// arbitration ties and names the claim in `[DEMAND]`/`[DISPLAY]`.
-///
-/// Never assign these to the interaction path — a stale button reading is a dead product.
+/// How wrong a stale reading may be before it matters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Sensitivity {
-    /// Something on screen reads it and a stale value is a visibly wrong UI.
     Primary,
-    /// Worth having; a slightly stale value reads as history.
     Secondary,
-    /// Collected for later. Nothing on screen reads it.
     Background,
 }
 
@@ -106,9 +75,9 @@ impl Claim {
         }
     }
 
-    /// Narrow this claim to a mode and period, keeping the class: the class is a property of
-    /// the claim rather than of the spelling, so an override changes what is asked and not
-    /// who is asking.
+    /// Narrow this claim to a mode and period, keeping the class: the class is a property
+    /// of the claim rather than of the spelling, so an override changes what is asked and
+    /// not who is asking.
     pub const fn with(self, mode: Mode, period_ms: u32) -> Self {
         Self {
             mode,
@@ -121,8 +90,6 @@ impl Claim {
 /// One device type, independent of how many of them are wired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DemandKind {
-    /// The interaction path, never gated: a scenario is chosen by touching or pressing
-    /// something, so gating this would remove the only way to ungate it.
     Interaction,
     Motion,
     Audio,
@@ -165,10 +132,6 @@ pub struct EffectiveDemand {
 }
 
 impl Default for EffectiveDemand {
-    /// The panel lit and nothing else asked for, rather than [`Self::none`].
-    ///
-    /// An unset demand is not a dark device: it is a device nobody has asked a question of
-    /// yet.
     fn default() -> Self {
         let mut claims = BTreeMap::new();
         claims.insert(
@@ -212,8 +175,6 @@ impl core::fmt::Display for EffectiveDemand {
 
 impl core::fmt::Display for DemandKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Lowercase, because these land in a log line next to `[DEMAND]` and `[DISPLAY]`
-        // rather than in a type position.
         let name = match self.kind {
             DemandKind::Interaction => "input",
             DemandKind::Motion => "motion",
@@ -269,8 +230,8 @@ impl Override {
         }
     }
 
-    /// Whether anything was named, so a caller can say "no override" instead of republishing
-    /// an unchanged demand.
+    /// Whether anything was named, so a caller can say "no override" instead of
+    /// republishing an unchanged demand.
     pub fn names_anything(&self) -> bool {
         !self.named.is_empty()
     }
@@ -320,8 +281,6 @@ fn speed_for_name(name: &str) -> SpeedRequest {
         "slow" => SpeedRequest::Fixed(Speed::Slow),
         "normal" => SpeedRequest::Fixed(Speed::Normal),
         "fast" => SpeedRequest::Fixed(Speed::Fast),
-        // Anything unrecognised, `auto` included: a speed nobody asked for is not
-        // a speed the product should invent one for.
         _ => SpeedRequest::Auto,
     }
 }
@@ -374,11 +333,6 @@ pub fn speed_shortfall<T: SpeedTable>(demand: &EffectiveDemand) -> Option<Shortf
 pub trait ClockSink {
     type Table: SpeedTable;
 
-    /// Applies `speed` and returns the speed the part is actually running.
-    ///
-    /// Answering with what was reached rather than what was asked is what keeps a
-    /// part with fewer presets than the vocabulary has — the C6 has no third — from
-    /// being believed to have reached the top one.
     fn set_speed(&mut self, speed: Speed) -> Speed;
 }
 
@@ -387,21 +341,14 @@ pub trait ClockSink {
 pub struct Applied {
     /// What the demand resolved to.
     pub asked: Speed,
-    /// What the part is running, which is below [`asked`](Self::asked) on a part
-    /// with fewer presets than the vocabulary has.
+    /// What the part is running, which is below [`asked`](Self::asked) on a part with fewer
+    /// presets than the vocabulary has.
     pub running: Speed,
     pub undercuts: Option<Shortfall>,
 }
 
-/// Holds a part at whatever the current demand resolves to, moving only when the
-/// answer moves.
-///
-/// Named rather than folded into a free function because the answer has to be
-/// remembered somewhere, and a `static` would make two devices in one process
-/// answer for each other.
-///
-/// Nothing here names a clock, so what the three speeds are on any given part stays
-/// in the chip layer.
+/// Holds a part at whatever the current demand resolves to, moving only when the answer
+/// moves.
 pub struct ClockGovernor {
     asked: Option<Speed>,
 }
@@ -453,15 +400,6 @@ pub struct PollPlan {
 }
 
 /// Derives one source's plan from the effective demand.
-///
-/// The interaction path gets no batching at all: a stale button reading is a device that
-/// cannot be steered off the page it is on. For everything else the cadence only ever moves
-/// **outward** — the board's cadence is a floor the source's own debounce windows are
-/// measured against, and a claim's requested period is a floor it cannot shorten.
-///
-/// This is the demand's half of [`InputLimiter`], which is the whole: what a source may not
-/// be polled less often for is the source's own knowledge, and it only reaches a schedule
-/// here.
 pub fn poll_plan_of(key: DemandKey, demand: &EffectiveDemand, board_cadence_ms: u64) -> PollPlan {
     if key.kind() == DemandKind::Interaction {
         return PollPlan {
@@ -483,24 +421,11 @@ pub fn poll_plan_of(key: DemandKey, demand: &EffectiveDemand, board_cadence_ms: 
 }
 
 /// How far the controller is allowed to stop asking.
-///
-/// The limiter is self-restraint and never fails: every answer it gives is a schedule the
-/// loop can actually run. What the *parts* cannot do is a different question, and it is
-/// answered where the part is — a device limitation travels as [`crate::config::Unreachable`]
-/// through the configurator rather than being folded into a cadence here.
 pub struct InputLimiter;
 
 impl InputLimiter {
     /// The schedule for one source: the demand's floor, the board's own, and the rate past
     /// which this particular source would stop working.
-    ///
-    /// The three are ordered rather than combined, because which of them is binding is the
-    /// answer. A source that cannot go slower folds back to the board's cadence and gives up
-    /// the stretch the demand asked for — and the schedule reports that value, so a reader
-    /// sees the rate in force rather than the one requested.
-    ///
-    /// `poll_plan_of` is what the demand alone implies; the fold-back is what the source
-    /// allows. Both are needed, and neither is the limiter without the other.
     pub fn plan(
         key: DemandKey,
         demand: &EffectiveDemand,
@@ -516,15 +441,6 @@ impl InputLimiter {
 }
 
 /// The one executor number worth bounding, and why it is not a percentage.
-///
-/// A percentage would constrain what share of a second a *preemptive* scheduler spends
-/// running tasks. This executor is fair per poll, so no task is starved by volume; what it
-/// cannot do is interrupt, so one non-yielding poll holds it for that poll's whole worst-case
-/// execution time. That is a per-operation bound, and the thing to bound is the **tick** —
-/// every source polled at a tick runs inside one non-awaiting `for`.
-///
-/// The bound is the measured worst-case tick plus one poll period; the measurements are in
-/// [`architecture`](../../../../../docs/content/development/iot/architecture.md).
 pub const MAX_SINGLE_HOLD_MS: u32 = 30;
 
 #[cfg(test)]
@@ -536,7 +452,7 @@ pub const ALL_KEYS: &[DemandKey] = &[
 ];
 
 impl EffectiveDemand {
-    /// Nothing demanded. What a device holds before any scenario claims it.
+    /// Nothing demanded.
     pub const fn none() -> Self {
         Self {
             claims: BTreeMap::new(),
@@ -576,10 +492,6 @@ impl EffectiveDemand {
 #[cfg(test)]
 mod tests {
 
-    /// The S3's rows, so these tests pin the table that ships rather than a
-    /// stand-in. The real one lives in `iot-chip-esp` and `iot-core` cannot see
-    /// it, which is the point: these numbers belong to a chip, so the chip's copy
-    /// is the one that matters and these only keep the *mechanism* honest.
     struct S3;
 
     impl SpeedTable for S3 {
@@ -591,8 +503,6 @@ mod tests {
         }
     }
 
-    /// Reaches whatever it is asked for, the way a part whose presets cover the
-    /// whole vocabulary does.
     #[derive(Default)]
     struct Reaching {
         asked: Vec<Speed>,
@@ -607,8 +517,6 @@ mod tests {
         }
     }
 
-    /// A part whose top preset sits below the top of the vocabulary — one with 80
-    /// and 160 and no third.
     #[derive(Default)]
     struct Capped {
         asked: Vec<Speed>,
@@ -704,9 +612,6 @@ mod tests {
 
     #[test]
     fn a_source_that_cannot_go_slower_folds_back_to_the_board_cadence() {
-        // The fold-back used to live inline in the apply loop, which meant the limiter had no
-        // single place a reader could check it. It is the same rule either way: a stretch the
-        // source cannot survive is given up rather than scheduled.
         let mut demand = live_claims();
         demand.set(
             DemandKey::AUDIO,
@@ -824,8 +729,6 @@ mod tests {
 
     #[test]
     fn a_build_can_name_its_own_cadence_instead_of_asking_a_policy_for_one() {
-        // What a removed policy table used to do to a `Secondary` claim: stretch it to
-        // 30 s. The build now says so outright, and it lands on the same cadence.
         let parsed = parse_override("motion=on:30000,audio=off");
         assert_eq!(
             parsed.named_mode(DemandKey::MOTION),
@@ -947,12 +850,8 @@ mod tests {
         assert_eq!(demand.claim(DemandKey::CAMERA).mode, Mode::Off);
     }
 
-    /// The strings the shipped build tasks pass as `IOT_DEMAND`. An unrecognised term costs
-    /// only that term, so a preset that drifts out of the vocabulary still builds and still
-    /// flashes — it just quietly stops being the preset it claims to be.
     #[test]
     fn every_shipped_preset_spells_modes_this_firmware_has() {
-        // `apps/iot/moon.yml`: build-s3-thrift
         let thrift = parse_override("audio=off,display=on-change");
         assert_eq!(thrift.named_mode(DemandKey::AUDIO), Some((Mode::Off, 0)));
         assert_eq!(

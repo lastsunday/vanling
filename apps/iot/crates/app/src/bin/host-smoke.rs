@@ -1,9 +1,7 @@
-//! Host smoke for the app composition: boots [`iot_app::run`] on a fake board under
-//! the std backend and asserts the real intent → render pipeline paints a click
-//! target on the surface its source drives, with two surfaces and two buttons so
-//! multi-instance routing is exercised. The CI gate that needs no ESP hardware — see
-//! docs/content/development/iot/emulation.md; run it with
-//! `cargo run -p iot-app --bin host-smoke --no-default-features --features host`.
+//! Host smoke for the app composition: boots [`iot_app::run`] on a fake board under the std
+//! backend and asserts the real intent → render pipeline paints a click target on the
+//! surface its source drives, with two surfaces and two buttons so multi-instance routing
+//! is exercised.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
@@ -42,98 +40,52 @@ use iot_core::intent::{BusinessIntent, Intent, PALETTE};
 use iot_core::keyboard::Key;
 use iot_core::state::{Confirm, DisplayPage, Panel, PlaybackPhase};
 
-/// Recorded paint operations per surface, so the smoke can assert what `run`
-/// drew and on which instance.
 static PAINTED: Mutex<Vec<(u8, Fill, Rgb)>> = Mutex::new(Vec::new());
 
-/// Camera frames the fake surface was asked to ship, so the smoke can prove the Camera page
-/// reaches the surface rather than only appearing in the page cycle.
 static CAMERA_PAINTED: AtomicUsize = AtomicUsize::new(0);
-/// Page changes that handed the frame buffer back from the camera.
 static RELEASED: AtomicUsize = AtomicUsize::new(0);
 
-/// Firmware-visible press states, flipped by the smoke scenario: one per
-/// button, matching the wiring-order sources the board assembles.
 static PRESSED: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
 static PAGES: Mutex<Vec<DisplayPage>> = Mutex::new(Vec::new());
 
-/// Capture polls the fake source has served, so the smoke can prove the audio
-/// entry is on the shared input tick.
 static AUDIO_POLLS: AtomicUsize = AtomicUsize::new(0);
 
-/// The most columns any real diagnostics snapshot reported, so a poll is proven
-/// to have travelled the whole input → intent → state → sink path and not just
-/// to have been served by the source.
 static AUDIO_COLUMNS: AtomicUsize = AtomicUsize::new(0);
 
 static NETWORK_APS: AtomicUsize = AtomicUsize::new(0);
 
-/// The most glyphs any snapshot's passphrase draft carried, so a key typed on the panel's
-/// keyboard is proven to reach a snapshot — which is to say that it is drawn — rather than
-/// stopping in the state layer.
 static NETWORK_TYPED: AtomicUsize = AtomicUsize::new(0);
 
-/// How many names the store's own report carried into the panel's snapshot.
 static NETWORK_SAVED: AtomicUsize = AtomicUsize::new(0);
 
-/// The highest repair count any sink saw, so the smoke can prove the count
-/// reaches the panel rather than stopping at the state layer.
 static AUDIO_RESTARTS: AtomicUsize = AtomicUsize::new(0);
 
-/// Loudest level any poll delivered, in dBFS, so the smoke can prove the panel's
-/// decibel readout is fed by a real measurement. Seeded at the smallest signed
-/// value rather than zero: every reading a level meter reports is at or below
-/// 0 dBFS, so a zero seed would leave the maximum at "no level at all" and the
-/// smoke would pass on a capture that measured nothing.
 static AUDIO_PEAK_DB: AtomicIsize = AtomicIsize::new(isize::MIN);
 
-/// The loudest A-weighted level any sink saw, so the smoke can prove the corner
-/// dB(A) readout is fed by the capture rather than hard-wired. Zero is exactly
-/// what a broken wiring looks like after at least one tone poll, so a plain
-/// "above zero" assert is a mean leash.
 static AUDIO_DBA_LSB: AtomicUsize = AtomicUsize::new(0);
 
 static PLAYED: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 
-/// Mute writes the fake speaker was asked to make, in order.
 static MUTED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
 
-/// The highest play count the panel's diagnostics reported, so the smoke can
-/// prove the tap reached the state layer as well as the driver.
 static PLAYBACK_PLAYS: AtomicUsize = AtomicUsize::new(0);
 
-/// The highest drop count any sink saw, so the smoke can prove a tap over a
-/// sounding one is absorbed by the state rather than restarting the sound.
 static PLAYBACK_DROPPED: AtomicUsize = AtomicUsize::new(0);
 
-/// Whether any sink ever saw the panel muted, so the smoke can prove the long
-/// press reached the state layer as well as the driver. Sticky, because the
-/// assert is about a latch having happened rather than about its current value.
 static PLAYBACK_EVER_MUTED: AtomicBool = AtomicBool::new(false);
 
-/// Playback phases the sinks saw, in order, so the smoke can assert the whole
-/// round trip — idle → playing → idle — and not merely a phase that once was
-/// playing.
 static PLAYBACK_PHASES: Mutex<Vec<PlaybackPhase>> = Mutex::new(Vec::new());
 
-/// A loud constant capture. What matters to the smoke is that columns commit and
-/// travel, not what they hold — only that the level it holds is a level the panel
-/// can read back, so the metering path is proved to have survived the hop.
 const HOST_LOUD: i16 = 8_000;
 
-/// A whole poll of audio, which is what the device's capture hands over every
-/// time. Sizing the fake by the column instead would have it delivering half of
-/// what the real driver does and the smoke would not have noticed.
 const HOST_POLL_SAMPLES: usize = SAMPLES_PER_COLUMN as usize * COLUMNS_PER_POLL as usize;
 
-/// Repairs the fake capture reports, nonzero so the smoke can prove the panel's
-/// `RST` readout is wired to a real field rather than hard-wired to zero.
 const HOST_RESTARTS: u16 = 3;
 
-/// Half a period of the fake's 1 kHz tone: a 48-sample square wave at the 48 kHz
-/// capture rate, whose impulsive harmonics the A-weighting passes substantially,
-/// so the meter climbs and the smoke can see the level travel. A DC constant
-/// would be filtered to silence and prove nothing.
+// Half a period of the fake's 1 kHz tone: a 48-sample square wave at the 48 kHz
+// capture rate, whose impulsive harmonics the A-weighting passes substantially,
+// so the meter climbs and the smoke can see the level travel. A DC constant
+// would be filtered to silence and prove nothing.
 const HOST_TONE_HALF_PERIOD: usize = 24;
 
 struct HostAudio {
@@ -186,10 +138,6 @@ impl MotionSource for HostMotion {
     }
 }
 
-/// How many feeds a fake sound lasts. A real one is fed for as long as it
-/// sounds; this is a fixed count, sized past a second so the smoke's second tap
-/// reliably lands inside the sound it is meant to be dropped by, and no longer
-/// than the smoke waits for the finish.
 const HOST_FEEDS: usize = 220;
 
 struct HostSpeaker {
@@ -241,15 +189,13 @@ impl Button for HostButton {
 struct HostLight {
     instance: u8,
     camera: Option<Box<dyn FrameSource>>,
-    /// The same ownership rule the panel uses, so that a page change the panel would
-    /// deadlock on is one this surface can be shown to survive.
+    // The same ownership rule the panel uses, so that a page change the panel would
+    // deadlock on is one this surface can be shown to survive.
     owner: FrameOwner,
     page: Option<DisplayPage>,
 }
 
 impl HostLight {
-    /// Records a fill reaching the panel, unless the camera owns the buffer or this is the
-    /// colour already there.
     fn record(&mut self, fill: Fill, color: Rgb) {
         if !self.owner.accepts_fill(fill, color) {
             return;
@@ -271,8 +217,6 @@ impl RgbLight for HostLight {
     }
 }
 
-/// A camera with no sensor behind it: it reports frames without filling anything, which is
-/// all the host needs to walk the page and see that the surface is asked to draw.
 struct HostCamera {
     frames: u32,
 }
@@ -335,9 +279,6 @@ impl CameraTarget for HostLight {
 
 impl iot_core::diagnostics::DiagnosticsSink for HostLight {
     fn consume(&mut self, diagnostics: &Diagnostics) {
-        // The panel hands the buffer back on a page change, before it decides whether to
-        // repaint — otherwise a camera page, which is the one page with no colour to
-        // repaint, is also the one page that can never release the camera.
         let page_changed = self.page != Some(diagnostics.page);
         if page_changed && self.owner.is_camera() {
             if let Some(camera) = self.camera.as_mut() {
@@ -506,8 +447,6 @@ impl HasCamera for HostBoard {
     }
 }
 
-/// Three press/release pairs inside the multi-click window: the gesture that
-/// turns the page.
 async fn triple_click() {
     for _ in 0..3 {
         PRESSED[0].store(true, Ordering::SeqCst);
@@ -517,7 +456,6 @@ async fn triple_click() {
     }
 }
 
-/// One press/release pair, long enough for the scanner to debounce.
 async fn click(button: usize) {
     PRESSED[button].store(true, Ordering::SeqCst);
     Timer::after(Duration::from_millis(120)).await;
@@ -532,9 +470,6 @@ fn painted(instance: u8, color: Rgb) -> bool {
         .any(|&(i, _, c)| i == instance && c == color)
 }
 
-/// The colors recorded on `instance`, in recorded order; the snapshots the
-/// isolation assertion compares were recorded while that surface was at rest,
-/// so equality means no cross-surface move leaked in.
 fn colors_on(instance: u8) -> Vec<Rgb> {
     PAINTED
         .lock()
@@ -565,8 +500,6 @@ fn phase_playing() -> bool {
         .contains(&PlaybackPhase::Playing)
 }
 
-/// Whether a sink saw the page return to idle *after* it was playing, which is
-/// the only way to tell a sound that ended from a page that was never started.
 fn phase_idle_after_playing() -> bool {
     let phases = PLAYBACK_PHASES.lock().unwrap();
     let mut playing = false;
@@ -588,12 +521,6 @@ impl SpeedTable for Unmeasured {
     }
 }
 
-/// Stands in for the chip's clock on the host, which has no clock.
-///
-/// Every speed is the same speed here, so it reaches whatever it is asked. That is
-/// true rather than convenient: the alternative would be a host build quietly
-/// asserting a deadline against timings that were never measured, which is the one
-/// thing the table exists to prevent.
 struct HostClock;
 
 impl ClockSink for HostClock {
@@ -606,13 +533,7 @@ impl ClockSink for HostClock {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    // Boot the real composition: input task + render loop on a fake board.
-    // `run` and the std executor never return, so the scenario verdicts by
-    // terminating the process explicitly.
     let board = HostBoard::new();
-    // Host has no interrupt executor to hand the feed's cadence to, and the
-    // scenarios assert against a loop they can observe, so the feed is joined
-    // onto this executor exactly as it was before the split.
     match select(
         run(
             board,
@@ -632,24 +553,18 @@ async fn main(_spawner: Spawner) {
 }
 
 async fn scenario() {
-    // 1. Boot: the breathing light paints some frames immediately.
     Timer::after(Duration::from_millis(200)).await;
     assert!(
         !PAINTED.lock().unwrap().is_empty(),
         "boot breath did not paint any frame"
     );
 
-    // Before the walk: the splash owns the first three seconds, and a long press on it asks for
-    // setup mode rather than changing a palette, so the scenario waits for the clock to hand the
-    // page back.
     Timer::after(Duration::from_millis(3_200)).await;
 
-    // 2. Long-press button 0: breathing → solid `PALETTE[0]` on surface 0.
     PRESSED[0].store(true, Ordering::SeqCst);
     Timer::after(Duration::from_millis(600)).await;
     PRESSED[0].store(false, Ordering::SeqCst);
 
-    // Long press resolves on release, then the mode applies.
     let mut attempts = 0;
     while !painted(0, PALETTE[0]) && attempts < 500 {
         Timer::after(Duration::from_millis(10)).await;
@@ -660,15 +575,12 @@ async fn scenario() {
         "long press did not paint palette[0]"
     );
 
-    // 3. Click button 1: surface 1 own move — and surface 0 stays solid.
-    // Surface 0 is at rest now (solid), so any leaked move would repaint it.
     let rest0 = colors_on(0);
     let count1 = paints_on(1);
     PRESSED[1].store(true, Ordering::SeqCst);
     Timer::after(Duration::from_millis(120)).await;
     PRESSED[1].store(false, Ordering::SeqCst);
 
-    // The click resolves after debounce + double-click window expiration.
     let mut attempts = 0;
     while paints_on(1) == count1 && attempts < 500 {
         Timer::after(Duration::from_millis(10)).await;
@@ -696,10 +608,6 @@ async fn scenario() {
         "triple click did not reach the motion-enabled page"
     );
 
-    // 5. One more triple click reaches the audio-enabled page — which exists at
-    //    all only because the composition picked the board's capture source up
-    //    and told the state layer so. And the polls behind it must have landed
-    //    in a snapshot, not just been served.
     triple_click().await;
 
     attempts = 0;
@@ -742,9 +650,6 @@ async fn scenario() {
         "the capture's A-weighted level did not reach the panel's diagnostics"
     );
 
-    // 6. One more triple click reaches the speaker page, which exists only
-    //    because the composition picked the board's speaker up and told the
-    //    state layer so.
     triple_click().await;
 
     attempts = 0;
@@ -757,8 +662,6 @@ async fn scenario() {
         "the speaker-enabled page was never reached"
     );
 
-    // 7. A click on the speaker page plays: the driver is asked for the sound
-    //    after the boot tap, and the panel reports the play.
     click(1).await;
 
     attempts = 0;
@@ -770,11 +673,6 @@ async fn scenario() {
         phase_playing(),
         "a tap on the speaker page never started a sound"
     );
-    // The play is written onto the bus by the render pass and reaches the driver
-    // on the control pass, one cadence later — so `Playing` is observable before
-    // the driver has been asked. Wait for the driver's own record, which is what
-    // this assertion is actually about; the bound is the same generous one the
-    // phase waits above use, and it is far longer than a cadence.
     attempts = 0;
     while PLAYED.lock().unwrap().is_empty() && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
@@ -796,9 +694,6 @@ async fn scenario() {
         "the panel's play count did not follow the tap"
     );
 
-    // 8. A second tap while the sound is still sounding is dropped: the state
-    //    counts it and the driver is left alone, so the sound is not restarted
-    //    under the listener.
     click(1).await;
 
     attempts = 0;
@@ -816,8 +711,6 @@ async fn scenario() {
         "a dropped tap still reached the driver"
     );
 
-    // 9. The sound's own end comes back from the driver, and the page leaves
-    //    `Playing` on that word alone.
     attempts = 0;
     while !phase_idle_after_playing() && attempts < 500 {
         Timer::after(Duration::from_millis(10)).await;
@@ -828,7 +721,6 @@ async fn scenario() {
         "the page never left Playing after the driver reported the sound done"
     );
 
-    // 10. A long press latches the output quiet, on the driver and the panel.
     PRESSED[0].store(true, Ordering::SeqCst);
     Timer::after(Duration::from_millis(700)).await;
     PRESSED[0].store(false, Ordering::SeqCst);
@@ -842,8 +734,6 @@ async fn scenario() {
         PLAYBACK_EVER_MUTED.load(Ordering::SeqCst),
         "a long press did not latch the speaker mute"
     );
-    // Same one-cadence gap as above, in the other direction: the render pass
-    // records the latched mute, the control pass is what pushes it to the driver.
     attempts = 0;
     while MUTED.lock().unwrap().is_empty() && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
@@ -855,11 +745,6 @@ async fn scenario() {
         "the mute did not reach the driver as a single latch"
     );
 
-    // 11. The camera page, which the cycle reaches after the speaker one and
-    //     which exists because the composition picked the board's sensor up. It
-    //     has to reach the surface and not only the page cycle: the page is what
-    //     the user sees, and a frame that never left the surface would be a page
-    //     of nothing.
     triple_click().await;
 
     attempts = 0;
@@ -882,13 +767,6 @@ async fn scenario() {
         "the camera page was reached but no frame ever reached the surface"
     );
 
-    // And the camera page must not have taken the fill away from the rest. A click there
-    // walks the colour without leaving — that is the page's contract — so the page is
-    // left the same way it was entered, and what has to survive is the surface's.
-    //
-    // `page_seen` would answer this from the whole run: ambient is the boot page, so it
-    // is already in the log and the old check here passed without the page ever moving.
-    // What has to be watched is the entries appended from here on.
     let painted_before = PAINTED.lock().unwrap().len();
     let released_before = RELEASED.load(Ordering::SeqCst);
     let pages_before = PAGES.lock().unwrap().len();
@@ -909,10 +787,6 @@ async fn scenario() {
         "the page cycle did not come back round from the camera page"
     );
 
-    // Leaving the camera page has to hand the buffer back. This is the regression the
-    // panel shipped with: the camera held the buffer, and the only call that released it
-    // was gated on a colour being held, which taking the buffer had already cleared — so
-    // the camera kept writing over every fill afterwards and the panel never came back.
     assert!(
         RELEASED.load(Ordering::SeqCst) > released_before,
         "the camera page was left without the buffer being handed back"
@@ -956,23 +830,13 @@ async fn scenario() {
         "a scan published on the link's contract never reached the panel's snapshot"
     );
 
-    // 13. The keyboard, driven the way the panel would drive it and asserted the way the
-    //     network task reads it. The host wires no touch panel, so the taps are sent as the
-    //     business intents `translate` produces from them — which is the half of the path the
-    //     composition owns; the hit test and the multi-tap are core's, and pinned there.
     let send = |intent: BusinessIntent| {
         let _ = iot_app::input::INTENT_BUS.try_send(Intent::Business(intent));
     };
 
-    // Picking a band opens the keyboard on the network that band showed, and the phrase it starts
-    // with is empty: `NETWORK_TYPED` counts a draft of no glyphs as nothing typed.
     send(BusinessIntent::Choose(list.get(0).expect("a row to pick")));
     Timer::after(Duration::from_millis(100)).await;
 
-    // Typing reaches the snapshot, which is what makes a key visible on the panel. `hat` is the
-    // two shapes a finger makes that no single tap shows: `h` is the `ghi` key tapped twice, which
-    // is the key's own character cycling rather than a second character, and the capital is a
-    // one-shot shift spent on the `t` after it.
     let mut at_ms = 100;
     for key in [
         Key::Char(b'4'),
@@ -1007,8 +871,6 @@ async fn scenario() {
         attempts += 1;
     }
     let handed = handed.expect("connect never reached the join contract");
-    // The page hands over one of two shapes, and this is the one a keyboard's own key produces: a
-    // passphrase, printed nowhere.
     let JoinRequest::Typed(handed) = handed else {
         panic!("connect handed over a row's name rather than the passphrase it was given");
     };
@@ -1029,9 +891,6 @@ async fn scenario() {
     });
     Timer::after(Duration::from_millis(100)).await;
 
-    // The list the network task publishes, with the marks the store would put on its rows: the
-    // snapshot the panel draws its marks from carries them on the list itself, and a mark drawn
-    // from anything else would be a guess.
     let mut store = SavedNetworks::empty();
     store.remember(
         &Credentials::from_text("neighbour", "haT").expect("a credential the radio takes"),

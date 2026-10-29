@@ -1,15 +1,4 @@
 //! Where this part's general-purpose heap comes from.
-//!
-//! One call, because where the memory lives is a per-part fact and a caller that has to know
-//! it does not survive the second chip: on the S3 it is PSRAM that has to be mapped and read
-//! back before anything may point an allocator at it, on the C6 it is a static in internal
-//! DRAM. The part's own arm is where that difference lives — one file per part, beside this
-//! one — and it travels no further than the log line, so a reader can tell which part a
-//! memory number came from and nothing else has to know.
-//!
-//! What is *not* here is the size: how much a build allocates is its own business, and two
-//! parts with different budgets are better served by callers that say what they need than by
-//! one number that fits whichever part happens to compile.
 
 use core::sync::atomic::{AtomicPtr, Ordering};
 
@@ -25,20 +14,8 @@ use esp32c6::window;
 #[cfg(feature = "esp32s3")]
 use esp32s3::window;
 
-/// The allocator [`init_heap`] was given, for the one question anything above this layer asks
-/// of it: how much is left.
-///
-/// A raw pointer rather than a reference, because the heap belongs to a `static` its own crate
-/// holds and a second reference to it here would be a second owner of it. It is written once,
-/// before anything allocates, and read afterwards — the pair of orderings is what makes the
-/// write visible to a task on the other core.
 static HEAP: AtomicPtr<Heap> = AtomicPtr::new(core::ptr::null_mut());
 
-/// A window of memory an allocator may be pointed at.
-///
-/// Both arms hand one of these back. The name of the memory is *not* a field: it is a string
-/// for the log line, so each arm returns it beside the window rather than a variant only one
-/// part's build could construct.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Window {
     pub(crate) start: usize,
@@ -46,11 +23,6 @@ pub(crate) struct Window {
 }
 
 /// Give `allocator` this part's memory for `bytes` of a general-purpose heap.
-///
-/// Call once, before anything allocates, and from the entry point that owns the runtime. A
-/// part that cannot offer a window at all resets inside its own arm rather than being
-/// reported from here: the one caller that could report it is a runtime that has nowhere to
-/// put the report.
 pub fn init_heap(allocator: &Heap, bytes: usize) {
     let (window, source) = window();
     if bytes > window.len {
@@ -73,10 +45,6 @@ pub fn init_heap(allocator: &Heap, bytes: usize) {
 }
 
 /// What is left of the general-purpose heap.
-///
-/// Zero before [`init_heap`] has run, which no build reaches: the entry point that owns the
-/// runtime calls that before the product starts, so a reader of this is a reader of a heap
-/// that is already there — the same contract the driver's own heap report is under.
 pub fn heap_free() -> usize {
     let heap = HEAP.load(Ordering::Acquire);
     if heap.is_null() {

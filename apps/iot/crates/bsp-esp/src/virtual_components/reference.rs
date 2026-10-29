@@ -1,29 +1,9 @@
-//! The played stream, shared between the transmit driver that writes it and the
-//! capture driver that reads it.
+//! The played stream, shared between the transmit driver that writes it and the capture
+//! driver that reads it.
 //!
-//! **A shared cell because the two run on different executors.** The speaker's
-//! feed is on a higher-priority interrupt executor — it has a hard cadence, and a
-//! late feed is a gap in the sound *and* a stalled microphone clock — while the
-//! capture is polled from the cooperative input loop. The reference therefore
-//! crosses an executor boundary that neither driver may own: the write side would
-//! have to be reachable from the read side's task and the read side from the
-//! write side's.
-//!
-//! One direction only, which is what keeps it simple: the transmit driver fills
-//! the log and the capture driver reads it. The speaker never learns a microphone
-//! exists, so nothing on the playback path changes shape and the feed still meets
-//! its own contract — bounded, infallible, no logging, no allocation.
-//!
-//! [`CriticalSectionRawMutex`] because it never spins: the feed takes it from an
-//! interrupt and a bounded wait is the one thing it cannot afford. Taken **once
-//! per feed** and once per poll, never per sample — a lock per sample at 48 kHz
-//! would cost more than the canceller it is feeding.
-//!
-//! **A board with no speaker** is a real configuration, and [`Silent`] is the
-//! same trait answering from nothing, so a capture-only board compiles and runs
-//! unchanged. It is deliberately **not** an empty log: that would answer `None`
-//! from the log's own API, which a capture reads as a *lapsed* reference to be
-//! reported as a fault — and a board with no speaker has nothing to fault.
+//! A critical-section cell because the two run on different executors: the feed is on a
+//! higher-priority interrupt and the capture on the cooperative loop. Taken once per feed
+//! and once per poll, never per sample. [`Silent`] is the same trait with no speaker.
 
 use core::cell::RefCell;
 
@@ -50,50 +30,21 @@ pub const fn samples_for(transmit_runway_frames: usize, receive_latency_frames: 
 }
 
 /// The shared log: one cell, made at bring-up, reached through `&'static`.
-///
-/// Leaked rather than put in a `static` for the same reason `playback::share()`
-/// leaks its handle — the cell holds a [`ReferenceLog`], which has no `const`
-/// constructor, and the two drivers that read and write it outlive the function
-/// that makes it. Written once, before either driver starts.
 pub type Shared<const N: usize> = Mutex<CriticalSectionRawMutex, RefCell<ReferenceLog<N>>>;
 
-/// Makes the cell both drivers will share. Phase 0, because a board that arms its
-/// transmit unit before its capture pairs frame 0 to frame 0 exactly; one that
-/// does the reverse has to say so here and to the capture's decimator, and the
-/// delay estimator covers the rest.
+/// Makes the cell both drivers will share.
 pub fn share<const N: usize>() -> &'static Shared<N> {
     &*Box::leak(Box::new(Mutex::new(RefCell::new(ReferenceLog::new(0)))))
 }
 
 /// What the capture side asks the transmit side for.
 pub trait Reference {
-    /// Fills `out` from the play cursor **backwards** — `out[0]` is the frame the
-    /// wire is carrying now, `out[n]` the frame `n` frames before it — and answers
-    /// how many it could reach.
-    ///
-    /// **Newest first, deliberately.** The log is indexed from the newest frame
-    /// backwards, and the newest frame is the one the newest microphone sample
-    /// heard. A caller whose microphone run is chronological has to reverse this
-    /// before zipping; see `Es7210Rx::pair`, which is where that
-    /// reconciliation is done and why.
-    ///
-    /// Fewer than `out.len()` means the log has lapped, or the wire has not
-    /// started, or the log is shorter than the ring's runway. The caller pairs
-    /// what it got and reports the rest: cancelling a run against a different
-    /// stretch of reference would be worse than cancelling nothing.
     fn read_backwards(&self, out: &mut [i16]) -> usize;
 
-    /// Kept samples held unread and the log's capacity — the two numbers that
-    /// say whether the pairing is still inside the log or reading from a lap.
     fn depth(&self) -> (usize, usize);
 }
 
-/// A transmit side that produces no reference: a board with a microphone and no
-/// speaker.
-///
-/// Kept as a unit type rather than only as [`Side::Silent`] so a capture driver
-/// can be built with it directly and a board with no speaker needs no cell at
-/// all.
+/// A transmit side that produces no reference: a board with a microphone and no speaker.
 #[derive(Clone, Copy, Default)]
 pub struct Silent;
 
@@ -108,14 +59,8 @@ impl Reference for Silent {
 }
 
 /// The capture side's end, plus the two answers a board with no speaker needs.
-///
-/// One type rather than a trait object, so a capture driver can hand out
-/// `&'static Reader` and borrow it for the length of a poll without an
-/// allocation and without a self-referential borrow.
 pub enum Side<const N: usize> {
-    /// A board with a speaker: the shared log.
     Wired(&'static Shared<N>),
-    /// A board with a microphone and no speaker.
     Silent,
 }
 
@@ -129,11 +74,6 @@ impl<const N: usize> Side<N> {
     }
 }
 
-/// Copyable because it holds nothing but a `&'static` handle — a copy is a
-/// pointer, so a poll can take one out of the driver and borrow the driver
-/// mutably at the same time. That is the whole reason this is an enum of
-/// handles rather than a trait object: a `Box<dyn>` cannot be copied out of a
-/// struct that is being borrowed mutably.
 impl<const N: usize> Clone for Side<N> {
     fn clone(&self) -> Self {
         *self
@@ -168,8 +108,7 @@ impl<const N: usize> Writer<N> {
         Self { log }
     }
 
-    /// Fills the log with one feed's worth of frames, in the order the DMA will
-    /// send them.
+    /// Fills the log with one feed's worth of frames, in the order the DMA will send them.
     pub fn write_frames(&self, samples: impl Iterator<Item = i16>) {
         self.log.lock(|log| {
             let mut log = log.borrow_mut();
@@ -188,8 +127,7 @@ impl<const N: usize> Writer<N> {
     }
 }
 
-/// The capture side's end. Copyable, so a probe can hold one to report from
-/// without owning the driver.
+/// The capture side's end.
 pub struct Reader<const N: usize> {
     log: &'static Shared<N>,
 }

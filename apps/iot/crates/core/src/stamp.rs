@@ -1,13 +1,4 @@
 //! The panel's ink and paper: how a fill is written into a frame of RGB565 pixels.
-//!
-//! Here rather than beside the panel because the panel is only reachable on the device, and a fill
-//! that wrote the wrong colour, or wrote it over the wrong rows, is a defect that reads as a design
-//! decision: a box a row short looks deliberate. A function of the buffer alone can be read back as
-//! pixels on the development machine, which is what the tests below are.
-//!
-//! A surface is the page's own ground turned over, so a fill is not an ink of its own: what it has
-//! to do is cover, and the reason it covers is the reason it is written rather than inverted — see
-//! [`fill_surface`].
 
 use crate::drivers::light::{Fill, Rgb, scale_brightness, vertical_brightness};
 use crate::keyboard::ControlRect;
@@ -21,8 +12,8 @@ pub fn rgb565(color: Rgb) -> u16 {
     ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 }
 
-/// Per-channel bitwise inversion of an RGB565 word: a glyph drawn this way is visible on any fill,
-/// matching the "off" side of the contrast regardless of base colour.
+/// Per-channel bitwise inversion of an RGB565 word: a glyph drawn this way is visible on
+/// any fill, matching the "off" side of the contrast regardless of base colour.
 pub fn invert_rgb565(packed: u16) -> u16 {
     let r = (packed >> 11) & 0x1F;
     let g = (packed >> 5) & 0x3F;
@@ -30,17 +21,8 @@ pub fn invert_rgb565(packed: u16) -> u16 {
     ((0x1F - r) << 11) | ((0x3F - g) << 5) | (0x1F - b)
 }
 
-/// Writes `rect` of `frame` as the surface: the ground the page was painted with, turned over.
-///
-/// Written rather than inverted pixel by pixel, because a fill is a paper and a paper covers what is
-/// under it. Inverting would turn whatever had already been drawn there into the paper's own
-/// colour, so a list row under a box would come back as words on the box — which is the whole of
-/// why a part that lays down a surface is drawn over a page with no other surface on it.
-///
-/// `frame` is `width * height` big-endian RGB565 pixels and `fill`/`color` are the ground the page
-/// was painted with; a gradient page gets a gradient box, a row at a time. Rows at or below
-/// [`CONTENT_BOTTOM`] are left alone, so a control that grew into the footer cannot overdraw the
-/// badge the panel keeps there.
+/// Writes `rect` of `frame` as the surface: the ground the page was painted with, turned
+/// over.
 pub fn fill_surface(
     frame: &mut [u8],
     rect: ControlRect,
@@ -71,23 +53,17 @@ mod tests {
     use super::*;
 
     const WIDTH: usize = 40;
-    /// Tall enough to hold the footer the clamp is about, which is below every page's content.
     const HEIGHT: usize = CONTENT_BOTTOM + 8;
     const GROUND: Rgb = Rgb(0x10, 0x20, 0x30);
 
-    /// What a glyph is stamped in: the ground turned over, which is what a surface is as well. The
-    /// two are one colour, which is why a box's own words are a *second* inversion — see the panel's
-    /// `stamp_text` — and why "is this pixel the paper" cannot be asked of the colour alone.
     fn ink() -> u16 {
         invert_rgb565(rgb565(GROUND))
     }
 
-    /// The page's own ground, as it sits in the frame.
     fn ground() -> u16 {
         rgb565(GROUND)
     }
 
-    /// The frame as `paint` leaves it: the whole page in the ground, nothing stamped yet.
     fn painted() -> alloc::vec::Vec<u8> {
         let mut frame = alloc::vec![0u8; WIDTH * HEIGHT * 2];
         let ground = rgb565(GROUND).to_be_bytes();
@@ -108,13 +84,9 @@ mod tests {
 
     #[test]
     fn a_fill_covers_whatever_was_already_drawn_there() {
-        // The defect this exists for: a fill that inverted instead of writing would leave the words
-        // of a list row under a box showing as words *on* the box, because the words are already the
-        // paper's own colour and inverting them lands on the ground.
         let mut frame = painted();
         let rect = box_of(4, 8, 16, 12);
 
-        // A row's words: some where the box will be drawn over them, and some beside it.
         let words = |frame: &mut alloc::vec::Vec<u8>, x: usize| {
             frame[((10 * WIDTH) + x) * 2..((10 * WIDTH) + x) * 2 + 2]
                 .copy_from_slice(&ink().to_be_bytes());
@@ -155,9 +127,6 @@ mod tests {
 
     #[test]
     fn a_fill_of_a_gradient_page_follows_it_a_row_at_a_time() {
-        // The surface is the inverse of the *ground*, and the ground is what the page was painted
-        // with: a box on a gradient page is the same paper, which is a row's own colour and not one
-        // colour for the whole box.
         let mut frame = painted();
         let rect = box_of(0, 0, WIDTH, 20);
         fill_surface(
@@ -186,8 +155,6 @@ mod tests {
 
     #[test]
     fn a_fill_leaves_the_footer_alone() {
-        // The badge the panel draws last lives below `CONTENT_BOTTOM`, and a control that grew into
-        // it would otherwise be painted over by whatever the page drew last.
         let mut frame = painted();
         fill_surface(
             &mut frame,

@@ -1,9 +1,5 @@
-//! Copies the chip-specific linker script fragments into `OUT_DIR` so rustc can
-//! find them with `-C link-arg=-T<name>`, and adds the `-L` search path.
-//!
-//! `-C link-arg` in `.cargo/config.toml` only passes the script name, so the
-//! file has to be somewhere the linker searches. Only the S3 board takes part
-//! in this today; the other chips link no extra script.
+//! Copies the chip-specific linker script fragments into `OUT_DIR` so rustc can find them
+//! with `-C link-arg=-T<name>`, and adds the `-L` search path.
 
 use std::env;
 use std::fs;

@@ -1,15 +1,4 @@
 //! Playback isolation probe: speaker only, looping the catalogue forever.
-//!
-//! One future for the feed, no `DeviceManager`, no intent bus, no renderer, no capture
-//! poll — so a stall reported here belongs to the transmit path rather than to the
-//! shared executor the product build's three tasks contend for. It alternates the two
-//! sounds because they are built differently (a synthesised pair against a stored
-//! PCM), so a stall only one provokes cannot hide behind whichever was playing.
-//!
-//! What it runs is the product's own feed loop and the product's own counters, so a
-//! number here and a number from the product describe the same schedule. What it
-//! cannot catch is anything needing the interrupt executor: it feeds inline, so a
-//! fault that only appears there belongs to the product build.
 
 #![no_std]
 #![no_main]
@@ -21,8 +10,6 @@ use embedded_alloc::LlffHeap as Heap;
 
 type Board = iot_bsp_esp::Board<'static>;
 
-/// Only the speaker's own allocation: the probe never paints a panel, so it has
-/// none of the frame buffer the product image reserves.
 static mut HEAP_MEM: [u8; 32 * 1024] = [0; 32 * 1024];
 
 #[global_allocator]
@@ -43,9 +30,6 @@ async fn main(_spawner: Spawner) -> ! {
     iot_chip_esp::init_logging();
     log::info!("[PROBE] audio-only build: no panel, touch, motion or capture");
 
-    // The feed's software interrupt is dropped: this probe runs the feed
-    // inline, so a fault that needs the interrupt executor is the product's to
-    // find rather than this probe's.
     let (board, timg0, from_cpu_intr, _feed_intr) = match Board::new_audio_only(peripherals) {
         Ok(startup) => startup,
         Err(error) => {

@@ -1,50 +1,26 @@
 //! Where the on-panel diagnostics overlay puts each block of text.
-//!
-//! Here rather than beside the panel because the panel is only reachable on the
-//! device, and a column that moved is a bug that reads as a design decision: a unit
-//! nudged left by a digit is invisible as a defect and obvious as a wrong answer.
-//! Every block is a fixed distance along a fixed pitch, so a readout that changes
-//! width cannot drag the unit beside it out from under the row above.
-//!
-//! The panel is addressed 320 columns by 240 rows, and the layout follows from that:
-//! wide enough for three text blocks across, short enough that a block cannot hold
-//! twenty rows at this pitch. The tests below pin both against that geometry, which
-//! is the whole reason the numbers live here and not in the panel driver.
 
 /// The panel the layout below is built for, in panel columns/rows.
-///
-/// Named here because every number in this module is a distance on that panel,
-/// and a panel that changed shape is a reason to re-read all of them. It is not
-/// a board fact core may rely on: the board owns what it mounted, and its own
-/// constants are asserted against these two at the wiring point, so a board that
-/// mounts a different panel cannot compile against a layout meant for this one.
 pub const PANEL_COLUMNS: usize = 320;
 pub const PANEL_ROWS: usize = 240;
 
-/// Rows along the bottom of the panel that belong to no page's content: the global FPS badge,
-/// which the panel draws last and on every page.
-///
-/// A page's own controls are sized against [`CONTENT_BOTTOM`] rather than against the panel, so
-/// the numbers that fill a page's height are the ones above the strip. The panel asserts that
-/// this is the strip it actually keeps, because a badge moved by a row would otherwise be
-/// overdrawn by whatever control grew into it.
+/// Rows along the bottom of the panel that belong to no page's content: the global FPS
+/// badge, which the panel draws last and on every page.
 pub const FOOTER_ROWS: usize = 8;
 
 /// The first row below every page's content: the top of the footer.
 pub const CONTENT_BOTTOM: usize = PANEL_ROWS - FOOTER_ROWS;
 
-/// Width of one glyph cell. The pitch every column is placed on is this plus
-/// [`OVERLAY_GAP`], so a column is an index into a rhythm rather than a number
-/// someone measured off a photograph.
+/// Width of one glyph cell.
 pub const FONT_W: usize = 5;
-/// Horizontal gap between glyph columns: the blank column that keeps two words
-/// from reading as one.
+/// Horizontal gap between glyph columns: the blank column that keeps two words from reading
+/// as one.
 pub const OVERLAY_GAP: usize = 4;
 /// Distance between the left edges of adjacent glyph columns.
 pub const GLYPH_PITCH: usize = FONT_W + OVERLAY_GAP;
 
-/// Rows one glyph cell occupies, matching the 5x8 font the panel draws with: seven rows of cap
-/// and x-height, and the one descender row the cell has.
+/// Rows one glyph cell occupies, matching the 5x8 font the panel draws with: seven rows of
+/// cap and x-height, and the one descender row the cell has.
 pub const FONT_H: usize = 8;
 /// Vertical gap between diagnostics rows.
 pub const OVERLAY_ROW_GAP: usize = 5;
@@ -53,8 +29,7 @@ pub const ROW_PITCH: usize = FONT_H + OVERLAY_ROW_GAP;
 /// Top edge of the first diagnostics row, in panel rows.
 pub const OVERLAY_Y: usize = 8;
 
-/// The top edge of `row`, in panel rows. Every row is placed through this rather
-/// than by arithmetic at the call site, so the vertical rhythm is one number.
+/// The top edge of `row`, in panel rows.
 pub const fn overlay_row_top(row: usize) -> usize {
     OVERLAY_Y + row * ROW_PITCH
 }
@@ -62,49 +37,28 @@ pub const fn overlay_row_top(row: usize) -> usize {
 /// Left edge of the overlay, in panel columns.
 pub const OVERLAY_X: usize = 10;
 
-/// Label slot of a block, in glyph columns: a three-glyph label plus one blank
-/// cell, so the reading beside it starts on one vertical line in every block.
+/// Label slot of a block, in glyph columns: a three-glyph label plus one blank cell, so the
+/// reading beside it starts on one vertical line in every block.
 pub const BLOCK_LABEL_GLYPHS: usize = 4;
 
 /// Glyphs a label written in a block is allowed to occupy.
-///
-/// One short of [`BLOCK_LABEL_GLYPHS`], and that one glyph is the point: the slot reserves it as
-/// the blank cell that keeps a label from reading as one word with the value beside it. A
-/// label that fills the slot has no gap and reads as a single run — which is exactly what a
-/// four-glyph `MODE` did, sitting flush against its value.
 pub const BLOCK_LABEL_MAX_GLYPHS: usize = BLOCK_LABEL_GLYPHS - 1;
 
-/// Distance between the left edges of adjacent text blocks. Sized by the widest
-/// reading any block takes — seven glyphs, a coordinate pair written `x y` — plus
-/// the blank cell that keeps one block's last digit from reading as the next
-/// block's first letter. A fourth block would not fit beside these three, which is
-/// why the Audio page's narrow block is pinned to the panel edge instead.
+/// Distance between the left edges of adjacent text blocks.
 pub const BLOCK_PITCH: usize = 104;
 
 /// Reading column of a block, measured from the block's left edge.
 pub const BLOCK_VALUE_OFFSET: usize = BLOCK_LABEL_GLYPHS * GLYPH_PITCH;
 
-/// Left edge of the narrow block pinned to the panel's right edge, in panel
-/// columns. For a page whose graphics own the left columns — the Audio sweep —
-/// this is the only width the rest of the panel leaves, and it is set by the
-/// sweep's right-hand column rather than by the block rhythm above.
+/// Left edge of the narrow block pinned to the panel's right edge, in panel columns.
 pub const RIGHT_EDGE_X: usize = 242;
 
 /// Where a page writes one of its readout rows.
-///
-/// A row names its block rather than an x coordinate, because the blocks are
-/// what a page's layout is made of: a column that moves has to move once, for
-/// every row in it, and the only way to guarantee that is for nothing to know
-/// where the column is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
-    /// The leftmost block: the page's title and its primary readout.
     First,
-    /// The middle block, for a page whose rows outgrow one column.
     Second,
-    /// The third block, and the width the attitude dial is drawn into.
     Third,
-    /// The narrow block against the panel's right edge.
     RightEdge,
 }
 
@@ -123,45 +77,32 @@ pub const fn block_value_x(block: Block) -> usize {
     block_x(block) + BLOCK_VALUE_OFFSET
 }
 
-/// Value column of the Audio level rows: a 3-glyph label slot plus one
-/// space glyph between label and value.
+/// Value column of the Audio level rows: a 3-glyph label slot plus one space glyph between
+/// label and value.
 pub const LEFT_VALUE_X: usize = block_value_x(Block::First);
 
-/// Unit column of the Audio level rows, a [`LEVEL_VALUE_GLYPHS`]-glyph value plus a
-/// whole blank cell after [`LEFT_VALUE_X`]. Fixed rather than flush right so a level
-/// growing a digit cannot walk its unit out from under the row above.
+/// Unit column of the Audio level rows, a [`LEVEL_VALUE_GLYPHS`]-glyph value plus a whole
+/// blank cell after [`LEFT_VALUE_X`].
 pub const LEVEL_UNIT_X: usize = LEFT_VALUE_X + 4 * GLYPH_PITCH;
 
 /// Value column of the sound pressure level beside it, and the column its own unit label
-/// sits in. A [`LEVEL_UNIT_GLYPHS`]-glyph unit plus a whole blank cell, because `DBFS` is
-/// four glyphs wide and one glyph further right than its own left edge still leaves the
-/// two columns touching.
+/// sits in.
 pub const LEVEL_SPL_X: usize = LEVEL_UNIT_X + (LEVEL_UNIT_GLYPHS + 1) * GLYPH_PITCH;
 pub const LEVEL_SPL_UNIT_X: usize = LEVEL_SPL_X + 4 * GLYPH_PITCH;
 
-/// Glyphs a level *unit* label occupies. `DBFS` is the widest of them; `SPL` and
-/// `CLIP` are both three, and the level column is shared with the clip latch.
+/// Glyphs a level *unit* label occupies.
 pub const LEVEL_UNIT_GLYPHS: usize = 4;
 
-/// Glyphs a level value is allowed to occupy. Three, because that is the widest
-/// either reading gets — a dBFS reading is a sign and two digits, and a pressure
-/// level of this microphone's is two or three — and reserving more would spend
-/// panel columns on widths no reading can use.
+/// Glyphs a level value is allowed to occupy.
 pub const LEVEL_VALUE_GLYPHS: usize = 3;
 
-/// Glyphs a reading in a block on the block rhythm is allowed to occupy. Seven is
-/// the widest any readout gets — a coordinate pair written `319 239` — and
-/// [`BLOCK_PITCH`] is sized on it.
+/// Glyphs a reading in a block on the block rhythm is allowed to occupy.
 pub const BLOCK_VALUE_GLYPHS: usize = 7;
 
-/// Glyphs the narrow right-edge block has room for. Five, and not by choice: the
-/// Audio sweep owns the columns to its left, so this block is what is left over,
-/// and a reading wider than this one has to be written in a full block instead.
+/// Glyphs the narrow right-edge block has room for.
 pub const RIGHT_EDGE_VALUE_GLYPHS: usize = 5;
 
-/// How wide a reading in `block` may be before it reaches the panel edge or the
-/// next block. A page asks this rather than counting, because the reservation and
-/// the pitch that follows from it are the same decision.
+/// How wide a reading in `block` may be before it reaches the panel edge or the next block.
 pub const fn block_value_glyphs(block: Block) -> usize {
     match block {
         Block::RightEdge => RIGHT_EDGE_VALUE_GLYPHS,
@@ -170,21 +111,9 @@ pub const fn block_value_glyphs(block: Block) -> usize {
 }
 
 /// The Network page's first list row: the row below its three-row header.
-///
-/// Rows 0–2 are the header — the title and the phase, the network in question and how good it
-/// is, the address — and the scan list starts under them. The keyboard starts on the same row,
-/// which is why its keys are as tall as three header rows leave rather than as tall as a thumb
-/// asks for: the header is the page's own, and a key sized up from it is a key that eats it. See
-/// [`crate::keyboard::KEYBOARD_TOP`].
-///
-/// Here rather than in the page that draws them because [`crate::keyboard`] sizes the list's
-/// bands and the keys from it: the list and the keys are two things a finger picks from on one
-/// panel, and a row that moved would move the taps with it.
 pub const NETWORK_LIST_ROW: usize = 3;
 
-/// Where one level row's text sits, as the left edge of each of its four
-/// columns. The value and its unit are one gap apart, so the unit is a column
-/// the eye can learn and the reading beside it is free to change width.
+/// Where one level row's text sits, as the left edge of each of its four columns.
 pub struct LevelColumns {
     pub value_x: usize,
     pub unit_x: usize,
@@ -192,10 +121,7 @@ pub struct LevelColumns {
     pub spl_unit_x: usize,
 }
 
-/// The four text columns of a level row. Takes no width argument on purpose:
-/// every level row's unit is at the same place whether the reading in it is one
-/// glyph or three, and a layout that could be asked to make room for one would
-/// be free to move the unit when it did.
+/// The four text columns of a level row.
 pub fn level_columns() -> LevelColumns {
     LevelColumns {
         value_x: LEFT_VALUE_X,
@@ -215,13 +141,8 @@ mod tests {
     use super::*;
     use crate::drivers::audio::{SCOPE_FLOOR_DECIBELS, spl};
 
-    /// A stand-in for the board's microphone, since the offset is a property of
-    /// the hardware and this module is only asserting what a column does with
-    /// whatever number arrives.
     const ZTS6216: i16 = 102;
 
-    /// How many glyphs a reading occupies, counted the way the panel's formatter
-    /// does: a minus sign, then one glyph per digit.
     fn glyphs(reading: i16) -> usize {
         let mut rest = reading.unsigned_abs();
         let mut count = usize::from(reading < 0);
@@ -269,12 +190,6 @@ mod tests {
 
     #[test]
     fn no_reading_or_label_reaches_into_the_column_after_it() {
-        // The general form of the collision: every column has to keep clear of the
-        // next one at its widest, whether that column holds a reading or a fixed
-        // label. Checked against the real end of each column rather than a flat
-        // glyph count, because a column's width is the thing being asked about —
-        // sizing a gap as "four glyphs" is what let `DBFS` sit one pixel from the
-        // pressure level beside it while every numeric test still passed.
         let columns = level_columns();
         for (left, right, glyphs_here) in [
             (columns.value_x, columns.unit_x, LEVEL_VALUE_GLYPHS),
@@ -292,9 +207,6 @@ mod tests {
 
     #[test]
     fn every_level_column_keeps_a_whole_blank_cell_between_it_and_the_next() {
-        // Two glyphs separated by only the gap between their own strokes read as
-        // one run of text, which is how `DBFS` came to look like part of the
-        // pressure level beside it.
         let columns = level_columns();
         for (left, right, glyphs_here) in [
             (columns.value_x, columns.unit_x, LEVEL_VALUE_GLYPHS),
@@ -312,8 +224,6 @@ mod tests {
 
     #[test]
     fn the_level_row_stays_inside_the_panel() {
-        // The one row that has to hold four columns at once, so it is the one that
-        // can run off the right edge.
         let columns = level_columns();
         let end = level_value_end(columns.spl_unit_x, LEVEL_UNIT_GLYPHS);
         assert!(
@@ -324,10 +234,6 @@ mod tests {
 
     #[test]
     fn a_block_reading_never_outgrows_the_block_it_is_written_in() {
-        // Landscape is wide enough for the blocks and short enough that a page
-        // needing a seventh reading has to find it another way, so the reserved
-        // width is a fact the pages are laid out against rather than a number they
-        // discover by overrunning the next block.
         for block in [Block::First, Block::Second, Block::Third, Block::RightEdge] {
             let end = level_value_end(block_value_x(block), block_value_glyphs(block));
             assert!(
@@ -352,9 +258,6 @@ mod tests {
 
     #[test]
     fn one_blocks_widest_reading_keeps_a_blank_cell_before_the_next() {
-        // The pitch's whole reason for being. Two glyphs separated by only the
-        // gap between their own strokes read as one run of text, so a reading that
-        // grew into the next block's first letter would not look like a defect.
         for (left, right) in [(Block::First, Block::Second), (Block::Second, Block::Third)] {
             let end = level_value_end(block_value_x(left), BLOCK_VALUE_GLYPHS);
             assert!(
@@ -366,7 +269,6 @@ mod tests {
         }
     }
 
-    /// The last row whose text still fits the panel height.
     fn last_row_that_fits() -> usize {
         (0..)
             .take_while(|row| overlay_row_top(*row) + FONT_H <= PANEL_ROWS)
@@ -376,11 +278,6 @@ mod tests {
 
     #[test]
     fn a_block_holds_eighteen_rows_and_not_one_more() {
-        // The portrait panel was tall enough for twenty-one rows and landscape is
-        // not, and the failure is silent: `stamp_pixel` clips an out-of-panel row
-        // rather than complaining, so a page that outgrew the panel would simply
-        // lose readouts. The count is pinned instead, because the pages are laid
-        // out against it.
         assert_eq!(
             last_row_that_fits(),
             17,
@@ -391,8 +288,6 @@ mod tests {
 
     #[test]
     fn a_label_stays_inside_its_own_blocks_label_slot() {
-        // The reading column is what makes the labels line up, so a label wider
-        // than its slot reaches under the reading it is supposed to introduce.
         for block in [Block::First, Block::Second, Block::Third, Block::RightEdge] {
             let label_end = level_value_end(block_x(block), BLOCK_LABEL_GLYPHS);
             assert!(
@@ -405,10 +300,6 @@ mod tests {
 
     #[test]
     fn a_label_leaves_the_blank_cell_its_slot_reserves() {
-        // The one glyph the slot keeps back is what separates a label from the reading beside
-        // it. A label that fills the slot has no gap, and the two read as one run — which is
-        // what a four-glyph label on the camera page did, flush against its own value. The test
-        // above cannot catch that: a label filling the slot still fits inside it.
         let widest = level_value_end(0, BLOCK_LABEL_MAX_GLYPHS);
         assert!(
             block_value_x(Block::First) - widest >= GLYPH_PITCH,

@@ -1,8 +1,7 @@
-//! Device-level diagnostics: one snapshot fuses every subsystem the device
-//! exposes — the touch-path readout, display page, motion sample, audio envelope
-//! and one [`LightSnapshot`] per light surface — and fans out through pluggable
-//! [`DiagnosticsSink`]s. The source stays the central `DeviceState` and a sink
-//! only consumes, so the panel today can be joined by log/HTTP/WebSocket sinks.
+//! Device-level diagnostics: one snapshot fuses every subsystem the device exposes — the
+//! touch-path readout, display page, motion sample, audio envelope and one
+//! [`LightSnapshot`] per light surface — and fans out through pluggable
+//! [`DiagnosticsSink`]s.
 
 use crate::demand::EffectiveDemand;
 use crate::drivers::audio::AudioEnvelope;
@@ -13,9 +12,9 @@ use crate::drivers::network::{ApList, LinkStatus};
 use crate::drivers::playback::Sound;
 use crate::state::{AudioPhase, DisplayPage, NetworkSetup, PlaybackPhase};
 
-/// Breathing mode's full dimension set carried by a light snapshot so the
-/// panel can print every parameter the mode exposes; all zero outside
-/// breathing so the overlay's fixed rows still have a value to show.
+/// Breathing mode's full dimension set carried by a light snapshot so the panel can print
+/// every parameter the mode exposes; all zero outside breathing so the overlay's fixed rows
+/// still have a value to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BreathSnapshot {
     pub period_ms: u16,
@@ -28,10 +27,9 @@ pub struct BreathSnapshot {
 }
 
 /// The diagnostics' light snapshot — `(mode, brightness, hue)` plus the breathing
-/// dimensions — mirrors the primary hue/key material of one `state`'s light for
-/// the diagnostic digits: mode `0` off, `1` breathing, `2` solid; brightness the
-/// solid level or the breath's ceiling; hue the solid color or the breath's group
-/// head.
+/// dimensions — mirrors the primary hue/key material of one `state`'s light for the
+/// diagnostic digits: mode `0` off, `1` breathing, `2` solid; brightness the solid level or
+/// the breath's ceiling; hue the solid color or the breath's group head.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LightSnapshot {
     pub mode: u8,
@@ -41,10 +39,10 @@ pub struct LightSnapshot {
     pub breath: BreathSnapshot,
 }
 
-/// The touch-path diagnostics stamped on a light surface, folded field by field
-/// out of [`DeviceState`](crate::state::DeviceState): counter gaps between `taps`
-/// and `presses` localize dropped touches, `ghost` flags input trouble the
-/// classifier saw, `points`/`finger` carry the live per-finger readout.
+/// The touch-path diagnostics stamped on a light surface, folded field by field out of
+/// [`DeviceState`](crate::state::DeviceState): counter gaps between `taps` and `presses`
+/// localize dropped touches, `ghost` flags input trouble the classifier saw,
+/// `points`/`finger` carry the live per-finger readout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TouchDiagnostics {
     pub taps: u8,
@@ -62,32 +60,27 @@ pub struct TouchDiagnostics {
     pub last_swipe_dist: u16,
     pub last_gesture_origin: Option<(u16, u16)>,
     pub last_gesture_end: Option<(u16, u16)>,
-    /// Last raw chip gesture id (`0x10` up / `0x14` left / `0x18` down /
-    /// `0x1C` right on the FT5x06 family), `0` when none.
+    /// Last raw chip gesture id (`0x10` up / `0x14` left / `0x18` down / `0x1C` right on
+    /// the FT5x06 family), `0` when none.
     pub chip_gesture_id: u8,
 }
 
-/// Capture state stamped on the Audio page: the phase driving the panel plus
-/// the envelope it should draw. Which envelope that is is resolved in the
-/// state layer, so a sink never re-implements the phase rule.
+/// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
+/// it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AudioDiagnostics {
     pub phase: AudioPhase,
     pub envelope: AudioEnvelope,
     pub elapsed_ms: u32,
-    /// How many times the capture's DMA had to be re-armed. Zero on a capture
-    /// that has run without interruption.
+    /// How many times the capture's DMA had to be re-armed.
     pub restarts: u16,
     /// A-weighted sound level of the shown capture, in LSB, slow-tracked.
-    /// Drives the `NN dBA` readout in the corner of the Audio page; 0 dBFS is
-    /// `SPL_OFFSET_DECIBELS` dB SPL there, see `docs/…/iot/audio.md`.
     pub dba_lsb: u16,
 }
 
-/// Playback state stamped on the Speaker page: the phase the page is showing,
-/// the sound a tap would play, the mute latch, and the two tallies that make a
-/// busy finger visible — sounds started against taps that arrived over one and
-/// were therefore not heard.
+/// Playback state stamped on the Speaker page: the phase the page is showing, the sound a
+/// tap would play, the mute latch, and the two tallies that make a busy finger visible —
+/// sounds started against taps that arrived over one and were therefore not heard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PlaybackDiagnostics {
     pub phase: PlaybackPhase,
@@ -97,27 +90,24 @@ pub struct PlaybackDiagnostics {
     pub dropped: u16,
 }
 
-/// The on-surface diagnostics payload: touch-path counters/readout, display
-/// page, motion sample, and one [`LightSnapshot`] per light surface slot,
-/// fused so one diff carries the corner digits and the current page data.
+/// The on-surface diagnostics payload: touch-path counters/readout, display page, motion
+/// sample, and one [`LightSnapshot`] per light surface slot, fused so one diff carries the
+/// corner digits and the current page data.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Diagnostics {
     pub touch: TouchDiagnostics,
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: DisplayPage,
-    /// Where the link stands and what the last scan saw, as the network task last
-    /// reported them — copied whole rather than borrowed, so a sink holds no reference
-    /// into the state layer. The list is `None` until something has scanned, which is
-    /// the state a build that holds its own credentials stays in.
+    /// Where the link stands and what the last scan saw, as the network task last reported
+    /// them — copied whole rather than borrowed, so a sink holds no reference into the
+    /// state layer.
     pub link: LinkStatus,
-    /// The board's own address, for the Network page's header. `None` on a board with no radio,
-    /// and until the network task's first report.
+    /// The board's own address, for the Network page's header.
     pub mac: Option<[u8; 6]>,
     pub aps: Option<ApList>,
-    /// What the Network page is in the middle of taking: the row a passphrase is being typed
-    /// for, the draft, and the last refusal. The credential the draft produced is not here —
-    /// that is a command on its way to the radio, and nothing that draws should hold it.
+    /// What the Network page is in the middle of taking: the row a passphrase is being
+    /// typed for, the draft, and the last refusal.
     pub setup: NetworkSetup,
     pub motion_enabled: bool,
     pub motion: Option<MotionSample>,
@@ -127,20 +117,10 @@ pub struct Diagnostics {
     pub playback: PlaybackDiagnostics,
 }
 
-/// Consumer of the device diagnostic snapshot. The screen surface implements
-/// it to overlay the digit rows; log/HTTP/WebSocket sinks can subscribe to
-/// the same snapshot later. The default no-op keeps light-only surfaces
-/// ignorant. A sink is bound to a slot by registration, never by an identity
-/// it carries.
+/// Consumer of the device diagnostic snapshot.
 pub trait DiagnosticsSink {
     fn consume(&mut self, _diagnostics: &Diagnostics) {}
 
-    /// Whether this surface draws the device's own pages ([`DisplayPage`]) rather than only
-    /// the light. A panel does; a light-only surface — a strip, an addressable LED — does not,
-    /// and a page rule asked of one would be a rule about a screen it does not have. What asks
-    /// is the page's own ground (see `app::render`'s `LightRenderer`): the pages a surface
-    /// draws decide what that surface shows, and a surface that draws none keeps showing the
-    /// light it is.
     fn draws_pages(&self) -> bool {
         false
     }

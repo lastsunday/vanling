@@ -1,12 +1,5 @@
-//! The Network page's controls as behaviour: what each box does, named beside the word on it.
-//!
-//! A box is drawn, a finger lands on it, and the state layer is asked to do something. One row says
-//! both the word and the command, [`crate::intent::translate`] reads the command off it, and the
-//! panel draws the same label — a box cannot offer a word the tap does not carry.
-//!
-//! The table is a value rather than a `static` because the link decides which rows exist: setup
-//! mode has a way back only when there is a network to go back to, and the passphrase answer names
-//! the state it moves to rather than a toggle.
+//! The Network page's controls as behaviour: what each box does, named beside the word on
+//! it.
 
 use crate::drivers::network::{Front, LinkStatus};
 use crate::intent::{BusinessIntent, BusinessIntent::*};
@@ -39,8 +32,7 @@ pub struct Strip {
 }
 
 impl Strip {
-    /// The command a tap on `cell` sends. A one-box strip takes either half: the geometry has no
-    /// dead side.
+    /// The command a tap on `cell` sends.
     pub fn command(self, cell: ToolbarCell) -> BusinessIntent {
         match (cell, self.left) {
             (ToolbarCell::Left, Some(left)) => left.command,
@@ -48,7 +40,7 @@ impl Strip {
         }
     }
 
-    /// The word `cell` draws. A one-box strip prints the same word in both halves.
+    /// The word `cell` draws.
     pub fn label(self, cell: ToolbarCell) -> &'static [u8] {
         match (cell, self.left) {
             (ToolbarCell::Left, Some(left)) => left.label,
@@ -77,7 +69,6 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
                 label: CANCEL_LABEL,
                 command: CloseSetup,
             }),
-            // With no way back the panel's left half is still the live list's next round.
             (Front::Panel, false) => Some(Control {
                 label: if setup.rescan_wait {
                     WAIT_LABEL
@@ -86,13 +77,10 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
                 },
                 command: ScanNow,
             }),
-            // The phone's strip is one box, and either half of it is the switch.
             (Front::AccessPoint, false) => None,
         };
         return Strip { left, right };
     }
-    // The offline list: no access point yet, and the only way in is the `AP` cell. `SCAN` stays
-    // on the left so a person can ask for a round without leaving.
     if link.browsing {
         let left = Control {
             label: if setup.rescan_wait {
@@ -217,7 +205,6 @@ mod tests {
 
     #[test]
     fn the_offline_list_keeps_both_cells() {
-        // Nothing saved and no mode: the list is still the page, and `AP` is the explicit way in.
         let browsing = LinkStatus {
             browsing: true,
             ..LinkStatus::default()

@@ -31,34 +31,18 @@ use iot_core::drivers::aec::{
     SAMPLE_RATE_HZ, state_bytes,
 };
 
-/// The capture path's own tick, in milliseconds. `CAPTURE_MS` in `input.rs`; a tick of
-/// anything else would be measuring a product that does not exist.
 const TICK_MS: u64 = 20;
 
-/// Samples in one tick at [`SAMPLE_RATE_HZ`].
 const TICK_SAMPLES: usize = SAMPLE_RATE_HZ as usize * TICK_MS as usize / 1_000;
 
-/// Ticks per pass over the buffer below. The buffer is a *source* of samples, not the
-/// filter's history — the estimator and the filter carry their own state across a pass
-/// boundary — so it only has to be long enough to refill between ticks.
 const TICKS_PER_PASS: usize = 4;
 
-/// Passes run per tap count: 256 ticks, 5.1 s of audio. The convergence transient takes
-/// seconds, and a window shorter than it would report the transient rather than the steady
-/// state — which is a different quantity with a very different number.
 const PASSES: usize = 32;
 
-/// Peak amplitude of the reference. Loud on purpose: the delay search's power gate skips the
-/// search below a level, so a quiet reference measures the cheap case and a loud one the
-/// expensive case. The expensive case is the budget.
 const REFERENCE_AMPLITUDE: i32 = 9_000;
 
-/// Peak amplitude of the near-end talker, enough to pass the freeze floor so the frozen
-/// figures are measured on a filter that has actually stopped.
 const SPEECH_AMPLITUDE: i32 = 8_000;
 
-/// The echo path, in ppm per tap: a bulk delay then a decaying series of reflections, the
-/// same shape as the acceptance test's room.
 const PATH: [(usize, i32); 5] = [
     (12, 700_000),
     (17, -320_000),
@@ -67,12 +51,6 @@ const PATH: [(usize, i32); 5] = [
     (44, 45_000),
 ];
 
-/// A room: what went to the speaker, and what the microphone heard.
-///
-/// Heap-allocated rather than a local, and that is not a style preference: a local of this
-/// size sits in the main task's stack, and the stack is the shared resource
-/// `architecture.md` budgets and the linked ELF measures. A probe spending ten kilobytes
-/// of it to measure something that will later run *in* that task is the wrong way round.
 struct Room {
     played: [i16; TICK_SAMPLES * TICKS_PER_PASS],
     heard: [i16; TICK_SAMPLES * TICKS_PER_PASS],
@@ -87,10 +65,6 @@ impl Room {
     }
 }
 
-/// A deterministic broadband source. The same one the acceptance test uses, reproduced here
-/// because `signal` is test-only and a bench probe is not a test. Broadbandness is the
-/// property that matters: a near-periodic reference correlates with itself at nearly every
-/// lag, which would make the delay search's confidence gate a matter of luck.
 struct Noise(u32);
 
 impl Noise {
@@ -106,9 +80,6 @@ impl Noise {
     }
 }
 
-/// Refills the room for one pass. `speech` at 0 leaves nobody in it; otherwise the near end
-/// starts at the half-way point, which is past convergence, so the talker arrives into a
-/// filter that already knows the room — barge-in rather than a startup.
 fn fill(room: &mut Room, seed: u32, speech: bool) {
     let mut played = Noise::new(seed);
     let mut talking = Noise::new(!seed);
@@ -129,7 +100,6 @@ fn fill(room: &mut Room, seed: u32, speech: bool) {
     }
 }
 
-/// What one configuration cost, in microseconds per tick.
 #[derive(Default)]
 struct Cost {
     first: u64,
@@ -152,8 +122,6 @@ impl Cost {
         self.total / u64::from(self.ticks.max(1))
     }
 
-    /// Measured occupancy as a share of the tick it has to fit inside. The window rather than
-    /// the tick count, so the figure stays right if the two drift.
     fn share(&self) -> u64 {
         self.total * 100 / (u64::from(self.ticks.max(1)) * TICK_MS * 1_000)
     }
@@ -163,7 +131,6 @@ impl Cost {
     }
 }
 
-/// Refills the room between passes and times every tick `body` performs.
 fn timed<F>(room: &mut Room, speech: bool, mut body: F) -> Cost
 where
     F: FnMut(&Room, usize),
@@ -181,7 +148,6 @@ where
     cost
 }
 
-/// Measures one tap count end to end, then attributes the time.
 fn measure_taps<const L: usize>(room: &mut Room) {
     log::info!("[ECHO] --- L={L}, {} B of state ---", state_bytes::<L>());
 
@@ -235,8 +201,6 @@ fn measure_taps<const L: usize>(room: &mut Room) {
         search.searches()
     );
 
-    // At the module's own maximum step rather than through `AdaptationGate`, so this is
-    // the filter's worst case by construction.
     let mut filter = AdaptiveFilter::<L>::new();
     let convolved = timed(room, false, |room, at| {
         for n in at..at + TICK_SAMPLES {
@@ -250,9 +214,6 @@ fn measure_taps<const L: usize>(room: &mut Room) {
         convolved.share()
     );
 
-    // The same call with the step at zero, which is the filter frozen: the
-    // convolution runs, the coefficient update does not. The difference from the
-    // line above is the update loop on its own.
     let mut still = AdaptiveFilter::<L>::new();
     let held = timed(room, false, |room, at| {
         for n in at..at + TICK_SAMPLES {
@@ -267,8 +228,6 @@ fn measure_taps<const L: usize>(room: &mut Room) {
         convolved.mean_as_signed() - held.mean_as_signed()
     );
 
-    // The three meters and the coherence computation: the price of knowing whether adaptation
-    // should be running at all.
     let mut gate = AdaptationGate::new();
     let mut meter = ErleMeter::new();
     let overhead = timed(room, false, |room, at| {
@@ -289,25 +248,6 @@ fn measure_taps<const L: usize>(room: &mut Room) {
     );
 }
 
-/// A deliberately plain FIR, written the way a fast implementation writes one.
-///
-/// This is the calibration this probe needed and could not have. Its first reports
-/// put the canceller at 219 cycles per MAC while Espressif publish `dsps_fir_f32`
-/// — 1024 samples through 256 coefficients — at 443,671 cycles on the same
-/// ESP32S3, and that gap is not something bounds checks and a reload or two
-/// explain. The way out is not a better estimate but a reference run: **the same
-/// shape of work, in the same image, on the same board, under the same build**,
-/// which turns an absolute claim into a ratio that cannot be wrong about the
-/// platform.
-///
-/// The ratio is what settled it. A loop *simpler* than the canceller's inner
-/// loop cannot be much more than a few times slower per MAC, and measuring it at
-/// 193× slower is not a property of the loop — it is the clock having been read
-/// off the datasheet. See the caller's comment on where the clock comes from.
-///
-/// Written with iterators over slices on purpose: that is what lets the
-/// compiler drop the bounds checks, and the absence of an `&mut self` receiver
-/// is the other half of what the canceller's inner loop gets wrong.
 fn reference_fir(samples: &[i32], coefficients: &[i32]) -> Vec<i32> {
     samples
         .iter()
@@ -326,7 +266,6 @@ fn reference_fir(samples: &[i32], coefficients: &[i32]) -> Vec<i32> {
         .collect()
 }
 
-/// Reference work in microseconds per second of audio, and the MAC rate it implies.
 struct Reference {
     micros: u64,
     macs: u64,
@@ -337,18 +276,13 @@ fn measure_reference(room: &mut Room) -> Reference {
     const SAMPLES: usize = 1024;
 
     let coefficients: Vec<i32> = (0..TAPS).map(|k| (k as i32 % 17) - 8).collect();
-    // The same window a FIR sees, taken from the room's own reference so the
-    // data is the broadband signal the canceller is measured on.
     let samples: Vec<i32> = room.played[..SAMPLES.min(room.played.len())]
         .iter()
         .map(|s| i32::from(*s))
         .collect();
 
-    // One untimed pass so the data is warm and the cost is not first-touch.
     core::hint::black_box(reference_fir(&samples, &coefficients));
 
-    // Each round is logged as it lands. A reference loop that is *also* slow is
-    // the finding, and it must not be hidden behind a minute of silence.
     let rounds = 4u64;
     let mut total = 0u64;
     for round in 0..rounds {
@@ -359,9 +293,6 @@ fn measure_reference(room: &mut Room) -> Reference {
         core::hint::black_box(out);
         log::info!("[ECHO]   reference round {round}: {micros} us");
     }
-    // The real count, not an approximation of it: the first `TAPS` outputs run
-    // short windows, so the total is the triangle plus the full-length remainder.
-    // Counting only the full windows overstates the rate by about a sixth.
     let macs = (TAPS as u64 * (TAPS as u64 + 1) / 2) + (SAMPLES - TAPS) as u64 * TAPS as u64;
     Reference {
         micros: total / rounds,
@@ -370,11 +301,6 @@ fn measure_reference(room: &mut Room) -> Reference {
 }
 
 /// Walks the tap counts and reports what each costs, against `cpu_hz`.
-///
-/// Returns rather than parking, so a caller can run this on one core and then
-/// hand the second core the same job: two runs of the same measurement on the
-/// same board are the only comparison that can say whether a second core is
-/// worth anything.
 pub async fn measure(cpu_hz: u64) {
     let mut room = Box::new(Room::new());
     log::info!("[ECHO] room buffer on the heap, not on the task stack");
@@ -396,7 +322,6 @@ pub async fn measure(cpu_hz: u64) {
     log::info!("[ECHO] CPU clock as programmed: {cpu_hz} Hz");
 
     let reference = measure_reference(room.as_mut());
-    // cycles = micros * hz / 1e6, so cycles/MAC divides that by the MAC count.
     let cycles_per_mac = reference.micros * cpu_hz / 1_000_000 / reference.macs;
     log::info!(
         "[ECHO] reference FIR, 256 taps x 1024 samples (the ESP-DSP case): {} us per pass \

@@ -1,11 +1,5 @@
-//! Playback isolation probe: the product's own feed loop, plus a walker that keeps a
-//! sound going so the loop has something to carry, and the product's own counters.
-//!
-//! Sharing [`feed_loop`] rather than writing a second schedule is what makes the
-//! probe evidence about the product: same absolute deadline, same unconditional
-//! refill, same counters. A loop of its own would only report its own behaviour,
-//! and a subtle difference — feeding while a sound is on the ring rather than
-//! always — would make a green probe mean nothing.
+//! Playback isolation probe: the product's own feed loop, plus a walker that keeps a sound
+//! going so the loop has something to carry, and the product's own counters.
 
 use alloc::boxed::Box;
 use core::sync::atomic::Ordering;
@@ -17,18 +11,16 @@ use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
 
 use crate::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
 
-/// Board-independent: the AEC touches no peripheral, so its cost belongs to the tap
-/// count and the clock rather than to any wiring.
+/// Board-independent: the AEC touches no peripheral, so its cost belongs to the tap count
+/// and the clock rather than to any wiring.
 pub mod echo;
 
 /// The same canceller against a real room, through the product's own pairing.
-/// Board-dependent, because the whole point is that the board supplies the
-/// reference — see the module for why this build had to exist.
 #[cfg(feature = "lckfb-szpi-esp32s3")]
 pub mod echo_room;
 
-/// S3 only: the switch itself is a register write, which is S3-only the moment
-/// esp-hal refuses to do it.
+/// S3 only: the switch itself is a register write, which is S3-only the moment esp-hal
+/// refuses to do it.
 #[cfg(feature = "lckfb-szpi-esp32s3")]
 pub mod clock;
 
@@ -46,8 +38,6 @@ where
         }
     };
 
-    // The erased handle the product's playback task takes, so the probe drives
-    // that path rather than a concrete driver reached directly.
     let shared = share(speaker as Box<dyn Speaker>);
     // Both futures are `!`, so `join` returning at all is unreachable; parking keeps
     // the signature honest rather than reaching for a panic the compiler can see
@@ -58,13 +48,6 @@ where
     }
 }
 
-/// Walks the sound catalogue for as long as the feed runs, alternating the two
-/// because they are built differently — a synthesised pair against a stored PCM —
-/// so a stall only one of them provokes cannot hide behind whichever was playing.
-///
-/// The catalogue order comes from [`Sound::next`] rather than a second `match`, so
-/// this walker and the product's page cannot disagree about what follows a sound,
-/// and it starts from [`Sound::ALL`]'s head rather than a literal.
 async fn walk_catalogue(shared: &'static Shared) -> ! {
     let mut sound = Sound::ALL[0];
     let mut plays: u32 = 0;
@@ -80,17 +63,10 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
         }
         sound = sound.next();
 
-        // Wait for this sound to finish, then take the next. The driver's report
-        // is the only statement of completion — `false` from `feed` means nothing
-        // in flight — so this reads the same flag the product's phase does rather
-        // than timing a sound out.
         while !shared.lock(|shared| shared.done.swap(false, Ordering::Relaxed)) {
             Timer::after(Duration::from_millis(FEED_MS.into())).await;
         }
 
-        // The repair the feed found necessary, on the cooperative side as the
-        // product does it, so the probe covers that path instead of leaving it to
-        // the product build to discover.
         if let Some(recovery) = shared.lock(|shared| shared.speaker.borrow_mut().recover()) {
             log::info!(
                 "[PROBE] recovered the outgoing DMA, {} bytes free, sound was {}",
@@ -112,6 +88,4 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
     }
 }
 
-/// Window the probe's cadence report closes on, matching the product's so the two
-/// lines can be read against each other.
 const PROBE_REPORT_MS: u64 = 2_000;

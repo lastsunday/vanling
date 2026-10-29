@@ -42,40 +42,27 @@ use embedded_alloc::LlffHeap as Heap;
 use iot_core::drivers::board::HasWifi;
 use iot_core::drivers::network::{Credentials, Ipv4, LinkPhase, Station};
 
-/// How often the running numbers are logged.
 const REPORT_MS: u64 = 2_000;
 
-/// How long DHCP is given to produce an address before the probe reports that the
-/// link is associated but not connected. Generous on purpose: a lease offer is a
-/// round trip on a network this knows nothing about.
 const ADDRESS_BUDGET_MS: u64 = 30_000;
 
-/// How many scans in a row, and the gap between them. One scan measures which boot this
-/// was, not the radio: the same image has come back with 0, 1 and 2 access points in the
-/// same six rounds. `@/records/iot/wifi.md`.
 const SCAN_ROUNDS: u8 = 6;
 const SCAN_GAP_MS: u64 = 500;
 
-/// Socket slots the stack needs. One, because DHCP is the only consumer: the
-/// probe opens no socket, and this is what keeps the stack's own buffers the only
-/// cost here beyond the driver's.
 const SOCKETS: usize = 1;
 
-/// Sized by the board's own bring-up: the S3's allocates an 11,728-byte `Box` inside
-/// `Board::new`, so anything under ~16 KiB panics there once the bring-up has already
-/// succeeded. The driver's allocations do not come from here — they come from the C heap the
-/// chip layer set up, and where *that* lives differs per part.
-///
-/// The product's number, because the product is the one that has to keep working, and the one
-/// the chip layer offers a heap for on every part that carries a radio.
+// Sized by the board's own bring-up: the S3's allocates an 11,728-byte `Box` inside
+// `Board::new`, so anything under ~16 KiB panics there once the bring-up has already
+// succeeded. The driver's allocations do not come from here — they come from the C heap the
+// chip layer set up, and where *that* lives differs per part.
+//
+// The product's number, because the product is the one that has to keep working, and the one
+// the chip layer offers a heap for on every part that carries a radio.
 const HEAP_BYTES: usize = 64 * 1024;
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-/// The stack's buffers, in a cell because the stack borrows them for as long as it
-/// runs and every loop here is inside that borrow. The same cell the chip layer
-/// uses for its executors.
 static RESOURCES: esp_hal::__macro_implementation::static_cell::StaticCell<
     StackResources<SOCKETS>,
 > = esp_hal::__macro_implementation::static_cell::StaticCell::new();
@@ -83,8 +70,6 @@ static RESOURCES: esp_hal::__macro_implementation::static_cell::StaticCell<
 #[esp_rtos::main]
 #[cfg(feature = "esp32c6")]
 async fn main(_spawner: Spawner) -> ! {
-    // No clock to choose: this part boots where esp-hal leaves it, and a timing measured at
-    // a clock the product does not run at would be a timing of a different machine.
     let peripherals = iot_chip_esp::chip_init();
     iot_chip_esp::init_logging();
     iot_chip_esp::init_radio_heap();
@@ -97,8 +82,6 @@ async fn main(_spawner: Spawner) -> ! {
             esp_hal::system::software_reset();
         }
     };
-    // The driver's start needs the scheduler, so the radio is taken after this rather than
-    // before — which is why the board hands over a peripheral and not a station.
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
     measure(board).await
 }
@@ -124,8 +107,6 @@ async fn main(_spawner: Spawner) -> ! {
     measure(board).await
 }
 
-/// Everything the two parts have in common: the same station, the same IP stack, the same
-/// three stages, on whichever part is under it.
 async fn measure(mut board: iot_bsp_esp::Board<'static>) -> ! {
     log::warn!("[PROBE] radio and IP stack only: no panel, touch, motion or audio");
 
@@ -136,15 +117,14 @@ async fn measure(mut board: iot_bsp_esp::Board<'static>) -> ! {
     run(*station).await
 }
 
-/// What a probe with nothing to do waits on. Never returns: the alternative is a
-/// `loop` with no await in it, which panics as a blocking loop.
+// What a probe with nothing to do waits on. Never returns: the alternative is a
+// `loop` with no await in it, which panics as a blocking loop.
 async fn park() -> ! {
     loop {
         Timer::after(Duration::from_secs(1)).await;
     }
 }
 
-/// The probe's loop: bring the link up, then report on it until it drops.
 async fn run<S>(mut station: S) -> !
 where
     S: Station,
@@ -155,9 +135,6 @@ where
         .take_device()
         .expect("the station hands its interface over on the first ask");
 
-    // The seed the stack uses for ephemeral ports and the DHCP identifier. The
-    // chip's RNG is the only entropy this part has, and the station's own address
-    // already differs from any other device's.
     let rng = esp_hal::rng::Rng::new();
     let seed = (u64::from(rng.random()) << 32) | u64::from(rng.random());
 
@@ -172,12 +149,6 @@ where
         booted.elapsed().as_millis()
     );
 
-    // The runner and the radio's own futures share this one task, joined rather than
-    // selected: neither ever returns. The official driver's example runs them as two
-    // tasks, which also means scanning and connecting can overlap — and the driver
-    // documents that as a way to get a scan aborted by a connection attempt.
-    // Serialising them here is what makes the three stage timings below each about
-    // one thing.
     let (_, _) = join(runner.run(), exercise(&mut station, &stack, booted)).await;
     unreachable!("both arms of the join return `!`")
 }
@@ -186,11 +157,6 @@ async fn exercise<S>(station: &mut S, stack: &Stack<'_>, booted: Instant) -> !
 where
     S: Station,
 {
-    // The scan comes first and unconditionally: it is the only stage that needs no
-    // credentials, so a build without them still answers the question it can answer
-    // — which networks are out there, how strong, how long a scan costs. A probe that
-    // refused to scan for want of a password would answer "nothing" to the one thing
-    // a bench run with no secrets asks.
     for round in 1..=SCAN_ROUNDS {
         if round > 1 {
             Timer::after(Duration::from_millis(SCAN_GAP_MS)).await;
@@ -204,8 +170,6 @@ where
                     found.len()
                 );
                 for ap in &found {
-                    // The same fallback the list draws: a name the panel cannot draw is
-                    // shown as the BSSID, so what is on the air is identifiable either way.
                     let name = match ap.ssid.as_display_text() {
                         Some(text) if !text.is_empty() => alloc::string::ToString::to_string(text),
                         _ => bssid_text(ap.bssid),
@@ -239,8 +203,6 @@ where
     };
 
     let connect_start = Instant::now();
-    // The probe's own number is the whole of the attempt, so the two halves of it are read as one
-    // measurement: the config is set, and then the radio answers.
     let outcome = match station.begin_connect(&credentials) {
         Ok(()) => station.await_connected().await,
         Err(error) => Err(error),
@@ -259,10 +221,6 @@ where
         }
     }
 
-    // The address is the whole point of the stage: association alone is a link the
-    // product cannot use, so the number that says "connected" is the one DHCP
-    // produces, and it gets its own clock. The budget arm is what makes "the network
-    // answered nothing" a report rather than a probe that hangs.
     let dhcp_start = Instant::now();
     let address = match select(
         wait_for_address(stack),
@@ -273,9 +231,6 @@ where
         Either::First(address) => address,
         Either::Second(()) => None,
     };
-    // The stack owns the address and the station never sees it, so the phase can only
-    // follow DHCP if somebody says so. Measured before this line existed: the link had an
-    // address and the report still said `Connecting`, because nothing handed it over.
     station.note_address(address);
 
     match address {
@@ -300,8 +255,6 @@ where
     let mut last_report = Instant::now();
     loop {
         Timer::after(Duration::from_millis(REPORT_MS)).await;
-        // Every window, not only the first: a lease that lapses has to put the phase back
-        // to `Connecting`, and the only thing that can notice is this loop.
         station.note_address(
             stack
                 .config_v4()
@@ -310,9 +263,6 @@ where
         let status = station.status();
         let window_ms = last_report.elapsed().as_millis();
         last_report = Instant::now();
-        // The address is repeated every window because its absence is the finding that
-        // matters: a line per window turns "the address never arrived" into something a
-        // log can be asked about, rather than a single line scrolled past.
         log::info!(
             "[WIFI] phase {:?}, address {}, heap {} B free of {} B, up {} ms, window {window_ms} ms",
             status.phase,
@@ -334,7 +284,6 @@ where
     }
 }
 
-/// Six two-digit octets, the form a list shows a BSSID in.
 fn bssid_text(bssid: [u8; 6]) -> alloc::string::String {
     use core::fmt::Write;
     let mut text = alloc::string::String::with_capacity(17);
@@ -347,7 +296,6 @@ fn bssid_text(bssid: [u8; 6]) -> alloc::string::String {
     text
 }
 
-/// Wait for DHCP to produce an address.
 async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
     loop {
         if let Some(cidr) = stack.config_v4() {
@@ -357,13 +305,6 @@ async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
     }
 }
 
-/// The credentials this build was given, or `None` when the build named neither.
-///
-/// `option_env!` again rather than a secret store: this is a bench image that
-/// says which network it is joining, and a value compiled into it is a value in
-/// the build log. `scripts/iot-xtensa.sh` forwards both names into the container,
-/// and a host test (`build_env.rs`) fails the build if one is read but not
-/// forwarded.
 fn credentials_from_build() -> Option<(&'static str, &'static str)> {
     let ssid = option_env!("IOT_WIFI_SSID")?;
     let password = option_env!("IOT_WIFI_PSK")?;

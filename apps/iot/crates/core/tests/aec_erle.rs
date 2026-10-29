@@ -1,88 +1,31 @@
-//! What the linear canceller in `drivers/aec` achieves, measured against the best
-//! answer that could exist for the path it was given.
+//! What the linear canceller achieves against the best linear answer for each path.
 //!
-//! # Why not a borrowed recording
-//!
-//! Every public vector for this was tried; all four are unusable.
-//!
-//! - **Espressif `aec_in_far.wav` / `aec_in_near.wav`** — not a synchronous pair:
-//!   best normalised cross-correlation over the whole 53 s at any lag is **0.137**,
-//!   a single-tap fit accounts for **0.08 dB**. This canceller reports
-//!   **−14.4 dB** on them, which is what subtracting an unrelated signal looks
-//!   like.
-//! - **Espressif `audio_mic_file` / `audio_ref_file`** — what Espressif's own
-//!   `test_afe.cpp` feeds `aec_process`. Synchronous (0.743) but holds no echo
-//!   path: an offline least-squares fit bounds it at −1.04 dB at 32 taps through
-//!   −4.97 dB at 256, with the kernel peaking on the *last* tap.
-//! - **Microsoft AEC-Challenge `real_doubled`** — unusable *by design*. Cutler et
-//!   al., arXiv:2309.12553 §4.1, note the PC may run AEC on the **send** signal;
-//!   a stack that already cancels leaves a linear model nothing to predict. Best
-//!   offline Wiener bound over 40 GUIDs at 128 taps: **−0.42 dB**.
-//! - **ITU-T G.168 (04/2015)** — the right place to look, and its Annex D really
-//!   does carry explicit impulse responses needing no audio files. Not used: the
-//!   transcription cannot be verified. Extraction loses the first element of some
-//!   rows, the column order is ambiguous, and under *both* readings the
-//!   standard's own 0 dB invariant fails by 1–11 dB. Data that cannot be checked
-//!   is not data a test should be built on. Its Test 12 note settles the question
-//!   anyway: *"This test may be enhanced by the future addition of test vectors
-//!   that represent real acoustic echo signals. [...] for further study."* The
-//!   standards body says they do not exist either.
-//!
-//! # What the reference is instead
-//!
-//! For each path, [`offline_bound`] solves the least-squares problem exactly and
-//! reports the enhancement the best possible filter of the same length could
-//! reach. Computed here rather than transcribed, so it cannot be wrong, and it
-//! answers the question a linear adaptive filter exists to answer: **did it find
-//! the best linear solution, and how close?** Beating the bound is overfitting
-//! noise; falling far below it is not converging.
-//!
-//! # The limits of the number
-//!
-//! The paths are generated, so they test the contract rather than a room. The
-//! loop gain, the delay and the thresholds need this board in front of it. And
-//! the 15 dB bar is **necessary, not sufficient** — ERLE's correlation with how
-//! the device actually sounds is **PCC 0.31**.
+//! The public vectors are unusable for a linear model — asynchronous, no echo path, or
+//! not transcribable; the measurements are in `@/records/iot/aec.md`. Each path is
+//! generated and its least-squares optimum computed here, so the test measures
+//! convergence rather than a room. The 15 dB bar is necessary, not sufficient.
 
 use iot_core::drivers::aec::{Canceller, Coef, MAX_TAPS, SAMPLE_RATE_HZ};
 
-/// The acceptance threshold from the plan: enough enhancement for a talker to be
-/// heard over the speaker, which needs the echo about a decade down.
 const BARGE_IN_DECIBELS: i32 = 15;
 
-/// How close to the offline optimum a converged filter is expected to get. The
-/// adaptive filter sees the signal one sample at a time and never sees the whole
-/// record, so it should land near but below the offline answer rather than on it.
 const CLOSE_TO_OPTIMUM_DB: f64 = 3.0;
 
-/// Samples per analysis window, 20 ms at [`SAMPLE_RATE_HZ`] — the capture's own
-/// cadence, so a window here is one `input_task` tick of audio.
+// Samples per analysis window, 20 ms at [`SAMPLE_RATE_HZ`] — the capture's own
+// cadence, so a window here is one `input_task` tick of audio.
 const WINDOW: usize = SAMPLE_RATE_HZ as usize * 20 / 1_000;
 
-/// Far-end activity per [`WINDOW`]: a window counts when its reference power is
-/// within a factor of [`FAR_ACTIVE_FLOOR`] of the loudest window's.
 const FAR_ACTIVE_FLOOR: i64 = 4;
 
-/// The direct reflection, before the per-tap envelope — large enough that it is
-/// the loudest tap in the path, which is what makes the path have an onset.
 const DIRECT_REFLECTION: i32 = 30_000;
 
-/// A reflection after it. Kept well under [`DIRECT_REFLECTION`] for the same
-/// reason: a first tap no louder than the ones after it is not a direct reflection.
 const REFLECTION_AMPLITUDE: i32 = 8_000;
 
-/// One channel of a room: what the microphone heard, and what was sent to the
-/// speaker.
 struct Room {
     mic: Vec<i16>,
     reference: Vec<i16>,
 }
 
-/// A deterministic broadband source.
-///
-/// Broadbandness is not decoration: a near-periodic reference correlates with
-/// itself at nearly every lag, which makes the delay search's confidence gate a
-/// matter of luck and lets a filter sit a tap off and still look converged.
 struct Noise(u32);
 
 impl Noise {
@@ -98,34 +41,27 @@ impl Noise {
     }
 }
 
-/// An echo path: `length` taps, a bulk `delay`, and a decay per tap.
-///
-/// Generated rather than transcribed, for the reason in the module comment: a
-/// number that cannot be checked is not a number a test should rest on. What these
-/// buy is the one thing a borrowed recording cannot — an offline optimum computed
-/// on the *same* path, so the gap between them is meaningful.
 struct Path {
     name: &'static str,
     delay: usize,
     length: usize,
-    /// Multiplied by this per tap, so a longer path is also a quieter one.
     decay: f64,
     seed: u32,
 }
 
 impl Path {
-    /// The path as a tap sequence.
-    ///
-    /// The first tap is a **direct reflection** and the rest are random in sign,
-    /// which is the shape a room actually has: one loud arrival that gives the path
-    /// an onset, then reflections that are individually weaker and arrive with no
-    /// pattern to them. A path whose very first tap is also random has no onset at
-    /// all — every lag correlates about equally — and the delay search then has
-    /// nothing to lock onto and reports wherever the noise happened to peak. That
-    /// was measured, not assumed: with the first tap no louder than the rest, a
-    /// 12-sample path reported 15 and a 4-sample one reported 22, cross-checked
-    /// offline where the peak genuinely was. The filter reached 0.4 dB because it
-    /// was aiming at the wrong place.
+    // The path as a tap sequence.
+    //
+    // The first tap is a **direct reflection** and the rest are random in sign,
+    // which is the shape a room actually has: one loud arrival that gives the path
+    // an onset, then reflections that are individually weaker and arrive with no
+    // pattern to them. A path whose very first tap is also random has no onset at
+    // all — every lag correlates about equally — and the delay search then has
+    // nothing to lock onto and reports wherever the noise happened to peak. That
+    // was measured, not assumed: with the first tap no louder than the rest, a
+    // 12-sample path reported 15 and a 4-sample one reported 22, cross-checked
+    // offline where the peak genuinely was. The filter reached 0.4 dB because it
+    // was aiming at the wrong place.
     fn taps(&self) -> Vec<f64> {
         let mut noise = Noise::new(self.seed);
         (0..self.length)
@@ -140,12 +76,9 @@ impl Path {
             .collect()
     }
 
-    /// The room this path produces, as a digital reference and a microphone.
     fn room(&self, samples: usize, near_end_from: usize, near_amplitude: i32) -> Room {
         let taps = self.taps();
         let peak = taps.iter().fold(0.0f64, |m, v| m.max(v.abs())).max(1.0);
-        // Scaled so the path's strongest tap is a round fraction of full scale, which
-        // keeps the microphone and the reference both inside i16.
         let gain = 9_000.0 / peak;
         let scaled: Vec<i16> = taps.iter().map(|t| (t * gain) as i16).collect();
 
@@ -172,25 +105,10 @@ impl Path {
     }
 }
 
-/// A near-end talker loud enough to cross the learning rate's freeze floor.
-///
-/// `LEAKAGE_FREEZE` sits at about 4096 LSB RMS, and a uniform source of amplitude A
-/// has an RMS of roughly A/3 — so anything below about 12 000 never freezes the
-/// filter, by design: a person quieter than that is exactly the person barge-in must
-/// not be interrupted for. This is that case deliberately excluded, and tested
-/// instead.
 const NEAR_END_ABOVE_FREEZE: i32 = 9_000;
 
-/// Samples the offline optimum is solved over. See [`offline_bound`].
 const SAMPLES_FOR_OPTIMUM: usize = 16_384;
 
-/// The paths under test.
-///
-/// Varied on the axes that matter for an adaptive filter: how long the tail is
-/// relative to the taps it has, how quickly it decays, and where the bulk delay
-/// sits. [`PATH_TAIL_OVERRUN`] is the interesting one — its tail is longer than
-/// the filter, so the offline bound is genuinely below what a perfect fit could
-/// otherwise reach, and the gap is the filter's truncation and nothing else.
 const PATHS: [Path; 4] = [
     Path {
         name: "short, fast decay",
@@ -230,7 +148,6 @@ fn decibels(above: i64, below: i64) -> f64 {
     10.0 * (above as f64 / below.max(1) as f64).log10()
 }
 
-/// Far-end activity per [`WINDOW`].
 fn far_active(reference: &[i16]) -> Vec<bool> {
     let windows: Vec<i64> = reference.chunks(WINDOW).map(power).collect();
     let loudest = windows.iter().copied().max().unwrap_or(1).max(1);
@@ -240,18 +157,14 @@ fn far_active(reference: &[i16]) -> Vec<bool> {
         .collect()
 }
 
-/// The enhancement the best possible linear filter could reach on this room.
-///
-/// Solves the normal equations for an `order`-tap FIR by ordinary elimination
-/// with a ridge term, so the answer is the offline optimum rather than a bound on
-/// it. Returns `None` when the system is too ill-conditioned to mean anything,
-/// because a reference that silently returns a wrong number is worse than none.
+// The enhancement the best possible linear filter could reach on this room.
+//
+// Solves the normal equations for an `order`-tap FIR by ordinary elimination
+// with a ridge term, so the answer is the offline optimum rather than a bound on
+// it. Returns `None` when the system is too ill-conditioned to mean anything,
+// because a reference that silently returns a wrong number is worse than none.
 fn offline_bound(room: &Room, order: usize) -> Option<f64> {
     let samples = order + 1;
-    // Bounded on purpose. The solve is O(n·L²) in f64 and the answer converges long
-    // before the record ends — at L = 128 the whole run was 173 s, which is a test
-    // nobody runs twice. What is needed is far more samples than the filter has
-    // unknowns, and this is comfortably that.
     let n = room
         .reference
         .len()
@@ -260,7 +173,6 @@ fn offline_bound(room: &Room, order: usize) -> Option<f64> {
     if n < samples * 4 {
         return None;
     }
-    // Autocorrelation of the reference, and its cross-correlation with the mic.
     let mut normal = vec![vec![0.0f64; samples]; samples];
     let mut cross = vec![0.0f64; samples];
     for n0 in order..n {
@@ -275,13 +187,10 @@ fn offline_bound(room: &Room, order: usize) -> Option<f64> {
             }
         }
     }
-    // A ridge scaled to the diagonal: enough to make the solve well defined for a
-    // reference that is momentarily quiet, small enough not to move the answer.
     let trace: f64 = (0..samples).map(|i| normal[i][i]).sum();
     for (i, row) in normal.iter_mut().enumerate() {
         row[i] += trace * 1e-12;
     }
-    // Gaussian elimination with partial pivoting, in place.
     for col in 0..samples {
         let (pivot, _) = (col..samples)
             .map(|r| (r, normal[r][col].abs()))
@@ -329,13 +238,6 @@ fn offline_bound(room: &Room, order: usize) -> Option<f64> {
     (mic_power > 0.0 && residual_power > 0.0).then(|| 10.0 * (mic_power / residual_power).log10())
 }
 
-/// What one pass over a room produced.
-///
-/// `steady` and `whole_file` are different quantities and conflating them is how
-/// a canceller ends up looking better than it is. `steady` is the enhancement of a
-/// filter that has already learned, which is what ERLE means; `whole_file` also
-/// charges it for what it owed while converging. The AEC Challenge evaluates the
-/// second half for exactly this reason (Cutler et al., §7).
 struct Report {
     steady: f64,
     whole_file: f64,
@@ -369,7 +271,6 @@ fn measure(room: &Room) -> Report {
             per_window.push((mic_all, left_all));
         }
     }
-    // `per_window` is indexed by `WINDOW`, so a second of it is this many entries.
     let windows_per_second = (SAMPLE_RATE_HZ as usize / WINDOW).max(1);
     Report {
         steady: decibels(mic_late, left_late),
@@ -422,8 +323,6 @@ fn the_canceller_lands_near_the_offline_optimum_on_every_path() {
             report.steady
         );
         if path.length <= MAX_TAPS {
-            // A path the filter can hold in full: here the bar is meaningful, and
-            // missing it is the canceller's fault rather than the path's.
             reachable += 1;
             if report.steady as i32 >= BARGE_IN_DECIBELS {
                 cleared_bar += 1;
@@ -448,10 +347,6 @@ fn the_canceller_lands_near_the_offline_optimum_on_every_path() {
 
 #[test]
 fn a_path_longer_than_the_filter_caps_everybody() {
-    // The finding that reframes the bar: on a path longer than the filter, the
-    // offline optimum is itself below the threshold. This is a property of the path
-    // and the tap count, not of the implementation, and it is why the gate above is
-    // stated as a gap.
     let path = PATHS
         .iter()
         .max_by_key(|p| p.length)
@@ -477,10 +372,6 @@ fn a_path_longer_than_the_filter_caps_everybody() {
 
 #[test]
 fn the_canceller_does_not_beat_the_offline_optimum() {
-    // The other direction, and the one that catches a test rigged in the
-    // canceller's favour: a filter cannot exceed the best linear solution for the
-    // path it was shown, so a number above it means the reference is wrong, not
-    // that the implementation is good.
     let room = PATHS[1].room(64_000, usize::MAX, 0);
     let optimum = offline_bound(&room, MAX_TAPS).expect("a singular solve");
     let report = measure(&room);
@@ -498,8 +389,6 @@ fn the_canceller_does_not_beat_the_offline_optimum() {
 
 #[test]
 fn a_filter_longer_than_the_path_is_not_needed() {
-    // A path of 16 taps cannot need 128 of them. The filter's energy outside the
-    // path's own length is what it would have to be inventing.
     let path = &PATHS[0];
     let room = path.room(32_000, usize::MAX, 0);
     let report = measure(&room);
@@ -533,8 +422,6 @@ fn a_filter_longer_than_the_path_is_not_needed() {
 
 #[test]
 fn the_delay_estimate_finds_each_paths_bulk_delay() {
-    // The window has to land where the path starts, or every tap after it is
-    // spent on silence.
     let samples = 24_000;
     for path in &PATHS {
         let room = path.room(samples, usize::MAX, 0);
@@ -551,12 +438,6 @@ fn the_delay_estimate_finds_each_paths_bulk_delay() {
 
 #[test]
 fn the_canceller_tracks_a_path_that_moves() {
-    // A board gets picked up and put down somewhere else.
-    //
-    // What follows the path is the *delay*, not the loudest tap: the estimator
-    // slides the window onto the bulk delay, so once it has moved the echo arrives
-    // at the head of the window again and the peak is back at tap 0. That is the
-    // whole reason the estimator exists — the distance stops costing taps.
     let path = &PATHS[1];
     let before_room = path.room(24_000, usize::MAX, 0);
     let mut canceller = Canceller::<MAX_TAPS>::new();
@@ -665,9 +546,6 @@ fn a_talker_over_the_speaker_does_not_get_learned_as_echo() {
 
 #[test]
 fn silence_produces_no_echo_and_no_filter() {
-    // Nothing to cancel: the reference is silent, so no amount of the microphone's
-    // own content is echo. This is the case a canceller that forgets to normalise
-    // invents an echo out of.
     let mut canceller = Canceller::<MAX_TAPS>::new();
     let mut noise = Noise::new(0x0dd0_0dd0);
     for _ in 0..16_000 {
@@ -703,9 +581,6 @@ fn the_meter_reads_what_the_samples_say() {
 
 #[test]
 fn convergence_is_reported_as_a_curve_rather_than_only_its_end_point() {
-    // A single number cannot distinguish "converged fast" from "converged after
-    // twenty seconds", and the difference decides whether the first half of a call
-    // is usable.
     let room = PATHS[2].room(48_000, usize::MAX, 0);
     let report = measure(&room);
     let curve = report

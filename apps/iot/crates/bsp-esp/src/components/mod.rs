@@ -1,14 +1,10 @@
-/// The clock row both codecs are programmed from, and the rate the DMA fills
-/// its ring at. Ungated and tiny: it is arithmetic, and a board that wires
-/// both halves of the audio peripheral has to be able to name it from either
-/// side without pulling in a driver that may not be fitted.
+/// The clock row both codecs are programmed from, and the rate the DMA fills its ring at.
 pub mod audio_clock;
 #[cfg(feature = "backlight")]
 pub mod backlight;
 #[cfg(feature = "button")]
 pub mod button;
-/// The saved networks, in the partition this board's table gives them. Gated with the
-/// radio, because the network it keeps is the one the radio's own page named.
+/// The saved networks, in the partition this board's table gives them.
 #[cfg(feature = "wifi")]
 pub mod credentials;
 #[cfg(feature = "es7210")]
@@ -25,9 +21,9 @@ pub mod mock_i2c;
 pub mod pca9557;
 #[cfg(feature = "qmi8658")]
 pub mod qmi8658;
-/// Only the two codecs' register sequences need it, and each of those features
-/// already pulls in `embedded-hal`, so gating on either keeps the module
-/// compiling standalone per feature.
+/// Only the two codecs' register sequences need it, and each of those features already
+/// pulls in `embedded-hal`, so gating on either keeps the module compiling standalone per
+/// feature.
 #[cfg(any(feature = "es7210", feature = "es8311"))]
 pub mod register_seq;
 #[cfg(feature = "st7789")]

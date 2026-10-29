@@ -19,7 +19,6 @@ use smart_leds::RGB8;
 pub use crate::components::button::PullButton;
 pub use crate::components::ws2812::{RMT_FREQ_HZ, Ws2812RgbLed};
 
-/// How many RGB blocks are on the board (DevKitC-1 has a single addressable LED).
 const LEDS: usize = 1;
 
 /// Board-level support for the ESP32-C6-DevKitC-1.
@@ -28,17 +27,7 @@ pub struct Board<'d> {
     pub light: Option<Ws2812RgbLed<'d, { buffer_size::<RGB8>(LEDS) }>>,
     /// The onboard boot button.
     pub button: Option<PullButton<'d>>,
-    /// The on-board radio peripheral, unopened. It stays here rather than being built in
-    /// `new` because the driver's start needs the scheduler, and the scheduler is the app's
-    /// to start — see [`HasWifi`].
     radio: Option<WIFI<'static>>,
-    /// The saved networks, over the partition this board's table gives them. Read at bring-up
-    /// and handed to the link by [`Board::take_credentials`].
-    ///
-    /// Boxed because of where it travels: the link's futures are polled inside the one task
-    /// the whole product shares, so every frame that carries the list by value is that many
-    /// hundred bytes of the main stack's own region — and the region is what the static data
-    /// around a 64 KB stack has to fit in.
     credentials: Option<Box<CredentialStore>>,
 }
 
@@ -64,9 +53,6 @@ impl Board<'static> {
             ..
         } = peripherals;
 
-        // Read before the LED and the button: a partition that will not read is said while
-        // the boot still has the frame for the table. No auto-parking here — this part has one
-        // core, so there is no other one to park; see the S3 board for the other arm.
         let credentials =
             crate::components::credentials::load(FlashStorage::new(FLASH)).map(Box::new);
 
@@ -91,9 +77,6 @@ impl Board<'static> {
     }
 
     /// The saved networks, for the link that keeps them.
-    ///
-    /// Taken rather than borrowed: the task that holds the link is the one that writes a
-    /// credential the panel named, and it is the only writer there is.
     pub fn take_credentials(&mut self) -> Option<Box<CredentialStore>> {
         self.credentials.take()
     }

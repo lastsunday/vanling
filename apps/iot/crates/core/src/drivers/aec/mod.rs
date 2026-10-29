@@ -1,19 +1,5 @@
-//! Linear acoustic echo cancellation — whether the speaker's own output can be
-//! taken back out of the microphone.
-//!
-//! The board has the reference for free: `audio_out` writes every sample it
-//! sends to the codec, so the playback about to become echo is already a sample
-//! the firmware holds. That makes the reference exact rather than a third
-//! microphone watching the speaker.
-//!
-//! **Linear only.** [`Canceller`] subtracts a *linear* estimate of the echo: one
-//! filter adapted online, modelling the acoustic path from the reference to the
-//! microphone. Not the other half — a class-D amplifier driving near clipping
-//! distorts, and no filter can predict a distortion. Suppressing what survives is
-//! what WebRTC puts behind `aec_process` and Espressif exposes as
-//! `aec_nlp_process`, so an ERLE measured here is the number *before* that.
-//!
-//! All fixed point, like the rest of the capture path.
+//! Linear acoustic echo cancellation — whether the speaker's own output can be taken back
+//! out of the microphone.
 
 mod delay;
 mod gate;
@@ -62,14 +48,7 @@ impl<const L: usize> Canceller<L> {
         }
     }
 
-    /// Folds one pair in. `reference` is the sample going to the speaker; `mic`
-    /// is what the microphone heard. The enhancement is not in the return value
-    /// because it is a running figure over far-end single talk — read it from
-    /// [`Canceller::erle_decibels`] once a window has gone by, not per sample.
-    ///
-    /// The delay estimate is applied the moment there is one, and not before:
-    /// sliding the window on a guess would throw away taps the filter has not
-    /// yet earned.
+    /// Folds one pair in.
     pub fn process(&mut self, mic: i16, reference: i16) -> Cancelled {
         if let Some(delay) = self.delay.update(mic, reference) {
             self.filter.set_delay(delay);
@@ -80,52 +59,38 @@ impl<const L: usize> Canceller<L> {
         cancelled
     }
 
-    /// The enhancement so far, in decibels. Meaningful only over far-end single
-    /// talk — see [`ErleMeter`].
+    /// The enhancement so far, in decibels.
     pub fn erle_decibels(&self) -> i32 {
         self.erle.decibels()
     }
 
-    /// Whether adaptation is currently stopped, which a caller might want to
-    /// know before reading a number that is not moving.
+    /// Whether adaptation is currently stopped, which a caller might want to know before
+    /// reading a number that is not moving.
     pub const fn adapting(&self) -> bool {
         !self.gate.frozen()
     }
 
-    /// The correlation peak behind the reported delay, in thousandths, whether
-    /// or not it passed the gate.
-    ///
-    /// Reported beside the delay because the delay alone cannot be trusted: a
-    /// search that found nothing and one that peaked at the window's edge both
-    /// leave a plausible number behind.
+    /// The correlation peak behind the reported delay, in thousandths, whether or not it
+    /// passed the gate.
     pub const fn delay_peak(&self) -> i64 {
         self.delay.peak()
     }
 
-    /// Where the strongest match sits over the whole history, and how strong it
-    /// is — the search's answer when its own range came back with nothing.
-    ///
-    /// Reported beside [`Self::delay_peak`] because the two failures they
-    /// describe look identical from outside: a room with no echo path, and a
-    /// path that starts further back than [`MAX_DELAY`] can reach. Only this one
-    /// tells them apart.
+    /// Where the strongest match sits over the whole history, and how strong it is — the
+    /// search's answer when its own range came back with nothing.
     pub fn scan_wide(&mut self) -> (usize, i64) {
         self.delay.scan_wide(delay::HISTORY - delay::WINDOW)
     }
 
-    /// The share of this room's echo path a filter of `taps` cannot reach, in
-    /// hundredths — the tap budget's input. See
-    /// [`DelayEstimator::unreachable_by`].
-    ///
-    /// Needs a [`Self::scan_wide`] first: the path's shape is what it is read
-    /// from, and only the wide scan measures it.
+    /// The share of this room's echo path a filter of `taps` cannot reach, in hundredths —
+    /// the tap budget's input.
     pub fn unreachable_by(&self, taps: usize) -> i32 {
         self.delay.unreachable_by(taps)
     }
 
-    /// The delay the filter's window is sitting at, or `None` before one has been
-    /// measured — a caller has to tell a gap in the measurement from a delay of
-    /// zero, because the second is a real answer and the first is not.
+    /// The delay the filter's window is sitting at, or `None` before one has been measured
+    /// — a caller has to tell a gap in the measurement from a delay of zero, because the
+    /// second is a real answer and the first is not.
     pub const fn delay(&self) -> Option<usize> {
         if self.delay.settled() {
             Some(self.filter.delay())
@@ -134,8 +99,8 @@ impl<const L: usize> Canceller<L> {
         }
     }
 
-    /// The loudest coefficient, as a magnitude and which tap it sits on — what a
-    /// converged filter says the echo path runs through.
+    /// The loudest coefficient, as a magnitude and which tap it sits on — what a converged
+    /// filter says the echo path runs through.
     pub fn loudest_tap(&self) -> (usize, i32) {
         self.filter.loudest_tap()
     }
@@ -163,9 +128,6 @@ pub const fn state_bytes<const L: usize>() -> usize {
     size_of::<Canceller<L>>()
 }
 
-/// The budget the delay estimator's two history buffers were sized against. The
-/// canceller does not fit in a kilobyte and never claimed to; what it claimed was
-/// wrong, so the bound below is the number that is actually true of the whole.
 const _: () = assert!(state_bytes::<MAX_TAPS>() <= 4096, "4 KB was budgeted");
 
 #[cfg(test)]
@@ -174,10 +136,6 @@ mod tests {
     use super::*;
     use core::mem::size_of;
 
-    /// The size a board would budget from, against the two structures that
-    /// dominate it. A reported figure smaller than these could not be holding
-    /// them — which is exactly how the previous estimate of this passed a
-    /// "under a kilobyte" assertion while omitting 2 KB of history.
     #[test]
     fn the_reported_size_covers_the_whole_canceller_not_just_the_filter() {
         let whole = state_bytes::<MAX_TAPS>();
@@ -190,7 +148,6 @@ mod tests {
         assert_eq!(whole, size_of::<Canceller<MAX_TAPS>>());
     }
 
-    /// A room with a near-end talker who is not part of the echo.
     fn room(played: &[i16], delay: usize, near_end_from: usize, near_amplitude: i32) -> Vec<i16> {
         let spoken = reference(
             played.len(),
@@ -248,9 +205,6 @@ mod tests {
 
     #[test]
     fn a_talker_over_the_speaker_does_not_get_learned_as_echo() {
-        // The barge-in case, and the reason the gate rate exists: with the
-        // near-end present the error is speech, and a filter still adapting at
-        // full speed would model the speech as a room.
         let played = reference(48_000, 9_000, 0x3333_4444);
         let mic = room(&played, 7, 12_000, 6_000);
         let mut canceller = Canceller::<32>::new();
@@ -258,10 +212,6 @@ mod tests {
             canceller.process(m, r);
         }
         let (tap, peak) = canceller.loudest_tap();
-        // Tap *zero*, not seven: the delay finder found the 7-sample bulk delay
-        // and slid the window onto it, so the filter's job is now the path from
-        // there onward. That is the whole point of paying for the estimator —
-        // the echo's own delay stops costing taps.
         assert_eq!(tap, 0, "the window has been slid onto the echo path");
         assert!(
             peak < (1 << 30),

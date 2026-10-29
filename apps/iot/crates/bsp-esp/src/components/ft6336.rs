@@ -6,46 +6,26 @@ use iot_core::drivers::input::{
 pub const FT6336_I2C_ADDR: u8 = 0x38;
 
 /// The frame this digitizer reports in on the 2.0" module it is fitted to.
-///
-/// The module is an ST7789 addressed as 320x240 landscape (`MV` + `MX`, see
-/// `st7789::MADCTL_LANDSCAPE`), while the FT6336 reports the panel controller's own 240x320
-/// portrait window: the raw short axis is the framebuffer's vertical and runs the other way, the
-/// raw long axis is the framebuffer's horizontal. The mirror is named after the swap because
-/// [`TouchMap::map`] swaps first — a map written in the panel's own terms would call this
-/// `mirror_x`.
-///
-/// Not [`TouchMap::IDENTITY`], and not by taste: the module vendor's touch configuration for this
-/// panel is `x_max = 240`, `y_max = 320`, `swap_xy` + `mirror_x`, which composes to exactly this
-/// mapping. `@/records/iot/input.md`.
 pub const LANDSCAPE_MAP: TouchMap = TouchMap {
     swap_xy: true,
     mirror_x: false,
     mirror_y: true,
 };
 
-/// Raw `GESTURE_ID` register of the FT5x06 family, read verbatim for the
-/// overlay so the chip's built-in slide engine and the software classifier stay
-/// comparable. Never used for classification. The reported codes are `0x10` up /
-/// `0x14` left / `0x18` down / `0x1C` right [据称] — the register only carries the
-/// code, the tests pin that it passes through unmodified and never check the
-/// directions themselves.
+// Raw `GESTURE_ID` register of the FT5x06 family, read verbatim for the
+// overlay so the chip's built-in slide engine and the software classifier stay
+// comparable. Never used for classification. The reported codes are `0x10` up /
+// `0x14` left / `0x18` down / `0x1C` right [据称] — the register only carries the
+// code, the tests pin that it passes through unmodified and never check the
+// directions themselves.
 const REG_GESTURE_ID: u8 = 0x01;
 const REG_TD_STATUS: u8 = 0x02;
-/// First point's `XH` register; each point occupies six contiguous bytes
-/// (`XH XL YH YL` + weight + misc).
 const POINTS_BASE_REG: u8 = 0x03;
 const POINT_BYTES: usize = 6;
-/// The FT6336 reports at most two self-capacitance contacts.
 const FT6336_MAX_POINTS: usize = 2;
-/// Touch-decision threshold (FT5x06 family system register), one step below
-/// the default so a marginal press latches. The diagnostics verify it by
-/// behaviour, not a read-back: dropped presses must shrink while the anomaly
-/// row stays zero.
 const REG_THGROUP: u8 = 0x80;
 const TOUCH_THRESHOLD: u8 = 0x14;
 
-/// FocalTech factory defaults for the slide/zoom trigger distances, restored
-/// over the persisted 0xFF.
 const GESTURE_DISTANCE_FACTORY_LR: u8 = 0x19;
 const GESTURE_DISTANCE_FACTORY_UD: u8 = 0x19;
 const GESTURE_DISTANCE_FACTORY_ZOOM: u8 = 0x32;
@@ -53,25 +33,15 @@ const GESTURE_DISTANCE_FACTORY_ZOOM: u8 = 0x32;
 const REG_DISTANCE_LEFT_RIGHT: u8 = 0x94;
 const REG_DISTANCE_UP_DOWN: u8 = 0x95;
 const REG_DISTANCE_ZOOM: u8 = 0x96;
-/// `CTRL` mode register: `0` keeps Active, `1` lapses to Monitor.
 const REG_CTRL_MODE: u8 = 0x86;
 const CTRL_KEEP_ACTIVE: u8 = 0x00;
-/// Gesture/scan mode: `0` polls (continuous data refresh), `1` triggers
-/// (republishes on detection change only).
 const REG_G_MODE: u8 = 0xA4;
 const G_MODE_POLLING: u8 = 0x00;
 
-/// One decoded sample: normalized active contacts, valid count, raw count.
 type TouchSample = ([(u16, u16); FT6336_MAX_POINTS], usize, u8);
 
-/// FT6336 (FT5x06 family) capacitive touch controller, polled over a
-/// board-provided I2C device on the shared bus. One failed read is tolerated
-/// (log once per run, pulse `Ghost` on its rising edge, skip the sample) so a
-/// wedged bus can neither stall the input pipeline nor hide from the
-/// on-panel diagnostic. Every poll pulses [`InputEvent::ChipGesture`] when the
-/// controller's `GESTURE_ID` changes.
-///
-/// [`Ghost`]: iot_core::drivers::input::GestureEvent::Ghost
+/// FT6336 (FT5x06 family) capacitive touch controller, polled over a board-provided I2C
+/// device on the shared bus.
 pub struct Ft6336<D: I2c> {
     i2c: D,
     addr: u8,
@@ -79,7 +49,6 @@ pub struct Ft6336<D: I2c> {
     width: u16,
     height: u16,
     continuity: TouchContinuity,
-    /// Deduplicates the failure log and tally pulse across a contiguous run.
     error_logged: bool,
     sensitivity_applied: bool,
     mode_config_applied: bool,
@@ -102,9 +71,6 @@ impl<D: I2c> Ft6336<D> {
         }
     }
 
-    /// Applies the touch threshold once at boot, tolerating a silent panel
-    /// (log once, keep polling). Whether the write took is judged by behavior
-    /// (fewer dropped presses, zero anomaly row), not a read-back.
     fn apply_sensitivity(&mut self) {
         if self
             .i2c
@@ -115,8 +81,6 @@ impl<D: I2c> Ft6336<D> {
         }
     }
 
-    /// Restores the factory trigger distances over whichever the FT6336U
-    /// persisted, keeps `CTRL` in Active and locks `G_MODE` to polling.
     fn apply_mode_config(&mut self) {
         for (reg, wanted) in [
             (REG_DISTANCE_LEFT_RIGHT, GESTURE_DISTANCE_FACTORY_LR),
@@ -143,8 +107,6 @@ impl<D: I2c> Ft6336<D> {
         }
     }
 
-    /// Reads the raw `GESTURE_ID` register; `None` on any I2C hiccup (the touch
-    /// sample's own error path already reports a wedged bus).
     fn read_gesture_id(&mut self) -> Option<u8> {
         let mut reg = [0u8; 1];
         self.i2c
@@ -200,9 +162,6 @@ where
             self.mode_config_applied = true;
             self.apply_mode_config();
         }
-        // A changed GESTURE_ID is a diagnostic pulse: it wins this poll's slot
-        // and the touch sample rides on the next one, so the register
-        // transition is never masked by a same-poll contact.
         if let Some(id) = self.read_gesture_id()
             && id != self.gesture_id
         {
@@ -251,14 +210,9 @@ mod tests {
     use super::*;
     use crate::components::mock_i2c::MockI2c;
 
-    /// The panel: 320x240, the shape the module is addressed in.
     const PANEL: (u16, u16) = (320, 240);
-    /// Registers as far as the mode configuration writes, which is what this bus has to hold.
     const REGISTERS: usize = 0xA5;
 
-    /// A digitizer reporting one contact at wherever it would report a finger shown at
-    /// `framebuffer` — [`LANDSCAPE_MAP`] read backwards, written out rather than called, so that a
-    /// map that changed fails the assertion below instead of moving with it.
     fn touching(framebuffer: (u16, u16)) -> Ft6336<MockI2c<REGISTERS>> {
         let (raw_x, raw_y) = (PANEL.1 - 1 - framebuffer.1, framebuffer.0);
         let i2c = MockI2c::new(|registers| {
@@ -273,8 +227,6 @@ mod tests {
 
     #[test]
     fn a_finger_lands_where_the_panel_shows_it() {
-        // The middle of a key of the Network page's keyboard, which is the space `key_at`
-        // hit-tests: a driver that reports anything else types something else.
         let mut touch = touching((96, 133));
         let (points, len, _) = touch.read_sample().expect("a readable sample");
         assert_eq!((points[0], len), ((96, 133), 1));
@@ -282,9 +234,6 @@ mod tests {
 
     #[test]
     fn the_panels_own_frame_is_transposed_and_mirrored() {
-        // All four corners: the whole error this map exists to prevent is an axis pair swapped or
-        // mirrored without looking wrong in any one reading, and a transposition is invisible
-        // along the middle of either axis.
         for (raw, framebuffer) in [
             ((0, 0), (0, 239)),
             ((239, 0), (0, 0)),

@@ -1,13 +1,4 @@
 //! The portable page surface: a [`Canvas`] plus the snapshot the current page draws from.
-//!
-//! The snapshot is borrowed, never copied: `Diagnostics` embeds the audio envelope, and a
-//! by-value copy is a kilobyte and a half of a main stack this path already runs close to. The
-//! ground is the fill the board last painted the panel with, which is what a page's own paper is
-//! made from.
-//!
-//! Every page here is immediate-mode ink: `render` clears nothing and keeps no widget tree, so
-//! what is on the panel is exactly what the last call drew. The board owns the frame buffer,
-//! the DMA chain and the page choice; it hands those in and ships the bytes back out.
 
 use core::ops::{Deref, DerefMut};
 
@@ -23,14 +14,13 @@ use crate::layout::{FPS_Y, PANEL_RIGHT};
 use crate::pages::draw::{brightness_of, format_u16, mode_word};
 use crate::text::{format_pair, format_u32, frame_fingerprint, write_ratio};
 
-/// The camera's readings at the instant its page is stamped. The frame itself is the canvas;
-/// these are the facts about it that are not pixels.
+/// The camera's readings at the instant its page is stamped.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CameraReadout {
     pub counters: CameraCounters,
     pub geometry: Option<WindowGeometry>,
-    /// The page has just been entered and no frame has arrived yet, so the numbers would all read
-    /// zero and `NOBUS` would claim there is no sensor. Says it is starting instead.
+    /// The page has just been entered and no frame has arrived yet, so the numbers would
+    /// all read zero and `NOBUS` would claim there is no sensor.
     pub starting: bool,
 }
 
@@ -51,8 +41,6 @@ pub struct Surface<'a> {
     fps: u8,
     debug: bool,
     pub(crate) spl_offset_db: i16,
-    /// The platform's own stack probe, run where a page's working set is deepest. Host tests
-    /// have none; the board hands in the one that reads its linker symbols.
     stack_probe: Option<fn()>,
 }
 
@@ -106,8 +94,7 @@ impl<'a> Surface<'a> {
         }
     }
 
-    /// The camera's own frame, after the sensor has filled it. Kept separate from [`Self::render`]
-    /// because the frame arrives on the camera's clock rather than the page's.
+    /// The camera's own frame, after the sensor has filled it.
     pub fn stamp_camera(&mut self, readout: CameraReadout) {
         let fingerprint = (!readout.starting).then(|| frame_fingerprint(self.canvas.frame()));
 
@@ -136,9 +123,6 @@ impl<'a> Surface<'a> {
             );
         }
 
-        // Frames, and the re-arms that cost: on a single-buffer ring every whole frame costs one
-        // rebuild, so the two counters move together and a gap between them is what a stall looks
-        // like.
         let frames = &mut [0u8; 12];
         let frames = format_u32(readout.counters.frames, frames);
         self.stamp_text(b"FRM", block_x(Block::Second), overlay_row_top(0));
@@ -147,21 +131,11 @@ impl<'a> Surface<'a> {
         let restarts = format_u32(readout.counters.restarts, restarts);
         self.stamp_text(b"RM", block_x(Block::Second), overlay_row_top(1));
         self.stamp_text(restarts, block_value_x(Block::Second), overlay_row_top(1));
-        // The light's own row, because the Camera page does not draw the fill that row would
-        // otherwise sit on — the state still moved, so the readout should still say where it is.
-        // Three glyphs, like every other label: the reading column sits a block label slot from
-        // the block's left edge, and a four-glyph label fills that slot exactly, leaving the value
-        // butted against it. The value is the mode word either way, so the label says as much as
-        // it needs to and no more.
         let live = self.diagnostics.lights[0];
         let mode = mode_word(live.mode);
         self.stamp_text(b"MOD", block_x(Block::Second), overlay_row_top(2));
         self.stamp_text(mode, block_value_x(Block::Second), overlay_row_top(2));
 
-        // A fold over the frame's own bytes, over a prime stride so the walk lands on a spread of
-        // rows rather than tracking one. Sparse on purpose: this runs on every painted frame.
-        // Folded before any glyph goes down, so the number describes the sensor's picture and not
-        // the readout sitting on it — otherwise the readout itself moves it every repaint.
         if let Some(fingerprint) = fingerprint {
             let sampled = &mut [0u8; 12];
             let sampled = format_u32(fingerprint, sampled);

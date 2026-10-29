@@ -14,21 +14,21 @@ pub mod lckfb_szpi_esp32s3;
 #[cfg(feature = "lckfb-szpi-esp32s3")]
 pub use lckfb_szpi_esp32s3::{Board, PullButton, Screen, SharedI2cDevice, Startup};
 
-/// Board-agnostic real components: chip drivers parameterized over the bus /
-/// pin instances handed in by the board wiring.
+/// Board-agnostic real components: chip drivers parameterized over the bus / pin instances
+/// handed in by the board wiring.
 pub mod components;
 
 pub mod hardware;
 
-/// Abstract components assembled from real ones. Gated on whichever is present
-/// rather than on one of them: each virtual component carries its own gate
-/// below, so a board wiring only the speaker still gets its transport and a
-/// board wiring only the microphone still gets its own.
-///
-/// Every virtual component's own feature has to appear here. A component left
-/// out compiles under every board that happens to enable a sibling and under
-/// none of its own, so `check-features` — which builds each feature alone —
-/// silently never builds it.
+// Abstract components assembled from real ones. Gated on whichever is present
+// rather than on one of them: each virtual component carries its own gate
+// below, so a board wiring only the speaker still gets its transport and a
+// board wiring only the microphone still gets its own.
+//
+// Every virtual component's own feature has to appear here. A component left
+// out compiles under every board that happens to enable a sibling and under
+// none of its own, so `check-features` — which builds each feature alone —
+// silently never builds it.
 #[cfg(any(
     feature = "screen",
     feature = "audio",
@@ -37,6 +37,5 @@ pub mod hardware;
 ))]
 pub mod virtual_components;
 
-/// The panel's stack probe, shared by every paint path that can reach deep enough to matter.
 #[cfg(feature = "screen")]
 pub(crate) mod stack;

@@ -25,9 +25,9 @@ const _: () = assert!(
 
 const _: () = assert!(DECIMATION >= 2, "a decimator that drops nothing is not one");
 
-/// Keeps one frame in every [`DECIMATION`], counting down rather than taking a
-/// remainder: a remainder on a running counter is a divide per frame, and this
-/// runs once per frame for as long as the capture has.
+/// Keeps one frame in every [`DECIMATION`], counting down rather than taking a remainder: a
+/// remainder on a running counter is a divide per frame, and this runs once per frame for
+/// as long as the capture has.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decimator {
     phase: u8,
@@ -40,10 +40,7 @@ impl Decimator {
         Self::with_phase(0)
     }
 
-    /// Keeps every frame whose number is congruent to `phase`. Two decimators
-    /// only keep the same frame of each group when their phases agree, which is
-    /// what pairs a microphone frame with the reference for that frame rather
-    /// than for its neighbour.
+    /// Keeps every frame whose number is congruent to `phase`.
     pub const fn with_phase(phase: u8) -> Self {
         let phase = phase % DECIMATION as u8;
         Self {
@@ -52,19 +49,14 @@ impl Decimator {
         }
     }
 
-    /// Which frame of each group is kept, as the number of frames already
-    /// consumed at which the first one falls.
+    /// Which frame of each group is kept, as the number of frames already consumed at which
+    /// the first one falls.
     pub const fn phase(&self) -> u8 {
         self.phase
     }
 
-    /// Folds one frame in and hands back the sample to keep, or `None` for a
-    /// frame this one drops.
-    ///
-    /// `countdown` counts the frames left before the next kept one, so zero
-    /// means this frame is it, and reloading it with `DECIMATION - 1` rather
-    /// than `DECIMATION` is what makes the gap come out at [`DECIMATION`]
-    /// instead of one more than it.
+    /// Folds one frame in and hands back the sample to keep, or `None` for a frame this one
+    /// drops.
     pub fn push(&mut self, sample: i16) -> Option<i16> {
         if self.countdown == 0 {
             self.countdown = DECIMATION - 1;
@@ -75,8 +67,8 @@ impl Decimator {
         }
     }
 
-    /// How many of the next `count` frames this decimator keeps, which is the
-    /// length a caller has to have ready before it starts folding.
+    /// How many of the next `count` frames this decimator keeps, which is the length a
+    /// caller has to have ready before it starts folding.
     pub const fn kept_in(&self, count: usize) -> usize {
         let group = DECIMATION as usize;
         if count <= self.countdown as usize {
@@ -97,8 +89,6 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    /// The frames a decimator keeps out of `0..count`, read back through the
-    /// one API a caller has.
     fn kept(phase: u8, count: usize) -> Vec<usize> {
         let mut decimator = Decimator::with_phase(phase);
         (0..count)
@@ -108,7 +98,6 @@ mod tests {
 
     #[test]
     fn three_frames_come_out_of_every_four_eighteen() {
-        // The whole reason this exists, spelled as the rates it reconciles.
         assert_eq!(DECIMATION, 3);
         assert_eq!(SAMPLE_RATE_HZ, 48_000);
         assert_eq!(CANCELLER_HZ, 16_000);
@@ -129,10 +118,6 @@ mod tests {
 
     #[test]
     fn two_phases_that_agree_keep_the_same_frame_of_each_group() {
-        // What pairing a microphone against a reference asks for: frame 300 is
-        // kept by phase 0 and by phase 0 again, and by neither of the others, so
-        // a phase chosen for the reference's numbering has to match the
-        // microphone's or the pair straddles the group boundary.
         let same = kept(0, 300);
         for phase in 1..DECIMATION as u8 {
             let other = kept(phase, 300);
@@ -166,9 +151,6 @@ mod tests {
 
     #[test]
     fn the_count_a_caller_prepares_for_is_the_count_it_gets() {
-        // A caller sizes its reference buffer from this and then indexes it by
-        // what `push` kept, so an off-by-one here is an out-of-bounds read on
-        // hardware and a wrong index in a test.
         for phase in 0..DECIMATION as u8 {
             for count in 0..40usize {
                 let decimator = Decimator::with_phase(phase);
@@ -193,8 +175,6 @@ mod tests {
         let mut walker = Decimator::new();
         for frame in 0..total {
             let remaining = total - frame;
-            // What folding the next `remaining` frames would actually keep, from
-            // the state the caller is in right now.
             let mut probe = walker.clone();
             let actually = (0..remaining).filter(|_| probe.push(0).is_some()).count();
             assert_eq!(

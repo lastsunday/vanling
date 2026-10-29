@@ -1,16 +1,5 @@
-//! Playback: the sounds a device can make, the sample sources behind them, and
-//! the surface a board hands the app to make them on.
-//!
-//! Everything here is arithmetic on a buffer, so it builds and is tested on the
-//! host — the peripheral that carries it away (a DMA ring) is the bsp crate's
-//! problem, not this one's.
-//!
-//! # Where the sounds come from
-//!
-//! Every sound in the catalogue is a **Standard MIDI File**, opened and edited
-//! by any DAW — a sound nobody can play, adjust or attribute is a sound nobody
-//! can replace. The synthesiser is unchanged in kind, so MIDI buys no timbre
-//! here. It buys provenance.
+//! Playback: the sounds a device can make, the sample sources behind them, and the surface
+//! a board hands the app to make them on.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -18,50 +7,23 @@ use alloc::vec::Vec;
 use crate::drivers::audio::{BYTES_PER_FRAME, SAMPLE_RATE_HZ};
 
 /// A sound in the catalogue, in the order a tap cycles them.
-///
-/// The tap-played sounds share **one timbre** and differ only in rhythm and
-/// pitch, which is the structure a family of earcons is meant to have. Giving
-/// each sound its own instrument would spend the family layer on a distinction
-/// nothing here needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Sound {
-    /// Two rising notes and a rest between them, over in a third of a second:
-    /// an answer to a tap, not a tune to sit through. A rising two-note figure
-    /// is the learned convention for "that worked".
     #[default]
     Tap,
-    /// One note — the shortest thing still heard as a discrete event, and the
-    /// convention for "something happened".
     Notice,
-    /// The same note three times. Repetition is what says *again*, which a
-    /// contour cannot because the contour is identical to a single note's.
     Warn,
-    /// Two falling notes: the only sound in the catalogue that falls.
     Error,
-    /// Two notes an octave apart, and the lowest pair in the catalogue: the
-    /// ascent without the turn. Placed low so it reads as its own figure rather
-    /// than as the tap pitched down.
     Rise,
-    /// A linear chirp, played by a bench measurement rather than offered to a
-    /// tap — so it is **not in [`Sound::ALL`]**, and the tap cycle never reaches
-    /// it.
-    ///
-    /// It is a member of the catalogue rather than a separate entry point
-    /// because a sound is what [`Speaker::play`](crate::drivers::playback::SpeakerOp)
-    /// takes, and a second way to name one would be a second thing that can be
-    /// started and forgotten.
     Sweep,
 }
 
 impl Sound {
-    /// The whole catalogue in cycle order, so a walker and a test cannot
-    /// disagree about what the tap after the last sound does.
+    /// The whole catalogue in cycle order, so a walker and a test cannot disagree about
+    /// what the tap after the last sound does.
     pub const ALL: [Self; 5] = [Self::Tap, Self::Notice, Self::Warn, Self::Error, Self::Rise];
 
-    /// The next sound in the catalogue, wrapping: what one tap on the Speaker
-    /// page plays. `const` because the page's state is a `const` too.
-    /// [`Self::Sweep`] is not in the cycle, so nothing walks to it and it answers
-    /// [`Self::Tap`].
+    /// The next sound in the catalogue, wrapping: what one tap on the Speaker page plays.
     pub const fn next(self) -> Self {
         match self {
             Self::Tap => Self::Notice,
@@ -75,22 +37,15 @@ impl Sound {
 }
 
 pub trait SampleSource: Send {
-    /// Fills `out` with frames and returns how many it wrote. Fewer than `out`
-    /// means the source ran out, which [`done`](Self::done) then reports.
     fn fill(&mut self, out: &mut [i16]) -> usize;
 
-    /// Whether there is nothing left to give.
     fn done(&self) -> bool;
 }
 
 /// Widens mono frames into the bytes the I2S DMA transmits: each frame is
-/// [`crate::drivers::audio::SLOTS_PER_FRAME`] slots wide and carries the same sample in every one,
-/// because a mono source into a two-slot frame has to look stereo to the codec
-/// or only half the frame would be ours. Returns the bytes written, so a driver
-/// can hand this straight to a ring's fill callback.
-///
-/// A buffer too short for a whole frame writes nothing rather than half a frame:
-/// a partial frame on the wire is a click.
+/// [`crate::drivers::audio::SLOTS_PER_FRAME`] slots wide and carries the same sample in
+/// every one, because a mono source into a two-slot frame has to look stereo to the codec
+/// or only half the frame would be ours.
 pub fn interleave_mono(frames: &[i16], out: &mut [u8]) -> usize {
     let mut written = 0;
     for (&frame, slots) in frames.iter().zip(out.as_chunks_mut::<BYTES_PER_FRAME>().0) {
@@ -102,11 +57,8 @@ pub fn interleave_mono(frames: &[i16], out: &mut [u8]) -> usize {
     written
 }
 
-/// One note as the synthesiser reads it: its frequency, how long it lasts, and
-/// the ramp each end gets. `hz == 0` is a rest, and a rest needs no ramp.
-///
-/// **Not a format anything is written in.** The catalogue is MIDI files, and
-/// [`from_midi`] is the only thing that builds one of these.
+/// One note as the synthesiser reads it: its frequency, how long it lasts, and the ramp
+/// each end gets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Note {
     pub hz: u16,
@@ -114,15 +66,11 @@ pub struct Note {
     pub ramp_ms: u16,
 }
 
-/// Longest ramp a note gets, however long it is: a note three seconds long
-/// ramped for a quarter of itself spends most of its length fading rather than
-/// sounding.
+/// Longest ramp a note gets, however long it is: a note three seconds long ramped for a
+/// quarter of itself spends most of its length fading rather than sounding.
 pub const RAMP_MAX_MS: u16 = 40;
 
 /// The ramp a parsed note gets at each end: a quarter of its length, capped.
-///
-/// Neither version of MIDI carries an envelope, so this is inferred rather than
-/// declared — and a note starting or ending on a step edge is a click.
 pub const fn ramp_of(ms: u16) -> u16 {
     let quarter = ms / 4;
     if quarter > RAMP_MAX_MS {
@@ -132,25 +80,16 @@ pub const fn ramp_of(ms: u16) -> u16 {
     }
 }
 
-/// Tempo assumed for a file that states none: 120 BPM, which is what the format
-/// specifies for a file that does not say.
 const DEFAULT_US_PER_QUARTER: u32 = 500_000;
 
-/// A4 as equal temperament states it, and the note it is stated for.
 const A4_HZ: f64 = 440.0;
 const A4_NOTE: i32 = 69;
 
-/// Hz for a MIDI note number, in equal temperament.
-///
-/// A float here and nowhere else on the path: parsing runs on the cooperative
-/// side, where the FPU is on. The synthesiser that walks the result cannot.
 fn hz_of(note: u8) -> u16 {
     let hz = A4_HZ * libm::pow(2.0, f64::from(i32::from(note) - A4_NOTE) / 12.0);
     (hz + 0.5).clamp(1.0, f64::from(u16::MAX)) as u16
 }
 
-/// A cursor over a byte slice that refuses to run off the end, so a malformed
-/// file ends the parse rather than reading whatever follows it.
 struct Reader<'a> {
     bytes: &'a [u8],
 }
@@ -186,9 +125,9 @@ impl<'a> Reader<'a> {
         if self.take(4)? == tag { Some(()) } else { None }
     }
 
-    /// A variable-length quantity: seven bits per byte, high bit meaning another
-    /// byte follows. Four bytes is what the format allows, which is 28 bits —
-    /// far past any duration an earcon can express.
+    // A variable-length quantity: seven bits per byte, high bit meaning another
+    // byte follows. Four bytes is what the format allows, which is 28 bits —
+    // far past any duration an earcon can express.
     fn vlq(&mut self) -> Option<u32> {
         let mut value = 0u32;
         for _ in 0..4 {
@@ -202,30 +141,23 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// A note that has started sounding and has not yet stopped.
 struct Sounding {
     start: u32,
     note: u8,
     length: u32,
 }
 
-/// A tempo in force from `tick` onwards.
 struct Tempo {
     tick: u32,
     us_per_quarter: u32,
 }
 
-/// The whole of a file, read.
 struct Score {
     notes: Vec<Sounding>,
     tempos: Vec<Tempo>,
 }
 
 impl Score {
-    /// Milliseconds of `ticks`, at the tempo in force when they began.
-    ///
-    /// Free-standing rather than a method so [`into_notes`](Self::into_notes)
-    /// can consume the notes it walks without borrowing itself to ask about them.
     fn ms_of(tempos: &[Tempo], tick: u32, ticks: u32, division: u32) -> u32 {
         let us_per_quarter = tempos
             .iter()
@@ -235,15 +167,6 @@ impl Score {
         ticks.saturating_mul(us_per_quarter) / division / 1_000
     }
 
-    /// Reads one track's events, appending what they say. `base` is where this
-    /// track's ticks begin in the file's whole timeline — tracks are
-    /// concatenated, so without it a tempo change in the second track lands on
-    /// top of the first track's ticks.
-    ///
-    /// Everything an earcon does not use is skipped rather than refused: a DAW
-    /// writes track names, program changes, controllers and sysex by default, so
-    /// rejecting a file for carrying them would make the one authoring tool in
-    /// use the one that does not work.
     fn read_track(&mut self, track: &mut Reader<'_>, base: u32) -> Option<u32> {
         let mut tick = 0u32;
         let mut running = 0u8;
@@ -252,9 +175,6 @@ impl Score {
             tick = tick.saturating_add(track.vlq()?);
             let mut status = track.take(1)?[0];
             if status < 0x80 {
-                // Running status: the event repeats the last channel status with
-                // no byte of its own. There has to be one, or this byte is not
-                // a status byte at all.
                 if running == 0 {
                     return None;
                 }
@@ -265,7 +185,6 @@ impl Score {
                     let note = track.take(1)?[0];
                     let velocity = track.take(1)?[0];
                     running = status;
-                    // A note on with no velocity is a note off.
                     if status & 0xf0 == 0x90 && velocity != 0 {
                         open.push((note, tick));
                     } else if let Some(index) = open.iter().position(|&(n, _)| n == note) {
@@ -302,23 +221,18 @@ impl Score {
                                 });
                             }
                         }
-                        // Sysex: a length and then bytes, with no running status
-                        // carried across it.
                         _ => {
                             let len = track.vlq()? as usize;
                             track.take(len)?;
                         }
                     }
                 }
-                // System-realtime bytes never reach a file's event stream.
                 _ => return None,
             }
         }
         Some(tick)
     }
 
-    /// The table the synthesiser walks: notes in the order they begin, with the
-    /// gaps between them carried as rests.
     fn into_notes(self, division: u32) -> Vec<Note> {
         let Self {
             notes: mut sounded,
@@ -340,11 +254,8 @@ impl Score {
     }
 }
 
-/// Meta-event kind carrying the tempo.
 const TEMPO_META: u8 = 0x51;
 
-/// A zero-length rest costs nothing and says nothing, so it is dropped: a
-/// sound whose first note starts late would otherwise open with a silent note.
 fn push_rest(notes: &mut Vec<Note>, ms: u32) {
     if ms != 0 {
         notes.push(Note {
@@ -366,8 +277,6 @@ fn push_note(notes: &mut Vec<Note>, hz: u16, ms: u32) {
     }
 }
 
-/// Saturates rather than wrapping: a file claiming a note longer than the
-/// field could hold would otherwise come out as a click.
 fn to_ms(ms: u32) -> u16 {
     u16::try_from(ms).unwrap_or(u16::MAX)
 }
@@ -403,7 +312,6 @@ pub fn from_midi(bytes: &[u8]) -> Option<Vec<Note>> {
         let len = reader.u32()? as usize;
         let body = reader.take(len)?;
         if tag != *b"MTrk" {
-            // Any other chunk is skipped whole rather than parsed.
             continue;
         }
         let mut track = Reader::new(body);
@@ -413,111 +321,66 @@ pub fn from_midi(bytes: &[u8]) -> Option<Vec<Note>> {
     Some(score.into_notes(division))
 }
 
-/// The loudest sample a note is generated at, in the 16-bit wire's own LSB.
-///
-/// Below the rail on purpose: the DAC volume register is the level control and
-/// this is only the headroom left to it, so a synthesis artefact or a loud asset
-/// arriving later has somewhere to go before it turns into clipping on the
-/// speaker rather than in the samples.
 const TONE_PEAK_LSB: f32 = 23_000.0;
 
-/// Samples one millisecond spans, so a score can be written in the time a person
-/// would say it out in.
 const fn samples_of_ms(ms: u16) -> u32 {
     ms as u32 * SAMPLE_RATE_HZ / 1_000
 }
 
-/// Entries in the sine table, a power of two so the phase can be masked rather
-/// than divided. More entries than the score's highest note can cycle through
-/// between samples: at 1,320 Hz a 48 kHz sample lands 0.0275 turns apart, so
-/// [`WAVE_ENTRIES`] entries give a coarse spacing of 0.0039 turns and the
-/// largest possible step skips about seven of them.
+// Entries in the sine table, a power of two so the phase can be masked rather
+// than divided. More entries than the score's highest note can cycle through
+// between samples: at 1,320 Hz a 48 kHz sample lands 0.0275 turns apart, so
+// [`WAVE_ENTRIES`] entries give a coarse spacing of 0.0039 turns and the
+// largest possible step skips about seven of them.
 const WAVE_ENTRIES: usize = 1024;
 
-/// The last table entry, which repeats the first, so the interpolator can read
-/// one entry past any index it lands on without wrapping.
 const WAVE_END: usize = WAVE_ENTRIES + 1;
 
-/// Fractional bits a phase carries, so a step can land between two table entries
-/// and be interpolated rather than rounded to the nearest and heard as a
-/// staircase.
 const PHASE_BITS: u32 = 8;
 
 const PHASE_MASK: u32 = (1 << PHASE_BITS) - 1;
 
-/// A whole turn of the table, in phase units: what the oscillator wraps at.
 const WAVE_TURN: u32 = (WAVE_ENTRIES as u32) << PHASE_BITS;
 
 const Q16_BITS: u32 = 16;
 const Q16_ONE: i32 = 1 << Q16_BITS;
 
-/// Fractional bits a partial's gain carries, so gains are integers that
-/// accumulate exactly and a lone partial at full gain reproduces the
-/// unweighted oscillator bit for bit.
 const GAIN_BITS: u32 = 8;
 
-/// Full-scale gain: one, in [`GAIN_BITS`] fractional bits.
 const GAIN_ONE: u16 = 1 << GAIN_BITS;
 
-/// Partials a voice can sound at once.
-///
-/// An array rather than a `Vec` because the feed allocates nothing, so this is
-/// the voice's state. Two is what the family timbre uses; four leaves room
-/// without costing anything a partial does not already cost.
 const MAX_PARTIALS: usize = 4;
 
-/// The family timbre every generated sound shares: a fundamental and one
-/// inharmonic partial 2.76x above it, the ratio a struck bell's second partial
-/// sits at.
-///
-/// **Inharmonic on purpose.** A bell's partials are not integer multiples of its
-/// fundamental, and integer multiples are what makes a synthesised tone a
-/// buzzer — which is why the sound this replaced had to be stored as samples
-/// rather than generated at all.
-///
-/// Gains are [`GAIN_ONE`] across the pair, so the partials together reach no
-/// further than one alone would. That cap is what stops a note whose partials
-/// happen to line up from clipping into the click the ramps exist to prevent.
 const TIMBRE: [(u16, u16); 2] = [(100, 180), (276, 76)];
 
-/// The single-partial timbre the synthesiser started as, kept so the additive
-/// path can be held to producing exactly what it replaced — see
-/// `a_lone_partial_is_the_oscillator_it_replaced`.
+/// The single-partial timbre, kept so the additive path can be held to the oscillator it
+/// matches — see `a_lone_partial_is_the_oscillator_it_replaced`.
 pub const PLAIN: [(u16, u16); 1] = [(100, GAIN_ONE)];
 
-/// One turn of a sine, sampled at [`WAVE_ENTRIES`] even points and scaled to the
-/// rail.
-///
-/// Built at compile time: `libm::sinf` is not a `const fn`, so the entries come
-/// from the polynomial in [`sine`], which its test holds to within one LSB of
-/// the `sinf` this replaced.
-///
-/// `i16` rather than `f32` because the read side is what runs in an interrupt,
-/// where an FPU instruction is not slow but fatal: see [`Tone::next_sample`].
-/// Keeping the interpolation in the integer domain leaves the per-sample path
-/// with nothing but integer arithmetic.
+// One turn of a sine, sampled at [`WAVE_ENTRIES`] even points and scaled to the
+// rail.
+//
+// Built at compile time: `libm::sinf` is not a `const fn`, so the entries come
+// from the polynomial in [`sine`], which its test holds to within one LSB of
+// the `sinf` this replaced.
+//
+// `i16` rather than `f32` because the read side is what runs in an interrupt,
+// where an FPU instruction is not slow but fatal: see [`Tone::next_sample`].
+// Keeping the interpolation in the integer domain leaves the per-sample path
+// with nothing but integer arithmetic.
 static WAVE: [i16; WAVE_END] = {
     let mut wave = [0_i16; WAVE_END];
     let mut i = 0;
     while i < WAVE_END {
         let turns = i as f32 / WAVE_ENTRIES as f32;
         let phase = core::f32::consts::TAU * turns;
-        // Scaling by the rail here means `WAVE[i]` already carries the intended
-        // level and the envelope is the only thing left to scale it by.
         wave[i] = rounded(sine(phase) * TONE_PEAK_LSB);
         i += 1;
     }
-    // The first entry's interpolation partner, so the last segment of a turn
-    // lands back on the value the turn started from.
     wave[WAVE_ENTRIES] = wave[0];
     wave
 };
 
-/// A sample at the rail, rounded rather than truncated.
-///
-/// `as i16` truncates, and a table built that way is a full LSB low everywhere
-/// before interpolation even starts — which is most of the error the table's
-/// accuracy claim has to leave room for.
 const fn rounded(scaled: f32) -> i16 {
     let biased = if scaled >= 0.0 {
         scaled + 0.5
@@ -527,13 +390,6 @@ const fn rounded(scaled: f32) -> i16 {
     biased as i16
 }
 
-/// `sinf` for a compile-time table: a whole turn folded into a quarter of one,
-/// then Taylor over that.
-///
-/// Folding first is what keeps the series short — Taylor diverges towards `2π`,
-/// and over the quarter turn the truncation is around 4e-8 relative, a small
-/// fraction of the one LSB [`WAVE`] is held to. Compile time only: [`WAVE`] is
-/// its only caller.
 const fn sine(x: f32) -> f32 {
     let pi = core::f32::consts::PI;
     let (half, negative) = if x > pi { (x - pi, true) } else { (x, false) };
@@ -554,29 +410,14 @@ const fn sine(x: f32) -> f32 {
 /// A generated sound: one oscillator per partial walking a note table.
 #[derive(Debug, Clone)]
 pub struct Tone {
-    /// The notes to walk, parsed from the sound's MIDI file.
-    ///
-    /// Owned rather than borrowed because the driver holds the note table it
-    /// parsed and the voice that walks it in one struct — a borrowed table would
-    /// be a field pointing into another field of the same value.
     score: Vec<Note>,
-    /// The partials this voice sounds: a frequency ratio in hundredths and a
-    /// [`GAIN_ONE`]-scale gain.
     timbre: &'static [(u16, u16)],
     note: usize,
-    /// Oscillator position per partial, in [`PHASE_BITS`]-fractional units of a
-    /// table entry.
     phase: [u32; MAX_PARTIALS],
-    /// Phase units one sample advances per partial — the note's frequency times
-    /// its ratio, and zero for a rest.
     phase_step: [u32; MAX_PARTIALS],
     samples: u32,
-    /// Ramp length in samples; zero means the note is played flat out.
     ramp: u32,
     into_note: u32,
-    /// The ramp as a Q16 multiplier per sample, divided out once per note rather
-    /// than per sample. Recomputed on every note would cost a 64-bit divide in
-    /// the interrupt, which is the same cost this type exists to avoid.
     inv_ramp: u32,
 }
 
@@ -615,16 +456,11 @@ impl Tone {
         tone
     }
 
-    /// Moves to note `index`, zeroing the phases so every note starts at the same
-    /// point of its cycles — a note that began mid-cycle would open on whatever
-    /// the last one happened to leave in the oscillators.
     fn enter(&mut self, index: usize) {
         self.note = index;
         self.into_note = 0;
         self.phase = [0; MAX_PARTIALS];
         let Some(note) = self.score.get(index) else {
-            // Past the last note: a zero-length one, so the fill loop stops on
-            // `done` rather than spinning on a score that ran out.
             self.samples = 0;
             self.ramp = 0;
             self.phase_step = [0; MAX_PARTIALS];
@@ -641,10 +477,6 @@ impl Tone {
             self.phase_step[partial] =
                 (u64::from(WAVE_TURN) * u64::from(note.hz) * u64::from(ratio)
                     / (100 * u64::from(SAMPLE_RATE_HZ))) as u32;
-            // A single subtract on wrap is only enough while a step stays inside
-            // a turn; a note at or above the sample rate times its ratio would
-            // wrap more than once, and is a score that cannot be played rather
-            // than one this has to survive.
             debug_assert!(
                 self.phase_step[partial] < WAVE_TURN,
                 "a note cannot turn a sample"
@@ -657,15 +489,10 @@ impl Tone {
         };
     }
 
-    /// The note's amplitude right now, as a Q16 multiplier: a ramp in over the
-    /// first `ramp_ms` and out over the last.
     fn envelope(&self) -> i32 {
         if self.ramp == 0 {
             return Q16_ONE;
         }
-        // The nearer of the two edges is what the note is under, and the ramp is
-        // the ceiling on both — which bounds this at `Q16_ONE` and so bounds the
-        // sample below it, with no saturation needed anywhere.
         let peak = self
             .into_note
             .min(self.samples - self.into_note)
@@ -673,21 +500,21 @@ impl Tone {
         ((u64::from(peak) * u64::from(self.inv_ramp)) >> 16) as i32
     }
 
-    /// One sample: every partial summed and weighted, and the oscillators and
-    /// note position stepped past it.
-    ///
-    /// Integer from end to end, because this runs in the feed interrupt and an
-    /// FPU instruction there raises `Cp0Disabled`: the board stops on the first
-    /// tap frame with no reset, from a path with no handler to survive it. It
-    /// is a property of the interrupt context, not of the arithmetic — the same
-    /// code on the cooperative executor is fine.
-    ///
-    /// The gains are taken off **before** the envelope, not after: at full
-    /// envelope a weighted partial is `peak × 256`, and multiplying that by a
-    /// 16-bit envelope overflows `i32` part-way up. Shifting the gain off first
-    /// divides the whole sum by [`GAIN_ONE`] exactly, which is also why a lone
-    /// partial at [`GAIN_ONE`] lands back on the unweighted oscillator — see
-    /// `a_lone_partial_is_the_oscillator_it_replaced`.
+    // One sample: every partial summed and weighted, and the oscillators and
+    // note position stepped past it.
+    //
+    // Integer from end to end, because this runs in the feed interrupt and an
+    // FPU instruction there raises `Cp0Disabled`: the board stops on the first
+    // tap frame with no reset, from a path with no handler to survive it. It
+    // is a property of the interrupt context, not of the arithmetic — the same
+    // code on the cooperative executor is fine.
+    //
+    // The gains are taken off **before** the envelope, not after: at full
+    // envelope a weighted partial is `peak × 256`, and multiplying that by a
+    // 16-bit envelope overflows `i32` part-way up. Shifting the gain off first
+    // divides the whole sum by [`GAIN_ONE`] exactly, which is also why a lone
+    // partial at [`GAIN_ONE`] lands back on the unweighted oscillator — see
+    // `a_lone_partial_is_the_oscillator_it_replaced`.
     fn next_sample(&mut self) -> i16 {
         let envelope = self.envelope();
         let mut sum = 0i32;
@@ -696,9 +523,6 @@ impl Tone {
             let whole = (at >> PHASE_BITS) as usize;
             let fraction = (at & PHASE_MASK) as i32;
             let (low, high) = (WAVE[whole] as i32, WAVE[whole + 1] as i32);
-            // Interpolating between entries is what makes a coarse table sound
-            // like a fine one: it costs one multiply and a shift, and lands
-            // within an LSB of the oscillator the table was built from.
             let interpolated =
                 low + (((high - low) * fraction + (1 << (PHASE_BITS - 1))) >> PHASE_BITS);
             sum += interpolated * i32::from(gain);
@@ -707,10 +531,6 @@ impl Tone {
                 self.phase[partial] -= WAVE_TURN;
             }
         }
-        // Rounded rather than truncated: the two fixed-point steps here would
-        // otherwise each throw away up to an LSB, and together they are the
-        // difference between a table that reproduces the oscillator it was built
-        // from and one that audibly does not. One add is cheaper than that.
         let sample = ((sum >> GAIN_BITS) * envelope + (1 << (Q16_BITS - 1))) >> Q16_BITS;
         self.into_note += 1;
         sample as i16
@@ -758,27 +578,20 @@ pub struct Sweep {
     step_delta_base: u64,
 }
 
-/// Fractional bits the sweep's phase carries beyond [`WAVE_TURN`].
 const SWEEP_BITS: u32 = Q16_BITS;
 
-/// One whole turn of the table at sweep resolution.
 const SWEEP_TURN: u64 = (WAVE_TURN as u64) << SWEEP_BITS;
 
-/// The level the sweep runs at, and **a measurement parameter rather than a
-/// taste one**.
-///
-/// `[实测]` at half the rail the microphone's recording peaked at 32 767: the ADC
-/// was clipping. A clipped signal carries the amplifier's harmonics instead of
-/// the room's response, so it neither correlates with the sweep that produced it
-/// nor deconvolves into anything — deconvolution cannot undo it, because the
-/// harmonics are *in* the recording. A fifth of the rail is what left headroom,
-/// and the margin is deliberate: a recorder aimed at a peak between −6 and −3
-/// dBFS has room for the room to be louder than the sweep.
+// The level the sweep runs at, and **a measurement parameter rather than a
+// taste one**.
+//
+// `[实测]` at half the rail the ADC clipped (32 767 peak); a fifth of the rail leaves
+// headroom for a louder room than the sweep.
 const SWEEP_PEAK_LSB: i32 = 2_500;
 
 impl Sweep {
-    /// A sweep from `from_hz` to `to_hz` over `milliseconds`, looping without a
-    /// step — see [`SampleSource::fill`] for what makes the join clean.
+    /// A sweep from `from_hz` to `to_hz` over `milliseconds`, looping without a step — see
+    /// [`SampleSource::fill`] for what makes the join clean.
     pub const fn new(from_hz: u32, to_hz: u32, milliseconds: u32) -> Self {
         let samples = (SAMPLE_RATE_HZ / 1_000) * milliseconds;
         let turn = WAVE_TURN as u64;
@@ -796,23 +609,17 @@ impl Sweep {
         }
     }
 
-    /// Back to the bottom of the band for the next pass, **keeping the phase
-    /// where it is**.
-    ///
-    /// `[实测]` resetting the phase as well put a 10 567 LSB step at the join,
-    /// against a steepest ordinary step of 8 797 — a click, because the phase a
-    /// whole sweep accumulates is only *nearly* a whole number of turns (630
-    /// cycles, plus whatever the two truncated divisions leave behind), and
-    /// zeroing it drops that remainder into the waveform as a discontinuity.
-    /// Carrying it costs nothing and makes the join one ordinary step: the
-    /// frequency jumps, the value does not.
+    // Back to the bottom of the band for the next pass, **keeping the phase
+    // where it is**.
+    //
+    // `[实测]` resetting the phase put a 10 567 LSB step at the join; carrying it keeps
+    // the join one ordinary step.
     fn rewind(&mut self) {
         self.step = self.from_step;
         self.step_delta = self.step_delta_base;
         self.index = 0;
     }
 
-    /// One sample, and the oscillator and note position stepped past it.
     fn next_sample(&mut self) -> i16 {
         let at = self.phase;
         self.phase += self.step;
@@ -832,12 +639,12 @@ impl Sweep {
 }
 
 impl SampleSource for Sweep {
-    /// **Never runs out.** A sweep is the excitation a room is measured with, and
-    /// a driver that has to be re-armed mid-measurement puts a click and a gap
-    /// in the recording for every re-arm — which is the measurement being ruined
-    /// by the act of taking it. Looping here also closes: 300 Hz to 6 kHz over
-    /// 200 ms is exactly six hundred and thirty cycles, so the phase comes back
-    /// to where it started and the waveform joins itself.
+    // **Never runs out.** A sweep is the excitation a room is measured with, and
+    // a driver that has to be re-armed mid-measurement puts a click and a gap
+    // in the recording for every re-arm — which is the measurement being ruined
+    // by the act of taking it. Looping here also closes: 300 Hz to 6 kHz over
+    // 200 ms is exactly six hundred and thirty cycles, so the phase comes back
+    // to where it started and the waveform joins itself.
     fn fill(&mut self, out: &mut [i16]) -> usize {
         for (n, slot) in out.iter_mut().enumerate() {
             if self.index >= self.length {
@@ -877,69 +684,33 @@ impl SampleSource for Tone {
     }
 }
 
-/// Whether a sound is still audible, from whether its source has anything left
-/// and what the arm in flight is carrying.
-///
-/// A source that has run out is not the end of the sound: the arm holding its
-/// last frames has to play out first, which is what `arm_sounded` is for. The
-/// sound ends once the source is spent *and* nothing audible is in flight.
-///
-/// A pure function on purpose. This is the one decision in the transport that is
-/// easy to invert and invisible until hardware, because nothing about it can be
-/// seen from the host — the arm only exists on the board. Getting it backwards
-/// strands the page in `Playing` for ever: a spent source keeps arming silent
-/// rings, and every one of them answers "still going".
+/// Whether a sound is still audible, from whether its source has anything left and what the
+/// arm in flight is carrying.
 #[cfg(test)]
 pub const fn still_sounding(source_done: bool, arm_sounded: bool, arm_in_flight: bool) -> bool {
     !source_done || (arm_sounded && arm_in_flight)
 }
 
 /// How often a streaming ring is fed.
-///
-/// A board's driver keeps one streaming transfer alive by refilling its ring on
-/// this cadence, silence when nothing plays and the sound when one does — so
-/// this is the rate the capture's clocks run at, not a latency path. A feed is a
-/// memory write bounded by what the DMA has already finished, so a feed a little
-/// late costs headroom in the ring and nothing audible; only a gap wider than
-/// [`PlayStreamWatchdog`]'s limit can run a ring dry.
 pub const FEED_MS: u32 = 5;
 
 const WIRE_BYTES_PER_SEC: usize = BYTES_PER_FRAME * SAMPLE_RATE_HZ as usize;
 
-/// How long the DMA needs to play a whole ring out, and so the longest a healthy
-/// stream can leave the wire idle before it is fair to call it drained. Measured
-/// in bytes rather than in frames, because a ring is drained a descriptor at a
-/// time and the rate the wire moves bytes at is two slots a frame, not one.
 const fn ring_play_ms(ring_bytes: usize) -> u64 {
     ring_bytes as u64 * 1_000 / WIRE_BYTES_PER_SEC as u64
 }
 
-/// Notices a transmit stream the DMA has genuinely run dry, by the clock rather
-/// than by the DMA.
-///
-/// The peripheral's own flag cannot answer this: `tx_idle` reports that the FIFO
-/// is empty and no descriptor is in flight *at this instant*, which for a stream
-/// fed a cadence is the ordinary state between two feeds, and says nothing about
-/// whether the ring still has runway. So the flag is only ever taken as "busy or
-/// idle this feed", and the verdict is left to time — the same signal
-/// [`crate::drivers::audio::CaptureWatchdog`] trusts on the capture side.
+/// Notices a transmit stream the DMA has genuinely run dry, by the clock rather than by the
+/// DMA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayStreamWatchdog {
-    /// When the DMA was last seen with something to send, or the first feed that
-    /// found it idle — the deadline a stream gets before it has to prove itself.
     last_busy_ms: Option<u64>,
-    /// Idleness tolerated before a drain is called: one ring's playthrough — the
-    /// longest a stream can be late and still be whole — plus one feed, so a feed
-    /// that is merely due is never mistaken for a dry one.
     idle_limit_ms: u64,
-    /// Whether the drain this stream is in has already been reported, so a stream
-    /// that stays dry is one report rather than one per feed for ever.
     reported: bool,
 }
 
 impl PlayStreamWatchdog {
-    /// Watches a stream whose ring is `ring_bytes` long. Unarmed until the first
-    /// feed, so a driver can be built before it has a clock.
+    /// Watches a stream whose ring is `ring_bytes` long.
     pub const fn new(ring_bytes: usize) -> Self {
         Self {
             last_busy_ms: None,
@@ -948,12 +719,8 @@ impl PlayStreamWatchdog {
         }
     }
 
-    /// Whether the stream has been idle too long, given whether the DMA had
-    /// anything to send this feed. A busy feed counts as progress and pushes the
-    /// deadline out again.
-    ///
-    /// The state, and true for as long as the stream stays dry. A driver that
-    /// wants to say so once wants [`report_drained`](Self::report_drained).
+    /// Whether the stream has been idle too long, given whether the DMA had anything to
+    /// send this feed.
     pub fn drained(&mut self, now_ms: u64, tx_idle: bool) -> bool {
         if !tx_idle {
             self.last_busy_ms = Some(now_ms);
@@ -976,22 +743,17 @@ impl PlayStreamWatchdog {
         true
     }
 
-    /// The whole of a stream's runway, for a driver that has to describe what it
-    /// is watching.
+    /// The whole of a stream's runway, for a driver that has to describe what it is
+    /// watching.
     pub const fn idle_limit_ms(&self) -> u64 {
         self.idle_limit_ms
     }
 }
 
 /// Which of a speaker's two fallible calls was refused.
-///
-/// Named rather than inferred so a log says what was being attempted when the
-/// codec fell silent, instead of only that something did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpeakerOp {
-    /// A [`Speaker::play`] the codec refused to start.
     Play,
-    /// A [`Speaker::set_muted`] the codec refused to latch.
     SetMuted,
 }
 
@@ -1005,18 +767,12 @@ impl core::fmt::Display for SpeakerOp {
 }
 
 /// Why a speaker could not carry out a command.
-///
-/// One named type for the whole trait rather than an associated type per
-/// implementation: the app holds `Box<dyn Speaker>`, and a trait object cannot
-/// be written down without naming its error. A board keeps its own rich error and
-/// converts here, because the app only reports a refusal and never branches on
-/// which failure it was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpeakerFault {
     /// Which command was refused.
     pub op: SpeakerOp,
-    /// The board's own words for why, so a log names the real cause rather than
-    /// a generic "the codec did not answer".
+    /// The board's own words for why, so a log names the real cause rather than a generic
+    /// "the codec did not answer".
     pub reason: &'static str,
 }
 
@@ -1033,66 +789,28 @@ impl core::fmt::Display for SpeakerFault {
     }
 }
 
-/// What a driver had to repair after its last [`feed`](Speaker::feed) found the
-/// output stream drained, handed back so the repair can be reported rather than
-/// only performed.
-///
-/// Named for the same reason [`SpeakerFault`] is: the feed runs as a `#[task]`, a
-/// task cannot be generic, so the driver reaches it as a trait object — and a
-/// trait object cannot spell an unnamed type.
+/// What a driver had to repair after its last [`feed`](Speaker::feed) found the output
+/// stream drained, handed back so the repair can be reported rather than only performed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Recovery {
-    /// Writable bytes left in the ring at the moment the drain was noticed. A
-    /// whole ring free means the DMA played everything and then found nothing;
-    /// anything less means it stopped with audio still queued behind it. Which of
-    /// the two it was is what localises the fault.
+    /// Writable bytes left in the ring at the moment the drain was noticed.
     pub free_bytes: usize,
-    /// Whether a sound was on the ring when it drained — what the stall cost the
-    /// listener.
+    /// Whether a sound was on the ring when it drained — what the stall cost the listener.
     pub playing: bool,
 }
 
 pub trait Speaker: Send + 'static {
     fn play(&mut self, source: Box<dyn SampleSource>) -> Result<(), SpeakerFault>;
 
-    /// Latches the output quiet, or audible again.
     fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault>;
 
-    /// Advances the sound by one cadence and reports whether it is still going; a
-    /// no-op while nothing plays, so the caller can ask unconditionally.
-    ///
-    /// `now_ms` is the caller's own millisecond count, which is what a driver needs
-    /// to tell a stream that has run dry from one merely between two feeds. The app
-    /// owns the cadence and so owns the clock.
-    ///
-    /// Infallible and bounded on purpose: this writes only to the memory the DMA is
-    /// reading, so there is no bus to fail on, and it may not log, allocate or take
-    /// a lock — which is what makes it the one method allowed to run from an
-    /// interrupt, and why a drained stream is *recorded* here and repaired by
-    /// [`recover`](Self::recover).
     fn feed(&mut self, now_ms: u64) -> bool;
 
-    /// Performs and reports the repair a previous [`feed`](Self::feed) found
-    /// necessary, and `None` when there was nothing to do.
-    ///
-    /// Split from `feed` because the repair is the opposite of what `feed` is
-    /// allowed to be: rebuilding a DMA ring allocates, and the log channel does
-    /// not serialise writers, so a line printed from a feed would interleave with
-    /// whatever the preempting task had half-sent. The allocation is the hard
-    /// constraint — a cooperative executor can allocate, an interrupt handler
-    /// cannot — and the output is the reason the repair reports from here rather
-    /// than from where it is noticed.
-    ///
-    /// So the app calls this from the cooperative side, next to the I2C calls it
-    /// already keeps there.
     fn recover(&mut self) -> Option<Recovery>;
 }
 
-/// A speaker that is not wired, for a board that has an output surface in the
-/// product but nothing driving it on this hardware. `HasPlayback` names its
-/// speaker as a type rather than an `Option` of a trait object, so a board with
-/// no output still has to name something — this is that name, not a silent
-/// fallback that would let a page offer a sound nothing can make.
+/// A speaker that is not wired, for a board that has an output surface in the product but
+/// nothing driving it on this hardware.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct UnwiredSpeaker;
 
@@ -1117,30 +835,17 @@ impl Speaker for UnwiredSpeaker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Only the tests compare against it: the oscillator itself reads the table.
     use crate::drivers::audio::SLOTS_PER_FRAME;
     use alloc::vec;
     use alloc::vec::Vec;
     use libm::sinf;
 
-    /// Stands for a rest in a fixture's note list. MIDI note 0 is a real pitch
-    /// a fifth of an octave under the lowest earcon anyone would write, so the
-    /// sentinel costs nothing and saves carrying an `Option` through the
-    /// fixtures.
     const REST: u8 = 0;
 
-    /// The tap as it ships: a fifth, then a rest, then a fifth and a half.
     const TAP: &[(u8, u16)] = &[(81, 120), (REST, 40), (88, 180)];
 
-    /// Builds a one-track MIDI file from note numbers and milliseconds.
-    ///
-    /// A fixture that hand-builds a [`Note`] table would exercise the
-    /// synthesiser while skipping the parser — and the parser is now on the path
-    /// every sound takes, so a test suite written that way could stay green
-    /// against a parser that reads nothing at all.
     fn mid(notes: &[(u8, u16)]) -> Vec<u8> {
         const DIV: u32 = 480;
-        /// One quarter note at 120 BPM, which is what the tempo event below says.
         const QUARTER_MS: u32 = 500;
 
         let vlq = |n: u32| {
@@ -1157,9 +862,6 @@ mod tests {
         // half the files shipped in `assets/` were rounded with.
         let ticks = |ms: u16| (u32::from(ms) * DIV + QUARTER_MS / 2) / QUARTER_MS;
 
-        // The leading zero is a delta time like any other: every event in a track is
-        // preceded by one, a meta event included, and a file that omits it reads
-        // its own status byte as part of a duration.
         let mut track = vec![0x00, 0xff, 0x51, 0x03, 0x07, 0xa1, 0x20];
         let mut pending = 0u32;
         for &(note, ms) in notes {
@@ -1173,8 +875,6 @@ mod tests {
             track.extend(vlq(ticks(ms)));
             track.extend([0x80, note, 0x40]);
         }
-        // And the same at the end of the track: the end-of-track event is an
-        // event, and events are preceded by delta times.
         track.extend([0x00, 0xff, 0x2f, 0x00]);
 
         let mut file = b"MThd".to_vec();
@@ -1188,7 +888,6 @@ mod tests {
         file
     }
 
-    /// A voice on `notes`, and the whole of it in one buffer.
     fn playing(notes: &[(u8, u16)]) -> (Tone, Vec<i16>) {
         let score = from_midi(&mid(notes)).expect("a fixture it just built parses");
         let samples = samples_of(score.iter());
@@ -1200,21 +899,18 @@ mod tests {
         (tone, out)
     }
 
-    /// The whole tap in one buffer, so a case can look at the whole sound.
     fn tap() -> (Tone, Vec<i16>) {
         playing(TAP)
     }
 
-    /// Samples a score states, which is the length a fill of it must write.
     fn samples_of<'a>(notes: impl Iterator<Item = &'a Note>) -> usize {
         notes.map(|note| samples_of_ms(note.ms) as usize).sum()
     }
 
     #[test]
     fn the_table_holds_the_oscillator_it_replaced() {
-        // Checked against the very `sinf` it replaced rather than an ideal
-        // nobody can build; one LSB at 16 bits is far below the rail's resolution
-        // through a DAC.
+        // Checked against libm's `sinf` rather than an ideal nobody can build; one LSB at 16
+        // bits is far below the rail's resolution through a DAC.
         let mut worst = 0_i32;
         for (index, &table) in WAVE.iter().enumerate().take(WAVE_ENTRIES) {
             let turns = index as f32 / WAVE_ENTRIES as f32;
@@ -1235,16 +931,6 @@ mod tests {
 
     #[test]
     fn the_interpolated_oscillator_tracks_sinf_within_an_lsb() {
-        // Interpolating between entries is what makes a coarse table sound like a
-        // fine one, so the claim is measured over a whole turn at a step finer
-        // than any note in the score — the worst place a table's error shows.
-        //
-        // Driven through integer phase units exactly as `next_sample` does,
-        // rather than through a float of its own: a test that recomputes the
-        // arithmetic differently from the code would pass while the code drifted,
-        // and the one thing worth pinning here is that this path — which cannot
-        // touch the FPU, and so has no float in it at all — is still the
-        // oscillator.
         let mut worst = 0_i32;
         for step in 0..48_000_u32 {
             let phase = u64::from(step) * u64::from(WAVE_TURN) / 48_000;
@@ -1266,8 +952,6 @@ mod tests {
 
     #[test]
     fn every_partial_stays_inside_the_table_it_indexes() {
-        // Driven through `fill` one frame at a time, because that is how the
-        // voice is called and because `fill` is what advances the note.
         let score = from_midi(&mid(TAP)).expect("parses");
         let total = samples_of(score.iter());
         let mut tone = Tone::playing(score);
@@ -1286,11 +970,6 @@ mod tests {
 
     #[test]
     fn the_catalogue_cycles_and_wraps() {
-        // A lap of the catalogue visits every sound exactly once and comes back
-        // to where it started, so a sound added to `ALL` later cannot be left
-        // stranded outside the cycle a tap walks. The expectation is the
-        // catalogue itself rotated, not a list written out here — the two are the
-        // same claim, but only one of them survives the next sound being added.
         let mut lap = [Sound::Tap; Sound::ALL.len()];
         let mut walked = Sound::ALL[0];
         for slot in lap.iter_mut() {
@@ -1319,9 +998,6 @@ mod tests {
         let stated = samples_of(score.iter());
         let (_, samples) = tap();
         assert_eq!(samples.len(), stated);
-        // The round trip is the whole point of the fixture, so the parsed table
-        // has to be the notes the file was given — not merely a table of the
-        // right length.
         let sounded: Vec<_> = score
             .iter()
             .filter(|note| note.hz != 0)
@@ -1332,19 +1008,12 @@ mod tests {
 
     #[test]
     fn a_tap_opens_and_closes_on_silence() {
-        // The whole reason notes carry a ramp: a sound that stopped on whatever
-        // its last sample happened to be leaves a step on the wire, and a step
-        // is a click — louder than the tap it ends.
         let (_, samples) = tap();
         assert_eq!(samples[0], 0, "and opens on the oscillator's own zero");
         assert!(
             samples[samples.len() - 1].unsigned_abs() < TONE_PEAK_LSB as u16 / 100,
             "and ends inside 1% of the rail, which is the release ramp and not a cut"
         );
-        // The middle is the sound itself: a tap nobody can hear is a broken
-        // one, and asserting only the ends would not notice. The crest lands
-        // within half a sample of the nominal peak, so the level asked for is
-        // the level got.
         let loudest = samples.iter().map(|&s| s.unsigned_abs()).max().unwrap();
         assert!(
             (TONE_PEAK_LSB as u16 - 128..=TONE_PEAK_LSB as u16).contains(&loudest),
@@ -1354,9 +1023,6 @@ mod tests {
 
     #[test]
     fn a_note_following_another_is_joined_through_silence() {
-        // The outgoing note ends on its release and the incoming one starts on
-        // its attack, so the join is a crossing rather than a jump from one
-        // wave to another.
         const JOINED: &[(u8, u16)] = &[(81, 60), (88, 60)];
         let score = from_midi(&mid(JOINED)).expect("parses");
         let mut tone = Tone::playing(score.clone());
@@ -1381,10 +1047,8 @@ mod tests {
         );
     }
 
-    /// The sweep the room measurement runs on, and the numbers that describe it.
     const BAND: (u32, u32, u32) = (300, 6_000, 200);
 
-    /// A whole sweep as the board would play it.
     fn sweep_of(band: (u32, u32, u32)) -> Vec<i16> {
         let length = (SAMPLE_RATE_HZ / 1_000 * band.2) as usize;
         let mut out = vec![0_i16; length];
@@ -1394,20 +1058,11 @@ mod tests {
 
     #[test]
     fn a_sweep_is_reproducible_bit_for_bit() {
-        // The whole measurement rests on this: the host reconstructs the sweep
-        // from the same arithmetic to deconvolve against it, so two sweeps that
-        // differ by an LSB would deconvolve into a room with the difference in
-        // it.
         assert_eq!(sweep_of(BAND), sweep_of(BAND));
     }
 
     #[test]
     fn a_sweep_actually_sweeps_instead_of_sitting_on_one_tone() {
-        // **The failure this guards is a truncated step.** The frequency moves
-        // by a fraction of one phase unit per sample over this band, so a step
-        // kept at whole units rounds the increment to zero and the sweep becomes
-        // a single tone — which would deconvolve into one sharp reflection and
-        // read as a room with no tail at all.
         let (from, to, milliseconds) = BAND;
         let sweep = sweep_of(BAND);
 
@@ -1428,10 +1083,6 @@ mod tests {
             .filter(|p| (p[0] < 0) != (p[1] < 0))
             .count();
         let seconds = f64::from(milliseconds) / 1_000.0;
-        // A sine crosses zero twice a cycle, and a linear sweep's cycle count is
-        // the mean frequency times the run — so the count to expect is twice
-        // that, and comparing against the cycle count alone would read a
-        // perfectly good sweep as running at double speed.
         let twice_cycles = 2.0 * (f64::from(from) + f64::from(to)) / 2.0 * seconds;
         assert!(
             (crossings as f64) > twice_cycles * 0.9,
@@ -1453,9 +1104,6 @@ mod tests {
         assert_eq!(sweep.fill(&mut short), length / 4, "a partial fill is full");
         assert!(!sweep.done(), "and there is more of it");
 
-        // **The loop is the point**, so it is checked by what it produces rather
-        // than by what it reports: a sweep that restarts on a step would show a
-        // jump between the last sample of one pass and the first of the next.
         let mut two = vec![0_i16; length * 2];
         let mut long = Sweep::new(from, to, milliseconds);
         assert_eq!(
@@ -1471,12 +1119,6 @@ mod tests {
         let p99 = steps[steps.len() * 99 / 100];
         let worst = steps[steps.len() - 1];
         let _ = p99;
-        // **Half again the steepest ordinary step, and `[measured]` why.** A
-        // chirp that repeats has to change frequency somewhere, and where it does
-        // one sample advances by a step at the top of the band and the next by a
-        // step at the bottom — so the join is bounded by the band's own
-        // steepest slope, not by noise or by a rounding remainder. 10 567 against
-        // 8 797 is that, and 23 000 would be a click.
         assert!(
             step_across <= worst + worst / 2,
             "the join steps by {step_across} where the steepest ordinary step is {worst}"
@@ -1489,9 +1131,6 @@ mod tests {
 
     #[test]
     fn filling_a_tap_in_pieces_is_the_same_stream_as_filling_it_at_once() {
-        // The driver refills a DMA ring in whatever sizes it has room for, so a
-        // source that only sounded right when handed a whole sound at once
-        // would be useless — and would only show up as a note boundary glitch.
         let score = || from_midi(&mid(TAP)).expect("parses");
         let mut whole = Tone::playing(score());
         let mut at_once = vec![0_i16; 4_800];
@@ -1524,8 +1163,6 @@ mod tests {
 
     #[test]
     fn an_empty_score_is_harmless() {
-        // A board that offers a generated sound must not be able to hang the
-        // playback task on a score with nothing in it.
         let mut tone = Tone::playing(Vec::new());
         assert!(tone.done());
         assert_eq!(tone.fill(&mut [0_i16; 16]), 0);
@@ -1533,8 +1170,6 @@ mod tests {
 
     #[test]
     fn a_file_with_nothing_in_it_is_harmless() {
-        // The empty table's way in: a file a DAW exported with every note
-        // deleted. Playing it must not hang the playback task either.
         let notes = from_midi(&mid(&[])).expect("an empty track is still a file");
         let mut tone = Tone::playing(notes);
         assert!(tone.done());
@@ -1543,8 +1178,6 @@ mod tests {
 
     #[test]
     fn a_rest_is_silence_rather_than_a_hum() {
-        // The tap's middle is a rest, and a rest that hummed would be an
-        // interval the score never asked for.
         let (_, samples) = tap();
         let rest_start = samples_of_ms(119) as usize;
         let rest_end = rest_start + samples_of_ms(39) as usize;
@@ -1556,15 +1189,6 @@ mod tests {
 
     #[test]
     fn a_lone_partial_is_the_oscillator_it_replaced() {
-        // **The additive path is only trustworthy if reducing it to one partial
-        // at full gain gives back the synthesis it replaced.**
-        //
-        // The reference below is that synthesis written out — one table read, one
-        // envelope, nothing summed — rather than a block of numbers pasted in
-        // earlier. A pasted block pins sixteen samples and says nothing about the
-        // rest of a 16 000-sample sound; this compares two implementations over
-        // all of it, and it would notice a ramp or an interpolation that drifted
-        // anywhere in the score.
         let score = from_midi(&mid(TAP)).expect("parses");
         let mut tone = Tone::on(score.clone(), &PLAIN);
 
@@ -1621,9 +1245,6 @@ mod tests {
 
     #[test]
     fn a_lone_partial_still_peaks_where_the_rail_is() {
-        // The other half of the same claim: the level a single partial reaches
-        // is unchanged by the weighting, so the gain shift is not quietly
-        // halving everything.
         let score = from_midi(&mid(TAP)).expect("parses");
         let mut tone = Tone::on(score, &PLAIN);
         let mut samples = vec![0_i16; 4_800];
@@ -1637,10 +1258,6 @@ mod tests {
 
     #[test]
     fn the_family_timbres_partials_are_inharmonic() {
-        // Integer multiples of a fundamental are what makes a synthesised tone a
-        // buzzer. The second partial is the ratio a struck bell carries, and
-        // rounding it to 3 would put it on top of an octave and two — the exact
-        // thing this timbre exists to avoid.
         assert_eq!(TIMBRE.len(), 2, "a fundamental and one partial above it");
         let &(fundament, _) = &TIMBRE[0];
         assert_eq!(fundament, 100, "the fundamental is the note itself");
@@ -1655,9 +1272,6 @@ mod tests {
 
     #[test]
     fn the_family_timbre_cannot_outrun_the_rail() {
-        // The gains have to sum to one, or two partials that happen to line up
-        // would carry the sum past a single one and clip — producing exactly the
-        // click at the end of a sound that the ramps exist to prevent.
         let total: u32 = TIMBRE.iter().map(|&(_, gain)| u32::from(gain)).sum();
         assert_eq!(
             total,
@@ -1668,9 +1282,6 @@ mod tests {
 
     #[test]
     fn a_note_shorter_than_its_ramp_is_ramped_not_overshot() {
-        // The envelope clamps the ramp to the note's own length on both edges,
-        // so a note shorter than the ramp does not divide by a length past its
-        // end — which would make the multiplier overshoot a full one.
         let score = from_midi(&mid(&[(81, 1)])).expect("parses");
         let mut tone = Tone::playing(score);
         let mut samples = vec![0_i16; samples_of_ms(1) as usize];
@@ -1681,8 +1292,6 @@ mod tests {
         );
     }
 
-    /// A few frames to spread across the slots: the extremes, the zero that
-    /// would hide a sign bug, and a small value.
     const FRAMES: [i16; 4] = [i16::MIN, 0, i16::MAX, -1];
 
     #[test]
@@ -1727,9 +1336,6 @@ mod tests {
 
     #[test]
     fn a_frame_is_as_wide_as_the_capture_takes_it_to_be() {
-        // Both directions of audio go over the same wire, so a playback frame
-        // sized differently from a capture frame would put playback at twice the
-        // capture's rate on the same DMA.
         assert_eq!(BYTES_PER_FRAME, 4);
         assert_eq!(BYTES_PER_FRAME, SLOTS_PER_FRAME as usize * 2);
     }
@@ -1737,9 +1343,6 @@ mod tests {
     #[test]
     fn an_unwired_speaker_never_claims_to_be_playing() {
         let mut speaker = UnwiredSpeaker;
-        // A board with no output takes this type, so the one copy of the app runs
-        // on it — but a `play` that reported a sound in progress would leave the
-        // page in `Playing` with nothing that can ever finish it.
         speaker
             .play(Box::new(Tone::playing(vec![])))
             .expect("takes a source");
@@ -1752,9 +1355,6 @@ mod tests {
 
     #[test]
     fn a_sound_ends_when_its_source_is_spent_and_nothing_audible_is_in_flight() {
-        // The whole truth table, because this is the decision an inverted `!`
-        // hides: with the source spent, a sounded arm in flight is the tail and
-        // keeps the sound going, and anything else ends it.
         assert!(
             still_sounding(false, true, true),
             "a source with samples left"
@@ -1780,8 +1380,6 @@ mod tests {
 
     #[test]
     fn a_spent_source_never_reports_playing_again() {
-        // Asserted over the states a driver actually reaches while winding
-        // down, where a silent arm must not read as a sound in progress.
         assert!(
             !still_sounding(true, false, true),
             "the silent arm a spent source arms must not read as a sound in progress"
@@ -1790,8 +1388,6 @@ mod tests {
         assert!(!still_sounding(true, true, false));
     }
 
-    /// The ring the bsp driver builds, so these cases measure the real geometry
-    /// rather than a shape picked to make an assertion pass.
     const RING_BYTES: usize = 960 * 24;
 
     #[test]
@@ -1809,9 +1405,6 @@ mod tests {
 
     #[test]
     fn a_brief_idle_between_feeds_is_not_a_drained_stream() {
-        // `tx_idle` goes high whenever the FIFO is momentarily empty, which is
-        // the ordinary state between two feeds, so the walk has to span a whole
-        // ring's worth for no unlucky cadence to hide it.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         let mut now_ms = 0_u64;
         while now_ms <= ring_play_ms(RING_BYTES) {
@@ -1825,9 +1418,6 @@ mod tests {
 
     #[test]
     fn a_stream_idle_past_a_whole_ring_is_drained() {
-        // One feed cadence past the ring's own playthrough: by then the CPU has
-        // had the time it would need to fill the ring, so an idle this long is
-        // the DMA not running rather than a feed merely due.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         let limit = watchdog.idle_limit_ms();
         assert_eq!(limit, 120 + FEED_MS as u64);
@@ -1844,9 +1434,6 @@ mod tests {
 
     #[test]
     fn one_busy_feed_pushes_the_deadline_out_again() {
-        // A stream that is busy on and off all evening is healthy, and a watchdog
-        // that only remembered the first idle would eventually call it drained
-        // mid-sound — the same destructive false positive in slower motion.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         let limit = watchdog.idle_limit_ms();
         let mut now_ms = 0_u64;
@@ -1855,7 +1442,6 @@ mod tests {
                 !watchdog.drained(now_ms, false),
                 "a busy feed is never a drain"
             );
-            // An idle stretch, then the DMA is seen working again.
             now_ms += limit - 1;
             assert!(
                 !watchdog.drained(now_ms, true),
@@ -1894,7 +1480,6 @@ mod tests {
                 "and the feeds after it are the same drain, not new ones"
             );
         }
-        // A stream that comes back and dries again is a new thing to report.
         assert!(
             !watchdog.report_drained(now_ms, false),
             "a busy feed is not a drain"
@@ -1908,9 +1493,6 @@ mod tests {
 
     #[test]
     fn a_watchdog_built_before_the_loop_measures_from_its_first_feed() {
-        // A driver is built before the playback loop has a clock, so the first
-        // feed it ever sees is the baseline: it must not come up already failing,
-        // and it must measure from there rather than from zero.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         assert!(
             !watchdog.drained(0, true),
@@ -1924,17 +1506,11 @@ mod tests {
 
     #[test]
     fn repeated_drains_report_once_each_and_never_drift() {
-        // The clock is walked feed by feed across many spells rather than
-        // jumping, so a deadline that crept would show up as a false positive
-        // inside a spell it should have stayed quiet through.
         let mut watchdog = PlayStreamWatchdog::new(RING_BYTES);
         let limit = watchdog.idle_limit_ms();
         let mut now_ms = 0_u64;
         let mut reports = 0_u32;
         for _ in 0..50 {
-            // A healthy spell: the stream is busy, with a one-cadence idle between
-            // feeds, which is the ordinary shape. It ends busy, because that is
-            // what moves the deadline the dry spell is measured from.
             while now_ms < 2 * limit {
                 now_ms += FEED_MS as u64;
                 assert!(
@@ -1947,8 +1523,6 @@ mod tests {
                     "a busy feed is never a drain"
                 );
             }
-            // A dry spell: past the limit the first feed reports, and the ones after
-            // it are the same spell — including the feed that recovers the ring.
             let dry_from = now_ms;
             while now_ms < dry_from + limit {
                 now_ms += FEED_MS as u64;
@@ -1971,8 +1545,6 @@ mod tests {
                     "the feeds after a report are the same drain, not new ones"
                 );
             }
-            // The recovery: the stream is busy again, which both closes the spell
-            // and arms the next one.
             now_ms += FEED_MS as u64;
             assert!(!watchdog.report_drained(now_ms, false));
         }

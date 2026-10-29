@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// `crates/tool`, four levels below the repository root.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -11,7 +10,6 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Every name a crate reads at compile time through `option_env!`.
 fn option_env_inputs() -> BTreeSet<String> {
     fn walk(dir: &Path, found: &mut BTreeSet<String>) {
         let Ok(entries) = fs::read_dir(dir) else {
@@ -41,7 +39,6 @@ fn option_env_inputs() -> BTreeSet<String> {
     found
 }
 
-/// Every name `scripts/iot-xtensa.sh` forwards into the container.
 fn forwarded_env() -> BTreeSet<String> {
     let script = fs::read_to_string(repo_root().join("scripts/iot-xtensa.sh"))
         .expect("the xtensa wrapper is the thing that decides what reaches the compiler");

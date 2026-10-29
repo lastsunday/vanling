@@ -10,39 +10,18 @@ use crate::state::Panel;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-/// A hardware board instance. Implemented per board in the bsp crate.
+/// A hardware board instance.
 pub trait Board: Sized {}
 
 /// Board exposing light channels (RGB light surfaces).
-///
-/// A channel may drive several pixels wired in the same chain (e.g. a WS2812
-/// strip); a board with several distinct surfaces returns them all in wiring
-/// order, each with its own instance the app binds to its own renderer. The
-/// sink bound keeps panel surfaces able to overlay diagnostics while plain
-/// strips ignore the snapshot.
 pub trait HasLight: Board {
-    /// Owned light surfaces; `'static` so they can live behind a boxed renderer
-    /// in the render task for the board's lifetime.
-    ///
-    /// [`crate::drivers::camera::CameraTarget`] is a bound rather than an optional capability,
-    /// so the renderer is generic over one shape: a surface that cannot take a camera is a
-    /// surface no board has, since the only thing a camera can draw on is a panel and the panel
-    /// has a frame buffer. A strip binds nothing and its `attach_camera` is unreachable.
     type Light: RgbLight + DiagnosticsSink + crate::drivers::camera::CameraTarget + 'static;
 
-    /// Take the board's light surfaces. Returns `None` when none are wired or
-    /// they were already taken.
     fn take_lights(&mut self) -> Option<Vec<Self::Light>>;
 }
 
 /// Board providing the input sources for the input pipeline.
-///
-/// The board owns the wiring and the driver choice, so a touchscreen board
-/// simply assembles different sources behind the same trait; the app consumes
-/// the ready-made entries and never names a specific device.
 pub trait HasInput: Board {
-    /// Take the board's input sources. Returns `None` when no input is wired
-    /// or it was already taken.
     fn take_input(&mut self) -> Option<Vec<PollEntry>>;
 }
 
@@ -51,78 +30,30 @@ pub trait HasMotion: Board {
 
     fn motion_capabilities(&self) -> MotionCapabilities;
 
-    /// What this board's motion part can be left in, for the configurator to choose from.
-    ///
-    /// Declared here rather than asked of the driver because the configurator runs where
-    /// the demand is produced, not where the part is polled. A board with no accelerometer
-    /// returns an empty slice, which makes every motion demand a refusal rather than a
-    /// configuration it cannot honour.
     fn motion_configurations(&self) -> &'static [MotionConfig] {
         &[]
     }
 }
 
 /// Board providing an audio capture source.
-///
-/// Shaped like [`HasMotion`] because it is the same kind of wiring: the driver
-/// lives in the bsp crate behind the shared input interface, so the app only
-/// ever sees a ready-made [`PollEntry`] and never names a codec. A board with no
-/// microphone returns `None` and the Audio page simply never appears.
 pub trait HasAudio: Board {
     fn take_audio(&mut self, sink: &'static dyn CaptureSink) -> Option<PollEntry>;
 }
 
 /// Board providing a camera.
-///
-/// The only consumer is the panel — a camera has nowhere else to be seen — so the buffer it
-/// fills is the panel's own and travels on every call rather than being held here. What the
-/// board hands over is therefore the capability, not a device: the app binds it to the
-/// surface that owns the frame buffer and never names a sensor. A board with no camera returns
-/// `None` and the Camera page simply never appears.
 pub trait HasCamera: Board {
     fn take_camera(&mut self) -> Option<Box<dyn crate::drivers::camera::FrameSource>>;
 }
 
 /// Board providing a speaker.
-///
-/// Independent of [`HasAudio`]: a board can capture, play, both or neither, so
-/// this is its own trait. Shaped like the audio one for the same reason — the
-/// codec and the DMA ring live in the bsp crate, and the app only ever sees a
-/// [`Speaker`] and never names a device. A board with no speaker returns `None`
-/// and the Speaker page simply never appears.
 pub trait HasPlayback: Board {
-    /// Owned speaker; `'static` so it can sit in the app's playback task for the
-    /// board's lifetime, and `Send` because that task is not necessarily on the
-    /// same executor as the rest of the app — a board whose feed has a hard
-    /// cadence runs it on its own higher-priority interrupt executor, and a
-    /// driver that cannot cross executors could not be fed on one. Every transport
-    /// a board wires a speaker to has to be `Send` for that, which the I2C-backed
-    /// codecs are: their bus sits behind a `CriticalSectionRawMutex`, whose
-    /// `RefCell` is only ever reached with interrupts masked.
     type Speaker: Speaker + 'static;
 
-    /// Hands the speaker over boxed. The app awaits the input and render futures
-    /// in one cooperative join and hands the playback future to whichever executor
-    /// the board's feed cadence demands, so every arm of that join is part of the
-    /// single task's stack frame — and that task's stack is a fixed few tens of
-    /// kilobytes it cannot grow. A driver this size held by value would be
-    /// carried down the whole frame on top of the render path's own call chain, so
-    /// it lives on the heap instead: the app only ever holds a pointer to it.
     fn take_playback(&mut self) -> Option<Box<Self::Speaker>>;
 }
 
 /// Board providing a Wi-Fi station.
-///
-/// Independent of the rest, like [`HasPlayback`]: a board can have a radio and no
-/// panel, or a panel and no radio. The device is *not* usable when this is handed
-/// over — the driver's start needs the scheduler running, which only the app's
-/// entry point can guarantee — so what the board hands over is the peripheral and
-/// the wiring, and `take_wifi` is called after the runtime is up. A board with no
-/// radio returns `None` and the link stays where it was.
 pub trait HasWifi: Board {
-    /// Owned station; `'static` because it lives in the network task for the
-    /// board's lifetime, and boxed for the same reason [`HasPlayback::Speaker`] is:
-    /// the task that awaits it is a stack frame this repository does not control.
     type Station: Station + 'static;
 
     fn take_wifi(&mut self) -> Option<Box<Self::Station>>;
@@ -149,10 +80,6 @@ mod tests {
 
     impl DiagnosticsSink for FakeLight {}
 
-    /// Never asked to draw a camera, but the bound is unconditional: a surface that cannot
-    /// take one is a surface no board has, since the panel is the only thing a frame can be
-    /// seen on and the panel has a frame buffer. So the fake carries the empty implementation
-    /// and this test stays about what `take_lights` delivers.
     impl crate::drivers::camera::CameraTarget for FakeLight {
         fn paint_camera(&mut self, _now_ms: u64) -> bool {
             false
@@ -271,9 +198,6 @@ mod tests {
 
     #[test]
     fn has_playback_delivers_a_speaker_once_or_not_at_all() {
-        // Two different no-speaker shapes, and both have to read the same to
-        // the app: a board that wired none, and one that already handed its
-        // speaker to the playback task.
         let mut unwired = FakeBoard {
             lights: None,
             input: None,

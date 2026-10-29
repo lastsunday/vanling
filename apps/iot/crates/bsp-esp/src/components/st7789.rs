@@ -20,15 +20,10 @@ const SPI_SCRATCH_BYTES: usize = 8192;
 /// Panel bring-up failure.
 #[derive(Debug)]
 pub enum St7789Error {
-    /// The SPI bus rejected a transfer during initialization.
     Spi(esp_hal::spi::Error),
-    /// The requested window/size combination is unsupported by the panel.
     Config,
 }
 
-/// No-op reset driver: the panel keeps RST unconnected, but `Builder::init`
-/// only suppresses its software reset when a pin is provided. Driving a
-/// no-op pin expresses "do not soft-reset" without touching a real GPIO.
 #[derive(Clone, Copy)]
 struct DummyReset;
 
@@ -46,8 +41,6 @@ impl OutputPin for DummyReset {
     }
 }
 
-/// No-op delay source, because mipidsi's own inter-command pauses do not suit this panel.
-/// The timings that matter are re-added explicitly in [`Self::send_command`].
 #[derive(Clone, Copy)]
 struct NoDelay;
 
@@ -55,10 +48,6 @@ impl DelayNs for NoDelay {
     fn delay_ns(&mut self, _ns: u32) {}
 }
 
-/// 4-wire SPI transport for mipidsi. esp-hal's DMA-backed blocking `SpiDma`
-/// is a `SpiBus`, not a shared-bus `SpiDevice`, so we adapt it directly to
-/// mipidsi's `Interface` trait to avoid pulling in a bus crate for a single
-/// client.
 struct Spi4 {
     spi: spi_master::SpiDma<'static, Blocking>,
     dc: Output<'static>,
@@ -88,8 +77,6 @@ impl Spi4 {
     fn emit_command(&mut self, command: u8, args: &[u8]) -> Result<(), esp_hal::spi::Error> {
         self.dc.set_low();
         SpiBus::write(&mut self.spi, &[command])?;
-        // Match the panel's own DC semantics: the line only goes high for
-        // parameter bytes and stays low after argument-less commands.
         if !args.is_empty() {
             self.dc.set_high();
             SpiBus::write(&mut self.spi, args)?;
@@ -156,22 +143,12 @@ impl Interface for Spi4 {
     }
 }
 
-/// Which way round the panel addresses its own frame buffer.
-///
-/// The controller's frame buffer is 240x320 and the 2.0" module is specified 320x240, so it
-/// is that controller mounted to be looked at side-on: `MV` + `MX` turns its window for it.
-/// Both numbers are needed and are not interchangeable, and confusing them truncates the
-/// picture rather than rotating it — the address window transposes with `MADCTL`, so a
-/// column range of 0..319 overruns a 240-wide RAM. `@/records/iot/camera.md`.
 const MADCTL_LANDSCAPE: u8 = 0x60;
 
-/// The controller's own frame buffer, which is what mipidsi validates `display_size`
-/// against. Not the mounted shape — see [`MADCTL_LANDSCAPE`].
 const CONTROLLER_WIDTH: u16 = 240;
 const CONTROLLER_HEIGHT: u16 = 320;
 
-/// ST7789 panel on a 4-wire SPI transport. Owns the chip bring-up (`Builder`)
-/// and the whole-frame write to VRAM.
+/// ST7789 panel on a 4-wire SPI transport.
 pub struct St7789 {
     spi: Spi4,
     width: u16,
@@ -180,8 +157,7 @@ pub struct St7789 {
 
 impl St7789 {
     /// Brings the panel up to take a `width` x `height` buffer: the shape a frame is
-    /// written into, 320x240 for this module. It is deliberately *not* what mipidsi is
-    /// told — see `MADCTL_LANDSCAPE`.
+    /// written into, 320x240 for this module.
     pub fn new(
         block_spi: spi_master::SpiDma<'static, Blocking>,
         dc: Output<'static>,
@@ -196,10 +172,6 @@ impl St7789 {
             buffer: scratch,
         };
 
-        // RAMCTRL/COLMOD/MADCTL are emitted by the init shim at the same spot the working
-        // legacy driver used, and the panel must receive SLPOUT first. mipidsi's model
-        // init writes only `MADCTL` from this size — the frame window is set by
-        // `write_frame` below — so what this call needs is a size the model accepts.
         let display = Builder::new(ST7789, iface)
             .display_size(CONTROLLER_WIDTH, CONTROLLER_HEIGHT)
             .invert_colors(ColorInversion::Inverted)

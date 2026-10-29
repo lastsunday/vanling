@@ -10,21 +10,15 @@
 //! [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ), run as a fixed point IIR. Fixed point
 //! because there is no floating point in this crate's capture path.
 
-/// Fractional bits shared by every filter coefficient. One scale for all three
-/// sections, so a section needs no rescale between stages and the arithmetic is
-/// exactly the same fixed-point cascade at every sample.
 const COEFFICIENT_SHIFT: u32 = 30;
 
-/// Extra fractional bits the signal carries between stages. The near-unit-circle
-/// poles (the 20.6 Hz pair maps to a radius of ~0.999) recycle a state step's
-/// quantization error into a floor the poles amplify; carrying the signal eight
-/// bits finer shrinks that amplifier by 2⁸ with the coefficients untouched.
+// Extra fractional bits the signal carries between stages. The near-unit-circle
+// poles (the 20.6 Hz pair maps to a radius of ~0.999) recycle a state step's
+// quantization error into a floor the poles amplify; carrying the signal eight
+// bits finer shrinks that amplifier by 2⁸ with the coefficients untouched.
 const STATE_FRACTION: u32 = 8;
 
-/// One second-order section of the cascade, in direct form one. The A-weighting
-/// is a sixth-order response (four zeros at DC, six poles), which factors into
-/// three biquads: two high-pass sections shaped by `a` in the numerator and the
-/// two-pole low-pass section that restores the flat mid-band.
+/// One second-order section of the cascade, in direct form one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Biquad {
     b0: i32,
@@ -39,8 +33,6 @@ pub struct Biquad {
 }
 
 impl Biquad {
-    /// `a1` and `a2` are the signed recursion coefficients of the denominator
-    /// `1 + a1 z⁻¹ + a2 z⁻²`, subtracted in the difference equation.
     const fn new(b0: i32, b1: i32, b2: i32, a1: i32, a2: i32) -> Self {
         Self {
             b0,
@@ -70,9 +62,7 @@ impl Biquad {
     }
 }
 
-/// The full IEC 61672-1 A-weighting response, as a cascade of the three
-/// sections below. Zero state on construction, so a fresh meter starts silent
-/// rather than inheriting the room it was built in.
+/// The full IEC 61672-1 A-weighting response, as a cascade of the three sections below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AWeight {
     hum_shelf: Biquad,
@@ -81,10 +71,10 @@ pub struct AWeight {
 }
 
 impl AWeight {
-    /// Coefficients computed with a bilinear transform of the analog poles and
-    /// zeros, gain-normalized so 0 dB lands on 1 kHz. Prewarping the 12.194 kHz
-    /// pole pair keeps the mid-band shelf where IEC puts it instead of letting
-    /// the transform's frequency-axis compression drag it below 10 kHz.
+    // Coefficients computed with a bilinear transform of the analog poles and
+    // zeros, gain-normalized so 0 dB lands on 1 kHz. Prewarping the 12.194 kHz
+    // pole pair keeps the mid-band shelf where IEC puts it instead of letting
+    // the transform's frequency-axis compression drag it below 10 kHz.
     pub(crate) const fn new() -> Self {
         Self {
             hum_shelf: Biquad::new(
@@ -105,10 +95,6 @@ impl AWeight {
         }
     }
 
-    /// Filters one 16-bit sample through the A-weighting response, carrying it
-    /// at [`STATE_FRACTION`] extra fractional bits and clamping the result back
-    /// to the input's range. In-band the filter gains nothing, so the clamp only
-    /// ever bites on a transient the meter is about to average over anyway.
     pub(crate) fn filter(&mut self, sample: i16) -> i16 {
         let out = self.midband.update(
             self.voice_shelf
@@ -118,22 +104,10 @@ impl AWeight {
     }
 }
 
-/// How many reciprocal bits the average-of-squares holding window shifts per
-/// new sample. This is the meter's ballistics: 1/2¹⁶ of the distance back to
-/// the current square per sample is a one-second-ish time constant, slow enough
-/// that a number a person reads sits still while they read it, fast enough that
-/// a room that quiets down is agreed with within a couple of seconds.
 const METER_RELEASE_SHIFT: u32 = 16;
 
 /// A continuously-running A-weighted sound level: the capture's samples through
-/// [`AWeight`], folded into a slow exponential average of squares. This is the
-/// "number the phone app shows" reading, distinct from the windowed peaks the scope
-/// and PK/RMS rows carry — those show a sweep, this saturates on a spoken word and
-/// decays at a readable pace.
-///
-/// The average folds the *already weighted* samples rather than running a second
-/// cascade over the same stream: identical coefficients and zero state could only
-/// ever agree.
+/// [`AWeight`], folded into a slow exponential average of squares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DbaMeter {
     avg_sq: u64,
@@ -144,19 +118,16 @@ impl DbaMeter {
         Self { avg_sq: 0 }
     }
 
-    /// Folds one A-weighted sample in, as produced by [`AWeight::filter`]. Cheap
-    /// enough to be worth doing for every sample the capture decodes, because
-    /// the corner readout wants the same source the scope gets, not a decimated
-    /// copy of it.
+    /// Folds one A-weighted sample in, as produced by [`AWeight::filter`].
     pub fn update(&mut self, weighted: i16) {
         let square = i64::from(weighted) * i64::from(weighted);
         let avg = self.avg_sq as i64 + ((square - self.avg_sq as i64) >> METER_RELEASE_SHIFT);
         self.avg_sq = avg as u64;
     }
 
-    /// The level the meter currently holds, as an RMS in LSB — the unit the
-    /// envelope's own RMS is counted in, so the corner readout can be expressed
-    /// in exactly the same decibels.
+    /// The level the meter currently holds, as an RMS in LSB — the unit the envelope's own
+    /// RMS is counted in, so the corner readout can be expressed in exactly the same
+    /// decibels.
     pub const fn level_lsb(&self) -> u16 {
         let level = self.avg_sq.isqrt();
         if level > u16::MAX as u64 {
@@ -178,11 +149,11 @@ mod tests {
     use super::*;
     use crate::drivers::audio::AudioEnvelope;
 
-    /// A full cycle of a 125 Hz sine at [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ),
-    /// one 384-sample period at full scale, in 16-bit LSB. Every other test
-    /// frequency divides 48 kHz over this table: reading every nth entry walks
-    /// the same waveform at an exact multiple — no interpolation, no floating
-    /// point, nothing a host-test can drift on.
+    // A full cycle of a 125 Hz sine at [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ),
+    // one 384-sample period at full scale, in 16-bit LSB. Every other test
+    // frequency divides 48 kHz over this table: reading every nth entry walks
+    // the same waveform at an exact multiple — no interpolation, no floating
+    // point, nothing a host-test can drift on.
     const SINE_384: [i16; 384] = [
         0, 536, 1072, 1608, 2143, 2678, 3212, 3745, 4277, 4808, 5338, 5866, 6393, 6917, 7441, 7962,
         8481, 8997, 9512, 10024, 10533, 11039, 11542, 12042, 12539, 13033, 13523, 14010, 14492,
@@ -218,12 +189,12 @@ mod tests {
         -2143, -1608, -1072, -536,
     ];
 
-    /// The gain a steady full-scale tone at each frequency should produce, as
-    /// the RMS of the filtered output, in LSB. An exact integer copy of this
-    /// module produced these, so they pin the implementation within one LSB
-    /// instead of letting either drift.
-    ///
-    /// `(table stride, expected RMS)` with stride 1 at 125 Hz up to 64 at 8 kHz.
+    // The gain a steady full-scale tone at each frequency should produce, as
+    // the RMS of the filtered output, in LSB. An exact integer copy of this
+    // module produced these, so they pin the implementation within one LSB
+    // instead of letting either drift.
+    //
+    // `(table stride, expected RMS)` with stride 1 at 125 Hz up to 64 at 8 kHz.
     const EXPECTED_OUTPUTS: [(usize, u16); 7] = [
         (1, 3_589),
         (2, 8_523),
@@ -234,12 +205,8 @@ mod tests {
         (64, 22_043),
     ];
 
-    /// The RMS of [`SINE_384`] itself, in the same integer square-root units
-    /// the filtered outputs are compared in.
     const INPUT_RMS: u16 = 23_169;
 
-    /// RMS of the filtered output over `cycles` steady loops of a full-scale
-    /// tone walked at `stride` table steps per sample.
     fn filtered_rms(stride: usize, cycles: usize) -> u16 {
         let mut weight = AWeight::new();
         let mut sum_sq: u64 = 0;
@@ -254,9 +221,6 @@ mod tests {
         (sum_sq / count).isqrt() as u16
     }
 
-    /// The table is one clean cycle of a sine: a full-scale walk of it has an
-    /// exact RMS, and a filter that passed it through unchanged would measure
-    /// that RMS rather than some table artifact.
     #[test]
     fn table_is_one_clean_full_scale_cycle() {
         let sum_sq: u64 = SINE_384
@@ -266,9 +230,6 @@ mod tests {
         assert_eq!((sum_sq / 384).isqrt() as u16, INPUT_RMS);
     }
 
-    /// Each frequency lands on the same integer RMS, not merely inside a band:
-    /// a mismatch is a coefficient in the wrong register or a shift placed
-    /// wrong, not a borderline reading.
     #[test]
     fn cascade_matches_its_integer_prototype() {
         for (stride, expected) in EXPECTED_OUTPUTS {
@@ -281,10 +242,10 @@ mod tests {
         }
     }
 
-    /// The filter is the IEC 61672-1 A-weighting curve, within the band an
-    /// unclaimed household meter would be embarrassed to miss. Bounds are the
-    /// IEC table value with ±0.75 dB of slack, converted to RMS LSB against
-    /// [`INPUT_RMS`].
+    // The filter is the IEC 61672-1 A-weighting curve, within the band an
+    // unclaimed household meter would be embarrassed to miss. Bounds are the
+    // IEC table value with ±0.75 dB of slack, converted to RMS LSB against
+    // [`INPUT_RMS`].
     #[test]
     fn cascade_sits_in_the_iec_frequency_band() {
         // (stride, lower, upper) in RMS LSB, IEC ± 0.75 dB.
@@ -306,8 +267,6 @@ mod tests {
         }
     }
 
-    /// The meter saturates on a steady full-scale tone and returns to silence
-    /// on its own, without the window ever being told the tone stopped.
     #[test]
     fn meter_rises_on_tone_and_settles_back_after() {
         let mut envelope = AudioEnvelope::ZERO;
@@ -332,9 +291,6 @@ mod tests {
         assert!(settled < peak, "meter rose while the room went quiet");
     }
 
-    /// A-weighting blocks DC, so a constant input — the codec's loudest
-    /// possible reading of a wedged line — must not hold the meter up. The
-    /// transient is the only thing left after the window, and it decays.
     #[test]
     fn meter_ignores_dc_input() {
         let mut envelope = AudioEnvelope::ZERO;
@@ -348,9 +304,6 @@ mod tests {
         );
     }
 
-    /// The stream hands the meter the same bytes it folds for the scope: the
-    /// readout rides on the decode loop, so a formatter that reads `dba_lsb`
-    /// never sees a meter that sat in a different room from the envelope.
     #[test]
     fn sample_stream_rides_its_bytes_into_the_meter() {
         use crate::drivers::audio::SampleStream;
@@ -363,8 +316,6 @@ mod tests {
         }
         let mut stream = SampleStream::new();
         assert_eq!(stream.dba_lsb(), 0, "a fresh stream is silent");
-        // 512 windows of 48 samples = 24k samples, most of a release constant:
-        // the exponential average has climbed most of the way, not just cracked.
         for _ in 0..512 {
             stream.push_bytes(&bytes);
         }
@@ -373,9 +324,6 @@ mod tests {
             (8_000..=18_000).contains(&loud),
             "a full-scale tone woke the meter to {loud} LSB"
         );
-        // Twice the number of samples the tone ran for. Exponential decay is
-        // asymptotic, so the assert leans on monotonic retreat rather than an
-        // exact floor.
         for _ in 0..4096 {
             stream.push_bytes(&[0; 32]);
         }
@@ -383,11 +331,6 @@ mod tests {
         assert!(quiet < loud, "the meter held {quiet} LSB after silence");
     }
 
-    /// A quiet signal must not feed the near-unit-circle poles a limit cycle: the
-    /// idle floor that showed up as a constant ~65 dBA on a board that heard
-    /// nothing but its own codec floor. Down where the IEEE A-weighting is nearly
-    /// flat, a board's own floor of a few dozen LSB has to read a few dozen LSB,
-    /// which is what [`STATE_FRACTION`] is narrow enough to allow.
     #[test]
     fn a_quiet_floor_reads_quiet_instead_of_feeding_a_limit_cycle() {
         let n = 600_000;

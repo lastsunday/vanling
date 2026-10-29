@@ -1,17 +1,8 @@
 //! A capture stream and a reference stream, paired and cancelled.
 //!
-//! [`Canceller`] is two samples in and one out, and making those two samples be
-//! *about the same instant* is neither its problem nor cheap: the microphone and
-//! the speaker are two DMA transfers on one shared clock, each drained at its own
-//! cadence, and the reference is held back by a transmit ring's 120 ms of runway.
-//! This stage is the arithmetic of that pairing, so the arithmetic can be tested
-//! on a host where none of the DMA exists.
-//!
-//! **The failure it exists to make visible**: a mispaired stream still converges
-//! and still reports an ERLE, just a lower one by an amount nobody can attribute.
-//! So the pairing is pinned by tests that assert on the *residual* rather than the
-//! filter's internals — a mispaired stream has to leave a measurably worse
-//! residual on the same room.
+//! The two transfers are drained on their own cadences and the reference is held back by
+//! the transmit ring's 120 ms runway. A mispaired stream still converges and reports a
+//! lower ERLE, so the pairing is tested on the residual.
 use super::{Cancelled, Canceller};
 
 /// What one stage did with a run of capture samples.
@@ -19,52 +10,29 @@ use super::{Cancelled, Canceller};
 pub struct EchoOutcome {
     /// Pairs actually folded through the canceller.
     pub cancelled: usize,
-    /// Capture samples that had no reference to pair with — the two streams
-    /// were not in step. Non-zero is a fault to report, not a count to expect.
+    /// Capture samples that had no reference to pair with — the two streams were not in
+    /// step.
     pub unpaired: usize,
-    /// The enhancement over the run, in decibels. Zero when nothing was
-    /// cancelled, since a meter that has measured nothing must not read as
-    /// having measured perfect cancellation.
+    /// The enhancement over the run, in decibels.
     pub erle_decibels: i32,
     /// The delay the canceller settled on, if it has.
     pub delay: Option<usize>,
-    /// The best correlation the delay search found, in thousandths, beside the
-    /// delay it produced from it.
-    ///
-    /// Carried as a pair because the delay alone cannot be trusted: a search
-    /// that found nothing and a search that found a peak at the window edge both
-    /// report a plausible delay, and this is the figure that tells them apart.
+    /// The best correlation the delay search found, in thousandths, beside the delay it
+    /// produced from it.
     pub delay_peak: i64,
-    /// Whether the filter is adapting, so a reading can be read against the
-    /// right state: frozen is barge-in, adapting is far-end only.
+    /// Whether the filter is adapting, so a reading can be read against the right state:
+    /// frozen is barge-in, adapting is far-end only.
     pub adapting: bool,
     /// The loudest capture sample in the run, as an absolute LSB magnitude.
-    ///
-    /// Carried beside the ERLE because **an ERLE of 0 cannot say whether the
-    /// microphone heard anything at all**. A filter handed silence and a filter
-    /// handed a reference that does not predict the echo both read 0 and both
-    /// converge quietly; only the microphone's own level separates them.
     pub mic_peak: u16,
     /// The loudest reference sample in the run, as an absolute LSB magnitude.
-    ///
-    /// This is the signal the speaker was handed, so it is the one side of the
-    /// comparison that does not depend on the acoustics: a healthy reference
-    /// beside a silent microphone localises the fault to the analog path, and a
-    /// silent reference beside a loud one localises it to the playback side.
     pub reference_peak: u16,
 }
 
 /// Pairs a capture stream against a reference and cancels it.
-///
-/// `L` is the tap count, carried as a const generic so the state this holds is
-/// the state the budget was sized for — see [`Canceller`].
 #[derive(Debug, Clone)]
 pub struct EchoStage<const L: usize> {
     canceller: Canceller<L>,
-    /// Whether the reference side is wired at all. A board with a microphone and
-    /// no speaker has a capture that must keep working, so the stage answers
-    /// that its samples went straight through rather than reporting every one
-    /// of them as unpaired.
     paired: bool,
 }
 
@@ -77,8 +45,8 @@ impl<const L: usize> EchoStage<L> {
         }
     }
 
-    /// A stage with no reference: every sample passes through, and the outcome
-    /// says zero were cancelled rather than counting them as faults.
+    /// A stage with no reference: every sample passes through, and the outcome says zero
+    /// were cancelled rather than counting them as faults.
     pub fn unpaired() -> Self {
         Self {
             canceller: Canceller::new(),
@@ -87,21 +55,12 @@ impl<const L: usize> EchoStage<L> {
     }
 
     /// Cancels one decimated capture sample against one reference sample.
-    ///
-    /// `reference` is what the speaker played at the instant the microphone
-    /// heard `mic`. Both are at [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ).
     pub fn cancel(&mut self, mic: i16, reference: i16) -> Cancelled {
         self.canceller.process(mic, reference)
     }
 
-    /// Cancels a run of capture samples against a run of references of the same
-    /// length, and reports what came of it.
-    ///
-    /// Mismatched lengths are the caller's error to have made, and are reported
-    /// rather than padded: a stage that quietly paired the shorter run against
-    /// the head of the longer one would be cancelling against frames from a
-    /// different moment, which is exactly the fault this type is here to make
-    /// visible.
+    /// Cancels a run of capture samples against a run of references of the same length, and
+    /// reports what came of it.
     pub fn cancel_run(&mut self, mic: &[i16], reference: &[i16]) -> EchoOutcome {
         let mut outcome = EchoOutcome::default();
         if !self.paired || mic.is_empty() {
@@ -124,26 +83,22 @@ impl<const L: usize> EchoStage<L> {
         outcome
     }
 
-    /// Where the echo path sits over the whole history, and how strongly it
-    /// matches there.
-    ///
-    /// **A caller runs this when `delay` is `None`, not on every poll**: it is
-    /// four times the search's work, and the question it answers — is there no
-    /// path, or is the path further back than [`super::MAX_DELAY`] — is worth asking
-    /// once and then again slowly, not per buffer.
+    /// Where the echo path sits over the whole history, and how strongly it matches there.
+    /// **A caller runs this when `delay` is `None`, not on every poll**: it is four times
+    /// the search's work, and the question it answers — is there no path, or is the path
+    /// further back than [`super::MAX_DELAY`] — is worth asking once and then again slowly,
+    /// not per buffer.
     pub fn scan_wide(&mut self) -> (usize, i64) {
         self.canceller.scan_wide()
     }
 
-    /// The share of the room's echo path a filter of `taps` cannot reach, in
-    /// hundredths, after a [`Self::scan_wide`]. See
-    /// [`Canceller::unreachable_by`](super::Canceller::unreachable_by).
+    /// The share of the room's echo path a filter of `taps` cannot reach, in hundredths,
+    /// after a [`Self::scan_wide`].
     pub fn unreachable_by(&self, taps: usize) -> i32 {
         self.canceller.unreachable_by(taps)
     }
 
-    /// The enhancement over the stream so far, in decibels. Meaningful only over
-    /// far-end single talk — see [`Canceller::erle_decibels`].
+    /// The enhancement over the stream so far, in decibels.
     pub fn erle_decibels(&self) -> i32 {
         self.canceller.erle_decibels()
     }
@@ -153,21 +108,20 @@ impl<const L: usize> EchoStage<L> {
         self.canceller.delay()
     }
 
-    /// Whether adaptation is running, so a reading can be read against the right
-    /// state: frozen is barge-in, adapting is far-end only.
+    /// Whether adaptation is running, so a reading can be read against the right state:
+    /// frozen is barge-in, adapting is far-end only.
     pub fn adapting(&self) -> bool {
         self.canceller.adapting()
     }
 
-    /// The loudest coefficient, as a magnitude and which tap it sits on — what a
-    /// converged filter says the echo path runs through.
+    /// The loudest coefficient, as a magnitude and which tap it sits on — what a converged
+    /// filter says the echo path runs through.
     pub fn loudest_tap(&self) -> (usize, i32) {
         self.canceller.loudest_tap()
     }
 
-    /// How much the whole stage costs to hold, so a board that has to fit it
-    /// knows before asking. The log is not counted: it belongs to the transmit
-    /// side and is sized from that ring's geometry.
+    /// How much the whole stage costs to hold, so a board that has to fit it knows before
+    /// asking.
     pub const fn state_bytes() -> usize {
         super::state_bytes::<L>()
     }
@@ -187,9 +141,9 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    /// Frames of write-pointer lead a 120 ms transmit ring puts between the
-    /// sample handed to the DMA and the one on the wire. The misalignment that
-    /// actually breaks pairing, and the reason this stage reads a play cursor.
+    // Frames of write-pointer lead a 120 ms transmit ring puts between the
+    // sample handed to the DMA and the one on the wire. The misalignment that
+    // actually breaks pairing, and the reason this stage reads a play cursor.
     const WRITE_POINTER_LEAD: usize = 120 * 48;
 
     const SAMPLES: usize = 48_000;
@@ -205,10 +159,6 @@ mod tests {
 
     #[test]
     fn the_room_the_tests_use_is_a_room() {
-        // If the synthetic room has no echo in it, every cancellation assertion
-        // below passes or fails for the wrong reason — so the room is checked
-        // before it is relied on. A direct reflection of 0.7 plus a short tail
-        // lands the loop gain near 0.5.
         let played = reference(SAMPLES, AMPLITUDE, 0x5150_1001);
         let heard = echo(&played, DELAY);
         let gain = room_gain(&played, &heard, DELAY);
@@ -238,7 +188,6 @@ mod tests {
         let echo_power = power(&heard[settled..]);
 
         let cancelled_with = |shift: usize| -> i64 {
-            // A reference read `shift` frames out of step with the microphone.
             let mispaired: Vec<i16> = (0..SAMPLES)
                 .map(|n| played[(n + shift) % SAMPLES])
                 .collect();
@@ -271,7 +220,6 @@ mod tests {
             cancelled_with(WRITE_POINTER_LEAD),
         );
 
-        // And just past the window, which is where recoverability actually ends.
         assert!(
             cancelled_with(MAX_DELAY + 1) * 10 > echo_power,
             "one frame beyond the search window is already unrecoverable"
@@ -280,9 +228,6 @@ mod tests {
 
     #[test]
     fn a_capture_with_no_speaker_is_not_a_fault() {
-        // A board that can capture and cannot play is a real board. Its samples
-        // have to come out unchanged and its report has to say nothing was
-        // cancelled — not that every sample failed to pair.
         let mut stage = EchoStage::<64>::unpaired();
         let played = reference(SAMPLES, AMPLITUDE, 0x5150_1002);
         let heard = echo(&played, DELAY);
@@ -301,11 +246,6 @@ mod tests {
 
     #[test]
     fn a_reference_run_read_newest_first_pairs_once_reversed() {
-        // The reconciliation between the two directions, and the easiest thing in
-        // this path to get backwards: the microphone arrives oldest-first and the
-        // log can only be read newest-first. Zipped as they stand, every pair is
-        // wrong — and the filter still converges on *something*, so the ERLE stays
-        // a plausible number rather than an obvious zero.
         let played = reference(SAMPLES, AMPLITUDE, 0x5150_1005);
         let heard = echo(&played, DELAY);
 
@@ -317,8 +257,6 @@ mod tests {
         let aligned = erle_of(&played);
         assert!(aligned > 15, "the aligned run cancels, got {aligned}");
 
-        // What the log's newest-first read hands over, put back into time order:
-        // reversing a reversed run has to recover the aligned pairing exactly.
         let mut newest_first = played.clone();
         newest_first.reverse();
         let mut reordered = newest_first.clone();
@@ -329,8 +267,6 @@ mod tests {
             "reversing once has to land back on the aligned pairing"
         );
 
-        // And pairing without that reversal is the fault, not a rounding
-        // difference: a filter handed the wrong signal cannot cancel the echo.
         assert!(
             erle_of(&newest_first) + 10 < aligned,
             "a chronological microphone against a newest-first reference must be              clearly worse: {} against {aligned}",
@@ -340,9 +276,6 @@ mod tests {
 
     #[test]
     fn two_runs_of_different_lengths_are_reported_rather_than_padded() {
-        // The failure a padding implementation would have: pairing the shorter
-        // run against the head of the longer one cancels against frames from a
-        // different moment, and every downstream number stays plausible.
         let mut stage = EchoStage::<64>::new();
         let played = reference(SAMPLES, AMPLITUDE, 0x5150_1003);
         let heard = echo(&played, DELAY);
@@ -386,8 +319,6 @@ mod tests {
 
     #[test]
     fn the_state_the_stage_reports_covers_the_whole_canceller() {
-        // The budget is quoted from this number, and it once under-reported by
-        // 3.4x because it counted the filter and none of the rest.
         let whole = EchoStage::<64>::state_bytes();
         let canceller = super::super::state_bytes::<64>();
         assert_eq!(

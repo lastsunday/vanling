@@ -1,9 +1,8 @@
 use super::event::{MotionEvent, MotionEvents, TiltDir};
 use super::{MOTION_SCAN_MS, MotionSample};
 
-/// Tilt hysteresis: crossing the outer angle declares a tilt, and only falling
-/// back inside the inner one retracts it. A single threshold would chatter at
-/// the boundary and emit an enter/exit pair every poll.
+/// Tilt hysteresis: crossing the outer angle declares a tilt, and only falling back inside
+/// the inner one retracts it.
 pub const TILT_ENTER_DEG_X10: i16 = 150;
 pub const TILT_EXIT_DEG_X10: i16 = 100;
 
@@ -15,11 +14,8 @@ pub const TILT_EXIT_DEG_X10: i16 = 100;
 /// per reversal. Unverified on hardware; set from `SR`.
 pub const SHAKE_ON_MG: i32 = 2_000;
 
-/// One impulse is exactly what a desk knock looks like, so repetition is the
-/// discriminator: a knock crosses the line once, a shake once per reversal.
-/// Counted in crossings rather than time above the line — a leaky accumulator
-/// cancels itself out, since a reversal spends most of its cycle below the
-/// threshold.
+/// One impulse is exactly what a desk knock looks like, so repetition is the discriminator:
+/// a knock crosses the line once, a shake once per reversal.
 pub const SHAKE_PEAKS: u8 = 3;
 
 /// How far apart those crossings may be and still read as one gesture. Three
@@ -27,8 +23,8 @@ pub const SHAKE_PEAKS: u8 = 3;
 /// still treating a slow deliberate turn as one excursion.
 pub const SHAKE_WINDOW_MS: u16 = 800;
 
-/// One gesture is one event, so a shake that is still going must not re-trigger
-/// every confirm window. Matches the arbiter's cooldown.
+/// One gesture is one event, so a shake that is still going must not re-trigger every
+/// confirm window.
 pub const SHAKE_REFRACTORY_MS: u16 = 300;
 
 /// Corner of the shake estimate, about 2 Hz at the same poll rate, kept short
@@ -38,22 +34,17 @@ pub const SHAKE_GRAVITY_TAU_MS: i32 = 70;
 /// One g in mG, the shell the still test measures against.
 pub const GRAVITY_MG: i32 = 1_000;
 
-/// Still test for the lift/place pair, on the departure of the measured
-/// magnitude from one g. Measured raw rather than against a subtracted gravity
-/// estimate, which carries its own error for the whole run: raw magnitude drifts
-/// only at the sensor's noise floor, so a band settled from the bench (8-22 mG
-/// rest swing) keeps the 150 mG intent ST's LSM6DSO FSM escapes on.
+/// Still test for the lift/place pair, on the departure of the measured magnitude from one
+/// g.
 pub const STILL_GRAVITY_DEV_MG: i32 = 150;
 
 /// Dwell before a stillness transition is believed. ST waits 3 s, which reads
 /// as unresponsive on a desk device; 150 ms keeps the debounce without the lag.
 pub const DWELL_MS: u16 = 150;
 
-/// Tap peak bar, in mG² on the squared gravity-removed magnitude, set from an
-/// on-device probe: a deliberate knock peaks at 364-4866 mG against 9-38 mG of
-/// resting noise, and 250 mG clears the noise ~7x while reaching everyday
-/// tapping. A pick-up rises slowly and holds, so a knock must step out of a
-/// quiet sample to count. `TR` publishes the root.
+/// Tap peak bar, in mG² on the squared gravity-removed magnitude, set from an on-device
+/// probe: a deliberate knock peaks at 364-4866 mG against 9-38 mG of resting noise, and 250
+/// mG clears the noise ~7x while reaching everyday tapping.
 pub const TAP_PEAK_MAG_MG2: i64 = 62_500;
 
 /// The level a peak must fall under and a tap's tail must stay under while the
@@ -63,12 +54,12 @@ pub const TAP_PEAK_MAG_MG2: i64 = 62_500;
 /// from the bench, like the shake's `SR`.
 pub const TAP_QUIET_MG2: i64 = 22_500;
 
-/// A knock is a transient, an excursion that lasts longer is a press or a turn,
-/// so the peak has to decay under the quiet bar before this budget runs out.
+/// A knock is a transient, an excursion that lasts longer is a press or a turn, so the peak
+/// has to decay under the quiet bar before this budget runs out.
 pub const TAP_PEAK_WINDOW_MS: u16 = 80;
 
-/// A resolved peak has to stay below the quiet bar this long before it counts
-/// as an individual knock, so the ringing tail of one knock is not two.
+/// A resolved peak has to stay below the quiet bar this long before it counts as an
+/// individual knock, so the ringing tail of one knock is not two.
 pub const TAP_QUIET_WINDOW_MS: u16 = 80;
 
 /// How far apart two knocks may land and still roll into one gesture; a single
@@ -88,67 +79,37 @@ pub const TAP_BASELINE_TAU_MS: i32 = 300;
 
 pub const POSTURE_FLAT_MG: i32 = 300;
 
-/// Fixed-point denominator for the gravity blend, so the estimate can move by a
-/// fraction of a milli-gravity without floating point on the target.
 const GRAVITY_SCALE: i32 = 1_024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MotionRecognizer {
     tilt: Option<TiltDir>,
     posture: Option<MotionEvent>,
-    /// Gravity estimate on a short time constant tuned so the shake band
-    /// survives the high-pass instead of being absorbed as gravity.
     shake_gravity_mg: [i32; 3],
-    /// Until the first sample arrives the estimate is unknown, and treating zero
-    /// as gravity would read a device that boots mid-shake as a full g of motion.
     gravity_ready: bool,
     last_ms: Option<u64>,
     shake_peaks: u8,
     shake_window_ms: u16,
-    /// Whether the last poll was already over the line, so a crossing is counted
-    /// once per excursion instead of once per poll spent above it.
     shake_above: bool,
     shake_refractory_ms: u16,
     still_ms: u16,
     motion_ms: u16,
     lifted: bool,
-    /// Tap baseline on a slow corner, so the knock transient survives the
-    /// subtraction while a deliberate turn is absorbed as orientation.
     tap_baseline_mg: [i32; 3],
-    /// Whether the last poll sat above the peak bar, so one excursion is one
-    /// crossing no matter how long it is held up there.
     tap_above: bool,
-    /// Whether the last poll sat under the quiet bar. A rising edge only counts
-    /// as a blow when it arrives from an actually-quiet sample: a knock is a
-    /// step from rest, while a turn's residual climbs slowly across the bars,
-    /// so the one-poll jump is what tells the two apart.
     tap_prev_quiet: bool,
     tap_phase: TapPhase,
-    /// How many knocks have counted into the gesture in progress.
     tap_knocks: u8,
-    /// When the current phase was entered, for the peak/quiet budgets.
     tap_at_ms: Option<u64>,
-    /// When the first knock of a gesture counted, the anchor of the double-tap
-    /// window. `None` until a tap is actually in progress.
     tap_from_ms: Option<u64>,
-    /// How long the gesture has spent above the quiet bar since `tap_from_ms`,
-    /// for the settled-motion gate a turn's ringing accumulates past.
     tap_motion_ms: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TapPhase {
-    /// No peak in flight; waiting for the squared residual to cross the bar.
     Idle,
-    /// A peak is being followed, under the decay budget: if the residual falls
-    /// under the quiet bar the peak is a blow, if the budget runs out first it
-    /// was a press or a turn and the excursion is dropped.
     Peak,
-    /// A valid peak, waiting out the quiet window so the ringing tail of one
-    /// knock is not read as a second one.
     Quiet,
-    /// At least one knock has counted; another landing inside the double-tap
-    /// window rolls into the same gesture, and the window's end is the report.
     Between,
 }
 
@@ -178,9 +139,8 @@ impl MotionRecognizer {
         }
     }
 
-    /// Consumes every poll, including ones that raise nothing, because the
-    /// stillness and confirm accumulators are time-based and would drift if a
-    /// quiet device skipped them.
+    /// Consumes every poll, including ones that raise nothing, because the stillness and
+    /// confirm accumulators are time-based and would drift if a quiet device skipped them.
     pub fn recognize(&mut self, sample: &mut MotionSample, now_ms: u64) -> MotionEvents {
         let mut events = MotionEvents::new();
         if !sample.valid {
@@ -195,8 +155,6 @@ impl MotionRecognizer {
                 SHAKE_GRAVITY_TAU_MS,
             );
         } else {
-            // The first valid sample defines orientation instead of being
-            // measured against it, so a boot mid-handling reads as no motion.
             self.shake_gravity_mg = sample.accel_mg;
             self.tap_baseline_mg = sample.accel_mg;
             self.gravity_ready = true;
@@ -258,8 +216,6 @@ impl MotionRecognizer {
         }
     }
 
-    /// Confirms the gesture by counting reversals, each crossing carrying one
-    /// count against the window running on the clock rather than on polls.
     fn update_shake(&mut self, shake_mg: i32, elapsed_ms: u16, events: &mut MotionEvents) {
         if self.shake_refractory_ms > 0 {
             self.shake_refractory_ms = self.shake_refractory_ms.saturating_sub(elapsed_ms);
@@ -313,12 +269,6 @@ impl MotionRecognizer {
         }
     }
 
-    /// The knock detector. A per-axis moving average is subtracted and the
-    /// squared sum compared straight against both bars, the windows below being
-    /// the datasheet's 10.1 walk-through decay semantics; a peak that does not
-    /// decay under the quiet bar inside its window is a press or a turn, and
-    /// first-knock departures anchor the double-tap window so a double reports
-    /// once with its count.
     fn update_tap(
         &mut self,
         sample: &mut MotionSample,
@@ -367,15 +317,12 @@ impl MotionRecognizer {
                     self.tap_phase = TapPhase::Quiet;
                     self.tap_at_ms = Some(now_ms);
                 } else if self.expired(now_ms, TAP_PEAK_WINDOW_MS) {
-                    // Still above the quiet bar when the budget runs out: a
-                    // press or a turn, not a blow.
                     self.tap_phase = TapPhase::Idle;
                     self.tap_at_ms = None;
                 }
             }
             TapPhase::Quiet => {
                 if rising {
-                    // A second blow here is the first one's ringing tail.
                     self.tap_phase = TapPhase::Peak;
                     self.tap_at_ms = Some(now_ms);
                 } else if self.expired(now_ms, TAP_QUIET_WINDOW_MS) {
@@ -394,8 +341,6 @@ impl MotionRecognizer {
                     self.tap_phase = TapPhase::Peak;
                     self.tap_at_ms = Some(now_ms);
                 } else if self.gesture_ended(now_ms) {
-                    // A knock that rang the quiet bar most of the way was
-                    // never a blow.
                     if self.tap_motion_ms < TAP_SETTLED_MOTION_MS {
                         events.push(MotionEvent::Tap {
                             count: self.tap_knocks,
@@ -432,8 +377,6 @@ impl Default for MotionRecognizer {
     }
 }
 
-/// Moves a gravity estimate a fraction of the way toward the current reading,
-/// the fraction falling out of the elapsed time over the time constant.
 fn blend_gravity(estimate: &mut [i32; 3], accel_mg: [i32; 3], elapsed_ms: u16, tau_ms: i32) {
     let elapsed = i32::from(elapsed_ms);
     let blend = elapsed * GRAVITY_SCALE / (tau_ms + elapsed);
@@ -451,16 +394,10 @@ fn magnitude_squared(accel_mg: [i32; 3]) -> i64 {
     mag_sq
 }
 
-/// Signed deviation of the measured magnitude from one g, in mG. Only the `LR`
-/// readout takes the root; every decision measures the band in the squared
-/// domain, where the bounds stay integer.
 fn gravity_deviation_mg(accel_mg: [i32; 3]) -> i32 {
     (isqrt(magnitude_squared(accel_mg) as i32) - GRAVITY_MG).abs()
 }
 
-/// The stillness test as a band on the squared magnitude: an interval on the
-/// non-negative magnitude is an interval on its square, keeping the check in
-/// the pure-integer domain.
 fn is_still(accel_mg: [i32; 3]) -> bool {
     let mag_sq = magnitude_squared(accel_mg);
     let lo = (GRAVITY_MG - STILL_GRAVITY_DEV_MG) as i64;
@@ -468,7 +405,6 @@ fn is_still(accel_mg: [i32; 3]) -> bool {
     mag_sq > lo * lo && mag_sq < hi * hi
 }
 
-/// The residual taken as a vector length, which is what the shake test wants.
 fn vector_residual_mg(accel_mg: [i32; 3], estimate: [i32; 3]) -> i32 {
     let mut squared = 0i32;
     for (axis, &measured) in accel_mg.iter().enumerate() {
@@ -478,8 +414,6 @@ fn vector_residual_mg(accel_mg: [i32; 3], estimate: [i32; 3]) -> i32 {
     isqrt(squared)
 }
 
-/// Integer square root by Newton iteration, keeping the shake magnitude on the
-/// same fixed-point footing as the rest of the recognizer.
 fn isqrt(value: i32) -> i32 {
     if value <= 0 {
         return 0;
@@ -493,9 +427,6 @@ fn isqrt(value: i32) -> i32 {
     root
 }
 
-/// Hysteresis is signed, not a magnitude test: rolling from +20° to -20° keeps
-/// the same absolute angle, so a magnitude test would hold the old direction
-/// and the flip would never register as an exit.
 fn tilt_holds(dir: TiltDir, roll: i32, pitch: i32) -> bool {
     let exit = i32::from(TILT_EXIT_DEG_X10);
     match dir {
@@ -536,8 +467,6 @@ mod tests {
         }
     }
 
-    /// Where this recognizer's own time base currently stands, so a fixture
-    /// resumed after an earlier feed continues instead of restarting at zero.
     fn cursor(recognizer: &MotionRecognizer) -> u64 {
         recognizer.last_ms.unwrap_or_default() / MOTION_SCAN_MS + 1
     }
@@ -569,8 +498,6 @@ mod tests {
         seen
     }
 
-    /// Alternates the per-axis offset every poll, so it reads as motion
-    /// rather than as a new orientation the estimate would absorb.
     fn swinging(offsets: [i32; 3]) -> impl FnMut(usize) -> MotionSample {
         let mut polls = 0;
         move |_| {
@@ -587,8 +514,6 @@ mod tests {
         }
     }
 
-    /// A sine on one axis at a fixed frequency, read off the recognizer's clock
-    /// rather than a poll counter so the same gesture is rate-independent.
     fn tone(hz: f64, amplitude_mg: i32) -> impl FnMut(u64) -> MotionSample {
         move |now_ms| {
             let phase = 2.0 * core::f64::consts::PI * hz * now_ms as f64 / 1_000.0;
@@ -599,8 +524,6 @@ mod tests {
         }
     }
 
-    /// Gravity itself swinging, which is what deliberately turning the device
-    /// looks like: the reading stays near one g and only its direction changes.
     fn turning(hz: f64, amplitude_mg: i32) -> impl FnMut(u64) -> MotionSample {
         move |now_ms| {
             let phase = 2.0 * core::f64::consts::PI * hz * now_ms as f64 / 1_000.0;
@@ -610,8 +533,6 @@ mod tests {
         }
     }
 
-    /// Settles a fresh recognizer on a device lying still, so a gesture starts
-    /// from a converged estimate rather than from the priming sample.
     fn settled() -> (MotionRecognizer, u64) {
         let mut recognizer = MotionRecognizer::new();
         let still = sample([0, 0, 1_000], [0; 3]);
@@ -624,7 +545,6 @@ mod tests {
         events.iter().any(|event| event == MotionEvent::Shake)
     }
 
-    /// The same question over a run of events gathered across many polls.
     fn shook(events: &[MotionEvent]) -> bool {
         events.contains(&MotionEvent::Shake)
     }
@@ -682,8 +602,6 @@ mod tests {
     #[test]
     fn the_first_sample_defines_the_orientation_instead_of_measuring_against_it() {
         let mut recognizer = MotionRecognizer::new();
-        // A device picked up and shaken the instant it boots: with no estimate to
-        // subtract, the very first reading is the orientation, not an impulse.
         let mut gesture = tone(5.0, 3_000);
         let mut first = gesture(0);
         let events = recognizer.recognize(&mut first, 0);
@@ -716,8 +634,6 @@ mod tests {
 
     #[test]
     fn a_deliberate_turn_is_not_a_shake() {
-        // Turning moves gravity without adding energy, so the gesture sits where
-        // the shake estimate absorbs it as orientation.
         for hz in [0.5, 1.0, 2.0, 3.0] {
             let (mut recognizer, start) = settled();
             let mut gesture = turning(hz, 1_000);
@@ -751,7 +667,6 @@ mod tests {
 
     #[test]
     fn one_long_excursion_is_not_a_shake() {
-        // Held and turned hard without reversing: one crossing, no gesture.
         let (mut recognizer, start) = settled();
         let mut seen = Vec::new();
         for index in 0..120 {
@@ -786,8 +701,6 @@ mod tests {
         let flat = sample([0, 0, 1_000], [0; 3]);
         feed(&mut recognizer, &flat, 5);
 
-        // Picked up straight: gravity leaves one axis while the hand accelerates
-        // it, pulling the magnitude off the one-g shell past the 150 mG band.
         let lifted = sample([0, 0, 500], [0; 3]);
         let moved = feed(&mut recognizer, &lifted, 10);
         assert!(moved.contains(&MotionEvent::Lift));
@@ -799,7 +712,6 @@ mod tests {
 
     #[test]
     fn the_still_band_sits_exactly_on_still_gravity_deviation_mg() {
-        // The band comes from the constant: just below is still, just above is lift.
         let mut recognizer = MotionRecognizer::new();
         let flat = sample([0, 0, 1_000], [0; 3]);
         feed(&mut recognizer, &flat, 5);
@@ -823,7 +735,6 @@ mod tests {
 
     #[test]
     fn a_spin_keeps_the_magnitude_on_the_shell_and_reports_no_lift() {
-        // Picked up without moving against gravity: magnitude stays on the shell.
         let mut recognizer = MotionRecognizer::new();
         let upright = sample([0, 0, 1_000], [0; 3]);
         feed(&mut recognizer, &upright, 10);
@@ -837,7 +748,6 @@ mod tests {
 
     #[test]
     fn the_published_residuals_are_the_numbers_the_thresholds_decide_on() {
-        // Both readouts must carry the quantity the thresholds actually compare.
         let (mut recognizer, start) = settled();
         let still = sample([0, 0, 1_000], [0; 3]);
         let mut reading = still;
@@ -874,8 +784,6 @@ mod tests {
         }
         let fires = u64::try_from(seen.iter().filter(|e| **e == MotionEvent::Shake).count())
             .unwrap_or_default();
-        // Five seconds of shaking, each event held for the refractory period, so
-        // the count lands near one per refractory window, not one per poll.
         let span_polls = 250u64;
         let least = span_polls * MOTION_SCAN_MS / u64::from(SHAKE_REFRACTORY_MS + SHAKE_WINDOW_MS);
         let most = span_polls * MOTION_SCAN_MS / u64::from(SHAKE_REFRACTORY_MS);
@@ -887,8 +795,6 @@ mod tests {
 
     #[test]
     fn the_same_gesture_reports_at_any_poll_rate() {
-        // The peak window runs on the clock, so a slow loop sees the same gesture
-        // despite collecting fewer samples of it.
         let trigger = |step_ms: u64| {
             let mut recognizer = MotionRecognizer::new();
             let still = sample([0, 0, 1_000], [0; 3]);
@@ -907,8 +813,6 @@ mod tests {
         let slow = trigger(MOTION_SCAN_MS * 2);
         assert!(fast.is_some(), "20 ms polling must report the gesture");
         assert!(slow.is_some(), "40 ms polling must report the gesture");
-        // Not the same instant at both rates — a reversal narrower than the poll
-        // interval falls between samples — just within the window.
         assert!(
             fast.unwrap().abs_diff(slow.unwrap()) <= u64::from(SHAKE_WINDOW_MS),
             "20 ms reported at {:?} but 40 ms at {:?}, further apart than the peak window",
@@ -923,7 +827,6 @@ mod tests {
         let still = sample([0, 0, 1_000], [0; 3]);
         feed(&mut recognizer, &still, 20);
 
-        // Tipped onto its side: a one-off orientation change, not a gesture.
         let on_its_side = sample([1_000, 0, 0], [0; 3]);
         let seen = feed(&mut recognizer, &on_its_side, 25);
         assert!(
@@ -938,8 +841,6 @@ mod tests {
         let still = sample([0, 0, 1_000], [0; 3]);
         feed(&mut recognizer, &still, 20);
 
-        // Carried, not set down: the reading keeps changing, which is the only
-        // thing that separates "in use" from "left on the desk".
         let mut carried = swinging([0, 0, 400]);
         let start = recognizer.last_ms.unwrap();
         let dwell = u64::from(DWELL_MS) / MOTION_SCAN_MS + 2;
@@ -996,8 +897,6 @@ mod tests {
         assert!(recognizer.recognize(&mut fault, 0).is_empty());
     }
 
-    /// Feeds a mid-band knock on X at the given poll indices, still otherwise;
-    /// the amplitude pins the strength under test (900 mG firm, 300 mG light).
     fn blips(poll_indices: &[u64], amplitude_mg: i32) -> impl FnMut(u64, u64) -> MotionSample + '_ {
         move |index, _now| {
             let struck = poll_indices.contains(&index);
@@ -1032,7 +931,6 @@ mod tests {
 
     #[test]
     fn a_light_knock_just_above_the_peak_bar_counts() {
-        // The bar was eased from 300 to 250 mG so an ordinary tap crosses it.
         let (mut recognizer, start) = settled();
         let mut seen = Vec::new();
         let mut gesture = blips(&[0, 1], 300);
@@ -1084,8 +982,6 @@ mod tests {
 
     #[test]
     fn a_sustained_excursion_is_not_a_tap() {
-        // Held past the peak bar without decaying: the budget burns out before
-        // the residual falls under the quiet bar — a press, not a blow.
         let (mut recognizer, start) = settled();
         let mut seen = Vec::new();
         for index in 0..120 {
@@ -1119,8 +1015,6 @@ mod tests {
 
     #[test]
     fn resting_noise_stays_under_the_quiet_bar() {
-        // Resting noise (9-38 mG on the probe) against the 150 mG quiet bar must
-        // never light the peak entry.
         let (mut recognizer, start) = settled();
         let mut seen = Vec::new();
         for index in 0..120 {
@@ -1137,8 +1031,6 @@ mod tests {
 
     #[test]
     fn a_deliberate_turn_is_not_a_tap() {
-        // A turn's onset transient is knock-shaped (the silicon latched on it), so
-        // it is caught over the whole gesture: a knock settles under the bar.
         for hz in [0.5, 1.0, 2.0, 3.0] {
             let (mut recognizer, start) = settled();
             let mut gesture = turning(hz, 1_000);
@@ -1156,8 +1048,6 @@ mod tests {
 
     #[test]
     fn a_shake_is_not_a_tap() {
-        // A shake never spends a full quiet window below the bar, so none of its
-        // crossings can confirm; the Shake event itself beats a tap.
         let (mut recognizer, start) = settled();
         let mut gesture = tone(5.0, 3_000);
         let mut seen = Vec::new();
@@ -1177,8 +1067,6 @@ mod tests {
         let mut recognizer = MotionRecognizer::new();
         let still = sample([0, 0, 1_000], [0; 3]);
         feed(&mut recognizer, &still, 20);
-        // Tipped onto its side and held: the tap analogue of the shake's
-        // reorientation canary — a one-off orientation change, not a blow.
         let on_its_side = sample([1_000, 0, 0], [0; 3]);
         let seen = feed(&mut recognizer, &on_its_side, 25);
         assert!(

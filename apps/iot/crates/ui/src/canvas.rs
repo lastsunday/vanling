@@ -1,10 +1,4 @@
 //! The pixels a page is drawn into, and the only ink there is.
-//!
-//! Stamping inverts: a glyph is a run of pixels turned over, and a filled box is the same
-//! operation over a rectangle. That is why a page's paper is the ground turned over too, and why
-//! [`Canvas::fill`] carries the fill the surface was last painted with. The buffer is handed in
-//! rather than owned, so the panel keeps the bytes the DMA reads and a host test can use a bare
-//! slice.
 
 use iot_core::drivers::light::{Fill, Rgb};
 use iot_core::keyboard::ControlRect;
@@ -22,8 +16,7 @@ pub struct Canvas<'a> {
 }
 
 impl<'a> Canvas<'a> {
-    /// A canvas over a whole frame. `ground` is what the surface was last painted with, which
-    /// is what a page's own paper is made from; a camera frame has none.
+    /// A canvas over a whole frame.
     pub fn new(
         frame: &'a mut [u8],
         width: usize,
@@ -61,8 +54,7 @@ impl<'a> Canvas<'a> {
         self.ground
     }
 
-    /// Inverts one pixel. Out-of-bounds coordinates are clipped, because a page's layout is
-    /// checked at compile time and a readout wider than its slot must not index past the frame.
+    /// Inverts one pixel.
     pub fn stamp_pixel(&mut self, x: isize, y: isize) {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return;
@@ -72,7 +64,6 @@ impl<'a> Canvas<'a> {
         self.frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
     }
 
-    /// Overdraws one cell of `ch` at `left`/`top`; bytes outside printable ASCII draw nothing.
     fn stamp_char(&mut self, ch: u8, left: usize, top: usize) {
         if !(0x20..=0x7E).contains(&ch) {
             return;
@@ -95,8 +86,8 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// [`Canvas::stamp_text`] measured from the text's last column rather than its first, so a
-    /// value that grows a digit grows leftwards into empty space.
+    /// [`Canvas::stamp_text`] measured from the text's last column rather than its first,
+    /// so a value that grows a digit grows leftwards into empty space.
     pub fn stamp_text_right(&mut self, text: &[u8], right: isize, top: usize) {
         let left = right + OVERLAY_GAP as isize - text.len() as isize * GLYPH_PITCH as isize;
         self.stamp_text(text, left.max(0) as usize, top);
@@ -127,7 +118,8 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Inverts the perimeter of the circle at `(cx, cy)` with radius `r` (midpoint algorithm).
+    /// Inverts the perimeter of the circle at `(cx, cy)` with radius `r` (midpoint
+    /// algorithm).
     pub fn stamp_circle(&mut self, cx: isize, cy: isize, r: isize) {
         let mut x = r;
         let mut y = 0;
@@ -155,8 +147,8 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Fills `rect` with this frame's own ground turned over: the panel's one way of laying a
-    /// paper down for ink. A camera frame has no fill, so a page drawn over one never gets here.
+    /// Fills `rect` with this frame's own ground turned over: the panel's one way of laying
+    /// a paper down for ink.
     pub fn fill(&mut self, rect: ControlRect) {
         let Some((fill, color)) = self.ground else {
             return;

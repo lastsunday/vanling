@@ -23,15 +23,14 @@ use esp_hal::clock::CpuClock;
 use esp_hal::system::{Cpu, Stack};
 use esp_hal::timer::timg::TimerGroup;
 
-/// The clock this image brings the chip up at.
-///
-/// **80 MHz, because that is what the product boots at** — `chip_init()` hands
-/// the same preset back — so the probe measures the configuration that actually
-/// runs, including the climb back to 240 on a bias esp-hal trimmed for less.
-/// Measured not to bite; see `docs/content/records/iot/clock.md`.
+// The clock this image brings the chip up at.
+//
+// **80 MHz, because that is what the product boots at** — `chip_init()` hands
+// the same preset back — so the probe measures the configuration that actually
+// runs, including the climb back to 240 on a bias esp-hal trimmed for less.
+// Measured not to bite; see `docs/content/records/iot/clock.md`.
 const CLOCK: CpuClock = CpuClock::_80MHz;
 
-/// Only the log line's formatting and the executor's own allocations.
 static mut HEAP_MEM: [u8; 8 * 1024] = [0; 8 * 1024];
 
 #[global_allocator]
@@ -54,8 +53,6 @@ async fn main(_spawner: Spawner) -> ! {
         );
     }
 
-    // Taken by field rather than used through `peripherals`, because each is a move
-    // and a partial move would leave the rest of the set unusable.
     #[allow(non_snake_case)]
     let esp_hal::peripherals::Peripherals {
         TIMG0,
@@ -66,9 +63,6 @@ async fn main(_spawner: Spawner) -> ! {
     } = iot_chip_esp::chip_init_at(CLOCK);
     iot_chip_esp::init_logging();
     iot_chip_esp::start_rtos(TimerGroup::new(TIMG0).timer0, FROM_CPU_INTR0);
-    // `intr1` is the SMP scheduler's. This probe drives no speaker, so the interrupt the
-    // product gives the speaker's feed is free here, and taking it keeps the probe from
-    // having to change which interrupt the board hands back.
     iot_chip_esp::start_second_core(
         CPU_CTRL,
         FROM_CPU_INTR1,

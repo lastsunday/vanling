@@ -28,14 +28,10 @@ impl FrameClock {
     }
 
     pub fn tick(&mut self, animating: bool) -> Wait {
-        // Logical time advances through a park: a light caught mid-breath must not freeze when
-        // the panel settles.
         self.now_ms = self.now_ms.wrapping_add(STEP_MS);
         if !animating {
             return Wait::Park;
         }
-        // Absolute, not `now + step`: `Timer::at` returns at once for a deadline already behind,
-        // so a late frame is replayed step by step rather than clamped.
         self.next += Duration::from_millis(STEP_MS.into());
         Wait::At(self.next)
     }

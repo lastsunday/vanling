@@ -1,8 +1,6 @@
-//! Who this board is, answered by the parts themselves: each driver that can answer a question
-//! reports its own name, address and evidence, so the board cannot write a line no hardware backed.
-//!
-//! Flash capacity is deliberately absent: the JEDEC `RDID` needs the SPI bus the panel holds, and
-//! `esp-hal`'s master has no `command()`. The figure comes from `espflash board-info` on the host.
+//! Who this board is, answered by the parts themselves: each driver that can answer a
+//! question reports its own name, address and evidence, so the board cannot write a line no
+//! hardware backed.
 
 #[cfg(target_os = "none")]
 use esp_hal::efuse::{base_mac_address, chip_revision};
@@ -24,8 +22,8 @@ pub enum State {
     Absent,
 }
 
-/// Fields are private so a status can only come from one of the four constructors: a caller that
-/// could build `Present`/`Declared` by hand could report a part it never asked.
+/// Fields are private so a status can only come from one of the four constructors: a caller
+/// that could build `Present`/`Declared` by hand could report a part it never asked.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Status {
     state: State,

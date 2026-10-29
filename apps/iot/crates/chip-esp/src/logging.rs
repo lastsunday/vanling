@@ -1,27 +1,7 @@
-//! Uptime-timestamped `log` logger.
-//!
-//! esp-println's built-in logger prints bare `<level> - <msg>`; the stall
-//! diagnostics need wall-clock correlation with a human watching the panel, so
-//! every line gets an `hh:mm:ss.mmm` prefix from the HAL's system timer since
-//! boot (no RTC on the boards — "now" is uptime). Output still goes through
-//! the esp-println stream. One static instance is shared by all tasks; records
-//! are formatted inline, never buffered.
-//!
-//! The stream does not serialise writers. `esp-println` wraps writes in a lock
-//! only under its `critical-section` feature, which this crate does not enable
-//! (`Cargo.toml`), so a line from the cooperative task can be interleaved by one
-//! from an interrupt executor. Every task here that must keep its timing
-//! therefore publishes counters and leaves the printing to the cooperative side
-//! — see `FeedStats`. A line is also flushed in 32-byte chunks, so it is not
-//! atomic even against a writer that does not interrupt.
-//!
-//! The HAL's `Instant` does not advance in light sleep, so the prefix
-//! under-counts if an image is ever slept.
-//!
-//! What prints is [`configured_level`]: `IOT_LOG_LEVEL` at build time, `info` when that is
-//! unset or not a level name. The product keeps its steady state quiet at `info`, and a
-//! `debug` image is how the periodic telemetry — frame cost, feed cadence, link phase —
-//! comes back when a record needs it. See `docs/content/roadmap/cheatsheet.md`.
+//! Uptime-timestamped `log` logger. esp-println's built-in logger prints bare `<level> -
+//! <msg>`; the stall diagnostics need wall-clock correlation with a human watching the
+//! panel, so every line gets an `hh:mm:ss.mmm` prefix from the HAL's system timer since
+//! boot (no RTC on the boards — "now" is uptime).
 
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
@@ -30,9 +10,6 @@ pub static LOGGER: UptimeLogger = UptimeLogger;
 pub struct UptimeLogger;
 
 /// The highest level `IOT_LOG_LEVEL` names, or [`LevelFilter::Info`].
-///
-/// An unrecognised name falls back to the default rather than silencing the log: a typo
-/// should cost the telemetry it was meant to raise, not every line the product prints.
 pub fn configured_level() -> LevelFilter {
     option_env!("IOT_LOG_LEVEL")
         .and_then(|name| name.parse().ok())
@@ -40,8 +17,6 @@ pub fn configured_level() -> LevelFilter {
 }
 
 impl Log for UptimeLogger {
-    /// The global filter, not a copy of it: `log::set_max_level` is the one place the
-    /// level lives, so the logger and the macros that skip formatting cannot disagree.
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= log::max_level()
     }

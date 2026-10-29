@@ -62,59 +62,29 @@ use camera::frame_arena;
 
 const PCA9557_I2C_ADDR: u8 = 0x19;
 const LCD_CS_BIT: u8 = 1 << 0;
-/// The sensor's power-down line, sharing the expander register with the panel's
-/// chip-select. **Active low**, so writing it selects the panel and parks the sensor;
-/// the camera path clears it to give the sensor a clock.
 const DVP_PWDN_BIT: u8 = 1 << 2;
-/// Speaker amplifier enable, high active. Driven from the expander rather than a
-/// GPIO because the pin is the board's only spare: the amplifier sits between
-/// the DAC and the speaker and its own rail, and a board that boots with it
-/// driving would pop the speaker on every reset.
 const PA_EN_PIN: u8 = 1;
 
-/// The panel's mounted shape, as the product's renderer addresses it.
-///
-/// The module is a 2.0" ST7789 whose own resolution is 320x240, so this is the
-/// only shape it can be written in. `MADCTL` transposes the address window, and
-/// getting that wrong does not rotate the picture: a column range of 0..319
-/// overruns the controller's 240-wide RAM and the frame comes back cut.
-/// `@/records/iot/camera.md`.
 const LCD_WIDTH: u16 = 320;
 const LCD_HEIGHT: u16 = 240;
 
-// The diagnostics layout is a set of distances on a panel of one particular
-// shape, and it is written for this one. A board that mounted a panel of another
-// shape would compile every stamp and clip them off the edge instead, so the two
-// are asserted against each other here — at the wiring, which is where the
-// mounted panel is actually a fact.
 const _: () = assert!(
     LCD_WIDTH as usize == iot_core::overlay::PANEL_COLUMNS
         && LCD_HEIGHT as usize == iot_core::overlay::PANEL_ROWS,
     "the panel this board mounts is not the shape the diagnostics layout is written for"
 );
 
-/// Boot-time retries for the PCA9557 config write: the bus's first transaction
-/// and the one most exposed to a still-settling NACK that would strand the board.
 const PCA9557_RETRY_ATTEMPTS: u8 = 5;
 const PCA9557_RETRY_MS: u32 = 20;
 const MOTION_RETRY_ATTEMPTS: u8 = 3;
 const MOTION_RETRY_MS: u32 = 10;
-/// DMA copy-buffer size; only flash-resident command tables are copied, the
-/// DRAM frame buffer is pushed in place.
 const SPI_DMA_BUF_BYTES: usize = 4096;
-/// Backlight PWM frequency: high enough to be flicker-free, low enough that
-/// the APB-derived divisor stays inside the LEDC timer range.
 const BACKLIGHT_PWM_HZ: u32 = 5_000;
 
-/// LEDC channel borrows its timer with the same lifetime, so the timer lives
-/// in a `'static` cell instead of on the stack.
 static BACKLIGHT_TIMER: esp_hal::__macro_implementation::static_cell::StaticCell<
     ledc_timer::Timer<'static, LowSpeed>,
 > = esp_hal::__macro_implementation::static_cell::StaticCell::new();
 
-/// I2C0 shared by PCA9557 (0x19) and FT6336 (0x38): each device holds a
-/// blocking `I2cDevice` that takes a critical section around the inner
-/// `RefCell`, so the two drivers can never interleave on the wire.
 static I2C_BUS: esp_hal::__macro_implementation::static_cell::StaticCell<SharedI2cBus> =
     esp_hal::__macro_implementation::static_cell::StaticCell::new();
 
@@ -126,30 +96,17 @@ pub type SharedI2cDevice =
 /// Board bring-up failure, aggregating every peripheral error source.
 #[derive(Debug)]
 pub enum BoardError {
-    /// I2C bus configuration rejected.
     I2cConfig(i2c_master::ConfigError),
-    /// The camera's DMA rejected a buffer, which means the frame arena is not where the
-    /// peripheral can reach it.
     CameraDma(DmaBufError),
-    /// The camera peripheral rejected its clock or pin configuration.
     CameraConfig(esp_hal::lcd_cam::cam::ConfigError),
-    /// An I2C transaction on a shared-bus device failed.
     I2c(I2cDeviceError<i2c_master::Error>),
-    /// SPI bus configuration rejected.
     SpiConfig(spi_master::ConfigError),
-    /// An SPI transfer (CS priming or panel init) failed.
     Spi(esp_hal::spi::Error),
-    /// DMA copy/descriptor buffer construction rejected.
     Dma(DmaBufError),
-    /// The panel rejected the requested window/size.
     DisplayConfig,
-    /// The LEDC backlight timer rejected its PWM configuration.
     LedcTimer(ledc_timer::Error),
-    /// The LEDC backlight channel rejected its configuration.
     LedcChannel(ledc_channel::Error),
-    /// The I2S master rejected its clock or format configuration.
     I2sConfig(i2s_master::ConfigError),
-    /// The I2S capture transfer could not be started.
     I2sStart(i2s_master::Error),
 }
 
@@ -174,14 +131,6 @@ impl From<DmaBufError> for BoardError {
     }
 }
 
-/// The panel's SPI bus and its data/command line, as both entry points need
-/// them. `DMA_CH0` is fixed here because the capture gets the next channel.
-///
-/// The bus is primed with one byte before chip-select drops: the pins glitch on
-/// their first transfer (esp-idf #15703) and the panel ignores a byte while
-/// chip-select is high. DMA pushes whole frames without the per-FIFO poll that
-/// caps the panel at ~17 fps, and the copy buffers stage flash-resident command
-/// tables DMA cannot read in place.
 fn panel_spi(
     spi3: SPI3<'static>,
     dma_ch0: DMA_CH0<'static>,
@@ -208,9 +157,6 @@ fn panel_spi(
     Ok((spi, dc))
 }
 
-/// The panel's LEDC backlight channel, as both entry points need them. Duty 0
-/// keeps the active-low line pulled low (bright) from boot until the first
-/// renderer write.
 fn panel_backlight(
     ledc_peripheral: LEDC<'static>,
     channel_pin: GPIO42<'static>,
@@ -236,11 +182,6 @@ fn panel_backlight(
     Ok(Backlight::new(channel))
 }
 
-/// Runs `op` until it succeeds or `attempts` is spent, and returns the last
-/// failure. The board's bring-up retries the two peripherals whose first
-/// transaction is the one most exposed to a NACK from a part still settling;
-/// each keeps its own attempt count and delay, because their budgets are
-/// separate hardware facts.
 fn retry<E>(
     attempts: u8,
     delay_ms: u32,
@@ -262,19 +203,6 @@ fn retry<E>(
     last
 }
 
-/// Brings up the shared I2C bus and the expander on it, as both entry points
-/// need them.
-///
-/// The bus is a `StaticCell` rather than a local because the panel's touch
-/// controller, the accelerometer, the microphone and the DAC each hold their own
-/// `I2cDevice` over it for the board's lifetime. `port` and the two pins are
-/// taken as arguments rather than named here: they are this board's wiring, and
-/// esp-hal's pin bounds are private, so the caller configures the bus and hands
-/// the configured peripheral in.
-///
-/// The expander is retried because its first transaction is the one most exposed
-/// to a NACK from a peripheral that has not finished settling, and a stranded
-/// board is a black screen where a later failure is only a missing page.
 fn bring_up_i2c(
     i2c: i2c_master::I2c<'static, Blocking>,
 ) -> Result<(&'static SharedI2cBus, Pca9557<SharedI2cDevice>), BoardError> {
@@ -289,14 +217,6 @@ fn bring_up_i2c(
     }
 }
 
-/// Probes the ES8311 at both addresses and brings up whichever answers.
-///
-/// The part has a single address pin, so which of the two a board strapped it to
-/// is a property of the board and not of the driver — hence two attempts rather
-/// than one configured address. `absent_note` says what the caller loses when
-/// neither answers, because the product build keeps the panel, the button and
-/// the microphone and only loses the page, while the probe has nothing left to
-/// drive. A board with no DAC fitted is a real configuration, not a failure.
 fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<SharedI2cDevice>> {
     let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
     let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
@@ -319,27 +239,11 @@ pub struct Board<'d> {
     audio: Option<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>,
     speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
     camera: Option<Box<dyn FrameSource>>,
-    /// The radio peripheral, unopened. It stays here rather than being built in
-    /// `new` because the driver's start needs the scheduler, and the scheduler is
-    /// the app's to start — see [`HasWifi`].
     radio: Option<WIFI<'static>>,
-    /// The saved networks, over the partition the table in `partitions/` gives them. Read
-    /// at bring-up; handed to the link by [`Board::take_credentials`].
-    ///
-    /// Boxed because of where it travels: the link's futures are polled inside the one task
-    /// the whole product shares, so every frame that carries the list by value is that many
-    /// hundred bytes of the main stack's own region — and the region is what the static data
-    /// around a 64 KB stack has to fit in.
     credentials: Option<Box<CredentialStore>>,
 }
 
 /// Completion of the chip-level wiring, handed to the application entry point.
-///
-/// The two software interrupts are the two executors this board runs on.
-/// `FROM_CPU_INTR0` starts the cooperative scheduler every ordinary task shares;
-/// `FROM_CPU_INTR1` is handed back for the higher-priority executor the speaker's
-/// feed runs on, because the feed has a hard deadline that a cooperative task
-/// cannot be held to.
 pub type Startup<'a> = (
     Board<'a>,
     TimerGroup<'static, esp_hal::peripherals::TIMG0<'static>>,
@@ -369,12 +273,8 @@ impl Board<'static> {
             GPIO0,
             TIMG0,
             FROM_CPU_INTR0,
-            // Handed back so the app can run the speaker's feed on its own
-            // higher-priority executor; see `Startup`.
             FROM_CPU_INTR1,
             DMA_CH0,
-            // The panel's SPI owns channel 0; audio capture gets the next one, and the
-            // camera's DVP receive the one after it.
             DMA_CH1,
             LCD_CAM,
             DMA_CH2,
@@ -390,32 +290,15 @@ impl Board<'static> {
             GPIO17,
             GPIO18,
             GPIO46,
-            // The radio, kept for `HasWifi::take_wifi`: the driver's start needs the
-            // scheduler, which the app starts after this returns.
             WIFI,
             FLASH,
             ..
         } = peripherals;
 
-        // Read before anything else is brought up, so a partition that will not read is
-        // said while the boot still has the frame for the table. The store is what the
-        // panel's own credential goes into and what a boot with no build input comes up
-        // with.
-        //
-        // Auto-parking the other core is the difference between this part and the C6: a
-        // write needs the flash to itself, and this one has a second core that could be
-        // running code out of it. This build never starts that core, but nothing above this
-        // layer can tell, and a strategy that has to be revisited when something does is a
-        // strategy that will be forgotten.
         let credentials =
             crate::components::credentials::load(FlashStorage::new(FLASH).multicore_auto_park())
                 .map(Box::new);
 
-        // The backlight is the one indicator that survives a failed bring-up, so it is
-        // brought up first and kept dark until a frame has actually reached the panel.
-        // The panel retains its GRAM across an MCU reset; lighting it before the first
-        // write would show the previous run's picture as though this one had drawn it,
-        // which is what made a boot that died before its first paint look frozen.
         let mut backlight = panel_backlight(LEDC, GPIO42)?;
         backlight.set_level_pct(0);
 
@@ -429,9 +312,6 @@ impl Board<'static> {
 
         let (block_spi, dc) = panel_spi(SPI3, DMA_CH0, GPIO41, GPIO40, GPIO39)?;
 
-        // The camera's peripheral is built here, before anything else is touched, because
-        // building it enables the module clock and takes the clock pin over — which is why
-        // the sensor is programmed after it and not before.
         let dvp_peripheral = Board::new_dvp(camera::CameraPins {
             LCD_CAM,
             DMA_CH2,
@@ -452,11 +332,7 @@ impl Board<'static> {
         pca9557.set_output(DVP_PWDN_BIT)?;
 
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
-        // The surface owns the frame buffer and the camera fills all of it, so the two DMAs
-        // address one region rather than two.
         let mut light = Screen::new(0, panel, backlight, &mut frame_arena().0);
-        // A sensor that is not fitted is a board without a camera, not a board that cannot
-        // boot: the page that needs it stays dark and the rest are unaffected.
         let mut camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {
             Ok(camera) => Some(camera),
             Err(error) => {
@@ -493,15 +369,6 @@ impl Board<'static> {
 
         let speaker_codec = probe_es8311(bus, "the Speaker page stays dark");
 
-        // One I2S, one pair of BCLK and WS pins, two codecs, so the pin pair is
-        // wired once in either layout and both codecs are timed from one divider
-        // — a microphone and a speaker a hertz apart is a capture and a tap
-        // that sound like two devices.
-        //
-        // The two units run in separate clock domains and neither can be the
-        // clock owner alone, so the transmit unit drives the pins and the
-        // capture is held in slave mode behind it (see
-        // [`playback::shared_tdm_config`]).
         let shared_clocks = speaker_codec.is_some();
         let config = if shared_clocks {
             playback::shared_tdm_config()
@@ -628,8 +495,6 @@ impl Board<'static> {
                 speaker: None,
                 camera: None,
                 radio: None,
-                // The store's peripheral is the probe path's too, but a probe has nothing to
-                // keep: it reads its own numbers and exits.
                 credentials: None,
             },
             TimerGroup::new(TIMG0),
@@ -651,9 +516,6 @@ impl Board<'static> {
             GPIO45,
             TIMG0,
             FROM_CPU_INTR0,
-            // Handed back with the rest so both bring-ups return one shape. The
-            // probe's main ignores it: the probe deliberately feeds on the
-            // cooperative executor, to measure the transmit path alone.
             FROM_CPU_INTR1,
             DMA_CH1,
             ..
@@ -683,11 +545,6 @@ impl Board<'static> {
                 match playback::Es8311Tx::new(
                     tx,
                     codec,
-                    // This bring-up drives the speaker alone and builds no
-                    // microphone, so nothing reads the reference it writes. The
-                    // cell is still made, so the driver has somewhere real to
-                    // write and a probe that later adds a capture does not have to
-                    // change this call.
                     reference::Writer::new(reference::share::<{ playback::REFERENCE_SAMPLES }>()),
                 ) {
                     Ok(speaker) => Some(Box::new(speaker)),
@@ -708,8 +565,6 @@ impl Board<'static> {
                 motion: None,
                 audio: None,
                 speaker,
-                // The probe brings its own camera up through `new_camera_only`; this path
-                // wires the speaker alone, so it must hand over none.
                 camera: None,
                 radio: None,
                 credentials: None,
@@ -723,32 +578,16 @@ impl Board<'static> {
 
 impl Board<'static> {
     /// The IMU driver itself, for a probe that walks configurations.
-    ///
-    /// Not [`HasMotion::take_motion`](iot_core::drivers::board::HasMotion::take_motion): a probe walks the configurations by writing the
-    /// registers itself and counting what that caused.
     pub fn take_motion_driver(&mut self) -> Option<Qmi8658<SharedI2cDevice>> {
         self.motion.take()
     }
 
     /// The saved networks, for the link that keeps them.
-    ///
-    /// Taken rather than borrowed: the task that holds the link is the one that writes a
-    /// credential the panel named, and it is the only writer there is — a second handle
-    /// would be a second copy of a list the flash has one of.
     pub fn take_credentials(&mut self) -> Option<Box<CredentialStore>> {
         self.credentials.take()
     }
 
-    /// The capture driver itself, for a probe that has to read the canceller's own
-    /// numbers.
-    ///
-    /// Not [`HasAudio::take_audio`]: that hands over a `PollEntry` boxed behind the
-    /// input pipeline, which is right for the product — one capture among several
-    /// polled sources — and useless for a probe, which needs the driver to ask what
-    /// the echo cancellation did rather than what the envelope says.
-    ///
-    /// Boxed as a trait object so a probe names no codec, and erased once here
-    /// because `Es7210Rx` is generic over the codec that captured it.
+    /// The capture driver itself, for a probe that has to read the canceller's own numbers.
     pub fn take_capture(&mut self) -> Option<Box<dyn crate::virtual_components::EchoCapture>> {
         self.audio
             .take()

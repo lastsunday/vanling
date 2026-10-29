@@ -1,9 +1,7 @@
 use esp_hal::ledc::LowSpeed;
 use esp_hal::ledc::channel::{Channel, ChannelIFace};
 
-/// Panel backlight driven by an LEDC PWM channel. The BL bus is active-low
-/// (on = pulled low), so the channel duty is the software inversion of the
-/// requested level: `level_pct` 100 → 0% duty (bright), 0 → 100% duty (dark).
+/// Panel backlight driven by an LEDC PWM channel.
 pub struct Backlight {
     channel: Channel<'static, LowSpeed>,
 }

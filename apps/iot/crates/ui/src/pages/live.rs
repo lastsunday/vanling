@@ -7,12 +7,6 @@ use crate::surface::Surface;
 use crate::text::format_pair;
 
 impl Surface<'_> {
-    /// Overdraws the ambient overlay as three blocks of inverted-pixel rows,
-    /// which is what the landscape panel's extra width is for. First block: the
-    /// gesture counters, `DIR`, and the two gesture coordinate pairs. Second
-    /// block: the per-finger readouts and the two rows that say whether the input
-    /// path is alive. Third block: the active mode's own rows, breathing rows
-    /// tracking the live color.
     pub(crate) fn stamp_diagnostics(&mut self, live: (u8, u8)) {
         let touch = self.diagnostics.touch;
         let light = self.diagnostics.lights[usize::from(self.instance)];
@@ -44,8 +38,6 @@ impl Surface<'_> {
         let end = format_pair(touch.last_gesture_end, &mut end_buf);
         self.stamp_left(b"XY2", end, Block::First, 10);
 
-        /// Overlay row label quartet for one finger slot: coordinate, resolved
-        /// gesture digit, its value, and the live movement arrow.
         type SlotRow = (&'static [u8], &'static [u8], &'static [u8], &'static [u8]);
 
         const SLOT_ROWS: [SlotRow; 2] = [
@@ -170,11 +162,6 @@ impl Surface<'_> {
         }
     }
 
-    /// Overdraws the Network page, one part at a time.
-    ///
-    /// Which parts there are and what order they are drawn in are [`walk`]'s, because which of them
-    /// covers which is a fact about the page rather than about the panel — and the panel is the only
-    /// place a wrong answer to it is invisible. All that is left here is what each part looks like.
     pub(crate) fn stamp_network(&mut self) {
         let link = self.diagnostics.link;
         // Copied rather than borrowed: the borrow would be of `self.diagnostics`, and every
@@ -182,10 +169,6 @@ impl Surface<'_> {
         // reason, and a list is 350 B against the envelope's kilobyte and a half.
         let aps = self.diagnostics.aps;
         let setup = self.diagnostics.setup;
-        // The network the page is about. While a draft is open that is the row it is for, because
-        // the draft is what the page is being used for; otherwise it is the link's own wherever
-        // there is one, because a link that is up is the truth about where the device is, and the
-        // picked row while nothing is up, because that is all there is to show.
         let shown_ap = if setup.keyboard {
             setup.selected
         } else {
@@ -206,15 +189,7 @@ impl Surface<'_> {
         });
     }
 
-    /// The splash page: its three lines, centred, and nothing else.
-    ///
-    /// The page is the whole of the window in which the button means setup mode (see
-    /// `Splash`), so its content is that window's own rule in the order a person
-    /// needs it — the device, the verb, and what the verb asks for. No readout, because a device
-    /// that has just booted has nothing to read yet.
     pub(crate) fn stamp_splash(&mut self) {
-        // The three lines held on the stack rather than in a table: a table of fat pointers is a
-        // relocatable object in DRAM, and the page is worth no static memory at all.
         let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
         let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;
         let top = self.height().saturating_sub(block) / 2;
@@ -226,12 +201,8 @@ impl Surface<'_> {
     }
 }
 
-/// How many lines the splash draws, top to bottom: the device, the button's verb, and what that
-/// verb asks for.
 const SPLASH_LINES: usize = 3;
 
-/// Distance between the tops of two splash lines: wider than the readout grid's row pitch, because
-/// the page has the panel to itself and these three lines are its whole content.
 const SPLASH_PITCH: usize = 3 * FONT_H;
 
 const _: () = assert!(

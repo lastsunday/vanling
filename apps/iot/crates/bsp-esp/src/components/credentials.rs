@@ -1,29 +1,15 @@
 //! The saved networks, as this board's flash holds them.
-//!
-//! The record format and the slot rule are core's (`core/src/drivers/credentials.rs`); what
-//! is here is the part that needs a part: the partition table and the three flash calls a
-//! region makes. The store is opened at bring-up rather than at the first save, because a
-//! partition that cannot be read is something the boot has to say — a device whose saves go
-//! nowhere looks exactly like one that has never been set up.
-//!
-//! `@/records/iot/wifi.md`.
 
 use esp_bootloader_esp_idf::partitions::{PARTITION_TABLE_MAX_LEN, read_partition_table};
 use esp_storage::{FlashStorage, FlashStorageError};
 use iot_core::drivers::credentials::{FlashRegion, Opened, RegionError, Store};
 
-/// The label the partition table gives the saved networks; the tables are
-/// `apps/iot/partitions/`.
 const PARTITION_LABEL: &str = "creds";
 
 /// The store over this board's credential partition.
 pub type CredentialStore = Store<CredsRegion<'static>>;
 
 /// One partition of flash, addressed from its own start.
-///
-/// The store counts offsets from zero inside its own region, so every address here is the
-/// partition's own offset plus what the store asked for, and every range is checked against
-/// the partition's length rather than the part's.
 pub struct CredsRegion<'d> {
     flash: FlashStorage<'d>,
     base: u32,
@@ -31,14 +17,7 @@ pub struct CredsRegion<'d> {
 }
 
 /// Read the partition table and open the store in the partition it names.
-///
-/// `None` when this board's table has no `creds` partition, or the table itself will not
-/// read: a device that cannot keep a network is still a device that can join one, and the
-/// page is where that difference shows.
 pub fn load(mut flash: FlashStorage<'static>) -> Option<CredentialStore> {
-    // The table is read into this frame rather than kept: what the store needs of an entry is
-    // where the partition is and how long it is, and both are plain numbers by the time the
-    // borrow of the buffer ends.
     let mut table = [0u8; PARTITION_TABLE_MAX_LEN];
     let entry = match read_partition_table(&mut flash, &mut table) {
         Ok(table) => table
@@ -88,13 +67,11 @@ impl FlashRegion for CredsRegion<'_> {
 
     fn erase(&mut self, offset: u32, bytes: u32) -> Result<(), RegionError> {
         let at = self.address(offset, bytes)?;
-        // `to` is exclusive: the part erases `[from, to)`.
         self.flash.erase(at, at + bytes).map_err(refusal)
     }
 }
 
 impl CredsRegion<'_> {
-    /// Where the store's own offset lands, or why it does not land inside this region.
     fn address(&self, offset: u32, bytes: u32) -> Result<u32, RegionError> {
         if offset.checked_add(bytes).is_some_and(|end| end <= self.len) {
             Ok(self.base + offset)
@@ -104,10 +81,6 @@ impl CredsRegion<'_> {
     }
 }
 
-/// What a refusal from the part means to the store above.
-///
-/// The two named kinds are the caller's mistakes rather than silicon's, and the store's log
-/// would send the next reader to the wrong place if they came back as one more refusal.
 fn refusal(error: FlashStorageError) -> RegionError {
     match error {
         FlashStorageError::NotAligned => RegionError::Misaligned,

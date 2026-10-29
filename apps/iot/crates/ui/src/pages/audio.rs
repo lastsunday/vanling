@@ -8,8 +8,6 @@ use crate::surface::Surface;
 
 impl Surface<'_> {
     pub(crate) fn stamp_audio(&mut self) {
-        // Read through `self` rather than copied into a local: the embedded `AudioEnvelope` is
-        // 1.6 KB, which is more frame than a repaint can afford.
         self.stamp_text(b"AUDIO", block_x(Block::First), overlay_row_top(0));
         let dba_lsb = self.diagnostics.audio.dba_lsb;
         let offset = self.spl_offset_db;

@@ -1,11 +1,5 @@
 //! The scan list as the page's JSON: its length before it is written, and one row at a time
 //! after.
-//!
-//! The list is the one answer whose length is not known until it is built, and a device with
-//! nothing to spare is one that cannot hold it to write it: what a row costs is decided by the
-//! room, and the room is whatever is in range. So the shape stays here — where the brackets go
-//! and where the commas do — and the caller writes each piece from a buffer that only has to
-//! hold one of them.
 
 use crate::drivers::network::{AccessPoint, ApList};
 
@@ -20,35 +14,21 @@ pub const PIECE_BYTES: usize = 288;
 /// One piece of the scan list, as [`ScanJson`] hands them over.
 #[derive(Clone, Copy, Debug)]
 pub enum Piece {
-    /// Bytes the list always has, whatever is in range: a bracket or a comma.
     Static(&'static [u8]),
-    /// One row, which the caller writes with [`scan_json_row`]: the only piece of unknown length.
     Row { ap: AccessPoint, saved: bool },
 }
 
 /// The list the page draws, as the pieces it is made of.
-///
-/// One piece at a time, so that no caller ever holds the whole list: what a caller needs is a
-/// buffer for one piece ([`PIECE_BYTES`]), and this is what walks the list to fill it.
 pub struct ScanJson<'a> {
     aps: &'a ApList,
     stage: Stage,
 }
 
-/// How far through the list [`ScanJson`] is.
-///
-/// A comma is a piece of its own rather than part of the row beside it, so that every piece is one
-/// thing the caller can write in one go.
 enum Stage {
-    /// The opening bracket is next.
     Open,
-    /// Row `index` is next, the rows before it having been handed over.
     Row(usize),
-    /// The comma that follows row `index - 1` is next.
     Comma(usize),
-    /// The closing bracket is next.
     Close,
-    /// Everything has been handed over.
     Done,
 }
 
@@ -100,9 +80,9 @@ impl Iterator for ScanJson<'_> {
     }
 }
 
-/// The length of the list [`ScanJson`] hands over, for the head that has to name it: counted by
-/// writing the list into a sink that keeps nothing, so this number and the bytes it names cannot
-/// disagree.
+/// The length of the list [`ScanJson`] hands over, for the head that has to name it:
+/// counted by writing the list into a sink that keeps nothing, so this number and the bytes
+/// it names cannot disagree.
 pub fn scan_json_len(aps: &ApList) -> usize {
     let mut count = Counting::default();
     for piece in ScanJson::new(aps) {
@@ -116,19 +96,11 @@ pub fn scan_json_len(aps: &ApList) -> usize {
 }
 
 /// One row of the list, written into `out`.
-///
-/// `None` for a buffer smaller than [`PIECE_BYTES`]: the caller has nowhere else to put the row
-/// and must not send half of one.
 pub fn scan_json_row(ap: &AccessPoint, saved: bool, out: &mut [u8]) -> Option<usize> {
     let mut sink = Bounded::new(out);
     write_json_row(&mut sink, ap, saved).then(|| sink.written())
 }
 
-/// One row, into anything that takes bytes.
-///
-/// Shaped for the page rather than for a client: the bars are the panel's own four buckets and the
-/// saved mark is the store's, so a row means the same thing here as on the device's own screen. The
-/// signal in dBm rides along because a phone shows it and a person can aim with it.
 fn write_json_row(sink: &mut impl Sink, ap: &AccessPoint, saved: bool) -> bool {
     sink.write(b"{\"ssid\":")
         && push_json_string(sink, ap.ssid.as_bytes())
@@ -145,11 +117,6 @@ fn write_json_row(sink: &mut impl Sink, ap: &AccessPoint, saved: bool) -> bool {
         && sink.write(b"}")
 }
 
-/// A JSON string holding bytes that need not be text.
-///
-/// An SSID is octets and a JSON string has to be text, so valid UTF-8 goes through as itself and
-/// anything else is read as Latin-1: a name that cannot be carried is still a row worth drawing,
-/// where a list that will not parse is not.
 fn push_json_string(out: &mut impl Sink, bytes: &[u8]) -> bool {
     out.write(b"\"")
         && match core::str::from_utf8(bytes) {
@@ -190,9 +157,6 @@ fn push_bssid(out: &mut impl Sink, bssid: [u8; 6]) -> bool {
     true
 }
 
-/// One digit of an address, in the case the panel prints it: the same address reaches a user twice
-/// over — this page's rows and the panel's own line — and two spellings of one value read as two
-/// values when they are held side by side.
 fn hex_digit(value: u8) -> u8 {
     if value < 10 {
         b'0' + value
@@ -201,10 +165,6 @@ fn hex_digit(value: u8) -> u8 {
     }
 }
 
-/// A list of `(name, rssi, secured)` rows, as one round of the survey would hand it over.
-///
-/// At module scope because two test modules build a list: this one for the JSON, the router's for
-/// the length `/scan` names.
 #[cfg(test)]
 pub(crate) fn list(rows: &[(&str, i8, bool)]) -> ApList {
     use crate::drivers::network::Ssid;
@@ -224,8 +184,6 @@ pub(crate) fn list(rows: &[(&str, i8, bool)]) -> ApList {
     ApList::from_ranked(&aps)
 }
 
-/// The list as the device writes it: every piece into a buffer of the size the device
-/// sends from, and the length the head names held to what came out.
 #[cfg(test)]
 pub(crate) fn json(aps: &ApList) -> alloc::vec::Vec<u8> {
     let mut out = alloc::vec::Vec::new();
@@ -255,9 +213,6 @@ mod tests {
 
     #[test]
     fn the_longest_row_a_name_can_make_fits_the_buffer_the_device_writes_one_into() {
-        // An SSID is 32 octets and every one of them may be a control character — six bytes of
-        // JSON each — so this is the longest row there is, and the number `PIECE_BYTES` is sized
-        // from. A row that did not fit would be a list that stops mid-answer without saying so.
         let row = AccessPoint {
             ssid: Ssid::from_octets(&[0x01; SSID_BYTES]),
             bssid: [0xff; 6],
@@ -290,16 +245,11 @@ mod tests {
 
     #[test]
     fn every_piece_of_an_empty_list_is_a_bracket() {
-        // The one shape where a separator rule that counts rows rather than pieces shows up:
-        // an empty list has no comma in it, and what a client parses is one empty list.
         assert_eq!(String::from_utf8(json(&ApList::empty())).unwrap(), "[]");
     }
 
     #[test]
     fn an_address_is_carried_in_the_case_the_panel_prints_it() {
-        // One address reaches the user twice — a row here and the panel's own line — so the two
-        // have to spell it the same way. The fixture the other tests use is all zeroes, which no
-        // case can tell apart; this one has letters in it.
         let row = AccessPoint {
             bssid: [0xaa, 0x0f, 0x5c, 0x00, 0xff, 0x01],
             ..AccessPoint::EMPTY
@@ -310,8 +260,6 @@ mod tests {
 
     #[test]
     fn a_name_that_is_not_text_is_still_a_row() {
-        // An SSID is octets. A list that will not parse is worse than a name shown
-        // in the wrong script.
         let row = AccessPoint {
             ssid: Ssid::from_octets(b"Caf\xe9"),
             ..AccessPoint::EMPTY

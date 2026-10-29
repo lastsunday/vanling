@@ -53,8 +53,8 @@ const MOTION_FOREGROUND: Claim = Claim::new(Mode::Continuous, 0, Sensitivity::Pr
 const ON_SCREEN: Claim = Claim::new(Mode::Continuous, 0, Sensitivity::Primary);
 
 impl DisplayPage {
-    /// Every page, in `index()` order: must stay in step with `PAGES` and with `CYCLE`, which is
-    /// this list minus the splash. Three lists the compiler cannot compare.
+    /// Every page, in `index()` order: must stay in step with `PAGES` and with `CYCLE`,
+    /// which is this list minus the splash.
     pub const ALL: [Self; 7] = [
         Self::Ambient,
         Self::Attitude,
@@ -112,8 +112,8 @@ impl DisplayPage {
         }
     }
 
-    /// Out of line on purpose: inlined, the jump table sits beside every caller — 456 B of DRAM
-    /// for the seventh variant, measured with `nm` against the S3's main stack budget.
+    // Out of line on purpose: inlined, the jump table sits beside every caller — 456 B of DRAM
+    // for the seventh variant, measured with `nm` against the S3's main stack budget.
     #[inline(never)]
     pub(crate) const fn index(&self) -> usize {
         match self {

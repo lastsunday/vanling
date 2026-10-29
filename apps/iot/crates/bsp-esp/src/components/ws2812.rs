@@ -9,12 +9,11 @@ use iot_core::drivers::camera::{CameraTarget, FrameSource};
 use iot_core::drivers::light::{Fill, Rgb, RgbLight};
 use smart_leds::{RGB8, SmartLedsWrite};
 
-/// RMT base clock the WS2812 timing table is calibrated against; the RMT
-/// peripheral on the board must be initialized at the same frequency.
+/// RMT base clock the WS2812 timing table is calibrated against; the RMT peripheral on the
+/// board must be initialized at the same frequency.
 pub const RMT_FREQ_HZ: u32 = 80_000_000;
 
-/// WS2812 addressable RGB LED strip. `BUFFER_SIZE` is the RMT pulse buffer
-/// size for the whole strip.
+/// WS2812 addressable RGB LED strip.
 pub struct Ws2812RgbLed<'d, const BUFFER_SIZE: usize> {
     driver: RmtSmartLeds<'d, BUFFER_SIZE, Blocking, RGB8, color_order::Grb>,
     led_count: usize,
@@ -46,14 +45,8 @@ impl<const BUFFER_SIZE: usize> RgbLight for Ws2812RgbLed<'_, BUFFER_SIZE> {
     }
 }
 
-// A plain strip has no digits to overlay; the trait's default no-op sink keeps
-// the surface usable as a diagnostic-free light.
 impl<const BUFFER_SIZE: usize> DiagnosticsSink for Ws2812RgbLed<'_, BUFFER_SIZE> {}
 
-/// A strip is not a screen, so there is nothing to fill and nothing to stamp over. Both are
-/// unreachable rather than merely unused — a board that mounts a camera has a panel, and the
-/// panel is what the app hands the camera to — so this is the empty implementation the
-/// unconditional bound on a light surface asks for.
 impl<const BUFFER_SIZE: usize> CameraTarget for Ws2812RgbLed<'_, BUFFER_SIZE> {
     fn paint_camera(&mut self, _now_ms: u64) -> bool {
         false

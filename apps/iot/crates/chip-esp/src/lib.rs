@@ -8,8 +8,6 @@
 
 use esp_backtrace as _;
 
-/// Where a general-purpose heap comes from. Not gated: every image has a runtime, and the
-/// part it runs on is the one that says whether there is memory to point it at.
 mod heap;
 pub(crate) mod logging;
 #[cfg(feature = "radio")]
@@ -18,9 +16,6 @@ mod radio;
 pub use heap::{heap_free, init_heap};
 
 /// Restarts the part from a clean boot.
-///
-/// A bring-up failure is not recoverable in place: the panel is still dark, so a reset reads
-/// as a retry rather than as a hang.
 pub fn reset() -> ! {
     esp_hal::system::software_reset()
 }
@@ -29,9 +24,6 @@ pub fn reset() -> ! {
 pub use radio::{init_radio_heap, radio_heap_free, radio_heap_total, ungate_radio};
 
 /// Points `log` at [`logging::LOGGER`] and applies `IOT_LOG_LEVEL`.
-///
-/// One implementation for every part: neither the logger nor the level is a chip fact.
-/// The line it prints is the answer to "why is this image quiet" without a second flash.
 pub fn init_logging() {
     log::set_logger(&logging::LOGGER).expect("logger already set");
     let level = logging::configured_level();
@@ -56,7 +48,6 @@ impl iot_core::demand::ClockSink for Clock {
     }
 }
 
-// One alias because the part feature is exclusive, and both modules answer for their own chip.
 #[cfg(feature = "esp32c6")]
 use esp32c6::clock_mhz;
 #[cfg(feature = "esp32s3")]

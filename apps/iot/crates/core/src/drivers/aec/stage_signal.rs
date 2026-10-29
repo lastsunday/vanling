@@ -13,8 +13,8 @@
 //! everywhere in the driver.
 use alloc::vec::Vec;
 
-/// The echo path, in ppm per tap: a dominant direct reflection then a decaying
-/// tail, which is the shape a room's impulse response has.
+/// The echo path, in ppm per tap: a dominant direct reflection then a decaying tail, which
+/// is the shape a room's impulse response has.
 pub const PATH: [(usize, i32); 4] = [(9, 700_000), (14, -300_000), (21, 160_000), (30, -70_000)];
 
 /// What a room does to a reference: [`PATH`] convolved in behind `delay`.
@@ -31,9 +31,9 @@ pub fn echo(played: &[i16], delay: usize) -> Vec<i16> {
         .collect()
 }
 
-/// A room's gain as a multiple of the reference's own power, so a test can
-/// assert the room it built is the room it meant to build rather than
-/// discovering later that it was nearly silent.
+/// A room's gain as a multiple of the reference's own power, so a test can assert the room
+/// it built is the room it meant to build rather than discovering later that it was nearly
+/// silent.
 pub fn room_gain(played: &[i16], heard: &[i16], delay: usize) -> f64 {
     let signal: i64 = heard.iter().map(|s| i64::from(*s) * i64::from(*s)).sum();
     let reference: i64 = played[delay..]

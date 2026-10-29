@@ -1,6 +1,5 @@
 use super::Window;
 
-/// This part's PSRAM, which [`crate::chip_init_at`] mapped and proved on the way past.
 pub(crate) fn window() -> (Window, &'static str) {
     match crate::esp32s3::psram_window() {
         crate::esp32s3::PsramWindow::Ready(window) => (window, "PSRAM"),

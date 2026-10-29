@@ -115,7 +115,7 @@ pub(super) fn swipe(
     )
 }
 
-/// An out-of-range source clamps to the last installed surface rather than panicking.
+// An out-of-range source clamps to the last installed surface rather than panicking.
 fn slot(current: &DeviceState, source: u8) -> usize {
     usize::from(source).min(current.lights.len() - 1)
 }

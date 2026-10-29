@@ -1,5 +1,4 @@
-//! Entry point for the repository's tools. The work is in the library so the
-//! tests can reach it; this only parses arguments.
+//! Entry point for the repository's tools.
 
 use iot_tool::midi;
 

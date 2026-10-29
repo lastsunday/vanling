@@ -37,8 +37,6 @@ mod demand {
             "and the same for the page that draws the envelope"
         );
 
-        // Everywhere else the reading is background to what is on screen, so a budget may
-        // batch it.
         for page in CYCLE {
             if matches!(page, DisplayPage::Attitude | DisplayPage::Camera) {
                 continue;
@@ -50,8 +48,6 @@ mod demand {
             );
         }
 
-        // The mode is unchanged by any of this: the class decides how long a reading
-        // may go unread.
         for page in CYCLE {
             assert_eq!(
                 page.demand(ALL_KEYS).claim(DemandKey::MOTION).mode,
@@ -93,8 +89,6 @@ mod demand {
 
     #[test]
     fn only_the_page_that_draws_the_envelope_claims_the_microphone() {
-        // The capture is due every tick and is the most expensive of the input task's four
-        // sources, so a page that reads no samples must not keep it running.
         for page in CYCLE {
             let claimed = page.demand(ALL_KEYS).claim(DemandKey::AUDIO);
             if page == DisplayPage::Audio {
@@ -161,10 +155,6 @@ mod demand {
 
     #[test]
     fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
-        // The held demand is only as fresh as the last `propose_demand`. These four
-        // fields are everything a proposal is derived from, so every write path that
-        // touches one has to re-derive — going through the public entry points rather
-        // than poking `state` is what makes a missed recompute visible here.
         let mut by_page = landed(fully_wired());
         by_page.apply_business(BusinessIntent::NextPage);
         assert_eq!(
@@ -188,8 +178,6 @@ mod demand {
 
     #[test]
     fn a_committed_demand_survives_being_read_back() {
-        // What the configurator writes is what everyone downstream must see, even
-        // though a fresh derivation would say otherwise.
         let mut manager = landed(fully_wired().with_boot_page(DisplayPage::Camera));
         assert_eq!(manager.state().page, DisplayPage::Camera);
         assert_eq!(
@@ -281,8 +269,6 @@ mod motion {
     use super::*;
     use crate::drivers::motion::{MotionBatch, MotionEvent, MotionEvents, TiltDir};
 
-    /// Every semantic a product may declare, so a case can assert one
-    /// bucket moved without restating the other thirteen.
     const ALL_CAPS: MotionCapabilities = MotionCapabilities::TAP
         .union(MotionCapabilities::STEP)
         .union(MotionCapabilities::STILL)
@@ -308,8 +294,6 @@ mod motion {
         })));
     }
 
-    /// Reads one bucket, so a case names the field it means instead of
-    /// repeating the struct type in every closure.
     type Bucket = fn(&MotionCounts) -> u16;
 
     #[test]
@@ -344,9 +328,6 @@ mod motion {
 
     #[test]
     fn every_semantic_files_under_its_own_bucket() {
-        // The tap engine's knock count and the four tilt directions both
-        // split one enum into several buckets, so a case that only proves
-        // "something counted" would miss a crossed wire between them.
         let cases: [(MotionEvent, Bucket); 14] = [
             (MotionEvent::Tap { count: 1 }, |c| c.taps),
             (MotionEvent::Tap { count: 2 }, |c| c.double_taps),
@@ -379,10 +360,6 @@ mod motion {
 
     #[test]
     fn one_poll_counts_every_semantic_it_carried() {
-        // Arbitration keeps at most one event per family, but the families
-        // coexist: a shake and the tilt it causes ride the same batch and
-        // both happened, so counting only the highest-priority one would
-        // hide the tilt from the tally.
         let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
         poll(
             &mut manager,
@@ -468,24 +445,17 @@ mod business {
             solid,
             "the snapshot mirrors the applied target"
         );
-        // Out-of-range instances clamp to the last installed surface.
         manager.apply_business(set_light(7, LightState::Off));
         assert_eq!(manager.light_state_at(1), LightState::Off);
-        // An invalid intent is a no-op.
         manager.apply_business(BusinessIntent::Invalid);
         assert_eq!(manager.light_state(), solid, "an invalid intent is a no-op");
     }
 
     #[test]
     fn a_link_report_lands_whole_and_an_unwired_board_reads_off() {
-        // A board that never wired a radio reports `Off` without asking anything, which
-        // is what lets a consumer read the link rather than the board's wiring.
         let mut manager = DeviceManager::new();
         assert_eq!(manager.state().link.phase, LinkPhase::Off);
 
-        // The whole report, access point and address included: the panel draws both,
-        // and re-deriving either here would be a second opinion about what the radio
-        // said.
         let status = LinkStatus {
             phase: LinkPhase::Connected,
             ap: Some(AccessPoint {
@@ -761,8 +731,6 @@ mod separation {
 
     #[test]
     fn off_tap_full_path_records_diagnostics_and_keeps_off() {
-        // A tap on `Off` has no color step, so it resolves `Invalid` — the
-        // light must not move while the physical input still records.
         let mut manager = DeviceManager::new();
         manager.apply_business(set_light(0, LightState::Off));
         let op = tap();
@@ -1164,43 +1132,31 @@ fn touch_at(id: u8, x: u16, y: u16, status: TouchStatus) -> OperationIntent {
     }))
 }
 
-/// The page's moves, walked exhaustively rather than along the paths a test happened to pick.
-///
-/// The tests above are examples: one path somebody thought of, with the state it expected beside
-/// it. That is the wrong shape for a move whose *precondition* an earlier move took away — such a
-/// rule can be green for every state its own test walks into while being wrong for a state none of
-/// them does. So this walks the reachable states instead: a breadth-first sweep over every move the
-/// page has, from the state a booted device is in, with [`broken`]'s invariants checked on every
-/// state a move lands on. The moves that reached a broken state are printed with it, so a failure
-/// here is a reproduction rather than a verdict.
-///
-/// Two limits of the alphabet decide what the sweep's answer is worth. Every report it sends is one
-/// the radio really makes — `Connected` carries an address, `Connecting` may or may not have a name
-/// yet, `Off` and `Scanning` carry neither — because a sweep free to invent a report would find
-/// states the device cannot be in and call them reachable. And states are compared through [`key`]:
-/// a field left out that a move reads would merge two states the page tells apart.
+// The page's moves, walked exhaustively rather than along the paths a test happened to pick.
+//
+// The tests above are examples: one path somebody thought of, with the state it expected beside
+// it. That is the wrong shape for a move whose *precondition* an earlier move took away — such a
+// rule can be green for every state its own test walks into while being wrong for a state none of
+// them does. So this walks the reachable states instead: a breadth-first sweep over every move the
+// page has, from the state a booted device is in, with [`broken`]'s invariants checked on every
+// state a move lands on. The moves that reached a broken state are printed with it, so a failure
+// here is a reproduction rather than a verdict.
+//
+// Two limits of the alphabet decide what the sweep's answer is worth. Every report it sends is one
+// the radio really makes — `Connected` carries an address, `Connecting` may or may not have a name
+// yet, `Off` and `Scanning` carry neither — because a sweep free to invent a report would find
+// states the device cannot be in and call them reachable. And states are compared through [`key`]:
+// a field left out that a move reads would merge two states the page tells apart.
 mod reachable {
     use super::*;
     use crate::keyboard::{self, DialogChoice, Key};
     use alloc::collections::{BTreeSet, VecDeque};
     use alloc::string::String;
 
-    /// Where a list band is tapped and held: inside the row, well clear of the panel's edge.
     const LIST_X: u16 = 30;
 
-    /// How many states the sweep may reach before it is called off. Asserted rather than assumed:
-    /// the page settles at under half of it, so reaching it means a move was added that the page's
-    /// own state cannot really be in.
     const SWEEP_CAP: usize = 20_000;
 
-    /// The sweep's key for a state: the fields a move branches on, written out as bytes.
-    ///
-    /// The fields only the *drawing* reads — the reveal, the last refusal, the strip's wait — are
-    /// left out, and that costs nothing: [`broken`] is checked on the state every move lands on
-    /// whether or not a state like it has been seen. What the key is for is the frontier.
-    ///
-    /// Bytes rather than a hash, because a hash's collision would merge two states and drop the
-    /// moves leading out of one of them — a silent hole in the one thing this test is for.
     fn key(state: &DeviceState) -> Vec<u8> {
         let mut key = Vec::with_capacity(64);
         key.push(state.page as u8);
@@ -1237,8 +1193,6 @@ mod reachable {
         key.push(u8::from(state.scan_now));
         match state.join {
             None => key.push(0),
-            // The two shapes of the same command are two states here: one is joined with and
-            // the other is looked up, and the moves below do different things with each.
             Some(JoinRequest::Typed(_)) => key.push(1),
             Some(JoinRequest::Held(_)) => key.push(2),
         }
@@ -1246,8 +1200,6 @@ mod reachable {
         key
     }
 
-    /// A network as bytes: the BSSID, which is the field that names it, and whether it asks for
-    /// a passphrase, which is the field a pick branches on.
     fn encode_ap(bytes: &mut Vec<u8>, ap: Option<AccessPoint>) {
         match ap {
             None => bytes.push(0),
@@ -1259,12 +1211,12 @@ mod reachable {
         }
     }
 
-    /// The invariants the page's own drawing and hit rules rest on, read off a state some move
-    /// reached: `None` when they all hold.
-    ///
-    /// Each one is the negation of a state that draws nothing, offers nothing, or offers
-    /// something that is not there — the failures this page has no way to be loud about, because
-    /// what breaks is what the panel puts on the glass.
+    // The invariants the page's own drawing and hit rules rest on, read off a state some move
+    // reached: `None` when they all hold.
+    //
+    // Each one is the negation of a state that draws nothing, offers nothing, or offers
+    // something that is not there — the failures this page has no way to be loud about, because
+    // what breaks is what the panel puts on the glass.
     fn broken(state: &DeviceState) -> Option<&'static str> {
         if state.setup.keyboard && state.setup.entry.is_none() {
             return Some(
@@ -1293,7 +1245,6 @@ mod reachable {
         None
     }
 
-    /// How the sweep reached `at`, with `this` as the move that was applied to it.
     fn path(origin: &[(Option<usize>, &'static str)], at: usize, this: &str) -> String {
         let mut names = Vec::new();
         let mut here = Some(at);
@@ -1321,8 +1272,6 @@ mod reachable {
         (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2) as u16
     }
 
-    /// One classified event, applied the way the render loop applies one: the operation first,
-    /// then the business intent `translate` makes of it against the state that operation left.
     fn applied(manager: &mut DeviceManager, event: InputEvent) {
         let operation = op(event);
         manager.apply_operation(operation);
@@ -1395,7 +1344,6 @@ mod reachable {
         );
     }
 
-    /// A network whose BSSID is its own, so the rows of a list stay distinct states.
     fn ap_named(ssid: &[u8], last: u8) -> AccessPoint {
         AccessPoint {
             ssid: Ssid::from_octets(ssid),
@@ -1422,7 +1370,6 @@ mod reachable {
         manager.apply_scan(ApList::from_ranked(rows));
     }
 
-    // The page's own moves.
     fn tap_first_band(manager: &mut DeviceManager) {
         tap_at(manager, LIST_X, band_y(0));
     }
@@ -1484,8 +1431,6 @@ mod reachable {
     fn triple_click(manager: &mut DeviceManager) {
         applied(manager, InputEvent::Button(ButtonEvent::TripleClick));
     }
-    /// The input task's clock ending the splash: a report rather than a gesture, and the only
-    /// way off the page.
     fn splash_over(manager: &mut DeviceManager) {
         manager.apply_business(BusinessIntent::SplashOver);
     }
@@ -1496,7 +1441,6 @@ mod reachable {
         applied(manager, InputEvent::Button(ButtonEvent::LongPress));
     }
 
-    // The radio's own reports, each one a shape the radio really makes.
     fn nothing_on_the_air(manager: &mut DeviceManager) {
         link_to(manager, LinkStatus::default());
     }
@@ -1565,7 +1509,6 @@ mod reachable {
         );
     }
 
-    // The survey's own answers.
     fn scan_two(manager: &mut DeviceManager) {
         scan_of(manager, &[neighbour(), cafe()]);
     }
@@ -1589,23 +1532,16 @@ mod reachable {
         manager.apply_scan(list);
     }
 
-    // The render loop's own half: one latch handed over, and the radio's answer to it.
     fn the_leave_is_carried_out(manager: &mut DeviceManager) {
         if manager.take_leave() {
             nothing_on_the_air(manager);
         }
     }
-    // A typed credential is joined with, and the radio's first report about the attempt is the
-    // phase it starts in: an association with no name yet, because the driver has not said which
-    // access point answered.
     fn the_typed_join_is_carried_out(manager: &mut DeviceManager) {
         if let Some(JoinRequest::Typed(_)) = manager.take_join() {
             attempt_without_a_name(manager);
         }
     }
-    // And the two answers a name has: the copy is on the part, so the link goes after it and
-    // reports the association, or there is none and the page is told to ask. Both take the same
-    // command, so the sweep forks on the answer rather than on the ask.
     fn the_held_join_is_carried_out(manager: &mut DeviceManager) {
         if let Some(JoinRequest::Held(_)) = manager.take_join() {
             associated(manager);
@@ -1624,15 +1560,12 @@ mod reachable {
     }
     fn the_forget_is_carried_out(manager: &mut DeviceManager) {
         if manager.take_forget().is_some() {
-            // The store's own erase, as the network task answers it: the same rows, marked
-            // against a store that no longer holds the name.
             let mut list = manager.state().aps.unwrap_or_else(ApList::empty);
             list.mark_saved(0);
             manager.apply_scan(list);
         }
     }
 
-    /// One move of the page, and the words a failure prints it as.
     struct Move {
         name: &'static str,
         run: fn(&mut DeviceManager),
@@ -1838,10 +1771,6 @@ mod reachable {
             }
         }
 
-        // What the sweep reached, which is what makes it a sweep of this page rather than of
-        // nothing. Every state named here is one the moves above have to be able to get to, and
-        // one that stops being reached is an alphabet that lost a move — a floor on the count
-        // would say the same thing less exactly, and would break on any legitimate cut.
         let reached = |wanted: fn(&DeviceState) -> bool| {
             states.iter().any(|manager| wanted(&manager.state()))
         };

@@ -6,8 +6,6 @@ use iot_core::drivers::playback::{
     SampleSource, Sound, Speaker, SpeakerFault, SpeakerOp, Sweep, Tone, from_midi,
 };
 
-/// The catalogue in cycle order: one `const` per file, so a sound that loses its file fails to
-/// compile rather than playing the wrong one.
 const TAP: &[u8] = include_bytes!("assets/tap.mid");
 const NOTICE: &[u8] = include_bytes!("assets/notice.mid");
 const WARN: &[u8] = include_bytes!("assets/warn.mid");
@@ -22,8 +20,8 @@ pub const SWEEP_TO_HZ: u32 = 6_000;
 /// 630 whole cycles of the band, so consecutive sweeps join without a step.
 pub const SWEEP_MS: u32 = 200;
 
-/// A file that would not parse is refused rather than played as silence: the page would sit in
-/// `Playing` for ever waiting on a voice that was never built.
+/// A file that would not parse is refused rather than played as silence: the page would sit
+/// in `Playing` for ever waiting on a voice that was never built.
 pub fn source_of(sound: Sound) -> Result<Box<dyn SampleSource>, SpeakerFault> {
     match sound {
         Sound::Sweep => Ok(Box::new(Sweep::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS))),

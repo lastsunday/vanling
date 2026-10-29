@@ -4,25 +4,20 @@ use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
 use crate::state::{Breath, DeviceState, DisplayPage, LightState};
 use alloc::boxed::Box;
 
-/// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing,
-/// `2` solid. The panel overlay renders from this snapshot, so the codes are a
-/// shared contract between the core diff and the bsp surface — never literals
-/// mirrored in two crates.
+/// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing, `2` solid.
 pub const MODE_OFF: u8 = 0;
 pub const MODE_BREATH: u8 = 1;
 pub const MODE_SOLID: u8 = 2;
 
-/// A device slot the render layer knows about. Light slots are per instance:
-/// a board wiring several light surfaces subscribes one renderer per surface;
-/// diagnostics is device-level, delivered to every diagnostics subscriber.
+/// A device slot the render layer knows about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
     Light(u8),
     Diagnostics,
 }
 
-/// The declared appearance of the light, derived from state; breathing is the
-/// schedule, not a color frame — time-driven rendering is the renderer's call.
+/// The declared appearance of the light, derived from state; breathing is the schedule, not
+/// a color frame — time-driven rendering is the renderer's call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightAppearance {
     Off,
@@ -31,21 +26,13 @@ pub enum LightAppearance {
 }
 
 /// The intended appearance of every known slot, derived from [`DeviceState`].
-///
-/// `Diagnostics` rides by value for the same reason the audio envelope does in
-/// `InputEvent`: a fixed snapshot that a renderer forwards whole, with no
-/// allocation and no lifetime to thread through the diff.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotAppearance {
-    /// The `instance`-th light surface's declared appearance.
     Light {
         instance: u8,
         appearance: LightAppearance,
     },
-    /// Device-level diagnostics (the `Diagnostics` payload in `crate::diagnostics`): a
-    /// renderer forwards it to its panel, which overlays the digit rows. Kept a
-    /// separate slot so state diffs drive it independently of any light mode.
     Diagnostics(Diagnostics),
 }
 
@@ -58,9 +45,6 @@ impl SlotAppearance {
     }
 }
 
-/// What each surface actually shows: the page's own light, with a light-only board's status
-/// lamp standing in for the first surface. [`DeviceState::status_light`] answers `None` on a
-/// board with a screen, so the substitution costs that board nothing.
 fn status_lights(state: &DeviceState) -> [LightState; MAX_LIGHTS] {
     let mut lights = state.lights;
     if let Some(status) = state.status_light() {
@@ -74,8 +58,6 @@ pub fn light_appearance(state: LightState) -> LightAppearance {
     match state {
         LightState::Off => LightAppearance::Off,
         LightState::Solid { color, brightness } => {
-            // Brightness is presentation, folded into the color the renderer
-            // drives; the state object keeps color and brightness orthogonal.
             LightAppearance::Color(scale_brightness(color, brightness))
         }
         LightState::Breath(breath) => LightAppearance::Breathing(breath),
@@ -123,9 +105,6 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
     }
 }
 
-/// The diagnostics a `DeviceState` folds into for the renderer's digit rows:
-/// the touch counters/persistence carry into [`TouchDiagnostics`] and every
-/// light surface's driving values ride along in wiring order.
 fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnostics {
     Diagnostics {
         demand: demand.clone(),
@@ -192,44 +171,28 @@ pub fn diag_repaint_due(
 /// How a renderer wants to be driven after an appearance sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Activity {
-    /// Appearance settled; no callbacks until the next state change.
     Idle,
-    /// The render layer must step this renderer every tick to animate.
     TimeDriven,
 }
 
-/// Pluggable binding between one device and the render layer: the controller
-/// decides *what* to show (central state diff), the renderer answers *how*,
-/// including whether it needs time-driven frames. A renderer subscribes to the
-/// slots it owns (a panel: its light instance plus device diagnostics). Not
-/// `Send`: a renderer is built beside the surface it drives and moves into the
-/// render task as part of the registry.
+/// Pluggable binding between one device and the render layer: the controller decides *what*
+/// to show (central state diff), the renderer answers *how*, including whether it needs
+/// time-driven frames.
 pub trait Renderer {
-    /// The device slots this renderer subscribes to, in diff order.
     fn slots(&self) -> &[Slot];
 
-    /// A slot's appearance changed; apply it to the device.
     fn on_appearance(&mut self, appearance: SlotAppearance, now_ms: u32) -> Activity;
 
-    /// One animation frame, called only while the renderer reported
-    /// [`Activity::TimeDriven`].
     fn step(&mut self, now_ms: u32) -> Activity;
 }
 
-/// Central judge of the device surface: diffs successive [`DeviceState`]
-/// snapshots and reports only the appearances that changed, via a callback the
-/// render layer fans out to matching renderers. Allocation-free.
+/// Central judge of the device surface: diffs successive [`DeviceState`] snapshots and
+/// reports only the appearances that changed, via a callback the render layer fans out to
+/// matching renderers.
 pub struct RenderController {
-    /// Boxed because `Render` is handed to the app's render task by value, so an
-    /// inline snapshot would ride down that task's fixed stack frame. The box is
-    /// allocated once and then overwritten in place.
     last: Option<Box<Snapshot>>,
 }
 
-/// What the controller diffs successive [`DeviceState`]s on: the diagnostics the
-/// renderers receive, plus each light's own state, which is what decides whether
-/// its appearance moved. A `DeviceState` change that reaches neither — the raw
-/// touch snapshot, which no diagnostics row carries — cannot change what is drawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Snapshot {
     diagnostics: Diagnostics,
@@ -241,14 +204,8 @@ impl RenderController {
         Self { last: None }
     }
 
-    /// Diff `state` against the last snapshot, invoking `notify` per changed
-    /// slot; the first call reports every known slot. Returns whether any slot
-    /// changed, so bindings can react once.
-    /// Folds the state into a snapshot and hands each changed slot to `notify`.
-    ///
-    /// `demand` is passed rather than derived from `state` because a build's override lives
-    /// on the manager: a cost report naming the page's demand would be evidence about a
-    /// configuration nobody is running.
+    /// Diff `state` against the last snapshot, invoking `notify` per changed slot; the
+    /// first call reports every known slot.
     pub fn reconcile(
         &mut self,
         state: &DeviceState,
@@ -261,10 +218,6 @@ impl RenderController {
         };
         let changed = self.last.as_deref() != Some(&next);
         if changed {
-            // Diagnostics first so panel renderers repaint the digits onto the
-            // current surface, then each moved light appearance repaints over
-            // it in one write instead of an old-color frame followed by a new
-            // one.
             notify(SlotAppearance::Diagnostics(next.diagnostics.clone()));
             for (instance, light) in next.lights.iter().enumerate() {
                 let moved = match self.last.as_deref() {
@@ -286,8 +239,8 @@ impl RenderController {
         changed
     }
 
-    /// Last synced appearance for `slot` (or `None` before the first sync), so a
-    /// freshly registered renderer can catch up before the next diff.
+    /// Last synced appearance for `slot` (or `None` before the first sync), so a freshly
+    /// registered renderer can catch up before the next diff.
     pub fn current(&self, slot: Slot) -> Option<SlotAppearance> {
         let last = self.last.as_deref()?;
         Some(match slot {
@@ -308,8 +261,7 @@ impl Default for RenderController {
     }
 }
 
-/// Repaint rate (frames per second) over one window, `0` for an empty or
-/// degenerate window. Saturates at `u8::MAX` so a burst never wraps.
+/// Repaint rate (frames per second) over one window, `0` for an empty or degenerate window.
 pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {
     if elapsed_ms == 0 {
         return 0;
@@ -322,9 +274,6 @@ pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {
 }
 
 /// A share of a window as a whole percent, or `0` for a window nothing was measured in.
-///
-/// Capped at 100: the sum can exceed its own window when the clock the two ends read
-/// differs, and that is a clock artefact rather than a finding.
 pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
     part_us
         .saturating_mul(100)
@@ -345,7 +294,6 @@ mod tests {
         assert_eq!(windowed_percent(500_000, 2_000_000), 25);
         assert_eq!(windowed_percent(2_000_000, 2_000_000), 100);
         assert_eq!(windowed_percent(1, 1_000_000), 0);
-        // A hold longer than its own window is two clocks disagreeing, not a real cost.
         assert_eq!(windowed_percent(4_000_000, 2_000_000), 100);
         assert_eq!(windowed_percent(7_000, 0), 100);
     }
@@ -379,8 +327,6 @@ mod tests {
         seen
     }
 
-    /// A device that has left its splash: what the diagnostics describe, so the comparison is the
-    /// page a running board is on.
     fn landed() -> DeviceManager {
         let mut manager = DeviceManager::new();
         manager.apply_business(BusinessIntent::SplashOver);
@@ -393,8 +339,6 @@ mod tests {
 
     #[test]
     fn the_board_address_reaches_the_panel_with_the_rest_of_the_header() {
-        // The panel draws it from the snapshot like every other header reading, so it has to survive
-        // the fold rather than be asked of the state through a second path.
         let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
         let mut state = state(LightState::boot());
         state.mac = Some(mac);
@@ -544,8 +488,6 @@ mod tests {
     #[test]
     fn diag_repaint_speaker_ignores_a_drift_it_does_not_draw() {
         let base = Diagnostics::default();
-        // The envelope is live on every poll, so a Speaker-page predicate that
-        // accepted it would ship a full frame every step for the whole session.
         let mut drifting = base.clone();
         drifting.audio.envelope = live_envelope();
         for overlay in [false, true] {
@@ -595,10 +537,6 @@ mod tests {
 
     #[test]
     fn diag_repaint_network_takes_the_board_address_the_first_time_it_arrives() {
-        // The address is sent once, by the network task's first report, and by then the page has
-        // usually drawn itself already — the list being the same round after round is exactly what
-        // the survey tries to do. Without this in the diff the header keeps its blank cell for as
-        // long as nothing else moves.
         let base = Diagnostics::default();
         let mut addressed = base.clone();
         addressed.mac = Some([0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef]);
@@ -614,9 +552,6 @@ mod tests {
     #[test]
     fn diag_repaint_network_ignores_a_drift_it_does_not_draw() {
         let base = Diagnostics::default();
-        // The envelope folds on every poll and the touch counters move on every gesture, and
-        // the Network page draws neither: a predicate that accepted them would ship a full
-        // frame every step for as long as the device is on.
         let mut drifting = base.clone();
         drifting.audio.envelope = live_envelope();
         drifting.touch.taps = 12;
@@ -743,8 +678,6 @@ mod tests {
         let mut ctl = RenderController::new();
         let boot = state(LightState::boot());
         collect(&mut ctl, &boot);
-        // The raw touch snapshot rides no diagnostics row, so a state differing
-        // only there cannot change what a renderer is handed.
         let mut moved = boot.clone();
         moved.touch = Some(crate::drivers::input::TouchEvent {
             points: [crate::drivers::input::TouchPoint {
@@ -763,7 +696,6 @@ mod tests {
     fn light_changes_emit_new_appearances() {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::boot()));
-        // Boot → solid: diagnostics first, then every surface.
         let target = state(LightState::Solid {
             color: Rgb(1, 2, 3),
             brightness: 255,
@@ -782,7 +714,6 @@ mod tests {
                 },
             ]
         );
-        // Solid → solid with a new color re-notifies too.
         let recolored = state(LightState::Solid {
             color: Rgb(9, 9, 9),
             brightness: 255,
@@ -801,7 +732,6 @@ mod tests {
                 },
             ]
         );
-        // Breathing → breathing with new dimensions re-notifies as well.
         let second = state(LightState::Breath(crate::state::Breath {
             period_ms: 1_000,
             hue_period_ms: 3_000,
@@ -882,7 +812,6 @@ mod tests {
             ctl.current(Slot::Diagnostics),
             Some(SlotAppearance::Diagnostics(_))
         ));
-        // An instance beyond the installed array clamps to the last surface.
         assert_eq!(
             ctl.current(Slot::Light(9)),
             Some(SlotAppearance::Light {
@@ -909,8 +838,6 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                // Device-level diagnostics first, then surface 0, then
-                // surface 1, in wiring order.
                 SlotAppearance::Diagnostics(light_diagnostics(&two, &EffectiveDemand::default())),
                 SlotAppearance::Light {
                     instance: 0,
@@ -922,15 +849,12 @@ mod tests {
                 },
             ]
         );
-        // The second instance's snapshot is carried beside the first.
         let SlotAppearance::Diagnostics(d) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(d.lights.len(), MAX_LIGHTS);
         assert_eq!(d.lights[0].mode, 0);
         assert_eq!(d.lights[1].mode, 2);
-        // Surface 0 advances; surface 1 stays on its boot breathing and the
-        // counters stay put—so the diff carries only the moved surface.
         let mut ctl = RenderController::new();
         collect(&mut ctl, &DeviceState::default());
         let changed = DeviceState {
@@ -992,8 +916,6 @@ mod tests {
 
     #[test]
     fn diagnostics_diff_only_sets_the_shifted_field() {
-        // Phantom contacts observed with no classified result: the signal that
-        // a ghost (rather than an un-reported press) ate the tap.
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut ghost = state(LightState::Off);
@@ -1004,7 +926,6 @@ mod tests {
             collect(&mut ctl, &ghost),
             vec![SlotAppearance::Diagnostics(expected)]
         );
-        // A raw press with no classified tap: the gap the diagnostic is after.
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut presses = state(LightState::Off);
@@ -1019,7 +940,6 @@ mod tests {
 
     #[test]
     fn press_and_frame_diagnostics_carry_coordinates() {
-        // A raw press leaves its coordinates in the live point list.
         let mut ctl = RenderController::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
@@ -1041,7 +961,6 @@ mod tests {
             collect(&mut ctl, &state),
             vec![SlotAppearance::Diagnostics(expected)]
         );
-        // The raw-frame heartbeat rides the diagnostics with its live point.
         let mut ctl = RenderController::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
@@ -1120,7 +1039,6 @@ mod tests {
         assert_eq!(diagnostics.touch.last_gesture_origin, Some((20, 90)));
         assert_eq!(diagnostics.touch.last_gesture_end, Some((20, 15)));
         assert_eq!(diagnostics.touch.chip_gesture_id, 0x10);
-        // A tap's hold time and touch point land on the same diagnostics.
         let mut ctl = RenderController::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
@@ -1314,8 +1232,6 @@ mod tests {
 
     #[test]
     fn a_lamp_only_board_gets_the_status_on_its_first_surface_only() {
-        // The setup lamp stands in for the page's first surface on a board that has no page to
-        // draw it. Every other surface keeps whatever it declared.
         let mut ctl = RenderController::new();
         let status = DeviceState {
             lights: [LightState::Off, LightState::Off],
@@ -1360,8 +1276,6 @@ mod tests {
                 .with_audio(true)
                 .with_camera(true)
                 .with_boot_page(DisplayPage::Audio);
-        // The demand follows the page that is up, and a device starts on its splash: ask what the
-        // landed device's own page claims.
         manager.apply_business(BusinessIntent::SplashOver);
         assert_eq!(manager.state().page, DisplayPage::Audio);
         let quiet = manager.demand().clone();

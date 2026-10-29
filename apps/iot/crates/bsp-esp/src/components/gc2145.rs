@@ -26,53 +26,40 @@ use embedded_hal::i2c::I2c;
 /// The part's SCCB address, in the 7-bit form the bus takes.
 pub const GC2145_I2C_ADDR: u8 = 0x3c;
 
-/// Chip identity, read as a high/low pair from the third page.
 const CHIP_ID_HIGH: u8 = 0xf0;
 const CHIP_ID_LOW: u8 = 0xf1;
 
-/// What this part answers with on that pair.
-///
-/// **Checked, not merely logged**: [`Gc2145::probe`] compares against it and
-/// refuses anything else before a single register of the table above is written,
-/// so a board fitted with some other sensor cannot be brought up on this
-/// driver's register map. The LCKFB wiki says this board ships a GC0308, which
-/// is why the check earns its place — `[实测]` it answers `0x2145`.
-///
-/// Not public: the board layer has no reason to compare again, and a second
-/// comparison is a second thing that can drift from the driver's.
+// What this part answers with on that pair.
+//
+// **Checked, not merely logged**: [`Gc2145::probe`] compares against it and
+// refuses anything else before a single register of the table above is written,
+// so a board fitted with some other sensor cannot be brought up on this
+// driver's register map. The LCKFB wiki says this board ships a GC0308, which
+// is why the check earns its place — `[实测]` it answers `0x2145`.
+//
+// Not public: the board layer has no reason to compare again, and a second
+// comparison is a second thing that can drift from the driver's.
 const CHIP_ID: u16 = 0x2145;
 
-/// Reset and page select: bit 7 is the part's own reset, bits 2:0 are the page.
 const PAGE_SELECT: u8 = 0xfe;
 const PAGE_RESET_BIT: u8 = 0x80;
 const PAGE_0: u8 = 0x00;
-// Only needed by a test that reads the power-on table page-aware: the table selects page 1
-// to write the exposure ladder but this driver never selects it itself, so nothing outside
-// the table has a reason to name it.
 #[cfg(test)]
 const PAGE_1: u8 = 0x01;
 const PAGE_2: u8 = 0x02;
 
-/// Settling after the reset and after the table lands, as the reference driver waits.
 const RESET_SETTLE_MS: u32 = 100;
 const TABLE_SETTLE_MS: u32 = 100;
 
-/// How long to wait after [`Gc2145::set_window`] before starting a transfer: the part
-/// applies a new window on a frame boundary rather than on the write, so a transfer
-/// started immediately begins on a part still streaming the previous one.
 const WINDOW_SETTLE_MS: u32 = 100;
 
-/// Output format. Bits 4:0 choose the data mode; the upper bits are other output-path
-/// settings and are merged rather than overwritten.
 const REG_OUTPUT_FORMAT: u8 = 0x84;
 const OUTPUT_FORMAT_FIELD: u8 = 0x1f;
 
-/// RGB565, one of the values that field accepts (`0x02` YCbCr, `0x06` RGB565, `0x0f`
-/// bypass 10-bit) — what `gc2145.c`'s `set_pixformat` writes for `PIXFORMAT_RGB565`.
+/// RGB565, one of the values that field accepts (`0x02` YCbCr, `0x06` RGB565, `0x0f` bypass
+/// 10-bit) — what `gc2145.c`'s `set_pixformat` writes for `PIXFORMAT_RGB565`.
 pub const FORMAT_RGB565: u8 = 0x06;
 
-/// Window origin and size. `REG_WIN_*` is the read window including the blanking the part
-/// counts in its own line timing; `REG_OUT_WIN_*` is the rectangle that actually comes out.
 const REG_ROW_START_HIGH: u8 = 0x09;
 const REG_ROW_START_LOW: u8 = 0x0a;
 const REG_COL_START_HIGH: u8 = 0x0b;
@@ -90,62 +77,38 @@ const REG_OUT_WIN_ROW_START_LOW: u8 = 0x92;
 const REG_OUT_WIN_COL_START_HIGH: u8 = 0x93;
 const REG_OUT_WIN_COL_START_LOW: u8 = 0x94;
 
-/// Which rows and columns inside each decimation bin are kept, one register per axis
-/// position, so the eight are a contiguous range from `REG_SUB_ROW_N1`.
 const REG_SUB_ROW_N1: u8 = 0x9b;
 const REG_SUB_COL_N4: u8 = 0xa2;
 
 const REG_CROP_ENABLE: u8 = 0x90;
 
-/// Datasheet P0:0x99 `subsample`: `[7:4]` row ratio, `[3:0]` column ratio. A read window
-/// that is not a multiple of the output by this ratio comes out stretched.
 const REG_SUBSAMPLE: u8 = 0x99;
 
-/// Datasheet P0:0xfd `Scalar mode`: `[1]` column, `[0]` row. The power-on table clears it
-/// and the driver never sets it, only reads it back so a caller can confirm: on this part
-/// it doubles the frame rate and narrows the view. `@/records/iot/camera.md`.
 const REG_SCALAR_MODE: u8 = 0xfd;
 
-/// Datasheet P0:0x9a: `[5]`/`[4]` use-or-cut row/column, `[3]` smooth Y, `[2]` smooth
-/// chroma, `[1]` average neighbours.
 const REG_SUBSAMPLE_MODE: u8 = 0x9a;
 const SUBSAMPLE_MODE_PLAIN: u8 = 0x06;
 
-/// Zero keeps the whole bin in the picture. The `0x01`/`0x23` the Linux mainline and ST
-/// 640x480 modes write name one offset per bin instead, which measured crops the view to
-/// about a fifth of the array and doubles the frame rate. `@/records/iot/camera.md`.
 const SUBSAMPLE_BINS: [u8; 8] = [0x00; 8];
 
-/// Read-only; AEC drives them.
 const REG_EXPOSURE_HIGH: u8 = 0x03;
 const REG_EXPOSURE_LOW: u8 = 0x04;
 
-/// Datasheet P0:0x05`–`0x08`, the blanking. `P0:0x07`/`0x08` carry the vertical blanking
-/// lines and the datasheet gives the frame time as `Ft = VB + Vt + 8`, with `VB` counting
-/// this pair — which is what makes them the documented frame-rate knob.
 const REG_HBLANK_HIGH: u8 = 0x05;
 const REG_HBLANK_LOW: u8 = 0x06;
 const REG_VBLANK_HIGH: u8 = 0x07;
 const REG_VBLANK_LOW: u8 = 0x08;
-/// Bits 4:0 only — the rest of the high byte is not part of the exposure.
 const EXPOSURE_HIGH_FIELD: u8 = 0x1f;
 
-/// Mirror is bit 0, vertical flip bit 1.
 const REG_ANALOG_MODE: u8 = 0x17;
 const MIRROR_BIT: u8 = 0x01;
 
-/// What the part reads at full resolution. A requested window cannot exceed it.
 const ARRAY_WIDTH: u16 = 1600;
 const ARRAY_HEIGHT: u16 = 1200;
 
-/// Sensor pixels read per pixel emitted. `5` reads the whole array, so the picture is the
-/// part's full view with no crop, and it is the only ratio measured to both deliver a
-/// frame and carry full detail. See `@/records/iot/camera.md`.
+/// Sensor pixels read per pixel emitted.
 pub const EXTRACT_RATIO: u16 = 5;
 
-/// The ratio has to divide the array, or the output window either crops the decimated
-/// image or exceeds it. `1600/5` and `1200/5` are whole, so `320x240` *is* the decimated
-/// read window. A wider output buys no view for the same reason, so there is none here.
 const _: () = {
     assert!((ARRAY_WIDTH as usize).is_multiple_of(EXTRACT_RATIO as usize));
     assert!((ARRAY_HEIGHT as usize).is_multiple_of(EXTRACT_RATIO as usize));
@@ -155,23 +118,16 @@ const _: () = {
     assert!((REG_SUB_COL_N4 - REG_SUB_ROW_N1) as usize == SUBSAMPLE_BINS.len() - 1);
 };
 
-/// The part counts the margin in its own line timing, so `+8` vertically and `+16`
-/// horizontally — asymmetric, and that is what `esp32-camera` writes for QVGA.
 const WIN_HEIGHT_MARGIN: u16 = 8;
 const WIN_WIDTH_MARGIN: u16 = 16;
 
 const POWER_ON_OUT_WIDTH: u16 = 320;
 const POWER_ON_OUT_HEIGHT: u16 = 240;
 
-/// The power-on table, transcribed from esp32-camera's `gc2145_default_init_regs`.
 const POWER_ON_REGS: &[(u8, u8)] = &[
-    // Soft reset three times over — bit 7 of the page-select register is the part's
-    // own reset, so these are resets, not page changes.
     (0xfe, 0xf0),
     (0xfe, 0xf0),
     (0xfe, 0xf0),
-    // Clocks and power: analog_pwc, pad IO, PLL_mode1/2, clk_div_mode, cm_mode. The
-    // `0xfd` here is the scalar mode explicitly cleared; the driver never writes it.
     (0xfc, 0x06),
     (0xf6, 0x00),
     (0xf7, 0x1d),
@@ -182,12 +138,10 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xc2, 0x00),
     (0xf2, 0x0f),
     (0xfe, 0x00),
-    // Exposure, which AEC owns once it is running — the table only seeds a start value.
     (0x03, 0x04),
     (0x04, 0x62),
     (0x05, 0x01),
     (0x06, 0x3b),
-    // Read window: origin at 0,0 and 1618x1216, the array plus the margins.
     (0x09, 0x00),
     (0x0a, 0x00),
     (0x0b, 0x00),
@@ -196,7 +150,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x0e, 0xc0),
     (0x0f, 0x06),
     (0x10, 0x52),
-    // SH delay, and the mirror / vertical-flip register.
     (0x12, 0x2e),
     (0x17, 0x14),
     (0x18, 0x22),
@@ -218,8 +171,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x31, 0x90),
     (0x33, 0x06),
     (0x34, 0x01),
-    // ISP: block enables, special effect, output format, sync and bypass modes, frame
-    // start, global gain, and the AWB gains.
     (0x80, 0xff),
     (0x81, 0x24),
     (0x82, 0xfa),
@@ -242,7 +193,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xee, 0x60),
     (0xef, 0x90),
     (0xb6, 0x01),
-    // Crop window: the rectangle that leaves the part, which is the array itself.
     (0x90, 0x01),
     (0x91, 0x00),
     (0x92, 0x00),
@@ -252,9 +202,7 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x96, 0xb0),
     (0x97, 0x06),
     (0x98, 0x40),
-    // The analog mode register again, now the ISP block is in place.
     (0x18, 0x02),
-    // BLK: black level.
     (0x40, 0x42),
     (0x41, 0x00),
     (0x43, 0x54),
@@ -284,14 +232,11 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x7e, 0x3c),
     (0x7f, 0x00),
     (0xfe, 0x02),
-    // Page 2, three registers between BLK and AEC that the datasheet's register list
-    // does not give a purpose for.
     (0x48, 0x15),
     (0x49, 0x00),
     (0x4b, 0x0b),
     (0xfe, 0x00),
     (0xfe, 0x01),
-    // AEC: the exposure algorithm's own registers.
     (0x01, 0x04),
     (0x02, 0xc0),
     (0x03, 0x04),
@@ -313,8 +258,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x22, 0x80),
     (0x23, 0x20),
     (0xfe, 0x02),
-    // INTPEE, split across both pages: one write on page 2, the ladder on page 1, and
-    // the block the datasheet names on page 2.
     (0x0f, 0x04),
     (0xfe, 0x01),
     (0x12, 0x35),
@@ -336,7 +279,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xa2, 0x11),
     (0xfe, 0x00),
     (0xfe, 0x02),
-    // DNDD.
     (0x80, 0xc1),
     (0x81, 0x08),
     (0x82, 0x08),
@@ -349,7 +291,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x8a, 0x30),
     (0x8b, 0x10),
     (0xfe, 0x01),
-    // ASDE: one register on page 1, the rest on page 2.
     (0x21, 0x14),
     (0xfe, 0x02),
     (0xa3, 0x40),
@@ -369,7 +310,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x4c, 0x20),
     (0xfe, 0x00),
     (0xfe, 0x02),
-    // Gamma: twenty-two points from shadow to highlight.
     (0x10, 0x10),
     (0x11, 0x15),
     (0x12, 0x1a),
@@ -393,7 +333,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x24, 0xf9),
     (0x25, 0xff),
     (0xfe, 0x02),
-    // Gamma 2, the second leg of the same ramp.
     (0x26, 0x0f),
     (0x27, 0x14),
     (0x28, 0x19),
@@ -417,7 +356,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x3a, 0xf9),
     (0x3b, 0xff),
     (0xfe, 0x02),
-    // YCP: chroma.
     (0xd1, 0x30),
     (0xd2, 0x30),
     (0xd3, 0x45),
@@ -428,7 +366,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xef, 0x30),
     (0xd8, 0xd8),
     (0xfe, 0x01),
-    // CC: the colour matrix's coefficients.
     (0xa1, 0x80),
     (0xa2, 0x80),
     (0xa4, 0x00),
@@ -487,9 +424,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xdb, 0x13),
     (0xfe, 0x00),
     (0xfe, 0x01),
-    // LSC: lens shading, and the largest block here — a lookup table rather than a set
-    // of settings. `0x4c` selects a coefficient, `0x4d`/`0x4e` carry its value, `0x4f`
-    // ends the block, and the entries after it are the second half of the same table.
     (0x4f, 0x00),
     (0x4f, 0x00),
     (0x4b, 0x01),
@@ -687,7 +621,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x78, 0xa0),
     (0xfe, 0x00),
     (0xfe, 0x02),
-    // CC: the matrix the coefficients above feed.
     (0xc0, 0x01),
     (0xc1, 0x50),
     (0xc2, 0xf9),
@@ -708,8 +641,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0xe4, 0x45),
     (0xe5, 0xe8),
     (0xfe, 0x00),
-    // Frame rate: a clock divider and the blanking on page 0, paired with an exposure
-    // ladder on page 1. The table writes this twice, the second time at a lower divider.
     (0xf2, 0x0f),
     (0xfe, 0x00),
     (0xf7, 0x1d),
@@ -759,9 +690,6 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
     (0x2e, 0x62),
     (0x3c, 0x00),
     (0xfe, 0x00),
-    // The window the table lands on: a 320x240 sub-window of the array rather than the
-    // whole of it, which is what `POWER_ON_OUT_WIDTH`/`HEIGHT` name and what
-    // `set_window` replaces with the panel's own geometry.
     (0x09, 0x01),
     (0x0a, 0xd0),
     (0x0b, 0x02),
@@ -784,22 +712,13 @@ const POWER_ON_REGS: &[(u8, u8)] = &[
 /// What the sensor can fail at, over whatever the bus reports.
 #[derive(Debug)]
 pub enum Gc2145Error<E> {
-    /// The bus itself failed.
     Bus(E),
-    /// Something answered at the part's address but is not a GC2145.
     WrongChip { found: u16 },
-    /// The part did not answer at all.
     Absent,
-    /// An empty window, or one whose read window — the output times the ratio — does not
-    /// fit the array.
     WindowOutOfRange,
 }
 
 /// What the part reports it is streaming, read back in one pass.
-///
-/// The read window and the ratio are here because a picture can only be judged against
-/// them: an output size that reads back correctly while the ratio does not is a picture
-/// of the right shape and the wrong content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowGeometry {
     pub out_width: u16,
@@ -834,15 +753,9 @@ impl<E> From<E> for Gc2145Error<E> {
 }
 
 /// The part, reached over a shared bus.
-///
-/// `D` is the bus device type, and deliberately not assumed to be exclusive: on this
-/// board the touch controller, the codecs and the motion sensor share it, and the
-/// sensor's SCCB *is* that bus.
 pub struct Gc2145<D: I2c> {
     i2c: D,
     addr: u8,
-    /// Set once the part is streaming, so a second [`Self::init`] is a no-op rather
-    /// than a reset under a live transfer.
     running: bool,
 }
 
@@ -856,10 +769,6 @@ impl<D: I2c> Gc2145<D> {
     }
 
     /// Whether a GC2145 answers at `addr`.
-    ///
-    /// A NACK on the first register read is an answer rather than a failure: it means
-    /// the address reached nothing, which is what an absent part looks like on a bus
-    /// other devices share.
     pub fn probe(&mut self) -> Result<(), Gc2145Error<D::Error>> {
         match self.read_id() {
             Ok(CHIP_ID) => Ok(()),
@@ -869,12 +778,6 @@ impl<D: I2c> Gc2145<D> {
     }
 
     /// Brings the part up: reset, the power-on table, then RGB565.
-    ///
-    /// Idempotent, so a board that reaches the sensor from two bring-up paths does
-    /// not reset a running part under a live transfer. The window is *not* set here:
-    /// [`Self::set_window`] is separate because the caller has to know the geometry it
-    /// asked for, and a sensor left at the power-on window would otherwise stream a
-    /// shape nobody downstream is sized for.
     pub fn init(&mut self, delay: &mut impl DelayNs) -> Result<(), Gc2145Error<D::Error>> {
         if self.running {
             return Ok(());
@@ -902,8 +805,8 @@ impl<D: I2c> Gc2145<D> {
         Ok(())
     }
 
-    /// Mirrors the picture horizontally, read-modify-written so it does not disturb
-    /// the vertical flip in the same register.
+    /// Mirrors the picture horizontally, read-modify-written so it does not disturb the
+    /// vertical flip in the same register.
     pub fn set_hmirror(&mut self, enable: bool) -> Result<(), Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         let current = self.read_reg(REG_ANALOG_MODE)?;
@@ -959,13 +862,7 @@ impl<D: I2c> Gc2145<D> {
         let win_h = read_height + WIN_HEIGHT_MARGIN;
         let win_w = read_width + WIN_WIDTH_MARGIN;
 
-        // `0x95`-`0x98` names the *output* size, which every driver with a working picture
-        // writes. Whether the part honours that reading or treats it as a rectangle of the
-        // read window is undocumented, and measured as indistinguishable — see
-        // `@/records/iot/camera.md`.
         self.select_page(PAGE_0)?;
-        // The output window's origin is the read window's: the ratio decides how many read
-        // pixels each output pixel covers, so there is nothing to centre.
         self.write_reg(REG_OUT_WIN_ROW_START_HIGH, 0)?;
         self.write_reg(REG_OUT_WIN_ROW_START_LOW, 0)?;
         self.write_reg(REG_OUT_WIN_COL_START_HIGH, 0)?;
@@ -988,11 +885,6 @@ impl<D: I2c> Gc2145<D> {
     }
 
     /// Sets the decimation factor — `5` is `0x99 = 0x55` — and how it is produced.
-    ///
-    /// The mode byte and bins go with it because the power-on table does not mention them
-    /// at all, so without this the part runs on the datasheet's reset values (`0x06` and
-    /// `0x02`/`0x04`). `esp32-camera` uses `0x0e` for the mode byte, which is this plus
-    /// bit 3; measured, the two differ in nothing. `@/records/iot/camera.md`.
     pub fn write_decimation(
         &mut self,
         ratio: u8,
@@ -1004,19 +896,12 @@ impl<D: I2c> Gc2145<D> {
         for (index, value) in SUBSAMPLE_BINS.iter().enumerate() {
             self.write_reg(REG_SUB_ROW_N1 + index as u8, *value)?;
         }
-        // The part takes the window on a frame boundary rather than on the write, and
-        // Zephyr notes the datasheet does not say why the wait is needed — only that
-        // the sensor DSP needs it to act on the transaction before the next one.
         delay.delay_ms(WINDOW_SETTLE_MS);
         Ok(())
     }
 
     /// Every register the picture depends on, read in one pass, so a write that did not
     /// land is visible here rather than showing up later as a picture of the wrong shape.
-    ///
-    /// Reading only `0x95`–`0x98` would report the size that was asked for while saying
-    /// nothing about the read window or the ratio, which is how a stretched picture passes
-    /// as correctly sized.
     pub fn read_window_geometry(&mut self) -> Result<WindowGeometry, Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         let mut sub_bins = [0u8; SUBSAMPLE_BINS.len()];
@@ -1042,11 +927,6 @@ impl<D: I2c> Gc2145<D> {
     }
 
     /// The exposure the part is running, in lines.
-    ///
-    /// Read-only per the datasheet and driven by AEC, which is what makes it worth
-    /// reading: once the exposure exceeds the window the frame time is a function of this
-    /// and of nothing else, so a picture that arrives slowly is explained by this number
-    /// rather than by the DMA, the ring or the clock.
     pub fn read_exposure(&mut self) -> Result<u16, Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         let high = u16::from(self.read_reg(REG_EXPOSURE_HIGH)? & EXPOSURE_HIGH_FIELD);
@@ -1054,11 +934,6 @@ impl<D: I2c> Gc2145<D> {
     }
 
     /// The blanking the part is actually running, horizontal and vertical.
-    ///
-    /// Read rather than assumed from the power-on table, because the datasheet makes the
-    /// vertical pair the frame-rate control — `Ft = VB + Vt + 8` — and the table writes that
-    /// group twice. Naming the pair is the difference between a measured frame rate and an
-    /// arithmetic one; see `@/records/iot/camera.md`.
     pub fn read_blanking(&mut self) -> Result<(u16, u16), Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         let mut pair = |high: u8, low: u8| -> Result<u16, D::Error> {
@@ -1072,8 +947,6 @@ impl<D: I2c> Gc2145<D> {
 
     /// The identity pair as the part reports it, so a caller can log what answered.
     pub fn read_id(&mut self) -> Result<u16, Gc2145Error<D::Error>> {
-        // The identity pair is not on page 0, and the page select is what the
-        // reference driver reads it after.
         self.select_page(PAGE_2)?;
         let high = self.read_reg(CHIP_ID_HIGH)?;
         let low = self.read_reg(CHIP_ID_LOW)?;
@@ -1134,9 +1007,6 @@ mod tests {
     use alloc::vec::Vec;
     use embedded_hal::i2c::{ErrorKind, ErrorType, NoAcknowledgeSource, Operation};
 
-    /// A part with no clock behind it. Registers live in a shadow file keyed by page,
-    /// because the page is part of what a register number means, and every write is kept
-    /// in order so a call that short-circuits leaves no trace.
     struct MockPart {
         page: u8,
         pointer: u8,
@@ -1158,8 +1028,6 @@ mod tests {
             part
         }
 
-        /// What the part reads at power-on. `init` resets the page before the table runs,
-        /// so the identity pair is the only thing that has to be here already.
         fn seed_identity(&mut self) {
             self.registers
                 .insert((PAGE_2, CHIP_ID_HIGH), (CHIP_ID >> 8) as u8);
@@ -1173,7 +1041,6 @@ mod tests {
                 .unwrap_or_default()
         }
 
-        /// A 16-bit register pair as one number, which is how the driver reads them.
         fn pair(&self, high: u8, low: u8) -> u16 {
             u16::from(self.get(high)) << 8 | u16::from(self.get(low))
         }
@@ -1232,8 +1099,6 @@ mod tests {
         }
     }
 
-    /// Records the millisecond waits instead of spending them, so a test can pin the
-    /// settle windows.
     struct MockDelay {
         waited_ms: Vec<u32>,
     }
@@ -1261,10 +1126,6 @@ mod tests {
         )
     }
 
-    /// The table's entry for `reg` on the page selected at that point in the walk.
-    ///
-    /// Page-aware because the number alone is ambiguous: `0x84` is the output format
-    /// on page 0 and a DNDD threshold on page 2.
     fn table_entry(reg: u8) -> Option<u8> {
         let mut page = PAGE_0;
         let mut found = None;
@@ -1280,16 +1141,10 @@ mod tests {
         found
     }
 
-    /// Pins the entries the picture depends on. Not a checksum of the whole table:
-    /// the point is that the handful of registers whose values are known to fix or
-    /// cause a specific artefact cannot be edited by accident.
     #[test]
     fn power_on_table_pins_the_entries_that_decide_the_picture() {
-        // Output data mode. If this drifts the merge still yields RGB565, but the other
-        // output-path settings in the upper bits are whatever the table happened to carry.
         assert_eq!(table_entry(REG_OUTPUT_FORMAT), Some(0x02));
 
-        // The window the table lands on, which sizes the ring and the panel.
         assert_eq!(
             (
                 u16::from(table_entry(REG_OUT_WIN_WIDTH_HIGH).unwrap()) << 8
@@ -1300,31 +1155,14 @@ mod tests {
             (POWER_ON_OUT_WIDTH, POWER_ON_OUT_HEIGHT)
         );
 
-        // The four esp32-camera annotates as artefact fixes.
-        // `0x12` "sh_delay 太短 YUV出图异常" — too short an SH delay, bad YUV out.
         assert_eq!(table_entry(0x12), Some(0x2e), "SH delay");
-        // `0x1c` "帧率快后，横条纹" — horizontal stripes once the frame rate is up.
         assert_eq!(table_entry(0x1c), Some(0x07), "TX width / space width");
-        // `0x1e` "fix 竖线" — fixes vertical lines.
         assert_eq!(table_entry(0x1e), Some(0x88), "analog mode 1");
-        // `0x21` "fix 灯管横条纹" — fixes fluorescent-tube horizontal stripes.
         assert_eq!(table_entry(0x21), Some(0x40), "analog mode 3");
 
-        // The mirror/flip register, whose bit 0 this driver sets and whose bit 1 it
-        // leaves alone.
         assert_eq!(table_entry(REG_ANALOG_MODE), Some(0x14));
     }
 
-    /// The page-1 frame-rate steps are written twice, and only the second set is in effect.
-    ///
-    /// Pinned because the first set reads like the real thing — it comes earlier in the table
-    /// and carries the larger values — so quoting it is easy and wrong. `camera.md` recorded
-    /// these registers as written nowhere at all, and then cited the pair above them as the
-    /// frame-rate ceiling, which measurement (486 lines against a ~1200-line readout) rules out.
-    ///
-    /// The exposure itself is a different register pair on a different page: page 0's
-    /// `0x03`/`0x04`, written once. That separation is the reason the earlier claim was wrong,
-    /// so it is asserted here too.
     #[test]
     fn the_frame_rate_steps_are_written_twice_and_the_second_set_wins() {
         // Walked with the driver's own page rule rather than through `table_entry`, which
@@ -1340,8 +1178,6 @@ mod tests {
         }
         let steps = |reg: u8| writes.get(&(PAGE_1, reg)).cloned().unwrap_or_default();
 
-        // `0x27`–`0x2c` are halved by the second write and `0x2d`/`0x2e` are written twice
-        // unchanged, so a claim about these has to name the effective pair.
         for (reg, first, second) in [
             (0x27, 0x03, 0x01),
             (0x28, 0x96, 0xe6),
@@ -1358,7 +1194,6 @@ mod tests {
                 "page-1 0x{reg:02x} is a frame-rate step, written twice"
             );
         }
-        // The pair the driver actually reads as the exposure, on the page it reads it from.
         assert_eq!(
             (
                 writes.get(&(PAGE_0, REG_EXPOSURE_HIGH)),
@@ -1369,8 +1204,6 @@ mod tests {
         );
     }
 
-    /// Every register write in the table is preceded by a page select, because a write
-    /// without one lands on whatever page the previous write left selected.
     #[test]
     fn the_table_selects_a_page_before_its_first_write() {
         let mut selected = false;
@@ -1384,11 +1217,6 @@ mod tests {
         assert!(!POWER_ON_REGS.is_empty(), "the table is empty");
     }
 
-    /// A bring-up resets the part before anything else reaches it, replays the whole
-    /// table, and merges RGB565 into the data-mode field rather than overwriting the
-    /// register — the table leaves `0x84` at `0x02`, and an overwrite would throw away
-    /// whatever else that register carries. It leaves the window alone, because the caller
-    /// has to know the geometry it asked for.
     #[test]
     fn init_resets_replays_the_table_and_merges_the_format() {
         let mut sensor = sensor();
@@ -1416,7 +1244,6 @@ mod tests {
         assert_eq!(delay.waited_ms, vec![RESET_SETTLE_MS, TABLE_SETTLE_MS]);
     }
 
-    /// A second `init` on a streaming part would reset it under a live transfer.
     #[test]
     fn init_is_idempotent() {
         let mut sensor = sensor();
@@ -1428,10 +1255,6 @@ mod tests {
         assert_eq!(sensor.i2c.part.history.len(), after_first);
     }
 
-    /// The window is what a picture is judged against, so its registers are pinned
-    /// number by number: the output rectangle, the read window centred in the array with
-    /// the margins the part charges to its own line timing, the ratio, and the decimation
-    /// group.
     #[test]
     fn set_window_programs_the_registers_the_picture_depends_on() {
         let mut sensor = sensor();
@@ -1454,7 +1277,6 @@ mod tests {
             part.pair(REG_OUT_WIN_HEIGHT_HIGH, REG_OUT_WIN_HEIGHT_LOW),
             POWER_ON_OUT_HEIGHT
         );
-        // The margins are asymmetric because that is what the reference driver writes.
         assert_eq!(part.pair(REG_ROW_START_HIGH, REG_ROW_START_LOW), 0);
         assert_eq!(part.pair(REG_COL_START_HIGH, REG_COL_START_LOW), 0);
         assert_eq!(
@@ -1465,7 +1287,6 @@ mod tests {
             part.pair(REG_WIN_WIDTH_HIGH, REG_WIN_WIDTH_LOW),
             POWER_ON_OUT_WIDTH * EXTRACT_RATIO + WIN_WIDTH_MARGIN
         );
-        // 0x99 is one nibble per axis, so `5` is `0x55`.
         assert_eq!(part.get(REG_SUBSAMPLE), 0x55);
         assert_eq!(part.get(REG_SUBSAMPLE_MODE), SUBSAMPLE_MODE_PLAIN);
         assert_eq!(part.get(REG_CROP_ENABLE), 0x01);
@@ -1476,8 +1297,6 @@ mod tests {
         assert_eq!(delay.waited_ms, vec![WINDOW_SETTLE_MS]);
     }
 
-    /// A ratio that is written and ignored looks exactly like one that works from the
-    /// registers alone, so the read-back is compared against what was asked for.
     #[test]
     fn reading_the_geometry_back_returns_what_was_programmed() {
         let mut sensor = sensor();
@@ -1511,9 +1330,6 @@ mod tests {
         assert!(geometry.crop_enabled);
     }
 
-    /// A window the part cannot produce has to be refused rather than programmed: a ratio
-    /// needing a negative start would wrap to a huge unsigned one and read off the other
-    /// edge of the part.
     #[test]
     fn a_window_the_part_cannot_produce_is_refused() {
         for (width, height, ratio) in [(0, 240, 5), (320, 0, 5), (640, 480, 5), (320, 240, 0)] {
@@ -1531,8 +1347,6 @@ mod tests {
         }
     }
 
-    /// A NACK on the first read is what an absent part looks like on a shared bus, and a
-    /// part answering with someone else's identity must not be taken for a GC2145.
     #[test]
     fn probe_separates_absent_from_wrong() {
         let mut absent = sensor();
@@ -1549,12 +1363,9 @@ mod tests {
         assert!(sensor().probe().is_ok());
     }
 
-    /// Mirror is read-modify-written so it does not disturb the vertical flip sharing the
-    /// register, and the format merge must not spill past its own five bits.
     #[test]
     fn the_control_bits_are_merged_not_overwritten() {
         let mut sensor = sensor();
-        // The power-on table's mirror (bit 0) off, vertical flip (bit 1) on.
         sensor
             .i2c
             .part
@@ -1565,7 +1376,6 @@ mod tests {
         sensor.set_hmirror(false).expect("mirror off");
         assert_eq!(sensor.i2c.part.get(REG_ANALOG_MODE), 0x02);
 
-        // Above the data-mode field sits output-path configuration the merge must keep.
         sensor
             .i2c
             .part

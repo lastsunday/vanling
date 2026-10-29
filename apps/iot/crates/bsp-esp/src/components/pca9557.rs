@@ -3,8 +3,8 @@ use embedded_hal::i2c::I2c;
 pub const PCA9557_REG_OUTPUT: u8 = 0x01;
 pub const PCA9557_REG_CONFIG: u8 = 0x03;
 
-/// PCA9557 8-bit I2C GPIO expander, parameterized over any embedded-hal I2C
-/// instance so the board can hand in a shared-bus device.
+/// PCA9557 8-bit I2C GPIO expander, parameterized over any embedded-hal I2C instance so the
+/// board can hand in a shared-bus device.
 pub struct Pca9557<D: I2c> {
     i2c: D,
     addr: u8,
@@ -15,9 +15,8 @@ impl<D: I2c> Pca9557<D> {
         Self { i2c, addr }
     }
 
-    /// Bring the expander up: set the output register before releasing the
-    /// pins (so the CS line stays high during board bring-up) then mark the
-    /// pins as outputs.
+    /// Bring the expander up: set the output register before releasing the pins (so the CS
+    /// line stays high during board bring-up) then mark the pins as outputs.
     pub fn init(&mut self, output: u8, config: u8) -> Result<(), D::Error> {
         self.i2c.write(self.addr, &[PCA9557_REG_OUTPUT, output])?;
         self.i2c.write(self.addr, &[PCA9557_REG_CONFIG, config])?;
@@ -30,12 +29,6 @@ impl<D: I2c> Pca9557<D> {
     }
 
     /// Sets or clears one output bit and leaves the rest as they are.
-    ///
-    /// A read-modify-write of the *output* register, which the part allows
-    /// because a pin configured as an output reads back the latch rather than the
-    /// pad — so the value the register is holding is what comes back. It is the
-    /// only way to reach a line another part of the bring-up also owns: writing
-    /// the whole register would clear the panel's own bits along with this one.
     pub fn set_output_bit(&mut self, bit: u8, high: bool) -> Result<(), D::Error> {
         let mask = 1 << bit;
         let output = self.output()?;
@@ -69,8 +62,6 @@ mod tests {
         expander.init(0x04, 0xf8).expect("init");
         let init_writes = expander.i2c.trace.clone();
 
-        // Pin 1 is the amplifier enable, and the bit *number* must reach the
-        // read-modify-write.
         expander.set_output_bit(1, true).expect("set");
 
         assert_eq!(expander.output().expect("read back"), 0x06);
@@ -85,8 +76,6 @@ mod tests {
         expander.init(0x04, 0xf8).expect("init");
         let init_writes = expander.i2c.trace.clone();
 
-        // A mask read as a bit number is a silent no-op: the short circuit sees
-        // an already-set bit and skips the write.
         expander.set_output_bit(1 << 1, true).expect("set");
 
         assert_eq!(expander.output().expect("read back"), 0x04);

@@ -3,8 +3,7 @@ use embedded_hal::i2c::I2c;
 use super::register_seq::{self, Step};
 use register_seq::{merge, write};
 
-/// Datasheet 2.2: the seven-bit write address. The part has no second address
-/// line, so this is the only address it answers on.
+/// Datasheet 2.2: the seven-bit write address.
 pub const ES7210_I2C_ADDR: u8 = 0x41;
 
 const REG_RESET: u8 = 0x00;
@@ -42,77 +41,43 @@ const RESET_IDLE: u8 = 0x41;
 const RESET_RUN: u8 = 0x71;
 
 const CLOCK_OFF_BRINGUP: u8 = 0x3F;
-/// Datasheet 4.9: bit3 is the analog power-down latch and bits 0-1 are the
-/// per-pair clock gates. Clearing all three releases the MIC1/MIC2 path.
 const CLOCK_OFF_MIC12_MASK: u8 = 0x0B;
 const POWER_DOWN_RUN: u8 = 0x00;
 
-/// Datasheet 5.1 bit0: 0 is slave. The host drives MCLK, BCLK and LRCK, so the
-/// part must not be allowed to generate or divide them.
 const MODE_SLAVE_BIT: u8 = 0x01;
 
-/// The clock this part is configured from the table's row for, and the rate that
-/// row produces. Both are the board's shared clock rather than this driver's to
-/// choose — the same MCLK programs the playback codec, so they are declared once
-/// in [`super::audio_clock`] and re-exported here for callers that already
-/// import this driver.
+/// The clock this part is configured from the table's row for, and the rate that row
+/// produces.
 pub use super::audio_clock::{MCLK_HZ, SAMPLE_RATE_HZ};
 
-/// The 12288000/48000 row of the datasheet clock table: ADC divide 1, the clock
-/// doubler on, the DLL on, OSR 0x20, and an LRCK divide of 256 (0x01:0x00) —
-/// 12.288 MHz over 256 is exactly 48 kHz.
+// The 12288000/48000 row of the datasheet clock table: ADC divide 1, the clock
+// doubler on, the DLL on, OSR 0x20, and an LRCK divide of 256 (0x01:0x00) —
+// 12.288 MHz over 256 is exactly 48 kHz.
 const MAINCLK_48K: u8 = 0xC1;
 const OSR_48K: u8 = 0x20;
 const LRCK_DIVH_48K: u8 = 0x01;
 const LRCK_DIVL_48K: u8 = 0x00;
-/// Retuning `SAMPLE_RATE_HZ` without retuning the divider bytes fails here
-/// instead of landing on the host as a part running at the wrong rate.
 const _: () = assert!(MCLK_HZ / SAMPLE_RATE_HZ == 256);
 
-/// Datasheet 4.6: each input pair's DC-blocking filter, in two registers differing
-/// only in bit 5 — `0x0A ^ 0x2A == 0x20` — so the corner is the only shared field.
-///
-/// Named for the bit they carry, not for a stage order: none is documented. The
-/// datasheet defers the definitions to an undistributed guide, and the driver
-/// families disagree even on the names (`esp-bsp` calls `0x22` HPF2 where
-/// `esp-audio-dev` calls it HPF1). So the write order below follows the reference
-/// driver rather than a stage order — and swapping the pair is not cosmetic:
-/// measured here it lifts the quiet-room floor from ~−40 dBFS to −30, leaving the
-/// input stage's DC offset standing.
 const FILTER_CLEAR: u8 = 0x0A;
 const FILTER_SET: u8 = 0x2A;
 
-/// The low three bits of a filter register: the corner field the two values
-/// agree on. Bit 5 is deliberately outside the mask — its meaning is not
-/// published, so a walk over the corner leaves the undocumented bit exactly
-/// where the reference driver put it and varies only the field that is at least
-/// known to be shared.
 const FILTER_CORNER_MASK: u8 = 0x07;
 
 /// How many corner codes a filter register's corner field can take.
 pub const HPF_CORNER_CODES: u8 = 8;
 
-/// The corner the bring-up leaves configured. The baseline this board ships
-/// with, restated as a corner so a walk that wanders off it can be returned
-/// without rebuilding the register byte.
+/// The corner the bring-up leaves configured.
 pub const HPF_CORNER: u8 = FILTER_CLEAR & FILTER_CORNER_MASK;
 
-/// Pins the two things the walk depends on to the constants above: that the two
-/// values really do differ only in bit 5, and that they really do share a
-/// corner field. Either assumption failing here is a datasheet change, not a
-/// refactor, and must not be papered over by renaming.
 const _: () = assert!(FILTER_SET ^ FILTER_CLEAR == 0x20);
 const _: () = assert!(FILTER_SET & FILTER_CORNER_MASK == FILTER_CLEAR & FILTER_CORNER_MASK);
 
-/// Datasheet 4.5: analog power with the internal 5 kOhm VMID, vdda 3.3 V and the
-/// reference buffer on.
 const ANALOG_POWER_RUN: u8 = 0x43;
-/// Datasheet 4.5: the microphone bias rails, set for 2.87 V so an electret
-/// capsule biased high still has headroom on a 3.3 V board.
 const MIC_BIAS: u8 = 0x70;
 
-/// Datasheet 4.8: bit4 enables a microphone's PGA and bits 0-3 hold its gain in
-/// 3 dB steps. Index 10 is the 30 dB step.
+// Datasheet 4.8: bit4 enables a microphone's PGA and bits 0-3 hold its gain in
+// 3 dB steps. Index 10 is the 30 dB step.
 const GAIN_ENABLE: u8 = 0x10;
 const GAIN_FIELD: u8 = 0x0F;
 const GAIN_30DB: u8 = 0x0A;
@@ -131,57 +96,23 @@ const MIC_POWER: u8 = 0x08;
 /// capture driver and speak at the same distance.
 pub const SPL_OFFSET_DECIBELS: i16 = 102;
 
-/// Datasheet 3.3: bits 1-0 of the serial-port register select the frame; 0b00 is
-/// standard I2S, which is what the host peripheral emits in Philips mode.
 const SDP_FRAME_MASK: u8 = 0x03;
 const SDP_I2S: u8 = 0x00;
-/// Datasheet 3.3: bits 6-5 hold the word width; 0b01 is 16 bit. Bit 7 is written
-/// alongside them because the width write also clears it. The field is spelled
-/// out rather than reusing the vendor's `&= 0x1f`, which clears the frame bits too
-/// and only looks harmless because the frame write before it wrote zero.
+// Datasheet 3.3: bits 6-5 hold the word width; 0b01 is 16 bit. Bit 7 is written
+// alongside them because the width write also clears it. The field is spelled
+// out rather than reusing the vendor's `&= 0x1f`, which clears the frame bits too
+// and only looks harmless because the frame write before it wrote zero.
 const SDP_WIDTH_MASK: u8 = 0xE0;
 const SDP_16BIT: u8 = 0x60;
-/// Whether MIC3 is read as the echo reference.
-///
-/// **[measured] off, with the registers known correct and the cause still
-/// open.** [`MIC1_AND_MIC3`] sets every field that makes TDM — format, channel
-/// count, and the TDMIN pull-down left alone — and `init` reads them back, so the
-/// part is known to hold `LRCK_RATE_MODE = 2`, `SP_PROTOCAL = 11` and the pin
-/// still biased. It then drives nothing: the capture reads zero on all four
-/// slots, over the same clock table the two-channel path runs on. Nothing in the
-/// register map says that is wrong, which leaves the receiver's half of the link
-/// as the place to look next. The reference stays off rather than the microphone
-/// being taken down with it.
 const USE_MIC3_REFERENCE: bool = false;
 
-/// Datasheet 3.3: bit1 of register 0x12 is **`TDMIN_PDN_OFF`, the TDMIN pin's
-/// internal pull-down — it does not select a serial format.** An earlier comment
-/// here claimed it did, and the old name `SDP2_NO_TDM` carried the mistake
-/// forward; following it wrote 0x02, turned the pull-down off, and the part
-/// stopped driving the data line at all — the capture read zeros on every slot.
-///
-/// Zero is right because it keeps the pin biased, not because it means "not TDM".
-/// The format is [`SDP_DSP`], the channel count [`LRCK_4_CHANNELS`], and **all
-/// three change together** — flipping this one alone is what broke the capture.
 const SDP2_TDMIN_PDN_ON: u8 = 0x00;
 
-/// Datasheet 3.3: `SP_PROTOCAL`, bits 1:0 of register 0x11. `11` is DSP mode —
-/// the four-slot TDM framing. `00` is plain I2S and carries two channels, which
-/// is why MIC3 has no slot to arrive in.
-///
-/// **[measured] the LCKFB board wires MIC3 to the ES8311's output** — the echo
-/// reference, per the vendor's own audio-input chapter — and it sits in slot 1,
-/// not slot 2.
 const SDP_DSP: u8 = 0x03;
 
-/// Datasheet: `LRCK_RATE_MODE`, bits 7:4 of register 0x08. Two means four
-/// channels, and **the field only means anything once `SP_PROTOCAL` is `11`** —
-/// one setting expressed in two registers.
 const LRCK_RATE_MASK: u8 = 0xF0;
 const LRCK_4_CHANNELS: u8 = 0x20;
 
-/// Selects MIC1 alone. Written once and referenced twice, since a divergence
-/// between two copies would configure the part by start count.
 const MIC1_SELECT: &[Step] = &[
     merge(REG_MIC1_GAIN, GAIN_ENABLE, 0x00),
     merge(REG_MIC2_GAIN, GAIN_ENABLE, 0x00),
@@ -196,8 +127,6 @@ const MIC1_SELECT: &[Step] = &[
     write(REG_SDP_INTERFACE2, SDP2_TDMIN_PDN_ON),
 ];
 
-/// The reset comes first: every later write is meaningless against a part still
-/// coming out of it.
 const BRING_UP_RESET: &[Step] = &[
     write(REG_RESET, RESET_ALL),
     write(REG_RESET, RESET_IDLE),
@@ -210,8 +139,6 @@ const BRING_UP_RESET: &[Step] = &[
     write(REG_ADC34_FILTER_SET, FILTER_SET),
 ];
 
-/// Slave mode is set before the microphone selection so the part is not driving
-/// a clock the host is also driving.
 const BRING_UP_CLOCKS: &[Step] = &[
     merge(REG_MODE_CONFIG, MODE_SLAVE_BIT, 0x00),
     write(REG_ANALOG_POWER, ANALOG_POWER_RUN),
@@ -219,33 +146,15 @@ const BRING_UP_CLOCKS: &[Step] = &[
     write(REG_MIC34_BIAS, MIC_BIAS),
     write(REG_OSR, OSR_48K),
     write(REG_MAINCLK, MAINCLK_48K),
-    // The vendor's slave-mode path leaves the LRCK divider at its power-on value,
-    // which the datasheet does not document; the clock table's 12288000/48000 row
-    // does, so the rate follows from a written divider rather than a reset value
-    // that cannot be read back.
     write(REG_LRCK_DIVH, LRCK_DIVH_48K),
     write(REG_LRCK_DIVL, LRCK_DIVL_48K),
 ];
 
-/// The serial port, before the microphone selection, because the start sequence
-/// rewrites the clock registers and the frame is independent of the clocks.
 const BRING_UP_SERIAL: &[Step] = &[
     merge(REG_SDP_INTERFACE1, SDP_FRAME_MASK, SDP_I2S),
     merge(REG_SDP_INTERFACE1, SDP_WIDTH_MASK, SDP_16BIT),
 ];
 
-/// MIC1 (the microphone) together with MIC3 (the echo reference), in TDM.
-///
-/// Kept beside [`MIC1_SELECT`] rather than replacing it: the reference channel
-/// is a property of this board's wiring, and a board without it still wants the
-/// single-channel path.
-///
-/// **Three registers, and all three or none.** `SP_PROTOCAL` picks DSP framing,
-/// `LRCK_RATE_MODE` says four channels, and the pull-down on TDMIN stays put.
-/// The earlier attempt changed only the third, believing it was the format
-/// select — which turned the pull-down off and silenced the part entirely. A
-/// channel count the format does not carry, and a format whose pin is unbiased,
-/// are both invisible in the register map until the capture comes back empty.
 const MIC1_AND_MIC3: &[Step] = &[
     merge(REG_MIC1_GAIN, GAIN_ENABLE, GAIN_ENABLE),
     merge(REG_MIC1_GAIN, GAIN_FIELD, GAIN_30DB),
@@ -256,7 +165,6 @@ const MIC1_AND_MIC3: &[Step] = &[
     write(REG_SDP_INTERFACE2, SDP2_TDMIN_PDN_ON),
 ];
 
-/// Which of the two selects the board is wired for.
 const SELECT: &[Step] = if USE_MIC3_REFERENCE {
     MIC1_AND_MIC3
 } else {
@@ -265,7 +173,6 @@ const SELECT: &[Step] = if USE_MIC3_REFERENCE {
 
 const BRING_UP: &[&[Step]] = &[BRING_UP_RESET, BRING_UP_CLOCKS, BRING_UP_SERIAL, SELECT];
 
-/// Releases the part into capture.
 const START: &[&[Step]] = &[
     &[
         write(REG_POWER_DOWN, POWER_DOWN_RUN),
@@ -294,17 +201,10 @@ impl<E> From<E> for Es7210Error<E> {
     }
 }
 
-/// What a capture needs from a filter's driver to walk its corner, and nothing
-/// more. The walk itself is a capture's business — it owns the envelope the
-/// corner's effect is read from — so this is how little of the part has to cross
-/// that boundary: a way to move the corner, and nothing about I2C, the register
-/// map, or which of the two filter registers is which.
+/// What a capture needs from a filter's driver to walk its corner, and nothing more.
 pub trait HpfCorner {
-    /// What a corner write reports, named so a capture can log it without being
-    /// able to name a bus error type.
     type CornerError;
 
-    /// Moves every input pair's corner to `corner`.
     fn set_hpf_corner(&mut self, corner: u8) -> Result<(), Self::CornerError>;
 }
 
@@ -331,27 +231,15 @@ impl<D: I2c> Es7210<D> {
         }
     }
 
-    /// Brings the part up and starts it capturing from MIC1. There is no identity
-    /// check to make — the register map exposes no ID register, so a bus error is
-    /// the only failure this can report, which is why the tests check the sequence
-    /// as a whole rather than trusting each write.
+    /// Brings the part up and starts it capturing from MIC1.
     pub fn init(&mut self) -> Result<(), Es7210Error<D::Error>> {
         if self.running {
             return Ok(());
         }
         register_seq::run(&mut self.i2c, self.addr, BRING_UP)?;
-        // **The serial format is read back because nothing else says whether it
-        // took.** A wrong format leaves the part driving the data line while the
-        // receiver sees silence, and both halves of that are individually
-        // plausible — which is how a sequence that stops the part dead was twice
-        // taken for a working one.
         let mode = register_seq::read_reg(&mut self.i2c, self.addr, REG_MODE_CONFIG)?;
         let serial = register_seq::read_reg(&mut self.i2c, self.addr, REG_SDP_INTERFACE1)?;
         let interface = register_seq::read_reg(&mut self.i2c, self.addr, REG_SDP_INTERFACE2)?;
-        // The readback is a fault only when it differs from what the bring-up wrote: the
-        // fields are decoded here rather than printed raw, because `0x60` is a width and a
-        // frame at once and reading it as a protocol number was reporting a healthy part as
-        // broken.
         let width_ok = serial & SDP_WIDTH_MASK == SDP_16BIT;
         let frame = match serial & SDP_FRAME_MASK {
             SDP_I2S => "I2S",
@@ -374,9 +262,8 @@ impl<D: I2c> Es7210<D> {
         Ok(())
     }
 
-    /// Separate from `init` so a part that lost its clocks can be restarted
-    /// without a full re-init. Reads the clock register back first, so the start
-    /// hands back the byte the part actually holds rather than a literal.
+    /// Separate from `init` so a part that lost its clocks can be restarted without a full
+    /// re-init.
     pub fn start(&mut self) -> Result<(), Es7210Error<D::Error>> {
         let clock_off = register_seq::read_reg(&mut self.i2c, self.addr, REG_CLOCK_OFF)?;
         self.i2c
@@ -385,15 +272,8 @@ impl<D: I2c> Es7210<D> {
         Ok(register_seq::run(&mut self.i2c, self.addr, START)?)
     }
 
-    /// Moves every input pair's DC-blocking corner to `corner`, leaving every
-    /// other bit of the register exactly as the part holds it.
-    ///
-    /// Read-modify-write rather than a whole register byte, because only the
-    /// low three bits are known to be the corner: the write cannot guess at bit
-    /// 5 or at anything a future datasheet might add, and it returns the part to
-    /// whatever state it was in for every field it did not mean to change. A
-    /// board can therefore walk the corner and come back to
-    /// [`HPF_CORNER`] without knowing the rest of the byte.
+    /// Moves every input pair's DC-blocking corner to `corner`, leaving every other bit of
+    /// the register exactly as the part holds it.
     pub fn write_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
         for reg in [
             REG_ADC12_FILTER_CLEAR,
@@ -443,8 +323,6 @@ mod tests {
 
     fn mock() -> Mock {
         Mock::new(|registers| {
-            // The serial port matters most: a bring-up that only merged the word
-            // width would leave the TDM bit and the frame bits standing.
             registers[REG_SDP_INTERFACE1 as usize] = 0x83;
             registers[REG_SDP_INTERFACE2 as usize] = 0x02;
             registers[REG_MODE_CONFIG as usize] = 0x01;
@@ -514,11 +392,6 @@ mod tests {
             codec.i2c.registers[REG_MIC1_GAIN as usize],
             GAIN_ENABLE | GAIN_30DB
         );
-        // **MIC3 is dark, and that is the one this board would want live** — it
-        // carries the ES8311's output back as the echo reference. Enabling it is
-        // `USE_MIC3_REFERENCE`, which is off because turning TDM on is what that
-        // takes and this driver cannot do it yet. A live PGA on an unconnected
-        // input would be noise the canceller would try to model.
         for reg in [REG_MIC2_GAIN, REG_MIC3_GAIN, REG_MIC4_GAIN] {
             assert_eq!(
                 codec.i2c.registers[reg as usize] & GAIN_ENABLE,
@@ -530,11 +403,6 @@ mod tests {
 
     #[test]
     fn both_input_filter_pairs_carry_the_reference_values() {
-        // The two values differ only in bit 5, so a pair written the wrong way round
-        // is a part that looks configured and leaves its DC offset standing. Both
-        // pairs are checked against each other as well as against the reference
-        // driver, because MIC1 is on the ADC1/2 pair and reading the other pair
-        // would not notice that one going wrong.
         let codec = settle();
         for (set, clear) in [
             (REG_ADC12_FILTER_SET, REG_ADC12_FILTER_CLEAR),
@@ -571,9 +439,6 @@ mod tests {
     #[test]
     fn setting_a_corner_leaves_bit5_and_the_rest_of_the_register_alone() {
         let mut codec = settle();
-        // Seed every register with bits outside the corner, so a whole-register
-        // write would be caught: bit 5 as the bring-up left it, and bits 7, 6 and
-        // 3 that only the part itself knows.
         const SEED: u8 = 0xEA;
         const UNTOUCHED: u8 = SEED & !FILTER_CORNER_MASK;
         for reg in [
@@ -642,8 +507,6 @@ mod tests {
 
     #[test]
     fn a_corner_write_reports_a_bus_failure_at_every_register() {
-        // The walk has to give up on the register that faulted rather than
-        // carry on to the next one.
         for fail_at in 0..4 {
             let mut i2c = mock();
             i2c.fail_at = Some(fail_at);
@@ -658,11 +521,6 @@ mod tests {
 
     #[test]
     fn the_spl_offset_lands_the_window_where_a_room_is() {
-        // The offset is a datasheet derivation, so what it can be checked against
-        // is the range it maps onto: a window floor that read above a quiet room
-        // would clamp the reading the meter exists for, and a rail above a loud
-        // one would mean the number itself is wrong, not just that the capsule
-        // marking is imprecise.
         let window_floor = i32::from(SPL_OFFSET_DECIBELS) - SCOPE_FLOOR_DECIBELS;
         assert!(
             window_floor < 30,
@@ -676,9 +534,6 @@ mod tests {
 
     #[test]
     fn a_masked_write_never_clobbers_a_neighbouring_field() {
-        // Bit7 of the gain register is outside every mask the sequence uses, so
-        // it has to survive being written twice — once to clear the enable and
-        // once to set the gain.
         let mut i2c = mock();
         i2c.registers[REG_MIC1_GAIN as usize] = 0x80;
         let mut codec = Es7210::new(i2c, ES7210_I2C_ADDR);
@@ -693,8 +548,6 @@ mod tests {
     fn start_hands_the_clock_register_back_the_value_it_read() {
         let mut codec = Es7210::new(mock(), ES7210_I2C_ADDR);
         codec.init().expect("init");
-        // The bring-up leaves the clock register wherever its masked writes put
-        // it, so a start has to write that byte back rather than a literal.
         let held = codec.i2c.registers[REG_CLOCK_OFF as usize];
         let before = codec.i2c.trace.len();
         codec.start().expect("start");
@@ -760,9 +613,6 @@ mod tests {
 
     #[test]
     fn the_sequence_writes_the_clock_register_before_the_microphone_rail() {
-        // The clock register is the one the start round-trips, so it has to be
-        // settled before the start reads it — a start reading it before the
-        // selection cleared its gate bits would latch the gated value.
         let codec = settle();
         let gated = codec.i2c.registers[REG_CLOCK_OFF as usize] & !CLOCK_OFF_MIC12_MASK;
         assert_eq!(

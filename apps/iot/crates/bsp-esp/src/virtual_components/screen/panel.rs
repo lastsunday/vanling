@@ -1,23 +1,13 @@
 //! The glass: one controller, one backlight, and the write that reaches them.
-//!
-//! Nothing here knows about pages, the frame buffer or a camera: the buffer is the screen's
-//! and travels in on every write, so this type never owns bytes another engine may fill.
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;
 
-/// One mounted panel, with the backlight policy that keeps its first visible frame honest.
 pub(super) struct Panel {
     driver: St7789,
     backlight: Backlight,
-    /// Ceiling every `set_backlight` is clamped to, so a demand can hold the panel dim
-    /// without the animation loop having to know it.
     ceiling: u8,
-    /// The backlight level the renderer last asked for. Kept aside until the first
-    /// frame reaches the panel: applying it earlier lights the previous run's GRAM.
     requested: u8,
-    /// Whether a frame has actually been written since boot, which is what allows
-    /// [`Self::requested`] to reach the LEDC channel.
     lit: bool,
 }
 
@@ -64,11 +54,6 @@ impl Panel {
         }
     }
 
-    /// Raises the backlight once a frame has actually reached the panel.
-    ///
-    /// Until then the controller is still scanning whatever its own GRAM held
-    /// before this boot, so lighting it early would present that picture as this
-    /// run's first frame.
     pub(super) fn note_frame_shipped(&mut self) {
         if !self.lit {
             self.lit = true;

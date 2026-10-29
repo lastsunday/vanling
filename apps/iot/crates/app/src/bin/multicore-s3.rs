@@ -27,44 +27,30 @@ use embedded_alloc::LlffHeap as Heap;
 use esp_hal::system::{Cpu, Stack};
 use esp_hal::timer::timg::TimerGroup;
 
-/// Which shape to run. Change it and reflash; one case per image keeps a fault from
-/// being attributed to the wrong deviation.
 const CASE: u8 = 2;
 
-/// Echoes in each direction before a case reports success.
 const ROUNDS: u32 = 8;
 
-/// The second core's stack, at the example's 8 KiB rather than a comfortable size: a stack
-/// larger than the task needs would hide a reservation mistake rather than expose it.
 const CORE1_STACK_BYTES: usize = 8 * 1024;
 
-/// The size of the product's `Board`, which `main` holds live on its stack across the
-/// second core's bring-up. An array of that size reproduces the hazard — the point of the
-/// case is the *stack depth*, not the board — without needing the whole peripheral set.
+// The size of the product's `Board`, which `main` holds live on its stack across the
+// second core's bring-up. An array of that size reproduces the hazard — the point of the
+// case is the *stack depth*, not the board — without needing the whole peripheral set.
 const BOARD_BYTES: usize = 4_304;
 
-/// The probe allocates nothing itself, but the scheduler and the logger both reach
-/// for the global allocator, so one has to exist.
 static mut HEAP_MEM: [u8; 16 * 1024] = [0; 16 * 1024];
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-/// Core 0 to core 1, the counter under test.
 static TO_CORE1: Signal<CriticalSectionRawMutex, u32> = Signal::new();
 
-/// Core 1 back to core 0, so core 0 only reports success for echoes it received.
 static TO_CORE0: Signal<CriticalSectionRawMutex, u32> = Signal::new();
 
-/// The static container this tree reaches for: esp-hal's own `StaticCell`, re-exported for
-/// its macros rather than a declared dependency of its own.
 type StaticCell<T> = esp_hal::__macro_implementation::static_cell::StaticCell<T>;
 
-/// The second core's stack, in a `StaticCell` because the bring-up wants a
-/// `&'static mut` and the stack has to outlive the executor that runs on it.
 static CORE1_STACK: StaticCell<Stack<CORE1_STACK_BYTES>> = StaticCell::new();
 
-/// The second core's half: echo back whatever core 0 sends.
 #[embassy_executor::task]
 async fn core1_echo() {
     log::info!("[MC] core 1 running on cpu {}", Cpu::current() as usize);
@@ -83,9 +69,6 @@ async fn core1_echo() {
     }
 }
 
-/// Core 0's half. `board` is `None` in case 1 and the board-sized array in case 2, where
-/// holding it by value for the whole round trip keeps it live across every await — and so
-/// across the second core's bring-up, which is the stack home the ROM's prologue lands on.
 #[embassy_executor::task]
 async fn core0_echo(board: Option<[u8; BOARD_BYTES]>) {
     if let Some(board) = board {
@@ -109,9 +92,6 @@ async fn core0_echo(board: Option<[u8; BOARD_BYTES]>) {
     }
 }
 
-/// Differs from esp-hal's `embassy_multicore` example in three ways, all of them this
-/// tree's: the vendored `esp-rtos` takes the SMP interrupt as an argument, `iot-chip-esp`
-/// starts the scheduler from a timer plus it, and the log facade is `log`.
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     // SAFETY: called exactly once before any allocation; the region is a
@@ -123,8 +103,6 @@ async fn main(spawner: Spawner) -> ! {
         );
     }
 
-    // Taken by field rather than used through `peripherals`, because each is a move
-    // and a partial move would leave the rest of the set unusable.
     #[allow(non_snake_case)]
     let esp_hal::peripherals::Peripherals {
         TIMG0,
@@ -139,8 +117,6 @@ async fn main(spawner: Spawner) -> ! {
         Cpu::current() as usize
     );
 
-    // Built before the bring-up and consumed after it, so the compiler cannot shorten its
-    // life to the call.
     let board = match CASE {
         2 => {
             let board = [0xABu8; BOARD_BYTES];
@@ -151,9 +127,6 @@ async fn main(spawner: Spawner) -> ! {
     };
 
     iot_chip_esp::start_rtos(TimerGroup::new(TIMG0).timer0, FROM_CPU_INTR0);
-    // `intr1` is the SMP scheduler's. This probe wires no speaker, so the interrupt the
-    // product gives the speaker's feed is free here, and taking it keeps the probe from
-    // having to change which interrupt the board hands back.
     iot_chip_esp::start_second_core(
         CPU_CTRL,
         FROM_CPU_INTR1,
@@ -168,9 +141,6 @@ async fn main(spawner: Spawner) -> ! {
     park().await
 }
 
-/// Parks this task for the rest of the run: spawning only *creates* a task, so `main` has to
-/// yield for the executor to ever poll it. A spin would keep the thread executor for the
-/// task that has to run.
 async fn park() -> ! {
     loop {
         core::future::pending::<()>().await

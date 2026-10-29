@@ -9,18 +9,18 @@ use crate::pages::draw::{bar_rows, decibels_row, format_decibels, format_i32, fo
 use crate::surface::Surface;
 
 impl Surface<'_> {
-    /// The meter: a logarithmic band, each column's A-weighted sustained level
-    /// solid and its peak dithered outside it. The sweep uses the readout's own
-    /// filter, so a low-frequency codec floor draws quiet. Stamping inverts, so
-    /// two levels in one ink have to be *patterns*: a stripe inside the peak
-    /// bar would be invisible. Heights come from [`scope_height`], so the bars
-    /// land on the same decibel grid as the ruler.
-    ///
-    /// The columns and the clip age arrive as values rather than as a borrow of
-    /// the envelope: the envelope is borrowed from the surface's snapshot, so
-    /// holding it across the `&mut self` stamps would either copy 1.6 KB onto the
-    /// stack or fail to borrow. The two arrays are 400 B each and are the sweep's
-    /// working set either way.
+    // The meter: a logarithmic band, each column's A-weighted sustained level
+    // solid and its peak dithered outside it. The sweep uses the readout's own
+    // filter, so a low-frequency codec floor draws quiet. Stamping inverts, so
+    // two levels in one ink have to be *patterns*: a stripe inside the peak
+    // bar would be invisible. Heights come from [`scope_height`], so the bars
+    // land on the same decibel grid as the ruler.
+    //
+    // The columns and the clip age arrive as values rather than as a borrow of
+    // the envelope: the envelope is borrowed from the surface's snapshot, so
+    // holding it across the `&mut self` stamps would either copy 1.6 KB onto the
+    // stack or fail to borrow. The two arrays are 400 B each and are the sweep's
+    // working set either way.
     pub(crate) fn stamp_sweep(
         &mut self,
         peaks: &[u16; ENVELOPE_COLUMNS],
@@ -33,13 +33,9 @@ impl Surface<'_> {
             let x = SCAN_X + column as isize;
             let peak = bar_rows(peaks[column]);
             let level = bar_rows(levels[column]).min(peak);
-            // Solid to the sustained level: the part a listener would call the
-            // volume of the column.
             for row in (WAVE_CY - level)..=(WAVE_CY + level) {
                 self.stamp_pixel(x, row);
             }
-            // Dithered out to the peak: transient energy above the level, which
-            // has to stay visible without being mistaken for the level itself.
             let mut shoulder = 0;
             for row in (WAVE_CY - peak)..(WAVE_CY - level) {
                 if shoulder % 2 == 0 {
@@ -61,32 +57,22 @@ impl Surface<'_> {
         self.stamp_text(format_span(&mut [0u8; 12]), SCAN_X as usize, SPAN_Y);
     }
 
-    /// The scale the band is read against, and the labels that give it numbers.
-    /// Only the upper half is ruled: the band is mirrored, so ruling both would
-    /// double the ink to say the same thing twice.
     fn stamp_ruler(&mut self) {
         for decibels in (0..SCOPE_DECIBEL_FLOOR).step_by(GRID_DECIBELS as usize) {
             let row = decibels_row(decibels);
             self.stamp_rule(SCAN_X, row, SCAN_COLUMNS);
         }
-        // The centre line is solid rather than dithered: it is the floor itself,
-        // the value every bar falls back to, and a reference the user has to
-        // squint at is not a reference.
         self.stamp_rule(SCAN_X, WAVE_CY, SCAN_COLUMNS);
         for decibels in [0, 24, 48, SCOPE_DECIBEL_FLOOR] {
             let row = decibels_row(decibels);
             let mut buf = [0u8; 12];
             let label = format_decibels(decibels, &mut buf);
-            // Clamped into the band rather than the panel: the top label would
-            // otherwise reach up into the level rows the sweep starts below.
             let top = (row - FONT_H as isize / 2).max(WAVE_TOP) as usize;
             self.stamp_text_right(label, RULER_RIGHT, top);
             self.stamp_rule(RULER_TICK_X, row, RULER_TICK_COLUMNS);
         }
     }
 
-    /// Dotted rule every other column, so a line across the band reads as a
-    /// reference behind the bars rather than as one of them.
     fn stamp_rule(&mut self, x: isize, row: isize, columns: isize) {
         for column in 0..columns {
             if column % 2 == 0 {
@@ -101,9 +87,6 @@ impl Surface<'_> {
         }
     }
 
-    /// A dash at the loudest column's own height, so the peak is located and not
-    /// merely levelled. The window *is* the hold: the oldest column still at that
-    /// level says how long it has been held, with no state of its own.
     fn stamp_peak_hold(&mut self, bars: &[u16; ENVELOPE_COLUMNS]) {
         let loudest = bars.iter().copied().max().unwrap_or(0);
         if scope_height(loudest) == 0 {
@@ -119,9 +102,6 @@ impl Surface<'_> {
         }
     }
 
-    /// A block at the top of the band on the column that clipped, while that
-    /// column is still in the window. The latch beside it says a clip happened;
-    /// this says where, and goes with the column it names.
     fn stamp_clip_mark(&mut self, clip_age: Option<usize>) {
         let Some(age) = clip_age else {
             return;
@@ -134,26 +114,12 @@ impl Surface<'_> {
         }
     }
 
-    /// Writes one row: label at the block's left edge, one blank cell, then the
-    /// reading at the block's own reading column.
     pub(crate) fn stamp_left(&mut self, label: &[u8], value: &[u8], block: Block, row: usize) {
         let top = overlay_row_top(row);
         self.stamp_text(label, block_x(block), top);
         self.stamp_text(value, block_value_x(block), top);
     }
 
-    /// Writes one Audio level row: the label, the level as dBFS, that reading's
-    /// unit, and the same instant of sound as a pressure level with its own unit.
-    ///
-    /// Both readings belong on one line because they measure the same thing from
-    /// two zeros, and a −21 that no one can judge against is the objection this
-    /// page exists to answer — dBFS says how much of the converter the signal
-    /// uses, dB SPL says how loud the room is, and only the second is a number
-    /// anybody compares with a noise complaint.
-    ///
-    /// Four columns is more than any block on this panel is wide, so this is the
-    /// one row that runs the full width of the first block's neighbour: the sweep
-    /// starts below it rather than beside it.
     pub(crate) fn stamp_level(&mut self, label: &[u8], decibels: i16, row: usize) {
         let top = overlay_row_top(row);
         let columns = level_columns();
@@ -171,8 +137,6 @@ impl Surface<'_> {
         self.stamp_text(b"SPL", columns.spl_unit_x, top);
     }
 
-    /// Overdraws the attitude dial — the inverted counterpart of `R0`–`R2` —
-    /// with ring, fixed wing/bank references, and a `-roll`/`pitch` horizon.
     pub(crate) fn stamp_horizon(&mut self, sample: &MotionSample) {
         let geo = horizon(sample.tilt_deg_x10[0], sample.tilt_deg_x10[1]);
         let (cx, cy, r) = (HORIZON_CX, HORIZON_CY, HORIZON_R);
@@ -182,7 +146,6 @@ impl Surface<'_> {
         self.stamp_line(cx - 4, cy - r + 2, cx + 4, cy - r + 2);
         self.stamp_line(cx - 10, cy, cx + 10, cy);
 
-        // Horizon line tilted `-roll`, shifted by the pitch fraction of `r`.
         let half_x = geo.unit.0 as isize * r / SCALE as isize;
         let half_y = geo.unit.1 as isize * r / SCALE as isize;
         let offset = geo.offset as isize * r / SCALE as isize;

@@ -6,158 +6,78 @@ mod weighting;
 pub use decimator::{DECIMATION, Decimator};
 use weighting::{AWeight, DbaMeter};
 
-/// The codec's frame rate: one I2S frame per this many nanoseconds, which is
-/// what the capture driver clocks the peripheral at and what a frame's worth of
-/// samples is counted against.
+/// The codec's frame rate: one I2S frame per this many nanoseconds, which is what the
+/// capture driver clocks the peripheral at and what a frame's worth of samples is counted
+/// against.
 pub const SAMPLE_RATE_HZ: u32 = 48_000;
 
-/// 16-bit slots one I2S frame carries **on the transmit side**.
-///
-/// The ES7210 is clocked for a standard two-slot frame, and the driver's
-/// `Channels::MONO` is a TDM slot *selection* rather than a shorter frame. What
-/// that selection does **differs by direction**, which is the whole reason
-/// [`CAPTURE_BYTES_PER_FRAME`] is not simply this times the sample width:
-///
-/// - **Transmit**: `fill` is `None`, so an inactive channel *repeats* the last
-///   active one and both slots reach the DMA buffer. The playback ring is
-///   therefore two samples per frame.
-/// - **Receive**: esp-hal documents that an inactive channel "does not consume
-///   or write data in the DMA buffer", and that `fill` "is ignored in the
-///   receiver unit". So only the active channel's sample lands in the ring, and
-///   the capture buffer is **one** sample per frame.
-///
-/// `[实测]` measured on the board: the capture moved 8000 samples/s where this
-/// constant, read as applying to the capture, predicted 16000 — exactly half,
-/// because a four-byte stride over two-byte samples keeps one sample and throws
-/// the next away. A follow-up count of how often two adjacent samples in the
-/// ring were equal settled it: 4–16 per mille, where a duplicated slot would
-/// read 1000.
+/// 16-bit slots one I2S frame carries **on the transmit side**. The receive ring carries
+/// one sample per frame: `Channels::MONO` selects a slot, it does not shorten the frame.
+/// `[实测]` 8000 samples/s against the 16000 two slots would predict.
 pub const SLOTS_PER_FRAME: u32 = 2;
 
 /// Bytes one 16-bit sample occupies, little-endian like the wire.
 pub const BYTES_PER_SAMPLE: u16 = 2;
 
-/// Bytes one **captured** frame occupies in the receive ring.
-///
-/// **Two — one sample — and not [`BYTES_PER_FRAME`].** See [`SLOTS_PER_FRAME`]
-/// for why the two directions differ; this is the receive half of that, and it
-/// is the unit a capture ring's depth, a pairing's lag and a poll's drain budget
-/// are all counted in.
+/// Bytes one captured frame occupies: one sample. Not [`BYTES_PER_FRAME`], which is the
+/// transmit side; see [`SLOTS_PER_FRAME`].
 pub const CAPTURE_BYTES_PER_FRAME: usize = BYTES_PER_SAMPLE as usize;
 
-/// Bytes one whole I2S frame occupies on the wire: its slots, each one sample
-/// wide. The unit a playback ring is measured in, and the reason a mono source
-/// has to be widened before it reaches the DMA rather than sized for one slot —
-/// see [`crate::drivers::playback::interleave_mono`], which is what puts a mono frame on the wire.
+/// Bytes one whole I2S frame occupies on the wire: its slots, each one sample wide.
 pub const BYTES_PER_FRAME: usize = SLOTS_PER_FRAME as usize * BYTES_PER_SAMPLE as usize;
 
-/// Capture cadence: how often the input loop polls the capture, and so how much
-/// audio can be waiting when it gets there. A whole multiple of the input
-/// loop's base tick, like every other source's cadence.
+/// Capture cadence: how often the input loop polls the capture, and so how much audio can
+/// be waiting when it gets there.
 pub const CAPTURE_MS: u64 = 20;
 
-/// Envelope columns one poll closes. Two, so the window is half as long as the
-/// poll count would make it: 200 columns at this rate is two seconds of audio,
-/// which is long enough to read a phrase and short enough that a single vocal
-/// event is not flattened into the noise around it.
+/// Envelope columns one poll closes.
 pub const COLUMNS_PER_POLL: u16 = 2;
 
 /// Time one envelope column spans.
 pub const COLUMN_MS: u64 = CAPTURE_MS / COLUMNS_PER_POLL as u64;
 
-/// Samples one envelope column spans at [`SAMPLE_RATE_HZ`], counting the
-/// receive ring's samples rather than the transmit ring's slots.
-///
-/// `[实测]` this counted [`SLOTS_PER_FRAME`] and so was twice what the envelope
-/// actually holds: `SampleStream::push_bytes` decodes one sample per
-/// [`BYTES_PER_SAMPLE`], and the receive ring holds one sample per frame. Every
-/// window has therefore been drawn with twice the samples in it that its own
-/// duration claims — half speed, silently, on every build so far.
+/// Samples one envelope column spans, counted in receive samples rather than transmit
+/// slots. `[实测]` counting slots doubles the window and halves the sweep's speed.
 pub const SAMPLES_PER_COLUMN: u16 = (SAMPLE_RATE_HZ as u64 * COLUMN_MS / 1_000) as u16;
 
-/// Audio one capture poll hands over, in bytes. The unit a capture ring and a
-/// backlog are both measured in.
-///
-/// **Counted in [`CAPTURE_BYTES_PER_FRAME`], not [`BYTES_PER_FRAME`].** The
-/// receive ring holds one sample per frame where the transmit ring holds two
-/// (see [`SLOTS_PER_FRAME`]), and this figure is the root every capture-side
-/// size is derived from — the ring's depth, a poll's drain budget, and so the
-/// pairing's scratch. Read with the transmit width it was twice the truth, and
-/// every buffer sized from it came out twice as large as the audio it holds.
+/// Audio one capture poll hands over, in bytes.
 pub const BYTES_PER_POLL: usize =
     SAMPLE_RATE_HZ as usize * CAPTURE_BYTES_PER_FRAME * CAPTURE_MS as usize / 1_000;
 
-/// Envelope columns kept, sized to the pixel columns the panel's sweep is
-/// given, so one column is one pixel column and nothing has to be decimated to
-/// draw it. Long captures wrap and overwrite the oldest columns, which keeps
-/// the type a fixed-size `Copy` payload able to ride an operation intent — the
-/// samples themselves never leave the capture driver.
+/// Envelope columns kept, sized to the pixel columns the panel's sweep is given, so one
+/// column is one pixel column and nothing has to be decimated to draw it.
 pub const ENVELOPE_COLUMNS: usize = 200;
 
-/// Full scale, as a [`i16::MIN`] absolute: one LSB past the positive rail.
-/// 2^15, so its log2 is fifteen whole octaves.
 const FULL_SCALE_LOG2_16: i32 = 16 * 15;
 
-/// The same full scale as a peak magnitude, for comparisons that are about
-/// amplitude rather than about a bar's position on the band.
+/// The same full scale as a peak magnitude, for comparisons that are about amplitude rather
+/// than about a bar's position on the band.
 pub const FULL_SCALE_LSB: u16 = 1 << 15;
 
-/// The quietest peak the scope draws a bar for, in the same 1/16-octave units:
-/// 2^0 = 1 LSB, which is [`SCOPE_FLOOR_DECIBELS`] below the rail. A microphone
-/// at conversational distance sits far above this, which is the point of
-/// measuring in decibels — a bar scaled linearly to full scale spends ordinary
-/// speech in the bottom two rows of the band and reads as a flat line.
 const SCOPE_FLOOR_LOG2_16: i32 = 0;
 
-/// The drawn span, in those units: fifteen octaves, i.e. −90 dBFS to 0 dBFS.
 const SCOPE_SPAN_LOG2_16: i32 = FULL_SCALE_LOG2_16 - SCOPE_FLOOR_LOG2_16;
 
-/// The window's floor in decibels, which [`dbfs`] bottoms out at. Public because
-/// a scale has to be drawn as well as measured: a panel ruling lines at a floor
-/// of its own would describe a different window from the one the numbers came
-/// from. Ninety decibels is the whole 16-bit range, so a genuinely quiet room —
-/// a microphone's own noise floor — lands at the bottom of the band, with the
-/// headroom above it left to the levels that share the scale.
+/// The window's floor in decibels, which [`dbfs`] bottoms out at.
 pub const SCOPE_FLOOR_DECIBELS: i32 = 90;
 
-/// One doubling of amplitude is this many units.
 const LOG2_16_PER_OCTAVE: i32 = 16;
 
-/// Milli-decibels one doubling of amplitude is worth: 20·log₁₀2 rounded, which
-/// is what the decibel is *defined* as.
 const MILLIDECIBELS_PER_OCTAVE: i64 = 6021;
 
-/// The same in the 1/16-octave units [`log2_16`] counts in.
 const MILLIDECIBELS_PER_LOG2_16_UNIT: i64 = MILLIDECIBELS_PER_OCTAVE / 16;
 
-/// Fractional-octave bits the mapping keeps, and so the size of the correction
-/// table below.
 const MANTISSA_BITS: u32 = 4;
 
-/// The linear mantissa's error, in 1/16ths of an octave, indexed by the mantissa
-/// it belongs to: how much `log₂(1 + m/16)` sits *above* the chord through
-/// `m/16`, which is nearly half a decibel at the middle of every octave — worst
-/// at −20 dBFS, where speech lives. Sixteen bytes of it bring the whole scale
-/// within a working tenth of a decibel, and the same table serves the bar and
-/// the number.
 const LOG2_16_CHORD_ERROR: [i8; 1 << MANTISSA_BITS] =
     [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0];
 
-/// A peak in LSB as 1/16ths of an octave above one LSB, so [`FULL_SCALE_LOG2_16`]
-/// lands on the rail and one LSB — the scope floor,
-/// [`SCOPE_FLOOR_LOG2_16`] — on zero. The single place the log scale is defined,
-/// so a bar's height and its decibel reading are the same number read two ways
-/// and cannot drift apart.
 fn log2_16(value: u16) -> i32 {
     if value == 0 {
-        // Below the floor rather than at it, which is what silence is: it has to
-        // draw no bar and read as the bottom of the window, not as full scale.
         return 0;
     }
     let value = u32::from(value);
     let octave = 31 - value.leading_zeros();
-    // Slide the leading one up to the top of the word, so the bits under it are
-    // the fraction of the octave whatever the magnitude.
     let normalised = value << (31 - octave);
     let mantissa = ((normalised >> (31 - MANTISSA_BITS)) & ((1 << MANTISSA_BITS) - 1)) as usize;
     LOG2_16_PER_OCTAVE * octave as i32 + mantissa as i32 + LOG2_16_CHORD_ERROR[mantissa] as i32
@@ -173,10 +93,9 @@ pub fn scope_height(peak_lsb: u16) -> u8 {
     height.clamp(0, i32::from(u8::MAX)) as u8
 }
 
-/// A peak in LSB as decibels below full scale, to the nearest decibel, never
-/// reading below the window's [`SCOPE_FLOOR_DECIBELS`] and never above 0 — the
-/// numeric half of what a meter shows, since 3000 LSB is not a level anyone can
-/// judge and −21 dBFS is.
+/// A peak in LSB as decibels below full scale, to the nearest decibel, never reading below
+/// the window's [`SCOPE_FLOOR_DECIBELS`] and never above 0 — the numeric half of what a
+/// meter shows, since 3000 LSB is not a level anyone can judge and −21 dBFS is.
 pub fn dbfs(peak_lsb: u16) -> i16 {
     let below_rail = FULL_SCALE_LOG2_16 - log2_16(peak_lsb);
     let milli = i64::from(below_rail.max(0)) * MILLIDECIBELS_PER_LOG2_16_UNIT;
@@ -185,11 +104,8 @@ pub fn dbfs(peak_lsb: u16) -> i16 {
 }
 
 /// A [`dbfs`] reading as a sound pressure level: the same decibel count with the
-/// microphone's own reference added back on, so 0 dBFS reads as whatever the
-/// hardware calls full scale instead of as a number only this code can judge.
-/// The offset is the only part that varies between setups, so it is a parameter
-/// rather than a constant here — a board knows its microphone and its gain, this
-/// module does not, and the two cannot be derived from the window either.
+/// microphone's own reference added back on, so 0 dBFS reads as whatever the hardware calls
+/// full scale instead of as a number only this code can judge.
 pub fn spl(dbfs: i16, offset_decibels: i16) -> i16 {
     dbfs + offset_decibels
 }
@@ -202,70 +118,31 @@ pub fn spl(dbfs: i16, offset_decibels: i16) -> i16 {
 /// costs a column of history.
 pub const RELEASE_SHIFT: u32 = 4;
 
-/// The peak a bar is drawn at this column: its own, or the one before it after
-/// one step of the release ballistics, whichever is higher. The falloff a meter
-/// shows is never the signal's own — tracking it exactly would be a waveform,
-/// and holding the bar a few columns is what makes a transient legible at all.
-/// The step is at least one LSB, so a fall can clear a ~15-LSB fixed point and
-/// a long silence reads as the bottom of the band rather than as a whisper the
-/// window keeps on remembering.
+/// The peak a bar is drawn at this column: its own, or the one before it after one step of
+/// the release ballistics, whichever is higher.
 pub fn released_peak(measured: u16, previous: u16) -> u16 {
     let floor = previous.saturating_sub((previous >> RELEASE_SHIFT).max(1));
     measured.max(floor)
 }
 
-/// Peak envelope of a capture: one column per [`SAMPLES_PER_COLUMN`] samples, each
-/// the loudest absolute sample in its window, wrapping once full. Columns hold the
-/// peak in LSB rather than a fraction of full scale, so a driver's readback is
-/// comparable with its datasheet numbers; the loudness scale belongs to the panel
-/// (see [`scope_height`]). The RMS of the same window rides beside the peak, and
-/// sliding rather than growing keeps the envelope a fixed-size `Copy`.
-///
-/// Every column also keeps its A-weighted twin (`weighting`): the raw columns
-/// stay the bench reading, the twin is the level a listener would call it, so a
-/// low-frequency codec floor draws as a flat line instead of a solid band.
+/// Peak envelope of a capture: one column per [`SAMPLES_PER_COLUMN`] samples, each the
+/// loudest absolute sample in its window, wrapping once full.
 #[derive(Debug, Clone, Copy)]
 pub struct AudioEnvelope {
     columns: [u16; ENVELOPE_COLUMNS],
-    /// The same peaks A-weighted, per column.
     weighted_columns: [u16; ENVELOPE_COLUMNS],
-    /// Root mean square of each column's samples, in LSB. Same window, same
-    /// wrapping, same units — only the statistic differs.
     rms: [u16; ENVELOPE_COLUMNS],
-    /// The same RMS A-weighted, per column.
     weighted_rms: [u16; ENVELOPE_COLUMNS],
-    /// Index the next completed column writes to.
     cursor: u16,
-    /// Columns of history available, clamped to [`ENVELOPE_COLUMNS`] so it
-    /// answers "how much of the window is real" and stops counting once the
-    /// first wrap has filled it.
     committed: u8,
-    /// Loudest sample in the window being filled. The clip latch reads this raw
-    /// value — a rail hit is about the codec, not the filter.
     peak: u16,
-    /// Loudest A-weighted sample in the window being filled.
     weighted_peak: u16,
-    /// Root mean square accumulator for the window being filled.
     sum_squares: u64,
-    /// A-weighted RMS accumulator for the window being filled.
     weighted_sum_squares: u64,
-    /// The A-weighting filter the weighted columns are folded through.
     weight: AWeight,
-    /// The dBA number, riding the same weighted samples the weighted columns
-    /// are folded from. It lives here because that is where the one cascade
-    /// already runs — see [`DbaMeter`] for why it owns no filter of its own.
     dba: DbaMeter,
-    /// Samples folded into the current window.
     filled: u16,
-    /// Latched by any column that reached [`FULL_SCALE_LSB`]. A clip is an
-    /// absolute statement that the signal was distorted somewhere, not a
-    /// statement about the level right now, so it is kept for as long as this
-    /// capture exists rather than scrolling away with the column that saw it.
     clipped: bool,
-    /// Columns committed since the one that last clipped, so the panel can point
-    /// at *when* it happened while the column is still in the window. A count
-    /// rather than an index, which would have to be reasoned about against the
-    /// wrap; cleared once the marked column is overwritten.
     columns_since_clip: Option<u16>,
 }
 
@@ -275,22 +152,6 @@ impl Default for AudioEnvelope {
     }
 }
 
-/// Equality over what a renderer draws, not over the whole struct.
-///
-/// Derived `PartialEq` would compare the write bookkeeping too — above all
-/// `cursor`, which advances once per poll as a pure ring position and says
-/// nothing about the window. That made a silent room read as a changed capture
-/// on every poll, and the whole diff pipeline (build a `Diagnostics`, re-box the
-/// `DeviceState`, fan out to every renderer) then re-ran at the render cadence
-/// instead of when the sweep actually moved. Measured on a fully silent
-/// capture: successive polls compared equal 0 times in 600, while every value
-/// this impl does compare stayed equal 600 times in 600.
-///
-/// The omitted fields are all in-flight accumulators the render path never
-/// reads: `cursor`, `peak`, `weighted_peak`, `sum_squares`,
-/// `weighted_sum_squares`, `weight`, `dba`, `filled`. `weight` and `dba` are
-/// filter state whose only rendered consequence is already folded into the
-/// columns below.
 impl PartialEq for AudioEnvelope {
     fn eq(&self, other: &Self) -> bool {
         self.columns == other.columns
@@ -306,9 +167,7 @@ impl PartialEq for AudioEnvelope {
 impl Eq for AudioEnvelope {}
 
 impl AudioEnvelope {
-    /// A blank envelope: nothing committed, every column zero. Named rather
-    /// than derived because a 200-column array has no `Default` impl, and the
-    /// state layer needs it in a `const` context.
+    /// A blank envelope: nothing committed, every column zero.
     pub const ZERO: Self = Self {
         columns: [0; ENVELOPE_COLUMNS],
         weighted_columns: [0; ENVELOPE_COLUMNS],
@@ -327,9 +186,7 @@ impl AudioEnvelope {
         columns_since_clip: None,
     };
 
-    /// Folds samples in, closing and advancing a column every
-    /// [`SAMPLES_PER_COLUMN`]. A push longer than one window carries the
-    /// remainder into the next column instead of dropping it.
+    /// Folds samples in, closing and advancing a column every [`SAMPLES_PER_COLUMN`].
     pub fn push(&mut self, samples: &[i16]) {
         for &sample in samples {
             // `unsigned_abs` rather than `abs`, which overflows on `i16::MIN`:
@@ -349,8 +206,6 @@ impl AudioEnvelope {
         }
     }
 
-    /// Commits the window being filled: one column of peak and one of RMS, raw
-    /// and A-weighted.
     fn close_column(&mut self) {
         let cursor = self.cursor as usize;
         self.columns[cursor] = self.peak;
@@ -362,8 +217,6 @@ impl AudioEnvelope {
             self.clipped = true;
             self.columns_since_clip = Some(0);
         } else if let Some(age) = self.columns_since_clip {
-            // This column is one older than it was, and the one at the far end of
-            // the window is about to be overwritten.
             self.columns_since_clip = (age + 1 < ENVELOPE_COLUMNS as u16).then_some(age + 1);
         }
         self.cursor += 1;
@@ -378,15 +231,13 @@ impl AudioEnvelope {
         self.filled = 0;
     }
 
-    /// The A-weighted level as an RMS in LSB, saturating after the sample the
-    /// meter last folded. Zero until the first samples arrive, and it settles
-    /// back toward it after the room goes quiet — the fall itself is the meter.
+    /// The A-weighted level as an RMS in LSB, saturating after the sample the meter last
+    /// folded.
     pub const fn dba_lsb(&self) -> u16 {
         self.dba.level_lsb()
     }
 
-    /// The whole window, oldest column first. Columns past [`Self::committed`]
-    /// are still zero on a fresh envelope.
+    /// The whole window, oldest column first.
     #[cfg(test)]
     pub fn columns(&self) -> &[u16; ENVELOPE_COLUMNS] {
         &self.columns
@@ -399,9 +250,6 @@ impl AudioEnvelope {
         &self.weighted_columns
     }
 
-    /// One column by age, `0` being the oldest still in the window, from whichever
-    /// column set the reader is drawing. Ages past what has been committed read
-    /// as silence, which is what a column that has not been drawn yet should weigh.
     fn column_by_age_from(&self, source: &[u16; ENVELOPE_COLUMNS], age: usize) -> u16 {
         if age >= usize::from(self.committed) {
             return 0;
@@ -414,10 +262,8 @@ impl AudioEnvelope {
         source[(oldest + age) % ENVELOPE_COLUMNS]
     }
 
-    /// The bar heights the panel draws, oldest column first, with the release
-    /// ballistics of [`released_peak`] threaded through in time order. Derived
-    /// from the window rather than accumulated alongside it, so a repaint that
-    /// happens twice, or not at all, cannot change what a bar reads.
+    /// The bar heights the panel draws, oldest column first, with the release ballistics of
+    /// [`released_peak`] threaded through in time order.
     pub fn released_peaks(&self) -> [u16; ENVELOPE_COLUMNS] {
         self.released_from(&self.columns)
     }
@@ -437,8 +283,8 @@ impl AudioEnvelope {
         out
     }
 
-    /// Each column's RMS in LSB, oldest first, for the inner bar that tells a
-    /// sustained level from a lone transient.
+    /// Each column's RMS in LSB, oldest first, for the inner bar that tells a sustained
+    /// level from a lone transient.
     pub fn rms_columns(&self) -> [u16; ENVELOPE_COLUMNS] {
         self.rms_by_age_from(&self.rms)
     }
@@ -464,10 +310,8 @@ impl AudioEnvelope {
         out
     }
 
-    /// The window's loudest peak in LSB, the peak-hold a readout shows; zero
-    /// until the first column commits. The column array alone cannot tell
-    /// "nothing has arrived" from "silence arrived": both draw the same flat
-    /// sweep.
+    /// The window's loudest peak in LSB, the peak-hold a readout shows; zero until the
+    /// first column commits.
     pub fn loudest(&self) -> u16 {
         self.columns[..usize::from(self.committed)]
             .iter()
@@ -476,9 +320,8 @@ impl AudioEnvelope {
             .unwrap_or(0)
     }
 
-    /// The window's loudest RMS column, in LSB — the sustained level a panel
-    /// reads as loudness. A maximum, so it is the wrong statistic for a floor:
-    /// [`floor_rms`](Self::floor_rms) answers that.
+    /// The window's loudest RMS column, in LSB — the sustained level a panel reads as
+    /// loudness.
     pub fn loudest_rms(&self) -> u16 {
         self.rms_columns()[..usize::from(self.committed)]
             .iter()
@@ -488,21 +331,11 @@ impl AudioEnvelope {
     }
 
     /// The window's median RMS column, in LSB — a floor rather than a peak.
-    ///
-    /// Median rather than a power mean on purpose: the mean is quadratic, so one
-    /// transient column at sixteen times the room's level drags it up with 256×
-    /// the energy, while the median ignores a lone loud column — and still moves
-    /// when a low-frequency corner shifts every column at once.
-    ///
-    /// Zero for a window that has committed nothing.
     pub fn floor_rms(&self) -> u16 {
         let committed = usize::from(self.committed);
         if committed == 0 {
             return 0;
         }
-        // Sorted on a copy: the window is still the capture's, and a diagnostic
-        // that reordered it would change the very reading it came for. The copy
-        // is the same one `rms_columns` already hands out.
         let mut window = self.rms_columns();
         window[..committed].sort_unstable();
         window[committed / 2]
@@ -513,8 +346,8 @@ impl AudioEnvelope {
         self.clipped
     }
 
-    /// How many columns back the last full-scale column is, while it is still in
-    /// the window — where on the sweep to mark it.
+    /// How many columns back the last full-scale column is, while it is still in the window
+    /// — where on the sweep to mark it.
     pub fn clipped_age(&self) -> Option<usize> {
         let age = usize::from(self.columns_since_clip?);
         (age < usize::from(self.committed)).then_some(age)
@@ -525,30 +358,22 @@ impl AudioEnvelope {
         self.committed
     }
 
-    /// True while a window is partly filled and its column is still the
-    /// previous value, so a panel drawing on poll rather than on sample count
-    /// shows the newest bar a poll late.
+    /// True while a window is partly filled and its column is still the previous value, so
+    /// a panel drawing on poll rather than on sample count shows the newest bar a poll
+    /// late.
     #[cfg(test)]
     pub fn mid_window(&self) -> bool {
         self.filled > 0
     }
 }
 
-/// Samples decoded per [`SampleStream::push_bytes`] call, so folding a chunk
-/// never needs a buffer sized to the chunk.
 const DECODE_BATCH: usize = 64;
 
-/// Folds a captured byte stream into an envelope: a capture arrives as raw
-/// little-endian 16-bit samples, and a transfer boundary can fall between the two
-/// bytes of one sample. Beside the envelope rather than next to the codec, so the
-/// stitching is host-testable — the byte stream is the same whatever peripheral
-/// produced it. The same samples also fold into the A-weighting meter, so a
-/// dBA readout and the scope agree on what the room did, not just where two
-/// windows happened to look.
+/// Folds a captured byte stream into an envelope: a capture arrives as raw little-endian
+/// 16-bit samples, and a transfer boundary can fall between the two bytes of one sample.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SampleStream {
     envelope: AudioEnvelope,
-    /// High byte of a sample whose low byte had not arrived yet.
     pending: Option<u8>,
 }
 
@@ -560,9 +385,9 @@ impl SampleStream {
         }
     }
 
-    /// Folds a run of little-endian 16-bit samples in, holding a trailing odd
-    /// byte until the next call: a transfer hands out whatever its descriptor
-    /// boundary happened to be, and that is rarely a sample boundary.
+    /// Folds a run of little-endian 16-bit samples in, holding a trailing odd byte until
+    /// the next call: a transfer hands out whatever its descriptor boundary happened to be,
+    /// and that is rarely a sample boundary.
     pub fn push_bytes(&mut self, bytes: &[u8]) {
         let mut rest = bytes;
         if let Some(hi) = self.pending.take() {
@@ -593,14 +418,12 @@ impl SampleStream {
         }
     }
 
-    /// The envelope as folded so far — the panel's scope sweep. `committed()`
-    /// on it doubles as a liveness signal, since it advances once per column
-    /// whether or not anything was loud.
+    /// The envelope as folded so far — the panel's scope sweep.
     pub const fn envelope(&self) -> AudioEnvelope {
         self.envelope
     }
 
-    /// The A-weighted level as an RMS in LSB. Zero until the first bytes arrive.
+    /// The A-weighted level as an RMS in LSB.
     pub const fn dba_lsb(&self) -> u16 {
         self.envelope.dba_lsb()
     }
@@ -611,32 +434,21 @@ impl Default for SampleStream {
     }
 }
 
-/// How long the DMA needs to fill a whole ring, and so the longest a healthy
-/// capture can stay silent before it is fair to call it stalled. Measured in
-/// [`BYTES_PER_POLL`] rather than in frames, because a ring is drained on the
-/// poll and the rate the wire moves bytes at is two slots a frame, not one.
 const fn ring_fill_ms(ring_bytes: usize) -> u64 {
     ring_bytes as u64 * CAPTURE_MS / BYTES_PER_POLL as u64
 }
 
 /// Notices a capture whose DMA has stopped, by the clock rather than the DMA: the
-/// peripheral's own flag reports *its* completion, not the descriptor chain
-/// running dry, so time is the only signal that holds either way. A ring is
-/// drained every poll, so silence for longer than one ring's fill means the
-/// engine is not running.
+/// peripheral's own flag reports *its* completion, not the descriptor chain running dry, so
+/// time is the only signal that holds either way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaptureWatchdog {
-    /// When the capture last handed over a byte, or the first poll that found
-    /// nothing — the deadline a capture gets before it has to prove itself.
     last_progress_ms: Option<u64>,
-    /// Silence tolerated before a stall is called: one ring's fill — the longest
-    /// a capture can be late and still recoverable — plus the poll period.
     silence_limit_ms: u64,
 }
 
 impl CaptureWatchdog {
-    /// Watches a capture whose ring is `ring_bytes` long. Unarmed until the
-    /// first poll, so a driver can be built before it has a clock.
+    /// Watches a capture whose ring is `ring_bytes` long.
     pub const fn new(ring_bytes: usize) -> Self {
         Self {
             last_progress_ms: None,
@@ -644,9 +456,8 @@ impl CaptureWatchdog {
         }
     }
 
-    /// Whether the capture has gone quiet for too long, given what the last
-    /// poll found waiting. Any byte at all counts as progress and pushes the
-    /// deadline out again.
+    /// Whether the capture has gone quiet for too long, given what the last poll found
+    /// waiting.
     pub fn stalled(&mut self, now_ms: u64, produced_bytes: usize) -> bool {
         if produced_bytes > 0 {
             self.last_progress_ms = Some(now_ms);
@@ -656,28 +467,19 @@ impl CaptureWatchdog {
         now_ms.saturating_sub(last) > self.silence_limit_ms
     }
 
-    /// Pushes the deadline out without a capture to show for it, for a capture
-    /// that has just been re-armed and has not been polled since.
+    /// Pushes the deadline out without a capture to show for it, for a capture that has
+    /// just been re-armed and has not been polled since.
     pub fn note_progress(&mut self, now_ms: u64) {
         self.last_progress_ms = Some(now_ms);
     }
 }
 
 /// A capture chain that can be taken off the wire and put back.
-///
-/// Split out as a trait because both operations need the peripheral and the host
-/// implements them on a value it can build — the only reason any of this is testable, since
-/// the concrete chain is an I2S DMA transfer.
 pub trait Armed: Sized {
-    /// The chain off the wire but still assembled: the codec side and the ring.
     type Parked;
 
-    /// Takes the chain down, returning what is needed to put it back. Costs one descriptor
-    /// of audio.
     fn stop(self) -> Self::Parked;
 
-    /// Puts a parked chain back on the wire. The error hands the parked chain back rather
-    /// than swallowing it, so a failure that still owns a ring does not lose it.
     fn read(parked: Self::Parked) -> Result<Self, Self::Parked>;
 }
 
@@ -701,7 +503,6 @@ impl<A: Armed> Chain<A> {
     }
 
     /// Takes the chain off the wire, because the demand stopped wanting it.
-    /// `false` when there was nothing on it to take.
     pub fn park(&mut self) -> bool {
         match self.running.take() {
             Some(running) => {
@@ -712,9 +513,7 @@ impl<A: Armed> Chain<A> {
         }
     }
 
-    /// The chain to put back on the wire. `None` means there is nothing to arm, which is a
-    /// fault and not a state: a capture that has never been parked always has a running
-    /// chain.
+    /// The chain to put back on the wire.
     pub fn take_to_arm(&mut self) -> Option<A::Parked> {
         match self.parked.take() {
             Some(parked) => Some(parked),
@@ -742,39 +541,18 @@ impl<A: Armed> Chain<A> {
         self.parked.is_some()
     }
 
-    /// Neither running nor parked: unrecoverable, and terminal. A question rather
-    /// than a state so a caller holding no chain has to ask which of the two it is.
+    /// Neither running nor parked: unrecoverable, and terminal.
     pub fn is_lost(&self) -> bool {
         self.running.is_none() && self.parked.is_none()
     }
 }
 
-/// Notices a capture whose input loop is not keeping up with the codec, by how
-/// deep the ring is rather than by whether anything was lost.
-///
-/// A healthy capture is not a ring that drains to nothing: the loop polls on a
-/// cadence of its own, so a poll that arrives on time finds about one poll's
-/// worth of audio waiting, and a loop that runs a fixed beat behind the wire
-/// settles a whole poll deeper than that for ever. So the depth that matters is
-/// not any particular number but where the ring sits between its steady state and
-/// its limit, and a warning has to sit clear of the steady state or it fires
-/// continuously and says nothing — which is what a line at two polls did, on a
-/// ring that holds three.
-///
-/// Levels are in [`BYTES_PER_POLL`] for the same reason `ring_fill_ms` is:
-/// a ring is drained on the poll, and the wire moves two slots a frame.
+/// Notices a capture whose input loop is not keeping up with the codec, by how deep the
+/// ring is rather than by whether anything was lost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaptureBacklog {
-    /// Depth at which a backlog is first called, above the steady state and
-    /// inside the ring: two and a half polls, so an input loop that has fallen a
-    /// poll and a half behind is reported while there is still half a poll of
-    /// ring left to absorb it.
     warn_bytes: usize,
-    /// Depth at which the backlog is called over, back to the steady state's own
-    /// two polls, so a ring that dips to a normal depth counts as recovered.
     clear_bytes: usize,
-    /// Whether the last depth reported was over the line, so a ring that stays
-    /// deep is reported once rather than on every poll.
     backlogged: bool,
 }
 
@@ -807,8 +585,8 @@ impl CaptureBacklog {
         self.clear_bytes
     }
 
-    /// Reports the depth a poll found, and gives back the depth only on the poll
-    /// that opens a backlog — a driver logs the one, not the state.
+    /// Reports the depth a poll found, and gives back the depth only on the poll that opens
+    /// a backlog — a driver logs the one, not the state.
     pub fn report(&mut self, produced_bytes: usize) -> Option<usize> {
         if produced_bytes < self.warn_bytes {
             if produced_bytes <= self.clear_bytes {
@@ -829,23 +607,17 @@ impl CaptureBacklog {
     }
 }
 
-/// One capture poll: the peak envelope every consumer may read, plus how long the
-/// capture has been running. A summary, not a transcript — the raw samples stay
-/// in the capture driver, so a snapshot stays small enough to broadcast like
-/// every other diagnostics payload.
+/// One capture poll: the peak envelope every consumer may read, plus how long the capture
+/// has been running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AudioSample {
     pub envelope: AudioEnvelope,
-    /// Capture wall time (ms) the source has been running, saturating; the
-    /// panel reads it as elapsed time while a recording runs.
+    /// Capture wall time (ms) the source has been running, saturating; the panel reads it
+    /// as elapsed time while a recording runs.
     pub elapsed_ms: u32,
-    /// How many times the capture has had to be re-armed because its DMA
-    /// stopped. Read beside `committed`, which a stalled capture stops climbing
-    /// while a silent one keeps climbing.
+    /// How many times the capture has had to be re-armed because its DMA stopped.
     pub restarts: u16,
-    /// The A-weighted level of the same capture, as an RMS in LSB. Carried
-    /// beside the envelope rather than derived from it, because an A-weighting
-    /// is a filter — it has to see the samples, not the squares a window kept.
+    /// The A-weighted level of the same capture, as an RMS in LSB.
     pub dba_lsb: u16,
 }
 
@@ -854,14 +626,12 @@ pub trait AudioSource {
 
     fn set_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
 
-    /// Forwarded from the driver for the same reason `set_collecting` is.
     fn accepts_slower_poll(&self) -> bool {
         true
     }
 }
 
 pub trait CaptureSink {
-    /// Take one poll's window. Called from the input task, once per capture cadence.
     fn publish(&self, sample: AudioSample);
 }
 
@@ -878,9 +648,6 @@ impl<S> AudioInput<S> {
 
 impl<S: AudioSource> InputSource for AudioInput<S> {
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent> {
-        // Every cadence tick publishes: a scope that only moved on new samples
-        // would freeze between speech, and a flat line is the honest reading
-        // during silence.
         self.sink.publish(self.source.sample(now_ms));
         None
     }
@@ -894,48 +661,25 @@ impl<S: AudioSource> InputSource for AudioInput<S> {
     }
 }
 
-/// How long a corner change is given to settle before the envelope covering it
-/// is read. A DC-blocking filter's transient is a fraction of a millisecond, but
-/// the reading that matters is a level the room keeps producing, so the wait is
-/// set by the envelope rather than by the filter: three seconds is 150 capture
-/// polls, far more columns than [`ENVELOPE_COLUMNS`] holds, so the whole window
-/// behind the reading postdates the change.
+/// How long a corner change is given to settle before the envelope covering it is read.
 pub const CORNER_SETTLE_MS: u64 = 3_000;
 
 /// What a corner walk wants the capture to do on this poll.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CornerStep {
-    /// Nothing yet: the corner written last is still settling.
     Settling,
-    /// Write this corner code into the filter.
     Write(u8),
-    /// The corner has been settled long enough; report the envelope's level as
-    /// this code's reading.
     Read(u8),
-    /// Every code has been read. The caller puts its own corner back and stops
-    /// asking.
     Done,
 }
 
-/// A one-shot walk of a filter's corner codes, so a board can report what each
-/// corner reads on the real room rather than which of them it expected to.
-///
-/// The sequencing is here and the corner codes are not, because the codes are a
-/// property of the part and the walk is arithmetic on a clock — so the walk can
-/// be exercised on the host, where the part's own driver is testable but this
-/// capture path is not (it is built from DMA types no host can name). It is
-/// driven one poll at a time by [`step`](Self::step) and holds no state the
-/// caller has to keep in step with it.
+/// A one-shot walk of a filter's corner codes, so a board can report what each corner reads
+/// on the real room rather than which of them it expected to.
 #[derive(Debug, Clone, Copy)]
 pub struct CornerSweep {
-    /// How many codes the part has. A walk of none is finished on the first
-    /// step, so a part that reports no codes is walked harmlessly.
     codes: u8,
-    /// The next code to write; reaching `codes` ends the walk.
     next: u8,
-    /// The code written and not yet read, if any.
     reading: Option<u8>,
-    /// When that code was written.
     written_at_ms: u64,
 }
 
@@ -950,16 +694,9 @@ impl CornerSweep {
         }
     }
 
-    /// Advances the walk by one poll and says what to do. The caller writes on
-    /// [`Write`](CornerStep::Write), reports `envelope`'s level on
-    /// [`Read`](CornerStep::Read), and on [`Done`](CornerStep::Done) restores
-    /// the corner it started from and drops the walk — it never reports
-    /// [`Done`](CornerStep::Done) twice, so a caller that stops asking loses
-    /// nothing.
+    /// Advances the walk by one poll and says what to do.
     pub fn step(&mut self, now_ms: u64) -> CornerStep {
         if let Some(code) = self.reading {
-            // Saturating, so a poll arriving with a clock that has gone backwards
-            // waits rather than reading a level the corner had not reached yet.
             if now_ms.saturating_sub(self.written_at_ms) < CORNER_SETTLE_MS {
                 return CornerStep::Settling;
             }
@@ -983,16 +720,12 @@ mod tests {
     use alloc::boxed::Box;
     use core::cell::RefCell;
 
-    /// A chain the host can build, so the transitions can be walked without an I2S
-    /// peripheral.
     #[derive(Debug, PartialEq)]
     struct FakeChain(u32);
 
     #[derive(Debug)]
     struct FakeParked(u32);
 
-    // `READ_REFUSES` makes `Armed::read` refuse, so the unrecoverable branch is walked rather
-    // than assumed.
     thread_local! {
         static READ_REFUSES: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
         static STOPS: core::cell::Cell<u32> = const { core::cell::Cell::new(0) };
@@ -1034,10 +767,7 @@ mod tests {
 
     #[test]
     fn repairing_a_stalled_capture_never_drops_the_chain() {
-        // The bug this exists for: an earlier `restart` emptied the field itself and left
-        // the arming path to find nothing, dropping the ring and the codec side together.
         let mut chain = Chain::new(FakeChain(7));
-        // A repair is: arm from whatever is there. Nothing else stops a chain.
         let armed = chain
             .take_to_arm()
             .expect("a running chain is there to arm");
@@ -1061,9 +791,6 @@ mod tests {
 
     #[test]
     fn a_re_arm_that_refuses_reports_itself_rather_than_going_quiet() {
-        // The other silent path: `read` failing means no ring to put back, and the caller
-        // is handed what it still owns so it can say so instead of discovering it as
-        // silence.
         let mut chain = Chain::new(FakeChain(3));
         let armed = chain.take_to_arm().expect("there to arm");
         READ_REFUSES.with(|r| r.set(true));
@@ -1094,7 +821,6 @@ mod tests {
         calls: u32,
         amplitude: i16,
         restarts: u16,
-        /// The collecting state last handed down, and how many times it changed.
         collecting: Option<bool>,
         switched_at_ms: u64,
     }
@@ -1149,8 +875,6 @@ mod tests {
     fn every_cadence_tick_publishes_a_capture_poll() {
         let sink = sink();
         let mut input = AudioInput::new(fake(8_000, 7), sink);
-        // Silence has to keep publishing: a scope that only moved on new samples
-        // would freeze between speech instead of showing a flat line.
         for now_ms in [20, 40, 60] {
             assert!(
                 input.poll(now_ms).is_none(),
@@ -1162,8 +886,6 @@ mod tests {
         for (sample, now_ms) in samples.iter().zip([20, 40, 60]) {
             assert_eq!(sample.envelope.committed(), 1);
             assert_eq!(sample.elapsed_ms, now_ms as u32);
-            // A stalled capture the driver repaired still has to say so,
-            // or the panel can only see its envelope stop advancing.
             assert_eq!(sample.restarts, 7);
         }
     }
@@ -1191,12 +913,11 @@ mod tests {
         assert_eq!(input.source.collecting, Some(true));
     }
 
-    /// The ring the S3 capture runs on: three polls of audio, so the watchdog
-    /// tolerates 80 ms of silence — a full ring's fill plus a poll — before
-    /// calling a stall.
+    // The ring the S3 capture runs on: three polls of audio, so the watchdog
+    // tolerates 80 ms of silence — a full ring's fill plus a poll — before
+    // calling a stall.
     const RING_BYTES: usize = BYTES_PER_POLL * 3;
 
-    /// A whole poll period of audio, what a healthy capture hands over each time.
     const A_POLL_OF_AUDIO: usize = BYTES_PER_POLL;
 
     #[test]
@@ -1212,8 +933,6 @@ mod tests {
 
     #[test]
     fn a_capture_that_filled_its_ring_once_and_stopped_is_called_stalled() {
-        // The failure this exists for: a DMA that filled the ring before the
-        // consumer polled and stopped, which no amount of draining revives.
         let mut watchdog = CaptureWatchdog::new(RING_BYTES);
         assert!(
             !watchdog.stalled(0, RING_BYTES),
@@ -1231,9 +950,6 @@ mod tests {
         );
     }
 
-    /// The deadline a ring's size buys, derived rather than quoted: a driver that
-    /// grows its ring has to get a proportionally longer grace period with it, or
-    /// a perfectly healthy capture is called dead every few polls.
     #[test]
     fn a_rings_silence_limit_follows_the_rate_the_wire_moves_at() {
         // 60 ms of fill plus a 20 ms poll. Scored at the frame rate instead —
@@ -1262,18 +978,12 @@ mod tests {
         let mut watchdog = CaptureWatchdog::new(RING_BYTES);
         watchdog.stalled(0, A_POLL_OF_AUDIO);
         assert!(watchdog.stalled(200, 0));
-        // Re-arming hands back an empty ring, so the new stream has to be given
-        // the same grace the first one had rather than judged against a
-        // deadline the dead one left behind.
         watchdog.note_progress(200);
         assert!(!watchdog.stalled(240, 0), "the new stream starts unarmed");
     }
 
     #[test]
     fn a_capture_that_never_produced_anything_is_still_given_its_grace() {
-        // A clock or a codec that never started reads the same as a stopped
-        // DMA, and the watchdog is the only thing that can tell the panel — so
-        // it has to start counting from the first poll, not from nothing.
         let mut watchdog = CaptureWatchdog::new(RING_BYTES);
         assert!(!watchdog.stalled(500, 0), "the first poll only arms it");
         assert!(watchdog.stalled(600, 0), "and silence past that is a stall");
@@ -1322,8 +1032,6 @@ mod tests {
             None,
             "a ring that stays deep is one backlog, not a new one every poll"
         );
-        // Between the two levels the backlog stands: a ring dipping to just under
-        // the warn line has not recovered, it is still behind.
         assert_eq!(backlog.report(BYTES_PER_POLL * 5 / 2 - 1), None);
         assert!(backlog.backlogged());
     }
@@ -1346,11 +1054,6 @@ mod tests {
 
     #[test]
     fn the_backlog_levels_sit_clear_of_the_steady_state_and_inside_the_ring() {
-        // Quoted rather than derived, because both numbers come from hardware
-        // that is not here: the steady state is what the panel reported, and the
-        // ring is what the driver sizes. A warn level at or under the steady
-        // state would warn continuously again, and a level with no ring left above
-        // it would warn too late to be worth anything.
         let backlog = CaptureBacklog::new(RING_BYTES);
         assert_eq!(backlog.warn_bytes(), 4_800);
         assert_eq!(backlog.clear_bytes(), 3_840);
@@ -1372,8 +1075,6 @@ mod tests {
         alloc::vec![i16::MAX; SAMPLES_PER_COLUMN as usize]
     }
 
-    /// One LSB past the positive rail — the absolute of [`i16::MIN`], and so the
-    /// loudest peak a column can hold.
     const PEAK_FULL_SCALE: u16 = 32_768;
 
     #[test]
@@ -1417,8 +1118,6 @@ mod tests {
 
     #[test]
     fn scope_height_makes_conversational_speech_visible() {
-        // Why the scale is logarithmic: speech is a few thousand LSB, which a
-        // linear bar draws in the bottom two rows of the half-band.
         assert!(
             scope_height(3_000) > u8::MAX / 3,
             "−21 dBFS has to be plainly visible, not a sliver"
@@ -1428,8 +1127,6 @@ mod tests {
             "−30 dBFS still has to read as a bar"
         );
         assert_eq!(scope_height(32), 85, "−60 dBFS, a third of the −90 dB band");
-        // 64 LSB is −54 dBFS, thirty-six decibels over a ninety-decibel window,
-        // so two-fifths of the band: the floor is low enough to show a quiet room.
         assert_eq!(scope_height(64), 102);
     }
 
@@ -1449,8 +1146,6 @@ mod tests {
 
     #[test]
     fn dbfs_reads_a_level_anyone_can_judge() {
-        // The reason a meter shows decibels: 3000 is a number only this code can
-        // interpret. −21 dBFS is one every audio tool already reports.
         assert_eq!(dbfs(PEAK_FULL_SCALE), 0, "full scale is the rail");
         assert_eq!(dbfs(0), -90, "silence reads the floor, not an infinity");
         assert_eq!(dbfs(1), -90, "and so does the floor itself");
@@ -1460,15 +1155,11 @@ mod tests {
 
     #[test]
     fn dbfs_agrees_with_the_band_it_is_drawn_on() {
-        // The reading and the bar beside it are one mapping, so they must never
-        // put the level in two places.
         for peak in (0..=PEAK_FULL_SCALE).step_by(37) {
             let decibels = i32::from(dbfs(peak));
             if decibels < -SCOPE_FLOOR_DECIBELS {
                 continue;
             }
-            // Height is linear in decibels, so a reading and a bar must agree to
-            // within the two decibel steps a 1/16-octave mantissa can move.
             let expected =
                 (decibels + SCOPE_FLOOR_DECIBELS) * i32::from(u8::MAX) / SCOPE_FLOOR_DECIBELS;
             let drawn = i32::from(scope_height(peak));
@@ -1495,10 +1186,6 @@ mod tests {
 
     #[test]
     fn spl_is_dbfs_with_the_microphones_own_reference_back() {
-        // The two readings are the same signal counted from different zeros, so
-        // the offset has to be the whole of the difference. It is this board's own
-        // (`SPL_OFFSET_DECIBELS` in `bsp-esp`), restated here because core cannot
-        // depend on the board carrying the part.
         const ZTS6216: i16 = 102;
         assert_eq!(spl(-40, ZTS6216), 62, "a −40 dBFS floor is 62 dB SPL");
         assert_eq!(spl(0, ZTS6216), 102, "and the rail is the offset itself");
@@ -1511,9 +1198,6 @@ mod tests {
 
     #[test]
     fn spl_never_runs_backwards_as_the_signal_grows() {
-        // A level meter that fell as the room got louder would be a bug the
-        // reading alone would not reveal, so the same walk dBFS makes is made
-        // here rather than spot-checked at the ends.
         const ZTS6216: i16 = 102;
         let mut previous = i16::MIN;
         for peak in (0..=PEAK_FULL_SCALE).step_by(31) {
@@ -1533,9 +1217,6 @@ mod tests {
         assert_eq!(released_peak(measured, 0), measured, "a first column");
         let after_one = released_peak(0, measured);
         assert!(after_one < measured, "a silent column falls");
-        // A sixteenth down, and no more than a tenth: the shift truncates, so the
-        // fall rounds *down* and a bar that collapsed in one column would show
-        // attacks and nothing else.
         let fall = u32::from(measured - after_one);
         assert!(
             fall * 16 >= u32::from(measured) && fall * 10 < u32::from(measured),
@@ -1545,9 +1226,6 @@ mod tests {
 
     #[test]
     fn a_release_never_lifts_a_bar_above_its_own_column() {
-        // The falloff is a floor, not a value: a column that is louder than the
-        // bar in front of it has to be drawn, or a rising signal would be
-        // flattened into a flat line and the meter would stop being a meter.
         for previous in [1, 100, 4_000, 20_000, PEAK_FULL_SCALE] {
             for measured in [0, 1, 512, 16_000, PEAK_FULL_SCALE] {
                 assert!(
@@ -1560,8 +1238,6 @@ mod tests {
 
     #[test]
     fn a_release_crosses_the_whole_band_inside_the_window() {
-        // The requirement the release rate was derived from: a transient must be
-        // back at the floor before the window scrolls it off.
         let mut drawn = PEAK_FULL_SCALE;
         let mut columns_to_floor = None;
         for column in 0..ENVELOPE_COLUMNS {
@@ -1577,8 +1253,6 @@ mod tests {
             "back to the floor in {columns} columns, which is longer than the \
              {ENVELOPE_COLUMNS}-column window it is drawn in"
         );
-        // And not so fast that it is useless either: the attack it follows has to
-        // survive a column or two to be seen at all.
         assert!(
             scope_height(released_peak(0, PEAK_FULL_SCALE)) > 0,
             "the peak has to still be on the band one column after it was heard"
@@ -1587,9 +1261,6 @@ mod tests {
 
     #[test]
     fn the_rms_of_a_column_reads_the_level_not_the_loudest_sample() {
-        // The whole reason the two are drawn as separate bars: a column of one
-        // loud sample and a column of steady sound at the same peak look identical
-        // as a peak, and are not remotely the same level.
         let mut steady = AudioEnvelope::default();
         steady.push(&vec![4_000; SAMPLES_PER_COLUMN as usize]);
         assert_eq!(steady.columns()[0], 4_000);
@@ -1613,9 +1284,6 @@ mod tests {
 
     #[test]
     fn the_rms_of_a_two_way_signal_is_its_own_amplitude() {
-        // The capture folds both I2S slots, so a signal alternating between rails
-        // must read as one full-scale column: not one LSB off full scale because
-        // the two slots happen to be the two's-complement halves of each other.
         let mut envelope = AudioEnvelope::default();
         let alternating: Vec<i16> = (0..SAMPLES_PER_COLUMN as usize)
             .map(|i| if i % 2 == 0 { i16::MAX } else { i16::MIN })
@@ -1660,9 +1328,6 @@ mod tests {
 
     #[test]
     fn the_floor_is_the_median_and_not_the_loudest_column() {
-        // Four columns: three at 1_000 and one at 10_000, so the loudest column
-        // is ten times the rest. A maximum reports 10_000; the floor must report
-        // 1_000, because the one loud column is an event and not the level.
         let mut envelope = AudioEnvelope::default();
         for amplitude in [1_000_i16, 1_000, 10_000, 1_000] {
             envelope.push(&vec![amplitude; SAMPLES_PER_COLUMN as usize]);
@@ -1674,10 +1339,6 @@ mod tests {
 
     #[test]
     fn a_loud_column_cannot_move_the_floor_until_it_is_half_the_window() {
-        // The robustness the median is here for, and its exact limit: one loud
-        // column among eight is ignored outright, because the window's own middle
-        // does not change. Push past half the window and the floor has to follow,
-        // or it would report a level the room mostly is not producing.
         let mut envelope = AudioEnvelope::default();
         for _ in 0..8 {
             envelope.push(&vec![1_000; SAMPLES_PER_COLUMN as usize]);
@@ -1695,8 +1356,6 @@ mod tests {
             "one loud column in nine moves nothing"
         );
 
-        // Seven more makes it eight loud against eight quiet, and the median
-        // lands on the first loud column.
         for _ in 0..7 {
             envelope.push(&vec![16_000; SAMPLES_PER_COLUMN as usize]);
         }
@@ -1710,11 +1369,6 @@ mod tests {
 
     #[test]
     fn the_floor_ignores_the_columns_the_capture_has_not_heard_yet() {
-        // `committed` saturates, so a window that is not yet full still has its
-        // uncommitted slots at zero. Taking the middle of the whole array rather
-        // than of the committed part would put those zeros in the middle and
-        // report a floor of nothing at all for the first two seconds of a
-        // capture — which is exactly the window the panel shows first.
         let mut envelope = AudioEnvelope::default();
         for _ in 0..3 {
             envelope.push(&vec![9_000; SAMPLES_PER_COLUMN as usize]);
@@ -1726,8 +1380,6 @@ mod tests {
 
     #[test]
     fn a_uniform_window_has_a_floor_at_its_own_level() {
-        // Every column the same, so the median is that column: the floor of a
-        // steady room is the room.
         let mut envelope = AudioEnvelope::default();
         for _ in 0..5 {
             envelope.push(&vec![2_000; SAMPLES_PER_COLUMN as usize]);
@@ -1767,7 +1419,6 @@ mod tests {
         );
     }
 
-    /// A few whole columns of a sine at `freq_hz`, in LSB.
     fn tone_buffer(freq_hz: f64, amplitude: i32, samples: usize) -> Vec<i16> {
         assert_eq!(samples % SAMPLES_PER_COLUMN as usize, 0, "whole columns");
         let step = 2.0 * core::f64::consts::PI * freq_hz / f64::from(SAMPLE_RATE_HZ);
@@ -1776,8 +1427,8 @@ mod tests {
             .collect()
     }
 
-    /// A-weighting cuts 62.5 Hz by about 26 dB, so a low tone must not draw a
-    /// solid band even when it saturates the raw columns.
+    // A-weighting cuts 62.5 Hz by about 26 dB, so a low tone must not draw a
+    // solid band even when it saturates the raw columns.
     #[test]
     fn a_low_tone_drives_the_raw_columns_but_not_the_weighted_twin() {
         let low = tone_buffer(62.5, 12_000, SAMPLES_PER_COLUMN as usize * 4);
@@ -1795,8 +1446,8 @@ mod tests {
         );
     }
 
-    /// A-weighting is unity at 1 kHz, so a mid-band tone reads the same through
-    /// both column sets.
+    // A-weighting is unity at 1 kHz, so a mid-band tone reads the same through
+    // both column sets.
     #[test]
     fn a_mid_band_tone_reads_the_same_through_both_columns() {
         let mid = tone_buffer(1_000.0, 12_000, SAMPLES_PER_COLUMN as usize * 4);
@@ -1812,9 +1463,6 @@ mod tests {
 
     #[test]
     fn a_clip_mark_ages_out_with_the_column_it_points_at() {
-        // Once the marked column has been overwritten there is nothing left to
-        // point at, so the mark goes with it: a position in a window that no
-        // longer contains it would be a claim about a bar that isn't there.
         let mut envelope = AudioEnvelope::default();
         let mut spike = vec![0; SAMPLES_PER_COLUMN as usize];
         spike[0] = i16::MIN;
@@ -1827,9 +1475,6 @@ mod tests {
 
     #[test]
     fn the_release_falls_across_the_window_in_the_order_the_audio_arrived() {
-        // The sweep reads oldest at the left, so the release has to run from the
-        // left of the window forward. A release applied in storage order would
-        // run it the other way and draw a falling edge where the sound rose.
         let mut envelope = AudioEnvelope::default();
         envelope.push(&vec![i16::MIN; SAMPLES_PER_COLUMN as usize]);
         envelope.push(&vec![
@@ -1858,13 +1503,7 @@ mod tests {
 
     #[test]
     fn the_tallest_drawn_bar_is_the_peak_the_panel_reads_out() {
-        // The number and the picture are one measurement: release only pulls a
-        // bar down, so the tallest bar can neither exceed the loudest peak nor
-        // be dragged below it.
         let mut envelope = AudioEnvelope::default();
-        // Loud, quiet, loud again, then a run of silence long enough for the
-        // release to fall most of the way: the cases where a released chain and
-        // a plain maximum could come apart.
         for peak in [4_000, 0, 0, 25_000, 0, 0, 0, 0, 0, 0, 0, 0] {
             envelope.push(&vec![peak as i16; SAMPLES_PER_COLUMN as usize]);
         }
@@ -1879,9 +1518,6 @@ mod tests {
 
     #[test]
     fn the_window_is_the_audio_two_seconds_worth() {
-        // The reading that decides how long a phrase stays on screen: 200 columns
-        // at ten milliseconds each. Derived from the constants that produce the
-        // samples so it cannot drift from them.
         let window_ms = ENVELOPE_COLUMNS as u64 * COLUMN_MS;
         assert_eq!(window_ms, 2_000, "two seconds of sweep");
         assert_eq!(
@@ -1962,8 +1598,6 @@ mod tests {
 
     #[test]
     fn a_silent_capture_stops_reading_as_changed_once_the_ring_has_wrapped() {
-        // Everything the panel draws is identical here, so equality has to hold
-        // on the ring position advancing underneath it.
         let silence = [0_i16; SAMPLES_PER_COLUMN as usize];
         let mut envelope = AudioEnvelope::default();
         for _ in 0..ENVELOPE_COLUMNS + 10 {
@@ -2008,9 +1642,6 @@ mod tests {
 
     #[test]
     fn the_loudest_column_tells_a_silent_capture_from_an_empty_one() {
-        // Both draw a flat sweep, which is why the panel reads this beside the
-        // column count: committed still climbing with a loudest of zero means
-        // the capture path is dead, not that the room is quiet.
         let mut silent = AudioEnvelope::default();
         silent.push(&vec![0; SAMPLES_PER_COLUMN as usize * 4]);
         assert_eq!(silent.committed(), 4);
@@ -2036,8 +1667,6 @@ mod tests {
         let mut envelope = AudioEnvelope::default();
         envelope.push(&vec![9_000; SAMPLES_PER_COLUMN as usize * 2]);
         assert_eq!(envelope.loudest(), 9_000);
-        // Wrap the window so the loud column is overwritten, and the answer has
-        // to follow the window rather than remember a peak from earlier.
         envelope.push(&vec![0; SAMPLES_PER_COLUMN as usize * ENVELOPE_COLUMNS]);
         assert_eq!(
             envelope.loudest(),
@@ -2046,7 +1675,6 @@ mod tests {
         );
     }
 
-    /// The bytes a transfer hands out for `samples`, little-endian like the wire.
     fn to_le_bytes(samples: &[i16]) -> Vec<u8> {
         samples
             .iter()
@@ -2073,7 +1701,6 @@ mod tests {
         let bytes = to_le_bytes(&samples);
         let mut whole = SampleStream::new();
         whole.push_bytes(&bytes);
-        // Every odd offset puts a boundary between the two bytes of one sample.
         for offset in (1..bytes.len()).step_by(2) {
             let mut split = SampleStream::new();
             split.push_bytes(&bytes[..offset]);
@@ -2095,9 +1722,6 @@ mod tests {
             "one whole sample plus a held high byte is a part-filled window"
         );
         stream.push_bytes(&[0x04]);
-        // Two samples with two different values, so the comparison also pins
-        // that the held byte was paired with *this* low byte rather than read
-        // as a whole sample of its own.
         let mut expected = AudioEnvelope::default();
         expected.push(&[
             i16::from_le_bytes([0x01, 0x02]),
@@ -2122,8 +1746,6 @@ mod tests {
 
     #[test]
     fn a_chunk_larger_than_a_decode_batch_still_folds() {
-        // Three windows' worth of bytes, arriving as one oversized chunk, so
-        // the batch loop has to wrap rather than truncate.
         let samples = vec![i16::MAX; SAMPLES_PER_COLUMN as usize * 3];
         let mut stream = SampleStream::new();
         stream.push_bytes(&to_le_bytes(&samples));
@@ -2141,8 +1763,6 @@ mod corner_sweep_tests {
     use super::*;
     use alloc::vec::Vec;
 
-    /// Runs the walk to completion the way a capture would, collecting what each
-    /// poll asked for.
     fn walk(codes: u8, poll_ms: u64) -> Vec<CornerStep> {
         let mut sweep = CornerSweep::new(codes);
         let mut steps = Vec::new();
@@ -2183,8 +1803,6 @@ mod corner_sweep_tests {
     fn a_code_is_read_only_after_it_has_settled() {
         let mut sweep = CornerSweep::new(2);
         assert_eq!(sweep.step(0), CornerStep::Write(0));
-        // One millisecond short of the settle is still settling, and keeps
-        // waiting across as many polls as it takes.
         assert_eq!(sweep.step(1), CornerStep::Settling);
         assert_eq!(sweep.step(CORNER_SETTLE_MS - 1), CornerStep::Settling);
         assert_eq!(sweep.step(CORNER_SETTLE_MS), CornerStep::Read(0));
@@ -2221,9 +1839,6 @@ mod corner_sweep_tests {
     fn a_clock_that_goes_backwards_waits_rather_than_reading_early() {
         let mut sweep = CornerSweep::new(2);
         assert_eq!(sweep.step(10_000), CornerStep::Write(0));
-        // `saturating_sub` makes this a settle time of zero, so it waits —
-        // reading here would report a level the corner had not reached. The read
-        // lands a full settle *after the write* still, not after the old clock.
         assert_eq!(sweep.step(0), CornerStep::Settling);
         assert_eq!(sweep.step(12_999), CornerStep::Settling);
         assert_eq!(sweep.step(13_000), CornerStep::Read(0));
@@ -2231,10 +1846,6 @@ mod corner_sweep_tests {
 
     #[test]
     fn every_read_follows_its_own_write_by_a_full_settle() {
-        // The whole point of the walk is that each reading is a settled room, so
-        // this is the property worth pinning: the gap between a code being
-        // written and being read is at least one settle window, measured on the
-        // poll clock rather than assumed from the step count.
         let mut sweep = CornerSweep::new(8);
         let mut now = 0;
         let mut written_at: Option<u64> = None;

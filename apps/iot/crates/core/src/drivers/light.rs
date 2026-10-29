@@ -1,21 +1,15 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-/// How a color is painted across a light surface. The renderer picks the
-/// fill; surfaces without spatial resolution (a single LED) map any fill to
-/// the same color.
+/// How a color is painted across a light surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fill {
-    /// The whole surface carries the same color.
     Uniform,
-    /// A vertical brightness ramp, full at the top fading to black at the
-    /// bottom, over a constant hue/saturation.
     VerticalGradient,
 }
 
-/// Max light surfaces one device can carry, dimensioning `DeviceState::lights`
-/// and the render slots. Boards wire at most this many; unwired slots sit in
-/// the boot state until a board fills them.
+/// Max light surfaces one device can carry, dimensioning `DeviceState::lights` and the
+/// render slots.
 pub const MAX_LIGHTS: usize = 2;
 
 use crate::state::DisplayPage;
@@ -26,34 +20,19 @@ pub trait RgbLight {
         self.set_fill(Fill::Uniform, color);
     }
 
-    /// Paints the surface in the chosen [`Fill`].
     fn set_fill(&mut self, fill: Fill, color: Rgb);
 
-    /// Drives a backlight to a percentage; surfaces without one keep the
-    /// default no-op.
     fn set_backlight(&mut self, _level_pct: u8) {}
-    /// How bright the panel is allowed to get, as a ceiling on every `set_backlight` that
-    /// follows. A knob on the surface rather than a parameter per call, because the calls
-    /// arrive from an animation loop that has no business knowing about it.
     fn set_backlight_ceiling(&mut self, _level_pct: u8) {}
 
-    /// Minimum per-channel delta that warrants a repaint; slow-refresh
-    /// surfaces return a step > 0 to skip imperceptible drift.
     fn repaint_step(&self) -> u8 {
         0
     }
 
-    /// The ground a page draws for itself, on a surface that has pages. A light-only surface
-    /// keeps the light it was; a panel says which pages are screens rather than colours. Asked
-    /// here rather than derived in the renderer because how a surface presents a page is a fact
-    /// only that surface knows.
     fn page_ground(&self, _page: DisplayPage) -> Option<Rgb> {
         None
     }
 
-    /// Whether `page` is drawn by frames arriving rather than by the light's own animation. The
-    /// render loop has to keep stepping such a surface even when the light is parked, because
-    /// polling is what makes the next frame arrive.
     fn page_draws_frames(&self, _page: DisplayPage) -> bool {
         false
     }
@@ -62,7 +41,6 @@ pub trait RgbLight {
 const FIXED_POINT: u64 = 1 << 16;
 
 /// Smooth sin² brightness envelope scaled to `[min_brightness, max_brightness]`.
-/// A nonzero floor keeps the trough lit instead of fading fully to black.
 pub fn smooth_brightness(
     elapsed_ms: u32,
     period_ms: u32,
@@ -82,7 +60,6 @@ pub fn smooth_brightness(
     (min + scale * hann_weight(phase_fraction) / FIXED_POINT) as u8
 }
 
-/// Bhaskara approximation of sin²(π·u), fixed point at `FIXED_POINT`.
 fn hann_weight(phase_fraction: u64) -> u64 {
     let parabola = phase_fraction * (FIXED_POINT - phase_fraction) / FIXED_POINT;
     let bhaskara_sin = 16 * FIXED_POINT * parabola / (5 * FIXED_POINT - 4 * parabola);
@@ -119,11 +96,8 @@ pub fn hsv_to_rgb(hue: u8, saturation: u8, value: u8) -> Rgb {
     }
 }
 
-/// Hue of an RGB color on the same 256-step wheel `hsv_to_rgb` consumes, for a
-/// debug readout of a solid color. Interpolates the classic six-section hue so
-/// equal channels (gray) read as hue 0 and pure secondaries land on their slice
-/// heads; the result re-round-trips any `hsv_to_rgb(h, 255, 255)` color back
-/// within a step.
+/// Hue of an RGB color on the same 256-step wheel `hsv_to_rgb` consumes, for a debug
+/// readout of a solid color.
 pub fn rgb_hue(Rgb(r, g, b): Rgb) -> u8 {
     let (r, g, b) = (i32::from(r), i32::from(g), i32::from(b));
     let max = r.max(g).max(b);
@@ -132,8 +106,6 @@ pub fn rgb_hue(Rgb(r, g, b): Rgb) -> u8 {
     if span == 0 {
         return 0;
     }
-    // Section number + fractional travel in [0,6); a negative fraction on the
-    // red section folds back to magenta, matching the forward wheel's wrap.
     let raw = if max == r {
         if g >= b { g - b } else { g - b + 6 * span }
     } else if max == g {
@@ -141,8 +113,6 @@ pub fn rgb_hue(Rgb(r, g, b): Rgb) -> u8 {
     } else {
         r - g + 4 * span
     };
-    // Round to the nearest step; 256 (just past pure red) clamps to 255 rather
-    // than wrapping to a phantom black hue.
     let hue = (raw * 256 * 2 + 6 * span) / (12 * span);
     if hue > 255 { 255 } else { hue as u8 }
 }
@@ -161,8 +131,8 @@ pub fn scale_brightness(color: Rgb, brightness: u8) -> Rgb {
     )
 }
 
-/// Per-row brightness scale for [`Fill::VerticalGradient`]: `255` at the top
-/// row fading to `0` at the bottom.
+/// Per-row brightness scale for [`Fill::VerticalGradient`]: `255` at the top row fading to
+/// `0` at the bottom.
 pub fn vertical_brightness(row: u16, height: u16) -> u8 {
     if height <= 1 {
         return 255;
@@ -172,9 +142,9 @@ pub fn vertical_brightness(row: u16, height: u16) -> u8 {
     (255u32 * numerator / denominator) as u8
 }
 
-/// Soft color-graduated breathing color at `elapsed_ms`, hue path per
-/// `group_len` (see `group_hue`); `hue_span == 0` holds `base_hue` static —
-/// standalone is a parameter value, not a branch.
+/// Soft color-graduated breathing color at `elapsed_ms`, hue path per `group_len` (see
+/// `group_hue`); `hue_span == 0` holds `base_hue` static — standalone is a parameter value,
+/// not a branch.
 #[allow(clippy::too_many_arguments)]
 pub fn breathe(
     elapsed_ms: u32,
@@ -200,10 +170,9 @@ pub fn breathe(
     hsv_to_rgb(hue, saturation, value)
 }
 
-/// Hue at `elapsed_ms` along the configured path:
-/// `group_len == 0` walks the `hue`/`hue_span` sweep (`0` span holds
-/// `base_hue`); `group_len == 1` holds `group[0]`; `group_len >= 2` rotates
-/// through the waypoints, walking each adjacent pair over
+/// Hue at `elapsed_ms` along the configured path: `group_len == 0` walks the
+/// `hue`/`hue_span` sweep (`0` span holds `base_hue`); `group_len == 1` holds `group[0]`;
+/// `group_len >= 2` rotates through the waypoints, walking each adjacent pair over
 /// `hue_period_ms / group_len` and wrapping the last back to the first.
 pub fn group_hue(
     elapsed_ms: u32,
@@ -225,9 +194,6 @@ pub fn group_hue(
             let fraction = u64::from(segment_ms) * 256 / u64::from(leg_ms);
             let from = i32::from(group[waypoint]);
             let to = i32::from(group[(waypoint + 1) % usize::from(group_len)]);
-            // Shortest signed arc around the 256-step wheel, so a leg crossing
-            // hue 0 (e.g. 250→16) walks through the boundary instead of the
-            // long way around.
             let delta = ((to - from + 384) % 256) - 128;
             let hue = from + delta * (fraction as i32) / 256;
             hue.rem_euclid(256) as u8
@@ -235,8 +201,6 @@ pub fn group_hue(
     }
 }
 
-/// Hue sweep offset in `[0, hue_span]`, replaying the span over `hue_period_ms`.
-/// A zero span or a degenerate period holds the offset still.
 fn hue_offset(hue_span: u8, hue_period_ms: u32, elapsed_ms: u32) -> u8 {
     if hue_span == 0 || hue_period_ms == 0 {
         return 0;
@@ -244,10 +208,9 @@ fn hue_offset(hue_span: u8, hue_period_ms: u32, elapsed_ms: u32) -> u8 {
     (u32::from(hue_span) * u32::from(hue_phase(elapsed_ms, hue_period_ms)) / 256) as u8
 }
 
-/// Backlight duty for the breathing envelope at `elapsed_ms`: the same
-/// `[min_brightness, max_brightness]` wave the pixels ride, remapped to
-/// `[floor_pct, 100]` percent so the panel follows the pixels instead of
-/// switching binary on/off. A degenerate flat envelope holds full brightness.
+/// Backlight duty for the breathing envelope at `elapsed_ms`: the same `[min_brightness,
+/// max_brightness]` wave the pixels ride, remapped to `[floor_pct, 100]` percent so the
+/// panel follows the pixels instead of switching binary on/off.
 pub fn backlight_level(
     elapsed_ms: u32,
     period_ms: u32,
@@ -272,8 +235,6 @@ pub fn backlight_level(
 }
 
 /// Whether `next` differs from `last` enough to repaint a slow refresh surface.
-/// Any channel moving by at least `step` counts as a visible change; `step == 0`
-/// repaints on every difference, so an Off-to-idle transition always goes out.
 pub fn should_repaint(last: Rgb, next: Rgb, step: u8) -> bool {
     if last == next {
         return false;
@@ -293,12 +254,10 @@ mod tests {
         assert_eq!(smooth_brightness(2000, 2000, 0, 255), 0);
         assert_eq!(smooth_brightness(1000, 2000, 0, 255), 255);
         assert_eq!(smooth_brightness(1000, 2000, 0, 80), 80);
-        // Symmetric about the midpoint.
         assert_eq!(
             smooth_brightness(500, 2000, 0, 255),
             smooth_brightness(1500, 2000, 0, 255)
         );
-        // Monotonic rise then monotonic fall, bounded by max everywhere.
         let rising: Vec<u8> = (0..=1000)
             .step_by(100)
             .map(|t| smooth_brightness(t, 2000, 0, 255))
@@ -317,7 +276,6 @@ mod tests {
             let v = smooth_brightness(t, 2000, 0, 80);
             assert!(v <= 80, "t={t}: {v} > 80");
         }
-        // The hann smoothing rounds away the sharp trough and peak.
         assert!(smooth_brightness(900, 2000, 0, 255) > smooth_brightness(500, 2000, 0, 255) / 2);
         assert!(smooth_brightness(100, 2000, 0, 255) < 16);
         assert!(smooth_brightness(1900, 2000, 0, 255) < 16);
@@ -354,12 +312,10 @@ mod tests {
         assert!(blue.0 <= 2);
         assert!(blue.1 <= 4);
         assert_eq!(blue.2, 255);
-        // The wheel is closed: hue 0 and hue 255 are the same red.
         let tail = hsv_to_rgb(255, 255, 255);
         assert_eq!(tail.0, 255);
         assert!(tail.1 <= 2);
         assert!(tail.2 <= 8);
-        // Achromatic: empty saturation reads gray, empty value reads black.
         assert_eq!(hsv_to_rgb(37, 0, 200), Rgb(200, 200, 200));
         assert_eq!(hsv_to_rgb(200, 0, 80), Rgb(80, 80, 80));
         assert_eq!(hsv_to_rgb(100, 255, 0), Rgb(0, 0, 0));
@@ -367,7 +323,6 @@ mod tests {
 
     #[test]
     fn rgb_hue_derives_the_same_wheel_back() {
-        // Every sampled hue re-derives from its RGB on the same wheel.
         for hue in [0u8, 16, 43, 85, 128, 170, 213, 255] {
             let rgb = hsv_to_rgb(hue, 255, 255);
             let back = rgb_hue(rgb);
@@ -395,7 +350,6 @@ mod tests {
             breathe(123, 0, 0, 255, 0, 80, 200, 0, [0, 0, 0, 0, 0, 0, 0], 0),
             Rgb(0, 0, 0)
         );
-        // A half-period frame composes the brightness with the base hue.
         let color = breathe(
             1000,
             2000,
@@ -411,8 +365,6 @@ mod tests {
         assert_eq!(color.0, 128);
         assert!(color.1 > 0 && color.1 < 128);
         assert_eq!(color.2, 0);
-        // With a zero sweep span the hue never drifts: symmetric frames match
-        // and a blue base stays blue.
         let rising = breathe(
             500,
             2000,
@@ -443,7 +395,6 @@ mod tests {
 
     #[test]
     fn breathe_sweep_scales_with_span_and_saturation() {
-        // At t=0 the sweep offset is 0, so the output is the base hue only.
         let color = breathe(
             0,
             2000,
@@ -458,7 +409,6 @@ mod tests {
         );
         let static_at_42 = breathe(0, 2000, 8000, 0, 0, 128, 255, 42, [0, 0, 0, 0, 0, 0, 0], 0);
         assert_eq!(color, static_at_42);
-        // Half the span at the same clock offsets half as far in hue.
         let full = breathe(
             1000,
             2000,
@@ -489,7 +439,6 @@ mod tests {
         assert_eq!(full.2, 0);
         assert_eq!(half.2, 0);
         assert!(full.1 > half.1);
-        // Lower saturation lifts the off-axis channels in toward gray.
         let muted = breathe(1000, 2000, 8000, 0, 0, 128, 64, 0, [0, 0, 0, 0, 0, 0, 0], 0);
         assert_eq!(muted.0, 128);
         assert!(muted.1 > full.1, "lower saturation lifts the green channel");
@@ -504,7 +453,6 @@ mod tests {
             group_hue(500, 3000, 255, 0, [16, 32, 100, 0, 0, 0, 0], 3),
             24
         );
-        // The full frame carries that hue through the brightness envelope.
         let color = breathe(
             1000,
             2000,
@@ -521,7 +469,6 @@ mod tests {
             color,
             hsv_to_rgb(32, 255, smooth_brightness(1000, 2000, 0, 128))
         );
-        // The last leg wraps back to the head waypoint.
         assert_eq!(
             group_hue(2500, 3000, 255, 0, [16, 32, 100, 0, 0, 0, 0], 3),
             58
@@ -530,7 +477,6 @@ mod tests {
             group_hue(3000, 3000, 255, 0, [16, 32, 100, 0, 0, 0, 0], 3),
             16
         );
-        // 250→16 crosses hue 0 the short way: quarter at 255, midpoint at 5.
         assert_eq!(
             group_hue(125, 1000, 255, 0, [250, 16, 0, 0, 0, 0, 0], 2),
             255
@@ -540,7 +486,6 @@ mod tests {
             group_hue(500, 1000, 255, 0, [250, 16, 0, 0, 0, 0, 0], 2),
             16
         );
-        // A single waypoint holds its color; an empty group keeps the sweep.
         assert_eq!(group_hue(0, 8000, 255, 0, [170, 0, 0, 0, 0, 0, 0], 1), 170);
         assert_eq!(
             group_hue(7000, 8000, 255, 0, [170, 0, 0, 0, 0, 0, 0], 1),
@@ -575,7 +520,6 @@ mod tests {
 
     #[test]
     fn vertical_brightness_fades_strictly() {
-        // Odd and even heights: strict fade, top full, bottom black.
         assert_eq!(vertical_brightness(0, 5), 255);
         assert_eq!(vertical_brightness(4, 5), 0);
         assert_eq!(vertical_brightness(2, 5), 127);
@@ -598,15 +542,12 @@ mod tests {
         assert!(should_repaint(Rgb(10, 20, 30), Rgb(10, 32, 30), 12));
         assert!(should_repaint(Rgb(10, 20, 30), Rgb(10, 20, 42), 12));
         assert!(should_repaint(Rgb(0, 0, 0), Rgb(255, 255, 255), 12));
-        // Step zero repaints on any difference and is silent on an exact match.
         assert!(should_repaint(Rgb(10, 20, 30), Rgb(10, 21, 30), 0));
         assert!(!should_repaint(Rgb(10, 21, 30), Rgb(10, 21, 30), 0));
     }
 
     #[test]
     fn backlight_level_tracks_the_envelope_within_100() {
-        // Trough maps to the floor, peak to full brightness; the floor lifts
-        // the curve but never passes 100.
         assert_eq!(backlight_level(0, 2000, 0, 255, 12), 12);
         assert_eq!(backlight_level(1000, 2000, 0, 255, 12), 100);
         assert_eq!(backlight_level(0, 2000, 0, 255, 20), 20);

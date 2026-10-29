@@ -21,22 +21,12 @@ use embassy_sync::signal::Signal;
 use embassy_time::Instant;
 use esp_hal::clock::CpuClock;
 
-/// The presets, in the order the probe walks them. Descending from where init
-/// put the chip, so the first switch is the one that needs no return trip back
-/// to a frequency whose bias was trimmed on the way up.
 const PRESETS: [CpuClock; 3] = [CpuClock::_80MHz, CpuClock::_160MHz, CpuClock::_240MHz];
 
-/// Switches in one ramp before drift is called anything. High enough that a
-/// per-switch error too small to see in one becomes visible, low enough that the
-/// whole probe still finishes inside a serial capture.
 const RAMP: usize = 128;
 
-/// Runs the four measurements core 0 can take alone, then hands over to the
-/// second core for the one that needs it.
-///
-/// Core 1 is started only after the switching is over, because the question it
-/// answers is what a core 0 switch *left behind* — asking earlier would measure
-/// core 1 against a frequency that has since moved again.
+/// Runs the four measurements core 0 can take alone, then hands over to the second core for
+/// the one that needs it.
 pub async fn measure() {
     log::info!("[CLOCK] starting at {:?}", current());
 
@@ -49,22 +39,10 @@ pub async fn measure() {
     second_core().await;
 }
 
-/// What the chip currently believes it is running at, as esp-hal reports it.
-///
-/// That is a read of the configuration rather than a measurement of the silicon,
-/// which is exactly why [`ratio`] exists: a register can be written and not take.
 fn current() -> u32 {
     esp_hal::clock::cpu_clock().as_mhz()
 }
 
-/// The same body of work at each frequency, so the ratio between the timings is
-/// the ratio between the clocks.
-///
-/// Both guards below are load-bearing, and neither is visible in the body. This
-/// crate is built with `lto = true, codegen-units = 1`, under which a pure loop
-/// whose result is dropped does not survive: `#[inline(never)]` keeps it a call
-/// the optimiser cannot delete, and `black_box` keeps the answer from being
-/// discarded at the call site. Without them the timings measure two timer reads.
 #[inline(never)]
 fn work() -> u32 {
     let mut samples = [0i32; 256];
@@ -78,11 +56,6 @@ fn work() -> u32 {
     core::hint::black_box(samples.iter().fold(0i32, |a: i32, b| a.wrapping_add(*b)) as u32)
 }
 
-/// Whether the core is really where it was told to go.
-///
-/// A divider that was written and did not take would leave every later number in
-/// this probe measuring the same frequency three times, so this is the check
-/// that the rest can be read against.
 fn ratio() {
     let mut baseline = 0;
     for (index, preset) in PRESETS.iter().enumerate() {
@@ -103,15 +76,8 @@ fn ratio() {
     switch(CpuClock::_240MHz);
 }
 
-/// How long the switch itself takes.
-///
-/// `Instant` reads the system timer, which is clocked from XTAL and therefore not
-/// itself affected by what is being measured — the timing does not move when the
-/// clock under it does.
 fn cost() {
     for preset in [CpuClock::_80MHz, CpuClock::_160MHz, CpuClock::_240MHz] {
-        // Announced here rather than inside `switch`, so a chip that dies
-        // climbing still leaves a line saying which direction killed it.
         log::info!("[CLOCK] timing a switch to {preset:?}");
         let mut worst = 0u64;
         let mut total = 0u64;
@@ -129,10 +95,6 @@ fn cost() {
     }
 }
 
-/// Whether the system timer still reads true time across a switch.
-///
-/// Taken across the call rather than beside it, so a timer that lost time *at*
-/// the switch shows up as a gap rather than being hidden between two reads.
 fn tick() {
     for preset in [CpuClock::_80MHz, CpuClock::_160MHz, CpuClock::_240MHz] {
         let before = Instant::now();
@@ -165,18 +127,14 @@ fn drift() {
     switch(CpuClock::_240MHz);
 }
 
-/// The second core's reading against core 0's, after core 0 has switched away
-/// from 240 MHz and back.
-///
-/// `ets_update_cpu_frequency_rom` documents itself as updating `g_ticks_per_us`
-/// "on the current core only", so core 1's ROM timing is scaled for a frequency it
-/// is no longer running at. If that matters the two readings diverge; if it does
-/// not they agree, and the only way to know which is to run the same work on both.
+// The second core's reading against core 0's, after core 0 has switched away
+// from 240 MHz and back.
+//
+// `ets_update_cpu_frequency_rom` documents itself as updating `g_ticks_per_us`
+// "on the current core only", so core 1's ROM timing is scaled for a frequency it
+// is no longer running at. If that matters the two readings diverge; if it does
+// not they agree, and the only way to know which is to run the same work on both.
 async fn second_core() {
-    // Before the signal, not after: core 1's executor startup competes for the
-    // same memory, and a reading taken across that competition lands in the wrong
-    // frequency band. The ratio between the two survives it; the absolute
-    // figures do not.
     let local = local_reading();
     REQ.signal(());
     let remote = DONE.wait().await;
@@ -187,14 +145,12 @@ async fn second_core() {
     );
 }
 
-/// A timer span measured here, for [`second_core`] to compare against core 1's.
 fn local_reading() -> u64 {
     let started = Instant::now();
     work();
     started.elapsed().as_micros()
 }
 
-/// Core 0 to core 1: go, and the reading back.
 static REQ: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static DONE: Signal<CriticalSectionRawMutex, u64> = Signal::new();
 
@@ -204,12 +160,12 @@ pub async fn core1_task() {
     DONE.signal(local_reading());
 }
 
-/// Switches, silently.
-///
-/// No logging here on purpose: [`cost`] times this call, and a log line is a
-/// USB-serial write whose cost tracks the very frequency being measured. A
-/// function that cannot say so in its own signature is the only kind that will
-/// get this wrong twice.
+// Switches, silently.
+//
+// No logging here on purpose: [`cost`] times this call, and a log line is a
+// USB-serial write whose cost tracks the very frequency being measured. A
+// function that cannot say so in its own signature is the only kind that will
+// get this wrong twice.
 fn switch(clock: CpuClock) {
     // SAFETY: interrupts are disabled inside the call across the register
     // writes. The bias it declines to lower is whichever one esp-hal set at

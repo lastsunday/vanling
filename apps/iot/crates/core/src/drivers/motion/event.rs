@@ -1,6 +1,6 @@
 use super::MotionSample;
 
-/// A tilt direction relative to gravity. Roll drives left/right, pitch up/down.
+/// A tilt direction relative to gravity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TiltDir {
     Left,
@@ -9,9 +9,7 @@ pub enum TiltDir {
     Down,
 }
 
-/// A hardware-independent motion semantic. Sources differ wildly in how they
-/// detect these (QMI8658A engines, an LSM6DSR FSM, a core-side classifier), so
-/// the contract is the meaning, never the register or the threshold.
+/// A hardware-independent motion semantic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MotionEvent {
     Tap { count: u8 },
@@ -28,9 +26,7 @@ pub enum MotionEvent {
     Landscape,
 }
 
-/// Mutually exclusive semantic families. Two candidates from the same family
-/// describe one physical act, so arbitration keeps at most one per family
-/// instead of forwarding both to the business layer.
+/// Mutually exclusive semantic families.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MotionGroup {
     State,
@@ -49,9 +45,7 @@ impl MotionEvent {
         }
     }
 
-    /// Ranks candidates inside a family. A shake subsumes the tilt chatter it
-    /// physically causes, and a lift/place outranks the orientation change that
-    /// comes with it, so the most specific description of one act survives.
+    /// Ranks candidates inside a family.
     pub const fn priority(self) -> u8 {
         match self {
             Self::Shake => 100,
@@ -111,11 +105,7 @@ impl MotionCounts {
         landscapes: 0,
     };
 
-    /// Files one semantic under its bucket. The two groupings a raw enum
-    /// variant cannot express live here: a tap splits by the knock count its
-    /// recognizer window resolved, and the four tilt directions collapse into
-    /// one entry and one exit, since a direction is a detail of the same
-    /// transition.
+    /// Files one semantic under its bucket.
     pub fn bump(&mut self, event: MotionEvent) {
         let counter = match event {
             MotionEvent::Tap { count: 1 } => &mut self.taps,
@@ -175,11 +165,7 @@ pub const RECOGNIZER_CAPABILITIES: MotionCapabilities = MotionCapabilities::TAP
     .union(MotionCapabilities::LIFT_PLACE)
     .union(MotionCapabilities::POSTURE);
 
-/// A bounded set of semantics from one poll. The slot count has to hold the
-/// *pre*-arbitration union, since a hardware engine flag and a core-side
-/// classifier only meet here: one hardware engine (No-Motion) plus the five
-/// core classifiers (tap, tilt, posture, shake, rest) is six, and arbitration
-/// then collapses the set to at most one per family.
+/// A bounded set of semantics from one poll.
 pub const MOTION_EVENT_CAPACITY: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -206,8 +192,8 @@ impl MotionEvents {
         false
     }
 
-    /// Appends another set, reporting how many semantics the capacity refused
-    /// so a caller can surface a full set rather than a silent loss.
+    /// Appends another set, reporting how many semantics the capacity refused so a caller
+    /// can surface a full set rather than a silent loss.
     pub fn extend_from(&mut self, other: MotionEvents) -> usize {
         let mut dropped = 0;
         for event in other.iter() {
@@ -244,8 +230,6 @@ impl MotionEvents {
         }
     }
 
-    /// Drops everything but the highest-priority member of each family, so one
-    /// physical act reaches the business layer as a single description.
     fn keep_best_per_group(&mut self) {
         let mut best: [Option<MotionEvent>; GROUP_COUNT] = [None; GROUP_COUNT];
         for event in self.iter() {
@@ -298,10 +282,8 @@ impl MotionArbiter {
         }
     }
 
-    /// Reduces a poll's candidates to at most one semantic per family, then
-    /// drops any family still inside its cooldown. Events arriving from a
-    /// hardware engine and from the core-side classifier pass through the same
-    /// funnel, so the two can never describe one act twice.
+    /// Reduces a poll's candidates to at most one semantic per family, then drops any
+    /// family still inside its cooldown.
     pub fn resolve(&mut self, now_ms: u64, events: &mut MotionEvents) {
         events.keep_best_per_group();
         events.retain(|event| {

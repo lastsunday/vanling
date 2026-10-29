@@ -18,11 +18,7 @@ pub enum ButtonEvent {
     LongPress,
 }
 
-/// A discrete touch gesture folded from the raw contact stream by
-/// [`TouchGestures`]. Contact gestures carry a stable per-finger `id` plus the
-/// gesture origin and classifier-measured hold; a swipe adds its dominant octant,
-/// its trailing `end_x`/`end_y` and Euclidean travel; `Ghost` is a coordinate-less
-/// input-path anomaly pulse (rejected phantom, or a driver I2C failure).
+/// A discrete touch gesture folded from the raw contact stream by [`TouchGestures`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GestureEvent {
     Press {
@@ -36,10 +32,6 @@ pub enum GestureEvent {
         x: u16,
         y: u16,
         held_ms: u16,
-        /// The input clock's milliseconds at the lift that resolved this tap. Carried
-        /// because the panel's keyboard reads two taps on one key as one character being
-        /// cycled rather than two characters, and only a tap can say how long ago the one
-        /// before it happened. Not a measurement of the gesture: `held_ms` is that.
         at_ms: u32,
     },
     Swipe {
@@ -60,9 +52,9 @@ pub enum GestureEvent {
     },
 }
 
-/// Dominant travel direction of a resolved [`GestureEvent::Swipe`]: the slide
-/// vector's octant, with a ±22.5° diagonal band (`|dx|*12 >= |dy|*5`) read as
-/// diagonal and everything steeper folding to the nearest straight axis.
+/// Dominant travel direction of a resolved [`GestureEvent::Swipe`]: the slide vector's
+/// octant, with a ±22.5° diagonal band (`|dx|*12 >= |dy|*5`) read as diagonal and
+/// everything steeper folding to the nearest straight axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwipeDirection {
     Up,
@@ -76,8 +68,8 @@ pub enum SwipeDirection {
 }
 
 impl SwipeDirection {
-    /// Numpad digit for the on-panel readout (8/2/4/6 axes, 7/9/1/3 the
-    /// diagonals; `5` reserved); the layout is a display contract.
+    /// Numpad digit for the on-panel readout (8/2/4/6 axes, 7/9/1/3 the diagonals; `5`
+    /// reserved); the layout is a display contract.
     pub const fn code(self) -> u8 {
         match self {
             SwipeDirection::Up => 8,
@@ -97,67 +89,57 @@ pub enum InputEvent {
     Button(ButtonEvent),
     Touch(TouchEvent),
     Gesture(GestureEvent),
-    /// Raw `GESTURE_ID` register a touch controller surfaced (e.g. an FT5x06's
-    /// built-in slide detector), pulsed on change so a debug overlay can compare
-    /// the chip's engine against the software classifier. Purely diagnostic;
-    /// never folds into a light-mode transition.
     ChipGesture(u8),
     Motion(MotionBatch),
 }
 
 pub const BUTTON_SCAN_MS: u64 = 10;
 
-/// Shared base tick of the app's input loop. Every source cadence is a whole
-/// multiple, so each device polls on a stable grid regardless of the clock.
+/// Shared base tick of the app's input loop.
 pub const INPUT_BASE_MS: u64 = 5;
 
-/// Minimum hold before a lift may read as [`GestureEvent::LongPress`]: the
-/// press must have held the panel *alone* and never travelled to
-/// [`SWIPE_MIN_DISTANCE_PX`].
+/// Minimum hold before a lift may read as [`GestureEvent::LongPress`]: the press must have
+/// held the panel *alone* and never travelled to [`SWIPE_MIN_DISTANCE_PX`].
 pub const LONG_PRESS_MS: u64 = 600;
 
 /// How long a click sequence stays pending while the driver waits for the next click.
 pub const DOUBLE_CLICK_WINDOW_MS: u64 = 400;
 
 /// Minimum press travel ever observed (px, Euclidean) that reads as a
-/// [`GestureEvent::Swipe`] — a quarter of the 240-px panel, so a tap's drift
-/// never reaches it. Measured to the farthest *observed* point, never the
-/// stale coarse-refresh release.
+/// [`GestureEvent::Swipe`] — a quarter of the 240-px panel, so a tap's drift never reaches
+/// it.
 pub const SWIPE_MIN_DISTANCE_PX: u16 = 60;
 
-/// Smallest dominant-direction travel (px) that re-reads as live movement
-/// while a finger is down; below it the per-finger direction row keeps its
-/// last axis instead of flickering with a stationary contact's micro-drift.
+/// Smallest dominant-direction travel (px) that re-reads as live movement while a finger is
+/// down; below it the per-finger direction row keeps its last axis instead of flickering
+/// with a stationary contact's micro-drift.
 pub const MOVE_DEADBAND_PX: u16 = 2;
 
-/// Farthest a second contact may land from an already-down finger and still
-/// read as a self-cap phantom instead of a genuine second finger: a duplicate
-/// point the controller echoes next to the real contact on press-in.
+/// Farthest a second contact may land from an already-down finger and still read as a
+/// self-cap phantom instead of a genuine second finger: a duplicate point the controller
+/// echoes next to the real contact on press-in.
 pub const PHANTOM_RADIUS_PX: u16 = 60;
 
-/// How recently a finger's down edge may be for a nearby second contact to
-/// count as its phantom echo — one touch-scan cadence: a genuine second finger
-/// lands later or farther, a self-cap echo duplicates the same frame's
-/// contact.
+/// How recently a finger's down edge may be for a nearby second contact to count as its
+/// phantom echo — one touch-scan cadence: a genuine second finger lands later or farther, a
+/// self-cap echo duplicates the same frame's contact.
 pub const PHANTOM_WINDOW_MS: u64 = TOUCH_SCAN_MS;
 
-/// How many fingers the touch path tracks side-by-side: the FT6336
-/// self-capacitance panel exposes exactly two, and the live-point/last-gesture/
-/// run-counter tuple is dimensioned to that ceiling.
+/// How many fingers the touch path tracks side-by-side: the FT6336 self-capacitance panel
+/// exposes exactly two, and the live-point/last-gesture/ run-counter tuple is dimensioned
+/// to that ceiling.
 pub const MAX_TRACKED_POINTS: usize = 2;
 
-/// Gesture kind a finger most recently resolved, stamped into
-/// [`FingerLast::kind`]; `0` = none yet. Codes match the on-panel corner
-/// readout.
+/// Gesture kind a finger most recently resolved, stamped into [`FingerLast::kind`]; `0` =
+/// none yet.
 pub const FINGER_NONE: u8 = 0;
 pub const FINGER_TAP: u8 = 1;
 pub const FINGER_LONG_PRESS: u8 = 2;
 pub const FINGER_SWIPE: u8 = 3;
 
-/// The gesture one tracked finger last resolved, so the overlay can answer per
-/// finger what it did: `kind` the `FINGER_*` code, `dir` the swipe's
-/// `SwipeDirection::code` (`0` otherwise), `value` the measured hold (ms) or
-/// swipe travel (px).
+/// The gesture one tracked finger last resolved, so the overlay can answer per finger what
+/// it did: `kind` the `FINGER_*` code, `dir` the swipe's `SwipeDirection::code` (`0`
+/// otherwise), `value` the measured hold (ms) or swipe travel (px).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FingerLast {
     pub kind: u8,
@@ -175,13 +157,12 @@ impl FingerLast {
     }
 }
 
-/// Consecutive identical samples needed to confirm a state change.
 const DEBOUNCE_SAMPLES: u32 = 3;
 
-/// Maximum simultaneous contacts a touch event can carry, aligned with
-/// Android's `MotionEvent.MAX_POINTERS` ceiling: 10-point controllers can
-/// occasionally report an extra contact, and the unused slots cost nothing
-/// because a `TouchEvent` is a transient `Copy` value.
+/// Maximum simultaneous contacts a touch event can carry, aligned with Android's
+/// `MotionEvent.MAX_POINTERS` ceiling: 10-point controllers can occasionally report an
+/// extra contact, and the unused slots cost nothing because a `TouchEvent` is a transient
+/// `Copy` value.
 pub const MAX_TOUCH_POINTS: usize = 16;
 
 /// Touch poll cadence, a whole multiple of [`INPUT_BASE_MS`] so the touch
@@ -189,8 +170,8 @@ pub const MAX_TOUCH_POINTS: usize = 16;
 /// 20 ms threshold dropout for marginal contacts.
 pub const TOUCH_SCAN_MS: u64 = 10;
 
-/// Consecutive absent samples that confirm a contact release, so a
-/// single-frame dropout of a held contact does not read as a lift.
+/// Consecutive absent samples that confirm a contact release, so a single-frame dropout of
+/// a held contact does not read as a lift.
 pub const RELEASE_CONFIRM_SAMPLES: u8 = 3;
 
 /// Per-contact lifecycle: appeared / tracked / left.
@@ -201,9 +182,7 @@ pub enum TouchStatus {
     Release,
 }
 
-/// A tracked contact. `id` is stable per finger from `Down` until its
-/// `Release`; consumers must key on `id`, never on array index, since point
-/// order within an event is undefined.
+/// A tracked contact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TouchPoint {
     pub id: u8,
@@ -212,20 +191,17 @@ pub struct TouchPoint {
     pub status: TouchStatus,
 }
 
-/// Snapshot of every contact in one sample. A released point stays in
-/// `points` for the single sample that observed its `Release`, then
-/// disappears.
+/// Snapshot of every contact in one sample.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TouchEvent {
     pub points: [TouchPoint; MAX_TOUCH_POINTS],
     pub len: u8,
-    /// Raw controller contact count (`TD_STATUS`); can transiently exceed
-    /// `len` while the chip still counts a release in flight.
+    /// Raw controller contact count (`TD_STATUS`); can transiently exceed `len` while the
+    /// chip still counts a release in flight.
     pub contacts: u8,
 }
 
-/// Maps raw touch-panel coordinates into framebuffer space. Defaults to
-/// identity; boards calibrate per module.
+/// Maps raw touch-panel coordinates into framebuffer space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TouchMap {
     pub swap_xy: bool,
@@ -249,10 +225,8 @@ impl TouchMap {
     }
 }
 
-/// `XH[7:6]` event bits of an FT5x06-family (FT6336) touch point: `0b00` the
-/// down edge and `0b10` a held contact both carry live coordinates; `0b01` is
-/// the lift frame. Filtering these wrongly would read every hold as an
-/// immediate lift and the long-press as a short tap.
+/// `XH[7:6]` event bits of an FT5x06-family (FT6336) touch point: `0b00` the down edge and
+/// `0b10` a held contact both carry live coordinates; `0b01` is the lift frame.
 pub fn ft6x06_point_is_live(xh: u8) -> bool {
     matches!((xh >> 6) & 0x03, 0b00 | 0b10)
 }
@@ -262,7 +236,6 @@ fn dominant_axis(dx: i32, dy: i32) -> SwipeDirection {
     let ay = dy.unsigned_abs();
     let (max, min) = if ax >= ay { (ax, ay) } else { (ay, ax) };
     if min * 12 >= max * 5 {
-        // Diagonal band: the octant a ±22.5°-wide 45° line leaves ties toward.
         match (dy > 0, dx > 0) {
             (true, true) => SwipeDirection::DownRight,
             (true, false) => SwipeDirection::DownLeft,
@@ -282,11 +255,10 @@ fn dominant_axis(dx: i32, dy: i32) -> SwipeDirection {
     }
 }
 
-/// Direction of the latest frame-to-frame move while a finger is down, for the
-/// live per-finger rows: `None` within `deadband_px` (jitter reads as holding
-/// still), otherwise the same answer as a resolved [`GestureEvent::Swipe`] so
-/// the live arrow and the slide digit never disagree. Pure so the device
-/// manager and classifier share one answer.
+/// Direction of the latest frame-to-frame move while a finger is down, for the live
+/// per-finger rows: `None` within `deadband_px` (jitter reads as holding still), otherwise
+/// the same answer as a resolved [`GestureEvent::Swipe`] so the live arrow and the slide
+/// digit never disagree.
 pub fn direction_between(
     from_x: u16,
     from_y: u16,
@@ -300,17 +272,12 @@ pub fn direction_between(
     (drift >= u32::from(deadband_px)).then(|| dominant_axis(dx, dy))
 }
 
-/// Euclidean travel between two positions in pixels, threshold not applied —
-/// the running farthest tracker compares every observed point, not just the
-/// final release.
 fn travel_px(from_x: u16, from_y: u16, to_x: u16, to_y: u16) -> u16 {
     swipe_distance(sq_dist(from_x, from_y, to_x, to_y))
 }
 
-/// Classifies a displacement into a swipe: `None` under
-/// [`SWIPE_MIN_DISTANCE_PX`], else the dominant destination octant and travel
-/// in pixels. Pure so the classifier and the on-panel distance digit share one
-/// answer.
+/// Classifies a displacement into a swipe: `None` under [`SWIPE_MIN_DISTANCE_PX`], else the
+/// dominant destination octant and travel in pixels.
 pub fn swipe_classify(
     from_x: u16,
     from_y: u16,
@@ -326,8 +293,8 @@ pub fn swipe_classify(
     Some((dominant_axis(dx, dy), distance_px))
 }
 
-/// Euclidean length of a displacement for the swipe distance digit; nothing
-/// panel-sized can overflow `u16`, so saturate rather than wrap.
+// Euclidean length of a displacement for the swipe distance digit; nothing
+// panel-sized can overflow `u16`, so saturate rather than wrap.
 fn swipe_distance(sq: u32) -> u16 {
     u16::try_from(isqrt_u32(sq)).unwrap_or(u16::MAX)
 }
@@ -338,8 +305,6 @@ fn sq_dist(x0: u16, y0: u16, x1: u16, y1: u16) -> u32 {
     dx * dx + dy * dy
 }
 
-/// Floor of the square root of a `u32` via Newton iteration. Integer-only so
-/// the classifier runs on the same fixed-point policy as the rest of `no_std`.
 fn isqrt_u32(n: u32) -> u32 {
     if n < 2 {
         return n;
@@ -353,34 +318,16 @@ fn isqrt_u32(n: u32) -> u32 {
     x
 }
 
-/// Poll-based input source. The input task polls this at a fixed cadence,
-/// packaging each event with its wiring-order source via
-/// [`crate::intent::recognize`].
+/// Poll-based input source.
 pub trait InputSource {
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent>;
 
-    /// Whether this source's control is down right now.
-    ///
-    /// Asked outside the poll cadence, by the one reader that has to know whether a deadline may
-    /// pass: the input task holds the splash page's window back while a press is in progress, so a
-    /// hold that began inside it still lands after it (see `crate::intent`'s splash rule). A
-    /// control nobody can hold — a sensor, a touch surface with contacts rather than a button —
-    /// answers `false`.
     fn held(&self) -> bool {
         false
     }
 
     fn set_demand_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
 
-    /// Whether a latency budget may stretch this source's poll cadence outward.
-    ///
-    /// True for a source that answers a poll by reading state, so polling it less often only
-    /// makes its readings older. False for a source whose peripheral needs a poll to keep
-    /// running: the capture's DMA ring is emptied only by `sample` and the I2S engine halts
-    /// once it fills, so a stretched capture is not a staler reading but a dead clock.
-    ///
-    /// The default is `true`, so a board opts out by answering here rather than the core
-    /// guessing which peripherals need to.
     fn accepts_slower_poll(&self) -> bool {
         true
     }
@@ -395,14 +342,9 @@ pub trait InputSource {
 }
 
 /// Combines/coalesces raw input events into higher-level gestures.
-/// Implementations can accumulate state (e.g. multi-press counters, hold
-/// durations) and suppress intermediate events.
 pub trait EventAggregator {
     fn feed(&mut self, event: InputEvent, now_ms: u64) -> Option<InputEvent>;
 
-    /// Advance the aggregator's clock without a raw sample, so time-held
-    /// gestures (e.g. a pending click window) can expire deterministically
-    /// even when the source stays quiet. Default: no time-sensitivity.
     fn tick(&mut self, _now_ms: u64) -> Option<InputEvent> {
         None
     }
@@ -417,30 +359,6 @@ impl EventAggregator for PassThrough {
     }
 }
 
-/// Folds per-finger touch into `Press` down-edges, a `Tap` on the lift that resolves
-/// one, `Swipe` when a press ever travelled [`SWIPE_MIN_DISTANCE_PX`] (measured to the
-/// farthest published point, since the coarse panel leaves the release stale), and a
-/// lone `LongPress`. A second contact landing within
-/// [`PHANTOM_WINDOW_MS`]/[`PHANTOM_RADIUS_PX`] of a down finger is a self-cap phantom
-/// echo, rejected and pulsed as `Ghost` once per run.
-///
-/// A tap fires on the tick its finger lifts, carrying that tick's clock: the panel's
-/// keyboard wants to know how long ago the tap before it happened (two taps on one key
-/// cycle that key's character, one tap is one character) and nothing else wants the
-/// delay a sequence-detecting window would cost. The hardware button keeps its own
-/// window for the multi-click it distinguishes; touch has no multi-tap to distinguish.
-///
-/// Each contact owns a `FingerState` slot keyed by tracker `id`. Samples that
-/// resolve no gesture forward the raw snapshot unchanged; extra resolved
-/// gestures buffer for the next poll. `Press` fires whatever its lift's fate,
-/// so physical presses tally even when nothing resolves; non-touch pulses pass
-/// through untouched.
-/// Events a sample resolved beyond the single-event channel.
-///
-/// Four slots, which is one more than a sample can carry: each of the two tracked contacts
-/// resolves at most one gesture per sample (one status per point) plus the run's single phantom
-/// pulse. Drop-oldest once full: a consumer that falls behind loses the least recent report
-/// rather than the newest.
 struct EventQueue([Option<InputEvent>; 4]);
 
 impl EventQueue {
@@ -468,30 +386,18 @@ impl EventQueue {
 }
 
 pub struct TouchGestures {
-    /// One state machine per finger slot, keyed by the tracker `id`.
     fingers: [FingerState; MAX_TOUCH_POINTS],
-    /// Previous sample contained a phantom rejection; a run pulses once.
     ghosted: bool,
     queued: EventQueue,
 }
 
-/// Per-finger gesture state: the owned tracker `id`, the armed down edge, and
-/// [`FingerState::farthest`] — how far this press was ever observed from its
-/// origin, the slide measure, since a release point is a stale coarse-refresh
-/// snapshot. Loneliness is read at resolution from the live slots, not stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FingerState {
     id: Option<u8>,
     pressed: bool,
-    /// When the current contact went down, so a lift can measure its hold.
     down_at_ms: Option<u64>,
-    /// Down-edge position, fixed so it anchors the slide measure as later
-    /// published coordinates drift past it.
     down_x: u16,
     down_y: u16,
-    /// Farthest observed `(distance_px, x, y)` from the origin — a slide that
-    /// briefly crossed [`SWIPE_MIN_DISTANCE_PX`] and then released near its
-    /// origin still reads as a swipe.
     farthest: Option<(u16, u16, u16)>,
 }
 
@@ -525,8 +431,6 @@ impl TouchGestures {
         self.fingers.iter().position(|f| f.id.is_none())
     }
 
-    /// Whether a fresh contact lands close enough and soon enough after an
-    /// already-down finger to be that finger's self-cap phantom echo.
     fn is_phantom(&self, x: u16, y: u16, now_ms: u64) -> bool {
         let reach_sq = u32::from(PHANTOM_RADIUS_PX) * u32::from(PHANTOM_RADIUS_PX);
         self.fingers.iter().any(|f| {
@@ -537,12 +441,6 @@ impl TouchGestures {
         })
     }
 
-    /// Drain the event channel: a buffered event emits first (the fresh batch
-    /// queues behind it), else the batch's first event — queueing the rest.
-    /// `fallback` is the sample's own raw report, and it rides only when the sample resolved
-    /// nothing: a resolved gesture already carries the finger's position, and hands the state the
-    /// fact that the contact is gone (see `state`'s gesture records), so the frame it displaces is
-    /// not a second report of the same moment.
     fn forward(
         &mut self,
         fresh: &mut [Option<InputEvent>; 4],
@@ -571,8 +469,6 @@ impl TouchGestures {
         }
     }
 
-    /// Classify one sample, appending every resolved gesture in point order
-    /// (then any phantom `Ghost`) to `out`.
     fn classify(&mut self, sample: &TouchEvent, now_ms: u64, out: &mut [Option<InputEvent>; 4]) {
         let mut k = 0usize;
         let mut push = |event: InputEvent, out: &mut [Option<InputEvent>; 4]| {
@@ -593,8 +489,6 @@ impl TouchGestures {
                         saw_phantom = true;
                         None
                     } else if let Some(slot) = self.free_slot() {
-                        // A genuine new finger (or a phantom that outlived its
-                        // down window) starts its own state machine.
                         self.fingers[slot].id = Some(point.id);
                         Some(slot)
                     } else {
@@ -603,9 +497,6 @@ impl TouchGestures {
                     if let Some(slot) = slot {
                         let armed = !self.fingers[slot].pressed;
                         if armed {
-                            // The rise into a held state is the press: anchor
-                            // the down edge and start hold clock + slide
-                            // measure at the origin.
                             self.fingers[slot].pressed = true;
                             self.fingers[slot].down_at_ms = Some(now_ms);
                             self.fingers[slot].down_x = point.x;
@@ -635,15 +526,8 @@ impl TouchGestures {
                 }
                 TouchStatus::Release => {
                     let Some(slot) = self.slot_of(point.id) else {
-                        // A phantom's release (never tracked) or a duplicate
-                        // lift: nothing to pair with.
                         continue;
                     };
-                    // Two lifts in one sample resolve in id order, so by the
-                    // second the panel already looks empty; such a paired lift
-                    // is this panel's mirror ghost breaking with its real
-                    // finger — never a deliberate long-press — so bar it from
-                    // the long-press check entirely.
                     let sibling_lift = (0..sample.len).any(|j| {
                         let p = sample.points[usize::from(j)];
                         p.status == TouchStatus::Release && p.id != point.id
@@ -655,7 +539,6 @@ impl TouchGestures {
             }
         }
 
-        // Phantom runs collapse to one pulse: only the rise into the run emits.
         if !saw_phantom {
             self.ghosted = false;
         } else if !self.ghosted {
@@ -713,10 +596,6 @@ impl TouchGestures {
             }));
         }
 
-        // Neither a slide nor a hold: a tap, reported on this lift's own tick. The position is
-        // the down edge rather than the release the finger drifted to — the aim is where it
-        // landed, and this panel's release coordinate is the stale one the slide measure
-        // already refuses to trust.
         Some(InputEvent::Gesture(GestureEvent::Tap {
             id,
             x: down_x,
@@ -736,8 +615,6 @@ impl Default for TouchGestures {
 impl EventAggregator for TouchGestures {
     fn feed(&mut self, event: InputEvent, now_ms: u64) -> Option<InputEvent> {
         let InputEvent::Touch(sample) = event else {
-            // Diagnostics pulses (driver I2C ghosts, chip read-backs) are not
-            // contact frames: forward untouched, never drop.
             return Some(event);
         };
         let mut backlog = [None; 4];
@@ -746,8 +623,6 @@ impl EventAggregator for TouchGestures {
     }
 
     fn tick(&mut self, _now_ms: u64) -> Option<InputEvent> {
-        // Nothing resolves on a quiet tick any more — a tap is reported by the lift that made
-        // it — but a sample that resolved several gestures still has the rest queued.
         self.queued.pop()
     }
 }
@@ -857,16 +732,12 @@ impl EventAggregator for DoubleClickAggregator {
     }
 }
 
-/// Tracks raw per-sample contact lists into id-stable `TouchEvent`s by
-/// nearest-neighbor id matching, so event order can shuffle without breaking
-/// identity. A release confirms only after [`RELEASE_CONFIRM_SAMPLES`]
-/// consecutive absent samples — a polled FT6336 drops a held contact for a
-/// frame or two — and unchanged samples emit nothing.
+/// Tracks raw per-sample contact lists into id-stable `TouchEvent`s by nearest-neighbor id
+/// matching, so event order can shuffle without breaking identity.
 #[derive(Debug, Clone, Copy)]
 pub struct TouchContinuity {
     points: [TrackerPoint; MAX_TOUCH_POINTS],
     next_id: u8,
-    /// Consecutive samples in which at least one active tracker went unconsumed.
     absent: u8,
 }
 
@@ -879,9 +750,9 @@ struct TrackerPoint {
 }
 
 impl TouchContinuity {
-    /// Farthest a raw point may move between samples to keep its id: wide
-    /// enough for a full-cadence fast flick, far below the panel diagonal so a
-    /// two-finger pinch keeps the fingers separate.
+    /// Farthest a raw point may move between samples to keep its id: wide enough for a
+    /// full-cadence fast flick, far below the panel diagonal so a two-finger pinch keeps
+    /// the fingers separate.
     pub const MAX_REACH_PX: u16 = 80;
 
     pub const fn new() -> Self {
@@ -897,9 +768,8 @@ impl TouchContinuity {
         }
     }
 
-    /// Feed one raw sample (framebuffer space) plus the controller's own
-    /// contact count; emits only when the contact set or a tracked position
-    /// changed.
+    /// Feed one raw sample (framebuffer space) plus the controller's own contact count;
+    /// emits only when the contact set or a tracked position changed.
     pub fn update(&mut self, raw: &[(u16, u16)], contacts: u8) -> Option<TouchEvent> {
         let mut event = TouchEvent {
             points: [TouchPoint {
@@ -968,8 +838,6 @@ impl TouchContinuity {
 
         if self.absent >= RELEASE_CONFIRM_SAMPLES {
             self.absent = 0;
-            // Trackers free even when the event array is full, so ids recycle
-            // on the next sample.
             for (i, tracker) in self.points.iter_mut().enumerate() {
                 if tracker.active && !consumed[i] {
                     if (event.len as usize) < MAX_TOUCH_POINTS {
@@ -1024,25 +892,16 @@ impl Default for TouchContinuity {
     }
 }
 
-/// A polled input source scheduled at its own cadence, paired with the
-/// aggregator that turns its raw samples into the events
-/// [`crate::intent::recognize`] packages. The input task polls it on the
-/// shared base tick, gating each source to its own cadence. `source_id` is
-/// the wiring-order identity the board assigned (button 0, button 1, …); the
-/// interpreter's [`crate::intent::translate`] maps it onto the light instance
-/// that source drives.
+/// A polled input source scheduled at its own cadence, paired with the aggregator that
+/// turns its raw samples into the events [`crate::intent::recognize`] packages.
 pub struct PollEntry {
     source_id: u8,
     key: DemandKey,
     source: Box<dyn InputSource>,
     aggregator: Box<dyn EventAggregator>,
-    /// What the board wired, kept apart from [`Self::cadence_ms`] so a demand can be
-    /// relaxed again. An already-stretched cadence is not a floor: treating it as one would
-    /// stop a cheaper budget shortening what a dearer one lengthened.
     board_cadence_ms: u64,
     cadence_ms: u64,
     next_at_ms: u64,
-    /// The one part of the schedule that is runtime state rather than the board's wiring.
     active: bool,
 }
 
@@ -1054,8 +913,6 @@ impl PollEntry {
         aggregator: Box<dyn EventAggregator>,
         cadence_ms: u64,
     ) -> Self {
-        // First sample lands on the cadence grid, so debounce windows stay
-        // uniform straight from boot.
         Self {
             source_id,
             key,
@@ -1073,9 +930,7 @@ impl PollEntry {
         self.active
     }
 
-    /// Turns polling on or off. Resuming clears the schedule rather than restoring it: a
-    /// source off for a minute has no next-due time worth honouring, and waiting out the
-    /// old one opens the page to a gap.
+    /// Turns polling on or off.
     pub fn set_active(&mut self, active: bool) {
         if self.active == active {
             return;
@@ -1102,8 +957,7 @@ impl PollEntry {
         self.cadence_ms = cadence_ms;
     }
 
-    /// Passes the switch on to the source behind it. Not folded into
-    /// [`Self::set_active`]: this asks a driver to change what it is doing.
+    /// Passes the switch on to the source behind it.
     pub fn set_collecting(&mut self, now_ms: u64, collecting: bool) {
         self.source.set_demand_collecting(now_ms, collecting);
     }
@@ -1120,8 +974,8 @@ impl PollEntry {
         self.source.configure_for(wanted)
     }
 
-    /// The wiring-order identity the board assigned this input, driving intent
-    /// routing (a button on source `n` targets light instance `n`).
+    /// The wiring-order identity the board assigned this input, driving intent routing (a
+    /// button on source `n` targets light instance `n`).
     pub fn source_id(&self) -> u8 {
         self.source_id
     }
@@ -1145,8 +999,8 @@ impl PollEntry {
         self.next_at_ms
     }
 
-    /// Poll the source, then fold the raw sample (or the tick that stands in
-    /// for it) through the aggregator.
+    /// Poll the source, then fold the raw sample (or the tick that stands in for it)
+    /// through the aggregator.
     pub fn poll(&mut self, now_ms: u64) -> Option<InputEvent> {
         match self.source.poll(now_ms) {
             Some(event) => self.aggregator.feed(event, now_ms),
@@ -1169,15 +1023,14 @@ impl PollEntry {
             .wrapping_add(cells.wrapping_mul(self.cadence_ms));
     }
 
-    /// Whether the control behind this source is down right now, which the poll cadence cannot
-    /// answer between two due readings. See [`InputSource::held`].
+    /// Whether the control behind this source is down right now, which the poll cadence
+    /// cannot answer between two due readings.
     pub fn held(&self) -> bool {
         self.source.held()
     }
 }
 
-/// Debounced button scanner, distinguishing clicks from long-presses by
-/// hold duration.
+/// Debounced button scanner, distinguishing clicks from long-presses by hold duration.
 pub struct ButtonScanner<B: Button> {
     button: B,
     pressed: bool,
@@ -1230,11 +1083,6 @@ impl<B: Button> InputSource for ButtonScanner<B> {
         self.read(now_ms).map(InputEvent::Button)
     }
 
-    /// The raw pin, or a debounced press still waiting out its release: either way the finger is
-    /// on the button, and a window that closed now would be a window that dropped the hold it is
-    /// about. The release needs [`DEBOUNCE_SAMPLES`] samples to be believed, and the event that
-    /// ends the press is what those samples produce — so this answer keeps the window open until
-    /// after that event and not merely until the pin goes up.
     fn held(&self) -> bool {
         self.pressed || self.button.is_pressed()
     }
@@ -1259,9 +1107,6 @@ mod tests {
             }
         }
 
-        /// Press the button, let it debounce to held at t=20, then release and
-        /// confirm a released edge after `hold` ms. Returns the resulting
-        /// gesture.
         fn hold_and_release(hold_ms: u64) -> Option<ButtonEvent> {
             let pressed = Cell::new(false);
             let btn = FakeButton { pressed: &pressed };
@@ -1284,9 +1129,6 @@ mod tests {
 
         #[test]
         fn debounce_confirms_a_click_only_after_n_consecutive_samples() {
-            // A released edge confirmed only after DEBOUNCE_SAMPLES consecutive
-            // released samples reads as a click; the raw press follows the
-            // same rule.
             let pressed = Cell::new(false);
             let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
             for ms in [0, 10, 20] {
@@ -1303,8 +1145,6 @@ mod tests {
                 scanner.poll(60),
                 Some(InputEvent::Button(ButtonEvent::Click))
             );
-            // A glitch shorter than the confirm window never flips the held
-            // state: the scanner still reads released at the end.
             let pressed = Cell::new(false);
             let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
             pressed.set(true);
@@ -1329,9 +1169,6 @@ mod tests {
 
         #[test]
         fn a_held_button_stays_held_through_the_release_debounce() {
-            // The reader that asks this is deciding whether a deadline may pass, so the answer has
-            // to stay true until the press's own event exists: the pin going up is not the lift
-            // yet, because the scanner needs `DEBOUNCE_SAMPLES` samples to believe the release.
             let pressed = Cell::new(false);
             let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
             assert!(!scanner.held(), "nothing has been pressed");
@@ -1447,8 +1284,6 @@ mod tests {
 
         #[test]
         fn poll_entry_anchors_the_first_sample_on_the_cadence_grid() {
-            // Leak an owned cell so the boxed, `'static` input source can share
-            // the press state with the test drive loop.
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
@@ -1483,7 +1318,6 @@ mod tests {
             assert!(!entry.is_active());
 
             entry.set_active(true);
-            // Due now, not at the next slot on a schedule that ran for a minute.
             assert_eq!(entry.next_at_ms(), 0);
             entry.advance_past(1_000);
             assert!(entry.next_at_ms() > 1_000, "and it is due, not parked");
@@ -1540,12 +1374,10 @@ mod tests {
             entry.advance_past(50);
             let due = entry.next_at_ms();
 
-            // A no-op re-activation must not reset the schedule.
             entry.set_active(true);
             assert_eq!(entry.next_at_ms(), due);
         }
 
-        /// A source on a board's own cadence.
         fn button_entry() -> PollEntry {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             PollEntry::new(
@@ -1573,8 +1405,6 @@ mod tests {
                 board,
                 "the floor the board wired is not the demand's to move"
             );
-            // A stretch must not swallow the reading already due: the page that asked for
-            // the stretch is waiting on it.
             assert_eq!(entry.next_at_ms(), due);
             entry.advance_past(due);
             assert!(
@@ -1585,8 +1415,6 @@ mod tests {
 
         #[test]
         fn a_budget_can_never_shorten_a_cadence_the_board_wired() {
-            // Honouring a shorter request would invalidate the debounce windows measured
-            // against the cadence the board wired.
             let mut entry = button_entry();
             let board = entry.board_cadence_ms();
             entry.set_cadence_ms(board - 1);
@@ -1596,8 +1424,6 @@ mod tests {
 
         #[test]
         fn a_cheaper_budget_can_put_a_stretched_cadence_back() {
-            // The other direction, and the reason the floor is kept separately: a page that
-            // no longer wants a stretched stream must be able to say so.
             let mut entry = button_entry();
             let board = entry.board_cadence_ms();
             entry.set_cadence_ms(30_000);
@@ -1615,8 +1441,6 @@ mod tests {
 
         #[test]
         fn a_resumed_source_is_not_postponed_by_a_longer_cadence() {
-            // Order matters: `set_active` parks the schedule at zero and `set_cadence_ms`
-            // arrives on the same demand update, so the second must not push the first out.
             let mut entry = button_entry();
             entry.advance_past(600_000);
             entry.set_active(false);
@@ -1660,7 +1484,6 @@ mod tests {
             assert!(entry.poll(30).is_none());
             assert!(entry.poll(40).is_none());
             assert!(entry.poll(50).is_none());
-            // Second click: pressed 60-80, released 90-100 → confirmed at 110.
             for ms in [60, 70, 80] {
                 pressed.set(true);
                 assert!(entry.poll(ms).is_none());
@@ -1799,9 +1622,6 @@ mod tests {
 
         #[test]
         fn tracker_and_gesture_constants_align_on_the_touch_grid() {
-            // Cadence and windows are whole multiples of the shared base tick,
-            // and the release-confirm span sits cleanly below the double-click
-            // window.
             const _: () = assert!(TOUCH_SCAN_MS.is_multiple_of(INPUT_BASE_MS));
             const _: () = assert!(DOUBLE_CLICK_WINDOW_MS.is_multiple_of(TOUCH_SCAN_MS));
             const _: () = assert!(LONG_PRESS_MS.is_multiple_of(TOUCH_SCAN_MS));
@@ -1811,8 +1631,6 @@ mod tests {
             const _: () =
                 assert!((RELEASE_CONFIRM_SAMPLES as u64 * TOUCH_SCAN_MS) < DOUBLE_CLICK_WINDOW_MS);
             const _: () = assert!(MAX_TOUCH_POINTS == 16);
-            // FT6x06 `XH[7:6]` event bits: down edges and held contacts carry
-            // live coordinates; lift and reserved frames do not.
             assert!(ft6x06_point_is_live(0x00), "down edge");
             assert!(ft6x06_point_is_live(0x0F), "down with X high bits set");
             assert!(ft6x06_point_is_live(0x80), "contact with X=0");
@@ -1830,8 +1648,6 @@ mod tests {
     mod classifier {
         use super::*;
 
-        /// Builds a multi-point sample from `(status, id, x, y)` tuples, with
-        /// `contacts` the raw controller class count.
         fn sample(points: &[(TouchStatus, u8, u16, u16)], contacts: u8) -> InputEvent {
             let mut pts = [TouchPoint {
                 status: TouchStatus::Release,
@@ -1849,15 +1665,11 @@ mod tests {
             })
         }
 
-        /// A single-finger sample on id 0.
         fn touch(status: TouchStatus, x: u16, y: u16) -> InputEvent {
             sample(&[(status, 0, x, y)], 1)
         }
 
         fn touch_contacts_dirty(status: TouchStatus, x: u16, y: u16) -> InputEvent {
-            // Raw TD_STATUS reporting 2 while only one point is parsed: a
-            // release (or floating second contact) counted in-flight by the
-            // chip.
             let mut ev = match touch(status, x, y) {
                 InputEvent::Touch(ev) => ev,
                 _ => unreachable!(),
@@ -1896,7 +1708,6 @@ mod tests {
                 })),
                 "the lift resolves the tap on its own tick"
             );
-            // A dropped Down frame still pulses on the first contact published.
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(touch(TouchStatus::Contact, 10, 10), 5),
@@ -1916,7 +1727,6 @@ mod tests {
                     at_ms: 10,
                 }))
             );
-            // A lift that never saw a press.
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(touch(TouchStatus::Release, 10, 10), 10),
@@ -1953,7 +1763,6 @@ mod tests {
                 })),
                 "no window stands between the lift and the tap"
             );
-            // A dirty raw class count never cancels the tap.
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(touch_contacts_dirty(TouchStatus::Down, 10, 10), 0),
@@ -2032,7 +1841,6 @@ mod tests {
                 }))
             );
             assert!(agg.tick(400).is_none(), "no tap is buffered after a swipe");
-            // A slow slide past the long-press window is still a swipe.
             let mut agg = TouchGestures::new();
             assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
             assert_eq!(
@@ -2048,7 +1856,6 @@ mod tests {
                     distance_px: 100,
                 }))
             );
-            // The one far coordinate published mid-hold decides.
             let mut agg = TouchGestures::new();
             assert!(agg.feed(touch(TouchStatus::Down, 20, 120), 0).is_some());
             let mid = agg.feed(touch(TouchStatus::Contact, 140, 125), 400);
@@ -2081,8 +1888,6 @@ mod tests {
             ] {
                 assert_eq!(swipe_classify(x0, y0, x1, y1), Some((direction, px)));
             }
-            // A 3:1 rake (≈71.6°) is steeper than the 67.5° edge, so it folds
-            // straight rather than into the ±22.5° band.
             for (x0, y0, x1, y1, direction) in [
                 (0, 0, 60, 60, SwipeDirection::DownRight),
                 (0, 60, 60, 0, SwipeDirection::UpRight),
@@ -2224,8 +2029,6 @@ mod tests {
 
         #[test]
         fn two_quick_lifts_are_two_taps() {
-            // The panel's taps are single taps, however fast they come: nothing here pairs a
-            // sequence, so a finger that stabs twice on a key types twice.
             let mut agg = TouchGestures::new();
             assert_eq!(
                 agg.feed(sample(&[(TouchStatus::Down, 12, 40, 60)], 1), 0),
@@ -2392,8 +2195,6 @@ mod tests {
                 })),
                 "the real finger's lift is its own tap, unmoved by the echo"
             );
-            // A second echo inside the same window is the same run; a clean
-            // one closes it.
             let mut agg = TouchGestures::new();
             assert!(
                 agg.feed(sample(&[(TouchStatus::Down, 0, 30, 30)], 1), 0)
@@ -2511,8 +2312,6 @@ mod tests {
             );
             assert!(agg.tick(101).is_none());
 
-            // Two fingers down, lifting in separate samples: two taps, each on the tick its own
-            // finger left, and neither waiting on the other.
             let mut agg = TouchGestures::new();
             assert!(
                 agg.feed(sample(&[(TouchStatus::Down, 0, 10, 90)], 1), 0)
@@ -2599,10 +2398,6 @@ mod tests {
 
         #[test]
         fn companion_lift_never_cycles_a_clean_hold_still_does() {
-            // This panel's self-cap parks a far, mirror-ish companion while a
-            // real finger is down, then lifts it late. Only the lift moment
-            // decides: a transient companion must not veto the real finger's
-            // own later long-press.
             let mut agg = TouchGestures::new();
             assert!(
                 agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)], 2), 0)

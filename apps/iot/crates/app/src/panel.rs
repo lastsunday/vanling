@@ -1,7 +1,4 @@
 //! The panel's own controls, replayed by a bench build that has no finger.
-//!
-//! Everything a development machine cannot reach is on the glass, and a build named with
-//! `IOT_PANEL_BENCH` types it at boot through the same ring the touch driver writes to.
 
 use alloc::vec::Vec;
 
@@ -15,119 +12,50 @@ use iot_core::state::{Confirm, DeviceManager, DeviceState, DisplayPage};
 use crate::input::IntentBus;
 
 /// Whether this build replays a credential through the panel rather than being handed one.
-///
-/// The other half of this is in [`crate::network`]: a bench build's credentials are typed rather
-/// than compiled in, so the product has to come up unconfigured for the keyboard to be the thing
-/// that names a network.
 pub const BENCH: bool = option_env!("IOT_PANEL_BENCH").is_some();
 
-/// The column a list tap lands in.
-///
-/// A band answers for its whole width, and the row it holds is read from the tap's row alone — so
-/// the bench aims at the panel's left edge rather than at the name, which is where a finger
-/// aiming at a row goes anyway.
 const BAND_X: u16 = 4;
 
-/// One thing the bench does to the panel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Touch {
-    /// A tap at a point.
     At { x: u16, y: u16, at_ms: u32 },
-    /// A finger that stays where it landed, which is the page's second verb for a row.
     Hold { x: u16, y: u16 },
-    /// A slide up the list, which is the gesture that shows the next row of it.
     NextPage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Act {
-    /// Tap a row while the link is up, which must pick nothing: under a link the row is a reading
-    /// and the strip is the only way to take it down.
     TapRowUnderLink,
-    /// Tap the action strip, which with a link up asks about leaving it.
     AskToLeave,
-    /// Answer that question with `KEEP`: the link stays up and nothing was taken down.
     KeepTheLink,
-    /// Tap the strip again, which asks about leaving once more.
     LeaveAsk,
-    /// Answer that question with the action, which takes the link down.
     LeaveGo,
-    /// Tap the row the link was just taken off — which is still the picked one, because what a link
-    /// that came up dropped was the draft and not the row the draft was for. What this act is for is
-    /// the arm where a keyboard rises over a draft that is not there: the keys are drawn *from* the
-    /// draft and the strip is hidden with them, so that state draws nothing below the header and has
-    /// nothing left to reach.
-    ///
-    /// Which is the arm the walk reaches once the forget above has taken the row's mark off: a row
-    /// this device no longer has a passphrase for is a row to type for again.
     ReopenTheRowJustLeft,
-    /// Tap the row the link was just taken off, which this device *does* hold the passphrase for: the
-    /// link comes back up from the copy on the part, with no keyboard and nothing typed.
-    ///
-    /// The passphrase never goes near the panel for a row the store can answer for, so what this act
-    /// reads back is that the page asked nothing — the strip under the list and no keys on it — and
-    /// that the row it tapped is still the marked one that made it that kind of row.
     RejoinTheRowJustLeft,
-    /// Tap the keyboard's own `CANCEL`, which is how the act above gets off the entry and leaves the
-    /// list in front of the walk's remaining acts.
     DropTheKeyboard,
-    /// Hold the row this device has saved, which asks about forgetting it.
     AskToForget,
-    /// Answer that question with the action: the saved mark goes.
     Forget,
-    /// Tap the strip with no link up, which asks the radio to look around.
     Rescan,
-    /// Everything the page's own controls do has been walked.
     Done,
 }
 
-/// How many passes an act may take before the bench calls it a failure.
-///
-/// Generous: the acts that wait on the radio are a disconnect and a store write, and the acts that
-/// wait on nothing but the page take one pass. What a bench must not do is wait for ever — a walk
-/// that stopped without saying so would read as one that never ran.
 const ACT_PASSES: u16 = 120;
 
 /// The bench's own hand.
 pub struct PanelBench {
-    /// Every tap of the run, in order, or `None` until the list says where the network is.
     script: Option<Vec<Touch>>,
     next: usize,
-    /// Set once the radio has answered, so the report is made once.
     answered: bool,
-    /// What the draft held when the key that hands it over was pressed.
     typed: Option<usize>,
-    /// Set once a scan has come back without the network this build named, so that is said once
-    /// rather than once a round — a bench whose row is missing would otherwise say nothing at all,
-    /// and nothing at all is the one reading that cannot be told from a bench that never started.
     missing_reported: bool,
-    /// Set once a build given neither a network nor a passphrase has said so, for the same reason.
     absent_reported: bool,
-    /// Set once the keys have been read as the page: the strip is not drawn with them. Latched
-    /// because a draft lasts hundreds of passes and the reading is the same one every time.
     typed_parts_read: bool,
-    /// Set once an attempt in flight has been read as a box over the list.
     joining_read: bool,
-    /// Set once a keyboard has been read as standing over no draft at all.
-    ///
-    /// The one reading the typing reading above cannot make: that one asks where the page's parts
-    /// are while a finger types, and a keyboard with nothing under it answers it the way a healthy
-    /// one does. Latched for the same reason, and reported as an error because it is a page with
-    /// nothing to draw rather than a page drawn differently.
     draftless_read: bool,
-    /// Whether the saved row has taken the link back up yet, which is what tells the second leave
-    /// from the first: the strip is the way off a link, and the walk leaves twice — once off the
-    /// build's own network and once off the one the saved row brought back.
     rejoined: bool,
-    /// The act of the walk now in progress.
     act: Act,
-    /// Whether that act's own touch is already out.
     sent: bool,
-    /// What the row-under-a-link act's read-back is against: whether a pick is showing, read before
-    /// that act's own tap went out. The typing that came before already picked a row, so what is
-    /// left in the page is not this act's to read — see the act itself.
     picked: Option<(bool, bool)>,
-    /// How many passes the act has taken, which is what stops a walk that cannot finish.
     passes: u16,
 }
 
@@ -152,9 +80,6 @@ impl PanelBench {
     }
 
     /// Advance the bench by at most one tap.
-    ///
-    /// Called once a pass, after the loop has drained the ring: a tap published here is applied by
-    /// the next pass, and the one after that is decided against the state it produced.
     pub fn step(&mut self, manager: &DeviceManager, bus: &IntentBus) {
         if !BENCH {
             return;
@@ -162,9 +87,6 @@ impl PanelBench {
         let state = manager.state();
         self.read_parts(&state);
         if self.script.is_none() {
-            // The name decides the row and the passphrase decides the keys, and a bench build is
-            // given both at build time. One given neither has nothing to replay, and saying so is
-            // the one reading that tells it from a bench that never ran.
             let Some((ssid, psk)) = ssid().zip(psk()) else {
                 if state.page == DisplayPage::Network && state.aps.is_some() {
                     self.absent("this build was named no network and no passphrase to replay");
@@ -179,10 +101,6 @@ impl PanelBench {
         let script = self.script.as_ref().expect("built just above");
         if let Some(touch) = script.get(self.next) {
             if self.next + 1 == script.len() {
-                // The draft as it stands while the key that hands it over is pressed. Read *here*
-                // because it is the last pass that can: the state drops the draft the moment the
-                // radio has the network, and what the keyboard typed would be gone by the time the
-                // radio answered.
                 self.typed = Some(state.setup.entry.map_or(0, |entry| entry.len()));
             }
             self.publish(bus, *touch);
@@ -190,20 +108,11 @@ impl PanelBench {
             return;
         }
         if self.answered {
-            // The credential is on the air, so the bench's next acts are the page's own controls:
-            // the strip, the questions it asks, and the row a finger holds. Nothing but a bench can
-            // reach those paths, which is why they are walked here.
             self.walk(manager, bus);
             return;
         }
-        // Every tap is out, so the radio's answer is the bench's result.
         match state.link.phase {
             LinkPhase::Connected => {
-                // The passphrase itself is never logged; its length is what says the multi-tap, the
-                // shift and the layers came out right. The radio associating on it is what says the
-                // characters themselves were right — nothing checks the draft against the passphrase
-                // beyond this, because a passphrase that reaches the network task is the one the
-                // keyboard typed.
                 let typed = self.typed.unwrap_or(0);
                 let wanted = psk().map_or(0, |psk| psk.len());
                 self.answered = true;
@@ -227,29 +136,10 @@ impl PanelBench {
                     script.len()
                 );
             }
-            // The radio has not been asked yet, or is being asked now.
             LinkPhase::Off | LinkPhase::Scanning | LinkPhase::Connecting => {}
         }
     }
 
-    /// Read the page's own parts off the state, without a finger on the panel.
-    ///
-    /// What these ask is what the page draws, and the page's parts are data — [`Part::showing`] is the
-    /// same answer the renderer walks, so a reading here is the drawing without the pixels.
-    ///
-    /// Two of them are about a part that must *not* be there, and both are the panel's own defects
-    /// rather than the radio's: the **strip while a finger is typing** (the keys and the strip are the
-    /// same band of the panel, so a strip drawn with the keys stamps its own word across the row that
-    /// ends an entry) and the **list while the radio is joining** (what is over it then is the box that
-    /// says the attempt is in flight, because an association can take half a minute). The strip stays
-    /// offered under that box: the box asks nothing, and `SETUP` is the page's one way off the attempt.
-    ///
-    /// One more is about a keyboard standing over no draft at all: the keys are drawn *from* the draft,
-    /// so with none they are nothing — and with the strip hidden they are all the page has below its
-    /// header. That state has been on the glass, and this log said nothing about it.
-    ///
-    /// Latched, one reading per state: an entry lasts hundreds of passes and an attempt thousands, and
-    /// every one of them would say the same thing.
     fn read_parts(&mut self, state: &DeviceState) {
         if state.page != DisplayPage::Network {
             return;
@@ -296,26 +186,15 @@ impl PanelBench {
         }
     }
 
-    /// The whole run, or `None` while the page has no list to pick from yet.
-    ///
-    /// The two arguments are what the build was named: the network decides which row is picked and
-    /// the passphrase decides which cells are tapped. Taken as arguments rather than read here so a
-    /// host test can hand them in — a build compiled without them is the one case that cannot.
     fn script(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
         // Nothing to type at until the page the keyboard is on is showing, and nothing to pick
         // while an entry is already open over it.
         if state.page != DisplayPage::Network || state.setup.keyboard {
             return None;
         }
-        // Not scanned yet: the survey is a few hundred milliseconds behind boot, and a bench that
-        // reported the network missing before the first round came back would be reporting its own
-        // impatience.
         let list = state.aps?;
         let wanted = Ssid::from_octets(ssid.as_bytes());
         let Some(index) = list.iter().position(|ap| ap.ssid == wanted) else {
-            // Said once and at warn, not error: the first round often lists a neighbour and not
-            // the network this bench wants (the board has done exactly that), and a run that starts
-            // on the second round is a run that worked.
             if !list.is_empty() && !self.missing_reported {
                 self.missing_reported = true;
                 log::warn!(
@@ -336,10 +215,6 @@ impl PanelBench {
         }
         let script = keyboard::script_for(psk.as_bytes())?;
         let mut touches = Vec::with_capacity(script.len() + 2);
-        // Rows of the list above the one the network is on, and the band the row is on once the
-        // window has been slid there. The window moves a row a slide, so the bench reads the list
-        // the way a finger does — including that the tap that picks the row is read against the top
-        // the slides left behind, which is the arithmetic that says which row a tap lands on.
         let slides = index
             .saturating_sub(LIST_ROWS - 1)
             .min(list.len().saturating_sub(LIST_ROWS));
@@ -375,15 +250,6 @@ impl PanelBench {
         Some(touches)
     }
 
-    /// Walk the page's own controls, one act a pass, each read back against the state it produced.
-    ///
-    /// One act a pass for the reason the script is one tap a pass: what the page did with a touch is
-    /// read from the state the *next* pass holds, and an act decided against a state two acts old
-    /// would be a bench testing its own arithmetic rather than the panel's.
-    ///
-    /// Every act says what it saw, and the failure of one is logged rather than swallowed: the walk
-    /// is the only reading these paths have, so an act that quietly did nothing would be a bench
-    /// reporting a pass on a panel that never answered.
     fn walk(&mut self, manager: &DeviceManager, bus: &IntentBus) {
         let state = manager.state();
         self.passes = self.passes.saturating_add(1);
@@ -394,16 +260,9 @@ impl PanelBench {
                         return self.unwalkable(&state, "no link is up");
                     }
                     log::info!("[BENCH] tapping band 0 under the link, which must pick nothing");
-                    // Read before the tap: the typing that came before picked this row, and the
-                    // row it picked is still in `selected` — a link going up clears the draft, not
-                    // the row the draft was for. So the act reads its own tap against what was
-                    // there, not the page's whole history.
                     self.picked = Some(a_pick_showing(&state));
                     return self.send(bus, row_point(0));
                 }
-                // The only arm with nothing to wait for: what it reads back is the *absence* of
-                // what a pick does, and that absence is there on the pass after the tap is
-                // applied.
                 if self.picked != Some(a_pick_showing(&state)) {
                     log::error!(
                         "[BENCH] the row under the link took a pick: a link to leave is not a row \
@@ -466,14 +325,8 @@ impl PanelBench {
                 if !self.sent {
                     return self.send(bus, answer_point(DialogChoice::Act));
                 }
-                // The radio answers a moment later: the link is down when the network task has
-                // taken the request and dropped the association, and the page says so.
                 if !state.link.is_leavable() && state.link.address.is_none() {
                     log::info!("[BENCH] the link is down and the page is back on the list");
-                    // The first leave is off the build's network and is followed by the row the link
-                    // was on — this device holds that passphrase. The second is off the link that row
-                    // brought back and is followed by the row's own mark, which a link would hide: a
-                    // hold with a link up asks nothing.
                     return self.advance(if self.rejoined {
                         Act::AskToForget
                     } else {
@@ -487,7 +340,6 @@ impl PanelBench {
                 ));
             }
             Act::RejoinTheRowJustLeft => {
-                // Still the picked row, and still carrying the store's mark.
                 let Some(band) = picked_band(&state) else {
                     return self
                         .unwalkable(&state, "the row the link was on is not on a band showing");
@@ -522,8 +374,6 @@ impl PanelBench {
                          and the page asked for nothing"
                     );
                     self.rejoined = true;
-                    // Taken down again: the row's mark is what the walk still has to read, and a link
-                    // covers it.
                     return self.advance(Act::AskToLeave);
                 }
                 self.stop_if_stale(format_args!(
@@ -533,8 +383,6 @@ impl PanelBench {
                 ));
             }
             Act::ReopenTheRowJustLeft => {
-                // Still the picked row — a link drops the draft, not the row it was for — and what
-                // this act is for is the entry that opens over it.
                 let Some(band) = picked_band(&state) else {
                     return self
                         .unwalkable(&state, "the row the link was on is not on a band showing");
@@ -569,8 +417,6 @@ impl PanelBench {
                 if !self.sent {
                     return self.send(bus, cancel_point());
                 }
-                // `CANCEL` is the entry's own way out, and it takes the row with it: the page is back
-                // on the list rather than on a row still picked with nothing over it.
                 if !state.setup.keyboard && state.setup.selected.is_none() {
                     log::info!("[BENCH] the entry's own cancel puts the page back on the list");
                     return self.advance(Act::Rescan);
@@ -606,12 +452,8 @@ impl PanelBench {
                 if !self.sent {
                     return self.send(bus, answer_point(DialogChoice::Act));
                 }
-                // The store's own answer, which the network task publishes: the row stops being
-                // marked once the erase is written, and not before.
                 if saved_band(&state).is_none() && state.setup.confirm.is_none() {
                     log::info!("[BENCH] the saved mark is gone from the row the finger held");
-                    // What the mark was hiding is the row itself: it is one to type for again — the
-                    // next act's reading.
                     return self.advance(Act::ReopenTheRowJustLeft);
                 }
                 self.stop_if_stale(format_args!(
@@ -627,9 +469,6 @@ impl PanelBench {
                     log::info!("[BENCH] tapping the strip with no link, which asks to look around");
                     return self.send(bus, strip_point());
                 }
-                // The survey's own round is what clears the wait, and it is the round the strip
-                // asked for rather than one that happened to be due: the wait is only ever set by
-                // this tap.
                 if !state.setup.rescan_wait {
                     log::info!("[BENCH] the strip's own round came back");
                     return self.advance(Act::Done);
@@ -642,8 +481,6 @@ impl PanelBench {
         }
     }
 
-    /// Say what the walk cannot do here, and end it: every act after this one is decided against a
-    /// state this one needed.
     fn unwalkable(&mut self, state: &DeviceState, why: &str) {
         log::error!(
             "[BENCH] the page's own controls cannot be walked: {why} (phase {:?})",
@@ -652,26 +489,18 @@ impl PanelBench {
         self.act = Act::Done;
     }
 
-    /// Say that an act's own touch went out, and start counting the passes it has to land in.
     fn send(&mut self, bus: &IntentBus, touch: Touch) {
         self.sent = true;
         self.passes = 0;
         self.publish(bus, touch);
     }
 
-    /// Move to the next act, with its own touch not yet out.
     fn advance(&mut self, act: Act) {
         self.act = act;
         self.sent = false;
         self.passes = 0;
     }
 
-    /// Stop the walk if the act in progress has run out of passes, saying why once, with what the act
-    /// read.
-    ///
-    /// Every arm ends with this rather than a bare `return`: an act that has run out is a page that is
-    /// not answering rather than a bench that is slow, and the one thing a bench must not do is wait
-    /// for ever. The reading is part of the message because most acts watch more than one field.
     fn stop_if_stale(&mut self, why: core::fmt::Arguments<'_>) {
         if self.passes < ACT_PASSES {
             return;
@@ -680,10 +509,6 @@ impl PanelBench {
         self.act = Act::Done;
     }
 
-    /// Says, once, why no run was built.
-    ///
-    /// A bench that reports nothing is a bench that cannot be told from one that never started, so
-    /// every way of never starting says which one it was.
     fn absent(&mut self, why: &str) {
         if self.absent_reported {
             return;
@@ -701,8 +526,6 @@ impl PanelBench {
                 held_ms: 40,
                 at_ms,
             }),
-            // A hold is the classified gesture itself rather than a contact that dwelled: the
-            // classifier is the input task's, and what the page reads is the gesture it produces.
             Touch::Hold { x, y } => InputEvent::Gesture(GestureEvent::LongPress {
                 id: 0,
                 x,
@@ -720,13 +543,10 @@ impl PanelBench {
                 distance_px: band_center(LIST_ROWS - 1),
             }),
         };
-        // Source 0 is the panel's own gestures, which is what a touch on the glass is: the same
-        // operation the input task builds from a real one.
         let _ = bus.try_send(Intent::Operation(recognize(event, 0)));
     }
 }
 
-/// The middle of the page's action strip, where a finger aiming at it lands.
 fn strip_point() -> Touch {
     Touch::At {
         x: BAND_X,
@@ -735,7 +555,6 @@ fn strip_point() -> Touch {
     }
 }
 
-/// The middle of one of a confirmation's two answers, read off the geometry the panel draws it at.
 fn answer_point(choice: DialogChoice) -> Touch {
     let rect = keyboard::dialog_answer_box(choice);
     Touch::At {
@@ -745,7 +564,6 @@ fn answer_point(choice: DialogChoice) -> Touch {
     }
 }
 
-/// The middle of the band `band` is drawn on, tapped rather than held.
 fn row_point(band: usize) -> Touch {
     Touch::At {
         x: BAND_X,
@@ -754,7 +572,6 @@ fn row_point(band: usize) -> Touch {
     }
 }
 
-/// The middle of the band `band` is drawn on, held rather than tapped.
 fn hold_point(band: usize) -> Touch {
     Touch::Hold {
         x: BAND_X,
@@ -762,19 +579,10 @@ fn hold_point(band: usize) -> Touch {
     }
 }
 
-/// What a pick leaves behind, for the act that has to tell its own tap from one already there.
-///
-/// The two fields a pick sets: the keyboard it opens and the row it names. Read as a pair because
-/// either alone is a state a page can be in without a pick — the draft's own row survives the link
-/// going up, and the keyboard is down for a row that is not secured.
 fn a_pick_showing(state: &DeviceState) -> (bool, bool) {
     (state.setup.keyboard, state.setup.selected.is_some())
 }
 
-/// The band one of the page's showing rows answers `matches` on, if one does.
-///
-/// The walk's own lookup, and the same shape as the script's: the page's window is what a finger sees,
-/// and a row it has scrolled past is one the bench cannot reach either.
 fn band_where(state: &DeviceState, matches: impl Fn(&ApList, usize) -> bool) -> Option<usize> {
     let list = state.aps?;
     let top = usize::from(state.setup.list_top);
@@ -783,12 +591,10 @@ fn band_where(state: &DeviceState, matches: impl Fn(&ApList, usize) -> bool) -> 
         .map(|index| index - top)
 }
 
-/// The band a row this device has saved is showing on.
 fn saved_band(state: &DeviceState) -> Option<usize> {
     band_where(state, |list, index| list.is_saved(index))
 }
 
-/// The marks the page's list is carrying, one bit per row, for the acts that read one back.
 fn marks(state: &DeviceState) -> u8 {
     let Some(list) = state.aps else {
         return 0;
@@ -798,11 +604,6 @@ fn marks(state: &DeviceState) -> u8 {
     })
 }
 
-/// The band the page's own picked row is showing on, if the window still holds it.
-///
-/// Read off the row rather than remembered from the script, because the pick outlives the link: the
-/// page's own answer for whether a row is that one is the network — the survey rewrites every row a
-/// second later, so a name that matched on the reading would stop matching on the next one.
 fn picked_band(state: &DeviceState) -> Option<usize> {
     let picked = state.setup.selected?;
     band_where(state, |list, index| {
@@ -811,7 +612,6 @@ fn picked_band(state: &DeviceState) -> Option<usize> {
     })
 }
 
-/// The middle of the keyboard's own `CANCEL`, read off the geometry the panel draws it at.
 fn cancel_point() -> Touch {
     let cell = keyboard::cell_of(Key::Cancel).expect("the grid holds cancel");
     let rect = keyboard::key_box(cell).expect("a cell of the grid");
@@ -828,17 +628,14 @@ impl Default for PanelBench {
     }
 }
 
-/// The middle of the list's `band`-th visible row, in panel pixels.
 fn band_center(band: usize) -> u16 {
     (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2) as u16
 }
 
-/// The network this build was named, if it was named one.
 fn ssid() -> Option<&'static str> {
     option_env!("IOT_WIFI_SSID")
 }
 
-/// The passphrase this build was named, if it was named one.
 fn psk() -> Option<&'static str> {
     option_env!("IOT_WIFI_PSK")
 }
@@ -852,8 +649,6 @@ mod tests {
     use iot_core::intent::{BusinessIntent, translate};
     use iot_core::keyboard::Layer;
 
-    /// A listed row: the name is what the bench looks up, so the rest is whatever makes the row a
-    /// row.
     fn ap(name: &str) -> AccessPoint {
         AccessPoint {
             ssid: Ssid::from_octets(name.as_bytes()),
@@ -864,8 +659,6 @@ mod tests {
         }
     }
 
-    /// A list of these rows, marked as a device that holds `saved` would mark it: the store's own
-    /// answer for the rows in front of it, which is what the network task publishes.
     fn marked(names: &[&str], saved: &[&str]) -> ApList {
         let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
         let mut list = ApList::from_ranked(&rows);
@@ -877,7 +670,6 @@ mod tests {
         list
     }
 
-    /// A page showing `names`, which is what the bench waits for.
     fn showing(names: &[&str]) -> DeviceState {
         let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
         DeviceState {
@@ -887,7 +679,6 @@ mod tests {
         }
     }
 
-    /// A tap at the middle of the cell a control sits in, as the bench aims at it.
     fn key_center(key: Key) -> Touch {
         let cell = keyboard::cell_of(key).expect("the grid holds every control");
         let rect = keyboard::key_box(cell).expect("a cell of the grid");
@@ -898,7 +689,6 @@ mod tests {
         }
     }
 
-    /// The point a tap lands on.
     fn point(touch: Touch) -> (u16, u16) {
         match touch {
             Touch::At { x, y, .. } => (x, y),
@@ -913,8 +703,6 @@ mod tests {
         let mut bench = PanelBench::new();
         let script = bench.script(&state, "target", "ab").expect("a run");
 
-        // The fourth row through a window of three: one slide brings it into view as the last band,
-        // and the tap after the slide is read against the top that slide left.
         assert_eq!(script[0], Touch::NextPage);
         assert_eq!(
             script[1],
@@ -929,10 +717,6 @@ mod tests {
 
     #[test]
     fn every_row_a_scan_can_carry_is_reachable_by_the_bench() {
-        // The window shows three rows of up to eight and the slide moves one at a time, so a row is
-        // reachable from *some* top or the list has rows a finger cannot pick at all. The strongest
-        // rows first, which is the order the scan hands over: the eighth row is the one that only
-        // the last window — the one aligned to the list's own end — can show.
         let names = [
             "net0", "net1", "net2", "net3", "net4", "net5", "net6", "net7",
         ];
@@ -971,10 +755,6 @@ mod tests {
 
     #[test]
     fn the_row_the_page_keeps_picked_is_the_band_its_own_tap_lands_on() {
-        // The act that walks back onto the row the link was taken off reads its band the way the
-        // script does, but off the *page*: what the page is holding is the row, and the survey
-        // rewrites every row a second later, so the row a name finds now is not the row a reading of
-        // it would have found then. Each row here is its own network for that reason.
         let rows: Vec<AccessPoint> = ["aaa", "bbb", "target", "ddd", "eee"]
             .iter()
             .enumerate()
@@ -1006,11 +786,6 @@ mod tests {
 
     #[test]
     fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
-        // The bench's own acts, driven the way the render loop drives a finger's taps: every touch
-        // it publishes goes through the same `translate` and the same state, and the two things the
-        // page asks of the radio are answered here as the network task would answer them. What this
-        // proves is that each act's read-back is a claim the page really makes — a walk whose acts
-        // were decided against the wrong state would end somewhere other than the end of the list.
         let mut manager = DeviceManager::new().with_network(true);
         // The splash is behind the page the bench is about, as it is behind every walk the render
         // loop runs: the clock ends it before a finger can reach the list.
@@ -1045,17 +820,8 @@ mod tests {
         let bus = IntentBus::new();
         let mut bench = PanelBench::new();
         bench.answered = true;
-        // One counter each for the commands that must not happen twice — what an act's own reading
-        // cannot catch: a KEEP that took the link down would be a second leave, and a second survey
-        // request or join is one act that ran twice.
         let (mut leaves, mut forgets, mut rounds, mut joins) = (0, 0, 0, 0);
-        // And one for the act that walks back onto the row the link was just taken off: the entry it
-        // reads is the one the panel showed as a black page when there was nothing under the keys.
         let mut reopened = 0;
-        // Every act the walk was in, in the order it was in them: the counters below say what the
-        // page *did*, and this says which questions were asked to make it do it — a walk that skipped
-        // an act, or answered one out of order, ends on a page the counters cannot tell from the right
-        // one.
         let mut visited: Vec<Act> = Vec::new();
         for _ in 0..ACT_PASSES * 6 {
             bench.walk(&manager, &bus);
@@ -1082,14 +848,10 @@ mod tests {
             }
             if manager.take_forget().is_some() {
                 forgets += 1;
-                // The store's own erase, as the network task answers it: the same rows, marked
-                // again against a store that no longer holds the name.
                 manager.apply_scan(marked(&["target"], &[]));
             }
             if let Some(iot_core::drivers::network::JoinRequest::Held(ssid)) = manager.take_join() {
                 joins += 1;
-                // The copy is on the part, so the link goes after it: what the radio reports next is
-                // the association, with the name it is on and no address yet.
                 assert_eq!(
                     ssid,
                     Ssid::from_octets(b"target"),
@@ -1116,9 +878,6 @@ mod tests {
             if bench.act == Act::Done {
                 break;
             }
-            // No row takes a pick while a link is up: the first act taps one and the gate refuses it.
-            // The acts after the link is down are the ones that open the keyboard, which is why this
-            // is gated on the link rather than asserted flat.
             assert!(
                 !manager.state().link.is_leavable() || !manager.state().setup.keyboard,
                 "a row took a pick while a link was up"
@@ -1134,9 +893,6 @@ mod tests {
                 Act::KeepTheLink,
                 Act::LeaveAsk,
                 Act::LeaveGo,
-                // The row the link was just taken off, joined with the copy on the part and nothing
-                // asked for — and then left again, because the row's mark is under the box the link
-                // draws over the list and a hold can only reach the row the page is showing.
                 Act::RejoinTheRowJustLeft,
                 Act::AskToLeave,
                 Act::KeepTheLink,
@@ -1144,8 +900,6 @@ mod tests {
                 Act::LeaveGo,
                 Act::AskToForget,
                 Act::Forget,
-                // The mark is gone, so the same row is a row to type for: the keyboard comes up over
-                // a fresh entry, which is cancelled and leaves the strip's own verb to be read.
                 Act::ReopenTheRowJustLeft,
                 Act::DropTheKeyboard,
                 Act::Rescan,
@@ -1188,8 +942,6 @@ mod tests {
             Some(Key::Connect),
             "the last tap is the key that hands the credential over, not a cell beside it"
         );
-        // And every earlier tap is on a key rather than on a seam: the bench is a finger at the
-        // panel's coordinates, and a tap between two cells would be a tap on neither.
         for tap in &script[..script.len() - 1] {
             let (x, y) = point(*tap);
             assert!(
@@ -1234,8 +986,6 @@ mod tests {
         assert!(!bench.missing_reported, "nothing has been looked at yet");
         assert!(!bench.absent_reported, "nothing has been looked at yet");
 
-        // And nothing while the keyboard is already up over the list: taps decided against a list
-        // would land on the keyboard's own cells.
         state.aps = Some(ApList::from_ranked(&[ap("target")]));
         state.setup.keyboard = true;
         assert!(bench.script(&state, "target", "ab").is_none());

@@ -2,11 +2,6 @@ use std::collections::BTreeSet;
 
 use iot_tool::midi::{RECIPES, REST, assets_dir, file_name, mid};
 
-/// The checked-in file is exactly what this recipe generates.
-///
-/// Byte equality, not "it parses to the right notes". This is the strongest
-/// statement available and the cheapest: a file edited in a DAW, a recipe edited
-/// without the tool being run, or a bug in [`mid`] all fail it.
 #[test]
 fn the_files_are_what_the_recipes_generate() {
     for (sound, track_name, notes) in RECIPES {
@@ -26,10 +21,6 @@ fn the_files_are_what_the_recipes_generate() {
     }
 }
 
-/// No `.mid` in the assets directory that no recipe accounts for.
-///
-/// The recipes are the whole catalogue, so a file nobody wrote a recipe for is
-/// either a rename that half happened or a sound that never shipped.
 #[test]
 fn every_midi_file_has_a_recipe() {
     let found: BTreeSet<String> = std::fs::read_dir(assets_dir())
@@ -40,7 +31,6 @@ fn every_midi_file_has_a_recipe() {
     assert_eq!(found, recipe_files(), "the recipes and the files disagree");
 }
 
-/// The filenames the recipes produce.
 fn recipe_files() -> BTreeSet<String> {
     RECIPES
         .iter()
@@ -48,10 +38,6 @@ fn recipe_files() -> BTreeSet<String> {
         .collect()
 }
 
-/// The rules the earcon guidelines ask for, held on the table rather than on
-/// any one sound — the constraints the layout was searched under. Without them
-/// the catalogue drifts back to sounding alike one small edit at a time, and
-/// nothing else here would notice.
 #[test]
 fn the_recipes_are_told_apart_on_several_dimensions_at_once() {
     let mut registers: Vec<(u8, u8, &str)> = RECIPES
@@ -94,10 +80,10 @@ fn the_recipes_are_told_apart_on_several_dimensions_at_once() {
     );
 }
 
-/// Every millisecond survives the trip out to ticks and back. A tick is 25/24
-/// ms, so a value landing between the two rounding directions comes back a
-/// millisecond short — and a recipe that disagrees with its own file by 1 ms is
-/// one nobody can reason about.
+// Every millisecond survives the trip out to ticks and back. A tick is 25/24
+// ms, so a value landing between the two rounding directions comes back a
+// millisecond short — and a recipe that disagrees with its own file by 1 ms is
+// one nobody can reason about.
 #[test]
 fn every_duration_survives_the_trip_to_ticks_and_back() {
     const DIV: u32 = 480;
@@ -118,7 +104,6 @@ fn every_duration_survives_the_trip_to_ticks_and_back() {
     }
 }
 
-/// A recipe says what it is, even to someone opening the file in a DAW.
 #[test]
 fn every_recipe_has_a_track_name() {
     for (sound, track_name, _) in RECIPES {

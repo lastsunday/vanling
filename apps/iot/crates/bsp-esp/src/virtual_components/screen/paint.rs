@@ -21,14 +21,9 @@ use crate::stack::{high_water, main_stack_bytes, note_stack_high_water};
 
 use super::*;
 
-/// Last full-frame repaint taken by the panel, in milliseconds since boot.
-/// Shared across the diagnostics pushes so the repaint rate bound adds no width
-/// to the renderer state the main-task async machine holds across awaits.
 static DIAG_LAST_REPAINT_MS: AtomicU32 = AtomicU32::new(0);
 
 impl DiagnosticsSink for Screen {
-    /// The panel is the surface the product's pages are drawn on: it is the one with the frame
-    /// buffer, and `consume` below is what stamps the page's rows into it.
     fn draws_pages(&self) -> bool {
         true
     }
@@ -90,8 +85,6 @@ impl DiagnosticsSink for Screen {
 }
 
 impl Screen {
-    /// Paints `fill`/`color`, stamps the page's rows over it, and ships the frame.
-    /// Always paints; callers guard for repaint skipping.
     pub(super) fn paint(&mut self, fill: Fill, color: Rgb) {
         let render_start = Instant::now();
         self.owner.painted(fill, color);
@@ -137,8 +130,6 @@ impl Screen {
         let write_start = Instant::now();
         if let Err(e) = self.panel.write(self.frame) {
             log::error!("[DISPLAY] frame write failed: {e:?}");
-            // Stay dark and let the next fill retry: waking the panel now would
-            // show the frame this write failed to replace.
             self.owner = FrameOwner::NeedsPaint;
         } else {
             self.panel.note_frame_shipped();
@@ -146,13 +137,9 @@ impl Screen {
         self.account_frame(render, write_start.elapsed());
     }
 
-    /// Folds one frame's costs and rate into their windows, reporting a closed cost window and
-    /// the stack peak on that same window.
     pub(super) fn account_frame(&mut self, render: Duration, write: Duration) {
         if let Some(cost) = self.metrics.fold_frame(render, write) {
             let percent = windowed_percent(cost.hold.as_micros(), cost.window.as_micros());
-            // A window is telemetry; one this expensive is the fault the report exists for,
-            // and the one shape worth waking a reader with.
             let over_budget = percent > 25 || cost.worst_write.as_millis() > 20;
             log::log!(
                 if over_budget {
@@ -170,24 +157,13 @@ impl Screen {
                 cost.worst_write.as_millis(),
                 self.diagnostics.demand,
             );
-            // On the window the cost line closes rather than on the repaint rate: the peak
-            // only moves when a page draws deeper, and the rate window repeated the same
-            // number twice a second.
             self.report_stack_high_water();
         }
         self.metrics.fold_fps();
     }
 
-    /// Reports the deepest main-stack use seen so far, when it is news.
-    ///
-    /// Sampled here rather than at bring-up because the peak belongs to whichever page drew
-    /// deepest, and the Audio page's sweep is the frame that decides whether the stack still
-    /// fits. A window repeats while nothing new is drawn deeper, so the line follows the peak
-    /// rather than the window: once at every kilobyte gained, and on `debug` for the unchanged
-    /// reading a record may need to quote.
     fn report_stack_high_water(&mut self) {
         let high = high_water();
-        // Zero is the sampler before the first frame has used the stack, not a depth.
         if high == 0 {
             return;
         }

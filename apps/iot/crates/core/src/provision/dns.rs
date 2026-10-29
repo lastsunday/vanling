@@ -1,30 +1,11 @@
-//! The captive portal's half of DNS: answer every `A` query with this device's own
-//! address, so a phone that cannot reach the internet opens the page instead.
-//!
-//! Not a resolver. Nothing is looked up, nothing is cached, and an address is the
-//! only record this can write. That is the whole trick: a phone's connectivity check
-//! asks for a name that can never be reached here, gets an answer it can, and offers
-//! its user the page on the other end.
-//!
-//! The answer copies the question's ID and its own question section verbatim, which
-//! is what lets a client match the reply to what it asked — and what makes this
-//! correct for a name this code never parses.
+//! The captive portal's half of DNS: answer every `A` query with this device's own address,
+//! so a phone that cannot reach the internet opens the page instead.
 
-/// The only record type this answers.
 const TYPE_A: u16 = 1;
-/// The only class this answers. `CH` and the rest are not something a phone asks for.
 const CLASS_IN: u16 = 1;
-/// Nothing here may be cached: the answer is about *this* network, and a client that
-/// kept it would open a stale page on the next one.
 const TTL_SECONDS: u32 = 0;
 
 /// Write an answer to `query` into `out`, returning how many bytes it takes.
-///
-/// `None` when `out` is too small, when the query is not a query, or when the
-/// question is truncated. A query that *is* one but asks for something other than an
-/// `A` record still gets a reply — with no records in it — because a client that sent
-/// an `AAAA` query is a client waiting for an answer, and silence is a timeout it
-/// will retry rather than fall back from.
 pub fn answer(query: &[u8], address: [u8; 4], out: &mut [u8]) -> Option<usize> {
     if query.len() < 12 {
         return None;
@@ -38,8 +19,6 @@ pub fn answer(query: &[u8], address: [u8; 4], out: &mut [u8]) -> Option<usize> {
     let qclass = u16::from_be_bytes([query[question_end - 2], query[question_end - 1]]);
     let answers = u16::from(u8::from(qtype == TYPE_A && qclass == CLASS_IN));
 
-    // A name pointer to the question's own name at offset 12, then the fixed-length
-    // A record: type, class, TTL, and the four octets.
     let answer_len = if answers == 1 { 16 } else { 0 };
     let total = question_end + answer_len;
     if out.len() < total {
@@ -48,7 +27,6 @@ pub fn answer(query: &[u8], address: [u8; 4], out: &mut [u8]) -> Option<usize> {
 
     out[0] = query[0];
     out[1] = query[1];
-    // QR set, AA set, the client's own RD echoed, RA set, RCODE 0.
     out[2] = 0x84 | (query[2] & 0x01);
     out[3] = 0x80;
     out[4..6].copy_from_slice(&1u16.to_be_bytes());
@@ -69,11 +47,6 @@ pub fn answer(query: &[u8], address: [u8; 4], out: &mut [u8]) -> Option<usize> {
     Some(total)
 }
 
-/// The offset just past the first question's name, type and class.
-///
-/// A query's name is uncompressed — a client has nothing earlier in the message to
-/// point at — so a label that claims to be a pointer is a malformed one, and a label
-/// longer than a name allows is too. Both are refused rather than followed.
 fn skip_question(query: &[u8]) -> Option<usize> {
     let mut index = 12;
     loop {
@@ -95,7 +68,6 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    /// A query for one name, with the header flags a client sets.
     fn query(labels: &[&[u8]], qtype: u16) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(&[0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]);
@@ -117,7 +89,6 @@ mod tests {
 
         assert_eq!(&reply[..2], &[0x12, 0x34], "the client's own id comes back");
         assert_eq!(u16::from_be_bytes([reply[6], reply[7]]), 1, "one answer");
-        // The question is echoed byte for byte, which is what a client matches on.
         assert_eq!(&reply[12..ask.len()], &ask[12..]);
         assert_eq!(
             &reply[len - 4..len],
@@ -133,8 +104,6 @@ mod tests {
 
     #[test]
     fn a_query_for_something_else_is_answered_with_nothing() {
-        // A client waiting on an AAAA answer is a client that must be answered, or
-        // it sits on a timeout instead of falling back to IPv4.
         let ask = query(&[b"example"], 28);
         let mut reply = [0u8; 128];
         let len = answer(&ask, [192, 168, 4, 1], &mut reply).expect("room enough");
@@ -164,8 +133,6 @@ mod tests {
 
     #[test]
     fn a_label_that_claims_to_be_a_pointer_is_refused() {
-        // A query's name is uncompressed, so this is a malformed one. Following the
-        // pointer would be reading an offset the client never wrote.
         let mut ask = query(&[b"example"], TYPE_A);
         ask[12] = 0xc0;
         ask[13] = 0x00;

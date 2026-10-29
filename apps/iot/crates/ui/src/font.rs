@@ -1,12 +1,5 @@
-//! The panel's glyph table: printable ASCII `0x20`–`0x7E`, five columns per glyph, column-major,
-//! bit 0 the top row.
-//!
-//! Spleen 5×8 by Frederic Cambus, rasterised at its native grid, which is this panel's cell
-//! ([`iot_core::overlay::FONT_W`] × `FONT_H`). One face, no cropped descender. Spleen is
-//! BSD-2-Clause (`SPDX-License-Identifier: BSD-2-Clause`); the 5×8 cut is printable ASCII only:
-//! <https://github.com/fcambus/spleen/blob/master/spleen-5x8.bdf>.
-//!
-//! Indexing: `FONT[(ch - 0x20) * GLYPH_COLUMNS ..][..GLYPH_COLUMNS]`.
+//! The panel's glyph table: printable ASCII `0x20`–`0x7E`, five columns per glyph,
+//! column-major, bit 0 the top row.
 
 /// Columns one glyph occupies; the panel's cell is [`iot_core::overlay::FONT_W`] wide.
 pub const GLYPH_COLUMNS: usize = 5;
@@ -64,8 +57,6 @@ mod tests {
         }
     }
 
-    /// The pairs a five-column cell can collapse into one shape. A table swap that made any of
-    /// them equal would be a font the panel cannot read, and nothing else checks the shapes.
     #[test]
     fn glyphs_that_read_alike_are_not_the_same_bitmap() {
         for (left, right) in [
@@ -90,8 +81,8 @@ mod tests {
         }
     }
 
-    /// The bottom row is the descender the eight-row cell buys: these five are the letters that
-    /// need it, and a face cut to seven rows would lose the tail silently.
+    // The bottom row is the descender the eight-row cell buys: these five are the letters that
+    // need it, and a face cut to seven rows would lose the tail silently.
     #[test]
     fn the_descenders_reach_the_bottom_row() {
         for &code in b"gpqyj" {

@@ -37,8 +37,6 @@ pub fn set_speed(_speed: Speed) -> Speed {
     Speed::Normal
 }
 
-/// The frequency this part boots at and stays at: [`set_speed`] moves nothing here, so this is
-/// the only number a report can name.
 pub(crate) const fn clock_mhz(_speed: Speed) -> u32 {
     160
 }

@@ -1,15 +1,5 @@
-//! The slice of HTTP setup mode needs: one request read off a socket, one response written back on
-//! it.
-//!
-//! HTTP/1.1 with `Content-Length` on every answer and no chunking, so one connection can carry the
-//! next request instead of being opened again: a phone refreshing the page asks on the connection
-//! it already holds, which is the difference between a refresh costing a listener and costing
-//! nothing ([`Request::close`] is the client's own way of asking for the old behaviour).
-//!
-//! Reading is a buffer and a two-way answer: a request arrives in as many reads as the network
-//! decides to make of it, so [`Request::parse`] says [`ParseError::Incomplete`] rather than
-//! guessing that a truncated request was a bad one — the only other reader of that distinction is
-//! the loop that reads more.
+//! The slice of HTTP setup mode needs: one request read off a socket, one response written
+//! back on it.
 
 use super::wire::{Bounded, Sink, push_usize};
 
@@ -18,17 +8,13 @@ use super::wire::{Bounded, Sink, push_usize};
 pub enum Method {
     Get,
     Post,
-    /// Anything else. Routed like a path nobody serves, which is where a redirect
-    /// is a better answer than an error page.
     Other,
 }
 
 /// Why a buffer is not a request yet, or is not one at all.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ParseError {
-    /// Not all of it has arrived. Read more and ask again.
     Incomplete,
-    /// It cannot become a request however much more arrives.
     Malformed,
 }
 
@@ -40,8 +26,9 @@ pub struct Request<'a> {
     pub path: &'a str,
     /// The message body, exactly `Content-Length` bytes of it.
     pub body: &'a [u8],
-    /// Whether the client asked for the connection to end after this request: `Connection: close`,
-    /// which is the one header value that overrides the keep-alive this server answers with.
+    /// Whether the client asked for the connection to end after this request: `Connection:
+    /// close`, which is the one header value that overrides the keep-alive this server
+    /// answers with.
     pub close: bool,
 }
 
@@ -73,8 +60,6 @@ impl<'a> Request<'a> {
     }
 }
 
-/// The offset just past the blank line that ends the headers, which is also where
-/// the body begins.
 fn find_body_start(bytes: &[u8]) -> Option<usize> {
     bytes
         .windows(4)
@@ -91,8 +76,6 @@ fn parse_request_line(line: &str) -> Result<(Method, &str), ParseError> {
         None => return Err(ParseError::Malformed),
     };
     let target = parts.next().ok_or(ParseError::Malformed)?;
-    // The version is checked rather than kept, and a request that names none is not
-    // one a browser made.
     match parts.next() {
         Some(version) if version.starts_with("HTTP/") => {}
         _ => return Err(ParseError::Malformed),
@@ -100,9 +83,6 @@ fn parse_request_line(line: &str) -> Result<(Method, &str), ParseError> {
     Ok((method, target))
 }
 
-/// The path out of the request target, with the query dropped. A captive portal sees the absolute
-/// form as well as the origin form; the host is dropped because every name resolves here. Nothing
-/// routes on a query.
 fn path_of(target: &str) -> Result<&str, ParseError> {
     let path_and_query = match target.split_once("://") {
         Some((_, after_scheme)) => match after_scheme.find('/') {
@@ -120,8 +100,6 @@ fn path_of(target: &str) -> Result<&str, ParseError> {
     })
 }
 
-/// The value of `Content-Length`, by case-insensitive name. The first wins, which is
-/// what a client that sent two of one deserves.
 fn content_length<'a>(lines: impl Iterator<Item = &'a str>) -> Result<Option<usize>, ParseError> {
     for line in lines {
         let Some((key, value)) = line.split_once(':') else {
@@ -138,8 +116,6 @@ fn content_length<'a>(lines: impl Iterator<Item = &'a str>) -> Result<Option<usi
     Ok(None)
 }
 
-/// Whether the `Connection` header names `close`, the only value honoured. It is a comma-separated
-/// list, so `keep-alive, close` closes; a missing header keeps, as HTTP/1.1 says.
 fn connection_close<'a>(lines: impl Iterator<Item = &'a str>) -> bool {
     for line in lines {
         let Some((key, value)) = line.split_once(':') else {
@@ -158,13 +134,7 @@ fn connection_close<'a>(lines: impl Iterator<Item = &'a str>) -> bool {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Status {
     Ok,
-    /// Nothing follows the head, and the client is to take that as the answer rather than
-    /// as a failure: a browser asking for the page's icon by its default name is asking a
-    /// question whose honest answer is "no icon", not a second copy of the page.
     NoContent,
-    /// Where a name resolved to this device but nothing serves that path: the
-    /// client is sent to the page rather than shown an error its user would read
-    /// as a broken network.
     Redirect,
     BadRequest,
 }
@@ -181,14 +151,9 @@ impl Status {
 }
 
 /// How long a client may keep the answer.
-///
-/// Everything here is the device's state at the moment it was asked, so nothing is reusable —
-/// except the page's own icon, which is the same bytes for the life of the build and which a
-/// browser may ask for by name even though the pages carry it inline (`@/records/iot/wifi.md`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Cache {
     NoStore,
-    /// A day, which outlives any one setup session.
     ForADay,
 }
 
@@ -202,9 +167,6 @@ impl Cache {
 }
 
 /// A response body that is already somewhere.
-///
-/// The one answer whose bytes are made out of something — the scan list — is not a body at all:
-/// [`Response::json_list`] names its length and the caller writes it.
 #[derive(Debug)]
 pub enum Body {
     Empty,
@@ -227,8 +189,7 @@ pub struct Response {
     /// The header a redirect needs, which nothing else sets.
     pub location: Option<&'static str>,
     pub content_type: &'static str,
-    /// How many bytes follow the head, which is what the head has to name. The body's
-    /// own length for everything built here, and the caller's to write for a list.
+    /// How many bytes follow the head, which is what the head has to name.
     pub content_length: usize,
     pub cache: Cache,
     pub body: Body,
@@ -264,10 +225,6 @@ impl Response {
     }
 
     /// The head of a JSON list the caller writes after it, `length` bytes of it.
-    ///
-    /// The scan list is the one answer that cannot be handed over ready-made: its length
-    /// is what is in range, and it is written from the survey's own list a row at a time.
-    /// [`scan_json_len`](super::scan::scan_json_len) is where that length comes from.
     pub fn json_list(length: usize) -> Self {
         Self {
             status: Status::Ok,
@@ -294,9 +251,7 @@ impl Response {
         }
     }
 
-    /// Write the head and return its length. `None` means `out` is too small; nothing here
-    /// allocates, so that is a caller bug, not a client one. `Content-Length` always frames the
-    /// body, and `close` is the caller's only word on the connection.
+    /// Write the head and return its length.
     pub fn write_head(&self, out: &mut [u8], close: bool) -> Option<usize> {
         let mut sink = Bounded::new(out);
         self.head(&mut sink, close).then(|| sink.written())
@@ -307,8 +262,6 @@ impl Response {
         self.body.as_bytes()
     }
 
-    /// The head, into anything that takes bytes — the same code the device writes from
-    /// and a test measures against the buffer the device writes into.
     fn head(&self, sink: &mut impl Sink, close: bool) -> bool {
         sink.write(b"HTTP/1.1 ")
             && sink.write(self.status.line().as_bytes())
@@ -319,9 +272,6 @@ impl Response {
             && self.location.is_none_or(|location| {
                 sink.write(b"\r\nLocation: ") && sink.write(location.as_bytes())
             })
-            // The answer is the room as it is now and the page is the server's own state,
-            // so nothing here is reusable — bar the icon, which is the same bytes for the
-            // life of the build.
             && sink.write(b"\r\nCache-Control: ")
             && sink.write(self.cache.line().as_bytes())
             && sink.write(if close {
@@ -338,7 +288,6 @@ mod tests {
     use crate::provision::PIECE_BYTES;
     use alloc::vec::Vec;
 
-    /// The bytes the device writes for a response, a head and a body as one buffer.
     fn composed(response: &Response) -> Vec<u8> {
         let mut head = [0u8; PIECE_BYTES];
         let len = response
@@ -360,9 +309,6 @@ mod tests {
 
     #[test]
     fn a_truncated_request_asks_for_more_rather_than_failing() {
-        // The distinction is the whole reason this returns a `Result`: the loop
-        // that reads says "read again", and a parser that called this malformed
-        // would answer a phone with a 400 for arriving in two packets.
         assert_eq!(
             Request::parse(b"GET / HTTP/1.0\r\nHost: x\r\n"),
             Err(ParseError::Incomplete)
@@ -385,8 +331,6 @@ mod tests {
 
     #[test]
     fn the_absolute_form_a_captive_probe_uses_routes_like_the_origin_form() {
-        // A phone that has decided this network is a portal asks for the URL its
-        // connectivity check was written with, host and all.
         let bytes = b"GET http://connectivity.example/generate_204 HTTP/1.1\r\n\r\n";
         let request = Request::parse(bytes).expect("absolute form");
         assert_eq!(request.path, "/generate_204");
@@ -443,9 +387,6 @@ mod tests {
 
     #[test]
     fn a_head_says_how_long_the_answer_may_be_kept() {
-        // Everything here is the room or the device as they are at the moment they were asked, so
-        // a cache must not answer for them — bar the icon, which is the same bytes for the life of
-        // the build and is asked for by name often enough to be worth keeping.
         let fresh = composed(&Response::html("<html></html>"));
         let fresh = core::str::from_utf8(&fresh).expect("ascii");
         assert!(fresh.contains("Cache-Control: no-store\r\n"), "{fresh}");
@@ -460,8 +401,6 @@ mod tests {
 
     #[test]
     fn a_head_with_nothing_behind_it_says_so_and_keeps_the_connection() {
-        // What a browser asking for the icon by its default name gets: a status rather than a
-        // second copy of the page, which would be one more whole document written for nobody.
         let response = Response::no_content();
         let written = composed(&response);
         let text = core::str::from_utf8(&written).expect("ascii");
@@ -472,9 +411,6 @@ mod tests {
 
     #[test]
     fn the_head_says_whether_the_connection_outlives_the_answer() {
-        // Keep-alive is what makes a refresh a request on the connection the phone already holds
-        // rather than a new one, and it is the head — not the server loop — that tells the phone
-        // so. A request that names a network, and a phone that asks for `close`, both end it.
         let mut keep = [0u8; PIECE_BYTES];
         let len = Response::no_content()
             .write_head(&mut keep, false)
@@ -492,9 +428,6 @@ mod tests {
 
     #[test]
     fn a_request_names_whether_it_wants_the_connection_back() {
-        // Every live connection is one not listening, so the client's own word on it is the one
-        // thing that decides the socket's fate after the answer — a browser reloading the page
-        // sends none and stays, and a client that is done says so.
         let open = b"GET / HTTP/1.1\r\nHost: 192.168.4.1\r\n\r\n";
         assert!(!Request::parse(open).expect("a whole request").close);
 
@@ -510,9 +443,6 @@ mod tests {
 
     #[test]
     fn every_head_the_device_writes_fits_the_buffer_it_writes_one_into() {
-        // The device builds a head in one stack buffer of `PIECE_BYTES`, because nothing here
-        // allocates: a head that did not fit is a phone waiting for an answer and a warning in
-        // the log.
         let heads = [
             Response::html("<html></html>"),
             Response::text(Status::Ok, "no"),
@@ -520,8 +450,6 @@ mod tests {
             Response::redirect(super::super::BASE_URL),
             Response::no_content(),
             Response::asset("image/svg+xml", "<svg/>"),
-            // The longest length a head can be asked to name, so the digits are the ones
-            // that decide whether the rest fits.
             Response::json_list(usize::MAX),
         ];
         for response in heads {
@@ -535,9 +463,6 @@ mod tests {
 
     #[test]
     fn a_head_that_does_not_fit_is_refused_rather_than_truncated() {
-        // Half a head is a request line a client cannot read, which is worse than no
-        // answer at all: what it does with one is wait, and what it does with the other
-        // is retry.
         let mut out = [0u8; 8];
         assert_eq!(
             Response::redirect(super::super::BASE_URL).write_head(&mut out, false),

@@ -1,14 +1,4 @@
 //! Acquisition configuration: *how* a part is wired to produce what a demand asks for.
-//!
-//! A configuration is deliberately not part of a [`crate::demand`]. A page asks for a
-//! [`Mode`] and a period; the driver picks the registers, the transport
-//! and the on-chip engines that meet it. Naming a configuration is the probe's business, and
-//! its cost is measured there (`demand-probe`) rather than derived here.
-//!
-//! Whether a driver can actually leave a part in a configuration is a property of that
-//! part's register table, decided where the table is open. Naming one here is a claim that
-//! the shape is worth a word, not that any given board can enter it — the refusals are
-//! listed at the driver.
 
 use crate::demand::{DemandKey, EffectiveDemand, Mode};
 
@@ -19,11 +9,6 @@ pub struct Configuration {
 }
 
 /// Turns a demand into the configurations its parts must be in.
-///
-/// The whole of the translation, and the only place a mode reaches a register table: a page
-/// asks what it wants in time, and this is where that becomes something a part can be told
-/// to do. What the parts offer is supplied at construction because only the board knows its
-/// own silicon — the demand and the mapping are the product's, the availability is not.
 pub struct Configurator {
     available: &'static [MotionConfig],
 }
@@ -35,9 +20,6 @@ impl Configurator {
 
     /// What this demand needs each part in, or the first mode whose configuration the parts
     /// cannot be told to enter.
-    ///
-    /// A refusal names the mode as well as the configuration so a reader can tell which
-    /// demand went unmet, rather than having to infer it from a configuration nobody applied.
     pub fn configuration_for(
         &self,
         demand: &EffectiveDemand,
@@ -57,44 +39,26 @@ impl Configurator {
     }
 }
 
-/// How the motion part is set up. Which of these a board can reach, and why the rest stay
-/// out of reach, belongs to the driver holding the register table.
+/// How the motion part is set up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MotionConfig {
-    /// The accelerometer alone, armed as a "did something move" wake detector.
     WakeDetector,
-    /// Both sensors read straight from their registers each poll.
     PolledRegisters,
-    /// The part's FIFO buffering samples between polls.
     Fifo,
-    /// Registers read each poll, with the on-chip low-pass filters armed.
     FilteredRegisters,
 }
 
 impl MotionConfig {
-    /// What produces what `mode` asks for, in time. `None` means the mode needs no
-    /// configuration, which is only `Off`: it is met by not collecting.
-    ///
-    /// Whether the part offers the answer is not decided here. A configurator that finds
-    /// this configuration absent must refuse rather than substitute, and that check belongs
-    /// to whoever holds the part's capabilities.
+    /// What produces what `mode` asks for, in time.
     pub const fn for_mode(mode: Mode) -> Option<Self> {
         match mode {
             Mode::Off => None,
-            // One configuration meets both collecting modes, because the No-Motion engine
-            // armed inside it is what turns a polled stream into change events. A wake
-            // detector would buy power at the polling rate, not correctness, so naming it
-            // here would put a requirement into the demand that the demand never made.
             Mode::OnChange | Mode::Continuous => Some(Self::PolledRegisters),
         }
     }
 }
 
 /// A mode this part has no encoding for.
-///
-/// Not a failure to try: the silicon has nowhere to put it. Answering with a configuration
-/// that is merely similar is the silent downgrade this type exists to prevent, so a demand
-/// the part cannot meet arrives here instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unreachable {
     pub key: DemandKey,
@@ -126,9 +90,6 @@ mod tests {
 
     #[test]
     fn both_collecting_modes_are_met_by_the_same_wiring() {
-        // The No-Motion engine is armed inside PolledRegisters, so a polled stream already
-        // produces change events. Were these two configurations apart, this assertion is
-        // what would notice.
         assert_eq!(
             MotionConfig::for_mode(Mode::OnChange),
             MotionConfig::for_mode(Mode::Continuous)
@@ -137,9 +98,6 @@ mod tests {
 
     #[test]
     fn no_mode_reaches_a_configuration_the_recognizer_did_not_see() {
-        // FilteredRegisters is a different stream from the one the core recognizer's bars
-        // were calibrated against. Selecting it from a mode would be invisible: the demand
-        // would be met and the thresholds would quietly stop meaning anything.
         for mode in [Mode::Off, Mode::OnChange, Mode::Continuous] {
             assert_ne!(
                 MotionConfig::for_mode(mode),
@@ -208,8 +166,6 @@ mod tests {
 
     #[test]
     fn the_configurator_reads_nothing_about_the_part_beyond_what_it_was_given() {
-        // The mapping is the product's, the availability is the board's. A configurator that
-        // grew its own idea of what exists would stop being told when a board changed.
         assert_eq!(
             Configurator::new(&[
                 MotionConfig::PolledRegisters,
