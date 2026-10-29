@@ -102,9 +102,6 @@ pub(super) async fn unconfigured<S, R>(
     S::Device: Driver,
     R: FlashRegion,
 {
-    // In hand after a refusal that came back, or from a boot credential the panel superseded, or
-    // waiting on the plane. Held rather than re-taken, because a credential that arrives while a
-    // link is being held is returned by [`hold`] rather than put back on a one-slot plane.
     let mut pending = first;
     // The list as the page has it, carried from round to round: what keeps a row still while the
     // readings move under it, and what a save or a forget while a link is up puts the store's own
@@ -470,11 +467,6 @@ where
     }
 }
 
-/// What the panel's request asks the link to join with, and where that credential came from.
-///
-/// A name the store holds no copy of is not a credential at all, so the page is told: `None` is that
-/// answer, and it is published here rather than handed back because both readers of the plane answer
-/// a name the same way.
 pub(super) fn asked_for<R: FlashRegion>(
     asked: JoinRequest,
     saved: Option<&Store<R>>,

@@ -3,7 +3,7 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "a0f00b949e8f297f24ad192fccd555495a28a91c"
+source_file_hash = "692b1b782f55c6bc455d4728b357d79643099ebf"
 translated_at = "2026-10-22T12:29:02Z"
 +++
 
@@ -139,15 +139,15 @@ The recipe **is** the file: the five `assets/*.mid` come to 488 bytes together, 
 
 **The source of truth for the recipe is the `RECIPES` table in `crates/tool/src/midi.rs`**, and the `.mid` files are what it builds — they are checked in, but they are products. Changing a sound means editing one row of that table and running `moon run iot:gen-midi-assets`, not editing a binary. A file edited in a DAW without the table updated fails `the_files_are_what_the_recipes_generate` — **that is what replaces "the recipe lives in a comment the build does not run."**
 
-`bsp-esp` still has an `#[ignore]`d `write_the_catalogue_as_a_wav`, which means **you can listen without flashing a board**: it renders the files to a WAV through the driver's own synthesis path (`Tone` over the parsed table). A change to a batch of notes costs a second to judge instead of twenty minutes of flashing and reading a serial console.
+`bsp-esp` used to have an `#[ignore]`d `write_the_catalogue_as_a_wav`, which meant **you could listen without flashing a board**: it rendered the files to a WAV through the driver's own synthesis path (`Tone` over the parsed table). It is gone (zero hits in the tree); listening again means writing it back, or flashing a board and running `echo-probe`.
 
 ### Why the recipes are in a tool rather than in the board
 
 Generating assets is not a test, so the table and the `.mid` generator moved out of `bsp-esp`'s test module into an `iot-tool` with no dependencies.
 
-The cost is that **the two sides cannot see each other**: the recipes no longer read `Sound`, and the firmware cannot read the recipes. What is left is the filename convention (`Rise` becomes `rise.mid`, and `label_of` has to say the same thing).
+The cost is that **the two sides cannot see each other**: the recipes no longer read `Sound`, and the firmware cannot read the recipes. What is left is the filename convention (`Rise` becomes `rise.mid`, and `sound_label` in `iot-ui` has to say the same thing).
 
-One test holds it: `the_board_names_the_same_files` reads the `include_bytes!` list out of `bsp-esp/src/sounds.rs` and checks it against the recipes. Without it a rename done on one side only passes silently — both files exist, both are claimed by something, and only the board plays the wrong one.
+One test holds it: `the_catalogue_names_the_same_files` reads the `include_bytes!` list out of `app/src/sounds.rs` and checks it against the recipes. Without it a rename done on one side only passes silently — both files exist, both are claimed by something, and only the device plays the wrong one.
 
 ### The cost of moving it out: bare-metal `--workspace`
 

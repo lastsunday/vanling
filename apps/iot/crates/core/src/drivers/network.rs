@@ -823,17 +823,6 @@ impl Credentials {
     }
 }
 
-/// What the panel asked the link for: a passphrase it typed, or a network to join with the copy this
-/// device keeps.
-///
-/// One message with two shapes rather than two planes, because they are the same question asked with
-/// different amounts of help — "join this network, here is the passphrase" and "join this network,
-/// you have the passphrase" — and the network task answers both in the same place.
-///
-/// A name rather than a credential in the second shape because the store belongs to the network
-/// task: the page can say *which* network a finger picked and not what its passphrase is, and a name
-/// the store does not hold is answered on the page, which is the only place a passphrase can be
-/// typed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum JoinRequest {
     /// The credential the keyboard's own hand-over key produced.
@@ -898,16 +887,6 @@ pub enum NetworkError {
     Driver,
 }
 
-/// Which of the two ways into setup mode the device is offering.
-///
-/// One mode, two front ends, and one of them at a time: the panel's own list and the access point
-/// whose page a phone fills in answer the same question — which network to join — and both end on
-/// the same [`Credentials`] plane. What differs is the radio: the page is served over the access
-/// point, and the access point shares the radio with the scan the list is made of, so a device
-/// that is being typed on at the panel has no reason to beacon a network nobody is using.
-///
-/// Which one is offered is the build's answer at boot and the person's after that, so this is the
-/// value a decision travels in rather than a mode the radio switches on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Front {
     /// The panel: the scan list, the keys, and no access point.

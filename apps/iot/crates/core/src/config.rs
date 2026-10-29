@@ -10,13 +10,8 @@
 //! the shape is worth a word, not that any given board can enter it — the refusals are
 //! listed at the driver.
 
-use crate::demand::{EffectiveDemand, Mode, PlaneKey};
+use crate::demand::{DemandKey, EffectiveDemand, Mode};
 
-/// What the parts must be in for a demand to be met.
-///
-/// One field per plane that has an acquisition choice at all, because a plane with none
-/// names nothing here: an empty entry would be a claim that the plane is configured, and
-/// only the driver knows whether it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Configuration {
     /// `None` when the demand needs no motion configuration, which is `Mode::Off`.
@@ -47,13 +42,13 @@ impl Configurator {
         &self,
         demand: &EffectiveDemand,
     ) -> Result<Configuration, Unreachable> {
-        let motion = match MotionConfig::for_mode(demand.plane(PlaneKey::MOTION).mode) {
+        let motion = match MotionConfig::for_mode(demand.claim(DemandKey::MOTION).mode) {
             None => None,
             Some(config) if self.available.contains(&config) => Some(config),
             Some(config) => {
                 return Err(Unreachable {
-                    key: PlaneKey::MOTION,
-                    mode: demand.plane(PlaneKey::MOTION).mode,
+                    key: DemandKey::MOTION,
+                    mode: demand.claim(DemandKey::MOTION).mode,
                     config,
                 });
             }
@@ -102,8 +97,7 @@ impl MotionConfig {
 /// the part cannot meet arrives here instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unreachable {
-    /// Which plane went unmet, so the demand can be amended rather than left claiming it.
-    pub key: PlaneKey,
+    pub key: DemandKey,
     pub mode: Mode,
     pub config: MotionConfig,
 }
@@ -122,8 +116,8 @@ impl core::fmt::Display for Unreachable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::PlaneKey;
-    use crate::demand::{PlaneDemand, Sensitivity};
+    use crate::demand::DemandKey;
+    use crate::demand::{Claim, Sensitivity};
 
     #[test]
     fn off_is_met_by_not_collecting_rather_than_by_a_configuration() {
@@ -157,7 +151,7 @@ mod tests {
     #[test]
     fn the_configuration_a_mode_needs_is_named_in_its_refusal() {
         let refusal = Unreachable {
-            key: PlaneKey::MOTION,
+            key: DemandKey::MOTION,
             mode: Mode::OnChange,
             config: MotionConfig::WakeDetector,
         };
@@ -170,14 +164,14 @@ mod tests {
     fn demanding(mode: Mode) -> EffectiveDemand {
         let mut demand = EffectiveDemand::none();
         demand.set(
-            PlaneKey::MOTION,
-            PlaneDemand::new(mode, 0, Sensitivity::Secondary),
+            DemandKey::MOTION,
+            Claim::new(mode, 0, Sensitivity::Secondary),
         );
         demand
     }
 
     #[test]
-    fn a_plane_the_part_can_reach_is_configured_rather_than_refused() {
+    fn a_device_the_part_can_reach_is_configured_rather_than_refused() {
         let configurator = Configurator::new(&[MotionConfig::PolledRegisters]);
         assert_eq!(
             configurator.configuration_for(&demanding(Mode::Off)),
@@ -203,7 +197,7 @@ mod tests {
         assert_eq!(
             refusal,
             Unreachable {
-                key: PlaneKey::MOTION,
+                key: DemandKey::MOTION,
                 mode: Mode::Continuous,
                 config: MotionConfig::PolledRegisters,
             },

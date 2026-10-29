@@ -8,7 +8,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use esp_hal::time::{Duration, Instant};
-use iot_core::demand::PlaneKey;
+use iot_core::demand::DemandKey;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::camera::FrameOwner;
 use iot_core::drivers::light::{scale_brightness, vertical_brightness};
@@ -48,7 +48,7 @@ impl DiagnosticsSink for Screen {
         // something an application other than a page switch could ask for.
         if !diagnostics
             .demand
-            .plane(PlaneKey::CAMERA)
+            .claim(DemandKey::CAMERA)
             .mode
             .is_collecting()
             && self.owner.is_camera()

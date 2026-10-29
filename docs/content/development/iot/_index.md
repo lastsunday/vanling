@@ -10,12 +10,12 @@ Vanling 自有 ESP32 固件（`apps/iot`）的分层、组合与 Cargo feature �
 
 阅读顺序：先看分层（为什么这样切），再看 feature 判据（什么能进来），然后才是怎么跑起来和每一路语义。
 
-- [分层与组合](@/development/iot/architecture.md) — 分层、三轴正交组合、需求模型与传输、渲染插拔、新增板/芯片流程
+- [架构](@/development/iot/architecture.md) — 概览与启动流程、分层、三轴正交组合、需求模型与传输、渲染插拔、新增板/芯片流程
 - [Cargo Feature 判据与内聚](@/development/iot/features.md) — 硬/软 feature 定义、引入四判据、内聚六规则
 - [固件安装](@/development/iot/flashing.md) — 浏览器一键安装、esptool/GUI、批量烧录与调试
 - [无硬件仿真与回归冒烟](@/development/iot/emulation.md) — 宿主 harness + esp-emu、决策矩阵、console UART 约束
 - [音频计量语义](@/development/iot/audio.md) — 采集契约、屏幕读数与刻度、对数映射的弦误差、释放斜率反推
-- [运动语义框架](@/development/iot/motion.md) — 数据面/语义面双平面、三 family 仲裁、能力声明、QMI8658A 寄存器绑定
+- [运动语义框架](@/development/iot/motion.md) — 数据面/语义面双路径、三 family 仲裁、能力声明、QMI8658A 寄存器绑定
 - [放音语义](@/development/iot/playback.md) — 放音契约、一次性声音的相位、五个 MIDI 声音从哪来、一臂 20 ms 的 DMA 环
 
 常用命令与台架操作在 [速查](@/roadmap/cheatsheet.md)。

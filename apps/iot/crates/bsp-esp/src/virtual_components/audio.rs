@@ -875,7 +875,6 @@ impl<C, const R: usize> Es7210Rx<C, R> {
     /// audio, which on a scope is a column with a notch in it.
     fn restart(&mut self, now_ms: u64) {
         if !self.chain.is_running() {
-            // A parked plane is not a stalled one, and a lost chain has already said so.
             return;
         }
         self.restarts = self.restarts.saturating_add(1);
@@ -929,8 +928,6 @@ where
         let produced = match self.chain.running_mut() {
             Some(transfer) => transfer.available_bytes(),
             None => {
-                // Off the wire is a legitimate answer — the demand parked this plane — but
-                // so is having lost the chain, and the two look identical from here.
                 if self.chain.is_lost() && !self.reported_lost {
                     self.reported_lost = true;
                     log::error!(
@@ -1017,17 +1014,34 @@ where
         }
         if collecting {
             if !self.arm(now_ms) {
-                log::error!("[AUDIO] the demand asked for the plane back and it did not come");
+                log::error!("[AUDIO] the demand asked for capture back and it did not come");
             }
         } else if self.chain.park() {
-            // The chain comes down **here**, while someone asked for it. Left running, the
-            // ring fills, the engine halts on its own, and the only thing that would notice
-            // is the watchdog inside a `sample` this plane no longer receives.
-            log::info!("[AUDIO] capture stopped: the demand turned the plane off");
+            // The chain comes down here, while someone asked for it: left running, the ring fills,
+            // the engine halts on its own, and the watchdog inside `sample` is what notices.
+            log::info!("[AUDIO] capture stopped: the demand turned it off");
         }
     }
 
     fn sample(&mut self, now_ms: u64) -> AudioSample {
         self.poll(now_ms)
     }
+}
+
+impl<C: crate::hardware::SelfCheck, const R: usize> crate::hardware::SelfCheck for Es7210Rx<C, R> {
+    fn name(&self) -> &'static str {
+        self.codec.name()
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        self.codec.id()
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        self.codec.check()
+    }
+}
+
+impl<C: crate::hardware::Named, const R: usize> crate::hardware::Named for Es7210Rx<C, R> {
+    const NAME: &'static str = C::NAME;
 }

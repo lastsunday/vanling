@@ -1,10 +1,7 @@
-use crate::demand::{EffectiveDemand, Mode, PlaneKey};
-use crate::diagnostics::{
-    AudioDiagnostics, BreathSnapshot, Diagnostics, LightSnapshot, PlaybackDiagnostics,
-    TouchDiagnostics,
-};
+use crate::demand::{DemandKey, EffectiveDemand, Mode};
+use crate::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
 use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
-use crate::state::{AudioPhase, Breath, DeviceState, DisplayPage, LightState};
+use crate::state::{Breath, DeviceState, DisplayPage, LightState};
 use alloc::boxed::Box;
 
 /// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing,
@@ -160,24 +157,8 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         motion: state.motion,
         motion_counts: state.motion_counts,
         motion_caps: state.motion_caps,
-        audio: audio_diagnostics(state),
-        playback: playback_diagnostics(state),
-    }
-}
-
-/// Resolves which envelope the Audio page draws, done here so a sink reads one
-/// envelope and never re-implements the phase rule.
-fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
-    let shown = match state.audio.phase {
-        AudioPhase::Stopped => &state.audio.captured,
-        AudioPhase::Recording | AudioPhase::Idle => &state.audio.live,
-    };
-    AudioDiagnostics {
-        phase: state.audio.phase,
-        envelope: shown.envelope,
-        elapsed_ms: shown.elapsed_ms,
-        restarts: shown.restarts,
-        dba_lsb: shown.dba_lsb,
+        audio: state.audio_diagnostics(),
+        playback: state.playback_diagnostics(),
     }
 }
 
@@ -190,17 +171,6 @@ fn audio_diagnostics(state: &DeviceState) -> AudioDiagnostics {
 /// capture poll past their ring runway.
 pub const DIAG_REPAINT_STEP_MS: u64 = 40;
 
-/// Whether a diagnostics drift warrants a full-frame repaint now. The rate gate
-/// bounds the blocking-SPI duty cycle, and each page predicate must cover exactly
-/// the diagnostics that page draws: the Audio page redraws on everything visible
-/// except the wall-time counter, the attitude dial on every snapshot, the Speaker
-/// page on the playback row it stamps, Ambient on the corner overlay when enabled.
-///
-/// A predicate must never widen to `true` on a drift it does not draw. The snapshot
-/// carries the live envelope, which keeps folding whether or not a capture runs, so a
-/// page that repaints on any drift ships a full 150 KiB frame every
-/// [`DIAG_REPAINT_STEP_MS`] forever — and that SPI duty cycle is what starves the
-/// playback feed and capture poll into restarting their DMAs.
 pub fn diag_repaint_due(
     page: DisplayPage,
     prev: &Diagnostics,
@@ -208,9 +178,7 @@ pub fn diag_repaint_due(
     since_ms: u64,
     overlay: bool,
 ) -> bool {
-    // The panel's own mode is not a page rule: a change-driven panel repaints when something
-    // changes and an unlit one never repaints at all. `Continuous` falls through to the page's.
-    match next.demand.plane(PlaneKey::DISPLAY).mode {
+    match next.demand.claim(DemandKey::DISPLAY).mode {
         Mode::Off => return false,
         Mode::OnChange => return since_ms >= DIAG_REPAINT_STEP_MS * 4 && prev != next,
         Mode::Continuous => {}
@@ -218,56 +186,7 @@ pub fn diag_repaint_due(
     if since_ms < DIAG_REPAINT_STEP_MS {
         return false;
     }
-    match page {
-        DisplayPage::Audio => {
-            prev.audio.phase != next.audio.phase
-                || prev.audio.envelope != next.audio.envelope
-                || prev.audio.restarts != next.audio.restarts
-                || prev.audio.dba_lsb != next.audio.dba_lsb
-        }
-        DisplayPage::Attitude => true,
-        DisplayPage::Speaker => prev.playback != next.playback,
-        DisplayPage::Ambient => overlay,
-        // The camera page redraws on a frame arriving, which is a data-plane event and not
-        // anything this diff can see — so a snapshot drift must not force a repaint here.
-        // Forcing one would ship a full frame that is a copy of the last one, ~15 ms of
-        // blocking SPI for nothing, and the picture is only new every few hundred ms anyway.
-        DisplayPage::Camera => false,
-        // The Network page draws the link, the scan list, the entry being taken on it, and the marks
-        // the store puts on the list's rows — so a drift in any of them is exactly a repaint, and a
-        // drift in none of them (the touch counters the same snapshot carries) is not. The entry is
-        // here because it is what a finger is typing: a key that did not repaint would be a key the
-        // user cannot see arrive. The marks ride the list itself, so `aps` covers them: a save or a
-        // forget is a new list from the network task, and the survey's own list deliberately does
-        // not republish a round it read the same.
-        //
-        // The board's address is here for the same reason the rest is: it arrives once, after the
-        // radio's first report, and a header that drew before it landed would keep a blank cell
-        // for as long as the list stayed the same — which the survey makes a point of doing.
-        DisplayPage::Network => {
-            prev.link != next.link
-                || prev.aps != next.aps
-                || prev.setup != next.setup
-                || prev.mac != next.mac
-        }
-        // The splash draws the device's own name and what the button is for, and neither changes
-        // while it is up: entering and leaving it are the page change itself, which repaints
-        // without asking here.
-        DisplayPage::Splash => false,
-    }
-}
-
-/// Folds the Speaker page's playback state into a snapshot. Straight copy rather
-/// than a resolution like the audio one: the phase is the state layer's rule, and
-/// the page only has to print what the state already decided.
-fn playback_diagnostics(state: &DeviceState) -> PlaybackDiagnostics {
-    PlaybackDiagnostics {
-        phase: state.playback.phase,
-        sound: state.playback.sound,
-        muted: state.playback.muted,
-        plays: state.playback.plays,
-        dropped: state.playback.dropped,
-    }
+    crate::page::repaint_due(page, prev, next, overlay)
 }
 
 /// How a renderer wants to be driven after an appearance sync.
@@ -419,6 +338,7 @@ pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
 mod tests {
     use super::*;
     use crate::drivers::audio::{AudioEnvelope, AudioSample};
+    use crate::state::AudioPhase;
 
     #[test]
     fn a_share_is_reported_whole_and_never_over_a_hundred() {
@@ -1334,12 +1254,12 @@ mod tests {
     #[test]
     fn an_unlit_panel_never_repaints_and_a_dim_one_only_on_a_change() {
         let base = Diagnostics::default();
-        assert_eq!(base.demand.plane(PlaneKey::DISPLAY).mode, Mode::Continuous);
+        assert_eq!(base.demand.claim(DemandKey::DISPLAY).mode, Mode::Continuous);
 
         let mut unlit = base.clone();
         unlit.demand.set(
-            PlaneKey::DISPLAY,
-            crate::demand::PlaneDemand::new(Mode::Off, 0, crate::demand::Sensitivity::Primary),
+            DemandKey::DISPLAY,
+            crate::demand::Claim::new(Mode::Off, 0, crate::demand::Sensitivity::Primary),
         );
         let mut wobble = unlit.clone();
         wobble.audio.phase = AudioPhase::Recording;
@@ -1357,8 +1277,8 @@ mod tests {
 
         let mut dim = base.clone();
         dim.demand.set(
-            PlaneKey::DISPLAY,
-            crate::demand::PlaneDemand::new(Mode::OnChange, 0, crate::demand::Sensitivity::Primary),
+            DemandKey::DISPLAY,
+            crate::demand::Claim::new(Mode::OnChange, 0, crate::demand::Sensitivity::Primary),
         );
         assert!(
             !diag_repaint_due(
@@ -1429,15 +1349,13 @@ mod tests {
 
     #[test]
     fn the_snapshot_carries_the_demand_in_force_not_the_pages_own() {
-        // Passing the demand in rather than deriving it: a build that turns a plane down
-        // reaches the snapshot with the level it is actually running.
         let mut manager =
             DeviceManager::with_motion(true, crate::drivers::motion::MotionCapabilities::EMPTY)
-                .with_planes(alloc::vec![
-                    PlaneKey::MOTION,
-                    PlaneKey::AUDIO,
-                    PlaneKey::CAMERA,
-                    PlaneKey::DISPLAY
+                .with_demand_keys(alloc::vec![
+                    DemandKey::MOTION,
+                    DemandKey::AUDIO,
+                    DemandKey::CAMERA,
+                    DemandKey::DISPLAY
                 ])
                 .with_audio(true)
                 .with_camera(true)
@@ -1448,25 +1366,25 @@ mod tests {
         assert_eq!(manager.state().page, DisplayPage::Audio);
         let quiet = manager.demand().clone();
         assert_eq!(
-            quiet.plane(PlaneKey::AUDIO).mode,
+            quiet.claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Continuous
         );
 
         manager = manager.with_override(crate::demand::parse_override("audio=off"));
         assert_eq!(
-            manager.demand().plane(PlaneKey::AUDIO).mode,
+            manager.demand().claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Off
         );
 
         let snapshot = light_diagnostics(&manager.state(), manager.demand());
         assert_eq!(
-            snapshot.demand.plane(PlaneKey::AUDIO).mode,
+            snapshot.demand.claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Off
         );
         assert_eq!(
             light_diagnostics(&manager.state(), &quiet)
                 .demand
-                .plane(PlaneKey::AUDIO)
+                .claim(DemandKey::AUDIO)
                 .mode,
             crate::demand::Mode::Continuous,
             "the page's own demand is still there to be passed when it is the one in force"

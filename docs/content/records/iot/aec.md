@@ -649,7 +649,7 @@ assert!(bytes < 1024, ...);                                             // 在�
 
 - **写入侧照旧抽**（`render_slice` 里每个**帧**一个样本——两个槽载同一个流，按槽抽会让抽取率减半），**读取侧走播放游标**：`Es8311Tx::advance_play_cursor` 从 DMA 自己的 free space 反推线缆走到哪儿，把增量喂给 `ReferenceLog::played`。这就是 `Speaker` 没有 `played_frames()` 的答案——**不给 `Speaker` 加方法**，而是加一条从扬声器单向下游发布的共享单元。
 - **共享单元跨两个 executor**：喂数在 Priority2 中断上，折叠在协作式 `input_task` 里，所以是 `CriticalSectionRawMutex` 的一个 cell（`bsp-esp/virtual_components/reference.rs`），**每次喂数取一次、每次 poll 取一次，绝不每样本一次**——48 kHz 上每样本一次锁比它服务的取消器还贵。
-- **落位**：降采样器在 core（`drivers/audio/decimator.rs`，按帧号而非自由计数器取相位，否则两流失相是静默失效），参考影子缓冲在 core（`drivers/aec/reference.rs`），抽头在 bsp 播出侧，配对在 bsp 采集侧，连线在板模块 `Board::new`。**没有给 `Speaker` 加任何东西**——那会把数据面的耦合从中断侧拉回来，而它的契约正是为了挡这个。
+- **落位**：降采样器在 core（`drivers/audio/decimator.rs`，按帧号而非自由计数器取相位，否则两流失相是静默失效），参考影子缓冲在 core（`drivers/aec/reference.rs`），抽头在 bsp 播出侧，配对在 bsp 采集侧，连线在板模块 `Board::new`。**没有给 `Speaker` 加任何东西**——那会把数据路径的耦合从中断侧拉回来，而它的契约正是为了挡这个。
 - **尺寸从几何算出来**：`REFERENCE_SAMPLES = ⌈(5 760 + 2 880 + 192) / 3⌉ = 2 944`，`const _: () = assert!` 钉住「装得下整个跑道」。采集侧另有一条断言钉住自己的环确实是三趟 poll 深——**两个模块各写一份的数字是会漂的**，漂了就是日志悄悄 lap。
 
 `[测试]` `ReferenceLog` 的 14 条测试里最要紧的一条是 `at_play_cursor` 的**索引单位**：环按**保留样本**编址，而计数器数的是**帧**。第一版用 `written % N` 而 `written` 每帧自增，结果三个槽里只有一个被写过——**测试全绿，采样全是零**。现在断言的是**具体样本值**（`frames(n) = n × 97`）而不是下标，因为错的下标长得像对的。

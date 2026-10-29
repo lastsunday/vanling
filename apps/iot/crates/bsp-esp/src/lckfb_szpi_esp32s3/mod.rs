@@ -1,4 +1,4 @@
-use crate::post::{self, Provenance, State};
+use crate::hardware;
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::cell::RefCell;
 use embassy_embedded_hal::shared_bus::I2cDeviceError;
@@ -27,16 +27,17 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_hal::{dma_rx_buffer, dma_tx_buffer};
 use esp_storage::FlashStorage;
 use iot_core::config::MotionConfig;
-use iot_core::demand::PlaneKey;
+use iot_core::demand::DemandKey;
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS, CaptureSink};
 use iot_core::drivers::board::Board as BoardTrait;
-use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi};
+use iot_core::drivers::board::{HasAudio, HasCamera, HasPanel, HasPlayback, HasWifi};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
     TouchGestures,
 };
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
+use iot_core::state::Panel;
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
@@ -96,8 +97,6 @@ const _: () = assert!(
 /// and the one most exposed to a still-settling NACK that would strand the board.
 const PCA9557_RETRY_ATTEMPTS: u8 = 5;
 const PCA9557_RETRY_MS: u32 = 20;
-/// Boot-side QMI8658 fast-path retries; a leftover failure keeps the plane wired
-/// and is healed by `RecoverableQmi` from the poll loop.
 const MOTION_RETRY_ATTEMPTS: u8 = 3;
 const MOTION_RETRY_MS: u32 = 10;
 /// DMA copy-buffer size; only flash-resident command tables are copied, the
@@ -458,15 +457,15 @@ impl Board<'static> {
         let mut light = Screen::new(0, panel, backlight, &mut frame_arena().0);
         // A sensor that is not fitted is a board without a camera, not a board that cannot
         // boot: the page that needs it stays dark and the rest are unaffected.
-        let camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {
-            Ok(camera) => Some(Box::new(camera) as Box<dyn FrameSource>),
+        let mut camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {
+            Ok(camera) => Some(camera),
             Err(error) => {
                 log::warn!("[CAM] camera bring-up failed, the Camera page stays dark: {error:?}");
                 None
             }
         };
-        let button = PullButton::new(GPIO0);
-        let touch = Ft6336::new(
+        let mut button = PullButton::new(GPIO0);
+        let mut touch = Ft6336::new(
             I2cDevice::new(bus),
             FT6336_I2C_ADDR,
             ft6336::LANDSCAPE_MAP,
@@ -509,7 +508,7 @@ impl Board<'static> {
         } else {
             capture::tdm_config()
         };
-        let (audio, speaker) = match (capture_codec, speaker_codec) {
+        let (mut audio, mut speaker) = match (capture_codec, speaker_codec) {
             (capture_codec, speaker_codec)
                 if capture_codec.is_some() || speaker_codec.is_some() =>
             {
@@ -573,45 +572,12 @@ impl Board<'static> {
             _ => (None, None),
         };
 
-        // What came up, in one place, before the product starts using any of it.
-        // Every state is read off the same value the board hands back, so this
-        // cannot disagree with what the product will actually find.
-        //
-        // The panel, touch and IMU are not options here — a board without them
-        // fails bring-up outright — so they are `Found` by construction, and
-        // their provenance is `Asserted`: the driver succeeding is evidence the
-        // bus works, not a readback of what is on it.
-        let present = |present: bool| {
-            if present { State::Found } else { State::Absent }
-        };
-        let mut found = 3;
-        let mut absent = 0;
-        let mut tally = |state: State| {
-            match state {
-                State::Found => found += 1,
-                State::Absent => absent += 1,
-                State::Degraded(_) => {}
-            }
-            state
-        };
-
-        post::identity();
-        post::line("panel", State::Found, Provenance::Asserted);
-        post::line("touch", State::Found, Provenance::Asserted);
-        post::line("motion", State::Found, Provenance::Asserted);
-        for (name, wired) in [
-            ("mic", audio.is_some()),
-            ("speaker", speaker.is_some()),
-            ("camera", camera.is_some()),
-        ] {
-            let state = tally(present(wired));
-            post::line(name, state, Provenance::Read);
-        }
-        // Wired, and the wiring measured, but whether the pairing actually
-        // cancels is a question this build cannot answer — see the record.
-        post::line("aec", State::Found, Provenance::Unverified);
-        found += 1;
-        post::summary(found, 0, absent);
+        hardware::identity();
+        hardware::Report::of([&mut light, &mut button, &mut touch, &mut motion])
+            .include(audio.as_mut())
+            .include(speaker.as_mut())
+            .include(camera.as_mut())
+            .finish();
 
         Ok((
             Self {
@@ -621,7 +587,7 @@ impl Board<'static> {
                 motion: Some(motion),
                 audio,
                 speaker,
-                camera,
+                camera: camera.map(|camera| Box::new(camera) as Box<dyn FrameSource>),
                 radio: Some(WIFI),
                 credentials,
             },
@@ -631,26 +597,6 @@ impl Board<'static> {
         ))
     }
 
-    /// Bring-up for the playback isolation probe: the DAC, its amplifier and the
-    /// transmit unit, and nothing else.
-    ///
-    /// The product build holds the capture slaved to the transmit unit (see
-    /// [`playback::shared_tdm_config`]), so isolating the speaker means cutting
-    /// that coupling too: here the transmit unit drives the same two pins itself
-    /// and the receive unit is never built, which it can be because with no
-    /// microphone to slave there is nothing to slave.
-    ///
-    /// The expander is still driven, and only for the amplifier: `PA_EN` is the
-    /// board's spare pin, and the panel is held in the same power-down its masks
-    /// already select so a probe that never paints the panel also never wakes it.
-    /// Everything else is left `None`, so the probe's entry point can refuse to
-    /// ask for a capability this bring-up did not wire.
-    /// The motion plane alone, for the demand matrix probe.
-    ///
-    /// The expander is brought up because the IMU is on the same bus and its reset needs it.
-    /// The IMU comes back configured but *uninitialized*: this path walks fidelities, so a
-    /// bring-up that already wrote one would make the first cell measure a switch nobody
-    /// asked for.
     pub fn new_motion_only(peripherals: Peripherals) -> Result<Startup<'static>, BoardError> {
         #[allow(non_snake_case)]
         let Peripherals {
@@ -826,7 +772,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
         if let Some(button) = self.button.take() {
             entries.push(PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(button)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,
@@ -835,7 +781,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
         if let Some(touch) = self.touch.take() {
             entries.push(PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(touch),
                 Box::new(TouchGestures::new()),
                 TOUCH_SCAN_MS,
@@ -850,7 +796,7 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
         self.motion.take().map(|motion| {
             PollEntry::new(
                 1,
-                PlaneKey::MOTION,
+                DemandKey::MOTION,
                 Box::new(MotionInput::new(RecoverableQmi::new(motion, Delay::new()))),
                 Box::new(PassThrough),
                 MOTION_SCAN_MS,
@@ -880,7 +826,7 @@ impl HasAudio for Board<'static> {
         self.audio.take().map(|audio| {
             PollEntry::new(
                 2,
-                PlaneKey::AUDIO,
+                DemandKey::AUDIO,
                 Box::new(AudioInput::new(audio, sink)),
                 Box::new(PassThrough),
                 CAPTURE_MS,
@@ -899,6 +845,13 @@ impl HasWifi for Board<'static> {
     type Station = crate::components::wifi::EspStation;
 
     fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
+        iot_chip_esp::ungate_radio();
         self.radio.take().and_then(crate::components::wifi::start)
+    }
+}
+
+impl HasPanel for Board<'static> {
+    fn panel(&self) -> Panel {
+        Panel::Wired
     }
 }

@@ -77,3 +77,17 @@ impl Panel {
         }
     }
 }
+
+impl crate::hardware::SelfCheck for Panel {
+    fn name(&self) -> &'static str {
+        self.driver.name()
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        self.driver.id()
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        self.driver.check()
+    }
+}

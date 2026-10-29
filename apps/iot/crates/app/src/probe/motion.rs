@@ -5,14 +5,11 @@
 use embassy_time::{Duration, Instant, Timer};
 use iot_bsp_esp::components::qmi8658::{Qmi8658, SUPPORTED_CONFIGS};
 use iot_core::config::MotionConfig;
-use iot_core::demand::{EffectiveDemand, Mode, PlaneDemand, PlaneKey, Sensitivity, poll_plan_of};
+use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Sensitivity, poll_plan_of};
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionSource};
 
-/// The device type the board hands the motion plane on.
 pub type MotionDevice = iot_bsp_esp::SharedI2cDevice;
 
-/// The cadence the board wires this plane at; every other cell is measured or derived
-/// against it.
 const BOARD_CADENCE_MS: u64 = MOTION_SCAN_MS;
 
 /// Polls discarded after a configuration write, enough for the engine windows the driver just
@@ -30,7 +27,6 @@ const CELL_BUDGET_MS: u64 = 20_000;
 /// artefact rather than a measurement.
 const MIN_CELL_POLLS: u32 = 20;
 
-/// The class this plane carries, named in the log so a row can be traced to its claim.
 const CLASS: Sensitivity = Sensitivity::Secondary;
 
 /// The configurations in order, so the log reads low to high and shows the ones with no
@@ -162,10 +158,10 @@ pub async fn run(mut driver: Qmi8658<MotionDevice>) -> ! {
         for requested_ms in CADENCES_MS {
             let mut demand = EffectiveDemand::none();
             demand.set(
-                PlaneKey::MOTION,
-                PlaneDemand::new(Mode::Continuous, requested_ms as u32, CLASS),
+                DemandKey::MOTION,
+                Claim::new(Mode::Continuous, requested_ms as u32, CLASS),
             );
-            let plan = poll_plan_of(PlaneKey::MOTION, &demand, BOARD_CADENCE_MS);
+            let plan = poll_plan_of(DemandKey::MOTION, &demand, BOARD_CADENCE_MS);
             let cadence_ms = plan.cadence_ms;
             match affordable_polls(cadence_ms) {
                 Some(polls) if cadence_ms != BOARD_CADENCE_MS => {

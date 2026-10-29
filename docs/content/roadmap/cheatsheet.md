@@ -321,7 +321,7 @@ IOT_PORT=<port> moon run iot:flash-s3                  # 两块板同时插入�
 
 `IOT_PORT` 不属于此类：它只交给 espflash 定位端口，不进入固件。
 
-`IOT_DEMAND` 按项宽松解析：无法识别的项只丢弃该项，构建仍然成功；若整串未识别出任何数据面，另打印一条 `[IOT] IOT_DEMAND named no plane this firmware recognises: ignored`。`IOT_BOOT_PAGE` 取到无效页名时退回 `ambient`，并打印 `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient`。
+`IOT_DEMAND` 按项宽松解析：无法识别的项只丢弃该项，构建仍然成功；若整串未识别出任何设备，另打印一条 `[IOT] IOT_DEMAND named nothing this firmware recognises: ignored`。`IOT_BOOT_PAGE` 取到无效页名时退回 `ambient`，并打印 `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient`。
 
 ### 日志 {#logging}
 
@@ -404,7 +404,7 @@ nm <elf> | grep -E '_stack_(start|end)_cpu0'
 
 ## 完整内容 {#further}
 
-- [分层与组合](@/development/iot/architecture.md)、[feature 判据](@/development/iot/features.md)
+- [架构](@/development/iot/architecture.md)、[feature 判据](@/development/iot/features.md)
 - [固件安装](@/development/iot/flashing.md)——产物、分区表、bench 镜像、抓完整启动日志的配方
 - [无硬件仿真](@/development/iot/emulation.md)
 - [运动](@/development/iot/motion.md)、[音频计量](@/development/iot/audio.md)、[放音](@/development/iot/playback.md)

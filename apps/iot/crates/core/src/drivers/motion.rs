@@ -16,10 +16,6 @@ pub use recognizer::{
     TAP_SETTLED_MOTION_MS, TILT_ENTER_DEG_X10, TILT_EXIT_DEG_X10,
 };
 
-/// Poll cadence of the semantic/data plane. Every source shares the app's 5 ms
-/// base tick, so this is four of those ticks: fast enough that a knock or a
-/// lift is not missed between polls, slow enough to leave the shared I2C bus
-/// to the touch and button scanners.
 pub const MOTION_SCAN_MS: u64 = 20;
 
 /// A quiet device must still refresh the readout, but a moving one need not
@@ -159,9 +155,6 @@ fn wrap_tenths(value: i16) -> i16 {
     wrapped as i16
 }
 
-/// One successful poll: the data plane plus whatever the source's own hardware
-/// engines reported. The core-side recognizer adds its semantics on top, and
-/// both sets are arbitrated together before leaving the driver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MotionReading {
     pub sample: MotionSample,

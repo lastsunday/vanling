@@ -21,10 +21,10 @@
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use crate::sounds::SWEEP_MS;
 use embassy_executor::SendSpawner;
 use embassy_time::{Duration, Instant, Timer};
 use iot_bsp_esp::virtual_components::EchoCapture;
-use iot_bsp_esp::virtual_components::SWEEP_MS;
 use iot_core::demand::MAX_SINGLE_HOLD_MS;
 use iot_core::drivers::aec::SAMPLE_RATE_HZ;
 use iot_core::drivers::audio::{AudioSample, CAPTURE_MS, ENVELOPE_COLUMNS, dbfs};
@@ -193,7 +193,9 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
     // re-arming it on the timer would put a discontinuity on the wire at the tick
     // rate — the measurement being ruined by the act of taking it.
     if PATH_RUN {
-        if let Err(error) = shared.lock(|shared| shared.speaker.borrow_mut().play(sound)) {
+        if let Err(error) =
+            shared.lock(|shared| crate::sounds::play(&mut **shared.speaker.borrow_mut(), sound))
+        {
             log::error!("[PATH] the sweep would not start: {error}");
             park().await;
         }
@@ -204,7 +206,8 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
     }
     loop {
         if !PATH_RUN
-            && let Err(error) = shared.lock(|shared| shared.speaker.borrow_mut().play(sound))
+            && let Err(error) =
+                shared.lock(|shared| crate::sounds::play(&mut **shared.speaker.borrow_mut(), sound))
         {
             log::error!("[ECHO] {sound:?} refused: {error}");
         }

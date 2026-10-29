@@ -61,3 +61,13 @@ impl<const BUFFER_SIZE: usize> CameraTarget for Ws2812RgbLed<'_, BUFFER_SIZE> {
 
     fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {}
 }
+
+impl<const BUFFER_SIZE: usize> crate::hardware::SelfCheck for Ws2812RgbLed<'_, BUFFER_SIZE> {
+    fn name(&self) -> &'static str {
+        "rgb-led"
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        crate::hardware::Status::declared()
+    }
+}

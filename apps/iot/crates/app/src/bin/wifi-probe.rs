@@ -129,10 +129,6 @@ async fn main(_spawner: Spawner) -> ! {
 async fn measure(mut board: iot_bsp_esp::Board<'static>) -> ! {
     log::warn!("[PROBE] radio and IP stack only: no panel, touch, motion or audio");
 
-    // The driver expects the domain powered and the modem clocks un-gated; on the parts this
-    // driver version supports, nothing in the crate does that, so it is done here.
-    iot_chip_esp::ungate_radio();
-
     let Some(station) = board.take_wifi() else {
         log::error!("[PROBE] this build wired no radio, so there is nothing to measure");
         park().await

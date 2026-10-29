@@ -3,8 +3,8 @@ title = "Input and Touch Implementation Record"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "8f56a82581811e4db3339ce3153bb19e58c78945"
-translated_at = "2026-10-18T00:00:00Z"
+source_file_hash = "9ce89147995fc7c09ff4790e2500d3d6278360ae"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -47,7 +47,7 @@ That line also makes "did one gesture become several operations" falsifiable —
 
 `[measured]` `[INPUT] held the executor … worst single hold … worst source: …` reports the whole tick, its longest single hold, and each path's worst time. The stable shape is `button 0 ms, touch 1 ms, motion 3 ms, capture 16–20 ms`. Capture is the largest because folding a sample runs a sixth-order IIR.
 
-`[test]` The interaction path is off-limits by design (`poll_plan_of` returns `active: true` outright for `DemandField::Interaction`). Measured floor: **10.87%** on a build with every plane `Off`, over 8 windows of 5 s within 0.1 point — all of it button and touch polling.
+`[test]` The interaction path is off-limits by design (`poll_plan_of` returns `active: true` outright for `DemandKind::Interaction`). Measured floor: **10.87%** on a build with every device `Off`, over 8 windows of 5 s within 0.1 point — all of it button and touch polling.
 
 `[measured]` That floor survives switching everything off, because it has nothing to do with demand: **a device given nothing still has to answer the button.** So it is a theoretical minimum rather than tuning headroom.
 
@@ -90,3 +90,11 @@ The mistake survived this long because **every touch behaviour verified on hardw
 **Not verified yet**, because software cannot synthesise touch and only the FT6336 produces panel coordinates: tapping the `abc` key must type `abc`, tapping `7` must type `7`, and a physical up/down swipe on the light pages must change the brightness.
 
 `[measured]` This build is already on the S3 (bench image, `IOT_PORT=/dev/cu.usbmodem1422301`): `App/part. size: 880,112/6,291,456 bytes`, `[IOT] boot page is Network` at boot, no panic, and `[DISPLAY] Network 1 repaints in 5901 ms, held the executor 18 ms (0%)` — **so the board is running this build**, and the item above owes a finger, not a flash.
+
+---
+
+## Catch-up lands in one division; a zero cadence no longer spins (`[test]`, 2026-10-28)
+
+`PollEntry::advance_past` moves "the next slot" past `now` after every poll (`app/src/input.rs:212`, inside the input task's loop). It used to step `+= cadence` cell by cell: a source that had been off for an hour (`set_active` parks the next slot at 0) walked 180k of them, on the main task's stack. Now one division lands on the same cell — `a_source_that_resumes_after_an_hour_lands_on_the_next_slot_once` holds it to "the first slot, not several cadences late".
+
+`cadence_ms == 0` is not a value any board wires (`set_cadence_ms` refuses anything below the board's floor, see `a_budget_can_never_shorten_a_cadence_the_board_wired`), but the constructor takes any value and the old walk looped forever on it. It now lands at `now + 1`: this tick does nothing, the next one decides. `a_zero_cadence_moves_the_schedule_instead_of_dividing_by_zero` holds it to that.

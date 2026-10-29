@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "3809493b8b59cd3b9d140dd91bf63eb4d9d44479"
-translated_at = "2026-10-22T13:00:35Z"
+source_file_hash = "1de69416561fb42ed2ba1c285c4d06251d797ebf"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -24,7 +24,7 @@ Each judgement is marked with its basis: **`[test]`** a unit test backs it, **`[
 - **In Light-sleep, peripherals are clock gated and no interrupt is generated.** So any driver relying on a peripheral interrupt has to hold `NO_LIGHT_SLEEP`. This board's DVP capture chain and both I2S chains move their data by DMA and fall under that rule.
 - Peripheral clock sources such as `REF_TICK`, `XTAL` and `RC_FAST` (i.e. RTC_8M) **are not influenced by APB frequency**, so downclocking is not a full stop and some clocks survive an APB change.
 
-The firmware has **no PM configuration at all** — no light-sleep, no `esp_pm_configure`, no `WFI`. The feed already runs on its own `InterruptExecutor` (`SpeakerRunner::OnInterrupt` in `lib.rs`), so the executor-contention route is settled structurally and needs no lock.
+The firmware has **no PM configuration at all** — no light-sleep, no `esp_pm_configure`, no `WFI`. The feed already runs on its own `InterruptExecutor` (`Feed::Interrupt` in `lib.rs`), so the executor-contention route is settled structurally and needs no lock.
 
 So **not implementing locks is the right call**: adding two with no holder is dead code, and a deadlock is harder to diagnose than dead code.
 
@@ -36,7 +36,7 @@ But the order does matter. Before light-sleep there has to be a reference-counte
 | The capture chain | a completed DMA releases the ring, and a gated DMA means the ring is never drained |
 | The DVP capture chain | same, and its chain-repair poll lives render-side |
 
-`InputSource::set_plane_collecting` is already this shape (a plane that is off cannot learn it from the next poll, so someone has to say it explicitly), so the wiring point is right and only the locks themselves are missing.
+`InputSource::set_demand_collecting` is already this shape (a device that is off cannot learn it from the next poll, so someone has to say it explicitly), so the wiring point is right and only the locks themselves are missing.
 
 Zephyr's split confirms it: its device runtime PM explicitly **does not manage device dependencies** — "devices can manually get or put their dependencies" — so dependencies are the consumer's job, not something automatic.
 
@@ -117,9 +117,74 @@ _stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB
 
 **Why it is needed**: drawing a render puts `Diagnostics` snapshots and two `[u16; ENVELOPE_COLUMNS]` column arrays on the stack by value, and the Audio page once crashed on this stack (the exception's `A1` sat below `_stack_end`).
 
-`[measured]` Current use is 36 453 B (43.9%), leaving about 46.6 KB spare (measured on the Ambient page, deepest value in 47 s of post-flash logs). The firmware ships its own high-water measurement (`[DISPLAY] stack peak`), sampled once per repaint window and taken as the deepest value — a measurement, not an estimate. The Camera page's reading used to be `0 B` throughout: that path passes no sampling point, so it was unmeasured rather than shallow, and now samples like the others.
+`[measured]` On 2026-10-28 the Ambient page reads **42,392 B of 65,976 B** (64.3%), leaving 23,584 B (info image boot log, `[DISPLAY] stack peak 42392 B of 65976 B`, the first window at 2.7 s); the earlier 36,453 B (43.9%) predates the render/state rounds. The firmware ships its own high-water measurement (`[DISPLAY] stack peak`), sampled once per repaint window and taken as the deepest value — a measurement, not an estimate. The Camera page's reading used to be `0 B` throughout: that path passes no sampling point, so it was unmeasured rather than shallow, and now samples like the others.
 
 **An open question**: this peak is nearly constant from boot, and switching pages does not raise it — yet the historical crash point was the Audio page's full-frame stamp. Which path the peak actually belongs to is **not yet identified**. If it turns out to be rendering, rendering is heavier than the code comment describes, and it is worth chasing.
+
+### After the per-page split: the wall did not move, the peak is 42,392 B (`[measured]`, 2026-10-28)
+
+`[measured]` The same ruler (`nm apps/iot/target/xtensa-esp32s3-none-elf/release/vanling`), read after `state/` was split per page and the sound catalogue moved into `app`:
+
+| Quantity | Reading |
+| --- | --- |
+| `_stack_start_cpu0 − _stack_end_cpu0` | `0x3fce9710 − 0x3fcd9558` = **65,976 B** (floor 65,536, margin **440 B**) |
+| `__embassy_main::POOL` | **42,776 B** (`0xa718`) |
+| `moon run iot:image` | S3 `1,059,904 / 6,291,456 B` (16.85%), C6 `842,400 / 1,048,576 B` (80.34%) |
+
+These addresses are byte-identical to the readings before the split, so the two rounds add **0** to the S3 static footprint: what moved is where code lives, not the layout. The images are S3 `1,059,888 → 1,059,904 B` (+16 B); C6's last recorded figure was `826,976 B`, but rebuilt at HEAD with the same command it is **826,656 → 842,400 B (+15,744 B)**.
+
+**That 15.7 KB sits entirely on the C6 side, and the source is measured**: `app/src/sounds.rs`'s `play` now parses before handing a source to the speaker, whereas at HEAD the parse lived in the S3 driver — C6's `UnwiredSpeaker::play(Sound)` did nothing, so LTO dropped it. The symbols show it: HEAD's C6 image has **zero** occurrences of `from_midi`, the `Score::into_notes` sort or `Tone::fill`; this round has seven. `control_loop::poll` therefore grew by 5,466 B, and `iot_core::drivers::playback` symbols total 10,608 B this round. C6's `take_playback()` returns `None`, so the path never runs: it costs slot, not cycles. C6 has 206,176 B left, so this is recorded rather than urgent — whether to put the parse back behind compile time (a soft feature, or keeping `play` only in builds with a speaker) remains an open decision.
+
+That build set no `IOT_WIFI_*`, and credential strings shift `_stack_end`, so this wall is comparable only with builds that also carry no credentials.
+
+`[measured]` **Peak: `42,392 B of 65,976 B`** (64.3%, leaving 23,584 B). The line appears in the product info image's boot log (`moon run iot:flash-s3`, the first window 2.7 s after reset, Ambient page), and `main stack` matches `nm` — so `[DISPLAY] stack peak` does not need a debug image: the high-water prints at info for every 1,024 B it gains, and only a repeated reading drops to debug. The figure covers the splash and the page it lands on.
+
+`[measured]` **Cross-page worst case: 42,392 B of 65,976 B** (the Speaker page reads 42,376 B, the only one lower). Each of the six pages was rebuilt with `IOT_BOOT_PAGE=<page>`, flashed and monitored once; same board, same session, every one of them got `192.168.1.136`:
+
+| Page | `App/part` B | `main stack` B | Peak B |
+| --- | --- | --- | --- |
+| ambient | 1,059,904 | 65,976 | 42,392 |
+| attitude | 1,059,952 | 65,976 | 42,392 |
+| audio | 1,059,984 | 65,976 | 42,392 |
+| speaker | 1,060,192 | 65,976 | 42,376 |
+| camera | 1,059,920 | 65,976 | 42,392 |
+| network | 1,059,936 | 65,976 | 42,392 |
+
+`main stack` is identical across all six: the boot page only picks an entry, it does not move static layout. The Speaker page's peak is 16 B shallower than the rest — that is that page's draw chain being shallower, not measurement granularity: the line triggers once per 1,024 B gained, but the value printed is the exact high-water. Budgeting still takes the ceiling, 42,392 B. **The 440 B is the distance from the wall to the floor; 42,392 B is the water line already reached.**
+
+### After the B/C split the wall is 160 B wider (`[measured]`, 2026-10-29)
+
+`[measured]` Same ruler, read after `core/src/page/` became one module per page, `state/tests.rs` moved into the modules it tests, `ui/src/pages/live.rs` split into three pages, and the frame cadence became `app/src/frame.rs` (measured once the Docker engine came back; the build carried no `IOT_WIFI_*`):
+
+| quantity | reading | previous (end of A) | delta |
+| --- | --- | --- | --- |
+| `_stack_start_cpu0 − _stack_end_cpu0` | `0x3fce9710 − 0x3fcd94b8` = **66,136 B** | 65,976 B | **+160 B** |
+| margin (minus 65,536) | **600 B** | 440 B | +160 B |
+| `__embassy_main::POOL` | **42,784 B** (`0xa720`) | 42,776 B | +8 B |
+| `moon run iot:image` S3 | `1,059,216 / 6,291,456 B` (16.84%) | 1,059,904 | **−688 B** |
+| `moon run iot:image` C6 | `843,728 / 1,048,576 B` (80.46%) | 842,400 | **+1,328 B** |
+
+`[measured]` POOL grew 8 B while the wall widened 160 B, so other statics shrank by 168 B: B/C only move code, and LTO laid the result out again across the new module boundaries rather than any one thing being deliberately made smaller. The C6's +1,328 B is not attributed symbol by symbol — the C6 still has 204,848 B left, so only the number is recorded. `check-s3`, `build-s3`, `iot:image` and `check-features` (six host subsets plus nine bare-metal/C6 subsets) all pass this round.
+
+`[measured]` The first attempt went unmeasured because Docker Desktop's engine was down on this machine: `moon run iot:check-s3` stopped at `image vanling/xtensa:esp32s3_1.98.1.0 is missing` and `docker info` reported `Cannot connect to the Docker daemon at unix:///Users/yu/.docker/run/docker.sock`. After the engine came back (Server 28.5.1) the same tree produced the table above.
+
+---
+
+## `IOT_BOOT_PAGE` must be resolved at build time (`[measured]`, 2026-10-29)
+
+`[measured]` The symptom: any build that **set** `IOT_BOOT_PAGE` died at the join — the log stopped after `[WIFI] this device saved a network; joining …`, with `StoreProhibited` (sometimes `LoadProhibited`), the PC inside esp-radio's `os_adapter::free` / `event_post` and `EXCVADDR` at `0x3`. The same source built without the variable, flashed to the same board, connected and got an address every time; HEAD (`a13e96f5`) with `IOT_BOOT_PAGE=ambient` also connected (peak 41,880 B of 65,912 B).
+
+`[measured]` The fault is not on the main stack: the exception's `THREADPTR = 0x3fcd4908` is a radio task's TCB and `A1 = 0x3fcd4570` sits 20,472 B below the main stack's `_stack_end = 0x3fcd9568` — that is the radio task's own stack. What got corrupted is the radio blob's static data, the run starting at `sta_con_timer` (`0x3fcd8974`) that sits directly below the main stack floor. `ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"` in `.cargo/config.toml` means an overrun produces no warning at all, only "somebody else's code crashed" (next section).
+
+`[measured]` The difference is pinned to one place: `boot_page()` used to resolve `option_env!` at run time — `trim().to_ascii_lowercase()` into a `String`, then a table lookup. Same source: without the variable the join uses 23,409 B and the peak is 42,392 B; with `IOT_BOOT_PAGE=ambient` it is 27,745 B / 46,728 B, **+4,336 B**, and then it always crashes. The build with the variable has a main-task poll frame of `entry a1, 0x6710` (26,384 B); HEAD's is `entry a1, 0x5540` (21,824 B) — the latter also carries this round's other changes, so the absolute frame difference cannot all be charged to the boot page; what lines up item for item is the pair of same-source readings above.
+
+`[not separated]` Which region those 4,336 B overwrote was not separated: it could be the main stack running past the floor straight into the blob's `.bss`, or simply the larger frame changing the internal-heap layout so a radio task's stack landed on the blob's statics. Both explain the readings and neither changes the fix.
+
+`[measured]` The fix: the boot page becomes a **compile-time** constant — `const BOOT_PAGE: DisplayPage = boot_page_from_env(option_env!("IOT_BOOT_PAGE"))`, with a `const fn` trimming whitespace and comparing case-insensitively; an unrecognised name is kept separately in `const UNKNOWN_BOOT_PAGE: Option<&str>` and `boot_page()` logs the `[IOT] IOT_BOOT_PAGE=… is not a page` line from it (it is `None` for a valid name, so the whole `if let` folds away). After the fix an `IOT_BOOT_PAGE=attitude` build matches the product build item for item (`main stack 65,976 B`, peak `42,392 B`, 23,409 B at the join) and associates and gets `192.168.1.136` normally. The host test `only_a_name_no_page_answers_to_is_reported` pins "only an unknown name warns, and a valid one stays quiet in every spelling".
+
+**Constraint**: the boot page stays compile-time. A bench image and the product image share one stack budget, and that is the premise — the six pages above have identical `main stack` because the boot page takes no part in run-time layout.
+
+---
 
 ---
 

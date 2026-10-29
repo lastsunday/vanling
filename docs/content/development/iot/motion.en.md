@@ -3,22 +3,22 @@ title = "Motion Semantic Framework"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "a6c8e9274bc3dba13611d4baed1b9f2282210a96"
-translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "375feb6dea149a5d830a3b650b15eabedeb3cb63"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 # Motion Semantic Framework
 
 QMI8658A is only one source. What the framework exposes is **meaning** — "knocked once", "picked up" — not a particular bit of a particular register. This page covers the contract, the arbitration rules, the QMI8658A binding details, and how to add a new source.
 
-## Two planes
+## Two paths
 
-One motion input carries both planes at once, and both are first-class:
+One motion input carries both paths at once, and both are first-class:
 
-| Plane | Contents | Produced by |
+| Path |
 | --- | --- | --- |
-| Data plane | `MotionSample`: raw counts, acceleration mG, angular rate dps×10, roll/pitch/yaw | the driver |
-| Semantic plane | `MotionEvents`: `Tap` / `Still` / `TiltEnter` / `Shake` / `Lift` … | the QMI8658 engine (`Still`) **and** the core recognizer (the rest) |
+| Data path |
+| Semantic path |
 
 There is no "output semantics / output raw data" either-or.
 
@@ -29,13 +29,13 @@ Android's `SensorEvent` and Zephyr's `sensor_trigger` both keep two streams in p
 ### Where semantics come from
 
 - **Hardware engine**: the part's own detectors, optimal in power and latency, with their parameters in registers. The QMI8658A now enables only No-Motion, so `Still` is the one hardware semantic out of the box.
-- **The core recognizer**: `MotionRecognizer`, which only looks at the data plane; every threshold lives in core, so swapping the sensor does not change what the business layer means. Tap, tilt, shake, lift/place and posture all live here — including `Tap`, which was once tried on hardware (see the post-mortem below).
+- **The core recognizer**: `MotionRecognizer`, which only looks at the data path; every threshold lives in core, so swapping the sensor does not change what the business layer means. Tap, tilt, shake, lift/place and posture all live here — including `Tap`, which was once tried on hardware (see the post-mortem below).
 
 The two meet in `MotionInput::poll` and are arbitrated together before dispatch.
 
-Arbitration runs within a plane: a software Tap and a software Shake share the `Action` family, so they collapse into one.
+Arbitration runs within a path: a software Tap and a software Shake share the `Action` family, so they collapse into one.
 
-`MotionEvent::Tap` and `GestureEvent::Tap` are instead different events on two different planes, and are not merged.
+`MotionEvent::Tap` and `GestureEvent::Tap` are instead different events on two different paths, and are not merged.
 
 The first is a mechanical knock measured by the accelerometer (it may come from the case, from a struck desk, or even from the device sitting on a vibrating surface). The second is a finger landing on glass, carrying a position and a press duration.
 
@@ -73,12 +73,12 @@ The per-family cooldown is 300 ms, suppressing repeated chatter from the same fa
 
 ### Capability declaration
 
-`MotionCapabilities` is a bitset that is **declared, not switched**. The data plane ships unconditionally, so a source that lacks a semantic simply never raises it, rather than switching off the whole stream.
+`MotionCapabilities` is a bitset that is **declared, not switched**. The data path ships unconditionally, so a source that lacks a semantic simply never raises it, rather than switching off the whole stream.
 
 Capabilities come in two layers, to avoid crediting what software computed to hardware:
 
 - `QMI8658_CAPABILITIES` — what the driver computes itself: `TELEMETRY` `STILL`.
-- `RECOGNIZER_CAPABILITIES` — what core derives from any data plane: `TAP` `TILT` `SHAKE` `LIFT_PLACE` `POSTURE`.
+- `RECOGNIZER_CAPABILITIES` — what core derives from any data path: `TAP` `TILT` `SHAKE` `LIFT_PLACE` `POSTURE`.
 - `MOTION_CAPABILITIES` — the union of the two, i.e. what that board advertises externally.
 
 The board layer declares its own union through `HasMotion::motion_capabilities()`; the app reads it once at startup and logs it (`[MOTION] declared capabilities 0x…`), so a field investigation can tell straight away what that firmware build claims to report. A board with no accelerometer returns `MotionCapabilities::EMPTY`.
@@ -256,7 +256,7 @@ But the width of a reversal is measured in phase. For an up-crossing to be sampl
 
 The cost is that 40 ms polling and 20 ms polling report the same shake at different moments (coarse polling can miss a crest entirely and wait an extra cycle to accumulate enough crossings). That is decided by sampling, not by the time base.
 
-The tap criterion likewise runs on this 20 ms plane and is independent of the ODR. The high 896.8 Hz ODR serves only the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic (see below).
+The tap criterion likewise runs on this 20 ms path and is independent of the ODR. The high 896.8 Hz ODR serves only the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic (see below).
 
 `yaw` is an integral quantity, and with no magnetometer it drifts without bound; it is for diagnostic display only, and no semantic or business decision may read it.
 
@@ -272,7 +272,7 @@ The S3 board wires no INT1/INT2, so everything is polled. That produces three ha
 2. **CTRL7 must be 0 while the parameters are being configured.** The datasheet requires `aEN = gEN = 0`, so the order is: write CTRL1/2/3/5 → `CTRL7 = 0` → two CAL writes along with the CTRL9 commands (the two halves of the Motion engine) → `CTRL8 = 0x84` → `CTRL7 = 0x03`. The parameters are installed first and the engine is armed afterwards, otherwise the engine runs on the reset defaults
 3. The handshake must be bounded, but it is measured on the wall clock. `await_cmd_done` polls at most 1000 times, 1 ms apart, and returns `EngineConfig` on failure — it must not hang the input loop, since touch and button scanning are also hanging off that loop.
 
-   Wall clock is used rather than a tight poll loop because `CmdDone` is a sticky flag: a tight poll loop gives up before the device has finished computing, while a single false timeout here permanently kills the whole motion plane.
+   Wall clock is used rather than a tight poll loop because `CmdDone` is a sticky flag: a tight poll loop gives up before the device has finished computing, while a single false timeout here permanently kills the whole motion device.
 
    The manual gives no worst-case time for `CmdDone`, so the budget is taken from the only independent implementation that publishes one (RIOT uses a 1000 ms command timeout). Loosening it here is free, because it only runs the one-time boot sequence inside `init()` and the normal path returns on the very first poll.
 
@@ -290,7 +290,7 @@ ODR and window conversion: `CTRL2 = 0x13`, `CTRL3 = 0x53`, ODR index `0b0011`.
 
 The accelerometer column of Table 22 in the manual reads 1000 Hz, but the 6DOF column is 896.8 Hz, and note 13 says that when both sensors are enabled it is the 6DOF column that actually applies.
 
-The ODR is no longer serving the tap (the tap criterion runs on core's 20 ms plane and is independent of the ODR), but 896.8 Hz still comfortably exceeds what the No-Motion engine needs.
+The ODR is no longer serving the tap (the tap criterion runs on core's 20 ms path and is independent of the ODR), but 896.8 Hz still comfortably exceeds what the No-Motion engine needs.
 
 It also keeps the gyroscope yaw diagnostic at full rate.
 
@@ -343,7 +343,7 @@ Do not go and read `STATUSINT` to judge data readiness: with `syncSmpl=0` its bi
 
 After a configuration failure the driver does not self-heal: `init` is the only configuration entry point, and polling while uninitialized returns `MotionError::NotReady`.
 
-The S3 board treats motion as an optional sensor, so a failed `init` only logs one line and boot continues: the device works as usual, just without a motion plane. The rate-limited `NotReady` never floods the log.
+The S3 board treats motion as an optional sensor, so a failed `init` only logs one line and boot continues: the device works as usual, just without a motion device. The rate-limited `NotReady` never floods the log.
 
 This product arms only No-Motion; the Tap engine is deliberately not enabled (see below), the Any-Motion / Significant-Motion / Pedometer bits in CTRL8 stay at 0, and those semantics belong to the core recognizer.
 
@@ -409,6 +409,6 @@ moon run iot:test-bsp  # driver: register sequence, handshake, status mapping
 
 `test-bsp` relies on the target isolation of `esp-hal` in `Cargo.toml` (`cfg(target_os = "none")`). The QMI8658A and PCA9557 sources depend only on `embedded_hal`, so keeping this ESP layer out of the bare-metal target lets the driver unit tests run directly on a workstation, without paying the build cost of the chip HAL and without creating a new crate.
 
-Driver test coverage: the enable ordering (the engine must be armed only after all the CTRL9 commands), the contents of the two parameter-set writes, a handshake timeout that does not hang, the tap bit no longer being decoded, and an engine event still being reported when the data plane has not been updated.
+Driver test coverage: the enable ordering (the engine must be armed only after all the CTRL9 commands), the contents of the two parameter-set writes, a handshake timeout that does not hang, the tap bit no longer being decoded, and an engine event still being reported when the data path has not been updated.
 
 Also: identity mismatch, range conversion, yaw wrap-around and its step bound, and capability attribution.

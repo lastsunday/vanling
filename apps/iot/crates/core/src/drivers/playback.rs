@@ -12,6 +12,7 @@
 //! can replace. The synthesiser is unchanged in kind, so MIDI buys no timbre
 //! here. It buys provenance.
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::drivers::audio::{BYTES_PER_FRAME, SAMPLE_RATE_HZ};
@@ -73,12 +74,7 @@ impl Sound {
     }
 }
 
-/// A supply of mono 16-bit frames at [`SAMPLE_RATE_HZ`] — the format a source
-/// hands the driver, which is what widens them into the codec's frame.
-///
-/// `Copy` on the sources, not `Clone`: a play is a whole sound started from the
-/// beginning, and there is never a second copy of one in flight to keep in step.
-pub trait SampleSource {
+pub trait SampleSource: Send {
     /// Fills `out` with frames and returns how many it wrote. Fewer than `out`
     /// means the source ran out, which [`done`](Self::done) then reports.
     fn fill(&mut self, out: &mut [i16]) -> usize;
@@ -1056,22 +1052,8 @@ pub struct Recovery {
     pub playing: bool,
 }
 
-/// The playback surface a board hands the app: make a catalogue sound and latch
-/// the output quiet. Fallible because both reach I2C, and a codec that stops
-/// answering has to be able to say so.
-///
-/// `Send + 'static` because the feed may run from a higher-priority interrupt
-/// than the rest of the app, and nothing that does not cross that boundary can be
-/// fed from there.
-///
-/// Three steps, not one: [`play`](Self::play) starts a sound,
-/// [`feed`](Self::feed) advances it, and the state waits for the driver to say it
-/// is done. Only `feed` is bounded and infallible, so only it may run where a
-/// delay is a fault — which is why the app owns the cadence and the board the
-/// ring.
 pub trait Speaker: Send + 'static {
-    /// Starts `sound` from the beginning, replacing anything playing.
-    fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault>;
+    fn play(&mut self, source: Box<dyn SampleSource>) -> Result<(), SpeakerFault>;
 
     /// Latches the output quiet, or audible again.
     fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault>;
@@ -1115,7 +1097,7 @@ pub trait Speaker: Send + 'static {
 pub struct UnwiredSpeaker;
 
 impl Speaker for UnwiredSpeaker {
-    fn play(&mut self, _sound: Sound) -> Result<(), SpeakerFault> {
+    fn play(&mut self, _source: Box<dyn SampleSource>) -> Result<(), SpeakerFault> {
         Ok(())
     }
 
@@ -1758,7 +1740,9 @@ mod tests {
         // A board with no output takes this type, so the one copy of the app runs
         // on it — but a `play` that reported a sound in progress would leave the
         // page in `Playing` with nothing that can ever finish it.
-        speaker.play(Sound::Tap).expect("takes a sound");
+        speaker
+            .play(Box::new(Tone::playing(vec![])))
+            .expect("takes a source");
         speaker.set_muted(true).expect("takes a latch");
         assert!(
             !speaker.feed(0),

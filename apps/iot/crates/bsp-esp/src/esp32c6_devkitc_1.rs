@@ -1,4 +1,4 @@
-use crate::post::{self, Provenance, State};
+use crate::hardware;
 use alloc::{boxed::Box, vec, vec::Vec};
 use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals, WIFI};
 use esp_hal::rmt::Rmt;
@@ -8,11 +8,12 @@ use esp_hal_smartled::buffer_size;
 use esp_storage::FlashStorage;
 
 use crate::components::credentials::CredentialStore;
-use iot_core::demand::PlaneKey;
-use iot_core::drivers::board::{Board as BoardTrait, HasWifi};
+use iot_core::demand::DemandKey;
+use iot_core::drivers::board::{Board as BoardTrait, HasPanel, HasWifi};
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
 use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::drivers::playback::UnwiredSpeaker;
+use iot_core::state::Panel;
 use smart_leds::RGB8;
 
 pub use crate::components::button::PullButton;
@@ -70,22 +71,12 @@ impl Board<'static> {
             crate::components::credentials::load(FlashStorage::new(FLASH)).map(Box::new);
 
         let rmt = Rmt::new(RMT, Rate::from_hz(RMT_FREQ_HZ)).expect("failed to initialize RMT");
-        let light = Ws2812RgbLed::new(rmt.channel0, GPIO8, LEDS)?;
-        let button = PullButton::new(GPIO9);
+        let mut light = Ws2812RgbLed::new(rmt.channel0, GPIO8, LEDS)?;
+        let mut button = PullButton::new(GPIO9);
         let timg0 = TimerGroup::new(TIMG0);
 
-        // This board reports almost nothing, and that is the point of the
-        // report: **the product's panel, microphones, speaker, touch and camera
-        // simply are not here**, so a reader who sees two `[POST]` blocks from
-        // two builds knows which hardware each number came from without having
-        // to know the feature sets.
-        post::identity();
-        post::line("rgb-led", State::Found, Provenance::Asserted);
-        post::line("button", State::Found, Provenance::Asserted);
-        for name in ["panel", "touch", "motion", "mic", "speaker", "camera"] {
-            post::line(name, State::Absent, Provenance::Asserted);
-        }
-        post::summary(2, 0, 6);
+        hardware::identity();
+        hardware::Report::of([&mut light, &mut button]).finish();
 
         Ok((
             Self {
@@ -123,7 +114,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
         self.button.take().map(|button| {
             vec![PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(button)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,
@@ -169,6 +160,13 @@ impl HasWifi for Board<'static> {
     type Station = crate::components::wifi::EspStation;
 
     fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
+        iot_chip_esp::ungate_radio();
         self.radio.take().and_then(crate::components::wifi::start)
+    }
+}
+
+impl HasPanel for Board<'static> {
+    fn panel(&self) -> Panel {
+        Panel::Absent
     }
 }

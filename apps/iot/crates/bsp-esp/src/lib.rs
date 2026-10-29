@@ -6,33 +6,19 @@ extern crate alloc;
 pub mod esp32c6_devkitc_1;
 
 #[cfg(feature = "esp32c6-devkitc-1")]
-pub use esp32c6_devkitc_1::{Board, PullButton, Ws2812RgbLed};
+pub use esp32c6_devkitc_1::{Board, PullButton, Startup, Ws2812RgbLed};
 
 #[cfg(feature = "lckfb-szpi-esp32s3")]
 pub mod lckfb_szpi_esp32s3;
 
 #[cfg(feature = "lckfb-szpi-esp32s3")]
-pub use lckfb_szpi_esp32s3::{Board, PullButton, Screen, SharedI2cDevice};
+pub use lckfb_szpi_esp32s3::{Board, PullButton, Screen, SharedI2cDevice, Startup};
 
 /// Board-agnostic real components: chip drivers parameterized over the bus /
 /// pin instances handed in by the board wiring.
 pub mod components;
 
-/// Who this board is, and what came up on it — a boot inventory, printed at the
-/// end of a board's bring-up.
-///
-/// Ungated, unlike the board modules around it: only [`post::identity`] needs a
-/// chip and that one function carries its own gate, so the states and the
-/// reporting can be built and tested on a host.
-pub mod post;
-
-/// The sound catalogue: which MIDI file each sound is.
-///
-/// Its own module, ungated like [`post`], because the files are plain bytes and
-/// the speaker driver that plays them needs a chip to exist. Reading them here
-/// is what lets a sound file that would not parse be caught by the host tests
-/// rather than by the first tap on hardware.
-pub mod sounds;
+pub mod hardware;
 
 /// Abstract components assembled from real ones. Gated on whichever is present
 /// rather than on one of them: each virtual component carries its own gate

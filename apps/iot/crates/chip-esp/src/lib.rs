@@ -39,14 +39,11 @@ pub fn init_logging() {
     log::info!("[IOT] log level {level} (IOT_LOG_LEVEL)");
 }
 
-/// The one sink that routes a demand's speed to the part this build targets.
-///
-/// [`set_speed`] reports what the part reached rather than what was asked, so a part
-/// with fewer presets than the vocabulary has shows up in the log here instead of
-/// silently running something else.
-pub struct Part;
+/// Reports what the part reached rather than what was asked: a part with fewer presets than the
+/// vocabulary logs the mismatch instead of silently running at another speed.
+pub struct Clock;
 
-impl iot_core::demand::ClockSink for Part {
+impl iot_core::demand::ClockSink for Clock {
     type Table = Table;
 
     fn set_speed(&mut self, speed: iot_core::demand::Speed) -> iot_core::demand::Speed {

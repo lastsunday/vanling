@@ -2,8 +2,8 @@
 title = "Telemetry Uplink (Publication)"
 weight = 40
 [extra]
-source_file_hash = "8e41a684a0232fc1a8d7051b79fc3ff9a2ce511d"
-translated_at = "2026-10-26T07:56:17Z"
+source_file_hash = "610b782779efab377fa66a452238963907f9f6a5"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 # Telemetry Uplink (Publication)
@@ -158,7 +158,7 @@ struct Mask(u8);
 trait Sink { fn publish(&mut self, snap: &Snapshot); }
 ```
 
-Plus one `Signal<Snapshot>` as the crossing point, following the Plane shape in `render.rs`.
+Plus one `Signal<Snapshot>` as the crossing point, following the contract shape in `render.rs`.
 
 **Do not build** `Plan` / `resolve` / a registry / `Route`. There is one sink today, and those layers would only ever appear in tests.
 

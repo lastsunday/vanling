@@ -330,10 +330,6 @@ pub(super) enum Provenance {
 /// of a future three frames await, and a credential by value would be a hundred bytes of each
 /// frame's state (`@/records/iot/wifi.md`).
 pub(super) enum Hold {
-    /// The panel named another network while this one was up, carrying where that credential came
-    /// from: the caller joins it the same way this one was joined.
-    ///
-    /// Handed to the caller rather than put back on the join plane, which has been read once already.
     Named(Box<Credentials>, Provenance),
     /// The radio would not associate, and this path gives the credential back rather than retrying
     /// it: the passphrase may be wrong, and the panel is where it can be fixed.
@@ -508,13 +504,6 @@ where
         // moved is telemetry, not news.
         let mut last_seen: Option<(LinkPhase, Option<Ipv4>)> = None;
         loop {
-            // Waiting on the credential plane as well as the window, so a panel that names
-            // another network is heard even while this one is up: the list takes no pick under a
-            // link, but a draft picked before the radio associated is still open, and a keyboard
-            // that could not change the answer would be one that only worked while nothing was
-            // happening. And on the leave plane, because the action strip is the other thing a
-            // panel can say — and on the forget plane, because a row can be held while the link
-            // is up: the store is not the link's.
             match select4(
                 Timer::after(Duration::from_millis(WINDOW_MS)),
                 JOIN.ready(),

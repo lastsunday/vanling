@@ -6,7 +6,7 @@ use core::future::Future;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
-use iot_core::demand::{DemandField, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS};
+use iot_core::demand::{DemandKind, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS};
 use iot_core::drivers::audio::{AudioSample, CaptureSink};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{BusinessIntent, Intent, recognize};
@@ -14,11 +14,6 @@ use iot_core::intent::{BusinessIntent, Intent, recognize};
 use crate::SharedDemand;
 use iot_core::config::{Configuration, Configurator};
 
-/// Slots on the intent ring.
-///
-/// Sized for the events whose order matters: three sources can report on one tick, and the
-/// render loop drains what it finds. A slot costs the widest message the ring can carry, so
-/// nothing that is a window rather than an event belongs on it — see [`CapturePlane`].
 pub const INTENT_SLOTS: usize = 8;
 
 /// Intent channel: input task writes recognized operations, the render loop
@@ -29,18 +24,11 @@ pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, INTENT_SLOTS>;
 /// reaches the global by name.
 pub static INTENT_BUS: IntentBus = IntentBus::new();
 
-/// The capture's data plane: the newest poll's window, and the wake that says there is one.
-///
-/// One slot, rather than a queue, and off the intent ring rather than on it. A capture poll is
-/// a window — only its newest value means anything to a scope, so a stale one is worth nothing
-/// — and it is a kilobyte and a half wide, where every slot of the ring costs the widest
-/// message that ring can carry. Carrying polls there would therefore price the ring at eight
-/// windows for the one the state draws from. The board is handed the plane by
-/// [`take_audio`](iot_core::drivers::board::HasAudio::take_audio) and publishes into it, the
-/// render loop takes from it, and the state keeps what it took.
-pub struct CapturePlane(Channel<CriticalSectionRawMutex, AudioSample, 1>);
+/// A poll as a whole window, off the intent ring: only its newest value means anything, and at
+/// 1.7 KB it would set every ring slot to that width.
+pub struct CaptureWindow(Channel<CriticalSectionRawMutex, AudioSample, 1>);
 
-impl CapturePlane {
+impl CaptureWindow {
     /// Take the window the input task published, or `None` when nothing has arrived since the
     /// last take.
     pub fn take(&self) -> Option<AudioSample> {
@@ -54,7 +42,7 @@ impl CapturePlane {
     }
 }
 
-impl CaptureSink for CapturePlane {
+impl CaptureSink for CaptureWindow {
     fn publish(&self, sample: AudioSample) {
         // Refused when the render loop has not taken the last window, and nothing is lost by
         // it: the envelope is the driver's rolling one, so the next poll re-sends what this one
@@ -63,8 +51,7 @@ impl CaptureSink for CapturePlane {
     }
 }
 
-/// Capture plane storage; the board publishes into it and the render loop draws from it.
-pub static CAPTURE: CapturePlane = CapturePlane(Channel::new());
+pub static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());
 
 /// Source names by wiring order, for the executor-hold report. Index matches the
 /// order `take_input`/`take_motion`/`take_audio` push into the vector.
@@ -101,14 +88,12 @@ fn apply(
         }
     };
     for entry in sources.iter_mut() {
-        if entry.key().field() == DemandField::Motion {
+        if entry.key().kind() == DemandKind::Motion {
             let _ = entry.configure_for(configuration.motion);
         }
     }
     let mut moved = false;
-    let mut report = alloc::string::String::new();
-    use core::fmt::Write;
-    for (index, entry) in sources.iter_mut().enumerate() {
+    for entry in sources.iter_mut() {
         // The floor is what the board wired, not the cadence in force: a plan derived
         // from an already-stretched cadence could never be relaxed.
         let board_cadence_ms = entry.board_cadence_ms();
@@ -118,30 +103,28 @@ fn apply(
             board_cadence_ms,
             entry.accepts_slower_poll(),
         );
-        // Told separately from the schedule: a plane that is off is not polled, so
-        // cannot learn of it from the next poll.
         let before = (entry.is_active(), entry.cadence_ms());
         entry.set_collecting(now_ms, plan.active);
         entry.set_active(plan.active);
         entry.set_cadence_ms(plan.cadence_ms);
         moved |= (entry.is_active(), entry.cadence_ms()) != before;
-        // The source rather than the plane: two sources share the interaction plane, and a
-        // report naming the plane twice (`input on 10 ms, input on 10 ms`) could not say
-        // which of them stopped. The source is also the unit the schedule applies to. A
-        // source that is off has no cadence in force, so it prints none.
-        let separator = if index == 0 { "" } else { ", " };
-        let name = SOURCE_NAMES.get(index).copied().unwrap_or("?");
-        if plan.active {
-            let _ = write!(report, "{separator}{name} on {} ms", plan.cadence_ms);
-        } else {
-            let _ = write!(report, "{separator}{name} off");
-        }
     }
-    let motion_config = match configuration.motion {
-        Some(config) => format!("{config:?}"),
-        None => String::from("none"),
-    };
     if moved {
+        use core::fmt::Write;
+        let mut report = alloc::string::String::new();
+        for (index, entry) in sources.iter().enumerate() {
+            let separator = if index == 0 { "" } else { ", " };
+            let name = SOURCE_NAMES.get(index).copied().unwrap_or("?");
+            if entry.is_active() {
+                let _ = write!(report, "{separator}{name} on {} ms", entry.cadence_ms());
+            } else {
+                let _ = write!(report, "{separator}{name} off");
+            }
+        }
+        let motion_config = match configuration.motion {
+            Some(config) => format!("{config:?}"),
+            None => String::from("none"),
+        };
         log::info!("[DEMAND] schedule: {report} | motion config {motion_config}");
     }
     moved
@@ -289,7 +272,7 @@ mod tests {
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use iot_core::config::MotionConfig;
-    use iot_core::demand::{EffectiveDemand, Mode, PlaneDemand, PlaneKey, Sensitivity};
+    use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Sensitivity};
     use iot_core::drivers::input::{InputSource, PassThrough};
 
     /// A source that records what it was told, so a test can see the demand reach the
@@ -328,7 +311,7 @@ mod tests {
             None
         }
 
-        fn set_plane_collecting(&mut self, _now_ms: u64, collecting: bool) {
+        fn set_demand_collecting(&mut self, _now_ms: u64, collecting: bool) {
             self.collecting = Some(collecting);
         }
 
@@ -348,7 +331,7 @@ mod tests {
     /// An entry whose source reports what it was told to be configured as, so a test can see
     /// the decision reach the part.
     fn configurable_entry(
-        key: PlaneKey,
+        key: DemandKey,
         cadence_ms: u64,
     ) -> (PollEntry, Rc<RefCell<Option<MotionConfig>>>) {
         let told = Rc::new(RefCell::new(None));
@@ -362,11 +345,11 @@ mod tests {
         (entry, told)
     }
 
-    fn entry(key: PlaneKey, cadence_ms: u64) -> PollEntry {
+    fn entry(key: DemandKey, cadence_ms: u64) -> PollEntry {
         entry_with(key, cadence_ms, true)
     }
 
-    fn entry_with(key: PlaneKey, cadence_ms: u64, batchable: bool) -> PollEntry {
+    fn entry_with(key: DemandKey, cadence_ms: u64, batchable: bool) -> PollEntry {
         PollEntry::new(
             0,
             key,
@@ -381,13 +364,12 @@ mod tests {
         Configurator::new(&[MotionConfig::PolledRegisters])
     }
 
-    /// The motion and audio planes both asked to poll every `period_ms`.
     fn demand_on_period(period_ms: u32) -> EffectiveDemand {
         let mut demand = EffectiveDemand::none();
-        for key in [PlaneKey::MOTION, PlaneKey::AUDIO] {
+        for key in [DemandKey::MOTION, DemandKey::AUDIO] {
             demand.set(
                 key,
-                PlaneDemand::new(Mode::Continuous, period_ms, Sensitivity::Secondary),
+                Claim::new(Mode::Continuous, period_ms, Sensitivity::Secondary),
             );
         }
         demand
@@ -397,7 +379,7 @@ mod tests {
     fn the_configuration_the_configurator_decides_reaches_the_part() {
         // The configurator sits here because the parts are here, so this hop is the one that
         // decides whether the decision does anything at all.
-        let (entry, told) = configurable_entry(PlaneKey::MOTION, MOTION_CADENCE_MS);
+        let (entry, told) = configurable_entry(DemandKey::MOTION, MOTION_CADENCE_MS);
         let mut sources = alloc::vec![entry];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
@@ -410,10 +392,10 @@ mod tests {
     }
 
     #[test]
-    fn a_plane_with_no_configuration_is_not_told_about_one() {
+    fn a_device_with_no_configuration_is_not_told_about_one() {
         // Only motion has an acquisition choice. Asking the others about it would be a claim
         // that they have one.
-        let (entry, told) = configurable_entry(PlaneKey::AUDIO, CAPTURE_CADENCE_MS);
+        let (entry, told) = configurable_entry(DemandKey::AUDIO, CAPTURE_CADENCE_MS);
         let mut sources = alloc::vec![entry];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
@@ -425,7 +407,7 @@ mod tests {
     fn a_board_that_cannot_enter_what_a_mode_needs_keeps_the_part_where_it_is() {
         // Refusal has to be visible where it happens: the part is here, so a configurator that
         // cannot be satisfied must not leave the schedule looking configured.
-        let (entry, told) = configurable_entry(PlaneKey::MOTION, MOTION_CADENCE_MS);
+        let (entry, told) = configurable_entry(DemandKey::MOTION, MOTION_CADENCE_MS);
         let mut sources = alloc::vec![entry];
 
         apply(
@@ -447,7 +429,7 @@ mod tests {
         // The demand is replayed every tick because shared state needs no change detection.
         // That is only free while the report stays tied to the schedule moving — a line per
         // tick would drown the very log it reports in.
-        let mut sources = alloc::vec![entry(PlaneKey::MOTION, MOTION_CADENCE_MS)];
+        let mut sources = alloc::vec![entry(DemandKey::MOTION, MOTION_CADENCE_MS)];
         let demand = demand_on_period(30_000);
 
         assert!(
@@ -464,7 +446,7 @@ mod tests {
     fn a_demand_that_relaxes_moves_the_schedule_again() {
         // The other half: "unchanged" is a comparison against the schedule in force, not
         // against the previous demand, so a stretch followed by a relaxation reports both.
-        let mut sources = alloc::vec![entry(PlaneKey::MOTION, MOTION_CADENCE_MS)];
+        let mut sources = alloc::vec![entry(DemandKey::MOTION, MOTION_CADENCE_MS)];
 
         assert!(apply(
             &mut sources,
@@ -480,7 +462,7 @@ mod tests {
 
     #[test]
     fn a_requested_period_actually_stretches_the_poll_schedule() {
-        let mut sources = alloc::vec![entry(PlaneKey::MOTION, MOTION_CADENCE_MS)];
+        let mut sources = alloc::vec![entry(DemandKey::MOTION, MOTION_CADENCE_MS)];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
 
@@ -498,7 +480,7 @@ mod tests {
 
     #[test]
     fn dropping_the_period_puts_the_cadence_back_in_one_update() {
-        let mut sources = alloc::vec![entry(PlaneKey::MOTION, MOTION_CADENCE_MS)];
+        let mut sources = alloc::vec![entry(DemandKey::MOTION, MOTION_CADENCE_MS)];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
         apply(&mut sources, &demand_on_period(0), &configurator(), 0);
@@ -506,16 +488,16 @@ mod tests {
         assert_eq!(
             sources[0].cadence_ms(),
             MOTION_CADENCE_MS,
-            "a plane asked for no period of its own is read at the board's rate again"
+            "a device asked for no period of its own is read at the board's rate again"
         );
     }
 
     #[test]
-    fn a_plane_the_demand_drops_is_stopped_both_as_a_schedule_and_at_the_driver() {
+    fn a_device_the_demand_drops_is_stopped_both_as_a_schedule_and_at_the_driver() {
         // Both halves answer different questions: the schedule decides whether the loop
         // asks, and `set_collecting` is the only way a peripheral that has to *stop* hears
         // about it.
-        let mut sources = alloc::vec![entry(PlaneKey::MOTION, MOTION_CADENCE_MS)];
+        let mut sources = alloc::vec![entry(DemandKey::MOTION, MOTION_CADENCE_MS)];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
         assert!(sources[0].is_active());
@@ -531,9 +513,9 @@ mod tests {
     }
 
     #[test]
-    fn a_plane_whose_driver_needs_its_poll_is_not_stretched() {
+    fn a_device_whose_driver_needs_its_poll_is_not_stretched() {
         // A slow period on such a source does not make it staler, it makes its clock die.
-        let mut sources = alloc::vec![entry_with(PlaneKey::AUDIO, CAPTURE_CADENCE_MS, false)];
+        let mut sources = alloc::vec![entry_with(DemandKey::AUDIO, CAPTURE_CADENCE_MS, false)];
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
 
@@ -544,7 +526,7 @@ mod tests {
         );
         assert!(
             sources[0].is_active(),
-            "and it stays on: this plane may be off, never rare"
+            "and it stays on: this device may be off, never rare"
         );
     }
 
@@ -552,7 +534,7 @@ mod tests {
     fn the_interaction_path_takes_no_plan_at_all() {
         // Under any demand: a stale button reading is a device nobody can steer off the page
         // it is on.
-        let mut sources = alloc::vec![entry(PlaneKey::INTERACTION, 10)];
+        let mut sources = alloc::vec![entry(DemandKey::INTERACTION, 10)];
 
         for demand in [EffectiveDemand::none(), demand_on_period(30_000)] {
             apply(&mut sources, &demand, &configurator(), 0);
@@ -563,10 +545,6 @@ mod tests {
 
     #[test]
     fn a_capture_window_costs_one_slot_beside_the_ring() {
-        // What a ring costs is its slot count times its widest message, so a poll's 1.7 KB
-        // window on the intent ring would have set every one of its slots to that width — the
-        // memory the capture plane exists to keep off it. These are the two sides of that
-        // trade, and both fail if a window moves back onto the ring.
         let ring = core::mem::size_of::<Intent>() * INTENT_SLOTS;
         let window = core::mem::size_of::<AudioSample>();
         assert!(
@@ -575,8 +553,8 @@ mod tests {
              {window} B window"
         );
         assert!(
-            core::mem::size_of::<CapturePlane>() < 2 * window,
-            "the capture plane holds one window, not a queue of them"
+            core::mem::size_of::<CaptureWindow>() < 2 * window,
+            "the capture window holds one window, not a queue of them"
         );
     }
 

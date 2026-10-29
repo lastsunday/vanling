@@ -44,7 +44,9 @@ camera = ["gc2145", "dep:esp-hal"]
 # the driver's heap lives in the chip layer and a component that needs it has to say
 # so: with only `esp-radio` on, the build compiles and then fails at link with an
 # undefined `malloc`, which is the shape of a self-sufficiency bug features.md rule 5
-# exists to prevent.
+# exists to prevent. The dependency is named for the same rule: this board powers the
+# radio's domain in `take_wifi`, so the chip layer is part of the feature rather than
+# something the app happens to bring.
 #
 # The credential store rides with the radio, because what it keeps is the network the
 # panel named on the radio's own page: a build with no radio has nothing to keep, and
@@ -53,6 +55,7 @@ wifi = [
   "dep:esp-radio",
   "dep:esp-storage",
   "dep:esp-bootloader-esp-idf",
+  "dep:iot-chip-esp",
   "iot-chip-esp?/radio",
 ]
 
@@ -70,8 +73,8 @@ embassy-embedded-hal = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 iot-core = { workspace = true }
 iot-ui = { workspace = true }
-# Only for the `wifi` feature's heap, and only when the chip layer is already in the
-# graph — hence the `?`.
+# The chip layer: the radio domain's power-up and the heap it allocates from are this part's
+# business, not the app's.
 iot-chip-esp = { workspace = true, optional = true }
 log = { workspace = true }
 mipidsi = { workspace = true, optional = true }

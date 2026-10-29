@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "9b736f49366b83af2cdd2f37e5bce7a1d9400bd9"
-translated_at = "2026-10-25T03:41:27Z"
+source_file_hash = "ef02307ee0e927947b4167b0547a076505fa097d"
+translated_at = "2026-10-29T02:30:00Z"
 +++
 
 # Firmware Installation
@@ -178,7 +178,9 @@ IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
   --no-default-features --features lckfb-szpi-esp32s3,console-auto
 ```
 
-`[measured]` That build carries **no build-time credentials**, so the device sits in `setup` and keeps scanning; `moon run iot:flash-s3` rebuilds the product image and overwrites `target/xtensa-esp32s3-none-elf/release/vanling` again. The boot log carries `[IOT] boot page is Network` (nothing is logged when it stays on `ambient`), so which page this image really starts on is not a guess.
+`[measured]` That build carries **no build-time credentials**, so the device sits in `setup` and keeps scanning; `moon run iot:flash-s3` rebuilds the product image and overwrites `target/xtensa-esp32s3-none-elf/release/vanling` again. The boot log carries `[INPUT] page is now Network` (printed for every page, with the page it really landed on), so which page this image starts on is not a guess.
+
+`[measured]` **The boot page may only be resolved at build time** — the run-time path must not touch the string at all. It once resolved at boot (`option_env!`'s `&'static str` through `trim().to_ascii_lowercase()` into a `String`, then a table lookup), and any build that *set* `IOT_BOOT_PAGE` lifted the main task's high-water from 42,392 B to 46,728 B and used 27,745 B of stack at the join (23,409 B without the variable), then crashed right after `[WIFI] … joining`: `StoreProhibited`/`LoadProhibited` inside the radio blob's own `free`/`event_post`, not a stack-check report. `boot_page()` now reads `const BOOT_PAGE` (a `const fn` comparing case- and whitespace-insensitively), so an `IOT_BOOT_PAGE=attitude` build matches the product build item for item (`main stack 65,976 B`, peak `42,392 B`) and gets an address normally. Why the overrun lands on a radio task is in `records/iot/hardware-constraints.md`; the constraint does not depend on that mechanism: **a bench image and the product image share one stack budget, and a compile-time boot page is what keeps them there.**
 
 > `[measured]` Those two tasks **must not** share one artifact path. `build-s3-camera` and `build-s3` both used to declare `target/.../release/vanling`, and `flash-s3` and `scripts/iot-image.sh` both read that file — so whichever ran last decided what got flashed, and a cached task did not put its own back, meaning "flash the product firmware" flashed the camera firmware. The bench build now saves and restores the product image around the build and keeps a separate `vanling-camera`, so both images coexist.
 

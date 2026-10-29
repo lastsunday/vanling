@@ -1,6 +1,6 @@
 use esp_bootloader_esp_idf::esp_app_desc;
 use esp_hal::peripherals::{FROM_CPU_INTR0, Peripherals};
-use iot_core::demand::{DemandField, Speed, SpeedTable};
+use iot_core::demand::{DemandKind, Speed, SpeedTable};
 
 pub fn chip_init() -> Peripherals {
     esp_app_desc!();
@@ -18,17 +18,10 @@ pub fn start_rtos(timer: impl esp_rtos::TimerSource, int0: FROM_CPU_INTR0<'stati
     esp_rtos::start(timer, int0);
 }
 
-/// **No row here is measured.** Every entry is the pessimistic answer, and that
-/// is deliberate: a worst case nobody has taken on this part is not a small one.
-///
-/// The S3's rows are wall-clock holds measured on the S3, so they say nothing
-/// about how long this part holds — sourcing them here would import numbers that
-/// do not transfer. Whoever measures a plane on this part fills its row and cites
-/// where; until then nothing runs below the clock this part boots at.
 pub struct Table;
 
 impl SpeedTable for Table {
-    fn speed_for(_field: DemandField) -> Speed {
+    fn speed_for(_field: DemandKind) -> Speed {
         Speed::Fast
     }
 }

@@ -409,6 +409,29 @@ impl<D: I2c> Es7210<D> {
     }
 }
 
+impl<D: I2c> crate::hardware::Named for Es7210<D> {
+    const NAME: &'static str = "mic";
+}
+
+impl<D: I2c> crate::hardware::SelfCheck for Es7210<D> {
+    fn name(&self) -> &'static str {
+        "mic"
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        Some(crate::hardware::Address::new(self.addr))
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        use crate::hardware::Status;
+        match register_seq::read_reg(&mut self.i2c, self.addr, REG_MODE_CONFIG) {
+            Err(_) => Status::silent(),
+            Ok(_) if self.running => Status::answered(),
+            Ok(_) => Status::refused("not running"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -755,6 +778,31 @@ mod tests {
                 .all(|w| *w == CLOCK_OFF_BRINGUP || *w == gated),
             "bring-up then the selection's masked clear, then the start's read-back: {:?}",
             codec.i2c.writes_of(REG_CLOCK_OFF)
+        );
+    }
+
+    #[test]
+    fn a_self_check_names_the_part_and_the_address_it_answers_on() {
+        use crate::hardware::{Address, SelfCheck};
+
+        let codec = Es7210::new(mock(), ES7210_I2C_ADDR);
+        assert_eq!(codec.name(), "mic");
+        assert_eq!(codec.id(), Some(Address::new(ES7210_I2C_ADDR)));
+    }
+
+    #[test]
+    fn a_self_check_reports_a_part_it_cannot_configure_and_a_bus_nobody_answers_on() {
+        use crate::components::mock_i2c::Unresponsive;
+        use crate::hardware::{SelfCheck, Status};
+
+        assert_eq!(
+            Es7210::new(mock(), ES7210_I2C_ADDR).check(),
+            Status::refused("not running")
+        );
+        assert_eq!(settle().check(), Status::answered());
+        assert_eq!(
+            Es7210::new(Unresponsive, ES7210_I2C_ADDR).check(),
+            Status::silent()
         );
     }
 }

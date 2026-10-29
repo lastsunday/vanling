@@ -86,17 +86,12 @@ pub const TAP_SETTLED_MOTION_MS: u16 = 200;
 /// as a change of orientation.
 pub const TAP_BASELINE_TAU_MS: i32 = 300;
 
-/// Below this on both in-plane axes the device is flat and has no meaningful
-/// portrait/landscape reading, so neither is reported.
 pub const POSTURE_FLAT_MG: i32 = 300;
 
 /// Fixed-point denominator for the gravity blend, so the estimate can move by a
 /// fraction of a milli-gravity without floating point on the target.
 const GRAVITY_SCALE: i32 = 1_024;
 
-/// Derives core-side semantics from the data plane. Every threshold lives here
-/// rather than in a driver, so swapping the sensor cannot change what the
-/// business layer means.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MotionRecognizer {
     tilt: Option<TiltDir>,
@@ -976,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn posture_needs_an_in_plane_component() {
+    fn posture_needs_a_flat_component() {
         let mut recognizer = MotionRecognizer::new();
         let flat = sample([0, 0, 1_000], [0; 3]);
         assert!(

@@ -53,8 +53,6 @@ where
             if let Some(list) = history.observe(&ranked, saved) {
                 log::info!("[WIFI] {} access points, the page redraws", list.len());
                 crate::render::SCAN.publish(&list);
-                // The page's copy of the same list: the plane above is taken by the render
-                // loop, and the page is a reader that must not take it.
                 crate::provision::publish_scan(&list);
             } else {
                 // A round that changed nothing is the normal case while the page is up, and

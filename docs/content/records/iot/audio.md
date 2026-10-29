@@ -72,7 +72,7 @@ sort_by = "weight"
 
 ---
 
-## 一个平面的边际代价随别的任务醒着而变，不是常数
+## 一个设备的边际代价
 
 `[实测]` 复现：从 `apps/iot/` 起五个构建，只改 `IOT_DEMAND`，各烧录后读 45 s 的 `[INPUT] held`（8 个 5 s 窗口，中位数）。
 
@@ -92,7 +92,7 @@ sort_by = "weight"
 
 **二、所以固定倍数换算不成立。** `motion Continuous` 单独跑是 12.52%，旁边有个醒着的任务就变 15.73%，+26%；`probe-demand-s3` 隔离测得 11.40%，又是另一种数。任何按「隔离值 × 一个系数」构造的预算都会在场景开的面越多时错得越多，而那正是预算唯一存在的理由。
 
-还有一条口径上的坑：差分给出的是**边际**代价，且依赖上下文。上表里 `motion` 的 12.52% 是在 `audio` 关着且面板黑着时测的，15.73% 是在面板醒着时测的——同一个配置，两个数。所以差分得到的数字不是「这个平面的代价」，是「这个平面在这个场景里的增量」，被当成前者引用就会在换场景时失效。要贵的那个上下文：亮面板那个读数（157_300）。
+还有一条口径上的坑：差分给出的是**边际**代价，且依赖上下文。上表里 `motion` 的 12.52% 是在 `audio` 关着且面板黑着时测的，15.73% 是在面板醒着时测的——同一个配置，两个数。所以差分得到的数字不是「这个设备的代价」，是「这个设备在这个场景里的增量」，被当成前者引用就会在换场景时失效。要贵的那个上下文：亮面板那个读数（157_300）。
 
 `[测试]`（**已随该模型删除**，此处仅留档）`an_isolated_row_would_still_not_be_addable_to_a_device_row`、`the_row_is_the_device_reading_and_the_probe_only_found_the_floor`、`the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from`（当时的 `core/src/demand.rs`）曾钉住这三种口径不可混用；成本模型删除后这一约束只剩方法上的要求，不再有代码守着。
 
@@ -109,7 +109,7 @@ motion 让出 14.0 点，render 循环拿走 13.2 点，设备总量基本不动
 
 **所以「给 latency 加一个百分比上限」这条路的形状是错的**：两个百分比加起来才是设备占用，而它们互为此消彼长。两侧必须分开看，且面板那一侧是残差、不能与 poll 侧相加——相加会超过一个核的 100%。
 
-## 采集平面不能被节流，否则是时钟停摆而不是读数变旧
+## 采集路径不能被节流
 
 `[实测]` 把 capture 也批到 30 s（`IOT_DEMAND='motion=on:30000,audio=on:30000,display=on:10000'`）：
 
@@ -122,13 +122,13 @@ motion 让出 14.0 点，render 循环拿走 13.2 点，设备总量基本不动
 
 这与 `audio=off` 那次是同一个约束的两条路：`Off` 走「主动停链」，节流走「不许更稀」。修法是 `InputSource::accepts_slower_poll()`，默认 `true`，`Es7210Rx` 答 `false`，`apply()` 据此把 plan 的 cadence 折回板级并如实打印。修后同一构建打印 `motion on 30000 ms, capture on 20 ms`，corner walk 恢复每 3 s，无 backlog、无 re-arm。
 
-`[测试]` `a_plane_whose_driver_needs_its_poll_is_not_stretched`（`app/src/input.rs`）钉住这条。
+`[测试]` `a_device_whose_driver_needs_its_poll_is_not_stretched`（`app/src/input.rs`）钉住这条。
 
 ## poll 侧按节奏缩放，两端都与实测对上
 
 > 这一节的**预测**层（`Price`/`PolledCadence`：按节奏把 poll 成本折算成速率）已随该模型整体删除，取代它的是 `MAX_SINGLE_HOLD_MS` 的单次 tick 上界（见[架构文档](@/development/iot/architecture.md#需求模型（要什么_/_多频繁_/_多敏感）)）。下表 `[DEMAND]` poll 侧一列来自当时那次构建，**今天的固件不再打印它**；`[INPUT] held` 一列的实测值不受影响。
 
-平面在**板级节奏下的速率**才是它的单位，所以被批处理的平面更便宜。缩放的前提——「节奏改变的是多久一次，不是一次有多贵」——由探针实测：板级 20 ms 下每次 poll **2281 µs**，200 ms 的格子里 **2282 µs**，差 0.04%。探针为此改成在每个格子自己的节奏上跑，够得着的实测、够不着的印 DERIVED。
+设备在**板级节奏下的速率**才是它的单位，所以被批处理的设备更便宜。缩放的前提——「节奏改变的是多久一次，不是一次有多贵」——由探针实测：板级 20 ms 下每次 poll **2281 µs**，200 ms 的格子里 **2282 µs**，差 0.04%。探针为此改成在每个格子自己的节奏上跑，够得着的实测、够不着的印 DERIVED。
 
 `[实测]` 缩放后 poll 侧与整机实测的对照（各 8 个 5 s 窗口）：
 
@@ -186,7 +186,7 @@ A 计权在低频几乎平坦，而滤波器极点靠近单位圆。定标器状
 
 这条只留结论与代码位置；完整的测量表、两侧不可加的理由、`Sensitivity` 不改节奏的理由、单次持有界为什么不是百分比，以及每一项的复现构建与命令，都在[架构文档](@/development/iot/architecture.md)。
 
-代码侧的三处硬约束也各在那里说明：`Cost::basis` 为什么是字段而不是注释、面板行为什么是残差不可相加、以及 `InputSource::accepts_slower_poll()` 为什么采集平面答 `false`（环只有 `sample()` 排空，节流不是让读数变旧而是让 I2S 时钟停）。
+代码侧的三处硬约束也各在那里说明：`Cost::basis` 为什么是字段而不是注释、面板行为什么是残差不可相加、以及 `InputSource::accepts_slower_poll()` 为什么采集路径答 `false`（环只有 `sample()` 排空，节流不是让读数变旧而是让 I2S 时钟停）。
 
 ---
 

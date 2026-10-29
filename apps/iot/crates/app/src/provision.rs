@@ -1,13 +1,7 @@
 //! Setup mode's device side: the access point, its DHCP and DNS services, and the page.
 //!
-//! This is the other front door for a device with no credential, and the only one on a board with
-//! no panel: an access point with the config page, DHCP for the phone that joins, and a name
-//! server that answers everything with this device, so the phone's connectivity check opens the
-//! page by itself.
-//!
-//! Nothing here ends; a credential ends the mode and arrives on the join plane exactly as one from
-//! the panel does. What a request *means* is [`iot_core::provision`]'s; this module is the bytes on
-//! a socket, so a host test can drive a session with no radio and no httpd.
+//! The only front door on a board with no panel: a name server answers everything with this
+//! device, so the phone's connectivity check opens the page by itself.
 
 use core::cell::RefCell;
 use core::convert::Infallible;
@@ -279,10 +273,6 @@ async fn page(stack: Stack<'_>, mac: [u8; 6]) {
         };
         let joining = answer(socket, mac).await;
         socket.close();
-        // Waits for every byte to be sent *and* acknowledged, which is the point past which dropping
-        // the stack below cannot lose anything. A phone that stopped answering is a timeout here
-        // instead, and the credential still goes on the plane: whether the page came back is not a
-        // reason to refuse what the operator typed.
         if let Err(error) = socket.flush().await {
             log::warn!("[WIFI] an answer did not finish: {error:?}");
         }
@@ -401,7 +391,7 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
         // radio time the access point does not have while a phone is holding it open
         // (`@/records/iot/wifi.md`).
         if request.path == "/rescan" {
-            RESCAN.request();
+            RESCAN.set(());
         }
         let aps = latest_scan();
         // The phone may ask again on this connection unless it said otherwise, and an answer that

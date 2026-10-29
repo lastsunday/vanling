@@ -127,11 +127,11 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 **实测（产品固件，非探针）：**
 
 ```
-[CLOCK] a page asked for Slow, but PlaneKey { field: Motion, instance: 0 } is running and needs Fast
+[CLOCK] a page asked for Slow, but motion is running and needs Fast
 [CLOCK] running at _80MHz
 ```
 
-**显式档位不被仲裁改写，被压过的 plane 被指名报出**——正是设计要的形状。
+**显式档位不被仲裁改写，被压过的设备被指名报出**——正是设计要的形状。
 
 **代价有多大，同一次运行里就有数：**
 
@@ -147,12 +147,12 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 
 设备表按实测重填之后，`Auto` 不再是常量：
 
-| 在跑的 plane | 仲裁结果 |
+| 在跑的键 |
 |---|---|
 | motion + audio + display（默认开机形态） | **240 MHz** |
 | **只有 motion** | **80 MHz** |
 
-三条路径都在产品固件上验过：`Auto` 满配 240、`Auto` 只有 motion 降 80、显式 `speed=slow` 强制 80 并 warn 指名被压过的 plane。
+三条路径都在产品固件上验过：`Auto` 满配 240、`Auto` 只有 motion 降 80、显式 `speed=slow` 强制 80 并 warn 指名被压过的设备。
 
 **每一行的来源，以及为什么其中一行值得单独说：**
 
@@ -179,11 +179,11 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 | 最慢单个源（capture poll） | 5–8 ms |
 | **整轮最坏持有** | **10–13 ms** |
 
-一轮里不止一个源到期，所以**每一行单独看合格，加起来就不一定**。`speed_for` 回答的是「这个 plane 需要多快」，问的不是「这一轮要多久」——两个问题，绑不上。
+一轮里不止一个源到期，所以**每一行单独看合格，加起来就不一定**。`speed_for` 回答的是「这个设备需要多快」，问的不是「这一轮要多久」——两个问题，绑不上。
 
 **而整轮最坏才是绑定约束**，因为 30 ms 的界是对「单次持有」说的：
 
-| @80 MHz，全部 plane 开着 | |
+| @80 MHz，全部设备开着 | |
 |---|---:|
 | 最慢单个源 | 20–21 ms |
 | **整轮最坏持有** | **25–26 ms** |
@@ -204,10 +204,10 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 | 层 | 内容 |
 |---|---|
 | `iot-core::demand` | `Speed` / `SpeedRequest` / `SpeedTable` / `ClockSink` / `resolve_speed` / `speed_shortfall` / `ClockGovernor` —— 机制，无数字 |
-| `iot-chip-esp` | 每片一份 `Table`、`Speed → CpuClock`，以及实现 `ClockSink` 的 `Part` |
+| `iot-chip-esp` | 每片一份 `Table`、`Speed → CpuClock`，以及实现 `ClockSink` 的 `Clock` |
 | `iot-app` | `render_loop` 里的两行日志。**不再知道 `CpuClock` 存在** |
 
-**表是从 sink 上取的，不是并排传进去的** —— `ClockSink::Table` 是关联类型。两个数是同一次测量：一行说的是**那块芯片上**某个平面持有多久，所以拿 A 片的表配 B 片的 `set_speed` 就是替一块没在跑的芯片算 deadline。做成关联类型，这个配对变成编译错误而不是运行时的意外。
+**表是从 sink 上取的，不是并排传进去的** —— `ClockSink::Table` 是关联类型。两个数是同一次测量：一行说的是**那块芯片上**某个设备持有多久，所以拿 A 片的表配 B 片的 `set_speed` 就是替一块没在跑的芯片算 deadline。做成关联类型，这个配对变成编译错误而不是运行时的意外。
 
 **`Governor` 在 core 里，因为它是本仓库已有的形状** —— `RenderController` 就在 `core::render` 里：同样是有状态（存 `last`）、`&mut self`、变了才动、效果经注入（那边是闭包，这里是 `ClockSink`）、返回「有没有动」（那边是 `bool`，这里是 `Option<Applied>`）。**core 连 `Box` 都在用**，所以「core 只依赖 libm」不是它不放有状态控制器的理由——那是现状，不是约束。
 
@@ -230,7 +230,7 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 
 **上一版把 S3 的三行数字直接给 C6 用是错的**——那三个数是 S3 的墙钟持有时间，对 C6 毫无意义。
 
-**`set_speed` 返回「实际达成的档位」，而不是「问的档位」**，所以差档是返回值而不是失败：S3 上 `Fast → Fast`；C6 上 `Fast → Normal`（160 是它的顶档）。`iot-chip-esp::Part` 一比就报「问 Fast，这片达成 Normal」。**不崩、不静默、不说谎**——这比最初那版 `unimplemented!()` 好，也比静默不动好。
+**`set_speed` 返回「实际达成的档位」，而不是「问的档位」**，所以差档是返回值而不是失败：S3 上 `Fast → Fast`；C6 上 `Fast → Normal`（160 是它的顶档）。`iot-chip-esp::Clock` 一比就报「问 Fast，这片达成 Normal」。**不崩、不静默、不说谎**——这比最初那版 `unimplemented!()` 好，也比静默不动好。
 
 **`set_cpu_clock` 那条越界警告在 C6 上不成立**：esp-hal 在 C6 上没有运行期改频的接口，所以 C6 的 `set_speed` 只接受请求而不动时钟。这件事写进了注释，而不是藏起来——**依赖它的构建应当是看得见的。**
 

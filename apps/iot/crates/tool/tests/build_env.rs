@@ -1,23 +1,3 @@
-//! Build-time configuration has to reach the compiler, and reaching it is not one step.
-//!
-//! `option_env!` is expanded where the crate is compiled, and the S3 build runs inside a
-//! container. A variable set on the host is only seen if `FORWARDED_ENV` in
-//! `scripts/iot-xtensa.sh` names it, because `docker run` passes no environment of its own.
-//!
-//! Missing that step fails silently. `option_env!` answers `None`, both variables fall back
-//! to their documented default, and — for `IOT_DEMAND` — the `is_some()` guard in front of
-//! the "named no plane this firmware recognises" warning is false when the variable never
-//! arrived, so not even that is printed.
-//!
-//! For the product that is a device quietly booting the wrong way. For a probe it is a
-//! whole measurement table taken on a build nobody asked for, reporting numbers that look
-//! entirely ordinary — and `records/iot` is filled from probe output, so there the input
-//! poisons the evidence rather than merely misbehaving.
-//!
-//! The host targets do not go through Docker, so neither symptom shows up in a compile, and
-//! nothing else in the repository covers it. Hence this — and here rather than in `iot-core`
-//! because it is a fact about this source tree, which is what `iot-tool` exists to read.
-
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};

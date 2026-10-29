@@ -103,8 +103,6 @@ pub struct PlaybackDiagnostics {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Diagnostics {
     pub touch: TouchDiagnostics,
-    /// What the page asks of each data plane, so a cost report can be read
-    /// against what was being asked for when it was spent.
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: DisplayPage,

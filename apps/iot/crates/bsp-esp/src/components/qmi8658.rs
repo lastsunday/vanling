@@ -59,13 +59,6 @@ const STATUSINT_CMD_DONE: u8 = 1 << 7;
 const CTRL_CMD_ACK: u8 = 0x00;
 const CTRL_CMD_CONFIGURE_MOTION: u8 = 0x0E;
 
-/// The datasheet gives no worst case for `CmdDone`, so the budget is taken from
-/// the one independent implementation that publishes one (RIOT uses a 1000ms
-/// command timeout). The part raises `CmdDone` as a sticky flag, so a tight poll
-/// would give up long before a slow part finished, and a false timeout costs the
-/// whole motion plane permanently. Being loose is free here because this runs
-/// once per boot inside `init`, and on the happy path the first poll already
-/// answers.
 const CMD_DONE_ATTEMPTS: u16 = 1_000;
 const CMD_DONE_POLL_US: u32 = 1_000;
 /// Datasheet 7.4 puts 15ms as the worst case for the reset process, so the
@@ -187,9 +180,6 @@ const _: () = {
     assert!(config_for(MotionConfig::Fifo).is_none());
 };
 
-/// What this part contributes on its own: raw telemetry plus the No-Motion
-/// engine it arms. Everything else the product reports is derived core-side
-/// from the data plane, so claiming it here would misattribute it.
 pub const QMI8658_CAPABILITIES: MotionCapabilities =
     MotionCapabilities::TELEMETRY.union(MotionCapabilities::STILL);
 
@@ -344,8 +334,6 @@ impl<D: I2c> Qmi8658<D> {
         let status = self.decode_events(&mut events).map_err(bus)?;
 
         if self.read_reg(REG_STATUS0).map_err(bus)? & DATA_READY_MASK != DATA_READY_MASK {
-            // An engine can fire between accel frames, so a hardware event is
-            // still worth publishing even when the data plane has not moved.
             return match (events.is_empty(), self.last_sample) {
                 (true, _) => Ok(None),
                 (false, Some(sample)) => Ok(Some(MotionReading {
@@ -593,8 +581,6 @@ impl<D: I2c> Qmi8658<D> {
     }
 }
 
-/// Minimum quiet time between poll-side re-init attempts, so a dead bus is not
-/// hammered at the plane cadence once polling is live.
 pub const MOTION_REINIT_MS: u64 = 1_000;
 
 /// Poll-side recovery when boot init did not complete: re-attempts `init` at
@@ -654,6 +640,28 @@ fn integrate_yaw(current: i16, gyro_z_dps_x10: i32, elapsed_ms: u64) -> i16 {
         yaw -= 3_600;
     }
     yaw as i16
+}
+
+impl<D: I2c> crate::hardware::SelfCheck for Qmi8658<D> {
+    fn name(&self) -> &'static str {
+        "motion"
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        Some(crate::hardware::Address::new(self.addr))
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        use crate::hardware::Status;
+        match self.validate_id() {
+            Err(Qmi8658Error::Bus(_)) => Status::silent(),
+            // A part that answers with the wrong ID is present and broken: degraded, not absent.
+            Err(Qmi8658Error::Identity(_)) => Status::refused("not a QMI8658"),
+            Err(_) => Status::refused("bring-up failed"),
+            Ok(()) if self.initialized => Status::answered(),
+            Ok(()) => Status::refused("not configured"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1440,7 +1448,7 @@ mod tests {
     }
 
     #[test]
-    fn an_engine_flag_still_publishes_when_the_data_plane_has_not_moved() {
+    fn an_engine_flag_still_publishes_when_the_data_path_has_not_moved() {
         let mut driver = driver(MockI2c::new());
         settle(&mut driver);
         let _ = driver.read_sample(20).expect("first frame");
@@ -1450,7 +1458,7 @@ mod tests {
         assert_eq!(reading.hardware.latest(), Some(MotionEvent::Still));
         assert_eq!(
             reading.sample.status, STATUS1_NO_MOTION,
-            "an event published without a fresh data plane still has to report the status it was decoded from"
+            "an event published without a fresh data path still has to report the status it was decoded from"
         );
     }
 
@@ -1499,5 +1507,28 @@ mod tests {
         assert_eq!(integrate_yaw(1_790, 1_000, 100), -1_710);
         // A stall cannot spin the heading away: the step is bounded.
         assert_eq!(integrate_yaw(0, 1_000, 5_000), 1_000);
+    }
+
+    #[test]
+    fn a_self_check_names_the_part_and_the_address_it_answers_on() {
+        use crate::hardware::{Address, SelfCheck};
+
+        let motion = Qmi8658::new(MockI2c::new(), QMI8658_I2C_ADDR);
+        assert_eq!(motion.name(), "motion");
+        assert_eq!(motion.id(), Some(Address::new(QMI8658_I2C_ADDR)));
+    }
+
+    #[test]
+    fn a_self_check_asks_the_identity_then_the_drivers_own_state() {
+        use crate::hardware::{SelfCheck, Status};
+
+        let mut motion = Qmi8658::new(MockI2c::new(), QMI8658_I2C_ADDR);
+        assert_eq!(motion.check(), Status::refused("not configured"));
+
+        motion.initialized = true;
+        assert_eq!(motion.check(), Status::answered());
+
+        motion.i2c.state.registers[register(REG_WHO_AM_I)] = 0x00;
+        assert_eq!(motion.check(), Status::refused("not a QMI8658"));
     }
 }

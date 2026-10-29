@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 
 use super::motion::MotionBatch;
 use crate::config::MotionConfig;
-use crate::demand::PlaneKey;
+use crate::demand::DemandKey;
 
 /// Active-low contract for a physical button: returns `true` when pressed.
 pub trait Button {
@@ -92,12 +92,6 @@ impl SwipeDirection {
     }
 }
 
-/// What a driver reported on one poll.
-///
-/// `Copy` and deliberately narrow: the input ring's every slot is as wide as its widest
-/// message, so a payload that is a *window* rather than an event — the capture's envelope —
-/// rides its own plane instead. See
-/// [`CaptureSink`](crate::drivers::audio::CaptureSink).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputEvent {
     Button(ButtonEvent),
@@ -108,9 +102,6 @@ pub enum InputEvent {
     /// the chip's engine against the software classifier. Purely diagnostic;
     /// never folds into a light-mode transition.
     ChipGesture(u8),
-    /// One motion poll: the raw telemetry every consumer may read, plus the
-    /// semantics the poll raised after arbitration. Both travel together —
-    /// the semantic plane feeds intent, the data plane feeds diagnostics.
     Motion(MotionBatch),
 }
 
@@ -379,12 +370,7 @@ pub trait InputSource {
         false
     }
 
-    /// Told that the demand has switched this source's plane off or back on.
-    ///
-    /// Separate from [`Self::poll`] because a plane that is off is not polled, so a source
-    /// that has to *stop* would otherwise never hear about it. The default does nothing,
-    /// right for a source that holds no peripheral.
-    fn set_plane_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
+    fn set_demand_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
 
     /// Whether a latency budget may stretch this source's poll cadence outward.
     ///
@@ -399,13 +385,6 @@ pub trait InputSource {
         true
     }
 
-    /// Leaves whatever is behind this source in the configuration its plane was decided to
-    /// need, answering what it is now in.
-    ///
-    /// The default is the answer for a source with no acquisition choice: there is nothing to
-    /// configure, so the wiring stands. Sources that do have one forward it to the part, and
-    /// the refusal travels back out rather than being logged away here — a demand nothing was
-    /// done about is the one thing a reader of the schedule cannot infer on their own.
     fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,
@@ -1054,9 +1033,7 @@ impl Default for TouchContinuity {
 /// that source drives.
 pub struct PollEntry {
     source_id: u8,
-    /// The plane this source answers for, so a schedule reads what this entry is for rather
-    /// than inferring it from the source's position in a parallel list.
-    key: PlaneKey,
+    key: DemandKey,
     source: Box<dyn InputSource>,
     aggregator: Box<dyn EventAggregator>,
     /// What the board wired, kept apart from [`Self::cadence_ms`] so a demand can be
@@ -1072,7 +1049,7 @@ pub struct PollEntry {
 impl PollEntry {
     pub fn new(
         source_id: u8,
-        key: PlaneKey,
+        key: DemandKey,
         source: Box<dyn InputSource>,
         aggregator: Box<dyn EventAggregator>,
         cadence_ms: u64,
@@ -1128,7 +1105,7 @@ impl PollEntry {
     /// Passes the switch on to the source behind it. Not folded into
     /// [`Self::set_active`]: this asks a driver to change what it is doing.
     pub fn set_collecting(&mut self, now_ms: u64, collecting: bool) {
-        self.source.set_plane_collecting(now_ms, collecting);
+        self.source.set_demand_collecting(now_ms, collecting);
     }
 
     /// Whether a latency budget may stretch this source's cadence.
@@ -1136,9 +1113,6 @@ impl PollEntry {
         self.source.accepts_slower_poll()
     }
 
-    /// Forwards the configuration its plane was decided to need. Answering with what the part
-    /// is now in is what lets the schedule report the achieved configuration rather than the
-    /// requested one.
     pub fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,
@@ -1152,8 +1126,7 @@ impl PollEntry {
         self.source_id
     }
 
-    /// The plane this source answers for.
-    pub const fn key(&self) -> PlaneKey {
+    pub const fn key(&self) -> DemandKey {
         self.key
     }
 
@@ -1181,12 +1154,19 @@ impl PollEntry {
         }
     }
 
-    /// Advance the source's schedule past `now_ms`, keeping it on its own
-    /// cadence grid with no catch-up burst.
     pub fn advance_past(&mut self, now_ms: u64) {
-        while self.next_at_ms <= now_ms {
-            self.next_at_ms = self.next_at_ms.wrapping_add(self.cadence_ms);
+        if self.next_at_ms > now_ms {
+            return;
         }
+        if self.cadence_ms == 0 {
+            self.next_at_ms = now_ms.wrapping_add(1);
+            return;
+        }
+        let behind = now_ms - self.next_at_ms;
+        let cells = behind / self.cadence_ms + 1;
+        self.next_at_ms = self
+            .next_at_ms
+            .wrapping_add(cells.wrapping_mul(self.cadence_ms));
     }
 
     /// Whether the control behind this source is down right now, which the poll cadence cannot
@@ -1263,7 +1243,7 @@ impl<B: Button> InputSource for ButtonScanner<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::PlaneKey;
+    use crate::demand::DemandKey;
 
     mod button {
         use super::*;
@@ -1472,7 +1452,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1491,7 +1471,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1510,11 +1490,49 @@ mod tests {
         }
 
         #[test]
+        fn a_source_that_resumes_after_an_hour_lands_on_the_next_slot_once() {
+            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let mut entry = PollEntry::new(
+                0,
+                DemandKey::INTERACTION,
+                Box::new(ButtonScanner::new(FakeButton { pressed })),
+                Box::new(PassThrough),
+                BUTTON_SCAN_MS,
+            );
+            entry.set_active(false);
+            entry.set_active(true);
+            entry.advance_past(3_600_000);
+            let next = entry.next_at_ms();
+            assert!(next > 3_600_000, "due, not parked at the old schedule");
+            assert!(
+                next - BUTTON_SCAN_MS <= 3_600_000,
+                "and on the first slot past now, not several cadences late"
+            );
+        }
+
+        #[test]
+        fn a_zero_cadence_moves_the_schedule_instead_of_dividing_by_zero() {
+            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let mut entry = PollEntry::new(
+                0,
+                DemandKey::INTERACTION,
+                Box::new(ButtonScanner::new(FakeButton { pressed })),
+                Box::new(PassThrough),
+                0,
+            );
+            entry.advance_past(1_000);
+            assert!(
+                entry.next_at_ms() > 1_000,
+                "the next tick decides, rather than this one spinning"
+            );
+        }
+
+        #[test]
         fn deactivating_a_source_that_is_already_off_changes_nothing() {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1532,7 +1550,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1613,7 +1631,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(PassThrough),
                 BUTTON_SCAN_MS,
@@ -1629,7 +1647,7 @@ mod tests {
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
             let mut entry = PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton { pressed })),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,

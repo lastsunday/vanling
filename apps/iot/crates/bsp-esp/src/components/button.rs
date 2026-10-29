@@ -20,3 +20,13 @@ impl Button for PullButton<'_> {
         self.input.is_low()
     }
 }
+
+impl crate::hardware::SelfCheck for PullButton<'_> {
+    fn name(&self) -> &'static str {
+        "button"
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        crate::hardware::Status::declared()
+    }
+}

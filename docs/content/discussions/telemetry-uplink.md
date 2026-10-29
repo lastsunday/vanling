@@ -155,7 +155,7 @@ struct Mask(u8);
 trait Sink { fn publish(&mut self, snap: &Snapshot); }
 ```
 
-再加一个 `Signal<Snapshot>` 当跨界点，照 `render.rs` 的 Plane 形状。
+再加一个 `Signal<Snapshot>` 当跨界点，照 `render.rs` 的契约形状。
 
 **不建** `Plan` / `resolve` / 注册表 / `Route`。今天只有一个 sink，那些层只会在测试里出现。
 

@@ -229,6 +229,23 @@ where
     }
 }
 
+impl<D: I2c> crate::hardware::SelfCheck for Ft6336<D> {
+    fn name(&self) -> &'static str {
+        "touch"
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        Some(crate::hardware::Address::new(self.addr))
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        match self.read_gesture_id() {
+            Some(_) => crate::hardware::Status::answered(),
+            None => crate::hardware::Status::silent(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +297,32 @@ mod tests {
                 "raw {raw:?} does not come out at {framebuffer:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_self_check_names_the_part_and_the_address_it_answers_on() {
+        use crate::hardware::{Address, SelfCheck};
+
+        let touch = touching((96, 133));
+        assert_eq!(touch.name(), "touch");
+        assert_eq!(touch.id(), Some(Address::new(FT6336_I2C_ADDR)));
+    }
+
+    #[test]
+    fn a_self_check_reads_one_register_and_calls_silence_absent() {
+        use crate::components::mock_i2c::Unresponsive;
+        use crate::hardware::{SelfCheck, Status};
+
+        let mut touch = touching((96, 133));
+        assert_eq!(touch.check(), Status::answered());
+
+        let mut absent = Ft6336::new(
+            Unresponsive,
+            FT6336_I2C_ADDR,
+            LANDSCAPE_MAP,
+            PANEL.0,
+            PANEL.1,
+        );
+        assert_eq!(absent.check(), Status::silent());
     }
 }

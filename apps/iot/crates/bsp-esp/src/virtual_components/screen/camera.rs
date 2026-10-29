@@ -9,7 +9,7 @@
 use alloc::boxed::Box;
 
 use esp_hal::time::Instant;
-use iot_core::demand::{CAMERA_THUMBNAIL_PERIOD_MS, PlaneKey};
+use iot_core::demand::{CAMERA_THUMBNAIL_PERIOD_MS, DemandKey};
 use iot_core::drivers::camera::{CameraTarget, FrameAdvance, FrameSource};
 use iot_ui::{CameraReadout, Canvas, Surface};
 
@@ -131,7 +131,7 @@ impl Screen {
             }
             self.owner.taken();
         }
-        let period_ms = self.diagnostics.demand.plane(PlaneKey::CAMERA).period_ms;
+        let period_ms = self.diagnostics.demand.claim(DemandKey::CAMERA).period_ms;
         let Some(readout) = self.camera.advance(frame, now_ms, period_ms) else {
             return false;
         };

@@ -192,7 +192,7 @@ pub async fn control_loop(
                     // driver — read as this sound's end, it would finish the sound
                     // the instant it started. Both halves under one lock.
                     let accepted = shared.lock(|s| {
-                        let accepted = s.speaker.borrow_mut().play(sound);
+                        let accepted = crate::sounds::play(&mut **s.speaker.borrow_mut(), sound);
                         if accepted.is_ok() {
                             s.done.store(false, Ordering::Relaxed);
                         }

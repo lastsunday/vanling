@@ -17,7 +17,7 @@ pub use audio::{EchoCapture, EchoReport, Es7210Rx};
 #[cfg(feature = "audio-out")]
 pub mod audio_out;
 #[cfg(feature = "audio-out")]
-pub use audio_out::{Es8311Tx, REFERENCE_SAMPLES, SWEEP_MS};
+pub use audio_out::{Es8311Tx, REFERENCE_SAMPLES};
 #[cfg(feature = "screen")]
 pub mod screen;
 #[cfg(feature = "screen")]

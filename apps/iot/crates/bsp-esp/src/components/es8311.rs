@@ -386,6 +386,30 @@ impl<D: I2c> Es8311<D> {
     }
 }
 
+impl<D: I2c> crate::hardware::Named for Es8311<D> {
+    const NAME: &'static str = "speaker";
+}
+
+impl<D: I2c> crate::hardware::SelfCheck for Es8311<D> {
+    fn name(&self) -> &'static str {
+        "speaker"
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        Some(crate::hardware::Address::new(self.addr))
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        use crate::hardware::Status;
+        match self.chip_id() {
+            Err(_) => Status::silent(),
+            Ok(id) if !id.is_expected() => Status::refused("not an ES8311"),
+            Ok(_) if !self.running => Status::refused("not running"),
+            Ok(_) => Status::answered(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,5 +600,35 @@ mod tests {
         let writes = codec.i2c.trace.len();
         codec.i2c.fail_at = Some(writes);
         assert_eq!(codec.set_muted(true), Err(Es8311Error::Bus(NACK)));
+    }
+
+    #[test]
+    fn a_self_check_names_the_part_and_the_address_it_answers_on() {
+        use crate::hardware::{Address, SelfCheck};
+
+        let codec = codec();
+        assert_eq!(codec.name(), "speaker");
+        assert_eq!(codec.id(), Some(Address::new(ES8311_I2C_ADDR)));
+    }
+
+    #[test]
+    fn a_self_check_tells_a_wrong_chip_from_a_silent_one() {
+        use crate::components::mock_i2c::Unresponsive;
+        use crate::hardware::{SelfCheck, Status};
+
+        assert_eq!(codec().check(), Status::refused("not running"));
+        assert_eq!(settle().check(), Status::answered());
+
+        let mut wrong = Es8311::new(
+            Mock::new(|registers| {
+                registers[REG_CHIP_ID1 as usize] = 0x00;
+                registers[REG_CHIP_ID2 as usize] = 0x00;
+            }),
+            ES8311_I2C_ADDR,
+        );
+        assert_eq!(wrong.check(), Status::refused("not an ES8311"));
+
+        let mut absent = Es8311::new(Unresponsive, ES8311_I2C_ADDR);
+        assert_eq!(absent.check(), Status::silent());
     }
 }

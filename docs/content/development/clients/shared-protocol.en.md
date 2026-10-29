@@ -2,8 +2,8 @@
 title = "Shared Client Protocol"
 weight = 302
 [extra]
-source_file_hash = "6121f2f55de76eb4dab13e430a440f5d91976bfe"
-translated_at = "2026-09-06T13:25:44Z"
+source_file_hash = "5db2247ae798e289dbe5feda2cd4780145914c10"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 # Shared Client Protocol
@@ -42,7 +42,7 @@ Both stacks implement the protocol in `development/server/websocket-protocol.md`
 
 Session state (attention) is the single fact source driven by the protocol; output channels are its pluggable projections — optional and combinable.
 
-**Scope**: the attention state machine exists only on clients compiled with the `voice` peripheral (voice-enabled). Voice-less devices have no session state machine, only device-local pages + the HTTP data plane; this protocol is empty for them.
+**Scope**: the attention state machine exists only on clients compiled with the `voice` peripheral (voice-enabled). Voice-less devices have no session state machine, only device-local pages + the HTTP data path; this protocol is empty for them.
 
 ### Output Channels
 

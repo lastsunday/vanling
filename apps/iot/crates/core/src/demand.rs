@@ -1,20 +1,14 @@
 //! Demand: what the product wants of each data plane, and when.
 //!
-//! A claim is a *temporal contract*: whether a plane runs ([`Mode`]) and how often
-//! ([`PlaneDemand::period_ms`]). [`Sensitivity`] asks how stale a reading may be, and this board
-//! cannot act on it: batching means "sample on schedule, report later", which needs a hardware
-//! FIFO to hold the event meanwhile, and the IMU here has none — so a late report can only be
-//! bought by sampling less often, which is `period_ms` said out loud.
+//! A claim is a temporal contract — whether a plane runs ([`Mode`]) and how often
+//! ([`Claim::period_ms`]). [`Sensitivity`] asks how stale a reading may be, and this board cannot
+//! act on it: batching means "sample on schedule, report later", which needs a hardware FIFO to
+//! hold the event meanwhile, and the IMU here has none. A late report can therefore only be bought
+//! by sampling less often, which is `period_ms` said out loud.
 //!
-//! How a plane is wired to meet that — its registers, its transport, its on-chip engines —
-//! is an acquisition *configuration* ([`crate::config`]), chosen by the driver and never by
-//! a page. Keeping the two apart is what stops "low fidelity at high cost" from being
-//! expressible: a page cannot ask for a worse picture to save power, because a page does not
-//! name a configuration at all.
-//!
-//! A demand is a map keyed by [`PlaneKey`], and that is the whole reason the machinery below
-//! never names a device: `plane`, `without` and [`Override::apply`] all work by lookup, so a
-//! board adding a sensor declares one more key and touches none of them.
+//! A demand is a map keyed by [`DemandKey`], which is why the machinery below never names a device:
+//! `claim`, `without` and [`Override::apply`] all work by lookup, so a board adding a sensor
+//! declares one more key and touches none of them.
 
 use alloc::collections::BTreeMap;
 
@@ -48,19 +42,10 @@ pub enum SpeedRequest {
     Fixed(Speed),
 }
 
-/// What one device type needs while it is collecting, in this build's terms.
-///
-/// The numbers behind this live in the chip layer, because they are worst cases
-/// measured on one part and mean nothing on another: the same deadline on a
-/// faster core is a shorter hold. What stays here is the shape — which plane
-/// needs which — so a board adding a device declares one row and the chip
-/// decides what it costs.
 pub trait SpeedTable {
-    /// What one plane needs while it is collecting.
-    fn speed_for(field: DemandField) -> Speed;
+    fn speed_for(kind: DemandKind) -> Speed;
 }
 
-/// What a plane is asked to produce, in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Mode {
     /// Not produced.
@@ -96,21 +81,15 @@ pub enum Sensitivity {
     Background,
 }
 
-/// What one plane is asked to produce. `period_ms` is the requested cadence and is a floor
-/// like any other: the board's own is clamped on top, so a claim can only ever ask for a
-/// *slower* stream than the wiring gives.
-///
-/// A plane missing from the map reads as `off` rather than as an error: a plane nobody
-/// declared is a plane nobody can poll.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlaneDemand {
+pub struct Claim {
     pub mode: Mode,
     /// The requested cadence in milliseconds; `0` means the board's own rate.
     pub period_ms: u32,
     pub class: Sensitivity,
 }
 
-impl PlaneDemand {
+impl Claim {
     pub const fn new(mode: Mode, period_ms: u32, class: Sensitivity) -> Self {
         Self {
             mode,
@@ -119,7 +98,6 @@ impl PlaneDemand {
         }
     }
 
-    /// Nothing asked of the plane, and no reading anyone is waiting for.
     pub const fn off() -> Self {
         Self {
             mode: Mode::Off,
@@ -142,7 +120,7 @@ impl PlaneDemand {
 
 /// One device type, independent of how many of them are wired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum DemandField {
+pub enum DemandKind {
     /// The interaction path, never gated: a scenario is chosen by touching or pressing
     /// something, so gating this would remove the only way to ungate it.
     Interaction,
@@ -152,49 +130,37 @@ pub enum DemandField {
     Display,
 }
 
-/// One plane: a device type plus which of them is meant, so two of a kind can be demanded
-/// apart.
-///
-/// `instance` is 0 for every plane a board wires once. It exists because two sensors of one
-/// type are two planes the product can name separately, and a key that cannot say *which*
-/// would have to either collapse them into one claim or give up per-instance demand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PlaneKey {
-    field: DemandField,
+pub struct DemandKey {
+    kind: DemandKind,
     instance: u8,
 }
 
-impl PlaneKey {
-    pub const fn of(field: DemandField) -> Self {
-        Self { field, instance: 0 }
+impl DemandKey {
+    pub const fn of(kind: DemandKind) -> Self {
+        Self { kind, instance: 0 }
     }
 
     /// The same device type, a specific unit of it.
-    pub const fn instance(field: DemandField, instance: u8) -> Self {
-        Self { field, instance }
+    pub const fn instance(kind: DemandKind, instance: u8) -> Self {
+        Self { kind, instance }
     }
 
-    pub const fn field(self) -> DemandField {
-        self.field
+    pub const fn kind(self) -> DemandKind {
+        self.kind
     }
 
-    pub const MOTION: Self = Self::of(DemandField::Motion);
-    pub const AUDIO: Self = Self::of(DemandField::Audio);
-    pub const CAMERA: Self = Self::of(DemandField::Camera);
-    pub const DISPLAY: Self = Self::of(DemandField::Display);
+    pub const MOTION: Self = Self::of(DemandKind::Motion);
+    pub const AUDIO: Self = Self::of(DemandKind::Audio);
+    pub const CAMERA: Self = Self::of(DemandKind::Camera);
+    pub const DISPLAY: Self = Self::of(DemandKind::Display);
     /// The interaction path answers as always-continuous: nothing may gate it.
-    pub const INTERACTION: Self = Self::of(DemandField::Interaction);
+    pub const INTERACTION: Self = Self::of(DemandKind::Interaction);
 }
 
-/// What the device is asked for, plane by plane.
-///
-/// A map, not a struct with one field per device, so that the machinery here — `plane`,
-/// `without`, [`Override::apply`] — is generic over the key. A board that wires
-/// a sensor nobody else has adds a key and changes none of them; only the board's own list
-/// and the page that claims it grow.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveDemand {
-    planes: BTreeMap<PlaneKey, PlaneDemand>,
+    claims: BTreeMap<DemandKey, Claim>,
     speed: SpeedRequest,
 }
 
@@ -204,25 +170,25 @@ impl Default for EffectiveDemand {
     /// An unset demand is not a dark device: it is a device nobody has asked a question of
     /// yet.
     fn default() -> Self {
-        let mut planes = BTreeMap::new();
-        planes.insert(
-            PlaneKey::DISPLAY,
-            PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+        let mut claims = BTreeMap::new();
+        claims.insert(
+            DemandKey::DISPLAY,
+            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
         );
         Self {
-            planes,
+            claims,
             speed: SpeedRequest::Auto,
         }
     }
 }
 
-impl Default for PlaneDemand {
+impl Default for Claim {
     fn default() -> Self {
         Self::off()
     }
 }
 
-impl core::fmt::Display for PlaneDemand {
+impl core::fmt::Display for Claim {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.period_ms == 0 {
             write!(f, "{:?}@{:?}", self.mode, self.class)
@@ -234,7 +200,7 @@ impl core::fmt::Display for PlaneDemand {
 
 impl core::fmt::Display for EffectiveDemand {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for (index, (key, demand)) in self.planes.iter().enumerate() {
+        for (index, (key, demand)) in self.claims.iter().enumerate() {
             if index > 0 {
                 f.write_str(" ")?;
             }
@@ -244,16 +210,16 @@ impl core::fmt::Display for EffectiveDemand {
     }
 }
 
-impl core::fmt::Display for PlaneKey {
+impl core::fmt::Display for DemandKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Lowercase, because these land in a log line next to `[DEMAND]` and `[DISPLAY]`
         // rather than in a type position.
-        let name = match self.field {
-            DemandField::Interaction => "input",
-            DemandField::Motion => "motion",
-            DemandField::Audio => "audio",
-            DemandField::Camera => "camera",
-            DemandField::Display => "display",
+        let name = match self.kind {
+            DemandKind::Interaction => "input",
+            DemandKind::Motion => "motion",
+            DemandKind::Audio => "audio",
+            DemandKind::Camera => "camera",
+            DemandKind::Display => "display",
         };
         match self.instance {
             0 => f.write_str(name),
@@ -262,12 +228,9 @@ impl core::fmt::Display for PlaneKey {
     }
 }
 
-/// A sparse patch over a demand: what one build or configuration page asks beyond what the
-/// page would. Absent keys claim nothing, which is what lets one page override one plane and
-/// leave the rest of the product's demand standing.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Override {
-    named: BTreeMap<PlaneKey, (Mode, u32)>,
+    named: BTreeMap<DemandKey, (Mode, u32)>,
     speed: SpeedRequest,
 }
 
@@ -289,12 +252,11 @@ impl Override {
         self
     }
 
-    /// What this override says about one plane, or `None` if it says nothing.
-    pub fn named_mode(&self, key: PlaneKey) -> Option<(Mode, u32)> {
+    pub fn named_mode(&self, key: DemandKey) -> Option<(Mode, u32)> {
         self.named.get(&key).copied()
     }
 
-    pub fn set(&mut self, key: PlaneKey, mode: Mode, period_ms: u32) {
+    pub fn set(&mut self, key: DemandKey, mode: Mode, period_ms: u32) {
         self.named.insert(key, (mode, period_ms));
     }
 
@@ -302,7 +264,7 @@ impl Override {
     pub fn apply(self, demand: &mut EffectiveDemand) {
         demand.speed = self.speed;
         for (key, (mode, period_ms)) in self.named {
-            let current = demand.plane(key);
+            let current = demand.claim(key);
             demand.set(key, current.with(mode, period_ms));
         }
     }
@@ -314,33 +276,27 @@ impl Override {
     }
 }
 
-/// The plane names an override spells, as `[probe][name]`.
-const FIELD_NAMES: &[(&str, DemandField)] = &[
-    ("input", DemandField::Interaction),
-    ("motion", DemandField::Motion),
-    ("audio", DemandField::Audio),
-    ("camera", DemandField::Camera),
-    ("display", DemandField::Display),
+const KIND_NAMES: &[(&str, DemandKind)] = &[
+    ("input", DemandKind::Interaction),
+    ("motion", DemandKind::Motion),
+    ("audio", DemandKind::Audio),
+    ("camera", DemandKind::Camera),
+    ("display", DemandKind::Display),
 ];
 
-/// What one mode name asks of one plane, or `None` for a name this plane does not answer to.
-/// `on` and `continuous` are the same request; `thumb`(nail) is the camera's slow cadence.
-///
-/// A name may carry its own period as `mode:ms` (`motion=on:30000`), which is how a build
-/// asks for a slow stream now that no policy table stands between the request and the cadence.
-fn mode_for(field: DemandField, name: &str) -> Option<(Mode, u32)> {
+fn mode_for(kind: DemandKind, name: &str) -> Option<(Mode, u32)> {
     let (name, asked_period_ms) = match name.split_once(':') {
         Some((mode, period)) => (mode, Some(period.parse().ok()?)),
         None => (name, None),
     };
-    if field == DemandField::Interaction {
+    if kind == DemandKind::Interaction {
         return None;
     }
-    let (mode, default_period_ms) = match (field, name) {
+    let (mode, default_period_ms) = match (kind, name) {
         (_, "off") => (Mode::Off, 0),
         (_, "on-change") | (_, "on_change") => (Mode::OnChange, 0),
         (_, "on") | (_, "continuous") => (Mode::Continuous, 0),
-        (DemandField::Camera, "thumb") | (DemandField::Camera, "thumbnail") => {
+        (DemandKind::Camera, "thumb") | (DemandKind::Camera, "thumbnail") => {
             (Mode::Continuous, CAMERA_THUMBNAIL_PERIOD_MS)
         }
         _ => return None,
@@ -348,18 +304,15 @@ fn mode_for(field: DemandField, name: &str) -> Option<(Mode, u32)> {
     Some((mode, asked_period_ms.unwrap_or(default_period_ms)))
 }
 
-/// Parses one `field=mode` term, or `None` if it is not one. Every failure yields `None`
-/// rather than an error: a build-time mistake should produce firmware that says what it did
-/// not understand, not firmware that fails to link.
-fn parse_term(term: &str) -> Option<(PlaneKey, (Mode, u32))> {
-    let (field_name, mode_name) = term.split_once('=')?;
+fn parse_term(term: &str) -> Option<(DemandKey, (Mode, u32))> {
+    let (kind_name, mode_name) = term.split_once('=')?;
     let wanted = mode_name.trim().to_ascii_lowercase();
-    let field = FIELD_NAMES
+    let kind = KIND_NAMES
         .iter()
-        .find(|(candidate, _)| *candidate == field_name.trim().to_ascii_lowercase())
-        .map(|(_, field)| *field)?;
-    let mode = mode_for(field, wanted.as_str())?;
-    Some((PlaneKey::of(field), mode))
+        .find(|(candidate, _)| *candidate == kind_name.trim().to_ascii_lowercase())
+        .map(|(_, kind)| *kind)?;
+    let mode = mode_for(kind, wanted.as_str())?;
+    Some((DemandKey::of(kind), mode))
 }
 
 fn speed_for_name(name: &str) -> SpeedRequest {
@@ -373,91 +326,52 @@ fn speed_for_name(name: &str) -> SpeedRequest {
     }
 }
 
-/// Parses a comma-separated list of `field=mode` terms, plus an optional
-/// `speed=` term naming the clock the whole demand wants. Comma-separated rather than a
-/// repeated variable, which the shell would collapse to its last value.
 pub fn parse_override(text: &str) -> Override {
     let mut combined = Override::none();
     for term in text.split(',') {
-        // `speed=` names no plane, so it is read before the plane parser turns
-        // a term with an unknown field into nothing.
         if let Some(wanted) = term.strip_prefix("speed=") {
             combined = combined.with_speed(speed_for_name(wanted));
             continue;
         }
         if let Some((key, (mode, period))) = parse_term(term) {
-            // Two terms naming the same plane: the later one wins.
             combined.set(key, mode, period);
         }
     }
     combined
 }
 
-/// The clock the chip should run at for this demand.
-///
-/// A page's explicit choice is taken as given — that is the whole point of
-/// letting it state one. Only [`SpeedRequest::Auto`] reads [`SpeedTable::speed_for`], and it
-/// reads the collecting planes and takes the highest.
-///
-/// Downclocking stretches durations and changes nothing else: the peripheral bus
-/// keeps its own clock and the system timer runs from XTAL, so the cost of a
-/// wrong answer here is a missed deadline and not a broken device. That is why
-/// this does not second-guess an explicit request, and why
-/// [`speed_shortfall`] exists to report instead. Which preset a [`Speed`] is on
-/// this part is the chip layer's, behind [`SpeedTable`].
 pub fn resolve_speed<T: SpeedTable>(demand: &EffectiveDemand) -> Speed {
     match demand.speed {
         SpeedRequest::Fixed(speed) => speed,
         SpeedRequest::Auto => demand
             .keys()
-            .filter(|key| demand.plane(**key).mode.is_collecting())
-            .map(|key| T::speed_for(key.field()))
+            .filter(|key| demand.claim(**key).mode.is_collecting())
+            .map(|key| T::speed_for(key.kind()))
             .max()
             .unwrap_or_default(),
     }
 }
 
-/// The collecting plane whose requirement `resolve_speed` is currently
-/// undercut, and what it needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shortfall {
-    /// The plane being asked to collect below its own speed.
-    pub plane: PlaneKey,
-    /// What that plane needs, so a report can name the requirement beside the
-    /// plane rather than making the reader look it up.
+    pub key: DemandKey,
     pub needed: Speed,
 }
 
-/// The collecting plane whose requirement `resolve_speed` is currently
-/// undercut, if a page asked for something below it.
-///
-/// Named rather than counted so the report can point at the plane rather than at
-/// a number with no owner.
 pub fn speed_shortfall<T: SpeedTable>(demand: &EffectiveDemand) -> Option<Shortfall> {
     let SpeedRequest::Fixed(asked) = demand.speed else {
         return None;
     };
     demand
         .keys()
-        .filter(|key| demand.plane(**key).mode.is_collecting())
+        .filter(|key| demand.claim(**key).mode.is_collecting())
         .find_map(|key| {
-            let needed = T::speed_for(key.field());
-            (needed > asked).then_some(Shortfall {
-                plane: *key,
-                needed,
-            })
+            let needed = T::speed_for(key.kind());
+            (needed > asked).then_some(Shortfall { key: *key, needed })
         })
 }
 
-/// The part a resolved speed is applied to, and what that part achieves.
-///
-/// The table comes from the sink rather than being named beside it because the two
-/// are the same measurement: the rows say how long a plane holds **on that part**,
-/// so pairing one part's rows with another's setter would compute a deadline for a
-/// chip that is not running. Making it an associated type makes that pairing a
-/// compile error instead of a runtime surprise.
 pub trait ClockSink {
-    /// What each plane needs on the part this sink drives.
     type Table: SpeedTable;
 
     /// Applies `speed` and returns the speed the part is actually running.
@@ -476,7 +390,6 @@ pub struct Applied {
     /// What the part is running, which is below [`asked`](Self::asked) on a part
     /// with fewer presets than the vocabulary has.
     pub running: Speed,
-    /// The plane `asked` is undercut, when a page named the speed itself.
     pub undercuts: Option<Shortfall>,
 }
 
@@ -549,15 +462,15 @@ pub struct PollPlan {
 /// This is the demand's half of [`InputLimiter`], which is the whole: what a source may not
 /// be polled less often for is the source's own knowledge, and it only reaches a schedule
 /// here.
-pub fn poll_plan_of(key: PlaneKey, demand: &EffectiveDemand, board_cadence_ms: u64) -> PollPlan {
-    if key.field() == DemandField::Interaction {
+pub fn poll_plan_of(key: DemandKey, demand: &EffectiveDemand, board_cadence_ms: u64) -> PollPlan {
+    if key.kind() == DemandKind::Interaction {
         return PollPlan {
             active: true,
             cadence_ms: board_cadence_ms,
         };
     }
-    let plane = demand.plane(key);
-    if !plane.mode.is_collecting() {
+    let claim = demand.claim(key);
+    if !claim.mode.is_collecting() {
         return PollPlan {
             active: false,
             cadence_ms: board_cadence_ms,
@@ -565,7 +478,7 @@ pub fn poll_plan_of(key: PlaneKey, demand: &EffectiveDemand, board_cadence_ms: u
     }
     PollPlan {
         active: true,
-        cadence_ms: board_cadence_ms.max(u64::from(plane.period_ms)),
+        cadence_ms: board_cadence_ms.max(u64::from(claim.period_ms)),
     }
 }
 
@@ -589,7 +502,7 @@ impl InputLimiter {
     /// `poll_plan_of` is what the demand alone implies; the fold-back is what the source
     /// allows. Both are needed, and neither is the limiter without the other.
     pub fn plan(
-        key: PlaneKey,
+        key: DemandKey,
         demand: &EffectiveDemand,
         board_cadence_ms: u64,
         accepts_slower_poll: bool,
@@ -614,23 +527,19 @@ impl InputLimiter {
 /// [`architecture`](../../../../../docs/content/development/iot/architecture.md).
 pub const MAX_SINGLE_HOLD_MS: u32 = 30;
 
-/// Every plane this crate names, for tests that mean the product rather than one board.
-///
-/// A board declares the shorter list it actually wires; this walks all of them so a page
-/// that forgets one is caught.
 #[cfg(test)]
-pub const ALL_PLANES: &[PlaneKey] = &[
-    PlaneKey::MOTION,
-    PlaneKey::AUDIO,
-    PlaneKey::CAMERA,
-    PlaneKey::DISPLAY,
+pub const ALL_KEYS: &[DemandKey] = &[
+    DemandKey::MOTION,
+    DemandKey::AUDIO,
+    DemandKey::CAMERA,
+    DemandKey::DISPLAY,
 ];
 
 impl EffectiveDemand {
     /// Nothing demanded. What a device holds before any scenario claims it.
     pub const fn none() -> Self {
         Self {
-            planes: BTreeMap::new(),
+            claims: BTreeMap::new(),
             speed: SpeedRequest::Auto,
         }
     }
@@ -640,36 +549,25 @@ impl EffectiveDemand {
         self.speed
     }
 
-    /// What one plane is asked for. The interaction path is answered as always-continuous:
-    /// nothing may gate it, and this is what tells a poller so.
-    pub fn plane(&self, key: PlaneKey) -> PlaneDemand {
-        if key.field() == DemandField::Interaction {
-            return PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary);
+    pub fn claim(&self, key: DemandKey) -> Claim {
+        if key.kind() == DemandKind::Interaction {
+            return Claim::new(Mode::Continuous, 0, Sensitivity::Primary);
         }
-        self.planes.get(&key).copied().unwrap_or_default()
+        self.claims.get(&key).copied().unwrap_or_default()
     }
 
-    /// Records what one plane is asked for, replacing whatever it was asked before.
-    pub fn set(&mut self, key: PlaneKey, demand: PlaneDemand) {
-        self.planes.insert(key, demand);
+    pub fn set(&mut self, key: DemandKey, demand: Claim) {
+        self.claims.insert(key, demand);
     }
 
-    /// Every plane this demand says something about, in key order.
-    pub fn keys(&self) -> impl Iterator<Item = &PlaneKey> {
-        self.planes.keys()
+    pub fn keys(&self) -> impl Iterator<Item = &DemandKey> {
+        self.claims.keys()
     }
 
-    /// The same demand with one plane dropped, for a part that cannot meet what was asked of
-    /// it.
-    ///
-    /// Dropping rather than substituting: a device that cannot produce change events should
-    /// stop claiming it will, not carry on polling and delivering something else under the
-    /// name that was asked for. The interaction path is untouched — nothing a demand says may
-    /// switch it off, and that holds for a refusal as much as for a page.
-    pub fn without(&self, key: PlaneKey) -> Self {
+    pub fn without(&self, key: DemandKey) -> Self {
         let mut demand = self.clone();
-        if key.field() != DemandField::Interaction {
-            demand.planes.insert(key, PlaneDemand::off());
+        if key.kind() != DemandKind::Interaction {
+            demand.claims.insert(key, Claim::off());
         }
         demand
     }
@@ -685,10 +583,10 @@ mod tests {
     struct S3;
 
     impl SpeedTable for S3 {
-        fn speed_for(field: DemandField) -> Speed {
-            match field {
-                DemandField::Interaction | DemandField::Motion => Speed::Slow,
-                DemandField::Audio | DemandField::Camera | DemandField::Display => Speed::Fast,
+        fn speed_for(kind: DemandKind) -> Speed {
+            match kind {
+                DemandKind::Interaction | DemandKind::Motion => Speed::Slow,
+                DemandKind::Audio | DemandKind::Camera | DemandKind::Display => Speed::Fast,
             }
         }
     }
@@ -731,29 +629,29 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    fn collecting(key: PlaneKey) -> EffectiveDemand {
+    fn collecting(key: DemandKey) -> EffectiveDemand {
         let mut demand = EffectiveDemand::none();
-        demand.set(key, PlaneDemand::off().with(Mode::Continuous, 0));
+        demand.set(key, Claim::off().with(Mode::Continuous, 0));
         demand
     }
 
-    fn live_planes() -> EffectiveDemand {
+    fn live_claims() -> EffectiveDemand {
         {
             let mut demand = EffectiveDemand::none();
             demand.set(
-                PlaneKey::MOTION,
-                PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Secondary),
+                DemandKey::MOTION,
+                Claim::new(Mode::Continuous, 0, Sensitivity::Secondary),
             );
             demand.set(
-                PlaneKey::AUDIO,
-                PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Secondary),
+                DemandKey::AUDIO,
+                Claim::new(Mode::Continuous, 0, Sensitivity::Secondary),
             );
             demand
         }
     }
 
     #[test]
-    fn off_is_the_only_mode_that_stops_a_plane() {
+    fn off_is_the_only_mode_that_stops_a_device() {
         assert!(!Mode::Off.is_collecting());
         assert!(Mode::OnChange.is_collecting());
         assert!(Mode::Continuous.is_collecting());
@@ -762,11 +660,11 @@ mod tests {
     #[test]
     fn an_unset_demand_is_not_a_dark_device() {
         assert_eq!(
-            EffectiveDemand::none().plane(PlaneKey::DISPLAY).mode,
+            EffectiveDemand::none().claim(DemandKey::DISPLAY).mode,
             Mode::Off
         );
         assert_eq!(
-            EffectiveDemand::default().plane(PlaneKey::DISPLAY).mode,
+            EffectiveDemand::default().claim(DemandKey::DISPLAY).mode,
             Mode::Continuous,
             "an unset demand is not a dark device"
         );
@@ -775,7 +673,7 @@ mod tests {
     #[test]
     fn the_interaction_path_is_never_gated() {
         let off = EffectiveDemand::none();
-        let plan = poll_plan_of(PlaneKey::INTERACTION, &off, 10);
+        let plan = poll_plan_of(DemandKey::INTERACTION, &off, 10);
         assert!(
             plan.active,
             "a demand of nothing must still leave the input readable"
@@ -784,9 +682,9 @@ mod tests {
     }
 
     #[test]
-    fn a_plane_demanded_at_off_is_not_polled_at_all() {
+    fn a_device_demanded_at_off_is_not_polled_at_all() {
         let off = EffectiveDemand::none();
-        for key in [PlaneKey::MOTION, PlaneKey::AUDIO] {
+        for key in [DemandKey::MOTION, DemandKey::AUDIO] {
             let plan = poll_plan_of(key, &off, 20);
             assert!(!plan.active, "{key} demanded at Off must not be polled");
             assert_eq!(plan.cadence_ms, 20);
@@ -795,12 +693,12 @@ mod tests {
 
     #[test]
     fn a_requested_period_is_a_floor_the_cadence_cannot_shorten() {
-        let mut demand = live_planes();
+        let mut demand = live_claims();
         demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::new(Mode::Continuous, 500, Sensitivity::Secondary),
+            DemandKey::AUDIO,
+            Claim::new(Mode::Continuous, 500, Sensitivity::Secondary),
         );
-        let plan = poll_plan_of(PlaneKey::AUDIO, &demand, 20);
+        let plan = poll_plan_of(DemandKey::AUDIO, &demand, 20);
         assert_eq!(plan.cadence_ms, 500, "a slow request must not be sped up");
     }
 
@@ -809,19 +707,19 @@ mod tests {
         // The fold-back used to live inline in the apply loop, which meant the limiter had no
         // single place a reader could check it. It is the same rule either way: a stretch the
         // source cannot survive is given up rather than scheduled.
-        let mut demand = live_planes();
+        let mut demand = live_claims();
         demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::new(Mode::Continuous, 2_000, Sensitivity::Secondary),
+            DemandKey::AUDIO,
+            Claim::new(Mode::Continuous, 2_000, Sensitivity::Secondary),
         );
 
         assert_eq!(
-            InputLimiter::plan(PlaneKey::AUDIO, &demand, 20, false).cadence_ms,
+            InputLimiter::plan(DemandKey::AUDIO, &demand, 20, false).cadence_ms,
             20,
             "a source whose clock dies when polled slower keeps the board's own cadence"
         );
         assert_eq!(
-            InputLimiter::plan(PlaneKey::AUDIO, &demand, 20, true).cadence_ms,
+            InputLimiter::plan(DemandKey::AUDIO, &demand, 20, true).cadence_ms,
             2_000,
             "one that only goes stale takes the stretch the demand asked for"
         );
@@ -830,7 +728,7 @@ mod tests {
     #[test]
     fn the_interaction_path_takes_no_plan_at_all_even_from_a_source_that_cannot_go_slower() {
         let off = EffectiveDemand::none();
-        let plan = InputLimiter::plan(PlaneKey::INTERACTION, &off, 10, false);
+        let plan = InputLimiter::plan(DemandKey::INTERACTION, &off, 10, false);
         assert!(
             plan.active,
             "a stale button reading is a device that cannot be steered off its page"
@@ -840,41 +738,41 @@ mod tests {
 
     #[test]
     fn a_class_moves_no_cadence_because_there_is_no_fifo_to_hold_an_event() {
-        let mut demand = live_planes();
+        let mut demand = live_claims();
         demand.set(
-            PlaneKey::MOTION,
-            PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+            DemandKey::MOTION,
+            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
         );
         demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Background),
+            DemandKey::AUDIO,
+            Claim::new(Mode::Continuous, 0, Sensitivity::Background),
         );
 
-        let eager = poll_plan_of(PlaneKey::MOTION, &demand, 20);
-        let patient = poll_plan_of(PlaneKey::AUDIO, &demand, 20);
+        let eager = poll_plan_of(DemandKey::MOTION, &demand, 20);
+        let patient = poll_plan_of(DemandKey::AUDIO, &demand, 20);
         assert_eq!(eager.cadence_ms, patient.cadence_ms);
     }
 
     #[test]
-    fn a_cost_report_can_name_every_plane_and_its_class() {
+    fn a_cost_report_can_name_every_device_and_its_class() {
         use alloc::format;
         let mut demand = EffectiveDemand::none();
         demand.set(
-            PlaneKey::MOTION,
-            PlaneDemand::new(Mode::OnChange, 0, Sensitivity::Secondary),
+            DemandKey::MOTION,
+            Claim::new(Mode::OnChange, 0, Sensitivity::Secondary),
         );
-        demand.set(PlaneKey::AUDIO, PlaneDemand::off());
+        demand.set(DemandKey::AUDIO, Claim::off());
         demand.set(
-            PlaneKey::CAMERA,
-            PlaneDemand::new(
+            DemandKey::CAMERA,
+            Claim::new(
                 Mode::Continuous,
                 CAMERA_THUMBNAIL_PERIOD_MS,
                 Sensitivity::Primary,
             ),
         );
         demand.set(
-            PlaneKey::DISPLAY,
-            PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+            DemandKey::DISPLAY,
+            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
         );
 
         assert_eq!(
@@ -885,22 +783,22 @@ mod tests {
     }
 
     #[test]
-    fn an_override_names_a_plane_and_a_mode_and_leaves_the_rest_alone() {
+    fn an_override_names_a_device_and_a_mode_and_leaves_the_rest_alone() {
         let parsed = parse_override("audio=off");
         assert!(parsed.names_anything());
-        assert_eq!(parsed.named_mode(PlaneKey::AUDIO), Some((Mode::Off, 0)));
-        assert_eq!(parsed.named_mode(PlaneKey::MOTION), None);
+        assert_eq!(parsed.named_mode(DemandKey::AUDIO), Some((Mode::Off, 0)));
+        assert_eq!(parsed.named_mode(DemandKey::MOTION), None);
 
-        let mut demand = live_planes();
-        let before = demand.plane(PlaneKey::MOTION);
+        let mut demand = live_claims();
+        let before = demand.claim(DemandKey::MOTION);
         parsed.apply(&mut demand);
 
-        assert_eq!(demand.plane(PlaneKey::AUDIO).mode, Mode::Off);
-        assert_eq!(demand.plane(PlaneKey::MOTION), before);
+        assert_eq!(demand.claim(DemandKey::AUDIO).mode, Mode::Off);
+        assert_eq!(demand.claim(DemandKey::MOTION), before);
         assert_eq!(
-            demand.plane(PlaneKey::AUDIO).class,
+            demand.claim(DemandKey::AUDIO).class,
             Sensitivity::Secondary,
-            "narrowing a mode must not re-price the plane under another budget"
+            "narrowing a mode must not re-price the device under another budget"
         );
     }
 
@@ -908,18 +806,18 @@ mod tests {
     fn several_terms_can_be_named_at_once() {
         let parsed = parse_override("motion=on-change,display=off");
         assert_eq!(
-            parsed.named_mode(PlaneKey::MOTION),
+            parsed.named_mode(DemandKey::MOTION),
             Some((Mode::OnChange, 0))
         );
-        assert_eq!(parsed.named_mode(PlaneKey::DISPLAY), Some((Mode::Off, 0)));
-        assert_eq!(parsed.named_mode(PlaneKey::AUDIO), None);
+        assert_eq!(parsed.named_mode(DemandKey::DISPLAY), Some((Mode::Off, 0)));
+        assert_eq!(parsed.named_mode(DemandKey::AUDIO), None);
     }
 
     #[test]
     fn a_camera_override_can_ask_for_a_thumbnail() {
         let parsed = parse_override("camera=thumb");
         assert_eq!(
-            parsed.named_mode(PlaneKey::CAMERA),
+            parsed.named_mode(DemandKey::CAMERA),
             Some((Mode::Continuous, CAMERA_THUMBNAIL_PERIOD_MS))
         );
     }
@@ -930,15 +828,15 @@ mod tests {
         // 30 s. The build now says so outright, and it lands on the same cadence.
         let parsed = parse_override("motion=on:30000,audio=off");
         assert_eq!(
-            parsed.named_mode(PlaneKey::MOTION),
+            parsed.named_mode(DemandKey::MOTION),
             Some((Mode::Continuous, 30_000))
         );
-        assert_eq!(parsed.named_mode(PlaneKey::AUDIO), Some((Mode::Off, 0)));
+        assert_eq!(parsed.named_mode(DemandKey::AUDIO), Some((Mode::Off, 0)));
 
-        let mut demand = live_planes();
+        let mut demand = live_claims();
         parsed.apply(&mut demand);
         assert_eq!(
-            poll_plan_of(PlaneKey::MOTION, &demand, 20).cadence_ms,
+            poll_plan_of(DemandKey::MOTION, &demand, 20).cadence_ms,
             30_000
         );
     }
@@ -959,60 +857,55 @@ mod tests {
     }
 
     #[test]
-    fn a_later_term_wins_for_the_same_plane() {
+    fn a_later_term_wins_for_the_same_device() {
         let parsed = parse_override("display=off,display=on");
         assert_eq!(
-            parsed.named_mode(PlaneKey::DISPLAY),
+            parsed.named_mode(DemandKey::DISPLAY),
             Some((Mode::Continuous, 0))
         );
     }
 
     #[test]
-    fn a_plane_nobody_named_reads_as_off_rather_than_as_a_missing_key() {
-        // Absent and Off have to mean the same thing, because the board's plane list and the
-        // page's claim are written independently and a reader cannot tell which one left a
-        // key out.
+    fn a_device_nobody_named_reads_as_off_rather_than_as_a_missing_key() {
         let empty = EffectiveDemand::none();
-        for key in ALL_PLANES.iter().copied() {
-            assert_eq!(empty.plane(key), PlaneDemand::off(), "{key}");
-            assert_eq!(empty.plane(key).mode, Mode::Off);
+        for key in ALL_KEYS.iter().copied() {
+            assert_eq!(empty.claim(key), Claim::off(), "{key}");
+            assert_eq!(empty.claim(key).mode, Mode::Off);
         }
     }
 
     #[test]
-    fn an_override_leaves_a_plane_it_says_nothing_about_alone() {
-        // The whole point of a sparse patch: naming one plane must not disturb the rest of
-        // what the product asked for.
+    fn an_override_leaves_a_device_it_says_nothing_about_alone() {
         let mut demand = EffectiveDemand::none();
         demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::new(Mode::Continuous, 500, Sensitivity::Secondary),
+            DemandKey::AUDIO,
+            Claim::new(Mode::Continuous, 500, Sensitivity::Secondary),
         );
         demand.set(
-            PlaneKey::DISPLAY,
-            PlaneDemand::new(Mode::Continuous, 0, Sensitivity::Primary),
+            DemandKey::DISPLAY,
+            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
         );
 
         let mut override_ = Override::none();
-        override_.set(PlaneKey::AUDIO, Mode::Off, 0);
+        override_.set(DemandKey::AUDIO, Mode::Off, 0);
         override_.apply(&mut demand);
 
-        assert_eq!(demand.plane(PlaneKey::AUDIO).mode, Mode::Off);
+        assert_eq!(demand.claim(DemandKey::AUDIO).mode, Mode::Off);
         assert_eq!(
-            demand.plane(PlaneKey::DISPLAY).mode,
+            demand.claim(DemandKey::DISPLAY).mode,
             Mode::Continuous,
-            "naming the audio plane must not have repainted the panel's demand"
+            "naming the audio device must not have repainted the panel's demand"
         );
     }
 
     #[test]
     fn a_term_this_firmware_does_not_recognise_costs_that_term_and_not_the_rest() {
         for text in [
-            "audoi=off", // misspelled plane
+            "audoi=off", // misspelled device
             "audio=of",  // misspelled mode
-            "input=off", // a plane no demand may switch off
+            "input=off", // a device no demand may switch off
             "audio",     // no `=`
-            "=off",      // no plane
+            "=off",      // no device
             "",          // nothing at all
         ] {
             assert!(
@@ -1021,9 +914,9 @@ mod tests {
             );
         }
         let partial = parse_override("audio=off, motion=on, nonsense");
-        assert_eq!(partial.named_mode(PlaneKey::AUDIO), Some((Mode::Off, 0)));
+        assert_eq!(partial.named_mode(DemandKey::AUDIO), Some((Mode::Off, 0)));
         assert_eq!(
-            partial.named_mode(PlaneKey::MOTION),
+            partial.named_mode(DemandKey::MOTION),
             Some((Mode::Continuous, 0))
         );
     }
@@ -1032,7 +925,7 @@ mod tests {
     fn a_separator_at_either_end_costs_nothing() {
         for text in [",audio=off", "audio=off,", ", audio=off ,", " audio = off "] {
             assert_eq!(
-                parse_override(text).named_mode(PlaneKey::AUDIO),
+                parse_override(text).named_mode(DemandKey::AUDIO),
                 Some((Mode::Off, 0)),
                 "{text:?}"
             );
@@ -1046,12 +939,12 @@ mod tests {
 
     #[test]
     fn an_override_on_the_camera_page_can_reach_off() {
-        let mut demand = crate::state::DisplayPage::Camera.demand(ALL_PLANES);
-        assert_eq!(demand.plane(PlaneKey::CAMERA).mode, Mode::Continuous);
+        let mut demand = crate::state::DisplayPage::Camera.demand(ALL_KEYS);
+        assert_eq!(demand.claim(DemandKey::CAMERA).mode, Mode::Continuous);
 
         parse_override("camera=off").apply(&mut demand);
 
-        assert_eq!(demand.plane(PlaneKey::CAMERA).mode, Mode::Off);
+        assert_eq!(demand.claim(DemandKey::CAMERA).mode, Mode::Off);
     }
 
     /// The strings the shipped build tasks pass as `IOT_DEMAND`. An unrecognised term costs
@@ -1061,23 +954,20 @@ mod tests {
     fn every_shipped_preset_spells_modes_this_firmware_has() {
         // `apps/iot/moon.yml`: build-s3-thrift
         let thrift = parse_override("audio=off,display=on-change");
-        assert_eq!(thrift.named_mode(PlaneKey::AUDIO), Some((Mode::Off, 0)));
+        assert_eq!(thrift.named_mode(DemandKey::AUDIO), Some((Mode::Off, 0)));
         assert_eq!(
-            thrift.named_mode(PlaneKey::DISPLAY),
+            thrift.named_mode(DemandKey::DISPLAY),
             Some((Mode::OnChange, 0))
         );
     }
 
     #[test]
-    fn auto_reads_the_collecting_planes_and_takes_the_highest() {
+    fn auto_reads_the_collecting_devices_and_takes_the_highest() {
         let mut demand = EffectiveDemand::none();
-        demand.set(
-            PlaneKey::CAMERA,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
+        demand.set(DemandKey::CAMERA, Claim::off().with(Mode::Continuous, 0));
         assert_eq!(resolve_speed::<S3>(&demand), Speed::Fast);
 
-        demand.set(PlaneKey::CAMERA, PlaneDemand::off());
+        demand.set(DemandKey::CAMERA, Claim::off());
         assert_eq!(
             resolve_speed::<S3>(&demand),
             Speed::default(),
@@ -1088,10 +978,7 @@ mod tests {
     #[test]
     fn an_explicit_request_is_taken_as_given_rather_than_arbitrated() {
         let mut demand = EffectiveDemand::none();
-        demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
+        demand.set(DemandKey::AUDIO, Claim::off().with(Mode::Continuous, 0));
         demand.speed = SpeedRequest::Fixed(Speed::Slow);
         assert_eq!(
             resolve_speed::<S3>(&demand),
@@ -1101,22 +988,19 @@ mod tests {
     }
 
     #[test]
-    fn a_forced_speed_names_the_plane_it_is_undercutting() {
+    fn a_forced_speed_names_the_device_it_is_undercutting() {
         let mut demand = EffectiveDemand::none();
-        demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
-        demand.set(PlaneKey::CAMERA, PlaneDemand::off());
+        demand.set(DemandKey::AUDIO, Claim::off().with(Mode::Continuous, 0));
+        demand.set(DemandKey::CAMERA, Claim::off());
 
         demand.speed = SpeedRequest::Fixed(Speed::Slow);
         assert_eq!(
             speed_shortfall::<S3>(&demand),
             Some(Shortfall {
-                plane: PlaneKey::AUDIO,
+                key: DemandKey::AUDIO,
                 needed: Speed::Fast,
             }),
-            "the report names the plane and what it needs, so neither has to be looked up"
+            "the report names the device and what it needs, so neither has to be looked up"
         );
 
         demand.speed = SpeedRequest::Auto;
@@ -1128,24 +1012,18 @@ mod tests {
     }
 
     #[test]
-    fn a_table_that_makes_a_choice_splits_the_fields_around_it() {
-        // This pins that a table with more than one row is honoured per field, not
-        // collapsed to one answer. The values themselves are the S3's and are
-        // copied; whether they are still the shipped ones is `iot-chip-esp`'s to say.
-        assert_eq!(S3::speed_for(DemandField::Motion), Speed::Slow);
-        assert_eq!(S3::speed_for(DemandField::Interaction), Speed::Slow);
-        assert_eq!(S3::speed_for(DemandField::Camera), Speed::Fast);
-        assert_eq!(S3::speed_for(DemandField::Display), Speed::Fast);
-        assert_eq!(S3::speed_for(DemandField::Audio), Speed::Fast);
+    fn a_table_that_makes_a_choice_splits_the_keys_around_it() {
+        assert_eq!(S3::speed_for(DemandKind::Motion), Speed::Slow);
+        assert_eq!(S3::speed_for(DemandKind::Interaction), Speed::Slow);
+        assert_eq!(S3::speed_for(DemandKind::Camera), Speed::Fast);
+        assert_eq!(S3::speed_for(DemandKind::Display), Speed::Fast);
+        assert_eq!(S3::speed_for(DemandKind::Audio), Speed::Fast);
     }
 
     #[test]
     fn auto_over_motion_alone_drops_below_fast_and_a_page_can_override_that() {
         let mut demand = EffectiveDemand::none();
-        demand.set(
-            PlaneKey::MOTION,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
+        demand.set(DemandKey::MOTION, Claim::off().with(Mode::Continuous, 0));
         assert_eq!(
             resolve_speed::<S3>(&demand),
             Speed::Slow,
@@ -1157,20 +1035,14 @@ mod tests {
     }
 
     #[test]
-    fn the_highest_of_several_collecting_planes_wins() {
+    fn the_highest_of_several_collecting_devices_wins() {
         let mut demand = EffectiveDemand::none();
-        demand.set(
-            PlaneKey::MOTION,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
-        demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
+        demand.set(DemandKey::MOTION, Claim::off().with(Mode::Continuous, 0));
+        demand.set(DemandKey::AUDIO, Claim::off().with(Mode::Continuous, 0));
         assert_eq!(
             resolve_speed::<S3>(&demand),
             Speed::Fast,
-            "one plane at the top of the table lifts every other, which is what makes \
+            "one device at the top of the table lifts every other, which is what makes \
              Auto a max rather than a first-match"
         );
     }
@@ -1202,7 +1074,7 @@ mod tests {
         let mut sink = Reaching::default();
         let mut governor = ClockGovernor::new();
         assert_eq!(
-            governor.apply(&collecting(PlaneKey::MOTION), &mut sink),
+            governor.apply(&collecting(DemandKey::MOTION), &mut sink),
             Some(Applied {
                 asked: Speed::Slow,
                 running: Speed::Slow,
@@ -1217,7 +1089,7 @@ mod tests {
     fn an_answer_that_has_not_moved_is_not_asked_for_again() {
         let mut sink = Reaching::default();
         let mut governor = ClockGovernor::new();
-        let demand = collecting(PlaneKey::MOTION);
+        let demand = collecting(DemandKey::MOTION);
         governor.apply(&demand, &mut sink);
         assert_eq!(
             governor.apply(&demand, &mut sink),
@@ -1233,7 +1105,7 @@ mod tests {
         let mut sink = Capped::default();
         let mut governor = ClockGovernor::new();
         assert_eq!(
-            governor.apply(&collecting(PlaneKey::AUDIO), &mut sink),
+            governor.apply(&collecting(DemandKey::AUDIO), &mut sink),
             Some(Applied {
                 asked: Speed::Fast,
                 running: Speed::Normal,
@@ -1246,14 +1118,11 @@ mod tests {
     }
 
     #[test]
-    fn a_page_that_named_its_own_speed_is_told_which_plane_it_is_undercutting() {
+    fn a_page_that_named_its_own_speed_is_told_which_device_it_is_undercutting() {
         let mut sink = Reaching::default();
         let mut governor = ClockGovernor::new();
-        let mut demand = collecting(PlaneKey::MOTION);
-        demand.set(
-            PlaneKey::AUDIO,
-            PlaneDemand::off().with(Mode::Continuous, 0),
-        );
+        let mut demand = collecting(DemandKey::MOTION);
+        demand.set(DemandKey::AUDIO, Claim::off().with(Mode::Continuous, 0));
         governor.apply(&demand, &mut sink);
         demand.speed = SpeedRequest::Fixed(Speed::Slow);
         assert_eq!(
@@ -1262,11 +1131,11 @@ mod tests {
                 asked: Speed::Slow,
                 running: Speed::Slow,
                 undercuts: Some(Shortfall {
-                    plane: PlaneKey::AUDIO,
+                    key: DemandKey::AUDIO,
                     needed: Speed::Fast,
                 }),
             }),
-            "the page's choice is applied as given, and the plane it costs is named"
+            "the page's choice is applied as given, and the device it costs is named"
         );
     }
 }

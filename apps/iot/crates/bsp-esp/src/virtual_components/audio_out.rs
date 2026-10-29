@@ -9,6 +9,7 @@
 //! Idleness is not itself a fault: [`PlayStreamWatchdog`] weighs it against a whole
 //! ring's playthrough so only a genuine drain counts.
 
+use alloc::boxed::Box;
 use esp_hal::Blocking;
 use esp_hal::dma::DmaTxStreamBuf;
 use esp_hal::dma_tx_stream_buffer;
@@ -21,12 +22,10 @@ use iot_core::drivers::audio::{
     BYTES_PER_FRAME, CAPTURE_BYTES_PER_FRAME, DECIMATION, SAMPLE_RATE_HZ,
 };
 use iot_core::drivers::playback::{
-    PlayStreamWatchdog, Recovery, SampleSource, Sound, Speaker, SpeakerFault, SpeakerOp, Sweep,
-    Tone, from_midi, interleave_mono,
+    PlayStreamWatchdog, Recovery, SampleSource, Speaker, SpeakerFault, SpeakerOp, interleave_mono,
 };
 
 use crate::components::es8311::Mute;
-use crate::sounds::file_of;
 use crate::virtual_components::reference::{Writer, samples_for};
 
 /// This is the distance between where a sample is *put on the ring* and where it
@@ -113,48 +112,7 @@ pub fn stream() -> DmaTxStreamBuf {
     dma_tx_stream_buffer!(RING_BYTES, CHUNK_BYTES)
 }
 
-/// What the ring is being filled from. A catalogue sound, and the bench
-/// excitation — which is a voice too, in that a ring is fed either way and the
-/// difference is only what goes on it.
-///
-/// The band the room measurement's sweep crosses.
-///
-/// **It stops at 6 kHz and starts at 300 Hz** because the answer is deconvolved,
-/// and a sweep that reaches DC or Nyquist puts its energy where the codec's
-/// filters are still settling — what comes back then describes them rather than
-/// the room. The whole band in [`SWEEP_MS`] is what sets how far apart two
-/// reflections can be told: about 40 Hz, or 0.55 ms, between them.
-const SWEEP_FROM_HZ: u32 = 300;
-const SWEEP_TO_HZ: u32 = 6_000;
-
-/// One pass of the room measurement's sweep, and therefore its repeat period.
-///
-/// Two hundred milliseconds is also what makes the loop close: 300 Hz to 6 kHz
-/// over 200 ms is exactly six hundred and thirty cycles, so the phase a whole
-/// sweep accumulates is a whole number of turns and consecutive passes join with
-/// no step — see [`Sweep`].
-pub const SWEEP_MS: u32 = 200;
-
-enum Voice {
-    Tone(Tone),
-    Sweep(Sweep),
-}
-
-impl SampleSource for Voice {
-    fn fill(&mut self, out: &mut [i16]) -> usize {
-        match self {
-            Self::Tone(tone) => tone.fill(out),
-            Self::Sweep(sweep) => sweep.fill(out),
-        }
-    }
-
-    fn done(&self) -> bool {
-        match self {
-            Self::Tone(tone) => tone.done(),
-            Self::Sweep(sweep) => sweep.done(),
-        }
-    }
-}
+type Voice = Box<dyn SampleSource>;
 
 /// Renders audio into a ring slice: up to [`PUSH_FRAMES`] frames of the voice's
 /// next samples, or silence when there is none, each stereo-ised to the wire
@@ -406,31 +364,8 @@ where
     // interrupts masked.
     C: Mute + Send + 'static,
 {
-    /// Starts `sound` from the beginning, replacing anything playing.
-    ///
-    /// Nothing of the stream is touched: the sound is just what the next feeds
-    /// put on the ring, so a tap lands mid-silence without interrupting the
-    /// codec's lock — the pull of the draw, putting sound on a stream that has
-    /// been running all along.
-    fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault> {
-        self.voice = Some(match file_of(sound) {
-            // The parse runs here rather than in the feed because it allocates,
-            // and `play` is called from the control loop — the one place on this
-            // path the heap is reachable. A file that would not parse is a sound
-            // the catalogue names and the speaker cannot make, which is a fault
-            // rather than a silent gap: the page would sit in `Playing` for ever
-            // waiting on a voice that was never built.
-            Some(score) => {
-                let Some(notes) = from_midi(score) else {
-                    return Err(SpeakerFault::new(
-                        SpeakerOp::Play,
-                        "a sound file would not parse",
-                    ));
-                };
-                Voice::Tone(Tone::playing(notes))
-            }
-            None => Voice::Sweep(Sweep::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS)),
-        });
+    fn play(&mut self, source: Box<dyn SampleSource>) -> Result<(), SpeakerFault> {
+        self.voice = Some(source);
         self.tail = false;
         Ok(())
     }
@@ -497,4 +432,22 @@ where
         self.recover_drained(recovery);
         Some(recovery)
     }
+}
+
+impl<C: crate::hardware::SelfCheck> crate::hardware::SelfCheck for Es8311Tx<C> {
+    fn name(&self) -> &'static str {
+        self.codec.name()
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        self.codec.id()
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        self.codec.check()
+    }
+}
+
+impl<C: crate::hardware::Named> crate::hardware::Named for Es8311Tx<C> {
+    const NAME: &'static str = C::NAME;
 }

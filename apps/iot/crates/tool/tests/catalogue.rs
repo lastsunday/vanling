@@ -1,7 +1,3 @@
-//! What the tool holds itself to: the recipes, the bytes on disk, and whether
-//! the two agree. Everything needing the synthesiser is checked where the
-//! synthesiser is, in `iot-bsp-esp`.
-
 use std::collections::BTreeSet;
 
 use iot_tool::midi::{RECIPES, REST, assets_dir, file_name, mid};
@@ -133,18 +129,13 @@ fn every_recipe_has_a_track_name() {
     }
 }
 
-/// The board's file list and these recipes name the same five files.
-///
-/// The two crates cannot see each other, so a rename done on one side only would
-/// pass silently: both `bell.mid` and `rise.mid` would exist, both would have a
-/// recipe, and the board would happily play the wrong one.
 #[test]
-fn the_board_names_the_same_files() {
-    let board = board_source();
-    let named: BTreeSet<&str> = board
+fn the_catalogue_names_the_same_files() {
+    let catalogue = catalogue_source();
+    let named: BTreeSet<&str> = catalogue
         .match_indices("assets/")
         .map(|(at, _)| {
-            let rest = &board[at + "assets/".len()..];
+            let rest = &catalogue[at + "assets/".len()..];
             &rest[..rest.find('"').expect("an asset path with no closing quote")]
         })
         .collect();
@@ -154,11 +145,11 @@ fn the_board_names_the_same_files() {
 
     assert_eq!(
         named, wanted,
-        "iot-bsp-esp includes files these recipes do not produce",
+        "iot-app includes files these recipes do not produce",
     );
 }
 
-fn board_source() -> String {
+fn catalogue_source() -> String {
     let path = assets_dir().join("../sounds.rs");
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }

@@ -11,12 +11,12 @@ use embassy_futures::join::{join, join3, join4};
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use iot_core::config::Configurator;
-use iot_core::demand::{ClockSink, EffectiveDemand, Override, PlaneKey};
+use iot_core::demand::{ClockSink, DemandKey, EffectiveDemand, Override};
 use iot_core::drivers::board::{
-    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPlayback,
+    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPanel, HasPlayback,
 };
 use iot_core::drivers::playback::Speaker;
-use iot_core::state::{DeviceManager, DisplayPage, Panel};
+use iot_core::state::{DeviceManager, DisplayPage};
 
 /// The demand a running device is under, read by the tasks that schedule against it and written
 /// by the one that derives it. Shared state, because a demand is idempotent and only its latest
@@ -29,18 +29,18 @@ pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>
 /// A string rather than a feature, because the value is an enum and mutually exclusive features
 /// would be resolved by `cfg` order. This is the shape the chip crates use in `.cargo/config.toml`.
 fn boot_page() -> DisplayPage {
-    boot_page_from_env(option_env!("IOT_BOOT_PAGE"))
+    // Resolved while the build runs, not at boot: the run-time form moved the main task's frame
+    // by four kilobytes, enough to put the Wi-Fi join below the stack floor.
+    if let Some(name) = UNKNOWN_BOOT_PAGE {
+        log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Ambient");
+    }
+    BOOT_PAGE
 }
 
-/// What the build asks of each data plane beyond what the page would, as
-/// `IOT_DEMAND=audio=off,display=on-change`.
-///
-/// Comma-separated and parsed leniently: a repeated variable keeps only its last
-/// assignment, so a mistyped term should cost a term rather than the build.
 fn boot_override() -> Override {
     let parsed = iot_core::demand::parse_override(option_env!("IOT_DEMAND").unwrap_or(""));
     if option_env!("IOT_DEMAND").is_some() && !parsed.names_anything() {
-        log::warn!("[IOT] IOT_DEMAND named no plane this firmware recognises: ignored");
+        log::warn!("[IOT] IOT_DEMAND named nothing this firmware recognises: ignored");
     }
     parsed
 }
@@ -55,22 +55,55 @@ const BOOT_PAGE_NAMES: [(&str, DisplayPage); 6] = [
     ("network", DisplayPage::Network),
 ];
 
-/// Resolve a boot page name, falling back to [`DisplayPage::Ambient`]. Unset and empty names fall
-/// back silently; an unknown one falls back with a warning. Case and surrounding space are
-/// ignored; both checks walk the name, so neither can be `const`.
-fn boot_page_from_env(name: Option<&str>) -> DisplayPage {
+const BOOT_PAGE: DisplayPage = boot_page_from_env(option_env!("IOT_BOOT_PAGE"));
+
+const UNKNOWN_BOOT_PAGE: Option<&str> = unknown_page(option_env!("IOT_BOOT_PAGE"));
+
+const fn boot_page_from_env(name: Option<&str>) -> DisplayPage {
     let Some(name) = name else {
         return DisplayPage::Ambient;
     };
-    let wanted = name.trim().to_ascii_lowercase();
-    if let Some((_, page)) = BOOT_PAGE_NAMES
-        .iter()
-        .find(|(candidate, _)| *candidate == wanted)
-    {
-        return *page;
+    match page_named(name.trim_ascii()) {
+        Some(page) => page,
+        None => DisplayPage::Ambient,
     }
-    log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Ambient");
-    DisplayPage::Ambient
+}
+
+const fn page_named(wanted: &str) -> Option<DisplayPage> {
+    let wanted = wanted.as_bytes();
+    let mut index = 0;
+    while index < BOOT_PAGE_NAMES.len() {
+        if eq_ignore_ascii_case(BOOT_PAGE_NAMES[index].0.as_bytes(), wanted) {
+            return Some(BOOT_PAGE_NAMES[index].1);
+        }
+        index += 1;
+    }
+    None
+}
+
+const fn unknown_page(name: Option<&str>) -> Option<&str> {
+    let Some(name) = name else {
+        return None;
+    };
+    let trimmed = name.trim_ascii();
+    if trimmed.is_empty() || page_named(trimmed).is_some() {
+        return None;
+    }
+    Some(name)
+}
+
+const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if !left[index].eq_ignore_ascii_case(&right[index]) {
+            return false;
+        }
+        index += 1;
+    }
+    true
 }
 
 /// The wiring a build can get wrong without failing to build, held by a test instead.
@@ -169,6 +202,20 @@ mod boot_page_tests {
     }
 
     #[test]
+    fn only_a_name_no_page_answers_to_is_reported() {
+        for name in ["AMBIENT", "  attitude  ", "\tnetwork\n"] {
+            assert_eq!(super::unknown_page(Some(name)), None, "{name:?}");
+        }
+        assert_eq!(super::unknown_page(None), None, "unset");
+        assert_eq!(super::unknown_page(Some("   ")), None, "blank");
+        assert_eq!(
+            super::unknown_page(Some("photograph")),
+            Some("photograph"),
+            "an unknown name"
+        );
+    }
+
+    #[test]
     fn the_default_and_the_named_page_are_different_pages() {
         // Guards the reason this exists: if every name resolved to Ambient the feature would
         // compile and quietly do nothing, which is the failure a bench would report as "the
@@ -178,6 +225,7 @@ mod boot_page_tests {
     }
 }
 
+pub mod frame;
 pub mod input;
 /// The link lives behind the `wifi` feature rather than inside `run`: it is the one part of the
 /// product that needs the radio's own types, and a build without a radio still compiles the
@@ -196,19 +244,18 @@ pub mod probe;
 #[cfg(feature = "wifi")]
 pub mod provision;
 pub mod render;
+pub mod sounds;
 
 use input::{CAPTURE, INTENT_BUS, input_task};
 use playback::{PLAYBACK_BUS, control_loop, feed_task, share};
-use render::{
-    FORGET, JOIN, LEAVE, LightRenderer, PAGE, RESCAN, Render, SCAN, SETUP_ASK, render_loop,
-};
+use render::{INBOUND, LightRenderer, OUTBOUND, Render, render_loop};
 
 /// Where the feed loop runs. It writes the DMA ring every
 /// [`FEED_MS`](iot_core::drivers::playback::FEED_MS), which also keeps the microphone's clock
 /// alive; a late feed is a gap in the speaker and a stalled capture. An interrupt executor
 /// preempts the cooperative one, where a task that does not `.await` can overrun the runway. A
 /// board with no interrupt executor takes [`Inline`](Self::Inline).
-pub enum SpeakerRunner {
+pub enum Feed {
     /// Run the feed on a higher-priority interrupt executor, so a long
     /// cooperative holder cannot delay it.
     Interrupt(SendSpawner),
@@ -216,46 +263,53 @@ pub enum SpeakerRunner {
     Inline,
 }
 
-/// Whether the entry point got a station off the board. The station is taken before `run` because
-/// its start needs the scheduler, so this is the only wiring fact left. It gates the Network page:
-/// a build with no link has none to show.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Link {
+pub enum Network {
     /// A station came up: the page belongs in the cycle.
-    Wired,
+    Present,
     /// No radio, or none that started: the page is skipped.
     Absent,
 }
 
-impl Link {
+impl Network {
     /// What the entry point found when it took the board's radio.
     pub const fn of(present: bool) -> Self {
-        if present { Self::Wired } else { Self::Absent }
+        if present { Self::Present } else { Self::Absent }
     }
 
     /// Whether a page showing the link belongs in the cycle.
-    pub const fn is_wired(self) -> bool {
-        matches!(self, Self::Wired)
+    pub const fn is_present(self) -> bool {
+        matches!(self, Self::Present)
     }
+}
+
+pub struct Wiring<C> {
+    pub clock: C,
+    pub feed: Feed,
+    pub network: Network,
 }
 
 /// Application composition: take the board's light and input sources, register one renderer per
 /// wired surface, and run the persistent tasks. Generic over capabilities, so every board with the
 /// same wiring shares this copy.
-///
-/// `panel` is handed in beside [`Link`] because a screen is neither a source nor a surface. It
-/// decides whether setup mode's leave is asked about or done.
-pub async fn run<B, C>(
-    mut board: B,
-    mut clock: C,
-    speaker_runner: SpeakerRunner,
-    link: Link,
-    panel: Panel,
-) -> !
+pub async fn run<B, C>(mut board: B, wiring: Wiring<C>) -> !
 where
-    B: BoardTrait + HasLight + HasInput + HasMotion + HasAudio + HasPlayback + HasCamera + 'static,
+    B: BoardTrait
+        + HasLight
+        + HasInput
+        + HasMotion
+        + HasAudio
+        + HasPlayback
+        + HasCamera
+        + HasPanel
+        + 'static,
     C: ClockSink,
 {
+    let Wiring {
+        mut clock,
+        feed,
+        network,
+    } = wiring;
     let lights = board.take_lights().expect("board has a wired light");
     let mut sources = board.take_input().unwrap_or_default();
     let motion = board.take_motion();
@@ -266,22 +320,16 @@ where
         if motion_enabled { "wired" } else { "absent" },
         motion_caps.bits(),
     );
-    // The capture is just another polled source: it joins the same tick rather
-    // than a task of its own, so a slow poll costs envelope columns and nothing
-    // else. What it reports goes to the capture plane rather than the intent bus,
-    // which is why the board is handed the plane: a window is not an event.
     let audio = board.take_audio(&CAPTURE);
     let audio_enabled = audio.is_some();
-    // Which planes this board can be asked about at all. A source the board did not wire
-    // contributes no plane, so a board with no microphone never has an audio demand to meet.
-    let mut planes: Vec<PlaneKey> = alloc::vec![PlaneKey::DISPLAY];
+    let mut demand_keys: Vec<DemandKey> = alloc::vec![DemandKey::DISPLAY];
     if let Some(motion) = motion {
         sources.push(motion);
-        planes.push(PlaneKey::MOTION);
+        demand_keys.push(DemandKey::MOTION);
     }
     if let Some(audio) = audio {
         sources.push(audio);
-        planes.push(PlaneKey::AUDIO);
+        demand_keys.push(DemandKey::AUDIO);
     }
 
     // Unlike the capture, playback is a task of its own: a sound has to keep
@@ -301,7 +349,7 @@ where
     let mut camera = board.take_camera();
     let camera_enabled = camera.is_some();
     if camera_enabled {
-        planes.push(PlaneKey::CAMERA);
+        demand_keys.push(DemandKey::CAMERA);
     }
     if !camera_enabled {
         log::info!("[CAM] no camera wired, the Camera page stays dark");
@@ -330,15 +378,12 @@ where
     let override_ = boot_override();
     let mut manager = Box::new(
         DeviceManager::with_motion(motion_enabled, motion_caps)
-            .with_planes(planes)
+            .with_demand_keys(demand_keys)
             .with_audio(audio_enabled)
             .with_playback(playback_enabled)
             .with_camera(camera_enabled)
-            // The link's gate arrives from the entry point rather than being read off the
-            // board like the three above: the station's start needs the scheduler, so the
-            // entry point takes it before this runs. See [`Link`].
-            .with_network(link.is_wired())
-            .with_panel(panel)
+            .with_network(network.is_present())
+            .with_panel(board.panel())
             .with_boot_page(boot_page())
             .with_override(override_),
     );
@@ -367,12 +412,20 @@ where
     let demand = SharedDemand::new(RefCell::new(manager.demand().clone()));
     log::info!("[IOT] demand {}", manager.demand());
 
-    // A board without a speaker still has to run the tasks it has, so the playback
-    // loops are only ever started when there is one: parking on buses nothing
-    // writes would be two more tasks doing nothing. Three arms rather than one, so
-    // the tuples the joins return never have to agree.
-    match (shared, speaker_runner) {
-        (Some(shared), SpeakerRunner::Interrupt(spawner)) => {
+    let input_future = input_task(&INTENT_BUS, sources, &configurator, &demand);
+    let render_future = render_loop(
+        &INTENT_BUS,
+        &CAPTURE,
+        &OUTBOUND,
+        &INBOUND,
+        &PLAYBACK_BUS,
+        render,
+        &mut manager,
+        &mut clock,
+        &demand,
+    );
+    match (shared, feed) {
+        (Some(shared), Feed::Interrupt(spawner)) => {
             // Spawned, not joined: it is on the other executor, and joining a
             // future that lives on an executor this one does not run would wait
             // for ever.
@@ -380,68 +433,19 @@ where
                 feed_task(shared).expect("the feed executor has room for the one task on it"),
             );
             match join3(
-                input_task(&INTENT_BUS, sources, &configurator, &demand),
-                render_loop(
-                    &INTENT_BUS,
-                    &CAPTURE,
-                    &SCAN,
-                    &JOIN,
-                    &LEAVE,
-                    &RESCAN,
-                    &SETUP_ASK,
-                    &FORGET,
-                    &PAGE,
-                    &PLAYBACK_BUS,
-                    render,
-                    &mut manager,
-                    &mut clock,
-                    &demand,
-                ),
+                input_future,
+                render_future,
                 control_loop(shared, &PLAYBACK_BUS, &INTENT_BUS),
             )
             .await {}
         }
-        (Some(shared), SpeakerRunner::Inline) => match join4(
-            input_task(&INTENT_BUS, sources, &configurator, &demand),
-            render_loop(
-                &INTENT_BUS,
-                &CAPTURE,
-                &SCAN,
-                &JOIN,
-                &LEAVE,
-                &RESCAN,
-                &SETUP_ASK,
-                &FORGET,
-                &PAGE,
-                &PLAYBACK_BUS,
-                render,
-                &mut manager,
-                &mut clock,
-                &demand,
-            ),
+        (Some(shared), Feed::Inline) => match join4(
+            input_future,
+            render_future,
             control_loop(shared, &PLAYBACK_BUS, &INTENT_BUS),
             playback::feed_loop(shared),
         )
         .await {},
-        (None, _) => match join(
-            input_task(&INTENT_BUS, sources, &configurator, &demand),
-            render_loop(
-                &INTENT_BUS,
-                &CAPTURE,
-                &SCAN,
-                &JOIN,
-                &LEAVE,
-                &RESCAN,
-                &SETUP_ASK,
-                &FORGET,
-                &PAGE,
-                &PLAYBACK_BUS,
-                render,
-                &mut manager,
-                &mut clock,
-                &demand,
-            ),
-        )
-        .await {},
+        (None, _) => match join(input_future, render_future).await {},
     }
 }

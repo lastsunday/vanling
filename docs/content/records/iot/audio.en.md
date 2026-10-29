@@ -3,8 +3,8 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "c17eb2ded6aabda7de2ca2c6b8b08d10f2541b56"
-translated_at = "2026-10-18T00:00:00Z"
+source_file_hash = "f0b9422814f886e5485b926cacd1f5da94546920"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -75,7 +75,7 @@ Not fatal for a bounded one-shot field aid, but the coupling has to be written d
 
 ---
 
-## A Plane's Marginal Cost Moves With Whether Another Task Is Awake
+## A Device's Marginal Cost
 
 `[measured]` To reproduce: from `apps/iot/`, build five firmware variants that differ only in `IOT_DEMAND`, flash each, and read 45 s of `[INPUT] held` (8 windows of 5 s, median).
 
@@ -91,9 +91,9 @@ Two conclusions:
 
 **One — contention tracks whether another task is awake, not how much it does.** `display=on-change` and `display=off` sit far closer together than `OnChange` and `Continuous` do, because `Mode::Off` parks the render loop (`Activity::Idle`), so the panel stops waking the executor every tick; `OnChange` and `Continuous` both keep it waking and pay contention anyway. **Doing less is not waking less.**
 
-**Two — so a fixed conversion factor cannot work.** `motion Continuous` alone is 12.52% and 15.73% with an awake task beside it, +26%, while `probe-demand-s3` measures 11.40% in isolation, which is a third figure again. Any budget shaped as `isolated figure × some factor` is wrong by more the more planes a scenario turns on, which is the only reason a budget exists.
+**Two — so a fixed conversion factor cannot work.** `motion Continuous` alone is 12.52% and 15.73% with an awake task beside it, +26%, while `probe-demand-s3` measures 11.40% in isolation, which is a third figure again. Any budget shaped as `isolated figure × some factor` is wrong by more the more devices a scenario turns on, which is the only reason a budget exists.
 
-There is also a trap in the method itself: differencing yields a **marginal** cost, and it depends on context. The 12.52% above was measured with the panel dark and the 15.73% with it awake — one configuration, two numbers. So a differenced row is not "what this plane costs" but "what this plane adds in this scenario", and cited as the former it stops being true as soon as the scenario changes. Take the lit reading (157_300), because the expensive context is the one that counts.
+There is also a trap in the method itself: differencing yields a **marginal** cost, and it depends on context. The 12.52% above was measured with the panel dark and the 15.73% with it awake — one configuration, two numbers. So a differenced row is not "what this device costs" but "what this device adds in this scenario", and cited as the former it stops being true as soon as the scenario changes. Take the lit reading (157_300), because the expensive context is the one that counts.
 
 `[test]` (**removed with that model**, kept here as a record) `an_isolated_row_would_still_not_be_addable_to_a_device_row`, `the_row_is_the_device_reading_and_the_probe_only_found_the_floor`, `the_differenced_rows_land_near_the_whole_device_build_they_were_taken_from` (the `core/src/demand.rs` of the day) used to pin that the three units cannot be mixed; with the cost model gone the constraint is left as a requirement on the method, with no code keeping it.
 
@@ -110,7 +110,7 @@ Motion gave up 14.0 points and the render loop took 13.2 of them, with the devic
 
 **So adding a latency ceiling in percent was the wrong shape**: the two percentages are what add up to the device, and they trade against each other. The two sides must be read separately, and the panel side is a residual that may not be added to the polled side — the sum exceeds 100% of a core.
 
-## The capture plane cannot be batched, because a stretched poll stops the clock
+## The capture path cannot be batched
 
 `[measured]` With capture also stretched to 30 s (`IOT_DEMAND='motion=on:30000,audio=on:30000,display=on:10000'`):
 
@@ -123,13 +123,13 @@ In 90 s the HPF corner walk advanced one step (the default build advances one ev
 
 That is the same constraint the `audio=off` bug had, reached by two different roads: `Off` takes the chain down deliberately, and batching refuses to make it rarer. The fix is `InputSource::accepts_slower_poll()`, `true` by default and `false` from `Es7210Rx`, with `apply()` folding the plan's cadence back to the board's and printing what is in force. After the fix the same build prints `motion on 30000 ms, capture on 20 ms`, the corner walk is back to every 3 s, and there is no backlog and no re-arm.
 
-`[test]` `a_plane_whose_driver_needs_its_poll_is_not_stretched` (`app/src/input.rs`) pins this.
+`[test]` `a_device_whose_driver_needs_its_poll_is_not_stretched` (`app/src/input.rs`) pins this.
 
 ## The poll side scales by cadence, and agrees with the device at both ends
 
 > This section's **prediction** layer (`Price`/`PolledCadence`: turning a per-poll cost into a rate by the cadence) was removed whole with that model; what replaced it is `MAX_SINGLE_HOLD_MS`, the bound on a single tick (see the [architecture doc](@/development/iot/architecture.md#需求模型（要什么_/_多频繁_/_多敏感）)). The `[DEMAND]` poll-side column below comes from that build, and **today's firmware no longer prints it**; the `[INPUT] held` measurements are unaffected.
 
-A cost row is a rate *at the plane's board cadence*, so a batched plane is cheaper. The premise of that scaling — a cadence changes how often this happens, not what one of them costs — is measured rather than assumed: `probe-demand-s3` reads **2281 µs per poll** at the board's 20 ms against **2282 µs** at 200 ms, 0.04% apart. The probe was changed to run each cell at its own cadence, printing MEASURED where a 20 s window allows it and DERIVED where it does not.
+A cost row is a rate *at the device's board cadence*, so a batched device is cheaper. The premise of that scaling — a cadence changes how often this happens, not what one of them costs — is measured rather than assumed: `probe-demand-s3` reads **2281 µs per poll** at the board's 20 ms against **2282 µs** at 200 ms, 0.04% apart. The probe was changed to run each cell at its own cadence, printing MEASURED where a 20 s window allows it and DERIVED where it does not.
 
 `[measured]` The scaled poll side against whole-device runs, 8 windows of 5 s per build:
 
@@ -188,7 +188,7 @@ Core measures dBFS, and the offset belongs to the board (`SPL_OFFSET_DECIBELS` i
 
 Only the conclusions and the code locations are kept here. The measurement tables, why the price is reported on two sides, why `Sensitivity` moves no cadence on this board, why the bound is a single hold rather than a percentage, and every reproduction build and command are in the [architecture document](@/development/iot/architecture.en.md).
 
-Three code-side hard constraints are explained there as well: why `Cost::basis` is a field rather than a comment, why the panel row is a residual that cannot be added, and why the capture plane answers `false` for `InputSource::accepts_slower_poll()` (only `sample()` drains the ring, so throttling does not make a reading staler — it stops the I2S clock).
+Three code-side hard constraints are explained there as well: why `Cost::basis` is a field rather than a comment, why the panel row is a residual that cannot be added, and why the capture path answers `false` for `InputSource::accepts_slower_poll()` (only `sample()` drains the ring, so throttling does not make a reading staler — it stops the I2S clock).
 
 ---
 

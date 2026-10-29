@@ -141,3 +141,17 @@ impl RgbLight for Screen {
         page == DisplayPage::Camera
     }
 }
+
+impl crate::hardware::SelfCheck for Screen {
+    fn name(&self) -> &'static str {
+        self.panel.name()
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        self.panel.id()
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        self.panel.check()
+    }
+}

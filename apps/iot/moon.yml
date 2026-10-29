@@ -311,8 +311,8 @@ tasks:
       cache: false
       runInCI: false
 
-  # The product with two planes turned down — the only shipped path that both gates a
-  # plane (`audio=off`) and stretches one (`motion=on:30000`), so both halves of the
+  # The product with two devices turned down — the only shipped path that both gates a
+  # device (`audio=off`) and stretches one (`motion=on:30000`), so both halves of the
   # demand are exercised. Kept off CI like `build-s3-camera`: a different demand, not
   # a different product.
   build-s3-thrift:

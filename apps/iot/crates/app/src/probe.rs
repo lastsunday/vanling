@@ -71,7 +71,7 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
     let mut last_report = Instant::now();
 
     loop {
-        match shared.lock(|shared| shared.speaker.borrow_mut().play(sound)) {
+        match shared.lock(|shared| crate::sounds::play(&mut **shared.speaker.borrow_mut(), sound)) {
             Ok(()) => {
                 plays += 1;
                 log::info!("[PROBE] playing {sound:?}, play {plays}");

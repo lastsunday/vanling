@@ -89,3 +89,19 @@ impl<const N: usize> I2c for MockI2c<N> {
         Ok(())
     }
 }
+
+pub struct Unresponsive;
+
+impl ErrorType for Unresponsive {
+    type Error = ErrorKind;
+}
+
+impl I2c for Unresponsive {
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Err(NACK)
+    }
+}

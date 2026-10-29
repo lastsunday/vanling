@@ -738,7 +738,6 @@ impl<A: Armed> Chain<A> {
         self.running.is_some()
     }
 
-    /// Whether the plane is off on purpose rather than having nothing.
     pub fn is_parked(&self) -> bool {
         self.parked.is_some()
     }
@@ -850,15 +849,9 @@ pub struct AudioSample {
     pub dba_lsb: u16,
 }
 
-/// The capture plane a driver hands to core: whatever arrived since the last
-/// poll, already folded into the peak envelope. Deliberately not fallible — a
-/// short or missed read is silence as far as a scope is concerned, and a
-/// condition with no correct response has no business in a retry path.
 pub trait AudioSource {
     fn sample(&mut self, now_ms: u64) -> AudioSample;
 
-    /// Whether the plane is collecting. A source with no peripheral answers `true` and
-    /// ignores the change.
     fn set_collecting(&mut self, _now_ms: u64, _collecting: bool) {}
 
     /// Forwarded from the driver for the same reason `set_collecting` is.
@@ -867,27 +860,11 @@ pub trait AudioSource {
     }
 }
 
-/// Where a capture poll's window goes.
-///
-/// A poll is a window rather than an event: the next one supersedes it, and a stale one is
-/// worth nothing, so it does not ride the intent ring — whose every slot is as wide as its
-/// widest message, which a 1.7 KB envelope would set for all eight of them. The source hands
-/// its sample to whoever owns the plane instead, and the poll reports no event of its own;
-/// the plane is what wakes its consumer. The app implements this over its capture storage and
-/// hands it to the board, so the board wires the capture to a destination it never names.
 pub trait CaptureSink {
     /// Take one poll's window. Called from the input task, once per capture cadence.
     fn publish(&self, sample: AudioSample);
 }
 
-/// Adapts an [`AudioSource`] onto the shared input interface, so a board hands
-/// the app a ready-made poll entry and no codec type crosses into core. The
-/// shape mirrors [`MotionInput`](crate::drivers::motion::MotionInput): the driver
-/// stays in the bsp crate, only its summary comes through.
-///
-/// A poll reports no [`InputEvent`]: what the capture produces is a window, and windows ride
-/// the [`CaptureSink`] plane. The entry is still a source, because the shared tick is what
-/// reads the capture ring and what applies the demand's gating to it.
 pub struct AudioInput<S> {
     source: S,
     sink: &'static dyn CaptureSink,
@@ -908,7 +885,7 @@ impl<S: AudioSource> InputSource for AudioInput<S> {
         None
     }
 
-    fn set_plane_collecting(&mut self, now_ms: u64, collecting: bool) {
+    fn set_demand_collecting(&mut self, now_ms: u64, collecting: bool) {
         self.source.set_collecting(now_ms, collecting);
     }
 
@@ -1143,8 +1120,6 @@ mod tests {
         }
     }
 
-    /// Records what the poll published, so a test can read the windows the plane received.
-    /// Leaked into `'static` by [`plane`]: the input holds a reference, the test another.
     #[derive(Default)]
     struct Recording {
         samples: RefCell<Vec<AudioSample>>,
@@ -1156,7 +1131,7 @@ mod tests {
         }
     }
 
-    fn plane() -> &'static Recording {
+    fn sink() -> &'static Recording {
         Box::leak(Box::new(Recording::default()))
     }
 
@@ -1172,17 +1147,17 @@ mod tests {
 
     #[test]
     fn every_cadence_tick_publishes_a_capture_poll() {
-        let plane = plane();
-        let mut input = AudioInput::new(fake(8_000, 7), plane);
+        let sink = sink();
+        let mut input = AudioInput::new(fake(8_000, 7), sink);
         // Silence has to keep publishing: a scope that only moved on new samples
         // would freeze between speech instead of showing a flat line.
         for now_ms in [20, 40, 60] {
             assert!(
                 input.poll(now_ms).is_none(),
-                "a poll reports no event of its own; the window is the plane's"
+                "a poll reports no event of its own; the window is the sink's"
             );
         }
-        let samples = plane.samples.borrow();
+        let samples = sink.samples.borrow();
         assert_eq!(samples.len(), 3, "one window per cadence tick");
         for (sample, now_ms) in samples.iter().zip([20, 40, 60]) {
             assert_eq!(sample.envelope.committed(), 1);
@@ -1195,7 +1170,7 @@ mod tests {
 
     #[test]
     fn the_source_sees_the_clock_the_entry_was_polled_at() {
-        let mut input = AudioInput::new(fake(0, 0), plane());
+        let mut input = AudioInput::new(fake(0, 0), sink());
         input.poll(1_234);
         assert_eq!(
             input.source.calls, 1,
@@ -1204,17 +1179,15 @@ mod tests {
     }
 
     #[test]
-    fn turning_the_plane_off_reaches_the_source_without_a_poll() {
-        let mut input = AudioInput::new(fake(0, 0), plane());
+    fn turning_the_capture_off_reaches_the_source_without_a_poll() {
+        let mut input = AudioInput::new(fake(0, 0), sink());
         assert_eq!(input.source.collecting, None);
 
-        // The reason this method exists: a plane that is off is not polled, so a source
-        // that has to *stop* would never hear it from `poll`.
-        input.set_plane_collecting(30_000, false);
+        input.set_demand_collecting(30_000, false);
         assert_eq!(input.source.collecting, Some(false));
         assert_eq!(input.source.calls, 0, "and it took no poll to say so");
 
-        input.set_plane_collecting(30_050, true);
+        input.set_demand_collecting(30_050, true);
         assert_eq!(input.source.collecting, Some(true));
     }
 

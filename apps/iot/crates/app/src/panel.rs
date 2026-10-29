@@ -1,19 +1,7 @@
-//! The panel's own configuration path, replayed by a build that has no finger.
+//! The panel's own controls, replayed by a bench build that has no finger.
 //!
-//! Everything a development machine *cannot* reach is on the glass: the row a tap picks, the key a tap
-//! types, and the tap that hands a passphrase over. A bench build — one named with `IOT_PANEL_BENCH` —
-//! therefore types, at boot, the passphrase that same build was given (`IOT_WIFI_PSK`), at the cells
-//! [`iot_core::keyboard`] draws it in, through the same ring the touch driver writes to.
-//!
-//! The taps carry the *script's* clock ([`iot_core::keyboard::Tap::at_ms`]) rather than a wall clock,
-//! and one is published per pass of the render loop: a passphrase costs a few seconds of bench time
-//! instead of the minute a finger's own timing needs. The render loop drains what has been published
-//! before it steps this, so each tap is seen before the next is decided.
-//!
-//! Compiled out of every other build: [`BENCH`](crate::panel::BENCH) is a `const`, so the call that steps this disappears
-//! along with everything it would reach. What it walks after the association is the page's *own*
-//! controls — the row under a link, the action strip, the question a confirmation asks, and the row a
-//! finger holds to forget a saved network: the paths that end on planes only a task can see.
+//! Everything a development machine cannot reach is on the glass, and a build named with
+//! `IOT_PANEL_BENCH` types it at boot through the same ring the touch driver writes to.
 
 use alloc::vec::Vec;
 
@@ -51,11 +39,6 @@ enum Touch {
     NextPage,
 }
 
-/// One act of the page's own controls, walked once the bench's credential is on the air.
-///
-/// The things a finger would do to the strip, to a confirmation and to a row it holds, in the order
-/// that leaves each one something to read against the next. The taps go through the same ring a
-/// finger's do and end on planes no test on the development machine can reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Act {
     /// Tap a row while the link is up, which must pick nothing: under a link the row is a reading

@@ -24,7 +24,7 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 驱动由 `Box<dyn Speaker>` 共享，因此 `play()` 与 `feed()` 不会互相踩坏对方正在写的环。这正是 `Speaker` 要求 `Send + 'static`、且错误类型是具名的 `SpeakerFault` 而不是各实现自定义的原因（trait object 没法写下一个未具名的关联类型）。
 
-C6 和 host 没有第二个软件中断，走 `SpeakerRunner::Inline`，两个循环 `join4` 在同一个 executor 上，语义不变。
+C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环 `join4` 在同一个 executor 上，语义不变。
 
 `BusinessIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
 
@@ -44,7 +44,7 @@ Speaker 页与 Audio 页是两个页。
 
 ## 声音从哪来
 
-目录里五个声音，**每个都是一份 MIDI 文件**（`bsp-esp/src/assets/*.mid`），格式是同一种：Standard MIDI File，任何 DAW 都能打开、放、改。
+目录里五个声音，**每个都是一份 MIDI 文件**（`app/src/assets/*.mid`），格式是同一种：Standard MIDI File，任何 DAW 都能打开、放、改。
 
 选 MIDI 不是为了合成能力——MIDI 不带音色，逐音符包络两个版本都没有——是为了**出处**。存成 PCM blob 的话，声音是不可追溯的二进制，只有一份构建不运行的配方注释跟着它；存成 MIDI 的话，任何人打开文件就知道它是什么、怎么改。
 
@@ -181,13 +181,9 @@ Speaker 页没有动画，也因此不在 `is_live_page()` 里：它的相位每
 
 一处 GDMA 通道同时供 RX/TX 两半（`I2s::new` 把通道劈成 `split` 的两半），和 SPI 驱动已有的双向用法是同一个形状，所以板级保持 `DMA_CH1`，不需要第二条通道。
 
-待台架确认：`tx_stop()` 只清 `TX_START`，不关外设，所以 BCLK/WS 预期在两臂之间继续输出。这一点是整段设计的地基，必须在真板上量到。
+现在的实现是**不停车**：`feed_loop` 无条件喂空闲流（`app/src/playback.rs`），每 `FEED_MS` 补一块静默，播放与空闲走同一条 DMA 环。原因是 TX 是时钟主控、麦克风是从模式跟着 TX 的 BCLK/WS：让外设停下来，坏的不只是喇叭，采集也会一起断。代价是每 5 ms 醒一次，换一块永远不会被听到的静默。
 
-备选是让驱动不停地补静音臂（app 就不能停车），代价是每 5 ms 醒一次换一块永远不会被听到的静默。
-
-这条在 TX 成为时钟主控之后赌注变大了：麦克风现在是从模式跟着 TX 的时钟，所以 `tx_stop()` 若真把 BCLK 拉掉，坏的不只是喇叭，麦克风也会一起炸。
-
-最新一次 60 秒验证里播放排空为 0 次，所以这条仍未实测到。
+`tx_stop()` 那条停车臂已经从代码里去掉（全仓 0 处），所以「停掉 TX 之后 BCLK 会不会继续输出」不再是整段设计的地基，只是一个**未测事实**：真要回到停车臂，先在真板上量这一条。
 
 ## ES8311 寄存器行
 
@@ -229,7 +225,7 @@ moon run iot:smoke-host  # 贯通：声音目录、丢弃、完成、静音
 
 分两处，因为两者要的东西不同。
 
-`moon run iot:test-bsp` 里 `sounds.rs` 的七条按 `Sound::ALL` 遍历，每个声音都断言：起于零、止于近零、不顶轨、是 100–400 ms 的 one-shot、没有短于 82.5 ms 的音符、ramp 合乎推断规则。**它们对着真实文件跑**，所以一个文件解析不出来、或者被改成了一个合成吃不下的谱，这里就红。
+`moon run iot:test` 里 `app/src/sounds.rs` 的七条按 `Sound::ALL` 遍历，每个声音都断言：起于零、止于近零、不顶轨、是 100–400 ms 的 one-shot、没有短于 82.5 ms 的音符、ramp 合乎推断规则。**它们对着真实文件跑**，所以一个文件解析不出来、或者被改成了一个合成吃不下的谱，这里就红。
 
 `moon run iot:test-tool` 里的六条管的是**文件和配方**：磁盘上的 `.mid` 逐字节等于配方生成的字节、目录里没有没人认领的 `.mid`、配方表自己的形状规则（音区隔 3 个半音、时长各不相同）、以及板子 `include_bytes!` 的文件名和配方对得上。**在 DAW 里改了一个音而没改 `RECIPES` 那张表，`moon run iot:test-tool` 就红。**
 

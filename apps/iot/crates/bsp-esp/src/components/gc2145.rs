@@ -1103,6 +1103,29 @@ impl<D: I2c> Gc2145<D> {
     }
 }
 
+impl<D: I2c> crate::hardware::Named for Gc2145<D> {
+    const NAME: &'static str = "camera";
+}
+
+impl<D: I2c> crate::hardware::SelfCheck for Gc2145<D> {
+    fn name(&self) -> &'static str {
+        "camera"
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        Some(crate::hardware::Address::new(self.addr))
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        use crate::hardware::Status;
+        match self.probe() {
+            Ok(()) => Status::answered(),
+            Err(Gc2145Error::WrongChip { .. }) => Status::refused("not a GC2145"),
+            Err(_) => Status::silent(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1550,5 +1573,34 @@ mod tests {
             .insert((PAGE_0, REG_OUTPUT_FORMAT), 0xf2);
         sensor.set_format().expect("format");
         assert_eq!(sensor.i2c.part.get(REG_OUTPUT_FORMAT), 0xe6);
+    }
+
+    #[test]
+    fn a_self_check_names_the_part_and_the_address_it_answers_on() {
+        use crate::hardware::{Address, SelfCheck};
+
+        let camera = sensor();
+        assert_eq!(camera.name(), "camera");
+        assert_eq!(camera.id(), Some(Address::new(GC2145_I2C_ADDR)));
+    }
+
+    #[test]
+    fn a_self_check_tells_a_wrong_chip_from_a_silent_one() {
+        use crate::hardware::{SelfCheck, Status};
+
+        assert_eq!(sensor().check(), Status::answered());
+
+        let mut wrong = sensor();
+        wrong
+            .i2c
+            .part
+            .registers
+            .insert((PAGE_2, CHIP_ID_HIGH), 0x00);
+        wrong.i2c.part.registers.insert((PAGE_2, CHIP_ID_LOW), 0x00);
+        assert_eq!(wrong.check(), Status::refused("not a GC2145"));
+
+        let mut silent = sensor();
+        silent.i2c.part.silent = true;
+        assert_eq!(silent.check(), Status::silent());
     }
 }

@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::demand::{
-    DemandField, EffectiveDemand, Mode, Override, PlaneDemand, PlaneKey, Sensitivity,
-};
+use crate::demand::{DemandKey, EffectiveDemand, Override};
 
 use crate::drivers::audio::{AudioEnvelope, AudioSample};
 
@@ -23,9 +21,9 @@ use crate::drivers::network::{
 
 use crate::drivers::playback::Sound;
 
-use crate::intent::{BusinessIntent, CaptureAction, OperationIntent, PlaybackAction};
+use crate::intent::{BusinessIntent, OperationIntent};
 
-use crate::keyboard::{Cycling, Key, LIST_ROWS, Layer, MULTITAP_WINDOW_MS};
+use crate::keyboard::{Cycling, Key, Layer, MULTITAP_WINDOW_MS};
 
 mod audio;
 
@@ -43,7 +41,7 @@ pub use self::audio::{AudioPhase, AudioState};
 
 pub use self::entry::Entry;
 
-pub use self::light::{Breath, LightState, Notice, NoticeKind};
+pub use self::light::{Breath, LampLine, LightState, Notice, NoticeKind};
 
 pub use self::network::{Confirm, NetworkSetup};
 
@@ -114,6 +112,7 @@ pub struct DeviceState {
     pub setup: NetworkSetup,
     /// Whether the button asked for setup mode on the splash, read once when the clock ends it.
     pub setup_wanted: bool,
+    pub splash_reported: bool,
     /// What the panel asked the link for, waiting for the network task. A command, not drawn state;
     /// the two shapes differ only in how much help they carry.
     pub join: Option<JoinRequest>,
@@ -201,22 +200,15 @@ pub struct DeviceState {
     /// Classifier-measured hold duration (ms) of the most recent resolved
     /// gesture lift, for the on-panel diagnostic digit.
     pub touch_held_ms: u16,
-    /// Tap tally: the operation plane counts every resolved tap it saw, even
-    /// one whose business side no-ops (a tap on `Off`), so the corner digit
-    /// answers "was there a tap", not "did the light move".
     pub tap_count: u8,
     /// Classifier press pulses, one per down edge. Press without a tap = the
     /// classifier swallowed it; no press at all = the controller never
     /// reported it — the drop-layer split.
     pub press_count: u8,
-    /// Long-press tally, bumped per resolved long-press in the operation
-    /// plane regardless of whether the business side moved a light.
     pub long_press_count: u8,
     /// Input-path anomaly runs (rejected extra contacts, I2C failure runs);
     /// nonzero means the input path saw trouble.
     pub ghost_count: u8,
-    /// Resolved swipes, bumped per classified slide in the operation plane;
-    /// a diagonal tallies without a light move.
     pub swipe_count: u8,
     /// Direction + travel of the most recent resolved swipe.
     pub last_swipe: Option<(SwipeDirection, u16)>,
@@ -266,8 +258,8 @@ impl DeviceState {
     /// The single place a proposed demand is derived. [`DeviceManager`] holds the result as
     /// its demand state rather than calling this on every read, so a configurator has
     /// something to refine and somewhere to write back what the part could actually meet.
-    pub fn demand(&self, planes: &[PlaneKey]) -> EffectiveDemand {
-        self.page.demand(planes)
+    pub fn demand(&self, keys: &[DemandKey]) -> EffectiveDemand {
+        self.page.demand(keys)
     }
 }
 
@@ -283,6 +275,17 @@ struct GestureRecord {
     end: Option<(u16, u16)>,
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum NetworkCommand {
+    Join(JoinRequest),
+    Leave,
+    LeaveSetup,
+    SwitchFront,
+    SetupOpen(bool),
+    ScanNow,
+    Forget(Ssid),
+}
+
 /// Single owner of device state. Producers hand in commands or reports and the state layer takes
 /// them whole, so the device never remembers "last breath". `Clone` is test-only, for the sweep
 /// over reachable moves.
@@ -292,9 +295,7 @@ pub struct DeviceManager {
     /// Where the device lands after the splash: `IOT_BOOT_PAGE`, gated on the board's capabilities.
     /// Apart from [`DeviceState::page`] because the first page is always the splash.
     boot_page: DisplayPage,
-    /// The planes this board wires. What the device can be asked about at all, so a page
-    /// claims only these and the demand layer never has to know what devices exist.
-    planes: Vec<PlaneKey>,
+    demand_keys: Vec<DemandKey>,
     /// What the build asks beyond what the page would.
     ///
     /// Held here rather than applied once at boot because the render loop
@@ -354,6 +355,7 @@ impl DeviceManager {
             leave: false,
             setup_cancel: false,
             switch_front: false,
+            splash_reported: false,
             setup_open: None,
             scan_now: false,
             forget: None,
@@ -388,35 +390,26 @@ impl DeviceManager {
         Self {
             state,
             boot_page: DisplayPage::Ambient,
-            planes: Vec::new(),
+            demand_keys: Vec::new(),
             override_: Override::none(),
             demand,
         }
     }
 
-    /// Declares the planes this board wires. Must be set before anything asks the device for
-    /// anything, because an empty list means a device with no planes at all.
-    pub fn with_planes(mut self, planes: Vec<PlaneKey>) -> Self {
-        self.planes = planes;
+    pub fn with_demand_keys(mut self, keys: Vec<DemandKey>) -> Self {
+        self.demand_keys = keys;
         self.propose_demand();
         self
     }
 
-    /// What the current state proposes: the page's claim over the board's planes, and the
-    /// build's override last.
-    fn proposed(state: &DeviceState, planes: &[PlaneKey], override_: &Override) -> EffectiveDemand {
-        let mut demand = state.demand(planes);
+    fn proposed(state: &DeviceState, keys: &[DemandKey], override_: &Override) -> EffectiveDemand {
+        let mut demand = state.demand(keys);
         override_.clone().apply(&mut demand);
         demand
     }
 
-    /// Recomputes the demand state from what the page and the build now ask for.
-    ///
-    /// Every write to `page`, the plane list, or `override_` ends here. Those are the only
-    /// inputs a proposal is derived from, so a write that skips this call is the one way the
-    /// held demand can fall behind what was asked.
     fn propose_demand(&mut self) {
-        self.demand = Self::proposed(&self.state, &self.planes, &self.override_);
+        self.demand = Self::proposed(&self.state, &self.demand_keys, &self.override_);
     }
 
     /// Chains the audio capability onto [`Self::with_motion`], so a board
@@ -510,10 +503,6 @@ impl DeviceManager {
         self.state.lights[instance.min(MAX_LIGHTS - 1)] = state;
     }
 
-    /// Apply an operation-plane intent: record whatever diagnostics the raw
-    /// signal carries (press/ghost pulses, touch snapshots, resolved gesture
-    /// tallies). Never moves a light — the target the operation resolves to is
-    /// a business intent applied by [`Self::apply_business`].
     pub fn apply_operation(&mut self, op: OperationIntent) {
         match op.event {
             InputEvent::Button(_) => {}
@@ -639,45 +628,11 @@ impl DeviceManager {
         }
     }
 
-    /// Apply the capture's data plane. A poll is a window, not an operation, so it rides its own
-    /// plane; a window arriving after the plane was switched off is dropped.
-    pub fn apply_capture(&mut self, sample: AudioSample) {
-        if self.state.audio_enabled {
-            self.state.audio.live = sample;
-        }
-    }
-
-    /// Apply the link's data plane: the ranked scan list the network task last published. It rides
-    /// its own plane because a list is a window and a few hundred bytes wide. The enable check
-    /// stays with the state, which is what the panel reads.
-    pub fn apply_scan(&mut self, list: ApList) {
-        if self.state.network_enabled {
-            self.state.aps = Some(list);
-            // A scan that found fewer networks than the page was scrolled past leaves the list
-            // above its own end, which draws as a page of empty bands.
-            let last = self.last_list_top();
-            self.state.setup.list_top = self.state.setup.list_top.min(last);
-        }
-    }
-
-    /// The list's last top row, which is as far down as the page can be scrolled.
-    ///
-    /// The last *window* of rows rather than a count of pages: a list that ran out a row or two
-    /// short of its own end would end on blank bands, and the indicator says which rows are shown.
-    /// Under [`LIST_ROWS`] rows the answer is zero — there is nothing to scroll to.
-    fn last_list_top(&self) -> u8 {
-        self.state
-            .aps
-            .map_or(0, |list| list.len().saturating_sub(LIST_ROWS)) as u8
-    }
-
-    /// Apply a business-plane intent: a command for the state layer, or a report from the plane it
-    /// commands. Commands move the device; reports are taken whole.
-    /// A new business intent variant only grows this match, never the
-    /// consuming task.
-    ///
     pub fn apply_business(&mut self, intent: BusinessIntent) {
         match intent {
+            BusinessIntent::Playback(action) => self.apply_playback(action),
+            BusinessIntent::Capture(action) => self.apply_capture_intent(action),
+            BusinessIntent::LinkReport(status) => self.apply_link_report(status),
             BusinessIntent::Invalid => {}
             BusinessIntent::SetLight { instance, state } => {
                 self.apply_to(usize::from(instance), state)
@@ -690,125 +645,6 @@ impl DeviceManager {
                     self.state.camera_enabled,
                     self.state.network_enabled,
                 );
-            }
-            BusinessIntent::Capture(action) => {
-                if self.state.audio_enabled {
-                    match (action, self.state.audio.phase) {
-                        (CaptureAction::Start, AudioPhase::Idle | AudioPhase::Stopped) => {
-                            self.state.audio.phase = AudioPhase::Recording;
-                        }
-                        (CaptureAction::Stop, AudioPhase::Recording) => {
-                            self.state.audio.captured = self.state.audio.live;
-                            self.state.audio.phase = AudioPhase::Stopped;
-                        }
-                        // A start over a recording and a stop over a stopped one are the same
-                        // state the command named: drop the duplicate rather than flip.
-                        _ => {}
-                    }
-                }
-            }
-            // A sound is one-shot: a tap over a sounding one is counted, not
-            // played, because cutting the note short is a click.
-            BusinessIntent::Playback(PlaybackAction::Next) => {
-                if self.state.playback_enabled {
-                    match self.state.playback.phase {
-                        PlaybackPhase::Playing => {
-                            self.state.playback.dropped =
-                                self.state.playback.dropped.saturating_add(1);
-                        }
-                        PlaybackPhase::Idle => {
-                            self.state.playback.sound = self.state.playback.sound.next();
-                            self.state.playback.phase = PlaybackPhase::Playing;
-                            self.state.playback.plays = self.state.playback.plays.saturating_add(1);
-                        }
-                    }
-                }
-            }
-            // A latch, not a moment: the page has to show which way it stands.
-            BusinessIntent::Playback(PlaybackAction::SetMuted(muted)) => {
-                if self.state.playback_enabled {
-                    self.state.playback.muted = muted;
-                }
-            }
-            // Ignored unless one was sounding, so a late or duplicated report
-            // cannot knock the page out of phase with the driver.
-            BusinessIntent::Playback(PlaybackAction::Finished) => {
-                if self.state.playback_enabled
-                    && self.state.playback.phase == PlaybackPhase::Playing
-                {
-                    self.state.playback.phase = PlaybackPhase::Idle;
-                }
-            }
-            // A report rather than a target, like a finished playback: taken whole, because
-            // the radio is the only thing that has been on the air.
-            BusinessIntent::LinkReport(status) => {
-                // A refusal is remembered until something else is tried, because the survey
-                // republishes the phase every round: the page would otherwise stop saying a
-                // passphrase was wrong about a second after it was typed, which is the one
-                // moment the user needs it.
-                match status.phase {
-                    // A refusal is the one answer the user has to *act* on, so the keyboard comes
-                    // back up over the draft that produced it: the likeliest reason an association
-                    // was refused is a passphrase with a typo in it, and the screen that can fix
-                    // that is the one the draft is on.
-                    LinkPhase::Failed(kind) => {
-                        self.state.setup.refused = Some(kind);
-                        self.reopen_entry();
-                    }
-                    // A new attempt, or one that worked, supersedes the last refusal.
-                    LinkPhase::Connecting | LinkPhase::Connected => self.state.setup.refused = None,
-                    LinkPhase::Off | LinkPhase::Scanning => {}
-                }
-                // What worked is not kept: the radio holds the network now, and a draft left in
-                // the state would be a passphrase sitting in RAM for no reader.
-                if status.phase == LinkPhase::Connected {
-                    self.state.setup.entry = None;
-                    self.state.setup.keyboard = false;
-                    self.state.setup.revealed = false;
-                }
-                // A question about the link does not outlive the link it was about: a drop under
-                // the box takes the question with it, rather than leaving the action on offer for a
-                // link that is already down.
-                if !status.is_leavable() && self.state.setup.confirm == Some(Confirm::Leave) {
-                    self.state.setup.confirm = None;
-                }
-                // Setup mode's own news is the sound and the mode's name on the header: the box a
-                // phone is walked through is the mode itself rather than an announcement, so there
-                // is nothing to show once and nothing to remember having shown.
-                if status.setup && !self.state.link.setup {
-                    self.ring(Sound::Rise);
-                }
-                // The way out, heard as well as read: a device that joined the network a phone
-                // named says so once, and one that was refused says that instead.
-                if status.phase == LinkPhase::Connected
-                    && self.state.link.phase != LinkPhase::Connected
-                {
-                    self.ring(Sound::Tap);
-                } else if matches!(status.phase, LinkPhase::Failed(_))
-                    && self.state.link.phase != status.phase
-                {
-                    self.ring(Sound::Error);
-                }
-                // The same edges as the sounds above, on the lamp a board with no screen has
-                // instead of a page. One outage is announced once: a retried credential
-                // republishes `Failed` every few seconds, so `outage_announced` keeps a lamp
-                // from flashing at the page's own light until the link is up again.
-                if status.phase == LinkPhase::Connected
-                    && self.state.link.phase != LinkPhase::Connected
-                {
-                    self.state.outage_announced = false;
-                    self.announce(NoticeKind::Joined);
-                } else if let LinkPhase::Failed(kind) = status.phase
-                    && self.state.link.phase != status.phase
-                    && !self.state.outage_announced
-                {
-                    self.state.outage_announced = true;
-                    self.announce(NoticeKind::for_failure(kind));
-                }
-                // And the strip stops waiting: a report about the link is a survey round's own
-                // publish, which is what the round the strip asked for ends with.
-                self.state.setup.rescan_wait = false;
-                self.state.link = status;
             }
             // The button's request while the splash is up. Latching it here rather than acting on
             // it is what keeps the page up for its whole window: the landing below is the one thing
@@ -882,271 +718,36 @@ impl DeviceManager {
         self.propose_demand();
     }
 
-    /// Type one key of the Network page's keyboard.
-    ///
-    /// Guarded on the keyboard being up, so a key that arrived after the entry closed — a
-    /// queued tap from the same finger that just pressed connect — types nothing.
-    fn apply_key(&mut self, key: Key, at_ms: u32) {
-        if !self.state.setup.keyboard {
-            return;
+    pub fn take_splash_end(&mut self) -> Option<bool> {
+        if self.state.splash_reported || self.state.page == DisplayPage::Splash {
+            return None;
         }
-        match key {
-            // The keyboard's ways out. Connect hands over what was typed for the row that was
-            // picked and drops the page back to the list, because it is the radio that says whether
-            // it worked and the phase is where that is read — while the draft itself stays, so a
-            // refusal comes back to the text it refused rather than to an empty field.
-            Key::Connect => {
-                let (Some(ap), Some(entry)) = (self.state.setup.selected, self.state.setup.entry)
-                else {
-                    return;
-                };
-                self.state.setup.keyboard = false;
-                self.state.setup.revealed = false;
-                self.state.join = Some(JoinRequest::Typed(entry.credentials(ap.ssid)));
-            }
-            Key::Cancel => {
-                self.state.setup.keyboard = false;
-                self.state.setup.revealed = false;
-                self.state.setup.entry = None;
-                self.state.setup.selected = None;
-            }
-            // A view of the draft, not a change to it: the finger decides how long its own
-            // passphrase is on the panel.
-            Key::Reveal => self.state.setup.revealed = !self.state.setup.revealed,
-            typing => {
-                if let Some(entry) = self.state.setup.entry.as_mut() {
-                    entry.edit(typing, at_ms);
-                }
-            }
-        }
+        self.state.splash_reported = true;
+        Some(self.state.setup_wanted)
     }
 
-    /// Put the keyboard back over the draft, starting one if needed. A refused passphrase returns
-    /// to its text; a store-handed credential left no draft, and keys are drawn from one.
-    fn reopen_entry(&mut self) {
-        // Cleared here rather than at the draw: a question about the list has nowhere left to be
-        // answered from under the keyboard, and the state the page holds is the state it shows.
-        self.state.setup.confirm = None;
-        if self.state.setup.selected.is_some() {
-            self.state.setup.entry.get_or_insert_with(Entry::default);
+    pub fn take_command(&mut self) -> Option<NetworkCommand> {
+        if let Some(join) = self.take_join() {
+            return Some(NetworkCommand::Join(join));
         }
-        self.state.setup.keyboard = self.state.setup.entry.is_some();
+        if self.take_leave() {
+            return Some(NetworkCommand::Leave);
+        }
+        if self.take_setup_cancel() {
+            return Some(NetworkCommand::LeaveSetup);
+        }
+        if self.take_switch_front() {
+            return Some(NetworkCommand::SwitchFront);
+        }
+        if let Some(open) = self.take_setup_open() {
+            return Some(NetworkCommand::SetupOpen(open));
+        }
+        if self.take_scan_now() {
+            return Some(NetworkCommand::ScanNow);
+        }
+        self.take_forget().map(NetworkCommand::Forget)
     }
 
-    /// Pick a network and open the keyboard on it. Open rows and rows with a stored passphrase
-    /// are handed straight over; the second carries the name, and the radio answers. Re-picking
-    /// the picked row keeps its draft; a row with no draft starts one. A pick is ignored while a
-    /// link is up, and a row the list has dropped since the tap is no row at all.
-    fn pick_row(&mut self, ap: AccessPoint) {
-        if self.state.link.is_leavable() {
-            return;
-        }
-        let Some(index) = self.index_of(ap) else {
-            return;
-        };
-        // The mark decides the order rather than the answer: it is the store's report from a round
-        // ago, and a name whose copy has gone since is answered by the radio, which puts the page
-        // back on the keyboard this tap skipped. Any draft in hand goes with it — a draft left over
-        // the row would be a second answer to the same question.
-        if ap.secured && self.state.aps.is_some_and(|list| list.is_saved(index)) {
-            self.state.setup.selected = Some(ap);
-            self.state.setup.entry = None;
-            self.state.setup.revealed = false;
-            self.state.setup.keyboard = false;
-            self.state.join = Some(JoinRequest::Held(ap.ssid));
-            return;
-        }
-        let same = self.state.setup.entry.is_some()
-            && self
-                .state
-                .setup
-                .selected
-                .is_some_and(|picked| picked.is_same_network(&ap));
-        if !same {
-            self.state.setup.entry = Some(Entry::default());
-            self.state.setup.revealed = false;
-        }
-        self.state.setup.selected = Some(ap);
-        if ap.secured {
-            self.state.setup.keyboard = true;
-            return;
-        }
-        self.state.setup.keyboard = false;
-        let entry = self.state.setup.entry.unwrap_or_default();
-        self.state.join = Some(JoinRequest::Typed(entry.credentials(ap.ssid)));
-    }
-
-    /// The store held no copy of the network the panel asked it to join, so the page asks for a
-    /// passphrase after all.
-    ///
-    /// An answer that names another row is dropped: a tap on a different row since the ask is a newer
-    /// question whose own answer is still coming, and raising the keyboard over *this* name would hand
-    /// whatever the user types to a network they did not pick.
-    fn no_copy(&mut self, ssid: Ssid) {
-        if !self
-            .state
-            .setup
-            .selected
-            .is_some_and(|picked| picked.ssid == ssid)
-        {
-            return;
-        }
-        self.reopen_entry();
-    }
-
-    /// The row a network is on in the list the page is showing, if it is still there.
-    fn index_of(&self, ap: AccessPoint) -> Option<usize> {
-        let list = self.state.aps?;
-        list.iter().position(|row| row.is_same_network(&ap))
-    }
-
-    /// A long press on a network: ask about the copy this device keeps of it, if it keeps one.
-    ///
-    /// A row that is not saved is not a question: there is nothing to forget, and a box that asked
-    /// anyway would be offering to erase a memory this device does not have. Nothing happens
-    /// instead, which is the honest answer to a hold on a row the store does not hold.
-    fn hold_row(&mut self, ap: AccessPoint) {
-        let Some(index) = self.index_of(ap) else {
-            return;
-        };
-        if !self.state.aps.is_some_and(|list| list.is_saved(index)) {
-            return;
-        }
-        self.state.setup.confirm = Some(Confirm::Forget(ap));
-    }
-
-    /// Leave the link that is up, which is how setup mode is entered from one.
-    ///
-    /// The question is asked only where it can be drawn and answered: a build with no screen has
-    /// neither, and the link is taken down on the verb itself. The button's long press is how such
-    /// a device reaches this (see [`crate::intent::translate`]), and the confirm box it would
-    /// otherwise raise is one nothing on that board could dismiss.
-    fn leave_link(&mut self) {
-        if !self.state.link.is_leavable() {
-            return;
-        }
-        if self.state.panel.is_wired() {
-            self.state.setup.confirm = Some(Confirm::Leave);
-        } else {
-            self.state.leave = true;
-        }
-    }
-
-    /// Close setup mode, but only when the link says there is a network to go back to.
-    fn close_setup(&mut self) {
-        if self.state.link.setup && self.state.link.setup_cancellable {
-            self.state.setup_cancel = true;
-        }
-    }
-
-    /// Ask the survey for a round now. Under a link there is nothing to scan for, so the command
-    /// is dropped rather than turning the strip's offer into a second request.
-    fn scan_now(&mut self) {
-        if !self.state.link.is_leavable() {
-            self.state.scan_now = true;
-            self.state.setup.rescan_wait = true;
-        }
-    }
-
-    /// Put the setup access point up open or under a passphrase.
-    ///
-    /// Asked only while the phone's box is up. An open access point is the one thing this mode can
-    /// offer that lets anyone in range in, so it is not a setting reachable from anywhere else, and
-    /// it is not remembered: the next entry into setup mode is under a passphrase again.
-    fn set_open(&mut self, open: bool) {
-        if self.state.link.shows_setup_box() {
-            self.state.setup_open = Some(open);
-        }
-    }
-
-    /// The confirmation's own action button: do what the question asked.
-    ///
-    /// The question travels with the answer and is checked against the one on screen, so a tap
-    /// queued before a newer question cannot confirm it. The link and the store are asked again
-    /// rather than trusted, because the box is answered a moment after it is drawn.
-    fn answer(&mut self, question: Confirm) {
-        if self.state.setup.confirm != Some(question) {
-            return;
-        }
-        self.state.setup.confirm = None;
-        match question {
-            Confirm::Leave if self.state.link.is_leavable() => self.state.leave = true,
-            // The link went down under the box: the question is answered, and the answer is that
-            // there is nothing left to take down.
-            Confirm::Leave => {}
-            Confirm::Forget(ap) => {
-                if self
-                    .index_of(ap)
-                    .is_some_and(|index| self.state.aps.is_some_and(|list| list.is_saved(index)))
-                {
-                    self.state.forget = Some(ap.ssid);
-                }
-            }
-        }
-    }
-
-    /// Start a sound if the speaker is idle. This is the device reporting a transition; the render
-    /// loop carries it to the driver. A sound already out is not cut short.
-    fn ring(&mut self, sound: Sound) {
-        if !self.state.playback_enabled || self.state.playback.phase != PlaybackPhase::Idle {
-            return;
-        }
-        self.state.playback.sound = sound;
-        self.state.playback.phase = PlaybackPhase::Playing;
-        self.state.playback.plays = self.state.playback.plays.saturating_add(1);
-    }
-
-    /// Put one-shot news on the lamp a board with no screen has instead of a page.
-    ///
-    /// Dropped rather than queued on a board with a screen: the page and its box are where the
-    /// same news is read, and that board's light is the surface the pages draw. A new
-    /// announcement supersedes one still running, which is the newest news either way.
-    fn announce(&mut self, kind: NoticeKind) {
-        if self.state.panel.is_wired() || !self.state.network_enabled {
-            return;
-        }
-        self.state.notice = Some(Notice::new(kind));
-    }
-
-    /// Step the lamp's announcement to `now_ms`, dropping it once it is over.
-    ///
-    /// The clock is the caller's: the render loop passes the wall clock, because a flash is a
-    /// duration rather than a count of frames — the loop's frame counter catches up after a stall
-    /// and would compress the news. Keeping time out of the state is what lets a host test drive
-    /// the steps with plain numbers.
-    pub fn tick_notice(&mut self, now_ms: u32) {
-        let Some(mut notice) = self.state.notice else {
-            return;
-        };
-        let started = *notice.started_ms.get_or_insert(now_ms);
-        match notice.kind.light_at(now_ms.wrapping_sub(started)) {
-            Some(light) => {
-                notice.light = light;
-                self.state.notice = Some(notice);
-            }
-            None => self.state.notice = None,
-        }
-    }
-
-    /// Whether an announcement is still running. The render loop keeps stepping while one is,
-    /// because a lamp that is not breathing would otherwise park and leave the news frozen.
-    pub fn notice_active(&self) -> bool {
-        self.state.notice.is_some()
-    }
-
-    /// Move the scan list's window by `rows`, positive down, stopping at either end. The window is
-    /// still [`LIST_ROWS`] tall, only its start moves; a step cannot land on a partial last page.
-    fn scroll(&mut self, rows: i8) {
-        let top = i16::from(self.state.setup.list_top) + i16::from(rows);
-        self.state.setup.list_top = top.clamp(0, i16::from(self.last_list_top())) as u8;
-    }
-
-    /// Take what the panel just asked the link for, if it asked for anything.
-    ///
-    /// The render loop is the only caller: it drains the state once a pass and hands what it
-    /// finds to the plane the network task reads, which is how a request made on a panel
-    /// reaches the task that owns the radio. Taken rather than read — it is a command, and a
-    /// second take must not send the same passphrase twice.
     pub fn take_join(&mut self) -> Option<JoinRequest> {
         self.state.join.take()
     }
@@ -1228,8 +829,6 @@ impl DeviceManager {
         }
     }
 
-    /// The operation plane only tallies; the light move travels as a separate
-    /// business intent. Returns the counter bumped.
     fn tally_gesture(&mut self, counter: u8, record: GestureRecord) -> u8 {
         self.state.touch_held_ms = record.held_ms;
         self.state.last_gesture_origin = Some(record.origin);
@@ -1321,5 +920,7 @@ impl Default for DeviceManager {
     }
 }
 
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;

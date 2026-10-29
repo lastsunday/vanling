@@ -2,8 +2,8 @@
 title = "Cheat Sheet"
 weight = 22
 [extra]
-source_file_hash = "523c655bab2cbf2358d40566597950cdaec0377d"
-translated_at = "2026-10-26T00:00:00Z"
+source_file_hash = "d9d44de5cc19f05ba3eeca264df4295b8419d847"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 # Cheat Sheet
@@ -258,7 +258,7 @@ cd apps/server && cargo run -p vanling-server --features cuda -- \
 | `moon run iot:flash-probe-audio-s3` | Build and flash the speaker probe | Same |
 | `moon run iot:flash-probe-camera-s3` | Build and flash the camera and panel probe | Same |
 | `moon run iot:flash-probe-clock-s3` | Build and flash the clock probe | Same |
-| `moon run iot:flash-probe-demand-s3` | Build and flash the data-plane probe | Same |
+| `moon run iot:flash-probe-demand-s3` | Build and flash the demand probe | Same |
 | `moon run iot:flash-probe-echo-s3` | Build and flash the echo-cancellation probe | Same |
 | `moon run iot:flash-probe-multicore-s3` | Build and flash the dual-core and main-stack probe | Same |
 | `moon run iot:flash-probe-wifi-s3` | Build and flash the Wi-Fi probe (S3) | Credentials come from `IOT_WIFI_SSID` / `IOT_WIFI_PSK` |
@@ -317,14 +317,14 @@ The following are read at build time; a change requires a rebuild.
 | Variable | Effect | When unset |
 | --- | --- | --- |
 | `IOT_BOOT_PAGE` | Which page the device comes up on | `ambient` |
-| `IOT_DEMAND` | Which data planes, at what cadence | The firmware's defaults |
+| `IOT_DEMAND` | Which devices, at what cadence | The firmware's defaults |
 | `IOT_LOG_LEVEL` | Serial output level: `error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | Credentials compiled in | Not compiled in; the device stays on the setup page |
 | `IOT_PANEL_BENCH` | Force the unconfigured state so a passphrase has to be typed on the panel | None |
 
 `IOT_PORT` is not one of these: it only tells espflash which port to use and never enters the firmware.
 
-`IOT_DEMAND` is parsed per term and leniently: a term it does not recognise costs only that term, and the build still succeeds; when the whole string names no plane at all, the firmware prints `[IOT] IOT_DEMAND named no plane this firmware recognises: ignored`. An `IOT_BOOT_PAGE` that is not a page name falls back to `ambient` and prints `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient`.
+`IOT_DEMAND` is parsed per term and leniently: a term it does not recognise costs only that term, and the build still succeeds; when the whole string names no device at all, the firmware prints `[IOT] IOT_DEMAND named nothing this firmware recognises: ignored`. An `IOT_BOOT_PAGE` that is not a page name falls back to `ambient` and prints `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient`.
 
 ### Logging {#logging}
 
@@ -408,7 +408,7 @@ nm <elf> | grep -E '_stack_(start|end)_cpu0'
 
 ## Full details {#further}
 
-- [Layering and composition](@/development/iot/architecture.en.md), [feature criteria](@/development/iot/features.en.md)
+- [Architecture](@/development/iot/architecture.en.md), [feature criteria](@/development/iot/features.en.md)
 - [Firmware installation](@/development/iot/flashing.en.md) — artifacts, partition tables, bench images, the full boot-log recipe
 - [Hardware-free emulation](@/development/iot/emulation.en.md)
 - [Motion](@/development/iot/motion.en.md), [audio metering](@/development/iot/audio.en.md), [playback](@/development/iot/playback.en.md)

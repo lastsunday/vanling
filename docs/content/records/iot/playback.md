@@ -136,15 +136,15 @@ watchdog 的方向错法同类，但更贵：`tx_idle` 在 FIFO 瞬时空的那�
 
 **配方的事实来源是 `crates/tool/src/midi.rs` 的 `RECIPES` 表**，`.mid` 文件是它生成的构建产物（虽然入库）。改音效是改表里的一行 + `moon run iot:gen-midi-assets`，不是改二进制。DAW 里改了文件而表没改，`the_files_are_what_the_recipes_generate` 会让构建变红——**这是替代原来「配方写在注释里、构建不运行」的那条**。
 
-`bsp-esp` 那边还留着一个 `#[ignore]` 的 `write_the_catalogue_as_a_wav`，**不用烧板子就能听**：它把文件渲染成一个 WAV，走的是驱动自己的合成路径（`Tone` 跑解析出来的表）。改一批音高的验证成本从二十分钟的烧录加抓串口降到一秒。
+`bsp-esp` 里曾经有一个 `#[ignore]` 的 `write_the_catalogue_as_a_wav`，**不用烧板子就能听**：它把文件渲染成一个 WAV，走的是驱动自己的合成路径（`Tone` 跑解析出来的表）。它已经不在了（全仓 0 处）；要再听一次得先把它写回来，或者烧板子走 `echo-probe`。
 
 ### 为什么配方在工具里而不是在板里
 
 生成资产不是测试，所以配方表和 `.mid` 生成器搬出了 `bsp-esp` 的测试模块，进了零依赖的 `iot-tool`。
 
-代价是**两边看不见对方**：配方不再能读到 `Sound`，固件也读不到配方，唯一的联结只剩文件名约定（`Rise` → `rise.mid`，`label_of` 得说同一件事）。
+代价是**两边看不见对方**：配方不再能读到 `Sound`，固件也读不到配方，唯一的联结只剩文件名约定（`Rise` → `rise.mid`，`iot-ui` 的 `sound_label` 得说同一件事）。
 
-这条约定只有一处能验：`the_board_names_the_same_files` 读 `bsp-esp/src/sounds.rs` 的 `include_bytes!` 清单，跟配方表对。少了它，一次只改一边的重命名会静默通过——两个文件都在，两边都认领了各自的，只有板子放错。
+这条约定只有一处能验：`the_catalogue_names_the_same_files` 读 `app/src/sounds.rs` 的 `include_bytes!` 清单，跟配方表对。少了它，一次只改一边的重命名会静默通过——两个文件都在，两边都认领了各自的，只有设备放错。
 
 ### 搬出去的代价：裸金属的 `--workspace`
 

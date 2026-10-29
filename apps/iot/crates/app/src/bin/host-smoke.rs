@@ -12,16 +12,16 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::render::{FORGET, JOIN, RESCAN, SCAN};
-use iot_app::{Link, SpeakerRunner, run};
+use iot_app::{Feed, Network, Wiring, run};
 use iot_core::config::MotionConfig;
-use iot_core::demand::{ClockSink, DemandField, PlaneKey, Speed, SpeedTable};
+use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL, CaptureSink,
     SAMPLES_PER_COLUMN, SampleStream, dbfs,
 };
 use iot_core::drivers::board::{
-    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPlayback,
+    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPanel, HasPlayback,
 };
 use iot_core::drivers::camera::{
     CameraCounters, CameraTarget, FrameAdvance, FrameOwner, FrameSource, WindowGeometry,
@@ -37,7 +37,7 @@ use iot_core::drivers::motion::{
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, SavedNetworks, Ssid,
 };
-use iot_core::drivers::playback::{Recovery, Sound, Speaker, SpeakerFault};
+use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::intent::{BusinessIntent, Intent, PALETTE};
 use iot_core::keyboard::Key;
 use iot_core::state::{Confirm, DisplayPage, Panel, PlaybackPhase};
@@ -66,9 +66,6 @@ static AUDIO_POLLS: AtomicUsize = AtomicUsize::new(0);
 /// to have been served by the source.
 static AUDIO_COLUMNS: AtomicUsize = AtomicUsize::new(0);
 
-/// The most access points any diagnostics snapshot carried, so a list published on the link's
-/// own plane is proven to have travelled the whole plane → state → sink path. Zero is what a
-/// snapshot says before anything has scanned, so the maximum is the reading that matters.
 static NETWORK_APS: AtomicUsize = AtomicUsize::new(0);
 
 /// The most glyphs any snapshot's passphrase draft carried, so a key typed on the panel's
@@ -96,10 +93,7 @@ static AUDIO_PEAK_DB: AtomicIsize = AtomicIsize::new(isize::MIN);
 /// "above zero" assert is a mean leash.
 static AUDIO_DBA_LSB: AtomicUsize = AtomicUsize::new(0);
 
-/// Sounds the fake speaker was asked to start, in order, so the smoke can
-/// assert which sound a tap reached the driver with — and that a tap the state
-/// dropped never arrived here.
-static PLAYED: Mutex<Vec<Sound>> = Mutex::new(Vec::new());
+static PLAYED: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 
 /// Mute writes the fake speaker was asked to make, in order.
 static MUTED: Mutex<Vec<bool>> = Mutex::new(Vec::new());
@@ -203,8 +197,17 @@ struct HostSpeaker {
 }
 
 impl Speaker for HostSpeaker {
-    fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault> {
-        PLAYED.lock().unwrap().push(sound);
+    fn play(&mut self, mut source: Box<dyn SampleSource>) -> Result<(), SpeakerFault> {
+        let mut buf = [0_i16; 256];
+        let mut frames = 0;
+        while !source.done() {
+            let produced = source.fill(&mut buf);
+            if produced == 0 {
+                break;
+            }
+            frames += produced;
+        }
+        PLAYED.lock().unwrap().push(frames);
         self.feeds_left = HOST_FEEDS;
         Ok(())
     }
@@ -412,14 +415,14 @@ impl HostBoard {
             input: Some(vec![
                 PollEntry::new(
                     0,
-                    PlaneKey::INTERACTION,
+                    DemandKey::INTERACTION,
                     Box::new(ButtonScanner::new(HostButton(0))),
                     Box::new(DoubleClickAggregator::new()),
                     BUTTON_SCAN_MS,
                 ),
                 PollEntry::new(
                     1,
-                    PlaneKey::INTERACTION,
+                    DemandKey::INTERACTION,
                     Box::new(ButtonScanner::new(HostButton(1))),
                     Box::new(DoubleClickAggregator::new()),
                     BUTTON_SCAN_MS,
@@ -427,7 +430,7 @@ impl HostBoard {
             ]),
             motion: Some(PollEntry::new(
                 2,
-                PlaneKey::MOTION,
+                DemandKey::MOTION,
                 Box::new(MotionInput::new(HostMotion)),
                 Box::new(PassThrough),
                 MOTION_SCAN_MS,
@@ -444,6 +447,12 @@ impl HostBoard {
 }
 
 impl BoardTrait for HostBoard {}
+
+impl HasPanel for HostBoard {
+    fn panel(&self) -> Panel {
+        Panel::Wired
+    }
+}
 
 impl HasLight for HostBoard {
     type Light = HostLight;
@@ -474,7 +483,7 @@ impl HasAudio for HostBoard {
         self.audio.take().map(|source| {
             PollEntry::new(
                 3,
-                PlaneKey::AUDIO,
+                DemandKey::AUDIO,
                 Box::new(AudioInput::new(source, sink)),
                 Box::new(PassThrough),
                 CAPTURE_MS,
@@ -571,12 +580,10 @@ fn phase_idle_after_playing() -> bool {
     false
 }
 
-/// No plane has been measured on the host, and an unmeasured worst case is not a
-/// small one — the same rule the C6's table follows, for the same reason.
 struct Unmeasured;
 
 impl SpeedTable for Unmeasured {
-    fn speed_for(_field: DemandField) -> Speed {
+    fn speed_for(_field: DemandKind) -> Speed {
         Speed::Fast
     }
 }
@@ -609,10 +616,11 @@ async fn main(_spawner: Spawner) {
     match select(
         run(
             board,
-            HostClock,
-            SpeakerRunner::Inline,
-            Link::Wired,
-            Panel::Wired,
+            Wiring {
+                clock: HostClock,
+                feed: Feed::Inline,
+                network: Network::Present,
+            },
         ),
         scenario(),
     )
@@ -772,10 +780,15 @@ async fn scenario() {
         Timer::after(Duration::from_millis(10)).await;
         attempts += 1;
     }
+    let played = PLAYED.lock().unwrap().clone();
     assert_eq!(
-        PLAYED.lock().unwrap().as_slice(),
-        &[Sound::Notice],
-        "a tap did not reach the driver with the next sound"
+        played.len(),
+        1,
+        "a tap did not reach the driver exactly once"
+    );
+    assert!(
+        played[0] > 0,
+        "the driver was handed a source with no sound in it"
     );
     assert_eq!(
         PLAYBACK_PLAYS.load(Ordering::SeqCst),
@@ -798,8 +811,8 @@ async fn scenario() {
         "a tap over a sounding one was neither dropped nor played"
     );
     assert_eq!(
-        PLAYED.lock().unwrap().as_slice(),
-        &[Sound::Notice],
+        PLAYED.lock().unwrap().len(),
+        1,
         "a dropped tap still reached the driver"
     );
 
@@ -918,11 +931,6 @@ async fn scenario() {
         "no fill reached the surface after leaving the camera page"
     );
 
-    // 12. The Network page, which comes after the camera one in the cycle and exists because
-    //     the entry point said a station came up. Nothing here wires a radio — the host has
-    //     none — so what is asserted is the composition's half: the capability reaches the
-    //     state machine, the page is drawn, and a scan published on the link's own plane
-    //     arrives in the snapshot a sink reads.
     assert!(
         page_seen(DisplayPage::Network),
         "the link's page was never reached by the cycle"
@@ -945,7 +953,7 @@ async fn scenario() {
     assert_eq!(
         NETWORK_APS.load(Ordering::SeqCst),
         1,
-        "a scan published on the link's plane never reached the panel's snapshot"
+        "a scan published on the link's contract never reached the panel's snapshot"
     );
 
     // 13. The keyboard, driven the way the panel would drive it and asserted the way the
@@ -987,8 +995,6 @@ async fn scenario() {
         "the keyboard's draft never reached the panel's snapshot"
     );
 
-    // ... and connect hands it to the plane the network task reads from. The passphrase is
-    // compared here and written nowhere: the smoke's output carries it no further.
     send(BusinessIntent::Key {
         key: Key::Connect,
         at_ms,
@@ -1000,7 +1006,7 @@ async fn scenario() {
         handed = JOIN.take();
         attempts += 1;
     }
-    let handed = handed.expect("connect never reached the join plane");
+    let handed = handed.expect("connect never reached the join contract");
     // The page hands over one of two shapes, and this is the one a keyboard's own key produces: a
     // passphrase, printed nowhere.
     let JoinRequest::Typed(handed) = handed else {
@@ -1017,11 +1023,6 @@ async fn scenario() {
         "the credential did not carry what was typed"
     );
 
-    // 14. The page's own controls, on the planes the network task reads, and the marks the store
-    //     puts on the list coming back the other way. The host wires neither a radio nor a
-    //     partition, so what is asserted is the composition's half: the loop publishes what the
-    //     state was asked for, and a list marked the way the network task marks one lands in the
-    //     snapshot the panel draws its marks from.
     send(BusinessIntent::Key {
         key: Key::Cancel,
         at_ms,
@@ -1047,22 +1048,17 @@ async fn scenario() {
     assert_eq!(
         NETWORK_SAVED.load(Ordering::SeqCst),
         1,
-        "a marked list published on the link's plane never reached the panel's snapshot"
+        "a marked list published on the link's contract never reached the panel's snapshot"
     );
 
-    // The strip with no link on it: one request, and it lands on the survey's own plane. A tap that
-    // reached the state and stopped there would be a panel that asks and a radio that never hears.
     send(BusinessIntent::ScanNow);
     assert!(
         select(RESCAN.ready(), Timer::after(Duration::from_secs(1)))
             .await
             .is_first(),
-        "the strip's request to look around never reached the survey's plane"
+        "the strip's request to look around never reached the survey's contract"
     );
 
-    // And the row a finger holds: the question, its answer, and the name on the plane the network
-    // task erases from. The network is the one the store reported, which is what makes the hold a
-    // question at all.
     send(BusinessIntent::AskForget(
         list.get(0).expect("a row to ask about"),
     ));
@@ -1076,7 +1072,7 @@ async fn scenario() {
             b"neighbour",
             "the forget named a network other than the row that was held"
         ),
-        Either::Second(()) => panic!("the hold's answer never reached the store's plane"),
+        Either::Second(()) => panic!("the hold's answer never reached the store's contract"),
     }
 
     std::process::exit(0);

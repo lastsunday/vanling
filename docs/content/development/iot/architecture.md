@@ -1,9 +1,43 @@
 +++
-title = "分层与组合"
+title = "架构"
 weight = 10
 +++
 
-# 分层与组合
+# 架构
+
+## 概览
+
+以意图(Intent)为触发点的管道逻辑系统
+
+### 流程
+
+1. 初始化芯片获取外围设备(总线和引脚),日志,堆(射频，其他),堆剩余容量调用钩子
+1. 根据总线和引脚进行接线创建板子,获取板子对象,定时源,软中断
+   1. 获取持久化仓库
+1. 根据定时源，软中断创建和启动RTOS
+1. 合并产品运行和网络运行到同一任务里
+   1. 产品运行
+      1. 从板子获取灯列表
+      1. 从板子获取输入事件列表
+      1. 从板子获取姿态传感事件,开启状态,能力
+      1. 从板子获取声音事件,开启状态
+      1. 记录各个特性的需求
+      1. 从板子获取喇叭对象,开启状态
+      1. 从板子获取摄像头对象,开启状态
+      1. 创建渲染器
+      1. 遍历灯,获取摄像头,将灯渲染器+摄像头(存在的话)注册到渲染器
+      1. 创建设备管理器,将各个特性和需求,参数,覆盖参数传入设备管理器
+      1. 创建配置器,喇叭共享对象,需求共享对象
+      1. 根据喇叭共享对象，需求共享对象来启动主流程
+         1. 有喇叭共享对象和软中断
+            1. 定时运转的声音播放引擎
+            1. 输入事件引擎
+            1. 渲染引擎
+         1. 有喇叭共享对象,没有软中断
+         1. 没有喇叭共享对象
+   1. 网络运行
+
+#### 可考虑优化和简化部分
 
 ## 分层
 
@@ -14,10 +48,10 @@ weight = 10
 - **iot-ui 是页面层**：`Canvas` 只持有帧缓冲、尺寸与 ground，`Surface` 在它之上借用 `&Diagnostics`、灯位、FPS、调试开关、SPL 偏移与可选的平台栈探针，页面以立即模式绘制。它不认芯片、板卡或传感器；`bsp-esp` 只负责帧缓冲、DMA、面板与相机采样，然后把页面的字节写出去。页面因此在宿主机可测，`iot-ui` 的测试不依赖面板
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
-- **iot-bsp-esp**：板差异收敛在 `type Board` 别名与 run 分发，每板一个 `#[cfg(feature)]` 分支
+- **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`FRONT` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`sounds.rs`（哪个 `Sound` 是哪个 `.mid`）与 `post.rs`（启动清单）不认板也不认芯片，宿主机可测。读数到字形、字模和页面布局已随页面层进入 `iot-ui`；`core` 里留下 `overlay`/`stamp`/`keyboard`，因为页面与 `intent` 两边都要读
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。读数到字形、字模和页面布局已随页面层进入 `iot-ui`；`core` 里留下 `overlay`/`stamp`/`keyboard`，因为页面与 `intent` 两边都要读
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
@@ -36,10 +70,10 @@ weight = 10
 
 一个需求是三句独立的话，必须分开表达：
 
-| 维度 | 问的问题 | 类型 | 决定什么 |
-|---|---|---|---|
-| **模式** | 产不产 | `Mode`：`Off` / `OnChange` / `Continuous` | 轮询是否发生、是否按时钟产 |
-| **节奏** | 多频繁 | `PlaneDemand::period_ms`（0 = 板级节奏） | 轮询周期的下限 |
+| 维度       | 问的问题   | 类型                                                  | 决定什么                               |
+| ---------- | ---------- | ----------------------------------------------------- | -------------------------------------- |
+| **模式**   | 产不产     | `Mode`：`Off` / `OnChange` / `Continuous`             | 轮询是否发生、是否按时钟产             |
+| **节奏**   | 多频繁     | `Claim::period_ms`（0 = 板级节奏）                    | 轮询周期的下限                         |
 | **敏感度** | 多旧还算对 | `Sensitivity`：`Primary` / `Secondary` / `Background` | 本板无处落地（见下），只参与仲裁与日志 |
 
 而「怎么取」——寄存器组、FIFO、片上引擎、传输——是采集配置（`MotionConfig` 等），由驱动选定，页面永远不点名。
@@ -56,11 +90,12 @@ Android 那一侧给的两条形状照抄过来：
 
 - 每个传感器的 `minDelay` 对 on-change 必须是 0、one-shot 必须是 −1。「多频繁」不是每种上报模式都问得到的。
 
-  运动平面在本板虽然名字像 on-change，实际是持续轮询加器件内的 No-Motion 引擎产出变化事件：`Mode::OnChange` 与 `Mode::Continuous` 由 `MotionConfig::for_mode` 映射到同一个 `PolledRegisters`。
+  运动设备在本板虽然名字像 on-change，实际是持续轮询加器件内的 No-Motion 引擎产出变化事件：`Mode::OnChange` 与 `Mode::Continuous` 由 `MotionConfig::for_mode` 映射到同一个 `PolledRegisters`。
 
   这不是把两个模式并成一个——消费者要的东西在时间上确实不同（一个只要变化、一个按时钟），只是产出它们的接线相同。「怎么取」是器件的答案，不是需求的字段。
 
   `WakeDetector` 仍在配置集合里，但那是驱动按器件能力明确拒绝的一档，不是 `OnChange` 的落点。别的元件要先问一句上报模式。
+
 - `power` 几乎总高于器件手册，且「多传感器同时开启的功耗增量不超过各自之和」是可加性假设。本板没有电流表，这条无法验证——所以固件里不带任何功耗数字，只报执行器占用。
 
 ### 仲裁取最大值，不取优先级
@@ -97,14 +132,16 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
+需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块：`state/playback.rs`、`state/audio.rs`、`state/network.rs` 各自拥有该能力的转移、诊断折叠与私有 helper，`apply_business` 只留一行调用；`state/mod.rs` 只剩设备级路由（灯、翻页、启动页、按键与确认这些一行写入）。新增这类能力 = 新模块 + 一条臂；只改一个字段的场景仍直接写在 `apply_business` 里。
+
 ### 传输：三条下行路径，性质不同
 
-| 消费者 | executor | 现状 |
-|---|---|---|
-| 渲染层 / 摄像头 | 协作 | ✅ **已有通道** |
-| `input_task` | 协作 | ❌ `input_task(intent_bus, sources)` 拿不到 state |
-| `control_loop` | 协作 | ❌ 同上 |
-| `feed_task` | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加** |
+| 消费者          | executor                          | 现状                                              |
+| --------------- | --------------------------------- | ------------------------------------------------- |
+| 渲染层 / 摄像头 | 协作                              | ✅ **已有通道**                                   |
+| `input_task`    | 协作                              | ❌ `input_task(intent_bus, sources)` 拿不到 state |
+| `control_loop`  | 协作                              | ❌ 同上                                           |
+| `feed_task`     | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加**                         |
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion_enabled`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 
@@ -122,9 +159,9 @@ DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
 
 `Intent` 是相反的情形——事件——所以仍走总线。
 
-采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽平面：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`render_loop` 在 intent 之后取走。
+采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽契约：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`render_loop` 在 intent 之后取走。
 
-第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，平面自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
+第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，契约自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
 
 顺序是顺带的：`input_task` 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一次 pass 画过的那一帧。
 
@@ -146,7 +183,7 @@ DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
 
 实测把 capture 批到 30 s 之后，环在 60 ms 内撞满、`capture ring 10842 B deep` 报警，90 s 里 `CaptureWatchdog` 只在第 91 秒才通过 `restart` 把链接回来一次。
 
-所以采集平面不接受任何慢于板级 cadence 的 poll：`Es7210Rx::accepts_slower_poll()` 答 `false`。
+所以采集路径不接受任何慢于板级 cadence 的 poll：`Es7210Rx::accepts_slower_poll()` 答 `false`。
 
 `CaptureWatchdog` 靠「有没有进度」判停滞这件事因此不是问题——它根本没有机会看到一次故意的长间隔，间隔不存在。
 
@@ -172,10 +209,10 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 #### 两种配置拒绝实现，返回 `UnsupportedConfig` 而不是写一个像样的字节
 
-| 配置 | 缺什么 |
-|---|---|
+| 配置           | 缺什么                                                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `WakeDetector` | 单加速度计同时改变 CTRL7 功耗域和「用哪张 ODR 表」；datasheet 给了两张表的频率但没给各自索引，引擎窗口按该索引换算，猜错就正好错这么多 |
-| `Fifo` | FIFO 寄存器从 `0x0B` 起，与本驱动写运动标定的地址重叠——重叠正是 CTRL9 命令协议存在的原因，所以这不是一次寄存器写而是排序问题 |
+| `Fifo`         | FIFO 寄存器从 `0x0B` 起，与本驱动写运动标定的地址重叠——重叠正是 CTRL9 命令协议存在的原因，所以这不是一次寄存器写而是排序问题           |
 
 每一条都是「打开寄存器表补一个编码」的可达路径。
 
@@ -191,7 +228,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 拒绝是返回类型的一部分。走不进去时返回 `Unreachable { key, mode, config }`，三者齐全，调用方拿不到「悄悄降级」的选项。
 
-拒绝会被写进需求：被点名的平面从「设备承诺」里去掉（`EffectiveDemand::without`），下游读到的需求不再声称一件器件做不到的事。
+拒绝会被写进需求：被点名的设备从「设备承诺」里去掉（`EffectiveDemand::without`），下游读到的需求不再声称一件器件做不到的事。
 
 `Off` 不在此列，它由「不采集」兑现，返回 `None` 而非 `Err`。交互通道永不受影响。
 
@@ -199,28 +236,28 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 配置器随需求一起兑现，`[DEMAND]` 报的是这次排程的结果。
 
-需求按平面索引，不按字段枚举。`EffectiveDemand` 是 `BTreeMap<PlaneKey, PlaneDemand>`，键是「器件类型 + 第几个」，所以 `plane`、`without` 与 `Override::apply` 全是查表，新增一个传感器不需要改动需求机械的任何一行。
+需求按设备索引，不按字段枚举。`EffectiveDemand` 是 `BTreeMap<DemandKey, Claim>`，键是「器件类型 + 第几个」，所以 `claim`、`without` 与 `Override::apply` 全是查表，新增一个传感器不需要改动需求机械的任何一行。
 
-两个同型号器件可以分开提需求（`PlaneKey::instance(Audio, 0)` 与 `…, 1`）。
+两个同型号器件可以分开提需求（`DemandKey::instance(Audio, 0)` 与 `…, 1`）。
 
-平面清单由板子给。`DisplayPage::demand(&self, planes)` 遍历板子声明的平面表调 `claim_for`。这个 match 是穷尽的，所以页面不可能漏掉一个平面然后继承一份没人选过的需求。
+设备清单由板子给。`DisplayPage::demand(&self, keys)` 遍历板子声明的设备表调 `claim_for`。这个 match 是穷尽的，所以页面不可能漏掉一个设备然后继承一份没人选过的需求。
 
-板子没声明的平面不出现在需求里，读作 `Off`，不需要再用四个布尔开关夹一次。
+板子没声明的设备不出现在需求里，读作 `Off`，不需要再用四个布尔开关夹一次。
 
-需求状态是被持有的，不是现算的。`DeviceManager` 持有 `demand`，与 `state` 并列。派生的唯一出处是 `propose_demand()`，而 `page`、平面清单、`override_` 的任何一次写入都要跟着它走。
+需求状态是被持有的，不是现算的。`DeviceManager` 持有 `demand`，与 `state` 并列。派生的唯一出处是 `propose_demand()`，而 `page`、设备清单、`override_` 的任何一次写入都要跟着它走。
 
 理由只有一个：配置器要有东西可以改。`commit_demand` 把可达的那份写回同一处，下游读的都是被改过的那份。
 
-仲裁由 `resolve_speed` 在采集平面上取最高要求，测试断言它按平面取最高速，而不是整表一个常量。
+仲裁由 `resolve_speed` 在采集设备上取最高要求，测试断言它按设备取最高速，而不是整表一个常量。
 
 接线：
 
-| 消费者 | 怎么拿到需求 |
-|---|---|
-| `input_task` | 共享需求，每个 tick 在临界区内借用一次，按 `PollEntry.key()` 排程（cadence 还要问驱动 `accepts_slower_poll`） |
-| `render_loop` | 写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导 |
-| 摄像头 | `DiagnosticsSink`（已有通道），门控条件从「页面变了」改成「需求不再要求画面」 |
-| `feed_task` | 刻意不注入。它的存在本身供给麦克风时钟，所以它是音频平面时钟的来源而不是它需求的消费者 |
+| 消费者        | 怎么拿到需求                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `input_task`  | 共享需求，每个 tick 在临界区内借用一次，按 `PollEntry.key()` 排程（cadence 还要问驱动 `accepts_slower_poll`） |
+| `render_loop` | 写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导                                            |
+| 摄像头        | `DiagnosticsSink`（已有通道），门控条件从「页面变了」改成「需求不再要求画面」                                 |
+| `feed_task`   | 刻意不注入。它的存在本身供给麦克风时钟，所以它是音频路径时钟的来源而不是它需求的消费者                        |
 
 轮询节奏只向外走：板级 cadence 是抖动窗口的量度下限，需求没有资格改短。地板与当前节奏分两个字段（`board_cadence_ms` 与 `cadence_ms`），否则一次拉长就再也收不回来。
 
@@ -244,41 +281,41 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 `Canceller` 是两路进一路出，而把这两路配成「同一个瞬间」不是它的问题。两个 DMA 共用一个时钟、各自按自己的节奏排空，参考信号还要被发射环的跑道拖住。所以配对这一层是独立的：
 
-| 类型 | 归哪 | 是什么 |
-|---|---|---|
+| 类型           | 归哪 | 是什么                                                                               |
+| -------------- | ---- | ------------------------------------------------------------------------------------ |
 | `ReferenceLog` | core | 按放音游标而不是写入指针保存参考样本，并报 lap —— 配对读到的必须是已经播出去的那一段 |
-| `Decimator` | core | 抽取器带**相位**，两路各自报自己的，供配对方对齐而不是各猜各的 |
-| `EchoStage` | core | 采集 × 参考的配对与抵消，产出 `EchoOutcome` |
+| `Decimator`    | core | 抽取器带**相位**，两路各自报自己的，供配对方对齐而不是各猜各的                       |
+| `EchoStage`    | core | 采集 × 参考的配对与抵消，产出 `EchoOutcome`                                          |
 
 相位是这套里唯一会静默错一抽的东西：发端比收端先 arm 时两边取 0，**换一块先 arm 麦克风的板子必须同时把偏移报给两边**，差的部分由延迟搜索兜，那不是自动的。
 
-`demand-probe` 遍历运动平面的（配置 × 节奏）矩阵，每个格子先 settle 再测量，报三个数：驱动自己计数器给出的总线事务/秒、窗口内 poll 的执行器占用墙钟占比、以及测量的 poll 数（好让前两个互相校验）。
+`demand-probe` 遍历运动设备的（配置 × 节奏）矩阵，每个格子先 settle 再测量，报三个数：驱动自己计数器给出的总线事务/秒、窗口内 poll 的执行器占用墙钟占比、以及测量的 poll 数（好让前两个互相校验）。
 
 它报不了电流——那需要板子上接表，别人的数据手册数字不是对这块板的测量。所以 `micro_amps` 列保持空白。
 
 驱动没有寄存器编码的格子按「不可达」打印而不是跳过，日志对「没测到的」和「测到的」一样响。
 
-配套两件事：`SUPPORTED_CONFIGS` 只列驱动能把芯片配成的样子（有测试断言它与 `config_for` 一致）；`Board::new_motion_only()` 提供隔离 bring-up——一个在别的平面还在跑的格子里测出来的东西是关于错的东西的证据。
+配套两件事：`SUPPORTED_CONFIGS` 只列驱动能把芯片配成的样子（有测试断言它与 `config_for` 一致）；`Board::new_motion_only()` 提供隔离 bring-up——一个在别的设备还在跑的格子里测出来的东西是关于错的东西的证据。
 
-各平面的实测数字与它们的口径限制，在[实现记录索引](@/records/iot/_index.md)。
+各设备的实测数字与它们的口径限制，在[实现记录索引](@/records/iot/_index.md)。
 
 #### 执行器占用的数字不可相加
 
 同一批协作执行器，谁醒着谁拿时间：把 motion 批到 30 s 后 input 侧从 49.5% 降到 35.5%，面板侧同时从 45.3% 升到 58.5%。
 
-面板那一侧是残差不是增量。把它和被轮询平面的数字相加，等于把同一批微秒数数两遍，加出来会超过一个核的 100%。
+面板那一侧是残差不是增量。把它和被轮询设备的数字相加，等于把同一批微秒数数两遍，加出来会超过一个核的 100%。
 
-同理，平面独自在板上跑测到的数（探针）与两个整机构建相减测到的数不是同一个口径。混在一起相加得到的和是下界不是总量（三个平面隔离相加读作 43.2%，同一构建实测 51.0%）。
+同理，设备独自在板上跑测到的数（探针）与两个整机构建相减测到的数不是同一个口径。混在一起相加得到的和是下界不是总量（三个设备隔离相加读作 43.2%，同一构建实测 51.0%）。
 
-要贵的那一侧：平面的代价随旁侧运行的东西上升，便宜的读数正是最先失效的那个。
+要贵的那一侧：设备的代价随旁侧运行的东西上升，便宜的读数正是最先失效的那个。
 
-由此有一条测量方法上的硬规矩：**要问节流对最坏阻塞的作用，测法是只改节奏不动模式。** 两者同时改时，省下的部分可能来自关掉整个平面而不是来自节流。
+由此有一条测量方法上的硬规矩：**要问节流对最坏阻塞的作用，测法是只改节奏不动模式。** 两者同时改时，省下的部分可能来自关掉整个设备而不是来自节流。
 
 ## 页面循环按次序表走一圈
 
 `DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`with_boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
 
-能力判定是每条页自己的一个 bool（`is_backed`），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Link` 与 `SpeakerRunner` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子。
+能力判定是每条页自己的一个 bool（`is_backed`），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Network` 与 `Feed` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子；屏幕是唯一的例外，`HasPanel` 就是让 `run` 直接问板子的那条能力。
 
 这条规约是修一个缺陷写下来的。
 
@@ -287,7 +324,6 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 跳着写会漏掉闭环的那一页，走一张表再回绕不会。
 
 `iot-core` 里有一条测试遍历能力组合 × 起点断言这一点（`every_page_the_board_can_back_is_shown_on_the_way_round`），把旧的 `Camera → Attitude` 放回去它会失败并打出上面那串。
-
 
 ## 日志
 
@@ -298,7 +334,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 ## 新增板
 
 1. `bsp-esp/` 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 `components/` 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配
-2. `app/src/main.rs` 加 `type Board`/run 分发 cfg 分支
+2. `app/src/main.rs` 加该板的 `FRONT` 常量（芯片内存不同再加 `HEAP_BYTES`）；feed 落点已按芯片分好
 3. app feature 透传 `iot-bsp-esp/<board>`
 4. `reusable-iot-build.yml` 的 `platforms` 默认 JSON 与 `iot-dev-release.yml` 的 `platforms` 输入里加该板（xtensa 板需标 `use-xtensa-toolchain: true`，经 `build-s3` 任务构建：CI/发布用 espup 原生 `esp` 1.98.1.0 工具链，macOS Intel 本地用同版本 Docker 镜像）
 5. 验证：`cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`

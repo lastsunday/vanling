@@ -246,16 +246,7 @@ mod tests {
 
     #[test]
     fn every_page_stamps_something_and_does_it_the_same_way_twice() {
-        let pages = [
-            DisplayPage::Ambient,
-            DisplayPage::Attitude,
-            DisplayPage::Audio,
-            DisplayPage::Speaker,
-            DisplayPage::Camera,
-            DisplayPage::Network,
-            DisplayPage::Splash,
-        ];
-        for page in pages {
+        for page in DisplayPage::ALL {
             let ground = (page != DisplayPage::Camera).then_some((Fill::Uniform, Rgb(0, 0, 0)));
             let first = render(page, true, ground);
             let second = render(page, true, ground);

@@ -5,9 +5,8 @@ extern crate alloc;
 
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use iot_core::drivers::board::HasWifi;
+use iot_core::drivers::board::{HasPanel, HasWifi};
 use iot_core::drivers::network::Front;
-use iot_core::state::Panel;
 
 /// The board this firmware is wired for. One alias because the board features
 /// are mutually exclusive, so `iot-bsp-esp` re-exports a single `Board` name
@@ -37,64 +36,36 @@ const HEAP_BYTES: usize = 64 * 1024;
 #[cfg(feature = "esp32s3")]
 const HEAP_BYTES: usize = 96 * 1024;
 
-#[cfg(feature = "esp32c6")]
+#[cfg(feature = "esp32c6-devkitc-1")]
+const FRONT: Front = Front::AccessPoint;
+#[cfg(feature = "lckfb-szpi-esp32s3")]
+const FRONT: Front = Front::Panel;
+
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
-    let peripherals = iot_chip_esp::chip_init_for_product();
-    iot_chip_esp::init_logging();
-    // The driver's heap before the app's: the radio allocates from its own regions the moment
-    // the station starts, and where those regions are is this part's business.
-    iot_chip_esp::init_radio_heap();
-    iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
-    // What is left of it, for the link to report once setup mode's own frame is on the heap.
-    iot_app::network::report_heap_free(iot_chip_esp::heap_free);
+    let (mut board, feed) = boot_board();
 
-    log::info!("[IOT] boot complete");
-
-    // A transient boot NACK must not leave the screen black: reset and retry.
-    // This board's bring-up hands back no second software interrupt, and it drives
-    // no speaker either, so there is no feed to move and no executor to move it to.
-    let (mut board, timg0, from_cpu_intr) = match Board::new(peripherals) {
-        Ok(startup) => startup,
-        Err(error) => {
-            log::error!("[IOT] board init failed, resetting: {error:?}");
-            iot_chip_esp::reset();
-        }
-    };
-
-    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    // The driver's start needs the scheduler, so the station is taken here rather than in the
-    // board's own bring-up; the domain has to be powered and the modem clocks un-gated before
-    // it, and nothing in this driver version does that on this part's build.
-    iot_chip_esp::ungate_radio();
     let station = board.take_wifi();
 
-    // The link runs beside the product rather than inside `run`: the station's futures are not
-    // `Send` and are polled on this same cooperative executor, which is what lets the radio and
-    // the panel share the one stack the product has to fit them into.
-    // The saved networks are taken before the board goes into `run`: they are the credential a
-    // boot with no build input comes up with, and `run` has no use for them.
     let saved = board.take_credentials();
+    let network = iot_app::Network::of(station.is_some());
+    let panel = board.panel();
+
     match join(
         iot_app::run(
             board,
-            iot_chip_esp::Part,
-            iot_app::SpeakerRunner::Inline,
-            iot_app::Link::of(station.is_some()),
-            Panel::Absent,
+            iot_app::Wiring {
+                clock: iot_chip_esp::Clock,
+                feed,
+                network,
+            },
         ),
-        // No panel on this part, so the access point is the only way setup mode can be reached:
-        // it is up from the first second a device with nothing configured boots, and there is no
-        // list here to offer instead. A build that never reaches this branch with a product's
-        // credentials is why the access point's front is the value rather than a runtime choice.
-        iot_app::network::serve(station, saved, Front::AccessPoint, false),
+        iot_app::network::serve(station, saved, FRONT, panel),
     )
     .await {}
 }
 
-#[cfg(feature = "esp32s3")]
-#[esp_rtos::main]
-async fn main(_spawner: Spawner) -> ! {
+fn boot_board() -> (Board, iot_app::Feed) {
     let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
     // The driver's heap before the app's: the radio allocates from its own regions the moment
@@ -105,10 +76,10 @@ async fn main(_spawner: Spawner) -> ! {
     iot_app::network::report_heap_free(iot_chip_esp::heap_free);
 
     log::info!("[IOT] boot complete");
-    // A transient boot NACK is retried from a clean chip. The panel is still dark
-    // here, so a failure that repeats reads as a dark screen instead of the last
-    // run's frame.
-    let (mut board, timg0, from_cpu_intr, feed_intr) = match Board::new(peripherals) {
+
+    // Bound before the call rather than matched at `start_executors`: the arm form measured
+    // 1,860 B more text on the S3 for the same behaviour.
+    let startup = match Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[IOT] board init failed, resetting: {error:?}");
@@ -116,32 +87,22 @@ async fn main(_spawner: Spawner) -> ! {
         }
     };
 
+    start_executors(startup)
+}
+
+/// The S3's bring-up hands back a second software interrupt for the feed: folding the capture
+/// envelope or painting the panel holds the cooperative executor past the feed's deadline.
+#[cfg(feature = "esp32s3")]
+fn start_executors(startup: iot_bsp_esp::Startup<'static>) -> (Board, iot_app::Feed) {
+    let (board, timg0, from_cpu_intr, feed_intr) = startup;
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
     let feed = iot_chip_esp::start_feed_executor(feed_intr);
-    // The driver's start needs the scheduler, so the station is taken here rather than in the
-    // board's own bring-up; the domain has to be powered and the modem clocks un-gated before
-    // it, and nothing in this driver version does that on this part's build.
-    iot_chip_esp::ungate_radio();
-    let station = board.take_wifi();
+    (board, iot_app::Feed::Interrupt(feed))
+}
 
-    // The link runs beside the product rather than inside `run`: the station's futures are not
-    // `Send` and are polled on this same cooperative executor, which is what lets the radio and
-    // the panel share the one stack the product has to fit them into.
-    // The saved networks are taken before the board goes into `run`: they are the credential a
-    // boot with no build input comes up with, and `run` has no use for them.
-    let saved = board.take_credentials();
-    match join(
-        iot_app::run(
-            board,
-            iot_chip_esp::Part,
-            iot_app::SpeakerRunner::Interrupt(feed),
-            iot_app::Link::of(station.is_some()),
-            Panel::Wired,
-        ),
-        // The panel is the front end a device with one starts on: the access point is a network
-        // anybody in range can join, and it is up only while somebody has asked for its page. The
-        // list needs no radio of its own beyond the scan it already runs.
-        iot_app::network::serve(station, saved, Front::Panel, true),
-    )
-    .await {}
+#[cfg(feature = "esp32c6")]
+fn start_executors(startup: iot_bsp_esp::Startup<'static>) -> (Board, iot_app::Feed) {
+    let (board, timg0, from_cpu_intr) = startup;
+    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
+    (board, iot_app::Feed::Inline)
 }

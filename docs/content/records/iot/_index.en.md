@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "868e841fff05812e389925cc6ae96d7f0655719f"
-translated_at = "2026-10-24T00:00:00Z"
+source_file_hash = "98324154aa687e59d07a7bcbba2c4d7535ac0b12"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -41,10 +41,10 @@ The system description lives in [development docs / IoT firmware](@/development/
 
 | Finding | Conclusion | Numbers |
 | --- | --- | --- |
-| May the capture plane be throttled | **No.** Only `sample()` drains the ring, so batching to 30 s fills it and halts I2S | ring full at 60 ms |
+| May the capture path be throttled | **No.** Only `sample()` drains the ring, so batching to 30 s fills it and halts I2S | ring full at 60 ms |
 | How `Off` is implemented | The chain must be parked from the consumer side, not merely left unpoll'ed | chain stops 1 ms after the demand lands |
 | Silence detection | Must read as "no change", or the whole diff chain spins | — |
-| A plane's marginal cost | **Rises with what else is awake; it is not a constant** | 12.52% (alone) → 15.73% (something else awake) |
+| A device's marginal cost |
 | What throttling achieves | Does not save the device total; it moves executor from one place to another | 94.8% → 94.0% |
 | Scaling the poll side | Scaled by the cadence in force, matching measurement at both ends | +0.6% / −4.1% (40% high before scaling) |
 | Quantisation noise | Feeds a **65 dBA phantom floor**; the dBA table needs converting against the raw table | 65 dBA |
@@ -136,11 +136,11 @@ The system description lives in [development docs / IoT firmware](@/development/
 
 **Each probe is a standalone bin that wires one layer of the framework straight to real hardware. Consult this before touching a driver — the question "which probe answers this" should end here.**
 
-A probe is not another form of the product: the product firmware **cannot produce** the inputs a probe can. All five pages ask all four planes for `Continuous`, so on a device you can never reach any cell of the (configuration × cadence) matrix but the default one.
+A probe is not another form of the product: the product firmware **cannot produce** the inputs a probe can. All five pages ask all four devices for `Continuous`, so on a device you can never reach any cell of the (configuration × cadence) matrix but the default one.
 
 | Probe | What it answers | What it reports |
 | --- | --- | --- |
-| `demand-probe` | What each cell of the motion plane's configuration × cadence costs | Each cell settled before measuring: bus transactions/second, executor occupancy as a wall-clock share, and the number of polls measured so the first two can check each other |
+| `demand-probe` | What each cell of the motion device's configuration × cadence costs | Each cell settled before measuring: bus transactions/second, executor occupancy as a wall-clock share, and the number of polls measured so the first two can check each other |
 | `camera-probe` | Whether the camera's frame reaches the panel unmodified, or something substituted for it | Frame bytes and checksum; "the picture looks wrong" is not a measurement |
 | `audio-probe` | The transmit path's steady state with the runtime to itself | Stalls and gaps across the two alternated sounds |
 | `multicore-s3` | Whether starting the second core survives the main stack sitting beneath it | Whether the stack top — where the thread-mode executor's `ThreadFlag` lives — is overwritten by the startup prologue |

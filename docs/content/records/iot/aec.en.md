@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "4d5b8bfbd9f482b758905abc76d917d8e906ce5b"
-translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "ed3dcbdd980103f3b00926034978edd112138ea7"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -648,7 +648,7 @@ So the wiring is shaped by that:
 
 - The **write** side taps as before (one sample per **frame** in `render_slice` — both slots carry the same stream, so a tap per slot halves the rate), and the **read** side goes through a play cursor: `Es8311Tx::advance_play_cursor` derives how far the wire has travelled from the DMA's own free space and feeds the delta to `ReferenceLog::played`. That is the answer to "`Speaker` has no `played_frames()`" — **no method is added to `Speaker`**. What is added is a shared cell the speaker publishes into, one direction only.
 - The cell **crosses two executors**: the feed is on a Priority2 interrupt, the folding is in the cooperative `input_task`, so it is a `CriticalSectionRawMutex` cell, taken **once per feed and once per poll, never once per sample** — a lock per sample at 48 kHz would cost more than the canceller it is feeding.
-- **Where it sits**: the decimator in core (`drivers/audio/decimator.rs`, indexed by frame number rather than a free-running counter, since a phase mismatch between the two streams is a silent failure), the reference shadow log in core (`drivers/aec/reference.rs`), the tap in the bsp transmit side, the pairing in the bsp capture side, the wire between them in the board module's `Board::new`. **`Speaker` gained nothing** — a method there would pull a data-plane coupling back across the interrupt boundary its contract exists to prevent.
+- **Where it sits**: the decimator in core (`drivers/audio/decimator.rs`, indexed by frame number rather than a free-running counter, since a phase mismatch between the two streams is a silent failure), the reference shadow log in core (`drivers/aec/reference.rs`), the tap in the bsp transmit side, the pairing in the bsp capture side, the wire between them in the board module's `Board::new`. **`Speaker` gained nothing** — a method there would pull a data-path coupling back across the interrupt boundary its contract exists to prevent.
 - **Sized from geometry**: `REFERENCE_SAMPLES = ⌈(5 760 + 2 880 + 192) / 3⌉ = 2 944`, with a `const _: () = assert!` holding that it spans the whole runway. The capture side asserts separately that its ring really is three poll periods deep — **two modules each spelling out one number is free to drift**, and a stale copy makes the log quietly lap.
 
 `[test]` The most important of `ReferenceLog`'s 14 tests is the **index unit** in `at_play_cursor`: the ring is addressed in *kept samples* while the counters count *frames*. The first version used `written % N` with `written` incrementing per frame, so only one slot in three was ever written — **every test green, every sample zero**. It now asserts **specific sample values** (`frames(n) = n × 97`) rather than indices, because a wrong index looks like a right one.

@@ -39,6 +39,27 @@ pub enum LightState {
     Breath(Breath),
 }
 
+pub struct LampLine(pub Option<LightState>);
+
+impl core::fmt::Display for LampLine {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.0 {
+            None => f.write_str("[LAMP] the page's own light"),
+            Some(LightState::Off) => f.write_str("[LAMP] dark"),
+            Some(LightState::Solid { color, brightness }) => write!(
+                f,
+                "[LAMP] solid rgb({}, {}, {}), brightness {brightness} of 255",
+                color.0, color.1, color.2
+            ),
+            Some(LightState::Breath(breath)) => write!(
+                f,
+                "[LAMP] breathing over {} ms, brightness {}..{}",
+                breath.period_ms, breath.min_brightness, breath.max_brightness
+            ),
+        }
+    }
+}
+
 impl LightState {
     pub const fn boot() -> Self {
         LightState::Breath(Breath {
@@ -217,6 +238,33 @@ impl Default for LightState {
     }
 }
 
+impl DeviceManager {
+    pub(super) fn announce(&mut self, kind: NoticeKind) {
+        if self.state.panel.is_wired() || !self.state.network_enabled {
+            return;
+        }
+        self.state.notice = Some(Notice::new(kind));
+    }
+
+    pub fn tick_notice(&mut self, now_ms: u32) {
+        let Some(mut notice) = self.state.notice else {
+            return;
+        };
+        let started = *notice.started_ms.get_or_insert(now_ms);
+        match notice.kind.light_at(now_ms.wrapping_sub(started)) {
+            Some(light) => {
+                notice.light = light;
+                self.state.notice = Some(notice);
+            }
+            None => self.state.notice = None,
+        }
+    }
+
+    pub fn notice_active(&self) -> bool {
+        self.state.notice.is_some()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,11 +377,298 @@ mod tests {
     }
 
     #[test]
+    fn the_lamp_line_says_what_the_board_was_handed() {
+        let mut line = alloc::string::String::new();
+        use core::fmt::Write;
+        for (lamp, expected) in [
+            (None, "[LAMP] the page's own light"),
+            (Some(LightState::Off), "[LAMP] dark"),
+            (
+                Some(LightState::Solid {
+                    color: Rgb(1, 2, 3),
+                    brightness: 42,
+                }),
+                "[LAMP] solid rgb(1, 2, 3), brightness 42 of 255",
+            ),
+            (
+                Some(LightState::Breath(Breath {
+                    period_ms: 1_000,
+                    hue_period_ms: 0,
+                    hue_span: 0,
+                    min_brightness: 10,
+                    max_brightness: 200,
+                    saturation: 255,
+                    hue: 0,
+                    group: [0; Breath::MAX_GROUP],
+                    group_len: 1,
+                })),
+                "[LAMP] breathing over 1000 ms, brightness 10..200",
+            ),
+        ] {
+            line.clear();
+            write!(&mut line, "{}", LampLine(lamp)).expect("a string takes every line");
+            assert_eq!(line, expected);
+        }
+    }
+
+    #[test]
     fn a_notice_starts_lit_and_unstamped() {
         for kind in [NoticeKind::Joined, NoticeKind::Offline, NoticeKind::Refused] {
             let notice = Notice::new(kind);
             assert_eq!(notice.started_ms, None);
             assert_eq!(Some(notice.light), kind.light_at(0));
         }
+    }
+}
+
+#[cfg(test)]
+mod lamp {
+    use super::*;
+    use crate::state::test_support::*;
+
+    use crate::drivers::network::Front;
+
+    fn lamp_only() -> DeviceManager {
+        DeviceManager::new()
+            .with_network(true)
+            .with_panel(Panel::Absent)
+    }
+
+    fn report(manager: &mut DeviceManager, status: LinkStatus) {
+        manager.apply_business(BusinessIntent::LinkReport(status));
+    }
+
+    fn setup(manager: &mut DeviceManager) {
+        report(
+            manager,
+            LinkStatus {
+                setup: true,
+                front: Front::AccessPoint,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn connecting(manager: &mut DeviceManager, saved: bool) {
+        report(
+            manager,
+            LinkStatus {
+                phase: LinkPhase::Connecting,
+                saved,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn connected(manager: &mut DeviceManager) {
+        report(
+            manager,
+            LinkStatus {
+                phase: LinkPhase::Connected,
+                address: Some(Ipv4::from_octets([192, 168, 4, 2])),
+                saved: true,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn failed(manager: &mut DeviceManager, kind: NetworkError, saved: bool) {
+        report(
+            manager,
+            LinkStatus {
+                phase: LinkPhase::Failed(kind),
+                saved,
+                ..LinkStatus::default()
+            },
+        );
+    }
+
+    fn drain(manager: &mut DeviceManager, budget_ms: u32) {
+        manager.tick_notice(0);
+        let mut elapsed = 0;
+        while manager.notice_active() {
+            manager.tick_notice(elapsed);
+            elapsed += 20;
+            assert!(elapsed < budget_ms, "the announcement never ended");
+        }
+    }
+
+    const GREEN: LightState = LightState::Solid {
+        color: Rgb(0, 255, 0),
+        brightness: 64,
+    };
+    const AMBER: LightState = LightState::Solid {
+        color: Rgb(255, 155, 0),
+        brightness: 96,
+    };
+    const RED: LightState = LightState::Solid {
+        color: Rgb(255, 0, 0),
+        brightness: 96,
+    };
+
+    #[test]
+    fn the_status_lamp_belongs_to_a_board_with_a_radio_and_no_screen() {
+        assert_eq!(lamp_only().state().status_light(), None);
+        let screened = DeviceManager::new()
+            .with_network(true)
+            .with_panel(Panel::Wired);
+        assert_eq!(screened.state().status_light(), None);
+        let no_radio = DeviceManager::new()
+            .with_network(false)
+            .with_panel(Panel::Absent);
+        assert_eq!(no_radio.state().status_light(), None);
+    }
+
+    #[test]
+    fn the_lamp_tells_the_mode_from_the_attempt_and_from_the_resting_state() {
+        let mut manager = lamp_only();
+        setup(&mut manager);
+        assert_eq!(manager.state().status_light(), Some(LightState::SETUP));
+
+        connecting(&mut manager, false);
+        assert_eq!(manager.state().status_light(), Some(LightState::JOINING));
+
+        connecting(&mut manager, true);
+        assert_eq!(manager.state().status_light(), None);
+
+        report(
+            &mut manager,
+            LinkStatus {
+                phase: LinkPhase::Off,
+                saved: true,
+                ..LinkStatus::default()
+            },
+        );
+        assert_eq!(manager.state().status_light(), None);
+    }
+
+    #[test]
+    fn a_join_that_worked_is_green_and_then_hands_the_lamp_back() {
+        let mut manager = lamp_only();
+        connecting(&mut manager, true);
+        connected(&mut manager);
+        assert_eq!(manager.state().status_light(), Some(GREEN));
+
+        manager.tick_notice(0);
+        assert_eq!(
+            manager.state().status_light(),
+            Some(GREEN),
+            "the announcement is drawn before it is stepped away"
+        );
+        drain(&mut manager, 2_000);
+        assert!(!manager.notice_active(), "the news is over");
+        assert_eq!(
+            manager.state().status_light(),
+            None,
+            "a saved device that is connected has nothing left to announce"
+        );
+    }
+
+    #[test]
+    fn the_news_outranks_the_mode_it_arrived_in() {
+        let mut manager = lamp_only();
+        setup(&mut manager);
+        connected(&mut manager);
+        setup(&mut manager);
+        assert_eq!(manager.state().status_light(), Some(GREEN));
+    }
+
+    #[test]
+    fn a_refusal_flashes_and_ends_and_the_same_phase_does_not_restart_it() {
+        let mut manager = lamp_only();
+        failed(&mut manager, NetworkError::Credentials, false);
+        assert_eq!(
+            manager.state().status_light(),
+            Some(RED),
+            "a refusal starts lit"
+        );
+        manager.tick_notice(0);
+        let announced = manager.state().notice;
+        assert_eq!(
+            announced.and_then(|notice| notice.started_ms),
+            Some(0),
+            "the first frame stamps the announcement"
+        );
+
+        failed(&mut manager, NetworkError::Credentials, false);
+        assert_eq!(manager.state().notice, announced);
+
+        drain(&mut manager, 2_000);
+        assert_eq!(
+            manager.state().status_light(),
+            None,
+            "a refusal is an event, not the lamp's resting colour"
+        );
+    }
+
+    #[test]
+    fn a_boot_with_nothing_saved_flashes_amber_and_then_shows_the_page() {
+        let mut manager = lamp_only();
+        assert_eq!(manager.state().page, DisplayPage::Splash);
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
+        assert_eq!(manager.state().status_light(), Some(AMBER));
+
+        drain(&mut manager, 2_000);
+        assert_eq!(
+            manager.state().status_light(),
+            None,
+            "the page owns the lamp again once the news is over"
+        );
+        assert_eq!(manager.state().page, DisplayPage::Ambient);
+    }
+
+    #[test]
+    fn a_splash_hold_opens_setup_instead_of_flashing_offline() {
+        let mut manager = lamp_only();
+        manager.apply_business(BusinessIntent::RequestSetup);
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_eq!(manager.state().notice, None);
+        assert_eq!(manager.state().page, DisplayPage::Network);
+    }
+
+    #[test]
+    fn a_missing_network_is_amber_and_a_refused_credential_is_red() {
+        let mut missing = lamp_only();
+        failed(&mut missing, NetworkError::NotFound, true);
+        assert_eq!(
+            missing.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
+        assert_eq!(missing.state().status_light(), Some(AMBER));
+
+        let mut refused = lamp_only();
+        failed(&mut refused, NetworkError::Credentials, false);
+        assert_eq!(
+            refused.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Refused)
+        );
+        assert_eq!(refused.state().status_light(), Some(RED));
+    }
+
+    #[test]
+    fn a_retried_failure_is_announced_once_until_the_link_connects() {
+        let mut manager = lamp_only();
+        failed(&mut manager, NetworkError::NotFound, true);
+        drain(&mut manager, 2_000);
+
+        connecting(&mut manager, true);
+        failed(&mut manager, NetworkError::NotFound, true);
+        assert_eq!(manager.state().notice, None, "the retry is not new news");
+
+        connected(&mut manager);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Joined)
+        );
+        drain(&mut manager, 2_000);
+        failed(&mut manager, NetworkError::NotFound, true);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
     }
 }

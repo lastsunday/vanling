@@ -4,16 +4,17 @@ use core::future::Future;
 use core::sync::atomic::{AtomicU8, Ordering};
 
 use crate::SharedDemand;
-use crate::input::{CapturePlane, IntentBus};
+use crate::frame::{FrameClock, Wait};
+use crate::input::{CaptureWindow, IntentBus};
 use crate::playback::{PlaybackBus, PlaybackCommand};
 use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, TrySendError};
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Instant, Timer};
 use iot_core::demand::ClockGovernor;
 use iot_core::demand::ClockSink;
-use iot_core::demand::{EffectiveDemand, Mode, PlaneKey};
+use iot_core::demand::{DemandKey, EffectiveDemand, Mode};
 use iot_core::diagnostics::DiagnosticsSink;
 use iot_core::drivers::camera::CameraTarget;
 use iot_core::drivers::light::{
@@ -25,126 +26,42 @@ use iot_core::render::{
     Activity, LightAppearance, RenderController, Renderer, Slot, SlotAppearance,
 };
 use iot_core::state::{
-    Breath, DeviceManager, DeviceState, DisplayPage, LightState, PlaybackPhase, PlaybackState,
+    Breath, DeviceManager, DeviceState, DisplayPage, LampLine, NetworkCommand, PlaybackPhase,
+    PlaybackState,
 };
 
-/// Frame cadence of the render loop.
-pub const STEP_MS: u32 = 20;
+pub use crate::frame::STEP_MS;
 
-/// The link's data plane: the newest ranked scan list, and the wake that says there is one.
-///
-/// One slot off the intent ring: a list is a window, only the newest matters, and a ring slot
-/// costs the widest message. It overwrites because a round and its store correction arrive
-/// together; dropping the second leaves the page permanently wrong. It lives here because a
-/// build without wifi still drains it. The wake is separate so a park does not take the list.
-pub struct ScanPlane {
-    list: Signal<CriticalSectionRawMutex, ApList>,
-    arrived: Signal<CriticalSectionRawMutex, ()>,
+pub struct Latch<T> {
+    value: Signal<CriticalSectionRawMutex, T>,
 }
 
-impl ScanPlane {
-    /// Not `pub`: each plane is a static's, and the type is passed around by reference — a second
-    /// plane of one kind would be a second answer to what the radio last saw.
+impl<T: Send> Latch<T> {
     const fn new() -> Self {
         Self {
-            list: Signal::new(),
-            arrived: Signal::new(),
+            value: Signal::new(),
         }
     }
 
-    /// Take the list the network task published, or `None` when nothing has arrived since
-    /// the last take.
-    pub fn take(&self) -> Option<ApList> {
-        self.list.try_take()
+    pub fn set(&self, value: T) {
+        self.value.signal(value);
     }
 
-    /// Ready when a list is waiting. The render loop parks on this, so the wake does not
-    /// consume the list — the take at the top of the next pass does.
-    pub fn ready(&self) -> impl Future<Output = ()> {
-        self.arrived.wait()
+    pub async fn ready(&self) -> T {
+        self.value.wait().await
     }
 
-    /// Hand over a scan list, keeping it until the loop takes it. A newer list is the newer truth
-    /// about the same room. By reference because the 344-byte list would otherwise be copied into
-    /// the survey's frame, and the static is the scarce resource (`@/records/iot/wifi.md`).
-    pub fn publish(&self, list: &ApList) {
-        self.list.signal(*list);
-        self.arrived.signal(());
-    }
-}
-
-/// Scan plane storage; the network task publishes into it, the render loop draws from it.
-pub static SCAN: ScanPlane = ScanPlane::new();
-
-/// The panel's join plane: what a finger asked the link for, on its way to the network task.
-///
-/// One slot off the intent ring, because only the newest request matters and one shape carries a
-/// secret. The render loop publishes from device state; the network task, which owns the radio,
-/// takes it. [`JoinRequest`] describes the two shapes.
-pub struct JoinPlane(Channel<CriticalSectionRawMutex, JoinRequest, 1>);
-
-impl JoinPlane {
-    /// Take what the panel asked for, or `None` when nothing is waiting.
-    pub fn take(&self) -> Option<JoinRequest> {
-        self.0.try_receive().ok()
-    }
-
-    /// Ready when a request is waiting, without taking it. The network task waits on this while it
-    /// holds a link, so a keyboard — or a row — that names a different network is heard.
-    pub fn ready(&self) -> impl Future<Output = ()> {
-        self.0.ready_to_receive()
-    }
-
-    /// Hand over what the panel asked for.
-    ///
-    /// Refused when the last one has not been taken, and nothing is lost by that: what a request
-    /// comes from is the page's own state, and the pick or the keyboard that produced this one is
-    /// done with — a second copy would be the same association asked for twice.
-    pub fn publish(&self, asked: JoinRequest) {
-        let _ = self.0.try_send(asked);
-    }
-}
-
-/// Join plane storage; the render loop publishes into it, the network task takes.
-pub static JOIN: JoinPlane = JoinPlane(Channel::new());
-
-/// A request whose whole content is that it was made. A leave and a rescan share the shape but
-/// not the lifetime: the caller decides when to [`clear`](Self::clear). A second request before
-/// the first is read is the same request.
-pub struct FlagPlane(Signal<CriticalSectionRawMutex, ()>);
-
-impl FlagPlane {
-    /// Not `pub`: each plane is a static's, and the type is passed around by reference — a second
-    /// plane of one kind would be a second answer to whether the panel asked.
-    const fn new() -> Self {
-        Self(Signal::new())
-    }
-
-    /// Say the panel asked, and stay saying it until a reader takes it.
-    pub fn request(&self) {
-        self.0.signal(());
-    }
-
-    /// Resolve once there is a request, and take it.
-    pub async fn ready(&self) {
-        self.0.wait().await;
-    }
-
-    /// Drop a request nobody is left to act on.
     pub fn clear(&self) {
-        self.0.reset();
+        self.value.reset();
     }
 }
 
 /// Leave-request storage, cleared before an association so a leave cannot outlive its link.
-pub static LEAVE: FlagPlane = FlagPlane::new();
+pub static LEAVE: Latch<()> = Latch::new();
 
 /// Survey-request storage. Not cleared with the leave: a rescan belongs to the radio, not the link.
-pub static RESCAN: FlagPlane = FlagPlane::new();
+pub static RESCAN: Latch<()> = Latch::new();
 
-/// What the panel asked of setup mode: close, switch front, or open without a passphrase. One
-/// plane, because only the loop holding the mode can answer. A request for another front is
-/// dropped when read.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SetupAsk {
     /// The strip's left cell: close the mode and go back to the network this device keeps.
@@ -175,71 +92,78 @@ impl SetupAsk {
 ///
 /// Cleared when the mode is entered, so a request that outlived the setup it was about cannot take
 /// down the next one.
-pub struct SetupAskPlane(Signal<CriticalSectionRawMutex, SetupAsk>);
+pub static SETUP_ASK: Latch<SetupAsk> = Latch::new();
 
-impl SetupAskPlane {
-    /// Not `pub`, for the reason [`FlagPlane::new`] is not.
+pub static FORGET: Latch<Ssid> = Latch::new();
+
+pub struct Handoff<T> {
+    slot: Channel<CriticalSectionRawMutex, T, 1>,
+}
+
+impl<T: Send> Handoff<T> {
     const fn new() -> Self {
-        Self(Signal::new())
+        Self {
+            slot: Channel::new(),
+        }
     }
 
-    /// Say the panel asked, and stay saying it until a reader takes it.
-    pub fn request(&self, ask: SetupAsk) {
-        self.0.signal(ask);
+    pub fn take(&self) -> Option<T> {
+        self.slot.try_receive().ok()
     }
 
-    /// Resolve once there is a request, and take it.
-    pub async fn ready(&self) -> SetupAsk {
-        self.0.wait().await
+    pub fn ready(&self) -> impl Future<Output = ()> {
+        self.slot.ready_to_receive()
     }
 
-    /// Drop a request nobody is left to act on.
-    pub fn clear(&self) {
-        self.0.reset();
+    pub fn publish(&self, asked: T) {
+        let _ = self.slot.try_send(asked);
     }
 }
 
-/// Setup-request storage; the render loop publishes into it, the network task takes.
-pub static SETUP_ASK: SetupAskPlane = SetupAskPlane::new();
+pub static JOIN: Handoff<JoinRequest> = Handoff::new();
 
-/// The panel's request to forget a saved network, named by the held row. The name is enough: the
-/// network task's store turns it into an erase. A signal, because an unread request is one
-/// request and a second forget of the same name is the same erase.
-pub struct ForgetPlane(Signal<CriticalSectionRawMutex, Ssid>);
+pub struct Latest<T> {
+    value: Signal<CriticalSectionRawMutex, T>,
+    arrived: Signal<CriticalSectionRawMutex, ()>,
+}
 
-impl ForgetPlane {
-    /// Not `pub`, for the reason [`FlagPlane::new`] is not.
+impl<T: Copy + Send> Latest<T> {
     const fn new() -> Self {
-        Self(Signal::new())
+        Self {
+            value: Signal::new(),
+            arrived: Signal::new(),
+        }
     }
 
-    /// Say the panel asked to forget `ssid`, and stay saying it until a reader takes it.
-    pub fn request(&self, ssid: Ssid) {
-        self.0.signal(ssid);
+    pub fn take(&self) -> Option<T> {
+        self.value.try_take()
     }
 
-    /// Resolve once there is a request, and take the name with it.
-    pub async fn ready(&self) -> Ssid {
-        self.0.wait().await
+    pub fn ready(&self) -> impl Future<Output = ()> {
+        self.arrived.wait()
+    }
+
+    /// By reference, because the 344-byte list would otherwise be copied into the survey
+    /// future's frame, and static memory is the scarce resource here.
+    pub fn publish(&self, value: &T) {
+        self.value.signal(*value);
+        self.arrived.signal(());
     }
 }
 
-/// Forget-request storage; the render loop publishes into it, the network task takes.
-pub static FORGET: ForgetPlane = ForgetPlane::new();
+pub static SCAN: Latest<ApList> = Latest::new();
 
 /// The page the panel is on, for the network task, which cannot reach device state. A value and a
 /// wake rather than a message: the reader asks whether the list is up. The render loop writes, the
 /// network task reads; the same field says how the splash ended.
-pub struct PagePlane {
+pub struct PageWatch {
     page: AtomicU8,
     /// `0` while the splash is up, `1` once it ended without a request, `2` with one.
     splash: AtomicU8,
     changed: Signal<CriticalSectionRawMutex, ()>,
 }
 
-impl PagePlane {
-    /// Not `pub`: the page is a static's, and the type is passed around by reference — a second
-    /// plane would be a second answer to which page is up.
+impl PageWatch {
     const fn new() -> Self {
         Self {
             // The page the state itself boots on. The render loop publishes before any reader
@@ -343,7 +267,33 @@ impl PagePlane {
 }
 
 /// Page storage; the render loop publishes into it, the network task reads it.
-pub static PAGE: PagePlane = PagePlane::new();
+pub static PAGE: PageWatch = PageWatch::new();
+
+pub struct Outbound {
+    pub joins: &'static Handoff<JoinRequest>,
+    pub leave: &'static Latch<()>,
+    pub rescan: &'static Latch<()>,
+    pub setup_ask: &'static Latch<SetupAsk>,
+    pub forget: &'static Latch<Ssid>,
+}
+
+pub static OUTBOUND: Outbound = Outbound {
+    joins: &JOIN,
+    leave: &LEAVE,
+    rescan: &RESCAN,
+    setup_ask: &SETUP_ASK,
+    forget: &FORGET,
+};
+
+pub struct Inbound {
+    pub scan: &'static Latest<ApList>,
+    pub page: &'static PageWatch,
+}
+
+pub static INBOUND: Inbound = Inbound {
+    scan: &SCAN,
+    page: &PAGE,
+};
 
 struct Entry {
     activity: Activity,
@@ -554,7 +504,7 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
                 self.light.consume(&diagnostics);
                 self.page = Some(diagnostics.page);
                 let was_collecting = self.display.is_collecting();
-                self.display = diagnostics.demand.plane(PlaneKey::DISPLAY).mode;
+                self.display = diagnostics.demand.claim(DemandKey::DISPLAY).mode;
                 if was_collecting != self.display.is_collecting() {
                     // The lit/dark crossing cannot wait for a colour to move: the mode
                     // changes the backlight, and nothing else would ask for that frame.
@@ -671,34 +621,19 @@ fn backlight_for(now_ms: u32, breath: Breath) -> u8 {
     )
 }
 
-/// Render loop: drains the management pipe, interpreting operation intents against the
-/// manager (the pipeline context) and applying business intents wholesale, takes the capture
-/// plane's newest window, and parks on the pipes once the surface settles instead of
-/// busy-stepping.
-///
-/// Its arguments, allowed rather than bundled: every one is a distinct thing this loop reaches for
-/// by name, and a struct over them would be a case list wearing a type.
 #[allow(clippy::too_many_arguments)]
 pub async fn render_loop<C: ClockSink>(
     intent_bus: &'static IntentBus,
-    capture: &'static CapturePlane,
-    scan: &'static ScanPlane,
-    joins: &'static JoinPlane,
-    leave: &'static FlagPlane,
-    rescan: &'static FlagPlane,
-    setup_ask: &'static SetupAskPlane,
-    forget: &'static ForgetPlane,
-    page: &'static PagePlane,
+    capture: &'static CaptureWindow,
+    outbound: &'static Outbound,
+    inbound: &'static Inbound,
     playback_bus: &'static PlaybackBus,
     mut render: Render,
     manager: &mut DeviceManager,
     clock: &mut C,
     demand: &SharedDemand,
 ) -> ! {
-    let mut elapsed_ms: u32 = 0;
     let mut last_page = manager.state().page;
-    // The splash's end is published once, and this is the loop that knows the pass it happened on.
-    let mut splash_ended = false;
     // The front end setup mode is offered on, as the last drain left it. Logged because it is what
     // the strip and the box are drawn from: a publish that moved it would be a control changing
     // under the finger, which is invisible in any other line.
@@ -706,7 +641,7 @@ pub async fn render_loop<C: ClockSink>(
     // The lamp's last frame, for the same reason as the page and the front: a light-only board's
     // whole language is in these transitions, and a WS2812 cannot be read back.
     let mut last_lamp = manager.state().status_light();
-    let mut next_frame: Instant = Instant::now();
+    let mut frame = FrameClock::new(Instant::now());
     // This loop's, not a static: what the chip was last asked for belongs to the one
     // loop that asks it, so a second `run` in one process does not answer for the first.
     let mut governor = ClockGovernor::new();
@@ -719,10 +654,6 @@ pub async fn render_loop<C: ClockSink>(
     loop {
         while let Ok(intent) = intent_bus.try_receive() {
             match intent {
-                // An operation is interpreted against the freshest owner of
-                // the device state: record its diagnostics, translate the
-                // business meaning, and apply the target — the one place the
-                // two planes meet.
                 Intent::Operation(op) => {
                     manager.apply_operation(op);
                     let business = iot_core::intent::translate(&op, &manager.state());
@@ -759,34 +690,17 @@ pub async fn render_loop<C: ClockSink>(
         // countable pair of lines rather than a claim about what the eye should have seen.
         let lamp = manager.state().status_light();
         if lamp != last_lamp {
-            match lamp {
-                None => log::info!("[LAMP] the page's own light"),
-                Some(LightState::Off) => log::info!("[LAMP] dark"),
-                Some(LightState::Solid { color, brightness }) => log::info!(
-                    "[LAMP] solid rgb({}, {}, {}), brightness {brightness} of 255",
-                    color.0,
-                    color.1,
-                    color.2
-                ),
-                Some(LightState::Breath(breath)) => log::info!(
-                    "[LAMP] breathing over {} ms, brightness {}..{}",
-                    breath.period_ms,
-                    breath.min_brightness,
-                    breath.max_brightness
-                ),
-            }
+            log::info!("{}", LampLine(lamp));
             last_lamp = lamp;
         }
         // The page, for the one reader that cannot see the state: the network task asks whether
         // the list it would survey is on the panel at all. Published after the intents, so a page
         // this pass changed is the one the survey hears about.
-        page.publish(manager.state().page);
+        inbound.page.publish(manager.state().page);
         // And once, the one thing the network task cannot read for itself: whether the page that
         // just ended was a request for setup mode. After the intents, so a hold and the clock's
         // ending that landed in the same pass are one answer rather than two.
-        if !splash_ended && manager.state().page != DisplayPage::Splash {
-            splash_ended = true;
-            let setup = manager.setup_wanted();
+        if let Some(setup) = manager.take_splash_end() {
             log::info!(
                 "[INPUT] the splash is over; setup mode {}",
                 if setup {
@@ -795,88 +709,72 @@ pub async fn render_loop<C: ClockSink>(
                     "was not asked for"
                 }
             );
-            page.end_splash(setup);
+            inbound.page.end_splash(setup);
         }
         // A bench build's own hand on the glass, which is nothing at all in any other build: the
         // taps it publishes are read by the next pass, exactly as a tap from the touch driver is.
         bench.step(manager, intent_bus);
-        // After the intents, so a tap on the record control that landed in the same tick as a
-        // poll latches the window the last pass drew, which is what the capture last handed
-        // over. `if` and not `while`: the plane is one slot, and what it holds is the newest
-        // window rather than the next one.
         if let Some(sample) = capture.take() {
             manager.apply_capture(sample);
         }
         // The link's list the same way, and after the intents for the same reason: a list that
         // landed in this tick is drawn by this pass rather than the next.
-        if let Some(list) = scan.take() {
+        if let Some(list) = inbound.scan.take() {
             manager.apply_scan(list);
         }
-        // And what the panel asked the link for, in the other direction: the state holds it because
-        // the state is what the panel's taps go through, and the network task is the only thing that
-        // can act on it. What is logged is the name either way; the passphrase never is.
-        if let Some(asked) = manager.take_join() {
-            match asked {
-                JoinRequest::Typed(credentials) => log::info!(
-                    "[WIFI] the panel named a network: {:?}",
-                    credentials
-                        .ssid
-                        .as_display_text()
-                        .unwrap_or("<unprintable>"),
-                ),
-                JoinRequest::Held(ssid) => log::info!(
-                    "[WIFI] the panel asked for the copy this device keeps of {:?}",
-                    ssid.as_display_text().unwrap_or("<unprintable>"),
-                ),
+        let asked_on = manager.state().link.front;
+        while let Some(command) = manager.take_command() {
+            match command {
+                NetworkCommand::Join(asked) => {
+                    match asked {
+                        JoinRequest::Typed(credentials) => log::info!(
+                            "[WIFI] the panel named a network: {:?}",
+                            credentials
+                                .ssid
+                                .as_display_text()
+                                .unwrap_or("<unprintable>"),
+                        ),
+                        JoinRequest::Held(ssid) => log::info!(
+                            "[WIFI] the panel asked for the copy this device keeps of {:?}",
+                            ssid.as_display_text().unwrap_or("<unprintable>"),
+                        ),
+                    }
+                    outbound.joins.publish(asked);
+                }
+                NetworkCommand::Leave => {
+                    log::info!("[WIFI] leaving the link to offer the setup access point");
+                    outbound.leave.set(());
+                }
+                NetworkCommand::LeaveSetup => {
+                    log::info!("[WIFI] the panel asked to close setup mode");
+                    outbound.setup_ask.set(SetupAsk::Cancel { from: asked_on });
+                }
+                NetworkCommand::SwitchFront => {
+                    log::info!("[WIFI] the panel asked for setup mode's other front end");
+                    outbound.setup_ask.set(SetupAsk::Front { from: asked_on });
+                }
+                NetworkCommand::SetupOpen(open) => {
+                    log::info!(
+                        "[WIFI] the panel asked for the setup access point to be {}",
+                        if open { "open" } else { "under a passphrase" },
+                    );
+                    outbound.setup_ask.set(SetupAsk::Pass {
+                        from: asked_on,
+                        open,
+                    });
+                }
+                NetworkCommand::ScanNow => {
+                    log::info!("[WIFI] the panel asked to look around now");
+                    outbound.rescan.set(());
+                }
+                NetworkCommand::Forget(ssid) => {
+                    log::info!(
+                        "[WIFI] the panel asked to forget {:?}",
+                        ssid.as_display_text().unwrap_or("<unprintable>"),
+                    );
+                    outbound.forget.set(ssid);
+                }
             }
-            joins.publish(asked);
-        }
-        // And the other commands this path produces, whose whole value is that they happened: the
-        // strip the user tapped said leave or look around, and the row they held named the network
-        // to forget.
-        if manager.take_leave() {
-            // The strip's `LEAVE`: the plane carries no source, and the line is about what happens
-            // to the link rather than about who asked.
-            log::info!("[WIFI] leaving the link to offer the setup access point");
-            leave.request();
-        }
-        // The mode's own three requests, in the order the page offers them: the way back, the
-        // front switch, and the box's passphrase.
-        // Each carries the front end it was asked on, because the reader can be the other one:
-        // a tap made while the panel still said `AP` is not an answer to the box that is
-        // opening on the access point's front (see [`SetupAsk::applies_to`]).
-        let asked_on = {
-            let state = manager.state();
-            state.link.front
-        };
-        if manager.take_setup_cancel() {
-            log::info!("[WIFI] the panel asked to close setup mode");
-            setup_ask.request(SetupAsk::Cancel { from: asked_on });
-        }
-        if manager.take_switch_front() {
-            log::info!("[WIFI] the panel asked for setup mode's other front end");
-            setup_ask.request(SetupAsk::Front { from: asked_on });
-        }
-        if let Some(open) = manager.take_setup_open() {
-            log::info!(
-                "[WIFI] the panel asked for the setup access point to be {}",
-                if open { "open" } else { "under a passphrase" },
-            );
-            setup_ask.request(SetupAsk::Pass {
-                from: asked_on,
-                open,
-            });
-        }
-        if manager.take_scan_now() {
-            log::info!("[WIFI] the panel asked to look around now");
-            rescan.request();
-        }
-        if let Some(ssid) = manager.take_forget() {
-            log::info!(
-                "[WIFI] the panel asked to forget {:?}",
-                ssid.as_display_text().unwrap_or("<unprintable>"),
-            );
-            forget.request(ssid);
         }
         // The lamp's news is stepped on the wall clock, not the frame counter. The counter is a
         // logical animation clock: after another future holds the executor (the radio's
@@ -892,7 +790,12 @@ pub async fn render_loop<C: ClockSink>(
         // whatever is current on its next tick. The configurator is not called here — it
         // needs the board's capabilities and answers against the part that refused, so
         // it sits beside the parts.
-        demand.lock(|current| *current.borrow_mut() = manager.demand().clone());
+        demand.lock(|current| {
+            let next = manager.demand();
+            if &*current.borrow() != next {
+                *current.borrow_mut() = next.clone();
+            }
+        });
         // The governor returns what it did; the wording and the channel are this layer's.
         // The clock itself is reported by the part that moves it, in MHz rather than preset:
         // `Speed` is this layer's vocabulary, not a frequency anyone can check.
@@ -900,27 +803,28 @@ pub async fn render_loop<C: ClockSink>(
             && let Some(short) = applied.undercuts
         {
             log::warn!(
-                "[CLOCK] a page asked for {:?}, but {:?} is running and needs {:?} \
+                "[CLOCK] a page asked for {:?}, but {} is running and needs {:?} \
                  — applying the page's choice",
                 applied.asked,
-                short.plane,
+                short.key,
                 short.needed,
             );
         }
-        let active = render.tick(&state, manager.demand(), elapsed_ms) || manager.notice_active();
-        elapsed_ms = elapsed_ms.wrapping_add(STEP_MS);
-        if active {
-            // Absolute deadline: work between frames never piles drift onto
-            // the animation clock.
-            next_frame += Duration::from_millis(STEP_MS.into());
-            Timer::at(next_frame).await;
-        } else {
-            // The wake is a readiness signal, not a receive: it never pops, so
-            // the drain at the top of the next pass sees the message.
-            select3(intent_bus.ready_to_receive(), capture.ready(), scan.ready()).await;
-            // Re-anchor so missed frames while parked do not replay as a burst
-            // when the light resumes animating.
-            next_frame = Instant::now();
+        let active =
+            render.tick(&state, manager.demand(), frame.elapsed_ms()) || manager.notice_active();
+        match frame.tick(active) {
+            Wait::At(deadline) => Timer::at(deadline).await,
+            Wait::Park => {
+                // A wake is readiness, not a receive: nothing pops, so the drain at the top of
+                // the next pass still sees the message.
+                select3(
+                    intent_bus.ready_to_receive(),
+                    capture.ready(),
+                    inbound.scan.ready(),
+                )
+                .await;
+                frame.reanchor(Instant::now());
+            }
         }
     }
 }
@@ -1078,8 +982,8 @@ mod tests {
     fn panel_on(page: DisplayPage, display: Mode) -> SlotAppearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
-            PlaneKey::DISPLAY,
-            iot_core::demand::PlaneDemand::new(display, 0, iot_core::demand::Sensitivity::Primary),
+            DemandKey::DISPLAY,
+            iot_core::demand::Claim::new(display, 0, iot_core::demand::Sensitivity::Primary),
         );
         SlotAppearance::Diagnostics(Diagnostics {
             demand,
@@ -1179,10 +1083,6 @@ mod tests {
     /// light is not what it shows.
     #[test]
     fn a_setup_request_only_answers_the_front_end_it_was_made_on() {
-        // The plane is a `Signal`, so a tap nobody was listening to is still there when the next
-        // reader arrives — and the next reader is the other front end, in the second it spends
-        // bringing the access point up. What kept the box from opening and closing at once is that
-        // each ask names the front end it was made on.
         for ask in [
             SetupAsk::Front { from: Front::Panel },
             SetupAsk::Cancel { from: Front::Panel },
@@ -1321,8 +1221,6 @@ mod tests {
         );
     }
 
-    /// A context with a waker that does nothing, which is enough: this plane is state plus a
-    /// signal, and each poll reads the state, so nothing has to be woken for a poll to be made.
     fn cx() -> Context<'static> {
         Context::from_waker(Waker::noop())
     }
@@ -1342,23 +1240,16 @@ mod tests {
 
     #[test]
     fn a_list_published_before_the_last_one_is_taken_replaces_it_rather_than_being_refused() {
-        // The shape of the defect this plane had: a round publishes the room and the store's own
-        // correction to that same list follows in the same millisecond — the network task acts on a
-        // forget at the end of the round's own pause — so two lists go out before the loop has drawn
-        // either. What the page has to be handed is the second one. The first is the list carrying a
-        // mark for a network the part no longer holds, and no round after this one publishes it
-        // again, because the history took the correction as the list the page is showing: every
-        // round after found the list unchanged and published nothing.
-        let plane = ScanPlane::new();
-        plane.publish(&round_list(true));
-        plane.publish(&round_list(false));
+        let latest = Latest::new();
+        latest.publish(&round_list(true));
+        latest.publish(&round_list(false));
 
-        let list = plane.take().expect("a list is waiting");
+        let list = latest.take().expect("a list is waiting");
         assert!(
             !list.is_saved(0),
             "the newest list is the one the page is handed, and the mark is off it"
         );
-        assert!(plane.take().is_none(), "and it is handed over once");
+        assert!(latest.take().is_none(), "and it is handed over once");
     }
 
     #[test]
@@ -1366,15 +1257,15 @@ mod tests {
         // The loop parks on the wake and takes the list at the top of the pass after it, so a wake
         // that took the list would leave that pass nothing to draw — and nothing would publish it a
         // second time.
-        let plane = ScanPlane::new();
-        plane.publish(&round_list(true));
-        let mut wake = core::pin::pin!(plane.ready());
+        let latest = Latest::new();
+        latest.publish(&round_list(true));
+        let mut wake = core::pin::pin!(latest.ready());
         assert!(
             wake.as_mut().poll(&mut cx()).is_ready(),
             "the wake is up as soon as a list is waiting"
         );
         assert!(
-            plane.take().is_some(),
+            latest.take().is_some(),
             "the take at the top of the pass is the one that takes the list"
         );
     }
@@ -1384,10 +1275,10 @@ mod tests {
         // The board read this as a survey every 790 ms against a 5,000 ms pause: the pause was
         // waiting on `wait_for_list`, which is true the moment it is asked on the page the pause is
         // spent on. The two futures are asked side by side here so the difference is the test.
-        let plane = PagePlane::new();
-        plane.publish(DisplayPage::Network);
-        let mut level = core::pin::pin!(plane.wait_for_list());
-        let mut back = core::pin::pin!(plane.wait_for_return());
+        let watch = PageWatch::new();
+        watch.publish(DisplayPage::Network);
+        let mut level = core::pin::pin!(watch.wait_for_list());
+        let mut back = core::pin::pin!(watch.wait_for_return());
         assert!(
             level.as_mut().poll(&mut cx()).is_ready(),
             "the level check answers \"is the list up?\", and it is"
@@ -1398,9 +1289,9 @@ mod tests {
         );
 
         // Away alone is not a return either — the loop has to run on the panel being on the list.
-        plane.publish(DisplayPage::Ambient);
+        watch.publish(DisplayPage::Ambient);
         assert!(back.as_mut().poll(&mut cx()).is_pending());
-        plane.publish(DisplayPage::Network);
+        watch.publish(DisplayPage::Network);
         assert!(
             back.as_mut().poll(&mut cx()).is_ready(),
             "away and back is the return the pause waits on"

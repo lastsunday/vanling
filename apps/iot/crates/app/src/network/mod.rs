@@ -1,34 +1,15 @@
-//! The link, running beside the product's input, render and playback futures: the station's
-//! futures are not `Send`, and one stack is what this has to fit into.
+//! The link, beside the product's input, render and playback futures: the station's futures are
+//! not `Send`, and this is all the stack one thread has.
 //!
-//! Three decisions are here rather than taken from a default:
+//! The address *is* the link — embassy-net clears it when the link drops — so a lease that lapses
+//! is visible only to a reader that keeps looking.
 //!
-//! * **The address is the link.** `LinkPhase::Connected` means "has an address"; the stack owns
-//!   it, and a lease that lapses is visible only to a reader that keeps looking.
-//! * **A missing address is also the drop.** embassy-net clears the address when the link goes;
-//!   the station remembers what it was asked to do, so a drop is not a call it makes.
-//! * **The loop never gives up.** A refusal, a missing address and a lost address all lead back
-//!   to associating after a pause.
-//!
-//! A device with no credentials stays offline: the page surveys only while somebody is on it,
-//! and no access point comes up until it is asked for. Setup mode is asked for, never assumed —
-//! the splash's BOOT hold, the panel's `LEAVE`, or a refused saved credential. The survey and
-//! join planes are windows rather than the intent ring, because a list is not a command.
-//!
-//! Credentials come from a build input, the flash, or the panel. A build input has nowhere else
-//! to go, so a refusal is retried; a stored one falls back to the panel; a panel one is kept on
-//! the way past, with the BSSID and channel it worked on. Setup mode's access point belongs to
-//! [`crate::provision`] and is raced against the survey below.
-//!
-//! The long form, including the bench readings, is in `@/records/iot/wifi.md`.
-//!
-//! One module per thing that owns state: [`link`] the credential rounds and the association,
-//! [`setup`] the mode's two fronts, [`survey`] a round and its rest, and [`store`] the copy on the
-//! part. They are separate files because each is a future chain with its own memory story, not
-//! because any of them is useful without the others.
+//! A device with no credentials stays offline; setup mode is asked for — the splash's BOOT hold,
+//! the panel's `LEAVE`, or a refused saved credential — never assumed. The long form is in
+//! `@/records/iot/wifi.md`.
 
 use alloc::boxed::Box;
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
 use core::future::pending;
 
 use embassy_futures::join::join;
@@ -40,6 +21,7 @@ use embassy_time::Instant;
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{Front, LinkStatus, Ssid, Station};
 use iot_core::intent::{BusinessIntent, Intent};
+use iot_core::state::Panel;
 
 use crate::input::INTENT_BUS;
 
@@ -64,7 +46,7 @@ const SETUP_SOCKETS: usize = 2 + crate::provision::PAGE_SOCKETS;
 ///
 /// A static because the only reader is a log line deep in this module's futures; threading the
 /// reading through them would be the report wagging the link (`@/records/iot/wifi.md`).
-static HEAP_FREE: HeapReport = Mutex::new(RefCell::new(None));
+static HEAP_FREE: HeapReport = Mutex::new(Cell::new(unreported));
 
 /// The board's own address, read off the driver once at boot.
 ///
@@ -72,21 +54,19 @@ static HEAP_FREE: HeapReport = Mutex::new(RefCell::new(None));
 /// futures that already carry the setup name and the stack's resources.
 static MAC: Mutex<CriticalSectionRawMutex, Cell<[u8; 6]>> = Mutex::new(Cell::new([0; 6]));
 
-/// None until a binary hands a reading in; a call so the number is current when the line is
-/// written.
-type HeapReport = Mutex<CriticalSectionRawMutex, RefCell<Option<fn() -> usize>>>;
+type HeapReport = Mutex<CriticalSectionRawMutex, Cell<fn() -> usize>>;
+
+const fn unreported() -> usize {
+    0
+}
 
 /// Hand in what the part's heap has left, once, before the product starts.
 pub fn report_heap_free(report: fn() -> usize) {
-    HEAP_FREE.lock(|slot| *slot.borrow_mut() = Some(report));
+    HEAP_FREE.lock(|slot| slot.set(report));
 }
 
-/// What the part's heap had left. Zero when no binary handed a reading in, which no build of
-/// this product does — zero there reads as a heap with nothing in it rather than as a margin.
 fn heap_free() -> usize {
-    HEAP_FREE
-        .lock(|slot| *slot.borrow())
-        .map_or(0, |report| report())
+    HEAP_FREE.lock(|slot| slot.get())()
 }
 
 /// Bring the link up and keep it there.
@@ -101,7 +81,7 @@ pub async fn serve<S, R>(
     station: Option<Box<S>>,
     saved: Option<Box<Store<R>>>,
     front: Front,
-    panel: bool,
+    panel: Panel,
 ) -> !
 where
     S: Station,
@@ -155,7 +135,7 @@ where
             &setup_name,
             &mut *setup_resources,
             front,
-            panel,
+            panel.is_wired(),
         ),
     )
     .await {}

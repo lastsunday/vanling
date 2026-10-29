@@ -63,17 +63,10 @@ pub const RECIPES: [Recipe; 5] = [
     ),
 ];
 
-/// Where the board keeps the files these build.
-///
-/// From this crate's own directory rather than the working directory, so
-/// `cargo run` finds them wherever it was invoked from.
 pub fn assets_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../bsp-esp/src/assets")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/src/assets")
 }
 
-/// The whole naming convention, and the only thing tying this crate to the
-/// firmware: the board does not know this exists, it names the file
-/// `include_bytes!`, and `the_board_names_the_same_files` holds the two to it.
 pub fn file_name(sound: &str) -> String {
     format!("{}.mid", sound.to_lowercase())
 }

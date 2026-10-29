@@ -6,6 +6,7 @@ use crate::drivers::light::RgbLight;
 use crate::drivers::motion::MotionCapabilities;
 use crate::drivers::network::Station;
 use crate::drivers::playback::Speaker;
+use crate::state::Panel;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
@@ -48,10 +49,6 @@ pub trait HasInput: Board {
 pub trait HasMotion: Board {
     fn take_motion(&mut self) -> Option<PollEntry>;
 
-    /// What this board's motion stack can report, driver engines plus core
-    /// classifier. Declared rather than switched: the data plane ships
-    /// unconditionally, so a capability the stack lacks is simply never raised.
-    /// A board with no accelerometer returns `MotionCapabilities::EMPTY`.
     fn motion_capabilities(&self) -> MotionCapabilities;
 
     /// What this board's motion part can be left in, for the configurator to choose from.
@@ -72,9 +69,6 @@ pub trait HasMotion: Board {
 /// ever sees a ready-made [`PollEntry`] and never names a codec. A board with no
 /// microphone returns `None` and the Audio page simply never appears.
 pub trait HasAudio: Board {
-    /// Take the board's capture source as a ready-made poll entry, wired to `sink` — the
-    /// plane the app owns, where every poll's window goes. The board names the destination
-    /// only through the supplied reference, so the capture's storage stays the app's.
     fn take_audio(&mut self, sink: &'static dyn CaptureSink) -> Option<PollEntry>;
 }
 
@@ -134,13 +128,17 @@ pub trait HasWifi: Board {
     fn take_wifi(&mut self) -> Option<Box<Self::Station>>;
 }
 
+pub trait HasPanel: Board {
+    fn panel(&self) -> Panel;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::PlaneKey;
+    use crate::demand::DemandKey;
     use crate::drivers::input::{BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator};
     use crate::drivers::light::{Fill, Rgb};
-    use crate::drivers::playback::{Recovery, Sound, SpeakerFault};
+    use crate::drivers::playback::{Recovery, SpeakerFault, Tone};
     use alloc::{boxed::Box, vec};
 
     struct FakeLight;
@@ -171,26 +169,17 @@ mod tests {
         }
     }
 
-    /// A speaker that answers every call, and remembers the last one so a case
-    /// can assert what the driver was actually asked to do.
-    struct FakeSpeaker {
-        last: Option<(Sound, bool)>,
-    }
-
-    impl FakeSpeaker {
-        fn new() -> Self {
-            Self { last: None }
-        }
-    }
+    struct FakeSpeaker;
 
     impl Speaker for FakeSpeaker {
-        fn play(&mut self, sound: Sound) -> Result<(), SpeakerFault> {
-            self.last = Some((sound, false));
+        fn play(
+            &mut self,
+            _source: Box<dyn crate::drivers::playback::SampleSource>,
+        ) -> Result<(), SpeakerFault> {
             Ok(())
         }
 
-        fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault> {
-            self.last = Some((Sound::Tap, muted));
+        fn set_muted(&mut self, _muted: bool) -> Result<(), SpeakerFault> {
             Ok(())
         }
 
@@ -268,7 +257,7 @@ mod tests {
             playback: None,
             input: Some(vec![PollEntry::new(
                 0,
-                PlaneKey::INTERACTION,
+                DemandKey::INTERACTION,
                 Box::new(ButtonScanner::new(FakeButton)),
                 Box::new(DoubleClickAggregator::new()),
                 BUTTON_SCAN_MS,
@@ -295,10 +284,12 @@ mod tests {
         let mut wired = FakeBoard {
             lights: None,
             input: None,
-            playback: Some(FakeSpeaker::new()),
+            playback: Some(FakeSpeaker),
         };
         let mut speaker = wired.take_playback().expect("speaker present");
-        speaker.play(Sound::Rise).expect("the fake codec answers");
+        speaker
+            .play(Box::new(Tone::playing(vec![])))
+            .expect("the fake codec answers");
         assert!(
             wired.take_playback().is_none(),
             "taken exactly once, so the app cannot start a second ring"

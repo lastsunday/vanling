@@ -5,8 +5,8 @@ weight = 72
 sort_by = "weight"
 
 [extra]
-source_file_hash = "8346dfae07a2bc1ef13ca94f05b5abc8cf6ac850"
-translated_at = "2026-10-22T09:55:58Z"
+source_file_hash = "c0bd8b21a171a3d949e1fcec803bbaf10e2e5133"
+translated_at = "2026-10-29T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -131,11 +131,11 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 **Measured, on the product firmware rather than a probe:**
 
 ```
-[CLOCK] a page asked for Slow, but PlaneKey { field: Motion, instance: 0 } is running and needs Fast
+[CLOCK] a page asked for Slow, but motion is running and needs Fast
 [CLOCK] running at _80MHz
 ```
 
-**An explicit request is not arbitrated away, and the plane it undercuts is named** — exactly the shape the design asks for.
+**An explicit request is not arbitrated away, and the device it undercuts is named** — exactly the shape the design asks for.
 
 **What it costs, from the same run:**
 
@@ -151,12 +151,12 @@ The same work at a third of the clock finishes a third to a half of the repaints
 
 With the device table refilled from measurement, `Auto` is no longer a constant:
 
-| Planes running | Arbitration |
+| Devices running |
 |---|---|
 | motion + audio + display (the default boot shape) | **240 MHz** |
 | **motion alone** | **80 MHz** |
 
-All three paths were checked on the product firmware: `Auto` fully loaded gives 240, `Auto` with only motion gives 80, and an explicit `speed=slow` forces 80 while naming the plane it undercuts.
+All three paths were checked on the product firmware: `Auto` fully loaded gives 240, `Auto` with only motion gives 80, and an explicit `speed=slow` forces 80 while naming the device it undercuts.
 
 **Where each row comes from, and why one of them is worth saying separately:**
 
@@ -183,11 +183,11 @@ Per-source worst cases do not add up to one loop's worst case. Two numbers the p
 | Slowest single source (capture poll) | 5–8 ms |
 | **Worst single hold** | **10–13 ms** |
 
-More than one source comes due in a loop, so **rows that each qualify on their own need not qualify together.** `speed_for` answers "how fast does this plane need", not "how long does one loop take" — two questions that do not meet.
+More than one source comes due in a loop, so **rows that each qualify on their own need not qualify together.** `speed_for` answers "how fast does this device need", not "how long does one loop take" — two questions that do not meet.
 
 **The whole loop is the binding constraint**, because the 30 ms bound is stated over a single hold:
 
-| @80 MHz, every plane on | |
+| @80 MHz, every device on | |
 |---|---:|
 | Slowest single source | 20–21 ms |
 | **Worst single hold** | **25–26 ms** |
@@ -208,10 +208,10 @@ Every row is a **worst hold in wall time, measured on that part**. The same dead
 | Layer | Content |
 |---|---|
 | `iot-core::demand` | `Speed` / `SpeedRequest` / `SpeedTable` / `ClockSink` / `resolve_speed` / `speed_shortfall` / `ClockGovernor` — mechanism, no numbers |
-| `iot-chip-esp` | one `Table` per chip, `Speed → CpuClock`, and the `Part` that implements `ClockSink` |
+| `iot-chip-esp` | one `Table` per chip, `Speed → CpuClock`, and the `Clock` that implements `ClockSink` |
 | `iot-app` | two log lines in `render_loop`. **No longer knows `CpuClock` exists** |
 
-**The table comes off the sink rather than being passed beside it** — `ClockSink::Table` is an associated type. The two are one measurement: a row says how long a plane holds **on that part**, so pairing one part's rows with another's `set_speed` computes a deadline for a chip that is not running. As an associated type, that pairing is a compile error rather than a runtime surprise.
+**The table comes off the sink rather than being passed beside it** — `ClockSink::Table` is an associated type. The two are one measurement: a row says how long a device holds **on that part**, so pairing one part's rows with another's `set_speed` computes a deadline for a chip that is not running. As an associated type, that pairing is a compile error rather than a runtime surprise.
 
 **The governor lives in core because that is a shape this repository already has** — `RenderController` sits in `core::render`: equally stateful (it holds `last`), equally `&mut self`, acts only on a change, reaches its effect through something injected (a closure there, a `ClockSink` here), and returns whether anything moved (`bool` there, `Option<Applied>` here). **core allocates a `Box` too**, so "core only depends on libm" was never the reason to keep a stateful controller out of it — that is a fact about today, not a constraint.
 
@@ -230,11 +230,11 @@ Switching every frame would cost microseconds against a 20 ms frame (0.25%), so 
 | S3 | 80 / 160 / **240** | 240 MHz |
 | C6 | 80 / **160** | 160 MHz (the top this part has) |
 
-**Not one row on the C6 has been measured**, and that is deliberate: **an unmeasured worst case on a chip is not a small one.** So it is all `Fast` — the top this part can reach — and whoever measures a plane here fills its row and cites it.
+**Not one row on the C6 has been measured**, and that is deliberate: **an unmeasured worst case on a chip is not a small one.** So it is all `Fast` — the top this part can reach — and whoever measures a device here fills its row and cites it.
 
 **Handing the C6 the S3's three numbers was wrong.** They are wall-clock holds measured on the S3 and mean nothing on the C6.
 
-**`set_speed` returns the speed actually reached, not the one asked for**, so a downgrade is a return value rather than a failure: `Fast → Fast` on the S3; `Fast → Normal` on the C6 (160 is its top). `iot-chip_esp::Part` compares and reports "asked Fast, this part reached Normal". **No panic, no silence, no lie** — better than the `unimplemented!()` this started as, and better than moving nothing at all.
+**`set_speed` returns the speed actually reached, not the one asked for**, so a downgrade is a return value rather than a failure: `Fast → Fast` on the S3; `Fast → Normal` on the C6 (160 is its top). `iot-chip_esp::Clock` compares and reports "asked Fast, this part reached Normal". **No panic, no silence, no lie** — better than the `unimplemented!()` this started as, and better than moving nothing at all.
 
 **The `set_cpu_clock` out-of-contract caveat does not hold on the C6**: esp-hal offers no runtime clock change there, so the C6's `set_speed` accepts the request and the clock does not move. That is stated rather than hidden — **a build relying on it should be visible.**
 

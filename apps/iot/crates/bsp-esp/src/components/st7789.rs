@@ -242,3 +242,13 @@ impl St7789 {
         Ok(())
     }
 }
+
+impl crate::hardware::SelfCheck for St7789 {
+    fn name(&self) -> &'static str {
+        "panel"
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        crate::hardware::Status::declared()
+    }
+}

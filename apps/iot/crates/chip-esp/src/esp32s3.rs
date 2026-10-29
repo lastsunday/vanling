@@ -10,7 +10,7 @@ use esp_hal::peripherals::{
 use esp_hal::psram::{Psram, PsramConfig};
 use esp_hal::rom::ets_update_cpu_frequency_rom;
 use esp_hal::system::Stack;
-use iot_core::demand::{DemandField, Speed, SpeedTable};
+use iot_core::demand::{DemandKind, Speed, SpeedTable};
 
 /// Brings the chip up, optionally at a clock other than [`CpuClock`]'s default.
 ///
@@ -170,25 +170,13 @@ fn reads_back(window: Window) -> bool {
     })
 }
 
-/// What each plane needs on this part, from worst cases measured here.
-///
-/// A worst case is a hold in wall time, so it belongs to the chip that was
-/// holding: the same deadline on a slower core is a longer hold and a faster one
-/// a shorter, and neither transfers.
-///
-/// Each row is that part's own measured hold times three, against the 30 ms one
-/// audio tick may occupy, so a row under 10 ms may sit slow and one over it may
-/// not. The multiplier is deliberately pessimistic — measured downclocking
-/// stretches a hold by about 2x rather than 3x, because part of the cost is I2C
-/// wait that does not track the clock. Both directions of that reasoning, and the
-/// rows themselves, are in `docs/content/records/iot/clock.md`.
 pub struct Table;
 
 impl SpeedTable for Table {
-    fn speed_for(field: DemandField) -> Speed {
-        match field {
-            DemandField::Interaction | DemandField::Motion => Speed::Slow,
-            DemandField::Audio | DemandField::Camera | DemandField::Display => Speed::Fast,
+    fn speed_for(kind: DemandKind) -> Speed {
+        match kind {
+            DemandKind::Interaction | DemandKind::Motion => Speed::Slow,
+            DemandKind::Audio | DemandKind::Camera | DemandKind::Display => Speed::Fast,
         }
     }
 }

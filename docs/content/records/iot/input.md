@@ -44,7 +44,7 @@ sort_by = "weight"
 
 `[实测]` `[INPUT] held the executor … worst single hold … worst source: …` 一行给出整次 tick 的耗时、单次最长持有与四路各自的最差耗时。实测稳定形态：`button 0 ms, touch 1 ms, motion 3 ms, capture 16–20 ms`。capture 是最大的一项，因为折叠一个样本要跑六阶 IIR。
 
-`[测试]` 交互路径按设计不可关（`poll_plan_of` 对 `DemandField::Interaction` 直接返回 `active: true`）。实测地板 **10.87%**（全部平面 `Off` 的构建，8 个 5 s 窗口，离散 0.1 点）——剩下的全是 button 与 touch 的轮询。
+`[测试]` 交互路径按设计不可关（`poll_plan_of` 对 `DemandKind::Interaction` 直接返回 `active: true`）。实测地板 **10.87%**（全部设备 `Off` 的构建，8 个 5 s 窗口，离散 0.1 点）——剩下的全是 button 与 touch 的轮询。
 
 `[实测]` 节流把这一侧让出来的执行器，动画时钟会拿走：只把 motion 批到 30 s 时 input 侧从 49.5% 降到 35.5%（等价于旧的 `IOT_BUDGET=thrift`，见[音频实现记录](@/records/iot/audio.md)），而 `[DISPLAY]` 那一侧从 45.3% 升到 58.5%，设备总量 94.8% → 94.0%。所以「input 侧便宜了」不等于「设备便宜了」，两者之和才是设备的占用。
 
@@ -54,7 +54,7 @@ sort_by = "weight"
 
 `[测试]` 采集那一路不许被节流（`Es7210Rx::accepts_slower_poll()` 答 `false`），因为环只有 `sample()` 会排空——见[音频实现记录](@/records/iot/audio.md)。
 
-`[实测]` 把所有平面关掉后这个地板仍在，因为它与需求无关：**一个什么都不给的设备，按下按钮仍然必须被响应。** 所以它是理论下限，不是调优空间。
+`[实测]` 把所有设备关掉后这个地板仍在，因为它与需求无关：**一个什么都不给的设备，按下按钮仍然必须被响应。** 所以它是理论下限，不是调优空间。
 
 `[实测]` 采集那一路在 `capture 0 ms` 时不是「变便宜」，而是**没有环可排空**——见[音频实现记录](@/records/iot/audio.md)里那条失效链。读这行时 `0 ms` 与 `1 ms` 的含义完全不同，前者是故障。
 
@@ -87,3 +87,11 @@ raw(rx 0..240, ry 0..320)  →  fb(x, y) = (ry, 239 − rx)
 **还没验的**（软件合成不了触摸，只有 FT6336 产面板坐标）：点 `abc` 那一格必须出 `abc`、点 `7` 那一格必须出 `7`，灯页物理上下滑必须改亮度。
 
 `[实测]` 这一版已经烧上 S3（bench 镜像，`IOT_PORT=/dev/cu.usbmodem1422301`）：`App/part. size: 880,112/6,291,456 bytes`、开机 `[IOT] boot page is Network`、无 panic，`[DISPLAY] Network 1 repaints in 5901 ms, held the executor 18 ms (0%)`——**所以板上跑的就是这一版**，上面那条只欠一次手指，不欠一次烧录。
+
+---
+
+## 节拍追赶一次除法定位；零拍不再自旋（`[测试]`，2026-10-28）
+
+`PollEntry::advance_past` 在每次轮询之后把「下一格」推到 `now` 之后的第一个格点（`app/src/input.rs:212`，输入任务的循环里）。旧写法是逐格 `+= cadence`：一个停了一小时的源恢复时（`set_active` 把下一格停在 0）要走 18 万次，而这段跑在主栈上。现在一次除法定位，落在同样的格子上——`a_source_that_resumes_after_an_hour_lands_on_the_next_slot_once` 钉住「第一格，不是晚几格」。
+
+`cadence_ms == 0` 不是任何板子会接的值（`set_cadence_ms` 低于板层地板直接拒绝，见 `a_budget_can_never_shorten_a_cadence_the_board_wired`），但构造器收任意值，旧写法在它上面是死循环。现在落到 `now + 1`：这一 tick 不干活，下一 tick 再说。`a_zero_cadence_moves_the_schedule_instead_of_dividing_by_zero` 钉住它不挂。

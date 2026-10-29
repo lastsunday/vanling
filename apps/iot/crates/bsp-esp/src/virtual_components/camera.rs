@@ -671,3 +671,21 @@ impl<S: WindowReadable> FrameSource for Gc2145Capture<S> {
         Gc2145Capture::geometry(self)
     }
 }
+
+impl<S: crate::hardware::SelfCheck> crate::hardware::SelfCheck for Gc2145Capture<S> {
+    fn name(&self) -> &'static str {
+        self.sensor.name()
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        self.sensor.id()
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        self.sensor.check()
+    }
+}
+
+impl<S: crate::hardware::Named> crate::hardware::Named for Gc2145Capture<S> {
+    const NAME: &'static str = S::NAME;
+}

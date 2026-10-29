@@ -26,7 +26,27 @@ sort_by = "weight"
 
 改前 169 行里 81 行是 `[DISPLAY]`、25 行 `[WIFI]`、22 行 `[PLAY]`——三样都是**按窗口重复的同一句话**，而它们想回答的问题（面板贵不贵、feed 掉没掉、链路在哪一步）在稳态下答案不变。
 
-复现：`espflash monitor --non-interactive --port <s3> --chip esp32s3 -a watchdog-reset`，拨动任意输入前后各截一段。**静默不算死机的判据是开机第一行 `[IOT] log level …` 之后的 `[IOT] boot complete` 与 `[POST] N found`**：这两行在，串口安静就是稳态。
+复现：`espflash monitor --non-interactive --port <s3> --chip esp32s3 -a watchdog-reset`，拨动任意输入前后各截一段。**静默不算死机的判据是开机第一行 `[IOT] log level …` 之后的 `[IOT] boot complete` 与 `[HW] N devices: …`**（改名前是 `[POST]`）：这两行在，串口安静就是稳态。
+
+## `[HW]` 的每一行由硬件自己给出
+
+`[测试]` `hardware.rs` 的 `SelfCheck { name, id, check }`：驱动报自己的名字、自己的总线地址，并当场回答一次自检。板子只把对象交出去，不写名字也不写结论——旧版 `report.part("motion", State::Present, Provenance::Asserted)` 三样都是板子手写的，换一个驱动或接错一根线它都不会变。
+
+```
+[HW] panel             present      (declared)
+[HW] button            present      (declared)
+[HW] touch     0x38    present      (read)
+[HW] motion    0x6A    present      (read)
+[HW] mic       0x41    absent       (read)
+[HW] speaker   0x18    degraded: not an ES8311 (read)
+[HW] camera    0x3C    present      (read)
+[HW] 7 devices: 5 present, 1 degraded, 1 absent; 5 read, 2 declared
+```
+
+- 第二列是 `Option<Address>`，SPI 面板、RMT 灯和 GPIO 按键没有地址，列留空。
+- `(read)` 是向部件真读过一次（WHO_AM_I、chip id、GC2145 的 ID、ES7210 的配置寄存器、触摸的 GESTURE_ID）；`(declared)` 是这件东西没有回读通路，只能由板子声明（面板、灯、按键）。
+- **行只出现在板子真正接了的槽位**：S3 七行，C6 两行。C6 没有面板/触摸/IMU/麦克风/喇叭/摄像头，那六样连行都没有——那是在复述 `Cargo.toml`，不是观测。接了却没起来（`Option` 是 `None`）仍占一行 `absent (read)`，因为那是驱动问过总线得到的答案。
+- 汇总行由行本身数出来，`N` 与分布对不上只可能是计数漏了一行；读的人不必自己加。
 
 ## 级别只有一个旋钮，且只有一处持有
 
@@ -42,7 +62,7 @@ sort_by = "weight"
 
 | 行 | 级别 | 判据 |
 | --- | --- | --- |
-| 开机清单（`[POST]`、`[CREDS]`、`[HEAP]`、`[CLOCK]`、`[MOTION]`、`[DEMAND]`） | `info` | 每次开机恰好一次，是「这块板今天是什么样」的答案 |
+| 开机清单（`[HW]`、`[CREDS]`、`[HEAP]`、`[CLOCK]`、`[MOTION]`、`[DEMAND]`） | `info` | 每次开机恰好一次，是「这块板今天是什么样」的答案 |
 | 状态迁移（页面、链路相位与地址、灯、配网模式的开关与前后端） | `info`，**只在变化时** | 重复的同一相位不是事件 |
 | 用户动作（tap、按住、面板请求） | `info` | 有人在按，必须留痕 |
 | 帧成本与栈水位、feed 节奏、链路心跳、扫描列表、描述符与寄存器 dump | `debug` | 按窗口重复，稳态答案不变 |
@@ -68,10 +88,10 @@ sort_by = "weight"
 
 `[MIC]` → `[AUDIO]`、`[SPEAKER]` → `[PLAY]`、`[TOUCH]` → `[INPUT]`、`[RADIO]` → `[WIFI]`、`[PSRAM]` → `[HEAP]`、`[BACKLIGHT]` → `[DISPLAY]`；其余不变。
 
-判据是**一个模块一个标签**，不是一种外设一个标签：麦克风与喇叭是同一个采集/放音平面的两端，触摸与按键是同一个输入平面的两端，PSRAM 就是堆，背光是面板的一部分，射频只服务于 Wi-Fi。改前 `[MIC]` 与 `[AUDIO]` 并存、`[SPEAKER]` 与 `[PLAY]` 并存，读的人得先知道哪个是驱动哪个是应用。
+判据是**一个模块一个标签**，不是一种外设一个标签：麦克风与喇叭是同一个采集/放音路径的两端，触摸与按键是同一个输入路径的两端，PSRAM 就是堆，背光是面板的一部分，射频只服务于 Wi-Fi。改前 `[MIC]` 与 `[AUDIO]` 并存、`[SPEAKER]` 与 `[PLAY]` 并存，读的人得先知道哪个是驱动哪个是应用。
 
 ## 已知缺口
 
 - **没有 post-mortem 环形缓冲**：日志只走 USB CDC，panic 或复位之后最后几行是否到达取决于主机是否还在读。`esp-backtrace` 打的是自己的栈回溯，与本日志不同一通道。要看复位前的现场，只能抓串口；`esp-hal` 的 `rtc_cntl` 里没有本仓用起来的持久区。
 - **`HPF_CORNER_WALK` 在产品构建里仍是 `true`**，而[音频记录](@/records/iot/audio.md)写的是「生产构建关闭」。它开机走 8 个 corner 码、每个 3 s，`info` 下只留一行 `[AUDIO] HPF corner walk starting …`，但**它改变音频行为**（走完才回到工作 corner），所以这次没动：关掉它是一次音频决定，不是一次日志决定。
-- 面板没有读回，`[POST] panel found` 是 `asserted` 而非 `read`；日志能证明驱动接受了配置，不能证明像素对。
+- 面板没有读回，`[HW] panel present (declared)` 的 `declared` 就是这一句：日志能证明驱动接受了配置，不能证明像素对。每行都带 `(read)` 或 `(declared)`，汇总行给出两者的条数，读的人不必逐行数。

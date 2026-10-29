@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "0c78b0ec8fc095ae1aa5006c5be3c5411755f917"
-translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "5d349ba8dbabc8608c3832dad7f8a2b50486ff21"
+translated_at = "2026-10-28T00:00:00Z"
 +++
 
 # Playback Semantics
@@ -31,7 +31,7 @@ The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tr
 
 That is why `Speaker` demands `Send + 'static`, and why its error is the named `SpeakerFault` rather than each implementation's own type: a trait object cannot spell an unnamed associated type.
 
-The C6 and the host have no second software interrupt, so they take `SpeakerRunner::Inline` and the two loops are `join4`ed on one executor, with the same semantics.
+The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join4`ed on one executor, with the same semantics.
 
 `BusinessIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
 
@@ -51,7 +51,7 @@ With no ES8311 found, `playback_enabled` is false and the page does not enter th
 
 ## Where the sound comes from
 
-The catalogue holds five sounds, and **each one is a MIDI file** (`bsp-esp/src/assets/*.mid`) in the same format: a Standard MIDI File, which any DAW can open, play and edit.
+The catalogue holds five sounds, and **each one is a MIDI file** (`app/src/assets/*.mid`) in the same format: a Standard MIDI File, which any DAW can open, play and edit.
 
 MIDI is not here for its synthesis abilities — it carries no timbre and no per-note envelope in either version — it is here for **provenance**. Stored as PCM blobs, the sounds are untraceable binaries with a recipe in a comment that the build does not run; stored as MIDI, anyone who opens a file can tell what it is and change it.
 
@@ -200,15 +200,9 @@ The comment above and the table are the only guard on this bit.
 
 One GDMA channel serves both halves of RX and TX (`I2s::new` splits the channel and `split` gives the two halves), which is the same shape the SPI driver already uses bidirectionally, so the board stays on `DMA_CH1` and needs no second channel.
 
-To be confirmed on the bench: `tx_stop()` only clears `TX_START` and does not shut the peripheral down, so BCLK/WS are expected to keep coming out between arms.
+What the code does is **never park**: `feed_loop` feeds the idle stream unconditionally (`app/src/playback.rs`), topping up one silent arm every `FEED_MS`, so a sound and silence share the one DMA ring. The reason is that TX is the clock master and the microphone follows its BCLK/WS as a slave: stopping the peripheral would break the capture as well as the speaker. The cost is a wake-up every 5 ms to refill a silence nobody will ever hear.
 
-That is the foundation of the whole design and has to be measured on real silicon.
-
-The alternative is a driver that keeps topping up silent arms (and an app that can no longer park), which costs a wake-up every 5 ms to refill a silence nobody will ever hear.
-
-The stakes grew once TX became the clock master: the microphone now follows the TX's clocks as a slave, so if `tx_stop()` really drops BCLK it is not just the speaker that breaks — the microphone breaks with it.
-
-The latest 60-second verification recorded zero playback drains, so this is still unmeasured.
+`tx_stop()`'s parking arm is gone from the code (zero hits in the tree), so "does BCLK keep coming out after TX stops" is no longer the foundation of the design — it is an **unmeasured fact**: measure it on real silicon before going back to a parking arm.
 
 ## The ES8311 register rows
 
@@ -254,9 +248,9 @@ moon run iot:smoke-host  # end to end: the catalogue, a drop, completion, mute
 
 They are in two places, because they need different things.
 
-The seven in `sounds.rs` under `moon run iot:test-bsp` walk the catalogue over `Sound::ALL` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
+The seven in `app/src/sounds.rs` under `moon run iot:test` walk the catalogue over `Sound::ALL` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
 
-The six under `moon run iot:test-tool` are about **files and recipes**: that the `.mid` on disk is byte for byte what the recipes generate, that the directory holds no `.mid` no recipe claims, that the table's own shape rules hold (registers three semitones apart, lengths all different), and that the board's `include_bytes!` filenames match the recipes. **A sound edited in a DAW without the `RECIPES` table updated makes `moon run iot:test-tool` go red.**
+The six under `moon run iot:test-tool` are about **files and recipes**: that the `.mid` on disk is byte for byte what the recipes generate, that the directory holds no `.mid` no recipe claims, that the table's own shape rules hold (registers three semitones apart, lengths all different), and that the catalogue's `include_bytes!` filenames match the recipes. **A sound edited in a DAW without the `RECIPES` table updated makes `moon run iot:test-tool` go red.**
 
 The cross-layer invariant index is in [Audio Metering Semantics · Testing](@/development/iot/audio.en.md#testing) — one table covering the invariants shared by both sides, with the "deliberately break it, confirm red" column. The few unique to playback:
 

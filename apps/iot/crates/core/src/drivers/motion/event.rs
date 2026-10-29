@@ -14,15 +14,7 @@ pub enum TiltDir {
 /// the contract is the meaning, never the register or the threshold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MotionEvent {
-    /// A mechanical knock resolved by the core-side recognizer, with the
-    /// multi-knock count its gesture window produced. Not a screen touch: the
-    /// panel's `GestureEvent::Tap` names a finger on glass and carries a
-    /// position and a hold time, so the two may describe one act without being
-    /// one event. The planes are never folded together — arbitration runs
-    /// within a plane, so a knock and a finger tap both survive.
-    Tap {
-        count: u8,
-    },
+    Tap { count: u8 },
     Still,
     Moving,
     Activity,
@@ -147,9 +139,6 @@ impl MotionCounts {
 
 const GROUP_COUNT: usize = 3;
 
-/// What a motion source can actually report. Declared, never switched: the
-/// data plane ships unconditionally, so a source that omits a semantic simply
-/// never raises it rather than gating the whole stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MotionCapabilities(u64);
 
@@ -180,10 +169,6 @@ impl MotionCapabilities {
     }
 }
 
-/// What the core-side classifier derives from any source's data plane. Held
-/// apart from a driver's own declarations so a semantic is never attributed to
-/// hardware that never computed it, and so the two layers can be unioned into
-/// the capability set a product actually advertises.
 pub const RECOGNIZER_CAPABILITIES: MotionCapabilities = MotionCapabilities::TAP
     .union(MotionCapabilities::TILT)
     .union(MotionCapabilities::SHAKE)
@@ -281,9 +266,6 @@ const fn group_index(group: MotionGroup) -> usize {
     }
 }
 
-/// One poll's worth of motion: the data plane every consumer may read, plus the
-/// semantics this poll raised. Both ship together — the data plane backs
-/// diagnostics and any app-side algorithm, the semantic plane backs intent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MotionBatch {
     pub sample: MotionSample,

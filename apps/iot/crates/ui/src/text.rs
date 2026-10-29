@@ -461,16 +461,44 @@ mod tests {
         NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
         format_joining_title, format_network_name, format_pair, format_phase, format_question,
         format_setup_notice_body, format_setup_notice_title, format_setup_pass, format_u32,
-        format_verb, frame_fingerprint, write_ratio, write_u64,
+        format_verb, frame_fingerprint, sound_label, write_ratio, write_u64,
     };
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{
         AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass, Ssid,
     };
+    use iot_core::drivers::playback::Sound;
     use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
-    use iot_core::overlay::GLYPH_PITCH;
+    use iot_core::overlay::{Block, GLYPH_PITCH, block_value_x, block_x, level_value_end};
     use iot_core::state::Confirm;
+
+    #[test]
+    fn a_sound_name_fits_its_block() {
+        // Checked here because the panel cannot check itself: the block pitch is sized on seven
+        // glyphs and `NOTICE` takes six. Overshooting is silent — the pixels past the edge are
+        // dropped and the name just reads shorter.
+        let value_x = block_value_x(Block::First);
+        let next_block = block_x(Block::Second);
+        for sound in Sound::ALL {
+            let label = sound_label(sound);
+            let end = level_value_end(value_x, label.len());
+            assert!(
+                end < next_block,
+                "{:?} prints {:?}, which ends at column {end} and reaches into \
+                 the next block at {next_block}",
+                sound,
+                core::str::from_utf8(label).unwrap_or("<非 ASCII>"),
+            );
+        }
+        assert_eq!(
+            sound_label(Sound::Notice).len(),
+            6,
+            "the widest name is the one with a glyph of margin left; if this \
+             number moves, the slot is either nearly overflowing or has slack \
+             nobody has to design around",
+        );
+    }
 
     #[test]
     fn a_phase_and_a_failure_are_both_four_glyphs() {
