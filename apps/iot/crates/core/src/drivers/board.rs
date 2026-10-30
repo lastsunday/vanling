@@ -1,49 +1,19 @@
 use crate::config::MotionConfig;
-use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::audio::CaptureSink;
 use crate::drivers::input::PollEntry;
-use crate::drivers::light::RgbLight;
 use crate::drivers::motion::MotionCapabilities;
 use crate::drivers::network::Station;
 use crate::drivers::playback::Speaker;
-use crate::state::SurfaceRole;
+use crate::drivers::surface::WiredSurface;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 /// A hardware board instance.
 pub trait Board: Sized {}
 
-/// One surface as the board hands it over: the device and what the wiring says it is for.
-///
-/// The board is the only place that knows which channel the panel and the lamp sit on, so the
-/// role travels with the surface instead of being asked back out of it. `Absent` has no handle,
-/// which is why a wired slot can never be mistaken for an empty one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WiredSurface<S> {
-    Pages(S),
-    Lamp(S),
-}
-
-impl<S> WiredSurface<S> {
-    pub const fn role(&self) -> SurfaceRole {
-        match self {
-            WiredSurface::Pages(_) => SurfaceRole::Pages,
-            WiredSurface::Lamp(_) => SurfaceRole::Lamp,
-        }
-    }
-
-    pub fn into_surface(self) -> S {
-        match self {
-            WiredSurface::Pages(surface) | WiredSurface::Lamp(surface) => surface,
-        }
-    }
-}
-
-/// Board exposing the wired output surfaces: colour, pages and camera frames.
+/// Board exposing the wired output surfaces, each carrying what it is for.
 pub trait HasSurface: Board {
-    type Surface: RgbLight + DiagnosticsSink + crate::drivers::camera::CameraTarget + 'static;
-
-    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>>;
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface>>;
 }
 
 /// Board providing the input sources for the input pipeline.
@@ -90,25 +60,35 @@ mod tests {
     use super::*;
     use crate::demand::DemandKey;
     use crate::drivers::input::{BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator};
-    use crate::drivers::light::{Fill, Rgb};
     use crate::drivers::playback::{Recovery, SpeakerFault, Tone};
+    use crate::drivers::surface::{PageSurface, RgbLight};
+    use crate::paint::Rgb;
+    use crate::state::SurfaceRole;
     use alloc::{boxed::Box, vec};
 
     struct FakeLight;
 
     impl RgbLight for FakeLight {
-        fn set_fill(&mut self, _fill: Fill, _color: Rgb) {}
+        fn set_rgb(&mut self, _color: Rgb) {}
     }
 
-    impl DiagnosticsSink for FakeLight {}
+    struct FakePage;
 
-    impl crate::drivers::camera::CameraTarget for FakeLight {
+    impl RgbLight for FakePage {
+        fn set_rgb(&mut self, _color: Rgb) {}
+    }
+
+    impl crate::diagnostics::DiagnosticsSink for FakePage {}
+
+    impl crate::drivers::camera::CameraTarget for FakePage {
         fn paint_camera(&mut self, _now_ms: u64) -> bool {
             false
         }
 
         fn attach_camera(&mut self, _camera: Box<dyn crate::drivers::camera::FrameSource>) {}
     }
+
+    impl PageSurface for FakePage {}
 
     struct FakeButton;
 
@@ -142,7 +122,7 @@ mod tests {
     }
 
     struct FakeBoard {
-        lights: Option<Vec<WiredSurface<FakeLight>>>,
+        lights: Option<Vec<WiredSurface>>,
         input: Option<Vec<PollEntry>>,
         playback: Option<FakeSpeaker>,
     }
@@ -150,9 +130,7 @@ mod tests {
     impl Board for FakeBoard {}
 
     impl HasSurface for FakeBoard {
-        type Surface = FakeLight;
-
-        fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
+        fn take_surfaces(&mut self) -> Option<Vec<WiredSurface>> {
             self.lights.take()
         }
     }
@@ -175,8 +153,8 @@ mod tests {
     fn has_surface_delivers_every_surface_with_its_role_then_none() {
         let mut board = FakeBoard {
             lights: Some(vec![
-                WiredSurface::Pages(FakeLight),
-                WiredSurface::Lamp(FakeLight),
+                WiredSurface::Pages(Box::new(FakePage)),
+                WiredSurface::Lamp(Box::new(FakeLight)),
             ]),
             input: None,
             playback: None,
@@ -189,22 +167,31 @@ mod tests {
             "each surface carries the role the board gave it"
         );
         let mut only = wired.into_iter();
-        only.next().unwrap().into_surface().set_rgb(Rgb(1, 2, 3));
-        only.next().unwrap().into_surface().set_rgb(Rgb(3, 2, 1));
+        match only.next().unwrap() {
+            WiredSurface::Pages(mut page) => page.set_rgb(Rgb(1, 2, 3)),
+            WiredSurface::Lamp(_) => panic!("the panel is wired first"),
+        }
+        match only.next().unwrap() {
+            WiredSurface::Lamp(mut lamp) => lamp.set_rgb(Rgb(3, 2, 1)),
+            WiredSurface::Pages(_) => panic!("the lamp is wired second"),
+        }
         assert!(board.take_surfaces().is_none(), "taken exactly once");
     }
 
     #[test]
     fn has_surface_delivers_a_single_surface_once() {
         let mut board = FakeBoard {
-            lights: Some(vec![WiredSurface::Lamp(FakeLight)]),
+            lights: Some(vec![WiredSurface::Lamp(Box::new(FakeLight))]),
             input: None,
             playback: None,
         };
         let mut wired = board.take_surfaces().expect("surfaces present");
         assert_eq!(wired.len(), 1);
         assert_eq!(wired[0].role(), SurfaceRole::Lamp);
-        wired.pop().unwrap().into_surface().set_rgb(Rgb(1, 2, 3));
+        match wired.pop().unwrap() {
+            WiredSurface::Lamp(mut lamp) => lamp.set_rgb(Rgb(1, 2, 3)),
+            WiredSurface::Pages(_) => panic!("the only surface is a lamp"),
+        }
         assert!(board.take_surfaces().is_none(), "taken exactly once");
     }
 

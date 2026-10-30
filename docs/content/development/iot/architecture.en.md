@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "a475743b14edc5334d0404dad9c64bbc54412ee4"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "9f1ac02a5b3641b8b17c95bf91737c97712eca1a"
+translated_at = "2026-10-30T13:01:58Z"
 +++
 
 # Architecture
@@ -21,7 +21,7 @@ A pipeline-logic system whose trigger points are intents.
 1. Take the persistent store
 1. Merge the product run and the network run into one task
    1. product run
-      1. take the light list from the board
+      1. take the output-surface list from the board
       1. take the input-event list from the board
       1. take the motion events, their enabled state and their capabilities from the board
       1. take the audio events and their enabled state from the board
@@ -29,7 +29,7 @@ A pipeline-logic system whose trigger points are intents.
       1. take the speaker object and its enabled state from the board
       1. take the camera object and its enabled state from the board
       1. create the renderer
-      1. walk the lights, take the camera and register the light renderer plus the camera (when present) with the renderer
+      1. walk the surfaces, build a lamp or screen renderer per role, and hand the camera to the panel
       1. create the device manager, handing it the capabilities, demands, parameters and overrides
       1. create the configurator, the speaker handle and the demand handle
       1. start the main flow from the speaker handle and the demand handle
@@ -46,7 +46,7 @@ A pipeline-logic system whose trigger points are intents.
 `iot-core (pure logic) → iot-ui (page rendering) / iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (single-task binary)`
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
-- **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into an `RgbLight` surface). The board module only picks pins and assembles; the components themselves are shared across boards.
+- **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `PageSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
 - **iot-ui is the page layer**: `Canvas` owns only the frame buffer, its dimensions and its ground; `Surface` adds a borrowed `&Diagnostics`, the light instance, FPS, the debug switch, the SPL offset and an optional platform stack probe, and pages draw in immediate mode. It names no chip, board or sensor. `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, then ships the page bytes; pages are therefore host-testable without a panel.
 - **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
@@ -68,7 +68,7 @@ A pipeline-logic system whose trigger points are intents.
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `bridge.rs` | panel ↔ network contract: `Latch`/`Handoff`/`Latest`, the six signals, `Outbound`/`Inbound`, `PageWatch` |
 | `pipeline.rs` | the intent loop `run_loop`: apply intents, publish state, wait for the next frame |
-| `surface/{mod,light}.rs` | `Render` registry / `LightRenderer` |
+| `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `frame.rs` | `FrameClock` (logical frames, including catch-up) |
 | `input.rs` | polling, demand scheduling, gesture recognition |
 | `audio/{mod,dispatch,capture,sounds}.rs` | playback task, state→command, microphone window, sound catalogue |
@@ -189,7 +189,7 @@ The camera's chain runs end to end today:
 
 ```
 DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
-  → RenderController::reconcile → LightRenderer::on_appearance
+  → RenderController::reconcile → ScreenRenderer::on_appearance
   → Screen::consume → camera.pause() / released()
 ```
 

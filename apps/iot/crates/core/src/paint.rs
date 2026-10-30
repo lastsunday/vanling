@@ -1,42 +1,13 @@
+//! Colour primitives and the maths that shapes them.
+//!
+//! Shared by the drivers that show a colour and by the pages that draw on one: nothing here
+//! knows which of the two is asking.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
-/// How a color is painted across a light surface.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Fill {
-    Uniform,
-    VerticalGradient,
-}
-
-/// Max light surfaces one device can carry, dimensioning `DeviceState::lights` and the
-/// render slots.
-pub const MAX_LIGHTS: usize = 2;
-
-use crate::state::DisplayPage;
-
-/// Abstraction over a light surface that accepts an RGB color.
-pub trait RgbLight {
-    fn set_rgb(&mut self, color: Rgb) {
-        self.set_fill(Fill::Uniform, color);
-    }
-
-    fn set_fill(&mut self, fill: Fill, color: Rgb);
-
-    fn set_backlight(&mut self, _level_pct: u8) {}
-    fn set_backlight_ceiling(&mut self, _level_pct: u8) {}
-
-    fn repaint_step(&self) -> u8 {
-        0
-    }
-
-    fn page_ground(&self, _page: DisplayPage) -> Option<Rgb> {
-        None
-    }
-
-    fn page_draws_frames(&self, _page: DisplayPage) -> bool {
-        false
-    }
-}
+/// Max colour waypoints a `group` array can carry; unused slots pad with `0`.
+pub const GROUP_CAPACITY: usize = 7;
 
 const FIXED_POINT: u64 = 1 << 16;
 
@@ -117,9 +88,6 @@ pub fn rgb_hue(Rgb(r, g, b): Rgb) -> u8 {
     if hue > 255 { 255 } else { hue as u8 }
 }
 
-/// Max color waypoints a `group` array can carry; unused slots pad with `0`.
-pub const GROUP_CAPACITY: usize = 7;
-
 /// Scale every `color` channel toward black by `brightness`/255.
 pub fn scale_brightness(color: Rgb, brightness: u8) -> Rgb {
     let scale = u16::from(brightness);
@@ -129,17 +97,6 @@ pub fn scale_brightness(color: Rgb, brightness: u8) -> Rgb {
         scale_channel(color.1),
         scale_channel(color.2),
     )
-}
-
-/// Per-row brightness scale for [`Fill::VerticalGradient`]: `255` at the top row fading to
-/// `0` at the bottom.
-pub fn vertical_brightness(row: u16, height: u16) -> u8 {
-    if height <= 1 {
-        return 255;
-    }
-    let denominator = u32::from(height) - 1;
-    let numerator = denominator - u32::from(row).min(u32::from(height) - 1);
-    (255u32 * numerator / denominator) as u8
 }
 
 /// Soft color-graduated breathing color at `elapsed_ms`, hue path per `group_len` (see
@@ -232,15 +189,6 @@ pub fn backlight_level(
     ));
     let room = 100 - u32::from(floor_pct.min(100));
     (u32::from(floor_pct.min(100)) + (value - min) * room / span) as u8
-}
-
-/// Whether `next` differs from `last` enough to repaint a slow refresh surface.
-pub fn should_repaint(last: Rgb, next: Rgb, step: u8) -> bool {
-    if last == next {
-        return false;
-    }
-    let delta = |a: u8, b: u8| u8::abs_diff(a, b);
-    delta(last.0, next.0) >= step || delta(last.1, next.1) >= step || delta(last.2, next.2) >= step
 }
 
 #[cfg(test)]
@@ -516,34 +464,6 @@ mod tests {
         assert_eq!(scale_brightness(Rgb(200, 100, 50), 128).0, 100);
         assert_eq!(scale_brightness(Rgb(100, 0, 0), 128).0, 50);
         assert_eq!(scale_brightness(Rgb(255, 255, 255), 0), Rgb(0, 0, 0));
-    }
-
-    #[test]
-    fn vertical_brightness_fades_strictly() {
-        assert_eq!(vertical_brightness(0, 5), 255);
-        assert_eq!(vertical_brightness(4, 5), 0);
-        assert_eq!(vertical_brightness(2, 5), 127);
-        let rows: Vec<u8> = (0..5).map(|r| vertical_brightness(r, 5)).collect();
-        for w in rows.windows(2) {
-            assert!(w[0] > w[1], "not strictly fading: {:?}", rows);
-        }
-        assert_eq!(vertical_brightness(0, 1), 255);
-        assert_eq!(vertical_brightness(1, 4), 170);
-        assert_eq!(vertical_brightness(2, 4), 85);
-    }
-
-    #[test]
-    fn should_repaint_fires_when_color_moves_at_least_a_step() {
-        assert!(!should_repaint(Rgb(10, 20, 30), Rgb(10, 20, 30), 1));
-        assert!(!should_repaint(Rgb(10, 20, 30), Rgb(19, 21, 28), 12));
-        assert!(!should_repaint(Rgb(10, 20, 30), Rgb(10, 31, 30), 12));
-        assert!(!should_repaint(Rgb(10, 20, 30), Rgb(10, 20, 41), 12));
-        assert!(should_repaint(Rgb(10, 20, 30), Rgb(22, 20, 30), 12));
-        assert!(should_repaint(Rgb(10, 20, 30), Rgb(10, 32, 30), 12));
-        assert!(should_repaint(Rgb(10, 20, 30), Rgb(10, 20, 42), 12));
-        assert!(should_repaint(Rgb(0, 0, 0), Rgb(255, 255, 255), 12));
-        assert!(should_repaint(Rgb(10, 20, 30), Rgb(10, 21, 30), 0));
-        assert!(!should_repaint(Rgb(10, 21, 30), Rgb(10, 21, 30), 0));
     }
 
     #[test]

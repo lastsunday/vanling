@@ -1,38 +1,31 @@
-//! Wiring the board's surfaces to the render layer: which renderer gets the camera.
-//!
-//! The renderer itself and the registry live in `iot-core::render`; this module only knows
-//! the board's handles.
+//! Wiring the board's surfaces to the render layer: which renderer gets which handle.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use iot_core::diagnostics::DiagnosticsSink;
-use iot_core::drivers::camera::{CameraTarget, FrameSource};
-use iot_core::drivers::light::RgbLight;
-use iot_core::render::{LightRenderer, Registry};
+use iot_core::drivers::camera::FrameSource;
+use iot_core::drivers::surface::WiredSurface;
+use iot_core::render::{LampRenderer, Registry, Renderer, ScreenRenderer};
 
 pub type Render = Registry;
 
-/// One renderer per wired surface. The camera goes to the surface that says it owns a frame
-/// buffer; a board whose surfaces all decline gets it dropped rather than silently attached
-/// to a light that cannot paint it.
-pub fn wired<L>(lights: Vec<L>, mut camera: Option<Box<dyn FrameSource>>) -> Registry
-where
-    L: RgbLight + DiagnosticsSink + CameraTarget + 'static,
-{
+/// One renderer per wired surface. A panel takes the camera, because a panel is the only
+/// surface with the frame buffer a camera writes into; a board with no panel drops it.
+pub fn wired(surfaces: Vec<WiredSurface>, mut camera: Option<Box<dyn FrameSource>>) -> Registry {
     let mut render = Registry::new();
-    for (instance, light) in lights.into_iter().enumerate() {
-        let takes_frames = light.takes_frames();
-        let renderer = LightRenderer::new(instance as u8, light);
-        let renderer = if takes_frames {
-            match camera.take() {
-                Some(taken) => renderer.with_camera(taken),
-                None => renderer,
+    for (instance, surface) in surfaces.into_iter().enumerate() {
+        let instance = instance as u8;
+        let renderer: Box<dyn Renderer> = match surface {
+            WiredSurface::Pages(surface) => {
+                let panel = ScreenRenderer::new(instance, surface);
+                match camera.take() {
+                    Some(taken) => Box::new(panel.with_camera(taken)),
+                    None => Box::new(panel),
+                }
             }
-        } else {
-            renderer
+            WiredSurface::Lamp(light) => Box::new(LampRenderer::new(instance, light)),
         };
-        render.register(Box::new(renderer), 0);
+        render.register(renderer, 0);
     }
     if camera.is_some() {
         log::info!("[CAM] no surface has a frame buffer, dropping the camera");

@@ -30,7 +30,7 @@ use iot_core::config::MotionConfig;
 use iot_core::demand::DemandKey;
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS, CaptureSink};
 use iot_core::drivers::board::Board as BoardTrait;
-use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi, WiredSurface};
+use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
@@ -38,6 +38,7 @@ use iot_core::drivers::input::{
 };
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
 use iot_core::drivers::network::Front;
+use iot_core::drivers::surface::WiredSurface;
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
@@ -603,12 +604,10 @@ impl Board<'static> {
 impl BoardTrait for Board<'static> {}
 
 impl iot_core::drivers::board::HasSurface for Board<'static> {
-    type Surface = Screen;
-
-    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface>> {
         self.screen
             .take()
-            .map(|screen| vec![WiredSurface::Pages(*screen)])
+            .map(|screen| vec![WiredSurface::Pages(screen)])
     }
 }
 

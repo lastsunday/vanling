@@ -11,7 +11,6 @@ use esp_hal::time::{Duration, Instant};
 use iot_core::demand::DemandKey;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::camera::FrameOwner;
-use iot_core::drivers::light::{scale_brightness, vertical_brightness};
 use iot_core::render::{diag_repaint_due, windowed_percent};
 use iot_core::stamp::rgb565;
 use iot_ui::{Canvas, Surface};
@@ -72,29 +71,25 @@ impl DiagnosticsSink for Screen {
         if !repaint {
             return;
         }
-        if let Some((fill, color)) = self.owner.painted_color() {
+        if let Some(color) = self.owner.painted_color() {
             note_stack_high_water();
-            self.paint(fill, color);
+            self.paint(color);
             DIAG_LAST_REPAINT_MS.store(now_ms, Ordering::Relaxed);
         }
     }
 }
 
 impl Screen {
-    pub(super) fn paint(&mut self, fill: Fill, color: Rgb) {
+    pub(super) fn paint(&mut self, color: Rgb) {
         let render_start = Instant::now();
-        self.owner.painted(fill, color);
+        self.owner.painted(color);
 
         let height = self.panel.height();
-        let colors = |row: u16| match fill {
-            Fill::Uniform => color,
-            Fill::VerticalGradient => scale_brightness(color, vertical_brightness(row, height)),
-        };
         let width = usize::from(self.panel.width());
-        for (row, px) in self.frame.chunks_exact_mut(width * 2).enumerate() {
-            let rgb565 = rgb565(colors(row as u16));
-            let hi = (rgb565 >> 8) as u8;
-            let lo = rgb565 as u8;
+        let rgb565 = rgb565(color);
+        let hi = (rgb565 >> 8) as u8;
+        let lo = rgb565 as u8;
+        for px in self.frame.chunks_exact_mut(width * 2) {
             for pixel in px.as_chunks_mut::<2>().0 {
                 pixel[0] = hi;
                 pixel[1] = lo;

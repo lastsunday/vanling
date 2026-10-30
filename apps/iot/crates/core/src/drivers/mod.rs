@@ -4,7 +4,7 @@ pub mod board;
 pub mod camera;
 pub mod credentials;
 pub mod input;
-pub mod light;
 pub mod motion;
 pub mod network;
 pub mod playback;
+pub mod surface;

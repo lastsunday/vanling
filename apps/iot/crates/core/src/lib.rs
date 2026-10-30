@@ -12,6 +12,7 @@ pub mod intent;
 pub mod keyboard;
 pub mod overlay;
 pub mod page;
+pub mod paint;
 pub mod provision;
 pub mod render;
 pub mod stamp;

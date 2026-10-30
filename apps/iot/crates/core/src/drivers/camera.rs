@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use crate::drivers::light::{Fill, Rgb};
+use crate::paint::Rgb;
 
 /// What one call to [`FrameSource::advance`] found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,12 +66,6 @@ pub struct WindowGeometry {
 
 /// A surface a [`FrameSource`] can be bound to.
 pub trait CameraTarget {
-    /// Whether this surface owns the frame buffer a camera writes into. Only a surface with
-    /// one may be handed the camera; the rest say so instead of silently accepting it.
-    fn takes_frames(&self) -> bool {
-        false
-    }
-
     fn paint_camera(&mut self, now_ms: u64) -> bool;
 
     fn attach_camera(&mut self, camera: Box<dyn FrameSource>);
@@ -81,16 +75,16 @@ pub trait CameraTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameOwner {
     NeedsPaint,
-    Painted { fill: Fill, color: Rgb },
+    Painted { color: Rgb },
     Camera,
 }
 
 impl FrameOwner {
-    /// Whether a fill of this pair has any work to do.
-    pub fn accepts_fill(&self, fill: Fill, color: Rgb) -> bool {
+    /// Whether painting this colour has any work to do.
+    pub fn accepts_color(&self, color: Rgb) -> bool {
         match *self {
             FrameOwner::Camera => false,
-            FrameOwner::Painted { fill: f, color: c } => f != fill || c != color,
+            FrameOwner::Painted { color: c } => c != color,
             FrameOwner::NeedsPaint => true,
         }
     }
@@ -102,8 +96,8 @@ impl FrameOwner {
     }
 
     /// Records that the CPU has just painted.
-    pub fn painted(&mut self, fill: Fill, color: Rgb) {
-        *self = FrameOwner::Painted { fill, color };
+    pub fn painted(&mut self, color: Rgb) {
+        *self = FrameOwner::Painted { color };
     }
 
     /// Records that the camera has taken the buffer.
@@ -117,9 +111,9 @@ impl FrameOwner {
     }
 
     /// The colour the CPU last painted, for a repaint that redraws the same page.
-    pub fn painted_color(&self) -> Option<(Fill, Rgb)> {
+    pub fn painted_color(&self) -> Option<Rgb> {
         match *self {
-            FrameOwner::Painted { fill, color } => Some((fill, color)),
+            FrameOwner::Painted { color } => Some(color),
             FrameOwner::NeedsPaint | FrameOwner::Camera => None,
         }
     }
@@ -270,10 +264,10 @@ mod tests {
     fn a_released_camera_lets_the_next_fill_through() {
         let mut owner = FrameOwner::NeedsPaint;
         owner.taken();
-        assert!(!owner.accepts_fill(Fill::Uniform, Rgb(1, 2, 3)));
+        assert!(!owner.accepts_color(Rgb(1, 2, 3)));
         owner.released();
         assert!(
-            owner.accepts_fill(Fill::Uniform, Rgb(1, 2, 3)),
+            owner.accepts_color(Rgb(1, 2, 3)),
             "a fill after the camera released the buffer has to repaint, whatever it is"
         );
     }
@@ -281,23 +275,19 @@ mod tests {
     #[test]
     fn a_painted_colour_is_only_repeated_at_its_own_value() {
         let mut owner = FrameOwner::NeedsPaint;
-        owner.painted(Fill::Uniform, Rgb(10, 20, 30));
-        assert!(!owner.accepts_fill(Fill::Uniform, Rgb(10, 20, 30)));
-        assert!(owner.accepts_fill(Fill::Uniform, Rgb(10, 20, 31)));
-        assert!(
-            owner.accepts_fill(Fill::VerticalGradient, Rgb(10, 20, 30)),
-            "the fill is part of what was painted, so a different one is work"
-        );
+        owner.painted(Rgb(10, 20, 30));
+        assert!(!owner.accepts_color(Rgb(10, 20, 30)));
+        assert!(owner.accepts_color(Rgb(10, 20, 31)));
     }
 
     #[test]
     fn a_camera_refuses_fills_however_far_the_colour_moved() {
         let mut owner = FrameOwner::NeedsPaint;
-        owner.painted(Fill::Uniform, Rgb(1, 1, 1));
+        owner.painted(Rgb(1, 1, 1));
         owner.taken();
         for level in [0, 127, 255] {
             assert!(
-                !owner.accepts_fill(Fill::Uniform, Rgb(level, level, level)),
+                !owner.accepts_color(Rgb(level, level, level)),
                 "the light state moves on the camera's page; the buffer does not"
             );
         }
@@ -306,7 +296,7 @@ mod tests {
     #[test]
     fn the_colour_a_camera_displaced_is_not_remembered() {
         let mut owner = FrameOwner::NeedsPaint;
-        owner.painted(Fill::Uniform, Rgb(7, 8, 9));
+        owner.painted(Rgb(7, 8, 9));
         owner.taken();
         owner.released();
         assert_eq!(owner.painted_color(), None);
@@ -315,11 +305,8 @@ mod tests {
     #[test]
     fn a_repaint_of_an_unchanged_page_reuses_the_colour_it_held() {
         let mut owner = FrameOwner::NeedsPaint;
-        owner.painted(Fill::VerticalGradient, Rgb(4, 5, 6));
-        assert_eq!(
-            owner.painted_color(),
-            Some((Fill::VerticalGradient, Rgb(4, 5, 6)))
-        );
+        owner.painted(Rgb(4, 5, 6));
+        assert_eq!(owner.painted_color(), Some(Rgb(4, 5, 6)));
         owner.taken();
         assert_eq!(owner.painted_color(), None);
     }

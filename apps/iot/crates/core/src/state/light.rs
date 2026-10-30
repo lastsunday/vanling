@@ -25,7 +25,7 @@ impl Breath {
 
     /// The color this breath paints at `elapsed_ms`.
     pub fn rgb(self, elapsed_ms: u32) -> Rgb {
-        crate::drivers::light::breathe(
+        crate::paint::breathe(
             elapsed_ms,
             self.period_ms,
             self.hue_period_ms,
@@ -41,7 +41,7 @@ impl Breath {
 
     /// Backlight duty following the same envelope, never below `floor_pct`.
     pub fn backlight(self, elapsed_ms: u32, floor_pct: u8) -> u8 {
-        crate::drivers::light::backlight_level(
+        crate::paint::backlight_level(
             elapsed_ms,
             self.period_ms,
             self.min_brightness,

@@ -1,8 +1,8 @@
 //! The panel's ink and paper: how a fill is written into a frame of RGB565 pixels.
 
-use crate::drivers::light::{Fill, Rgb, scale_brightness, vertical_brightness};
 use crate::keyboard::ControlRect;
 use crate::overlay::CONTENT_BOTTOM;
+use crate::paint::Rgb;
 
 /// Packs a colour into the panel's big-endian RGB565 word.
 pub fn rgb565(color: Rgb) -> u16 {
@@ -23,24 +23,11 @@ pub fn invert_rgb565(packed: u16) -> u16 {
 
 /// Writes `rect` of `frame` as the surface: the ground the page was painted with, turned
 /// over.
-pub fn fill_surface(
-    frame: &mut [u8],
-    rect: ControlRect,
-    fill: Fill,
-    color: Rgb,
-    width: usize,
-    height: usize,
-) {
+pub fn fill_surface(frame: &mut [u8], rect: ControlRect, color: Rgb, width: usize, height: usize) {
     let right = (rect.x + rect.w).min(width);
     let bottom = (rect.y + rect.h).min(CONTENT_BOTTOM).min(height);
+    let surface = invert_rgb565(rgb565(color)).to_be_bytes();
     for y in rect.y..bottom {
-        let ground = match fill {
-            Fill::Uniform => color,
-            Fill::VerticalGradient => {
-                scale_brightness(color, vertical_brightness(y as u16, height as u16))
-            }
-        };
-        let surface = invert_rgb565(rgb565(ground)).to_be_bytes();
         for x in rect.x..right {
             let offset = (y * width + x) * 2;
             frame[offset..offset + 2].copy_from_slice(&surface);
@@ -101,7 +88,7 @@ mod tests {
             "the words are there to begin with"
         );
 
-        fill_surface(&mut frame, rect, Fill::Uniform, GROUND, WIDTH, HEIGHT);
+        fill_surface(&mut frame, rect, GROUND, WIDTH, HEIGHT);
 
         for y in rect.y..rect.y + rect.h {
             for x in rect.x..rect.x + rect.w {
@@ -126,40 +113,11 @@ mod tests {
     }
 
     #[test]
-    fn a_fill_of_a_gradient_page_follows_it_a_row_at_a_time() {
-        let mut frame = painted();
-        let rect = box_of(0, 0, WIDTH, 20);
-        fill_surface(
-            &mut frame,
-            rect,
-            Fill::VerticalGradient,
-            GROUND,
-            WIDTH,
-            HEIGHT,
-        );
-
-        let at = |row: u16| {
-            invert_rgb565(rgb565(scale_brightness(
-                GROUND,
-                vertical_brightness(row, HEIGHT as u16),
-            )))
-        };
-        assert_eq!(pixel(&frame, 0, 0), at(0), "the top row is the page's top");
-        assert_eq!(pixel(&frame, 0, 19), at(19), "and the last is its own");
-        assert_ne!(
-            at(0),
-            at(19),
-            "which is not the same colour, or this proves nothing"
-        );
-    }
-
-    #[test]
     fn a_fill_leaves_the_footer_alone() {
         let mut frame = painted();
         fill_surface(
             &mut frame,
             box_of(0, CONTENT_BOTTOM - 2, WIDTH, 8),
-            Fill::Uniform,
             GROUND,
             WIDTH,
             HEIGHT,

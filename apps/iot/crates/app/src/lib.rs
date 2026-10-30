@@ -12,14 +12,12 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use iot_core::config::Configurator;
 use iot_core::demand::{ClockSink, DemandKey, EffectiveDemand};
-use iot_core::diagnostics::DiagnosticsSink;
 use iot_core::drivers::board::{
-    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasMotion, HasPlayback, WiredSurface,
+    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasMotion, HasPlayback,
 };
-use iot_core::drivers::camera::CameraTarget;
-use iot_core::drivers::light::{MAX_LIGHTS, RgbLight};
 use iot_core::drivers::playback::Speaker;
-use iot_core::state::{DeviceManager, DisplayPage, SurfaceRole};
+use iot_core::drivers::surface::WiredSurface;
+use iot_core::state::{DeviceManager, DisplayPage, MAX_LIGHTS, SurfaceRole};
 
 pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
@@ -62,20 +60,19 @@ impl Network {
     }
 }
 
-pub struct Wiring<C, S> {
+pub struct Wiring<C> {
     pub clock: C,
     pub feed: Feed,
     pub network: Network,
     /// The wired output surfaces, each carrying what the board says it is for.
-    pub surfaces: Vec<WiredSurface<S>>,
+    pub surfaces: Vec<WiredSurface>,
 }
 
 /// Application composition: one renderer per wired surface, then the persistent tasks.
-pub async fn run<B, C, S>(mut board: B, wiring: Wiring<C, S>) -> !
+pub async fn run<B, C>(mut board: B, wiring: Wiring<C>) -> !
 where
     B: BoardTrait + HasInput + HasMotion + HasAudio + HasPlayback + HasCamera + 'static,
     C: ClockSink,
-    S: RgbLight + DiagnosticsSink + CameraTarget + 'static,
 {
     let Wiring {
         mut clock,
@@ -127,13 +124,7 @@ where
         log::info!("[CAM] no camera wired, the Camera page stays dark");
     }
 
-    let render = wired(
-        surfaces
-            .into_iter()
-            .map(WiredSurface::into_surface)
-            .collect(),
-        camera,
-    );
+    let render = wired(surfaces, camera);
     let override_ = boot_override();
     let mut manager = Box::new(
         DeviceManager::with_motion(motion_enabled, motion_caps)

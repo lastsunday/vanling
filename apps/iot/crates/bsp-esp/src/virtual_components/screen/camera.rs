@@ -73,10 +73,6 @@ impl CameraFeed {
 }
 
 impl CameraTarget for Screen {
-    fn takes_frames(&self) -> bool {
-        true
-    }
-
     fn paint_camera(&mut self, now_ms: u64) -> bool {
         Screen::paint_camera(self, now_ms)
     }

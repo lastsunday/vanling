@@ -1,6 +1,6 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
-use crate::drivers::light::{GROUP_CAPACITY, Rgb};
 use crate::intent::{BusinessIntent, OperationIntent};
+use crate::paint::{GROUP_CAPACITY, Rgb};
 use crate::state::{Breath, DeviceManager, DeviceState, LightState};
 
 pub const PALETTE: [Rgb; 7] = [

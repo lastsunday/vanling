@@ -20,7 +20,6 @@ use iot_core::drivers::audio::{
 };
 use iot_core::drivers::board::{
     Board as BoardTrait, HasAudio, HasCamera, HasInput, HasMotion, HasPlayback, HasSurface,
-    WiredSurface,
 };
 use iot_core::drivers::camera::{
     CameraCounters, CameraTarget, FrameAdvance, FrameOwner, FrameSource, WindowGeometry,
@@ -28,7 +27,6 @@ use iot_core::drivers::camera::{
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry,
 };
-use iot_core::drivers::light::{Fill, Rgb, RgbLight};
 use iot_core::drivers::motion::{
     MOTION_SCAN_MS, MotionCapabilities, MotionError, MotionEvents, MotionInput, MotionReading,
     MotionSample, MotionScale, MotionSource,
@@ -37,11 +35,13 @@ use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, SavedNetworks, Ssid,
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
+use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
 use iot_core::intent::{BusinessIntent, Intent, PALETTE};
 use iot_core::keyboard::Key;
+use iot_core::paint::Rgb;
 use iot_core::state::{Confirm, DisplayPage, PlaybackPhase};
 
-static PAINTED: Mutex<Vec<(u8, Fill, Rgb)>> = Mutex::new(Vec::new());
+static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());
 
 static CAMERA_PAINTED: AtomicUsize = AtomicUsize::new(0);
 static RELEASED: AtomicUsize = AtomicUsize::new(0);
@@ -195,26 +195,22 @@ struct HostLight {
 }
 
 impl HostLight {
-    fn record(&mut self, fill: Fill, color: Rgb) {
-        if !self.owner.accepts_fill(fill, color) {
+    fn record(&mut self, color: Rgb) {
+        if !self.owner.accepts_color(color) {
             return;
         }
-        self.owner.painted(fill, color);
-        PAINTED.lock().unwrap().push((self.instance, fill, color));
+        self.owner.painted(color);
+        PAINTED.lock().unwrap().push((self.instance, color));
     }
 }
 
 impl RgbLight for HostLight {
-    fn set_fill(&mut self, fill: Fill, color: Rgb) {
-        self.record(fill, color);
-    }
-
-    fn set_backlight(&mut self, _level_pct: u8) {}
-
-    fn page_draws_frames(&self, page: DisplayPage) -> bool {
-        page == DisplayPage::Camera
+    fn set_rgb(&mut self, color: Rgb) {
+        self.record(color);
     }
 }
+
+impl PageSurface for HostLight {}
 
 struct HostCamera {
     frames: u32,
@@ -389,12 +385,13 @@ impl HostBoard {
 impl BoardTrait for HostBoard {}
 
 impl HasSurface for HostBoard {
-    type Surface = HostLight;
-
-    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
-        self.lights
-            .take()
-            .map(|lights| lights.into_iter().map(WiredSurface::Pages).collect())
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface>> {
+        self.lights.take().map(|lights| {
+            lights
+                .into_iter()
+                .map(|light| WiredSurface::Pages(Box::new(light)))
+                .collect()
+        })
     }
 }
 
@@ -462,7 +459,7 @@ fn painted(instance: u8, color: Rgb) -> bool {
         .lock()
         .unwrap()
         .iter()
-        .any(|&(i, _, c)| i == instance && c == color)
+        .any(|&(i, c)| i == instance && c == color)
 }
 
 fn colors_on(instance: u8) -> Vec<Rgb> {
@@ -470,8 +467,8 @@ fn colors_on(instance: u8) -> Vec<Rgb> {
         .lock()
         .unwrap()
         .iter()
-        .filter(|&&(i, _, _)| i == instance)
-        .map(|&(_, _, c)| c)
+        .filter(|&&(i, _)| i == instance)
+        .map(|&(_, c)| c)
         .collect()
 }
 
@@ -480,7 +477,7 @@ fn paints_on(instance: u8) -> usize {
         .lock()
         .unwrap()
         .iter()
-        .filter(|&&(i, _, _)| i == instance)
+        .filter(|&&(i, _)| i == instance)
         .count()
 }
 

@@ -9,11 +9,12 @@ use esp_storage::FlashStorage;
 
 use crate::components::credentials::CredentialStore;
 use iot_core::demand::DemandKey;
-use iot_core::drivers::board::{Board as BoardTrait, HasWifi, WiredSurface};
+use iot_core::drivers::board::{Board as BoardTrait, HasWifi};
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
 use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::drivers::network::Front;
 use iot_core::drivers::playback::UnwiredSpeaker;
+use iot_core::drivers::surface::WiredSurface;
 use smart_leds::RGB8;
 
 pub use crate::components::button::PullButton;
@@ -87,12 +88,10 @@ impl Board<'static> {
 impl BoardTrait for Board<'static> {}
 
 impl iot_core::drivers::board::HasSurface for Board<'static> {
-    type Surface = Ws2812RgbLed<'static, { buffer_size::<RGB8>(LEDS) }>;
-
-    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface>> {
         self.light
             .take()
-            .map(|light| vec![WiredSurface::Lamp(light)])
+            .map(|light| vec![WiredSurface::Lamp(Box::new(light))])
     }
 }
 

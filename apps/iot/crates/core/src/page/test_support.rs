@@ -1,9 +1,9 @@
 use crate::drivers::input::{
     ButtonEvent, FingerLast, GestureEvent, InputEvent, MAX_TRACKED_POINTS, SwipeDirection,
 };
-use crate::drivers::light::MAX_LIGHTS;
 use crate::drivers::motion::{MotionCapabilities, MotionCounts};
 use crate::intent::{BusinessIntent, OperationIntent, recognize, translate};
+use crate::state::MAX_LIGHTS;
 use crate::state::{
     AudioState, Breath, DeviceManager, DeviceState, DisplayPage, LightState, PlaybackState,
     SurfaceRole,

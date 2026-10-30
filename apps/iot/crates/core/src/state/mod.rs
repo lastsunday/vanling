@@ -10,7 +10,7 @@ use crate::drivers::input::{
     direction_between,
 };
 
-use crate::drivers::light::{GROUP_CAPACITY, MAX_LIGHTS, Rgb};
+use crate::paint::{GROUP_CAPACITY, Rgb};
 
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 
@@ -48,6 +48,10 @@ pub use self::network::{Confirm, NetworkSetup};
 pub use self::page::DisplayPage;
 
 pub use self::playback::{PlaybackCommand, PlaybackPhase, PlaybackState};
+
+/// Surface slots one device can carry, dimensioning [`DeviceState::lights`] and the render
+/// slots.
+pub const MAX_LIGHTS: usize = 2;
 
 /// A live contact slot: the tracker `id` that owns it plus where it last landed, in
 /// framebuffer space.

@@ -1,16 +1,19 @@
 //! The render layer: what the device's surfaces should show, and the registry that drives
 //! the renderers which show it.
 
-mod light;
+mod colour;
+mod lamp;
 mod registry;
+mod screen;
 
-pub use light::LightRenderer;
+pub use lamp::LampRenderer;
 pub use registry::Registry;
+pub use screen::ScreenRenderer;
 
 use crate::demand::{DemandKey, EffectiveDemand, Mode};
 use crate::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
-use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
-use crate::state::{Breath, DeviceState, DisplayPage, LightState, SurfaceRole};
+use crate::paint::{Rgb, rgb_hue, scale_brightness};
+use crate::state::{Breath, DeviceState, DisplayPage, LightState, MAX_LIGHTS, SurfaceRole};
 use alloc::boxed::Box;
 
 /// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing, `2` solid.

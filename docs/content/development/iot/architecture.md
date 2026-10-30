@@ -17,7 +17,7 @@ weight = 10
 1. 根据定时源，软中断创建和启动RTOS
 1. 合并产品运行和网络运行到同一任务里
    1. 产品运行
-      1. 从板子获取灯列表
+      1. 从板子获取输出表面列表
       1. 从板子获取输入事件列表
       1. 从板子获取姿态传感事件,开启状态,能力
       1. 从板子获取声音事件,开启状态
@@ -25,7 +25,7 @@ weight = 10
       1. 从板子获取喇叭对象,开启状态
       1. 从板子获取摄像头对象,开启状态
       1. 创建渲染器
-      1. 遍历灯,获取摄像头,将灯渲染器+摄像头(存在的话)注册到渲染器
+      1. 遍历表面,按角色建灯渲染器或屏幕渲染器,把摄像头交给面板
       1. 创建设备管理器,将各个特性和需求,参数,覆盖参数传入设备管理器
       1. 创建配置器,喇叭共享对象,需求共享对象
       1. 根据喇叭共享对象，需求共享对象来启动主流程
@@ -42,7 +42,7 @@ weight = 10
 `iot-core(纯逻辑) → iot-ui(页面渲染) / iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(单任务二进制)`
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
-- **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `RgbLight` 表面）。板模块只做选引脚与装配，元件本身跨板通用
+- **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `PageSurface`）。板模块只做选引脚与装配，元件本身跨板通用
 - **iot-ui 是页面层**：`Canvas` 只持有帧缓冲、尺寸与 ground，`Surface` 在它之上借用 `&Diagnostics`、灯位、FPS、调试开关、SPL 偏移与可选的平台栈探针，页面以立即模式绘制。它不认芯片、板卡或传感器；`bsp-esp` 只负责帧缓冲、DMA、面板与相机采样，然后把页面的字节写出去。页面因此在宿主机可测，`iot-ui` 的测试不依赖面板
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
@@ -64,7 +64,7 @@ weight = 10
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `bridge.rs` | 面板 ↔ 网络契约：`Latch`/`Handoff`/`Latest`、六个信号、`Outbound`/`Inbound`、`PageWatch` |
 | `pipeline.rs` | 意图主循环 `run_loop`：应用意图、发布状态、等待下一帧 |
-| `surface/{mod,light}.rs` | `Render` 注册表 / `LightRenderer` |
+| `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
 | `input.rs` | 轮询、demand 调度、手势识别 |
 | `audio/{mod,dispatch,capture,sounds}.rs` | 播放任务、状态→命令、麦克风窗口、声音目录 |
@@ -178,7 +178,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ```
 DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
-  → RenderController::reconcile → LightRenderer::on_appearance
+  → RenderController::reconcile → ScreenRenderer::on_appearance
   → Screen::consume → camera.pause() / released()
 ```
 

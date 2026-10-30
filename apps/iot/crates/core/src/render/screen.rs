@@ -1,102 +1,64 @@
-//! One surface's renderer: what the light shows, and when it has to be stepped.
+//! The panel's renderer: pages over the colour, the backlight, and the camera feed.
 
 use alloc::boxed::Box;
 
 use crate::demand::{DemandKey, Mode};
-use crate::diagnostics::DiagnosticsSink;
-use crate::drivers::camera::{CameraTarget, FrameSource};
-use crate::drivers::light::{Fill, Rgb, RgbLight, should_repaint};
+use crate::drivers::camera::FrameSource;
+use crate::drivers::surface::PageSurface;
+use crate::render::colour::ColourDriver;
 use crate::render::{Activity, LightAppearance, Renderer, Slot, SlotAppearance};
-use crate::state::{Breath, DeviceManager, DisplayPage};
+use crate::state::{DeviceManager, DisplayPage};
 
-pub struct LightRenderer<R: RgbLight + DiagnosticsSink> {
+pub struct ScreenRenderer {
     instance: u8,
-    light: R,
+    surface: Box<dyn PageSurface>,
     slots: [Slot; 2],
-    last: Option<Rgb>,
-    breath: Option<Breath>,
+    colour: ColourDriver,
     appearance: Option<LightAppearance>,
     page: Option<DisplayPage>,
-    display: Mode,
 }
 
-impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
-    pub fn new(instance: u8, light: R) -> Self {
+impl ScreenRenderer {
+    pub fn new(instance: u8, surface: Box<dyn PageSurface>) -> Self {
         Self {
             instance,
-            light,
+            surface,
             slots: [Slot::Surface(instance), Slot::Diagnostics],
-            last: None,
-            breath: None,
+            colour: ColourDriver::new(),
             appearance: None,
             page: None,
-            display: Mode::Continuous,
         }
     }
 
     pub fn with_camera(mut self, camera: Box<dyn FrameSource>) -> Self {
-        self.light.attach_camera(camera);
+        self.surface.attach_camera(camera);
         self.page = None;
         self
     }
+}
 
-    fn drive(&mut self, fill: Fill, color: Rgb) {
-        if !self.display.is_collecting() {
-            self.last = None;
-            return;
-        }
-        let step = self.light.repaint_step();
-        let repaint = match self.last {
-            None => true,
-            Some(last) => should_repaint(last, color, step),
-        };
-        if repaint {
-            self.last = Some(color);
-            self.light.set_fill(fill, color);
-        }
-    }
-
-    fn draw(&mut self, now_ms: u32, breath: Breath) {
-        self.drive(Fill::Uniform, breath.rgb(now_ms));
-        self.light
-            .set_backlight(breath.backlight(now_ms, DeviceManager::BACKLIGHT_FLOOR_PCT));
-    }
-
-    fn page_ground(&self) -> Option<Rgb> {
-        self.page.and_then(|page| self.light.page_ground(page))
-    }
-
+impl ScreenRenderer {
     fn present(&mut self, now_ms: u32) {
         let Some(declared) = self.appearance else {
             return;
         };
-        match self.page_ground() {
-            Some(ground) => {
-                self.breath = None;
-                self.drive(Fill::Uniform, ground);
-                self.light.set_backlight(100);
-            }
-            None => match declared {
-                LightAppearance::Off => {
-                    self.breath = None;
-                    self.drive(Fill::Uniform, Rgb(0, 0, 0));
-                    self.light.set_backlight(0);
-                }
-                LightAppearance::Color(color) => {
-                    self.breath = None;
-                    self.drive(Fill::Uniform, color);
-                    self.light.set_backlight(100);
-                }
-                LightAppearance::Breathing(breath) => {
-                    self.breath = Some(breath);
-                    self.draw(now_ms, breath);
-                }
-            },
+        let step = self.surface.repaint_step();
+        if let Some(ground) = self.page.and_then(|page| page.ground()) {
+            self.colour.ground(&mut *self.surface, step, ground);
+            self.surface.set_backlight(100);
+            return;
         }
+        let lit = self.colour.show(&mut *self.surface, step, declared, now_ms);
+        self.surface
+            .set_backlight(lit.backlight(now_ms, DeviceManager::BACKLIGHT_FLOOR_PCT));
+    }
+
+    fn on_camera_page(&self) -> bool {
+        self.page.is_some_and(|page| page.draws_frames())
     }
 }
 
-impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R> {
+impl Renderer for ScreenRenderer {
     fn slots(&self) -> &[Slot] {
         &self.slots
     }
@@ -105,37 +67,29 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
         match appearance {
             SlotAppearance::Diagnostics(diagnostics) => {
                 let page_changed = self.page != Some(diagnostics.page);
-                self.light.consume(&diagnostics);
+                self.surface.consume(&diagnostics);
                 self.page = Some(diagnostics.page);
-                let was_collecting = self.display.is_collecting();
-                self.display = diagnostics.demand.claim(DemandKey::DISPLAY).mode;
-                if was_collecting != self.display.is_collecting() {
-                    self.last = None;
-                }
-                match self.display {
+                self.colour
+                    .set_display(diagnostics.demand.claim(DemandKey::DISPLAY).mode);
+                match self.colour.display() {
                     Mode::Off => {
-                        self.light.set_backlight_ceiling(0);
-                        self.breath = None;
+                        self.surface.set_backlight_ceiling(0);
+                        self.colour.stop();
                         return Activity::Idle;
                     }
-                    Mode::OnChange => {
-                        self.light
-                            .set_backlight_ceiling(DeviceManager::BACKLIGHT_FLOOR_PCT);
-                    }
-                    Mode::Continuous => self.light.set_backlight_ceiling(100),
+                    Mode::OnChange => self
+                        .surface
+                        .set_backlight_ceiling(DeviceManager::BACKLIGHT_FLOOR_PCT),
+                    Mode::Continuous => self.surface.set_backlight_ceiling(100),
                 }
                 if page_changed {
-                    self.last = None;
+                    self.colour.forget();
                     self.present(now_ms);
                 }
                 if self.on_camera_page() {
                     return Activity::TimeDriven;
                 }
-                if self.breath.is_some() {
-                    Activity::TimeDriven
-                } else {
-                    Activity::Idle
-                }
+                breathing_activity(self.colour.breathing())
             }
             SlotAppearance::Surface {
                 instance,
@@ -144,23 +98,21 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
                 debug_assert_eq!(instance, self.instance);
                 self.appearance = Some(appearance);
                 self.present(now_ms);
-                if self.breath.is_some() {
-                    Activity::TimeDriven
-                } else {
-                    Activity::Idle
-                }
+                breathing_activity(self.colour.breathing())
             }
         }
     }
 
     fn step(&mut self, now_ms: u32) -> Activity {
         if self.on_camera_page() {
-            self.light.paint_camera(u64::from(now_ms));
+            self.surface.paint_camera(u64::from(now_ms));
             return Activity::TimeDriven;
         }
-        match self.breath {
-            Some(breath) => {
-                self.draw(now_ms, breath);
+        let step = self.surface.repaint_step();
+        match self.colour.step(&mut *self.surface, step, now_ms) {
+            Some(lit) => {
+                self.surface
+                    .set_backlight(lit.backlight(now_ms, DeviceManager::BACKLIGHT_FLOOR_PCT));
                 Activity::TimeDriven
             }
             None => Activity::Idle,
@@ -168,103 +120,110 @@ impl<R: RgbLight + DiagnosticsSink + CameraTarget> Renderer for LightRenderer<R>
     }
 }
 
-impl<R: RgbLight + DiagnosticsSink + CameraTarget> LightRenderer<R> {
-    fn on_camera_page(&self) -> bool {
-        self.page
-            .is_some_and(|page| self.light.page_draws_frames(page))
+fn breathing_activity(breathing: bool) -> Activity {
+    if breathing {
+        Activity::TimeDriven
+    } else {
+        Activity::Idle
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::EffectiveDemand;
+    use crate::demand::{Claim, EffectiveDemand, Sensitivity};
     use crate::diagnostics::Diagnostics;
+    use crate::drivers::camera::{CameraCounters, FrameAdvance, WindowGeometry};
+    use crate::drivers::surface::RgbLight;
+    use crate::paint::Rgb;
     use crate::render::light_appearance;
     use crate::state::LightState;
+    use alloc::rc::Rc;
+    use core::cell::RefCell;
 
-    struct FakePanel {
+    struct PanelState {
         fills: u32,
         color: Rgb,
         backlight: u8,
         ceiling: u8,
-        pages: bool,
+        camera_paints: u32,
+        camera: bool,
     }
 
-    impl FakePanel {
+    struct FakeScreen(Rc<RefCell<PanelState>>);
+
+    impl FakeScreen {
         fn new() -> Self {
-            Self {
+            Self(Rc::new(RefCell::new(PanelState {
                 fills: 0,
                 color: Rgb(0, 0, 0),
                 backlight: 100,
                 ceiling: 100,
-                pages: false,
-            }
+                camera_paints: 0,
+                camera: false,
+            })))
         }
 
-        fn panel() -> Self {
-            Self {
-                pages: true,
-                ..Self::new()
-            }
+        fn handle(&self) -> Rc<RefCell<PanelState>> {
+            Rc::clone(&self.0)
         }
     }
 
-    impl RgbLight for FakePanel {
-        fn set_fill(&mut self, _fill: Fill, color: Rgb) {
-            self.fills += 1;
-            self.color = color;
+    impl RgbLight for FakeScreen {
+        fn set_rgb(&mut self, color: Rgb) {
+            let mut panel = self.0.borrow_mut();
+            panel.fills += 1;
+            panel.color = color;
         }
+    }
 
+    impl PageSurface for FakeScreen {
         fn set_backlight(&mut self, level_pct: u8) {
-            self.backlight = level_pct.min(self.ceiling);
+            let mut panel = self.0.borrow_mut();
+            panel.backlight = level_pct.min(panel.ceiling);
         }
 
         fn set_backlight_ceiling(&mut self, level_pct: u8) {
-            self.ceiling = level_pct;
-            self.backlight = self.backlight.min(level_pct);
+            let mut panel = self.0.borrow_mut();
+            panel.ceiling = level_pct;
+            panel.backlight = panel.backlight.min(level_pct);
         }
 
-        fn page_ground(&self, page: DisplayPage) -> Option<Rgb> {
-            self.pages.then(|| page.ground()).flatten()
-        }
-
-        fn page_draws_frames(&self, page: DisplayPage) -> bool {
-            self.pages && page.draws_frames()
+        fn repaint_step(&self) -> u8 {
+            0
         }
     }
 
-    impl DiagnosticsSink for FakePanel {
+    impl crate::diagnostics::DiagnosticsSink for FakeScreen {
         fn consume(&mut self, _diagnostics: &Diagnostics) {}
     }
 
-    impl CameraTarget for FakePanel {
-        fn takes_frames(&self) -> bool {
-            self.pages
-        }
-
+    impl crate::drivers::camera::CameraTarget for FakeScreen {
         fn paint_camera(&mut self, _now_ms: u64) -> bool {
-            false
+            self.0.borrow_mut().camera_paints += 1;
+            true
         }
 
-        fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {}
-    }
-
-    fn panel_asked(display: Mode) -> SlotAppearance {
-        panel_on(DisplayPage::Ambient, display)
+        fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {
+            self.0.borrow_mut().camera = true;
+        }
     }
 
     fn panel_on(page: DisplayPage, display: Mode) -> SlotAppearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
-            crate::demand::Claim::new(display, 0, crate::demand::Sensitivity::Primary),
+            Claim::new(display, 0, Sensitivity::Primary),
         );
         SlotAppearance::Diagnostics(Diagnostics {
             demand,
             page,
             ..Diagnostics::default()
         })
+    }
+
+    fn panel_asked(display: Mode) -> SlotAppearance {
+        panel_on(DisplayPage::Ambient, display)
     }
 
     fn ambient_breath(instance: u8) -> SlotAppearance {
@@ -274,13 +233,15 @@ mod tests {
         }
     }
 
-    fn renderer(panel: FakePanel) -> LightRenderer<FakePanel> {
-        LightRenderer::new(0, panel)
+    fn renderer() -> (ScreenRenderer, Rc<RefCell<PanelState>>) {
+        let screen = FakeScreen::new();
+        let panel = screen.handle();
+        (ScreenRenderer::new(0, Box::new(screen)), panel)
     }
 
     #[test]
     fn a_lit_panel_keeps_breathing_on_a_page_that_never_settles() {
-        let mut r = renderer(FakePanel::new());
+        let (mut r, panel) = renderer();
         assert_eq!(
             r.on_appearance(panel_asked(Mode::Continuous), 0),
             Activity::Idle,
@@ -289,15 +250,15 @@ mod tests {
         assert_eq!(r.on_appearance(ambient_breath(0), 0), Activity::TimeDriven);
         r.step(1_000);
         r.step(1_100);
-        assert!(r.light.fills > 0, "a lit panel keeps painting");
+        assert!(panel.borrow().fills > 0, "a lit panel keeps painting");
     }
 
     #[test]
     fn an_unlit_panel_ships_nothing_from_any_slot() {
-        let mut r = renderer(FakePanel::new());
+        let (mut r, panel) = renderer();
         r.on_appearance(panel_asked(Mode::Off), 0);
-        assert_eq!(r.light.ceiling, 0, "and its backlight is off");
-        let fills_before = r.light.fills;
+        assert_eq!(panel.borrow().ceiling, 0, "and its backlight is off");
+        let fills_before = panel.borrow().fills;
 
         r.on_appearance(ambient_breath(0), 0);
         r.step(1_000);
@@ -311,34 +272,36 @@ mod tests {
         );
 
         assert_eq!(
-            r.light.fills, fills_before,
+            panel.borrow().fills,
+            fills_before,
             "the breathing loop and the colour change both leave through the same gate"
         );
-        assert_eq!(r.light.backlight, 0);
+        assert_eq!(panel.borrow().backlight, 0);
     }
 
     #[test]
     fn a_panel_relit_after_being_dark_paints_the_frame_the_darkness_swallowed() {
-        let mut r = renderer(FakePanel::new());
+        let (mut r, panel) = renderer();
         r.on_appearance(panel_asked(Mode::Off), 0);
         r.on_appearance(ambient_breath(0), 0);
         r.step(1_000);
-        assert_eq!(r.light.fills, 0);
+        assert_eq!(panel.borrow().fills, 0);
 
         r.on_appearance(panel_asked(Mode::Continuous), 2_000);
         r.step(2_000);
         assert_eq!(
-            r.light.fills, 1,
+            panel.borrow().fills,
+            1,
             "the first frame after relighting is the one that matters"
         );
-        assert_eq!(r.light.ceiling, 100);
+        assert_eq!(panel.borrow().ceiling, 100);
     }
 
     #[test]
     fn a_dimmed_panel_is_brightness_only_and_keeps_its_cadence() {
-        let mut r = renderer(FakePanel::new());
+        let (mut r, panel) = renderer();
         r.on_appearance(panel_asked(Mode::OnChange), 0);
-        assert_eq!(r.light.ceiling, DeviceManager::BACKLIGHT_FLOOR_PCT);
+        assert_eq!(panel.borrow().ceiling, DeviceManager::BACKLIGHT_FLOOR_PCT);
 
         r.on_appearance(ambient_breath(0), 0);
         assert_eq!(
@@ -347,32 +310,35 @@ mod tests {
             "dimming is a brightness, not a rate"
         );
         r.step(1_000);
-        assert!(r.light.fills > 0);
+        assert!(panel.borrow().fills > 0);
     }
 
     #[test]
     fn the_network_page_grounds_the_panel_black_and_still() {
-        let mut r = renderer(FakePanel::panel());
+        let (mut r, panel) = renderer();
         r.on_appearance(panel_on(DisplayPage::Network, Mode::Continuous), 0);
         assert_eq!(
             r.on_appearance(ambient_breath(0), 0),
             Activity::Idle,
             "a breathing light does not breathe through the page's ground"
         );
-        assert_eq!(r.light.color, Rgb(0, 0, 0), "the ground is black");
+        assert_eq!(panel.borrow().color, Rgb(0, 0, 0), "the ground is black");
         assert_eq!(
-            r.light.backlight, 100,
+            panel.borrow().backlight,
+            100,
             "and the setup screen is lit to read"
         );
-        let fills = r.light.fills;
+        let fills = panel.borrow().fills;
         assert_eq!(r.step(1_000), Activity::Idle);
         r.step(1_100);
         assert_eq!(
-            r.light.fills, fills,
+            panel.borrow().fills,
+            fills,
             "and the loop parks instead of repainting"
         );
         assert_eq!(
-            r.light.backlight, 100,
+            panel.borrow().backlight,
+            100,
             "the backlight holds instead of ramping"
         );
 
@@ -383,13 +349,13 @@ mod tests {
             },
             1_200,
         );
-        assert_eq!(r.light.color, Rgb(0, 0, 0));
-        assert_eq!(r.light.backlight, 100);
+        assert_eq!(panel.borrow().color, Rgb(0, 0, 0));
+        assert_eq!(panel.borrow().backlight, 100);
     }
 
     #[test]
     fn the_camera_page_grounds_the_panel_black() {
-        let mut r = renderer(FakePanel::panel());
+        let (mut r, panel) = renderer();
         r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 0);
         r.on_appearance(
             SlotAppearance::Surface {
@@ -398,7 +364,7 @@ mod tests {
             },
             0,
         );
-        assert_eq!(r.light.color, Rgb(10, 20, 30));
+        assert_eq!(panel.borrow().color, Rgb(10, 20, 30));
 
         assert_eq!(
             r.on_appearance(panel_on(DisplayPage::Camera, Mode::Continuous), 1),
@@ -406,19 +372,25 @@ mod tests {
             "a camera page is driven by arriving frames, not by the light"
         );
         assert_eq!(
-            r.light.color,
+            panel.borrow().color,
             Rgb(0, 0, 0),
             "the camera page's ground is the page's black, not the light's colour"
         );
-        assert_eq!(r.light.backlight, 100);
+        assert_eq!(panel.borrow().backlight, 100);
+        assert_eq!(r.step(2), Activity::TimeDriven);
+        assert_eq!(
+            panel.borrow().camera_paints,
+            1,
+            "the panel pulls the next frame"
+        );
     }
 
     #[test]
     fn leaving_the_page_that_grounds_the_panel_puts_the_light_back() {
-        let mut r = renderer(FakePanel::panel());
+        let (mut r, panel) = renderer();
         r.on_appearance(panel_on(DisplayPage::Network, Mode::Continuous), 0);
         r.on_appearance(ambient_breath(0), 0);
-        assert_eq!(r.light.color, Rgb(0, 0, 0));
+        assert_eq!(panel.borrow().color, Rgb(0, 0, 0));
 
         assert_eq!(
             r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 100),
@@ -428,17 +400,38 @@ mod tests {
         let LightAppearance::Breathing(breath) = light_appearance(LightState::boot()) else {
             panic!("the boot light breathes");
         };
-        assert_eq!(r.light.color, breath.rgb(100));
+        assert_eq!(panel.borrow().color, breath.rgb(100));
     }
 
     #[test]
-    fn a_surface_that_draws_no_page_keeps_showing_the_light() {
-        let mut r = renderer(FakePanel::new());
-        r.on_appearance(panel_on(DisplayPage::Network, Mode::Continuous), 0);
-        assert_eq!(r.on_appearance(ambient_breath(0), 0), Activity::TimeDriven);
+    fn the_camera_is_attached_only_to_a_page_surface() {
+        let (r, panel) = renderer();
+        assert!(!panel.borrow().camera);
+        let r = r.with_camera(Box::new(NullCamera));
         assert!(
-            r.light.fills > 0,
-            "the light is still what this surface shows"
+            panel.borrow().camera,
+            "a panel is what a camera can write into"
         );
+        assert_eq!(r.slots(), &[Slot::Surface(0), Slot::Diagnostics]);
+    }
+
+    struct NullCamera;
+
+    impl FrameSource for NullCamera {
+        fn advance(&mut self, _frame: &mut [u8], _now_ms: u64) -> FrameAdvance {
+            FrameAdvance::Same
+        }
+
+        fn pause(&mut self) {}
+
+        fn resume(&mut self, _frame: &mut [u8]) {}
+
+        fn counters(&self) -> CameraCounters {
+            CameraCounters::ZERO
+        }
+
+        fn geometry(&mut self) -> Option<WindowGeometry> {
+            None
+        }
     }
 }

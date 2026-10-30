@@ -1,12 +1,10 @@
 //! The screen: the panel, the one frame buffer the board gives it, and the sources that
 //! fill those bytes.
 
-use alloc::boxed::Box;
-
 use iot_core::diagnostics::Diagnostics;
-use iot_core::drivers::camera::{FrameOwner, FrameSource};
-use iot_core::drivers::light::{Fill, Rgb, RgbLight};
-use iot_core::state::DisplayPage;
+use iot_core::drivers::camera::FrameOwner;
+use iot_core::drivers::surface::{PageSurface, RgbLight};
+use iot_core::paint::Rgb;
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;
@@ -25,7 +23,7 @@ const REPAINT_STEP: u8 = 12;
 
 const DEBUG_DIAGNOSTICS: bool = true;
 
-/// ST7789 panel framed as an `RgbLight` surface.
+/// ST7789 panel carrying the pages, the backlight and the camera's frame buffer.
 pub struct Screen {
     instance: u8,
     panel: Panel,
@@ -64,15 +62,18 @@ impl Screen {
         let bytes = self.panel.frame_bytes();
         &mut self.frame[..bytes]
     }
-
-    /// Binds the camera that fills this panel's buffer.
-    pub fn with_camera(mut self, camera: Box<dyn FrameSource>) -> Self {
-        self.camera.attach(camera);
-        self
-    }
 }
 
 impl RgbLight for Screen {
+    fn set_rgb(&mut self, color: Rgb) {
+        if !self.owner.accepts_color(color) {
+            return;
+        }
+        self.paint(color);
+    }
+}
+
+impl PageSurface for Screen {
     fn repaint_step(&self) -> u8 {
         REPAINT_STEP
     }
@@ -83,21 +84,6 @@ impl RgbLight for Screen {
 
     fn set_backlight_ceiling(&mut self, level_pct: u8) {
         self.panel.set_ceiling(level_pct);
-    }
-
-    fn set_fill(&mut self, fill: Fill, color: Rgb) {
-        if !self.owner.accepts_fill(fill, color) {
-            return;
-        }
-        self.paint(fill, color);
-    }
-
-    fn page_ground(&self, page: DisplayPage) -> Option<Rgb> {
-        page.ground()
-    }
-
-    fn page_draws_frames(&self, page: DisplayPage) -> bool {
-        page.draws_frames()
     }
 }
 

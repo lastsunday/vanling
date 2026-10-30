@@ -4,8 +4,8 @@ use core::ops::{Deref, DerefMut};
 
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::camera::{CameraCounters, WindowGeometry};
-use iot_core::drivers::light::{Rgb, rgb_hue};
 use iot_core::overlay::{Block, GLYPH_PITCH, OVERLAY_GAP, block_value_x, block_x, overlay_row_top};
+use iot_core::paint::{Rgb, rgb_hue};
 use iot_core::render::MODE_BREATH;
 use iot_core::state::DisplayPage;
 
@@ -150,10 +150,7 @@ impl<'a> Surface<'a> {
     fn live(&self) -> (u8, u8) {
         let mine = self.diagnostics.lights[usize::from(self.instance)];
         if mine.mode == MODE_BREATH {
-            let color = self
-                .canvas
-                .ground()
-                .map_or(Rgb(0, 0, 0), |(_, color)| color);
+            let color = self.canvas.ground().unwrap_or(Rgb(0, 0, 0));
             (brightness_of(color), rgb_hue(color))
         } else {
             (mine.brightness, mine.hue)
@@ -199,12 +196,11 @@ mod tests {
     use alloc::vec::Vec;
     use core::sync::atomic::{AtomicUsize, Ordering};
     use iot_core::drivers::audio::ENVELOPE_COLUMNS;
-    use iot_core::drivers::light::Fill;
 
     const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
     const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;
 
-    fn render(page: DisplayPage, debug: bool, ground: Option<(Fill, Rgb)>) -> Vec<u8> {
+    fn render(page: DisplayPage, debug: bool, ground: Option<Rgb>) -> Vec<u8> {
         let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
         let diagnostics = Diagnostics {
             page,
@@ -221,7 +217,7 @@ mod tests {
     #[test]
     fn every_page_stamps_something_and_does_it_the_same_way_twice() {
         for page in DisplayPage::ALL {
-            let ground = (page != DisplayPage::Camera).then_some((Fill::Uniform, Rgb(0, 0, 0)));
+            let ground = (page != DisplayPage::Camera).then_some(Rgb(0, 0, 0));
             let first = render(page, true, ground);
             let second = render(page, true, ground);
             assert!(

@@ -6,10 +6,10 @@
 use crate::demand::EffectiveDemand;
 use crate::drivers::audio::AudioEnvelope;
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
-use crate::drivers::light::MAX_LIGHTS;
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use crate::drivers::network::{ApList, LinkStatus};
 use crate::drivers::playback::Sound;
+use crate::state::MAX_LIGHTS;
 use crate::state::{AudioPhase, DisplayPage, NetworkSetup, PlaybackPhase};
 
 /// Breathing mode's full dimension set carried by a light snapshot so the panel can print

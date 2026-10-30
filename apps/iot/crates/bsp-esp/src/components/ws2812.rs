@@ -1,12 +1,10 @@
-use alloc::boxed::Box;
 use esp_hal::Blocking;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::rmt::TxChannelCreator;
 use esp_hal::time::Rate;
 use esp_hal_smartled::{RmtSmartLeds, WS2812_TIMING, color_order};
-use iot_core::diagnostics::DiagnosticsSink;
-use iot_core::drivers::camera::{CameraTarget, FrameSource};
-use iot_core::drivers::light::{Fill, Rgb, RgbLight};
+use iot_core::drivers::surface::RgbLight;
+use iot_core::paint::Rgb;
 use smart_leds::{RGB8, SmartLedsWrite};
 
 /// RMT base clock the WS2812 timing table is calibrated against; the RMT peripheral on the
@@ -36,23 +34,13 @@ impl<'d, const BUFFER_SIZE: usize> Ws2812RgbLed<'d, BUFFER_SIZE> {
 }
 
 impl<const BUFFER_SIZE: usize> RgbLight for Ws2812RgbLed<'_, BUFFER_SIZE> {
-    fn set_fill(&mut self, _fill: Fill, color: Rgb) {
+    fn set_rgb(&mut self, color: Rgb) {
         let data = RGB8::new(color.0, color.1, color.2);
         let strip = core::iter::repeat_n(data, self.led_count);
         self.driver
             .write(strip)
             .expect("failed to write WS2812 LED");
     }
-}
-
-impl<const BUFFER_SIZE: usize> DiagnosticsSink for Ws2812RgbLed<'_, BUFFER_SIZE> {}
-
-impl<const BUFFER_SIZE: usize> CameraTarget for Ws2812RgbLed<'_, BUFFER_SIZE> {
-    fn paint_camera(&mut self, _now_ms: u64) -> bool {
-        false
-    }
-
-    fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {}
 }
 
 impl<const BUFFER_SIZE: usize> crate::hardware::SelfCheck for Ws2812RgbLed<'_, BUFFER_SIZE> {

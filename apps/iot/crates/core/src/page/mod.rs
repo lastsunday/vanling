@@ -169,9 +169,9 @@ impl DisplayPage {
     /// The fill this page grounds the panel with, or `None` when the page draws over what
     /// the light was already showing. A page that covers the whole panel says so here
     /// rather than in each board's screen.
-    pub const fn ground(&self) -> Option<crate::drivers::light::Rgb> {
+    pub const fn ground(&self) -> Option<crate::paint::Rgb> {
         match self {
-            Self::Network | Self::Camera => Some(crate::drivers::light::Rgb(0, 0, 0)),
+            Self::Network | Self::Camera => Some(crate::paint::Rgb(0, 0, 0)),
             _ => None,
         }
     }

@@ -1,8 +1,8 @@
 //! The pixels a page is drawn into, and the only ink there is.
 
-use iot_core::drivers::light::{Fill, Rgb};
 use iot_core::keyboard::ControlRect;
 use iot_core::overlay::{FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP};
+use iot_core::paint::Rgb;
 use iot_core::stamp::{fill_surface, invert_rgb565};
 
 use crate::font::FONT;
@@ -12,17 +12,12 @@ pub struct Canvas<'a> {
     frame: &'a mut [u8],
     width: usize,
     height: usize,
-    ground: Option<(Fill, Rgb)>,
+    ground: Option<Rgb>,
 }
 
 impl<'a> Canvas<'a> {
     /// A canvas over a whole frame.
-    pub fn new(
-        frame: &'a mut [u8],
-        width: usize,
-        height: usize,
-        ground: Option<(Fill, Rgb)>,
-    ) -> Self {
+    pub fn new(frame: &'a mut [u8], width: usize, height: usize, ground: Option<Rgb>) -> Self {
         debug_assert_eq!(
             frame.len(),
             width * height * 2,
@@ -49,8 +44,8 @@ impl<'a> Canvas<'a> {
         self.frame
     }
 
-    /// The fill this frame was painted with, if the surface still owns it.
-    pub fn ground(&self) -> Option<(Fill, Rgb)> {
+    /// The colour this frame was painted with, if the surface still owns it.
+    pub fn ground(&self) -> Option<Rgb> {
         self.ground
     }
 
@@ -150,10 +145,10 @@ impl<'a> Canvas<'a> {
     /// Fills `rect` with this frame's own ground turned over: the panel's one way of laying
     /// a paper down for ink.
     pub fn fill(&mut self, rect: ControlRect) {
-        let Some((fill, color)) = self.ground else {
+        let Some(color) = self.ground else {
             return;
         };
-        fill_surface(self.frame, rect, fill, color, self.width, self.height);
+        fill_surface(self.frame, rect, color, self.width, self.height);
     }
 }
 
@@ -184,12 +179,7 @@ mod tests {
     #[test]
     fn a_fill_paints_the_rect_with_the_ground_turned_over() {
         let mut bytes = frame();
-        let mut canvas = Canvas::new(
-            &mut bytes,
-            WIDTH,
-            HEIGHT,
-            Some((Fill::Uniform, Rgb(0x10, 0x20, 0x30))),
-        );
+        let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, Some(Rgb(0x10, 0x20, 0x30)));
         canvas.fill(ControlRect {
             x: 2,
             y: 3,
