@@ -1,65 +1,62 @@
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::future::Future;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
-use iot_core::demand::{DemandKind, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS};
-use iot_core::drivers::audio::{AudioSample, CaptureSink};
+use iot_core::demand::{DemandKind, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS, PollPlan};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{BusinessIntent, Intent, recognize};
 
 use crate::SharedDemand;
-use iot_core::config::{Configuration, Configurator};
+use iot_core::config::{Configuration, Configurator, Unreachable};
 
 pub const INTENT_SLOTS: usize = 8;
 
-/// Intent channel: input task writes recognized operations, the render loop drains and
-/// interprets.
+/// Intent channel between the input task and the render loop.
 pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, INTENT_SLOTS>;
 
-/// Intent bus storage; passed as `&'static` into the tasks so no consumer reaches the
-/// global by name.
 pub static INTENT_BUS: IntentBus = IntentBus::new();
-
-/// A poll as a whole window, off the intent ring: only its newest value means anything, and
-/// at 1.7 KB it would set every ring slot to that width.
-pub struct CaptureWindow(Channel<CriticalSectionRawMutex, AudioSample, 1>);
-
-impl CaptureWindow {
-    /// Take the window the input task published, or `None` when nothing has arrived since
-    /// the last take.
-    pub fn take(&self) -> Option<AudioSample> {
-        self.0.try_receive().ok()
-    }
-
-    /// Ready when a window is waiting.
-    pub fn ready(&self) -> impl Future<Output = ()> {
-        self.0.ready_to_receive()
-    }
-}
-
-impl CaptureSink for CaptureWindow {
-    fn publish(&self, sample: AudioSample) {
-        let _ = self.0.try_send(sample);
-    }
-}
-
-pub static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());
-
-const SOURCE_NAMES: [&str; 4] = ["button", "touch", "motion", "capture"];
 
 const HOLD_REPORT_MS: u64 = 5_000;
 
-fn apply(
-    sources: &mut [PollEntry],
+/// The lock-side half of a tick: reads the demand and works out what each source should do.
+/// It touches no driver, logs nothing, and allocates nothing — the feed interrupt takes the
+/// same lock, so anything slow here delays the ring.
+fn decide(
+    sources: &[PollEntry],
     demand: &EffectiveDemand,
     configurator: &Configurator,
+    plans: &mut Vec<PollPlan>,
+) -> Result<Configuration, Unreachable> {
+    let configuration = configurator.configuration_for(demand);
+    plans.clear();
+    plans.extend(sources.iter().map(|entry| {
+        InputLimiter::plan(
+            entry.key(),
+            demand,
+            entry.board_cadence_ms(),
+            entry.accepts_slower_poll(),
+        )
+    }));
+    configuration
+}
+
+/// Carries a decision to the drivers: the I2C configuration, the schedule bookkeeping, and
+/// the one log line a change is worth. This runs outside the lock.
+fn apply_decision(
+    sources: &mut [PollEntry],
+    decision: Result<Configuration, Unreachable>,
+    plans: &[PollPlan],
     now_ms: u64,
 ) -> bool {
-    let configuration = match configurator.configuration_for(demand) {
+    debug_assert_eq!(
+        plans.len(),
+        sources.len(),
+        "a plan per source, no more, no less"
+    );
+    let configuration = match decision {
         Ok(configuration) => configuration,
         Err(refusal) => {
             log::warn!(
@@ -75,14 +72,7 @@ fn apply(
         }
     }
     let mut moved = false;
-    for entry in sources.iter_mut() {
-        let board_cadence_ms = entry.board_cadence_ms();
-        let plan = InputLimiter::plan(
-            entry.key(),
-            demand,
-            board_cadence_ms,
-            entry.accepts_slower_poll(),
-        );
+    for (entry, plan) in sources.iter_mut().zip(plans.iter().copied()) {
         let before = (entry.is_active(), entry.cadence_ms());
         entry.set_collecting(now_ms, plan.active);
         entry.set_active(plan.active);
@@ -94,7 +84,7 @@ fn apply(
         let mut report = alloc::string::String::new();
         for (index, entry) in sources.iter().enumerate() {
             let separator = if index == 0 { "" } else { ", " };
-            let name = SOURCE_NAMES.get(index).copied().unwrap_or("?");
+            let name = entry.name();
             if entry.is_active() {
                 let _ = write!(report, "{separator}{name} on {} ms", entry.cadence_ms());
             } else {
@@ -110,10 +100,19 @@ fn apply(
     moved
 }
 
-const SPLASH_MS: u64 = 1_500;
+#[cfg(test)]
+fn apply(
+    sources: &mut [PollEntry],
+    demand: &EffectiveDemand,
+    configurator: &Configurator,
+    now_ms: u64,
+) -> bool {
+    let mut plans = Vec::with_capacity(sources.len());
+    let decision = decide(sources, demand, configurator, &mut plans);
+    apply_decision(sources, decision, &plans, now_ms)
+}
 
-/// Drains every input source at the shared base tick, gating each source to its own
-/// cadence, and forwards recognized operations onto the intent bus.
+/// Drains every input source at the shared base tick and forwards recognized operations.
 pub async fn input_task(
     intent_bus: &'static IntentBus,
     mut sources: Vec<PollEntry>,
@@ -122,18 +121,21 @@ pub async fn input_task(
 ) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(INPUT_BASE_MS));
     let mut now_ms: u64 = 0;
-    let mut worst_us = [0u64; 4];
-    let mut polled = [false; 4];
+    let mut worst_us = alloc::vec![0u64; sources.len()];
+    let mut polled = alloc::vec![false; sources.len()];
     let mut window_hold_us: u64 = 0;
     let mut window_worst_hold_ms: u64 = 0;
     let mut window_ticks: u32 = 0;
     let mut last_report = Instant::now();
     let mut splash_open = true;
+    let mut plans: Vec<PollPlan> = Vec::with_capacity(sources.len());
     loop {
         ticker.next().await;
         now_ms = now_ms.wrapping_add(INPUT_BASE_MS);
         let loop_start = Instant::now();
-        demand.lock(|current| apply(&mut sources, &current.borrow(), configurator, now_ms));
+        let decision =
+            demand.lock(|current| decide(&sources, &current.borrow(), configurator, &mut plans));
+        apply_decision(&mut sources, decision, &plans, now_ms);
         for (index, entry) in sources.iter_mut().enumerate() {
             if !entry.is_active() || entry.next_at_ms() > now_ms {
                 continue;
@@ -153,7 +155,7 @@ pub async fn input_task(
             }
         }
         if splash_open
-            && now_ms >= SPLASH_MS
+            && now_ms >= iot_core::page::SPLASH_MS
             && !sources.iter().any(|entry| entry.held())
             && intent_bus
                 .try_send(Intent::Business(BusinessIntent::SplashOver))
@@ -171,7 +173,7 @@ pub async fn input_task(
         if window_ms >= HOLD_REPORT_MS {
             let mut parts = alloc::string::String::new();
             use core::fmt::Write;
-            for (index, seen) in polled.iter().enumerate() {
+            for (entry, (seen, worst)) in sources.iter().zip(polled.iter().zip(worst_us.iter())) {
                 if !seen {
                     continue;
                 }
@@ -179,8 +181,8 @@ pub async fn input_task(
                     parts,
                     "{}{} {} ms",
                     if parts.is_empty() { "" } else { ", " },
-                    SOURCE_NAMES.get(index).copied().unwrap_or("?"),
-                    worst_us[index] / 1_000,
+                    entry.name(),
+                    worst / 1_000,
                 );
             }
             let over_bound = window_worst_hold_ms >= u64::from(MAX_SINGLE_HOLD_MS);
@@ -201,12 +203,8 @@ pub async fn input_task(
             window_hold_us = 0;
             window_worst_hold_ms = 0;
             window_ticks = 0;
-            for slot in worst_us.iter_mut() {
-                *slot = 0;
-            }
-            for seen in polled.iter_mut() {
-                *seen = false;
-            }
+            worst_us.fill(0);
+            polled.fill(false);
             last_report = now;
         }
     }
@@ -249,6 +247,10 @@ mod tests {
     }
 
     impl InputSource for Recording {
+        fn name(&self) -> &'static str {
+            "recording"
+        }
+
         fn poll(&mut self, _now_ms: u64) -> Option<iot_core::drivers::input::InputEvent> {
             self.polls += 1;
             None
@@ -464,21 +466,6 @@ mod tests {
             assert!(sources[0].is_active(), "the input path was gated");
             assert_eq!(sources[0].cadence_ms(), 10, "the input path was stretched");
         }
-    }
-
-    #[test]
-    fn a_capture_window_costs_one_slot_beside_the_ring() {
-        let ring = core::mem::size_of::<Intent>() * INTENT_SLOTS;
-        let window = core::mem::size_of::<AudioSample>();
-        assert!(
-            ring < window,
-            "a capture window is sizing the intent ring again: {ring} B of ring against a \
-             {window} B window"
-        );
-        assert!(
-            core::mem::size_of::<CaptureWindow>() < 2 * window,
-            "the capture window holds one window, not a queue of them"
-        );
     }
 
     const MOTION_CADENCE_MS: u64 = iot_core::drivers::motion::MOTION_SCAN_MS;

@@ -1,5 +1,5 @@
-//! The link, beside the product's input, render and playback futures: the station's futures
-//! are not `Send`, and this is all the stack one thread has.
+//! The link, beside the product's futures: the station's futures are not `Send`, so this is
+//! all the stack one thread has.
 
 use alloc::boxed::Box;
 use core::cell::Cell;
@@ -12,20 +12,20 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
 use iot_core::drivers::credentials::{FlashRegion, Store};
-use iot_core::drivers::network::{Front, LinkStatus, Ssid, Station};
+use iot_core::drivers::network::{ApList, Front, LinkStatus, Ssid, Station};
 use iot_core::intent::{BusinessIntent, Intent};
-use iot_core::state::Panel;
 
 use crate::input::INTENT_BUS;
 
 mod link;
+mod provision;
 mod setup;
 mod store;
 mod survey;
 
 const SOCKETS: usize = 1;
 
-const SETUP_SOCKETS: usize = 2 + crate::provision::PAGE_SOCKETS;
+const SETUP_SOCKETS: usize = 2 + crate::net::provision::PAGE_SOCKETS;
 
 static HEAP_FREE: HeapReport = Mutex::new(Cell::new(unreported));
 
@@ -37,7 +37,6 @@ const fn unreported() -> usize {
     0
 }
 
-/// Hand in what the part's heap has left, once, before the product starts.
 pub fn report_heap_free(report: fn() -> usize) {
     HEAP_FREE.lock(|slot| slot.set(report));
 }
@@ -46,12 +45,12 @@ fn heap_free() -> usize {
     HEAP_FREE.lock(|slot| slot.get())()
 }
 
-/// Bring the link up and keep it there.
 pub async fn serve<S, R>(
     station: Option<Box<S>>,
     saved: Option<Box<Store<R>>>,
     front: Front,
-    panel: Panel,
+    has_pages: bool,
+    page: &'static crate::bridge::PageWatch,
 ) -> !
 where
     S: Station,
@@ -87,7 +86,7 @@ where
             &setup_name,
             &mut *setup_resources,
             front,
-            panel.is_wired(),
+            link::Panel { page, has_pages },
         ),
     )
     .await {}
@@ -105,8 +104,15 @@ fn setup_ssid(octets: [u8; 6]) -> Ssid {
 }
 
 fn publish(status: LinkStatus, saved: bool) {
-    let status = LinkStatus { saved, ..status };
-    let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::LinkReport(status)));
+    crate::bridge::deliver(status, saved);
+}
+
+/// Hands one list to both consumers at once: the panel's state and setup mode's page. A
+/// refresh that reached one and not the other would leave the phone and the panel showing
+/// different lists.
+pub(super) fn publish_scan(list: &ApList) {
+    crate::bridge::SCAN.publish(list);
+    provision::publish_scan(list);
 }
 
 fn seed_from(octets: [u8; 6]) -> u64 {

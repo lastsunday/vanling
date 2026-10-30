@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "5d349ba8dbabc8608c3832dad7f8a2b50486ff21"
-translated_at = "2026-10-28T00:00:00Z"
+source_file_hash = "dd35805721632156ace623277937df329889aa36"
+translated_at = "2026-10-30T09:23:38Z"
 +++
 
 # Playback Semantics
@@ -21,11 +21,11 @@ A sound is a one-shot: one tap plays one sound, it reports completion when it ru
 
 So the `Speaker` driver is three steps rather than one — `play()` starts it, `feed()` moves it along, and the driver says it is `done()`.
 
-The loop that ties the three together is the app's playback module (`crates/app/src/playback.rs`), because only it knows the cadence. The board owns the ring, because only it knows the DMA.
+The loop that ties the three together is the app's playback module (`crates/app/src/audio/mod.rs`), because only it knows the cadence. The board owns the ring, because only it knows the DMA.
 
 That loop is split into two tasks on two executors, because a cadence and a blocking call are two things that cannot be mixed.
 
-`feed_loop` does nothing but the 5 ms cadence and one memory write, and is spawned onto the S3's `FROM_CPU_INTR1` at `Priority2`. `control_loop` handles commands, the I2C behind `play()`/`set_muted()`, and reporting `finished` back on the intent bus, and stays on the cooperative `FROM_CPU_INTR0`.
+`feed_loop` does nothing but the 5 ms cadence and one memory write, and is spawned onto the S3's `FROM_CPU_INTR1` at `Priority2`. `control_loop` handles commands (a sound is parsed outside the lock and only handed to the driver inside it), the I2C behind `set_muted()`, and reporting `finished` back on the intent bus, and stays on the cooperative `FROM_CPU_INTR0`.
 
 The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tread on the ring the other is writing.
 
@@ -200,7 +200,7 @@ The comment above and the table are the only guard on this bit.
 
 One GDMA channel serves both halves of RX and TX (`I2s::new` splits the channel and `split` gives the two halves), which is the same shape the SPI driver already uses bidirectionally, so the board stays on `DMA_CH1` and needs no second channel.
 
-What the code does is **never park**: `feed_loop` feeds the idle stream unconditionally (`app/src/playback.rs`), topping up one silent arm every `FEED_MS`, so a sound and silence share the one DMA ring. The reason is that TX is the clock master and the microphone follows its BCLK/WS as a slave: stopping the peripheral would break the capture as well as the speaker. The cost is a wake-up every 5 ms to refill a silence nobody will ever hear.
+What the code does is **never park**: `feed_loop` feeds the idle stream unconditionally (`app/src/audio/mod.rs`), topping up one silent arm every `FEED_MS`, so a sound and silence share the one DMA ring. The reason is that TX is the clock master and the microphone follows its BCLK/WS as a slave: stopping the peripheral would break the capture as well as the speaker. The cost is a wake-up every 5 ms to refill a silence nobody will ever hear.
 
 `tx_stop()`'s parking arm is gone from the code (zero hits in the tree), so "does BCLK keep coming out after TX stops" is no longer the foundation of the design — it is an **unmeasured fact**: measure it on real silicon before going back to a parking arm.
 
@@ -248,7 +248,7 @@ moon run iot:smoke-host  # end to end: the catalogue, a drop, completion, mute
 
 They are in two places, because they need different things.
 
-The seven in `app/src/sounds.rs` under `moon run iot:test` walk the catalogue over `Sound::ALL` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
+The seven in `app/src/audio/sounds.rs` under `moon run iot:test` walk the catalogue over `Sound::ALL` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
 
 The six under `moon run iot:test-tool` are about **files and recipes**: that the `.mid` on disk is byte for byte what the recipes generate, that the directory holds no `.mid` no recipe claims, that the table's own shape rules hold (registers three semitones apart, lengths all different), and that the catalogue's `include_bytes!` filenames match the recipes. **A sound edited in a DAW without the `RECIPES` table updated makes `moon run iot:test-tool` go red.**
 

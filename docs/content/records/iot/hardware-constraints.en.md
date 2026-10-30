@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "1de69416561fb42ed2ba1c285c4d06251d797ebf"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "7a61d153e9ee3ba2363f5f22ec3fd90432beb1b9"
+translated_at = "2026-10-30T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -167,6 +167,29 @@ That build set no `IOT_WIFI_*`, and credential strings shift `_stack_end`, so th
 `[measured]` POOL grew 8 B while the wall widened 160 B, so other statics shrank by 168 B: B/C only move code, and LTO laid the result out again across the new module boundaries rather than any one thing being deliberately made smaller. The C6's +1,328 B is not attributed symbol by symbol — the C6 still has 204,848 B left, so only the number is recorded. `check-s3`, `build-s3`, `iot:image` and `check-features` (six host subsets plus nine bare-metal/C6 subsets) all pass this round.
 
 `[measured]` The first attempt went unmeasured because Docker Desktop's engine was down on this machine: `moon run iot:check-s3` stopped at `image vanling/xtensa:esp32s3_1.98.1.0 is missing` and `docker info` reported `Cannot connect to the Docker daemon at unix:///Users/yu/.docker/run/docker.sock`. After the engine came back (Server 28.5.1) the same tree produced the table above.
+
+### Two large board fields boxed: the wall is 35,616 B wider (`[measured]`, 2026-10-30)
+
+`[measured]` `Board` travels by value into `main`'s future, and that future lives wholly inside the `__embassy_main::POOL` static pool, so **every inline field is paid again as a static**. This round boxes the two devices the `lckfb_szpi_esp32s3` board carried by value (the field `light` is renamed to `screen` at the same time; the C6's `light` is a real WS2812 and stays):
+
+```rust
+screen: Option<Box<Screen>>,                    // was light: Option<Screen>
+audio: Option<Box<Es7210Rx<…, REFERENCE_SAMPLES>>>,   // was Option<Es7210Rx<…>>
+```
+
+`size_of` (probed under `check-s3` with `let _: [u8; 0] = [0u8; size_of::<T>()]`; the probe is not left in the tree): `Screen` **2,712 B** (`Diagnostics` is 2,568 B of it), `Option<Es7210Rx<…>>` **9,168 B** (the AEC's `AdaptiveFilter` dominates), `Board` **240 B** with both boxed (**12,112 B** with both inline, derived from the two readings above).
+
+| quantity | both boxed (this round) | screen only | neither | delta (neither → both) |
+| --- | --- | --- | --- | --- |
+| `_stack_start_cpu0 − _stack_end_cpu0` | `0x3fce9710 − 0x3fcd09b8` = **101,720 B** | 74,232 B | 66,104 B | **+35,616 B** |
+| margin (minus 65,536) | **36,184 B** | 8,696 B | 568 B | +35,616 B |
+| `__embassy_main::POOL` | **7,192 B** (`0x1c18`) | 34,696 B (`0x8788`) | 42,808 B (`0xa738`) | **−35,616 B** |
+
+All three readings come from the same tree and the same ruler (`nm -S apps/iot/target/xtensa-esp32s3-none-elf/release/vanling`), the only differences being those two boxings and the field rename. Each POOL drop is about three times the field's size (screen **−8,112 B** ≈ 3 × 2,712; microphone front end **−27,504 B** = 3 × 9,168), i.e. each value sits three times in the future's layout (board construction, the `take_*` temporary, and the landing in `WiredSurface`/`PollEntry`); the symbols are not attributed one by one.
+
+**The heap is unchanged**: both `Box`es are freed in `take_surfaces` / `take_audio` and the values move straight into the `Vec<WiredSurface<Screen>>` and the `PollEntry` `Box` that already existed, so the S3's 96 KB PSRAM heap peaks at the same size — those bytes simply land on the heap at boot and are moved again as they were before.
+
+`check-s3`, `check-c6`, `check-host`, `build-s3` and `cargo clippy -- -D warnings` on the S3 target all pass this round.
 
 ---
 

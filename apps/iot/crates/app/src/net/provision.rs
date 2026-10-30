@@ -24,20 +24,18 @@ use iot_core::provision::{
     Response, SEED_AT, SEED_SLOT, ScanJson, Status, mac_text, route, scan_json_row,
 };
 
-use crate::render::{JOIN, RESCAN};
+use crate::bridge::{JOIN, RESCAN};
 
 const HTTP_PORT: u16 = 80;
 const DNS_PORT: u16 = 53;
 const REQUEST_BYTES: usize = 2_048;
-// How long one connection may take over a request after its first byte. A page is answered in
-// ~100 ms; three seconds is long enough for a slow phone and short enough that one stalled
-// connection cannot hold a page socket.
+// A page answers in about 100 ms; 3 s absorbs a slow phone without letting one stalled
+// connection hold a socket.
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(3);
 const CLOSE_WAIT: Duration = Duration::from_millis(100);
 const PENDING_TIMEOUT: Duration = Duration::from_millis(500);
 const KEEP_ALIVE: Duration = Duration::from_secs(2);
 const LEAVE_GRACE: Duration = Duration::from_secs(2);
-/// How many connections the page can have open at once.
 pub const PAGE_SOCKETS: usize = 6;
 const PAGE_RX_BYTES: usize = 1_460;
 const PAGE_TX_BYTES: usize = 1_460;
@@ -45,8 +43,7 @@ const PAGE_TX_BYTES: usize = 1_460;
 static LATEST: Mutex<CriticalSectionRawMutex, RefCell<ApList>> =
     Mutex::new(RefCell::new(ApList::empty()));
 
-/// Hand the page the list the survey just published, by reference so the caller's own copy
-/// is not repeated in its frame.
+/// By reference: the caller's copy would otherwise be repeated in its frame.
 pub fn publish_scan(list: &ApList) {
     LATEST.lock(|cell| *cell.borrow_mut() = *list);
 }
@@ -57,12 +54,10 @@ fn latest_scan() -> ApList {
 
 static PAGE_READ: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
-/// Resolve once the page has answered a request since the last time this was taken.
 pub async fn page_read() {
     PAGE_READ.wait().await;
 }
 
-/// The access point's own network: this device at the setup address, with no way out.
 pub fn setup_config() -> Config {
     let address = Ipv4Addr::from(ADDRESS);
     Config::ipv4_static(StaticConfigV4 {
@@ -226,10 +221,8 @@ async fn page(stack: Stack<'_>, mac: [u8; 6]) {
         {
             Timer::after(Duration::from_millis(2)).await;
         }
-        // Every connection measured comes back already in `TimeWait` — the phone's FIN is in before
-        // our own is even acknowledged — so a bound reached is the exception and the one case worth a
-        // line. What ends that one is a RST, 100 ms after the body was acknowledged, where nothing is
-        // left to read (`@/records/iot/wifi.md`).
+        // `[实测]` connections come back already in `TimeWait`; the exception is a RST 100 ms
+        // after the body was acknowledged, with nothing left to read (`@/records/iot/wifi.md`).
         if !matches!(socket.state(), State::TimeWait | State::Closed) {
             log::warn!(
                 "[WIFI] the answer's socket was still {:?} after {} ms",

@@ -869,7 +869,7 @@ change"; the feel and the whole path below are only worth judging once that chan
 Exactly **one stretch** of "tap a row → type the passphrase → OK" can be reached through the
 glass: the coordinates travelling from the controller into a `GestureEvent`. Everything else is
 decided in the page's own coordinates, so a build can be made to **tap itself at the cells it
-draws**. An `IOT_PANEL_BENCH` build (`crates/app/src/panel.rs`) makes `credentials_from_build()`
+draws**. An `IOT_PANEL_BENCH` build (`crates/app/src/bench/panel.rs`) makes `credentials_from_build()`
 return `None`, so the product comes up on the "wait for the keyboard to name one" arm; then
 `PanelBench` publishes **one tap per pass** of the render loop, into the path a finger's taps take
 — `intent::translate` and the same `INTENT_BUS` ring.
@@ -928,7 +928,7 @@ round, when it had only seen the neighbour `ap1`, it reported that the named row
 list — the second round carried it. That line went from `error` to `warn` and now says "not yet in
 the list", because otherwise every healthy boot starts by scolding itself.
 
-The bench's own arithmetic is pinned on the host too (seven tests in `panel.rs`): which page the
+The bench's own arithmetic is pinned on the host too (seven tests in `bench/panel.rs`): which page the
 target is on, how many slides come first, which row a band's y lands on, **that the last tap is the
 `OK` cell**, that an open network is not treated as something to type at, that no run is built
 before there is a list, and **that the whole walk goes through in the real order**

@@ -5,26 +5,13 @@ extern crate alloc;
 
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
-use iot_core::drivers::board::{HasPanel, HasWifi};
-use iot_core::drivers::network::Front;
+use iot_core::drivers::board::{HasSurface, HasWifi};
+use iot_core::state::SurfaceRole;
 
 type Board = iot_bsp_esp::Board<'static>;
 
 #[global_allocator]
 static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
-
-// Sized for the renderer registry, device state and driver buffers; the frame buffer is the
-// board's static, shared with the camera DMA and the panel's SPI. The two parts differ because
-// the S3 heap is PSRAM and the C6 heap is internal DRAM (`@/records/iot/hardware-constraints.md`).
-#[cfg(feature = "esp32c6")]
-const HEAP_BYTES: usize = 64 * 1024;
-#[cfg(feature = "esp32s3")]
-const HEAP_BYTES: usize = 96 * 1024;
-
-#[cfg(feature = "esp32c6-devkitc-1")]
-const FRONT: Front = Front::AccessPoint;
-#[cfg(feature = "lckfb-szpi-esp32s3")]
-const FRONT: Front = Front::Panel;
 
 #[esp_rtos::main]
 async fn main(_spawner: Spawner) -> ! {
@@ -34,7 +21,10 @@ async fn main(_spawner: Spawner) -> ! {
 
     let saved = board.take_credentials();
     let network = iot_app::Network::of(station.is_some());
-    let panel = board.panel();
+    let surfaces = board.take_surfaces().expect("board has a wired surface");
+    let has_pages = surfaces
+        .iter()
+        .any(|wired| wired.role() == SurfaceRole::Pages);
 
     match join(
         iot_app::run(
@@ -43,9 +33,16 @@ async fn main(_spawner: Spawner) -> ! {
                 clock: iot_chip_esp::Clock,
                 feed,
                 network,
+                surfaces,
             },
         ),
-        iot_app::network::serve(station, saved, FRONT, panel),
+        iot_app::net::serve(
+            station,
+            saved,
+            iot_bsp_esp::FRONT,
+            has_pages,
+            &iot_app::bridge::PAGE,
+        ),
     )
     .await {}
 }
@@ -54,8 +51,8 @@ fn boot_board() -> (Board, iot_app::Feed) {
     let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
     iot_chip_esp::init_radio_heap();
-    iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
-    iot_app::network::report_heap_free(iot_chip_esp::heap_free);
+    iot_chip_esp::init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES);
+    iot_app::net::report_heap_free(iot_chip_esp::heap_free);
 
     log::info!("[IOT] boot complete");
 

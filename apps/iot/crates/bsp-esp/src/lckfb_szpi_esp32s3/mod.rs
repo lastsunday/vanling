@@ -30,14 +30,14 @@ use iot_core::config::MotionConfig;
 use iot_core::demand::DemandKey;
 use iot_core::drivers::audio::{AudioInput, CAPTURE_MS, CaptureSink};
 use iot_core::drivers::board::Board as BoardTrait;
-use iot_core::drivers::board::{HasAudio, HasCamera, HasPanel, HasPlayback, HasWifi};
+use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi, WiredSurface};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{
     BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
     TouchGestures,
 };
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
-use iot_core::state::Panel;
+use iot_core::drivers::network::Front;
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
@@ -230,13 +230,17 @@ fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<
     }
 }
 
+/// The front this board opens setup mode on: it has a panel, so the page is where a person
+/// configures it.
+pub const FRONT: Front = Front::Panel;
+
 /// Board-level support for the LCKFB SZPI ESP32-S3 display board.
 pub struct Board<'d> {
-    light: Option<Screen>,
+    screen: Option<Box<Screen>>,
     button: Option<PullButton<'d>>,
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
-    audio: Option<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>,
+    audio: Option<Box<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>>,
     speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
     camera: Option<Box<dyn FrameSource>>,
     radio: Option<WIFI<'static>>,
@@ -332,8 +336,9 @@ impl Board<'static> {
         pca9557.set_output(DVP_PWDN_BIT)?;
 
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
-        let mut light = Screen::new(0, panel, backlight, &mut frame_arena().0);
-        let mut camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, light.frame()) {
+        let mut screen = Box::new(Screen::new(0, panel, backlight, &mut frame_arena().0));
+        let frame = screen.frame();
+        let mut camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, frame) {
             Ok(camera) => Some(camera),
             Err(error) => {
                 log::warn!("[CAM] camera bring-up failed, the Camera page stays dark: {error:?}");
@@ -412,11 +417,11 @@ impl Board<'static> {
                         let transfer = rx
                             .read(capture::stream())
                             .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
-                        Some(Es7210Rx::new(
+                        Some(Box::new(Es7210Rx::new(
                             transfer,
                             codec,
                             reference::Side::wired(reference),
-                        ))
+                        )))
                     }
                     None => None,
                 };
@@ -440,15 +445,15 @@ impl Board<'static> {
         };
 
         hardware::identity();
-        hardware::Report::of([&mut light, &mut button, &mut touch, &mut motion])
-            .include(audio.as_mut())
+        hardware::Report::of([&mut *screen, &mut button, &mut touch, &mut motion])
+            .include(audio.as_deref_mut())
             .include(speaker.as_mut())
             .include(camera.as_mut())
             .finish();
 
         Ok((
             Self {
-                light: Some(light),
+                screen: Some(screen),
                 button: Some(button),
                 touch: Some(touch),
                 motion: Some(motion),
@@ -487,7 +492,7 @@ impl Board<'static> {
 
         Ok((
             Self {
-                light: None,
+                screen: None,
                 button: None,
                 touch: None,
                 motion: Some(motion),
@@ -559,7 +564,7 @@ impl Board<'static> {
 
         Ok((
             Self {
-                light: None,
+                screen: None,
                 button: None,
                 touch: None,
                 motion: None,
@@ -591,17 +596,19 @@ impl Board<'static> {
     pub fn take_capture(&mut self) -> Option<Box<dyn crate::virtual_components::EchoCapture>> {
         self.audio
             .take()
-            .map(|audio| Box::new(audio) as Box<dyn crate::virtual_components::EchoCapture>)
+            .map(|audio| audio as Box<dyn crate::virtual_components::EchoCapture>)
     }
 }
 
 impl BoardTrait for Board<'static> {}
 
-impl iot_core::drivers::board::HasLight for Board<'static> {
-    type Light = Screen;
+impl iot_core::drivers::board::HasSurface for Board<'static> {
+    type Surface = Screen;
 
-    fn take_lights(&mut self) -> Option<Vec<Self::Light>> {
-        self.light.take().map(|light| vec![light])
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
+        self.screen
+            .take()
+            .map(|screen| vec![WiredSurface::Pages(*screen)])
     }
 }
 
@@ -666,7 +673,7 @@ impl HasAudio for Board<'static> {
             PollEntry::new(
                 2,
                 DemandKey::AUDIO,
-                Box::new(AudioInput::new(audio, sink)),
+                Box::new(AudioInput::new(*audio, sink)),
                 Box::new(PassThrough),
                 CAPTURE_MS,
             )
@@ -686,11 +693,5 @@ impl HasWifi for Board<'static> {
     fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
         iot_chip_esp::ungate_radio();
         self.radio.take().and_then(crate::components::wifi::start)
-    }
-}
-
-impl HasPanel for Board<'static> {
-    fn panel(&self) -> Panel {
-        Panel::Wired
     }
 }

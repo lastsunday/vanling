@@ -153,6 +153,10 @@ impl<D: I2c> InputSource for Ft6336<D>
 where
     D::Error: core::fmt::Debug,
 {
+    fn name(&self) -> &'static str {
+        "touch"
+    }
+
     fn poll(&mut self, _now_ms: u64) -> Option<InputEvent> {
         if !self.sensitivity_applied {
             self.sensitivity_applied = true;
@@ -253,7 +257,7 @@ mod tests {
         use crate::hardware::{Address, SelfCheck};
 
         let touch = touching((96, 133));
-        assert_eq!(touch.name(), "touch");
+        assert_eq!(iot_core::drivers::input::InputSource::name(&touch), "touch");
         assert_eq!(touch.id(), Some(Address::new(FT6336_I2C_ADDR)));
     }
 

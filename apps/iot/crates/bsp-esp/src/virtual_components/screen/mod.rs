@@ -93,11 +93,11 @@ impl RgbLight for Screen {
     }
 
     fn page_ground(&self, page: DisplayPage) -> Option<Rgb> {
-        matches!(page, DisplayPage::Network | DisplayPage::Camera).then_some(Rgb(0, 0, 0))
+        page.ground()
     }
 
     fn page_draws_frames(&self, page: DisplayPage) -> bool {
-        page == DisplayPage::Camera
+        page.draws_frames()
     }
 }
 

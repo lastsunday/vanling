@@ -1,32 +1,15 @@
-//! The radio and the IP stack, and nothing else — no panel, no touch, no motion,
-//! no audio *task*. Every number printed here measures a path the product will run,
-//! without the product's other tasks contending for the same executor, so a fault
-//! belongs to the network path rather than to whatever else happened to be awake.
+//! The radio and the IP stack, and nothing else — no panel, no touch, no motion, no audio
+//! *task* — so a fault belongs to the network path rather than to whatever else was awake.
 //!
-//! What it answers, in the order it answers them:
+//! It reports scan, association and DHCP as three numbers because they are three budgets (the
+//! radio's, the access point's reply and retries, the lease offer); it prints the driver's heap
+//! every few seconds so a thin margin shows while the link is up; and it answers whether the
+//! driver's PHY-calibration restore path is reachable here — esp-radio implements that hook as
+//! `todo!()` under `cfg(xtensa)`, and whether it runs depends on a `phy_init` partition existing.
 //!
-//! * **Does the link come up, and how long does each stage take**: scan, then
-//!   association, then DHCP. Three numbers because they are three different
-//!   budgets — the first is the radio's, the second the access point's reply and
-//!   the retries, the third the network's lease offer — and a page showing
-//!   "connecting" across all three hides which one is slow.
-//! * **Whether this build's memory budget is right.** The driver's heap is
-//!   reported every few seconds, so a thin margin shows up while the link is up
-//!   rather than as an unexplained failure much later.
-//! * **Whether the driver's PHY-calibration restore path is reachable on this
-//!   chip.** esp-radio implements that hook as `todo!()` under `cfg(xtensa)` and
-//!   this part is Xtensa; whether the driver calls it depends on whether a
-//!   `phy_init` partition exists, which is this repository's choice. If it is
-//!   called the panic is immediate and says so, which is the answer.
-//!
-//! The board's own bring-up still happens, because it arrives with the board feature and the
-//! probe inherits it. How much that is depends on the board: the S3's brings up a panel, a
-//! camera and an audio codec, the C6's a button and an LED. It costs DRAM and boot time
-//! rather than accuracy — nothing here competes for the executor.
-//!
-//! Credentials come from the build. A probe whose input were a keystroke protocol
-//! would be measuring that protocol as much as the link, and the credentials would
-//! have to be typed on a panel this probe does not drive.
+//! The board's own bring-up still runs, since the board feature brings it along; it costs DRAM
+//! and boot time, not accuracy. Credentials come from the build: a probe taking them over a
+//! keystroke protocol would measure that protocol too, on a panel this probe does not drive.
 
 #![no_std]
 #![no_main]
@@ -51,13 +34,9 @@ const SCAN_GAP_MS: u64 = 500;
 
 const SOCKETS: usize = 1;
 
-// Sized by the board's own bring-up: the S3's allocates an 11,728-byte `Box` inside
-// `Board::new`, so anything under ~16 KiB panics there once the bring-up has already
-// succeeded. The driver's allocations do not come from here — they come from the C heap the
-// chip layer set up, and where *that* lives differs per part.
-//
-// The product's number, because the product is the one that has to keep working, and the one
-// the chip layer offers a heap for on every part that carries a radio.
+// The S3's `Board::new` allocates an 11,728-byte `Box`, so anything under ~16 KiB panics there
+// after the bring-up has already succeeded. The driver's own allocations come from the C heap
+// the chip layer set up, not from here.
 const HEAP_BYTES: usize = 64 * 1024;
 
 #[global_allocator]
@@ -306,8 +285,7 @@ async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
 }
 
 fn credentials_from_build() -> Option<(&'static str, &'static str)> {
-    let ssid = option_env!("IOT_WIFI_SSID")?;
-    let password = option_env!("IOT_WIFI_PSK")?;
+    let (ssid, password) = iot_app::boot::build_wifi_credentials()?;
     log::info!("[PROBE] this build joins the network named {ssid:?}");
     Some((ssid, password))
 }

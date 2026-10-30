@@ -97,6 +97,19 @@ pub enum DemandKind {
     Display,
 }
 
+impl DemandKind {
+    /// The name a diagnostic line calls this kind of device by.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Interaction => "input",
+            Self::Motion => "motion",
+            Self::Audio => "audio",
+            Self::Camera => "camera",
+            Self::Display => "display",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DemandKey {
     kind: DemandKind,
@@ -175,13 +188,7 @@ impl core::fmt::Display for EffectiveDemand {
 
 impl core::fmt::Display for DemandKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let name = match self.kind {
-            DemandKind::Interaction => "input",
-            DemandKind::Motion => "motion",
-            DemandKind::Audio => "audio",
-            DemandKind::Camera => "camera",
-            DemandKind::Display => "display",
-        };
+        let name = self.kind.name();
         match self.instance {
             0 => f.write_str(name),
             instance => write!(f, "{name}{instance}"),

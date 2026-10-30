@@ -1,6 +1,5 @@
 //! What the linear AEC costs per audio tick, on this chip, and whether the second core
-//! changes the answer. **It does not** — the same measurement on core 0 and core 1 gave
-//! identical digits across 20+ runs.
+//! changes the answer. **It does not**: 20+ runs gave identical digits on both cores.
 
 #![no_std]
 #![no_main]
@@ -62,7 +61,7 @@ async fn main(_spawner: Spawner) -> ! {
 
     let cpu_hz = u64::from(esp_hal::clock::cpu_clock().as_hz());
     banner(0);
-    iot_app::probe::echo::measure(cpu_hz).await;
+    iot_app::bench::probe::echo::measure(cpu_hz).await;
 
     GO.signal(cpu_hz);
     park().await
@@ -86,7 +85,7 @@ async fn core1_measure() {
         Cpu::current() as usize
     );
     banner(1);
-    iot_app::probe::echo::measure(cpu_hz).await;
+    iot_app::bench::probe::echo::measure(cpu_hz).await;
     log::info!("[ECHO] second core done");
     loop {
         core::hint::spin_loop();

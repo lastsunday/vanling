@@ -9,6 +9,15 @@ mod esp32c6;
 #[cfg(feature = "esp32s3")]
 mod esp32s3;
 
+/// The general-purpose heap a product image starts with: the renderer registry, device state
+/// and driver buffers live here, while the frame buffer is the board's own static, shared with
+/// the camera DMA. The S3's is PSRAM and the C6's internal DRAM
+/// (`@/records/iot/hardware-constraints.md`).
+#[cfg(feature = "esp32s3")]
+pub const PRODUCT_HEAP_BYTES: usize = 96 * 1024;
+#[cfg(feature = "esp32c6")]
+pub const PRODUCT_HEAP_BYTES: usize = 64 * 1024;
+
 #[cfg(feature = "esp32c6")]
 use esp32c6::window;
 #[cfg(feature = "esp32s3")]

@@ -45,8 +45,48 @@ pub fn survey_pause_after(front: Front, empty_rounds: u8, idle_rounds: u8) -> Op
 }
 
 /// Whether the access point this setup raises starts under a passphrase.
-pub const fn setup_ap_starts_secured(panel: bool, from_splash: bool) -> bool {
-    panel && !from_splash
+pub const fn setup_ap_starts_secured(has_pages: bool, from_splash: bool) -> bool {
+    has_pages && !from_splash
+}
+
+/// How many association windows in a row may pass without an address before the link is
+/// given up and joined again.
+pub const ADDRESS_LOST_WINDOWS: u8 = 3;
+
+/// Counts consecutive windows without an address.
+///
+/// An address that appears resets the run: a link that loses its lease once is not the same
+/// as one that never got it. The judgement lives here rather than in the link loop because
+/// the loop only ever runs on hardware.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddressWatch {
+    missing: u8,
+    limit: u8,
+}
+
+impl AddressWatch {
+    pub const fn new(limit: u8) -> Self {
+        Self { missing: 0, limit }
+    }
+
+    /// Feed one window's address; `true` once the run has reached the limit.
+    pub fn observe(&mut self, address: Option<Ipv4>) -> bool {
+        match address {
+            Some(_) => {
+                self.missing = 0;
+                false
+            }
+            None => {
+                self.missing = self.missing.saturating_add(1);
+                self.missing >= self.limit
+            }
+        }
+    }
+
+    /// How many windows in a row have gone without an address.
+    pub const fn missing(&self) -> u8 {
+        self.missing
+    }
 }
 
 /// How a link stopped being held, as far as [`front_after_link`] is concerned.
@@ -986,6 +1026,27 @@ mod tests {
     }
 
     #[test]
+    fn a_link_that_never_gets_an_address_is_given_up_after_its_windows() {
+        let mut watch = AddressWatch::new(ADDRESS_LOST_WINDOWS);
+        let address = Ipv4::from_octets([192, 168, 1, 136]);
+
+        assert!(!watch.observe(None), "one window is a hiccup");
+        assert!(!watch.observe(Some(address)), "an address ends the run");
+        assert_eq!(watch.missing(), 0);
+        assert!(!watch.observe(None));
+        assert!(!watch.observe(None));
+        assert!(
+            watch.observe(None),
+            "the run reached the limit and the link has to be joined again"
+        );
+        assert!(
+            !watch.observe(Some(address)),
+            "a link that gets its address back is not given up"
+        );
+        assert_eq!(watch.missing(), 0);
+    }
+
+    #[test]
     fn an_address_is_what_makes_the_link_connected() {
         let address = Ipv4::from_octets([192, 168, 1, 136]);
         let connecting = LinkStatus {
@@ -1040,17 +1101,17 @@ mod tests {
     }
 
     #[test]
-    fn an_access_point_starts_secured_only_from_a_running_panel() {
-        for (panel, from_splash, secured) in [
+    fn an_access_point_starts_secured_only_from_a_running_display() {
+        for (has_pages, from_splash, secured) in [
             (true, false, true),
             (true, true, false),
             (false, false, false),
             (false, true, false),
         ] {
             assert_eq!(
-                setup_ap_starts_secured(panel, from_splash),
+                setup_ap_starts_secured(has_pages, from_splash),
                 secured,
-                "panel {panel}, splash {from_splash}"
+                "display {has_pages}, splash {from_splash}"
             );
         }
     }

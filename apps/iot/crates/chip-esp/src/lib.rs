@@ -13,7 +13,7 @@ pub(crate) mod logging;
 #[cfg(feature = "radio")]
 mod radio;
 
-pub use heap::{heap_free, init_heap};
+pub use heap::{PRODUCT_HEAP_BYTES, heap_free, init_heap};
 
 /// Restarts the part from a clean boot.
 pub fn reset() -> ! {

@@ -110,6 +110,8 @@ Tone::fill
 
 `[实测]` 修法是拆开：`feed()` 只**记录**一个 `Recovery`，`recover()` 在协作侧执行真正的重建。
 
+边界也不止「中断不 log」：`recover()` 在**喂数中断也会取的同一把锁里**执行，所以它同样不能 log、不能分配——重建结果经 `Recovery::repaired` / `restarts` 带回调用方，日志留在锁外。drain 边沿由 `Speaker::needs_recovery()` 报给喂数循环，后者用 `FEED_WAKE` 唤醒协作侧；空闲的静音环因此不再每 5 ms 产生一次「结束」唤醒。
+
 修法里有一处顺序是反直觉的、也是最容易改错的：
 
 1. `feed()` 必须**先 push 再记录**——往活的 transfer 写只有这一条路，而刚排空的环全是空的，这个 push 就是给重启预热

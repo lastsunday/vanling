@@ -198,7 +198,7 @@ impl DeviceManager {
         if !self.state.link.is_leavable() {
             return;
         }
-        if self.state.panel.is_wired() {
+        if self.state.has_pages() {
             self.state.setup.confirm = Some(Confirm::Leave);
         } else {
             self.state.leave = true;
@@ -763,23 +763,28 @@ mod network_page {
 
     #[test]
     fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
-        for panel in [Panel::Wired, Panel::Absent] {
-            let mut manager = DeviceManager::new().with_network(true).with_panel(panel);
+        for kinds in [
+            [SurfaceRole::Pages, SurfaceRole::Absent],
+            [SurfaceRole::Lamp, SurfaceRole::Absent],
+        ] {
+            let mut manager = DeviceManager::new()
+                .with_network(true)
+                .with_surface_roles(kinds);
             long_press_the_button(&mut manager);
-            assert!(manager.setup_wanted(), "{panel:?}: the request is latched");
+            assert!(manager.setup_wanted(), "{kinds:?}: the request is latched");
             assert_eq!(
                 manager.state().setup.confirm,
                 None,
-                "{panel:?}: the splash carries no question"
+                "{kinds:?}: the splash carries no question"
             );
             assert!(
                 !manager.take_leave(),
-                "{panel:?}: the request is not a leave"
+                "{kinds:?}: the request is not a leave"
             );
             assert_eq!(
                 manager.state().page,
                 DisplayPage::Splash,
-                "{panel:?}: the page keeps its window"
+                "{kinds:?}: the page keeps its window"
             );
         }
     }
@@ -820,7 +825,7 @@ mod network_page {
         let mut manager = landed(
             DeviceManager::new()
                 .with_network(true)
-                .with_panel(Panel::Absent),
+                .with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent]),
         );
         link_up(&mut manager, b"neighbour");
         let before = manager.state().lights[0];
@@ -841,7 +846,8 @@ mod network_page {
 
     #[test]
     fn a_strip_leave_on_a_board_with_no_screen_is_done_rather_than_asked_about() {
-        let mut manager = on_network_page().with_panel(Panel::Absent);
+        let mut manager =
+            on_network_page().with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent]);
         link_up(&mut manager, b"neighbour");
 
         tap_strip(&mut manager);
@@ -1636,10 +1642,10 @@ mod network_page {
     }
 
     #[test]
-    fn a_board_with_no_panel_has_no_front_to_switch_to() {
+    fn a_board_with_no_display_has_no_front_to_switch_to() {
         let mut manager = DeviceManager::new()
             .with_network(true)
-            .with_panel(Panel::Absent);
+            .with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent]);
         setup_mode(&mut manager, false);
         manager.apply_business(BusinessIntent::SwitchFront);
         assert!(

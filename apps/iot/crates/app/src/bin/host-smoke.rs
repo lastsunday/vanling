@@ -9,17 +9,18 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
-use iot_app::render::{FORGET, JOIN, RESCAN, SCAN};
+use iot_app::bridge::{FORGET, JOIN, RESCAN, SCAN};
 use iot_app::{Feed, Network, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
-use iot_core::diagnostics::Diagnostics;
+use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL, CaptureSink,
     SAMPLES_PER_COLUMN, SampleStream, dbfs,
 };
 use iot_core::drivers::board::{
-    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasLight, HasMotion, HasPanel, HasPlayback,
+    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasMotion, HasPlayback, HasSurface,
+    WiredSurface,
 };
 use iot_core::drivers::camera::{
     CameraCounters, CameraTarget, FrameAdvance, FrameOwner, FrameSource, WindowGeometry,
@@ -38,7 +39,7 @@ use iot_core::drivers::network::{
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::intent::{BusinessIntent, Intent, PALETTE};
 use iot_core::keyboard::Key;
-use iot_core::state::{Confirm, DisplayPage, Panel, PlaybackPhase};
+use iot_core::state::{Confirm, DisplayPage, PlaybackPhase};
 
 static PAINTED: Mutex<Vec<(u8, Fill, Rgb)>> = Mutex::new(Vec::new());
 
@@ -82,10 +83,9 @@ const HOST_POLL_SAMPLES: usize = SAMPLES_PER_COLUMN as usize * COLUMNS_PER_POLL 
 
 const HOST_RESTARTS: u16 = 3;
 
-// Half a period of the fake's 1 kHz tone: a 48-sample square wave at the 48 kHz
-// capture rate, whose impulsive harmonics the A-weighting passes substantially,
-// so the meter climbs and the smoke can see the level travel. A DC constant
-// would be filtered to silence and prove nothing.
+// Half a period of the fake's 1 kHz tone (a 48-sample square at 48 kHz): its impulsive
+// harmonics pass the A-weighting, so the meter climbs. A DC constant would be filtered to
+// silence and prove nothing.
 const HOST_TONE_HALF_PERIOD: usize = 24;
 
 struct HostAudio {
@@ -189,8 +189,7 @@ impl Button for HostButton {
 struct HostLight {
     instance: u8,
     camera: Option<Box<dyn FrameSource>>,
-    // The same ownership rule the panel uses, so that a page change the panel would
-    // deadlock on is one this surface can be shown to survive.
+    // The panel's ownership rule, so a page change that would deadlock there is shown to survive here.
     owner: FrameOwner,
     page: Option<DisplayPage>,
 }
@@ -277,7 +276,7 @@ impl CameraTarget for HostLight {
     }
 }
 
-impl iot_core::diagnostics::DiagnosticsSink for HostLight {
+impl DiagnosticsSink for HostLight {
     fn consume(&mut self, diagnostics: &Diagnostics) {
         let page_changed = self.page != Some(diagnostics.page);
         if page_changed && self.owner.is_camera() {
@@ -389,17 +388,13 @@ impl HostBoard {
 
 impl BoardTrait for HostBoard {}
 
-impl HasPanel for HostBoard {
-    fn panel(&self) -> Panel {
-        Panel::Wired
-    }
-}
+impl HasSurface for HostBoard {
+    type Surface = HostLight;
 
-impl HasLight for HostBoard {
-    type Light = HostLight;
-
-    fn take_lights(&mut self) -> Option<Vec<Self::Light>> {
-        self.lights.take()
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
+        self.lights
+            .take()
+            .map(|lights| lights.into_iter().map(WiredSurface::Pages).collect())
     }
 }
 
@@ -533,7 +528,10 @@ impl ClockSink for HostClock {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    let board = HostBoard::new();
+    let mut board = HostBoard::new();
+    let surfaces = board
+        .take_surfaces()
+        .expect("the host board wires two surfaces");
     match select(
         run(
             board,
@@ -541,6 +539,7 @@ async fn main(_spawner: Spawner) {
                 clock: HostClock,
                 feed: Feed::Inline,
                 network: Network::Present,
+                surfaces,
             },
         ),
         scenario(),
@@ -623,9 +622,8 @@ async fn scenario() {
         AUDIO_POLLS.load(Ordering::SeqCst) > 0,
         "the capture source was never polled"
     );
-    // The page can be on screen before the state layer has committed a column:
-    // the poll and the commit are separate passes, so wait for the column the
-    // assertion below is about rather than sampling the instant the page lands.
+    // The page can be on screen before the state layer commits a column: poll and commit are
+    // separate passes, so wait for the column this assertion is about.
     attempts = 0;
     while AUDIO_COLUMNS.load(Ordering::SeqCst) == 0 && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
@@ -792,9 +790,8 @@ async fn scenario() {
         "the camera page was left without the buffer being handed back"
     );
 
-    // ... and the surface has to accept a fill again. Both halves of the deadlock: the
-    // release above is what makes this reachable, and a refused fill here is what it looked
-    // like on the panel — the last camera frame left on screen for good.
+    // Both halves of the deadlock: the release above makes a fill reachable again, and a refused
+    // fill here is what the panel showed — the last camera frame left on screen for good.
     attempts = 0;
     while PAINTED.lock().unwrap().len() == painted_before && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;

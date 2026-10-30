@@ -189,9 +189,9 @@ impl<C> Es8311Tx<C> {
         self.reference.advance_played(moved);
     }
 
-    fn restart(&mut self) {
+    fn restart(&mut self) -> bool {
         let Some(transfer) = self.transfer.take() else {
-            return;
+            return false;
         };
         let (i2s_tx, ring) = transfer.stop();
         match i2s_tx.write(ring) {
@@ -199,28 +199,19 @@ impl<C> Es8311Tx<C> {
                 self.restarts += 1;
                 self.pushed_frames = PUSH_FRAMES;
                 self.played_frames = 0;
-                log::warn!(
-                    "[PLAY] restarted the outgoing DMA, recovery {}",
-                    self.restarts
-                );
                 self.transfer = Some(transfer);
+                true
             }
-            Err((error, _, _)) => {
-                log::error!("[PLAY] the outgoing DMA refused the ring: {error:?}");
+            Err(_) => {
                 self.voice = None;
                 self.tail = false;
+                false
             }
         }
     }
 
-    fn recover_drained(&mut self, recovery: Recovery) {
-        let sound = if recovery.playing { "playing" } else { "idle" };
-        log::warn!(
-            "[PLAY] the outgoing DMA ran the ring dry after {} ms idle, {} of {RING_BYTES} bytes free, sound {sound}",
-            self.watchdog.idle_limit_ms(),
-            recovery.free_bytes,
-        );
-        self.restart();
+    fn recover_drained(&mut self) -> bool {
+        self.restart()
     }
 }
 impl<C> Speaker for Es8311Tx<C>
@@ -247,7 +238,11 @@ where
                 if drained {
                     self.pending = Some(Recovery {
                         free_bytes: transfer.available_bytes(),
+                        ring_bytes: RING_BYTES,
+                        runway_ms: self.watchdog.idle_limit_ms(),
                         playing: self.voice.is_some(),
+                        repaired: false,
+                        restarts: self.restarts,
                     });
                 }
                 drained
@@ -266,10 +261,18 @@ where
         still
     }
 
+    fn needs_recovery(&self) -> bool {
+        self.pending.is_some()
+    }
+
     fn recover(&mut self) -> Option<Recovery> {
         let recovery = self.pending.take()?;
-        self.recover_drained(recovery);
-        Some(recovery)
+        let repaired = self.recover_drained();
+        Some(Recovery {
+            repaired,
+            restarts: self.restarts,
+            ..recovery
+        })
     }
 }
 

@@ -41,8 +41,6 @@ A pipeline-logic system whose trigger points are intents.
          1. no speaker handle
    1. network run
 
-#### Possible simplifications
-
 ## Layers
 
 `iot-core (pure logic) → iot-ui (page rendering) / iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (single-task binary)`
@@ -58,6 +56,40 @@ A pipeline-logic system whose trigger points are intents.
 - **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. Reading-to-glyph arithmetic, the font and page layout moved with the page layer into `iot-ui`; the peers left in `core` (`overlay`/`stamp`/`keyboard`) are there because both the pages and `intent` read them.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
+
+## Inside `iot-app`
+
+`app/src/` is split by domain; the composition root only wires:
+
+| Path | Responsibility |
+| --- | --- |
+| `lib.rs` | composition root: take capabilities, build `DeviceManager`, start the four futures |
+| `main.rs` | chip bring-up, executor choice, family entry |
+| `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
+| `bridge.rs` | panel ↔ network contract: `Latch`/`Handoff`/`Latest`, the six signals, `Outbound`/`Inbound`, `PageWatch` |
+| `pipeline.rs` | the intent loop `run_loop`: apply intents, publish state, wait for the next frame |
+| `surface/{mod,light}.rs` | `Render` registry / `LightRenderer` |
+| `frame.rs` | `FrameClock` (logical frames, including catch-up) |
+| `input.rs` | polling, demand scheduling, gesture recognition |
+| `audio/{mod,dispatch,capture,sounds}.rs` | playback task, state→command, microphone window, sound catalogue |
+| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`: stack, link, panel-side setup, AP services, survey, credentials |
+| `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
+| `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
+
+Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the compiler does not
+check module cycles inside a crate):
+
+```
+main → lib → { boot, pipeline, bridge, net }
+pipeline → { bridge, surface, input, audio, bench::replay }
+net      → { bridge, input }
+audio    → ∅
+```
+
+- `bridge` carries no `wifi` gate: the host build still holds `INBOUND`/`OUTBOUND`, nobody answers
+- `net` does not reach `surface`/`pipeline`: the network task reads `PAGE` from `bridge`, not device state
+- `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
+- `core` does not know `iot_app`
 
 ## Composition (three orthogonal axes)
 
@@ -171,7 +203,7 @@ The shared slot's shape follows from that constraint: embassy-sync's blocking mu
 
 `Intent` is the opposite case — an event — so those still travel on a bus.
 
-The capture window is a third shape: a **window**, not an event (only the newest one means anything), and not shared state either (nobody writes a common slot — the board hands over the frame the driver just folded, during its own poll). It therefore rides a single-slot contract: `HasAudio::take_audio(&'static dyn CaptureSink)` gives the board the destination, `input_task`'s poll publishes into it, and `render_loop` takes from it after the intents.
+The capture window is a third shape: a **window**, not an event (only the newest one means anything), and not shared state either (nobody writes a common slot — the board hands over the frame the driver just folded, during its own poll). It therefore rides a single-slot contract: `HasAudio::take_audio(&'static dyn CaptureSink)` gives the board the destination, `input_task`'s poll publishes into it, and `run_loop` takes from it after the intents.
 
 The second reason is width: every slot of a `Channel<T, N>` is allocated at `size_of::<T>()`, so the slot width is set by the widest event variant — a capture event carrying an envelope (1.76 KB) would price the eight-slot `INTENT_BUS` at 14,184 B of internal DRAM for the one frame the panel reads. Without that variant `INTENT_BUS` is 896 B and the contract itself 1,824 B (recorded in the [Wi-Fi record](@/records/iot/wifi.md)).
 
@@ -201,7 +233,7 @@ So this repository's answer is that the capture path accepts no poll slower than
 
 ### Timing
 
-`render_loop` writes the slot → `input_task` reads it on the next `INPUT_BASE_MS` tick. "Scene change → demand in force" is one tick plus however long `render_loop` is held.
+`run_loop` writes the slot → `input_task` reads it on the next `INPUT_BASE_MS` tick. "Scene change → demand in force" is one tick plus however long `run_loop` is held.
 
 #### The ceiling is the longest single hold, not a percentage
 
@@ -248,7 +280,7 @@ A refusal is written into the demand: the device it names leaves the demand the 
 
 The diagram has `Logic` calling `Render` and `Configurator` separately.
 
-But the parts live in `input_task`, which `render_loop` cannot reach, so the configurator sits with the parts too: it needs the board's declared capabilities to resolve a mode, and a refusal should be reported against the part that actually refused.
+But the parts live in `input_task`, which `run_loop` cannot reach, so the configurator sits with the parts too: it needs the board's declared capabilities to resolve a mode, and a refusal should be reported against the part that actually refused.
 
 The configurator is realised alongside the demand, and `[DEMAND]` reports the resulting schedule.
 
@@ -271,7 +303,7 @@ Wiring:
 | Consumer      | How it gets the demand                                                                                                                                                                                                                |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `input_task`  | the shared demand, borrowed once inside a critical section each tick, scheduling by `PollEntry.key()` (the cadence also asking the driver `accepts_slower_poll`)                                                                      |
-| `render_loop` | the writer; the page is the product's declaration, so it is written here rather than each consumer deriving its own                                                                                                                   |
+| `run_loop` | the writer; the page is the product's declaration, so it is written here rather than each consumer deriving its own                                                                                                                   |
 | camera        | `DiagnosticsSink` (an existing channel), gated on "the demand no longer asks for frames" rather than on "the page changed"                                                                                                            |
 | `feed_task`   | deliberately not fed. Its existence supplies the microphone clock, so it is the source of the audio path's clock rather than a consumer of its demand; gating it would make the one thing nothing may switch off switchable by a page |
 
@@ -339,7 +371,7 @@ The per-device figures and their individual basis labels are in the [implementat
 
 The boot page (`with_boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
 
-The capability test is one bool per page (`is_backed`), injected at the composition point: motion, audio, playback, camera and the link. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `iot_app::Network` is shaped like `Feed`: **a wiring fact passed in as an argument**, not something `run` turns round and asks the board about — the screen is the one exception, which is what `HasPanel` exists for.
+The capability test is one bool per page (`is_backed`), injected at the composition point: motion, audio, playback, camera and the link. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `iot_app::Network` is shaped like `Feed`: **a wiring fact passed in as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`network`; `run` only copies them into `surface_roles` — no surface is ever asked back whether it draws pages, and an empty slot never appears as a handle.
 
 This rule exists because of a defect it fixed.
 

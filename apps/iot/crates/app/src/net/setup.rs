@@ -11,20 +11,24 @@ use iot_core::drivers::network::{
     Credentials, Front, JoinRequest, LinkStatus, Ssid, Station, SurveyHistory,
 };
 use iot_core::intent::{BusinessIntent, Intent};
+use iot_core::state::DisplayPage;
 
 use super::link::{Hold, Provenance, Refusal, hold};
 use super::store::{drop_saved, has_saved, remark};
 use super::survey::{Rest, survey};
-use super::{MAC, SETUP_SOCKETS, hardware_octets, heap_free, park, publish, seed_from};
+use super::{
+    MAC, SETUP_SOCKETS, hardware_octets, heap_free, park, publish, publish_scan, seed_from,
+};
+use crate::bridge::{JOIN, LEAVE, SETUP_ASK, SetupAsk};
 use crate::input::INTENT_BUS;
-use crate::render::{JOIN, LEAVE, SETUP_ASK, SetupAsk};
 
 pub(super) struct Setup<'d> {
     pub(super) name: &'d Ssid,
     pub(super) resources: &'d mut StackResources<SETUP_SOCKETS>,
     pub(super) front: &'d mut Front,
-    pub(super) panel: bool,
+    pub(super) has_pages: bool,
     pub(super) secure_on_entry: bool,
+    pub(super) page: &'static crate::bridge::PageWatch,
 }
 
 #[derive(Clone, Copy)]
@@ -74,13 +78,10 @@ pub(super) async fn unconfigured<S, R>(
     loop {
         let (credentials, origin) = match pending.take() {
             Some(chosen) => chosen,
-            None => {
-                // The panel closed setup mode; there is nothing here to join.
-                match configure(station, &mut history, saved, cancellable, setup).await {
-                    Some(chosen) => chosen,
-                    None => return,
-                }
-            }
+            None => match configure(station, &mut history, saved, cancellable, setup).await {
+                Some(chosen) => chosen,
+                None => return,
+            },
         };
         log::info!(
             "[WIFI] joining the network setup named: \"{}\"",
@@ -123,8 +124,9 @@ where
     let setup_name = setup.name;
     let resources = &mut *setup.resources;
     let front = &mut *setup.front;
-    let panel = setup.panel;
+    let has_pages = setup.has_pages;
     let secure_on_entry = setup.secure_on_entry;
+    let page = setup.page;
     SETUP_ASK.clear();
     loop {
         SETUP_ASK.clear();
@@ -138,7 +140,7 @@ where
                 };
                 publish(face.status(station.status()), has_saved(saved));
                 match select(
-                    setup_credential(station, history, saved, face, false),
+                    setup_credential(station, history, saved, face, false, page),
                     SETUP_ASK.ready(),
                 )
                 .await
@@ -171,8 +173,12 @@ where
                         }
                     };
                     let seed = seed_from(hardware_octets(&device));
-                    let (stack, runner) =
-                        embassy_net::new(device, crate::provision::setup_config(), resources, seed);
+                    let (stack, runner) = embassy_net::new(
+                        device,
+                        crate::net::provision::setup_config(),
+                        resources,
+                        seed,
+                    );
                     log::info!(
                         "[WIFI] setup access point \"{}\" is up, {}",
                         setup_name.as_display_text().unwrap_or("<not drawable>"),
@@ -190,22 +196,19 @@ where
                     };
                     publish(face.status(station.status()), has_saved(saved));
 
-                    // The page's future is boxed rather than held inline, and that is a memory
-                    // decision rather than a convenience: it is four server loops with their socket
-                    // buffers, several kilobytes of frame, and this whole chain of futures lives
-                    // inside the product's one task — whose pool is a fixed static, and that static
-                    // is the scarce resource on the S3 (see `@/records/iot/wifi.md`). The heap it
-                    // moves to is PSRAM on the S3 and spare DRAM on the C6, and one allocation for a
-                    // loop that ends only when it is dropped is the cheapest thing on offer here.
-                    let page = Box::pin(crate::provision::serve(
+                    // Boxed, not inline: four server loops with their socket buffers inside the
+                    // product's one task, whose static pool is the scarce resource on the S3
+                    // (`@/records/iot/wifi.md`). One allocation for a loop that ends on drop is
+                    // the cheapest thing on offer.
+                    let page_serve = Box::pin(crate::net::provision::serve(
                         stack,
                         runner,
                         MAC.lock(|cell| cell.get()),
                     ));
                     log::info!("[HEAP] {} B free with setup mode's future up", heap_free());
                     let ending = select4(
-                        setup_credential(station, history, saved, face, false),
-                        page,
+                        setup_credential(station, history, saved, face, false, page),
+                        page_serve,
                         SETUP_ASK.ready(),
                         page_idle(),
                     )
@@ -246,7 +249,7 @@ where
                             );
                             return None;
                         }
-                        Either4::Fourth(()) if panel => {
+                        Either4::Fourth(()) if has_pages => {
                             log::info!(
                                 "[WIFI] nobody read the page in {} s; the access point goes down",
                                 SETUP_IDLE_MS / 1_000
@@ -276,7 +279,7 @@ async fn page_idle() {
     loop {
         match select(
             Timer::after(Duration::from_millis(SETUP_IDLE_MS)),
-            crate::provision::page_read(),
+            crate::net::provision::page_read(),
         )
         .await
         {
@@ -292,6 +295,7 @@ pub(super) async fn setup_credential<S, R>(
     saved: &mut Option<Box<Store<R>>>,
     face: Face,
     stop_when_hidden: bool,
+    page: &'static crate::bridge::PageWatch,
 ) -> Option<(Credentials, Provenance)>
 where
     S: Station,
@@ -301,7 +305,7 @@ where
     let mut idle_rounds: u8 = 0;
     let mut panel_was_showing = false;
     loop {
-        if stop_when_hidden && !crate::render::PAGE.shows_list() {
+        if stop_when_hidden && !page.shows(DisplayPage::Network) {
             return None;
         }
         if let Some(chosen) = JOIN
@@ -310,7 +314,7 @@ where
         {
             return Some(chosen);
         }
-        let showing = crate::render::PAGE.shows_list();
+        let showing = page.shows(DisplayPage::Network);
         if showing && !panel_was_showing {
             empty_rounds = 0;
             idle_rounds = 0;
@@ -324,12 +328,15 @@ where
             &mut empty_rounds,
             &mut idle_rounds,
             face,
+            page,
         )
         .await
         {
             Rest::Forget(ssid) => {
                 drop_saved(saved.as_deref_mut(), &ssid);
-                remark(history, saved.as_deref());
+                if let Some(list) = remark(history, saved.as_deref()) {
+                    publish_scan(&list);
+                }
             }
             Rest::Left if stop_when_hidden => return None,
             Rest::Left | Rest::Woken => {}

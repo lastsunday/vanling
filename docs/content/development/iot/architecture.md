@@ -37,8 +37,6 @@ weight = 10
          1. 没有喇叭共享对象
    1. 网络运行
 
-#### 可考虑优化和简化部分
-
 ## 分层
 
 `iot-core(纯逻辑) → iot-ui(页面渲染) / iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(单任务二进制)`
@@ -54,6 +52,39 @@ weight = 10
 - **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。读数到字形、字模和页面布局已随页面层进入 `iot-ui`；`core` 里留下 `overlay`/`stamp`/`keyboard`，因为页面与 `intent` 两边都要读
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
+
+## iot-app 内部分区
+
+`app/src/` 按领域分目录，组合根只做接线：
+
+| 路径 | 职责 |
+| --- | --- |
+| `lib.rs` | 组合根：取能力、建 `DeviceManager`、起四个 future |
+| `main.rs` | 芯片启动、executor 选择、家族入口 |
+| `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
+| `bridge.rs` | 面板 ↔ 网络契约：`Latch`/`Handoff`/`Latest`、六个信号、`Outbound`/`Inbound`、`PageWatch` |
+| `pipeline.rs` | 意图主循环 `run_loop`：应用意图、发布状态、等待下一帧 |
+| `surface/{mod,light}.rs` | `Render` 注册表 / `LightRenderer` |
+| `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
+| `input.rs` | 轮询、demand 调度、手势识别 |
+| `audio/{mod,dispatch,capture,sounds}.rs` | 播放任务、状态→命令、麦克风窗口、声音目录 |
+| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`：协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
+| `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
+
+依赖方向（`iot-tool/tests/module_boundaries.rs` 断言，编译器不查 crate 内模块环）：
+
+```
+main → lib → { boot, pipeline, bridge, net }
+pipeline → { bridge, surface, input, audio, bench::replay }
+net      → { bridge, input }
+audio    → ∅
+```
+
+- `bridge` 不带 `wifi` 门控：host 构建照样持有 `INBOUND`/`OUTBOUND`，只是没人应答
+- `net` 不依赖 `surface`/`pipeline`：网络任务读 `bridge` 的 `PAGE`，不读设备状态
+- `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
+- `core` 不认识 `iot_app`
 
 ## 组合（三轴正交）
 
@@ -159,7 +190,7 @@ DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
 
 `Intent` 是相反的情形——事件——所以仍走总线。
 
-采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽契约：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`render_loop` 在 intent 之后取走。
+采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽契约：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`run_loop` 在 intent 之后取走。
 
 第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，契约自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
 
@@ -189,7 +220,7 @@ DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
 
 ### 时序
 
-`render_loop` 写槽 → `input_task` 下一个 `INPUT_BASE_MS` tick 读到。「场景切换 → 需求生效」是一个 tick 加上 `render_loop` 被持有的时间。
+`run_loop` 写槽 → `input_task` 下一个 `INPUT_BASE_MS` tick 读到。「场景切换 → 需求生效」是一个 tick 加上 `run_loop` 被持有的时间。
 
 #### 上限是单次最长持有，不是百分比
 
@@ -232,7 +263,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 `Off` 不在此列，它由「不采集」兑现，返回 `None` 而非 `Err`。交互通道永不受影响。
 
-图上 Logic 分别调 Render 与 Configurator。但器件在 `input_task` 里，`render_loop` 够不着，所以配置器也放在持有器件的一侧：它要板子声明的能力来翻译模式，拒绝也该对着真正拒绝的那个器件报告。
+图上 Logic 分别调 Render 与 Configurator。但器件在 `input_task` 里，`run_loop` 够不着，所以配置器也放在持有器件的一侧：它要板子声明的能力来翻译模式，拒绝也该对着真正拒绝的那个器件报告。
 
 配置器随需求一起兑现，`[DEMAND]` 报的是这次排程的结果。
 
@@ -255,7 +286,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 | 消费者        | 怎么拿到需求                                                                                                  |
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `input_task`  | 共享需求，每个 tick 在临界区内借用一次，按 `PollEntry.key()` 排程（cadence 还要问驱动 `accepts_slower_poll`） |
-| `render_loop` | 写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导                                            |
+| `run_loop` | 写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导                                            |
 | 摄像头        | `DiagnosticsSink`（已有通道），门控条件从「页面变了」改成「需求不再要求画面」                                 |
 | `feed_task`   | 刻意不注入。它的存在本身供给麦克风时钟，所以它是音频路径时钟的来源而不是它需求的消费者                        |
 
@@ -315,7 +346,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 `DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`with_boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
 
-能力判定是每条页自己的一个 bool（`is_backed`），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Network` 与 `Feed` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子；屏幕是唯一的例外，`HasPanel` 就是让 `run` 直接问板子的那条能力。
+能力判定是每条页自己的一个 bool（`is_backed`），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Network` 与 `Feed` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`run` 只把它照抄成 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现。
 
 这条规约是修一个缺陷写下来的。
 

@@ -14,6 +14,8 @@ pub(crate) mod test_support;
 
 pub use self::network::{Part, joining, walk};
 
+pub use self::splash::SPLASH_MS;
+
 pub use self::light::{
     BREATH_PERIODS_MS, BRIGHTNESS_ENVELOPE_STEP, COLOR_GROUPS, ColorGroup, PALETTE,
     SOLID_BRIGHTNESS_STEPS,
@@ -127,12 +129,56 @@ impl DisplayPage {
         }
     }
 
+    /// The name this page answers to. `Splash` has one too; whether it can be booted on is the
+    /// caller's decision, not a property of the page.
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Ambient => "ambient",
+            Self::Attitude => "attitude",
+            Self::Audio => "audio",
+            Self::Speaker => "speaker",
+            Self::Camera => "camera",
+            Self::Network => "network",
+            Self::Splash => "splash",
+        }
+    }
+
+    /// Case- and whitespace-insensitive lookup by [`Self::name`]. Const so a build-time page
+    /// never becomes a run-time string — `@/development/iot/flashing.md`.
+    pub const fn named(name: &str) -> Option<Self> {
+        let wanted = name.trim_ascii().as_bytes();
+        let mut index = 0;
+        while index < Self::ALL.len() {
+            let page = Self::ALL[index];
+            if eq_ignore_ascii_case(page.name().as_bytes(), wanted) {
+                return Some(page);
+            }
+            index += 1;
+        }
+        None
+    }
+
     pub fn demand(&self, keys: &[DemandKey]) -> EffectiveDemand {
         let mut demand = EffectiveDemand::none();
         for key in keys {
             demand.set(*key, self.claim_for(*key));
         }
         demand
+    }
+
+    /// The fill this page grounds the panel with, or `None` when the page draws over what
+    /// the light was already showing. A page that covers the whole panel says so here
+    /// rather than in each board's screen.
+    pub const fn ground(&self) -> Option<crate::drivers::light::Rgb> {
+        match self {
+            Self::Network | Self::Camera => Some(crate::drivers::light::Rgb(0, 0, 0)),
+            _ => None,
+        }
+    }
+
+    /// Whether this page's frames arrive from the camera instead of being drawn.
+    pub const fn draws_frames(&self) -> bool {
+        matches!(self, Self::Camera)
     }
 
     fn claim_for(&self, key: DemandKey) -> Claim {
@@ -160,6 +206,20 @@ pub(crate) fn repaint_due(
     overlay: bool,
 ) -> bool {
     (PAGES[page.index()].repaint)(prev, next, overlay)
+}
+
+const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if !left[index].eq_ignore_ascii_case(&right[index]) {
+            return false;
+        }
+        index += 1;
+    }
+    true
 }
 
 struct PageSpec {
@@ -230,5 +290,31 @@ mod tests {
             assert_eq!(DisplayPage::ALL[position], *page);
         }
         assert_eq!(DisplayPage::ALL[CYCLE.len()], DisplayPage::Splash);
+    }
+
+    #[test]
+    fn every_page_answers_to_its_own_name() {
+        for page in DisplayPage::ALL {
+            assert_eq!(DisplayPage::named(page.name()), Some(page), "{page:?}");
+            assert_eq!(
+                DisplayPage::named(&page.name().to_ascii_uppercase()),
+                Some(page),
+                "{page:?} in capitals"
+            );
+        }
+        assert_eq!(DisplayPage::named("  CAMERA  "), Some(DisplayPage::Camera));
+        assert_eq!(DisplayPage::named("\tcamera\n"), Some(DisplayPage::Camera));
+        assert_eq!(DisplayPage::named("photograph"), None);
+        assert_eq!(DisplayPage::named(""), None);
+        assert_eq!(DisplayPage::named("   "), None);
+    }
+
+    #[test]
+    fn no_two_pages_share_a_name() {
+        for (position, page) in DisplayPage::ALL.iter().enumerate() {
+            for other in &DisplayPage::ALL[position + 1..] {
+                assert_ne!(page.name(), other.name(), "{page:?} and {other:?}");
+            }
+        }
     }
 }

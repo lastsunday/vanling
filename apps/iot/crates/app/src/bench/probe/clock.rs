@@ -1,20 +1,10 @@
 //! What changing the CPU clock costs, and what it leaves behind.
 //!
-//! **Outside esp-hal's contract.** Its own docs say the frequencies "become
-//! frozen and cannot be changed" after `esp_hal::init`, so everything here runs
-//! on [`iot_chip_esp::set_cpu_clock`], which reaches past that to write the
-//! registers. Measured results and the limits of this probe are in
-//! `docs/content/records/iot/`.
-//!
-//! Two properties make the numbers readable. Each quantity is checked against
-//! something other than the switch it accompanies — the ratio against work-unit
-//! timings, the timer against work measured on both sides — so a register that
-//! was written and did not take cannot pass as a result. And nothing here reads
-//! `cpu_clock()`, which reports the configuration tree rather than the hardware.
-//!
-//! **No figure here is a power figure.** The voltage bias is never lowered, so
-//! every measurement is taken on a core biased for 240 MHz running below it: the
-//! safe direction, and the useless one for saving energy.
+//! **Outside esp-hal's contract**: its docs say the frequencies "become frozen and cannot
+//! be changed" after `esp_hal::init`, so this writes the registers through
+//! [`iot_chip_esp::set_cpu_clock`]. It never reads `cpu_clock()`, which reports the
+//! configuration tree rather than the hardware, and it never lowers the voltage bias, so
+//! **no figure here is a power figure**. Limits and results: `docs/content/records/iot/`.
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
@@ -25,8 +15,6 @@ const PRESETS: [CpuClock; 3] = [CpuClock::_80MHz, CpuClock::_160MHz, CpuClock::_
 
 const RAMP: usize = 128;
 
-/// Runs the four measurements core 0 can take alone, then hands over to the second core for
-/// the one that needs it.
 pub async fn measure() {
     log::info!("[CLOCK] starting at {:?}", current());
 
@@ -127,13 +115,9 @@ fn drift() {
     switch(CpuClock::_240MHz);
 }
 
-// The second core's reading against core 0's, after core 0 has switched away
-// from 240 MHz and back.
-//
-// `ets_update_cpu_frequency_rom` documents itself as updating `g_ticks_per_us`
-// "on the current core only", so core 1's ROM timing is scaled for a frequency it
-// is no longer running at. If that matters the two readings diverge; if it does
-// not they agree, and the only way to know which is to run the same work on both.
+// `ets_update_cpu_frequency_rom` updates `g_ticks_per_us` "on the current core only", so
+// core 1's ROM timing is scaled for a frequency it no longer runs at. Running the same work
+// on both is the only way to know whether that matters.
 async fn second_core() {
     let local = local_reading();
     REQ.signal(());
@@ -154,18 +138,13 @@ fn local_reading() -> u64 {
 static REQ: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static DONE: Signal<CriticalSectionRawMutex, u64> = Signal::new();
 
-/// Runs on the second core, once `second_core` asks.
 pub async fn core1_task() {
     REQ.wait().await;
     DONE.signal(local_reading());
 }
 
-// Switches, silently.
-//
-// No logging here on purpose: [`cost`] times this call, and a log line is a
-// USB-serial write whose cost tracks the very frequency being measured. A
-// function that cannot say so in its own signature is the only kind that will
-// get this wrong twice.
+// No logging: [`cost`] times this call, and a log line's USB-serial write costs more the
+// higher the frequency being measured.
 fn switch(clock: CpuClock) {
     // SAFETY: interrupts are disabled inside the call across the register
     // writes. The bias it declines to lower is whichever one esp-hal set at

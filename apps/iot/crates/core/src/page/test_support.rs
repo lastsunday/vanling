@@ -5,7 +5,8 @@ use crate::drivers::light::MAX_LIGHTS;
 use crate::drivers::motion::{MotionCapabilities, MotionCounts};
 use crate::intent::{BusinessIntent, OperationIntent, recognize, translate};
 use crate::state::{
-    AudioState, Breath, DeviceManager, DeviceState, DisplayPage, LightState, Panel, PlaybackState,
+    AudioState, Breath, DeviceManager, DeviceState, DisplayPage, LightState, PlaybackState,
+    SurfaceRole,
 };
 
 pub(crate) const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
@@ -29,6 +30,7 @@ pub(crate) fn state(light: LightState) -> DeviceState {
 pub(crate) fn state_on(page: DisplayPage, light: LightState) -> DeviceState {
     DeviceState {
         lights: [light; MAX_LIGHTS],
+        surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
         notice: None,
         outage_announced: false,
         page,
@@ -55,7 +57,6 @@ pub(crate) fn state_on(page: DisplayPage, light: LightState) -> DeviceState {
         playback: PlaybackState::default(),
         camera_enabled: true,
         network_enabled: true,
-        panel: Panel::Wired,
         touch: None,
         touch_points: [None; MAX_TRACKED_POINTS],
         live_dir: [0; MAX_TRACKED_POINTS],

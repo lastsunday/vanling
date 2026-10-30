@@ -10,22 +10,28 @@ use embassy_net::driver::Driver;
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    Credentials, Front, Ipv4, LinkEnding, LinkHint, LinkPhase, Ssid, Station, SurveyHistory,
-    front_after_link, setup_ap_starts_secured,
+    ADDRESS_LOST_WINDOWS, AddressWatch, Credentials, Front, Ipv4, LinkEnding, LinkHint, LinkPhase,
+    Ssid, Station, SurveyHistory, front_after_link, setup_ap_starts_secured,
 };
+use iot_core::state::DisplayPage;
 
 use super::setup::{Face, Setup, asked_for, setup_credential, unconfigured};
 use super::store::{drop_saved, first_saved, has_saved, keep, keeps_any, remark};
-use super::{SETUP_SOCKETS, park, publish};
-use crate::render::{FORGET, JOIN, LEAVE, SETUP_ASK};
+use super::{SETUP_SOCKETS, park, publish, publish_scan};
+use crate::bridge::{FORGET, JOIN, LEAVE, SETUP_ASK};
 
 const WINDOW_MS: u64 = 2_000;
 
 const ADDRESS_BUDGET_MS: u64 = 30_000;
 
-const DROP_WINDOWS: u8 = 3;
-
 const RETRY_MS: u64 = 5_000;
+
+/// The panel the link serves: whether it has pages at all, and which page it is on.
+#[derive(Clone, Copy)]
+pub(super) struct Panel {
+    pub(super) page: &'static crate::bridge::PageWatch,
+    pub(super) has_pages: bool,
+}
 
 pub(super) async fn link<S, R>(
     station: &mut S,
@@ -34,7 +40,7 @@ pub(super) async fn link<S, R>(
     setup_name: &Ssid,
     setup_resources: &mut StackResources<SETUP_SOCKETS>,
     front: Front,
-    panel: bool,
+    panel: Panel,
 ) -> !
 where
     S: Station,
@@ -45,13 +51,14 @@ where
     let start = front;
     let mut saved = saved;
 
-    let landing = crate::render::PAGE.wait_for_splash_end().await;
+    let landing = panel.page.wait_for_splash_end().await;
     let mut setup = Setup {
         name: setup_name,
         resources: setup_resources,
         front: &mut front,
-        panel,
-        secure_on_entry: setup_ap_starts_secured(panel, landing),
+        has_pages: panel.has_pages,
+        secure_on_entry: setup_ap_starts_secured(panel.has_pages, landing),
+        page: panel.page,
     };
     if landing {
         log::info!(
@@ -61,18 +68,18 @@ where
         let cancellable = has_saved(&saved);
         unconfigured(station, stack, &mut saved, None, cancellable, &mut setup).await;
         log::info!("[WIFI] setup mode is over; this device goes back to its own page");
-        setup.secure_on_entry = setup_ap_starts_secured(panel, false);
+        setup.secure_on_entry = setup_ap_starts_secured(panel.has_pages, false);
     }
 
-    if let Some((ssid, password)) = credentials_from_build() {
+    if let Some((ssid, password)) = crate::boot::wifi_credentials() {
         named_by_build(station, stack, ssid, password, saved, &mut setup).await
     }
 
     loop {
         let (credentials, mut origin) = match first_saved(&saved) {
             Some(chosen) => chosen,
-            None if !panel => {
-                log::info!("[WIFI] no panel and no saved network; waiting offline");
+            None if !panel.has_pages => {
+                log::info!("[WIFI] no page surface and no saved network; waiting offline");
                 core::future::pending().await
             }
             None => {
@@ -80,7 +87,7 @@ where
                     "[WIFI] this build was given no network and this device has saved none; it runs \
                      offline, and the panel's page names one"
                 );
-                match Box::pin(browsing(station, &mut saved)).await {
+                match Box::pin(browsing(station, &mut saved, panel.page)).await {
                     Some(chosen) => chosen,
                     None => {
                         log::info!(
@@ -97,9 +104,8 @@ where
             }
         };
         let mut credentials = Box::new(credentials);
-        // One credential and everything the link does with it, including the panel naming another
-        // while it is up: a new credential replaces the one in hand rather than waiting for the
-        // next round, which is what keeps this loop from carrying two credentials at once.
+        // One credential at a time: a new one replaces the one in hand rather than waiting for
+        // the next round.
         let ended = loop {
             if origin == Provenance::Stored {
                 log::info!(
@@ -160,6 +166,7 @@ where
 async fn browsing<S, R>(
     station: &mut S,
     saved: &mut Option<Box<Store<R>>>,
+    page: &'static crate::bridge::PageWatch,
 ) -> Option<(Credentials, Provenance)>
 where
     S: Station,
@@ -168,9 +175,9 @@ where
     SETUP_ASK.clear();
     let mut history = Box::new(SurveyHistory::new());
     loop {
-        crate::render::PAGE.wait_for_list().await;
+        page.wait_for(DisplayPage::Network).await;
         match select(
-            setup_credential(station, &mut history, saved, Face::browsing(), true),
+            setup_credential(station, &mut history, saved, Face::browsing(), true, page),
             SETUP_ASK.ready(),
         )
         .await
@@ -236,8 +243,7 @@ where
                      named"
                 );
             }
-            // Unreachable: a retried credential has no other way out of `hold`. Parking rather than
-            // returning, because a task that fell through would be one that had quietly stopped.
+            // Park rather than return: a task that fell through would be one that quietly stopped.
             Hold::Named(..) | Hold::Refused => park().await,
         }
     }
@@ -346,8 +352,10 @@ where
             if origin == Provenance::Named && !kept {
                 kept = true;
                 keep(store, credentials, found.unwrap_or(LinkHint::NONE));
-                if let Some(history) = history.as_deref_mut() {
-                    remark(history, saved.as_deref());
+                if let Some(history) = history.as_deref_mut()
+                    && let Some(list) = remark(history, saved.as_deref())
+                {
+                    publish_scan(&list);
                 }
             } else if let Some(hint) = found {
                 match store.learn(&credentials.ssid, hint) {
@@ -383,7 +391,7 @@ where
             log::error!("[WIFI] no address within {ADDRESS_BUDGET_MS} ms");
         }
 
-        let mut missing_windows: u8 = 0;
+        let mut lost = AddressWatch::new(ADDRESS_LOST_WINDOWS);
         let mut last_seen: Option<(LinkPhase, Option<Ipv4>)> = None;
         loop {
             match select4(
@@ -414,8 +422,10 @@ where
                 }
                 Either4::Fourth(ssid) => {
                     drop_saved(saved.as_deref_mut(), &ssid);
-                    if let Some(history) = history.as_deref_mut() {
-                        remark(history, saved.as_deref());
+                    if let Some(history) = history.as_deref_mut()
+                        && let Some(list) = remark(history, saved.as_deref())
+                    {
+                        publish_scan(&list);
                     }
                     continue;
                 }
@@ -439,22 +449,19 @@ where
                 Some(address) => {
                     let [a, b, c, d] = address.octets();
                     log::log!(level, "[WIFI] {:?}, address {a}.{b}.{c}.{d}", status.phase);
+                    lost.observe(Some(address));
+                    continue;
                 }
                 None => log::log!(
                     level,
                     "[WIFI] {:?}, no address for {} windows",
                     status.phase,
-                    missing_windows,
+                    lost.missing() + 1,
                 ),
             }
-            if address.is_some() {
-                missing_windows = 0;
-                continue;
-            }
-            missing_windows += 1;
-            if missing_windows >= DROP_WINDOWS {
+            if lost.observe(None) {
                 log::warn!(
-                    "[WIFI] no address for {DROP_WINDOWS} windows; leaving and associating again"
+                    "[WIFI] no address for {ADDRESS_LOST_WINDOWS} windows; leaving and associating again"
                 );
                 break;
             }
@@ -478,13 +485,4 @@ async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
         }
         stack.wait_config_up().await;
     }
-}
-
-fn credentials_from_build() -> Option<(&'static str, &'static str)> {
-    if crate::panel::BENCH {
-        return None;
-    }
-    let ssid = option_env!("IOT_WIFI_SSID")?;
-    let password = option_env!("IOT_WIFI_PSK")?;
-    Some((ssid, password))
 }

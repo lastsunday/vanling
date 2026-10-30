@@ -3,8 +3,8 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "692b1b782f55c6bc455d4728b357d79643099ebf"
-translated_at = "2026-10-22T12:29:02Z"
+source_file_hash = "1c906ed372c5551aa4893adaf1c75c14e34baf36"
+translated_at = "2026-10-30T09:16:52Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -112,6 +112,8 @@ Hence `feed_loop` on `FROM_CPU_INTR1` at `Priority2`, and `control_loop` (which 
 `feed()` early on did two things in the interrupt that it must not: log (taking the logger's lock) and restart the DMA (allocating a fresh ring). An interrupt can preempt a cooperative task holding either of those locks, and that task cannot release until the feed returns — **a deadlock with no reset to clear it**.
 
 The fix was to split them: `feed()` only *records* a `Recovery`, and `recover()` performs the rebuild on the cooperative side.
+
+The boundary is not just "the interrupt does not log": `recover()` runs **under the same lock the feed interrupt takes**, so it must not log or allocate either — the outcome travels back to the caller in `Recovery::repaired` / `restarts`, and the logging happens outside the lock. The drain edge reaches the feed loop through `Speaker::needs_recovery()`, which wakes the cooperative side with `FEED_WAKE`; an idle silent ring therefore no longer produces an "ended" wake every 5 ms.
 
 One ordering in that fix is counter-intuitive and the easiest thing to break later:
 

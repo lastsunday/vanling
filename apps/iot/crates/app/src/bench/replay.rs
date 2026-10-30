@@ -41,7 +41,6 @@ enum Act {
 
 const ACT_PASSES: u16 = 120;
 
-/// The bench's own hand.
 pub struct PanelBench {
     script: Option<Vec<Touch>>,
     next: usize,
@@ -79,7 +78,6 @@ impl PanelBench {
         }
     }
 
-    /// Advance the bench by at most one tap.
     pub fn step(&mut self, manager: &DeviceManager, bus: &IntentBus) {
         if !BENCH {
             return;
@@ -187,8 +185,6 @@ impl PanelBench {
     }
 
     fn script(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
-        // Nothing to type at until the page the keyboard is on is showing, and nothing to pick
-        // while an entry is already open over it.
         if state.page != DisplayPage::Network || state.setup.keyboard {
             return None;
         }
@@ -787,12 +783,7 @@ mod tests {
     #[test]
     fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         let mut manager = DeviceManager::new().with_network(true);
-        // The splash is behind the page the bench is about, as it is behind every walk the render
-        // loop runs: the clock ends it before a finger can reach the list.
         manager.apply_business(BusinessIntent::SplashOver);
-        // The page the bench's own script leaves: nothing is saved yet, so the row is one to type
-        // for; the passphrase goes in, and the store's marks follow the association it won — which is
-        // the order the board runs in, and the reason the row under the link is a saved one.
         manager.apply_scan(marked(&["target"], &[]));
         manager.apply_business(BusinessIntent::NextPage);
         let picked = manager
@@ -838,10 +829,6 @@ mod tests {
                     Intent::Business(business) => manager.apply_business(business),
                 }
             }
-            // The network task's own answers, as the render loop hands them over: a leave takes the
-            // link down and reports it, a forget is the store's own erase, a round of the survey
-            // publishes the phase the strip's wait ends on — and a row asked for by name is joined
-            // with the copy the store holds for it, which is the association the radio reports.
             if manager.take_leave() {
                 leaves += 1;
                 manager.apply_business(BusinessIntent::LinkReport(LinkStatus::default()));

@@ -24,10 +24,6 @@ use super::*;
 static DIAG_LAST_REPAINT_MS: AtomicU32 = AtomicU32::new(0);
 
 impl DiagnosticsSink for Screen {
-    fn draws_pages(&self) -> bool {
-        true
-    }
-
     fn consume(&mut self, diagnostics: &Diagnostics) {
         if self.diagnostics == *diagnostics {
             return;

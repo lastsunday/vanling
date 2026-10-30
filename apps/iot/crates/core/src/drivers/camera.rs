@@ -66,6 +66,12 @@ pub struct WindowGeometry {
 
 /// A surface a [`FrameSource`] can be bound to.
 pub trait CameraTarget {
+    /// Whether this surface owns the frame buffer a camera writes into. Only a surface with
+    /// one may be handed the camera; the rest say so instead of silently accepting it.
+    fn takes_frames(&self) -> bool {
+        false
+    }
+
     fn paint_camera(&mut self, now_ms: u64) -> bool;
 
     fn attach_camera(&mut self, camera: Box<dyn FrameSource>);

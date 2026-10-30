@@ -1,27 +1,10 @@
-//! What the linear AEC costs per audio tick, on this chip, at the clock this
-//! image brings the chip up at.
+//! What the linear AEC costs per audio tick, on this chip, at this image's clock.
 //!
-//! **This probe touches no peripheral.** The canceller is arithmetic on two
-//! streams, so its cost depends on the tap count and the clock and on nothing
-//! about the board — which is what makes it safe to reserve time for it before
-//! wiring it in.
-//!
-//! Per tap count it reports the **first** tick (the delay search against an empty
-//! history, standing for no later tick), the **worst** tick (the bound in
-//! `architecture.md` is a worst tick, and an average is not one), **the share of a
-//! 20 ms tick**, and **where the time goes** — delay search, convolution,
-//! metering, which differ in cost and in what changing them costs.
-//!
-//! Two stream states, and the label matters. An **adapting** filter pays for the
-//! convolution *and* the coefficient update; a **frozen** one pays only for the
-//! convolution. A converged filter with someone talking over it is frozen
-//! (`gate.rs`), so frozen is what barge-in costs and adapting is what far-end-only
-//! playback costs; the larger of the two is what the budget covers.
-//!
-//! Ticks run back to back rather than on a 20 ms schedule, so it measures the work
-//! and nothing else — no wake latency, no other task's interference — and the log
-//! says so. Each measurement follows an untouched warm-up pass, because a filter
-//! that has never run is also paying to bring its own pages in.
+//! **No peripheral**: the canceller is arithmetic on two streams, so the cost belongs to the
+//! tap count and the clock. Per tap count it reports the first tick, the worst tick (the
+//! bound is a worst tick), the share of a 20 ms tick, and where the time goes. **Frozen** is
+//! what barge-in costs, **adapting** what far-end-only playback costs; the budget covers the
+//! larger. Ticks run back to back after a warm-up pass, so this is the work and nothing else.
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
@@ -300,7 +283,6 @@ fn measure_reference(room: &mut Room) -> Reference {
     }
 }
 
-/// Walks the tap counts and reports what each costs, against `cpu_hz`.
 pub async fn measure(cpu_hz: u64) {
     let mut room = Box::new(Room::new());
     log::info!("[ECHO] room buffer on the heap, not on the task stack");
@@ -329,9 +311,8 @@ pub async fn measure(cpu_hz: u64) {
         reference.micros,
         reference.macs,
     );
-    // 443,671 cycles over 262,144 MACs at 240 MHz, rescaled to this clock. Kept in
-    // tenths because at this clock the number lands near 5 and an integer would
-    // round it to a figure that reads like a different claim.
+    // 443,671 cycles over 262,144 MACs at 240 MHz, rescaled to this clock. Tenths, because
+    // an integer here would round a number near 5 into a different-looking claim.
     let published_tenths = 443_671u64 * 240_000_000 * 10 / (cpu_hz * 262_144);
     log::info!(
         "[ECHO]   Espressif publish 443,671 cycles for this case as f32 on the ESP32S3 at \

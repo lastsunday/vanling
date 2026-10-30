@@ -320,6 +320,10 @@ fn isqrt_u32(n: u32) -> u32 {
 
 /// Poll-based input source.
 pub trait InputSource {
+    /// The name a diagnostic line calls this source by. The board decides what it wired;
+    /// the driver knows which kind of part it is.
+    fn name(&self) -> &'static str;
+
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent>;
 
     fn held(&self) -> bool {
@@ -984,6 +988,11 @@ impl PollEntry {
         self.key
     }
 
+    /// The name the source behind this entry answers to in diagnostics.
+    pub fn name(&self) -> &'static str {
+        self.source.name()
+    }
+
     /// A whole multiple of the shared base tick, which a demand may have stretched.
     pub fn cadence_ms(&self) -> u64 {
         self.cadence_ms
@@ -1079,6 +1088,10 @@ impl<B: Button> ButtonScanner<B> {
 }
 
 impl<B: Button> InputSource for ButtonScanner<B> {
+    fn name(&self) -> &'static str {
+        "button"
+    }
+
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent> {
         self.read(now_ms).map(InputEvent::Button)
     }

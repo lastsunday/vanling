@@ -2,7 +2,6 @@
 use alloc::boxed::Box;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::sounds::SWEEP_MS;
 use embassy_executor::SendSpawner;
 use embassy_time::{Duration, Instant, Timer};
 use iot_bsp_esp::virtual_components::EchoCapture;
@@ -10,30 +9,29 @@ use iot_core::demand::MAX_SINGLE_HOLD_MS;
 use iot_core::drivers::aec::SAMPLE_RATE_HZ;
 use iot_core::drivers::audio::{AudioSample, CAPTURE_MS, ENVELOPE_COLUMNS, dbfs};
 use iot_core::drivers::board::HasPlayback;
-use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
+use iot_core::drivers::playback::{FEED_MS, Sound, Speaker, Sweep};
 
-use crate::playback::{Shared, feed_task, share, take_stats};
+use crate::audio::{Shared, feed_task, share, take_stats};
 
-// Whether the probe alternates the amplifier at all.
-//
-// **Off measures the microphone's floor, and that is all it measures.** A
-// canceller handed a silent reference has nothing to correlate against, so the
-// delay search cannot return an estimate however good the room is — `[实测]` it
-// sat at `delay None` for every run of a muted-speaker probe, which reads
-// exactly like a board with no echo path. Alternating also keeps the one thing
-// only the muted run can give: the microphone's level with no echo present, so
-// "the path is weak" stays distinguishable from "the speaker disturbs the
-// microphone". Both halves are wanted, so the alternation is the default and
-// the muted-only run is the one to switch to deliberately.
+// The excitation is the bench's, not the catalogue's: a sweep is what measures a room, and
+// the product never plays one. 300 Hz–6 kHz keeps the codec's settling filters out of the
+// measurement, at 0.55 ms of resolution between reflections.
+const SWEEP_FROM_HZ: u32 = 300;
+const SWEEP_TO_HZ: u32 = 6_000;
+
+/// 630 whole cycles of the band, so consecutive sweeps join without a step.
+const SWEEP_MS: u32 = 200;
+
+// Off measures the microphone's floor and nothing else — `[实测]` a muted-speaker run sat at
+// `delay None` throughout, indistinguishable from a board with no echo path. Alternating keeps
+// that floor beside the audible level, so "weak path" and "the speaker disturbs the mic" stay
+// separable. Off is the deliberate run.
 const A_B_RUN: bool = true;
 
 const PATH_RUN: bool = false;
 
-// How long the path run holds the amplifier in each state before switching.
-//
-// **`[实测]` this has to be several times the correlation the analysis reads.**
-// The switch itself is a step on the wire, and a window that contains one carries
-// that step's energy into the very band being measured.
+// `[实测]` must be several times the correlation the analysis reads: the switch is a step, and a
+// window containing one carries its energy into the band being measured.
 const PATH_AB_MS: u64 = 2_000;
 
 const REPORT_MS: u64 = 1_000;
@@ -46,7 +44,6 @@ const A_B_WARMUP_MS: u64 = ENVELOPE_COLUMNS as u64 * CAPTURE_MS;
 
 static AUDIBLE: AtomicBool = AtomicBool::new(true);
 
-/// Runs the product's feed, keeps a sound on it, and polls the product's capture.
 pub async fn run<B>(mut board: B, mut capture: Box<dyn EchoCapture>, feed: SendSpawner) -> !
 where
     B: HasPlayback,
@@ -93,9 +90,8 @@ where
     park().await
 }
 
-// Keeps a sound going so the reference is never silent. It alternates between the
-// synthesised pair and the stored PCM, and each sound lasts longer than the delay
-// estimator's 256 ms correlation window — shorter and the reported delay chases.
+// Alternates the synthesised pair with the stored PCM; each lasts longer than the delay
+// estimator's 256 ms correlation window, or the reported delay chases.
 async fn keep_sounding(shared: &'static Shared) -> ! {
     let mut sound = if PATH_RUN {
         Sound::Sweep
@@ -105,9 +101,10 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
     let mut last_report = Instant::now();
     let mut held_since = Instant::now();
     if PATH_RUN {
-        if let Err(error) =
-            shared.lock(|shared| crate::sounds::play(&mut **shared.speaker.borrow_mut(), sound))
-        {
+        if let Err(error) = crate::audio::start_source(
+            shared,
+            Box::new(Sweep::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS)),
+        ) {
             log::error!("[PATH] the sweep would not start: {error}");
             park().await;
         }
@@ -117,10 +114,7 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
         );
     }
     loop {
-        if !PATH_RUN
-            && let Err(error) =
-                shared.lock(|shared| crate::sounds::play(&mut **shared.speaker.borrow_mut(), sound))
-        {
+        if !PATH_RUN && let Err(error) = crate::audio::start(shared, sound) {
             log::error!("[ECHO] {sound:?} refused: {error}");
         }
         Timer::after(Duration::from_millis(if PATH_RUN {
@@ -285,13 +279,8 @@ async fn poll_cancellers(capture: &mut dyn EchoCapture) -> ! {
     }
 }
 
-// One report, as a line a serial log can be read from.
-//
-// The microphone's own level is reported beside the ERLE because **an ERLE of
-// 0 dB says two completely different things**: a filter handed a reference that
-// does not predict the echo, and a filter handed no echo at all because the
-// speaker is silent or the amplifier is off. Both are 0, both converge quietly,
-// and the ERLE alone cannot tell them apart — but the microphone's level can.
+// An ERLE of 0 dB is ambiguous (mispaired reference, or no echo at all); the microphone's own
+// level beside it is what separates the two.
 fn report_line(
     report: &iot_bsp_esp::virtual_components::EchoReport,
     worst_hold_us: u32,

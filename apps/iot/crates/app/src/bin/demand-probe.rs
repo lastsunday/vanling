@@ -1,6 +1,6 @@
-//! Motion demand matrix: walks every (configuration × cadence) cell the driver can reach
-//! reports what each one costs, so the cost table carries measurements rather than
-//! arithmetic done from a datasheet.
+//! Motion demand matrix: walks every (configuration × cadence) cell the driver can reach and
+//! reports what each costs, so the cost table carries measurements rather than datasheet
+//! arithmetic.
 
 #![no_std]
 #![no_main]
@@ -47,5 +47,5 @@ async fn main(_spawner: Spawner) -> ! {
             embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
         }
     };
-    iot_app::probe::motion::run(motion).await
+    iot_app::bench::probe::motion::run(motion).await
 }

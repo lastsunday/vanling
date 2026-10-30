@@ -47,7 +47,7 @@ pub use self::network::{Confirm, NetworkSetup};
 
 pub use self::page::DisplayPage;
 
-pub use self::playback::{PlaybackPhase, PlaybackState};
+pub use self::playback::{PlaybackCommand, PlaybackPhase, PlaybackState};
 
 /// A live contact slot: the tracker `id` that owns it plus where it last landed, in
 /// framebuffer space.
@@ -58,27 +58,27 @@ pub struct LivePoint {
     pub y: u16,
 }
 
-/// Whether the board has a panel: the screen pages are drawn on and questions are put on.
+/// What one wired surface is for: pages, ambient light, or nothing at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Panel {
+pub enum SurfaceRole {
+    /// Draws the pages and puts the questions on them.
     #[default]
-    Wired,
+    Pages,
+    /// Shows light only; the link's news lands here when there is no page to say it.
+    Lamp,
+    /// This slot carries no surface.
     Absent,
-}
-
-impl Panel {
-    /// Whether the pages have somewhere to be drawn, and a question somewhere to be asked.
-    pub const fn is_wired(self) -> bool {
-        matches!(self, Self::Wired)
-    }
 }
 
 /// All state owned by the device manager.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceState {
     pub lights: [LightState; MAX_LIGHTS],
-    /// The one-shot news a board with no screen says with its lamp instead of a page: a
-    /// join that worked, a link that is not there, or a refusal that just landed.
+    /// What each slot's surface is for, fixed by the wiring rather than by the current
+    /// appearance.
+    pub surface_roles: [SurfaceRole; MAX_LIGHTS],
+    /// The one-shot news a lamp says instead of a page: a join that worked, a link that is
+    /// not there, or a refusal that just landed.
     pub notice: Option<Notice>,
     /// Whether this boot has already announced that the link is down.
     pub outage_announced: bool,
@@ -133,8 +133,6 @@ pub struct DeviceState {
     pub camera_enabled: bool,
     /// Whether this build has a link at all.
     pub network_enabled: bool,
-    /// Whether this board has a screen.
-    pub panel: Panel,
     /// Most recent touch snapshot, mirroring the lights' absolute-target contract: the
     /// render loop always reads the latest whole event.
     pub touch: Option<TouchEvent>,
@@ -175,9 +173,19 @@ pub struct DeviceState {
 }
 
 impl DeviceState {
-    /// What a board with no screen has instead of one: the lamp reporting the link.
-    pub fn status_light(&self) -> Option<LightState> {
-        if self.panel.is_wired() || !self.network_enabled {
+    /// Whether any wired surface draws the pages and puts the questions on them.
+    pub fn has_pages(&self) -> bool {
+        self.surface_roles.contains(&SurfaceRole::Pages)
+    }
+
+    /// Whether any wired surface is a lamp the link can speak through.
+    pub fn has_lamp(&self) -> bool {
+        self.surface_roles.contains(&SurfaceRole::Lamp)
+    }
+
+    /// What the link has to say on a lamp: the one-shot news, the setup mode, or the attempt.
+    pub fn link_notice(&self) -> Option<LightState> {
+        if !self.has_lamp() || !self.network_enabled {
             return None;
         }
         if let Some(notice) = self.notice {
@@ -256,13 +264,13 @@ impl DeviceManager {
     pub fn with_motion(motion_enabled: bool, motion_caps: MotionCapabilities) -> Self {
         let state = DeviceState {
             lights: [LightState::boot(); MAX_LIGHTS],
+            surface_roles: [SurfaceRole::default(); MAX_LIGHTS],
             notice: None,
             outage_announced: false,
             page: DisplayPage::Splash,
             link: LinkStatus::default(),
             mac: None,
             aps: None,
-            panel: Panel::default(),
             setup: NetworkSetup::default(),
             setup_wanted: false,
             join: None,
@@ -360,11 +368,10 @@ impl DeviceManager {
         self
     }
 
-    /// Chains the panel on, which the other four do not imply: a build can carry a screen
-    /// and none of the surfaces, and the C6 carries the radio and the light with no screen
-    /// at all.
-    pub fn with_panel(mut self, panel: Panel) -> Self {
-        self.state.panel = panel;
+    /// Chains the per-slot surface roles on, which the other four do not imply: a build can
+    /// carry a screen with nothing else, a lamp with no screen at all, or both.
+    pub fn with_surface_roles(mut self, roles: [SurfaceRole; MAX_LIGHTS]) -> Self {
+        self.state.surface_roles = roles;
         self
     }
 
@@ -578,9 +585,7 @@ impl DeviceManager {
             BusinessIntent::Answer(confirm) => self.answer(confirm),
             BusinessIntent::CloseSetup => self.close_setup(),
             BusinessIntent::SwitchFront => {
-                if (self.state.link.setup || self.state.link.browsing)
-                    && self.state.panel.is_wired()
-                {
+                if (self.state.link.setup || self.state.link.browsing) && self.state.has_pages() {
                     self.state.switch_front = true;
                 }
             }

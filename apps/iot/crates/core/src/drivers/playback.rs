@@ -795,8 +795,17 @@ impl core::fmt::Display for SpeakerFault {
 pub struct Recovery {
     /// Writable bytes left in the ring at the moment the drain was noticed.
     pub free_bytes: usize,
+    /// The ring's whole writable length, `free_bytes`'s denominator.
+    pub ring_bytes: usize,
+    /// How long the stream may sit idle before the drain is called — the runway it overran.
+    pub runway_ms: u64,
     /// Whether a sound was on the ring when it drained — what the stall cost the listener.
     pub playing: bool,
+    /// Whether [`recover`](Speaker::recover) could rebuild the stream. The caller reports
+    /// this; the driver itself must stay silent.
+    pub repaired: bool,
+    /// How many times this driver has rebuilt its stream since boot.
+    pub restarts: u32,
 }
 
 pub trait Speaker: Send + 'static {
@@ -806,6 +815,16 @@ pub trait Speaker: Send + 'static {
 
     fn feed(&mut self, now_ms: u64) -> bool;
 
+    /// Whether [`feed`](Speaker::feed) recorded a drain that still needs
+    /// [`recover`](Speaker::recover). The feed loop reads this to wake the repair side
+    /// instead of polling for it.
+    fn needs_recovery(&self) -> bool {
+        false
+    }
+
+    /// Repairs a drain recorded by [`feed`](Speaker::feed). This runs on the cooperative
+    /// side: it must not log, allocate, or wait, because the caller holds the lock the
+    /// feed interrupt also takes.
     fn recover(&mut self) -> Option<Recovery>;
 }
 

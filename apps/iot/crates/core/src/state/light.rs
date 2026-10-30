@@ -22,6 +22,33 @@ pub struct Breath {
 
 impl Breath {
     pub const MAX_GROUP: usize = GROUP_CAPACITY;
+
+    /// The color this breath paints at `elapsed_ms`.
+    pub fn rgb(self, elapsed_ms: u32) -> Rgb {
+        crate::drivers::light::breathe(
+            elapsed_ms,
+            self.period_ms,
+            self.hue_period_ms,
+            self.hue_span,
+            self.min_brightness,
+            self.max_brightness,
+            self.saturation,
+            self.hue,
+            self.group,
+            self.group_len,
+        )
+    }
+
+    /// Backlight duty following the same envelope, never below `floor_pct`.
+    pub fn backlight(self, elapsed_ms: u32, floor_pct: u8) -> u8 {
+        crate::drivers::light::backlight_level(
+            elapsed_ms,
+            self.period_ms,
+            self.min_brightness,
+            self.max_brightness,
+            floor_pct,
+        )
+    }
 }
 
 /// Light behavior, read by the render loop.
@@ -108,8 +135,8 @@ const REFUSED_OFF_MS: u32 = 120;
 
 const FLASHES: u32 = 3;
 
-/// The one-shot news a light-only board's lamp says instead of a page: a join that worked,
-/// a link that is not there, or a credential the radio refused.
+/// The one-shot news a lamp says instead of a page: a join that worked, a link that is not
+/// there, or a credential the radio refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoticeKind {
     Joined,
@@ -212,7 +239,7 @@ impl Default for LightState {
 
 impl DeviceManager {
     pub(super) fn announce(&mut self, kind: NoticeKind) {
-        if self.state.panel.is_wired() || !self.state.network_enabled {
+        if !self.state.has_lamp() || !self.state.network_enabled {
             return;
         }
         self.state.notice = Some(Notice::new(kind));
@@ -396,7 +423,7 @@ mod lamp {
     fn lamp_only() -> DeviceManager {
         DeviceManager::new()
             .with_network(true)
-            .with_panel(Panel::Absent)
+            .with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent])
     }
 
     fn report(manager: &mut DeviceManager, status: LinkStatus) {
@@ -472,29 +499,49 @@ mod lamp {
     };
 
     #[test]
-    fn the_status_lamp_belongs_to_a_board_with_a_radio_and_no_screen() {
-        assert_eq!(lamp_only().state().status_light(), None);
-        let screened = DeviceManager::new()
+    fn the_link_notice_belongs_to_a_board_with_a_radio_and_a_lamp() {
+        let mut lamp = lamp_only();
+        setup(&mut lamp);
+        assert_eq!(lamp.state().link_notice(), Some(LightState::SETUP));
+
+        let mut screened = DeviceManager::new()
             .with_network(true)
-            .with_panel(Panel::Wired);
-        assert_eq!(screened.state().status_light(), None);
-        let no_radio = DeviceManager::new()
+            .with_surface_roles([SurfaceRole::Pages, SurfaceRole::Absent]);
+        setup(&mut screened);
+        assert_eq!(
+            screened.state().link_notice(),
+            None,
+            "a display has a page to say it, so nothing is routed to a lamp"
+        );
+
+        let mut both = DeviceManager::new()
+            .with_network(true)
+            .with_surface_roles([SurfaceRole::Pages, SurfaceRole::Lamp]);
+        setup(&mut both);
+        assert_eq!(
+            both.state().link_notice(),
+            Some(LightState::SETUP),
+            "a lamp still speaks beside a display"
+        );
+
+        let mut no_radio = DeviceManager::new()
             .with_network(false)
-            .with_panel(Panel::Absent);
-        assert_eq!(no_radio.state().status_light(), None);
+            .with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent]);
+        setup(&mut no_radio);
+        assert_eq!(no_radio.state().link_notice(), None);
     }
 
     #[test]
     fn the_lamp_tells_the_mode_from_the_attempt_and_from_the_resting_state() {
         let mut manager = lamp_only();
         setup(&mut manager);
-        assert_eq!(manager.state().status_light(), Some(LightState::SETUP));
+        assert_eq!(manager.state().link_notice(), Some(LightState::SETUP));
 
         connecting(&mut manager, false);
-        assert_eq!(manager.state().status_light(), Some(LightState::JOINING));
+        assert_eq!(manager.state().link_notice(), Some(LightState::JOINING));
 
         connecting(&mut manager, true);
-        assert_eq!(manager.state().status_light(), None);
+        assert_eq!(manager.state().link_notice(), None);
 
         report(
             &mut manager,
@@ -504,7 +551,7 @@ mod lamp {
                 ..LinkStatus::default()
             },
         );
-        assert_eq!(manager.state().status_light(), None);
+        assert_eq!(manager.state().link_notice(), None);
     }
 
     #[test]
@@ -512,18 +559,18 @@ mod lamp {
         let mut manager = lamp_only();
         connecting(&mut manager, true);
         connected(&mut manager);
-        assert_eq!(manager.state().status_light(), Some(GREEN));
+        assert_eq!(manager.state().link_notice(), Some(GREEN));
 
         manager.tick_notice(0);
         assert_eq!(
-            manager.state().status_light(),
+            manager.state().link_notice(),
             Some(GREEN),
             "the announcement is drawn before it is stepped away"
         );
         drain(&mut manager, 2_000);
         assert!(!manager.notice_active(), "the news is over");
         assert_eq!(
-            manager.state().status_light(),
+            manager.state().link_notice(),
             None,
             "a saved device that is connected has nothing left to announce"
         );
@@ -535,7 +582,7 @@ mod lamp {
         setup(&mut manager);
         connected(&mut manager);
         setup(&mut manager);
-        assert_eq!(manager.state().status_light(), Some(GREEN));
+        assert_eq!(manager.state().link_notice(), Some(GREEN));
     }
 
     #[test]
@@ -543,7 +590,7 @@ mod lamp {
         let mut manager = lamp_only();
         failed(&mut manager, NetworkError::Credentials, false);
         assert_eq!(
-            manager.state().status_light(),
+            manager.state().link_notice(),
             Some(RED),
             "a refusal starts lit"
         );
@@ -560,7 +607,7 @@ mod lamp {
 
         drain(&mut manager, 2_000);
         assert_eq!(
-            manager.state().status_light(),
+            manager.state().link_notice(),
             None,
             "a refusal is an event, not the lamp's resting colour"
         );
@@ -575,15 +622,28 @@ mod lamp {
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
         );
-        assert_eq!(manager.state().status_light(), Some(AMBER));
+        assert_eq!(manager.state().link_notice(), Some(AMBER));
 
         drain(&mut manager, 2_000);
         assert_eq!(
-            manager.state().status_light(),
+            manager.state().link_notice(),
             None,
             "the page owns the lamp again once the news is over"
         );
         assert_eq!(manager.state().page, DisplayPage::Ambient);
+    }
+
+    #[test]
+    fn a_board_with_a_display_and_a_lamp_still_announces_on_the_lamp() {
+        let mut manager = DeviceManager::new()
+            .with_network(true)
+            .with_surface_roles([SurfaceRole::Pages, SurfaceRole::Lamp]);
+        manager.apply_business(BusinessIntent::SplashOver);
+        assert_eq!(
+            manager.state().notice.map(|notice| notice.kind),
+            Some(NoticeKind::Offline)
+        );
+        assert_eq!(manager.state().link_notice(), Some(AMBER));
     }
 
     #[test]
@@ -603,7 +663,7 @@ mod lamp {
             missing.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
         );
-        assert_eq!(missing.state().status_light(), Some(AMBER));
+        assert_eq!(missing.state().link_notice(), Some(AMBER));
 
         let mut refused = lamp_only();
         failed(&mut refused, NetworkError::Credentials, false);
@@ -611,7 +671,7 @@ mod lamp {
             refused.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Refused)
         );
-        assert_eq!(refused.state().status_light(), Some(RED));
+        assert_eq!(refused.state().link_notice(), Some(RED));
     }
 
     #[test]

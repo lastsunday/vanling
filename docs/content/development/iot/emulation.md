@@ -25,7 +25,7 @@ weight = 40
 
 选型理由：
 
-- **宿主 harness 为主**：逻辑层已零 esp-hal 依赖（`iot-core` 的 `Board`/`HasLight`/`HasInput` 纯 trait），`input_task`/`render_loop`/`run<B>` 全部 host-clean，唯一 ESP 耦合在二进制入口。用既有依赖的 std feature 即可运行，不引入新 crate、无外设时序，是最稳的 CI 回归网。
+- **宿主 harness 为主**：逻辑层已零 esp-hal 依赖（`iot-core` 的 `Board`/`HasSurface`/`HasInput` 纯 trait），`input_task`/`run_loop`/`run<B>` 全部 host-clean，唯一 ESP 耦合在二进制入口。用既有依赖的 std feature 即可运行，不引入新 crate、无外设时序，是最稳的 CI 回归网。
 - **esp-emu 为辅**：直接引导真实 merged 镜像（ROM → 二级 bootloader → 分区 → app → embassy 执行器），验证芯片启动链而非业务逻辑；esp-emu 为 Espressif 官方，贴 esp-hal 生态。
 - 其余方案或需固件改造（Wokwi）、或外围建模成本高（Renode）、或与 esp-hal 生态贴合度不如 esp-emu（QEMU fork 更完整但当前仅做启动冒烟时价值重复）。
 

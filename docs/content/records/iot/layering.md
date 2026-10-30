@@ -1,0 +1,28 @@
++++
+title = "应用层分层评审的落地记录"
+weight = 90
+sort_by = "weight"
++++
+
+<!-- doc-audience: ai -->
+
+# 应用层分层评审的落地记录
+
+`apps/iot/crates/app` 的一次分层评审：通用机制回到 `iot-core`，页面与功能知识回到各自的模块。这里只记判断与阻碍，不重复代码。
+
+## 已归位
+
+- 呼吸灯的取色与背光包络是 `Breath` 的属性，落在 `core::state::light`；渲染器只问 `rgb()` / `backlight()`，不再各自复算一遍色相与亮度。
+- `LightRenderer` 与 renderer 注册表落在 `core::render`：`Renderer` 契约本来就在 core，`iot-ui` 才是页面层，所以渲染器不放进 UI。
+- 播放命令（`Play` / `SetMuted`）与边沿判定（`mute_command` / `play_command`）归 `PlaybackState`；app 的 dispatch 只负责排队与满队重试。
+- `InputSource::name`、`PollEntry::name`、`DemandKind::name` 由驱动与需求层回答，app 不再维护一张按位置索引的名字表。
+- 页面整屏铺底与「画面来自摄像头」是页面属性（`DisplayPage::ground` / `draws_frames`），由 bsp 的 screen 委托，板级不再各写一份 `matches!`。
+- 在线判据 `AddressWatch` 与 `ADDRESS_LOST_WINDOWS` 落在 `core::drivers::network`，链路循环只喂观察值。
+- 扫频参数属于会议室探针，留在 `bench/probe/echo_room`；产品音色表不再生成它，探针用 `audio::start_source` 播放自己构造的激励。
+- 构建期网络名的读取只有一处（`boot::build_wifi_credentials`），bench 例外由产品侧的 `boot::wifi_credentials` 决定；探针要的永远是构建时给的名字，所以直接读前者。
+- 链路状态投递与去重归 `bridge::deliver`（`LinkWatch`）；页面观察 `PageWatch` 按页参数化并注入 net；扫描列表单点双发布（`net::publish_scan`）；保存标记的重算由 `store::remark` 返回列表，存储层不再直接发布。
+- 产品堆大小归芯片层（`iot-chip-esp::PRODUCT_HEAP_BYTES`），setup 起始 front 归板层（`iot-bsp-esp::FRONT`），`main.rs` 只读取。
+
+## 阻碍：probe 的 board `#[cfg]` 没有下移
+
+`bench/probe` 仍以 `#[cfg(feature = "...")]` 选择探针入口。把这段门控移进 bsp 不可行：`echo_room` 依赖 `crate::audio` 的产品播放与采集实现，bsp 不能反向依赖 app。`bench/probe/mod.rs` 作为模块 owner 单点门控，本身符合软 feature 的规则，故保持现状。

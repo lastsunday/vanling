@@ -28,7 +28,7 @@ Real-device HIL (espflash flashing + on-device smoke) stays on the roadmap (P1) 
 
 Rationale:
 
-- **Host harness as mainline**: the logic layer has zero esp-hal dependencies (`iot-core`'s `Board`/`HasLight`/`HasInput` are pure traits), and `input_task`/`render_loop`/`run<B>` are all host-clean; the only ESP coupling is at the binary entry. Running with std features of existing dependencies adds no new crate and no peripheral timing, making it the most stable CI regression net.
+- **Host harness as mainline**: the logic layer has zero esp-hal dependencies (`iot-core`'s `Board`/`HasSurface`/`HasInput` are pure traits), and `input_task`/`run_loop`/`run<B>` are all host-clean; the only ESP coupling is at the binary entry. Running with std features of existing dependencies adds no new crate and no peripheral timing, making it the most stable CI regression net.
 - **esp-emu as supplement**: it boots real merged firmware images directly (ROM → 2nd-stage bootloader → partition → app → embassy executor), validating the chip boot chain rather than business logic; esp-emu is Espressif-official and fits the esp-hal ecosystem.
 - Other options either require firmware changes (Wokwi), high peripheral modeling cost (Renode), or are less aligned with the esp-hal ecosystem than esp-emu (the QEMU fork is more complete, but redundant for a boot-only smoke).
 

@@ -120,8 +120,4 @@ pub struct Diagnostics {
 /// Consumer of the device diagnostic snapshot.
 pub trait DiagnosticsSink {
     fn consume(&mut self, _diagnostics: &Diagnostics) {}
-
-    fn draws_pages(&self) -> bool {
-        false
-    }
 }

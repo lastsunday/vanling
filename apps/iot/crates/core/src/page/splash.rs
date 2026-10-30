@@ -5,6 +5,10 @@ use crate::drivers::input::{ButtonEvent, InputEvent};
 use crate::intent::{BusinessIntent, OperationIntent};
 use crate::state::DeviceState;
 
+/// How long the boot page stays up before the build's page takes over. A page property:
+/// the splash owns its claim, gestures and repaint; this is how long it exists.
+pub const SPLASH_MS: u64 = 1_500;
+
 pub(super) const fn claim(kind: DemandKind) -> Claim {
     match kind {
         DemandKind::Motion => MOTION_BACKGROUND,

@@ -33,7 +33,7 @@ Linear AEC does one thing: model the acoustic path from the samples sent to the 
 
 ### A/B: the microphone does hear the speaker, and "it does not" was an artifact I measured
 
-`[measured]` An ERLE of 0 means two completely different things: the reference is mispaired, or **there is no echo to cancel at all**. The probe separates them by **flipping the amplifier's mute every 6 s** (`probe/echo_room.rs`).
+`[measured]` An ERLE of 0 means two completely different things: the reference is mispaired, or **there is no echo to cancel at all**. The probe separates them by **flipping the amplifier's mute every 6 s** (`bench/probe/echo_room.rs`).
 
 The first A/B said: with the amplifier on the microphone sat at −76…−90 dBFS against −43 dBFS off — **a 45 dB difference** — and concluded there was no measurable acoustic path on this board.
 

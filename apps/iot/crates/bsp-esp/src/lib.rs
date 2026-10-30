@@ -6,13 +6,13 @@ extern crate alloc;
 pub mod esp32c6_devkitc_1;
 
 #[cfg(feature = "esp32c6-devkitc-1")]
-pub use esp32c6_devkitc_1::{Board, PullButton, Startup, Ws2812RgbLed};
+pub use esp32c6_devkitc_1::{Board, FRONT, PullButton, Startup, Ws2812RgbLed};
 
 #[cfg(feature = "lckfb-szpi-esp32s3")]
 pub mod lckfb_szpi_esp32s3;
 
 #[cfg(feature = "lckfb-szpi-esp32s3")]
-pub use lckfb_szpi_esp32s3::{Board, PullButton, Screen, SharedI2cDevice, Startup};
+pub use lckfb_szpi_esp32s3::{Board, FRONT, PullButton, Screen, SharedI2cDevice, Startup};
 
 /// Board-agnostic real components: chip drivers parameterized over the bus / pin instances
 /// handed in by the board wiring.

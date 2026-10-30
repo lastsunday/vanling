@@ -1,7 +1,16 @@
+//! The render layer: what the device's surfaces should show, and the registry that drives
+//! the renderers which show it.
+
+mod light;
+mod registry;
+
+pub use light::LightRenderer;
+pub use registry::Registry;
+
 use crate::demand::{DemandKey, EffectiveDemand, Mode};
 use crate::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
 use crate::drivers::light::{MAX_LIGHTS, Rgb, rgb_hue, scale_brightness};
-use crate::state::{Breath, DeviceState, DisplayPage, LightState};
+use crate::state::{Breath, DeviceState, DisplayPage, LightState, SurfaceRole};
 use alloc::boxed::Box;
 
 /// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing, `2` solid.
@@ -12,7 +21,7 @@ pub const MODE_SOLID: u8 = 2;
 /// A device slot the render layer knows about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Slot {
-    Light(u8),
+    Surface(u8),
     Diagnostics,
 }
 
@@ -29,7 +38,7 @@ pub enum LightAppearance {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlotAppearance {
-    Light {
+    Surface {
         instance: u8,
         appearance: LightAppearance,
     },
@@ -39,7 +48,7 @@ pub enum SlotAppearance {
 impl SlotAppearance {
     pub fn slot(&self) -> Slot {
         match self {
-            SlotAppearance::Light { instance, .. } => Slot::Light(*instance),
+            SlotAppearance::Surface { instance, .. } => Slot::Surface(*instance),
             SlotAppearance::Diagnostics(_) => Slot::Diagnostics,
         }
     }
@@ -47,8 +56,12 @@ impl SlotAppearance {
 
 fn status_lights(state: &DeviceState) -> [LightState; MAX_LIGHTS] {
     let mut lights = state.lights;
-    if let Some(status) = state.status_light() {
-        lights[0] = status;
+    if let Some(status) = state.link_notice() {
+        for (light, role) in lights.iter_mut().zip(state.surface_roles) {
+            if role == SurfaceRole::Lamp {
+                *light = status;
+            }
+        }
     }
     lights
 }
@@ -220,12 +233,15 @@ impl RenderController {
         if changed {
             notify(SlotAppearance::Diagnostics(next.diagnostics.clone()));
             for (instance, light) in next.lights.iter().enumerate() {
+                if state.surface_roles[instance] == SurfaceRole::Absent {
+                    continue;
+                }
                 let moved = match self.last.as_deref() {
                     None => true,
                     Some(last) => last.lights[instance] != *light,
                 };
                 if moved {
-                    notify(SlotAppearance::Light {
+                    notify(SlotAppearance::Surface {
                         instance: instance as u8,
                         appearance: light_appearance(*light),
                     });
@@ -244,7 +260,7 @@ impl RenderController {
     pub fn current(&self, slot: Slot) -> Option<SlotAppearance> {
         let last = self.last.as_deref()?;
         Some(match slot {
-            Slot::Light(instance) => SlotAppearance::Light {
+            Slot::Surface(instance) => SlotAppearance::Surface {
                 instance,
                 appearance: light_appearance(
                     last.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
@@ -626,11 +642,11 @@ mod tests {
             seen,
             vec![
                 SlotAppearance::Diagnostics(diagnostics_for(LightState::boot())),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Breathing(BOOT_BREATH)
                 },
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Breathing(BOOT_BREATH)
                 },
@@ -660,11 +676,11 @@ mod tests {
             collect(&mut ctl, &off),
             vec![
                 SlotAppearance::Diagnostics(diagnostics_for(LightState::Off)),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off
                 },
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Off
                 },
@@ -704,11 +720,11 @@ mod tests {
             collect(&mut ctl, &target),
             vec![
                 SlotAppearance::Diagnostics(diagnostics_for(target.lights[0])),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3))
                 },
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3))
                 },
@@ -722,11 +738,11 @@ mod tests {
             collect(&mut ctl, &recolored),
             vec![
                 SlotAppearance::Diagnostics(diagnostics_for(recolored.lights[0])),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(9, 9, 9))
                 },
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Color(Rgb(9, 9, 9))
                 },
@@ -751,7 +767,7 @@ mod tests {
         ));
         assert!(matches!(
             seen[1],
-            SlotAppearance::Light {
+            SlotAppearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Breathing(_),
                 ..
@@ -759,7 +775,7 @@ mod tests {
         ));
         assert!(matches!(
             seen[2],
-            SlotAppearance::Light {
+            SlotAppearance::Surface {
                 instance: 1,
                 appearance: LightAppearance::Breathing(_),
                 ..
@@ -770,15 +786,15 @@ mod tests {
     #[test]
     fn current_reports_last_synced_appearance_per_slot() {
         let mut ctl = RenderController::new();
-        assert_eq!(ctl.current(Slot::Light(0)), None, "nothing synced yet");
+        assert_eq!(ctl.current(Slot::Surface(0)), None, "nothing synced yet");
         let plain = state(LightState::Solid {
             color: Rgb(7, 6, 5),
             brightness: 255,
         });
         collect(&mut ctl, &plain);
         assert_eq!(
-            ctl.current(Slot::Light(0)),
-            Some(SlotAppearance::Light {
+            ctl.current(Slot::Surface(0)),
+            Some(SlotAppearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Color(Rgb(7, 6, 5))
             })
@@ -795,15 +811,15 @@ mod tests {
         };
         collect(&mut ctl, &two);
         assert_eq!(
-            ctl.current(Slot::Light(0)),
-            Some(SlotAppearance::Light {
+            ctl.current(Slot::Surface(0)),
+            Some(SlotAppearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Off
             })
         );
         assert_eq!(
-            ctl.current(Slot::Light(1)),
-            Some(SlotAppearance::Light {
+            ctl.current(Slot::Surface(1)),
+            Some(SlotAppearance::Surface {
                 instance: 1,
                 appearance: LightAppearance::Color(Rgb(3, 3, 3))
             })
@@ -813,8 +829,8 @@ mod tests {
             Some(SlotAppearance::Diagnostics(_))
         ));
         assert_eq!(
-            ctl.current(Slot::Light(9)),
-            Some(SlotAppearance::Light {
+            ctl.current(Slot::Surface(9)),
+            Some(SlotAppearance::Surface {
                 instance: 9,
                 appearance: LightAppearance::Color(Rgb(3, 3, 3))
             })
@@ -839,11 +855,11 @@ mod tests {
             seen,
             vec![
                 SlotAppearance::Diagnostics(light_diagnostics(&two, &EffectiveDemand::default())),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off,
                 },
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Color(Rgb(5, 5, 5)),
                 },
@@ -874,7 +890,7 @@ mod tests {
                     &changed,
                     &EffectiveDemand::default()
                 )),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3)),
                 },
@@ -902,11 +918,11 @@ mod tests {
             seen,
             vec![
                 SlotAppearance::Diagnostics(expected),
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off
                 },
-                SlotAppearance::Light {
+                SlotAppearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Off
                 },
@@ -1230,37 +1246,59 @@ mod tests {
         ));
     }
 
+    fn light_appearances(seen: Vec<SlotAppearance>) -> Vec<(u8, LightAppearance)> {
+        seen.into_iter()
+            .filter_map(|appearance| match appearance {
+                SlotAppearance::Surface {
+                    instance,
+                    appearance,
+                } => Some((instance, appearance)),
+                SlotAppearance::Diagnostics(_) => None,
+            })
+            .collect()
+    }
+
     #[test]
-    fn a_lamp_only_board_gets_the_status_on_its_first_surface_only() {
-        let mut ctl = RenderController::new();
-        let status = DeviceState {
-            lights: [LightState::Off, LightState::Off],
-            network_enabled: true,
-            panel: crate::state::Panel::Absent,
-            link: LinkStatus {
-                setup: true,
-                front: Front::AccessPoint,
-                ..LinkStatus::default()
-            },
-            ..DeviceState::default()
-        };
-        collect(&mut ctl, &status);
-        assert_eq!(
-            ctl.current(Slot::Light(0)),
-            Some(SlotAppearance::Light {
-                instance: 0,
-                appearance: light_appearance(LightState::SETUP),
-            }),
-            "the lamp says the access point is up even though the page's light is off"
-        );
-        assert_eq!(
-            ctl.current(Slot::Light(1)),
-            Some(SlotAppearance::Light {
-                instance: 1,
-                appearance: LightAppearance::Off,
-            }),
-            "the substitution does not leak onto a second surface"
-        );
+    fn the_link_notice_lands_on_every_lamp_and_no_display() {
+        for (kinds, expected) in [
+            (
+                [SurfaceRole::Pages, SurfaceRole::Lamp],
+                alloc::vec![
+                    (0, LightAppearance::Off),
+                    (1, light_appearance(LightState::SETUP))
+                ],
+            ),
+            (
+                [SurfaceRole::Lamp, SurfaceRole::Lamp],
+                alloc::vec![
+                    (0, light_appearance(LightState::SETUP)),
+                    (1, light_appearance(LightState::SETUP)),
+                ],
+            ),
+            (
+                [SurfaceRole::Pages, SurfaceRole::Absent],
+                alloc::vec![(0, LightAppearance::Off)],
+            ),
+            ([SurfaceRole::Absent, SurfaceRole::Absent], alloc::vec![]),
+        ] {
+            let mut ctl = RenderController::new();
+            let status = DeviceState {
+                lights: [LightState::Off, LightState::Off],
+                surface_roles: kinds,
+                network_enabled: true,
+                link: LinkStatus {
+                    setup: true,
+                    front: Front::AccessPoint,
+                    ..LinkStatus::default()
+                },
+                ..DeviceState::default()
+            };
+            assert_eq!(
+                light_appearances(collect(&mut ctl, &status)),
+                expected,
+                "{kinds:?}"
+            );
+        }
     }
 
     #[test]

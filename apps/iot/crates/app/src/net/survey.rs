@@ -5,11 +5,12 @@ use core::future::pending;
 use embassy_futures::select::{Either6, select6};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::network::{SavedNetworks, Ssid, Station, SurveyHistory, survey_pause_after};
+use iot_core::state::DisplayPage;
 
 use super::publish;
 use super::setup::Face;
 use super::store::keeps_any;
-use crate::render::{FORGET, JOIN, RESCAN};
+use crate::bridge::{FORGET, JOIN, PageWatch, RESCAN};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Rest {
@@ -25,6 +26,7 @@ pub(super) async fn survey<S>(
     empty_rounds: &mut u8,
     idle_rounds: &mut u8,
     face: Face,
+    page: &'static PageWatch,
 ) -> Rest
 where
     S: Station,
@@ -35,8 +37,7 @@ where
             publish(face.status(station.status()), keeps_any(saved));
             if let Some(list) = history.observe(&ranked, saved) {
                 log::info!("[WIFI] {} access points, the page redraws", list.len());
-                crate::render::SCAN.publish(&list);
-                crate::provision::publish_scan(&list);
+                super::publish_scan(&list);
             } else {
                 log::debug!("[WIFI] {} access points, unchanged", ranked.len());
             }
@@ -67,14 +68,14 @@ where
             JOIN.ready(),
             async {
                 if face.setup {
-                    crate::render::PAGE.wait_for_return().await;
+                    page.wait_for_return(DisplayPage::Network).await;
                 } else {
-                    crate::render::PAGE.wait_for_leave().await;
+                    page.wait_until_away(DisplayPage::Network).await;
                 }
             },
             RESCAN.ready(),
             FORGET.ready(),
-            crate::provision::page_read(),
+            crate::net::provision::page_read(),
         )
         .await
         {

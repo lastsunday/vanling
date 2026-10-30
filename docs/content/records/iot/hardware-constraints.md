@@ -165,6 +165,29 @@ _stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB
 
 `[实测]` 第一次尝试因本机 Docker Desktop 引擎掉线而未测：`moon run iot:check-s3` 停在 `image vanling/xtensa:esp32s3_1.98.1.0 is missing`，`docker info` 报 `Cannot connect to the Docker daemon at unix:///Users/yu/.docker/run/docker.sock`；引擎恢复（Server 28.5.1）后同一棵树补测得上表。
 
+### 板层两个大件装箱：墙宽了 35,616 B（`[实测]`，2026-10-30）
+
+`[实测]` `Board` 按值传进 `main` 的 future，future 又整个驻在 `__embassy_main::POOL` 这个静态池里，所以**字段内联多少，静态量就多重多少**。本轮把 `lckfb_szpi_esp32s3` 板上两个按值携带的器件装箱（字段 `light` 同时更名为 `screen`；C6 的 `light` 是真 WS2812，不动）：
+
+```rust
+screen: Option<Box<Screen>>,                    // 原 light: Option<Screen>
+audio: Option<Box<Es7210Rx<…, REFERENCE_SAMPLES>>>,   // 原 Option<Es7210Rx<…>>
+```
+
+`size_of`（`check-s3` 里拿 `let _: [u8; 0] = [0u8; size_of::<T>()]` 探出来的，探针未留在树上）：`Screen` **2,712 B**（其中 `Diagnostics` 2,568 B）、`Option<Es7210Rx<…>>` **9,168 B**（AEC 的 `AdaptiveFilter` 是大头）、`Board` 两者都装箱 **240 B**（都内联时 **12,112 B**，由上两次读数推算）。
+
+| 量 | 都装箱（本轮） | 只装箱屏幕 | 都不装箱 | 差（都不装箱 → 都装箱） |
+| --- | --- | --- | --- | --- |
+| `_stack_start_cpu0 − _stack_end_cpu0` | `0x3fce9710 − 0x3fcd09b8` = **101,720 B** | 74,232 B | 66,104 B | **+35,616 B** |
+| 余量（减 65,536） | **36,184 B** | 8,696 B | 568 B | +35,616 B |
+| `__embassy_main::POOL` | **7,192 B**（`0x1c18`） | 34,696 B（`0x8788`） | 42,808 B（`0xa738`） | **−35,616 B** |
+
+三段读数取自同一棵树、同一把尺子（`nm -S apps/iot/target/xtensa-esp32s3-none-elf/release/vanling`），只改这两处的装箱与字段名。POOL 的减少量各是字段大小的约三倍（屏幕 **−8,112 B** ≈ 3 × 2,712；麦克风前端 **−27,504 B** = 3 × 9,168），即 future 布局里每个值被搬了三份（板层构造、`take_*` 的临时、`WiredSurface`/`PollEntry` 的落地各一）；具体符号没有逐处归因。
+
+**堆不变**：两个 `Box` 在 `take_surfaces` / `take_audio` 处释放，值随即搬进本来就有的 `Vec<WiredSurface<Screen>>` 与 `PollEntry` 的 `Box`，S3 那块 96 KB PSRAM 堆的峰值不变，只是这些字节在开机那一刻先落堆、再原样挪走。
+
+`check-s3`、`check-c6`、`check-host`、`build-s3` 与 S3 目标的 `cargo clippy -- -D warnings` 本轮全部通过。
+
 ---
 
 ## `IOT_BOOT_PAGE` 必须在构建期解析（`[实测]`，2026-10-29）

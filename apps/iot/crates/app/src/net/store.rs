@@ -4,7 +4,9 @@
 use alloc::boxed::Box;
 
 use iot_core::drivers::credentials::{FlashRegion, Store};
-use iot_core::drivers::network::{Credentials, LinkHint, SavedNetworks, Ssid, SurveyHistory};
+use iot_core::drivers::network::{
+    ApList, Credentials, LinkHint, SavedNetworks, Ssid, SurveyHistory,
+};
 
 use super::link::Provenance;
 
@@ -61,9 +63,10 @@ pub(super) fn drop_saved<R: FlashRegion>(store: Option<&mut Store<R>>, ssid: &Ss
     }
 }
 
-pub(super) fn remark<R: FlashRegion>(history: &mut SurveyHistory, saved: Option<&Store<R>>) {
-    if let Some(list) = history.marked(saved.map(|store| store.networks())) {
-        crate::render::SCAN.publish(&list);
-        crate::provision::publish_scan(&list);
-    }
+/// Recomputes the list's saved marks after a save or a forget, for the caller to publish.
+pub(super) fn remark<R: FlashRegion>(
+    history: &mut SurveyHistory,
+    saved: Option<&Store<R>>,
+) -> Option<ApList> {
+    history.marked(saved.map(|store| store.networks()))
 }

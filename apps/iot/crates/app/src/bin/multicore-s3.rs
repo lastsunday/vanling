@@ -1,20 +1,14 @@
-//! Probes whether starting the second core survives the main stack sitting under it: the
-//! ROM boots the APP core and its startup prologue runs on its own boot stack at the top of
-//! `dram2_seg`, so an unreserved main stack has its *top* overwritten — and the top is where
-//! the thread-mode executor keeps its `ThreadFlag`. What the second core runs is irrelevant;
-//! the damage predates any closure. The hazard and the reservation that answers it are
-//! documented where the reservation lives,
+//! Probes whether starting the second core survives the main stack sitting under it: the ROM
+//! boots the APP core and its startup prologue runs on its own boot stack at the top of
+//! `dram2_seg`, so an unreserved main stack has its *top* overwritten — where the thread-mode
+//! executor keeps its `ThreadFlag`. What the second core runs is irrelevant; the damage predates
+//! any closure. The reservation that answers it lives in
 //! `crates/app/linker/esp32s3-main-stack.x`.
 //!
-//! [`CASE`] selects which shape to run; one case per image keeps a fault from being
-//! attributed to the wrong deviation:
-//!
-//!   1  esp-hal's `embassy_multicore` example, transcribed.
-//!   2  the same, plus a board-sized value held live on `main`'s stack across the bring-up —
-//!      the product's shape, and the one that fails without the reservation.
-//!
-//! Both cores run the same round trip [`ROUNDS`] times — core 0 sends a counter, core 1
-//! echoes it — and a case logging its completed round trips on both cores has survived.
+//! [`CASE`] picks the shape, one per image so a fault cannot be blamed on the wrong deviation:
+//! 1 is esp-hal's `embassy_multicore` example transcribed; 2 adds a board-sized value held live
+//! on `main`'s stack across the bring-up, which fails without the reservation. Both cores run
+//! [`ROUNDS`] counter round trips; a case logging them on both cores has survived.
 
 #![no_std]
 #![no_main]
@@ -33,9 +27,8 @@ const ROUNDS: u32 = 8;
 
 const CORE1_STACK_BYTES: usize = 8 * 1024;
 
-// The size of the product's `Board`, which `main` holds live on its stack across the
-// second core's bring-up. An array of that size reproduces the hazard — the point of the
-// case is the *stack depth*, not the board — without needing the whole peripheral set.
+// The size of the product's `Board`, held live on `main`'s stack across the bring-up. The point
+// of the case is the stack depth, not the board, so an array of that size reproduces the hazard.
 const BOARD_BYTES: usize = 4_304;
 
 static mut HEAP_MEM: [u8; 16 * 1024] = [0; 16 * 1024];

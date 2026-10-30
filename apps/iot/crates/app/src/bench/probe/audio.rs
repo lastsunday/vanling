@@ -9,23 +9,7 @@ use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::board::HasPlayback;
 use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
 
-use crate::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
-
-/// Board-independent: the AEC touches no peripheral, so its cost belongs to the tap count
-/// and the clock rather than to any wiring.
-pub mod echo;
-
-/// The same canceller against a real room, through the product's own pairing.
-#[cfg(feature = "lckfb-szpi-esp32s3")]
-pub mod echo_room;
-
-/// S3 only: the switch itself is a register write, which is S3-only the moment esp-hal
-/// refuses to do it.
-#[cfg(feature = "lckfb-szpi-esp32s3")]
-pub mod clock;
-
-#[cfg(feature = "lckfb-szpi-esp32s3")]
-pub mod motion;
+use crate::audio::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
 
 pub async fn run<B>(mut board: B) -> !
 where
@@ -39,9 +23,7 @@ where
     };
 
     let shared = share(speaker as Box<dyn Speaker>);
-    // Both futures are `!`, so `join` returning at all is unreachable; parking keeps
-    // the signature honest rather than reaching for a panic the compiler can see
-    // is dead.
+    // Both halves are `!`; parking keeps the signature honest without a panic the compiler sees is dead.
     join(feed_loop(shared), walk_catalogue(shared)).await;
     loop {
         core::future::pending::<()>().await
@@ -54,12 +36,15 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
     let mut last_report = Instant::now();
 
     loop {
-        match shared.lock(|shared| crate::sounds::play(&mut **shared.speaker.borrow_mut(), sound)) {
+        match crate::audio::start(shared, sound) {
             Ok(()) => {
                 plays += 1;
                 log::info!("[PROBE] playing {sound:?}, play {plays}");
             }
-            Err(error) => log::error!("[PROBE] {sound:?} refused: {error:?}"),
+            Err(error) => {
+                log::error!("[PROBE] {sound:?} refused: {error:?}");
+                shared.lock(|shared| shared.done.store(true, Ordering::Relaxed));
+            }
         }
         sound = sound.next();
 
@@ -68,11 +53,7 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
         }
 
         if let Some(recovery) = shared.lock(|shared| shared.speaker.borrow_mut().recover()) {
-            log::info!(
-                "[PROBE] recovered the outgoing DMA, {} bytes free, sound was {}",
-                recovery.free_bytes,
-                if recovery.playing { "playing" } else { "idle" },
-            );
+            crate::audio::report_recovery("PROBE", &recovery);
         }
 
         let now = Instant::now();

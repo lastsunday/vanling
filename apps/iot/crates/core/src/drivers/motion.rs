@@ -202,6 +202,10 @@ impl<S> MotionInput<S> {
 }
 
 impl<S: MotionSource> InputSource for MotionInput<S> {
+    fn name(&self) -> &'static str {
+        "motion"
+    }
+
     fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,

@@ -647,6 +647,10 @@ impl<S> AudioInput<S> {
 }
 
 impl<S: AudioSource> InputSource for AudioInput<S> {
+    fn name(&self) -> &'static str {
+        "capture"
+    }
+
     fn poll(&mut self, now_ms: u64) -> Option<InputEvent> {
         self.sink.publish(self.source.sample(now_ms));
         None

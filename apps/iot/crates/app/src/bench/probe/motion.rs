@@ -1,5 +1,4 @@
-//! The motion demand matrix, in its own module so the board that wires the IMU gates it
-//! once here.
+//! The motion demand matrix, in its own module so the board that wires the IMU gates it once.
 
 use embassy_time::{Duration, Instant, Timer};
 use iot_bsp_esp::components::qmi8658::{Qmi8658, SUPPORTED_CONFIGS};
@@ -75,18 +74,9 @@ fn affordable_polls(cadence_ms: u64) -> Option<u32> {
 
 /// Walks the (configuration × cadence) matrix and reports what each cell costs.
 ///
-/// Each cell is polled at its own cadence where the window allows one, and the log says which
-/// cells were measured and which were scaled. That distinction is the point: the cost table
-/// turns a per-poll cost into a rate by dividing by a cadence, which only holds if a cadence
-/// changes how often a poll happens and not what one costs. 200 ms is measured directly, so
-/// the assumption is tested; 30 s would take minutes per cell and is reported as derived.
-///
-/// **Bus transactions** come from the driver's own counter, so changing its sequence moves the
-/// number. **Executor occupancy** is the wall time inside the poll.
-///
-/// It cannot report current, and configurations with no register encoding are printed
-/// unreachable rather than skipped, so the log says what was not measured as loudly as what
-/// was.
+/// 200 ms is measured, so the per-poll-cost × cadence assumption is tested; 30 s would take
+/// minutes and is reported as derived. Occupancy is wall time inside the poll, transactions the
+/// driver's own counter; a configuration with no register encoding is printed unreachable.
 pub async fn run(mut driver: Qmi8658<MotionDevice>) -> ! {
     log::info!(
         "[PROBE] motion demand matrix: configurations {CONFIGS:?}, driver configures {SUPPORTED_CONFIGS:?}"

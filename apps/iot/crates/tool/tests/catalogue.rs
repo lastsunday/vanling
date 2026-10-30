@@ -135,6 +135,6 @@ fn the_catalogue_names_the_same_files() {
 }
 
 fn catalogue_source() -> String {
-    let path = assets_dir().join("../sounds.rs");
+    let path = assets_dir().join("../audio/sounds.rs");
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }

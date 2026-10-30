@@ -27,6 +27,27 @@ pub struct PlaybackState {
     pub dropped: u16,
 }
 
+/// What the playback task must do to a speaker to follow the state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaybackCommand {
+    Play(Sound),
+    SetMuted(bool),
+}
+
+impl PlaybackState {
+    /// The mute edge, if this state crossed it.
+    pub fn mute_command(&self, previous: &Self) -> Option<PlaybackCommand> {
+        (self.muted != previous.muted).then_some(PlaybackCommand::SetMuted(self.muted))
+    }
+
+    /// The start edge, if this state crossed it. A sound already playing is never sent
+    /// again: a tap over it is a drop, which never leaves `Playing`.
+    pub fn play_command(&self, previous: &Self) -> Option<PlaybackCommand> {
+        (self.phase == PlaybackPhase::Playing && previous.phase != PlaybackPhase::Playing)
+            .then_some(PlaybackCommand::Play(self.sound))
+    }
+}
+
 impl Default for PlaybackState {
     fn default() -> Self {
         Self::boot()
@@ -269,6 +290,41 @@ mod speaker_page {
         mute(&mut manager);
         mute(&mut manager);
         assert!(!manager.playback_state().muted);
+    }
+
+    #[test]
+    fn a_command_is_sent_only_on_the_edge_that_crossed_it() {
+        let idle = PlaybackState::boot();
+        let mut playing = idle;
+        playing.phase = PlaybackPhase::Playing;
+        playing.sound = Sound::Warn;
+        let mut muted = idle;
+        muted.muted = true;
+
+        assert_eq!(
+            playing.play_command(&idle),
+            Some(PlaybackCommand::Play(Sound::Warn)),
+            "entering Playing starts the sound the state names"
+        );
+        assert_eq!(
+            playing.play_command(&playing),
+            None,
+            "a pass that stays in Playing must not replay the sound"
+        );
+        assert_eq!(
+            idle.play_command(&playing),
+            None,
+            "finishing a sound sends nothing to the driver"
+        );
+        assert_eq!(
+            muted.mute_command(&idle),
+            Some(PlaybackCommand::SetMuted(true))
+        );
+        assert_eq!(
+            muted.mute_command(&muted),
+            None,
+            "the latch is written on the edge, not every pass"
+        );
     }
 
     #[test]

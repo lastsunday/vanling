@@ -9,17 +9,19 @@ use esp_storage::FlashStorage;
 
 use crate::components::credentials::CredentialStore;
 use iot_core::demand::DemandKey;
-use iot_core::drivers::board::{Board as BoardTrait, HasPanel, HasWifi};
+use iot_core::drivers::board::{Board as BoardTrait, HasWifi, WiredSurface};
 use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
 use iot_core::drivers::motion::MotionCapabilities;
+use iot_core::drivers::network::Front;
 use iot_core::drivers::playback::UnwiredSpeaker;
-use iot_core::state::Panel;
 use smart_leds::RGB8;
 
 pub use crate::components::button::PullButton;
 pub use crate::components::ws2812::{RMT_FREQ_HZ, Ws2812RgbLed};
 
 const LEDS: usize = 1;
+
+pub const FRONT: Front = Front::AccessPoint;
 
 /// Board-level support for the ESP32-C6-DevKitC-1.
 pub struct Board<'d> {
@@ -84,11 +86,13 @@ impl Board<'static> {
 
 impl BoardTrait for Board<'static> {}
 
-impl iot_core::drivers::board::HasLight for Board<'static> {
-    type Light = Ws2812RgbLed<'static, { buffer_size::<RGB8>(LEDS) }>;
+impl iot_core::drivers::board::HasSurface for Board<'static> {
+    type Surface = Ws2812RgbLed<'static, { buffer_size::<RGB8>(LEDS) }>;
 
-    fn take_lights(&mut self) -> Option<Vec<Self::Light>> {
-        self.light.take().map(|light| vec![light])
+    fn take_surfaces(&mut self) -> Option<Vec<WiredSurface<Self::Surface>>> {
+        self.light
+            .take()
+            .map(|light| vec![WiredSurface::Lamp(light)])
     }
 }
 
@@ -145,11 +149,5 @@ impl HasWifi for Board<'static> {
     fn take_wifi(&mut self) -> Option<Box<Self::Station>> {
         iot_chip_esp::ungate_radio();
         self.radio.take().and_then(crate::components::wifi::start)
-    }
-}
-
-impl HasPanel for Board<'static> {
-    fn panel(&self) -> Panel {
-        Panel::Absent
     }
 }
