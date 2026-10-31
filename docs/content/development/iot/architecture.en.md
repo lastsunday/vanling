@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "9f1ac02a5b3641b8b17c95bf91737c97712eca1a"
-translated_at = "2026-10-30T13:01:58Z"
+source_file_hash = "e6c76dc77c391c2b0267c070aff9b895507a8c0d"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 # Architecture
@@ -66,13 +66,13 @@ A pipeline-logic system whose trigger points are intents.
 | `lib.rs` | composition root: take capabilities, build `DeviceManager`, start the four futures |
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `bridge.rs` | panel ↔ network contract: `Latch`/`Handoff`/`Latest`, the six signals, `Outbound`/`Inbound`, `PageWatch` |
-| `pipeline.rs` | the intent loop `run_loop`: apply intents, publish state, wait for the next frame |
+| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, speaker, net }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
+| `pipeline.rs` | the coordinator `run_loop`: apply intents, publish state, forward commands, wait for the next frame |
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `frame.rs` | `FrameClock` (logical frames, including catch-up) |
-| `input.rs` | polling, demand scheduling, gesture recognition |
-| `audio/{mod,dispatch,capture,sounds}.rs` | playback task, state→command, microphone window, sound catalogue |
-| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`: stack, link, panel-side setup, AP services, survey, credentials |
+| `input.rs` | input worker: polling, demand scheduling, gesture recognition |
+| `audio/{mod,dispatch,capture,sounds}.rs` | playback worker, state→command, the capture window's driver side, sound catalogue |
+| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, survey, credentials |
 | `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
 
@@ -80,14 +80,18 @@ Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the c
 check module cycles inside a crate):
 
 ```
-main → lib → { boot, pipeline, bridge, net }
-pipeline → { bridge, surface, input, audio, bench::replay }
-net      → { bridge, input }
-audio    → ∅
+main → { lib, workers }
+lib  → { boot, pipeline, workers, net }
+pipeline → { workers, surface, input, audio, bench::replay }
+net      → { workers, input }
+audio    → { workers }
+input    → { workers }
+workers  → ∅
 ```
 
-- `bridge` carries no `wifi` gate: the host build still holds `INBOUND`/`OUTBOUND`, nobody answers
-- `net` does not reach `surface`/`pipeline`: the network task reads `PAGE` from `bridge`, not device state
+- `workers` carries no `wifi` gate: the host build still holds `Net`, nobody answers
+- `workers` never reaches a worker: it knows only `core` types, so `audio`/`net`/`input` can depend on it one way
+- `net` does not reach `surface`/`pipeline`: the network worker reads the page and commands from `workers`, not device state
 - `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
 - `core` does not know `iot_app`
 
@@ -176,16 +180,29 @@ A capability that carries rules (multi-step transitions, invariants, edges acros
 
 `state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Setup`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen.
 
-### Transport: three downstream paths, of different kinds
+### Transport: coordinators and workers
 
-| Consumer              | Executor                                   | Status                                                 |
-| --------------------- | ------------------------------------------ | ------------------------------------------------------ |
-| Render layer / camera | cooperative                                | ✅ **channel already exists**                          |
-| `input_task`          | cooperative                                | ❌ `input_task(intent_bus, sources)` cannot see state  |
-| `control_loop`        | cooperative                                | ❌ same                                                |
-| `feed_task`           | **Priority2 interrupt, separate executor** | ⚠️ **deliberately dependency-free; none may be added** |
+`run_loop` is the **coordinator**: it only does non-blocking work — apply intents, publish state, hand over the windows and commands already ready, wait for the next frame. Anything that waits on a driver, an I2C bus or a network stack belongs to a **worker**:
 
-**The render layer costs nothing**: `Diagnostics` in `core/src/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion_enabled` / `audio` / `playback`, and `DiagnosticsSink::consume` is already the "state into consumers" channel.
+| Worker                 | Owns                                | Executor                                   | Handle |
+| ---------------------- | ----------------------------------- | ------------------------------------------ | -------- |
+| Render layer / camera  | surface, camera                     | cooperative                                | `Render` / `Diagnostics` |
+| `input_task`           | input devices and audio capture     | cooperative                                | `Input { to, from }` |
+| `control_loop`         | codec, DMA                          | cooperative                                | `Speaker { to }` (completion returns on the intent bus) |
+| `net::serve`           | stack, link, AP services            | cooperative                                | `Net { commands, page, scan }` |
+| `feed_task`            | the microphone clock                | **Priority2 interrupt, separate executor** | ⚠️ **deliberately dependency-free; none may be added** |
+
+The handles live together in the composition root's `Workers<'a>`: one field per worker, so a second protocol adds a field rather than a `TO_X`/`FROM_X` pair at the call site. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct.
+
+The shape follows the semantics, not convenience:
+
+- **Commands** use a `Channel` (`Net.commands`, `Speaker.to`). Each pass the coordinator hands over only what the worker has room for; a command that found none waits for the next pass and is never dropped.
+- **Levels** use `PageWatch` (`Net.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge.
+- **Latest values** use `Latest`/a window (`Net.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
+
+The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. The coordinator forwards `DeviceManager::take_command()` directly instead of translating each variant, and setup commands carry the `Front` they were issued on so the worker can drop a previous session's leftovers.
+
+**The render layer costs nothing**: `Diagnostics` in `core/src/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`, and `DiagnosticsSink::consume` is already the "state into consumers" channel.
 
 The camera's chain runs end to end today:
 
@@ -205,9 +222,9 @@ The shared slot's shape follows from that constraint: embassy-sync's blocking mu
 
 `Intent` is the opposite case — an event — so those still travel on a bus.
 
-The capture window is a third shape: a **window**, not an event (only the newest one means anything), and not shared state either (nobody writes a common slot — the board hands over the frame the driver just folded, during its own poll). It therefore rides a single-slot contract: `HasAudio::take_audio(&'static dyn CaptureSink)` gives the board the destination, `input_task`'s poll publishes into it, and `run_loop` takes from it after the intents.
+The capture window is a third shape: a **window**, not an event (only the newest one means anything), and not shared state either (nobody writes a common slot — the board hands over the frame the driver just folded, during its own poll). It therefore rides a single-slot channel: `HasAudio::take_audio(&'static dyn CaptureSink)` gives the board the destination, `input_task`'s poll publishes into it, and `run_loop` takes from it after the intents.
 
-The second reason is width: every slot of a `Channel<T, N>` is allocated at `size_of::<T>()`, so the slot width is set by the widest event variant — a capture event carrying an envelope (1.76 KB) would price the eight-slot `INTENT_BUS` at 14,184 B of internal DRAM for the one frame the panel reads. Without that variant `INTENT_BUS` is 896 B and the contract itself 1,824 B (recorded in the [Wi-Fi record](@/records/iot/wifi.md)).
+The second reason is width: every slot of a `Channel<T, N>` is allocated at `size_of::<T>()`, so the slot width is set by the widest event variant — a capture event carrying an envelope (1.76 KB) would price the eight-slot `INTENT_BUS` at 14,184 B of internal DRAM for the one frame the panel reads. Without that variant `INTENT_BUS` is 896 B and the window itself 1,824 B (recorded in the [Wi-Fi record](@/records/iot/wifi.md)).
 
 The ordering falls out of it: `input_task` polls in wiring order with the capture last, so a tap on the record control in the same tick latches the frame the previous pass drew.
 

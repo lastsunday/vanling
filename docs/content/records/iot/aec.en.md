@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "ed3dcbdd980103f3b00926034978edd112138ea7"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "6f0ce82128f902f4425edf567be0cbfa01cb56b8"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -224,7 +224,7 @@ cd apps/iot && cargo test -p iot-core --test aec_erle -- --nocapture
 
 The gate is therefore stated as **a gap to the offline optimum (≤ 3 dB)**, with the 15 dB bar applied only to paths the filter can hold in full. That distinction is something only a self-verifying reference can give: a borrowed path cannot tell you who set the ceiling.
 
-Two caveats stay attached. Clearing 15 dB is **necessary, not sufficient** (PCC 0.31). And the paths are generated, so they test the contract rather than a room — this board's loop gain, delay and thresholds still need this board.
+Two caveats stay attached. Clearing 15 dB is **necessary, not sufficient** (PCC 0.31). And the paths are generated, so they test the model rather than a room — this board's loop gain, delay and thresholds still need this board.
 
 ---
 
@@ -648,7 +648,7 @@ So the wiring is shaped by that:
 
 - The **write** side taps as before (one sample per **frame** in `render_slice` — both slots carry the same stream, so a tap per slot halves the rate), and the **read** side goes through a play cursor: `Es8311Tx::advance_play_cursor` derives how far the wire has travelled from the DMA's own free space and feeds the delta to `ReferenceLog::played`. That is the answer to "`Speaker` has no `played_frames()`" — **no method is added to `Speaker`**. What is added is a shared cell the speaker publishes into, one direction only.
 - The cell **crosses two executors**: the feed is on a Priority2 interrupt, the folding is in the cooperative `input_task`, so it is a `CriticalSectionRawMutex` cell, taken **once per feed and once per poll, never once per sample** — a lock per sample at 48 kHz would cost more than the canceller it is feeding.
-- **Where it sits**: the decimator in core (`drivers/audio/decimator.rs`, indexed by frame number rather than a free-running counter, since a phase mismatch between the two streams is a silent failure), the reference shadow log in core (`drivers/aec/reference.rs`), the tap in the bsp transmit side, the pairing in the bsp capture side, the wire between them in the board module's `Board::new`. **`Speaker` gained nothing** — a method there would pull a data-path coupling back across the interrupt boundary its contract exists to prevent.
+- **Where it sits**: the decimator in core (`drivers/audio/decimator.rs`, indexed by frame number rather than a free-running counter, since a phase mismatch between the two streams is a silent failure), the reference shadow log in core (`drivers/aec/reference.rs`), the tap in the bsp transmit side, the pairing in the bsp capture side, the wire between them in the board module's `Board::new`. **`Speaker` gained nothing** — a method there would pull a data-path coupling back across the interrupt boundary the interface exists to prevent.
 - **Sized from geometry**: `REFERENCE_SAMPLES = ⌈(5 760 + 2 880 + 192) / 3⌉ = 2 944`, with a `const _: () = assert!` holding that it spans the whole runway. The capture side asserts separately that its ring really is three poll periods deep — **two modules each spelling out one number is free to drift**, and a stale copy makes the log quietly lap.
 
 `[test]` The most important of `ReferenceLog`'s 14 tests is the **index unit** in `at_play_cursor`: the ring is addressed in *kept samples* while the counters count *frames*. The first version used `written % N` with `written` incrementing per frame, so only one slot in three was ever written — **every test green, every sample zero**. It now asserts **specific sample values** (`frames(n) = n × 97`) rather than indices, because a wrong index looks like a right one.
@@ -884,7 +884,7 @@ Written down because it is coarser than an impulse response, and is one step awa
 - **It counts the correlated share.** Energy that does not correlate with the reference is not something a linear filter can hold either, so leaving it out costs the measurement nothing; anything a filter would have reached is inside the number.
 - **Resolution is one band** (2 ms). Two tap counts less than a band apart cannot be told apart by it.
 
-`[test]` What is pinned is the contract it can actually carry: more taps never reach less; a damped room leaves far less over than a live one (`quiet[2] = 3%` against `loud[2] = 12%`); no path and no scan both return −1 rather than 0 — because 0 would be read as "everything reached"; and the loudest band is the one the direct reflection falls in.
+`[test]` What is pinned is the guarantee it can actually carry: more taps never reach less; a damped room leaves far less over than a live one (`quiet[2] = 3%` against `loud[2] = 12%`); no path and no scan both return −1 rather than 0 — because 0 would be read as "everything reached"; and the loudest band is the one the direct reflection falls in.
 
 **Those four numbers have not been produced on the board yet.** `PATH_RUN` is a compile-time switch, off by default; turned on it plays the sweep, leaves the canceller off, and prints that line once the wide scan has located a path. **It answers "how many taps does this room need", not "what the impulse response looks like"** — the latter still does not exist, and the former is already enough to decide L.
 

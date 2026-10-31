@@ -15,7 +15,8 @@ use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{ApList, Front, LinkStatus, Ssid, Station};
 use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
 
-use crate::input::INTENT_BUS;
+use crate::input::IntentBus;
+use crate::workers::Net;
 
 mod link;
 mod provision;
@@ -50,7 +51,8 @@ pub async fn serve<S, R>(
     saved: Option<Box<Store<R>>>,
     front: Front,
     has_pages: bool,
-    page: &'static crate::bridge::PageWatch,
+    net: Net,
+    bus: &'static IntentBus,
 ) -> !
 where
     S: Station,
@@ -69,10 +71,10 @@ where
     let seed = seed_from(octets);
     let setup_name = setup_ssid(octets);
     MAC.lock(|cell| cell.set(octets));
-    let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::Network(
+    let _ = bus.try_send(Intent::Business(BusinessIntent::Network(
         NetworkIntent::Mac(octets),
     )));
-    publish(station.status(), store::has_saved(&saved));
+    publish(bus, station.status(), store::has_saved(&saved));
     let resources = Box::leak(Box::new(StackResources::<SOCKETS>::new()));
     let setup_resources = Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new()));
     let (stack, mut runner) =
@@ -88,7 +90,11 @@ where
             &setup_name,
             &mut *setup_resources,
             front,
-            link::Panel { page, has_pages },
+            link::Panel {
+                net,
+                bus,
+                has_pages,
+            },
         ),
     )
     .await {}
@@ -105,15 +111,53 @@ fn setup_ssid(octets: [u8; 6]) -> Ssid {
     iot_core::provision::ap_name(octets)
 }
 
-fn publish(status: LinkStatus, saved: bool) {
-    crate::bridge::deliver(status, saved);
+/// The link the panel was last told about.
+///
+/// A reading that repeats is not a report: the panel's state only moves on a difference, and
+/// the intent bus also carries every command the other way.
+struct LinkWatch {
+    last: Mutex<CriticalSectionRawMutex, Cell<Option<LinkStatus>>>,
+}
+
+impl LinkWatch {
+    const fn new() -> Self {
+        Self {
+            last: Mutex::new(Cell::new(None)),
+        }
+    }
+
+    /// Delivers `status` with the store's bit folded in, if it differs from the last
+    /// delivery. The reading is only remembered once the bus took it, so a full bus retries
+    /// rather than swallowing the change.
+    fn deliver(&self, bus: &IntentBus, status: LinkStatus, saved: bool) {
+        let status = LinkStatus { saved, ..status };
+        if self.last.lock(|last| last.get()) == Some(status) {
+            return;
+        }
+        if bus
+            .try_send(Intent::Business(BusinessIntent::Network(
+                NetworkIntent::LinkReport(status),
+            )))
+            .is_ok()
+        {
+            self.last.lock(|last| last.set(Some(status)));
+        }
+    }
+}
+
+static LINK: LinkWatch = LinkWatch::new();
+
+/// Reports the link to the panel. The network worker's whole view of the intent bus is this
+/// call.
+fn publish(bus: &IntentBus, status: LinkStatus, saved: bool) {
+    LINK.deliver(bus, status, saved);
 }
 
 /// Hands one list to both consumers at once: the panel's state and setup mode's page. A
 /// refresh that reached one and not the other would leave the phone and the panel showing
 /// different lists.
-pub(super) fn publish_scan(list: &ApList) {
-    crate::bridge::SCAN.publish(list);
+pub(super) fn publish_scan(net: Net, list: &ApList) {
+    net.scan.publish(list);
     provision::publish_scan(list);
 }
 

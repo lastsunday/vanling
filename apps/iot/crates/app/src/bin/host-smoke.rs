@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
-use iot_app::bridge::{FORGET, JOIN, RESCAN, SCAN};
+use iot_app::workers::NET;
 use iot_app::{Feed, Network, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
@@ -37,7 +37,7 @@ use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
 use iot_core::intent::{BusinessIntent, Intent, NetworkIntent, PALETTE};
 use iot_core::keyboard::Key;
 use iot_core::paint::Rgb;
-use iot_core::state::{Confirm, DisplayPage, PlaybackPhase};
+use iot_core::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
 
 static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());
 
@@ -534,6 +534,16 @@ async fn main(_spawner: Spawner) {
     }
 }
 
+/// Takes everything the coordinator handed the network worker. Nothing consumes these
+/// commands on the host, so this is where a command is read rather than acted on.
+fn take_commands() -> Vec<NetworkCommand> {
+    let mut taken = Vec::new();
+    while let Ok(command) = NET.commands.try_receive() {
+        taken.push(command);
+    }
+    taken
+}
+
 async fn scenario() {
     Timer::after(Duration::from_millis(200)).await;
     assert!(
@@ -797,7 +807,7 @@ async fn scenario() {
         rssi: -55,
         secured: true,
     }]);
-    SCAN.publish(&list);
+    NET.scan.publish(&list);
 
     attempts = 0;
     while NETWORK_APS.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -807,7 +817,7 @@ async fn scenario() {
     assert_eq!(
         NETWORK_APS.load(Ordering::SeqCst),
         1,
-        "a scan published on the link's contract never reached the panel's snapshot"
+        "a scan published through the link never reached the panel's snapshot"
     );
 
     let send = |intent: BusinessIntent| {
@@ -846,13 +856,17 @@ async fn scenario() {
         at_ms,
     }));
     attempts = 0;
-    let mut handed = JOIN.take();
+    let mut handed = None;
     while handed.is_none() && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
-        handed = JOIN.take();
+        for command in take_commands() {
+            if let NetworkCommand::Join(asked) = command {
+                handed = Some(asked);
+            }
+        }
         attempts += 1;
     }
-    let handed = handed.expect("connect never reached the join contract");
+    let handed = handed.expect("connect never reached the network worker");
     let JoinRequest::Typed(handed) = handed else {
         panic!("connect handed over a row's name rather than the passphrase it was given");
     };
@@ -880,7 +894,7 @@ async fn scenario() {
     let mut marked = list;
     let marks = store.mask(&marked);
     marked.mark_saved(marks);
-    SCAN.publish(&marked);
+    NET.scan.publish(&marked);
     attempts = 0;
     while NETWORK_SAVED.load(Ordering::SeqCst) == 0 && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
@@ -889,15 +903,24 @@ async fn scenario() {
     assert_eq!(
         NETWORK_SAVED.load(Ordering::SeqCst),
         1,
-        "a marked list published on the link's contract never reached the panel's snapshot"
+        "a marked list published through the link never reached the panel's snapshot"
     );
 
     send(BusinessIntent::Network(NetworkIntent::ScanNow));
+    attempts = 0;
+    let mut scanned = false;
+    while !scanned && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        for command in take_commands() {
+            if matches!(command, NetworkCommand::ScanNow) {
+                scanned = true;
+            }
+        }
+        attempts += 1;
+    }
     assert!(
-        select(RESCAN.ready(), Timer::after(Duration::from_secs(1)))
-            .await
-            .is_first(),
-        "the strip's request to look around never reached the survey's contract"
+        scanned,
+        "the strip's request to look around never reached the network worker"
     );
 
     send(BusinessIntent::Network(NetworkIntent::AskForget(
@@ -907,13 +930,24 @@ async fn scenario() {
     send(BusinessIntent::Network(NetworkIntent::Answer(
         Confirm::Forget(list.get(0).expect("the row the question named")),
     )));
-    match select(FORGET.ready(), Timer::after(Duration::from_secs(1))).await {
-        Either::First(ssid) => assert_eq!(
+    attempts = 0;
+    let mut forgotten = None;
+    while forgotten.is_none() && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        for command in take_commands() {
+            if let NetworkCommand::Forget(ssid) = command {
+                forgotten = Some(ssid);
+            }
+        }
+        attempts += 1;
+    }
+    match forgotten {
+        Some(ssid) => assert_eq!(
             ssid.as_bytes(),
             b"neighbour",
             "the forget named a network other than the row that was held"
         ),
-        Either::Second(()) => panic!("the hold's answer never reached the store's contract"),
+        None => panic!("the hold's answer never reached the network worker"),
     }
 
     std::process::exit(0);

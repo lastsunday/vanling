@@ -211,6 +211,7 @@ impl Override {
     }
 
     /// What this override asks for, or [`SpeedRequest::Auto`] if it says nothing.
+    #[cfg(test)]
     pub fn speed(&self) -> SpeedRequest {
         self.speed
     }
@@ -220,6 +221,7 @@ impl Override {
         self
     }
 
+    #[cfg(test)]
     pub fn named_mode(&self, key: DemandKey) -> Option<(Mode, u32)> {
         self.named.get(&key).copied()
     }
@@ -468,6 +470,7 @@ impl EffectiveDemand {
     }
 
     /// What this demand asks the clock for, before anything is arbitrated.
+    #[cfg(test)]
     pub const fn speed(&self) -> SpeedRequest {
         self.speed
     }

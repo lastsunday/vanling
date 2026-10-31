@@ -638,7 +638,6 @@ mod touch {
                 status: TouchStatus::Down,
             }; MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         };
         manager.apply_operation(op(InputEvent::Touch(first)));
         assert_eq!(manager.touch_state(), Some(first));
@@ -660,7 +659,6 @@ mod touch {
                 status: TouchStatus::Contact,
             }; MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         };
         manager.apply_operation(op(InputEvent::Touch(second)));
         assert_eq!(
@@ -930,7 +928,6 @@ mod trackers {
                 status: TouchStatus::Down,
             }; MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         })));
         manager.apply_operation(op(InputEvent::Touch(TouchEvent {
             points: [TouchPoint {
@@ -940,7 +937,6 @@ mod trackers {
                 status: TouchStatus::Contact,
             }; MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         })));
         assert_eq!(
             manager.state().touch.points,
@@ -971,7 +967,6 @@ mod trackers {
                 status: TouchStatus::Release,
             }; MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         })));
         assert_eq!(
             manager.state().touch.points,
@@ -993,7 +988,6 @@ mod trackers {
                 status: TouchStatus::Release,
             }; MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         })));
         assert_eq!(manager.state().touch.points, [None, None]);
         assert_eq!(
@@ -1123,12 +1117,10 @@ mod trackers {
             manager.apply_operation(op(InputEvent::Touch(TouchEvent {
                 points: down_snapshot,
                 len: 2,
-                contacts: 2,
             })));
             manager.apply_operation(op(InputEvent::Touch(TouchEvent {
                 points: up_snapshot,
                 len: 2,
-                contacts: 0,
             })));
         }
         assert_eq!(
@@ -1170,12 +1162,10 @@ mod trackers {
             [
                 FingerLast {
                     kind: FINGER_SWIPE,
-                    dir: SwipeDirection::Up.code(),
                     value: 77,
                 },
                 FingerLast {
                     kind: FINGER_TAP,
-                    dir: 0,
                     value: 90,
                 }
             ],
@@ -1295,7 +1285,6 @@ fn touch_at(id: u8, x: u16, y: u16, status: TouchStatus) -> OperationIntent {
     op(InputEvent::Touch(TouchEvent {
         points: [TouchPoint { id, x, y, status }; MAX_TOUCH_POINTS],
         len: 1,
-        contacts: 1,
     }))
 }
 

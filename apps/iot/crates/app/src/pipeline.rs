@@ -3,31 +3,24 @@
 
 use alloc::boxed::Box;
 
-use crate::SharedDemand;
-use crate::audio::{CaptureWindow, PlaybackBus, PlaybackDispatch};
+use crate::audio::PlaybackDispatch;
 use crate::bench::replay::PanelBench;
-use crate::bridge::{Inbound, Outbound, SetupAsk};
 use crate::frame::{FrameClock, Wait};
 use crate::input::IntentBus;
 use crate::surface::Render;
+use crate::workers::Workers;
 use embassy_futures::select::select3;
 use embassy_time::{Instant, Timer};
 use iot_core::demand::{ClockGovernor, ClockSink};
-use iot_core::drivers::network::JoinRequest;
 use iot_core::intent::Intent;
 use iot_core::state::{DeviceManager, LampLine, NetworkCommand};
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_loop<C: ClockSink>(
-    intent_bus: &'static IntentBus,
-    capture: &'static CaptureWindow,
-    outbound: &'static Outbound,
-    inbound: &'static Inbound,
-    playback_bus: &'static PlaybackBus,
+    bus: &'static IntentBus,
+    workers: Workers<'_>,
     mut render: Render,
     manager: &mut DeviceManager,
     clock: &mut C,
-    demand: &SharedDemand,
 ) -> ! {
     let mut last_page = manager.state().page;
     let mut last_front = manager.state().network.link.front;
@@ -37,8 +30,10 @@ pub async fn run_loop<C: ClockSink>(
     let mut governor = ClockGovernor::new();
     let mut playback = PlaybackDispatch::new(manager.playback_state());
     let mut bench = Box::new(PanelBench::new());
+    // The command the worker had no room for last pass; offered again before anything new.
+    let mut unsent: Option<NetworkCommand> = None;
     loop {
-        while let Ok(intent) = intent_bus.try_receive() {
+        while let Ok(intent) = bus.try_receive() {
             match intent {
                 Intent::Operation(op) => {
                     manager.apply_operation(op);
@@ -51,7 +46,7 @@ pub async fn run_loop<C: ClockSink>(
                 log::info!("[INPUT] page is now {:?}", manager.state().page);
                 last_page = manager.state().page;
             }
-            playback.dispatch(playback_bus, manager.playback_state());
+            playback.dispatch(workers.speaker.to, manager.playback_state());
         }
         if manager.state().network.link.front != last_front {
             last_front = manager.state().network.link.front;
@@ -65,7 +60,7 @@ pub async fn run_loop<C: ClockSink>(
             log::info!("{}", LampLine(lamp));
             last_lamp = lamp;
         }
-        inbound.page.publish(manager.state().page);
+        workers.net.page.publish(manager.state().page);
         if let Some(setup) = manager.take_splash_end() {
             log::info!(
                 "[INPUT] the splash is over; setup mode {}",
@@ -75,66 +70,24 @@ pub async fn run_loop<C: ClockSink>(
                     "was not asked for"
                 }
             );
-            inbound.page.end_splash(setup);
+            workers.net.page.end_splash(setup);
         }
-        bench.step(manager, intent_bus);
-        if let Some(sample) = capture.take() {
+        bench.step(manager, bus);
+        if let Some(sample) = workers.input.from.take() {
             manager.apply_capture(sample);
         }
-        if let Some(list) = inbound.scan.take() {
+        if let Some(list) = workers.net.scan.take() {
             manager.apply_scan(list);
         }
-        let asked_on = manager.state().network.link.front;
-        while let Some(command) = manager.take_command() {
-            match command {
-                NetworkCommand::Join(asked) => {
-                    match asked {
-                        JoinRequest::Typed(credentials) => log::info!(
-                            "[WIFI] the panel named a network: {:?}",
-                            credentials
-                                .ssid
-                                .as_display_text()
-                                .unwrap_or("<unprintable>"),
-                        ),
-                        JoinRequest::Held(ssid) => log::info!(
-                            "[WIFI] the panel asked for the copy this device keeps of {:?}",
-                            ssid.as_display_text().unwrap_or("<unprintable>"),
-                        ),
-                    }
-                    outbound.joins.publish(asked);
-                }
-                NetworkCommand::Leave => {
-                    log::info!("[WIFI] leaving the link to offer the setup access point");
-                    outbound.leave.set(());
-                }
-                NetworkCommand::LeaveSetup => {
-                    log::info!("[WIFI] the panel asked to close setup mode");
-                    outbound.setup_ask.set(SetupAsk::Cancel { from: asked_on });
-                }
-                NetworkCommand::SwitchFront => {
-                    log::info!("[WIFI] the panel asked for setup mode's other front end");
-                    outbound.setup_ask.set(SetupAsk::Front { from: asked_on });
-                }
-                NetworkCommand::SetupOpen(open) => {
-                    log::info!(
-                        "[WIFI] the panel asked for the setup access point to be {}",
-                        if open { "open" } else { "under a passphrase" },
-                    );
-                    outbound.setup_ask.set(SetupAsk::Pass {
-                        from: asked_on,
-                        open,
-                    });
-                }
-                NetworkCommand::ScanNow => {
-                    log::info!("[WIFI] the panel asked to look around now");
-                    outbound.rescan.set(());
-                }
-                NetworkCommand::Forget(ssid) => {
-                    log::info!(
-                        "[WIFI] the panel asked to forget {:?}",
-                        ssid.as_display_text().unwrap_or("<unprintable>"),
-                    );
-                    outbound.forget.set(ssid);
+        // The state machine names the commands; this pass hands over as many as the worker
+        // has room for, and keeps the one that found none for the next pass.
+        let mut held = unsent.take();
+        while let Some(command) = held.take().or_else(|| manager.take_command()) {
+            match workers.net.commands.try_send(command) {
+                Ok(()) => {}
+                Err(embassy_sync::channel::TrySendError::Full(command)) => {
+                    unsent = Some(command);
+                    break;
                 }
             }
         }
@@ -146,7 +99,7 @@ pub async fn run_loop<C: ClockSink>(
         // Compare outside the critical section, and move the copy in rather than cloning
         // inside: the feed interrupt takes the same lock.
         let next = manager.demand().clone();
-        demand.lock(|current| {
+        workers.input.to.lock(|current| {
             if *current.borrow() != next {
                 *current.borrow_mut() = next;
             }
@@ -168,9 +121,9 @@ pub async fn run_loop<C: ClockSink>(
             Wait::At(deadline) => Timer::at(deadline).await,
             Wait::Park => {
                 select3(
-                    intent_bus.ready_to_receive(),
-                    capture.ready(),
-                    inbound.scan.ready(),
+                    bus.ready_to_receive(),
+                    workers.input.from.ready(),
+                    workers.net.scan.ready(),
                 )
                 .await;
                 frame.reanchor(Instant::now());

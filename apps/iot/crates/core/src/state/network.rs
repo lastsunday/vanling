@@ -2,7 +2,7 @@
 //! asking of it, and the confirmation a destructive action waits on.
 
 use crate::drivers::network::{
-    AccessPoint, ApList, JoinRequest, LinkPhase, LinkStatus, NetworkError, Ssid,
+    AccessPoint, ApList, Front, JoinRequest, LinkPhase, LinkStatus, NetworkError, Ssid,
 };
 use crate::drivers::playback::Sound;
 use crate::intent::NetworkIntent;
@@ -36,14 +36,16 @@ pub struct NetworkState {
     pub join: Option<JoinRequest>,
     /// The panel's request to leave the current link.
     pub leave: bool,
-    /// The panel's request to close setup mode and go back to the network this device keeps.
-    pub setup_cancel: bool,
-    /// The panel's request to offer setup mode through its other front end.
-    pub switch_front: bool,
+    /// The panel's request to close setup mode and go back to the network this device keeps,
+    /// carrying the front it was made on so a later front switch cannot apply it.
+    pub setup_cancel: Option<Front>,
+    /// The panel's request to offer setup mode through its other front end, and the front it
+    /// was made on.
+    pub switch_front: Option<Front>,
     /// The panel's request to put the setup access point up open or under a passphrase,
-    /// carrying the state it should end in: `Some(true)` open, `Some(false)` secured,
-    /// `None` nobody asked.
-    pub setup_open: Option<bool>,
+    /// carrying the front it was made on and the state it should end in: `open` true,
+    /// secured false.
+    pub setup_open: Option<(Front, bool)>,
     /// The panel's request to look around now, which is the action strip's other verb.
     pub scan_now: bool,
     /// The panel's request to forget a saved network, named by the row a finger held.
@@ -107,11 +109,22 @@ impl NetworkSetup {
 pub enum NetworkCommand {
     Join(JoinRequest),
     Leave,
-    LeaveSetup,
-    SwitchFront,
-    SetupOpen(bool),
+    LeaveSetup { from: Front },
+    SwitchFront { from: Front },
+    SetupOpen { from: Front, open: bool },
     ScanNow,
     Forget(Ssid),
+}
+
+impl NetworkCommand {
+    /// Setup requests only mean something inside a setup session; everywhere else they are
+    /// stale and the worker drops them.
+    pub const fn is_setup(&self) -> bool {
+        matches!(
+            self,
+            Self::LeaveSetup { .. } | Self::SwitchFront { .. } | Self::SetupOpen { .. }
+        )
+    }
 }
 
 /// The panel's requests, taken one at a time so a command is handed over exactly once.
@@ -123,14 +136,14 @@ impl DeviceManager {
         if self.take_leave() {
             return Some(NetworkCommand::Leave);
         }
-        if self.take_setup_cancel() {
-            return Some(NetworkCommand::LeaveSetup);
+        if let Some(from) = self.take_setup_cancel() {
+            return Some(NetworkCommand::LeaveSetup { from });
         }
-        if self.take_switch_front() {
-            return Some(NetworkCommand::SwitchFront);
+        if let Some(from) = self.take_switch_front() {
+            return Some(NetworkCommand::SwitchFront { from });
         }
-        if let Some(open) = self.take_setup_open() {
-            return Some(NetworkCommand::SetupOpen(open));
+        if let Some((from, open)) = self.take_setup_open() {
+            return Some(NetworkCommand::SetupOpen { from, open });
         }
         if self.take_scan_now() {
             return Some(NetworkCommand::ScanNow);
@@ -147,9 +160,9 @@ impl DeviceManager {
         core::mem::take(&mut self.state.network.leave)
     }
 
-    /// Take the panel's request to close setup mode and go back to what this device keeps.
-    pub fn take_setup_cancel(&mut self) -> bool {
-        core::mem::take(&mut self.state.network.setup_cancel)
+    /// Take the panel's request to close setup mode, and the front it was made on.
+    pub fn take_setup_cancel(&mut self) -> Option<Front> {
+        self.state.network.setup_cancel.take()
     }
 
     /// Take the panel's request to look around now, if there is one.
@@ -157,14 +170,15 @@ impl DeviceManager {
         core::mem::take(&mut self.state.network.scan_now)
     }
 
-    /// Take the panel's request to offer setup through its other front end.
-    pub fn take_switch_front(&mut self) -> bool {
-        core::mem::take(&mut self.state.network.switch_front)
+    /// Take the panel's request to offer setup through its other front end, and the front it
+    /// was made on.
+    pub fn take_switch_front(&mut self) -> Option<Front> {
+        self.state.network.switch_front.take()
     }
 
-    /// Take the panel's request to put the setup access point up open (`Some(true)`) or
-    /// under a passphrase (`Some(false)`), if it asked for either.
-    pub fn take_setup_open(&mut self) -> Option<bool> {
+    /// Take the panel's request to put the setup access point up open (`open`) or under a
+    /// passphrase, if it asked for either.
+    pub fn take_setup_open(&mut self) -> Option<(Front, bool)> {
         self.state.network.setup_open.take()
     }
 
@@ -192,7 +206,7 @@ impl NetworkState {
             NetworkIntent::CloseSetup => self.close_setup(),
             NetworkIntent::SwitchFront => {
                 if (self.link.setup || self.link.browsing) && has_pages {
-                    self.switch_front = true;
+                    self.switch_front = Some(self.link.front);
                 }
             }
             NetworkIntent::ScanNow => self.scan_now(),
@@ -359,7 +373,7 @@ impl NetworkState {
 
     fn close_setup(&mut self) {
         if self.link.setup && self.link.setup_cancellable {
-            self.setup_cancel = true;
+            self.setup_cancel = Some(self.link.front);
         }
     }
 
@@ -372,7 +386,7 @@ impl NetworkState {
 
     fn set_open(&mut self, open: bool) {
         if self.link.shows_setup_box() {
-            self.setup_open = Some(open);
+            self.setup_open = Some((self.link.front, open));
         }
     }
 
@@ -1185,9 +1199,9 @@ mod network_page {
 
         manager.state.network.join = Some(JoinRequest::Held(Ssid::from_octets(b"neighbour")));
         manager.state.network.leave = true;
-        manager.state.network.setup_cancel = true;
-        manager.state.network.switch_front = true;
-        manager.state.network.setup_open = Some(true);
+        manager.state.network.setup_cancel = Some(Front::Panel);
+        manager.state.network.switch_front = Some(Front::Panel);
+        manager.state.network.setup_open = Some((Front::Panel, true));
         manager.state.network.scan_now = true;
         manager.state.network.forget = Some(Ssid::from_octets(b"cafe"));
 
@@ -1199,11 +1213,20 @@ mod network_page {
             "the credential goes first: it is the one command whose content must arrive"
         );
         assert_eq!(manager.take_command(), Some(NetworkCommand::Leave));
-        assert_eq!(manager.take_command(), Some(NetworkCommand::LeaveSetup));
-        assert_eq!(manager.take_command(), Some(NetworkCommand::SwitchFront));
         assert_eq!(
             manager.take_command(),
-            Some(NetworkCommand::SetupOpen(true))
+            Some(NetworkCommand::LeaveSetup { from: Front::Panel })
+        );
+        assert_eq!(
+            manager.take_command(),
+            Some(NetworkCommand::SwitchFront { from: Front::Panel })
+        );
+        assert_eq!(
+            manager.take_command(),
+            Some(NetworkCommand::SetupOpen {
+                from: Front::Panel,
+                open: true
+            })
         );
         assert_eq!(manager.take_command(), Some(NetworkCommand::ScanNow));
         assert_eq!(
@@ -1900,17 +1923,19 @@ mod network_page {
 
         setup_mode(&mut manager, true);
         tap_strip_left(&mut manager);
-        assert!(
+        assert_eq!(
             manager.take_setup_cancel(),
+            Some(Front::AccessPoint),
             "a device that keeps a network has a way back to it"
         );
-        assert!(
-            !manager.take_setup_cancel(),
+        assert_eq!(
+            manager.take_setup_cancel(),
+            None,
             "a command is handed over once, like every other"
         );
         tap_strip(&mut manager);
-        assert!(manager.take_switch_front());
-        assert!(!manager.take_switch_front());
+        assert_eq!(manager.take_switch_front(), Some(Front::AccessPoint));
+        assert_eq!(manager.take_switch_front(), None);
     }
 
     #[test]
@@ -1929,7 +1954,11 @@ mod network_page {
             },
         )));
         manager.apply_business(BusinessIntent::Network(NetworkIntent::SwitchFront));
-        assert!(manager.take_switch_front(), "the cell is still the way in");
+        assert_eq!(
+            manager.take_switch_front(),
+            Some(Front::Panel),
+            "the cell is still the way in"
+        );
 
         let operation = op(InputEvent::Button(ButtonEvent::LongPress));
         let business = translate(&operation, &manager.state());
@@ -1952,8 +1981,9 @@ mod network_page {
         });
         setup_mode(&mut manager, false);
         manager.apply_business(BusinessIntent::Network(NetworkIntent::SwitchFront));
-        assert!(
-            !manager.take_switch_front(),
+        assert_eq!(
+            manager.take_switch_front(),
+            None,
             "a lamp-only board has nowhere to switch to"
         );
     }
@@ -1966,8 +1996,9 @@ mod network_page {
             LinkStatus::default(),
         )));
         manager.apply_business(BusinessIntent::Network(NetworkIntent::SwitchFront));
-        assert!(
-            !manager.take_switch_front(),
+        assert_eq!(
+            manager.take_switch_front(),
+            None,
             "a queued switch cannot ask for another front once the mode is gone"
         );
     }
@@ -1977,9 +2008,10 @@ mod network_page {
         let mut manager = on_network_page();
         setup_mode(&mut manager, false);
         tap_strip_left(&mut manager);
-        assert!(!manager.take_setup_cancel());
-        assert!(
+        assert_eq!(manager.take_setup_cancel(), None);
+        assert_eq!(
             manager.take_switch_front(),
+            Some(Front::AccessPoint),
             "the strip's one action is the other front end"
         );
     }
@@ -1995,7 +2027,7 @@ mod network_page {
             },
         )));
         tap_strip_left(&mut manager);
-        assert!(!manager.take_setup_cancel());
+        assert_eq!(manager.take_setup_cancel(), None);
         assert!(
             manager.take_scan_now(),
             "a device with no way back still asks the radio to look around"
@@ -2004,10 +2036,14 @@ mod network_page {
             manager.state().network.setup.rescan_wait,
             "and the strip says so"
         );
-        assert!(!manager.take_switch_front());
+        assert_eq!(manager.take_switch_front(), None);
 
         tap_strip(&mut manager);
-        assert!(manager.take_switch_front(), "the right half is the switch");
+        assert_eq!(
+            manager.take_switch_front(),
+            Some(Front::Panel),
+            "the right half is the switch"
+        );
         assert!(!manager.take_scan_now());
     }
 
@@ -2041,7 +2077,7 @@ mod network_page {
         let mut manager = on_network_page();
         setup_mode(&mut manager, true);
         tap_answer(&mut manager, keyboard::DialogChoice::Keep);
-        assert_eq!(manager.take_setup_open(), Some(true));
+        assert_eq!(manager.take_setup_open(), Some((Front::AccessPoint, true)));
         assert_eq!(manager.take_setup_open(), None);
 
         manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(

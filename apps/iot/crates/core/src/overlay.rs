@@ -42,6 +42,7 @@ pub const OVERLAY_X: usize = 10;
 pub const BLOCK_LABEL_GLYPHS: usize = 4;
 
 /// Glyphs a label written in a block is allowed to occupy.
+#[cfg(test)]
 pub const BLOCK_LABEL_MAX_GLYPHS: usize = BLOCK_LABEL_GLYPHS - 1;
 
 /// Distance between the left edges of adjacent text blocks.
@@ -103,6 +104,7 @@ pub const BLOCK_VALUE_GLYPHS: usize = 7;
 pub const RIGHT_EDGE_VALUE_GLYPHS: usize = 5;
 
 /// How wide a reading in `block` may be before it reaches the panel edge or the next block.
+#[cfg(test)]
 pub const fn block_value_glyphs(block: Block) -> usize {
     match block {
         Block::RightEdge => RIGHT_EDGE_VALUE_GLYPHS,
@@ -132,7 +134,7 @@ pub fn level_columns() -> LevelColumns {
 }
 
 /// The column just past the last one a `glyphs`-wide reading reaches.
-pub fn level_value_end(value_x: usize, glyphs: usize) -> usize {
+pub const fn level_value_end(value_x: usize, glyphs: usize) -> usize {
     value_x + glyphs * GLYPH_PITCH - OVERLAY_GAP
 }
 

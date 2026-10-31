@@ -34,6 +34,7 @@ pub fn echo(played: &[i16], delay: usize) -> Vec<i16> {
 /// A room's gain as a multiple of the reference's own power, so a test can assert the room
 /// it built is the room it meant to build rather than discovering later that it was nearly
 /// silent.
+#[cfg(test)]
 pub fn room_gain(played: &[i16], heard: &[i16], delay: usize) -> f64 {
     let signal: i64 = heard.iter().map(|s| i64::from(*s) * i64::from(*s)).sum();
     let reference: i64 = played[delay..]

@@ -95,7 +95,6 @@ pub type SharedI2cDevice =
 #[derive(Debug)]
 pub enum BoardError {
     I2cConfig(i2c_master::ConfigError),
-    CameraDma(DmaBufError),
     CameraConfig(esp_hal::lcd_cam::cam::ConfigError),
     I2c(I2cDeviceError<i2c_master::Error>),
     SpiConfig(spi_master::ConfigError),

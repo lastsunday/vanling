@@ -32,7 +32,7 @@ pub fn build_wifi_credentials() -> Option<(&'static str, &'static str)> {
 
 /// The network this build was named, unless the build is a bench run: a bench image has to
 /// join whatever the panel names, not the credential its build happens to carry.
-#[cfg_attr(not(feature = "wifi"), allow(dead_code))]
+#[cfg(feature = "wifi")]
 pub(crate) fn wifi_credentials() -> Option<(&'static str, &'static str)> {
     if crate::bench::replay::BENCH {
         return None;

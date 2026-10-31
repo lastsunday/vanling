@@ -201,14 +201,6 @@ impl AccessPoint {
         secured: false,
     };
 
-    /// Whether this row carries a name the panel can draw, which decides whether the list
-    /// shows the name or the BSSID.
-    pub fn name_is_drawable(&self) -> bool {
-        self.ssid
-            .as_display_text()
-            .is_some_and(|text| !text.is_empty())
-    }
-
     /// Whether this row and `other` are the same access point.
     pub fn is_same_network(&self, other: &Self) -> bool {
         self.bssid == other.bssid
@@ -889,15 +881,14 @@ mod tests {
     }
 
     #[test]
-    fn a_name_the_panel_cannot_draw_is_flagged_rather_than_guessed_at() {
+    fn a_name_the_panel_cannot_draw_is_not_display_text() {
         let ascii = ap("TP-LINK", [1; 6], -50);
-        assert!(ascii.name_is_drawable());
+        assert_eq!(ascii.ssid.as_display_text(), Some("TP-LINK"));
 
         let chinese = AccessPoint {
             ssid: Ssid::from_octets(&[0xe7, 0xa7, 0x9b, 0xe5, 0x8d, 0x8a]),
             ..ap("", [2; 6], -50)
         };
-        assert!(!chinese.name_is_drawable());
         assert_eq!(chinese.ssid.as_display_text(), None);
         assert_eq!(
             chinese.ssid.as_bytes(),

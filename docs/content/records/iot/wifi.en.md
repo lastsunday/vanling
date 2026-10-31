@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "ecd1c00d62d2146f12e4e4792bf0d5c427fd846e"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "08f21b8ae57ef2524f55cfca9a9696b0dde875fd"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -181,10 +181,10 @@ rebuild, and `ld` says the same thing — `stack.x:13 cannot move location count
 `RWDATA` while the statics are already 2,400 B past it, so the main stack's slot is only
 53,272 B — 12,264 B under the floor.
 
-`[measured]` **The capture contract (direction ②) gives back 11,464 B.** Every slot of a
+`[measured]` **The capture window (direction ②) gives back 11,464 B.** Every slot of a
 `Channel<T, N>` is allocated at `size_of::<T>()`, so the width of `INTENT_BUS` is set by its
 widest `InputEvent` variant — the capture window `Audio(AudioSample)` at 1,760 B priced all
-eight slots. With the window eight slots. With the window on its own single-slot contract::
+eight slots. With the window on its own single-slot channel:
 
 | | before | after |
 | --- | --- | --- |
@@ -479,7 +479,7 @@ loop:
 | --- | --- | --- |
 | Hysteresis | a row has to beat another by **4 dB** to move (`LIST_HYSTERESIS_DB`) | `bars_for` is 10 dB a bar, and a swap inside half a bar is invisible on the page |
 | Missed rounds | a row a round did not see survives **2 rounds** (`LIST_MISSED_ROUNDS`) | a single scan is not a measurement (above); two in a row missing is when it has really gone |
-| Publish only on a drawn change | `observe()` hands the contract a list only when it returns `Some(list)`, otherwise the log reads `[WIFI] the list is unchanged, so the page is not redrawn` | beyond the page's own repaint threshold (`DIAG_REPAINT_STEP_MS = 40` plus changed content), one more saving: identical readings must not redraw |
+| Publish only on a drawn change | `observe()` hands the channel a list only when it returns `Some(list)`, otherwise the log reads `[WIFI] the list is unchanged, so the page is not redrawn` | beyond the page's own repaint threshold (`DIAG_REPAINT_STEP_MS = 40` plus changed content), one more saving: identical readings must not redraw |
 | A full list drops its weakest | at `MAX_LISTED_APS = 8`, only a new row 4 dB above the weakest gets in | one new row pushing one out is the same event as a row's order changing |
 | A new network starts over | `setup` calls `history.clear()` before every association | the previous list has nothing to do with this link |
 
@@ -764,7 +764,7 @@ Every decision sits where a test can reach it:
 | Decision | Value | Why |
 | --- | --- | --- |
 | When the page exists | the wiring fact the entry point reports (`iot_app::Link`: `Wired` / `Absent`) | the station is taken by the entry point — starting it needs the scheduler — so `run` cannot look at the radio any more. With a build fact (`cfg!(feature = "wifi")`) the host smoke could never reach this page, and what this page most needs checked is exactly "did the composition wire the capability in". `Link` has the same shape as `SpeakerRunner`: a wiring fact passed in. Not a new method on `Board`: that would be two ways to say one thing, and they can disagree |
-| Where the scan list travels | its own single-slot contract (`Latest` / `SCAN`), not the intent ring | `Intent` is `Copy` and every slot is priced by the widest message: an `ApList` (8 × 42 + 1 = 337 B) on the ring would be 8 slots ≈ 2.7 KB, against a ring whose window is `size_of::<AudioSample>()` (1,760 B). The size test in `app/src/input.rs` (`a_capture_window_costs_one_slot_beside_the_ring`) stops it outright |
+| Where the scan list travels | its own single-slot channel (`Latest` / `SCAN`), not the intent ring | `Intent` is `Copy` and every slot is priced by the widest message: an `ApList` (8 × 42 + 1 = 337 B) on the ring would be 8 slots ≈ 2.7 KB, against a ring whose window is `size_of::<AudioSample>()` (1,760 B). The size test in `app/src/input.rs` (`a_capture_window_costs_one_slot_beside_the_ring`) stops it outright |
 | "Never scanned" against "scanned, found nothing" | `DeviceState.aps: Option<ApList>` | the two are different sentences on the page (`NOT SCANNED` / `NO NETWORKS`). A build holding its own credentials does not scan, so it can only say it never looked; a scan that found nothing is a statement about the room |
 | How tall a list row is | 3 rows × 47 px (6.0 mm), the header still three rows, and a 44 px strip below the list | the panel is 320×240 = 40.6×30.5 mm (0.127 mm/px). 61 px (7.75 mm) met the usual minimum, but the strip has to cut 44 px out of those 232, and 3 rows × 47 px is what is left over. 47 px = 6.0 mm is under the 7 mm minimum touch target — the same **break that is known and accepted** as the keyboard's 46 px (both the digit block and the list are hit blind by a thumb) |
 | Where the keyboard starts | at the **same y as the list** (row 3 = 47 px), with the header keeping its three rows | the typing state used to squeeze its header to one row to push the keyboard up; on the board those three readings (phase, network and signal, draft) turned out to be worth keeping, and the four-row keyboard can give up 6 px and still be pressable. Starting both states at one y also removes a jump between them |
@@ -774,8 +774,8 @@ Every decision sits where a test can reach it:
 | Multi-tap | the first tap lands immediately; the same key, with more than one candidate, tapped again inside `MULTITAP_WINDOW_MS = 800` replaces the character just typed with the next candidate; another key, a backspace, a layer change, Shift or an expired window starts a new character; tapping a one-candidate key again is a new character | the first tap landing immediately is what removes any delay from typing; "one candidate tapped again is a new character" is what makes a passphrase like `00` typeable |
 | Shift | one tap capitalises one letter (only letters consume it), a second tap inside the window locks it, a tap while locked releases it; a locked Shift reverses the whole key face. **Shift belongs to the whole multi-tap run, not to the first push** | the phone keyboard's own convention; `Connect`/`Cancel` end the multi-tap run. Per run and not per first tap because `Z` is the fourth tap of `9` and `S` the fourth of `7`: with Shift spent on the first push, a letter three or four taps in could never be capitalised |
 | An open network | the row carries `OPEN` at its right edge (the name ends at x=222, the marker is right-aligned to 274, both pinned by compile-time asserts), and tapping the row **raises no keyboard** — an empty passphrase is handed over directly | there is no passphrase to type, and a keyboard would only suggest there is; `OPEN` and the full signal bars both sit at the row's right edge, and the two strings do not meet |
-| A stored network carries `*` | one `*` after the name (right-aligned to 229, left of the `OPEN` word; the name slot ends at 222), sourced from **a one-bit-per-row mask carried by the list itself**, `ApList.saved: u8` | one character after the name saves room over squeezing another word into the row's right edge, and it does not meet `OPEN` (a compile-time assert pins all three apart). The mask travels with the `ApList` on the `SCAN` contract, and that contract therefore has to be a slot that **overwrites**: a dropped `SCAN.publish` leaves one row carrying a wrong mark, and **the next round does not heal it** (the history has already taken the correction as the list the page is showing, so the round after compares and says "the list is unchanged") — see "Tapping back into the row a link was left from, and one dropped list correction". That is what buys not keeping a second ~980 B stored-set in the app (the S3's static-memory wall, see "Where a credential lives") |
-| Joining a saved row with the store's copy | `pick_row` reading "`secured` and that row's mark is saved" puts `JoinRequest::Held(name)` into `DeviceState.join` (no keyboard, the draft and the reveal cleared, not one passphrase byte through the page); the render loop takes it and publishes it on the `JOIN` contract, and the network task looks the name up with `SavedNetworks::copy_of(name)`: found, it joins with that copy (**writing nothing**); not found, it reports `BusinessIntent::NoCopy(name)` and the page raises the keyboard | the store already holds that passphrase, so asking for it again is asking a person to type in a secret the device already has. **The name rather than the passphrase**: the store has exactly one owner, the network task (`SavedNetworks` never enters `DeviceState`, the S3's static-memory wall — see the row above), so all the page can say is *which* network and never what its passphrase is; when the store has no copy, the only way back is to report that, and the page is the one place a passphrase can be asked for. The mark decides only **whether the store is asked first or the keyboard goes up first** — the answer itself comes from the store (the mark is the previous round's answer): a stale mark costs a person one retyping, never a wrong network. This row is where the store's two ownerships part: the store owns passphrases, the page owns "which network" |
+| A stored network carries `*` | one `*` after the name (right-aligned to 229, left of the `OPEN` word; the name slot ends at 222), sourced from **a one-bit-per-row mask carried by the list itself**, `ApList.saved: u8` | one character after the name saves room over squeezing another word into the row's right edge, and it does not meet `OPEN` (a compile-time assert pins all three apart). The mask travels with the `ApList` on the `SCAN` channel, and that channel therefore has to be a slot that **overwrites**: a dropped `SCAN.publish` leaves one row carrying a wrong mark, and **the next round does not heal it** (the history has already taken the correction as the list the page is showing, so the round after compares and says "the list is unchanged") — see "Tapping back into the row a link was left from, and one dropped list correction". That is what buys not keeping a second ~980 B stored-set in the app (the S3's static-memory wall, see "Where a credential lives") |
+| Joining a saved row with the store's copy | `pick_row` reading "`secured` and that row's mark is saved" puts `JoinRequest::Held(name)` into `DeviceState.join` (no keyboard, the draft and the reveal cleared, not one passphrase byte through the page); the render loop takes it and publishes it on the `JOIN` channel, and the network task looks the name up with `SavedNetworks::copy_of(name)`: found, it joins with that copy (**writing nothing**); not found, it reports `BusinessIntent::NoCopy(name)` and the page raises the keyboard | the store already holds that passphrase, so asking for it again is asking a person to type in a secret the device already has. **The name rather than the passphrase**: the store has exactly one owner, the network task (`SavedNetworks` never enters `DeviceState`, the S3's static-memory wall — see the row above), so all the page can say is *which* network and never what its passphrase is; when the store has no copy, the only way back is to report that, and the page is the one place a passphrase can be asked for. The mark decides only **whether the store is asked first or the keyboard goes up first** — the answer itself comes from the store (the mark is the previous round's answer): a stale mark costs a person one retyping, never a wrong network. This row is where the store's two ownerships part: the store owns passphrases, the page owns "which network" |
 | The selected row | the whole band is reversed a row at a time (`stamp_band_fill`), and the name, the marker and the bars are drawn on top of it | the panel only reverses black and white. Reversing the whole band rather than the name alone, because the row also holds the bars and possibly `OPEN`: reversing part of it would read as that part being what was picked |
 | Where a leave starts | the `LEAVE` button on the strip (drawn only when the link **can be left**), which opens a confirmation and sets a `DeviceState.leave` latch only when the verb is answered | **deliberately moved away from "tap the connected row"**: that row was both "this network" and "leave it", and a mistap had no way back; the strip is the one entry and holds one action, and it asks once before acting. Whether a link can be left lives in `LinkStatus::is_leavable()` (`Connecting`/`Connected` can; `Off`/`Scanning`/`Failed` can only rescan), and the strip draws one of the two by it; **it looks at the phase alone**: `ap` is only set once the association succeeded, so making it a condition would turn the answer into "has the association been reported yet". The same predicate decides which word the strip draws, whether a row's tap is taken, and whether there is anything for `LEAVE` to ask about. The render loop takes the latch and publishes it on `LEAVE`; the network task hears it in its window `select`, disconnects and reports `Off`. Never rejoining by itself in this session is the link's `auto` switch (still-to-do 5) |
 | A list is read-only while there is a link | `pick_row` gates at its top: `link.is_leavable()` returns straight away (nothing picked, no keyboard, no credential handed over — the `OPEN` rows too), while the long press and the slide do not go through that gate | a tap on a row while a link is in flight has two meanings to offer — "switch to another network" and "take this one down first" — and taking the link down has already been narrowed to the strip's one entry. The reading is the only meaning the row has left, so it has no second one to give. A draft keyboard raised before the association is not affected (only `Connected` clears it, `Connecting` does not) |
@@ -954,7 +954,7 @@ The whole "tap a row → type the passphrase → OK → associated → leave →
 by the bench above
 and no longer needs one. What the host smoke covers is the same state machine and geometry:
 in `iot:smoke-host`, `Row(0)` → `Char(b'4')`, `Char(b'4')`, `Char(b'2')`, `Shift`, `Char(b'8')`
-types `haT`, the credential reaches the `JOIN` contract, and `NETWORK_TYPED` (the longest passphrase draft
+types `haT`, the credential reaches the `JOIN` channel, and `NETWORK_TYPED` (the longest passphrase draft
 any snapshot carried) reaches 3.
 
 ### The strip, the confirmation and forgetting (`[measured]`, 2026-10-17)
@@ -1116,7 +1116,7 @@ leaving the second one in means the `*` on a row sometimes stays after the netwo
   come back" is on purpose (it will not be handed over again), so that row opens a **fresh, empty
   draft**. The half of it a reader cannot see is in the code's own docs: `NetworkSetup::keyboard` and
   `pick_row` both state the invariant `keyboard ⇒ entry.is_some()`.
-- **The `*` on a row sometimes stays after a forget.** The `SCAN` contract used to be a capacity-1
+- **The `*` on a row sometimes stays after a forget.** The `SCAN` channel used to be a capacity-1
   `Channel`, whose `try_send` **throws the value away with an `Err`** when the slot is full — and the
   value thrown away is the **newer** one: a round publishes its list and, right behind it (within the
   same millisecond, because a forget is acted on in that round's own pause), the network task re-marks
@@ -1124,7 +1124,7 @@ leaving the second one in means the `*` on a row sometimes stays after the netwo
   still in the slot, the second was dropped. The page kept a saved mark for a network that no longer
   existed, and **no round after put it right**: `SurveyHistory` had taken the correction as "the list
   the page is showing", so the next round compared, said "the list is unchanged", and drew nothing.
-  The contract is now a slot that **overwrites** (a `Signal` holding the value plus a wake signal of its
+  The channel is now a slot that **overwrites** (a `Signal` holding the value plus a wake signal of its
   own; the wake is separate because the render loop **parks on it**, and a park must not take the list
   — the `take()` belongs to the top of the next pass).
 
@@ -1191,14 +1191,14 @@ The same window holds `[INPUT] held the executor 3219 ms of 5008 ms … worst si
 **None of this was judged by eye**: roll the `entry.is_some()` out of `pick_row` and the new state
 test and the sweep **go red together**, the sweep printing the path it reproduced it by — "the device
 at boot, a triple click, a scan of two networks, a tap on the first band, the radio connected, the
-radio reporting nothing on the air, a tap on the first band"; put the contract back to "full means drop"
-and wire the wake up as one that takes the list, and the two contract tests above each go red (both tried
+radio reporting nothing on the air, a tap on the first band"; put the channel back to "full means drop"
+and wire the wake up as one that takes the list, and the two channel tests above each go red (both tried
 on the spot, green again once restored; a wake that is merely ready at once is **not** a mutation of
 anything — it takes no list, and neither test went red on it — what counts is the version that really
 takes the list). The static floor is still 65,536 B, and both images were
 measured this round: the bench image `65,624 B` (the same figure as last round) and the product image
 (no network given, `IOT_BOOT_PAGE=network`) **`65,944 B`** — 32 B above last round's 65,912 B, which
-is the contract's two `Signal` wait futures landing in the render loop's own future, leaving 408 B. The
+is the channel's two `Signal` wait futures landing in the render loop's own future, leaving 408 B. The
 product image booted this time as `[CREDS] 0 saved network(s) on this device` → `[IOT] boot page is
 Network` → 1–3 access points found → waiting on the list for a finger
 (`[DISPLAY] stack peak 38,656 B of 65,944 B`).
@@ -1213,14 +1213,14 @@ network task (`SavedNetworks` never enters `DeviceState` — under the S3's stat
 network and never what its passphrase is; so a tap on the page hands over only a **name**, and the
 answer (does the store have it, will it connect) comes from the radio.
 
-- **The request is one contract with two shapes.** The credential slot and `CREDENTIALS` were later folded into
+- **The request is one channel with two shapes.** The credential slot and `CREDENTIALS` were later folded into
   `JOIN`, and the message goes from `Credentials` to
   `JoinRequest::{Typed(Credentials), Held(Ssid)}` — two degrees of "how much help" for one request,
-  still one single-slot contract (no second contract, no extra `select` arm). `DeviceState.credential`
+  still one single-slot channel (no second channel, no extra `select` arm). `DeviceState.credential`
   therefore becomes `DeviceState.join: Option<JoinRequest>` (`take_join()`): one field still, four
   bytes wider at most (`Credentials` is already the wider of the two variants), and **no new
   `static`**.
-- **With no copy in the store, the page is told.** The network task reads that contract in **two**
+- **With no copy in the store, the page is told.** The network task reads that channel in **two**
   places (`setup`'s own top, and `hold`'s window once the link is up) and both go through one
   `asked_for()`: `Typed` is used straight away (`Provenance::Named`); `Held(name)` goes through
   `SavedNetworks::copy_of(name)` — found, that copy is used (`Provenance::Stored`); not found,
@@ -1322,7 +1322,7 @@ alongside it, and the C6 has the page alone.
 | --- | --- | --- | --- |
 | Protocol | `iot-core::provision` (`http`/`dns`/`route`/`scan`/`wire`, plus two `include_str!` HTML files and an icon under `assets/`) | request parsing, routing, answers, what a name gets answered with, the list as JSON — **and no allocation anywhere** (form fields decode into the caller's stack buffers) | host: **45** tests (the `#[test]`s in `provision/*.rs`) |
 | Device | `iot-app::provision` | four loops (DHCP server, name server, page, `embassy-net` runner) wired to sockets | the bench (still-to-do 8) |
-| Wiring | `configure` in `iot-app::network` | raises the AP, races the page against the panel, hands the credential back to the `JOIN` contract | the bench (still-to-do 8) |
+| Wiring | `configure` in `iot-app::network` | raises the AP, races the page against the panel, hands the credential back to the `JOIN` channel | the bench (still-to-do 8) |
 
 Routes: `GET /` (and `/index.html`) for the page (**with the list embedded**), `GET /scan` for the
 list as JSON, `GET /rescan` for that same list and **a wake for the next survey round**, `POST
@@ -1346,7 +1346,7 @@ room.
 `provision::serve` returns `Infallible`, so in `configure` it races the panel's own path
 (`setup_credential`) through `select`: **whichever names a credential first ends setup mode**, the
 page's future is dropped with the `select`, and the access point goes down with its `Runner`. The
-credential travels the existing `JOIN` contract, so `hold`, the store and `Provenance` are reused
+credential travels the existing `JOIN` channel, so `hold`, the store and `Provenance` are reused
 unchanged — the page and the panel are the same path at the level of "where a credential came from".
 
 The page publishes the credential only after writing the answer **and waiting for the peer to
@@ -1392,7 +1392,7 @@ the C6 nobody ever reaches that page, and the page is reading exactly this list.
 `SurveyHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
 is unchanged.
 
-The list exists **twice**, one per reader: the panel's rides the `SCAN` contract (which the render loop
+The list exists **twice**, one per reader: the panel's rides the `SCAN` channel (which the render loop
 *takes*), the page's rides `provision::LATEST`. The page must not take the panel's copy, and
 `LATEST` is a window where only the newest value means anything, so it is a `Mutex<RefCell<...>>`
 rather than a channel.
@@ -1747,7 +1747,7 @@ This round turns it into a gear that is visible and reversible:
 | Thing | Before | Now |
 | --- | --- | --- |
 | Into setup mode from a link | strip `LEAVE`, a box asking "leave?" | strip `LEAVE`, a box asking `LEAVE "cafe"?` / `THE LINK GOES DOWN` (it was called `SETUP` for one round and then put back — see "The link-up cell goes back to `LEAVE`") |
-| Out of setup mode | not possible (`unconfigured` diverged) | strip `CANCEL` → the `CANCEL_SETUP` contract (now `SETUP_ASK`) → `unconfigured` returns → `link` retries what it holds |
+| Out of setup mode | not possible (`unconfigured` diverged) | strip `CANCEL` → the `CANCEL_SETUP` channel (now `SETUP_ASK`) → `unconfigured` returns → `link` retries what it holds |
 | Knowing the mode is on | no such field | `LinkStatus.setup` / `setup_cancellable`, header `ST SETUP` |
 | The header's network | the link's access point (none in setup) | `AP vanling-xxxx` derived from the MAC — the same name the phone's list shows, not a second copy in the state |
 | The address row | the station's address (none in setup) | `IP 192.168.4.1` |
@@ -2011,9 +2011,9 @@ page while setup mode lands on the right cell; the box hiding `Part::Content` wh
 | Tree | Main stack | Spare |
 | --- | --- | --- |
 | After the last round | 65,688 B | 152 B |
-| This round (two fronts + passphrase + merged request contract) | **65,592 B** | **56 B** |
+| This round (two fronts + passphrase + merged request channel) | **65,592 B** | **56 B** |
 
-A net **96 B** spent. Two savings are explicit: `CANCEL_SETUP` folded into `SETUP_ASK` (one contract,
+A net **96 B** spent. Two savings are explicit: `CANCEL_SETUP` folded into `SETUP_ASK` (one channel,
 one `Signal`, one static and one `select` arm fewer), and `setup_password` narrowed from
 `Option<Ssid>` to `Option<SetupPass>` (34 → 11 bytes). The on-board reading matches `nm` exactly:
 `[DISPLAY] main stack 65592 B`, `stack peak 38696 B of 65592 B`.
@@ -2072,8 +2072,8 @@ of it is a matter of feel:
   normal case here, not a corner.
 - **The box closing itself**. `SetupAsk` is an `embassy_sync::Signal`: raising the AP takes ≈ 1 s,
   and a second tap on `AP` during it (or one tap read twice) leaves a `Front` request on the
-  the contract; the next reader is the **access point** front's loop, which reads `Front` as "back to the panel" —
-  the box opens and closes at once. The contract does not remember **which front** a request was made
+  the channel; the next reader is the **access point** front's loop, which reads `Front` as "back to the panel" —
+  the box opens and closes at once. The channel does not remember **which front** a request was made
   on.
 - **Fix one: two cells, always two cells** (strip option A). Left cell = `CANCEL` when there is a way
   back; on the panel front with no way back, `SCAN` (`WAIT` while a round is in flight — the same
@@ -2315,7 +2315,7 @@ phone. The capture (C6, 44.8 s after a reset) has a device side that did everyth
 
 The change is `LEAVE_GRACE = 2 s`: `page()` waits it out before `JOIN.publish`, so the access point
 stays two seconds longer. After publishing it parks on `pending().await`, so a second submit inside
-the grace cannot put another credential on the `JOIN` contract — the link would otherwise be pulled away
+the grace cannot put another credential on the `JOIN` channel — the link would otherwise be pulled away
 by the request that arrived late. The cost is one timer and **the static wall does not move** (`nm`
 still 65,592 B); the C6's `[HEAP]` goes 22,168 → 22,048 B (−120 B) and `iot:image-c6` **813,904 /
 1,048,576 B** (77.62%), `iot:image-s3` **1,049,568 / 6,291,456 B** (16.68%).
@@ -2653,12 +2653,12 @@ the erased state.
    - **⑥ Marking and forgetting a stored network** (**landed**): a `*` on a stored
      network's row in the list, and a long press on that row to forget it (`Touch::Hold` →
      `BusinessIntent::AskForget(ap)`, opening the `FORGET` confirmation only for a stored row). The
-     implementation did **not** take the route of "a contract carrying the stored names into
+     implementation did **not** take the route of "a channel carrying the stored names into
      `DeviceState`": against the S3's static-memory wall, a `SavedNetworks` (~980 B) landing in the
      app either by value or as an `&EMPTY` blows it, so the **mask travels with the list itself**
      (`ApList.saved: u8`, one bit a row) and `SurveyHistory::{observe, marked}` take an
      `Option<&SavedNetworks>` so no value is built in the app. The price is that the state and the
-     history each hold a list, so the `SCAN` contract has to be one that **takes every publish and drops
+     history each hold a list, so the `SCAN` channel has to be one that **takes every publish and drops
      none** (this round turned it into a slot that overwrites — see the fourth run). The erase goes
      through `Store::forget` and was checked on the part (boot 4 in "Where a credential lives").
    - **③ the details** (done): the selected row reversed edge to edge, the failure word in the

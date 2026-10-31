@@ -6,13 +6,13 @@ sort_by = "weight"
 
 # 放音语义
 
-ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点与终点**——现在在放什么、放完了没有——而不是进度条，也不是音量。本页说明契约、面板读数，以及这四个字后面每一处"为什么是这样"。
+ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点与终点**——现在在放什么、放完了没有——而不是进度条，也不是音量。本页说明播放语义、面板读数，以及这四个字后面每一处"为什么是这样"。
 
 本页描述系统现在是什么样；它怎么变成这样、被否掉过什么，在[放音实现记录](@/records/iot/playback.md)（AI 产出，未经人类审阅）。
 
-采集那一侧的语义在[音频计量语义](@/development/iot/audio.md)。两页共用一根 MCLK，但契约相反：采集从不停止，放音一次性放完就停。所以放音有相位而采集没有。
+采集那一侧的语义在[音频计量语义](@/development/iot/audio.md)。两页共用一根 MCLK，但语义相反：采集从不停止，放音一次性放完就停。所以放音有相位而采集没有。
 
-## 契约
+## 语义
 
 声音是 one-shot：一次触发放一段，放完报完成，中途没有「暂停」和「进度」。
 
@@ -22,9 +22,11 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 `feed_loop` 只做 5 ms 节拍与一次内存写，spawn 到 S3 的 `FROM_CPU_INTR1` 上（`Priority2`）。`control_loop` 处理命令（声音在锁外解析、锁内只交给驱动）、走 I2C 的 `set_muted()`、以及把 `finished` 送回 intent 总线，留在协作式的 `FROM_CPU_INTR0` 上。
 
+命令从协调者经 `Workers.speaker.to`（`Channel<PlaybackCommand, 4>`）交进来，`control_loop` 只读这一个队列；放完的回报走 intent 总线，所以 `Speaker` 句柄没有 `from` 一侧。
+
 驱动由 `Box<dyn Speaker>` 共享，因此 `play()` 与 `feed()` 不会互相踩坏对方正在写的环。这正是 `Speaker` 要求 `Send + 'static`、且错误类型是具名的 `SpeakerFault` 而不是各实现自定义的原因（trait object 没法写下一个未具名的关联类型）。
 
-C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在同一个 executor 上 `join`，语义不变。两者的落点由 `audio::playback_tasks` 一处决定：`run` 只 join 它一个，所以「spawn 而不是 join」这条规则和它解释的两个循环住在同一个文件里，而不是散在组合点上。
+C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在同一个 executor 上 `join`，语义不变。两者的落点由 `audio::playback_tasks` 一处决定：`run` 只 join 它一个，并把 `Workers.speaker` 按值传进去，所以「spawn 而不是 join」这条规则和它解释的两个循环住在同一个文件里，而不是散在组合点上。
 
 `BusinessIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
 
@@ -213,7 +215,7 @@ ID 要读不要信：地址是这条总线上唯一能静默弄错的东西，�
 
 `PA_EN` 是 PCA9557 输出寄存器的 bit 1（`Pca9557::set_output_bit` 读-改-写，参数是位号不是掩码）。上电输出 `0x05`、配置 `0xF8`；LCD 片选引线随 `set_output(DVP_PWDN_BIT)` 落下，基线 `0x04`，PA 使能后去 `0x06`。
 
-功放不在 `Speaker` 里：它是板级接线，不是驱动契约。
+功放不在 `Speaker` 里：它是板级接线，不是驱动接口。
 
 ## 测试
 

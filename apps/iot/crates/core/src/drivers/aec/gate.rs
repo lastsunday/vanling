@@ -90,6 +90,7 @@ impl AdaptationGate {
     }
 
     /// The residual that survived, as a mean square.
+    #[cfg(test)]
     pub fn leakage_level(&self) -> i64 {
         self.residual.level()
     }

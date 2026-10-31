@@ -42,20 +42,6 @@ pub fn echo(reference: &[i16], delay: usize, ppm: i32) -> Vec<i16> {
         .collect()
 }
 
-/// Two seeds give two signals.
-pub fn distinct_seeds_give_distinct_signals() {
-    assert_ne!(
-        reference(64, 4_000, 2),
-        reference(64, 4_000, 3),
-        "seeds 2 and 3 produced the same samples"
-    );
-    assert_ne!(
-        reference(64, 4_000, 1),
-        reference(64, 4_000, 0),
-        "seed 0 is substituted, but only for zero"
-    );
-}
-
 /// The sum of squares of a stretch, the unit every cancellation reading here is compared
 /// in.
 pub fn power(samples: &[i16]) -> i64 {
@@ -67,7 +53,16 @@ mod tests {
 
     #[test]
     fn neighbouring_seeds_do_not_collapse_onto_each_other() {
-        distinct_seeds_give_distinct_signals();
+        assert_ne!(
+            reference(64, 4_000, 2),
+            reference(64, 4_000, 3),
+            "seeds 2 and 3 produced the same samples"
+        );
+        assert_ne!(
+            reference(64, 4_000, 1),
+            reference(64, 4_000, 0),
+            "seed 0 is substituted, but only for zero"
+        );
     }
 
     #[test]

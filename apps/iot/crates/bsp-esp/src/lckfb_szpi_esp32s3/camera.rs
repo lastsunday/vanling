@@ -30,7 +30,7 @@ pub(super) struct FrameArena(pub(super) [u8; PANEL_BYTES]);
 
 // `static mut` because the ring reaches the DMA as a raw pointer, which is the only way
 // to express a DMA buffer in this HAL — and the same reason the probes' heaps are
-// `static mut`. Safety rests on `FrameRing::new`'s contract plus there being exactly one
+// `static mut`. Safety rests on what `FrameRing::new` guarantees plus there being exactly one
 // camera, derived here and nowhere else.
 static mut FRAME_ARENA: FrameArena = FrameArena([0; PANEL_BYTES]);
 

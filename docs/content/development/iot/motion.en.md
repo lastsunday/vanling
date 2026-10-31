@@ -3,13 +3,13 @@ title = "Motion Semantic Framework"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "375feb6dea149a5d830a3b650b15eabedeb3cb63"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "76fb204df7e8eb7dade314b647859605d6ee389c"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 # Motion Semantic Framework
 
-QMI8658A is only one source. What the framework exposes is **meaning** — "knocked once", "picked up" — not a particular bit of a particular register. This page covers the contract, the arbitration rules, the QMI8658A binding details, and how to add a new source.
+QMI8658A is only one source. What the framework exposes is **meaning** — "knocked once", "picked up" — not a particular bit of a particular register. This page covers the semantics, the arbitration rules, the QMI8658A binding details, and how to add a new source.
 
 ## Two paths
 
@@ -41,7 +41,7 @@ The first is a mechanical knock measured by the accelerometer (it may come from 
 
 One physical action can produce both, and both are kept.
 
-## The contract
+## Semantics
 
 ```
 MotionSource::sample(now_ms) -> Result<Option<MotionReading>, MotionError>
@@ -403,7 +403,7 @@ With multiple IMUs, sample, health-check and recognize each source independently
 ## Testing
 
 ```bash
-moon run iot:test      # core: contract, recognizer, arbitration, state machine
+moon run iot:test      # core: semantics, recognizer, arbitration, state machine
 moon run iot:test-bsp  # driver: register sequence, handshake, status mapping
 ```
 

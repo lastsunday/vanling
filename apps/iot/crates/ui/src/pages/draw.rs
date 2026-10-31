@@ -8,6 +8,7 @@ use iot_core::paint::Rgb;
 use iot_core::state::Entry;
 
 use crate::layout::{PSK_MASK_GLYPHS, SCOPE_DECIBEL_FLOOR, WAVE_CY, WAVE_HALF};
+use crate::text::{write_u16, write_u64};
 
 pub(crate) fn bar_rows(peak_lsb: u16) -> isize {
     WAVE_HALF * isize::from(iot_core::drivers::audio::scope_height(peak_lsb)) / isize::from(u8::MAX)
@@ -144,31 +145,9 @@ pub(crate) fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
     &buf[..n + 2]
 }
 
-fn write_u64(mut value: u64, buf: &mut [u8], mut n: usize) -> usize {
-    let mut tmp = [0u8; 20];
-    let mut len = 0;
-    loop {
-        tmp[len] = b'0' + (value % 10) as u8;
-        len += 1;
-        value /= 10;
-        if value == 0 {
-            break;
-        }
-    }
-    for &digit in tmp[..len].iter().rev() {
-        buf[n] = digit;
-        n += 1;
-    }
-    n
-}
-
 pub(crate) fn format_u16(value: u16, buf: &mut [u8; 6]) -> &[u8] {
     let n = write_u16(value, buf, 0);
     &buf[..n]
-}
-
-pub(crate) fn write_u16(value: u16, buf: &mut [u8], n: usize) -> usize {
-    write_u64(value.into(), buf, n)
 }
 
 pub(crate) fn brightness_of(Rgb(r, g, b): Rgb) -> u8 {

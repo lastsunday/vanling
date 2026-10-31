@@ -9,7 +9,6 @@ use iot_core::demand::{DemandKind, EffectiveDemand, InputLimiter, MAX_SINGLE_HOL
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{BusinessIntent, Intent, PageIntent, recognize};
 
-use crate::SharedDemand;
 use iot_core::config::{Configuration, Configurator, Unreachable};
 
 pub const INTENT_SLOTS: usize = 8;
@@ -117,7 +116,7 @@ pub async fn input_task(
     intent_bus: &'static IntentBus,
     mut sources: Vec<PollEntry>,
     configurator: &Configurator,
-    demand: &SharedDemand,
+    input: crate::workers::Input<'_>,
 ) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(INPUT_BASE_MS));
     let mut now_ms: u64 = 0;
@@ -133,8 +132,9 @@ pub async fn input_task(
         ticker.next().await;
         now_ms = now_ms.wrapping_add(INPUT_BASE_MS);
         let loop_start = Instant::now();
-        let decision =
-            demand.lock(|current| decide(&sources, &current.borrow(), configurator, &mut plans));
+        let decision = input
+            .to
+            .lock(|current| decide(&sources, &current.borrow(), configurator, &mut plans));
         apply_decision(&mut sources, decision, &plans, now_ms);
         for (index, entry) in sources.iter_mut().enumerate() {
             if !entry.is_active() || entry.next_at_ms() > now_ms {

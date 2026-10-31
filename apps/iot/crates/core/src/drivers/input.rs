@@ -4,7 +4,7 @@ use super::motion::MotionBatch;
 use crate::config::MotionConfig;
 use crate::demand::DemandKey;
 
-/// Active-low contract for a physical button: returns `true` when pressed.
+/// A physical button, reported as `true` when pressed.
 pub trait Button {
     fn is_pressed(&self) -> bool;
 }
@@ -69,7 +69,7 @@ pub enum SwipeDirection {
 
 impl SwipeDirection {
     /// Numpad digit for the on-panel readout (8/2/4/6 axes, 7/9/1/3 the diagonals; `5`
-    /// reserved); the layout is a display contract.
+    /// reserved).
     pub const fn code(self) -> u8 {
         match self {
             SwipeDirection::Up => 8,
@@ -138,12 +138,10 @@ pub const FINGER_LONG_PRESS: u8 = 2;
 pub const FINGER_SWIPE: u8 = 3;
 
 /// The gesture one tracked finger last resolved, so the overlay can answer per finger what
-/// it did: `kind` the `FINGER_*` code, `dir` the swipe's `SwipeDirection::code` (`0`
-/// otherwise), `value` the measured hold (ms) or swipe travel (px).
+/// it did: `kind` the `FINGER_*` code, `value` the measured hold (ms) or swipe travel (px).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FingerLast {
     pub kind: u8,
-    pub dir: u8,
     pub value: u16,
 }
 
@@ -151,7 +149,6 @@ impl FingerLast {
     pub const fn empty() -> Self {
         Self {
             kind: FINGER_NONE,
-            dir: 0,
             value: 0,
         }
     }
@@ -196,9 +193,6 @@ pub struct TouchPoint {
 pub struct TouchEvent {
     pub points: [TouchPoint; MAX_TOUCH_POINTS],
     pub len: u8,
-    /// Raw controller contact count (`TD_STATUS`); can transiently exceed `len` while the
-    /// chip still counts a release in flight.
-    pub contacts: u8,
 }
 
 /// Maps raw touch-panel coordinates into framebuffer space.
@@ -211,6 +205,7 @@ pub struct TouchMap {
 
 impl TouchMap {
     /// Raw coordinates are already in framebuffer space.
+    #[cfg(test)]
     pub const IDENTITY: Self = Self {
         swap_xy: false,
         mirror_x: false,
@@ -573,13 +568,9 @@ impl TouchGestures {
         }?;
         self.fingers[slot].id = None;
 
-        if let Some((distance_px, end_x, end_y)) = farthest
-            && distance_px >= SWIPE_MIN_DISTANCE_PX
+        if let Some((_, end_x, end_y)) = farthest
+            && let Some((direction, distance_px)) = swipe_classify(down_x, down_y, end_x, end_y)
         {
-            let direction = dominant_axis(
-                i32::from(end_x) - i32::from(down_x),
-                i32::from(end_y) - i32::from(down_y),
-            );
             return Some(InputEvent::Gesture(GestureEvent::Swipe {
                 id,
                 direction,
@@ -772,9 +763,9 @@ impl TouchContinuity {
         }
     }
 
-    /// Feed one raw sample (framebuffer space) plus the controller's own contact count;
-    /// emits only when the contact set or a tracked position changed.
-    pub fn update(&mut self, raw: &[(u16, u16)], contacts: u8) -> Option<TouchEvent> {
+    /// Feed one raw sample (framebuffer space); emits only when the contact set or a
+    /// tracked position changed.
+    pub fn update(&mut self, raw: &[(u16, u16)]) -> Option<TouchEvent> {
         let mut event = TouchEvent {
             points: [TouchPoint {
                 id: 0,
@@ -783,7 +774,6 @@ impl TouchContinuity {
                 status: TouchStatus::Down,
             }; MAX_TOUCH_POINTS],
             len: 0,
-            contacts,
         };
         let mut consumed = [false; MAX_TOUCH_POINTS];
         let mut changed = false;
@@ -1536,9 +1526,8 @@ mod tests {
         #[test]
         fn tracked_points_upsert_move_and_stay_quiet() {
             let mut c = TouchContinuity::new();
-            let ev = c.update(&[(100, 200)], 1).unwrap();
+            let ev = c.update(&[(100, 200)]).unwrap();
             assert_eq!(ev.len, 1);
-            assert_eq!(ev.contacts, 1);
             assert_eq!(
                 ev.points[0],
                 TouchPoint {
@@ -1548,7 +1537,7 @@ mod tests {
                     status: TouchStatus::Down,
                 }
             );
-            let ev = c.update(&[(120, 210)], 1).unwrap();
+            let ev = c.update(&[(120, 210)]).unwrap();
             assert_eq!(
                 ev.points[0],
                 TouchPoint {
@@ -1558,24 +1547,24 @@ mod tests {
                     status: TouchStatus::Contact,
                 }
             );
-            assert!(c.update(&[(120, 210)], 1).is_none());
+            assert!(c.update(&[(120, 210)]).is_none());
         }
 
         #[test]
         fn release_confirms_only_after_a_dropout_run_and_recycles_ids() {
             let mut c = TouchContinuity::new();
-            c.update(&[(100, 200)], 1);
-            assert!(c.update(&[], 0).is_none(), "one dropout is not a lift");
-            assert!(c.update(&[], 0).is_none());
-            let ev = c.update(&[(101, 201)], 1).unwrap();
+            c.update(&[(100, 200)]);
+            assert!(c.update(&[]).is_none(), "one dropout is not a lift");
+            assert!(c.update(&[]).is_none());
+            let ev = c.update(&[(101, 201)]).unwrap();
             assert_eq!(ev.points[0].status, TouchStatus::Contact);
             assert_eq!(ev.points[0].id, 0);
             let mut c = TouchContinuity::new();
-            c.update(&[(100, 200)], 1);
+            c.update(&[(100, 200)]);
             for _ in 0..RELEASE_CONFIRM_SAMPLES - 1 {
-                assert!(c.update(&[], 0).is_none());
+                assert!(c.update(&[]).is_none());
             }
-            let ev = c.update(&[], 0).unwrap();
+            let ev = c.update(&[]).unwrap();
             assert_eq!(
                 ev.points[0],
                 TouchPoint {
@@ -1585,23 +1574,23 @@ mod tests {
                     status: TouchStatus::Release,
                 }
             );
-            assert!(c.update(&[], 0).is_none());
+            assert!(c.update(&[]).is_none());
             let mut c = TouchContinuity::new();
-            c.update(&[(5, 5)], 1);
+            c.update(&[(5, 5)]);
             for _ in 0..RELEASE_CONFIRM_SAMPLES {
-                c.update(&[], 0);
+                c.update(&[]);
             }
-            let ev = c.update(&[(7, 7)], 1).unwrap();
+            let ev = c.update(&[(7, 7)]).unwrap();
             assert_eq!(ev.points[0].status, TouchStatus::Down);
         }
 
         #[test]
         fn ids_follow_fingers_across_index_shuffles() {
             let mut c = TouchContinuity::new();
-            let first = c.update(&[(10, 10), (300, 300)], 2).unwrap();
+            let first = c.update(&[(10, 10), (300, 300)]).unwrap();
             assert_eq!(first.points[0].id, 0);
             assert_eq!(first.points[1].id, 1);
-            let ev = c.update(&[(300, 301), (11, 12)], 2).unwrap();
+            let ev = c.update(&[(300, 301), (11, 12)]).unwrap();
             assert_eq!(ev.points[0].id, 1, "far point keeps its id at index 0");
             assert_eq!(ev.points[0].status, TouchStatus::Contact);
             assert_eq!(ev.points[1].id, 0, "near point keeps its id at index 1");
@@ -1609,13 +1598,13 @@ mod tests {
         }
 
         #[test]
-        fn multi_contact_samples_keep_releases_and_raw_counts() {
+        fn multi_contact_samples_keep_releases() {
             let mut c = TouchContinuity::new();
-            c.update(&[(5, 5), (6, 6)], 2);
+            c.update(&[(5, 5), (6, 6)]);
             for _ in 0..RELEASE_CONFIRM_SAMPLES - 1 {
-                assert!(c.update(&[], 0).is_none());
+                assert!(c.update(&[]).is_none());
             }
-            let ev = c.update(&[], 0).unwrap();
+            let ev = c.update(&[]).unwrap();
             assert_eq!(ev.len, 2);
             assert!(
                 ev.points[..ev.len as usize]
@@ -1623,9 +1612,8 @@ mod tests {
                     .all(|p| p.status == TouchStatus::Release)
             );
             let mut c = TouchContinuity::new();
-            let ev = c.update(&[(5, 5)], 2).unwrap();
+            let ev = c.update(&[(5, 5)]).unwrap();
             assert_eq!(ev.len, 1);
-            assert_eq!(ev.contacts, 2);
         }
 
         #[test]
@@ -1679,7 +1667,7 @@ mod tests {
     mod classifier {
         use super::*;
 
-        fn sample(points: &[(TouchStatus, u8, u16, u16)], contacts: u8) -> InputEvent {
+        fn sample(points: &[(TouchStatus, u8, u16, u16)]) -> InputEvent {
             let mut pts = [TouchPoint {
                 status: TouchStatus::Release,
                 id: 0,
@@ -1692,21 +1680,11 @@ mod tests {
             InputEvent::Touch(TouchEvent {
                 points: pts,
                 len: points.len().min(MAX_TOUCH_POINTS) as u8,
-                contacts,
             })
         }
 
         fn touch(status: TouchStatus, x: u16, y: u16) -> InputEvent {
-            sample(&[(status, 0, x, y)], 1)
-        }
-
-        fn touch_contacts_dirty(status: TouchStatus, x: u16, y: u16) -> InputEvent {
-            let mut ev = match touch(status, x, y) {
-                InputEvent::Touch(ev) => ev,
-                _ => unreachable!(),
-            };
-            ev.contacts = 2;
-            InputEvent::Touch(ev)
+            sample(&[(status, 0, x, y)])
         }
 
         #[test]
@@ -1793,25 +1771,6 @@ mod tests {
                     at_ms: 10,
                 })),
                 "no window stands between the lift and the tap"
-            );
-            let mut agg = TouchGestures::new();
-            assert_eq!(
-                agg.feed(touch_contacts_dirty(TouchStatus::Down, 10, 10), 0),
-                Some(InputEvent::Gesture(GestureEvent::Press {
-                    id: 0,
-                    x: 10,
-                    y: 10
-                }))
-            );
-            assert_eq!(
-                agg.feed(touch_contacts_dirty(TouchStatus::Release, 10, 10), 10),
-                Some(InputEvent::Gesture(GestureEvent::Tap {
-                    id: 0,
-                    x: 10,
-                    y: 10,
-                    held_ms: 10,
-                    at_ms: 10,
-                }))
             );
         }
 
@@ -2062,7 +2021,7 @@ mod tests {
         fn two_quick_lifts_are_two_taps() {
             let mut agg = TouchGestures::new();
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Down, 12, 40, 60)], 1), 0),
+                agg.feed(sample(&[(TouchStatus::Down, 12, 40, 60)]), 0),
                 Some(InputEvent::Gesture(GestureEvent::Press {
                     id: 12,
                     x: 40,
@@ -2070,7 +2029,7 @@ mod tests {
                 }))
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 12, 40, 60)], 1), 10),
+                agg.feed(sample(&[(TouchStatus::Release, 12, 40, 60)]), 10),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 12,
                     x: 40,
@@ -2081,7 +2040,7 @@ mod tests {
                 "the first lift reports its own tap, not a pending first half"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Down, 7, 45, 65)], 1), 90),
+                agg.feed(sample(&[(TouchStatus::Down, 7, 45, 65)]), 90),
                 Some(InputEvent::Gesture(GestureEvent::Press {
                     id: 7,
                     x: 45,
@@ -2090,7 +2049,7 @@ mod tests {
                 "the second physical tap is a fresh tracker, never the old id"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 7, 45, 65)], 1), 100),
+                agg.feed(sample(&[(TouchStatus::Release, 7, 45, 65)]), 100),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 7,
                     x: 45,
@@ -2190,7 +2149,7 @@ mod tests {
         fn phantom_echoes_pulse_once_and_leave_the_finger_armed() {
             let mut agg = TouchGestures::new();
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Down, 0, 100, 100)], 1), 0),
+                agg.feed(sample(&[(TouchStatus::Down, 0, 100, 100)]), 0),
                 Some(InputEvent::Gesture(GestureEvent::Press {
                     id: 0,
                     x: 100,
@@ -2199,24 +2158,21 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(
-                    sample(
-                        &[
-                            (TouchStatus::Contact, 0, 100, 100),
-                            (TouchStatus::Down, 1, 110, 105)
-                        ],
-                        2,
-                    ),
+                    sample(&[
+                        (TouchStatus::Contact, 0, 100, 100),
+                        (TouchStatus::Down, 1, 110, 105)
+                    ]),
                     10,
                 ),
                 Some(InputEvent::Gesture(GestureEvent::Ghost))
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 1, 110, 105)], 1), 20),
-                Some(sample(&[(TouchStatus::Release, 1, 110, 105)], 1)),
+                agg.feed(sample(&[(TouchStatus::Release, 1, 110, 105)]), 20),
+                Some(sample(&[(TouchStatus::Release, 1, 110, 105)])),
                 "a lift with no tracked press is a bare snapshot, not a tap"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 0, 100, 100)], 1), 30),
+                agg.feed(sample(&[(TouchStatus::Release, 0, 100, 100)]), 30),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 100,
@@ -2228,48 +2184,39 @@ mod tests {
             );
             let mut agg = TouchGestures::new();
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 0, 30, 30)], 1), 0)
+                agg.feed(sample(&[(TouchStatus::Down, 0, 30, 30)]), 0)
                     .is_some()
             );
             assert_eq!(
                 agg.feed(
-                    sample(
-                        &[
-                            (TouchStatus::Contact, 0, 30, 30),
-                            (TouchStatus::Down, 1, 35, 35)
-                        ],
-                        2
-                    ),
+                    sample(&[
+                        (TouchStatus::Contact, 0, 30, 30),
+                        (TouchStatus::Down, 1, 35, 35)
+                    ]),
                     5
                 ),
                 Some(InputEvent::Gesture(GestureEvent::Ghost))
             );
             assert_eq!(
                 agg.feed(
-                    sample(
-                        &[
-                            (TouchStatus::Contact, 0, 30, 30),
-                            (TouchStatus::Down, 2, 36, 36)
-                        ],
-                        2
-                    ),
-                    9
-                ),
-                Some(sample(
-                    &[
+                    sample(&[
                         (TouchStatus::Contact, 0, 30, 30),
                         (TouchStatus::Down, 2, 36, 36)
-                    ],
-                    2
-                )),
+                    ]),
+                    9
+                ),
+                Some(sample(&[
+                    (TouchStatus::Contact, 0, 30, 30),
+                    (TouchStatus::Down, 2, 36, 36)
+                ])),
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Contact, 0, 30, 30)], 1), 50),
-                Some(sample(&[(TouchStatus::Contact, 0, 30, 30)], 1)),
+                agg.feed(sample(&[(TouchStatus::Contact, 0, 30, 30)]), 50),
+                Some(sample(&[(TouchStatus::Contact, 0, 30, 30)])),
                 "a clean one-contact sample closes the run"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Down, 3, 200, 200)], 1), 60),
+                agg.feed(sample(&[(TouchStatus::Down, 3, 200, 200)]), 60),
                 Some(InputEvent::Gesture(GestureEvent::Press {
                     id: 3,
                     x: 200,
@@ -2278,13 +2225,10 @@ mod tests {
             );
             assert_eq!(
                 agg.feed(
-                    sample(
-                        &[
-                            (TouchStatus::Contact, 3, 200, 200),
-                            (TouchStatus::Down, 4, 205, 205)
-                        ],
-                        2
-                    ),
+                    sample(&[
+                        (TouchStatus::Contact, 3, 200, 200),
+                        (TouchStatus::Down, 4, 205, 205)
+                    ]),
                     65
                 ),
                 Some(InputEvent::Gesture(GestureEvent::Ghost)),
@@ -2296,7 +2240,7 @@ mod tests {
         fn concurrent_fingers_never_pair_into_one_gesture() {
             let mut agg = TouchGestures::new();
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)], 1), 0),
+                agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)]), 0),
                 Some(InputEvent::Gesture(GestureEvent::Press {
                     id: 0,
                     x: 20,
@@ -2304,7 +2248,7 @@ mod tests {
                 }))
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 200)], 1), 0),
+                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 200)]), 0),
                 Some(InputEvent::Gesture(GestureEvent::Press {
                     id: 1,
                     x: 150,
@@ -2313,7 +2257,7 @@ mod tests {
                 "a second faraway finger is genuine concurrency, not a phantom"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 0, 140, 125)], 1), 90),
+                agg.feed(sample(&[(TouchStatus::Release, 0, 140, 125)]), 90),
                 Some(InputEvent::Gesture(GestureEvent::Swipe {
                     id: 0,
                     direction: SwipeDirection::Right,
@@ -2326,12 +2270,12 @@ mod tests {
                 }))
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Contact, 1, 150, 200)], 1), 95),
-                Some(sample(&[(TouchStatus::Contact, 1, 150, 200)], 1)),
+                agg.feed(sample(&[(TouchStatus::Contact, 1, 150, 200)]), 95),
+                Some(sample(&[(TouchStatus::Contact, 1, 150, 200)])),
                 "finger 1's hold is silent; only its snapshot passes through"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 1, 150, 200)], 1), 100),
+                agg.feed(sample(&[(TouchStatus::Release, 1, 150, 200)]), 100),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 1,
                     x: 150,
@@ -2345,15 +2289,15 @@ mod tests {
 
             let mut agg = TouchGestures::new();
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 0, 10, 90)], 1), 0)
+                agg.feed(sample(&[(TouchStatus::Down, 0, 10, 90)]), 0)
                     .is_some()
             );
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 90)], 1), 0)
+                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 90)]), 0)
                     .is_some()
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 0, 10, 90)], 1), 10),
+                agg.feed(sample(&[(TouchStatus::Release, 0, 10, 90)]), 10),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 0,
                     x: 10,
@@ -2363,7 +2307,7 @@ mod tests {
                 }))
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 1, 150, 90)], 1), 20),
+                agg.feed(sample(&[(TouchStatus::Release, 1, 150, 90)]), 20),
                 Some(InputEvent::Gesture(GestureEvent::Tap {
                     id: 1,
                     x: 150,
@@ -2380,20 +2324,17 @@ mod tests {
         fn same_sample_lifts_buffer_the_second_in_fifo() {
             let mut agg = TouchGestures::new();
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)], 1), 0)
+                agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)]), 0)
                     .is_some()
             );
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 200)], 1), 0)
+                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 200)]), 0)
                     .is_some()
             );
-            let both_lift = sample(
-                &[
-                    (TouchStatus::Release, 0, 140, 125),
-                    (TouchStatus::Release, 1, 80, 170),
-                ],
-                1,
-            );
+            let both_lift = sample(&[
+                (TouchStatus::Release, 0, 140, 125),
+                (TouchStatus::Release, 1, 80, 170),
+            ]);
             assert_eq!(
                 agg.feed(both_lift, 90),
                 Some(InputEvent::Gesture(GestureEvent::Swipe {
@@ -2431,15 +2372,15 @@ mod tests {
         fn companion_lift_never_cycles_a_clean_hold_still_does() {
             let mut agg = TouchGestures::new();
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)], 2), 0)
+                agg.feed(sample(&[(TouchStatus::Down, 0, 20, 120)]), 0)
                     .is_some()
             );
             assert!(
-                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 150)], 2), 100)
+                agg.feed(sample(&[(TouchStatus::Down, 1, 150, 150)]), 100)
                     .is_some(),
                 "a far second contact is genuine concurrency, not a phantom"
             );
-            let ghost_lift = agg.feed(sample(&[(TouchStatus::Release, 1, 150, 150)], 2), 900);
+            let ghost_lift = agg.feed(sample(&[(TouchStatus::Release, 1, 150, 150)]), 900);
             assert!(
                 !matches!(
                     ghost_lift,
@@ -2448,7 +2389,7 @@ mod tests {
                 "the parked companion's 900 ms lift never reads as a long-press: {ghost_lift:?}"
             );
             assert_eq!(
-                agg.feed(sample(&[(TouchStatus::Release, 0, 20, 120)], 2), 1100),
+                agg.feed(sample(&[(TouchStatus::Release, 0, 20, 120)]), 1100),
                 Some(InputEvent::Gesture(GestureEvent::LongPress {
                     id: 0,
                     x: 20,

@@ -24,7 +24,7 @@ sort_by = "weight"
 2. **抬到 896.8 Hz**（6DOF 首个高于 500 Hz 的档位），参数回到手册示例 `UDMThr = 0x0190`、窗长 80 ms，与唯一可工作的公共参照 WaveShare TapDetectionExample 对齐。冲量落面足够宽，行为仍纹丝不变。
 3. **信号与阈值是否成立**？在驱动内镜像引擎的逐轴 Alpha 均值与 Gamma 能量，把 `sq`（平方残差）与 `pk`（能量）打到台架：真实敲击落在 2.4–4.9 g²，越过 0.8 g² 的 `PeakMagThr`，能量随后回落到 0.4 g² 以下。信号、阈值、时序全部成立。
 
-卡点在任何参数闸之外，而在状态机本身。同一套数学在 core 的 20 ms 流上成立，于是敲击契约改由 `core/src/drivers/motion/recognizer.rs` 承担；`QMI8658_CAPABILITIES` 因此不声明 `TAP`——把 core 侧算出来的东西记到硬件头上，是能力集唯一的用途（面板要能分辨"报不出来"与"阈值没到"）被破坏的方式。
+卡点在任何参数闸之外，而在状态机本身。同一套数学在 core 的 20 ms 流上成立，于是敲击语义改由 `core/src/drivers/motion/recognizer.rs` 承担；`QMI8658_CAPABILITIES` 因此不声明 `TAP`——把 core 侧算出来的东西记到硬件头上，是能力集唯一的用途（面板要能分辨"报不出来"与"阈值没到"）被破坏的方式。
 
 `ODR` 留在 896.8 Hz 不再是为了敲击，而是给 No-Motion 引擎的样本计窗与陀螺 yaw 诊断。
 

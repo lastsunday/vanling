@@ -236,7 +236,7 @@ Switching every frame would cost microseconds against a 20 ms frame (0.25%), so 
 
 **`set_speed` returns the speed actually reached, not the one asked for**, so a downgrade is a return value rather than a failure: `Fast → Fast` on the S3; `Fast → Normal` on the C6 (160 is its top). `iot-chip_esp::Clock` compares and reports "asked Fast, this part reached Normal". **No panic, no silence, no lie** — better than the `unimplemented!()` this started as, and better than moving nothing at all.
 
-**The `set_cpu_clock` out-of-contract caveat does not hold on the C6**: esp-hal offers no runtime clock change there, so the C6's `set_speed` accepts the request and the clock does not move. That is stated rather than hidden — **a build relying on it should be visible.**
+**The `set_cpu_clock` out-of-support caveat does not hold on the C6**: esp-hal offers no runtime clock change there, so the C6's `set_speed` accepts the request and the clock does not move. That is stated rather than hidden — **a build relying on it should be visible.**
 
 **None of this needs the board to test**: `ClockGovernor::apply` takes its sink by injection (the same shape as `Board` and `SpeakerRunner`), so a host build can pass a recording sink and assert that what comes back is what the part reached. The C6's downgrade is pinned by `Some(Normal)` instead of `Some(Fast)` on the host.
 

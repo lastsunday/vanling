@@ -38,7 +38,7 @@ const CTRL_KEEP_ACTIVE: u8 = 0x00;
 const REG_G_MODE: u8 = 0xA4;
 const G_MODE_POLLING: u8 = 0x00;
 
-type TouchSample = ([(u16, u16); FT6336_MAX_POINTS], usize, u8);
+type TouchSample = ([(u16, u16); FT6336_MAX_POINTS], usize);
 
 /// FT6336 (FT5x06 family) capacitive touch controller, polled over a board-provided I2C
 /// device on the shared bus.
@@ -145,7 +145,7 @@ impl<D: I2c> Ft6336<D> {
                 n += 1;
             }
         }
-        Ok((raw, n, contacts))
+        Ok((raw, n))
     }
 }
 
@@ -172,7 +172,7 @@ where
             self.gesture_id = id;
             return Some(InputEvent::ChipGesture(id));
         }
-        let (raw, n, contacts) = match self.read_sample() {
+        let (raw, n) = match self.read_sample() {
             Ok(sample) => {
                 self.error_logged = false;
                 sample
@@ -186,9 +186,7 @@ where
                 return None;
             }
         };
-        self.continuity
-            .update(&raw[..n], contacts)
-            .map(InputEvent::Touch)
+        self.continuity.update(&raw[..n]).map(InputEvent::Touch)
     }
 }
 
@@ -232,7 +230,7 @@ mod tests {
     #[test]
     fn a_finger_lands_where_the_panel_shows_it() {
         let mut touch = touching((96, 133));
-        let (points, len, _) = touch.read_sample().expect("a readable sample");
+        let (points, len) = touch.read_sample().expect("a readable sample");
         assert_eq!((points[0], len), ((96, 133), 1));
     }
 

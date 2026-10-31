@@ -67,7 +67,7 @@ fn the_panel_side_never_reaches_the_radio() {
     for name in [
         "pipeline.rs",
         "input.rs",
-        "bridge.rs",
+        "workers.rs",
         "frame.rs",
         "boot.rs",
     ] {
@@ -98,17 +98,33 @@ fn the_core_never_knows_the_app() {
 }
 
 #[test]
-fn the_network_contract_compiles_without_the_radio() {
+fn the_worker_handles_compile_without_the_radio() {
     let lib = std::fs::read_to_string(app_src().join("lib.rs")).expect("the composition root");
     let lines: Vec<_> = lib.lines().collect();
     let at = lines
         .iter()
-        .position(|line| line.trim() == "pub mod bridge;")
-        .expect("the composition root declares the bridge");
+        .position(|line| line.trim() == "pub mod workers;")
+        .expect("the composition root declares the worker handles");
     assert!(
         !lines[at.saturating_sub(1)..at]
             .iter()
             .any(|line| line.trim_start().starts_with("#[cfg")),
-        "the bridge is the panel/network contract; gating it on wifi removes it from the host build"
+        "the handles are the panel/worker boundary; gating them on wifi removes them from the host build"
+    );
+}
+
+#[test]
+fn the_worker_handles_never_reach_a_worker() {
+    let path = app_src().join("workers.rs");
+    let text = std::fs::read_to_string(&path).expect("the worker handles");
+    assert_no_reference(
+        vec![(path, text)],
+        &[
+            "crate::audio",
+            "crate::net",
+            "crate::surface",
+            "crate::pipeline",
+            "crate::input",
+        ],
     );
 }

@@ -3,21 +3,21 @@ title = "Audio Metering Semantics"
 weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "7bd925cfb1c31ac9f77a373e18838a510bb37d1f"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "fae805f360d70064c6432c6709ecb072975fe678"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 # Audio Metering Semantics
 
-The ES7210 is only one source. What the page exposes is level — how many dBFS right now, and how much of it persisted over the last two seconds — not a count of LSBs and certainly not raw samples. This page covers the contract, the meaning of every readout, and why the numbers are drawn the way they are.
+The ES7210 is only one source. What the page exposes is level — how many dBFS right now, and how much of it persisted over the last two seconds — not a count of LSBs and certainly not raw samples. This page covers the semantics, the meaning of every readout, and why the numbers are drawn the way they are.
 
-## The contract
+## Semantics
 
 The capture driver never stops. It is always folding the samples the I2S delivers into the envelope; the `ST` phase only decides which envelope the panel draws and whether the sweep follows the live one.
 
 Reading `ST` as "the recorder is running / stopped" gets two things wrong at once: recording makes the driver do no additional work, and stopping it makes the driver do no less.
 
-A capture poll is pure data path: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot contract the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a business-side click (`BusinessIntent::Capture(CaptureAction::Start)` / `Capture(CaptureAction::Stop)` in `intent.rs`), and only on the Audio page — a click on any other page still cycles the color.
+A capture poll is pure data path: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot channel the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a business-side click (`BusinessIntent::Capture(CaptureAction::Start)` / `Capture(CaptureAction::Stop)` in `intent.rs`), and only on the Audio page — a click on any other page still cycles the color.
 
 There are three phases: `IDLE` (nothing captured, the panel draws only `TAP TO REC` and no sweep), `REC` (follows the live envelope), and `STOP` (draws the latched copy). A click on either `IDLE` or `STOP` goes straight back to `REC`.
 
@@ -25,7 +25,7 @@ There is no "resume" semantic, because what gets latched is the window at the mo
 
 When the board finds no ES7210, `Backed::audio` is false and the `AUDIO` page never enters the page cycle (`DisplayPage::next_page` skips pages no capability backs); every other page is unaffected. Getting to the page is a triple-click of the button or a three-finger tap (`NextPage`).
 
-The side that makes sound is in [Playback Semantics](@/development/iot/playback.en.md). The two pages share one 12.288 MHz MCLK but their contracts are opposite: capture **never stops**, playback is over when the sound is — which is why playback has a phase and this page does not.
+The side that makes sound is in [Playback Semantics](@/development/iot/playback.en.md). The two pages share one 12.288 MHz MCLK but their semantics are opposite: capture **never stops**, playback is over when the sound is — which is why playback has a phase and this page does not.
 
 ## Parameter lookup
 
@@ -278,7 +278,7 @@ The base of the SPL column can therefore be read as a trustworthy level: it is n
 ## Testing
 
 ```bash
-moon run iot:test        # core: metering maths, contracts, the state machine
+moon run iot:test        # core: metering maths, semantics, the state machine
 moon run iot:test-bsp    # board: I2S configuration and buffering
 moon run iot:smoke-host  # end to end: source → state → diagnostics
 ```
@@ -318,4 +318,4 @@ The board side carries `esp-hal`, which the host cannot compile at all.
 
 Its peak counter is seeded from `isize::MIN` — the level is always ≤ 0 dBFS, and seeding from 0 would leave the maximum stuck at "no level at all".
 
-> The full break-verification procedure is recorded in the [Playback Implementation Record](@/records/iot/playback.en.md). This table is a contract, not a list: the day a row stops turning red, it is no longer a test but decoration.
+> The full break-verification procedure is recorded in the [Playback Implementation Record](@/records/iot/playback.en.md). This table is a commitment, not a list: the day a row stops turning red, it is no longer a test but decoration.

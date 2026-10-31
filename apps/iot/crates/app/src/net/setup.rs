@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use embassy_futures::select::{Either, Either4, select, select4};
+use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
 use embassy_net::{Stack, StackResources};
 use embassy_time::{Duration, Timer};
@@ -11,16 +11,16 @@ use iot_core::drivers::network::{
     Credentials, Front, JoinRequest, LinkStatus, Ssid, Station, SurveyHistory,
 };
 use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
-use iot_core::state::DisplayPage;
+use iot_core::state::{DisplayPage, NetworkCommand};
 
-use super::link::{Hold, Provenance, Refusal, hold};
+use super::link::{Hold, Panel, Provenance, Refusal, hold};
 use super::store::{drop_saved, has_saved, remark};
 use super::survey::{Rest, survey};
 use super::{
     MAC, SETUP_SOCKETS, hardware_octets, heap_free, park, publish, publish_scan, seed_from,
 };
-use crate::bridge::{JOIN, LEAVE, SETUP_ASK, SetupAsk};
-use crate::input::INTENT_BUS;
+use crate::input::IntentBus;
+use crate::workers::discard_setup;
 
 pub(super) struct Setup<'d> {
     pub(super) name: &'d Ssid,
@@ -28,7 +28,7 @@ pub(super) struct Setup<'d> {
     pub(super) front: &'d mut Front,
     pub(super) has_pages: bool,
     pub(super) secure_on_entry: bool,
-    pub(super) page: &'static crate::bridge::PageWatch,
+    pub(super) panel: Panel,
 }
 
 #[derive(Clone, Copy)]
@@ -61,6 +61,19 @@ impl Face {
     }
 }
 
+/// What one round of the panel's list came to.
+pub(super) enum Choice {
+    Named(Credentials, Provenance),
+    /// The panel left the list; browsing waits for it to come back.
+    Hidden,
+    /// The panel closed setup mode.
+    Cancel,
+    /// The panel asked for setup mode's other front end.
+    SwitchFront,
+    /// The access point should be put up again, open (`true`) or under a passphrase.
+    SetupOpen(bool),
+}
+
 pub(super) async fn unconfigured<S, R>(
     station: &mut S,
     stack: &Stack<'_>,
@@ -90,8 +103,6 @@ pub(super) async fn unconfigured<S, R>(
                 .as_display_text()
                 .unwrap_or("<unprintable>"),
         );
-        LEAVE.clear();
-        SETUP_ASK.clear();
         match hold(
             station,
             stack,
@@ -100,6 +111,7 @@ pub(super) async fn unconfigured<S, R>(
             Refusal::GiveBack,
             saved.as_deref_mut(),
             Some(&mut history),
+            setup.panel,
         )
         .await
         {
@@ -121,15 +133,14 @@ where
     S::Device: Driver,
     R: FlashRegion,
 {
+    let panel = setup.panel;
     let setup_name = setup.name;
     let resources = &mut *setup.resources;
     let front = &mut *setup.front;
     let has_pages = setup.has_pages;
     let secure_on_entry = setup.secure_on_entry;
-    let page = setup.page;
-    SETUP_ASK.clear();
+    discard_setup(panel.net.commands);
     loop {
-        SETUP_ASK.clear();
         match *front {
             Front::Panel => {
                 let face = Face {
@@ -138,26 +149,16 @@ where
                     setup: true,
                     browsing: false,
                 };
-                publish(face.status(station.status()), has_saved(saved));
-                match select(
-                    setup_credential(station, history, saved, face, false, page),
-                    SETUP_ASK.ready(),
-                )
-                .await
-                {
-                    Either::First(chosen) => return chosen,
-                    Either::Second(ask) if !ask.applies_to(Front::Panel) => {
-                        log::info!(
-                            "[WIFI] dropped a setup request made on the access point's front; the box is \
-                             not open"
-                        );
-                    }
-                    Either::Second(SetupAsk::Front { .. }) => *front = Front::AccessPoint,
-                    Either::Second(SetupAsk::Pass { .. }) => {}
-                    Either::Second(SetupAsk::Cancel { .. }) => {
+                publish(panel.bus, face.status(station.status()), has_saved(saved));
+                match pick(station, history, saved, face, false, panel).await {
+                    Choice::Named(credentials, origin) => return Some((credentials, origin)),
+                    Choice::SwitchFront => *front = Front::AccessPoint,
+                    Choice::Cancel => {
                         log::info!("[WIFI] the panel closed setup mode; the list goes down");
                         return None;
                     }
+                    // The access point is not up on this front, so there is nothing to reopen.
+                    Choice::SetupOpen(_) | Choice::Hidden => {}
                 }
             }
             Front::AccessPoint => {
@@ -194,7 +195,7 @@ where
                         setup: true,
                         browsing: false,
                     };
-                    publish(face.status(station.status()), has_saved(saved));
+                    publish(panel.bus, face.status(station.status()), has_saved(saved));
 
                     // Boxed, not inline: four server loops with their socket buffers inside the
                     // product's one task, whose static pool is the scarce resource on the S3
@@ -204,12 +205,12 @@ where
                         stack,
                         runner,
                         MAC.lock(|cell| cell.get()),
+                        panel.net,
                     ));
                     log::info!("[HEAP] {} B free with setup mode's future up", heap_free());
-                    let ending = select4(
-                        setup_credential(station, history, saved, face, false, page),
+                    let ending = select3(
+                        pick(station, history, saved, face, false, panel),
                         page_serve,
-                        SETUP_ASK.ready(),
                         page_idle(),
                     )
                     .await;
@@ -217,22 +218,18 @@ where
                         log::warn!("[WIFI] the setup access point would not come down: {error:?}");
                     }
                     match ending {
-                        Either4::First(chosen) => return chosen,
-                        Either4::Second(never) => match never {},
-                        Either4::Third(ask) if !ask.applies_to(Front::AccessPoint) => {
-                            log::info!(
-                                "[WIFI] dropped a setup request made on the panel's front; the \
-                                 access point stays up"
-                            );
+                        Either3::First(Choice::Named(credentials, origin)) => {
+                            return Some((credentials, origin));
                         }
-                        Either4::Third(SetupAsk::Front { .. }) => {
+                        Either3::Second(never) => match never {},
+                        Either3::First(Choice::SwitchFront) => {
                             log::info!(
                                 "[WIFI] the panel took its own front back; the access point goes down"
                             );
                             *front = Front::Panel;
                             break;
                         }
-                        Either4::Third(SetupAsk::Pass { open, .. }) => {
+                        Either3::First(Choice::SetupOpen(open)) => {
                             secured = !open;
                             log::info!(
                                 "[WIFI] the setup access point is being put up again, {}",
@@ -243,13 +240,14 @@ where
                                 }
                             );
                         }
-                        Either4::Third(SetupAsk::Cancel { .. }) => {
+                        Either3::First(Choice::Cancel) => {
                             log::info!(
                                 "[WIFI] the panel closed setup mode; the access point goes down"
                             );
                             return None;
                         }
-                        Either4::Fourth(()) if has_pages => {
+                        Either3::First(Choice::Hidden) => {}
+                        Either3::Third(()) if has_pages => {
                             log::info!(
                                 "[WIFI] nobody read the page in {} s; the access point goes down",
                                 SETUP_IDLE_MS / 1_000
@@ -257,13 +255,13 @@ where
                             *front = Front::Panel;
                             break;
                         }
-                        Either4::Fourth(()) => {
+                        Either3::Third(()) => {
                             log::info!(
                                 "[WIFI] nobody read the page in {} s; the access point goes down \
                                  and the saved network is tried again",
                                 SETUP_IDLE_MS / 1_000
                             );
-                            publish(station.status(), has_saved(saved));
+                            publish(panel.bus, station.status(), has_saved(saved));
                             return None;
                         }
                     }
@@ -289,14 +287,16 @@ async fn page_idle() {
     }
 }
 
-pub(super) async fn setup_credential<S, R>(
+/// One round of the list, until the panel names something, leaves, or asks setup mode to
+/// change. Every command taken here is either acted on or known to be stale.
+pub(super) async fn pick<S, R>(
     station: &mut S,
     history: &mut SurveyHistory,
     saved: &mut Option<Box<Store<R>>>,
     face: Face,
     stop_when_hidden: bool,
-    page: &'static crate::bridge::PageWatch,
-) -> Option<(Credentials, Provenance)>
+    panel: Panel,
+) -> Choice
 where
     S: Station,
     R: FlashRegion,
@@ -305,16 +305,10 @@ where
     let mut idle_rounds: u8 = 0;
     let mut panel_was_showing = false;
     loop {
-        if stop_when_hidden && !page.shows(DisplayPage::Network) {
-            return None;
+        if stop_when_hidden && !panel.net.page.shows(DisplayPage::Network) {
+            return Choice::Hidden;
         }
-        if let Some(chosen) = JOIN
-            .take()
-            .and_then(|asked| asked_for(asked, saved.as_deref()))
-        {
-            return Some(chosen);
-        }
-        let showing = page.shows(DisplayPage::Network);
+        let showing = panel.net.page.shows(DisplayPage::Network);
         if showing && !panel_was_showing {
             empty_rounds = 0;
             idle_rounds = 0;
@@ -328,23 +322,47 @@ where
             &mut empty_rounds,
             &mut idle_rounds,
             face,
-            page,
+            panel,
         )
         .await
         {
-            Rest::Forget(ssid) => {
-                drop_saved(saved.as_deref_mut(), &ssid);
-                if let Some(list) = remark(history, saved.as_deref()) {
-                    publish_scan(&list);
+            Rest::Again => {}
+            Rest::Left if stop_when_hidden => return Choice::Hidden,
+            Rest::Left => {}
+            Rest::Command(command) => match command {
+                NetworkCommand::Join(asked) => {
+                    if let Some((credentials, origin)) =
+                        asked_for(panel.bus, asked, saved.as_deref())
+                    {
+                        return Choice::Named(credentials, origin);
+                    }
                 }
-            }
-            Rest::Left if stop_when_hidden => return None,
-            Rest::Left | Rest::Woken => {}
+                NetworkCommand::Forget(ssid) => {
+                    drop_saved(saved.as_deref_mut(), &ssid);
+                    if let Some(list) = remark(history, saved.as_deref()) {
+                        publish_scan(panel.net, &list);
+                    }
+                }
+                NetworkCommand::SwitchFront { from } if from == face.front => {
+                    return Choice::SwitchFront;
+                }
+                NetworkCommand::LeaveSetup { from } if face.setup && from == face.front => {
+                    return Choice::Cancel;
+                }
+                NetworkCommand::SetupOpen { from, open }
+                    if face.setup && face.front == Front::AccessPoint && from == face.front =>
+                {
+                    return Choice::SetupOpen(open);
+                }
+                // Made on the other front, or outside the mode it belongs to.
+                _ => {}
+            },
         }
     }
 }
 
 pub(super) fn asked_for<R: FlashRegion>(
+    bus: &IntentBus,
     asked: JoinRequest,
     saved: Option<&Store<R>>,
 ) -> Option<(Credentials, Provenance)> {
@@ -357,7 +375,7 @@ pub(super) fn asked_for<R: FlashRegion>(
                     "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
                     ssid.as_display_text().unwrap_or("<unprintable>"),
                 );
-                let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::Network(
+                let _ = bus.try_send(Intent::Business(BusinessIntent::Network(
                     NetworkIntent::NoCopy(ssid),
                 )));
             }

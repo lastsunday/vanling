@@ -537,6 +537,7 @@ impl<A: Armed> Chain<A> {
         self.running.is_some()
     }
 
+    #[cfg(test)]
     pub fn is_parked(&self) -> bool {
         self.parked.is_some()
     }

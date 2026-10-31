@@ -8,34 +8,30 @@ use core::cell::RefCell;
 
 use embassy_executor::SendSpawner;
 use embassy_futures::join::join3;
-use embassy_sync::blocking_mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use iot_core::config::Configurator;
-use iot_core::demand::{ClockSink, EffectiveDemand};
+use iot_core::demand::ClockSink;
 use iot_core::drivers::board::{HasAudio, HasCamera, HasInput, HasMotion, HasPlayback};
-use iot_core::drivers::playback::Speaker;
+use iot_core::drivers::playback::Speaker as SpeakerDriver;
 use iot_core::drivers::surface::WiredSurface;
 use iot_core::state::{Backed, DeviceManager, DisplayPage, Setup};
-
-pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
 mod audio;
 pub mod bench;
 pub mod boot;
-pub mod bridge;
 mod frame;
 pub mod input;
 #[cfg(feature = "wifi")]
 pub mod net;
 mod pipeline;
 mod surface;
+pub mod workers;
 
-use audio::{CAPTURE, PLAYBACK_BUS, playback_tasks, share};
+use audio::{playback_tasks, share};
 use boot::{boot_override, boot_page};
-use bridge::{INBOUND, OUTBOUND};
 use input::{INTENT_BUS, input_task};
 use pipeline::run_loop;
 use surface::wired;
+use workers::{CAPTURE, Input, NET, SPEAKER, SharedDemand, Workers};
 
 pub enum Feed {
     Interrupt(SendSpawner),
@@ -127,24 +123,22 @@ where
     }
 
     // One shared handle: the feed runs on the preemptible executor, and the codec's I2C calls must not.
-    let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));
+    let shared = speaker.map(|speaker| share(speaker as Box<dyn SpeakerDriver>));
     let demand = SharedDemand::new(RefCell::new(manager.demand().clone()));
     log::info!("[IOT] demand {}", manager.demand());
 
-    let playback = playback_tasks(shared, feed, &PLAYBACK_BUS, &INTENT_BUS);
+    let playback = playback_tasks(shared, feed, SPEAKER, &INTENT_BUS);
+    let workers = Workers {
+        input: Input {
+            to: &demand,
+            from: &CAPTURE,
+        },
+        speaker: SPEAKER,
+        net: NET,
+    };
     match join3(
-        input_task(&INTENT_BUS, sources, &configurator, &demand),
-        run_loop(
-            &INTENT_BUS,
-            &CAPTURE,
-            &OUTBOUND,
-            &INBOUND,
-            &PLAYBACK_BUS,
-            render,
-            &mut manager,
-            &mut clock,
-            &demand,
-        ),
+        input_task(&INTENT_BUS, sources, &configurator, workers.input),
+        run_loop(&INTENT_BUS, workers, render, &mut manager, &mut clock),
         playback,
     )
     .await {}

@@ -3,19 +3,19 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "dd35805721632156ace623277937df329889aa36"
-translated_at = "2026-10-30T09:23:38Z"
+source_file_hash = "18d2841f1663669ab89a5080f532ec912dd1722f"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 # Playback Semantics
 
-The ES8311 is only one peripheral. What the page exposes is **the start and the end of a sound** — what is playing now, and whether it has finished — not a progress bar and not a volume. This page covers the contract, the panel readout, and the "why it is like this" behind every part of it.
+The ES8311 is only one peripheral. What the page exposes is **the start and the end of a sound** — what is playing now, and whether it has finished — not a progress bar and not a volume. This page covers the semantics, the panel readout, and the "why it is like this" behind every part of it.
 
 This page describes what the system is now; how it became so, and what was rejected along the way, is in the [Playback Implementation Record](@/records/iot/playback.en.md) (AI-produced, not reviewed by a human).
 
-The capture side is in [Audio Metering Semantics](@/development/iot/audio.en.md). The two pages share one MCLK but their contracts are opposite: capture never stops, while playback is over when the one-shot is done. Which is why playback has a phase and capture does not.
+The capture side is in [Audio Metering Semantics](@/development/iot/audio.en.md). The two pages share one MCLK but their semantics are opposite: capture never stops, while playback is over when the one-shot is done. Which is why playback has a phase and capture does not.
 
-## The contract
+## Semantics
 
 A sound is a one-shot: one tap plays one sound, it reports completion when it runs out, and there is no "pause" or "progress" in between.
 
@@ -236,7 +236,7 @@ The ID is read, not trusted: the address is the one thing on this bus that a boa
 
 The output comes up at `0x05` with config `0xF8`; when `set_output(DVP_PWDN_BIT)` drops the LCD chip-select the baseline is `0x04`, and enabling the PA takes it to `0x06`.
 
-The amplifier is not in `Speaker`: it is board wiring, not a driver contract.
+The amplifier is not in `Speaker`: it is board wiring, not the driver's interface.
 
 ## Tests
 

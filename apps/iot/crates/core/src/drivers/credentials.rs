@@ -14,6 +14,7 @@ pub const SLOT_BYTES: u32 = 4096;
 pub const SLOTS: usize = 2;
 
 /// The whole region a store needs, which is what its partition has to be.
+#[cfg(test)]
 pub const REGION_BYTES: u32 = SLOT_BYTES * SLOTS as u32;
 
 const ENTRY_BYTES: usize = 1 + SSID_BYTES + 1 + PASSWORD_BYTES + 2 + 8;

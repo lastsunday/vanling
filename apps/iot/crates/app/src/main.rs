@@ -41,7 +41,8 @@ async fn main(_spawner: Spawner) -> ! {
             saved,
             iot_bsp_esp::FRONT,
             has_pages,
-            &iot_app::bridge::PAGE,
+            iot_app::workers::NET,
+            &iot_app::input::INTENT_BUS,
         ),
     )
     .await {}

@@ -399,11 +399,6 @@ impl<S: WindowReadable> Gc2145Capture<S> {
         self.geometry
     }
 
-    /// Drops the cached geometry, so the next [`Self::geometry`] reads the part again.
-    pub fn forget_geometry(&mut self) {
-        self.geometry = None;
-    }
-
     /// The pixels the last [`Self::poll`] reported.
     pub fn latest_frame(&self) -> Option<&[u8]> {
         let frame = self.latest?;

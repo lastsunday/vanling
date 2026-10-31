@@ -1,6 +1,6 @@
 //! What changing the CPU clock costs, and what it leaves behind.
 //!
-//! **Outside esp-hal's contract**: its docs say the frequencies "become frozen and cannot
+//! **Outside what esp-hal supports**: its docs say the frequencies "become frozen and cannot
 //! be changed" after `esp_hal::init`, so this writes the registers through
 //! [`iot_chip_esp::set_cpu_clock`]. It never reads `cpu_clock()`, which reports the
 //! configuration tree rather than the hardware, and it never lowers the voltage bias, so

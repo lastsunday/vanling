@@ -148,7 +148,6 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         mac: state.network.mac,
         aps: state.network.aps,
         setup: state.network.setup,
-        motion_enabled: state.backed.motion.is_some(),
         motion: state.motion.sample,
         motion_counts: state.motion.counts,
         motion_caps: state.backed.motion_caps(),
@@ -712,7 +711,6 @@ mod tests {
                 status: crate::drivers::input::TouchStatus::Down,
             }; crate::drivers::input::MAX_TOUCH_POINTS],
             len: 1,
-            contacts: 1,
         });
         assert!(collect(&mut ctl, &moved).is_empty());
     }
@@ -998,7 +996,6 @@ mod tests {
                     status: crate::drivers::input::TouchStatus::Down,
                 }; crate::drivers::input::MAX_TOUCH_POINTS],
                 len: 1,
-                contacts: 1,
             }),
             0,
         ));
@@ -1011,7 +1008,6 @@ mod tests {
                     status: crate::drivers::input::TouchStatus::Contact,
                 }; crate::drivers::input::MAX_TOUCH_POINTS],
                 len: 1,
-                contacts: 1,
             }),
             0,
         ));

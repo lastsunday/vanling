@@ -47,10 +47,12 @@ impl Coef {
     /// A gain given in parts per million, which is the unit a measured echo path is quoted
     /// in and the only one that needs no floating point to say "a quarter" or "minus six
     /// decibels".
+    #[cfg(test)]
     pub fn from_ppm(ppm: i32) -> Self {
         Self((i64::from(ppm) * (1 << COEFFICIENT_SHIFT) / 1_000_000) as i32)
     }
 
+    #[cfg(test)]
     pub const fn to_ppm(self) -> i32 {
         ((self.0 as i64 * 1_000_000) >> COEFFICIENT_SHIFT) as i32
     }

@@ -347,6 +347,7 @@ const Q16_ONE: i32 = 1 << Q16_BITS;
 
 const GAIN_BITS: u32 = 8;
 
+#[cfg(test)]
 const GAIN_ONE: u16 = 1 << GAIN_BITS;
 
 const MAX_PARTIALS: usize = 4;
@@ -355,6 +356,7 @@ const TIMBRE: [(u16, u16); 2] = [(100, 180), (276, 76)];
 
 /// The single-partial timbre, kept so the additive path can be held to the oscillator it
 /// matches — see `a_lone_partial_is_the_oscillator_it_replaced`.
+#[cfg(test)]
 pub const PLAIN: [(u16, u16); 1] = [(100, GAIN_ONE)];
 
 // One turn of a sine, sampled at [`WAVE_ENTRIES`] even points and scaled to the
@@ -512,8 +514,8 @@ impl Tone {
     // The gains are taken off **before** the envelope, not after: at full
     // envelope a weighted partial is `peak × 256`, and multiplying that by a
     // 16-bit envelope overflows `i32` part-way up. Shifting the gain off first
-    // divides the whole sum by [`GAIN_ONE`] exactly, which is also why a lone
-    // partial at [`GAIN_ONE`] lands back on the unweighted oscillator — see
+    // divides the whole sum by the fixed-point one exactly, which is also why a
+    // lone partial at that gain lands back on the unweighted oscillator — see
     // `a_lone_partial_is_the_oscillator_it_replaced`.
     fn next_sample(&mut self) -> i16 {
         let envelope = self.envelope();

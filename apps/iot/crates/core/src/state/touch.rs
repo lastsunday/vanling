@@ -19,7 +19,7 @@ pub struct LivePoint {
 /// down, and one tally per semantic so a threshold can be calibrated by watching its bucket.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TouchState {
-    /// Most recent touch snapshot, mirroring the lights' absolute-target contract: the
+    /// Most recent touch snapshot, mirroring the lights' absolute targets: the
     /// render loop always reads the latest whole event.
     pub last: Option<TouchEvent>,
     /// Live contact positions, slot-aligned with the classifier's tracker ids and freed as
@@ -92,7 +92,6 @@ impl TouchState {
                         id,
                         last: FingerLast {
                             kind: FINGER_TAP,
-                            dir: 0,
                             value: held_ms,
                         },
                         held_ms,
@@ -108,7 +107,6 @@ impl TouchState {
                         id,
                         last: FingerLast {
                             kind: FINGER_LONG_PRESS,
-                            dir: 0,
                             value: held_ms,
                         },
                         held_ms,
@@ -134,7 +132,6 @@ impl TouchState {
                         id,
                         last: FingerLast {
                             kind: FINGER_SWIPE,
-                            dir: direction.code(),
                             value: distance_px,
                         },
                         held_ms,

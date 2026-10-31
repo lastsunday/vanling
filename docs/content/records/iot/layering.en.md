@@ -3,8 +3,8 @@ title = "Layering review of the app crate: what landed"
 weight = 90
 sort_by = "weight"
 [extra]
-source_file_hash = "9b0e4961cea794c25f37c1fc0ead61e7576f4a70"
-translated_at = "2026-10-30T12:59:35Z"
+source_file_hash = "8b3bcdcdfd9ee9cff502db873bf4c265ccffdd4a"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -16,7 +16,7 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 ## What moved where
 
 - A breath's colour and backlight envelope are `Breath` properties, in `core::state::light`; a renderer only asks `rgb()` / `backlight()` instead of recomputing hue and brightness itself.
-- `LampRenderer` / `ScreenRenderer` and the renderer registry live in `core::render`: the `Renderer` contract was already in core, while `iot-ui` is the page layer, so the renderer does not go into the UI.
+- `LampRenderer` / `ScreenRenderer` and the renderer registry live in `core::render`: the `Renderer` interface was already in core, while `iot-ui` is the page layer, so the renderer does not go into the UI.
 - Playback commands (`Play` / `SetMuted`) and their edge decisions (`mute_command` / `play_command`) belong to `PlaybackState`; the app's dispatch only queues and retries a full queue.
 - `InputSource::name`, `PollEntry::name` and `DemandKind::name` are answered by the driver and demand layers; the app no longer keeps a name table indexed by position.
 - Grounding the whole panel, and "the frames come from the camera", are page properties (`DisplayPage::ground` / `draws_frames`); the renderer asks the page directly, so neither the board nor the device repeats a `matches!`.
@@ -30,9 +30,9 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 
 `bench/probe` still picks probe entry points with `#[cfg(feature = "...")]`. Moving that gate into bsp is not possible: `echo_room` depends on `crate::audio`, the product's playback and capture implementation, and bsp cannot depend on the app. `bench/probe/mod.rs` already gates once as the module owner, which is what the soft-feature rules ask for, so it stays as it is.
 
-## Splitting the lamp and screen contracts (round two)
+## Splitting the lamp and screen interfaces (round two)
 
-Round one moved `page_ground` / `page_draws_frames` from the board into `Screen`, but the interface was still "a lamp": screen abilities hung off `RgbLight`, so a board without a panel could only write empty implementations. This round splits the device contract by capability.
+Round one moved `page_ground` / `page_draws_frames` from the board into `Screen`, but the interface was still "a lamp": screen abilities hung off `RgbLight`, so a board without a panel could only write empty implementations. This round splits the device interface by capability.
 
 - `RgbLight` keeps only `set_rgb(Rgb)`; `PageSurface: RgbLight + DiagnosticsSink + CameraTarget` owns the backlight, the repaint throttle and the camera, and only a panel implements it.
 - `page_ground` / `page_draws_frames` / `CameraTarget::takes_frames` are gone. Grounding and "the frames come from the camera" were already `DisplayPage` properties, and the role was already given by `WiredSurface::Pages/Lamp` at wiring time; asking the device again copied the same answer twice.

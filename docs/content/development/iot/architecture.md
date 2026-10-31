@@ -62,27 +62,31 @@ weight = 10
 | `lib.rs` | 组合根：取能力、建 `DeviceManager`、起四个 future |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `bridge.rs` | 面板 ↔ 网络契约：`Latch`/`Handoff`/`Latest`、六个信号、`Outbound`/`Inbound`、`PageWatch` |
-| `pipeline.rs` | 意图主循环 `run_loop`：应用意图、发布状态、等待下一帧 |
+| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, speaker, net }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
+| `pipeline.rs` | 协调者 `run_loop`：应用意图、发布状态、转发命令、等待下一帧 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
-| `input.rs` | 轮询、demand 调度、手势识别 |
-| `audio/{mod,dispatch,capture,sounds}.rs` | 播放任务、状态→命令、麦克风窗口、声音目录 |
-| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`：协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
+| `audio/{mod,dispatch,capture,sounds}.rs` | 播放工作者、状态→命令、采集窗口的驱动实现、声音目录 |
+| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
 
 依赖方向（`iot-tool/tests/module_boundaries.rs` 断言，编译器不查 crate 内模块环）：
 
 ```
-main → lib → { boot, pipeline, bridge, net }
-pipeline → { bridge, surface, input, audio, bench::replay }
-net      → { bridge, input }
-audio    → ∅
+main → { lib, workers }
+lib  → { boot, pipeline, workers, net }
+pipeline → { workers, surface, input, audio, bench::replay }
+net      → { workers, input }
+audio    → { workers }
+input    → { workers }
+workers  → ∅
 ```
 
-- `bridge` 不带 `wifi` 门控：host 构建照样持有 `INBOUND`/`OUTBOUND`，只是没人应答
-- `net` 不依赖 `surface`/`pipeline`：网络任务读 `bridge` 的 `PAGE`，不读设备状态
+- `workers` 不带 `wifi` 门控：host 构建照样持有 `Net`，只是没人应答
+- `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `audio`/`net`/`input` 才能单向引用它
+- `net` 不依赖 `surface`/`pipeline`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
 - `core` 不认识 `iot_app`
 
@@ -167,16 +171,29 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 `state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Setup`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
 
-### 传输：三条下行路径，性质不同
+### 传输：协调者与工作者
 
-| 消费者          | executor                          | 现状                                              |
-| --------------- | --------------------------------- | ------------------------------------------------- |
-| 渲染层 / 摄像头 | 协作                              | ✅ **已有通道**                                   |
-| `input_task`    | 协作                              | ❌ `input_task(intent_bus, sources)` 拿不到 state |
-| `control_loop`  | 协作                              | ❌ 同上                                           |
-| `feed_task`     | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加**                         |
+`run_loop` 是**协调者**：它只做不阻塞的事——应用意图、发布状态、把已经就绪的窗口和命令交出去、等下一帧。任何会等驱动、等 I2C、等协议栈的工作都属于**工作者**：
 
-**渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion_enabled`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
+| 工作者         | 拥有的东西                        | executor                          | 句柄 |
+| -------------- | --------------------------------- | --------------------------------- | ---- |
+| 渲染层 / 摄像头 | surface、camera                   | 协作                              | `Render` / `Diagnostics` |
+| `input_task`   | 输入器件与音频采集                | 协作                              | `Input { to, from }` |
+| `control_loop` | 编解码器、DMA                     | 协作                              | `Speaker { to }`（完成回报走 intent 总线） |
+| `net::serve`   | 协议栈、链路、AP 服务             | 协作                              | `Net { commands, page, scan }` |
+| `feed_task`    | 麦克风时钟                        | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加** |
+
+句柄集中在组合根的 `Workers<'a>`：一个工作者一个字段，加第二个协议只加字段，不在调用点新增一对 `TO_X`/`FROM_X`。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。
+
+三种形状按语义选，不按方便选：
+
+- **命令**走 `Channel`（`Net.commands`、`Speaker.to`）。协调者每 pass 只交工作者有空位的那些；队列满时把这一条留到下一 pass，命令不会被丢掉。
+- **级别**走 `PageWatch`（`Net.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。
+- **最新值**走 `Latest`/窗口（`Net.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
+
+`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。协调者直接转发 `DeviceManager::take_command()`，不再逐个变体翻译；setup 类命令带上发出时的 `Front`，工作者据此丢弃上一轮留下的请求。
+
+**渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 
 ```
 DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
@@ -192,9 +209,9 @@ DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
 
 `Intent` 是相反的情形——事件——所以仍走总线。
 
-采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽契约：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`run_loop` 在 intent 之后取走。
+采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽通道：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`run_loop` 在 intent 之后取走。
 
-第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，契约自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
+第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，窗口自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
 
 顺序是顺带的：`input_task` 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一次 pass 画过的那一帧。
 

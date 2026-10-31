@@ -109,7 +109,6 @@ pub struct Diagnostics {
     /// What the Network page is in the middle of taking: the row a passphrase is being
     /// typed for, the draft, and the last refusal.
     pub setup: NetworkSetup,
-    pub motion_enabled: bool,
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,

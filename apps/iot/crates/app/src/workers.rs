@@ -1,11 +1,18 @@
-//! The panel task and the network task cannot reach each other's state, so this is the whole
-//! contract between them: the page the panel is on, the commands the panel asks for, and the
-//! reports the link sends back.
+//! The coordinator and its workers cannot reach each other's state, so this is the whole
+//! vocabulary they share: one handle per worker, and the shapes those handles are made of.
 //!
-//! Compiled with and without `wifi`: the pipeline holds these handles either way, and a build
-//! with no radio simply never answers them.
+//! A worker is a task that owns something the coordinator must not block on: the drivers it
+//! polls, the codec's I2C, the radio's stack. Each field of [`Workers`] is that worker's side
+//! of the boundary; adding a worker adds a field, not a `TO_X`/`FROM_X` pair at the call site.
+//!
+//! The network command vocabulary is the state machine's ([`NetworkCommand`]); this module
+//! only carries it. Reports go the other way as intents, so the only thing the network worker
+//! publishes here is the list, which is a window rather than an event.
+//!
+//! Compiled with and without `wifi`: the coordinator holds these handles either way, and a
+//! build with no radio simply never answers them.
 
-use core::cell::Cell;
+use core::cell::RefCell;
 use core::future::Future;
 use core::sync::atomic::{AtomicU8, Ordering};
 
@@ -13,87 +20,116 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
-use iot_core::drivers::network::{ApList, Front, JoinRequest, LinkStatus, Ssid};
-use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
-use iot_core::state::DisplayPage;
+use iot_core::demand::EffectiveDemand;
+use iot_core::drivers::audio::AudioSample;
+use iot_core::drivers::network::ApList;
+use iot_core::state::{DisplayPage, NetworkCommand, PlaybackCommand};
 
-use crate::input::INTENT_BUS;
+/// The demand the input worker reads and the coordinator writes, under the same lock the
+/// feed interrupt takes.
+pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
-pub struct Latch<T> {
-    value: Signal<CriticalSectionRawMutex, T>,
+/// The coordinator's handle on the input worker.
+#[derive(Clone, Copy)]
+pub struct Input<'a> {
+    /// Coordinator → worker: what each source is asked to do this pass.
+    pub to: &'a SharedDemand,
+    /// Worker → coordinator: the newest microphone window, published by the driver's poll.
+    pub from: &'static CaptureWindow,
 }
 
-impl<T: Send> Latch<T> {
-    const fn new() -> Self {
-        Self {
-            value: Signal::new(),
-        }
-    }
+/// Off the intent ring: at 1.7 KB the window would set every ring slot that wide.
+pub struct CaptureWindow(Channel<CriticalSectionRawMutex, AudioSample, 1>);
 
-    pub fn set(&self, value: T) {
-        self.value.signal(value);
-    }
-
-    pub async fn ready(&self) -> T {
-        self.value.wait().await
-    }
-
-    pub fn clear(&self) {
-        self.value.reset();
-    }
-}
-
-pub(crate) static LEAVE: Latch<()> = Latch::new();
-
-pub static RESCAN: Latch<()> = Latch::new();
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum SetupAsk {
-    Cancel { from: Front },
-    Front { from: Front },
-    Pass { from: Front, open: bool },
-}
-
-#[cfg_attr(not(feature = "wifi"), allow(dead_code))]
-impl SetupAsk {
-    pub fn applies_to(self, front: Front) -> bool {
-        let from = match self {
-            Self::Cancel { from } | Self::Front { from } | Self::Pass { from, .. } => from,
-        };
-        from == front
-    }
-}
-
-pub(crate) static SETUP_ASK: Latch<SetupAsk> = Latch::new();
-
-pub static FORGET: Latch<Ssid> = Latch::new();
-
-pub struct Handoff<T> {
-    slot: Channel<CriticalSectionRawMutex, T, 1>,
-}
-
-impl<T: Send> Handoff<T> {
-    const fn new() -> Self {
-        Self {
-            slot: Channel::new(),
-        }
-    }
-
-    pub fn take(&self) -> Option<T> {
-        self.slot.try_receive().ok()
+impl CaptureWindow {
+    pub fn take(&self) -> Option<AudioSample> {
+        self.0.try_receive().ok()
     }
 
     pub fn ready(&self) -> impl Future<Output = ()> {
-        self.slot.ready_to_receive()
+        self.0.ready_to_receive()
     }
 
-    pub fn publish(&self, asked: T) {
-        let _ = self.slot.try_send(asked);
+    /// The driver's half: the newest window replaces the one nobody took.
+    pub(crate) fn push(&self, sample: AudioSample) {
+        let _ = self.0.try_send(sample);
     }
 }
 
-pub static JOIN: Handoff<JoinRequest> = Handoff::new();
+pub(crate) static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());
 
+pub type SpeakerCommands = Channel<CriticalSectionRawMutex, PlaybackCommand, 4>;
+
+static SPEAKER_COMMANDS: SpeakerCommands = SpeakerCommands::new();
+
+/// The coordinator's handle on the speaker worker: commands go out, and a sound's completion
+/// comes back as an intent, so there is no `from` side here.
+#[derive(Clone, Copy)]
+pub struct Speaker {
+    pub to: &'static SpeakerCommands,
+}
+
+pub(crate) const SPEAKER: Speaker = Speaker {
+    to: &SPEAKER_COMMANDS,
+};
+
+/// How many commands may wait for the network worker. The coordinator keeps the one that
+/// found no room and offers it again next pass, so this is slack, not a depth the panel can
+/// fill.
+const COMMAND_SLOTS: usize = 2;
+
+pub type NetCommands = Channel<CriticalSectionRawMutex, NetworkCommand, COMMAND_SLOTS>;
+
+/// The coordinator's handle on the network worker.
+///
+/// `Copy`: every field is a handle to a static, so either side can take it by value.
+#[derive(Clone, Copy)]
+pub struct Net {
+    /// Coordinator → worker: what the panel asked the link to do.
+    pub commands: &'static NetCommands,
+    /// Coordinator → worker: the page the panel is showing, as a level.
+    pub page: &'static PageWatch,
+    /// Worker → coordinator: the newest scan list.
+    pub scan: &'static Latest<ApList>,
+}
+
+static NET_COMMANDS: NetCommands = NetCommands::new();
+
+static PAGE: PageWatch = PageWatch::new();
+
+static SCAN: Latest<ApList> = Latest::new();
+
+pub const NET: Net = Net {
+    commands: &NET_COMMANDS,
+    page: &PAGE,
+    scan: &SCAN,
+};
+
+/// Drops setup requests left over from a previous session; every other command goes back.
+///
+/// A cancel made while the last session was up must not close the next one, and a queue has
+/// no `clear()` of its own. The array is as deep as the channel, so it holds everything that
+/// is not stale.
+#[cfg(any(feature = "wifi", test))]
+pub(crate) fn discard_setup(commands: &NetCommands) {
+    let mut kept: [Option<NetworkCommand>; COMMAND_SLOTS] = core::array::from_fn(|_| None);
+    let mut held = 0;
+    while let Ok(command) = commands.try_receive() {
+        if command.is_setup() {
+            continue;
+        }
+        if let Some(slot) = kept.get_mut(held) {
+            *slot = Some(command);
+            held += 1;
+        }
+    }
+    for command in kept.into_iter().flatten() {
+        let _ = commands.try_send(command);
+    }
+}
+
+/// The newest value only: the panel draws one list, so a burst of scans is one list plus the
+/// news that it changed.
 pub struct Latest<T> {
     value: Signal<CriticalSectionRawMutex, T>,
     arrived: Signal<CriticalSectionRawMutex, ()>,
@@ -115,68 +151,20 @@ impl<T: Copy + Send> Latest<T> {
         self.arrived.wait()
     }
 
-    /// By reference: the 344-byte list would otherwise be copied into the survey future's frame.
+    /// By reference: the whole list would otherwise be copied into the survey future's frame.
     pub fn publish(&self, value: &T) {
         self.value.signal(*value);
         self.arrived.signal(());
     }
 }
 
-pub static SCAN: Latest<ApList> = Latest::new();
-
-/// The link the panel was last told about.
-///
-/// A reading that repeats is not a report: the panel's state only moves on a difference, and
-/// the intent bus also carries every command the other way.
-struct LinkWatch {
-    last: Mutex<CriticalSectionRawMutex, Cell<Option<LinkStatus>>>,
-}
-
-#[cfg_attr(not(feature = "wifi"), allow(dead_code))]
-impl LinkWatch {
-    const fn new() -> Self {
-        Self {
-            last: Mutex::new(Cell::new(None)),
-        }
-    }
-
-    /// Delivers `status` with the store's bit folded in, if it differs from the last
-    /// delivery. The reading is only remembered once the bus took it, so a full bus retries
-    /// rather than swallowing the change.
-    fn deliver(&self, status: LinkStatus, saved: bool) {
-        let status = LinkStatus { saved, ..status };
-        if self.last.lock(|last| last.get()) == Some(status) {
-            return;
-        }
-        if INTENT_BUS
-            .try_send(Intent::Business(BusinessIntent::Network(
-                NetworkIntent::LinkReport(status),
-            )))
-            .is_ok()
-        {
-            self.last.lock(|last| last.set(Some(status)));
-        }
-    }
-}
-
-#[cfg_attr(not(feature = "wifi"), allow(dead_code))]
-static LINK: LinkWatch = LinkWatch::new();
-
-/// Reports the link to the panel. The network task's whole view of the intent bus is this
-/// call.
-#[cfg_attr(not(feature = "wifi"), allow(dead_code))]
-pub(crate) fn deliver(status: LinkStatus, saved: bool) {
-    LINK.deliver(status, saved);
-}
-
-/// The panel's page, for the network task, which cannot reach device state.
+/// The panel's page, for the network worker, which cannot reach device state.
 pub struct PageWatch {
     page: AtomicU8,
     splash: AtomicU8,
     changed: Signal<CriticalSectionRawMutex, ()>,
 }
 
-#[cfg_attr(not(feature = "wifi"), allow(dead_code))]
 impl PageWatch {
     const fn new() -> Self {
         Self {
@@ -184,10 +172,6 @@ impl PageWatch {
             splash: AtomicU8::new(0),
             changed: Signal::new(),
         }
-    }
-
-    pub fn shows(&self, page: DisplayPage) -> bool {
-        self.page.load(Ordering::Relaxed) == page as u8
     }
 
     pub fn publish(&self, page: DisplayPage) {
@@ -202,6 +186,13 @@ impl PageWatch {
             .store(if setup { 2 } else { 1 }, Ordering::Relaxed);
         self.changed.signal(());
     }
+}
+
+#[cfg(any(feature = "wifi", test))]
+impl PageWatch {
+    pub fn shows(&self, page: DisplayPage) -> bool {
+        self.page.load(Ordering::Relaxed) == page as u8
+    }
 
     /// `true` when setup was asked for while the splash was up.
     pub async fn wait_for_splash_end(&self) -> bool {
@@ -213,14 +204,11 @@ impl PageWatch {
         }
     }
 
-    /// `true` when the panel had to wait for `page`.
-    pub async fn wait_for(&self, page: DisplayPage) -> bool {
-        let mut waited = false;
+    /// Waits until the panel is on `page`.
+    pub async fn wait_for(&self, page: DisplayPage) {
         while !self.shows(page) {
-            waited = true;
             self.changed.wait().await;
         }
-        waited
     }
 
     /// Edge, not level: a panel that never left `page` must not satisfy it.
@@ -260,81 +248,19 @@ impl PageWatch {
     }
 }
 
-pub static PAGE: PageWatch = PageWatch::new();
-
-pub(crate) struct Outbound {
-    pub joins: &'static Handoff<JoinRequest>,
-    pub leave: &'static Latch<()>,
-    pub rescan: &'static Latch<()>,
-    pub setup_ask: &'static Latch<SetupAsk>,
-    pub forget: &'static Latch<Ssid>,
+/// The coordinator's handles on every worker, in one value.
+#[derive(Clone, Copy)]
+pub struct Workers<'a> {
+    pub input: Input<'a>,
+    pub speaker: Speaker,
+    pub net: Net,
 }
-
-pub(crate) static OUTBOUND: Outbound = Outbound {
-    joins: &JOIN,
-    leave: &LEAVE,
-    rescan: &RESCAN,
-    setup_ask: &SETUP_ASK,
-    forget: &FORGET,
-};
-
-pub(crate) struct Inbound {
-    pub scan: &'static Latest<ApList>,
-    pub page: &'static PageWatch,
-}
-
-pub(crate) static INBOUND: Inbound = Inbound {
-    scan: &SCAN,
-    page: &PAGE,
-};
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use core::task::{Context, Waker};
-    use iot_core::drivers::network::AccessPoint;
-
-    #[test]
-    fn a_setup_request_only_answers_the_front_end_it_was_made_on() {
-        for ask in [
-            SetupAsk::Front { from: Front::Panel },
-            SetupAsk::Cancel { from: Front::Panel },
-            SetupAsk::Pass {
-                from: Front::Panel,
-                open: true,
-            },
-        ] {
-            assert!(
-                ask.applies_to(Front::Panel),
-                "{ask:?} was asked on the panel"
-            );
-            assert!(
-                !ask.applies_to(Front::AccessPoint),
-                "{ask:?} is not an answer the access point's front end asked for"
-            );
-        }
-        for ask in [
-            SetupAsk::Front {
-                from: Front::AccessPoint,
-            },
-            SetupAsk::Cancel {
-                from: Front::AccessPoint,
-            },
-            SetupAsk::Pass {
-                from: Front::AccessPoint,
-                open: false,
-            },
-        ] {
-            assert!(
-                ask.applies_to(Front::AccessPoint),
-                "{ask:?} was asked on the phone"
-            );
-            assert!(
-                !ask.applies_to(Front::Panel),
-                "{ask:?} is not an answer the panel's front end asked for"
-            );
-        }
-    }
+    use iot_core::drivers::network::{AccessPoint, Front, JoinRequest, Ssid};
 
     fn cx() -> Context<'static> {
         Context::from_waker(Waker::noop())
@@ -350,6 +276,32 @@ mod tests {
         }]);
         list.mark_saved(u8::from(saved));
         list
+    }
+
+    #[test]
+    fn a_cancel_left_over_from_the_last_session_does_not_survive_into_the_next() {
+        let commands = NetCommands::new();
+        assert!(
+            commands
+                .try_send(NetworkCommand::LeaveSetup {
+                    from: Front::AccessPoint
+                })
+                .is_ok()
+        );
+        let join = NetworkCommand::Join(JoinRequest::Held(Ssid::from_octets(b"cafe")));
+        assert!(commands.try_send(join.clone()).is_ok());
+
+        discard_setup(&commands);
+
+        assert_eq!(
+            commands.try_receive(),
+            Ok(join),
+            "the join is not setup state and goes back untouched"
+        );
+        assert!(
+            commands.try_receive().is_err(),
+            "the previous session's cancel is gone"
+        );
     }
 
     #[test]

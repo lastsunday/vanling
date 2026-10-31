@@ -23,8 +23,9 @@ use iot_core::provision::{
     ADDRESS, Action, BASE_URL, MAC_TEXT_BYTES, MAC_TOKEN, PIECE_BYTES, ParseError, Piece, Request,
     Response, SEED_AT, SEED_SLOT, ScanJson, Status, mac_text, route, scan_json_row,
 };
+use iot_core::state::NetworkCommand;
 
-use crate::bridge::{JOIN, RESCAN};
+use crate::workers::Net;
 
 const HTTP_PORT: u16 = 80;
 const DNS_PORT: u16 = 53;
@@ -68,7 +69,12 @@ pub fn setup_config() -> Config {
 }
 
 /// Serve setup mode on `stack` until the caller drops the future.
-pub async fn serve<'d, D>(stack: Stack<'d>, mut runner: Runner<'d, D>, mac: [u8; 6]) -> Infallible
+pub async fn serve<'d, D>(
+    stack: Stack<'d>,
+    mut runner: Runner<'d, D>,
+    mac: [u8; 6],
+    net: Net,
+) -> Infallible
 where
     D: Driver,
 {
@@ -76,7 +82,13 @@ where
         "[WIFI] setup mode: an access point, a lease for whoever joins it, and the page at \
          {BASE_URL}"
     );
-    match join4(runner.run(), leases(stack), names(stack), page(stack, mac)).await {}
+    match join4(
+        runner.run(),
+        leases(stack),
+        names(stack),
+        page(stack, mac, net),
+    )
+    .await {}
 }
 
 async fn leases(stack: Stack<'_>) {
@@ -145,7 +157,7 @@ async fn names(stack: Stack<'_>) {
     }
 }
 
-async fn page(stack: Stack<'_>, mac: [u8; 6]) {
+async fn page(stack: Stack<'_>, mac: [u8; 6], net: Net) {
     let mut first_rx = [0u8; PAGE_RX_BYTES];
     let mut first_tx = [0u8; PAGE_TX_BYTES];
     let mut second_rx = [0u8; PAGE_RX_BYTES];
@@ -209,7 +221,7 @@ async fn page(stack: Stack<'_>, mac: [u8; 6]) {
                 }
             }
         };
-        let joining = answer(socket, mac).await;
+        let joining = answer(socket, mac, net).await;
         socket.close();
         if let Err(error) = socket.flush().await {
             log::warn!("[WIFI] an answer did not finish: {error:?}");
@@ -234,7 +246,9 @@ async fn page(stack: Stack<'_>, mac: [u8; 6]) {
         if let Some(credentials) = joining {
             log::info!("[WIFI] the page named a network, so the link is joining it");
             Timer::after(LEAVE_GRACE).await;
-            JOIN.publish(JoinRequest::Typed(credentials));
+            net.commands
+                .send(NetworkCommand::Join(JoinRequest::Typed(credentials)))
+                .await;
             core::future::pending::<()>().await;
         }
     }
@@ -244,7 +258,7 @@ fn armable(state: State) -> bool {
     matches!(state, State::Closed | State::TimeWait)
 }
 
-async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials> {
+async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6], net: Net) -> Option<Credentials> {
     let mut bytes = [0u8; REQUEST_BYTES];
     let mut piece = [0u8; PIECE_BYTES];
     let mut wait = PENDING_TIMEOUT;
@@ -290,7 +304,7 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
         };
 
         if request.path == "/rescan" {
-            RESCAN.set(());
+            net.commands.send(NetworkCommand::ScanNow).await;
         }
         let aps = latest_scan();
         let mut keep = !request.close;

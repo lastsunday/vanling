@@ -3,7 +3,7 @@
 
 use alloc::boxed::Box;
 
-use embassy_futures::select::{Either, Either4, select, select4};
+use embassy_futures::select::{Either, select};
 use embassy_net::Stack;
 use embassy_net::StackResources;
 use embassy_net::driver::Driver;
@@ -13,12 +13,13 @@ use iot_core::drivers::network::{
     ADDRESS_LOST_WINDOWS, AddressWatch, Credentials, Front, Ipv4, LinkEnding, LinkHint, LinkPhase,
     Ssid, Station, SurveyHistory, front_after_link, setup_ap_starts_secured,
 };
-use iot_core::state::DisplayPage;
+use iot_core::state::{DisplayPage, NetworkCommand};
 
-use super::setup::{Face, Setup, asked_for, setup_credential, unconfigured};
+use super::setup::{Choice, Face, Setup, asked_for, pick, unconfigured};
 use super::store::{drop_saved, first_saved, has_saved, keep, keeps_any, remark};
 use super::{SETUP_SOCKETS, park, publish, publish_scan};
-use crate::bridge::{FORGET, JOIN, LEAVE, SETUP_ASK};
+use crate::input::IntentBus;
+use crate::workers::{Net, discard_setup};
 
 const WINDOW_MS: u64 = 2_000;
 
@@ -26,10 +27,11 @@ const ADDRESS_BUDGET_MS: u64 = 30_000;
 
 const RETRY_MS: u64 = 5_000;
 
-/// The panel the link serves: whether it has pages at all, and which page it is on.
+/// The panel the link serves, and whether it has pages at all.
 #[derive(Clone, Copy)]
 pub(super) struct Panel {
-    pub(super) page: &'static crate::bridge::PageWatch,
+    pub(super) net: Net,
+    pub(super) bus: &'static IntentBus,
     pub(super) has_pages: bool,
 }
 
@@ -51,14 +53,14 @@ where
     let start = front;
     let mut saved = saved;
 
-    let landing = panel.page.wait_for_splash_end().await;
+    let landing = panel.net.page.wait_for_splash_end().await;
     let mut setup = Setup {
         name: setup_name,
         resources: setup_resources,
         front: &mut front,
         has_pages: panel.has_pages,
         secure_on_entry: setup_ap_starts_secured(panel.has_pages, landing),
-        page: panel.page,
+        panel,
     };
     if landing {
         log::info!(
@@ -87,7 +89,7 @@ where
                     "[WIFI] this build was given no network and this device has saved none; it runs \
                      offline, and the panel's page names one"
                 );
-                match Box::pin(browsing(station, &mut saved, panel.page)).await {
+                match Box::pin(browsing(station, &mut saved, panel)).await {
                     Some(chosen) => chosen,
                     None => {
                         log::info!(
@@ -124,6 +126,7 @@ where
                 Refusal::GiveBack,
                 saved.as_deref_mut(),
                 None,
+                panel,
             )
             .await;
             *setup.front = front_after_link(start, *setup.front, held.ending());
@@ -166,31 +169,27 @@ where
 async fn browsing<S, R>(
     station: &mut S,
     saved: &mut Option<Box<Store<R>>>,
-    page: &'static crate::bridge::PageWatch,
+    panel: Panel,
 ) -> Option<(Credentials, Provenance)>
 where
     S: Station,
     R: FlashRegion,
 {
-    SETUP_ASK.clear();
+    discard_setup(panel.net.commands);
     let mut history = Box::new(SurveyHistory::new());
     loop {
-        page.wait_for(DisplayPage::Network).await;
-        match select(
-            setup_credential(station, &mut history, saved, Face::browsing(), true, page),
-            SETUP_ASK.ready(),
-        )
-        .await
-        {
-            Either::First(Some(chosen)) => return Some(chosen),
-            Either::First(None) => {
-                log::info!("[WIFI] the panel left the list; the survey stops until it is back");
-            }
-            Either::Second(ask) if ask.applies_to(Front::Panel) => {
+        panel.net.page.wait_for(DisplayPage::Network).await;
+        match pick(station, &mut history, saved, Face::browsing(), true, panel).await {
+            Choice::Named(credentials, origin) => return Some((credentials, origin)),
+            Choice::SwitchFront => {
                 log::info!("[WIFI] the panel asked for the access point from the list");
                 return None;
             }
-            Either::Second(_) => {}
+            Choice::Hidden => {
+                log::info!("[WIFI] the panel left the list; the survey stops until it is back");
+            }
+            // Browsing is not setup, so neither can be asked for here.
+            Choice::Cancel | Choice::SetupOpen(_) => {}
         }
     }
 }
@@ -227,6 +226,7 @@ where
             Refusal::Retry,
             saved.as_deref_mut(),
             None,
+            setup.panel,
         )
         .await;
         *setup.front = front_after_link(start, *setup.front, ended.ending());
@@ -277,6 +277,7 @@ pub(super) enum Refusal {
     GiveBack,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn hold<S, R>(
     station: &mut S,
     stack: &Stack<'_>,
@@ -285,6 +286,7 @@ pub(super) async fn hold<S, R>(
     refusal: Refusal,
     mut saved: Option<&mut Store<R>>,
     mut history: Option<&mut SurveyHistory>,
+    panel: Panel,
 ) -> Hold
 where
     S: Station,
@@ -310,6 +312,7 @@ where
             }
             log::error!("[WIFI] the radio would not take that credential: {error:?}");
             publish(
+                panel.bus,
                 station.status(),
                 keeps_any(saved.as_deref().map(|store| store.networks())),
             );
@@ -320,6 +323,7 @@ where
             continue;
         }
         publish(
+            panel.bus,
             station.status(),
             keeps_any(saved.as_deref().map(|store| store.networks())),
         );
@@ -333,6 +337,7 @@ where
             }
             log::error!("[WIFI] the radio would not associate: {error:?}");
             publish(
+                panel.bus,
                 station.status(),
                 keeps_any(saved.as_deref().map(|store| store.networks())),
             );
@@ -355,7 +360,7 @@ where
                 if let Some(history) = history.as_deref_mut()
                     && let Some(list) = remark(history, saved.as_deref())
                 {
-                    publish_scan(&list);
+                    publish_scan(panel.net, &list);
                 }
             } else if let Some(hint) = found {
                 match store.learn(&credentials.ssid, hint) {
@@ -384,6 +389,7 @@ where
         };
         station.note_address(address);
         publish(
+            panel.bus,
             station.status(),
             keeps_any(saved.as_deref().map(|store| store.networks())),
         );
@@ -394,47 +400,48 @@ where
         let mut lost = AddressWatch::new(ADDRESS_LOST_WINDOWS);
         let mut last_seen: Option<(LinkPhase, Option<Ipv4>)> = None;
         loop {
-            match select4(
+            match select(
                 Timer::after(Duration::from_millis(WINDOW_MS)),
-                JOIN.ready(),
-                LEAVE.ready(),
-                FORGET.ready(),
+                panel.net.commands.receive(),
             )
             .await
             {
-                Either4::Second(()) => {
-                    if let Some(asked) = JOIN.take()
-                        && let Some((next, origin)) = asked_for(asked, saved.as_deref())
-                    {
+                Either::Second(NetworkCommand::Join(asked)) => {
+                    if let Some((next, origin)) = asked_for(panel.bus, asked, saved.as_deref()) {
                         log::info!("[WIFI] the panel named another network; leaving this one");
                         let _ = station.disconnect().await;
                         return Hold::Named(Box::new(next), origin);
                     }
                 }
-                Either4::Third(()) => {
+                Either::Second(NetworkCommand::Leave) => {
                     log::info!("[WIFI] the panel asked to leave this network; the link is down");
                     let _ = station.disconnect().await;
                     publish(
+                        panel.bus,
                         station.status(),
                         keeps_any(saved.as_deref().map(|store| store.networks())),
                     );
                     return Hold::Left;
                 }
-                Either4::Fourth(ssid) => {
+                Either::Second(NetworkCommand::Forget(ssid)) => {
                     drop_saved(saved.as_deref_mut(), &ssid);
                     if let Some(history) = history.as_deref_mut()
                         && let Some(list) = remark(history, saved.as_deref())
                     {
-                        publish_scan(&list);
+                        publish_scan(panel.net, &list);
                     }
                     continue;
                 }
-                Either4::First(()) => {}
+                // A connected link has no setup to change and nothing to scan: those requests
+                // belong to a phase that is not running.
+                Either::Second(_) => {}
+                Either::First(()) => {}
             }
             let address = stack_address(stack);
             station.note_address(address);
             let status = station.status();
             publish(
+                panel.bus,
                 status,
                 keeps_any(saved.as_deref().map(|store| store.networks())),
             );

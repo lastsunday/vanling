@@ -1,6 +1,6 @@
 //! What changing the CPU clock costs on this chip, and what it leaves behind.
 //!
-//! **Outside esp-hal's contract**: its docs say the frequencies "become frozen and cannot be
+//! **Outside what esp-hal supports**: its docs say the frequencies "become frozen and cannot be
 //! changed" once applied, so the switch writes the registers directly. It works because the chip
 //! comes up at 240 MHz and the voltage bias trimmed there is never lowered — a chip brought up
 //! slow has no such bias to fall back on.

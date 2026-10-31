@@ -7,7 +7,7 @@ use iot_core::keyboard::{
 };
 use iot_core::overlay::{
     Block, CONTENT_BOTTOM, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS,
-    RIGHT_EDGE_X, block_value_x, block_x, overlay_row_top,
+    RIGHT_EDGE_X, block_value_x, block_x, level_value_end, overlay_row_top,
 };
 use iot_core::provision::MAC_TEXT_BYTES;
 
@@ -88,7 +88,7 @@ pub(crate) const ATTITUDE_LAST_AXIS_ROW: usize = 15;
 pub(crate) const CLIP_MARK_WIDTH: isize = 3;
 
 const _: () = assert!(
-    block_value_x(Block::First) + PSK_MASK_GLYPHS * GLYPH_PITCH - OVERLAY_GAP <= PANEL_COLUMNS,
+    level_value_end(block_value_x(Block::First), PSK_MASK_GLYPHS) <= PANEL_COLUMNS,
     "the draft a passphrase is typed into runs off the row's own right edge"
 );
 pub(crate) const HEADER_ADDRESS_GLYPHS: usize = 15;

@@ -173,7 +173,7 @@ pub(crate) const fn clock_mhz(speed: Speed) -> u32 {
 
 /// Moves the CPU to another preset while the chip is running.
 ///
-/// **This is outside esp-hal's contract.** Its own docs say the clock
+/// **This is outside what esp-hal supports.** Its own docs say the clock
 /// frequencies "become frozen and cannot be changed" once applied, and this
 /// reaches past that to write the registers directly. What esp-hal keeps sealed
 /// is the voltage bias — `regi2c` and the PVT helpers are `pub(crate)` or

@@ -6,19 +6,19 @@ sort_by = "weight"
 
 # 音频计量语义
 
-ES7210 只是一个来源。页面对外暴露的是**电平**——这一刻多少 dBFS、这两秒里持续多少——而不是一串 LSB 计数，更不是原始样本。本页说明契约、屏幕参数的含义，以及这些数字为什么长这样。
+ES7210 只是一个来源。页面对外暴露的是**电平**——这一刻多少 dBFS、这两秒里持续多少——而不是一串 LSB 计数，更不是原始样本。本页说明采集语义、屏幕参数的含义，以及这些数字为什么长这样。
 
-## 契约
+## 语义
 
 采集驱动**从不停止**。它一直在把 I2S 落下的样本折进包络，`ST` 的相位只决定面板画哪一份包络、扫描条跟不跟随实时那一份。把 `ST` 读成"录音机在录/在停"会同时读错两件事：录音时驱动并没有多做任何事，停录时它也没有少做。
 
-一条采集 poll 是纯数据路径：刷新包络、抬升**零**语义。窗口因此不上 intent 总线，走板层接线时交给驱动的那条单槽契约（见[传输的三种形状](@/development/iot/architecture.md)）。开始与停止只由业务侧的单击决定（`intent.rs` 里的 `BusinessIntent::Capture(CaptureAction::Start)` / `Capture(CaptureAction::Stop)`），且只在 Audio 页生效——别的页上的单击仍然换颜色。
+一条采集 poll 是纯数据路径：刷新包络、抬升**零**语义。窗口因此不上 intent 总线，走板层接线时交给驱动的那条单槽通道（见[传输的三种形状](@/development/iot/architecture.md)）。开始与停止只由业务侧的单击决定（`intent.rs` 里的 `BusinessIntent::Capture(CaptureAction::Start)` / `Capture(CaptureAction::Stop)`），且只在 Audio 页生效——别的页上的单击仍然换颜色。
 
 相位只有三态：`IDLE`（未采，面板只画 `TAP TO REC`，不画扫描条）→ `REC`（跟随实时包络）→ `STOP`（画锁存的那一份）。`IDLE` 与 `STOP` 上单击都直接回到 `REC`，没有"继续"语义：锁存的是**停止那一刻的窗**，不是一段录音。
 
 板级没有找到 ES7210 时 `Backed::audio` 为假，`AUDIO` 页不进入页面循环（`DisplayPage::next_page` 跳过没有能力背书的页），其余页照常。进入本页是三连击按键或三指点（`NextPage`）。
 
-出声的那一侧在[放音语义](@/development/iot/playback.md)。两页共用一根 12.288 MHz MCLK，但契约相反：采集**从不停止**，放音放完就停——所以放音有相位而本页没有。
+出声的那一侧在[放音语义](@/development/iot/playback.md)。两页共用一根 12.288 MHz MCLK，但语义相反：采集**从不停止**，放音放完就停——所以放音有相位而本页没有。
 
 ## 参数速查
 
@@ -246,7 +246,7 @@ bit 5 的语义查不到。ES7210 的公开数据手册是 "Everest Semiconducto
 ## 测试
 
 ```bash
-moon run iot:test        # core：计量数学、契约、状态机
+moon run iot:test        # core：计量数学、语义、状态机
 moon run iot:test-bsp    # 板级：I2S 配置与缓冲
 moon run iot:smoke-host  # 贯通：source → state → diagnostics
 ```

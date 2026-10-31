@@ -3,8 +3,8 @@ title = "Motion Implementation Record"
 weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "8cda2a0a5a0e6bac0e56b332c69f9f74b92bde63"
-translated_at = "2026-10-06T05:35:23Z"
+source_file_hash = "bbeba643f25b971fb587a100182e737c23b9f0e3"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -27,7 +27,7 @@ Investigation order and the hypotheses that were overturned:
 2. **Raise it to 896.8 Hz** (the first 6DOF tier above 500 Hz), parameters back to the manual's example `UDMThr = 0x0190` with an 80 ms window, matching the only working public reference, WaveShare's TapDetectionExample. The impulse now lands on a wide enough surface; behaviour still does not move.
 3. **Do the signal and thresholds even hold?** A mirrored reference driver printed the engine's per-axis Alpha mean and Gamma energy as `sq` (squared residual) and `pk` (energy) to the bench: a real knock lands at 2.4–4.9 g², runs past the 0.8 g² `PeakMagThr`, and the energy falls back below 0.4 g². Signal, threshold and timing all hold.
 
-The blocker sits outside every parameter gate, in the state machine itself. The same math does hold on core's 20 ms stream, so the knock contract moved to `core/src/drivers/motion/recognizer.rs`; `QMI8658_CAPABILITIES` therefore does not claim `TAP` — attributing a core-side computation to hardware is the one way to break what the capability set is for (letting a panel tell "this semantic cannot be reported" apart from "its threshold never fired").
+The blocker sits outside every parameter gate, in the state machine itself. The same math does hold on core's 20 ms stream, so the knock semantics moved to `core/src/drivers/motion/recognizer.rs`; `QMI8658_CAPABILITIES` therefore does not claim `TAP` — attributing a core-side computation to hardware is the one way to break what the capability set is for (letting a panel tell "this semantic cannot be reported" apart from "its threshold never fired").
 
 `ODR` stays at 896.8 Hz no longer for taps, but for the No-Motion engine's sample-counted windows and the gyroscope yaw diagnostic.
 

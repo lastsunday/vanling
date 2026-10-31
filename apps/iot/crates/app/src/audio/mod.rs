@@ -4,10 +4,10 @@ mod capture;
 mod dispatch;
 pub mod sounds;
 
-pub use capture::{CAPTURE, CaptureWindow};
 pub(crate) use dispatch::PlaybackDispatch;
 
 use crate::input::IntentBus;
+use crate::workers;
 use alloc::boxed::Box;
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -15,27 +15,22 @@ use embassy_futures::join::join;
 use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::playback::{FEED_MS, Recovery, SampleSource, Sound, Speaker, SpeakerFault};
 use iot_core::intent::{BusinessIntent, Intent, PlaybackAction};
 use iot_core::state::PlaybackCommand;
 
-pub type PlaybackBus = Channel<CriticalSectionRawMutex, PlaybackCommand, 4>;
-
-pub static PLAYBACK_BUS: PlaybackBus = PlaybackBus::new();
-
 /// Wakes the control side only when it has something to do: a sound ended, or the driver
 /// recorded a drain to repair. The feed loop signals it after releasing the speaker lock.
-pub static FEED_WAKE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static FEED_WAKE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 const CADENCE_REPORT_MS: u64 = 2_000;
 
 pub(crate) const FEED_LATE_MS: u64 = 20;
 
 #[derive(Default)]
-pub struct FeedStats {
+struct FeedStats {
     feeds: AtomicU32,
     worst_gap_ms: AtomicU32,
     late_gaps: AtomicU32,
@@ -48,7 +43,7 @@ pub struct Playback {
     pub(crate) done: AtomicBool,
     /// Whether the control side believes a sound is on the ring. The feed side reads this
     /// to decide whether a drained ring means a sound ended or just idle silence.
-    pub(crate) sounding: AtomicBool,
+    sounding: AtomicBool,
 }
 
 impl Playback {
@@ -166,7 +161,7 @@ async fn silent() -> ! {
 pub async fn playback_tasks(
     shared: Option<&'static Shared>,
     feed: crate::Feed,
-    playback_bus: &'static PlaybackBus,
+    speaker: workers::Speaker,
     intent_bus: &'static IntentBus,
 ) -> ! {
     let Some(shared) = shared else { silent().await };
@@ -177,24 +172,22 @@ pub async fn playback_tasks(
             spawner.spawn(
                 feed_task(shared).expect("the feed executor has room for the one task on it"),
             );
-            control_loop(shared, playback_bus, intent_bus).await
+            control_loop(shared, speaker, intent_bus).await
         }
-        crate::Feed::Inline => match join(
-            control_loop(shared, playback_bus, intent_bus),
-            feed_loop(shared),
-        )
-        .await {},
+        crate::Feed::Inline => {
+            match join(control_loop(shared, speaker, intent_bus), feed_loop(shared)).await {}
+        }
     }
 }
 
 pub async fn control_loop(
     shared: &'static Shared,
-    playback_bus: &'static PlaybackBus,
+    speaker: workers::Speaker,
     intent_bus: &'static IntentBus,
 ) -> ! {
     let mut last_report = Instant::now();
     loop {
-        while let Ok(command) = playback_bus.try_receive() {
+        while let Ok(command) = speaker.to.try_receive() {
             match command {
                 PlaybackCommand::Play(sound) => {
                     log::info!("[PLAY] {sound:?}");
@@ -244,7 +237,7 @@ pub async fn control_loop(
         }
         let deadline = last_report + Duration::from_millis(CADENCE_REPORT_MS);
         select3(
-            playback_bus.ready_to_receive(),
+            speaker.to.ready_to_receive(),
             FEED_WAKE.wait(),
             Timer::at(deadline),
         )

@@ -186,10 +186,12 @@ impl DeviceManager {
     }
 
     /// Commits a demand the configurator could actually meet.
+    #[cfg(test)]
     pub fn commit_demand(&mut self, demand: EffectiveDemand) {
         self.demand = demand;
     }
 
+    #[cfg(test)]
     pub fn light_state(&self) -> LightState {
         self.state.lights[0]
     }

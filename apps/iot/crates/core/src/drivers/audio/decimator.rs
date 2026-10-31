@@ -69,6 +69,7 @@ impl Decimator {
 
     /// How many of the next `count` frames this decimator keeps, which is the length a
     /// caller has to have ready before it starts folding.
+    #[cfg(test)]
     pub const fn kept_in(&self, count: usize) -> usize {
         let group = DECIMATION as usize;
         if count <= self.countdown as usize {

@@ -73,7 +73,6 @@ pub(crate) fn touch_event(status: TouchStatus) -> OperationIntent {
             status,
         }; MAX_TOUCH_POINTS],
         len: 1,
-        contacts: 1,
     }))
 }
 

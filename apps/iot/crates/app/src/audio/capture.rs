@@ -1,31 +1,14 @@
-//! The microphone window the capture path writes and the pipeline reads.
+//! The capture path's half of the microphone window: the driver publishes into it.
 
-use core::future::Future;
-
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
 use iot_core::drivers::audio::{AudioSample, CaptureSink};
 
-/// Off the intent ring: at 1.7 KB the window would set every ring slot that wide.
-pub struct CaptureWindow(Channel<CriticalSectionRawMutex, AudioSample, 1>);
-
-impl CaptureWindow {
-    pub fn take(&self) -> Option<AudioSample> {
-        self.0.try_receive().ok()
-    }
-
-    pub fn ready(&self) -> impl Future<Output = ()> {
-        self.0.ready_to_receive()
-    }
-}
+use crate::workers::CaptureWindow;
 
 impl CaptureSink for CaptureWindow {
     fn publish(&self, sample: AudioSample) {
-        let _ = self.0.try_send(sample);
+        self.push(sample);
     }
 }
-
-pub static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());
 
 #[cfg(test)]
 mod tests {

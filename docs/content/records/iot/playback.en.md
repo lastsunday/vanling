@@ -3,15 +3,15 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "1c906ed372c5551aa4893adaf1c75c14e34baf36"
-translated_at = "2026-10-30T09:16:52Z"
+source_file_hash = "3c70c3e19e026f225347dca9549a4d2f3d5a8a48"
+translated_at = "2026-10-31T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
 
 # Playback Implementation Record
 
-Judgements and rejected approaches from the playback path in `apps/iot`. **AI-produced, not reviewed by a human** — see the [section above](@/records/_index.en.md). The system description (contract, panel readout, registers) is in [Playback Semantics](@/development/iot/playback.en.md).
+Judgements and rejected approaches from the playback path in `apps/iot`. **AI-produced, not reviewed by a human** — see the [section above](@/records/_index.en.md). The system description (semantics, panel readout, registers) is in [Playback Semantics](@/development/iot/playback.en.md).
 
 Each judgement is marked with its basis: **`[test]`** a unit test backs it, **`[measured]`** hardware measurement with a way to reproduce, **`[reported]`** not reproduced, kept only for the record.
 

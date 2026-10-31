@@ -87,7 +87,7 @@ S3 产品镜像 **852,432 B / 6 MB 分区（13.55%）**、探针 664,768 B（10.
 
 早先这里按「只有 `dram_seg` 回来」算过 125,788 − 32,768 = 93,020 B，还以为能过 —— 两个错都在这条账里：IRAM 代码那 31,980 B 的镜像没算，`network.rs` 的静态量也没算。**以链接器游标为准**，而且这条失败可以一行复现：把 `INTERNAL_BYTES` 改回 32 KiB 重建，`ld` 报的还是同一句 —— `stack.x:13 cannot move location counter backwards (from 3fcdc6f8 to 3fcdb700)`，游标与上面那次完全一致。那一行要落到 `RWDATA` 的末尾，而静态量已经越过它 2,400 B，主栈位置只剩 53,272 B，比断言下限短 12,264 B。
 
-`[实测]` **capture 契约（方向 ②）省回 11,464 B。** `Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，所以 `INTENT_BUS` 的槽宽由最宽的 `InputEvent` 变体决定 —— 采集窗口 `Audio(AudioSample)` 是 1,760 B，8 槽就被它定价。窗口改走单槽契约之后：
+`[实测]` **capture 窗口（方向 ②）省回 11,464 B。** `Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，所以 `INTENT_BUS` 的槽宽由最宽的 `InputEvent` 变体决定 —— 采集窗口 `Audio(AudioSample)` 是 1,760 B，8 槽就被它定价。窗口改走单槽通道之后：
 
 | | 之前 | 之后 |
 | --- | --- | --- |
@@ -236,7 +236,7 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 | --- | --- | --- |
 | 迟滞 | 一行要越过 **4 dB** 才动位置（`LIST_HYSTERESIS_DB`） | `bars_for` 每格 10 dB，半格之内换位置在页面上什么都看不出来 |
 | 掉轮保留 | 一轮没扫到的行留 **2 轮**（`LIST_MISSED_ROUNDS`） | 单次扫描不是测量（见上）；连着两轮都没扫到才当它走了 |
-| 只在画出来变了才 publish | `observe()` 返回 `Some(list)` 才交给契约，否则记 `[WIFI] the list is unchanged, so the page is not redrawn` | 页面的重绘门槛（`DIAG_REPAINT_STEP_MS = 40` + 内容有变）之外再省一次：读数一样就不该重画 |
+| 只在画出来变了才 publish | `observe()` 返回 `Some(list)` 才交给通道，否则记 `[WIFI] the list is unchanged, so the page is not redrawn` | 页面的重绘门槛（`DIAG_REPAINT_STEP_MS = 40` + 内容有变）之外再省一次：读数一样就不该重画 |
 | 满员顶掉最弱 | `MAX_LISTED_APS = 8`，满了只有强过最弱行 4 dB 的新行才进得来 | 一个新行挤掉一行，和行序抖动是同一件事 |
 | 换了网络就重来 | `setup` 每次进关联前 `history.clear()` | 上一次的列表与这一次的链路无关 |
 
@@ -366,7 +366,7 @@ X  0  OK | SHOW
 | 决定 | 取值 | 为什么 |
 | --- | --- | --- |
 | 页面何时存在 | 入口点报的接线事实（`iot_app::Link`：`Wired` / `Absent`） | station 由入口点取走（它的启动要调度器），`run` 里已经看不到射频；用 build 事实（`cfg!(feature = "wifi")`）则宿主机冒烟永远到不了这一页，而这一页最需要的验证恰恰是「组合有没有把能力接进来」——`Link` 与 `SpeakerRunner` 同一形状：接线事实由入口点传进来。不是 `Board` 上再开一个方法：那会有两种说法说同一件事，且能互相打架 |
-| 扫描列表走哪 | 独立单槽契约（`Latest` / `SCAN`），不进 intent ring | `Intent` 是 `Copy`，每个槽按最宽消息定价：`ApList`（8 × 42 + 1 = 337 B）进 ring 就是 8 槽 ≈ 2.7 KB，而 ring 的窗口是 `size_of::<AudioSample>()`（1,760 B）。`app/src/input.rs` 的尺寸测试直接拦下（`a_capture_window_costs_one_slot_beside_the_ring`） |
+| 扫描列表走哪 | 独立单槽通道（`Latest` / `SCAN`），不进 intent ring | `Intent` 是 `Copy`，每个槽按最宽消息定价：`ApList`（8 × 42 + 1 = 337 B）进 ring 就是 8 槽 ≈ 2.7 KB，而 ring 的窗口是 `size_of::<AudioSample>()`（1,760 B）。`app/src/input.rs` 的尺寸测试直接拦下（`a_capture_window_costs_one_slot_beside_the_ring`） |
 | 「没扫过」与「扫了没扫到」 | `DeviceState.aps: Option<ApList>` | 两态在页面上是两句话（`NOT SCANNED` / `NO NETWORKS`）。带自己凭据的构建不去扫，只能说「没扫过」；扫了没扫到是在说这个房间 |
 | 列表一行多高 | 3 行 × 47 px（6.0 mm），表头仍是 3 行，行下多一条 44 px 的工具条 | 面板 320×240 = 40.6×30.5 mm（0.127 mm/px）。61 px（7.75 mm）原本达标，但工具条要从这 232 px 里切出 44 px，3 行 × 47 px 是「切完还剩多少就多少」：47 px = 6.0 mm 低于 7 mm 的通行最小触点，与键盘 46 px 同一条**已知并接受的破例**（数字块与列表都是拇指盲按的） |
 | 键盘从哪起 | 键盘起点抬到与列表**同一个 y**（第 3 行 = 47 px），表头保留三行 | 原来打字态只有一行表头，为的是把键盘顶上去；上板看下来那三行信息（阶段、当前网络与信号、草稿）都值得留，而 4 行的键盘让出 6 px 仍够按。两态从同一个 y 起还省掉了一次「页面跳一下」 |
@@ -376,8 +376,8 @@ X  0  OK | SHOW
 | 多击 | 第一击立刻上屏；同一键、候选数 > 1、`MULTITAP_WINDOW_MS = 800` 内再点 = 换下一个候选（替换尾部字符）；另一键/退格/层/Shift/窗口过期 = 新字符；候选数 = 1 的重复点 = 新字符 | 第一击立刻上屏，所以打字没有等待；`00` 这种口令靠「单候选重复点 = 新字符」打得出来 |
 | Shift | 单击一次性大写（只被字母消费）、窗口内双击锁定、锁定后再点解除；锁定整张键面反色。**Shift 属于整段多击 run，而不是第一次 push** | 手机键盘的惯例；`Connect`/`Cancel` 会结束多击运行。按 run 而不是按首击记：`Z` 是 `9` 的第四击、`S` 是 `7` 的第四击，若 Shift 只随首击落下，3–4 击的字母永远打不出大写 |
 | 开放网络 | 列表右端画 `OPEN`（名字止于 x=222，标记右对齐到 274，两条编译期断言钉住不打架），点行**不弹键盘**、直接以空口令交凭据 | 开放网络没有口令可输，弹一个键盘出来只会让人以为要输点什么；`OPEN` 与满格信号条都画在行右端，两串不重叠 |
-| 已存网络画 `*` | 名字后一个 `*`（右对齐到 229，在 `OPEN` 词的左侧；名字槽止于 222），来源是**列表自带的每行一位掩码** `ApList.saved: u8` | 名字后加一个字符比在行右端再挤一个词省地方，且与 `OPEN` 不打架（编译期断言钉住三者不重叠）。掩码随 `ApList` 一起走 `SCAN` 契约，那一片因此必须是「新值覆盖旧值」的槽：`SCAN.publish` 丢一次修正就会留下一行错标记，而**下一轮不会自愈**（历史那边已经把修正当成页面在显示的列表，下一轮比对说「列表没变」）—— 见「离开后点回那一行、以及一次丢掉的列表修正」。这是拿「省下在 app 里再落一份 980 B 的已存集合」换来的（S3 静态内存墙，见「凭据落在哪」） |
-| 已存的一行点一下就按库里的连 | `pick_row` 读到「`secured` 且那一行掩码已存」就把 `JoinRequest::Held(name)` 落进 `DeviceState.join`（不升键盘、清草稿与回显，口令一个字节都不经过页面）；渲染循环取走发到 `JOIN` 契约，网络任务用 `SavedNetworks::copy_of(name)` 查库：查到就用那份关联（**不写盘**），查不到就 `BusinessIntent::NoCopy(name)` 回报，页面才升键盘问 | 库里已经有那份口令，再让用户打一遍是让他重打一个设备已经有的秘密。**名字而不是口令**：库只有网络任务一个所有者（`SavedNetworks` 不进 `DeviceState`，S3 静态内存墙，见上一条），所以页面能说的是「哪个网络」而说不出「它的口令是什么」—— 库里没有时只能回报页面，而页面是唯一能问出口令的地方。掩码只决定**先问库还是先升键盘**，答复本身来自库（掩码是上一轮的答复）：掩码旧了的最坏结果是「用户又打了一遍」，不是「连错了网络」。这条把库的两个所有权分开了：库只管口令，页面只管「哪个网络」 |
+| 已存网络画 `*` | 名字后一个 `*`（右对齐到 229，在 `OPEN` 词的左侧；名字槽止于 222），来源是**列表自带的每行一位掩码** `ApList.saved: u8` | 名字后加一个字符比在行右端再挤一个词省地方，且与 `OPEN` 不打架（编译期断言钉住三者不重叠）。掩码随 `ApList` 一起走 `SCAN` 通道，那一片因此必须是「新值覆盖旧值」的槽：`SCAN.publish` 丢一次修正就会留下一行错标记，而**下一轮不会自愈**（历史那边已经把修正当成页面在显示的列表，下一轮比对说「列表没变」）—— 见「离开后点回那一行、以及一次丢掉的列表修正」。这是拿「省下在 app 里再落一份 980 B 的已存集合」换来的（S3 静态内存墙，见「凭据落在哪」） |
+| 已存的一行点一下就按库里的连 | `pick_row` 读到「`secured` 且那一行掩码已存」就把 `JoinRequest::Held(name)` 落进 `DeviceState.join`（不升键盘、清草稿与回显，口令一个字节都不经过页面）；渲染循环取走发到 `JOIN` 通道，网络任务用 `SavedNetworks::copy_of(name)` 查库：查到就用那份关联（**不写盘**），查不到就 `BusinessIntent::NoCopy(name)` 回报，页面才升键盘问 | 库里已经有那份口令，再让用户打一遍是让他重打一个设备已经有的秘密。**名字而不是口令**：库只有网络任务一个所有者（`SavedNetworks` 不进 `DeviceState`，S3 静态内存墙，见上一条），所以页面能说的是「哪个网络」而说不出「它的口令是什么」—— 库里没有时只能回报页面，而页面是唯一能问出口令的地方。掩码只决定**先问库还是先升键盘**，答复本身来自库（掩码是上一轮的答复）：掩码旧了的最坏结果是「用户又打了一遍」，不是「连错了网络」。这条把库的两个所有权分开了：库只管口令，页面只管「哪个网络」 |
 | 选中行反色 | 整条 band 逐行反转（`stamp_band_fill`），再在上面画名字/标记/信号条 | 面板只有黑白反转。整条反色而不是只反名字，是因为一行里还有信号条与 `OPEN`，只反一部分会让人以为选中的是那半条 |
 | 断开从哪发起 | 工具条上的 `LEAVE` 按钮（链路**可离开**时才画），点它弹确认框，答「动词」才置 `DeviceState.leave` 闩锁 | **刻意从「点已连接行」改过来**：那一行既是「这个网络」又是「离开它」的入口，点错了没有退路；工具条是唯一入口、动作唯一，且执行前问一次。可离开与否收在 `LinkStatus::is_leavable()`（`Connecting`/`Connected` 才可离开，`Off`/`Scanning`/`Failed` 只能重扫），工具条按它二选一画；**它只看相位**：`ap` 要关联成功才置上，拿它当条件会把答案变成「关联报告到了没有」。同一个谓词同时决定工具条画哪个词、点行接不接、以及 `LEAVE` 还有没有东西可问。闩锁由渲染循环取走、发布到 `LEAVE`，网络任务在窗口 `select` 里听见就 `disconnect` 并回报 `Off`；本会话不再自动回连靠 link 的 `auto` 开关（待办 5） |
 | 有链路时列表只读 | `pick_row` 开头门控：`link.is_leavable()` 就直接返回（不选中、不升键盘、不交凭据，含 `OPEN` 行）；长按与滑动不过这道门 | 链路在飞的时候点一行有两个意思可给：「换一个网络」和「先断开」，而断开已经收了工具条一个入口。读数是这一行唯一的意思，所以它就没有第二个意思可给 —— 关联前已经升起的草稿键盘不受影响（`Connected` 才清，`Connecting` 不清） |
@@ -461,7 +461,7 @@ X  0  OK | SHOW
 
 bench 自己的算术也钉在宿主机上（`bench/panel.rs` 7 条）：目标在第几页、翻几次页、band 的 y 落在第几行、**最后一击必须落在 `OK` 那一格**、开放网络不被当成要打字的目标、列表还没来时不编脚本，以及**整条 walk 按真实顺序走一遍**（`the_walk_asks_before_it_leaves_forgets_and_looks_around`：有链路时点行不接 → 工具条问一次 → `KEEP` 留住 → 再问一次答动词 → 点回刚离开的那一行（**库那份口令把链路接回来，页面什么都没问**）→ 再断开 → 长按忘记 → 那一行再点一次（这一次读的是**新草稿**）→ 取消键盘 → 最后重扫；顺序本身也钉住：逐动作比 `visited`，少走一个动作或两个动作换了位置都会红）。这些是「几何账」里最容易悄悄错一位的部分，而它们不需要上板。
 
-**还没验的**（软件验不了，只能人点一次面板）：只剩两件 —— 4×4 键、列表行与工具条的**触摸手感**（80 × 46 px 的键、47 px 高的行、44 px 的工具条与确认框答案键，指头按上去才算数）与纯黑底色、背光 100% 要用眼睛看。**「弹窗盖没盖住列表」不再靠眼睛**：那是宿主机可测的事实 —— 问题挂着时 `page::Part::hidden` 不画列表与工具条、`page::walk` 根本不把它们交出来、绘制顺序由 `Part::IN_ORDER` 钉住、`stamp::fill_surface` 逐像素写满整个矩形（`core/src/stamp.rs` 三条测试，其中一条把填充换回「反色」就会红）。整条「点一行 → 输口令 → OK → 关联 → 断开 → 忘记」已经由上面的 bench 走通，不再需要人；宿主机冒烟另覆盖同一套状态机与几何（`iot:smoke-host`：`Row(0)` → `Char(b'4')`, `Char(b'4')`, `Char(b'2')`, `Shift`, `Char(b'8')` 打出 `haT`，凭据到达 `JOIN` 契约，`NETWORK_TYPED` 到 3）。
+**还没验的**（软件验不了，只能人点一次面板）：只剩两件 —— 4×4 键、列表行与工具条的**触摸手感**（80 × 46 px 的键、47 px 高的行、44 px 的工具条与确认框答案键，指头按上去才算数）与纯黑底色、背光 100% 要用眼睛看。**「弹窗盖没盖住列表」不再靠眼睛**：那是宿主机可测的事实 —— 问题挂着时 `page::Part::hidden` 不画列表与工具条、`page::walk` 根本不把它们交出来、绘制顺序由 `Part::IN_ORDER` 钉住、`stamp::fill_surface` 逐像素写满整个矩形（`core/src/stamp.rs` 三条测试，其中一条把填充换回「反色」就会红）。整条「点一行 → 输口令 → OK → 关联 → 断开 → 忘记」已经由上面的 bench 走通，不再需要人；宿主机冒烟另覆盖同一套状态机与几何（`iot:smoke-host`：`Row(0)` → `Char(b'4')`, `Char(b'4')`, `Char(b'2')`, `Shift`, `Char(b'8')` 打出 `haT`，凭据到达 `JOIN` 通道，`NETWORK_TYPED` 到 3）。
 
 ### 工具条、确认框与忘记（`[实测]`，2026-10-17）
 
@@ -539,7 +539,7 @@ bench 的 `Act` 序列在前面加了一步（打字关联 → **点 band 0（�
 两个缺陷：一个是报出来的黑屏，另一个是**扫出来**的丢更新 —— 后者不修的话，忘记过一个网络之后，那一行的 `*` 有时会一直留着。
 
 - **离开链路后点回那一行，页面下面全黑**。`pick_row` 的「又点了同一行就留着草稿」判据原来只看 `selected`，而链路升起**清草稿、不清那一行**（见「相位语义」）：链路一落，那一行还是被选中的，再点它被读成「同一行」→ **不建草稿**，却把 `keyboard` 置起 → 面板把键盘区画在空草稿上，键与工具条都不画，**这一页再没有能点的东西**（这就是「全黑」）。判据补上 `entry.is_some()`：没有草稿就没有草稿可留，而「链路丢下的草稿不回来」是故意的（它不会再被交出去），所以那一行再点开的是**新的空草稿**。看不见的那一半写进了文档：`NetworkSetup::keyboard` 与 `pick_row` 都声明了不变量 `keyboard ⇒ entry.is_some()`。
-- **忘记之后那一行的 `*` 有时不消失**。`SCAN` 契约原来是容量 1 的 `Channel`，`try_send` 满了就 **`Err` 丢掉**，而丢的偏偏是**新的那一条**：一轮扫描先发一次列表，紧接着（同一毫秒内，忘记正是在这一轮自己的停顿里被执行的）网络任务把「库里已经没它了」重标一遍再发一次 —— 槽里还压着第一条时，第二条被丢掉。页面于是留着一个早就不存在的已存标记，而**后面每一轮都不会再纠**：`SurveyHistory` 已经把那条修正当成「页面正在显示的列表」，下一轮比对说「列表没变，不重画」。修法是把契约换成一个**新值覆盖旧值**的槽（`Signal` 装值 + 一个独立的唤醒信号；唤醒与值分开，因为渲染循环**停泊在唤醒上**，停泊不能把列表取走 —— `take()` 是下一趟开头的事）。
+- **忘记之后那一行的 `*` 有时不消失**。`SCAN` 通道原来是容量 1 的 `Channel`，`try_send` 满了就 **`Err` 丢掉**，而丢的偏偏是**新的那一条**：一轮扫描先发一次列表，紧接着（同一毫秒内，忘记正是在这一轮自己的停顿里被执行的）网络任务把「库里已经没它了」重标一遍再发一次 —— 槽里还压着第一条时，第二条被丢掉。页面于是留着一个早就不存在的已存标记，而**后面每一轮都不会再纠**：`SurveyHistory` 已经把那条修正当成「页面正在显示的列表」，下一轮比对说「列表没变，不重画」。修法是把通道换成一个**新值覆盖旧值**的槽（`Signal` 装值 + 一个独立的唤醒信号；唤醒与值分开，因为渲染循环**停泊在唤醒上**，停泊不能把列表取走 —— `take()` 是下一趟开头的事）。
 
 **「下次自动发现这类缺陷」的机制这一轮一起落了**：状态层原来只有散点测试，现在多一层**可达状态穷举** —— `state::tests::reachable::every_state_the_page_can_reach_keeps_its_invariants` 从开机态出发，用 35 个「页面真收得到的动作」（`alphabet()` 里逐个列名：三行的点与长按、工具条、确认框两键、按钮三态、键盘七键、两次滑动、射频的七种相位与三种扫描、以及渲染循环把四个闩交给射频的那四下）做广度优先，落到 **8,800 个状态**（0.90 s，上限 `SWEEP_CAP = 20_000`，并且断言「没触顶」—— 触顶就等于这个测试在宣称一份它没有的覆盖），对**每一个新落到的状态**查四条不变量：
 
@@ -569,14 +569,14 @@ bench 的 `Act` 序列在前面加了一步（打字关联 → **点 band 0（�
 
 `bench-r7.log` 这一次的「一轮扫描 + 一次重标」没有撞上丢包（那一轮扫描说「列表没变」，所以那一轮只发了一次），`bench-r8.log` 也一样，**所以这两次本身都没有复现那个丢更新** —— 复现它的是上一把 `bench-r6.log`：5.901 s `survey found 3 access points`（这一轮会重画）、5.911 s `is forgotten`（重标那一次被丢）、6.653 s `survey found 2 access points` + **`the list is unchanged`**（历史那边已经是「没标记」的列表，可页面不是）、7.788 s `[BENCH] the action's own tap left the saved mark where it was in 120 passes`。同一段窗口里还有 `[INPUT] held the executor 3219 ms of 5008 ms … worst single hold 605 ms (bound 30 ms) … capture 601 ms`：那一次相机抓帧把执行器压了 0.6 s，两条相隔 10 ms 的投递正好都压在槽里。**这个交错现在由宿主机测试钉住**：`render::tests::a_list_published_before_the_last_one_is_taken_replaces_it_rather_than_being_refused`（连发两条、只看得到新的那条）与 `the_wake_a_park_waits_on_does_not_take_the_list_it_woke_for`（停泊不取走列表）。
 
-**这几处都不是靠眼睛判的**：把 `pick_row` 的 `entry.is_some()` 回滚，新状态测试与穷举扫**当场双红**，扫还把复现路径打了出来 ——「the device at boot, a triple click, a scan of two networks, a tap on the first band, the radio connected, the radio reporting nothing on the air, a tap on the first band」；把契约换回「满了就丢」、以及把唤醒接成会取走列表的版本，上面两条契约测试各红一条（两条都当场验过，改回即绿；把唤醒改成「立刻就绪」**不算数** —— 那版没有取走列表，两条测试一条都没红，作数的是**真会取走列表**的那版）。主栈下限仍是 65,536 B，两个镜像这一轮各量了一次：bench 镜像 `65,624 B`（与上一轮同一个数）、产品镜像（不给网络、`IOT_BOOT_PAGE=network`）**`65,944 B`** —— 比上一轮的 65,912 B 多 32 B，是契约那两个 `Signal` 的等待 future 落到渲染循环的 future 里带来的，余量 408 B；产品镜像这次开机：`[CREDS] 0 saved network(s) on this device` → `[IOT] boot page is Network` → 扫到 1–3 条 → 停在列表上等人按（`[DISPLAY] stack peak 38,656 B of 65,944 B`）。
+**这几处都不是靠眼睛判的**：把 `pick_row` 的 `entry.is_some()` 回滚，新状态测试与穷举扫**当场双红**，扫还把复现路径打了出来 ——「the device at boot, a triple click, a scan of two networks, a tap on the first band, the radio connected, the radio reporting nothing on the air, a tap on the first band」；把通道换回「满了就丢」、以及把唤醒接成会取走列表的版本，上面两条通道测试各红一条（两条都当场验过，改回即绿；把唤醒改成「立刻就绪」**不算数** —— 那版没有取走列表，两条测试一条都没红，作数的是**真会取走列表**的那版）。主栈下限仍是 65,536 B，两个镜像这一轮各量了一次：bench 镜像 `65,624 B`（与上一轮同一个数）、产品镜像（不给网络、`IOT_BOOT_PAGE=network`）**`65,944 B`** —— 比上一轮的 65,912 B 多 32 B，是通道那两个 `Signal` 的等待 future 落到渲染循环的 future 里带来的，余量 408 B；产品镜像这次开机：`[CREDS] 0 saved network(s) on this device` → `[IOT] boot page is Network` → 扫到 1–3 条 → 停在列表上等人按（`[DISPLAY] stack peak 38,656 B of 65,944 B`）。
 
 ### 点已存的一行就用库里的口令（`[实测]`，2026-10-17 第五轮）
 
 **已存网络（画 `*` 的那一行）点一下 = 用设备自己存在 `creds` 里的那份口令去连**，不再让人重打一遍。这一条把凭据那条路上的**所有权**分开：口令库只有网络任务一个所有者（`SavedNetworks` 从不进 `DeviceState` —— S3 静态内存墙下那 980 B 落不成值，见「凭据落在哪」），页面能说的是「哪个网络」而说不出「它的口令是什么」；于是页面点一下只交**名字**，答复（库里有没有、能不能连）由射频给。
 
-- **请求是同一个契约的两种形状**。凭据槽与 `CREDENTIALS` 后来并成 `JOIN`，消息由 `Credentials` 变成 `JoinRequest::{Typed(Credentials), Held(Ssid)}` —— 同一个请求「帮多少忙」的两种，还是同一条单槽契约（不新开契约、不新加一条 `select` 臂）。`DeviceState.credential` 因此变成 `DeviceState.join: Option<JoinRequest>`（`take_join()`）：字段还是那一个，宽度只多一个判据字（`Credentials` 已是两个变体里宽的那个），**没有新的 `static`**。
-- **库里没有就回报页面**。网络任务在**两个**读这条契约的地方（`setup` 的开头、以及链路已起时 `hold` 的窗口）都走同一个 `asked_for()`：`Typed` 直接用（`Provenance::Named`）；`Held(name)` 走 `SavedNetworks::copy_of(name)` 查库 —— 查到就用那份（`Provenance::Stored`），查不到就发 `BusinessIntent::NoCopy(name)`（走既有 `INTENT_BUS`，与 `Link` 报告同一条路）。页面收到后 `no_copy()`：只对**当前选中的那一行**成立（这期间点了别的行就是更新的问题，旧答复丢掉），升键盘问口令。
+- **请求是同一个通道的两种形状**。凭据槽与 `CREDENTIALS` 后来并成 `JOIN`，消息由 `Credentials` 变成 `JoinRequest::{Typed(Credentials), Held(Ssid)}` —— 同一个请求「帮多少忙」的两种，还是同一条单槽通道（不新开通道、不新加一条 `select` 臂）。`DeviceState.credential` 因此变成 `DeviceState.join: Option<JoinRequest>`（`take_join()`）：字段还是那一个，宽度只多一个判据字（`Credentials` 已是两个变体里宽的那个），**没有新的 `static`**。
+- **库里没有就回报页面**。网络任务在**两个**读这条通道的地方（`setup` 的开头、以及链路已起时 `hold` 的窗口）都走同一个 `asked_for()`：`Typed` 直接用（`Provenance::Named`）；`Held(name)` 走 `SavedNetworks::copy_of(name)` 查库 —— 查到就用那份（`Provenance::Stored`），查不到就发 `BusinessIntent::NoCopy(name)`（走既有 `INTENT_BUS`，与 `Link` 报告同一条路）。页面收到后 `no_copy()`：只对**当前选中的那一行**成立（这期间点了别的行就是更新的问题，旧答复丢掉），升键盘问口令。
 - **被拒之后不落到死循环上**。库那份也会被拒（对面改了口令）。那时 `refused` 照旧，而 `reopen_entry` 补一条**选中的行没有草稿就造一个空的**：键盘是拿草稿画的、工具条又被键盘藏起来，所以「有键盘、没草稿」是一页什么都点不到的东西 —— 而这一行偏偏只会被点第二次（点它 → 用库的口令 → 被拒 → 键盘没起来 → 只能再点它）。补空草稿是这个死循环唯一的出口，也是 `reopen_entry` 唯一**新造**草稿的场合。
 - **写盘判据跟着分开**（`Provenance`）：构建时凭据与面板输入是设备**学到**的东西，关联成功那一刻写（照旧）；库交出来的那份是设备**已经有**的东西，不写。顺带修掉一处白写：开机自读那份原来每次开机都把同一条内容重写一遍（双槽轮写 = 一次擦写），现在不写；代价是点已存行连上**不会**把它顶到已存列表最前（`remember` 的置顶因此只发生在面板重新打了一次口令那种场合）。
 
@@ -621,7 +621,7 @@ C6 只带 WS2812 与 Boot 键，而 `LightRenderer::page_ground()` 只在 `light
 | --- | --- | --- | --- |
 | 协议 | `iot-core::provision`（`http`/`dns`/`route`/`scan`/`wire` + `assets/` 里两张 `include_str!` 的 HTML 与一个图标） | 请求解析、路由、答复、名字怎么答、列表的 JSON；**全程不分配**（表单解码进调用者的栈缓冲） | 宿主机 **45 条**测试（`provision/*.rs` 的 `#[test]`） |
 | 设备 | `iot-app::provision` | 四个循环（DHCP 服务器 / 名字服务器 / 页面 / `embassy-net` runner）接在 socket 上 | 台架（待办 8） |
-| 接线 | `iot-app::network` 的 `configure` | 起 AP、把页面与面板 `select` 在一起、凭据交回 `JOIN` 契约 | 台架（待办 8） |
+| 接线 | `iot-app::network` 的 `configure` | 起 AP、把页面与面板 `select` 在一起、凭据交回 `JOIN` 通道 | 台架（待办 8） |
 
 路由：`GET /`（与 `/index.html`）给页面（**带内嵌列表**），`GET /scan` 给 JSON 列表，`GET /rescan` 给同一份列表并**唤醒一轮扫描**，`POST /submit` 收凭据并**内联**回完成页，`GET /done`（与 `/done.html`）给同一张完成页，`GET /favicon.svg` 给图标（缓存一天）、`GET /favicon.ico` 答 `204`，其余**一律 302 回 `BASE_URL`** —— 最后一条不是兜底而是功能：手机探测用的路径（连通性检查、各种探针）拿到的是一次跳转，把用户送到页面的正是这个答案。
 
@@ -629,7 +629,7 @@ C6 只带 WS2812 与 Boot 键，而 `LightRenderer::page_ground()` 只在 `light
 
 ### 答复先到手机，再结束设置模式
 
-`provision::serve` 返回 `Infallible`，所以在 `configure` 里它与面板那一路（`setup_credential`）`select` 竞争：**谁先说出一个凭据谁结束设置模式**，页面那一路随 `select` 一起被丢掉，接入点连同它的 `Runner` 一起下线。凭据经已有的 `JOIN` 契约走，于是 `hold`、凭据落盘、`Provenance` 全部原样复用 —— 页面与面板在「凭据从哪来」这层是同一条路。
+`provision::serve` 返回 `Infallible`，所以在 `configure` 里它与面板那一路（`setup_credential`）`select` 竞争：**谁先说出一个凭据谁结束设置模式**，页面那一路随 `select` 一起被丢掉，接入点连同它的 `Runner` 一起下线。凭据经已有的 `JOIN` 通道走，于是 `hold`、凭据落盘、`Provenance` 全部原样复用 —— 页面与面板在「凭据从哪来」这层是同一条路。
 
 页面在写答复**并等到对端 ACK**（`TcpSocket::flush`，语义按 `embassy-net 0.9.1` 的 `tcp.rs` 与它的文档）之后才把凭据投上 `JOIN`。这不是保守，是一条会**稳定输**的竞态：投上 `JOIN` 就意味 `select` 立刻解析、页面 future 与 AP 的 `Runner` 一起被丢掉，**没有下一次 `interface.poll`** —— 写进 socket 缓冲区、还没上介质的字节会随栈一起消失，手机看到的是一个永不回的请求。`/submit` 因此把完成页内联在 200 里而不是 302 到 `/done`：跳转要靠第二个请求，而第二个请求要等的那套栈已经不在了。
 
@@ -645,7 +645,7 @@ C6 只带 WS2812 与 Boot 键，而 `LightRenderer::page_ground()` 只在 `light
 
 `[实测]`：`survey` 在设置模式下**无条件**扫（扫描节奏本身没动，见「一轮扫描的节奏」），原来那道「等面板到达再扫」的阻塞门（`PAGE.wait_for_list()`）换成非阻塞的 `PAGE.shows_list()` 加一个上升沿。理由：C6 上没有人会到达那一页，而页面读的正是这条列表。面板到达时 `SurveyHistory::clear()` 仍在跑，所以「到达时看到的是现场」这条性质没变。
 
-列表**两份**，因为有两个读者：面板那份走 `SCAN` 契约（渲染循环 `take` 掉），页面那份走 `provision::LATEST`。页面不能把面板那份取走；`LATEST` 是只有最新值有意义的窗口，所以是 `Mutex<RefCell<...>>` 而不是通道。
+列表**两份**，因为有两个读者：面板那份走 `SCAN` 通道（渲染循环 `take` 掉），页面那份走 `provision::LATEST`。页面不能把面板那份取走；`LATEST` 是只有最新值有意义的窗口，所以是 `Mutex<RefCell<...>>` 而不是通道。
 
 ### 依赖与版本
 
@@ -789,7 +789,7 @@ C6 先跑通：手机连上 `vanling-1234`、拿到租约、页面**自己**打�
 | 事 | 之前 | 现在 |
 | --- | --- | --- |
 | 从链路进设置模式 | 工具条 `LEAVE`，确认框问「离开？」 | 工具条 `LEAVE`，确认框问 `LEAVE "cafe"?` / `THE LINK GOES DOWN`（先叫过一阵 `SETUP`，又改回来了 —— 见「有链路那格改回 `LEAVE`」） |
-| 从设置模式出来 | 做不到（`unconfigured` 发散） | 工具条 `CANCEL` → `CANCEL_SETUP` 契约（现 `SETUP_ASK`） → `unconfigured` 返回 → `link` 重试它手上的网络 |
+| 从设置模式出来 | 做不到（`unconfigured` 发散） | 工具条 `CANCEL` → `CANCEL_SETUP` 通道（现 `SETUP_ASK`） → `unconfigured` 返回 → `link` 重试它手上的网络 |
 | 知道自己在设置模式 | 没有这个字段 | `LinkStatus.setup` / `setup_cancellable`，表头 `ST SETUP` |
 | 表头的网络名 | 链路那个 AP（设置模式下没有） | 由 MAC 派生的 `AP vanling-xxxx`（与手机列表里同一个名字，面板不另存一份） |
 | 地址行 | 站点的地址（设置模式下没有） | `IP 192.168.4.1` |
@@ -936,9 +936,9 @@ C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说�
 | 树 | 主栈 | 余量 |
 | --- | --- | --- |
 | 上一轮之后 | 65,688 B | 152 B |
-| 本轮（两档 + 口令 + 合并的请求契约） | **65,592 B** | **56 B** |
+| 本轮（两档 + 口令 + 合并的请求通道） | **65,592 B** | **56 B** |
 
-净吃 **96 B**。省下来的两笔是明确的：`CANCEL_SETUP` 并进 `SETUP_ASK`（一个契约、一个 `Signal`，少一个静态和一条 select 分支），`setup_password` 从 `Option<Ssid>` 收成 `Option<SetupPass>`（34 → 11 字节）。板上读数与 `nm` 一字不差：`[DISPLAY] main stack 65592 B`、`stack peak 38696 B of 65592 B`。
+净吃 **96 B**。省下来的两笔是明确的：`CANCEL_SETUP` 并进 `SETUP_ASK`（一个通道、一个 `Signal`，少一个静态和一条 select 分支），`setup_password` 从 `Option<Ssid>` 收成 `Option<SetupPass>`（34 → 11 字节）。板上读数与 `nm` 一字不差：`[DISPLAY] main stack 65592 B`、`stack peak 38696 B of 65592 B`。
 
 `[实测]` 板上的接入点档：为了在没有手指的情况下看到这一档，把 S3 分支的初值**临时**改成 `Front::AccessPoint`（一行，量完即回退；产品仍从面板档起）：
 
@@ -978,7 +978,7 @@ C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说�
 产品镜像烧上去，面板上三件事没成立：看不到切档那一格、看不到 `SCAN`、点了 `AP` 之后框起来又自己关掉。三处各有确定的代码路径，不是手感问题：
 
 - **左格不画、右格铺满整条**。`stamp_strip` 原来在 `!setup_cancellable` 时只画右格，而右格那时用 `toolbar_box()` 铺满整条、只写 `AP` —— 于是 `SCAN` 整条消失，切档格看起来也不像一格。这台板子的 `creds` 是空的（没有任何已存网络），`setup_cancellable == false` 正是常态，不是边角。
-- **框自己关掉**（这一条当时只找到了其中一半，另一半见下一节）。`SetupAsk` 是一个 `embassy_sync::Signal`：起 AP 要 ~1 s，这期间再点一下 `AP`（或第一下被读成两下），那个 `Front` 请求就留在契约上；下一个读它的是**接入点档**的循环，它立刻把 `Front` 读成「回面板」，框开了就关。请求是**对哪一档**发的，契约本身不记得。
+- **框自己关掉**（这一条当时只找到了其中一半，另一半见下一节）。`SetupAsk` 是一个 `embassy_sync::Signal`：起 AP 要 ~1 s，这期间再点一下 `AP`（或第一下被读成两下），那个 `Front` 请求就留在通道上；下一个读它的是**接入点档**的循环，它立刻把 `Front` 读成「回面板」，框开了就关。请求是**对哪一档**发的，通道本身不记得。
 - **修法一：两格永远两格**（工具条 A 案）。左格 = 有回头路时 `CANCEL`；面板档没有回头路时 `SCAN`（一轮在飞时 `WAIT`，与设置模式外同一个词）；接入点档没有回头路时不画左格、右格铺满整条 —— 接入点档没有列表可扫，画一个空半格就是个点不动的控件。右格永远是 `AP`/`PANEL`。`state::toolbar` 读同一组条件：左格 = 取消 / 重扫 / 切档。
 - **修法二：请求带上它是在哪一档发的**（`SetupAsk::{Cancel, Front, Pass} { from: Front }`）。渲染循环发布时读当前 `link.front`，两档的循环各自只接 `applies_to(自己的档)` 的请求，其余的丢掉并记一行：`dropped a setup request made on the panel's front; the access point stays up`（另一个方向是 `... made on the access point's front; the box is not open`）。没有时间窗：一条请求要么是这一档发的，要么不是。
 
@@ -1085,7 +1085,7 @@ keep-alive 落地后刷新正常了，**提交**那一下手机却报 `ERR_CONNE
 - 那 5 条 `ConnectionReset` 不是 submit 那条连接：同样形状的 `×5` 在 `generate_204` 的 302 之后、`/mmtls` 的 302 之后各出现过一次，是 Chrome 在导航开始时丢掉自己的池连接；
 - 时间差在最后两行：答复到 AP 拆掉只有 **68 ms**（`…853` → `…921`）。ACK 是手机内核收下了字节，不是浏览器画出来了 —— 「配网热点会随之消失」这句承诺在 done 页上屏之前就已经兑现。
 
-改动：`LEAVE_GRACE = 2 s`，`page()` 在 `JOIN.publish` 之前停这一下，AP 多留 2 秒。publish 之后 `pending().await`：这 2 秒里再点一次提交不会再往 `JOIN` 契约塞第二个凭据，否则链路刚连上就会被那条迟到的请求拽走。代价只有一个定时器，**静态墙不动**（`nm` 仍 65,592 B），C6 的 `[HEAP] 22,168 → 22,048 B`（−120 B），`iot:image-c6` **813,904 / 1,048,576 B**（77.62%）、`iot:image-s3` **1,049,568 / 6,291,456 B**（16.68%）。
+改动：`LEAVE_GRACE = 2 s`，`page()` 在 `JOIN.publish` 之前停这一下，AP 多留 2 秒。publish 之后 `pending().await`：这 2 秒里再点一次提交不会再往 `JOIN` 通道塞第二个凭据，否则链路刚连上就会被那条迟到的请求拽走。代价只有一个定时器，**静态墙不动**（`nm` 仍 65,592 B），C6 的 `[HEAP] 22,168 → 22,048 B`（−120 B），`iot:image-c6` **813,904 / 1,048,576 B**（77.62%）、`iot:image-s3` **1,049,568 / 6,291,456 B**（16.68%）。
 
 **验收**（`[实测]`，手机侧 + 串口）：
 
@@ -1205,7 +1205,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
     - **① 真机验证**：**整条「点一行 → 输口令 → OK → 关联 → 拿到地址 → 断开 → 忘记」已由 `IOT_PANEL_BENCH` 构建在板上走通**，也含「链路在飞时点那一行没有反应」「打字态不画工具条」「连接框在射频答复之前就画出来」（见「按面板路径打字」「工具条、确认框与忘记」「连上时点行不接、弹窗盖住列表」「打字态没有工具条、连接中有一个框」，全程不需要手指），以及第五轮那条「点回已存的那一行 → 库那份口令自己把链路接回来 → 页面什么都没问」（见「点已存的一行就用库里的口令」）。剩下非得人来的只有两件：4×4 键、列表行与工具条的**触摸手感**（含第四行键现在不再被工具条压着）、纯黑底色与背光 100%、以及连接框的观感与它出现/消失的时机 —— 这些是像素与触感。弹窗**盖没盖住列表**与**连接框挂没挂在那儿**都不是这两件之一 —— 它们是宿主机可测的事实（`Part::hidden`、`Part::showing`、`page::walk`、`Part::IN_ORDER`、`stamp::fill_surface`）。
     - **② 存**（**已落地**，格式、槽规则与写盘策略见「凭据落在哪」）：接线撞上的三件事都在不烧板的前提下定完 —— ① **MD5 条目 espflash 自己会写**：表里前三条 96 B 的 MD5 = `5b7fb69b103d49aee6dd86b70ccdddcf`，`esp-bootloader-esp-idf` 的 `validation` 找的正是它，**不用改**；② **双核写**：本应用从不启动第二核，默认策略今天也能写，仍选 `multicore_auto_park()`（每次写前停另一核、写完放开，几毫秒），换来以后真起第二核不会踩到；③ **多一条 `data` 分区**：子类型必须写**名字**（`creds,data,undefined,,0x2000,` 转出来是 `01 06`），写十六进制会让 `esp-idf-part` 在 `unwrap()` 上 panic。板上三次开机验过（空盘写下来、以及**产品镜像不带任何构建输入自己连回已存网络**，日志见「凭据落在哪」）。
-    - **⑥ 已存网络的标识与忘记**（**已落地**）：列表里给已存网络画 `*`、长按那一行 = 忘记（`Touch::Hold` → `BusinessIntent::AskForget(ap)`，只对已存行弹 `FORGET` 确认框）。实现没有走「把名字集经一个契约送进 `DeviceState`」那条路：S3 静态内存墙下 `SavedNetworks`（约 980 B）在 app 里落成值或 `&EMPTY` 都会顶爆，于是**掩码跟着列表自己走**（`ApList.saved: u8`，一位一行），`SurveyHistory::{observe, marked}` 收 `Option<&SavedNetworks>` 以免在 app 里造值。代价是两份列表各自持一份，`SCAN` 契约因此必须投得进去也丢不掉（见第四轮）。擦除走 `Store::forget`，板上验过（见「凭据落在哪」第 4 次）。
+    - **⑥ 已存网络的标识与忘记**（**已落地**）：列表里给已存网络画 `*`、长按那一行 = 忘记（`Touch::Hold` → `BusinessIntent::AskForget(ap)`，只对已存行弹 `FORGET` 确认框）。实现没有走「把名字集经一个通道送进 `DeviceState`」那条路：S3 静态内存墙下 `SavedNetworks`（约 980 B）在 app 里落成值或 `&EMPTY` 都会顶爆，于是**掩码跟着列表自己走**（`ApList.saved: u8`，一位一行），`SurveyHistory::{observe, marked}` 收 `Option<&SavedNetworks>` 以免在 app 里造值。代价是两份列表各自持一份，`SCAN` 通道因此必须投得进去也丢不掉（见第四轮）。擦除走 `Store::forget`，板上验过（见「凭据落在哪」第 4 次）。
     - **③ 细节**（已完成）：选中行整条反色、失败词画在打字态中槽、失败后自动重开键盘并保留草稿、`SHOW`/`HIDE` 回显、开放网络的 `OPEN` 标记与免键盘直连。
     - **④ 失败分档的真机映射**（已实测）：错口令 → 驱动 reason `FourWayHandshakeTimeout` → `NetworkError::Credentials` → 面板画 `AUTH`，从交出凭据到被拒 **37.6 s**（等的是驱动自己那次四步握手的超时）。映射表 `kind_of_disconnect` 只认能辩护的几种（`NoAccessPointFound|BeaconTimeout` → `NotFound`、`AuthenticationFailed|FourWayHandshakeTimeout|HandshakeTimeout` → `Credentials`），其余 `Driver`；`NotFound` 那半仍**未实测**（要一次把 AP 关掉的台架）。
     - **⑤ 开放网络的真机读数**：bsp 的 `Open` 修好之后这一支仍**没有台架证据**（台架上没有开放网络），目前只有状态机测试与代码审读。WPA3-only 的网由驱动版本决定连不上（见「连接策略」），不是待办而是范围。
