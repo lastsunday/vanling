@@ -365,7 +365,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 `DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Setup::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
 
-能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Setup` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Network` 与 `Feed` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
+能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Setup` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `network` 是一个传进来的 `bool`，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 
 这条规约是修一个缺陷写下来的。
 

@@ -10,7 +10,7 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::workers::NET;
-use iot_app::{Feed, Network, Wiring, run};
+use iot_app::{Feed, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
@@ -521,7 +521,7 @@ async fn main(_spawner: Spawner) {
             Wiring {
                 clock: HostClock,
                 feed: Feed::Inline,
-                network: Network::Present,
+                network: true,
                 surfaces,
             },
         ),

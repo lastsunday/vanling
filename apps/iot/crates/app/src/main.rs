@@ -20,7 +20,7 @@ async fn main(_spawner: Spawner) -> ! {
     let station = board.take_wifi();
 
     let saved = board.take_credentials();
-    let network = iot_app::Network::of(station.is_some());
+    let network = station.is_some();
     let surfaces = board.take_surfaces().expect("board has a wired surface");
     let has_pages = surfaces
         .iter()

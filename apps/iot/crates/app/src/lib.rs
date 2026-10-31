@@ -38,26 +38,12 @@ pub enum Feed {
     Inline,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Network {
-    Present,
-    Absent,
-}
-
-impl Network {
-    pub const fn of(present: bool) -> Self {
-        if present { Self::Present } else { Self::Absent }
-    }
-
-    pub const fn is_present(self) -> bool {
-        matches!(self, Self::Present)
-    }
-}
-
 pub struct Wiring<C> {
     pub clock: C,
     pub feed: Feed,
-    pub network: Network,
+    /// Whether a radio came up. `run` never sees the station — `serve` takes it — so the
+    /// caller states the bit that gates the Network page.
+    pub network: bool,
     /// The wired output surfaces, each carrying what the board says it is for.
     pub surfaces: Vec<WiredSurface>,
 }
@@ -87,7 +73,7 @@ where
         audio: audio.is_some(),
         playback: speaker.is_some(),
         camera: camera.is_some(),
-        network: network.is_present(),
+        network,
     };
     let configurator = Configurator::new(board.motion_configurations());
     sources.extend(motion);
