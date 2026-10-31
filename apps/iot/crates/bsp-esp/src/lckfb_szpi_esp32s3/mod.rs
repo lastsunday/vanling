@@ -32,10 +32,7 @@ use iot_core::drivers::audio::{AudioInput, CAPTURE_MS, CaptureSink};
 use iot_core::drivers::board::Board as BoardTrait;
 use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi};
 use iot_core::drivers::camera::FrameSource;
-use iot_core::drivers::input::{
-    BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry, TOUCH_SCAN_MS,
-    TouchGestures,
-};
+use iot_core::drivers::input::{PassThrough, PollEntry, TOUCH_SCAN_MS, TouchGestures};
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
 use iot_core::drivers::network::Front;
 use iot_core::drivers::surface::WiredSurface;
@@ -615,13 +612,7 @@ impl iot_core::drivers::board::HasInput for Board<'static> {
     fn take_input(&mut self) -> Option<Vec<PollEntry>> {
         let mut entries = Vec::new();
         if let Some(button) = self.button.take() {
-            entries.push(PollEntry::new(
-                0,
-                DemandKey::INTERACTION,
-                Box::new(ButtonScanner::new(button)),
-                Box::new(DoubleClickAggregator::new()),
-                BUTTON_SCAN_MS,
-            ));
+            entries.push(PollEntry::button(0, button));
         }
         if let Some(touch) = self.touch.take() {
             entries.push(PollEntry::new(

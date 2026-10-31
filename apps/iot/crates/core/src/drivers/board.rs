@@ -58,8 +58,7 @@ pub trait HasWifi: Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::DemandKey;
-    use crate::drivers::input::{BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator};
+    use crate::drivers::input::{BUTTON_SCAN_MS, Button};
     use crate::drivers::playback::{Recovery, SpeakerFault, Tone};
     use crate::drivers::surface::{PageSurface, RgbLight};
     use crate::paint::Rgb;
@@ -200,13 +199,7 @@ mod tests {
         let mut board = FakeBoard {
             lights: None,
             playback: None,
-            input: Some(vec![PollEntry::new(
-                0,
-                DemandKey::INTERACTION,
-                Box::new(ButtonScanner::new(FakeButton)),
-                Box::new(DoubleClickAggregator::new()),
-                BUTTON_SCAN_MS,
-            )]),
+            input: Some(vec![PollEntry::button(0, FakeButton)]),
         };
         let sources = board.take_input().expect("input present");
         assert_eq!(sources.len(), 1);

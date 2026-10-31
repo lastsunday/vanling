@@ -929,6 +929,18 @@ impl PollEntry {
         }
     }
 
+    /// A board button wired as an interaction source: debounced clicks folded into
+    /// double- and triple-clicks at the shared button cadence.
+    pub fn button(source_id: u8, button: impl Button + 'static) -> Self {
+        Self::new(
+            source_id,
+            DemandKey::INTERACTION,
+            Box::new(ButtonScanner::new(button)),
+            Box::new(DoubleClickAggregator::new()),
+            BUTTON_SCAN_MS,
+        )
+    }
+
     /// Whether the demand wants this source polled.
     pub const fn is_active(&self) -> bool {
         self.active
@@ -1482,13 +1494,7 @@ mod tests {
             assert!(entry.poll(50).is_none());
             assert_eq!(entry.poll(60), Some(InputEvent::Button(ButtonEvent::Click)));
             let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
-            let mut entry = PollEntry::new(
-                0,
-                DemandKey::INTERACTION,
-                Box::new(ButtonScanner::new(FakeButton { pressed })),
-                Box::new(DoubleClickAggregator::new()),
-                BUTTON_SCAN_MS,
-            );
+            let mut entry = PollEntry::button(0, FakeButton { pressed });
             for ms in [0, 10, 20] {
                 pressed.set(true);
                 assert!(entry.poll(ms).is_none());
@@ -1509,6 +1515,18 @@ mod tests {
                 entry.poll(511),
                 Some(InputEvent::Button(ButtonEvent::DoubleClick))
             );
+        }
+
+        #[test]
+        fn a_board_button_carries_the_interaction_wiring() {
+            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let entry = PollEntry::button(4, FakeButton { pressed });
+            assert_eq!(entry.source_id(), 4);
+            assert_eq!(entry.key(), DemandKey::INTERACTION);
+            assert_eq!(entry.cadence_ms(), BUTTON_SCAN_MS);
+            assert_eq!(entry.board_cadence_ms(), BUTTON_SCAN_MS);
+            assert_eq!(entry.next_at_ms(), BUTTON_SCAN_MS);
+            assert_eq!(entry.name(), "button");
         }
     }
 

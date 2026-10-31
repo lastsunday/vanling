@@ -8,9 +8,8 @@ use esp_hal_smartled::buffer_size;
 use esp_storage::FlashStorage;
 
 use crate::components::credentials::CredentialStore;
-use iot_core::demand::DemandKey;
 use iot_core::drivers::board::{Board as BoardTrait, HasWifi};
-use iot_core::drivers::input::{BUTTON_SCAN_MS, ButtonScanner, DoubleClickAggregator, PollEntry};
+use iot_core::drivers::input::PollEntry;
 use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::drivers::network::Front;
 use iot_core::drivers::playback::UnwiredSpeaker;
@@ -97,15 +96,9 @@ impl iot_core::drivers::board::HasSurface for Board<'static> {
 
 impl iot_core::drivers::board::HasInput for Board<'static> {
     fn take_input(&mut self) -> Option<Vec<PollEntry>> {
-        self.button.take().map(|button| {
-            vec![PollEntry::new(
-                0,
-                DemandKey::INTERACTION,
-                Box::new(ButtonScanner::new(button)),
-                Box::new(DoubleClickAggregator::new()),
-                BUTTON_SCAN_MS,
-            )]
-        })
+        self.button
+            .take()
+            .map(|button| vec![PollEntry::button(0, button)])
     }
 }
 

@@ -24,9 +24,7 @@ use iot_core::drivers::board::{
 use iot_core::drivers::camera::{
     CameraCounters, CameraTarget, FrameAdvance, FrameOwner, FrameSource, WindowGeometry,
 };
-use iot_core::drivers::input::{
-    BUTTON_SCAN_MS, Button, ButtonScanner, DoubleClickAggregator, PassThrough, PollEntry,
-};
+use iot_core::drivers::input::{Button, PassThrough, PollEntry};
 use iot_core::drivers::motion::{
     MOTION_SCAN_MS, MotionCapabilities, MotionError, MotionEvents, MotionInput, MotionReading,
     MotionSample, MotionScale, MotionSource,
@@ -349,20 +347,8 @@ impl HostBoard {
                 },
             ]),
             input: Some(vec![
-                PollEntry::new(
-                    0,
-                    DemandKey::INTERACTION,
-                    Box::new(ButtonScanner::new(HostButton(0))),
-                    Box::new(DoubleClickAggregator::new()),
-                    BUTTON_SCAN_MS,
-                ),
-                PollEntry::new(
-                    1,
-                    DemandKey::INTERACTION,
-                    Box::new(ButtonScanner::new(HostButton(1))),
-                    Box::new(DoubleClickAggregator::new()),
-                    BUTTON_SCAN_MS,
-                ),
+                PollEntry::button(0, HostButton(0)),
+                PollEntry::button(1, HostButton(1)),
             ]),
             motion: Some(PollEntry::new(
                 2,
