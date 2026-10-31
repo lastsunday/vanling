@@ -3,7 +3,7 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "18d2841f1663669ab89a5080f532ec912dd1722f"
+source_file_hash = "e3c515c475bc23bddfc69143428a227b68c8b707"
 translated_at = "2026-10-31T00:00:00Z"
 +++
 
@@ -131,7 +131,9 @@ Fidelity is pinned by tests, not by this comment: every entry and every interpol
 
 `PLY` and `DRP` are two numbers because they answer two questions — "did it make a sound" and "did it hear me". A page that combined them into one tally could not tell a quiet speaker from a busy finger.
 
-The Speaker page has no animation, and that is why it is not in `is_live_page()`: its phase flips twice per play, and both flips come from intents (so both bring a fresh diagnostics).
+The Speaker page has no animation: its `repaint` (`page/speaker.rs`) compares nothing but the
+playback diagnostics and ignores the overlay. Its phase flips twice per play, and both flips come
+from intents (so both bring a fresh diagnostics).
 
 A page repainting 320×240 pixels every frame to say the same sentence is pure waste. The Audio page is the opposite — its sweep is always moving.
 

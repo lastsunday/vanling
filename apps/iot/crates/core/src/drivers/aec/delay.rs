@@ -97,6 +97,7 @@ impl DelayEstimator {
     }
 
     /// The delay last reported, in samples.
+    #[cfg(test)]
     pub const fn estimate(&self) -> usize {
         self.estimate
     }
@@ -163,6 +164,7 @@ impl DelayEstimator {
     /// The last wide scan's path energy by band, oldest lag first.  **Raw, with the noise
     /// floor still in it** — a quiet room correlates everywhere a little and the bands say
     /// so.
+    #[cfg(test)]
     pub const fn profile(&self) -> &[u64; PROFILE_BANDS] {
         &self.profile
     }

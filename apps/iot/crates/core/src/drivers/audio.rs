@@ -262,13 +262,14 @@ impl AudioEnvelope {
         source[(oldest + age) % ENVELOPE_COLUMNS]
     }
 
-    /// The bar heights the panel draws, oldest column first, with the release ballistics of
-    /// [`released_peak`] threaded through in time order.
+    /// The unweighted columns, oldest first, with the release ballistics of `released_peak`
+    /// threaded through in time order.
+    #[cfg(test)]
     pub fn released_peaks(&self) -> [u16; ENVELOPE_COLUMNS] {
         self.released_from(&self.columns)
     }
 
-    /// [`released_peaks`](Self::released_peaks) over the A-weighted columns.
+    /// The same release ballistics over the A-weighted columns.
     pub fn weighted_released_peaks(&self) -> [u16; ENVELOPE_COLUMNS] {
         self.released_from(&self.weighted_columns)
     }
@@ -525,6 +526,7 @@ impl<A: Armed> Chain<A> {
         self.running = Some(armed);
     }
 
+    #[cfg(test)]
     pub fn running(&self) -> Option<&A> {
         self.running.as_ref()
     }

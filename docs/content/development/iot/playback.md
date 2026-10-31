@@ -124,7 +124,7 @@ MIDI 只有 note on / note off，没有包络。而音从阶跃边起止就是 c
 
 `PLY` 与 `DRP` 分成两个数，因为它们回答的是两个问题——"它出声了吗"和"它听见我了吗"。合成一个计数的页面没法区分"喇叭不响"和"手指太忙"。
 
-Speaker 页没有动画，也因此不在 `is_live_page()` 里：它的相位每次播放只翻两次，且两次都来自 intent（于是都带来一份新的 diagnostics），一个每帧重画 320×240 像素只为说同一句话的页面是纯浪费。Audio 页相反，扫描条一直在动。
+Speaker 页没有动画，它的 `repaint`（`page/speaker.rs`）只比 `playback` 这一项诊断，也不看 overlay：它的相位每次播放只翻两次，且两次都来自 intent（于是都带来一份新的 diagnostics），一个每帧重画 320×240 像素只为说同一句话的页面是纯浪费。Audio 页相反，扫描条一直在动，`repaint`（`page/audio.rs`）跟着 envelope 走。
 
 ## 一个常驻环，120 ms 余量
 

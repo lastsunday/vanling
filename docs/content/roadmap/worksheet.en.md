@@ -2,7 +2,7 @@
 title = "Work Items"
 weight = 21
 [extra]
-source_file_hash = "18d0f6501d5b30d2d0c1e0d2c0f99a7044f6a0d5"
+source_file_hash = "2ad159c21b7ad7d26cd39bb07cc5fdc7cfbdb6be"
 translated_at = "2026-10-26T00:00:00Z"
 +++
 

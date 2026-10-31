@@ -1004,7 +1004,10 @@ mod network_page {
                 ..Default::default()
             });
             long_press_the_button(&mut manager);
-            assert!(manager.setup_wanted(), "{kinds:?}: the request is latched");
+            assert!(
+                manager.state.network.setup_wanted,
+                "{kinds:?}: the request is latched"
+            );
             assert_eq!(
                 manager.state().network.setup.confirm,
                 None,
@@ -1050,7 +1053,7 @@ mod network_page {
             ..Default::default()
         }));
         assert_eq!(manager.state().page, DisplayPage::Camera);
-        assert!(!manager.setup_wanted());
+        assert!(!manager.state.network.setup_wanted);
     }
 
     #[test]

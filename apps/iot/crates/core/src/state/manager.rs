@@ -66,11 +66,6 @@ impl DeviceManager {
         self.boot_page
     }
 
-    /// Whether the button asked for setup mode while the splash was up.
-    pub const fn setup_wanted(&self) -> bool {
-        self.state.network.setup_wanted
-    }
-
     /// Apply an absolute target to the `instance`-th light surface, clamped to
     /// the installed array so one out-of-range intent can never panic.
     pub fn apply_to(&mut self, instance: usize, state: LightState) {

@@ -1256,7 +1256,7 @@ mod tests {
         settle(&mut driver);
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION;
         let reading = driver.read_sample(20).expect("read").expect("data ready");
-        assert_eq!(reading.hardware.latest(), Some(MotionEvent::Still));
+        assert_eq!(reading.hardware.iter().last(), Some(MotionEvent::Still));
         assert!(reading.sample.valid);
     }
 
@@ -1266,7 +1266,7 @@ mod tests {
         settle(&mut driver);
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION | 1 << 1;
         let reading = driver.read_sample(20).expect("read").expect("data ready");
-        assert_eq!(reading.hardware.latest(), Some(MotionEvent::Still));
+        assert_eq!(reading.hardware.iter().last(), Some(MotionEvent::Still));
         assert_eq!(
             reading.sample.status,
             STATUS1_NO_MOTION | 1 << 1,
@@ -1281,8 +1281,8 @@ mod tests {
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION;
         let first = driver.read_sample(20).expect("read").expect("first");
         let second = driver.read_sample(40).expect("read").expect("second");
-        assert_eq!(first.hardware.latest(), Some(MotionEvent::Still));
-        assert_eq!(second.hardware.latest(), None);
+        assert_eq!(first.hardware.iter().last(), Some(MotionEvent::Still));
+        assert_eq!(second.hardware.iter().last(), None);
     }
 
     #[test]
@@ -1298,12 +1298,13 @@ mod tests {
                 .expect("cleared")
                 .expect("frame")
                 .hardware
-                .latest(),
+                .iter()
+                .last(),
             None
         );
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION;
         let reasserted = driver.read_sample(60).expect("reassert").expect("frame");
-        assert_eq!(reasserted.hardware.latest(), Some(MotionEvent::Still));
+        assert_eq!(reasserted.hardware.iter().last(), Some(MotionEvent::Still));
     }
 
     #[test]
@@ -1324,7 +1325,7 @@ mod tests {
         driver.i2c.state.registers[register(REG_STATUS0)] = 0;
         driver.i2c.state.registers[register(REG_STATUS1)] = STATUS1_NO_MOTION;
         let reading = driver.read_sample(40).expect("read").expect("engine event");
-        assert_eq!(reading.hardware.latest(), Some(MotionEvent::Still));
+        assert_eq!(reading.hardware.iter().last(), Some(MotionEvent::Still));
         assert_eq!(
             reading.sample.status, STATUS1_NO_MOTION,
             "an event published without a fresh data path still has to report the status it was decoded from"

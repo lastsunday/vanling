@@ -2,7 +2,7 @@
 title = "Hardware-free Emulation and Regression Smoke"
 weight = 40
 [extra]
-source_file_hash = "ef56169a681ea9fb1b9ef4b1a48689387280fe57"
+source_file_hash = "9e83e7d3c3e611a0ec2a03e202428d585b28b910"
 translated_at = "2026-10-24T15:16:46Z"
 +++
 

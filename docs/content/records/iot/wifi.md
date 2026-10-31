@@ -244,15 +244,15 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 
 ### 页面何时扫
 
-`PageWatch`（`app/src/render.rs` 的 `PAGE`）是页面状态的**唯一共享读数**：渲染循环每 pass 把 `manager.state().page` 发布进去，网络任务用 `PAGE.wait_for_list()` 等「列表在屏上」，并 `select3` 在「扫描间隔到」/「页面**回到**列表」/「staged 凭据就绪」之间醒。
+`PageWatch`（`app/src/workers.rs` 的 `PAGE`）是页面状态的**唯一共享读数**：渲染循环每 pass 把 `manager.state().page` 发布进去，网络任务用 `PAGE.wait_for(DisplayPage::Network)` 等「列表在屏上」，并 `select3` 在「扫描间隔到」/「页面**回到**列表」/「staged 凭据就绪」之间醒。
 
 放共享状态而不是加一条消息：页面是状态（幂等、只有最新值有意义），走 channel 就要一个深度 1 的队列、写者侧的变化检测、以及被拒发送时的重试 —— 三个只为绕开「状态被当消息送」而存在的机制。这与 `EffectiveDemand` 同一形状。
 
-为什么门控在**任务**这里而不是让扫描自己判断：扫描是个死循环，它没有「页面」这个输入；把它接进来的是唯一能同时看到页面与射频的那一层。切页回来时 `wait_for_list()` 返回「等过」，所以退避计数被清零，进页立刻重扫一次。
+为什么门控在**任务**这里而不是让扫描自己判断：扫描是个死循环，它没有「页面」这个输入；把它接进来的是唯一能同时看到页面与射频的那一层。切页回来时 `wait_for(DisplayPage::Network)` 返回「等过」，所以退避计数被清零，进页立刻重扫一次。
 
 `[实测]` **「回到列表」必须是边沿，不能是电平** —— 这是同一处第二次被上板推翻。第一版把 `wait_for_list()` 放在扫描间隔那一支的第三个分支上，而列表当时**本来就在屏上**：电平检查在第一次 poll 就满足，于是 5 s 的歇息**被整段跳过**。修好前一次 120 s 的读数：**152 轮**、相邻两轮相差 **790 ms**（`survey found` 的时间戳），退避一次都没生效 —— 也就是射频一直在扫，而屏幕上什么都没变。
 
-修法是在 `PageWatch` 上加 `wait_for_return()`：先读当前页，再等它**变化**成列表页，于是「离开又回来」与「一直没离开」不再是一回事。它是**边沿**，`wait_for_list()` 是**电平**，两个都在用：前者给歇息当断路器，后者给循环问「现在该不该扫」。`[测试]` 一条钉住这个区别（`a_rest_on_the_list_is_not_cut_short_by_the_list_being_up`：同一个 `PageWatch` 上，电平在列表上是 `Ready`，边沿是 `Pending`；先离开再回来才是 `Ready`）。
+修法是在 `PageWatch` 上加 `wait_for_return()`：先读当前页，再等它**变化**成列表页，于是「离开又回来」与「一直没离开」不再是一回事。它是**边沿**，`wait_for(DisplayPage::Network)` 是**电平**，两个都在用：前者给歇息当断路器，后者给循环问「现在该不该扫」。`[测试]` 一条钉住这个区别（`a_rest_on_the_list_is_not_cut_short_by_the_list_being_up`：同一个 `PageWatch` 上，电平在列表上是 `Ready`，边沿是 `Pending`；先离开再回来才是 `Ready`）。
 
 ## 「已连接」= 关联 **且** 拿到地址，而地址要有人回说
 
@@ -629,7 +629,7 @@ C6 只带 WS2812 与 Boot 键，而 `LightRenderer::page_ground()` 只在 `light
 
 ### 答复先到手机，再结束设置模式
 
-`provision::serve` 返回 `Infallible`，所以在 `configure` 里它与面板那一路（`setup_credential`）`select` 竞争：**谁先说出一个凭据谁结束设置模式**，页面那一路随 `select` 一起被丢掉，接入点连同它的 `Runner` 一起下线。凭据经已有的 `JOIN` 通道走，于是 `hold`、凭据落盘、`Provenance` 全部原样复用 —— 页面与面板在「凭据从哪来」这层是同一条路。
+`provision::serve` 返回 `Infallible`，所以在 `configure` 里它与面板那一路（`pick`）`select` 竞争：**谁先说出一个凭据谁结束设置模式**，页面那一路随 `select` 一起被丢掉，接入点连同它的 `Runner` 一起下线。凭据经已有的 `JOIN` 通道走，于是 `hold`、凭据落盘、`Provenance` 全部原样复用 —— 页面与面板在「凭据从哪来」这层是同一条路。
 
 页面在写答复**并等到对端 ACK**（`TcpSocket::flush`，语义按 `embassy-net 0.9.1` 的 `tcp.rs` 与它的文档）之后才把凭据投上 `JOIN`。这不是保守，是一条会**稳定输**的竞态：投上 `JOIN` 就意味 `select` 立刻解析、页面 future 与 AP 的 `Runner` 一起被丢掉，**没有下一次 `interface.poll`** —— 写进 socket 缓冲区、还没上介质的字节会随栈一起消失，手机看到的是一个永不回的请求。`/submit` 因此把完成页内联在 200 里而不是 302 到 `/done`：跳转要靠第二个请求，而第二个请求要等的那套栈已经不在了。
 
@@ -643,7 +643,7 @@ C6 只带 WS2812 与 Boot 键，而 `LightRenderer::page_ground()` 只在 `light
 
 ### 设置模式下扫描不再等面板
 
-`[实测]`：`survey` 在设置模式下**无条件**扫（扫描节奏本身没动，见「一轮扫描的节奏」），原来那道「等面板到达再扫」的阻塞门（`PAGE.wait_for_list()`）换成非阻塞的 `PAGE.shows_list()` 加一个上升沿。理由：C6 上没有人会到达那一页，而页面读的正是这条列表。面板到达时 `SurveyHistory::clear()` 仍在跑，所以「到达时看到的是现场」这条性质没变。
+`[实测]`：`survey` 在设置模式下**无条件**扫（扫描节奏本身没动，见「一轮扫描的节奏」），原来那道「等面板到达再扫」的阻塞门（`PAGE.wait_for(DisplayPage::Network)`）换成非阻塞的 `PAGE.shows(DisplayPage::Network)` 加一个上升沿。理由：C6 上没有人会到达那一页，而页面读的正是这条列表。面板到达时 `SurveyHistory::clear()` 仍在跑，所以「到达时看到的是现场」这条性质没变。
 
 列表**两份**，因为有两个读者：面板那份走 `SCAN` 通道（渲染循环 `take` 掉），页面那份走 `provision::LATEST`。页面不能把面板那份取走；`LATEST` 是只有最新值有意义的窗口，所以是 `Mutex<RefCell<...>>` 而不是通道。
 
@@ -839,7 +839,7 @@ flash：`moon run iot:image` 出 S3 **1,031,168 / 6,291,456 B（16.39%）**，�
 
 ### 无屏板的灯语（`[测试]`/`[实测]`，2026-10-23/24）
 
-C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说。灯语定在 core 的状态层（`DeviceState::status_light`），只在「有射频、无屏幕」的板上生效；S3 的屏幕照旧画它自己的页面与框。
+C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说。灯语定在 core 的状态层（`DeviceState::link_notice`，闪烁曲线在 `NoticeKind::light_at`），只在「有射频、无屏幕」的板上生效；S3 的屏幕照旧画它自己的页面与框。
 
 | 设备状态 | 灯 | 为什么 |
 | --- | --- | --- |
@@ -910,7 +910,7 @@ C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说�
 
 几条规则是这一轮定下来的：
 
-- **两档不拆代码**：`configure` 的两档共用 `setup_credential`、`SurveyHistory`、列表、页面、`JOIN`/`FORGET`/`CANCEL`；`Front` 只决定现在开着哪一档。两档是**一个前端位 + 一个 AP 开关**，不是两条路径 —— 拆成两条会让「切回来」变成第二次实现。
+- **两档不拆代码**：`configure` 的两档共用 `pick`、`SurveyHistory`、列表、页面、`JOIN`/`FORGET`/`CANCEL`；`Front` 只决定现在开着哪一档。两档是**一个前端位 + 一个 AP 开关**，不是两条路径 —— 拆成两条会让「切回来」变成第二次实现。
 - **口令由站点生成并持有**：`begin_setup(ssid, secured)` 一次说清「开哪一种」，`status()` 读回 `setup_password`。面板从链路状态里拿到它、画进框里；页面不经过它，日志也不记值（只记位数）。
 - **`SetupPass` 是定长窄类型**（`[u8; 10]`），不是 `Ssid`：链路状态每个窗口都要拷一份，32 字节的名字字段装 10 字节的值，就是主任务每帧白付的 22 字节。这一条同时是过墙的手段之一（见下面的表）。
 - **字母表去掉 `0/o/1/l`**：`23456789abcdefghjkmnpqrstuvwxyz`，31 个符号 × 10 位 ≈ 49.5 bit。把它从 320 px 的一行抄到手机键盘上，形近字符是唯一会出错的地方。
@@ -1005,7 +1005,7 @@ C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说�
         ← 状态里的档位回到面板，框消失（射频仍然开着 AP）
 ```
 
-`setup_credential` 进档先扫一轮，`survey()` 扫完发布的是 `LinkStatus { setup: true, ..station.status() }`。站点那份状态只知道射频那一半（相位、AP、地址、口令），**不知道自己在哪一档**：`front` 是默认的 `Panel`，`setup_cancellable` 是 `false`。于是每轮扫描都把这两格覆盖回去 —— 框被 `shows_setup_box()` 判成「不在接入点档」而消失；有已存网络的板子上 `CANCEL` 也会每 5 秒变成 `SCAN` 一次。这也解释了为什么它是**自己**关的：手指一次也没碰。
+`pick` 进档先扫一轮，`survey()` 扫完发布的是 `LinkStatus { setup: true, ..station.status() }`。站点那份状态只知道射频那一半（相位、AP、地址、口令），**不知道自己在哪一档**：`front` 是默认的 `Panel`，`setup_cancellable` 是 `false`。于是每轮扫描都把这两格覆盖回去 —— 框被 `shows_setup_box()` 判成「不在接入点档」而消失；有已存网络的板子上 `CANCEL` 也会每 5 秒变成 `SCAN` 一次。这也解释了为什么它是**自己**关的：手指一次也没碰。
 
 修法：`LinkStatus::on_setup_face(front, cancellable)`（core）把档位与回头路一次写好，相位/AP/地址/口令原样透传；网络任务四处发布（面板档、接入点档、扫描成功、扫描失败）都走它，`survey()` 拿的也是同一个 `Face`。
 
@@ -1121,7 +1121,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 | 事 | 上一版 | 这一版 |
 | --- | --- | --- |
 | 启动页上长按 | `Toolbar(Right)`：有链路就离开，没有就 `Invalid` | `BusinessIntent::RequestSetup`：**只记请求**（`setup_wanted`），不改页、不开 AP |
-| 启动页关闭 | 回 `boot_page` | 请求过且 `network_enabled` → **落 `Network`**；否则回 `boot_page` |
+| 启动页关闭 | 回 `boot_page` | 请求过且 `backed.network` → **落 `Network`**；否则回 `boot_page` |
 | 启动页期间的链路 | 读凭据、关联，长按再把它拆掉 | **一条链路都不建**：`link()` 先等 `PAGE.wait_for_splash_end()` 才读凭据 |
 | 请求过之后 | 先关联、再离开 | 跳过关联：`Front::AccessPoint` 直接进设置模式 |
 | 判断依据 | `is_leavable()` 看链路 | 与链路无关：窗口内按下就算数，两块板同一个答案 |
@@ -1132,11 +1132,11 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 - **`SPLASH_MS = 1_500`**。从 3 s 收到 1.5 s：长按阈值是 600 ms，1.5 s 仍容得下一次完整的按住；而手指刚离开复位键就能按到 Boot，再长只是让每次开机都慢一拍。窗口是「在 1.5 s 内**开始**按住」，不是「在 1.5 s 内按完」。
 - **判据是按下时刻在窗口内，不是松手在窗口内**：时钟到期时若手指还按着（`InputSource::held()`，含去抖中尚未上报的释放），启动页**等松手再关**（`app/src/input.rs`）。1.4 s 按下、2.1 s 抬起那一下仍然算数，不会在按住的时候被时钟从手指下面抽走。
-- **一次性是结构上的**：`Splash` 不在 `CYCLE` 里，`next_page(Splash)` 直接回 `Ambient`，`with_boot_page` 拒绝它，唯一的出口是输入任务到期报的 `BusinessIntent::SplashOver`（总线满时下一拍重试）。开机之后没有任何手势能回到这一页。
-- **落点是 `boot_page`，除非请求过**：`with_boot_page()` 只记「启动页关掉之后落在哪」（构建输入 `IOT_BOOT_PAGE`、默认 `Ambient`；未 back 的页退回 `Ambient`）。`SplashOver` 读 `setup_wanted`：请求过且这块板开着网络，就落 `Network`；否则落 `boot_page`。启动页本身不改 `state.page`，所以 `IOT_BOOT_PAGE=network` 的 bench 构建照旧落在网络页。
+- **一次性是结构上的**：`Splash` 不在 `CYCLE` 里，`next_page(Splash)` 直接回 `Ambient`，`DeviceState::landed_on` 同样把它折回 `Ambient`，唯一的出口是输入任务到期报的 `BusinessIntent::SplashOver`（总线满时下一拍重试）。开机之后没有任何手势能回到这一页。
+- **落点是 `boot_page`，除非请求过**：`Setup::boot_page` 只记「启动页关掉之后落在哪」（构建输入 `IOT_BOOT_PAGE`、默认 `Ambient`；未 back 的页在 `landed_on` 里退回 `Ambient`）。`SplashOver` 读 `setup_wanted`：请求过且这块板开着网络，就落 `Network`；否则落 `boot_page`。启动页本身不改 `state.page`，所以 `IOT_BOOT_PAGE=network` 的 bench 构建照旧落在网络页。
 - **启动页期间一条链路都不建**（`[实测]`）：`link()` 的第一件事是 `PAGE.wait_for_splash_end()`，它没结束时既不读凭据也不碰射频 —— 启动页窗口里不会出现 `joining`/`leaving`。请求过就直接 `Front::AccessPoint` 进设置模式，一次关联也不做；「先连上再拆掉」的写法会在这个窗口里留下两条日志，也会让 AP 档晚 2–3 s 才起来。
-- **无凭据 = 离线可用**：`first_saved()` 为空时 `browsing()` 接住这台设备 —— 只在 `PAGE.shows_list()`（面板停在 Network 页）时扫描，页离开就停，`JOIN` 来了才 `hold`（此时才写盘）。不自动进设置模式，也不起 AP；面板页的两格仍在（`SCAN | AP`），点 `AP` 才把 AP 拉起来。C6 没有面板，配网仍要复位后在启动页按住 BOOT，这是它唯一的入口。
-- **面板页常驻**：扫描、列表、键盘、`JOIN` 从设置模式的循环里拆了出来（`setup_credential`），`link.setup` 现在表示**页面在设置面上**：面板档不起 AP，接入点档才起。S3 无凭据时三击到 Network 就是活的列表（`browsing()`），左 `SCAN` 右 `AP`，点 `AP` 才拉 AP；点一行 → `JOIN` → `hold`。
+- **无凭据 = 离线可用**：`first_saved()` 为空时 `browsing()` 接住这台设备 —— 只在 `PAGE.shows(DisplayPage::Network)`（面板停在 Network 页）时扫描，页离开就停，`JOIN` 来了才 `hold`（此时才写盘）。不自动进设置模式，也不起 AP；面板页的两格仍在（`SCAN | AP`），点 `AP` 才把 AP 拉起来。C6 没有面板，配网仍要复位后在启动页按住 BOOT，这是它唯一的入口。
+- **面板页常驻**：扫描、列表、键盘、`JOIN` 从设置模式的循环里拆了出来（`pick`），`link.setup` 现在表示**页面在设置面上**：面板档不起 AP，接入点档才起。S3 无凭据时三击到 Network 就是活的列表（`browsing()`），左 `SCAN` 右 `AP`，点 `AP` 才拉 AP；点一行 → `JOIN` → `hold`。
 - **入口不止一个**：离线页的 `AP` 格、有链路时面板的 `LEAVE`（`Hold::Left`）、已存凭据被拒（`Hold::Refused`）都进设置模式 —— 都是手指自己的动作。
 - **空闲时钟总是武装**：`page_idle()` 不再看 `armed`；进 AP 档就起 180 s，页面每读一次重置，退出时有屏板回面板档、无屏板回已存网络。旧版「无屏且无存量 → 时钟不启动」的例外已经删掉：无屏板只有显式的复位+按住，有屏板另有离线页的 `AP` 格，一台出厂设备的开放 AP 不该一直广播。
 - **有屏板画三行**（`VANLING` / `HOLD BOOT` / `SETUP`，`bsp-esp` 的 `stamp_splash`），行距 `3 × FONT_H`、按 `width`/`height` 居中。无屏板（C6）没有这页可看，状态照走：Boot 键那一按一样记下请求。
@@ -1175,7 +1175,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 两处缺陷来自同一类问题：状态用布尔近似，页面又拿近似值当模式。
 
-- **长按在启动页之外开了 AP**：`Face::browsing()` 把离线列表报成 `setup: true`，于是 `link.setup` 从配网结束起一直为真；`intent.rs` 的长按门只看 `link.setup`，任何一次长按都成了 `SwitchFront`。灯仍是琥珀色，因为 `status_light()` 只认 `setup && front == AccessPoint`，于是现象是「没进设置模式，长按却把 AP 起来了」。
+- **长按在启动页之外开了 AP**：`Face::browsing()` 把离线列表报成 `setup: true`，于是 `link.setup` 从配网结束起一直为真；`intent.rs` 的长按门只看 `link.setup`，任何一次长按都成了 `SwitchFront`。灯仍是琥珀色，因为 `link_notice()` 只认 `setup && front == AccessPoint`，于是现象是「没进设置模式，长按却把 AP 起来了」。
 - **C6 复位后不自动连**：`iot:flash` 走 `cargo run`，runner 是 `espflash flash --monitor`，没有 `--partition-table`；espflash 的默认表没有 `creds`，`Store::open` 每次开机都读不到分区，设备就永远像「从未配过网」。S3 的 `flash-s3` 与 `iot:image` 都带表，所以只有 C6 中招。
 
 改法：

@@ -3,7 +3,7 @@ title = "Logging Implementation Record"
 weight = 82
 sort_by = "weight"
 [extra]
-source_file_hash = "b230265e5988042ea90beab8cf28047fd3af3968"
+source_file_hash = "30039337b0cf3e76e5cbaa15f4fd76dc7dab2634"
 translated_at = "2026-10-29T00:00:00Z"
 +++
 

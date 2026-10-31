@@ -216,10 +216,6 @@ impl MotionEvents {
         self.slots.iter().all(Option::is_none)
     }
 
-    pub fn latest(&self) -> Option<MotionEvent> {
-        self.slots.iter().rev().find_map(|slot| *slot)
-    }
-
     fn retain(&mut self, mut keep: impl FnMut(MotionEvent) -> bool) {
         for slot in &mut self.slots {
             if let Some(event) = *slot

@@ -3,7 +3,7 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "08f21b8ae57ef2524f55cfca9a9696b0dde875fd"
+source_file_hash = "38a7b63f9f072ada062b174444d70357fc65f6fd"
 translated_at = "2026-10-31T00:00:00Z"
 +++
 
@@ -489,10 +489,11 @@ after `clear`).
 
 ### When the page scans
 
-`PageWatch` (`PAGE` in `app/src/render.rs`) is the **only shared reading** of the page: the render
+`PageWatch` (`PAGE` in `app/src/workers.rs`) is the **only shared reading** of the page: the render
 loop publishes `manager.state().page` once a pass, and the network task waits on
-`PAGE.wait_for_list()` for "the list is on the panel", waking on `select3` between "the scan
-interval is up", "the page has come **back** to the list" and "a staged credential is ready".
+`PAGE.wait_for(DisplayPage::Network)` for "the list is on the panel", waking on `select3` between
+"the scan interval is up", "the page has come **back** to the list" and "a staged credential is
+ready".
 
 Shared state rather than one more message: a page is state (idempotent, with only the latest
 value meaning anything), and a channel would need a one-deep queue, change detection on the
@@ -501,8 +502,8 @@ state being sent as a message. It has the same shape as `EffectiveDemand`.
 
 The gate is in the **task** rather than in the scan itself because the scan is a loop with no
 "page" input; the layer that can see both the page and the radio is the one that connects them.
-Coming back to the page, `wait_for_list()` reports that it waited, so the backoff counters are
-cleared and the page is scanned again at once.
+Coming back to the page, `wait_for(DisplayPage::Network)` reports that it waited, so the backoff
+counters are cleared and the page is scanned again at once.
 
 `[measured]` **"Back on the list" has to be an edge, not a level** — this is the second time the
 board overturned this one spot. The first version put `wait_for_list()` in the third arm of the
@@ -513,8 +514,8 @@ once took effect, which is to say the radio scanned continuously while nothing o
 
 The fix is `wait_for_return()` on `PageWatch`: read the page now, then wait for it to **change** to
 the list's, so "left and came back" stops being the same thing as "never left". It is an **edge**;
-`wait_for_list()` is a **level**, and both are in use: the edge is the rest's circuit breaker, the
-level is how the loop asks "should I be scanning at all". `[test]` One test pins the difference
+`wait_for(DisplayPage::Network)` is a **level**, and both are in use: the edge is the rest's circuit
+breaker, the level is how the loop asks "should I be scanning at all". `[test]` One test pins the difference
 (`a_rest_on_the_list_is_not_cut_short_by_the_list_being_up`: on one `PageWatch`, the level is `Ready` while
 the list is up and the edge is `Pending`; only away-then-back is `Ready`).
 
@@ -1344,7 +1345,7 @@ room.
 ### The answer reaches the phone before setup mode ends
 
 `provision::serve` returns `Infallible`, so in `configure` it races the panel's own path
-(`setup_credential`) through `select`: **whichever names a credential first ends setup mode**, the
+(`pick`) through `select`: **whichever names a credential first ends setup mode**, the
 page's future is dropped with the `select`, and the access point goes down with its `Runner`. The
 credential travels the existing `JOIN` channel, so `hold`, the store and `Provenance` are reused
 unchanged — the page and the panel are the same path at the level of "where a credential came from".
@@ -1387,8 +1388,9 @@ meaningless, because the answer is to take it down:
 
 `[measured]`: in setup mode `survey` scans **unconditionally** (the round's own pacing is unchanged —
 see "The rhythm of a round"), replacing the "wait for the panel to arrive" gate
-(`PAGE.wait_for_list()`) with a non-blocking `PAGE.shows_list()` plus a rising edge. The reason: on
-the C6 nobody ever reaches that page, and the page is reading exactly this list.
+(`PAGE.wait_for(DisplayPage::Network)`) with a non-blocking `PAGE.shows(DisplayPage::Network)` plus
+a rising edge. The reason: on the C6 nobody ever reaches that page, and the page is reading exactly
+this list.
 `SurveyHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
 is unchanged.
 
@@ -1825,8 +1827,9 @@ previous round's 1,025,680 B product image; the C6 image of the same name is in 
 ### The headless board's lamp (`[test]`/`[measured]`, 2026-10-23/24)
 
 The C6 has one WS2812 and no screen, so provisioning state can only be spoken by that one lamp. The
-language lives in core's state layer (`DeviceState::status_light`) and applies only to a board with a
-radio and no panel; the S3 keeps drawing its own pages and boxes on its screen.
+language lives in core's state layer (`DeviceState::link_notice`, with the flash curve in
+`NoticeKind::light_at`) and applies only to a board with a radio and no panel; the S3 keeps drawing
+its own pages and boxes on its screen.
 
 | Device state | Lamp | Why |
 | --- | --- | --- |
@@ -1934,7 +1937,7 @@ This round splits it into **two front ends, one at a time**:
 
 The rules settled here:
 
-- **Two fronts, not two paths**: both share `setup_credential`, `SurveyHistory`, the list, the page,
+- **Two fronts, not two paths**: both share `pick`, `SurveyHistory`, the list, the page,
   `JOIN`/`FORGET`/`CANCEL`; `Front` only decides which one is open. Splitting the code would make
   "switch back" a second implementation.
 - **The station makes and holds the passphrase**: `begin_setup(ssid, secured)` says which kind of AP
@@ -2352,7 +2355,7 @@ What this cut changes is **where that press lands** and **what the radio does du
 | Thing | Previous cut | This cut |
 | --- | --- | --- |
 | Long press on the splash | `Toolbar(Right)`: leave the link if there is one, `Invalid` otherwise | `BusinessIntent::RequestSetup`: the request is only **latched** (`setup_wanted`); no page change, no access point |
-| The splash closing | back to `boot_page` | asked for and `network_enabled` → **`Network`**; otherwise `boot_page` |
+| The splash closing | back to `boot_page` | asked for and `backed.network` → **`Network`**; otherwise `boot_page` |
 | The link during the splash | read a credential and associate; the hold then tears it down | **no link at all**: `link()` waits on `PAGE.wait_for_splash_end()` before reading a credential |
 | After the request | associate, then leave | skip association: `Front::AccessPoint` goes straight into setup mode |
 | What decides it | `is_leavable()` on the link | nothing about the link: a press inside the window counts, the same answer on both boards |
@@ -2369,14 +2372,15 @@ The rules:
   **waits for the release before closing** (`app/src/input.rs`). A press at 1.4 s released at 2.1 s
   still counts; the clock does not pull the page out from under the finger.
 - **One-shot is structural**: `Splash` is not in `CYCLE`, `next_page(Splash)` answers `Ambient`,
-  `with_boot_page` refuses it, and the only exit is the input task's `BusinessIntent::SplashOver`
-  when the clock runs out (retried on the next tick if the bus is full). No gesture can get back to
-  the page once the device has booted.
-- **The landing is `boot_page` unless the hold asked**: `with_boot_page()` still only records the
+  `DeviceState::landed_on` folds it back to `Ambient` too, and the only exit is the input task's
+  `BusinessIntent::SplashOver` when the clock runs out (retried on the next tick if the bus is
+  full). No gesture can get back to the page once the device has booted.
+- **The landing is `boot_page` unless the hold asked**: `Setup::boot_page` only records the
   page the splash lands on (the build input `IOT_BOOT_PAGE`, default `Ambient`; a page the wiring
-  cannot back falls back to `Ambient`). `SplashOver` reads `setup_wanted`: asked for and the board
-  wired a network means `Network`, anything else means `boot_page`. The splash itself never writes
-  `state.page`, so a bench build with `IOT_BOOT_PAGE=network` still lands on the network page.
+  cannot back falls back to `Ambient` in `landed_on`). `SplashOver` reads `setup_wanted`: asked for
+  and the board wired a network means `Network`, anything else means `boot_page`. The splash itself
+  never writes `state.page`, so a bench build with `IOT_BOOT_PAGE=network` still lands on the
+  network page.
 - **No link is built during the splash** (`[measured]`): the first thing `link()` does is wait on
   `PAGE.wait_for_splash_end()`; until it resolves, neither a credential is read nor the radio
   touched — the splash window produces no `joining`/`leaving` line. When the request is there the
@@ -2384,13 +2388,13 @@ The rules:
   down" implementation would leave two lines in that window and put the access point front 2–3 s
   later.
 - **No credentials means an offline device**: when `first_saved()` is empty, `browsing()` takes the
-  device. It scans only while `PAGE.shows_list()` (the panel sitting on Network), stops when the page
-  leaves, and only `JOIN` leads to `hold` — which is where the write happens. No setup mode, no
+  device. It scans only while `PAGE.shows(DisplayPage::Network)` (the panel sitting on Network),
+  stops when the page leaves, and only `JOIN` leads to `hold` — which is where the write happens. No setup mode, no
   access point: an unwrapped device is invisible in a phone's list. The panel page still carries both
   cells, and `AP` is what raises the access point. The C6 has no panel, so configuring it still means
   reset, then hold BOOT on the splash; that is its only way in.
 - **The panel's page is resident**: scanning, the list, the keyboard and `JOIN` were split out of the
-  setup loop (`setup_credential`), and `link.setup` now means **the page is on the setup face**: the
+  setup loop (`pick`), and `link.setup` now means **the page is on the setup face**: the
   panel front raises no access point, the access point front does. On an S3 with no credentials,
   three taps to Network give a live list (`browsing()`) with `SCAN | AP`; tapping `AP` raises it, and
   a row picked sends `JOIN`, which `hold` receives.
@@ -2548,7 +2552,7 @@ approximation.
 - **A hold outside the splash opened the AP**: `Face::browsing()` reported the offline list as
   `setup: true`, so `link.setup` stayed true after setup mode ended; the hold gate in `intent.rs`
   reads only `link.setup`, so every hold became `SwitchFront`. The lamp stayed amber because
-  `status_light()` only says `SETUP` for `setup && front == AccessPoint` — hence "not in setup
+  `link_notice()` only says `SETUP` for `setup && front == AccessPoint` — hence "not in setup
   mode, yet a hold raises the AP".
 - **The C6 did not rejoin after reset**: `iot:flash` ran `cargo run`, whose runner is
   `espflash flash --monitor` without `--partition-table`. espflash's default table has no `creds`
