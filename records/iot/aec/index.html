@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/records/iot/aec">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title active">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link active">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link active leaf">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/records/iot/aec/#回声消除实现记录">回声消除实现记录</a></li>
+    
+  </ul>
+  
+  <!-- doc-audience: ai -->
+<h1 id="回声消除实现记录">回声消除实现记录</h1>
+<p><code>apps/iot/crates/core/src/drivers/aec/</code> 的实现判断与被否方案。<strong>AI 产出，未经人类审阅</strong>，见<a href="https://lastsunday.github.io/vanling/records/">上级说明</a>。</p>
+<p>每条判断标注依据：<strong><code>[测试]</code></strong> 有对应单元测试，<strong><code>[实测]</code></strong> 有测量并附复现方式，<strong><code>[据称]</code></strong> 未复现、仅留痕。</p>
+<p>线性 AEC 只做一件事：把扬声器送出的样本所经声学路径建模出来，从麦克风里减掉。非线性抑制不在其中——见 <code>aec/mod.rs</code> 的模块文档。</p>
+<h2 id="板上的第一批数字：配对成立，消除为零">板上的第一批数字：配对成立，消除为零</h2>
+<p><code>[实测]</code> 复现：<code>moon run iot:probe-echo-s3</code>，烧到立创 S3，<code>moon run iot:flash-probe-echo-s3</code>（<strong>两块板同时插着时这个任务没有 <code>--port</code>，会自己挑一个</strong>），抓 30 秒串口。</p>
+<table><thead><tr><th>读数</th><th>实测</th><th>判断</th></tr></thead><tbody>
+<tr><td>paired / unpaired</td><td>160–200 / <strong>0</strong></td><td>✅ 两路同步成立，日志 160 of 2944 远在跑道内</td></tr>
+<tr><td>worst single poll</td><td>15.3–16.6 ms / 30 ms 上限</td><td>✅ 装得下，但已占掉一半预算</td></tr>
+<tr><td>feed</td><td>200 次/s，0 late，worst work 142–428 µs</td><td>✅ 喂得稳</td></tr>
+<tr><td><strong>ERLE</strong></td><td><strong>60 秒恒为 0 dB，一次都没动过</strong></td><td>❌</td></tr>
+<tr><td>delay</td><td>None → 16 → 50 → 6，在 64 样本窗口里乱跳</td><td>❌</td></tr>
+</tbody></table>
+<p><strong>延迟搜索乱跳是这里的重点，不是 ERLE 为零。</strong> 一条真实的声学路径有<strong>固定</strong>的延迟，它会收敛并停在那里；延迟每秒换一个值，说明参考与麦克风之间不存在稳定关系——滤波器于是永远收敛不到任何东西，而它收敛得<strong>很安静</strong>。</p>
+<h3 id="A/B：麦克风确实听得见喇叭，而「听不见」是我自己测出来的假象">A/B：麦克风确实听得见喇叭，而「听不见」是我自己测出来的假象</h3>
+<p><code>[实测]</code> ERLE 为 0 有两种完全不同的含义：参考配错了，或者<strong>根本没有回声可消</strong>。探针用<strong>每隔 6 秒翻转一次功放静音</strong>来分（<code>bench/probe/echo_room.rs</code>）。</p>
+<p>第一版 A/B 说：功放 on 时麦克风 A 计权只有 −76…−90 dBFS，off 时是 −43 dBFS，<strong>差 45 dB</strong>，于是判为「板上没有可测的声学路径」。</p>
+<p><strong>那条结论是错的，是测量设计的产物。</strong> 包络电平是 200 列 × 20 ms = <strong>4 秒滚动窗口</strong>，而第一版每 1 秒翻转一次——窗口横跨两个完整周期，两种状态被平均，读出来的是拍频。改成 6 秒翻转、并在窗口完全落进一种状态之后才打印之后，同一处读数不再复现。</p>
+<p>把<strong>每次 poll 的峰值</strong>（20 ms，不受窗口影响）逐次打印，得到连续曲线 —— 它和参考峰值<strong>同步起伏</strong>：</p>
+<table><thead><tr><th>参考峰值 LSB</th><th>麦克风峰值 LSB</th></tr></thead><tbody>
+<tr><td>22971</td><td>2180 / 2375</td></tr>
+<tr><td>17100</td><td>2220</td></tr>
+<tr><td>9178</td><td>1413 / 1454</td></tr>
+<tr><td>8884</td><td>1513</td></tr>
+</tbody></table>
+<p><strong>麦克风跟着喇叭走，声学路径是通的</strong>，麦克风比参考低约 15 dB。</p>
+<p>结论因此收窄：<strong>ERLE = 0 与延迟乱跳是 AEC 自身的问题，不是声学路径不存在。</strong> 滤波器拿着一条真实存在、真实相关的参考，交不到任何东西——这是<strong>配对/对齐</strong>的问题，仍然是那条静默失败的路子，只是错得比以前更深一层。</p>
+<h3 id="采集只交出一半的音频——这是延迟搜索锁不住的直接原因">采集只交出一半的音频——这是延迟搜索锁不住的直接原因</h3>
+<p><code>[实测]</code> 探针现在报采集吞吐量（<code>capture rate</code>），于是有了一个不靠推理的数字：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>41 polls in 1007 ms, 8424 paired = 8365 samples/s of the 16000 the canceller runs, 205 per poll</span></span></code></pre>
+<p><strong>poll 周期 24.6 ms，每次只配对 205 个抽取样本。</strong> 按 16 kHz 算，24.6 ms 本该是 394 个——实得 52%，<strong>几乎正好一半</strong>。</p>
+<p>这个数字是致命的，因为延迟搜索要跨 256 ms 的历史（<code>REFRESH_SAMPLES = 4096</code>）做相关，而麦克风每个 poll 只交出实时所需的一半：<strong>两条流覆盖的时间跨度不成比例，历史里配对的「同一时刻」并不是同一时刻</strong>。相关峰因此不在任何格点上，<code>best_lag</code> 每次都在窗口里挑噪声，delay 于是 <code>None → 16 → 50 → 6</code> 地乱跳。</p>
+<p><strong>两条候选，都还没排除：</strong></p>
+<ol>
+<li><strong>RX 被配置成了一半的速率。</strong> 24.6 ms × 24000 = 590 帧 → 197 个抽取样本，与实测的 205 几乎吻合。</li>
+<li><strong>排空提前停了。</strong> <code>drain</code> 每次取约 2460 字节，而按周期环里应该有约 4723 字节。</li>
+</ol>
+<blockquote>
+<p>下一节给出这两条的裁决与真因。</p>
+</blockquote>
+<h3 id="根因：RX_每帧一个样本，驱动按两个算">根因：RX 每帧一个样本，驱动按两个算</h3>
+<p><code>[实测]</code> 判定手段：在排空里数每 4 字节组中两半是否相同样本。</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>slots: 2/480 = 4 per mille</span></span>
+<span class="giallo-l"><span>slots: 9/543 = 16 per mille</span></span></code></pre>
+<p><strong>实质为零</strong> —— 4 字节组的两半不是同一个样本。接收缓冲是<strong>每样本 2 字节</strong>，而驱动用 <code>chunks_exact(BYTES_PER_FRAME = 4)</code> 取 <code>frame[0..2]</code>，于是<strong>每两个连续样本只留一个，丢掉麦克风的一半</strong>。</p>
+<p>来源在 esp-hal 1.2.2 的 <code>Channels</code> 文档（与 <code>Channels::MONO</code> 定义同页）：</p>
+<blockquote>
+<p><code>mask</code> ... <strong>Inactive channels do not consume or write data in the DMA buffer.</strong>
+<code>fill</code> ... <strong>This field is ignored in the receiver unit.</strong></p>
+</blockquote>
+<p><code>MONO = new_impl(2, 0b01, None)</code> —— 槽 0 有效、槽 1 在 <strong>RX 侧不占 DMA 缓冲</strong>。所以<strong>两侧帧宽本来就不对称</strong>：</p>
+<table><thead><tr><th>方向</th><th>每帧</th><th>机制</th></tr></thead><tbody>
+<tr><td>TX</td><td>2 样本 = 4 B</td><td><code>fill=None</code> → 非活动槽<strong>重复</strong>上一个活动槽</td></tr>
+<tr><td>RX</td><td><strong>1 样本 = 2 B</strong></td><td>非活动槽<strong>不消费</strong> DMA 数据</td></tr>
+</tbody></table>
+<p>算术自洽：48000 ÷ 2 ÷ 3 = <strong>8000</strong>，与修前实测的 8000 samples/s 分毫不差。</p>
+<p><strong>错误模型的出处</strong>是 core 里 <code>SLOTS_PER_FRAME</code> 的注释，它断言 <code>Channels::MONO</code> 只是槽选择、两个槽都会进 DMA，于是采集速率是 <code>SAMPLE_RATE_HZ</code> 的两倍。<strong>这条注释错在 <code>core</code>，driver 只是照抄</strong> —— 所以修的不是某一处乘法，是这个模型本身。</p>
+<h3 id="修完之后">修完之后</h3>
+<p><code>[实测]</code> 同一支探针、同一次烧录：</p>
+<table><thead><tr><th></th><th>修前</th><th>修后</th></tr></thead><tbody>
+<tr><td>capture rate</td><td>8000 samples/s</td><td><strong>15 561 samples/s</strong>（目标 16000）</td></tr>
+<tr><td>paired / poll</td><td>205</td><td><strong>442</strong></td></tr>
+<tr><td>unpaired</td><td>0</td><td>0</td></tr>
+<tr><td>delay</td><td><code>None→16→50→6</code> 乱跳</td><td><code>Some(16)…Some(64)</code>，<code>None</code> 不再出现</td></tr>
+<tr><td><strong>ERLE</strong></td><td>0 dB</td><td><strong>仍是 0 dB</strong></td></tr>
+</tbody></table>
+<p><strong>采集速率修好了，配对还没有。</strong> 延迟搜索现在每次都给出答案（在 16–64 之间游走），而不是在噪声里乱挑 —— 但 ERLE 仍为零，说明<strong>对齐仍是另一个独立问题</strong>。</p>
+<h3 id="修它时踩到的二次故障">修它时踩到的二次故障</h3>
+<p>改对帧宽后探针立刻 <strong>panic</strong>（<code>LoadProhibited</code>，崩在 <code>Es8311Tx::new</code>）。二分确认<strong>与帧宽无关</strong>，真因是 <code>BYTES_PER_POLL</code> —— 它同样用 <code>SLOTS_PER_FRAME</code> 算<strong>采集</strong>字节数，于是采集侧每一个按它派生的缓冲都大了一倍，配对 scratch 从 1601 涨到 3201 个 i16，而 <code>Board::new</code> 把这个结构体在栈上返回，撑爆了主任务栈。</p>
+<p><strong><code>BYTES_PER_POLL</code> 才是根常量</strong>：采集环深度、每次 poll 的排空预算、lag 换算、scratch 全从它来。把它从 <code>SAMPLE_RATE_HZ × SLOTS_PER_FRAME × BYTES_PER_SAMPLE × CAPTURE_MS</code> 改成 <code>SAMPLE_RATE_HZ × CAPTURE_BYTES_PER_FRAME × CAPTURE_MS</code>（3840 → <strong>1920</strong>）之后，scratch 回到原尺寸，panic 消失。</p>
+<p><code>[测试]</code> 两个按旧常量写的测试因此失败（<code>7708/7934/8188</code>、<code>9600/7680</code>）。它们断言的是「<strong>以 poll 计</strong>的深度」——注释自己写着「2.13 polls」——所以改法不是抄新的观测值，而是<strong>改写成 poll 计</strong>（<code>BYTES_PER_POLL * 2 + 偏移</code>），让下一次帧宽修正不会再静默作废它们。</p>
+<h3 id="顺带发现：包络的时间轴一直是半速">顺带发现：包络的时间轴一直是半速</h3>
+<p><code>[实测]</code> <code>SAMPLES_PER_COLUMN</code> 同样用了 <code>SLOTS_PER_FRAME</code>，而 <code>SampleStream::push_bytes</code> 每 2 字节解一个样本 —— <strong>每一列实际装的样本数只有它自称时长的一半</strong>。Audio 页的窗口在所有既往版本里都是<strong>半速绘制</strong>的，与 AEC 无关，是同一次错误的另一个受害者。</p>
+<h3 id="延迟搜索不是「测偏了」，是「根本没有峰」">延迟搜索不是「测偏了」，是「根本没有峰」</h3>
+<p><code>[实测]</code> 把 <code>MAX_DELAY</code> 从 64 临时放宽到 256（诊断用，已撤回 —— 8 倍搜索成本会撑爆 poll 预算），delay 立刻变成 <strong>223–255</strong>。</p>
+<p><strong>放宽到哪就贴到哪</strong>：窗口 64 时报 64，窗口 256 时报 255。</p>
+<p>这不是「真实偏移超过窗口」，而是<strong>搜索返回的是窗口边界本身</strong>。<code>best_lag</code> 取分数最大的格点，而分数随 lag 单调上升到边缘 —— 说明<strong>根本没有相关峰</strong>，只有一条爬升的斜坡。</p>
+<p>一条最可能的机制（<strong>未验证</strong>）：两路信号若都带直流偏置，<code>cross·1000/(√ref_pow·√mic_pow)</code> 在<strong>每一个</strong> lag 都约等于 ±1000 —— 远超 0.3 的置信门。于是搜索在整条平线上取「第一个严格大于当前最大值」的格点，结果由遍历顺序和噪声决定，表现为「总是贴着窗口边缘」。</p>
+<p><strong>这解释了此前所有观察</strong>：ERLE 恒为 0、delay 乱跳、以及修好帧宽后 delay 从「<code>None</code> 乱跳」变成「稳定贴着 64」—— 三者本是同一个症状的不同侧面。<strong>所以下一步不是继续调 lag，而是先确认真相位下的相关函数长什么样。</strong></p>
+<p>最小判据：在 <code>best_lag</code> 里把最大分数与它的 lag 一起报出来。若最大分数本身就在 1000 附近，是直流偏置；若分数很低却仍选在边缘，那是遍历/下标的问题。</p>
+<h3 id="判据：相关峰只有_78–271‰，门限是_300">判据：相关峰只有 78–271‰，门限是 300</h3>
+<p><code>[实测]</code> 把 <code>best_lag</code> 的最大分数报出来（<code>delay_peak</code>）之后，这一整串症状一次说清：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>delay None     peak 215 per mille</span></span>
+<span class="giallo-l"><span>delay Some(53) peak  89</span></span>
+<span class="giallo-l"><span>delay Some(64) peak 271</span></span>
+<span class="giallo-l"><span>delay Some(60) peak  78</span></span>
+<span class="giallo-l"><span>delay Some(55) peak 193</span></span></code></pre>
+<p><strong>门限 <code>MIN_CORRELATION = 300</code> 没有被跨过一次。</strong> 于是 <code>estimate</code> 从未被更新，<strong>报出来的 <code>delay</code> 全是陈旧值</strong> —— 修好帧宽后那些「稳定贴着 64」不是收敛，是残留。</p>
+<p><strong>DC 偏置假设到此证伪</strong>：那种情况下每个 lag 都会给到 ~1000，而实测最高 271。</p>
+<p><strong>真正的事实是：麦克风与参考在 ±64 样本内基本不相关</strong>，搜索取到的最好点也只有 0.08–0.27。延迟搜索没有坏 —— 它在正确地回答「这里测不到相关」。</p>
+<p><code>MIN_CORRELATION</code> 的注释原本就写着 <strong><code>[据称]</code> 0.3 是留了余量的猜测，并想要一个台架数字</strong>。现在这个数字有了：<strong>这块板的声学路径只到 78–271‰</strong>。门限该按实测重定，而不是继续调 lag —— 那正是它当初说要避免的事。</p>
+<hr />
+<p><strong>本文顺序：先算法验证，后硬件代价。</strong> 这两件事的因果曾被我弄反过一次——先测了 CPU，然后拿一个合成房间的数字去证明算法行。顺序反过来才对，因为「算法值不值得做」决定「要不要为它花 CPU」，反过来不成立。</p>
+<hr />
+<h2 id="没有可用的公开录音做验证：三份实测不可用，第四份誊录不可验证">没有可用的公开录音做验证：三份实测不可用，第四份誊录不可验证</h2>
+<p><code>[实测]</code> 计划要求「用官方测试向量量出定点线性 AEC 能压下多少 dB」。找遍之后：<strong>不存在一份干净的、含真实线性声学回声路径的 (参考, 麦克风) 公开录音。</strong></p>
+<p><strong>乐鑫 <code>docs/_static/aec_in_far.wav</code> / <code>aec_in_near.wav</code>。</strong> 标注为「远端（播放参考）」与「近端（含回声的麦克风）」，是读者第一个会拿的文件。<strong>两者不同步</strong>：全程 53 s、遍历所有滞后，最大归一化互相关 <strong>0.137</strong>；单抽头拟合只解释 <strong>0.08 dB</strong>；包络相关 0.35；谱质心 1301 Hz vs 2620 Hz。本实现在这对上得到 <strong>−14.4 dB</strong>——正是「减掉一个不相关的信号」应有的结果。</p>
+<p><strong>乐鑫 <code>audio_mic_file</code> / <code>audio_ref_file</code>。</strong> 这是乐鑫自己 <code>test_afe.cpp</code> 喂给 <code>aec_process</code> 的一对，同步（相关 0.743，单抽头增益 0.9956）——<strong>但里面没有回声路径</strong>。离线最小二乘（任何平稳线性抵消器的上界）：</p>
+<table><thead><tr><th>抽头</th><th>全程 ERLE</th><th>核峰位置</th></tr></thead><tbody>
+<tr><td>32</td><td>−1.04 dB</td><td>1.02，落在<strong>最后一抽</strong></td></tr>
+<tr><td>64</td><td>+0.04 dB</td><td>1.03，落在<strong>最后一抽</strong></td></tr>
+<tr><td>128</td><td>+0.42 dB</td><td>1.02，落在<strong>最后一抽</strong></td></tr>
+<tr><td>256</td><td>−4.97 dB</td><td>1.02，落在<strong>最后一抽</strong></td></tr>
+</tbody></table>
+<p>能量压在窗口末尾那一抽、无衰减结构、无体延迟——不是声学路径。前半段拟合后半段测试得 +5.08 dB（样本内 +6.15 dB），关系是持续存在的，只是不是回声。</p>
+<p><strong>Microsoft ICASSP AEC-Challenge 的 <code>real_doubled</code>。</strong> 本领域真正的参考数据集，10,000 个真实环境。<strong>扫了 40 个 GUID，没有一个有线性回声关系</strong>：128 抽离线 Wiener 上界最好的是 <strong>−0.42 dB</strong>，任何位置的最大相关 0.137。<strong>这是有据可查的行为</strong>，Cutler 等《ICASSP 2023 AEC Challenge》(arXiv:2309.12553) §4.1：</p>
+<blockquote>
+<p>Even though our application uses the WASAPI raw audio mode to bypass built-in audio effects, the PC can still include Audio DSP on the receive signal [...] it can also include <strong>Audio DSP on the send signal, such as AEC and noise suppression</strong>.</p>
+</blockquote>
+<p>消费级音频栈若在环回抽头和落盘文件之间<strong>已经跑了它自己的回声消除</strong>，线性模型就没有任何东西可预测。同一节说明 ERLE 也不是这份数据集的指标（<strong>与主观质量 PCC 仅 0.31</strong>）。</p>
+<p><strong>ITU-T G.168 (04/2015)</strong> 是下一个答案，而且方向完全正确：Annex D 给出 8 个回声路径模型 <code>m_i(k)</code> 的<strong>显式冲激响应表</strong>加缩放因子 <code>K_i</code>，<strong>参考素材确实一个字音频文件都不需要</strong>——正是该找的东西。PDF 公开可下载（154 页）。<strong>但没有采用</strong>，因为誊录无法验证：</p>
+<ul>
+<li>部分页面上表格的首列被文本抽取吞掉（m1 每行的第一个数与同行其余数差 1–2 pt 基线）</li>
+<li>读取顺序有歧义（"to be read in columns"），列主序与行主序两种读法差一倍</li>
+<li><strong>两种读法都违反标准自己的不变式</strong>——「缩放后 g(k) 的幅度响应不得超过 0 dB」——超出 1 到 11 dB</li>
+</ul>
+<p>验证不了的表格不是测试该建立其上的数据。这和删掉软件时钟标定是同一个理由：<strong>交付站不住的数字比不交付更糟</strong>。</p>
+<p>不过 G.168 的 Test 12 注记替我方结论盖了章：</p>
+<blockquote>
+<p>This test may be enhanced by the future addition of test vectors that represent real acoustic echo signals. <strong>This enhancement is for further study.</strong></p>
+</blockquote>
+<p><strong>标准机构自己说真实的声学回声测试向量还不存在。</strong></p>
+<h3 id="于是参考基准改为「同一条路径上的离线最优」">于是参考基准改为「同一条路径上的离线最优」</h3>
+<p>不是借用一条外部路径，而是对每条路径<strong>当场解最小二乘</strong>，报出<strong>同样长度下任何滤波器能达到的最好结果</strong>。这个数是算出来的不是誊来的，所以不可能错，而且它回答的是线性自适应滤波器真正要回答的问题：<strong>它找到最优线性解了吗，差多少？</strong></p>
+<p>复现（无外部资产、无网络）：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-support z-function z-builtin">cd</span><span class="z-string"> apps/iot</span><span class="z-punctuation"> &amp;&amp;</span><span class="z-entity z-name z-function"> cargo</span><span class="z-string"> test -p iot-core --test aec_erle -- --nocapture</span></span></code></pre><table><thead><tr><th>路径</th><th style="text-align: right">抽头</th><th style="text-align: right">离线最优</th><th style="text-align: right">本实现</th><th style="text-align: right">差距</th></tr></thead><tbody>
+<tr><td>短，快衰减</td><td style="text-align: right">16</td><td style="text-align: right">62.9</td><td style="text-align: right">61.0</td><td style="text-align: right">1.9</td></tr>
+<tr><td>中等，中等衰减</td><td style="text-align: right">48</td><td style="text-align: right">58.8</td><td style="text-align: right">57.2</td><td style="text-align: right">1.6</td></tr>
+<tr><td>长尾，慢衰减</td><td style="text-align: right">192</td><td style="text-align: right">38.9</td><td style="text-align: right">38.8</td><td style="text-align: right"><strong>0.1</strong></td></tr>
+<tr><td><strong>尾长于滤波器</strong></td><td style="text-align: right">256</td><td style="text-align: right"><strong>14.4</strong></td><td style="text-align: right">13.2</td><td style="text-align: right">1.2</td></tr>
+</tbody></table>
+<h3 id="15_dB_那道闸被重新定义了：它是对路径说的，不是对算法说的">15 dB 那道闸被重新定义了：它是对路径说的，不是对算法说的</h3>
+<p><strong>尾长于滤波器时，离线最优本身只有 14.4 dB</strong> —— 任何 128 抽线性滤波器都到不了 15 dB。要求算法到达 15，是要求它出错。</p>
+<p>所以验收判据从「固定 dB」改成「<strong>与离线最优的差距 ≤ 3 dB</strong>」，而 15 dB 只施加在<strong>滤波器能完整容纳的路径</strong>上。这条区分是自验证基准才给得出的：借来的路径告诉不了你上限是谁设的。</p>
+<p>同时保留两条限制：<strong>过了 15 dB 是必要不充分</strong>（PCC 0.31）；<strong>这些路径是生成的，测的是模型不是房间</strong>，本板的回路增益、体延迟、门限仍需板子。</p>
+<hr />
+<h2 id="生成路径必须有直达反射，否则延迟搜索无处可寻">生成路径必须有直达反射，否则延迟搜索无处可寻</h2>
+<p><code>[实测]</code> 第一版路径的<strong>每一个抽头都是同量级随机值</strong>，于是没有「起点」——每个滞后的相关都差不多，延迟搜索锁不住任何东西，只会报噪声碰巧最大的位置：12 抽的路径报 15，4 抽的报 22（离线核对确认峰值本来就在那里），滤波器瞄错地方，只拿到 <strong>0.4 dB</strong>。</p>
+<p>真实的房间冲激响应有<strong>一个明确的直达反射</strong>压过其后所有反射。补上（直达 30,000、其后 ±8,000）之后，四条路径的互相关峰<strong>精确落在真值上</strong>（8/12/6/4），ERLE 随之从 0.4 dB 变成 61 dB。</p>
+<p>同类的错误在断言里也出现过一次：原本测「说话人没被学成回声」的指标是<strong>滤波器能量落在路径之外的占比</strong>，而一条 48 抽路径配 128 抽滤波器，路径之外本来就有 46% 的能量（很多小系数）——<strong>该测的是增长量，不是占比</strong>。</p>
+<hr />
+<h2 id="冻结拦得住持续损伤，拦不住起始那半秒">冻结拦得住持续损伤，拦不住起始那半秒</h2>
+<p><code>[实测]</code> 这是新测试逼出来的。相干度计量器的时间常数约 512 样本，所以说话人开口后，滤波器仍以<strong>全速</strong>自适应了约 543 个样本，然后冻结锁定了状态。</p>
+<table><thead><tr><th></th><th>值</th></tr></thead><tbody>
+<tr><td>冻结覆盖</td><td>31,457 / 32,000 样本（98%）</td></tr>
+<tr><td>路径外能量，静默时</td><td>3.203e10</td></tr>
+<tr><td>冻结生效时</td><td><strong>1.176e17（3.7e6 倍）</strong></td></tr>
+<tr><td>结束时</td><td>1.176e17（<strong>冻结之后没有再增长</strong>）</td></tr>
+</tbody></table>
+<p>所以设计是<strong>部分</strong>有效的：冻结确实止住了损伤增长，但它止不住第一段。Q30 下这对应约 3.6% 的增益被学进了本该为零的抽头——不是 0，但也不是零。</p>
+<p><strong>根因是计量器的滞后，不是门限。</strong> 相干度要几百个样本才读得出「不相干」，而滤波器在这几百个样本里已经跑完。缩短保持窗口解决不了（相干度还是那么慢）。真正的修法需要一条<strong>更短的冻结决策专用计量器</strong>，那是设计改动，不在验证这一轮里做。</p>
+<p><code>[据称]</code> 听感上这半秒有多糟，没有在本板测过。</p>
+<hr />
+<h2 id="步长不能按残余电平缩放">步长不能按残余电平缩放</h2>
+<p><code>[实测]</code> Valin 的变步长 MDF/NLMS（TASLP 2007）确实按残余缩放步长，这也是「从残余推导步长」最自然的读法。<strong>但在收敛之前，残余就是麦克风本身</strong>——它不是一个和滤波器有关的量，它是房间里最响的东西。</p>
+<p>在 12 000 LSB 的合成房间上，这把起始步长压到全速的 1/48，滤波器得到 <strong>−0.5 dB</strong>；同一套循环换成固定全速步长得到 20 dB。慢启动不是「精度差一点」，是整个收敛过程都没发生。</p>
+<p>所以 <code>gate.rs</code> 里的步长是<strong>常数</strong>：全速，或者冻结时为零。残余只用于它能唯一回答的那一个判断。</p>
+<p>「全速」是选出来的，不是默认值：NLMS 在 <code>(0, 2)</code> 内稳定，<code>1 &lt;&lt; 29</code>（Q30 的 0.5）是常规选择，下面还有余量。</p>
+<hr />
+<h2 id="冻结不能只看残余电平：收敛中的滤波器和一个说话的人留下的都是大误差">冻结不能只看残余电平：收敛中的滤波器和一个说话的人留下的都是大误差</h2>
+<p><code>[测试]</code> 这是上面那个失败从另一侧撞上来的同一件事。绝对门限作用在残余上，会在滤波器自己的启动过程中把它冻住。</p>
+<p>分开这两者的量是<strong>相干度</strong>：</p>
+<ul>
+<li>滤波器还在收敛时，误差主要是<strong>它还没解释掉的那部分回声</strong>，因此与参考高度相关（相干度 ≈ 1）；</li>
+<li>有人说话时，误差是语音，与参考几乎无关（相干度 ≈ 0）。</li>
+</ul>
+<p>这是 Gänsler 的相干度双讲检测（JASIP 2015 指出它的两个缺点：门限依赖背景噪声与说话人音量）。它放在滤波器旁边而不是旁边再放一个检测器，是因为滤波器本来就要算的东西全在这里：三个滑动均值，每个样本多一次乘法。</p>
+<p><code>gate.rs</code> 的两个门限都标了 <code>[据称]</code>：<code>LEAKAGE_FREEZE = 1&lt;&lt;24</code>（约 4096 LSB RMS，取自<a href="https://lastsunday.github.io/vanling/records/iot/audio/">音频记录</a>里 30 cm 语音峰值 80 dB SPL 的标定）、<code>MAX_COHERENCE = 0.6</code>。两个都要在台架上用真人重测。</p>
+<p><strong><code>has_path</code> 这一层被删掉了。</strong> 它用「预测量够不够大」代替相干度，而一个把麦克风整个预测出来的滤波器预测量也很大——它其实什么都没学到。相干度一个量就够。</p>
+<hr />
+<h2 id="相干度的分子是带符号均值，不是平方均值">相干度的分子是带符号均值，不是平方均值</h2>
+<p><code>[测试]</code> <code>coherence = |E[e·x]| / (rms_e · rms_x)</code>。第一版把 <code>e·x</code> 平方后再进滑动均值，得到的是<strong>幅度平方相干</strong>——它分不出「路径反相」和「路径不存在」，而两者在这里要分开。</p>
+<p>代价一样是一个乘法，收益是分得开。所以 <code>power.rs</code> 里多了一个 <code>SignedMeter</code>，和 <code>PowerMeter</code> 同一个位移、同一条理由：<strong>截断时补 ±1 的下限是它能真的收敛到目标而不是停在半步之外的唯一办法</strong>，而对带符号的量这件事重要两倍——到不了零的均值不是均值。</p>
+<hr />
+<h2 id="Noise::new(seed_|_1)_把相邻种子折叠成同一个序列"><code>Noise::new(seed | 1)</code> 把相邻种子折叠成同一个序列</h2>
+<p><code>[测试]</code> xorshift 状态为零就永久卡死，而零正是调用方最可能写下的那个种子，所以它需要被换掉。但<strong>只需要非零，不需要奇数</strong>。</p>
+<p>原来的 <code>seed | 1</code> 把 2 折成 3、把 3 折成 3。于是「两个独立的噪声源」其实是同一个信号，相干度读 1.0，而正确的值是 0。这个 bug 的危险在于它完全静默：测试照跑，只是断言了一个假的数。</p>
+<p><code>signal.rs</code> 里现在有一条测试专门钉住它。</p>
+<p>顺带：同一次重写里还发现测试生成器用 <code>i32</code> LCG 配 <code>n &gt;&gt; 16</code> 做均匀噪声是错的——算术右移让一半的值变负，<code>% 16000</code> 保留符号，再减 8000，样本范围变成 [−24000, −1]，均值平方大 6.8 倍，冻结门限因此形同虚设。现在统一用 <code>signal::Noise</code>。</p>
+<hr />
+<h2 id="延迟搜索必须有置信度门限">延迟搜索必须有置信度门限</h2>
+<p><code>[测试]</code> 比窗更远的路径，在窗内每个滞后上的相关都约等于零，而搜索返回的是<strong>最大的那一个</strong>——也就是噪声里的最大值。功率门限挡不住这一种：两个不算静音的房间照样能找到一个峰。</p>
+<p>没有门限时，超出搜索范围的路径被回答成窗内某个随机的数（实测报 2，真值 84），而调用方无从分辨。加 <code>MIN_CORRELATION = 300</code>（千分比）之后同样的输入回答「没找到」，<code>settled()</code> 保持 false。</p>
+<p>窗外的路径返回窗边缘同样不对——那是一个看起来很确定的错数。现在返回 <code>None</code>。</p>
+<hr />
+<h2 id="延迟搜索必须限频：它比用它的滤波器还贵">延迟搜索必须限频：它比用它的滤波器还贵</h2>
+<p><code>[实测]</code> 搜索一次是 <code>(2·SEARCH + 1)·WINDOW = 65 × 256 = 16,640</code> 次乘加，约等于自适应滤波在同样本上工作量的三分之二。<strong>每个样本都跑，找到延迟会比用它抵消更贵。</strong></p>
+<p>延迟是板子放在哪里的属性，不是音频的属性，所以按 40 ms 一次（<code>REFRESH_SAMPLES = 16 × WINDOW</code>）。首次搜索在历史攒满时立即发生，不等一个间隔——延迟是最该早拿到的量。</p>
+<p>加之前 <code>cargo test -p iot-core aec</code> 要 45 s（851,940 样本上跑成平方复杂度）；加之后 0.14 s。<code>DelayEstimator::searches()</code> 报告实际搜索次数，因为提高这个速率的人有权知道自己买到了什么。</p>
+<hr />
+<h2 id="ERLE_的稳态值和全程值不是同一个量">ERLE 的稳态值和全程值不是同一个量</h2>
+<p><code>[实测]</code> 同一段音频、同一套滤波器，两个数都不是错的，只是回答不同的问题。<strong>AEC Challenge 的规则与此一致</strong>（Cutler 等，§7）：</p>
+<blockquote>
+<p>For the far end single talk scenario, we evaluate the <strong>second half</strong> of each clip, to avoid initial degradations from initialization, convergence periods, and initial delay estimation.</p>
+</blockquote>
+<p>所以<strong>只报后半程是标准做法</strong>，全程数降级为附带。</p>
+<p>第一版把「全程求和」和「末态瞬时读数」放在一起比，差 51 dB，然后花时间去怀疑仪表。真正的教训是：<strong>收敛过程和稳态必须分开报</strong>，否则其中一个必然被当成另一个。逐秒曲线（16 → 19 → 21 dB）是它收敛多快的证据——一个只报终点的数字分不清「收敛很快」和「二十秒后才收敛」，而这个差别决定电话的前半程能不能用。</p>
+<p>计量器自身的读数（63.0 dB）与样本求和（57.2 dB）差 6 dB，在容差内；两者的窗口不同，一个是 ~30 ms 的指数平均，一个是整段求和。</p>
+<hr />
+<h2 id="数字上踩过的几处">数字上踩过的几处</h2>
+<p><code>[测试]</code> 都是先错了、后被测量推翻、再改的：</p>
+<p><strong><code>PowerMeter</code> 的步长下限不能用 <code>max</code>。</strong> <code>max</code> 取<strong>较大</strong>的那个值，于是电平下降时每样本走 1 LSB 而不是 2⁹，计量器把电平多保持约 1000 倍。残差停在 389 而真值是 900。正确做法是仅在移位结果为零时取 ±1。</p>
+<p><strong>环形缓冲要先推进再写入。</strong> 否则 <code>head</code> 指向最新样本的下一个槽，<code>tap(0)</code> 读到错位一格，每个峰都晚一抽落地。</p>
+<p><strong>整数 <code>log2</code> 的尾数提取。</strong> 平方尾数时进位位必须和被缩放的值分开处理：进位用 <code>squared &gt;&gt; 1</code>，不是 <code>squared &gt;&gt; (LOG_FRACTION+1)</code>。</p>
+<p><strong><code>ErleMeter</code> 的比值不要用 Q 缩放。</strong> 分子乘 2¹⁶ 之后会从对数里多出 16 个八度。整数除法截断误差不到 0.5 dB。</p>
+<p><strong>保持计数器必须封顶。</strong> <code>above</code> 自由增长会在长段说话时饱和到 <code>u32::MAX</code>，之后每个样本只减 1，再也解不开——滤波器永久冻结。</p>
+<hr />
+<h2 id="CPU：先量时钟，再谈结论">CPU：先量时钟，再谈结论</h2>
+<p><code>[实测]</code> 第一版这里贴了一张我站不住的表。它说 L=128 要 74.7 ms/tick、「219 cycles/MAC」，并用一条数据手册上的时钟去换算。<strong>两处都错了，错在同一个根上：我从来没读过这颗芯片实际被配成了多少。</strong></p>
+<h3 id="参照循环揭穿了它">参照循环揭穿了它</h3>
+<p>探针里加了一条尽可能平凡的循环：256 系数 × 1024 样本的<strong>整数</strong> FIR，无边界检查、不走 <code>&amp;mut self</code>——<strong>就是 Espressif 公开基准 <code>dsps_fir_f32</code> 的原题</strong>，所以数字可以直接对。</p>
+<p>我预期它跑在 1.7 cycles/MAC 附近。实际 <strong>12 cycles/MAC</strong>。一条比 AEC 滤波器更简单的循环慢 193 倍，说明问题不在 AEC 的代码。</p>
+<h3 id="CPU_当时跑在_80_MHz">CPU 当时跑在 80 MHz</h3>
+<p><code>esp_hal::clock::cpu_clock()</code> 读回 <strong>80,000,000 Hz</strong>。原因在 esp-hal 1.2 自己的源码里：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> CpuClock</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 80 MHz CPU clock</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">    #</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">default</span><span class="z-punctuation">]</span></span>
+<span class="giallo-l"><span class="z-source">    _80MHz  </span><span class="z-keyword z-operator">=</span><span class="z-constant z-numeric"> 80</span><span class="z-punctuation">,</span></span></code></pre>
+<p><code>Config</code> 派生 <code>Default</code>，<code>CpuClock</code> 的默认臂就是 <code>_80MHz</code>。<strong><code>esp_hal::init(Config::default())</code> 给的是 80 MHz。</strong> 我先前引用的「<code>Config::default()</code> 会设到最高频率」来自一篇讲 Arduino-ESP32 的博客，不是 esp-hal。</p>
+<p>换成 80 MHz 重算，参照循环 12 cycles/MAC，而 Espressif 的<strong>浮点</strong>汇编在 240 MHz 是 1.69 —— 折到 80 MHz 是 36。<strong>我的整数循环比它还好。平台、时钟、计时器、构建全部正常。</strong></p>
+<h3 id="修正后的数字">修正后的数字</h3>
+<table><thead><tr><th></th><th style="text-align: right">µs / tick (L=128)</th><th style="text-align: right">cycles/MAC @80 MHz</th></tr></thead><tbody>
+<tr><td><strong>参照 FIR</strong>（平凡整数循环）</td><td style="text-align: right">—</td><td style="text-align: right"><strong>12</strong></td></tr>
+<tr><td>AEC 卷积</td><td style="text-align: right">16,206</td><td style="text-align: right">31.6</td></tr>
+<tr><td><strong>AEC 系数更新</strong></td><td style="text-align: right">48,941</td><td style="text-align: right"><strong>119</strong></td></tr>
+</tbody></table>
+<p><strong>不是 219。</strong> 但「5.4 倍来自边界检查和 <code>&amp;mut self</code> 栈重装」这个归因<strong>也是错的</strong>——下一节。</p>
+<h3 id="分块自适应：过了">分块自适应：过了</h3>
+<p>系数更新是最大的单项——L=16 的 7.7 ms、L=128 的 49 ms——而每样本更新一次不是必须的。改成每 4 个样本一次（<code>UPDATE_STRIDE</code>，用 <code>head % 4</code> 计数，不加任何状态）。</p>
+<p><code>[实测]</code> <strong>L=16 从 15,531 掉到 9,680 µs，过了 ≤10 ms 那条线。</strong></p>
+<table><thead><tr><th></th><th style="text-align: right">逐样本</th><th style="text-align: right">stride 4</th></tr></thead><tbody>
+<tr><td>L=16 系数更新</td><td style="text-align: right">7,699 µs</td><td style="text-align: right"><strong>1,880 µs</strong>（−76%）</td></tr>
+<tr><td>L=16 滤波器整体</td><td style="text-align: right">9,803</td><td style="text-align: right"><strong>3,945</strong>（−60%）</td></tr>
+<tr><td><strong>L=16 整体</strong></td><td style="text-align: right">15,531</td><td style="text-align: right"><strong>9,680 µs</strong></td></tr>
+<tr><td>L=32</td><td style="text-align: right">22,892</td><td style="text-align: right">13,528</td></tr>
+<tr><td>L=64</td><td style="text-align: right">36,772</td><td style="text-align: right">20,448</td></tr>
+<tr><td>L=128</td><td style="text-align: right">70,945</td><td style="text-align: right"><strong>34,911 µs</strong>（−51%）</td></tr>
+</tbody></table>
+<p>代价在 ERLE 上：<strong>稳态逐位不变</strong>（四条路径对离线最优的 gap 仍是 1.9 / 1.6 / 0.1 / 1.2，移动路径照样跟过六样本的突变），<strong>但 whole-file 从 20.9 掉到 16.2 dB</strong>——慢的是收敛，不是收敛之后。</p>
+<p>卷积现在占滤波器的一半（2,065 vs 1,880），更新不再是主要代价。</p>
+<h3 id="频域路线：写完了_FFT，量出来是「否」">频域路线：写完了 FFT，量出来是「否」</h3>
+<p>最佳实践指向 MDF / 分块频域 NLMS。<code>arduino-audio-tools</code> 恰好把两套并存（时域 NLMS 与 speexdsp 的 MDF 移植），对时域那套的判词是：</p>
+<blockquote>
+<p>O(filter_len) work per sample, no FFT … <strong>a reasonable fit for small microcontrollers with a short, simple echo path</strong>
+cost grows linearly with it — <strong>this is not the right tool for a long, reverberant echo tail</strong></p>
+</blockquote>
+<p>所以按计划先写 FFT、先测它，再谈架构：512 点 radix-2 定点，旋转因子用二进制幂生成（递推相乘会漂，逐项 ≤9 次舍入），7 个测试，其中一个拿独立的 f64 直接 DFT 逐点对拍。</p>
+<p><code>[已删]</code> **那个 FFT 量完之后删掉了。**结论留下，代码没有——它在产品路径里零引用，留着就是一份没有调用者的代码，而记录里留着一个「变换要占预算 182%」的结论比留着一个没人用的变换更有用。<strong>下面的数字是实测的，不是推断。</strong></p>
+<p><code>[实测]</code>：</p>
+<table><thead><tr><th></th><th style="text-align: right"></th></tr></thead><tbody>
+<tr><td>512 点正变换</td><td style="text-align: right"><strong>3,046 µs</strong></td></tr>
+<tr><td>cycles/蝶形</td><td style="text-align: right"><strong>105.8</strong></td></tr>
+<tr><td>一个 320 样本 tick 需要 2 块 × 3 次变换 = 6 次</td><td style="text-align: right"><strong>18,276 µs = AEC 全部预算的 182%</strong></td></tr>
+</tbody></table>
+<p><strong>变换一项就超了预算 1.8 倍</strong>，分区卷积、滤波更新、延迟搜索一分钱都还没花。</p>
+<p>改小帧长救不回来：每样本代价 ∝ 3·5·2M·log(2M)/M = <strong>15·log(2M)</strong>，M=256 是 135、128 是 120、32 是 90——**渐近到常数。**实数 FFT 打包砍一半到 9.1 ms（91%），剩下 9% 给滤波器，不成立。RAM 也要从 <strong>3,064 B</strong> 涨到 6 KB。</p>
+<h3 id="第二核：数字逐位相同">第二核：数字逐位相同</h3>
+<p><code>FROM_CPU_INTR1</code> 是同一颗核上的第二个中断源（<code>InterruptExecutor&lt;1&gt;</code>），不是第二核——**产品固件全部跑在 core 0，core 1 完全空闲。**探针改成两个核先后跑同一份测量（不重叠，否则会抢总线）：</p>
+<table><thead><tr><th></th><th style="text-align: right">cpu 0</th><th style="text-align: right">cpu 1</th></tr></thead><tbody>
+<tr><td>FFT 正变换</td><td style="text-align: right">3,046 µs</td><td style="text-align: right"><strong>3,046 µs</strong></td></tr>
+<tr><td>cycles/蝶形</td><td style="text-align: right">105</td><td style="text-align: right"><strong>105</strong></td></tr>
+<tr><td>参照 FIR</td><td style="text-align: right">34,628 µs</td><td style="text-align: right"><strong>34,628 µs</strong></td></tr>
+<tr><td>L=128 整体</td><td style="text-align: right">70,945 µs</td><td style="text-align: right"><strong>70,945 µs</strong></td></tr>
+<tr><td>系数更新</td><td style="text-align: right">48,939 µs</td><td style="text-align: right"><strong>48,939 µs</strong></td></tr>
+</tbody></table>
+<p>20 多项独立测量、跨 4 个抽头数、含均值和最坏值，<strong>全部逐位相同</strong>。</p>
+<p><strong>双核一分钱都不值</strong>，而这同时把那个悬着的诊断问题关掉了：两个独立的 LX7 核撞在同一个共享资源上，每次访问的固定延迟相同、操作次数相同，总时间必然相同。<strong>这不是「core 0 太忙」，是两边共享的瓶颈。</strong></p>
+<h3 id="IRAM：也不是">IRAM：也不是</h3>
+<p>把蝶形单独提出来放进 <code>.rwtext</code>（链接脚本把它映射到 0x4037a4c4 的 IRAM 区，确认不是 flash 的 0x42010020）：</p>
+<table><thead><tr><th></th><th style="text-align: right">flash</th><th style="text-align: right">IRAM</th></tr></thead><tbody>
+<tr><td>FFT 正变换</td><td style="text-align: right">3,046 µs</td><td style="text-align: right"><strong>3,235 µs</strong></td></tr>
+<tr><td>cycles/蝶形</td><td style="text-align: right">105</td><td style="text-align: right"><strong>112</strong></td></tr>
+</tbody></table>
+<p><strong>放进去反而慢 6%。取指不是瓶颈。</strong></p>
+<h3 id="四条循环，IPC_全在_0.1–0.33">四条循环，IPC 全在 0.1–0.33</h3>
+<table><thead><tr><th>循环</th><th style="text-align: right">cycles</th><th style="text-align: right">指令数（约）</th><th style="text-align: right">IPC</th></tr></thead><tbody>
+<tr><td>参照 FIR</td><td style="text-align: right">12 /MAC</td><td style="text-align: right">4</td><td style="text-align: right">0.33</td></tr>
+<tr><td>卷积</td><td style="text-align: right">31.6 /MAC</td><td style="text-align: right">5</td><td style="text-align: right">0.16</td></tr>
+<tr><td>系数更新（逐样本）</td><td style="text-align: right">119 /MAC</td><td style="text-align: right">12</td><td style="text-align: right">0.10</td></tr>
+<tr><td><strong>FFT 蝶形</strong></td><td style="text-align: right"><strong>105.8</strong></td><td style="text-align: right"><strong>10</strong></td><td style="text-align: right"><strong>0.09</strong></td></tr>
+</tbody></table>
+<p>FFT 蝶形是这批里<strong>最干净的一段代码</strong>——没有钳位、没有 <code>&amp;mut self</code>、没有 64 位累加器链——<strong>IPC 最低</strong>。取指否了、双核否了，剩下的只能是内存系统本身。</p>
+<p><code>[据称]</code> 是 flash 控制器、缺数据缓存、还是乘法未流水，未测。</p>
+<h3 id="延迟搜索：栅格抽稀不行，但它是最后的固定成本">延迟搜索：栅格抽稀不行，但它是最后的固定成本</h3>
+<p><code>[实测]</code> 一次搜索约 <strong>32 ms</strong>，每 256 ms 一次（<code>REFRESH_SAMPLES = 4096</code>），摊到每 tick <strong>3.0 ms</strong>——L=16 那 9,680 µs 的 31%。<strong>而且它单独就能撑爆 30 ms 的 <code>MAX_SINGLE_HOLD_MS</code> 上界。</strong></p>
+<p>最直接的想法是把延迟栅格每 4 个样本取一个（搜索成本 ÷4）。**试了，不行。**测出来这个模块自己的参考信号上：</p>
+<table><thead><tr><th>真实延迟</th><th style="text-align: right">网格上的最高分</th></tr></thead><tbody>
+<tr><td>0</td><td style="text-align: right">lag 0，<strong>1000</strong></td></tr>
+<tr><td>1</td><td style="text-align: right">lag −48，<strong>146</strong></td></tr>
+<tr><td>7</td><td style="text-align: right">lag 56，<strong>101</strong></td></tr>
+</tbody></table>
+<p>延迟为 1 时，<strong>连相邻的 lag 0 和 lag 4 都相关不到</strong>。宽带参考下<strong>相关峰只有一个样本宽</strong>，栅格一个都不能少。所以「只损失几个抽头余量」这个判断是错的。</p>
+<p>剩下的两个旋钮是 <code>SEARCH</code>（找得到的延迟范围）和 <code>WINDOW</code>（能锁住的基频结构）——<strong>两个都要拿能力换时间</strong>，不是白捡的。<code>delay.rs</code> 里留了 <code>LAG_STEP = 1</code> 和一条 <code>const _: () = assert!</code>，让下一个想抽稀的人必须先删掉一句写着为什么不能的声明。</p>
+<h3 id="时钟：80_→_240_MHz，控制台没坏">时钟：80 → 240 MHz，控制台没坏</h3>
+<p><code>CpuClock</code> 的默认臂是 <code>_80MHz</code>，整块板当时一直跑在数据手册上限的三分之一。esp-hal 对 160/240 预设有一条注释说换 PLL 会影响 USB Serial/JTAG，而本仓库控制台正是它——<strong><code>[据称]</code>，一直没测。</strong></p>
+<p><code>[实测]</code> <strong>测了，240 MHz 跑通，USB Serial/JTAG 控制台全程正常。</strong>（只测过一次，这是它唯一的后续风险。）</p>
+<table><thead><tr><th></th><th style="text-align: right">@80 MHz</th><th style="text-align: right">@240 MHz</th></tr></thead><tbody>
+<tr><td>L=16 整体</td><td style="text-align: right">9,735 µs</td><td style="text-align: right"><strong>3,248 µs</strong></td></tr>
+<tr><td><strong>L=16 最坏 tick</strong></td><td style="text-align: right"><strong>39,594 µs（破 30 ms 界）</strong></td><td style="text-align: right"><strong>13,287 µs</strong></td></tr>
+<tr><td><strong>延迟搜索最坏</strong></td><td style="text-align: right"><strong>32,870 µs（单独就破界）</strong></td><td style="text-align: right"><strong>10,957 µs</strong></td></tr>
+<tr><td>L=32 / L=64 / L=128 整体</td><td style="text-align: right">13,528 / 20,448 / 34,911</td><td style="text-align: right">4,511 / 6,818 / <strong>11,639</strong></td></tr>
+<tr><td>L=128 最坏 tick</td><td style="text-align: right">—</td><td style="text-align: right"><strong>21,614 µs</strong>（30 ms 界内）</td></tr>
+<tr><td>FFT / 参照 FIR</td><td style="text-align: right">3,235 / 34,629 µs</td><td style="text-align: right">1,079 / 11,549 µs</td></tr>
+<tr><td><strong>cycles/蝶形</strong></td><td style="text-align: right">112</td><td style="text-align: right"><strong>112（一点没变）</strong></td></tr>
+<tr><td><strong>参照 FIR cycles/MAC</strong></td><td style="text-align: right">12</td><td style="text-align: right"><strong>12（一点没变）</strong></td></tr>
+</tbody></table>
+<p>两件事同时成立：<strong>最坏 tick 的问题自己消失了</strong>（延迟搜索从 32.9 ms 到 11.0 ms，单独就在界内），<strong>而 cycles 一个都没变</strong>——时钟纯粹是个除数。</p>
+<p>所以 <code>chip_init_at(CpuClock)</code> 加到了 <code>iot-chip-esp</code>，探针用一个常量在两者间切换，<strong>两张表来自同一棵源码树、只差这一个常量。</strong></p>
+<h3 id="数据缓存：走不通，但原因不是「没开」">数据缓存：走不通，但原因不是「没开」</h3>
+<p>ESPHome 在 ESP32-S3 上跑 AEC 的 sdkconfig 里是：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: &quot;y&quot;</span></span>
+<span class="giallo-l"><span>CONFIG_ESP32S3_DATA_CACHE_64KB: &quot;y&quot;</span></span>
+<span class="giallo-l"><span>CONFIG_ESP32S3_DATA_CACHE_LINE_64B: &quot;y&quot;</span></span></code></pre>
+<p>后两条与 ESP-SR 那张 AEC 性能表的脚注<strong>逐字相同</strong>，而 ESP-SR 没有它们<strong>直接拒绝启动</strong>（<code>E (4) SR_SYS: Data cache should be 64KB</code>）。数据手册 3.1.5：数据缓存 32 KB（单 bank）或 <strong>64 KB（双 bank）</strong>。</p>
+<p><strong>但这条路我走不通</strong>：esp-hal 1.2 没有 S3 的缓存配置 API，esp-metadata 也没暴露对应的 eFuse 字段。<strong>ESP-SR 的做法是「拒绝启动」而不是「去配它」，本身就说明这个大小是芯片启动时的属性，软件改不了。</strong></p>
+<p>而且 IPC 那个谜题<strong>不靠它解释</strong>。四条循环按读写而非工作集大小排开：</p>
+<table><thead><tr><th>循环</th><th style="text-align: right">工作集</th><th>读写</th><th style="text-align: right">cycles</th></tr></thead><tbody>
+<tr><td>参照 FIR</td><td style="text-align: right">5.2 KB</td><td><strong>只读</strong></td><td style="text-align: right">12</td></tr>
+<tr><td>卷积</td><td style="text-align: right">450 B</td><td><strong>只读</strong></td><td style="text-align: right">31.6</td></tr>
+<tr><td>FFT 蝶形</td><td style="text-align: right">6 KB</td><td><strong>读+写</strong></td><td style="text-align: right">105.8</td></tr>
+<tr><td>系数更新</td><td style="text-align: right">450 B</td><td><strong>读+写</strong></td><td style="text-align: right">119</td></tr>
+</tbody></table>
+<p>**工作集最小的那个不是最快的，只读的比读写的快。**S3 的数据缓存是 write-back，一个每样本每抽头都回写同一位置的内层循环是写回缓存最差的模式——这也顺带解释了 stride 4 为什么直接省下 76%：写次数除以 4。</p>
+<p><code>[据称]</code> 这块板有没有 64 KB 数据缓存，未读出来。<strong>但提时钟之后它不再决定 AEC 塞不塞得下</strong>——cycles 没变，只是墙钟除以了 3。</p>
+<h3 id="还有一条：这个_target_的_FPU_是关的">还有一条：这个 target 的 FPU 是关的</h3>
+<p><code>[实测]</code> 探针里同形状的 f32 参照循环跑 <strong>&gt;120 秒</strong>，而 i32 孪生 140 ms；二进制里带着 libgcc 的全部软浮点助手（<code>__mulsf3</code>、<code>__addsf3</code>…）。<strong>浮点在 <code>xtensa-esp32s3-none-elf</code> 上走软件模拟。</strong></p>
+<p>所以 ESP-DSP 那个 1.69 cycles/MAC 在这里够不着，「换成浮点」不是条捷径。已把 f32 参照从探针里撤掉（否则每次探针运行要多花两分钟），结论留在这里。</p>
+<hr />
+<h2 id="计时器本身：一次被折叠的标定，和一个最终没交付的数">计时器本身：一次被折叠的标定，和一个最终没交付的数</h2>
+<p><code>[测试]</code> 探针最初的版本报 cycles/MAC，为此加过时钟标定。<strong>三版都被否决：</strong></p>
+<ol>
+<li><code>acc += 1</code> 链被强度削减成 <code>acc += 64</code>，读出 <strong>85 GHz</strong>。</li>
+<li><code>acc = acc * M + C</code>（LCG）正是 InstCombine 的 <strong>pop idiom</strong> 识别的形式，同样被折叠，读出 <strong>251 MHz</strong>。</li>
+<li>链内加 <code>black_box</code> 不折叠了，但每个 <code>black_box</code> 自身 ~100 周期，读出 <strong>2.34 MHz</strong>。</li>
+</ol>
+<p><strong>最终 cycles/MAC 的软件标定被删掉了。</strong> esp-hal 在这个目标上没有暴露循环计数器，而我写的每一种标定要么被折叠、要么被自己的屏障成本主导。</p>
+<p><strong>它的替代品是现在这条参照循环</strong>，而且比标定强得多：它不猜时钟，它<strong>在同一个镜像里、同一块板上、同一套构建下</strong>跑一条已知的活，然后把比值拿回来。时钟本身则直接用 <code>esp_hal::clock::cpu_clock()</code> 读回。</p>
+<p>微秒是可靠的：systimer 跑在 XTAL（40 MHz × 0.4 = 16 MHz，<code>ticks &gt;&gt; 4</code>），与 CPU 时钟无关，所以 <code>Instant</code> 给出的是真实微秒，而日志墙钟与它一致。</p>
+<hr />
+<h2 id="文献对齐：三条路线被证据否掉，一条按计划改的东西也不该改">文献对齐：三条路线被证据否掉，一条按计划改的东西也不该改</h2>
+<p>这一节记的是<strong>查了外部资料之后决定不做的事</strong>，以及为什么。</p>
+<h3 id="比例型_NLMS（PNLMS_/_IPNLMS）：否">比例型 NLMS（PNLMS / IPNLMS）：否</h3>
+<p>最顺手的重构方向——按抽头大小分配步长。原始文献 Duttweiler 2000，以及综述对适用面的定性：</p>
+<blockquote>
+<p>PNLMS 的真正收益在回声路径<strong>稀疏</strong>时出现……主要应用是<strong>线路/网络回声消除器</strong>，因为混合电路的典型回声路径是稀疏的。<strong>否则，对于弥散回声路径（典型就是在声学环境中观测到的），几乎没有任何收益。</strong></p>
+</blockquote>
+<p>这块板就是声学环境。抄过来兑现不了。</p>
+<h3 id="子集轮转的部分更新：否，而且是降级">子集轮转的部分更新：否，而且是降级</h3>
+<p>本来打算把「每 4 样本全量更新」换成「每样本更新 1/4 抽头、轮转」——乘加数完全一样，听起来严格更好。Partial Update LMS 那篇正好对比了这两者：</p>
+<blockquote>
+<p><strong>每 P 次迭代做一次更新，得到的滤波器与每步做 P 次更新完全相同。因此该算法在收敛性上毫无损失。</strong></p>
+</blockquote>
+<p>子集版反而<strong>有</strong>损失，代价是把步长从 0.004 压到 0.001 才能追平。<strong>当前实现已经是两者中更好的那个</strong>，不用动。</p>
+<h3 id="混合式开环/闭环双讲检测：改了，然后撤掉">混合式开环/闭环双讲检测：改了，然后撤掉</h3>
+<p>文献（IRISA；Benesty 等 2000）把双讲检测分成开环（麦克风×远端激励，与滤波器无关，收敛前可用）和闭环（麦克风×滤波器估计，收敛后最锐、收敛前无效），并建议<strong>先用开环直到足够收敛，再切闭环</strong>。当前实现两个都不是：它算的是 <code>残差 × 参考</code>，而残差 = mic − ŷ，已经含滤波器状态。</p>
+<p>于是把三种统计量都实现了，在同一条房间路径上逐样本对比。结果：</p>
+<table><thead><tr><th>说话人峰值</th><th style="text-align: right">误冻结</th><th style="text-align: right">冻结延迟</th><th style="text-align: right">漏检</th><th style="text-align: right">残余均方</th><th>过 <code>LEAKAGE_FREEZE</code></th></tr></thead><tbody>
+<tr><td>8000</td><td style="text-align: right">0</td><td style="text-align: right">752</td><td style="text-align: right">751</td><td style="text-align: right">26 038 827</td><td>✓</td></tr>
+<tr><td>4000</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">7 366 231</td><td>✗ 差 43%</td></tr>
+<tr><td>2000</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">1 841 437</td><td>✗ 差 89%</td></tr>
+<tr><td>1000</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">460 200</td><td>✗</td></tr>
+<tr><td>500</td><td style="text-align: right">0</td><td style="text-align: right">0</td><td style="text-align: right">32 000</td><td style="text-align: right">114 877</td><td>✗</td></tr>
+</tbody></table>
+<p><strong>三个统计量在每一个电平上逐位相同。</strong> 绑定约束是 <code>loud</code> 那个电平门，不是相关性：门限 <code>LEAKAGE_FREEZE = 1&lt;&lt;24</code> 是均方（RMS 4096 LSB），说话人峰值 4000 时残余均方只有 7 366 231，<strong>低于门限 43%</strong>，相关性根本没被读到。</p>
+<p>所以混合式检测在这个电平设定下<strong>买不到任何东西</strong>。已撤回，<code>update</code> 保持两参数。留下的不是机制而是<strong>一条钉住的盲区</strong>：<code>gate.rs</code> 里 <code>a_talker_below_the_level_gate_is_not_detected</code> 断言 2000 LSB 说话人现在测出来低于门限、闸门不动；改门限是一次有意的动作，不是副作用。</p>
+<p>这也说明真正要修的是门限，而门限标着 <code>[据称]</code>——它是照 <code>audio.md</code> 的麦克风标定推出来的，不是台架上量出来的。</p>
+<h3 id="双滤波器_Bi-LMSM：暂缓">双滤波器 Bi-LMSM：暂缓</h3>
+<p>Gänsler 2000 指出它不像 PNLMS 那样依赖稀疏假设，是声学场景对口的。但要两组系数加逐样本择优，乘加翻倍。本板稳态 ERLE 61.0 dB 对 G.168 的 15 dB 门槛，<strong>没有需要它解决的问题</strong>。</p>
+<h3 id="频域_/_多延时滤波器：维持否决">频域 / 多延时滤波器：维持否决</h3>
+<p>写完了 512 点定点 FFT，量出来每 tick 3,046 µs = 10 ms 预算的 182%，代码已删。文献侧不推翻这个决定。</p>
+<h2 id="内存核算曾是一个谎">内存核算曾是一个谎</h2>
+<p><code>state_bytes()</code> 的注释写着「板子想提前知道占用多少时不必来问」。它数的是 <code>ring + taps</code>，<strong>只覆盖了滤波器</strong>：</p>
+<table><thead><tr><th></th><th style="text-align: right">旧函数报的</th><th style="text-align: right">板上实测</th><th style="text-align: right">host 实测</th><th style="text-align: right">低报</th></tr></thead><tbody>
+<tr><td>L=16</td><td style="text-align: right">450 B</td><td style="text-align: right"><strong>2 592 B</strong></td><td style="text-align: right">2 616 B</td><td style="text-align: right">5.8×</td></tr>
+<tr><td>L=128</td><td style="text-align: right">898 B</td><td style="text-align: right"><strong>3 040 B</strong></td><td style="text-align: right">3 064 B</td><td style="text-align: right">3.4×</td></tr>
+</tbody></table>
+<p>板上比 host 少 24 B：<code>size_of</code> 跟着目标字长走，xtensa 的 <code>usize</code> 是 4 字节。<strong>引用这个数必须说清在哪个目标上量的</strong>——host 的数字不是这块板的代价。探针会打印当前目标的真值。</p>
+<p>漏掉的是 <code>DelayEstimator</code> 的 <strong>2 096 B</strong>（两个 <code>[i16; 512]</code> 历史缓冲）。而 <code>nlms.rs</code> 里那条 <code>assert!(state_bytes(MAX_TAPS) &lt; 1024, "a kilobyte was budgeted")</code> <strong>就建立在这个数上，通过了</strong>。探针至今在打 <code>[ECHO] --- L=16, 450 B of state ---</code>。</p>
+<p>两条测试让它活下来，因为它们断言的正是错误函数的定义：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-entity z-name z-function z-macro z-rust">assert_eq!</span><span class="z-punctuation">(</span><span class="z-source">bytes</span><span class="z-punctuation">,</span><span class="z-source"> ring</span><span class="z-keyword z-operator"> +</span><span class="z-source"> taps</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-string z-string"> &quot;the estimate counts something twice&quot;</span><span class="z-punctuation">);</span><span class="z-punctuation z-definition z-comment z-comment">  // 恒真</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function z-macro z-rust">assert!</span><span class="z-punctuation">(</span><span class="z-source">bytes</span><span class="z-keyword z-operator"> &lt;</span><span class="z-constant z-numeric"> 1024</span><span class="z-punctuation">,</span><span class="z-keyword z-operator"> ...</span><span class="z-punctuation">);</span><span class="z-punctuation z-definition z-comment z-comment">                                             // 在谎上通过</span></span></code></pre>
+<p>现在 <code>state_bytes&lt;L&gt;()</code> 就是 <code>size_of::&lt;Canceller&lt;L&gt;&gt;()</code>，L 是 const 泛型而不是运行时参数——<strong>运行时参数让调用方能传一个编译器无法核对的数字，那正是它漂移的原因</strong>。新增的 <code>the_reported_size_covers_the_whole_canceller_not_just_the_filter</code> 会断言报告值至少装得下滤波器和延迟估计器两个主要部分。</p>
+<h2 id="参考源接入了，而「取自_render_slice」这条线索是错的">参考源接入了，而「取自 <code>render_slice</code>」这条线索是错的</h2>
+<p><code>[实测]</code> 上面那条「数字抽头取自 <code>audio_out::render_slice</code>」在实现时才发现走不通，而<strong>走不通的原因就是本文件反复出现的那类错误：量对了，接错了位置。</strong></p>
+<p><code>render_slice</code> 是<strong>写入</strong>侧。发送环是 24 个描述符 × 960 B = 23 040 B = 5 760 帧，48 kHz 下是 <strong>120 ms 还在路上的音频</strong>。所以从写入侧抽头，拿到的是一个比回声<strong>早最多 120 ms</strong> 的参考——而延迟搜索只覆盖 <code>MAX_DELAY = 64</code> 样本 = 16 kHz 下 <strong>4 ms</strong>。<strong>三十倍在窗外</strong>：搜索会答「没找到」，滤波器于是朝互相关栅格碰巧最大的噪声收敛，看起来完全正常。</p>
+<p><code>[测试]</code> 这条差异被钉在 host 上，而且<strong>钉的是阈值不是修辞</strong>（<code>aec/stage.rs::a_small_misalignment_is_absorbed_and_a_large_one_is_not</code>）：</p>
+<table><thead><tr><th>参考相对麦克风的偏移</th><th>结果</th></tr></thead><tbody>
+<tr><td>0 帧</td><td>正常抵消</td></tr>
+<tr><td><strong>1 帧</strong></td><td><strong>仍然抵消</strong></td></tr>
+<tr><td><code>MAX_DELAY + 1</code> = 65 帧</td><td>回声基本原样留下</td></tr>
+</tbody></table>
+<p>一帧失配是<strong>可恢复的</strong>——延迟搜索 ±64 样本的窗加上滤波器自己的滑动窗，会把路径学到偏一抽的地方去。所以「错一帧就毁掉」这句话本来是错的，钉它的那条测试反而把正确的话说出来了：<strong>不可恢复的分界在搜索窗之外，而不在一帧</strong>。</p>
+<p>于是接入按这个形状做：</p>
+<ul>
+<li><strong>写入侧照旧抽</strong>（<code>render_slice</code> 里每个<strong>帧</strong>一个样本——两个槽载同一个流，按槽抽会让抽取率减半），<strong>读取侧走播放游标</strong>：<code>Es8311Tx::advance_play_cursor</code> 从 DMA 自己的 free space 反推线缆走到哪儿，把增量喂给 <code>ReferenceLog::played</code>。这就是 <code>Speaker</code> 没有 <code>played_frames()</code> 的答案——<strong>不给 <code>Speaker</code> 加方法</strong>，而是加一条从扬声器单向下游发布的共享单元。</li>
+<li><strong>共享单元跨两个 executor</strong>：喂数在 Priority2 中断上，折叠在协作式 <code>input_task</code> 里，所以是 <code>CriticalSectionRawMutex</code> 的一个 cell（<code>bsp-esp/virtual_components/reference.rs</code>），<strong>每次喂数取一次、每次 poll 取一次，绝不每样本一次</strong>——48 kHz 上每样本一次锁比它服务的取消器还贵。</li>
+<li><strong>落位</strong>：降采样器在 core（<code>drivers/audio/decimator.rs</code>，按帧号而非自由计数器取相位，否则两流失相是静默失效），参考影子缓冲在 core（<code>drivers/aec/reference.rs</code>），抽头在 bsp 播出侧，配对在 bsp 采集侧，连线在板模块 <code>Board::new</code>。<strong>没有给 <code>Speaker</code> 加任何东西</strong>——那会把数据路径的耦合从中断侧拉回来，而这条边界正是为了挡这个。</li>
+<li><strong>尺寸从几何算出来</strong>：<code>REFERENCE_SAMPLES = ⌈(5 760 + 2 880 + 192) / 3⌉ = 2 944</code>，<code>const _: () = assert!</code> 钉住「装得下整个跑道」。采集侧另有一条断言钉住自己的环确实是三趟 poll 深——<strong>两个模块各写一份的数字是会漂的</strong>，漂了就是日志悄悄 lap。</li>
+</ul>
+<p><code>[测试]</code> <code>ReferenceLog</code> 的 14 条测试里最要紧的一条是 <code>at_play_cursor</code> 的<strong>索引单位</strong>：环按<strong>保留样本</strong>编址，而计数器数的是<strong>帧</strong>。第一版用 <code>written % N</code> 而 <code>written</code> 每帧自增，结果三个槽里只有一个被写过——<strong>测试全绿，采样全是零</strong>。现在断言的是<strong>具体样本值</strong>（<code>frames(n) = n × 97</code>）而不是下标，因为错的下标长得像对的。</p>
+<h3 id="「空闲空间」是占用量不是位置——差一个整环">「空闲空间」是<strong>占用量</strong>不是位置——差一个整环</h3>
+<p><code>[实测]</code> 写完第一版 <code>advance_play_cursor</code> 才发现的错，而且它是这一整节里最危险的一个：<strong>读出来仍然全部正常</strong>。</p>
+<p>DMA 释放环字节，CPU 立刻补回去，所以「空闲」量的是<strong>环里排队的量</strong>（<code>ring − (已推 − 已发)</code>），<strong>不是线缆走到哪儿了</strong>。把它当成位置，开机那一刻环里装着整整一环预填的静音、一个字节都没发出去，读数却说线缆已经在一环之后——于是 <code>played</code> 一上来就是 5 760，<code>at_play_cursor</code> 每次都返回 <code>None</code> 或者环里最老的那一格。<strong>每一次配对都是垃圾，而每一行日志都像在正常工作。</strong></p>
+<p>修法是把算术搬进 core（<code>wire_position</code>）并连同<strong>预填</strong>一起计入 <code>pushed_frames</code>：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>wire_position = pushed_frames − (ring_frames − free_bytes / frame_bytes)</span></span></code></pre>
+<p><code>[测试]</code> 两条钉住它：开机（推了一环、释放 0）必须读 0 而不是 5 760；释放量超过推过量时<strong>永远不许报在推过量之前</strong>（stale DMA 或 restart 后的环）。写这两条测试时自己也错了一次——把 push <strong>之前</strong>的空闲量和 push <strong>之后</strong>的推过量混在一起算，那当然对不上。<strong>两个数必须取自同一瞬间</strong>，这条也写进注释了。</p>
+<h3 id="两路方向相反，直接_zip_会把整段配错">两路方向相反，直接 zip 会把整段配错</h3>
+<p><code>[实测]</code> 同一类的第二个错，同样静默。麦克风是<strong>正着走</strong>的（<code>scratch_mic[0]</code> 是本次排空里最老的一帧），参考日志只能<strong>倒着读</strong>（<code>out[0]</code> 是此刻线缆上的那一帧，也就是最新麦克风听到的那一帧）。这两段直接 zip，<strong>最老的麦克风配上了最新的参考</strong>——每一对都错了整段那么远，而滤波器照样会收敛到<strong>某个东西</strong>上，于是 ERLE 仍是一个看着合理的数，不会是刺眼的 0。</p>
+<p>修法是在 <code>pair</code> 里把参考<strong>反转回时间序</strong>再喂（随后 <code>cancel_pairing</code> 才把它交给消除器）。<code>[测试]</code> <code>a_reference_run_read_newest_first_pairs_once_reversed</code> 钉住「反转一次回到对齐配对」与「不反转明显更差」两条；<code>Reference::read_backwards</code> 的文档里也写明了这个方向，免得下一个读它的人重踩。</p>
+<p>两处都留在记录里，因为它们是<strong>同一类</strong>：<code>RING_BYTES - free</code> 看着像位置其实是占用量，而 <code>read_backwards</code> 看着该直接配对其实要先反转。<strong>两个都是「读起来完全正常、结果全是垃圾」</strong>——这正是这条路径上唯一真正危险的一类缺陷，也是为什么配对的每一列都跟着 ERLE 一起报。</p>
+<h3 id="麦克风环的延迟没算进去——差_60_ms">麦克风环的<strong>延迟</strong>没算进去——差 60 ms</h3>
+<p><code>[实测]</code> 三个同类错里最要命的一个，也是唯一一个「不修就整套白做」的。</p>
+<p>排空一次采集环时，<strong>环里最新的一帧是多久之前采的</strong>？答：环有多深就多久之前——本板 3 趟 poll = 60 ms。而 <code>far[0]</code> 是<strong>poll 跑这一刻线缆上的那一帧</strong>。两者直接配对，等于把每一对都配到了比它<strong>新 60 ms</strong> 的参考上：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>最坏错位   960 样本 @16 kHz = 60 ms</span></span>
+<span class="giallo-l"><span>搜索窗     64 样本 @16 kHz =  4 ms</span></span></code></pre>
+<p><strong>十五倍在窗外。</strong> 延迟搜索照样答「没找到」，滤波器照样收敛到某个东西，ERLE 照样是个看着合理的低值。</p>
+<p><code>[实测]</code> 修法是把排空前测到的环深（<code>produced / BYTES_PER_FRAME</code>，正是 <code>poll</code> 已经在算的那个数）作为 <strong>lag</strong> 传进配对，参考从 <code>play_cursor − lag</code> 开始读。换算成保留样本时<strong>向上取整</strong>（<code>lag_in_samples</code>）：向下取整会少够一点、把配对错开不到一个样本；向上取整最多多够一个样本，<strong>方向反了但仍在窗内</strong>。</p>
+<p>顺带发现<strong>尺寸本来就为它留够了</strong>：参考日志按 <code>5 760 + 2 880 + 192</code> 帧算出的 2 944 个样本，正好覆盖发送环跑道 + 采集环延迟 + 搜索窗。<code>2 944 − 960 = 1 984</code> 个样本的余量。所以<strong>不是加内存，是把已经算进去的那一项用上</strong>——之前它只是躺在尺寸公式里没人用。</p>
+<p><code>[测试]</code> <code>a_capture_ring_s_lag_rounds_up_into_whole_samples</code> 钉住取整方向，并逐个检查「转出来的样本数乘回去不小于原帧数」。</p>
+<p><strong>L 定在 16</strong>，因为 240 MHz 下 L=128 的最坏 tick 是 21.6 ms，而 input tick 本身已经占 17–25 ms、<code>MAX_SINGLE_HOLD_MS</code> 是 30——<strong>128 抽在这个 poll 里塞不下</strong>。要更大就是滤波器放慢或者 poll 不再折别的，是设计改动不是一个常数。</p>
+<h3 id="产品固件里默认不开">产品固件里默认<strong>不开</strong></h3>
+<p><code>[实测]</code> 接完之后自己引入的一个问题，也是上面这条路径最容易顺手犯的：<strong>包络折的仍然是原始麦克风，取消器的输出被丢掉了</strong>，而取消器每个 poll 都在跑。这正是 <code>architecture.md</code> 明说不可表达的那个象限——「低保真 + 高成本」。</p>
+<p><strong>根因不是算术，是速率对不上</strong>：取消器工作在 16 kHz，而包络是按 48 kHz 两槽一帧定的。要把残余折进包络就得重采样回去，而<strong>为了喂一个电平表而重采样回去是一次没人做过的测量决定</strong>（A 计权那条 6 阶 IIR 会看到阶梯波）。在有人读它之前，跑它就是每 tick 3 248 µs 换一份没人看的输出。</p>
+<p>所以按本文件里 <code>HPF_CORNER_WALK</code> / <code>CAL_SPL_LOG</code> 的既有形状给了一个<strong>编译期开关，默认 false</strong>——不是 Cargo feature，因为它是一次测量不是一个产品档（<code>features.md</code> 判据一）。接线照旧在树里，<code>echo-probe</code> 显式打开并读数；状态仍然常驻 2.6 KB（对照板上已有的 150 KB 帧竞技场），换来的是<strong>时间</strong>而不是闪一个分支。</p>
+<p>面板上<strong>没有</strong>新增 ERLE 行。理由同上：这一格现在恒为零（开关关着），为一个未验证的取消器在 <code>audio.md</code> 记着「列算错了在屏上只表现为看着像设计」的布局上加一格，是拿最贵的东西换一个还不能验证的数。</p>
+<h3 id="新增常驻内存_12.7_KB">新增常驻内存 12.7 KB</h3>
+<p><code>[实测]</code> 按本板几何算出来的，不是估的：</p>
+<table><thead><tr><th>件</th><th style="text-align: right">字节</th><th>说明</th></tr></thead><tbody>
+<tr><td>参考日志</td><td style="text-align: right">5 888</td><td>2 944 个 i16，<code>&amp;'static</code> cell</td></tr>
+<tr><td>取消器 L=16</td><td style="text-align: right">2 592</td><td>本板实测值，见上</td></tr>
+<tr><td>麦克风 scratch</td><td style="text-align: right">1 282</td><td>每次 poll 最坏排空量除以抽取率</td></tr>
+<tr><td>参考 scratch</td><td style="text-align: right">3 202</td><td><strong>环延迟 960 + 本次 641</strong>，见上节</td></tr>
+<tr><td><strong>合计</strong></td><td style="text-align: right"><strong>12 964（12.7 KB）</strong></td><td></td></tr>
+</tbody></table>
+<p>对照：板子已经背着 150 KB 帧竞技场（面板 DMA 与摄像头共用），另有 64 KB 堆。<strong>12.7 KB 是一次性常驻且不进堆</strong>——<code>feed</code> 不得分配，所以日志不能是 <code>Vec</code>，这也是它定长、尺寸写死的原因。PSRAM 仍未开启（按约定先量后开），这 12.7 KB 也不需要它。</p>
+<p><code>[实测]</code> 产品镜像 <code>vanling</code> 在本改动下链接通过（<code>.bss</code> 303 688 B / <code>.data</code> 9 316 B），探针 <code>echo-probe</code> 也链接通过（<code>.bss</code> 259 872 B / <code>.data</code> 8 644 B，探针不画面板所以少背帧竞技场）。</p>
+<h2 id="未决与边界">未决与边界</h2>
+<ul>
+<li><strong>CPU 过了，而且是全线。</strong> <code>@80 MHz</code> + 分块自适应之后 L=16 是 9,680 µs；<strong>再提到 240 MHz，L=16 是 3,248 µs、L=128 是 11,639 µs，最坏 tick 21.6 ms，全部落在 30 ms 界内。</strong> USB Serial/JTAG 控制台实测没坏。代价是收敛变慢（whole-file 20.9 → 16.2 dB），稳态 ERLE 逐位不变。 <code>aec/mod.rs</code> 与 44 个单元测试、<code>tests/aec_erle.rs</code> 全部留在树里，作为「这条路走不通」的证据与算法正确性的证明；<code>aec-probe</code> 留在 <code>check-s3</code> 的 bin 列表里，成本一变就编译失败。</li>
+<li><strong>时钟已改成 240 MHz，产品固件也已经换过去了</strong>（<code>app/src/main.rs</code> 走 <code>chip_init_at(_240MHz)</code>）——上面那条「只在探针里」是过时结论，<code>17–25 ms</code> 那个 input tick 数字是 80 MHz 测的，读它要带上 3 倍余量。240 MHz 的代价是功耗、PLL、USB Serial/JTAG 的长期稳定性（实测过一次，不是长期结论）。</li>
+<li><strong>这块板有没有 64 KB 数据缓存，未读出来。</strong> esp-hal 无 API、esp-metadata 无 eFuse 字段，而 ESP-SR 没有它会拒绝启动。提时钟后它不再决定 AEC 塞不塞得下，但 IPC 那个谜题还在。</li>
+<li><strong>系数更新的 119 cycles/MAC 没解释。</strong> 降频绕开了它，根子还在。取指已否（IRAM 反而慢 6%）、双核已否（两核数字逐位相同），剩下的只能是内存系统本身。<code>[据称]</code> 是 flash 控制器、缺数据缓存、还是乘法未流水，未测。</li>
+<li><strong>起始那半秒的冻结缺陷未修。</strong> 冻结止住了损伤增长，止不住第一段，根因是相干度计量器 ~512 样本的滞后。</li>
+<li><strong><code>[据称]</code> <code>LEAKAGE_FREEZE</code> 与 <code>MAX_COHERENCE</code> 未在本板标定</strong>，仍取自 <code>audio.md</code> 的麦克风标定。</li>
+<li><strong>RAM 板上实测 3,040 B</strong>（<code>state_bytes::&lt;128&gt;()</code>，L=16 是 2,592 B），预算 4 KB。host 上是 3,064 B。</li>
+<li><strong><code>state_bytes()</code> 曾低报 3.4–5.8 倍</strong>，现已按整个 <code>Canceller</code> 计量，见本文件《内存核算曾是一个谎》一节。</li>
+<li><strong>参考源已接入</strong>，走播放游标而不是写入指针，见本文件《参考源接入了》一节。<strong>尚未在真实房间里跑过</strong>——<code>echo-probe</code> 就是为此建的构建，见下条。</li>
+<li><strong>PSRAM 仍未开启</strong>（按约定先量后开），3 KB 不需要它。</li>
+<li><strong>LTO 现在是整个 workspace 的 release 默认</strong>（<code>apps/iot/Cargo.toml</code>）。它让 AEC 快 9.6%，代价是探针的计时括号会被优化掉，所以 <code>AdaptiveFilter::process</code> 带 <code>#[inline(never)]</code>。这个属性是给测量用的，不是给性能用的——谁去掉它，下一份 CPU 数字就是假的。</li>
+<li><strong>固定地板未攻。</strong> L=16 的 9,680 µs 里滤波器只占 3,945，其余是延迟搜索 3,059 + 计量器 1,839 + 未归因 2,731。</li>
+<li><strong>延迟搜索不再破界</strong>（240 MHz 下最坏 11.0 ms），但栅格抽稀已否（宽带参考下相关峰只有一个样本宽）。<code>SEARCH</code> 和 <code>WINDOW</code> 两个旋钮仍要拿能力换时间。</li>
+<li><strong>NLR/残差抑制未实现</strong>，测得的 ERLE 是它之前的值。</li>
+<li><strong>延迟锁得住，消除量仍然没有数。</strong> 见本文件《延迟锁上之后：锁住了，ERLE 仍然没有数》一节：两次实测 delay 全程只动一次（26；换位置 53 → 42），而固件的 ERLE 计量器至今<strong>没有在板上出过非零读数</strong>。中途算出的 12.3 dB 来自一次已删除、不可复现的离线 dump，不作数。<strong>L=16 仍然是 host 合成房间 + 离线最优化上定的</strong>，板上这条路径没有改变抽头数。</li>
+<li><strong><code>echo-probe</code> 会报「ERLE 好看但配对是坏的」这种情况</strong>，所以列不能分开读：配对数为零时 ERLE 恒为 0（日志不动就不测量），而日志 lap 过时 ERLE 可以看着正常。<code>EchoReport</code> 把它们捆在一起就是为了不让调用方拆开读。探针每行还会确认<strong>取消器确实开着</strong>——一串零和配对坏了输出的是同一个东西。</li>
+<li><strong>产品固件默认不开取消器</strong>（编译期开关，见上节），所以这四个数在产品镜像上全是零，<strong>只有 <code>echo-probe</code> 会给出真数</strong>。</li>
+<li><strong>降采样相位</strong>目前两路都取 0（发端比收端先 arm，帧 0 对帧 0）。换一块先 arm 麦克风的板子必须同时把偏移报给参考日志的相位和采集侧抽取器，差的部分由延迟搜索兜——<strong>这不是自动的</strong>，是一个会静默错一抽的常数。</li>
+</ul>
+<h2 id="MIC3_作为硬件参考：寄存器查对了，链路仍然不出数">MIC3 作为硬件参考：寄存器查对了，链路仍然不出数</h2>
+<p>立创·实战派这块板把 ES8311 的输出接到了 MIC3，官方例程要 <code>tdm_enable = true</code>。本轮把这条路走到底，得到三个<strong>推翻先前结论</strong>的结果。</p>
+<h3 id="先修的是代码里一处对数据手册的误读">先修的是代码里一处对数据手册的误读</h3>
+<p><code>es7210.rs</code> 原先注释写着「<code>REG_SDP_INTERFACE2</code> bit1 选择 TDM」，常量名 <code>SDP2_NO_TDM</code> 把这个误解固化了下来。手册原文：</p>
+<ul>
+<li><strong>寄存器 0x12 bit1 是 <code>TDMIN_PDN_OFF</code> —— TDMIN 引脚内部下拉电阻的开关，与串行格式无关。</strong> 写 <code>0x02</code> 等于关掉下拉，编解码器随即停止驱动数据线，采集读出全零。</li>
+<li>格式在<strong>寄存器 0x11 的 <code>SP_PROTOCAL</code>（1:0）</strong>，<code>11</code> = DSP 模式。</li>
+<li>通道数在<strong>寄存器 0x08 的 <code>LRCK_RATE_MODE</code>（7:4）</strong>，<code>2</code> = 四通道，<strong>且仅在 <code>SP_PROTOCAL = 11</code> 时有意义</strong>。</li>
+</ul>
+<p>原代码写 <code>0x00</code> 恰好保住了下拉：<strong>结果对、理由错</strong>。这解释了此前两次「0/0」——坏的从来不是硬件。</p>
+<h3 id="三个寄存器都写对了，编解码器仍然静默">三个寄存器都写对了，编解码器仍然静默</h3>
+<p><code>init()</code> 现在回读并打印序列口三个寄存器。加这行是因为<strong>串行格式错了不会有任何其他症状</strong>：零件照样在驱动，被测方只看到静音，而这两半各自都说得通。</p>
+<p><code>[实测]</code> TDM 打开后芯片持有 <code>mode 0x20</code>（<code>LRCK_RATE_MODE = 2</code>，四通道）、<code>serial 0x63</code>（<code>SP_PROTOCAL = 11</code>）、<code>interface 0x00</code>（下拉保留）—— <strong>与手册完全一致</strong>。而采集在<strong>四个槽上全部读到 0</strong>，时钟表与双通道那条路用的完全一样。</p>
+<p>顺带被回读证实的是字段解码本身没读错：关掉 TDM 时芯片持有 <code>mode 0x10</code>（<code>LRCK_RATE_MODE = 1</code>，手册明写「0/1 = 2 channels」）。</p>
+<p><strong>嫌疑因此落在接收端这一半</strong>（esp-hal 的槽数与 MCLK 分频是否让 ES7210 的采样率检测失锁），而不是寄存器。<strong>这条路目前封住，MIC3 参考保持关闭</strong>，理由写在 <code>USE_MIC3_REFERENCE</code> 上。</p>
+<h3 id="附带的诊断价值：峰值分不出复制与分道">附带的诊断价值：峰值分不出复制与分道</h3>
+<p>双槽配置下四个槽读数在每种帧宽下都几乎逐位相等（2557/2558、946/949）—— 这既是「两个不同信号」的样本，也正是「单声道数据在左右各复制一次」的样本。所以排空现在多报一个<strong>两槽之差的峰值</strong>：复制的话它必然是 0。峰值本身分不出这两件事，差值可以。</p>
+<h2 id="延迟第一次被测出来，而测量它需要一个此前默认关掉的开关">延迟第一次被测出来，而测量它需要一个此前默认关掉的开关</h2>
+<p><code>A_B_RUN</code> 原本是关的，理由是「关掉才能量到麦克风在没有回声时的本底」。这句话没错，但它掩盖了一件事：<strong>喇叭整个 run 都静音时，取消器拿到的是静音参考，相关度无从算起，延迟搜索永远不可能返回估计。</strong> <code>[实测]</code> 静音探针的每一轮都是 <code>delay None</code>，而这和「板子上根本没有回声路径」读起来一模一样。</p>
+<p>开着A/B 重跑：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>[amplifier on — reference peaked 22876 LSB, microphone peaked 936 LSB]</span></span>
+<span class="giallo-l"><span>321 paired this poll | ERLE 0 dB, delay Some(17), tap 13 ..., adapting</span></span></code></pre>
+<p><strong>延迟稳定在 17 个样本 —— 16 kHz 下 1.06 ms</strong>，正是桌面到喇叭加编解码器往返的量级，相关度越过门限。<strong>路径存在，配对是通的</strong>，这两条到此确立。此前「无回声路径」的结论是探针配置造成的，不是硬件。</p>
+<p>所以 A/B 的默认值改成开：静音本底仍然拿得到（每个窗口都报），但延迟不再被静音参考挡掉。</p>
+<h2 id="宽扫描：把「没有路径」和「路径超出滤波器」分开">宽扫描：把「没有路径」和「路径超出滤波器」分开</h2>
+<p><code>SEARCH</code> 只有 <code>MAX_DELAY = 64</code> 个样本，在 16 kHz 下是 <strong>4 ms</strong>。原先没有任何办法区分「这个房间没有回声」和「回声在 4 ms 之外」—— 两者都是搜索范围内没有峰。</p>
+<p><code>DelayEstimator::scan_wide(reach)</code> 补上了：扫到 <code>HISTORY - WINDOW</code>（256 样本，16 ms），<strong>网格必须是每样本一步</strong>。这不是选择而是本模块自己写明的结论：宽带参考下相关峰只有一个样本宽，粗网格只能取到几个噪声样本的最大值。新测试钉住了这一点，也钉住噪声不会被读成路径、超出扫描范围的路径不会被误报。</p>
+<h2 id="新的阻塞：采集流有洞">新的阻塞：采集流有洞</h2>
+<p>ERLE 仍是 0，而抽的<strong>位置一直在跳</strong>（13/14/1/13/14/9/6/13/12/15）—— 这是系数被噪声主导，不是收敛中的样子。同一批日志给出原因：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>ring 1920 B arrived, 2400 B drained</span></span>
+<span class="giallo-l"><span>capture rate: 12611 paired = 12400 samples/s of the 16000 the canceller runs</span></span></code></pre>
+<p><strong>实际速率只有目标的 77%。</strong> 有断点的数据上，自适应滤波器收敛不了 —— 这与 <code>delay</code> 已经正确并存，不矛盾：延迟是对一段连续数据测出来的，收敛要在整条流上做。</p>
+<p><strong>根因不是链路，是一个除错了宽度的常量。</strong> <code>DECIMATED_PER_POLL</code> 等三处按<strong>发送侧</strong>的 <code>BYTES_PER_FRAME</code>（4 字节）算，而采集侧每帧是 <code>CAPTURE_BYTES_PER_FRAME</code>（2 字节）：</p>
+<table><thead><tr><th>常量</th><th>错值</th><th>对值</th><th>后果</th></tr></thead><tbody>
+<tr><td><code>DECIMATED_PER_POLL</code></td><td>321</td><td><strong>641</strong></td><td>每轮预算能产出 400 个抽取样本进 321 的缓冲</td></tr>
+<tr><td><code>DECIMATED_RING_LATENCY</code></td><td>480</td><td><strong>960</strong></td><td>麦克风环延迟算少一半</td></tr>
+<tr><td><code>lag_frames</code></td><td><code>produced / 4</code></td><td><code>produced / 2</code></td><td>参考回溯的距离只有应有一半</td></tr>
+</tbody></table>
+<p>那个 <code>if *frames_this_pass &lt; DECIMATED_PER_POLL</code> <strong>静默丢掉了每轮最后 79 个样本 ≈ 4.9 ms 整段</strong> —— 不是零星丢失，是每 25 ms 出现一次的连续空洞。321/400 = 80%，实测 <code>12400/16000</code> = 77.5%。</p>
+<p><strong>而 <code>BYTES_PER_POLL</code> 的文档自己写着「this figure is the root every capture-side size is derived from」</strong> —— 三个派生式却都用错了宽度。</p>
+<p><code>[实测]</code> 修后：<code>paired this poll</code> 321 → <strong>400/413</strong>，速率 → <strong>15 130–15 515 / 16 000</strong>，延迟 17（抖动）→ <strong>41（稳定）</strong>。三项都与修前的算术预测吻合。</p>
+<p>那个静默丢弃也一并删掉了，换成编译期断言：尺寸不对要编译失败，不能悄悄丢数据。</p>
+<h2 id="算法本身是对的_——_这条排除了">算法本身是对的 —— 这条排除了</h2>
+<p><code>core/tests/aec_erle.rs</code> 在 host 上拿我们的取消器和<strong>离线最小二乘最优解</strong>逐路径对比，<code>[实测]</code>：</p>
+<table><thead><tr><th>路径</th><th>抽数</th><th>离线最优</th><th>我们的取消器</th><th>差距</th></tr></thead><tbody>
+<tr><td>短、快衰减</td><td>16</td><td>62.9 dB</td><td>61.0 dB</td><td>1.9</td></tr>
+<tr><td>中等</td><td>48</td><td>58.8 dB</td><td>57.2 dB</td><td>1.6</td></tr>
+<tr><td>长尾慢衰减</td><td>192</td><td>38.9 dB</td><td>38.8 dB</td><td>0.0</td></tr>
+<tr><td>尾长于滤波器</td><td>256</td><td>14.4 dB</td><td>13.2 dB</td><td>1.2</td></tr>
+</tbody></table>
+<p>四条全部落在最优解的 0–1.9 dB 以内，且<strong>从不超越它</strong>（<code>the_canceller_does_not_beat_the_offline_optimum</code> 在钉这条 —— 超越最优解只能是过拟合或算错）。延迟在每条路径上都找对。</p>
+<p><strong>所以硬件上的 ERLE = 0 不是算法问题。</strong> 修掉采样丢失之后它仍是 0，缺的变量是<strong>这个房间的路径有多长</strong> —— L=16 是照着合成房间定的，而这间屋子的尾有多长没人测过。</p>
+<h2 id="「测脉冲响应」这条路本身走不通，两次都是我自己把它走死的">「测脉冲响应」这条路本身走不通，两次都是我自己把它走死的</h2>
+<p>上一节说缺的是房间脉冲响应。于是去测，测的方式是<strong>把麦克风落盘、host 上反卷积</strong>。两次都在同一个地方翻车，两次的错都不是代码。</p>
+<h3 id="第一次：削顶，而当时的结论是「扫频的时钟不可靠」">第一次：削顶，而当时的结论是「扫频的时钟不可靠」</h3>
+<p><code>[实测]</code> 扫频最早跑在半幅（<code>SWEEP_PEAK_LSB</code> 原来 11 500），麦克风录到 <strong>32 767</strong> —— ADC 在削顶。同一份录音被四种分析各算一遍，四个答案互相矛盾。</p>
+<p>当时给出的理由是「扫频只要放音与采集的时钟差一个样本就失相关，6 kHz 处是 45° 相位，所以要对齐两路独立晶振，而每次对齐都给出不同答案」，于是<strong>把激励换成了 1 kHz 正弦</strong>。</p>
+<p><strong>这个理由在本板不成立，而反驳它的代码就在同一个仓库里：</strong></p>
+<ul>
+<li><code>components/audio_clock.rs:3</code>：「Both codecs are slaves of one host MCLK」，还有测试钉住；</li>
+<li><code>es8311.rs:55</code> / <code>es7210.rs:50,56</code>：两片都是 slave，MCLK 来自引脚；</li>
+<li><code>lckfb_szpi_esp32s3/mod.rs:481-493</code>：<strong>同一个 <code>i2s_master::I2s::new(I2S0, DMA_CH1, shared_tdm_config()).with_mclk(GPIO38)</code>，tx 与 rx 从同一个 handle 建出来</strong>。</li>
+</ul>
+<p>一个 <code>I2S0</code> 外设、一条 MCLK 引脚 ⇒ 送进 DAC 的样本和 ADC 返回的样本是<strong>同一个时钟下的同一个样本序号</strong>。外部文献里扫频/MLS 反卷积在时钟失步下失效，那条机理真实，但它要求两套<strong>未同步</strong>的时钟，本板不满足。</p>
+<p>而正弦是<strong>测不了路径的激励</strong>：能量只在一个频率上，只能给出那个频率的传递函数，给不出路径长度、给不出尾巴、给不出「这间屋子要几抽」。</p>
+<p><code>SWEEP_PEAK_LSB</code> 从 11 500 降到 <strong>2 500</strong> 才是那次真正的修法 —— 削顶产生的谐波<strong>反卷积消不掉</strong>，因为谐波就在录音里（外部资料对这一点说得和本节一样直接）。扫频也换回去了。</p>
+<h3 id="第二次：这条控制口传不动_16_kHz">第二次：这条控制口传不动 16 kHz</h3>
+<p>落盘方案本身还有个更要命的前提，而它从头到尾没人验证过：<strong>这个控制口能不能把 16 kHz 的成对样本持续搬出去。</strong></p>
+<p>当时的抓取脚本是 <code>B115200</code>、无流控、读空时 <code>sleep(0.05)</code>。板子这边每个样本一行、每行 64 个十六进制字符起。<code>log::info!</code> 写 USB FIFO 时是要等的，主机读得慢，固件就阻塞在写上 —— 而阻塞的是那个还要 poll 采集的执行器。采集环只有 60 ms 深，一次超时的排空就溢出。</p>
+<p><strong>这条路线的第一个版本甚至没有报丢失</strong>：探针只打「配对数」，录像有洞从录像本身看不出来，而一个带洞的信号反卷积出来是「房间的形状被洞的长度抹开了」—— 读起来完全像一个普通的、稍错的答案。</p>
+<p><code>[据称]</code> 没有实测过具体丢多少。但方向是被否掉的：这条路唯一能交付的是一个<strong>必须先自证没有洞才可信</strong>的数字，而证明它没洞的证据恰恰要靠它自己那条已经很勉强的串口。</p>
+<h3 id="于是测量搬回板上：路径剖面">于是测量搬回板上：路径剖面</h3>
+<p><code>DelayEstimator::scan_wide</code> <strong>本来就</strong>在每个 lag 上算归一化互相关，然后只留最大值、其余全丢。把它们<strong>按延迟分带累加</strong>几乎不花钱 —— 每 lag 多一次乘加，而内层循环本来就在做除法。</p>
+<p><code>PROFILE_BANDS = 8</code>、<code>PROFILE_BAND = 32</code>（16 kHz 下每带 2 ms，覆盖 <code>scan_wide</code> 整个 256 样本的到达范围）。<code>DelayEstimator::unreachable_by(taps)</code> 给出<strong>一个 <code>taps</code> 抽的滤波器够不着的相关能量占比</strong>，百分数 —— 这就是抽头预算的输入。<code>echo-probe</code> 在宽扫描报出路径之后打一行：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>[PATH] out of reach of a filter of — 16 taps N%, 64 taps N%, 128 taps N%, 256 taps N%.</span></span></code></pre>
+<p><strong>不落盘，所以没有洞；不反卷积，所以没有重建误差；就在产生那条互相关的模块旁边，所以它有 79 个单测。</strong></p>
+<h3 id="这条测度能说和不能说的">这条测度能说和不能说的</h3>
+<p>写在这里是因为它比冲激响应粗，而且差一点就会被当成冲激响应来读：</p>
+<ul>
+<li><strong>它不是冲激响应</strong>，是按 lag 累加的相关值，被 <code>WINDOW</code>（256 样本的互相关窗口）抹开、又量化到一带。它的用处是「多少路径落在滤波器够不着的地方」，而那件事一带就够分辨。</li>
+<li><strong>不能按每 lag 门限累加</strong>，这一点是量出来的。门限 300‰ 只收下主瓣：lag <em>L</em> 上的相关就是路径在 <em>L</em> 处的自相关，<strong>把一个 lag 收到 300‰ 等于要求路径在 <em>L</em> 处的能量接近直达声</strong> —— 没有房间是这样。于是任何房间都报出「尾巴为零」。现在改为<strong>整体累加、读的时候把最安静的一带当底噪减掉</strong>。</li>
+<li><strong>底部只分辨到百分之几</strong>：一个强band 会把自己百分之几抹到后面的带里。所以「接近 0」的意思是「低于本测度能分辨的下限」，不是「没有」。<strong>能分辨的是两个房间之间的差别</strong>，而预算要的正是这个差别。</li>
+<li><strong>它数的是相关的那一份</strong>：与参考不相关的能量，线性滤波器本来也留不住，不计它不亏。</li>
+<li><strong>分辨到一带为止</strong>（2 ms）。差不到一带的两个抽头数，这个测度分不出。</li>
+</ul>
+<p><code>[测试]</code> 钉住的是它真能证明的保证：抽头越多够不着的一定不更多；湿房间比活房间留下的少得多（<code>quiet[2] = 3%</code> 对 <code>loud[2] = 12%</code>）；没有路径和没扫过都返回 −1 而不是 0（0 会被读成「全部够得着」）；最响的一带就是直达反射所在的那一带。</p>
+<p><strong>这四个数还没有在板上跑出来过。</strong> <code>PATH_RUN</code> 编译期开关默认关，打开后放扫频、关取消器、宽扫描报出路径后打那一行。<strong>它回答的是「这个房间要几抽」，不是「冲激响应长什么样」</strong> —— 后者仍然没有，而前者已经足够决定 L 了。</p>
+<h2 id="延迟锁上之后：锁住了，ERLE_仍然没有数">延迟锁上之后：锁住了，ERLE 仍然没有数</h2>
+<p>前面「配对成立，消除为零」那一节里关于<strong>延迟</strong>的部分到此为止。给延迟加一把锁（首个搜索结果为锁，此后只允许被拖动 [<code>DRIFT_SAMPLES</code>] 样本，连续 [<code>MISSES_BEFORE_MOVING</code>] 次搜索都不同意才让位）之后，同一处实测：</p>
+<table><thead><tr><th>读数</th><th>之前</th><th>之后</th></tr></thead><tbody>
+<tr><td>delay</td><td>None → 16 → 50 → 6，64 样本窗口里乱跳</td><td><strong>26，一次没动过</strong>；换位置再测是 53 → 42，同样只动了一次</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 复现：<code>moon run iot:probe-echo-s3</code> → <code>IOT_PORT=/dev/cu.usbmodem1422301 moon run iot:flash-probe-echo-s3</code> → 复位后挂串口读 30 秒以上，数一数 delay 出现过几个取值。两次实测共 28 次 poll，只出现两个取值，中间那一次切换正好是连续四次搜索都指向新值之后。</p>
+<p><strong>所以「延迟搜索乱跳」这条结案了，而 ERLE 那条没有。</strong></p>
+<h3 id="一次算出来的_12.3_dB，以及它为什么不能算数">一次算出来的 12.3 dB，以及它为什么不能算数</h3>
+<p>中途有一版固件在锁定后一次性 dump 了三通道各 512 点（参考、麦克风、残差）。那份数据上 <code>mic_rms = 20.7</code>、<code>res_rms = 5.0</code>，即 12.3 dB。</p>
+<p><strong>但探针自己的 ERLE 列在那次读的是 <code>--</code>，不是 12。</strong> 12.3 是我在 PC 端拿 CSV 算的，不是固件报的。而且：</p>
+<ul>
+<li>dump 代码已经删掉，那份日志也没留下，<strong>这个数现在复现不了</strong>；</li>
+<li>固件 ERLE 计量器至今<strong>没有在板上出过非零读数</strong>——复验那次全程 36 次 poll 全是 <code>ERLE 0 dB</code>，包括功放 on 的相位。</li>
+</ul>
+<p>残差波形这个思路本身仍然对（ERLE 是比值，说「消了多少」不说「消的是不是回声」），但<strong>它需要一个可复现的测量，而当时那次不是</strong>。要做它，得把 dump 重新做成探针的一个常驻输出，而不是一次性调试代码。</p>
+<h3 id="现在能说的，和仍然不能说的">现在能说的，和仍然不能说的</h3>
+<ul>
+<li><strong>能说</strong>：这一块板子上，延迟锁得住——两次实测、两个不同摆放，delay 全程只动一次。</li>
+<li><strong>仍然不能说</strong>：线性 AEC 在板上消掉了多少。固件计量器没出过非零数，唯一那个 12.3 dB 来自一次已不可复现的离线计算。</li>
+<li><strong>12 dB 够不够用</strong>取决于听感，而听感没有测。这台设备安静，安静房间里这点差距最容易被听见。</li>
+<li><strong>仍然没有</strong>：非线性抑制（<code>aec_nlp_process</code> 那一半）。class-D 功放削顶产生的谐波不在线性模型的预测范围内，所以即使线性部分收敛得很好，残差里仍会有它。</li>
+<li><strong>下一步该量的是 ERLE 计量器本身</strong>，不是滤波器：它在板上一次都没出过数，先查它为什么不累计。</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/server/pipeline">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link active">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link active leaf">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/server/pipeline/#统一管道">统一管道</a></li>
+    
+  </ul>
+  
+  <h1 id="统一管道">统一管道</h1>
+<blockquote>
+<p>一轮对话的整条链：<code>opus → vad → asr → turn → ling → tts</code>。节点是纯流变换，观察者由引擎在节点边界自动广播；Round 消费内层广播，Session 只订阅 Round 的生命周期事件。
+这条链为什么长成这样、替代了哪些形态，见<a href="https://lastsunday.github.io/vanling/records/server/pipeline-evolution/">管道演进记录</a>。</p>
+</blockquote>
+<h2 id="设计约束">设计约束</h2>
+<ul>
+<li><strong>每个 Round 一条链</strong>：<code>opus→vad→asr→turn→ling→tts</code> 首尾相接，<code>TurnComplete</code> 在链内进入 <code>ling→tts</code>。</li>
+<li><strong>所有节点同构</strong>：统一为单一 <code>Node::stream(upstream, ctx)</code> 流变换，没有能力子 trait、没有 <code>InputChain</code>，ling/tts 不享有特权。</li>
+<li><strong>观察者内建抽象层</strong>：<code>NodeContext</code> 携带观察者注册点（Round 注入 <code>EventSink</code>）与 <code>session_id</code>（供节点日志关联 / 状态归属）；<strong>业务节点完全无感</strong>，广播由引擎自动处理。</li>
+<li><strong>引擎取引用 + 池化</strong>：ASR 共享引擎（<code>create_stream()</code> 天然可并发）；VAD 是串行状态机，用<strong>对象池</strong>复用（取用前 <code>clear()</code>）。</li>
+<li><strong>上一轮 Round 默认继续跑</strong>：仅当新回合需占用输出通道 / 打断正在说的话 / 抢 websocket 时才中断它（epoch 防串扰）。</li>
+</ul>
+<h2 id="角色与归属">角色与归属</h2>
+<table><thead><tr><th>角色</th><th>职责</th><th>关键</th></tr></thead><tbody>
+<tr><td><strong>Session（总调度）</strong></td><td>连接 / phase / Round 生命周期（shadow/upgrade/stop）/ 空闲超时；把入站音频转成 <code>PipelineEvent</code> 发到 active Round 链首</td><td>只做<strong>生命周期管理</strong>，不驱动识别/输出、不轮询链；构建时从模板 look up 能力驱动握手声明</td></tr>
+<tr><td><strong>Round（唯一处理器）</strong></td><td><strong>拥有单条链</strong>，自动注入为观察者，订阅广播流；集中响应 barge-in / 回合推进 / 音频逐句转发 / 超时 / 错误</td><td>一句一回合；链是内部实现</td></tr>
+<tr><td><strong>Ling（决策中枢 trait）</strong></td><td>接收已识别结果 → 决策 → 产出表达意图；参考 LLM / DB / 传感 / 网络</td><td>实现可 LLM/agent · 状态机 · 混合 · 传声筒</td></tr>
+<tr><td><strong>节点（引擎适配）</strong></td><td>Opus 解码 / VAD / ASR / turn / LLM / TTS / 数据获取</td><td>统一 <code>Node::stream</code> 流变换，<strong>业务无感观察者</strong>，可插拔组合；<code>capabilities()</code> 泛化申报会话级能力，<code>release_mode</code>/<code>on_acquire</code>/<code>on_release</code> 生命周期</td></tr>
+</tbody></table>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Session(总调度) —— 管理 Round 生命周期；转发 Frame::Voice → active Round 链首；注册为 Round 的外层观察者（RoundEvent）</span></span>
+<span class="giallo-l"><span>   Frame::Voice ──&gt; PipelineEvent::AudioFrame ──&gt; Round 链首</span></span>
+<span class="giallo-l"><span>                        ↓</span></span>
+<span class="giallo-l"><span>   Round(唯一处理器) 拥有单条链(内部实现):</span></span>
+<span class="giallo-l"><span>     opus → vad → asr → turn ──(TurnComplete 链内自动进)──&gt; ling → tts</span></span>
+<span class="giallo-l"><span>       引擎在节点边界自动广播(event 带时机标签 Before/After)</span></span>
+<span class="giallo-l"><span>            │ 内层：Round 作为广播观察者订阅，统一消费（barge-in 检测/TurnComplete/AudioOut 逐句转发/TTS 状态机/tail Err）</span></span>
+<span class="giallo-l"><span>            ▼</span></span>
+<span class="giallo-l"><span>        Round → RoundEvent 通道（SpeechStarted / TurnComplete / EmptyTurn / SpokenEnd）</span></span>
+<span class="giallo-l"><span>            │ 外层：Session 注册为 Round 的观察者，据此做 shadow→running 升级 / 相位切换 / epoch / ListenStop</span></span>
+<span class="giallo-l"><span>            ▼</span></span>
+<span class="giallo-l"><span>        OutputMessage ──&gt; 客户端</span></span></code></pre><h2 id="单链_+_观察者协议">单链 + 观察者协议</h2>
+<h3 id="文件：service/src/pipeline/mod.rs">文件：<code>service/src/pipeline/mod.rs</code></h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> PipelineEvent</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    // 感知</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    AudioFrame</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">u8</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">),</span><span class="z-punctuation z-definition z-comment z-comment">                   // Opus 原始音频，源自 Frame::Voice</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    PcmFrame</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">f32</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type z-numeric z-rust"> u32</span><span class="z-punctuation">),</span><span class="z-punctuation z-definition z-comment z-comment">               // Opus 解码后的样本 + 采样率</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    SpeechStarted</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                         // VAD 上升沿</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    SpeechEnded</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                           // VAD 下降沿</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    PartialTranscript</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">String</span><span class="z-punctuation">),</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    TurnText</span><span class="z-punctuation"> {</span><span class="z-source"> text</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> String</span><span class="z-punctuation">,</span><span class="z-source"> prob</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> f32</span><span class="z-punctuation"> },</span><span class="z-punctuation z-definition z-comment z-comment">  // 关卡：一轮识别完成（ASR 产出）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    TurnComplete</span><span class="z-punctuation"> {</span><span class="z-source"> text</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> String</span><span class="z-punctuation">,</span><span class="z-source"> prob</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> f32</span><span class="z-punctuation"> },</span><span class="z-punctuation z-definition z-comment z-comment"> // 回合边界收尾（turn 节点把 TurnText 标为回合结束，边界判定在 AsrNode + Session）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    Configure</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">AudioParam</span><span class="z-punctuation">),</span><span class="z-punctuation z-definition z-comment z-comment">                 // 下行音频参数：经流内事件触发重配</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    FinishTurn</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                            // 内部控制：请求 ASR 立即 finish</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    // 表达</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    TextChunk</span><span class="z-punctuation"> {</span><span class="z-source"> text</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> String</span><span class="z-punctuation">,</span><span class="z-source"> emotion</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">String</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation"> },</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    AudioOut</span><span class="z-punctuation"> {</span><span class="z-source"> audio</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type z-numeric z-rust">u8</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation">,</span><span class="z-source"> is_first</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> bool</span><span class="z-punctuation">,</span><span class="z-source"> is_last</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> bool</span><span class="z-punctuation"> },</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> NodeContext</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> cancel</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> CancellationToken</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> emit</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> EventSink</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">          // Round 注入的观察者广播发送端</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> session_id</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> String</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">       // 会话标识：Round 注入，供节点日志关联/状态归属</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// 统一节点协议 —— 业务节点是无感的纯变换：从上游流读取关心变体，透传其余，可叠加新事件。</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// **原型（Prototype）**：Node 既是模板又是实例，自带 `new_instance` 以自身为配方克隆新实例；</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// Session 持一组模板，每 Round 让每个模板 `new_instance` 出独立实例（Opus/VAD 等有状态节点须新鲜实体）。</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">/// 会话级能力值：任何 `Send + Sync + &#39;static` 的具体类型（`NodeCapability = dyn Any + Send + Sync`）</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">/// 包装为 `Box&lt;NodeCapability&gt;` 即可被节点声明、被 Session 以 `downcast_ref::&lt;T&gt;()` 按类型 look up。</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub type</span><span class="z-entity z-name z-type"> NodeCapability</span><span class="z-keyword z-operator"> =</span><span class="z-keyword"> dyn</span><span class="z-entity z-name z-type"> Any</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> ReleaseMode</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 节点进程完成（其流消费到 `None`）即释放：适合无跨事件状态的节点。</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    Immediate</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 整轮 round 结束才释放：适合贯穿一轮识别/表达的有状态节点。</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    Deferred</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub trait</span><span class="z-entity z-name z-type"> Node</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Send</span><span class="z-keyword z-operator"> +</span><span class="z-entity z-name z-type"> Sync</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 克隆：以自身为模板产出一个新的、可跑在链里的实例（供每个 Round 独立使用）。</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> new_instance</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Node</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> stream</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> upstream</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> EventStream</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> ctx</span><span class="z-keyword z-operator">: &amp;</span><span class="z-entity z-name z-type">NodeContext</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> EventStream</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 下行配置（模板级）：Session 在 hello 时把传输 `Configure` 转发给模板一次，</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 更新模板自身状态；后续每轮 `new_instance` 从中继承。默认空实现 = 不接受配置。</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> on_configure</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> _event</span><span class="z-keyword z-operator">: &amp;</span><span class="z-entity z-name z-type">PipelineEvent</span><span class="z-punctuation">) {}</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 泛化能力 look up：节点声明的会话级能力集合（空 = 无）。Session 按类型 downcast 检索；</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 新增能力只需 `Box::new(具体类型)` 并入 `capabilities()`，不改 Node trait。</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> capabilities</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">NodeCapability</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation"> {</span><span class="z-entity z-name z-type"> Vec</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">new</span><span class="z-punctuation">() }</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 释放策略（框架强制）：默认 `Deferred`；Immediate 节点在其流消费到 `None` 时被框架立即 `on_release`。</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> release_mode</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> ReleaseMode</span><span class="z-punctuation"> {</span><span class="z-entity z-name z-type"> ReleaseMode</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-type">Deferred</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 轮次生命周期：round 开始时被 `NodeChain::begin` 驱动（默认 no-op）。</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> on_acquire</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">) {}</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    /// 轮次生命周期：Immediate 节点在 `with_observer` 流末触发，Deferred 节点在 `NodeChain::finish` 触发。</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> on_release</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">) {}</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p><strong>观察者/广播（时机标签）</strong>——附在广播载荷，<strong>不是</strong> <code>NodeContext</code> 字段：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> TapPoint</span><span class="z-punctuation"> {</span><span class="z-entity z-name z-type"> Before</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> After</span><span class="z-punctuation"> }</span><span class="z-punctuation z-definition z-comment z-comment">        // 进入节点输入前 / 节点产出后</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> Tapped</span><span class="z-punctuation"> {</span><span class="z-keyword"> pub</span><span class="z-source"> point</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> TapPoint</span><span class="z-punctuation">,</span><span class="z-keyword"> pub</span><span class="z-source"> event</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> PipelineEvent</span><span class="z-punctuation"> }</span></span></code></pre>
+<ul>
+<li><code>EventSink</code>：Round 注入的可 clone 广播发送端（<code>broadcast::Sender&lt;Tapped&gt;</code> 或双端 unbounded）。</li>
+<li><strong>广播由引擎自动做</strong>：在 <code>compose</code>/<code>NodeChain</code> 驱动层，于每个节点边界把
+<code>Tapped{Before, ev}</code> 与 <code>Tapped{After, ev}</code> 都发到 <code>emit</code>。业务节点<strong>不感知</strong>观察者存在——
+它只写纯 <code>stream</code> 变换，不调 <code>ctx.emit</code>。</li>
+</ul>
+<p><strong>语义</strong>：</p>
+<ul>
+<li><strong>单一 <code>Node</code> trait</strong>：能力一律经 <code>capabilities()</code> 申报，不用能力子 trait 区分节点。reset 不是公共协议——
+VAD per-Round（池取用前 <code>clear()</code>）；reconfigure 分两层：Session 在 hello 时把流内 <code>Configure</code>
+事件转发给<strong>模板</strong>（<code>Node::on_configure</code>），模板 <code>new_instance</code> 把配置态克隆给每轮实例。</li>
+<li><code>NodeContext</code> 承载 <code>cancel</code> + <code>emit</code>（观察者入口）+ <code>session_id</code>（Round 注入，供节点日志关联 / 状态归属）；
+不含任何「时机」配置——Before/After 是
+广播载荷的标签，由引擎贴，不与上下文耦合。</li>
+<li>错误复用 <code>AppError</code>，经 <code>TryStreamExt</code> 自动短路透传 <code>Err</code>；不塞 <code>PipelineEvent::Error</code>。</li>
+</ul>
+<p><strong>两个时机的用途</strong>（互补）：</p>
+<ul>
+<li><strong>Before（进入前）</strong>：Round 感知<strong>原始输入事件</strong>——<code>SpeechStarted</code>（barge-in 打断）、音频到达
+（重置空闲计时）。这类信号在链内会被下游变换吞噬，只有 Before 广播能让 Round 及时拿到。</li>
+<li><strong>After（产出后）</strong>：Round 感知<strong>变换结果</strong>——<code>TurnComplete</code>（推进说段）、<code>AudioOut</code>（逐句转发）、
+<code>Err</code>（超时/中断）。</li>
+</ul>
+<h3 id="下行配置（模板级，Configure_→_Node::on_configure）">下行配置（模板级，<code>Configure</code> → <code>Node::on_configure</code>）</h3>
+<p><strong>语义</strong>：<code>Configure(AudioParam)</code> 是传输层（客户端 hello <code>audio_params</code>）下发的运行时参数，当前只被
+<code>OpusDecodeNode</code> 消费（解码采样率）。它<strong>不逐轮发送</strong>，而是——Session 在 <code>handle_connect</code> 时把该事件
+<strong>转发给模板一次</strong>（<code>templates.iter().for_each(|t| t.on_configure(&amp;Configure(params)))</code>）；<code>OpusDecodeNode</code>
+覆写 <code>on_configure</code> 更新模板态，且 <code>new_instance</code> <strong>从 self 继承</strong>已配置采样率 → 每轮新实例解码器/重采样器
+天然正确。首轮因 <code>on_idle</code> 先建 round 后 connect，仍补一次流内 <code>Configure</code>；<strong>无持久化字段、无每轮重喂</strong>。</p>
+<p><strong>采样率归一（opus → 16k）</strong>：<code>OpusDecodeNode</code> 负责 <code>AudioFrame→PcmFrame</code>，解码后把 PCM <strong>重采样到
+16000</strong> 再输出（<code>PcmFrame(_, 16000)</code> 恒 16k）。因为下游 VAD（Earshot）与 ASR（sherpa X-ASR）都硬编码
+假设 16k 输入、链上无其它重采样点；客户端按 hello 声明异于 16k 的上行采样率（如 24k）时，统一在此降 16k，
+VAD/ASR 总拿到正确采样率。复用 <code>rubato</code>（api 已有依赖，<code>matcha</code> 同款 <code>Fft::new</code> + 分块处理模式）。</p>
+<h3 id="能力_look_up（Node_→_Session_上行声明，泛化）">能力 look up（Node → Session 上行声明，泛化）</h3>
+<p>与<strong>下行配置</strong>（<code>Configure(AudioParam)</code>，Session→Node 下发运行时参数）正交，节点还提供<strong>上行能力声明</strong>。
+能力<strong>泛化</strong>：不穷举为 Node trait 方法，而是以类型别名 <code>NodeCapability = dyn Any + Send + Sync</code> 包装
+任意 <code>Send + Sync + 'static</code> 的具体类型即可作为能力被节点声明、被 Session 按类型 <code>downcast_ref::&lt;T&gt;()</code>
+look up。当前唯一能力成员是 <code>AudioSpec</code>（下行音频格式）：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-attribute z-rust">#</span><span class="z-punctuation">[</span><span class="z-meta z-attribute z-rust">derive</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">Debug</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> Clone</span><span class="z-punctuation">)]</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> AudioSpec</span><span class="z-punctuation"> {</span><span class="z-keyword"> pub</span><span class="z-source"> sample_rate</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> u32</span><span class="z-punctuation">,</span><span class="z-keyword"> pub</span><span class="z-source"> channel</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> u32</span><span class="z-punctuation">,</span><span class="z-keyword"> pub</span><span class="z-source"> frame_duration_ms</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> u64</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// Node trait 默认：capabilities() -&gt; Vec&lt;Box&lt;NodeCapability&gt;&gt; { Vec::new() }</span></span>
+<span class="giallo-l"><span class="z-keyword">impl</span><span class="z-entity z-name z-type"> Node</span><span class="z-keyword"> for</span><span class="z-entity z-name z-type"> TtsNode</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> capabilities</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">NodeCapability</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function z-macro z-rust">        vec!</span><span class="z-punctuation">[</span><span class="z-entity z-name z-type">Box</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">new</span><span class="z-punctuation">(</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-keyword z-operator">.</span><span class="z-meta z-function z-call z-rust">tts</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">audio_spec</span><span class="z-punctuation">())]</span><span class="z-punctuation z-definition z-comment z-comment">   // 任意具体类型直接 Box 包装</span></span>
+<span class="giallo-l"><span class="z-punctuation">    }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<ul>
+<li><strong><code>Tts::audio_spec() -&gt; AudioSpec</code></strong>（service <code>component/tts.rs</code>）：引擎自报下行输出格式。<code>TtsMatcha</code>
+返回自身 <code>output_sample_rate/output_channel/output_frame_duration</code>；<code>TtsMute</code>（无音频、仅透传
+文本）返回默认 <code>(16000, 1, 60)</code>。</li>
+<li><strong>Session 解析</strong>：<code>build()</code> 时一次性遍历 <code>node_templates</code>，在每个模板的 <code>capabilities()</code> 里
+<code>downcast_ref::&lt;AudioSpec&gt;()</code>，<code>find_map</code> 首个命中，存为 <code>Option&lt;AudioSpec&gt;</code> 字段。</li>
+<li><strong>语义（不兜底）</strong>：无 TTS 节点 ⇒ <code>None</code>——握手回包 <code>audio_params: None</code>（显式"无下行语音能力"，
+客户端不再期待音频），pacer 亦不构造（<code>AudioResult</code> 只来自 TTS，天然不触发）。</li>
+<li><strong>扩展性</strong>：新增能力（如上行格式、会话 token 预算）只需 <code>Box::new(具体类型)</code> 并入
+<code>capabilities()</code>，<strong>不改 Node trait</strong>。</li>
+<li><strong>配置源只有一处</strong>：api <code>config::audio::AudioConfig</code>（流向 <code>TtsManager</code>/<code>TtsMatcha</code>）；session 侧不复制音频配置。</li>
+</ul>
+<h3 id="节点生命周期（框架强制的资源释放）">节点生命周期（框架强制的资源释放）</h3>
+<p>有状态节点（VAD / ASR）在一轮识别内持有资源（VAD 状态机取自注入的 pool、ASR 流贯穿喂帧→finish），需要
+<strong>生命周期钩子</strong>统一驱动。释放策略由节点 <code>release_mode()</code> 声明，框架强制：</p>
+<ul>
+<li><strong>Immediate</strong>：<code>with_observer</code> 在每个叶子流的 <code>with_observer</code> 包裹层检测到该流消费到 <code>None</code>（进程完成）
+时，若该叶子 <code>release_mode()==Immediate</code> 即立即调 <code>leaf.on_release()</code>。因 <code>compose_chain</code> 入口对每个
+叶子恰好 <code>with_observer</code> 包一次，触发<strong>每叶恰好一次</strong>，嵌套 compose 不会重复。</li>
+<li><strong>Deferred</strong>：资源贯穿整轮，由 <code>NodeChain</code> 在 round 结束时统一释放。</li>
+</ul>
+<p><strong>触发载体——<code>NodeChain</code> 持叶子列表</strong>：<code>compose_chain</code> 把传入的有序 <code>Vec&lt;Arc&lt;dyn Node&gt;&gt;</code> 折叠成嵌套
+组合，叶子引用被吞没；为驱动生命周期，<code>NodeChain::new(head, leaves)</code> 保留叶子副本：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// session 构链时</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">let</span><span class="z-source"> leaves</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Node</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-keyword z-operator"> =</span><span class="z-source"> templates</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">iter</span><span class="z-punctuation">()</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">map</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">|</span><span class="z-variable z-other z-rust">t</span><span class="z-keyword z-operator">|</span><span class="z-variable z-other z-rust"> t</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">new_instance</span><span class="z-punctuation">())</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">collect</span><span class="z-punctuation">();</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">let</span><span class="z-source"> head</span><span class="z-keyword z-operator"> =</span><span class="z-entity z-name z-function"> compose_chain</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">leaves</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">clone</span><span class="z-punctuation">())</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">expect</span><span class="z-punctuation">(</span><span class="z-punctuation z-definition z-string z-string">&quot;chain&quot;</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">let</span><span class="z-source"> chain</span><span class="z-keyword z-operator"> =</span><span class="z-entity z-name z-type"> NodeChain</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">new</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">head</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> leaves</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-source">chain</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">begin</span><span class="z-punctuation">();</span><span class="z-punctuation z-definition z-comment z-comment">   // 对所有叶子逐一 on_acquire()</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">// round 结束</span></span>
+<span class="giallo-l"><span class="z-source">chain</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">finish</span><span class="z-punctuation">();</span><span class="z-punctuation z-definition z-comment z-comment">  // 仅对 Deferred 叶子逐一 on_release()（Immediate 已在流末释放，不重复）</span></span></code></pre><table><thead><tr><th>节点</th><th><code>release_mode</code></th><th><code>on_acquire</code></th><th><code>on_release</code></th></tr></thead><tbody>
+<tr><td><code>OpusDecodeNode</code></td><td>Immediate</td><td>—</td><td>重置解码/重采样态</td></tr>
+<tr><td><code>VadNode</code></td><td>Deferred</td><td><code>pool.acquire()</code> 存实例</td><td><code>take()</code> 归还 <code>pool.release()</code></td></tr>
+<tr><td><code>AsrNode</code></td><td>Deferred</td><td>重置内部流/缓冲/标志</td><td>活跃流则 finish</td></tr>
+<tr><td><code>TurnNode</code></td><td>Immediate</td><td>—</td><td>—</td></tr>
+<tr><td><code>LingNode</code></td><td>Immediate</td><td>—</td><td>—</td></tr>
+<tr><td><code>TtsNode</code></td><td>Immediate</td><td>—</td><td>—</td></tr>
+</tbody></table>
+<h3 id="单链组合">单链组合</h3>
+<p><code>compose(a, b)</code> 把 <code>a.stream</code> 输出接成 <code>b.stream</code> 输入，返回新 <code>Node</code>（纯 pipe，不广播）。
+<strong>统一拼链函数 <code>compose_chain(Vec&lt;Arc&lt;dyn Node&gt;&gt;)</code></strong> 逐叶子用 <code>with_observer</code> 包一次（自动广播）后再
+<code>reduce(compose)</code> 折叠成单条链——顺序与数量由外部传入的 <code>Vec</code> 决定：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword">pub fn</span><span class="z-entity z-name z-function"> compose_chain</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">nodes</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Vec</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Node</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Arc</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-keyword">dyn</span><span class="z-entity z-name z-type"> Node</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-source">    nodes</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">into_iter</span><span class="z-punctuation">()</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">map</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">with_observer</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">reduce</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">compose</span><span class="z-punctuation">)</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>产出的链形：<code>opus → vad → asr → turn → ling → tts</code>。
+组装者只给<strong>裸原型</strong> <code>Vec&lt;Arc&lt;dyn Node&gt;&gt;</code>；<code>with_observer</code> 对组装者完全透明，由 <code>compose_chain</code> 内部统一处理（保证每个叶子恰好广播一次）。</p>
+<h2 id="链构建（模板_+_每轮实例）">链构建（模板 + 每轮实例）</h2>
+<ul>
+<li><strong>只有三层</strong>：模板集合 → 每轮 <code>new_instance</code> → <code>compose_chain</code>。没有 <code>PipelineFactory</code> / <code>NodeFactory</code> /
+<code>NodeDeps</code> / <code>ChainBuilder</code> 这类中间层。</li>
+<li><strong><code>Node</code> = 原型</strong>：每个节点自带 <code>new_instance(&amp;self) -&gt; Arc&lt;dyn Node&gt;</code>，以自身为模板克隆实例。
+模板自持所需共享引用（<code>Arc&lt;VadPool&gt;</code> / <code>Arc&lt;dyn Asr&gt;</code> / <code>Arc&lt;dyn Ling&gt;</code> / <code>Arc&lt;dyn Tts&gt;</code>），
+<code>new_instance</code> 时克隆出每 Round 独立的新实体。节点<strong>不自存 per-session <code>session_id</code></strong>——会话标识由
+Round 注入 <code>NodeContext.session_id</code>，节点仅从 <code>ctx</code> 读取用于日志关联。</li>
+<li><strong>Session</strong> 持裸原型集合 <code>Vec&lt;Arc&lt;dyn Node&gt;&gt;</code>（<code>SessionBuilder::with_node_templates</code>），每 Round：
+<code>templates.iter().map(|t| t.new_instance())</code> → <code>compose_chain(...)</code> 产链。</li>
+<li><strong>Session 构建时从模板 look up 会话级能力</strong>：<code>find_map</code> downcast <code>AudioSpec</code>（见「能力 look up」），
+驱动握手音频声明与 pacer；无 TTS 节点则不声明下行音频（<code>audio_params: None</code>）。</li>
+<li><strong>调用方（api 站点 ws / matrix / 测试）</strong> 按配置条件组装裸原型 <code>Vec&lt;Arc&lt;dyn Node&gt;&gt;</code>：条件 <code>push</code> /
+换序即可决定链上有哪些阶段、什么顺序。</li>
+<li>每 Round 一条链 = 每次 <code>new_instance</code> 从 VAD 池 <code>acquire</code> 一个新 VAD 实例。</li>
+</ul>
+<h2 id="节点归属">节点归属</h2>
+<table><thead><tr><th>节点</th><th>文件</th><th>实现</th></tr></thead><tbody>
+<tr><td><code>OpusDecodeNode</code></td><td><code>service/src/pipeline/nodes/opus_node.rs</code></td><td><code>AudioFrame→PcmFrame</code>；覆写 <code>on_configure</code> 更新模板态 + <code>new_instance</code> 继承；解码后重采样到 <strong>16k</strong> 输出</td></tr>
+<tr><td><code>VadNode</code></td><td><code>service/src/pipeline/nodes/vad_node.rs</code></td><td><code>PcmFrame→{PcmFrame, SpeechStarted, SpeechEnded}</code>；实例取自 VAD 池，<code>Drop</code> 归还</td></tr>
+<tr><td><code>AsrNode</code></td><td><code>service/src/pipeline/nodes/asr_node.rs</code></td><td><code>→{PartialTranscript, TurnText}</code>；内部 <code>create_stream()</code>，共享引擎</td></tr>
+<tr><td><code>TurnNode</code></td><td><code>service/src/pipeline/nodes/turn_node.rs</code></td><td><code>TurnText→TurnComplete</code>；规整 ASR 流与文本直入（<code>TurnText</code>）两路径，显式关闭回合边界（边界判定在 AsrNode 静默确认与 Session 控制事件）</td></tr>
+<tr><td><code>LingNode</code></td><td><code>service/src/pipeline/nodes/ling_node.rs</code></td><td><code>TurnComplete|TurnText→TextChunk</code>（unfold 内部流；文本直答也走此）</td></tr>
+<tr><td><code>TtsNode</code></td><td><code>service/src/pipeline/nodes/tts_node.rs</code></td><td><code>TextChunk→{TextChunk, AudioOut}</code>（统一 <code>Node::stream</code>）；<code>capabilities()</code> 上报 <code>AudioSpec</code>（<code>Tts::audio_spec()</code>）</td></tr>
+</tbody></table>
+<p>所有节点为<strong>纯变换</strong>：不感知观察者/广播；<code>TtsNode</code> 以 FIFO 配平 emotion，编码错误以 <code>Err</code> 透传。</p>
+<h2 id="引擎池化">引擎池化</h2>
+<ul>
+<li><strong>VAD 对象池</strong>：<code>VadPool { free: Mutex&lt;Vec&lt;Box&lt;dyn Vad&gt;&gt;&gt;, config }</code>。<code>acquire()</code> 空则建、
+否则取并 <code>clear()</code>；<code>release()</code> 归还。保证同时仅被一个 Round 持有（串行状态机，并发复用破 <code>is_speech</code>）。</li>
+<li><strong>ASR 共享引擎</strong>：<code>Arc&lt;dyn Asr&gt;</code> 单例；每 Round 现取 <code>create_stream()</code>，<code>finish()</code> 后终结，不值得池化。</li>
+</ul>
+<h2 id="Round_统一消费（两层观察者）">Round 统一消费（两层观察者）</h2>
+<p><strong>Round 是「内层封装 pipeline 广播 + 外层可观察主体」的双层观察者模型。</strong></p>
+<ul>
+<li><strong>内层（Round ← pipeline 广播）</strong>：Round 拥有单条 <code>NodeChain</code>；<code>start()</code> 时把自己注入为
+<code>EventSink</code> 观察者，订阅 <code>Tapped</code> 广播流统一消费单链。按 <code>Tapped</code> 的 <code>point</code> + <code>event</code> 分支：
+<ul>
+<li><code>Before SpeechStarted</code> → 判定 barge-in（含 lockout，已过锁定期后）→ 通知 Session 决策</li>
+<li><code>After TurnComplete</code> → 发 STT + 通知 Session 升级</li>
+<li><code>After AudioOut</code> → 逐句 <code>SentenceStart</code>/<code>Audio</code>/<code>SentenceEnd</code> 转发 + TTS 状态机 + 超时</li>
+<li>tail <code>Err</code> → <code>LlmNoUsableOutput</code> / <code>TtsEncode</code> / 中断</li>
+<li>其他（<code>PcmFrame</code>/<code>PartialTranscript</code>）→ 前向 / 日志</li>
+</ul>
+</li>
+<li><strong>外层（Session ← Round 可观察主体）</strong>：Round 本身实现观察者模式，暴露 <code>RoundEvent</code> 广播通道；
+<strong>Session 注册订阅</strong>（每 Round 唯一订阅者）。Round 判定信号并<strong>内联转发输出</strong>（STT/LLM/TTS/Audio →
+<code>output_tx</code>）+ 维护 TTS 状态机；Session 只做<strong>生命周期决策</strong>（shadow→running 升级 / 相位切换 / epoch /
+打断 stop_round / ListenStop）。</li>
+</ul>
+<h3 id="文件：service/src/session/round.rs">文件：<code>service/src/session/round.rs</code></h3>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> RoundEvent</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    SpeechStarted</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                             // 语音起始（barge-in 判定已过 lockout）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    TurnComplete</span><span class="z-punctuation"> {</span><span class="z-source"> text</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> String</span><span class="z-punctuation">,</span><span class="z-source"> prob</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> f32</span><span class="z-punctuation"> },</span><span class="z-punctuation z-definition z-comment z-comment">  // 一轮识别完成（应升级 shadow→running / Speaking / ListenStop）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    EmptyTurn</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                                 // 空输入完成（同 TurnComplete 轮转出新的 shadow，但不产 STT）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    SpokenEnd</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                                 // TTS 表达结束（该 round 完成）</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> Round</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-source">    chain</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> NodeChain</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                                  // 单条链</span></span>
+<span class="giallo-l"><span class="z-source">    round_event_tx</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-namespace"> broadcast</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-type">Sender</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">RoundEvent</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">     // 外层观察者通道（Round 广播）</span></span>
+<span class="giallo-l"><span class="z-source">    round_event_rx</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-namespace"> broadcast</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-type">Receiver</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">RoundEvent</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">   // Session 注册订阅</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    // ...</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<ul>
+<li><code>Round::event_receiver()</code> → 返回 <code>round_event_rx</code>，Session 注册。</li>
+<li>Round 的 <code>start()</code> 起观察者 task：<code>select!</code> 于 { tail.next()（驱动 + Err） / tap_rx.recv()（控制） / cancel }，
+统一消费并负责逐句输出转发。</li>
+</ul>
+<h2 id="回合联动">回合联动</h2>
+<ul>
+<li>回合边界判定在 <strong>AsrNode 的静音确认</strong>（<code>SILENCE_CONFIRM_MS=200</code>，VAD 报非语音后触发 finish）与
+<strong>Session 控制事件</strong>（<code>FinishTurn</code>：<code>ListenStop</code> / 静音超时 / transport stall）完成；<code>TurnNode</code> 只做
+<code>TurnText→TurnComplete</code> 显式收尾标记（D2）。</li>
+<li><strong>规则收尾（默认）</strong>：AsrNode 按静音确认阈值（200ms）收尾一段完整意图——VAD 报非语音后
+<code>silence_samples ≥ SILENCE_CONFIRM_MS·sample_rate/1000</code> 即 finish；另有静音超时、transport stall、
+<code>FinishTurn</code> 控制事件、prefix。</li>
+<li><strong>上一轮 Round 的处置</strong>：默认继续跑；仅当新回合需占用输出通道 / 打断说话 / 抢 websocket 时才中断——
+复用 <code>RoundStopReason::Upgrade/BargeIn</code> + epoch 防陈旧输出。</li>
+</ul>
+<h2 id="Session_总调度（Round_生命周期管理）">Session 总调度（Round 生命周期管理）</h2>
+<ul>
+<li>phase 状态机保留：<code>Idle</code> / <code>Listening</code> / <code>Speaking</code>。</li>
+<li><code>on_listening(Frame::Voice)</code> → 转发 <code>AudioFrame</code> 到 active Round 链首（D1）。</li>
+<li><strong>Session 注册为 current Round 的外层观察者</strong>：在 <code>RoundEvent</code> 通道上 <code>select!</code>，
+收到信号做<strong>生命周期决策</strong>：
+<ul>
+<li><code>SpeechStarted</code> → barge-in：<code>next_round_epoch()</code> + <code>stop_round(BargeIn)</code>（该打断由当前 shadow 继续听，
+其 <code>TurnComplete</code> 再升级，不再 <code>new_shadow_round</code>）</li>
+<li><code>TurnComplete{text, prob}</code> → <code>on_turn_complete</code>：<code>shadow→running</code> 升级、相位 Speaking、ListenStop，
+并<strong>立即新建下一轮 shadow</strong>（<code>new_shadow_round</code>）以支持说话中 / 连续输入监听</li>
+<li><code>SpokenEnd</code> → 表达结束（shadow 相位处理 / 空闲计时）</li>
+</ul>
+</li>
+<li><strong>取输入帧前先消化已入队的 <code>RoundEvent</code></strong>：生命周期事件走 broadcast、该轮输出帧走输出通道，
+两条通道各自排队。不先消化，barge-in 可能在 <code>TurnComplete</code> 之前被处理，看到尚未升级的 shadow
+（<code>running_round == None</code>）就放弃打断，整段已排队 TTS 继续播。</li>
+<li><strong>节奏门控的是取帧而不是发送</strong>：<code>frame_duration_ms</code> 只决定「下一帧何时允许从输出队列取出」，
+任意时刻最多一帧在途。先取后等会把整段 TTS 预取进转发循环，让每帧都与输入帧争用 <code>select</code>，
+barge-in 因此可能被推迟 N 帧。</li>
+<li>Session 不持有 <code>drain_hearing</code> / <code>handle_hearing_event</code> / <code>active_hearing</code>：响应逻辑在 Round 观察者里。</li>
+<li><code>with_node_templates(Vec&lt;Arc&lt;dyn Node&gt;&gt;)</code> 注入<strong>裸原型集合</strong>（api 站点动态组，决定链的阶段/顺序）。</li>
+<li>握手（<code>handle_connect</code>）回包 <code>audio_params</code> 由构建时 look up 的 <code>AudioSpec</code> 决定；无 TTS 节点则下发
+<code>audio_params: None</code>（无下行语音能力，不兜底默认）。pacer 节奏取 <code>frame_duration_ms</code>（无 spec 不构造）。</li>
+<li>epoch 防串扰保留；输出转发也算活动（重置 <code>idle_since</code>）。</li>
+</ul>
+<h3 id="空输入决策（中枢_gatekeeper）">空输入决策（中枢 gatekeeper）</h3>
+<p>空输入的判别表、计数与提示语分级归<a href="https://lastsunday.github.io/vanling/development/server/dialogue-flow/#%E7%A9%BA%E8%BE%93%E5%85%A5%E8%A1%8C%E4%B8%BA">对话流程</a>；这里只留机制：会话进入 <code>Listening</code> 时 Session 依「模式 + 前一 turn」定出 <code>EmptyKind</code>，观察 <code>(After, EmptyInput)</code> / <code>(After, EmptyTurn)</code> 后产出 <code>Prompt{kind, count}</code>（重新注入链首，各节点透传未识别事件）、<code>Silence</code>（不注入表达）或 <code>GiveUp</code>（回 <code>Idle</code>）。<code>Ling</code> 只按 Act 组 prompt，Echo 按 kind/count 取固定句——判别与渲染不交叉。</p>
+<h2 id="测试">测试</h2>
+<table><thead><tr><th>层面</th><th>测试</th><th>断言</th></tr></thead><tbody>
+<tr><td>广播</td><td><code>service/src/pipeline/mod.rs</code> <code>with_observer_broadcasts_before_and_after_once_per_leaf</code></td><td>每个叶子在每个事件上恰好收到 <code>Tapped{Before}</code>、<code>Tapped{After}</code> 各一次</td></tr>
+<tr><td>广播</td><td><code>nested_compose_does_not_duplicate_broadcast</code></td><td>嵌套 <code>compose</code> 不重复广播同一事件</td></tr>
+<tr><td>组链</td><td><code>new_instance_reproduces_fresh_instance_and_compose_chain_broadcasts_once</code></td><td><code>new_instance</code> 产出独立实例，<code>compose_chain</code> 整体仍只广播一次</td></tr>
+<tr><td>生命周期</td><td><code>lifecycle_immediate_releases_at_stream_end_deferred_at_finish</code></td><td>Immediate 在流末释放、Deferred 在 <code>finish()</code> 释放，各恰好一次</td></tr>
+<tr><td>节点</td><td><code>api/tests/pipeline_nodes_test.rs</code>（16 条 + 1 条 <code>#[ignore]</code>）</td><td>解码重采样到 16k、VAD 起点与前缀截断、ASR 空输入、TTS 编码与 <code>AudioSpec</code> 能力、ling 取消</td></tr>
+<tr><td>端到端</td><td><code>api/tests/session/</code>（<code>chat.rs</code>、<code>empty_input_round.rs</code>）</td><td>握手 <code>audio_params</code>、听/说轮转、barge-in、空输入的提示分级</td></tr>
+</tbody></table>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test -p service --lib pipeline</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test -p api --test pipeline_nodes_test</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test -p api --test session</span></span></code></pre><h2 id="相关文件">相关文件</h2>
+<table><thead><tr><th>路径</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>service/src/pipeline/mod.rs</code></td><td><code>PipelineEvent</code>、<code>NodeContext{cancel, emit, session_id}</code>、<code>EventSink</code>/<code>Tapped</code>/<code>TapPoint</code>、<code>Node</code> trait（原型 + <code>on_configure</code> + <code>capabilities()</code> + 生命周期）、<code>compose</code>/<code>compose_chain</code> 与节点边界广播</td></tr>
+<tr><td><code>service/src/pipeline/nodes/</code></td><td>六个节点：<code>opus</code> / <code>vad</code> / <code>asr</code> / <code>turn</code> / <code>ling</code> / <code>tts</code>，均为纯 <code>stream</code> 变换 + <code>new_instance</code> 克隆</td></tr>
+<tr><td><code>service/src/session/mod.rs</code></td><td>Round 生命周期（shadow/upgrade/stop/phase/空闲）、<code>with_node_templates</code> 注入裸原型、构建时 look up <code>AudioSpec</code>、<code>handle_connect</code> 向模板转发一次 <code>Configure</code></td></tr>
+<tr><td><code>service/src/session/round.rs</code></td><td>持单链；内层订阅 <code>Tapped</code> 统一消费；外层广播 <code>RoundEvent</code>（<code>SpeechStarted</code>/<code>TurnComplete</code>/<code>EmptyTurn</code>/<code>SpokenEnd</code>）</td></tr>
+<tr><td><code>service/src/component/tts.rs</code></td><td><code>Tts</code> trait，含 <code>audio_spec() -&gt; AudioSpec</code>（<code>AudioSpec</code> 定义在 pipeline）</td></tr>
+<tr><td><code>api/src/component/tts/model/</code></td><td><code>TtsMatcha</code> 按自身字段上报 <code>audio_spec()</code>；<code>TtsMute</code> 返回 16000·1·60</td></tr>
+<tr><td><code>api/src/component/tts/opus_encoder.rs</code></td><td><code>StreamingOpusEncoder</code></td></tr>
+<tr><td><code>api/src/ws/mod.rs</code>、<code>api/src/matrix/client.rs</code></td><td>按配置组裸原型 <code>Vec&lt;Arc&lt;dyn Node&gt;&gt;</code>，交给 <code>with_node_templates</code></td></tr>
+<tr><td><code>api/tests/pipeline_nodes_test.rs</code></td><td>节点级契约：重采样、VAD 起点与前缀、ASR 空输入、TTS 编码与能力声明</td></tr>
+<tr><td><code>api/tests/session/</code></td><td>端到端：握手音频声明、听/说轮转、barge-in、空输入提示分级</td></tr>
+</tbody></table>
+<h2 id="硬约束">硬约束</h2>
+<ul>
+<li><strong>VAD 池回收</strong>：VAD 是串行状态机，acquire/release 严格配对，同一实例同时只能被一个 Round 持有。</li>
+<li><strong>回合判定归属</strong>：边界由 AsrNode 的静音确认与 Session 控制事件（<code>FinishTurn</code> / 静音超时 / transport stall）决定，<code>TurnNode</code> 只标 <code>TurnComplete</code>。</li>
+<li><strong>广播顺序</strong>：Before/After 标签只由引擎在节点边界贴；节点自己不调 <code>ctx.emit</code>，否则观察者会收到错序或重复信号。</li>
+<li><strong>epoch 与终止</strong>：epoch 防陈旧输出，不随链结构调整。</li>
+<li><strong>emotion</strong>：TTS 的 emotion 靠 FIFO 配平，不做文本键映射。</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

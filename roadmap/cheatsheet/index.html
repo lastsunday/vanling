@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/roadmap/cheatsheet">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title active">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link active leaf">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#速查">速查</a></li>
+    
+  </ul>
+  
+  <h1 id="速查">速查</h1>
+<p>本页是仓库全部 project 的命令入口：先列常用流程（多步组合，可按序粘贴执行），再按 project 列出单条命令，其后是固件专题、改动的影响范围、故障现象的排查起点与检查无法覆盖的内容。</p>
+<p>本页只写命令与约束。为什么如此、实测数字多少，见文末链接的页面。</p>
+<h2 id="contents">目录</h2>
+<ul>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#conventions">约定</a>：参数透传、缓存、任务全集的边界</li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#workflows">常用流程</a>：12 段多步组合，每段含前置条件、命令与成功标志</li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#commands">命令参考</a>：<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#server">server</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#server-ui">server-ui</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#server-ui-e2e">server-ui-e2e</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#app">app</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#iot">iot</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#docs">docs</a></li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#release">发布与维护</a></li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#firmware">固件</a>：<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#boards">开发板与端口</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#build-time-vars">编译期变量</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#logging">日志</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#before-flashing">烧录前</a>、<a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#handy-commands">便利命令</a></li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#impact">改动的影响范围</a></li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#troubleshooting">故障现象与排查起点</a></li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#blind-spots">检查无法覆盖的内容</a></li>
+<li><a href="https://lastsunday.github.io/vanling/roadmap/cheatsheet/#further">完整内容</a></li>
+</ul>
+<h2 id="conventions">约定</h2>
+<ul>
+<li>命令均在仓库根目录执行；<code>moon run &lt;project&gt;:&lt;task&gt;</code> 在任意子目录亦可执行。</li>
+<li>向任务传参须置于 <code>--</code> 之后：<code>moon run &lt;project&gt;:&lt;task&gt; -- &lt;参数&gt;</code>。参数追加在任务命令末尾，不能插入命令中间。</li>
+<li>任务命中缓存时不实际执行；<code>moon run --force &lt;project&gt;:&lt;task&gt;</code> 强制重跑。</li>
+<li>任务全集以 <code>moon query tasks --project &lt;project&gt;</code> 为准。本页不列仅作为其他任务依赖存在的任务，它们由 moon 自动执行。</li>
+</ul>
+<h2 id="workflows">常用流程</h2>
+<h3 id="flow-first-run">1. 首次启动服务端</h3>
+<p>前置：新克隆无 <code>application.toml</code>，<code>data/</code> 下无模型资产。以下三条按序执行。</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server-ui:build</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:downloader-install</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:run</span></span></code></pre>
+<p>成功标志：终端出现 <code>listening on 0.0.0.0:3000</code>，<code>http://127.0.0.1:3000/login</code> 可使用默认账号 <code>root</code> / <code>Change_Me</code> 登录。</p>
+<ul>
+<li><code>server-ui:build</code> 经 <code>ensure-deps</code> 自动执行 <code>pnpm install</code>，无需先手工安装依赖。</li>
+<li>缺少模型资产时，服务端在 TTS 初始化阶段终止，报 <code>Matcha acoustic model file (.onnx) not found in …</code>。</li>
+<li><code>application.toml</code> 与 <code>application-dev.toml</code> 均被 gitignore，且缺失时 figment 静默跳过该文件：服务端以默认值启动，既不询问也不报错。</li>
+</ul>
+<h3 id="flow-dual-terminal">2. 前后端同时开发</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 终端 A</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:dev</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 终端 B</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server-ui:dev</span></span></code></pre>
+<p>成功标志：终端 A 出现 <code>listening on 0.0.0.0:3000</code>；终端 B 打印 <code>http://localhost:4200</code>，页面可加载数据。</p>
+<ul>
+<li>前端不使用 Vite 代理，接口地址取自 <code>apps/server-ui/.env.development</code> 的 <code>VITE_BASE_URL=http://localhost:3000</code>。后端未启动时页面为空白，不会出现跨域报错。</li>
+<li><code>server-ui:dev</code> 不依赖 <code>ensure-deps</code>，首次须先执行 <code>pnpm i</code>。</li>
+<li><code>server:dev</code> 读取 <code>application-dev.toml</code>；该文件缺失时按默认值启动。</li>
+</ul>
+<h3 id="flow-minimal">3. 不安装模型资产时启动</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:dev-minimal</span></span></code></pre>
+<p>VAD 与 ASR 置为 <code>void</code>、TTS 置为 <code>mute</code>、LLM 使用 <code>local_echo</code>，无需任何模型资产；语音链路不可用，其余接口与页面照常。成功标志同流程 1。</p>
+<p><code>moon run server:dev-lite</code> 保留 VAD、ASR 与 TTS，仅将 LLM 换为 <code>local_echo</code>，仍需模型资产。</p>
+<h3 id="flow-embedded-ui">4. 只改前端并验证内嵌产物</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server-ui:build</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:run</span></span></code></pre>
+<p>成功标志：<code>http://127.0.0.1:3000/</code> 显示新界面。</p>
+<p><code>apps/server/web/dist</code> 是指向 <code>apps/server-ui/dist/</code> 的符号链接，后端内嵌的是磁盘上的构建产物；仅运行 <code>server-ui:dev</code> 不会改变 3000 端口上的页面。</p>
+<h3 id="flow-e2e">5. 端到端测试</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server-ui-e2e:e2e</span></span></code></pre>
+<p>前置：无需手动启动服务。任务依赖 <code>server-ui:build</code> 与 <code>install-playwright</code>，Playwright 自行在 4300 端口执行 <code>vite preview</code>。</p>
+<p>成功标志：用例通过，HTML 报告写入 <code>apps/server-ui-e2e/playwright-report</code>。</p>
+<ul>
+<li>指向其他地址时设 <code>BASE_URL</code>：<code>BASE_URL=http://127.0.0.1:3000 moon run server-ui-e2e:e2e</code>。</li>
+<li>4300 端口已有服务时 Playwright 复用该服务（<code>reuseExistingServer</code>，CI 下关闭）。</li>
+</ul>
+<h3 id="flow-firmware-checks">6. 固件改动后的检查</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:check-s3</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:check-c6</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:check-host</span></span></code></pre>
+<p>三条互不替代：S3 走 Xtensa 工具链，C6 走 <code>riscv32imac</code>，<code>check-host</code> 检查 <code>host-smoke</code> 二进制。第三条在只改宿主侧代码时可省略。</p>
+<h3 id="flow-flash">7. 烧录产品镜像</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> list-ports -n</span></span>
+<span class="giallo-l"><span class="z-source">IOT_PORT</span><span class="z-keyword z-operator">=&lt;</span><span class="z-string">port</span><span class="z-keyword z-operator">&gt;</span><span class="z-entity z-name z-function"> moon</span><span class="z-string"> run iot:flash-s3</span></span></code></pre>
+<p>成功标志：monitor 首行出现 <code>[IOT] log level INFO (IOT_LOG_LEVEL)</code>，随后出现 <code>[IOT] boot complete</code>。</p>
+<ul>
+<li>两块板同时插入时 <code>IOT_PORT</code> 必须给出，否则 espflash 自行选择，可能写入 C6。</li>
+<li>任务脚本带 <code>--monitor</code>，烧录完成后占用终端。</li>
+</ul>
+<h3 id="flow-probe">8. 单外设探针</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-source">IOT_PORT</span><span class="z-keyword z-operator">=&lt;</span><span class="z-string">port</span><span class="z-keyword z-operator">&gt;</span><span class="z-entity z-name z-function"> moon</span><span class="z-string"> run iot:flash-probe-audio-s3</span></span></code></pre>
+<p>每块探针镜像只启用一路外设，故障归属明确。<code>flash-probe-*</code> 已包含编译，无需先行运行对应的 <code>probe-*</code>；后者仅编译，供不烧录的场景使用。</p>
+<ul>
+<li>主题全集：<code>aec</code>、<code>audio</code>、<code>camera</code>、<code>clock</code>、<code>demand</code>、<code>echo</code>、<code>multicore</code>、<code>wifi-s3</code>、<code>wifi-c6</code>。</li>
+<li>探针烧录不指定分区表，设备上会写入 espflash 的默认表；恢复产品行为须重烧产品镜像。</li>
+</ul>
+<h3 id="flow-no-hardware">9. 无硬件环境</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:smoke-host</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:emu-smoke</span></span></code></pre>
+<p><code>smoke-host</code> 在宿主运行 <code>host-smoke</code>，命中缓存，重放须加 <code>--force</code>；<code>emu-smoke</code> 经 <code>esp-emu</code> 启动 C6 合并镜像并断言 <code>[IOT] boot complete</code>，该任务不缓存，每次都重新构建与启动。</p>
+<h3 id="flow-pre-commit">10. 提交前</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">lefthook</span><span class="z-string"> run pre-commit --force</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run server:test</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run docs:check-translation</span></span></code></pre>
+<p>pre-commit 只含格式与静态检查：<code>cargo fmt --check</code>、<code>cargo clippy</code>（服务端一次、固件三次）、<code>dart format</code>、<code>flutter analyze</code>。它不执行测试，也不校验译文，故后两条须另行执行。</p>
+<ul>
+<li>无改动文件时钩子自动跳过，<code>--force</code> 强制运行。</li>
+<li><code>server:test</code> 依赖 <code>test-download-resources</code>（<code>cache: false</code>），每次真实安装缺失的模型资产。</li>
+</ul>
+<h3 id="flow-ci">11. 与 CI 对齐</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> ci --base=origin/dev</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run docs:check-translation</span></span></code></pre>
+<p>CI 的 <code>ci</code> job 执行 <code>moon ci</code>（仅受影响任务），<code>docs-check</code> job 独立执行 <code>docs:check-translation</code>。两条均通过才等同 CI。</p>
+<h3 id="flow-cuda">12. CUDA</h3>
+<p>moon 无法向 <code>server:run</code> 透传 <code>--features</code>：该任务的命令已含 <code>--</code>，追加的参数会落到二进制自身的命令行。须直接调用 cargo：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-support z-function z-builtin">cd</span><span class="z-string"> apps/server</span><span class="z-punctuation"> &amp;&amp;</span><span class="z-entity z-name z-function"> cargo</span><span class="z-string"> run -p vanling-server --features cuda --</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string z-punctuation z-definition z-string">  -O &#39;address=0.0.0.0&#39; -O &#39;data_dir=../../data&#39; --config=application.toml</span></span></code></pre><h2 id="commands">命令参考</h2>
+<h3 id="server">server</h3>
+<p><code>apps/server</code>，监听 3000。<code>dev</code> 读 <code>application-dev.toml</code>，<code>run</code> 读 <code>application.toml</code>，两者均被 gitignore 且缺失时不报错。</p>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run server:dev</code></td><td>以 <code>application-dev.toml</code> 启动并监听 3000</td><td>缺配置时按默认值启动</td></tr>
+<tr><td><code>moon run server:run</code></td><td>以 <code>application.toml</code> 启动</td><td>同上</td></tr>
+<tr><td><code>moon run server:dev-lite</code></td><td>关闭 LLM（<code>local_echo</code>），保留 VAD、ASR、TTS</td><td>仍需模型资产</td></tr>
+<tr><td><code>moon run server:dev-minimal</code></td><td>关闭 VAD、ASR、TTS、LLM</td><td>无需模型资产</td></tr>
+<tr><td><code>moon run server:downloader-install</code></td><td>安装模型资产至 <code>../../data</code></td><td>新克隆后首次启动前须执行</td></tr>
+<tr><td><code>moon run server:downloader-list</code></td><td>列出可安装条目</td><td>—</td></tr>
+<tr><td><code>moon run server:format</code></td><td><code>cargo fmt --check</code></td><td>只检查，不写回</td></tr>
+<tr><td><code>moon run server:lint</code></td><td><code>cargo clippy --workspace -- -D warnings</code></td><td>根 workspace 排除 <code>apps/iot</code>，不检查固件</td></tr>
+<tr><td><code>moon run server:test</code></td><td>运行 <code>vanling-server</code> 与 <code>api</code> 的测试</td><td>依赖真实下载模型；moon 已设 <code>RUST_TEST_THREADS=2</code></td></tr>
+<tr><td><code>moon run server:test-pg</code></td><td>同上，走 PostgreSQL 路径</td><td>设 <code>TEST_DATABASE=pg</code></td></tr>
+</tbody></table>
+<h3 id="server-ui">server-ui</h3>
+<p><code>apps/server-ui</code>，开发服务器 4200，预览 4300。</p>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run server-ui:dev</code></td><td>启动 Vite 开发服务器</td><td>不自动装依赖，首次须 <code>pnpm i</code></td></tr>
+<tr><td><code>moon run server-ui:build</code></td><td>构建至 <code>dist/</code></td><td>经 <code>ensure-deps</code> 自动 <code>pnpm install</code></td></tr>
+<tr><td><code>moon run server-ui:preview</code></td><td>预览构建产物</td><td><code>e2e</code> 会自行启动，无需手动</td></tr>
+<tr><td><code>moon run server-ui:test</code></td><td><code>vitest run</code></td><td>—</td></tr>
+<tr><td><code>moon run server-ui:typecheck</code></td><td><code>tsc --noEmit -p tsconfig.app.json</code></td><td>只覆盖 <code>src/**</code>，不含 <code>vite.config.ts</code>、<code>vitest.config.ts</code></td></tr>
+</tbody></table>
+<h3 id="server-ui-e2e">server-ui-e2e</h3>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run server-ui-e2e:e2e</code></td><td>运行 Playwright 用例，自起 4300</td><td>依赖 <code>server-ui:build</code> 与浏览器安装</td></tr>
+<tr><td><code>moon run server-ui-e2e:e2e-install</code></td><td><code>playwright install --with-deps</code></td><td>首次或升级 Playwright 后执行</td></tr>
+</tbody></table>
+<h3 id="app">app</h3>
+<p><code>apps/app</code>，Flutter 客户端。构建任务的版本号取自 <code>scripts/version.sh</code>。</p>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run app:run</code></td><td>在目标设备上运行</td><td>—</td></tr>
+<tr><td><code>moon run app:test</code></td><td><code>flutter test</code></td><td>—</td></tr>
+<tr><td><code>moon run app:analyze</code></td><td><code>flutter analyze</code></td><td>—</td></tr>
+<tr><td><code>moon run app:format</code></td><td><code>dart format .</code></td><td>写回源文件，不是检查</td></tr>
+<tr><td><code>moon run app:build-android</code></td><td>构建 release APK</td><td>—</td></tr>
+<tr><td><code>moon run app:build-ios</code></td><td>构建 release iOS，不签名</td><td>仅 macOS</td></tr>
+<tr><td><code>moon run app:build-macos</code></td><td>构建 release macOS</td><td>仅 macOS</td></tr>
+<tr><td><code>moon run app:build-web</code></td><td>构建 release Web</td><td>—</td></tr>
+<tr><td><code>moon run app:build-linux</code></td><td>构建 release Linux</td><td>仅 Linux</td></tr>
+<tr><td><code>moon run app:build-windows</code></td><td>构建 release Windows</td><td>仅 Windows</td></tr>
+</tbody></table>
+<h3 id="iot">iot</h3>
+<p><code>apps/iot</code>。<code>check-s3</code> 与 <code>build-s3</code> 经 <code>scripts/iot-xtensa.sh</code> 分发：装有 espup 工具链时直接使用，否则回退到 <code>iot:xtensa-image</code> 构建的镜像。</p>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run iot:check-s3</code></td><td>对 S3 目标 type-check，覆盖全部探针二进制</td><td>不链接；内存超限在此不可见</td></tr>
+<tr><td><code>moon run iot:check-c6</code></td><td>对 C6 目标 type-check，覆盖 <code>wifi-probe</code></td><td>—</td></tr>
+<tr><td><code>moon run iot:check-host</code></td><td>对 <code>host-smoke</code> 二进制 type-check</td><td>—</td></tr>
+<tr><td><code>moon run iot:check-features</code></td><td>逐个单独编译每个组件 feature</td><td>唯一覆盖单 feature 编译的任务；矩阵含约 15 个子集</td></tr>
+<tr><td><code>moon run iot:format</code></td><td><code>cargo fmt --check</code></td><td>只检查，不写回</td></tr>
+<tr><td><code>moon run iot:lint</code></td><td>对 S3 目标执行 clippy</td><td>需 Xtensa 工具链或镜像</td></tr>
+<tr><td><code>moon run iot:lint-host</code></td><td>对 <code>iot-core</code>、<code>iot-ui</code> 执行 clippy</td><td>—</td></tr>
+<tr><td><code>moon run iot:lint-smoke</code></td><td>对 <code>host-smoke</code> 执行 clippy</td><td>—</td></tr>
+<tr><td><code>moon run iot:test</code></td><td>core、ui 与 app（host 后端）测试</td><td>—</td></tr>
+<tr><td><code>moon run iot:test-bsp</code></td><td>板级测试，启用全部组件 feature</td><td>—</td></tr>
+<tr><td><code>moon run iot:test-tool</code></td><td>音效目录与生成表的一致性测试</td><td>—</td></tr>
+<tr><td><code>moon run iot:smoke-host</code></td><td>宿主冒烟</td><td>命中缓存，<code>--force</code> 重放</td></tr>
+<tr><td><code>moon run iot:emu-smoke</code></td><td><code>esp-emu</code> 启动 C6 合并镜像</td><td>不缓存，每次重新构建与启动</td></tr>
+<tr><td><code>moon run iot:build-s3</code></td><td>编译 S3 产品镜像</td><td>只编不烧；内存超限在此暴露</td></tr>
+<tr><td><code>moon run iot:build-s3-camera</code></td><td>编译开机停在相机页的镜像</td><td>与产品镜像共用输出路径，任务内部备份与恢复</td></tr>
+<tr><td><code>moon run iot:build-s3-thrift</code></td><td>编译降档镜像（<code>audio=off</code>、<code>motion=on:30000</code>）</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash</code></td><td>编译并按仓库分区表烧录 C6，烧录后进 monitor</td><td>占用终端</td></tr>
+<tr><td><code>moon run iot:flash-s3</code></td><td>编译并烧录 S3，烧录后进 monitor</td><td>两块板同时插入时须给 <code>IOT_PORT</code></td></tr>
+<tr><td><code>moon run iot:flash-s3-camera</code></td><td>烧录相机页镜像</td><td>—</td></tr>
+<tr><td><code>moon run iot:flash-s3-thrift</code></td><td>烧录降档镜像</td><td>—</td></tr>
+<tr><td><code>moon run iot:flash-panel-typing-s3</code></td><td>烧录面板输入凭据的 bench 镜像</td><td>须给 <code>IOT_WIFI_SSID</code> 与 <code>IOT_WIFI_PSK</code></td></tr>
+<tr><td><code>moon run iot:reset-s3</code></td><td>以 watchdog 复位把 S3 从 ROM 下载模式拉出</td><td>仅复位，不烧录</td></tr>
+<tr><td><code>moon run iot:flash-probe-aec-s3</code></td><td>编译并烧录 AEC 探针</td><td>不指定分区表</td></tr>
+<tr><td><code>moon run iot:flash-probe-audio-s3</code></td><td>编译并烧录放音探针</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash-probe-camera-s3</code></td><td>编译并烧录相机与面板探针</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash-probe-clock-s3</code></td><td>编译并烧录时钟探针</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash-probe-demand-s3</code></td><td>编译并烧录数据面探针</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash-probe-echo-s3</code></td><td>编译并烧录回声消除探针</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash-probe-multicore-s3</code></td><td>编译并烧录双核与主栈探针</td><td>同上</td></tr>
+<tr><td><code>moon run iot:flash-probe-wifi-s3</code></td><td>编译并烧录 Wi-Fi 探针（S3）</td><td>凭据取自 <code>IOT_WIFI_SSID</code> / <code>IOT_WIFI_PSK</code></td></tr>
+<tr><td><code>moon run iot:flash-probe-wifi-c6</code></td><td>编译并烧录 Wi-Fi 探针（C6）</td><td>同上</td></tr>
+</tbody></table>
+<h3 id="docs">docs</h3>
+<p><code>docs</code>，Zola 站点。</p>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run docs:dev</code></td><td>本地预览并打开浏览器</td><td>热更新</td></tr>
+<tr><td><code>moon run docs:build</code></td><td>构建至 <code>public/</code></td><td>报告内链与孤立页问题</td></tr>
+<tr><td><code>moon run docs:check-translation</code></td><td>校验 <code>.en.md</code> 的 <code>source_file_hash</code></td><td>只遍历已存在的 <code>.en.md</code>，缺译不报错</td></tr>
+</tbody></table>
+<h2 id="release">发布与维护</h2>
+<p>低频任务，按需执行。</p>
+<table><thead><tr><th>命令</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+<tr><td><code>moon run server:bump</code></td><td>计算服务端版本并写回</td><td>一次只处理一个包</td></tr>
+<tr><td><code>moon run app:bump</code></td><td>计算 App 版本并写回</td><td>同上</td></tr>
+<tr><td><code>moon run iot:bump</code></td><td>计算固件版本并写回</td><td>同上</td></tr>
+<tr><td><code>moon run server:build-release</code></td><td>服务端 release 构建</td><td>发布流水线使用</td></tr>
+<tr><td><code>moon run server:sweep</code></td><td><code>cargo sweep --maxsize 20GB</code></td><td>清理 <code>target</code></td></tr>
+<tr><td><code>moon run server:downloader-all-and-checksums</code></td><td>安装全部资产并更新校验和</td><td>维护下载清单时使用</td></tr>
+<tr><td><code>moon run iot:image</code></td><td>生成 ELF 与 <code>merged.bin</code> 至 <code>dist/</code></td><td>依赖 <code>image-s3</code> 与 <code>image-c6</code></td></tr>
+<tr><td><code>moon run iot:xtensa-image</code></td><td>构建 Xtensa 工具链镜像</td><td>本机缺 espup 时构建一次，之后 <code>build-s3</code> 自动回退</td></tr>
+<tr><td><code>moon run iot:gen-midi-assets</code></td><td>由配方重新生成 <code>assets/*.mid</code></td><td>写回源树；<code>test-tool</code> 校验其与生成表一致</td></tr>
+<tr><td><code>moon run docs:build-gh</code></td><td>以 GitHub Pages 基址构建至 <code>public-gh/</code></td><td>由 CI 部署使用</td></tr>
+<tr><td><code>moon run tools:update-moon</code></td><td>更新 moon 版本与哈希</td><td>修改 <code>flake.nix</code></td></tr>
+<tr><td><code>moon run tools:update-moon-check</code></td><td>校验 moon 版本是否为最新</td><td>只检查</td></tr>
+</tbody></table>
+<h2 id="firmware">固件</h2>
+<h3 id="boards">开发板与端口</h3>
+<p>台架常驻两块板，不可互相替代。<strong>端口名每次插拔都会变，不是板卡标识。</strong></p>
+<table><thead><tr><th>板</th><th>feature</th><th>复位语义</th></tr></thead><tbody>
+<tr><td>立创 ESP32-S3（产品靶，16 MB）</td><td><code>lckfb-szpi-esp32s3</code></td><td>原生 USB：烧录须 <code>-a watchdog-reset</code>；停留在下载模式时执行 <code>moon run iot:reset-s3</code></td></tr>
+<tr><td>ESP32-C6-DevKitC-1（冒烟靶，8 MB）</td><td><code>esp32c6-devkitc-1</code></td><td>普通 DTR 复位即可启动；espflash 拒绝 <code>watchdog-reset</code></td></tr>
+</tbody></table>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> list-ports -n</span><span class="z-punctuation z-definition z-comment z-comment">                                # 列出已连接端口，仅输出端口名</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> board-info --port</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">por</span><span class="z-source">t</span><span class="z-keyword z-operator">&gt;</span><span class="z-punctuation z-definition z-comment z-comment">                      # 芯片型号 / flash 容量 / MAC 地址</span></span>
+<span class="giallo-l"><span class="z-source">IOT_PORT</span><span class="z-keyword z-operator">=&lt;</span><span class="z-string">port</span><span class="z-keyword z-operator">&gt;</span><span class="z-entity z-name z-function"> moon</span><span class="z-string"> run iot:flash-s3</span><span class="z-punctuation z-definition z-comment z-comment">                  # 两块板同时插入时必填</span></span></code></pre><h3 id="build-time-vars">编译期变量</h3>
+<p>以下变量在编译期读入，改动后必须重新编译。</p>
+<table><thead><tr><th>变量</th><th>作用</th><th>不设时</th></tr></thead><tbody>
+<tr><td><code>IOT_BOOT_PAGE</code></td><td>开机停在哪一页</td><td><code>ambient</code></td></tr>
+<tr><td><code>IOT_DEMAND</code></td><td>各数据面的开关与节奏</td><td>固件内的默认档</td></tr>
+<tr><td><code>IOT_LOG_LEVEL</code></td><td>串口输出级别：<code>error</code> / <code>warn</code> / <code>info</code> / <code>debug</code> / <code>trace</code></td><td><code>info</code></td></tr>
+<tr><td><code>IOT_WIFI_SSID</code> / <code>IOT_WIFI_PSK</code></td><td>编入固件的凭据</td><td>不编入，设备停在配网页</td></tr>
+<tr><td><code>IOT_PANEL_BENCH</code></td><td>强制未配置状态，强制在面板输入一次密码</td><td>无</td></tr>
+</tbody></table>
+<p><code>IOT_PORT</code> 不属于此类：它只交给 espflash 定位端口，不进入固件。</p>
+<p><code>IOT_DEMAND</code> 按项宽松解析：无法识别的项只丢弃该项，构建仍然成功；若整串未识别出任何设备，另打印一条 <code>[IOT] IOT_DEMAND named nothing this firmware recognises: ignored</code>。<code>IOT_BOOT_PAGE</code> 取到无效页名时退回 <code>ambient</code>，并打印 <code>[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient</code>。</p>
+<h3 id="logging">日志</h3>
+<p>产品默认 <code>info</code>：开机清单、状态迁移与用户动作各一行，<strong>稳态可长时间无输出</strong>——串口安静属正常，不代表死机。周期遥测（帧成本与栈水位、feed 节奏、链路相位与地址、扫描列表）均在 <code>debug</code>：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-source">IOT_LOG_LEVEL</span><span class="z-keyword z-operator">=</span><span class="z-string">debug</span><span class="z-source"> IOT_PORT</span><span class="z-keyword z-operator">=&lt;</span><span class="z-string">port</span><span class="z-keyword z-operator">&gt;</span><span class="z-entity z-name z-function"> moon</span><span class="z-string"> run iot:flash-s3</span></span></code></pre>
+<p>记录中引用的 <code>[DISPLAY] stack peak …</code>、<code>[PLAY] … feeds …</code>、<code>[WIFI] … address …</code> 只在 <code>debug</code> 镜像中逐窗口出现，复现须按上一行重新编译。<code>warn</code> 仅在真正越过阈值时出现（执行器单次持有超过 30 ms、单帧写入超过 20 ms 或占空超过 25%、feed 迟到或低于额定速率 95%），因此<strong>出现任何一条 warn 都值得阅读</strong>。首行 <code>[IOT] log level …</code> 是该镜像实际生效的级别，怀疑日志缺失时先核对该行。</p>
+<h3 id="before-flashing">烧录前</h3>
+<ul>
+<li>构建失败时<strong>旧二进制仍在原处</strong>，其时间戳不能作为判断依据。新增一行日志后执行 <code>strings &lt;elf&gt; | grep &lt;字面量&gt;</code>，命中才说明产物已更新。</li>
+<li><code>iot:flash</code> 的脚本带 <code>--monitor</code>，烧录后会占用终端。无 tty 时以 <code>Failed to initialize input reader</code> 结束，镜像此时已写入完成。</li>
+<li>S3 构建经 Docker；<code>docker.sock/_ping</code> 返回 500 表示守护进程未启动，不是编译错误。</li>
+<li><code>moon</code> 命中缓存时不重新执行；<code>moon run --force &lt;任务&gt;</code> 才会重跑。</li>
+</ul>
+<h3 id="handy-commands">便利命令</h3>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 实时日志：直接读串口，不经 flash stub</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">timeout</span><span class="z-constant z-numeric"> 5</span><span class="z-string"> cat</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">por</span><span class="z-source">t</span><span class="z-keyword z-operator">&gt;</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 完整开机日志：monitor 需要 pty，CTRL+R（0x12）须在其连接后发送。完整配方见 flashing.md</span></span>
+<span class="giallo-l"><span class="z-punctuation">(</span><span class="z-source">{ sleep 6; printf &#39;\x12&#39;; sleep 10; } | script -q -t 1 /tmp/boot.log \</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">  espflash</span><span class="z-string"> monitor --chip esp32s3 --port</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">por</span><span class="z-source">t</span><span class="z-keyword z-operator">&gt;</span><span class="z-string"> -a no-reset</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> &gt;</span><span class="z-entity z-name z-function">/dev/null</span><span class="z-keyword z-operator"> 2&gt;&amp;1</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 清除已保存的网络，无需重烧；espflash 不读设备上的表，须显式给出 csv</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">espflash</span><span class="z-string"> erase-parts --chip esp32s3 --port</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">por</span><span class="z-source">t</span><span class="z-keyword z-operator">&gt;</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  --partition-table partitions/lckfb-szpi-esp32s3.csv creds</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 任意 cargo 子命令要跑在 S3 目标上，只能经此分发脚本</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">bash</span><span class="z-string"> ../../scripts/iot-xtensa.sh tree -p iot-app --target xtensa-esp32s3-none-elf</span><span class="z-constant z-character z-escape"> \</span></span>
+<span class="giallo-l"><span class="z-string">  --no-default-features --features lckfb-szpi-esp32s3,console-auto</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 单条测试，并显示测试内的 println 输出</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test -p iot-core</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">测试</span><span class="z-source">名</span><span class="z-keyword z-operator">&gt;</span><span class="z-string"> -- --nocapture</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment"># 主任务栈总量 = 两个符号之差（esp-rtos 采用同一算法）</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">nm</span><span class="z-keyword z-operator"> &lt;</span><span class="z-string">el</span><span class="z-source">f</span><span class="z-keyword z-operator">&gt; |</span><span class="z-entity z-name z-function"> grep</span><span class="z-string z-punctuation z-definition z-string"> -E &#39;_stack_(start|end)_cpu0&#39;</span></span></code></pre><h2 id="impact">改动的影响范围</h2>
+<table><thead><tr><th>改动</th><th>须重跑</th></tr></thead><tbody>
+<tr><td>server 任意 Rust 代码</td><td><code>moon run server:format</code>、<code>server:lint</code>、<code>server:test</code></td></tr>
+<tr><td>server-ui 源码</td><td><code>moon run server-ui:typecheck</code>；后端需内嵌时另跑 <code>server-ui:build</code></td></tr>
+<tr><td>IoT 组件 feature 或 <code>Cargo.toml</code></td><td><code>moon run iot:check-features</code></td></tr>
+<tr><td><code>scripts/iot-xtensa.sh</code></td><td><code>moon run iot:check-s3</code>、<code>iot:check-c6</code>、<code>iot:build-s3</code></td></tr>
+<tr><td>文档中文页</td><td>重算 <code>source_file_hash</code>（<code>git hash-object &lt;中文页&gt;.md</code>），再跑 <code>docs:check-translation</code></td></tr>
+<tr><td>文档英文页、模板或 <code>zola.toml</code></td><td><code>moon run docs:build</code></td></tr>
+<tr><td>任一 <code>moon.yml</code></td><td>本页对应的命令表</td></tr>
+</tbody></table>
+<h2 id="troubleshooting">故障现象与排查起点</h2>
+<table><thead><tr><th>现象</th><th>先查</th></tr></thead><tbody>
+<tr><td>启动即退出，报 <code>Matcha acoustic model file (.onnx) not found in …</code></td><td>未安装模型资产，执行 <code>moon run server:downloader-install</code></td></tr>
+<tr><td>3000 端口页面空白</td><td>后端未启动，或前端构建产物未更新（见流程 4）</td></tr>
+<tr><td>烧录后不启动，日志为 <code>boot:0x23 (DOWNLOAD(USB/UART0))</code></td><td>S3 烧录缺少 <code>-a watchdog-reset</code></td></tr>
+<tr><td>一行日志都没有</td><td>console 通道（<code>console-auto</code> / <code>console-uart</code>）；monitor 需要真实 tty，可用 <code>script</code> 包装</td></tr>
+<tr><td>设备行为与代码不符</td><td>烧录的是旧产物，用 <code>strings</code> 核对字面量</td></tr>
+<tr><td>链接期主栈断言失败</td><td><code>.bss</code> 增长；<code>check-s3</code> 不链接，无法发现</td></tr>
+<tr><td>探针可运行，产品却不识别已保存的网络</td><td>探针烧录任务不传 <code>--partition-table</code>，设备上是 espflash 的默认表；重烧产品镜像恢复</td></tr>
+<tr><td><code>server:test</code> 长时间停在下载</td><td>首次运行需下载模型资产（<code>test-download-resources</code>，<code>cache: false</code>）</td></tr>
+</tbody></table>
+<h2 id="blind-spots">检查无法覆盖的内容</h2>
+<ul>
+<li><code>check-s3</code> 只做 type-check，不链接：内存超限要到 <code>build-s3</code> 或 <code>iot:image</code> 才暴露。</li>
+<li>编译期变量不在 moon 的缓存键中；<code>build-s3</code> 已设 <code>cache: false</code>，其余任务无此保护。</li>
+<li>每个 feature 能否单独编译，只有 <code>check-features</code> 回答。</li>
+<li>日志级别是编译期常量（<code>chip-esp/src/logging.rs</code> 的 <code>configured_level</code>）：修改 <code>IOT_LOG_LEVEL</code> 而不重新编译不生效。</li>
+<li><strong>无 gdb 与 openocd</strong>：调试手段是日志，加外设即加一个探针（<code>flash-probe-*-s3</code>）。</li>
+<li><code>server:lint</code> 为 <code>cargo clippy --workspace</code>，根 workspace 排除 <code>apps/iot</code>，不检查固件。</li>
+<li><code>server-ui:typecheck</code> 只检查 <code>tsconfig.app.json</code> 的 include（<code>src/**</code>）；<code>vite.config.ts</code> 与 <code>vitest.config.ts</code> 归 <code>tsconfig.spec.json</code> 管，不在其中。</li>
+<li>pre-commit 不执行测试，也不校验译文。</li>
+<li><code>apps/iot/target</code> 会增长到十几 GB；<code>cd apps/iot &amp;&amp; cargo clean</code> 需付重新编译的代价，S3 部分最贵。</li>
+</ul>
+<h2 id="further">完整内容</h2>
+<ul>
+<li><a href="https://lastsunday.github.io/vanling/development/iot/architecture/">架构</a>、<a href="https://lastsunday.github.io/vanling/development/iot/features/">feature 判据</a></li>
+<li><a href="https://lastsunday.github.io/vanling/development/iot/flashing/">固件安装</a>——产物、分区表、bench 镜像、抓完整启动日志的配方</li>
+<li><a href="https://lastsunday.github.io/vanling/development/iot/emulation/">无硬件仿真</a></li>
+<li><a href="https://lastsunday.github.io/vanling/development/iot/motion/">运动</a>、<a href="https://lastsunday.github.io/vanling/development/iot/audio/">音频计量</a>、<a href="https://lastsunday.github.io/vanling/development/iot/playback/">放音</a></li>
+<li><a href="https://lastsunday.github.io/vanling/records/iot/">实现记录</a>——为什么是现在这样、实测数字（AI 产出，未经人类审阅）</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>
