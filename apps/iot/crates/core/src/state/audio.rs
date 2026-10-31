@@ -122,14 +122,14 @@ mod audio_page {
         }
     }
 
-    fn apply(manager: &mut DeviceManager, operation: OperationIntent) {
-        manager.apply_operation(operation);
+    fn apply(manager: &mut DeviceManager, operation: InputIntent) {
+        manager.apply_input(operation);
         let business = translate(&operation, &manager.state());
-        manager.apply_business(business);
+        manager.apply_action(business);
     }
 
     fn on_audio_page() -> DeviceManager {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 motion: Some(ALL_CAPS),
                 audio: true,
@@ -189,7 +189,7 @@ mod audio_page {
 
     #[test]
     fn the_page_switch_reaches_the_audio_page_and_back() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 audio: true,
                 ..Backed::NONE
@@ -353,7 +353,7 @@ mod audio_page {
 
     #[test]
     fn the_boot_page_joins_the_cycle_it_was_asked_for() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 motion: Some(ALL_CAPS),
                 audio: true,
@@ -376,7 +376,7 @@ mod audio_page {
         let bare = landed(DeviceManager::new());
         let default_page = bare.state().page;
         for page in CYCLE {
-            let boot_page = landed(DeviceManager::boot(Setup {
+            let boot_page = landed(DeviceManager::boot(Boot {
                 boot_page: page,
                 ..Default::default()
             }))
@@ -389,7 +389,7 @@ mod audio_page {
             );
         }
         assert_eq!(
-            landed(DeviceManager::boot(Setup {
+            landed(DeviceManager::boot(Boot {
                 backed: Backed {
                     motion: Some(ALL_CAPS),
                     ..Backed::NONE
@@ -403,7 +403,7 @@ mod audio_page {
             "the one capability it does have"
         );
         assert_eq!(
-            landed(DeviceManager::boot(Setup {
+            landed(DeviceManager::boot(Boot {
                 backed: Backed {
                     motion: Some(ALL_CAPS),
                     ..Backed::NONE
@@ -424,7 +424,7 @@ mod audio_page {
             !DeviceManager::new().state().backed.camera,
             "not declared until a board declares it"
         );
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 camera: true,
                 ..Backed::NONE
@@ -440,7 +440,7 @@ mod audio_page {
 
     #[test]
     fn a_board_without_a_camera_never_lands_on_its_page() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 audio: true,
                 playback: true,
@@ -464,7 +464,7 @@ mod audio_page {
         disabled.apply_capture(loud(8_000));
         assert_eq!(disabled.state().audio.live.envelope.committed(), 0);
 
-        let mut enabled = DeviceManager::boot(Setup {
+        let mut enabled = DeviceManager::boot(Boot {
             backed: Backed {
                 audio: true,
                 ..Backed::NONE
@@ -498,7 +498,7 @@ mod audio_page {
             "a build with no link has no page to draw a list on"
         );
 
-        let mut enabled = DeviceManager::boot(Setup {
+        let mut enabled = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -511,7 +511,7 @@ mod audio_page {
 
     #[test]
     fn an_empty_scan_is_a_reading_not_an_absence() {
-        let mut manager = DeviceManager::boot(Setup {
+        let mut manager = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -579,7 +579,7 @@ mod audio_page {
         let mut manager = on_audio_page();
         let before = manager.state().lights[0];
 
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         assert_eq!(
             manager.state().page,
             DisplayPage::Ambient,

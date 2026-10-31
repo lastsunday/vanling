@@ -36,7 +36,7 @@ pub fn init_logging() {
 pub struct Clock;
 
 impl iot_core::demand::ClockSink for Clock {
-    type Table = Table;
+    type Table = Speeds;
 
     fn set_speed(&mut self, speed: iot_core::demand::Speed) -> iot_core::demand::Speed {
         let reached = set_speed(speed);
@@ -57,13 +57,13 @@ use esp32s3::clock_mhz;
 pub(crate) mod esp32c6;
 
 #[cfg(feature = "esp32c6")]
-pub use esp32c6::{Table, chip_init, chip_init_for_product, set_speed, start_rtos};
+pub use esp32c6::{Speeds, chip_init, chip_init_for_product, set_speed, start_rtos};
 
 #[cfg(feature = "esp32s3")]
 pub(crate) mod esp32s3;
 
 #[cfg(feature = "esp32s3")]
 pub use esp32s3::{
-    Table, chip_init, chip_init_at, chip_init_for_product, set_cpu_clock, set_speed,
+    Speeds, chip_init, chip_init_at, chip_init_for_product, set_cpu_clock, set_speed,
     start_feed_executor, start_rtos, start_second_core,
 };

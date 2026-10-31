@@ -2,7 +2,7 @@ use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, InputEvent};
-use crate::intent::{BusinessIntent, OperationIntent, PageIntent};
+use crate::intent::{ActionIntent, InputIntent, PageIntent};
 use crate::state::DeviceState;
 
 /// How long the boot page stays up before the build's page takes over. A page property:
@@ -17,12 +17,10 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
     }
 }
 
-pub(super) fn translate(op: &OperationIntent, _current: &DeviceState) -> BusinessIntent {
+pub(super) fn translate(op: &InputIntent, _current: &DeviceState) -> ActionIntent {
     match op.event {
-        InputEvent::Button(ButtonEvent::LongPress) => {
-            BusinessIntent::Page(PageIntent::RequestSetup)
-        }
-        _ => BusinessIntent::Invalid,
+        InputEvent::Button(ButtonEvent::LongPress) => ActionIntent::Page(PageIntent::RequestSetup),
+        _ => ActionIntent::Invalid,
     }
 }
 
@@ -35,7 +33,7 @@ mod tests {
     use super::*;
     use crate::drivers::input::{GestureEvent, SwipeDirection};
     use crate::drivers::network::LinkStatus;
-    use crate::intent::{BusinessIntent, LightIntent, translate};
+    use crate::intent::{ActionIntent, LightIntent, translate};
     use crate::page::test_support::{
         DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
@@ -46,7 +44,7 @@ mod tests {
         let booting = state_on(DisplayPage::Splash, LightState::Off);
         assert_eq!(
             translate(&op(long_press()), &booting),
-            BusinessIntent::Page(PageIntent::RequestSetup)
+            ActionIntent::Page(PageIntent::RequestSetup)
         );
     }
 
@@ -68,7 +66,7 @@ mod tests {
         ] {
             assert_eq!(
                 translate(&op(event), &booting),
-                BusinessIntent::Invalid,
+                ActionIntent::Invalid,
                 "{event:?} on the splash"
             );
         }
@@ -80,7 +78,7 @@ mod tests {
         });
         assert_eq!(
             translate(&op(long_press()), &with_link),
-            BusinessIntent::Page(PageIntent::RequestSetup)
+            ActionIntent::Page(PageIntent::RequestSetup)
         );
     }
 
@@ -94,7 +92,7 @@ mod tests {
         });
         assert_eq!(
             translate(&op(long_press()), &on_air),
-            BusinessIntent::Light(LightIntent {
+            ActionIntent::Light(LightIntent {
                 instance: 0,
                 state: DEFAULT_BREATH,
             })

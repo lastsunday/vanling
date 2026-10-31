@@ -1,4 +1,4 @@
-//! The single owner of device state: it constructs the state, routes each business intent to
+//! The single owner of device state: it constructs the state, routes each action intent to
 //! the domain that owns it, and hands the app the state and the requests it has taken.
 
 use alloc::vec::Vec;
@@ -6,11 +6,11 @@ use alloc::vec::Vec;
 use crate::demand::{DemandKey, EffectiveDemand, Override};
 use crate::drivers::input::InputEvent;
 
-use crate::intent::{BusinessIntent, OperationIntent, PageIntent};
+use crate::intent::{ActionIntent, InputIntent, PageIntent};
 use crate::page::DisplayPage;
 
 use super::device::Effects;
-use super::{DeviceState, LightState, MAX_LIGHTS, NoticeKind, PlaybackState, Setup};
+use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NoticeKind, PlaybackState};
 
 /// Single owner of device state.
 #[cfg_attr(test, derive(Clone))]
@@ -25,25 +25,25 @@ pub struct DeviceManager {
 impl DeviceManager {
     /// A device with nothing wired: the state a bare page test starts from.
     pub fn new() -> Self {
-        Self::boot(Setup::default())
+        Self::boot(Boot::default())
     }
 
-    /// The one constructor a board uses. Everything it lands on is in `setup`, so the boot
+    /// The one constructor a board uses. Everything it lands on is in `boot`, so the boot
     /// page is clamped and the demand derived once, with no call order to get wrong.
-    pub fn boot(setup: Setup) -> Self {
-        let backed = setup.backed;
+    pub fn boot(boot: Boot) -> Self {
+        let backed = boot.backed;
         let state = DeviceState {
             backed,
             page: DisplayPage::Splash,
-            surface_roles: setup.surface_roles,
+            surface_roles: boot.surface_roles,
             ..DeviceState::default()
         };
         Self {
-            demand: Self::proposed(&state, &setup.demand_keys, &setup.overrides),
-            boot_page: DeviceState::landed_on(setup.boot_page, backed),
+            demand: Self::proposed(&state, &boot.demand_keys, &boot.overrides),
+            boot_page: DeviceState::landed_on(boot.boot_page, backed),
             state,
-            demand_keys: setup.demand_keys,
-            override_: setup.overrides,
+            demand_keys: boot.demand_keys,
+            override_: boot.overrides,
         }
     }
 
@@ -74,7 +74,7 @@ impl DeviceManager {
 
     /// Route one input event to the record that owns it: motion to the part's tallies,
     /// everything the panel reports to the touch record.
-    pub fn apply_operation(&mut self, op: OperationIntent) {
+    pub fn apply_input(&mut self, op: InputIntent) {
         match op.event {
             InputEvent::Button(_) => {}
             InputEvent::Motion(batch) => {
@@ -88,25 +88,23 @@ impl DeviceManager {
         }
     }
 
-    /// Route one business intent to the domain that owns it. Each domain matches its own
-    /// group, so the manager knows the groups and never a domain's operations.
-    pub fn apply_business(&mut self, intent: BusinessIntent) {
+    /// Route one action intent to the domain that owns it. Each domain matches its own
+    /// group, so the manager knows the groups and never a domain's actions.
+    pub fn apply_action(&mut self, intent: ActionIntent) {
         match intent {
-            BusinessIntent::Invalid => {}
-            BusinessIntent::Page(intent) => self.apply_page(intent),
-            BusinessIntent::Network(intent) => {
+            ActionIntent::Invalid => {}
+            ActionIntent::Page(intent) => self.apply_page(intent),
+            ActionIntent::Network(intent) => {
                 let has_pages = self.state.has_pages();
                 let effects = self.state.network.apply(intent, has_pages);
                 self.apply_effects(effects);
             }
-            BusinessIntent::Audio(intent) => {
-                self.state.audio.apply(intent, self.state.backed.audio)
-            }
-            BusinessIntent::Playback(action) => self
+            ActionIntent::Audio(intent) => self.state.audio.apply(intent, self.state.backed.audio),
+            ActionIntent::Playback(action) => self
                 .state
                 .playback
                 .apply(action, self.state.backed.playback),
-            BusinessIntent::Light(intent) => {
+            ActionIntent::Light(intent) => {
                 self.apply_to(usize::from(intent.instance), intent.state)
             }
         }

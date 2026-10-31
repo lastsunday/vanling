@@ -339,7 +339,7 @@ QMI8658A 的 tap 引擎在本产品的轮询方案下不可达，敲击判据由
 3. 声明该驱动自身的能力并集；core 派生的那部分不重复声明。
 4. 板层 `take_motion` 挂上 `MotionInput::new(driver)`。
 
-业务映射是**另一层**。`InputEvent::Motion` 目前映射为 `BusinessIntent::Invalid`——框架已就位，把语义接到具体产品意图是业务决策，不在驱动层做。
+业务映射是**另一层**。`InputEvent::Motion` 目前映射为 `ActionIntent::Invalid`——框架已就位，把语义接到具体产品意图是业务决策，不在驱动层做。
 
 多 IMU 时按来源独立采样、独立健康检查、独立识别；每个来源一份 `MotionCapabilities`。50 Hz 语义总线不适合飞控/平衡车那类需要高率惯性流的场景，那是另一条路。
 

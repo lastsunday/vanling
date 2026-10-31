@@ -440,12 +440,12 @@ mod tests {
 #[cfg(test)]
 mod lamp {
     use super::*;
-    use crate::drivers::network::{Front, LinkPhase, LinkStatus};
+    use crate::drivers::network::{LinkPhase, LinkStatus, SetupHost};
     use crate::intent::*;
     use crate::state::test_support::*;
 
     fn lamp_only() -> DeviceManager {
-        DeviceManager::boot(Setup {
+        DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -456,7 +456,7 @@ mod lamp {
     }
 
     fn report(manager: &mut DeviceManager, status: LinkStatus) {
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(status)));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(status)));
     }
 
     fn setup(manager: &mut DeviceManager) {
@@ -464,7 +464,7 @@ mod lamp {
             manager,
             LinkStatus {
                 setup: true,
-                front: Front::AccessPoint,
+                host: SetupHost::AccessPoint,
                 ..LinkStatus::default()
             },
         );
@@ -533,7 +533,7 @@ mod lamp {
         setup(&mut lamp);
         assert_eq!(lamp.state().link_notice(), Some(LightState::SETUP));
 
-        let mut screened = DeviceManager::boot(Setup {
+        let mut screened = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -548,7 +548,7 @@ mod lamp {
             "a display has a page to say it, so nothing is routed to a lamp"
         );
 
-        let mut both = DeviceManager::boot(Setup {
+        let mut both = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -563,7 +563,7 @@ mod lamp {
             "a lamp still speaks beside a display"
         );
 
-        let mut no_radio = DeviceManager::boot(Setup {
+        let mut no_radio = DeviceManager::boot(Boot {
             backed: Backed {
                 network: false,
                 ..Backed::NONE
@@ -661,7 +661,7 @@ mod lamp {
     fn a_boot_with_nothing_saved_flashes_amber_and_then_shows_the_page() {
         let mut manager = lamp_only();
         assert_eq!(manager.state().page, DisplayPage::Splash);
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
@@ -679,7 +679,7 @@ mod lamp {
 
     #[test]
     fn a_board_with_a_display_and_a_lamp_still_announces_on_the_lamp() {
-        let mut manager = DeviceManager::boot(Setup {
+        let mut manager = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -687,7 +687,7 @@ mod lamp {
             surface_roles: [SurfaceRole::Pages, SurfaceRole::Lamp],
             ..Default::default()
         });
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
@@ -698,8 +698,8 @@ mod lamp {
     #[test]
     fn a_splash_hold_opens_setup_instead_of_flashing_offline() {
         let mut manager = lamp_only();
-        manager.apply_business(BusinessIntent::Page(PageIntent::RequestSetup));
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::RequestSetup));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(manager.state().notice, None);
         assert_eq!(manager.state().page, DisplayPage::Network);
     }

@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::demand::EffectiveDemand;
-use crate::render::{Activity, RenderController, Renderer, Slot};
+use crate::render::{Activity, Consumer, RenderController, Renderer};
 use crate::state::DeviceState;
 
 struct Entry {
@@ -33,9 +33,9 @@ impl Registry {
             activity: Activity::Idle,
             renderer,
         };
-        let slots: Vec<Slot> = entry.renderer.slots().to_vec();
-        for slot in slots {
-            if let Some(appearance) = self.controller.current(slot) {
+        let consumers: Vec<Consumer> = entry.renderer.consumers().to_vec();
+        for consumer in consumers {
+            if let Some(appearance) = self.controller.current(consumer) {
                 entry.activity = entry.renderer.on_appearance(appearance, now_ms);
             }
         }
@@ -43,14 +43,14 @@ impl Registry {
     }
 
     /// Diffs the state, fans the changed appearances out to the renderers that claim those
-    /// slots, and steps the ones that asked for time. Answers whether any still wants frames.
+    /// consumers, and steps the ones that asked for time. Answers whether any still wants frames.
     pub fn tick(&mut self, state: &DeviceState, demand: &EffectiveDemand, now_ms: u32) -> bool {
         let controller = &mut self.controller;
         let entries = &mut self.renderers;
         controller.reconcile(state, demand, |appearance| {
-            let slot = appearance.slot();
+            let consumer = appearance.consumer();
             for entry in entries.iter_mut() {
-                if entry.renderer.slots().contains(&slot) {
+                if entry.renderer.consumers().contains(&consumer) {
                     entry.activity = entry.renderer.on_appearance(appearance.clone(), now_ms);
                 }
             }
@@ -78,23 +78,23 @@ impl Default for Registry {
 mod tests {
     use super::*;
     use crate::demand::EffectiveDemand;
-    use crate::render::{LightAppearance, SlotAppearance};
+    use crate::render::{Appearance, LightAppearance};
     use crate::state::{DeviceManager, LightState, SurfaceRole};
     use alloc::rc::Rc;
     use core::cell::RefCell;
 
     struct Recorder {
-        slots: [Slot; 1],
+        consumers: [Consumer; 1],
         seen: Rc<RefCell<Vec<LightAppearance>>>,
     }
 
     impl Renderer for Recorder {
-        fn slots(&self) -> &[Slot] {
-            &self.slots
+        fn consumers(&self) -> &[Consumer] {
+            &self.consumers
         }
 
-        fn on_appearance(&mut self, appearance: SlotAppearance, _now_ms: u32) -> Activity {
-            if let SlotAppearance::Surface { appearance, .. } = appearance {
+        fn on_appearance(&mut self, appearance: Appearance, _now_ms: u32) -> Activity {
+            if let Appearance::Surface { appearance, .. } = appearance {
                 self.seen.borrow_mut().push(appearance);
             }
             Activity::Idle
@@ -122,7 +122,7 @@ mod tests {
         let seen = Rc::new(RefCell::new(Vec::new()));
         registry.register(
             Box::new(Recorder {
-                slots: [Slot::Surface(0)],
+                consumers: [Consumer::Surface(0)],
                 seen: Rc::clone(&seen),
             }),
             100,

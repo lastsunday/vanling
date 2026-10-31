@@ -1,7 +1,7 @@
 //! The render layer: what the device's surfaces should show, and the registry that drives
 //! the renderers which show it.
 
-mod colour;
+mod color;
 mod lamp;
 mod registry;
 mod screen;
@@ -21,9 +21,9 @@ pub const MODE_OFF: u8 = 0;
 pub const MODE_BREATH: u8 = 1;
 pub const MODE_SOLID: u8 = 2;
 
-/// A device slot the render layer knows about.
+/// Who an appearance is for: one wired surface, or the diagnostics overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Slot {
+pub enum Consumer {
     Surface(u8),
     Diagnostics,
 }
@@ -37,10 +37,10 @@ pub enum LightAppearance {
     Breathing(Breath),
 }
 
-/// The intended appearance of every known slot, derived from [`DeviceState`].
+/// The intended appearance of every known consumer, derived from [`DeviceState`].
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SlotAppearance {
+pub enum Appearance {
     Surface {
         instance: u8,
         appearance: LightAppearance,
@@ -48,11 +48,11 @@ pub enum SlotAppearance {
     Diagnostics(Diagnostics),
 }
 
-impl SlotAppearance {
-    pub fn slot(&self) -> Slot {
+impl Appearance {
+    pub fn consumer(&self) -> Consumer {
         match self {
-            SlotAppearance::Surface { instance, .. } => Slot::Surface(*instance),
-            SlotAppearance::Diagnostics(_) => Slot::Diagnostics,
+            Appearance::Surface { instance, .. } => Consumer::Surface(*instance),
+            Appearance::Diagnostics(_) => Consumer::Diagnostics,
         }
     }
 }
@@ -147,7 +147,7 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         link: state.network.link,
         mac: state.network.mac,
         aps: state.network.aps,
-        setup: state.network.setup,
+        draft: state.network.draft,
         motion: state.motion.sample,
         motion_counts: state.motion.counts,
         motion_caps: state.backed.motion_caps(),
@@ -194,9 +194,9 @@ pub enum Activity {
 /// to show (central state diff), the renderer answers *how*, including whether it needs
 /// time-driven frames.
 pub trait Renderer {
-    fn slots(&self) -> &[Slot];
+    fn consumers(&self) -> &[Consumer];
 
-    fn on_appearance(&mut self, appearance: SlotAppearance, now_ms: u32) -> Activity;
+    fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity;
 
     fn step(&mut self, now_ms: u32) -> Activity;
 }
@@ -219,13 +219,13 @@ impl RenderController {
         Self { last: None }
     }
 
-    /// Diff `state` against the last snapshot, invoking `notify` per changed slot; the
-    /// first call reports every known slot.
+    /// Diff `state` against the last snapshot, invoking `notify` per changed consumer; the
+    /// first call reports every known consumer.
     pub fn reconcile(
         &mut self,
         state: &DeviceState,
         demand: &EffectiveDemand,
-        mut notify: impl FnMut(SlotAppearance),
+        mut notify: impl FnMut(Appearance),
     ) -> bool {
         let next = Snapshot {
             diagnostics: light_diagnostics(state, demand),
@@ -233,7 +233,7 @@ impl RenderController {
         };
         let changed = self.last.as_deref() != Some(&next);
         if changed {
-            notify(SlotAppearance::Diagnostics(next.diagnostics.clone()));
+            notify(Appearance::Diagnostics(next.diagnostics.clone()));
             for (instance, light) in next.lights.iter().enumerate() {
                 if state.surface_roles[instance] == SurfaceRole::Absent {
                     continue;
@@ -243,7 +243,7 @@ impl RenderController {
                     Some(last) => last.lights[instance] != *light,
                 };
                 if moved {
-                    notify(SlotAppearance::Surface {
+                    notify(Appearance::Surface {
                         instance: instance as u8,
                         appearance: light_appearance(*light),
                     });
@@ -257,18 +257,18 @@ impl RenderController {
         changed
     }
 
-    /// Last synced appearance for `slot` (or `None` before the first sync), so a freshly
+    /// Last synced appearance for `consumer` (or `None` before the first sync), so a freshly
     /// registered renderer can catch up before the next diff.
-    pub fn current(&self, slot: Slot) -> Option<SlotAppearance> {
+    pub fn current(&self, consumer: Consumer) -> Option<Appearance> {
         let last = self.last.as_deref()?;
-        Some(match slot {
-            Slot::Surface(instance) => SlotAppearance::Surface {
+        Some(match consumer {
+            Consumer::Surface(instance) => Appearance::Surface {
                 instance,
                 appearance: light_appearance(
                     last.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
                 ),
             },
-            Slot::Diagnostics => SlotAppearance::Diagnostics(last.diagnostics.clone()),
+            Consumer::Diagnostics => Appearance::Diagnostics(last.diagnostics.clone()),
         })
     }
 }
@@ -315,9 +315,11 @@ mod tests {
         assert_eq!(windowed_percent(4_000_000, 2_000_000), 100);
         assert_eq!(windowed_percent(7_000, 0), 100);
     }
-    use crate::drivers::network::{AccessPoint, ApList, Front, Ipv4, LinkPhase, LinkStatus, Ssid};
+    use crate::drivers::network::{
+        AccessPoint, ApList, Ipv4, LinkPhase, LinkStatus, SetupHost, Ssid,
+    };
     use crate::drivers::playback::Sound;
-    use crate::intent::{AudioIntent, BusinessIntent, PageIntent};
+    use crate::intent::{ActionIntent, AudioIntent, PageIntent};
     use crate::state::{DeviceManager, PlaybackPhase};
 
     const BOOT_BREATH: crate::state::Breath = crate::state::Breath {
@@ -339,7 +341,7 @@ mod tests {
         }
     }
 
-    fn collect(ctl: &mut RenderController, s: &DeviceState) -> Vec<SlotAppearance> {
+    fn collect(ctl: &mut RenderController, s: &DeviceState) -> Vec<Appearance> {
         let mut seen = Vec::new();
         ctl.reconcile(s, &EffectiveDemand::default(), |a| seen.push(a));
         seen
@@ -347,7 +349,7 @@ mod tests {
 
     fn landed() -> DeviceManager {
         let mut manager = DeviceManager::new();
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         manager
     }
 
@@ -589,7 +591,7 @@ mod tests {
 
     #[test]
     fn the_audio_page_stamps_the_capture_the_phase_points_at() {
-        let mut manager = DeviceManager::boot(crate::state::Setup {
+        let mut manager = DeviceManager::boot(crate::state::Boot {
             backed: Backed {
                 audio: true,
                 ..Backed::NONE
@@ -614,8 +616,8 @@ mod tests {
             AudioPhase::Idle,
             "polling alone never starts a capture"
         );
-        manager.apply_business(BusinessIntent::Audio(AudioIntent::Start));
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Audio(AudioIntent::Start));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         let recording = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
@@ -628,7 +630,7 @@ mod tests {
              recovered from still reads as a capture that simply went quiet"
         );
 
-        manager.apply_business(BusinessIntent::Audio(AudioIntent::Stop));
+        manager.apply_action(ActionIntent::Audio(AudioIntent::Stop));
         let stopped = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(
@@ -649,12 +651,12 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                SlotAppearance::Diagnostics(diagnostics_for(LightState::boot())),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(diagnostics_for(LightState::boot())),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Breathing(BOOT_BREATH)
                 },
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Breathing(BOOT_BREATH)
                 },
@@ -683,12 +685,12 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &off),
             vec![
-                SlotAppearance::Diagnostics(diagnostics_for(LightState::Off)),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(diagnostics_for(LightState::Off)),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off
                 },
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Off
                 },
@@ -726,12 +728,12 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &target),
             vec![
-                SlotAppearance::Diagnostics(diagnostics_for(target.lights[0])),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(diagnostics_for(target.lights[0])),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3))
                 },
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3))
                 },
@@ -744,12 +746,12 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &recolored),
             vec![
-                SlotAppearance::Diagnostics(diagnostics_for(recolored.lights[0])),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(diagnostics_for(recolored.lights[0])),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(9, 9, 9))
                 },
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Color(Rgb(9, 9, 9))
                 },
@@ -770,11 +772,11 @@ mod tests {
         assert_eq!(seen.len(), 3, "diagnostics ride along with the light diff");
         assert!(matches!(
             seen[0].clone(),
-            SlotAppearance::Diagnostics(t) if t == diagnostics_for(second.lights[0])
+            Appearance::Diagnostics(t) if t == diagnostics_for(second.lights[0])
         ));
         assert!(matches!(
             seen[1],
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Breathing(_),
                 ..
@@ -782,7 +784,7 @@ mod tests {
         ));
         assert!(matches!(
             seen[2],
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance: 1,
                 appearance: LightAppearance::Breathing(_),
                 ..
@@ -791,17 +793,21 @@ mod tests {
     }
 
     #[test]
-    fn current_reports_last_synced_appearance_per_slot() {
+    fn current_reports_last_synced_appearance_per_consumer() {
         let mut ctl = RenderController::new();
-        assert_eq!(ctl.current(Slot::Surface(0)), None, "nothing synced yet");
+        assert_eq!(
+            ctl.current(Consumer::Surface(0)),
+            None,
+            "nothing synced yet"
+        );
         let plain = state(LightState::Solid {
             color: Rgb(7, 6, 5),
             brightness: 255,
         });
         collect(&mut ctl, &plain);
         assert_eq!(
-            ctl.current(Slot::Surface(0)),
-            Some(SlotAppearance::Surface {
+            ctl.current(Consumer::Surface(0)),
+            Some(Appearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Color(Rgb(7, 6, 5))
             })
@@ -818,26 +824,26 @@ mod tests {
         };
         collect(&mut ctl, &two);
         assert_eq!(
-            ctl.current(Slot::Surface(0)),
-            Some(SlotAppearance::Surface {
+            ctl.current(Consumer::Surface(0)),
+            Some(Appearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Off
             })
         );
         assert_eq!(
-            ctl.current(Slot::Surface(1)),
-            Some(SlotAppearance::Surface {
+            ctl.current(Consumer::Surface(1)),
+            Some(Appearance::Surface {
                 instance: 1,
                 appearance: LightAppearance::Color(Rgb(3, 3, 3))
             })
         );
         assert!(matches!(
-            ctl.current(Slot::Diagnostics),
-            Some(SlotAppearance::Diagnostics(_))
+            ctl.current(Consumer::Diagnostics),
+            Some(Appearance::Diagnostics(_))
         ));
         assert_eq!(
-            ctl.current(Slot::Surface(9)),
-            Some(SlotAppearance::Surface {
+            ctl.current(Consumer::Surface(9)),
+            Some(Appearance::Surface {
                 instance: 9,
                 appearance: LightAppearance::Color(Rgb(3, 3, 3))
             })
@@ -861,18 +867,18 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                SlotAppearance::Diagnostics(light_diagnostics(&two, &EffectiveDemand::default())),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(light_diagnostics(&two, &EffectiveDemand::default())),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off,
                 },
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Color(Rgb(5, 5, 5)),
                 },
             ]
         );
-        let SlotAppearance::Diagnostics(d) = seen[0].clone() else {
+        let Appearance::Diagnostics(d) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(d.lights.len(), MAX_LIGHTS);
@@ -893,11 +899,8 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &changed),
             vec![
-                SlotAppearance::Diagnostics(light_diagnostics(
-                    &changed,
-                    &EffectiveDemand::default()
-                )),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(light_diagnostics(&changed, &EffectiveDemand::default())),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3)),
                 },
@@ -924,12 +927,12 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                SlotAppearance::Diagnostics(expected),
-                SlotAppearance::Surface {
+                Appearance::Diagnostics(expected),
+                Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off
                 },
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance: 1,
                     appearance: LightAppearance::Off
                 },
@@ -947,7 +950,7 @@ mod tests {
         expected.touch.ghost = 3;
         assert_eq!(
             collect(&mut ctl, &ghost),
-            vec![SlotAppearance::Diagnostics(expected)]
+            vec![Appearance::Diagnostics(expected)]
         );
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
@@ -957,7 +960,7 @@ mod tests {
         expected.touch.presses = 1;
         assert_eq!(
             collect(&mut ctl, &presses),
-            vec![SlotAppearance::Diagnostics(expected)]
+            vec![Appearance::Diagnostics(expected)]
         );
     }
 
@@ -966,7 +969,7 @@ mod tests {
         let mut ctl = RenderController::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
-        manager.apply_operation(crate::intent::recognize(
+        manager.apply_input(crate::intent::recognize(
             crate::drivers::input::InputEvent::Gesture(
                 crate::drivers::input::GestureEvent::Press {
                     id: 0,
@@ -982,12 +985,12 @@ mod tests {
         expected.touch.points = [Some((42, 97)), None];
         assert_eq!(
             collect(&mut ctl, &state),
-            vec![SlotAppearance::Diagnostics(expected)]
+            vec![Appearance::Diagnostics(expected)]
         );
         let mut ctl = RenderController::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
-        manager.apply_operation(crate::intent::recognize(
+        manager.apply_input(crate::intent::recognize(
             crate::drivers::input::InputEvent::Touch(crate::drivers::input::TouchEvent {
                 points: [crate::drivers::input::TouchPoint {
                     id: 0,
@@ -999,7 +1002,7 @@ mod tests {
             }),
             0,
         ));
-        manager.apply_operation(crate::intent::recognize(
+        manager.apply_input(crate::intent::recognize(
             crate::drivers::input::InputEvent::Touch(crate::drivers::input::TouchEvent {
                 points: [crate::drivers::input::TouchPoint {
                     id: 0,
@@ -1013,7 +1016,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let SlotAppearance::Diagnostics(diagnostics) = seen[0].clone() else {
+        let Appearance::Diagnostics(diagnostics) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(
@@ -1027,7 +1030,7 @@ mod tests {
         let mut ctl = RenderController::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
-        manager.apply_operation(crate::intent::recognize(
+        manager.apply_input(crate::intent::recognize(
             crate::drivers::input::InputEvent::Gesture(
                 crate::drivers::input::GestureEvent::Swipe {
                     id: 0,
@@ -1042,13 +1045,13 @@ mod tests {
             ),
             0,
         ));
-        manager.apply_operation(crate::intent::recognize(
+        manager.apply_input(crate::intent::recognize(
             crate::drivers::input::InputEvent::ChipGesture(0x10),
             0,
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let SlotAppearance::Diagnostics(diagnostics) = seen[0].clone() else {
+        let Appearance::Diagnostics(diagnostics) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(diagnostics.touch.swipes, 1);
@@ -1063,7 +1066,7 @@ mod tests {
         let mut ctl = RenderController::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
-        manager.apply_operation(crate::intent::recognize(
+        manager.apply_input(crate::intent::recognize(
             crate::drivers::input::InputEvent::Gesture(crate::drivers::input::GestureEvent::Tap {
                 id: 0,
                 x: 5,
@@ -1075,7 +1078,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let SlotAppearance::Diagnostics(diagnostics) = seen[0].clone() else {
+        let Appearance::Diagnostics(diagnostics) = seen[0].clone() else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(diagnostics.touch.taps, 1);
@@ -1198,7 +1201,7 @@ mod tests {
         let mut unlit = base.clone();
         unlit.demand.set(
             DemandKey::DISPLAY,
-            crate::demand::Claim::new(Mode::Off, 0, crate::demand::Sensitivity::Primary),
+            crate::demand::Claim::new(Mode::Off, 0, crate::demand::Priority::Primary),
         );
         let mut wobble = unlit.clone();
         wobble.audio.phase = AudioPhase::Recording;
@@ -1217,7 +1220,7 @@ mod tests {
         let mut dim = base.clone();
         dim.demand.set(
             DemandKey::DISPLAY,
-            crate::demand::Claim::new(Mode::OnChange, 0, crate::demand::Sensitivity::Primary),
+            crate::demand::Claim::new(Mode::OnChange, 0, crate::demand::Priority::Primary),
         );
         assert!(
             !diag_repaint_due(
@@ -1251,14 +1254,14 @@ mod tests {
         ));
     }
 
-    fn light_appearances(seen: Vec<SlotAppearance>) -> Vec<(u8, LightAppearance)> {
+    fn light_appearances(seen: Vec<Appearance>) -> Vec<(u8, LightAppearance)> {
         seen.into_iter()
             .filter_map(|appearance| match appearance {
-                SlotAppearance::Surface {
+                Appearance::Surface {
                     instance,
                     appearance,
                 } => Some((instance, appearance)),
-                SlotAppearance::Diagnostics(_) => None,
+                Appearance::Diagnostics(_) => None,
             })
             .collect()
     }
@@ -1297,7 +1300,7 @@ mod tests {
                 network: crate::state::NetworkState {
                     link: LinkStatus {
                         setup: true,
-                        front: Front::AccessPoint,
+                        host: SetupHost::AccessPoint,
                         ..LinkStatus::default()
                     },
                     ..Default::default()
@@ -1314,7 +1317,7 @@ mod tests {
 
     #[test]
     fn the_snapshot_carries_the_demand_in_force_not_the_pages_own() {
-        let setup = crate::state::Setup {
+        let setup = crate::state::Boot {
             backed: Backed {
                 motion: Some(crate::drivers::motion::MotionCapabilities::EMPTY),
                 audio: true,
@@ -1331,7 +1334,7 @@ mod tests {
             ..Default::default()
         };
         let mut quiet_manager = DeviceManager::boot(setup.clone());
-        quiet_manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        quiet_manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(quiet_manager.state().page, DisplayPage::Audio);
         let quiet = quiet_manager.demand().clone();
         assert_eq!(
@@ -1339,11 +1342,11 @@ mod tests {
             crate::demand::Mode::Continuous
         );
 
-        let mut manager = DeviceManager::boot(crate::state::Setup {
+        let mut manager = DeviceManager::boot(crate::state::Boot {
             overrides: crate::demand::parse_override("audio=off"),
             ..setup
         });
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.demand().claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Off

@@ -1,7 +1,7 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::drivers::motion::MotionCapabilities;
 use crate::intent::{
-    BusinessIntent, LightIntent, NetworkIntent, OperationIntent, PageIntent, recognize, translate,
+    ActionIntent, InputIntent, LightIntent, NetworkIntent, PageIntent, recognize, translate,
 };
 use crate::state::MAX_LIGHTS;
 use crate::state::{Backed, Breath, DeviceState, DisplayPage, LightState, SurfaceRole};
@@ -51,7 +51,7 @@ pub(crate) fn with_network(
     state
 }
 
-pub(crate) fn op(event: InputEvent) -> OperationIntent {
+pub(crate) fn op(event: InputEvent) -> InputIntent {
     recognize(event, 0)
 }
 
@@ -65,27 +65,27 @@ pub(crate) fn target(event: InputEvent, current: LightState) -> Option<LightStat
 
 pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightState> {
     match translate(&op(event), current) {
-        BusinessIntent::Light(LightIntent { state, .. }) => Some(state),
-        BusinessIntent::Invalid
-        | BusinessIntent::Page(PageIntent::NextPage)
-        | BusinessIntent::Audio(_)
-        | BusinessIntent::Playback(_)
-        | BusinessIntent::Page(PageIntent::SplashOver)
-        | BusinessIntent::Page(PageIntent::RequestSetup)
-        | BusinessIntent::Network(NetworkIntent::LinkReport(_))
-        | BusinessIntent::Network(NetworkIntent::NoCopy(_))
-        | BusinessIntent::Network(NetworkIntent::Mac(_))
-        | BusinessIntent::Network(NetworkIntent::Key { .. })
-        | BusinessIntent::Network(NetworkIntent::Choose(_))
-        | BusinessIntent::Network(NetworkIntent::AskForget(_))
-        | BusinessIntent::Network(NetworkIntent::Scroll { .. })
-        | BusinessIntent::Network(NetworkIntent::Leave)
-        | BusinessIntent::Network(NetworkIntent::Answer(_))
-        | BusinessIntent::Network(NetworkIntent::CloseSetup)
-        | BusinessIntent::Network(NetworkIntent::SwitchFront)
-        | BusinessIntent::Network(NetworkIntent::ScanNow)
-        | BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(_))
-        | BusinessIntent::Network(NetworkIntent::Dismiss) => None,
+        ActionIntent::Light(LightIntent { state, .. }) => Some(state),
+        ActionIntent::Invalid
+        | ActionIntent::Page(PageIntent::NextPage)
+        | ActionIntent::Audio(_)
+        | ActionIntent::Playback(_)
+        | ActionIntent::Page(PageIntent::SplashOver)
+        | ActionIntent::Page(PageIntent::RequestSetup)
+        | ActionIntent::Network(NetworkIntent::LinkReport(_))
+        | ActionIntent::Network(NetworkIntent::NoCopy(_))
+        | ActionIntent::Network(NetworkIntent::Mac(_))
+        | ActionIntent::Network(NetworkIntent::Key { .. })
+        | ActionIntent::Network(NetworkIntent::Choose(_))
+        | ActionIntent::Network(NetworkIntent::AskForget(_))
+        | ActionIntent::Network(NetworkIntent::Scroll { .. })
+        | ActionIntent::Network(NetworkIntent::Leave)
+        | ActionIntent::Network(NetworkIntent::Answer(_))
+        | ActionIntent::Network(NetworkIntent::CloseSetup)
+        | ActionIntent::Network(NetworkIntent::SwitchHost)
+        | ActionIntent::Network(NetworkIntent::ScanNow)
+        | ActionIntent::Network(NetworkIntent::SetOpenAccessPoint(_))
+        | ActionIntent::Network(NetworkIntent::Dismiss) => None,
     }
 }
 

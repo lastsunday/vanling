@@ -34,7 +34,7 @@ use iot_core::drivers::board::{HasAudio, HasCamera, HasPlayback, HasWifi};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{PassThrough, PollEntry, TOUCH_SCAN_MS, TouchGestures};
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
-use iot_core::drivers::network::Front;
+use iot_core::drivers::network::SetupHost;
 use iot_core::drivers::surface::WiredSurface;
 
 use crate::components::backlight::Backlight;
@@ -227,9 +227,9 @@ fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<
     }
 }
 
-/// The front this board opens setup mode on: it has a panel, so the page is where a person
+/// The host this board opens setup mode on: it has a panel, so the page is where a person
 /// configures it.
-pub const FRONT: Front = Front::Panel;
+pub const SETUP_HOST: SetupHost = SetupHost::Panel;
 
 /// Board-level support for the LCKFB SZPI ESP32-S3 display board.
 pub struct Board<'d> {

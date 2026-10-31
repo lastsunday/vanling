@@ -2,7 +2,7 @@
 
 use embassy_sync::channel::TrySendError;
 
-use crate::workers::SpeakerCommands;
+use crate::workers::PlaybackQueue;
 use iot_core::state::{PlaybackCommand, PlaybackState};
 
 pub(crate) struct PlaybackDispatch {
@@ -16,7 +16,7 @@ impl PlaybackDispatch {
 
     /// Queues the edges this state crossed. A command that found no room leaves its field
     /// behind, so the next pass offers the same edge again instead of losing it.
-    pub(crate) fn dispatch(&mut self, to: &SpeakerCommands, after: PlaybackState) {
+    pub(crate) fn dispatch(&mut self, to: &PlaybackQueue, after: PlaybackState) {
         if let Some(command) = after.mute_command(&self.previous)
             && queue(to, command)
         {
@@ -29,7 +29,7 @@ impl PlaybackDispatch {
     }
 }
 
-fn queue(to: &SpeakerCommands, command: PlaybackCommand) -> bool {
+fn queue(to: &PlaybackQueue, command: PlaybackCommand) -> bool {
     match to.try_send(command) {
         Ok(()) => true,
         Err(TrySendError::Full(command)) => {

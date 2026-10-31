@@ -1,5 +1,5 @@
 use iot_core::overlay::{Block, FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS};
-use iot_core::page::{Part, walk};
+use iot_core::page::{Band, each_band};
 use iot_core::render::{MODE_BREATH, MODE_SOLID};
 
 use crate::pages::draw::{direction_arrow, format_u16, gesture_glyph, mode_word};
@@ -168,24 +168,24 @@ impl Surface<'_> {
         // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
         // reason, and a list is 350 B against the envelope's kilobyte and a half.
         let aps = self.diagnostics.aps;
-        let setup = self.diagnostics.setup;
+        let setup = self.diagnostics.draft;
         let shown_ap = if setup.keyboard {
             setup.selected
         } else {
             link.ap.or(setup.selected)
         };
 
-        walk(setup, link, |part| match part {
-            Part::Header => self.stamp_header(
+        each_band(setup, link, |band| match band {
+            Band::Header => self.stamp_header(
                 setup,
                 link,
                 shown_ap,
                 self.diagnostics.mac,
                 aps.filter(|list| !list.is_empty()).map(|list| list.len()),
             ),
-            Part::Content => self.stamp_content(setup, link, aps),
-            Part::Controls => self.stamp_strip(setup, link),
-            Part::Overlay => self.stamp_box(setup, link, shown_ap, self.diagnostics.mac),
+            Band::Content => self.stamp_content(setup, link, aps),
+            Band::Controls => self.stamp_strip(setup, link),
+            Band::Overlay => self.stamp_box(setup, link, shown_ap, self.diagnostics.mac),
         });
     }
 

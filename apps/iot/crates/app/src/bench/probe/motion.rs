@@ -3,7 +3,7 @@
 use embassy_time::{Duration, Instant, Timer};
 use iot_bsp_esp::components::qmi8658::{Qmi8658, SUPPORTED_CONFIGS};
 use iot_core::config::MotionConfig;
-use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Sensitivity, poll_plan_of};
+use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Priority, poll_plan_of};
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionSource};
 
 pub type MotionDevice = iot_bsp_esp::SharedI2cDevice;
@@ -18,7 +18,7 @@ const CELL_BUDGET_MS: u64 = 20_000;
 
 const MIN_CELL_POLLS: u32 = 20;
 
-const CLASS: Sensitivity = Sensitivity::Secondary;
+const PRIORITY: Priority = Priority::Secondary;
 
 const CONFIGS: [MotionConfig; 4] = [
     MotionConfig::WakeDetector,
@@ -116,7 +116,7 @@ pub async fn run(mut driver: Qmi8658<MotionDevice>) -> ! {
             let mut demand = EffectiveDemand::none();
             demand.set(
                 DemandKey::MOTION,
-                Claim::new(Mode::Continuous, requested_ms as u32, CLASS),
+                Claim::new(Mode::Continuous, requested_ms as u32, PRIORITY),
             );
             let plan = poll_plan_of(DemandKey::MOTION, &demand, BOARD_CADENCE_MS);
             let cadence_ms = plan.cadence_ms;

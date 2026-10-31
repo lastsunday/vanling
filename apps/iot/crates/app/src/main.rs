@@ -39,7 +39,7 @@ async fn main(_spawner: Spawner) -> ! {
         iot_app::net::serve(
             station,
             saved,
-            iot_bsp_esp::FRONT,
+            iot_bsp_esp::SETUP_HOST,
             has_pages,
             iot_app::workers::NET,
             &iot_app::input::INTENT_BUS,

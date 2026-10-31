@@ -6,7 +6,10 @@ use alloc::vec::Vec;
 
 use crate::drivers::audio::{BYTES_PER_FRAME, SAMPLE_RATE_HZ};
 
-/// A sound in the catalogue, in the order a tap cycles them.
+/// What the speaker is asked to play.
+///
+/// Everything but [`Self::Sweep`] names a sound in the MIDI catalogue; a sweep is handed in as
+/// a [`SampleSource`] by the caller measuring a path through the device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Sound {
     #[default]
@@ -19,9 +22,9 @@ pub enum Sound {
 }
 
 impl Sound {
-    /// The whole catalogue in cycle order, so a walker and a test cannot disagree about
-    /// what the tap after the last sound does.
-    pub const ALL: [Self; 5] = [Self::Tap, Self::Notice, Self::Warn, Self::Error, Self::Rise];
+    /// The sounds a tap walks, in order, so a walker and a test cannot disagree about what
+    /// the tap after the last one does. A sweep is never walked to: the caller supplies it.
+    pub const CYCLE: [Self; 5] = [Self::Tap, Self::Notice, Self::Warn, Self::Error, Self::Rise];
 
     /// The next sound in the catalogue, wrapping: what one tap on the Speaker page plays.
     pub const fn next(self) -> Self {
@@ -570,7 +573,7 @@ impl Tone {
 /// looks: a tone's energy sits at one frequency, so it measures the transfer
 /// function at that frequency and nothing else — no path length, no tail, and no
 /// answer to "how many taps does this room need".
-pub struct Sweep {
+pub struct Chirp {
     phase: u64,
     step: u64,
     step_delta: u64,
@@ -580,25 +583,25 @@ pub struct Sweep {
     step_delta_base: u64,
 }
 
-const SWEEP_BITS: u32 = Q16_BITS;
+const CHIRP_BITS: u32 = Q16_BITS;
 
-const SWEEP_TURN: u64 = (WAVE_TURN as u64) << SWEEP_BITS;
+const CHIRP_TURN: u64 = (WAVE_TURN as u64) << CHIRP_BITS;
 
 // The level the sweep runs at, and **a measurement parameter rather than a
 // taste one**.
 //
 // `[实测]` at half the rail the ADC clipped (32 767 peak); a fifth of the rail leaves
 // headroom for a louder room than the sweep.
-const SWEEP_PEAK_LSB: i32 = 2_500;
+const CHIRP_PEAK_LSB: i32 = 2_500;
 
-impl Sweep {
+impl Chirp {
     /// A sweep from `from_hz` to `to_hz` over `milliseconds`, looping without a step — see
     /// [`SampleSource::fill`] for what makes the join clean.
     pub const fn new(from_hz: u32, to_hz: u32, milliseconds: u32) -> Self {
         let samples = (SAMPLE_RATE_HZ / 1_000) * milliseconds;
         let turn = WAVE_TURN as u64;
-        let from_step = from_hz as u64 * turn * (1 << SWEEP_BITS) / SAMPLE_RATE_HZ as u64;
-        let step_delta = ((to_hz - from_hz) as u64 * turn * (1 << SWEEP_BITS))
+        let from_step = from_hz as u64 * turn * (1 << CHIRP_BITS) / SAMPLE_RATE_HZ as u64;
+        let step_delta = ((to_hz - from_hz) as u64 * turn * (1 << CHIRP_BITS))
             / (SAMPLE_RATE_HZ as u64 * samples as u64);
         Self {
             phase: 0,
@@ -626,21 +629,21 @@ impl Sweep {
         let at = self.phase;
         self.phase += self.step;
         self.step += self.step_delta;
-        if self.phase >= SWEEP_TURN {
-            self.phase -= SWEEP_TURN;
+        if self.phase >= CHIRP_TURN {
+            self.phase -= CHIRP_TURN;
         }
         self.index += 1;
 
-        let whole = (at >> (SWEEP_BITS + PHASE_BITS)) as usize;
-        let fraction = ((at >> SWEEP_BITS) & u64::from(PHASE_MASK)) as i32;
+        let whole = (at >> (CHIRP_BITS + PHASE_BITS)) as usize;
+        let fraction = ((at >> CHIRP_BITS) & u64::from(PHASE_MASK)) as i32;
         let (low, high) = (WAVE[whole] as i32, WAVE[whole + 1] as i32);
         let interpolated =
             low + (((high - low) * fraction + (1 << (PHASE_BITS - 1))) >> PHASE_BITS);
-        (interpolated * SWEEP_PEAK_LSB / 23_000) as i16
+        (interpolated * CHIRP_PEAK_LSB / 23_000) as i16
     }
 }
 
-impl SampleSource for Sweep {
+impl SampleSource for Chirp {
     // **Never runs out.** A sweep is the excitation a room is measured with, and
     // a driver that has to be re-armed mid-measurement puts a click and a gap
     // in the recording for every re-arm — which is the measurement being ruined
@@ -991,24 +994,24 @@ mod tests {
 
     #[test]
     fn the_catalogue_cycles_and_wraps() {
-        let mut lap = [Sound::Tap; Sound::ALL.len()];
-        let mut walked = Sound::ALL[0];
+        let mut lap = [Sound::Tap; Sound::CYCLE.len()];
+        let mut walked = Sound::CYCLE[0];
         for slot in lap.iter_mut() {
             walked = walked.next();
             *slot = walked;
         }
-        let mut expected = Sound::ALL;
+        let mut expected = Sound::CYCLE;
         expected.rotate_left(1);
         assert_eq!(lap, expected, "a lap visits the catalogue in order");
-        assert_eq!(walked, Sound::ALL[0], "and comes back to the head of it",);
-        for sound in Sound::ALL {
+        assert_eq!(walked, Sound::CYCLE[0], "and comes back to the head of it",);
+        for sound in Sound::CYCLE {
             assert!(
                 lap.contains(&sound),
                 "{sound:?} is catalogued but unreachable",
             );
         }
         assert!(
-            !Sound::ALL.contains(&Sound::Sweep),
+            !Sound::CYCLE.contains(&Sound::Sweep),
             "the bench excitation stays off the tap cycle",
         );
     }
@@ -1073,7 +1076,7 @@ mod tests {
     fn sweep_of(band: (u32, u32, u32)) -> Vec<i16> {
         let length = (SAMPLE_RATE_HZ / 1_000 * band.2) as usize;
         let mut out = vec![0_i16; length];
-        assert_eq!(Sweep::new(band.0, band.1, band.2).fill(&mut out), length);
+        assert_eq!(Chirp::new(band.0, band.1, band.2).fill(&mut out), length);
         out
     }
 
@@ -1087,14 +1090,14 @@ mod tests {
         let (from, to, milliseconds) = BAND;
         let sweep = sweep_of(BAND);
 
-        let sweep_state = Sweep::new(from, to, milliseconds);
+        let chirp_state = Chirp::new(from, to, milliseconds);
         assert!(
-            sweep_state.step > 0 && sweep_state.step < SWEEP_TURN,
+            chirp_state.step > 0 && chirp_state.step < CHIRP_TURN,
             "the step is one whole tone's worth or none: {}",
-            sweep_state.step
+            chirp_state.step
         );
         assert!(
-            sweep_state.step_delta > 0,
+            chirp_state.step_delta > 0,
             "the frequency has to move at all, and over this band it moves by less \
              than one phase unit per sample — which is what needs the extra resolution"
         );
@@ -1120,13 +1123,13 @@ mod tests {
         let (from, to, milliseconds) = BAND;
         let length = (SAMPLE_RATE_HZ / 1_000 * milliseconds) as usize;
 
-        let mut sweep = Sweep::new(from, to, milliseconds);
+        let mut chirp = Chirp::new(from, to, milliseconds);
         let mut short = vec![0_i16; length / 4];
-        assert_eq!(sweep.fill(&mut short), length / 4, "a partial fill is full");
-        assert!(!sweep.done(), "and there is more of it");
+        assert_eq!(chirp.fill(&mut short), length / 4, "a partial fill is full");
+        assert!(!chirp.done(), "and there is more of it");
 
         let mut two = vec![0_i16; length * 2];
-        let mut long = Sweep::new(from, to, milliseconds);
+        let mut long = Chirp::new(from, to, milliseconds);
         assert_eq!(
             long.fill(&mut two),
             length * 2,
@@ -1146,8 +1149,8 @@ mod tests {
         );
 
         let peak = two.iter().map(|s| i32::from(*s).abs()).max().unwrap();
-        assert!(peak > SWEEP_PEAK_LSB / 2, "the sweep is at {peak} LSB");
-        assert!(peak <= SWEEP_PEAK_LSB, "and never past {SWEEP_PEAK_LSB}");
+        assert!(peak > CHIRP_PEAK_LSB / 2, "the sweep is at {peak} LSB");
+        assert!(peak <= CHIRP_PEAK_LSB, "and never past {CHIRP_PEAK_LSB}");
     }
 
     #[test]

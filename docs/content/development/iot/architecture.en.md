@@ -50,7 +50,7 @@ A pipeline-logic system whose trigger points are intents.
 - **iot-ui is the page layer**: `Canvas` owns only the frame buffer, its dimensions and its ground; `Surface` adds a borrowed `&Diagnostics`, the light instance, FPS, the debug switch, the SPL offset and an optional platform stack probe, and pages draw in immediate mode. It names no chip, board or sensor. `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, then ships the page bytes; pages are therefore host-testable without a panel.
 - **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
-- **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`FRONT` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
+- **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
 - **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. Reading-to-glyph arithmetic, the font and page layout moved with the page layer into `iot-ui`; the peers left in `core` (`overlay`/`stamp`/`keyboard`) are there because both the pages and `intent` read them.
@@ -66,13 +66,13 @@ A pipeline-logic system whose trigger points are intents.
 | `lib.rs` | composition root: take capabilities, build `DeviceManager`, start the four futures |
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, speaker, net }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
+| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, net }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
 | `pipeline.rs` | the coordinator `run_loop`: apply intents, publish state, forward commands, wait for the next frame |
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `frame.rs` | `FrameClock` (logical frames, including catch-up) |
 | `input.rs` | input worker: polling, demand scheduling, gesture recognition |
 | `audio/{mod,dispatch,capture,sounds}.rs` | playback worker, state→command, the capture window's driver side, sound catalogue |
-| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, survey, credentials |
+| `net/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
 
@@ -114,7 +114,7 @@ A demand is three independent sentences, and they must be expressed separately:
 | --------------- | -------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
 | **Mode**        | Whether it produces at all | `Mode`: `Off` / `OnChange` / `Continuous`             | Whether polling happens, whether output is clocked                         |
 | **Cadence**     | How often                  | `Claim::period_ms` (0 = the board's cadence)          | The floor on the poll period                                               |
-| **Sensitivity** | How stale still counts     | `Sensitivity`: `Primary` / `Secondary` / `Background` | Nothing on this board (below); it only arbitrates and names itself in logs |
+| **Priority**    | Who is asking              | `Priority`: `Primary` / `Secondary` / `Background`    | Nothing on this board (below); it only names itself in logs                |
 
 And "how to acquire" — the register set, the FIFO, the on-part engine, the transport — is the acquisition configuration (`MotionConfig` and its siblings), selected by the driver; a page never names it.
 
@@ -122,13 +122,13 @@ This separation is exactly why "low fidelity + high cost" is inexpressible: a pa
 
 Fusing the two into a single ordinal "level" welds "what is wanted" and "how it is acquired" together. Stepping down then looks like both lowering fidelity and saving resources, when stepping down is not the same as spending less.
 
-`Sensitivity` moves no cadence on this board, and that is the hardware's doing.
+`Priority` moves no cadence on this board, and that is the hardware's doing.
 
 Android's `max_report_latency` presumes events are sampled on schedule and only their report waits in a FIFO, so "sample often, report late" are two independent statements.
 
 This board's IMU has no FIFO, so reporting late can only become sampling less often — which is what `period_ms` already says out loud.
 
-A "class to milliseconds" lookup therefore cannot land here: it would only scale `period_ms` by a coefficient and take a max.
+A "priority to milliseconds" lookup therefore cannot land here: it would only scale `period_ms` by a coefficient and take a max.
 
 Two shapes taken from Android's side, copied rather than reinvented:
 
@@ -172,13 +172,13 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 ### Changing: reuse the existing intent pipeline
 
-`apply_business` is already the single place state changes; the only gesture-driven page change is `BusinessIntent::NextPage`, and `SplashOver` lands on the build's page when the splash ends.
+`apply_action` is already the single place state changes; the only gesture-driven page change is `ActionIntent::NextPage`, and `SplashOver` lands on the build's page when the splash ends.
 
-A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_business`. No new mechanism.
+A new scenario is a new `ActionIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_action`. No new mechanism.
 
-A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `BusinessIntent` is grouped by domain into `Page`/`Network`/`Audio`/`Playback`/`Light`, and `apply_business` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
+A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Network`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
-`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Setup`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen.
+`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Boot`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen.
 
 ### Transport: coordinators and workers
 
@@ -200,14 +200,14 @@ The shape follows the semantics, not convenience:
 - **Levels** use `PageWatch` (`Net.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge.
 - **Latest values** use `Latest`/a window (`Net.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. The coordinator forwards `DeviceManager::take_command()` directly instead of translating each variant, and setup commands carry the `Front` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. The coordinator forwards `DeviceManager::take_command()` directly instead of translating each variant, and setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
 **The render layer costs nothing**: `Diagnostics` in `core/src/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`, and `DiagnosticsSink::consume` is already the "state into consumers" channel.
 
 The camera's chain runs end to end today:
 
 ```
-DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
+DeviceState.page → light_diagnostics() → Appearance::Diagnostics
   → RenderController::reconcile → ScreenRenderer::on_appearance
   → Screen::consume → camera.pause() / released()
 ```
@@ -388,9 +388,9 @@ The per-device figures and their individual basis labels are in the [implementat
 
 `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end.
 
-The boot page (`Setup::boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
+The boot page (`Boot::boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
 
-The capability test is one column of each page's row (`PageSpec::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Setup` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `network` is a `bool` passed in: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`network`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
+The capability test is one column of each page's row (`PageSpec::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `network` is a `bool` passed in: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`network`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
 
 This rule exists because of a defect it fixed.
 
@@ -413,7 +413,7 @@ A log reporting a configuration nothing is running is worse than no log.
 ## Adding a board
 
 1. Add the board module to `bsp-esp/` (Board + HasXxx traits) with feature gating.
-2. Add the board's `FRONT` constant in `app/src/main.rs` (and `HEAP_BYTES` where the part's memory differs); the feed's arm is already there per part.
+2. Add the board's `SETUP_HOST` constant in `app/src/main.rs` (and `HEAP_BYTES` where the part's memory differs); the feed's arm is already there per part.
 3. Forward the app feature `iot-bsp-esp/<board>`.
 4. Add the board to the `platforms` default JSON in `reusable-iot-build.yml` and the `platforms` input of `iot-dev-release.yml`. Xtensa boards need `use-xtensa-toolchain: true` and go through the `build-s3` task: the espup native `esp` 1.98.1.0 toolchain on CI/release, with a same-version Docker image locally on macOS Intel
 5. Verify: `cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`

@@ -128,7 +128,7 @@ mod speaker_page {
     use crate::drivers::playback::Sound;
 
     fn on_speaker() -> DeviceManager {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 motion: Some(MotionCapabilities::EMPTY),
                 audio: true,
@@ -229,10 +229,10 @@ mod speaker_page {
             DisplayPage::Audio,
         ];
         for expected in pages {
-            manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+            manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
             assert_eq!(manager.state().page, expected);
         }
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         assert_eq!(manager.state().page, DisplayPage::Speaker, "and back round");
     }
 
@@ -263,7 +263,7 @@ mod speaker_page {
         assert_eq!(dropped.plays, 1, "so no second sound started");
         assert_eq!(dropped.dropped, 1);
 
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
         play(&mut manager);
         let second_play = manager.playback_state();
@@ -282,11 +282,11 @@ mod speaker_page {
     #[test]
     fn a_finish_arriving_with_nothing_playing_is_ignored() {
         let mut manager = on_speaker();
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
         play(&mut manager);
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         assert_eq!(
             manager.playback_state().phase,
             PlaybackPhase::Idle,
@@ -356,11 +356,11 @@ mod speaker_page {
     #[test]
     fn a_board_without_a_speaker_plays_nothing() {
         let mut manager = landed(DeviceManager::new());
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         assert_eq!(manager.state().page, DisplayPage::Ambient, "no page either");
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Next));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Next));
         assert_eq!(manager.playback_state(), PlaybackState::boot());
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::SetMuted(true)));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::SetMuted(true)));
         assert!(
             !manager.playback_state().muted,
             "an unwired board's latch is nobody's business"
@@ -373,7 +373,7 @@ mod speaker_page {
         manager.state.playback.plays = u16::MAX;
         manager.state.playback.dropped = u16::MAX;
         play(&mut manager);
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         let saturated = manager.playback_state();
         assert_eq!(saturated.plays, u16::MAX);
         assert_eq!(saturated.dropped, u16::MAX);

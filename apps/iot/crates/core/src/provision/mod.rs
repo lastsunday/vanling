@@ -23,7 +23,7 @@ pub use crate::drivers::network::SETUP_PASS_LEN;
 
 /// The name the setup access point offers, from the board's own address: `vanling-` and the
 /// last two octets in lowercase hex.
-pub fn ap_name(mac: [u8; 6]) -> Ssid {
+pub fn setup_ap_ssid(mac: [u8; 6]) -> Ssid {
     const PREFIX: &[u8] = b"vanling-";
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut name = [0u8; SSID_BYTES];
@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn the_access_point_is_named_for_the_board() {
         assert_eq!(
-            ap_name([0xaa, 0x00, 0x00, 0x00, 0x1f, 0xc2]).as_display_text(),
+            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x1f, 0xc2]).as_display_text(),
             Some("vanling-1fc2")
         );
     }
@@ -58,15 +58,15 @@ mod tests {
     #[test]
     fn two_boards_of_one_build_are_two_names() {
         assert_ne!(
-            ap_name([0xaa, 0x00, 0x00, 0x00, 0x00, 0x01]).as_bytes(),
-            ap_name([0xaa, 0x00, 0x00, 0x00, 0x00, 0x02]).as_bytes()
+            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x00, 0x01]).as_bytes(),
+            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x00, 0x02]).as_bytes()
         );
     }
 
     #[test]
     fn leading_zeroes_are_kept() {
         assert_eq!(
-            ap_name([0xaa, 0x00, 0x00, 0x00, 0x00, 0x07]).as_display_text(),
+            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x00, 0x07]).as_display_text(),
             Some("vanling-0007")
         );
     }

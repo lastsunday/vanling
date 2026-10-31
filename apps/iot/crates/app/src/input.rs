@@ -5,9 +5,9 @@ use alloc::vec::Vec;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
-use iot_core::demand::{DemandKind, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS, PollPlan};
+use iot_core::demand::{DemandKind, EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
-use iot_core::intent::{BusinessIntent, Intent, PageIntent, recognize};
+use iot_core::intent::{ActionIntent, Intent, PageIntent, recognize};
 
 use iot_core::config::{Configuration, Configurator, Unreachable};
 
@@ -32,7 +32,7 @@ fn decide(
     let configuration = configurator.configuration_for(demand);
     plans.clear();
     plans.extend(sources.iter().map(|entry| {
-        InputLimiter::plan(
+        plan_poll(
             entry.key(),
             demand,
             entry.board_cadence_ms(),
@@ -142,7 +142,7 @@ pub async fn input_task(
             }
             let poll_start = Instant::now();
             if let Some(event) = entry.poll(now_ms) {
-                let intent = Intent::Operation(recognize(event, entry.source_id()));
+                let intent = Intent::Input(recognize(event, entry.source_id()));
                 let _ = intent_bus.try_send(intent);
             }
             entry.advance_past(now_ms);
@@ -158,9 +158,7 @@ pub async fn input_task(
             && now_ms >= iot_core::page::SPLASH_MS
             && !sources.iter().any(|entry| entry.held())
             && intent_bus
-                .try_send(Intent::Business(BusinessIntent::Page(
-                    PageIntent::SplashOver,
-                )))
+                .try_send(Intent::Action(ActionIntent::Page(PageIntent::SplashOver)))
                 .is_ok()
         {
             splash_open = false;
@@ -219,7 +217,7 @@ mod tests {
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use iot_core::config::MotionConfig;
-    use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Sensitivity};
+    use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Priority};
     use iot_core::drivers::input::{InputSource, PassThrough};
 
     struct Recording {
@@ -313,7 +311,7 @@ mod tests {
         for key in [DemandKey::MOTION, DemandKey::AUDIO] {
             demand.set(
                 key,
-                Claim::new(Mode::Continuous, period_ms, Sensitivity::Secondary),
+                Claim::new(Mode::Continuous, period_ms, Priority::Secondary),
             );
         }
         demand

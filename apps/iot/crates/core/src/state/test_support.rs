@@ -5,9 +5,7 @@ pub(crate) use crate::drivers::input::{
 };
 pub(crate) use crate::drivers::motion::MotionScale;
 pub(crate) use crate::drivers::network::{Ipv4, SavedNetworks};
-pub(crate) use crate::intent::{
-    BusinessIntent, LightIntent, OperationIntent, PageIntent, translate,
-};
+pub(crate) use crate::intent::{ActionIntent, InputIntent, LightIntent, PageIntent, translate};
 pub(crate) use crate::page::CYCLE;
 
 pub(crate) const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
@@ -24,11 +22,11 @@ pub(crate) const BREATH: LightState = LightState::Breath(Breath {
     group_len: 3,
 });
 
-pub(crate) fn op(event: InputEvent) -> OperationIntent {
-    OperationIntent { source: 0, event }
+pub(crate) fn op(event: InputEvent) -> InputIntent {
+    InputIntent { source: 0, event }
 }
 
-pub(crate) fn tap() -> OperationIntent {
+pub(crate) fn tap() -> InputIntent {
     op(InputEvent::Gesture(GestureEvent::Tap {
         id: 0,
         x: 1,
@@ -38,11 +36,11 @@ pub(crate) fn tap() -> OperationIntent {
     }))
 }
 
-pub(crate) fn triple_click() -> OperationIntent {
+pub(crate) fn triple_click() -> InputIntent {
     op(InputEvent::Button(ButtonEvent::TripleClick))
 }
 
-pub(crate) fn long_press() -> OperationIntent {
+pub(crate) fn long_press() -> InputIntent {
     op(InputEvent::Gesture(GestureEvent::LongPress {
         id: 0,
         x: 3,
@@ -51,7 +49,7 @@ pub(crate) fn long_press() -> OperationIntent {
     }))
 }
 
-pub(crate) fn swipe() -> OperationIntent {
+pub(crate) fn swipe() -> InputIntent {
     op(InputEvent::Gesture(GestureEvent::Swipe {
         id: 0,
         x: 80,
@@ -64,7 +62,7 @@ pub(crate) fn swipe() -> OperationIntent {
     }))
 }
 
-pub(crate) fn touch_event(status: TouchStatus) -> OperationIntent {
+pub(crate) fn touch_event(status: TouchStatus) -> InputIntent {
     op(InputEvent::Touch(TouchEvent {
         points: [TouchPoint {
             id: 0,
@@ -76,22 +74,22 @@ pub(crate) fn touch_event(status: TouchStatus) -> OperationIntent {
     }))
 }
 
-pub(crate) fn set_light(instance: u8, state: LightState) -> BusinessIntent {
-    BusinessIntent::Light(LightIntent { instance, state })
+pub(crate) fn set_light(instance: u8, state: LightState) -> ActionIntent {
+    ActionIntent::Light(LightIntent { instance, state })
 }
 
-pub(crate) fn press(id: u8, x: u16, y: u16) -> OperationIntent {
+pub(crate) fn press(id: u8, x: u16, y: u16) -> InputIntent {
     op(InputEvent::Gesture(GestureEvent::Press { id, x, y }))
 }
 
-pub(crate) fn apply_page(manager: &mut DeviceManager, operation: OperationIntent) {
-    manager.apply_operation(operation);
+pub(crate) fn apply_page(manager: &mut DeviceManager, operation: InputIntent) {
+    manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
-    manager.apply_business(business);
+    manager.apply_action(business);
 }
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
-    manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
     assert_ne!(manager.state().page, DisplayPage::Splash);
     manager
 }

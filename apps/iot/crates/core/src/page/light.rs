@@ -1,5 +1,5 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
-use crate::intent::{BusinessIntent, LightIntent, OperationIntent};
+use crate::intent::{ActionIntent, InputIntent, LightIntent};
 use crate::paint::{GROUP_CAPACITY, Rgb};
 use crate::state::{Breath, DeviceState, LightState};
 
@@ -61,7 +61,7 @@ pub const COLOR_GROUPS: [ColorGroup; 4] = [
     },
 ];
 
-pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
+pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) => click(current, op.source),
         InputEvent::Button(ButtonEvent::DoubleClick) => step(current, op.source),
@@ -71,44 +71,40 @@ pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> Business
             swipe(current, op.source, direction)
         }
         InputEvent::Gesture(GestureEvent::LongPress { .. }) => cycle_panel(current, op.source),
-        _ => BusinessIntent::Invalid,
+        _ => ActionIntent::Invalid,
     }
 }
 
-pub(super) fn click(current: &DeviceState, source: u8) -> BusinessIntent {
+pub(super) fn click(current: &DeviceState, source: u8) -> ActionIntent {
     let slot = slot(current, source);
     target_for(advance_color(current.lights[slot]), slot)
 }
 
-pub(super) fn tap(current: &DeviceState, source: u8) -> BusinessIntent {
+pub(super) fn tap(current: &DeviceState, source: u8) -> ActionIntent {
     target_for(advance_color(current.lights[slot(current, source)]), 0)
 }
 
-pub(super) fn step(current: &DeviceState, source: u8) -> BusinessIntent {
+pub(super) fn step(current: &DeviceState, source: u8) -> ActionIntent {
     let slot = slot(current, source);
     target_for(advance_step(current.lights[slot]), slot)
 }
 
-pub(super) fn cycle(current: &DeviceState, source: u8) -> BusinessIntent {
+pub(super) fn cycle(current: &DeviceState, source: u8) -> ActionIntent {
     let slot = slot(current, source);
-    BusinessIntent::Light(LightIntent {
+    ActionIntent::Light(LightIntent {
         instance: slot as u8,
         state: cycle_mode(current.lights[slot]),
     })
 }
 
-pub(super) fn cycle_panel(current: &DeviceState, source: u8) -> BusinessIntent {
-    BusinessIntent::Light(LightIntent {
+pub(super) fn cycle_panel(current: &DeviceState, source: u8) -> ActionIntent {
+    ActionIntent::Light(LightIntent {
         instance: 0,
         state: cycle_mode(current.lights[slot(current, source)]),
     })
 }
 
-pub(super) fn swipe(
-    current: &DeviceState,
-    source: u8,
-    direction: SwipeDirection,
-) -> BusinessIntent {
+pub(super) fn swipe(current: &DeviceState, source: u8, direction: SwipeDirection) -> ActionIntent {
     target_for(
         swipe_light(current.lights[slot(current, source)], direction),
         0,
@@ -120,9 +116,9 @@ fn slot(current: &DeviceState, source: u8) -> usize {
     usize::from(source).min(current.lights.len() - 1)
 }
 
-fn target_for(step: Option<LightState>, instance: usize) -> BusinessIntent {
-    step.map_or(BusinessIntent::Invalid, |state| {
-        BusinessIntent::Light(LightIntent {
+fn target_for(step: Option<LightState>, instance: usize) -> ActionIntent {
+    step.map_or(ActionIntent::Invalid, |state| {
+        ActionIntent::Light(LightIntent {
             instance: instance as u8,
             state,
         })
@@ -282,7 +278,7 @@ fn retreat_color_group(breath: &Breath) -> ColorGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intent::{BusinessIntent, LightIntent, recognize, translate};
+    use crate::intent::{ActionIntent, LightIntent, recognize, translate};
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, long_press, op, state, swipe_event, tap_gesture, target,
     };
@@ -298,14 +294,14 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state(LightState::Off)
                 ),
-                BusinessIntent::Invalid
+                ActionIntent::Invalid
             );
             assert_eq!(
                 translate(
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state(DEFAULT_BREATH)
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
                 })
@@ -318,7 +314,7 @@ mod tests {
                         brightness: 140,
                     })
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[3],
@@ -332,7 +328,7 @@ mod tests {
         fn long_press_cycles_the_mode_ring() {
             assert_eq!(
                 translate(&op(long_press()), &state(LightState::Off)),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: DEFAULT_BREATH,
                 })
@@ -343,7 +339,7 @@ mod tests {
             };
             assert_eq!(
                 translate(&op(long_press()), &state(LightState::Breath(slow))),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[0],
@@ -359,7 +355,7 @@ mod tests {
                         brightness: 255,
                     })
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Off,
                 })
@@ -380,14 +376,14 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::DoubleClick)),
                     &state(LightState::Off)
                 ),
-                BusinessIntent::Invalid
+                ActionIntent::Invalid
             );
             assert_eq!(
                 translate(
                     &op(InputEvent::Button(ButtonEvent::DoubleClick)),
                     &state(DEFAULT_BREATH)
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(Breath {
                         period_ms: 5_000,
@@ -404,7 +400,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::DoubleClick)),
                     &state(LightState::Breath(breath)),
                 );
-                let BusinessIntent::Light(LightIntent { state, .. }) = business else {
+                let ActionIntent::Light(LightIntent { state, .. }) = business else {
                     panic!("double click must stay in breathing");
                 };
                 assert!(
@@ -429,7 +425,7 @@ mod tests {
                         brightness: 140,
                     })
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[0],
@@ -445,7 +441,7 @@ mod tests {
                         brightness: 255,
                     })
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[0],
@@ -462,7 +458,7 @@ mod tests {
         fn tap_mirrors_the_button_click() {
             assert_eq!(
                 translate(&op(tap_gesture(0)), &state(LightState::Off)),
-                BusinessIntent::Invalid
+                ActionIntent::Invalid
             );
             assert_eq!(
                 target(tap_gesture(0), DEFAULT_BREATH),
@@ -495,7 +491,7 @@ mod tests {
                     })),
                     &state(LightState::Off)
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: DEFAULT_BREATH,
                 })
@@ -625,7 +621,7 @@ mod tests {
             ] {
                 assert_eq!(
                     translate(&op(swipe_event(direction)), &state(LightState::Off)),
-                    BusinessIntent::Invalid,
+                    ActionIntent::Invalid,
                     "{direction:?} on Off has no table to step"
                 );
             }
@@ -734,7 +730,7 @@ mod tests {
                     &recognize(InputEvent::Button(ButtonEvent::Click), 1),
                     &two_lights()
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 1,
                     state: LightState::Solid {
                         color: PALETTE[1],
@@ -745,7 +741,7 @@ mod tests {
             );
             assert_eq!(
                 translate(&recognize(long_press(), 1), &two_lights()),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 1,
                     state: LightState::Off,
                 }),
@@ -760,7 +756,7 @@ mod tests {
                     &recognize(InputEvent::Button(ButtonEvent::DoubleClick), 7),
                     &two_lights()
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 1,
                     state: LightState::Solid {
                         color: PALETTE[0],
@@ -775,7 +771,7 @@ mod tests {
         fn panel_touches_only_the_first_surface() {
             assert_eq!(
                 translate(&op(tap_gesture(0)), &two_lights()),
-                BusinessIntent::Invalid,
+                ActionIntent::Invalid,
                 "a tap on the panel touches only the first surface"
             );
         }

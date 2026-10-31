@@ -16,7 +16,7 @@ pub enum Evidence {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum State {
+pub enum Presence {
     Present,
     Degraded(&'static str),
     Absent,
@@ -26,35 +26,35 @@ pub enum State {
 /// that could build `Present`/`Declared` by hand could report a part it never asked.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Status {
-    state: State,
+    presence: Presence,
     evidence: Evidence,
 }
 
 impl Status {
     pub const fn answered() -> Self {
         Self {
-            state: State::Present,
+            presence: Presence::Present,
             evidence: Evidence::Read,
         }
     }
 
     pub const fn silent() -> Self {
         Self {
-            state: State::Absent,
+            presence: Presence::Absent,
             evidence: Evidence::Read,
         }
     }
 
     pub const fn refused(reason: &'static str) -> Self {
         Self {
-            state: State::Degraded(reason),
+            presence: Presence::Degraded(reason),
             evidence: Evidence::Read,
         }
     }
 
     pub const fn declared() -> Self {
         Self {
-            state: State::Present,
+            presence: Presence::Present,
             evidence: Evidence::Declared,
         }
     }
@@ -179,19 +179,19 @@ impl Report {
     }
 
     fn record(&mut self, name: &str, id: Option<Address>, status: Status) {
-        match status.state {
-            State::Present => self.present += 1,
-            State::Degraded(_) => self.degraded += 1,
-            State::Absent => self.absent += 1,
+        match status.presence {
+            Presence::Present => self.present += 1,
+            Presence::Degraded(_) => self.degraded += 1,
+            Presence::Absent => self.absent += 1,
         }
         match status.evidence {
             Evidence::Read => self.read += 1,
             Evidence::Declared => self.declared += 1,
         }
         let line = Line { name, id, status };
-        match status.state {
-            State::Degraded(_) => log::warn!("{line}"),
-            State::Present | State::Absent => log::info!("{line}"),
+        match status.presence {
+            Presence::Degraded(_) => log::warn!("{line}"),
+            Presence::Present | Presence::Absent => log::info!("{line}"),
         }
     }
 
@@ -219,10 +219,10 @@ impl fmt::Display for Line<'_> {
             Some(id) => write!(f, "{id:<8}")?,
             None => write!(f, "{:<8}", "")?,
         }
-        match self.status.state {
-            State::Present => write!(f, "{:<13}", "present")?,
-            State::Absent => write!(f, "{:<13}", "absent")?,
-            State::Degraded(reason) => write!(f, "degraded: {reason} ")?,
+        match self.status.presence {
+            Presence::Present => write!(f, "{:<13}", "present")?,
+            Presence::Absent => write!(f, "{:<13}", "absent")?,
+            Presence::Degraded(reason) => write!(f, "degraded: {reason} ")?,
         }
         match self.status.evidence {
             Evidence::Read => write!(f, "(read)"),
@@ -296,16 +296,16 @@ mod tests {
     #[test]
     fn a_status_carries_the_state_and_the_evidence_it_came_from() {
         for (status, state, evidence) in [
-            (Status::answered(), State::Present, Evidence::Read),
-            (Status::silent(), State::Absent, Evidence::Read),
+            (Status::answered(), Presence::Present, Evidence::Read),
+            (Status::silent(), Presence::Absent, Evidence::Read),
             (
                 Status::refused("no chip id"),
-                State::Degraded("no chip id"),
+                Presence::Degraded("no chip id"),
                 Evidence::Read,
             ),
-            (Status::declared(), State::Present, Evidence::Declared),
+            (Status::declared(), Presence::Present, Evidence::Declared),
         ] {
-            assert_eq!((status.state, status.evidence), (state, evidence));
+            assert_eq!((status.presence, status.evidence), (state, evidence));
         }
     }
 

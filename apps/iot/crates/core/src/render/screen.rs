@@ -5,15 +5,15 @@ use alloc::boxed::Box;
 use crate::demand::{DemandKey, Mode};
 use crate::drivers::camera::FrameSource;
 use crate::drivers::surface::PageSurface;
-use crate::render::colour::ColourDriver;
-use crate::render::{Activity, LightAppearance, Renderer, Slot, SlotAppearance};
+use crate::render::color::ColorDriver;
+use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 use crate::state::{DisplayPage, LightState};
 
 pub struct ScreenRenderer {
     instance: u8,
     surface: Box<dyn PageSurface>,
-    slots: [Slot; 2],
-    colour: ColourDriver,
+    consumers: [Consumer; 2],
+    color: ColorDriver,
     appearance: Option<LightAppearance>,
     page: Option<DisplayPage>,
 }
@@ -23,8 +23,8 @@ impl ScreenRenderer {
         Self {
             instance,
             surface,
-            slots: [Slot::Surface(instance), Slot::Diagnostics],
-            colour: ColourDriver::new(),
+            consumers: [Consumer::Surface(instance), Consumer::Diagnostics],
+            color: ColorDriver::new(),
             appearance: None,
             page: None,
         }
@@ -44,11 +44,11 @@ impl ScreenRenderer {
         };
         let step = self.surface.repaint_step();
         if let Some(ground) = self.page.and_then(|page| page.ground()) {
-            self.colour.ground(&mut *self.surface, step, ground);
+            self.color.ground(&mut *self.surface, step, ground);
             self.surface.set_backlight(100);
             return;
         }
-        let lit = self.colour.show(&mut *self.surface, step, declared, now_ms);
+        let lit = self.color.show(&mut *self.surface, step, declared, now_ms);
         self.surface
             .set_backlight(lit.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
     }
@@ -59,22 +59,22 @@ impl ScreenRenderer {
 }
 
 impl Renderer for ScreenRenderer {
-    fn slots(&self) -> &[Slot] {
-        &self.slots
+    fn consumers(&self) -> &[Consumer] {
+        &self.consumers
     }
 
-    fn on_appearance(&mut self, appearance: SlotAppearance, now_ms: u32) -> Activity {
+    fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {
         match appearance {
-            SlotAppearance::Diagnostics(diagnostics) => {
+            Appearance::Diagnostics(diagnostics) => {
                 let page_changed = self.page != Some(diagnostics.page);
                 self.surface.consume(&diagnostics);
                 self.page = Some(diagnostics.page);
-                self.colour
+                self.color
                     .set_display(diagnostics.demand.claim(DemandKey::DISPLAY).mode);
-                match self.colour.display() {
+                match self.color.display() {
                     Mode::Off => {
                         self.surface.set_backlight_ceiling(0);
-                        self.colour.stop();
+                        self.color.stop();
                         return Activity::Idle;
                     }
                     Mode::OnChange => self
@@ -83,22 +83,22 @@ impl Renderer for ScreenRenderer {
                     Mode::Continuous => self.surface.set_backlight_ceiling(100),
                 }
                 if page_changed {
-                    self.colour.forget();
+                    self.color.forget();
                     self.present(now_ms);
                 }
                 if self.on_camera_page() {
                     return Activity::TimeDriven;
                 }
-                breathing_activity(self.colour.breathing())
+                breathing_activity(self.color.breathing())
             }
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance,
                 appearance,
             } => {
                 debug_assert_eq!(instance, self.instance);
                 self.appearance = Some(appearance);
                 self.present(now_ms);
-                breathing_activity(self.colour.breathing())
+                breathing_activity(self.color.breathing())
             }
         }
     }
@@ -109,7 +109,7 @@ impl Renderer for ScreenRenderer {
             return Activity::TimeDriven;
         }
         let step = self.surface.repaint_step();
-        match self.colour.step(&mut *self.surface, step, now_ms) {
+        match self.color.step(&mut *self.surface, step, now_ms) {
             Some(lit) => {
                 self.surface
                     .set_backlight(lit.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
@@ -131,7 +131,7 @@ fn breathing_activity(breathing: bool) -> Activity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::{Claim, EffectiveDemand, Sensitivity};
+    use crate::demand::{Claim, EffectiveDemand, Priority};
     use crate::diagnostics::Diagnostics;
     use crate::drivers::camera::{CameraCounters, FrameAdvance, WindowGeometry};
     use crate::drivers::surface::RgbLight;
@@ -209,25 +209,25 @@ mod tests {
         }
     }
 
-    fn panel_on(page: DisplayPage, display: Mode) -> SlotAppearance {
+    fn panel_on(page: DisplayPage, display: Mode) -> Appearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
-            Claim::new(display, 0, Sensitivity::Primary),
+            Claim::new(display, 0, Priority::Primary),
         );
-        SlotAppearance::Diagnostics(Diagnostics {
+        Appearance::Diagnostics(Diagnostics {
             demand,
             page,
             ..Diagnostics::default()
         })
     }
 
-    fn panel_asked(display: Mode) -> SlotAppearance {
+    fn panel_asked(display: Mode) -> Appearance {
         panel_on(DisplayPage::Ambient, display)
     }
 
-    fn ambient_breath(instance: u8) -> SlotAppearance {
-        SlotAppearance::Surface {
+    fn ambient_breath(instance: u8) -> Appearance {
+        Appearance::Surface {
             instance,
             appearance: light_appearance(LightState::boot()),
         }
@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unlit_panel_ships_nothing_from_any_slot() {
+    fn an_unlit_panel_ships_nothing_from_any_consumer() {
         let (mut r, panel) = renderer();
         r.on_appearance(panel_asked(Mode::Off), 0);
         assert_eq!(panel.borrow().ceiling, 0, "and its backlight is off");
@@ -264,7 +264,7 @@ mod tests {
         r.step(1_000);
         r.step(1_100);
         r.on_appearance(
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Color(Rgb(255, 0, 0)),
             },
@@ -343,7 +343,7 @@ mod tests {
         );
 
         r.on_appearance(
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Off,
             },
@@ -358,7 +358,7 @@ mod tests {
         let (mut r, panel) = renderer();
         r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 0);
         r.on_appearance(
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance: 0,
                 appearance: LightAppearance::Color(Rgb(10, 20, 30)),
             },
@@ -412,7 +412,10 @@ mod tests {
             panel.borrow().camera,
             "a panel is what a camera can write into"
         );
-        assert_eq!(r.slots(), &[Slot::Surface(0), Slot::Diagnostics]);
+        assert_eq!(
+            r.consumers(),
+            &[Consumer::Surface(0), Consumer::Diagnostics]
+        );
     }
 
     struct NullCamera;

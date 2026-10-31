@@ -3,11 +3,11 @@
 
 use alloc::boxed::Box;
 
-use crate::audio::PlaybackDispatch;
 use crate::bench::replay::PanelBench;
 use crate::frame::{FrameClock, Wait};
 use crate::input::IntentBus;
-use crate::surface::Render;
+use crate::playback::PlaybackDispatch;
+use crate::surface::Renderers;
 use crate::workers::Workers;
 use embassy_futures::select::select3;
 use embassy_time::{Instant, Timer};
@@ -18,12 +18,12 @@ use iot_core::state::{DeviceManager, LampLine, NetworkCommand};
 pub async fn run_loop<C: ClockSink>(
     bus: &'static IntentBus,
     workers: Workers<'_>,
-    mut render: Render,
+    mut renderers: Renderers,
     manager: &mut DeviceManager,
     clock: &mut C,
 ) -> ! {
     let mut last_page = manager.state().page;
-    let mut last_front = manager.state().network.link.front;
+    let mut last_front = manager.state().network.link.host;
     let mut last_lamp = manager.state().link_notice();
     let mut frame = FrameClock::new(Instant::now());
     // Loop-local: a second `run` in one process must not answer for the first.
@@ -35,24 +35,24 @@ pub async fn run_loop<C: ClockSink>(
     loop {
         while let Ok(intent) = bus.try_receive() {
             match intent {
-                Intent::Operation(op) => {
-                    manager.apply_operation(op);
+                Intent::Input(op) => {
+                    manager.apply_input(op);
                     let business = iot_core::intent::translate(&op, &manager.state());
-                    manager.apply_business(business);
+                    manager.apply_action(business);
                 }
-                Intent::Business(business) => manager.apply_business(business),
+                Intent::Action(business) => manager.apply_action(business),
             }
             if manager.state().page != last_page {
                 log::info!("[INPUT] page is now {:?}", manager.state().page);
                 last_page = manager.state().page;
             }
-            playback.dispatch(workers.speaker.to, manager.playback_state());
+            playback.dispatch(workers.playback.to, manager.playback_state());
         }
-        if manager.state().network.link.front != last_front {
-            last_front = manager.state().network.link.front;
+        if manager.state().network.link.host != last_front {
+            last_front = manager.state().network.link.host;
             log::info!(
-                "[WIFI] setup mode is offered on the {:?} front",
-                manager.state().network.link.front
+                "[WIFI] setup mode is offered on the {:?} host",
+                manager.state().network.link.host
             );
         }
         let lamp = manager.state().link_notice();
@@ -116,7 +116,7 @@ pub async fn run_loop<C: ClockSink>(
             );
         }
         let active =
-            render.tick(&state, manager.demand(), frame.elapsed_ms()) || manager.notice_active();
+            renderers.tick(&state, manager.demand(), frame.elapsed_ms()) || manager.notice_active();
         match frame.tick(active) {
             Wait::At(deadline) => Timer::at(deadline).await,
             Wait::Park => {

@@ -63,7 +63,7 @@ fn the_network_never_reaches_the_panel() {
 fn the_panel_side_never_reaches_the_radio() {
     let src = app_src();
     let mut files = sources(&src.join("surface"));
-    files.extend(sources(&src.join("audio")));
+    files.extend(sources(&src.join("playback")));
     for name in [
         "pipeline.rs",
         "input.rs",
@@ -120,7 +120,7 @@ fn the_worker_handles_never_reach_a_worker() {
     assert_no_reference(
         vec![(path, text)],
         &[
-            "crate::audio",
+            "crate::playback",
             "crate::net",
             "crate::surface",
             "crate::pipeline",

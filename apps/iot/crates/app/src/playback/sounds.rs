@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn every_catalogue_sound_names_a_file() {
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             assert!(
                 file_of(sound).is_some(),
                 "{sound:?} is in the tap cycle and has to have a file to play",
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn every_catalogue_sound_opens_and_closes_on_silence() {
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             let samples = render(sound);
             assert_eq!(samples[0], 0, "{sound:?} opens on a step, not on zero");
             let last = samples[samples.len() - 1].unsigned_abs();
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn no_catalogue_sound_reaches_the_rail() {
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             let samples = render(sound);
             let loudest = samples.iter().map(|&s| s.unsigned_abs()).max().unwrap();
             assert!(
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn every_catalogue_sound_is_a_one_shot_of_the_right_size() {
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             let samples = render(sound);
             let ms = samples.len() / 48;
             assert!(
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn no_note_is_too_short_to_be_heard_as_its_own() {
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             let notes = from_midi(file_of(sound).unwrap()).unwrap();
             for note in notes.iter().filter(|note| note.hz != 0) {
                 assert!(
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn a_note_ramps_at_both_of_its_ends() {
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             let notes = from_midi(file_of(sound).unwrap()).unwrap();
             for note in &notes {
                 if note.hz == 0 {
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn the_catalogue_weighs_a_few_hundred_bytes() {
-        let total: usize = Sound::ALL
+        let total: usize = Sound::CYCLE
             .iter()
             .map(|&sound| file_of(sound).unwrap().len())
             .sum();

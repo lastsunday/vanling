@@ -1,4 +1,4 @@
-//! Setup mode: the panel's list and the access point's page, one front at a time.
+//! Setup mode: the panel's list and the access point's page, one host at a time.
 
 use alloc::boxed::Box;
 
@@ -8,24 +8,24 @@ use embassy_net::{Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    Credentials, Front, JoinRequest, LinkStatus, Ssid, Station, SurveyHistory,
+    Credentials, JoinRequest, LinkStatus, ScanHistory, SetupHost, Ssid, Station,
 };
-use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
+use iot_core::intent::{ActionIntent, Intent, NetworkIntent};
 use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::link::{Hold, Panel, Provenance, Refusal, hold};
+use super::scan::{Rest, scan};
 use super::store::{drop_saved, has_saved, remark};
-use super::survey::{Rest, survey};
 use super::{
     MAC, SETUP_SOCKETS, hardware_octets, heap_free, park, publish, publish_scan, seed_from,
 };
 use crate::input::IntentBus;
 use crate::workers::discard_setup;
 
-pub(super) struct Setup<'d> {
+pub(super) struct SetupMode<'d> {
     pub(super) name: &'d Ssid,
     pub(super) resources: &'d mut StackResources<SETUP_SOCKETS>,
-    pub(super) front: &'d mut Front,
+    pub(super) host: &'d mut SetupHost,
     pub(super) has_pages: bool,
     pub(super) secure_on_entry: bool,
     pub(super) panel: Panel,
@@ -33,7 +33,7 @@ pub(super) struct Setup<'d> {
 
 #[derive(Clone, Copy)]
 pub(super) struct Face {
-    pub(super) front: Front,
+    pub(super) host: SetupHost,
     cancellable: bool,
     pub(super) setup: bool,
     browsing: bool,
@@ -42,7 +42,7 @@ pub(super) struct Face {
 impl Face {
     pub(super) fn status(self, station: LinkStatus) -> LinkStatus {
         if self.setup {
-            station.on_setup_face(self.front, self.cancellable)
+            station.on_setup_host(self.host, self.cancellable)
         } else {
             LinkStatus {
                 browsing: self.browsing,
@@ -53,7 +53,7 @@ impl Face {
 
     pub(super) const fn browsing() -> Self {
         Self {
-            front: Front::Panel,
+            host: SetupHost::Panel,
             cancellable: false,
             setup: false,
             browsing: true,
@@ -68,8 +68,8 @@ pub(super) enum Choice {
     Hidden,
     /// The panel closed setup mode.
     Cancel,
-    /// The panel asked for setup mode's other front end.
-    SwitchFront,
+    /// The panel asked for setup mode's other host.
+    SwitchHost,
     /// The access point should be put up again, open (`true`) or under a passphrase.
     SetupOpen(bool),
 }
@@ -80,14 +80,14 @@ pub(super) async fn unconfigured<S, R>(
     saved: &mut Option<Box<Store<R>>>,
     first: Option<(Credentials, Provenance)>,
     cancellable: bool,
-    setup: &mut Setup<'_>,
+    setup: &mut SetupMode<'_>,
 ) where
     S: Station,
     S::Device: Driver,
     R: FlashRegion,
 {
     let mut pending = first;
-    let mut history = Box::new(SurveyHistory::new());
+    let mut history = Box::new(ScanHistory::new());
     loop {
         let (credentials, origin) = match pending.take() {
             Some(chosen) => chosen,
@@ -123,10 +123,10 @@ pub(super) async fn unconfigured<S, R>(
 
 async fn configure<S, R>(
     station: &mut S,
-    history: &mut SurveyHistory,
+    history: &mut ScanHistory,
     saved: &mut Option<Box<Store<R>>>,
     cancellable: bool,
-    setup: &mut Setup<'_>,
+    setup: &mut SetupMode<'_>,
 ) -> Option<(Credentials, Provenance)>
 where
     S: Station,
@@ -136,15 +136,15 @@ where
     let panel = setup.panel;
     let setup_name = setup.name;
     let resources = &mut *setup.resources;
-    let front = &mut *setup.front;
+    let host = &mut *setup.host;
     let has_pages = setup.has_pages;
     let secure_on_entry = setup.secure_on_entry;
     discard_setup(panel.net.commands);
     loop {
-        match *front {
-            Front::Panel => {
+        match *host {
+            SetupHost::Panel => {
                 let face = Face {
-                    front: Front::Panel,
+                    host: SetupHost::Panel,
                     cancellable,
                     setup: true,
                     browsing: false,
@@ -152,16 +152,16 @@ where
                 publish(panel.bus, face.status(station.status()), has_saved(saved));
                 match pick(station, history, saved, face, false, panel).await {
                     Choice::Named(credentials, origin) => return Some((credentials, origin)),
-                    Choice::SwitchFront => *front = Front::AccessPoint,
+                    Choice::SwitchHost => *host = SetupHost::AccessPoint,
                     Choice::Cancel => {
                         log::info!("[WIFI] the panel closed setup mode; the list goes down");
                         return None;
                     }
-                    // The access point is not up on this front, so there is nothing to reopen.
+                    // The access point is not up on this host, so there is nothing to reopen.
                     Choice::SetupOpen(_) | Choice::Hidden => {}
                 }
             }
-            Front::AccessPoint => {
+            SetupHost::AccessPoint => {
                 let mut secured = secure_on_entry;
                 loop {
                     let device = match station.begin_setup(setup_name, secured) {
@@ -190,7 +190,7 @@ where
                         },
                     );
                     let face = Face {
-                        front: Front::AccessPoint,
+                        host: SetupHost::AccessPoint,
                         cancellable,
                         setup: true,
                         browsing: false,
@@ -222,11 +222,11 @@ where
                             return Some((credentials, origin));
                         }
                         Either3::Second(never) => match never {},
-                        Either3::First(Choice::SwitchFront) => {
+                        Either3::First(Choice::SwitchHost) => {
                             log::info!(
-                                "[WIFI] the panel took its own front back; the access point goes down"
+                                "[WIFI] the panel took its own host back; the access point goes down"
                             );
-                            *front = Front::Panel;
+                            *host = SetupHost::Panel;
                             break;
                         }
                         Either3::First(Choice::SetupOpen(open)) => {
@@ -252,7 +252,7 @@ where
                                 "[WIFI] nobody read the page in {} s; the access point goes down",
                                 SETUP_IDLE_MS / 1_000
                             );
-                            *front = Front::Panel;
+                            *host = SetupHost::Panel;
                             break;
                         }
                         Either3::Third(()) => {
@@ -291,7 +291,7 @@ async fn page_idle() {
 /// change. Every command taken here is either acted on or known to be stale.
 pub(super) async fn pick<S, R>(
     station: &mut S,
-    history: &mut SurveyHistory,
+    history: &mut ScanHistory,
     saved: &mut Option<Box<Store<R>>>,
     face: Face,
     stop_when_hidden: bool,
@@ -315,7 +315,7 @@ where
             history.clear();
         }
         panel_was_showing = showing;
-        match survey(
+        match scan(
             station,
             history,
             saved.as_deref().map(|store| store.networks()),
@@ -343,18 +343,18 @@ where
                         publish_scan(panel.net, &list);
                     }
                 }
-                NetworkCommand::SwitchFront { from } if from == face.front => {
-                    return Choice::SwitchFront;
+                NetworkCommand::SwitchHost { from } if from == face.host => {
+                    return Choice::SwitchHost;
                 }
-                NetworkCommand::LeaveSetup { from } if face.setup && from == face.front => {
+                NetworkCommand::LeaveSetup { from } if face.setup && from == face.host => {
                     return Choice::Cancel;
                 }
                 NetworkCommand::SetupOpen { from, open }
-                    if face.setup && face.front == Front::AccessPoint && from == face.front =>
+                    if face.setup && face.host == SetupHost::AccessPoint && from == face.host =>
                 {
                     return Choice::SetupOpen(open);
                 }
-                // Made on the other front, or outside the mode it belongs to.
+                // Made on the other host, or outside the mode it belongs to.
                 _ => {}
             },
         }
@@ -375,7 +375,7 @@ pub(super) fn asked_for<R: FlashRegion>(
                     "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
                     ssid.as_display_text().unwrap_or("<unprintable>"),
                 );
-                let _ = bus.try_send(Intent::Business(BusinessIntent::Network(
+                let _ = bus.try_send(Intent::Action(ActionIntent::Network(
                     NetworkIntent::NoCopy(ssid),
                 )));
             }

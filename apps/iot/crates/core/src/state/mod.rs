@@ -33,13 +33,13 @@ pub use self::manager::DeviceManager;
 
 pub use self::motion::MotionState;
 
-pub use self::network::{Confirm, NetworkCommand, NetworkSetup, NetworkState};
+pub use self::network::{Confirm, NetworkCommand, NetworkDraft, NetworkState};
 
 pub use self::playback::{PlaybackCommand, PlaybackPhase, PlaybackState};
 
 pub use self::touch::{LivePoint, TouchState};
 
-pub use self::wiring::{Backed, Setup, SurfaceRole};
+pub use self::wiring::{Backed, Boot, SurfaceRole};
 
 pub use crate::page::DisplayPage;
 

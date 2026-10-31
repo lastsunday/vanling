@@ -1,6 +1,5 @@
 //! Playback task: the one place a sound actually happens.
 
-mod capture;
 mod dispatch;
 pub mod sounds;
 
@@ -18,7 +17,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::playback::{FEED_MS, Recovery, SampleSource, Sound, Speaker, SpeakerFault};
-use iot_core::intent::{BusinessIntent, Intent, PlaybackAction};
+use iot_core::intent::{ActionIntent, Intent, PlaybackAction};
 use iot_core::state::PlaybackCommand;
 
 /// Wakes the control side only when it has something to do: a sound ended, or the driver
@@ -37,7 +36,9 @@ struct FeedStats {
     worst_work_us: AtomicU32,
 }
 
-pub struct Playback {
+/// The driver plus what the two sides need to agree on without a lock: whether a sound is
+/// still on the ring, whether the feed side has drained one, and how the ring has been kept.
+pub struct Output {
     pub(crate) speaker: RefCell<Box<dyn Speaker>>,
     stats: FeedStats,
     pub(crate) done: AtomicBool,
@@ -46,7 +47,7 @@ pub struct Playback {
     sounding: AtomicBool,
 }
 
-impl Playback {
+impl Output {
     fn new(speaker: Box<dyn Speaker>) -> Self {
         Self {
             speaker: RefCell::new(speaker),
@@ -57,10 +58,10 @@ impl Playback {
     }
 }
 
-pub type Shared = Mutex<CriticalSectionRawMutex, Playback>;
+pub type Shared = Mutex<CriticalSectionRawMutex, Output>;
 
 pub fn share(speaker: Box<dyn Speaker>) -> &'static Shared {
-    &*Box::leak(Box::new(Mutex::new(Playback::new(speaker))))
+    &*Box::leak(Box::new(Mutex::new(Output::new(speaker))))
 }
 
 pub(crate) fn take_stats(shared: &Shared) -> (u32, u32, u32, u32) {
@@ -100,10 +101,10 @@ pub fn start_source(
 /// Records one feed's outcome and answers whether the control side must be woken. Only an
 /// edge does: idle silence returns `still == false` on every feed, and waking on that would
 /// put the old 5 ms poll straight back.
-fn feed_edge(playback: &Playback, still: bool, needs_recovery: bool) -> bool {
+fn feed_edge(output: &Output, still: bool, needs_recovery: bool) -> bool {
     let ended = !still
-        && playback.sounding.load(Ordering::Relaxed)
-        && !playback.done.swap(true, Ordering::Relaxed);
+        && output.sounding.load(Ordering::Relaxed)
+        && !output.done.swap(true, Ordering::Relaxed);
     ended || needs_recovery
 }
 
@@ -157,11 +158,11 @@ async fn silent() -> ! {
     match core::future::pending::<core::convert::Infallible>().await {}
 }
 
-/// Owns the audio-side task topology: who feeds the ring, and on which executor.
+/// Owns the playback-side task topology: who feeds the ring, and on which executor.
 pub async fn playback_tasks(
     shared: Option<&'static Shared>,
     feed: crate::Feed,
-    speaker: workers::Speaker,
+    playback: workers::Playback,
     intent_bus: &'static IntentBus,
 ) -> ! {
     let Some(shared) = shared else { silent().await };
@@ -172,22 +173,26 @@ pub async fn playback_tasks(
             spawner.spawn(
                 feed_task(shared).expect("the feed executor has room for the one task on it"),
             );
-            control_loop(shared, speaker, intent_bus).await
+            control_loop(shared, playback, intent_bus).await
         }
         crate::Feed::Inline => {
-            match join(control_loop(shared, speaker, intent_bus), feed_loop(shared)).await {}
+            match join(
+                control_loop(shared, playback, intent_bus),
+                feed_loop(shared),
+            )
+            .await {}
         }
     }
 }
 
 pub async fn control_loop(
     shared: &'static Shared,
-    speaker: workers::Speaker,
+    playback: workers::Playback,
     intent_bus: &'static IntentBus,
 ) -> ! {
     let mut last_report = Instant::now();
     loop {
-        while let Ok(command) = speaker.to.try_receive() {
+        while let Ok(command) = playback.to.try_receive() {
             match command {
                 PlaybackCommand::Play(sound) => {
                     log::info!("[PLAY] {sound:?}");
@@ -237,7 +242,7 @@ pub async fn control_loop(
         }
         let deadline = last_report + Duration::from_millis(CADENCE_REPORT_MS);
         select3(
-            speaker.to.ready_to_receive(),
+            playback.to.ready_to_receive(),
             FEED_WAKE.wait(),
             Timer::at(deadline),
         )
@@ -269,7 +274,7 @@ pub fn report_recovery(tag: &str, recovery: &Recovery) {
 
 async fn finished(intent_bus: &'static IntentBus) {
     intent_bus
-        .send(Intent::Business(BusinessIntent::Playback(
+        .send(Intent::Action(ActionIntent::Playback(
             PlaybackAction::Finished,
         )))
         .await;
@@ -302,31 +307,51 @@ mod tests {
 
     #[test]
     fn idle_silence_wakes_nobody_but_one_ended_sound_wakes_once() {
-        let playback = Playback::new(Box::new(Silent));
+        let output = Output::new(Box::new(Silent));
 
         assert!(
-            !feed_edge(&playback, false, false),
+            !feed_edge(&output, false, false),
             "an idle silent ring woke the control side on every feed"
         );
 
-        playback.sounding.store(true, Ordering::Relaxed);
+        output.sounding.store(true, Ordering::Relaxed);
         assert!(
-            feed_edge(&playback, false, false),
+            feed_edge(&output, false, false),
             "the feed that ended a sound did not wake the control side"
         );
         assert!(
-            !feed_edge(&playback, false, false),
+            !feed_edge(&output, false, false),
             "the same ended sound woke the control side twice"
         );
     }
 
     #[test]
     fn a_recorded_drain_wakes_the_control_side_even_when_nothing_sounds() {
-        let playback = Playback::new(Box::new(Silent));
+        let output = Output::new(Box::new(Silent));
 
         assert!(
-            feed_edge(&playback, true, true),
+            feed_edge(&output, true, true),
             "a drain waiting to be repaired did not wake the control side"
+        );
+    }
+
+    #[test]
+    fn a_capture_window_costs_one_slot_beside_the_ring() {
+        use crate::input::INTENT_SLOTS;
+        use crate::workers::CaptureWindow;
+        use iot_core::drivers::audio::AudioSample;
+        use iot_core::intent::Intent;
+
+        let ring = core::mem::size_of::<Intent>() * INTENT_SLOTS;
+        let window = core::mem::size_of::<AudioSample>();
+        assert!(
+            ring < window,
+            "a capture window is sizing the intent ring again: {ring} B of ring against a \
+             {window} B window"
+        );
+        assert!(
+            core::mem::size_of::<CaptureWindow>() < 2 * window,
+            "the capture window holds one window, not a queue of them"
         );
     }
 }

@@ -67,7 +67,7 @@ const _: () = assert!(
         <= keyboard::toolbar_cell(keyboard::ToolbarCell::Right).w
         && PANEL_LABEL.len() * GLYPH_PITCH - OVERLAY_GAP
             <= keyboard::toolbar_cell(keyboard::ToolbarCell::Right).w,
-    "the front switch does not fit the cell the strip gives it"
+    "the host switch does not fit the cell the strip gives it"
 );
 const _: () = assert!(
     NO_PASS_LABEL.len() * GLYPH_PITCH - OVERLAY_GAP <= DIALOG_ANSWER_W,

@@ -10,12 +10,12 @@ use embassy_net::driver::Driver;
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    ADDRESS_LOST_WINDOWS, AddressWatch, Credentials, Front, Ipv4, LinkEnding, LinkHint, LinkPhase,
-    Ssid, Station, SurveyHistory, front_after_link, setup_ap_starts_secured,
+    ADDRESS_LOST_WINDOWS, AddressWatch, Credentials, Ipv4, LinkEnding, LinkHint, LinkPhase,
+    ScanHistory, SetupHost, Ssid, Station, host_after_link, setup_ap_starts_secured,
 };
 use iot_core::state::{DisplayPage, NetworkCommand};
 
-use super::setup::{Choice, Face, Setup, asked_for, pick, unconfigured};
+use super::setup::{Choice, Face, SetupMode, asked_for, pick, unconfigured};
 use super::store::{drop_saved, first_saved, has_saved, keep, keeps_any, remark};
 use super::{SETUP_SOCKETS, park, publish, publish_scan};
 use crate::input::IntentBus;
@@ -41,7 +41,7 @@ pub(super) async fn link<S, R>(
     saved: Option<Box<Store<R>>>,
     setup_name: &Ssid,
     setup_resources: &mut StackResources<SETUP_SOCKETS>,
-    front: Front,
+    host: SetupHost,
     panel: Panel,
 ) -> !
 where
@@ -49,24 +49,24 @@ where
     S::Device: Driver,
     R: FlashRegion,
 {
-    let mut front = front;
-    let start = front;
+    let mut host = host;
+    let start = host;
     let mut saved = saved;
 
     let landing = panel.net.page.wait_for_splash_end().await;
-    let mut setup = Setup {
+    let mut setup = SetupMode {
         name: setup_name,
         resources: setup_resources,
-        front: &mut front,
+        host: &mut host,
         has_pages: panel.has_pages,
         secure_on_entry: setup_ap_starts_secured(panel.has_pages, landing),
         panel,
     };
     if landing {
         log::info!(
-            "[WIFI] the splash asked for setup mode; the access point is the front it opens on"
+            "[WIFI] the splash asked for setup mode; the access point is the host it opens on"
         );
-        *setup.front = Front::AccessPoint;
+        *setup.host = SetupHost::AccessPoint;
         let cancellable = has_saved(&saved);
         unconfigured(station, stack, &mut saved, None, cancellable, &mut setup).await;
         log::info!("[WIFI] setup mode is over; this device goes back to its own page");
@@ -95,7 +95,7 @@ where
                         log::info!(
                             "[WIFI] the panel asked for the access point; setup mode opens on it"
                         );
-                        *setup.front = Front::AccessPoint;
+                        *setup.host = SetupHost::AccessPoint;
                         let cancellable = has_saved(&saved);
                         unconfigured(station, stack, &mut saved, None, cancellable, &mut setup)
                             .await;
@@ -129,7 +129,7 @@ where
                 panel,
             )
             .await;
-            *setup.front = front_after_link(start, *setup.front, held.ending());
+            *setup.host = host_after_link(start, *setup.host, held.ending());
             match held {
                 Hold::Named(next, next_origin) => {
                     credentials = next;
@@ -142,8 +142,8 @@ where
             Hold::Named(..) => {}
             Hold::Left => {
                 log::info!(
-                    "[WIFI] the panel left the link; setup mode opens on the {:?} front",
-                    *setup.front,
+                    "[WIFI] the panel left the link; setup mode opens on the {:?} host",
+                    *setup.host,
                 );
                 let cancellable = has_saved(&saved);
                 unconfigured(station, stack, &mut saved, None, cancellable, &mut setup).await;
@@ -176,17 +176,17 @@ where
     R: FlashRegion,
 {
     discard_setup(panel.net.commands);
-    let mut history = Box::new(SurveyHistory::new());
+    let mut history = Box::new(ScanHistory::new());
     loop {
         panel.net.page.wait_for(DisplayPage::Network).await;
         match pick(station, &mut history, saved, Face::browsing(), true, panel).await {
             Choice::Named(credentials, origin) => return Some((credentials, origin)),
-            Choice::SwitchFront => {
+            Choice::SwitchHost => {
                 log::info!("[WIFI] the panel asked for the access point from the list");
                 return None;
             }
             Choice::Hidden => {
-                log::info!("[WIFI] the panel left the list; the survey stops until it is back");
+                log::info!("[WIFI] the panel left the list; the scan stops until it is back");
             }
             // Browsing is not setup, so neither can be asked for here.
             Choice::Cancel | Choice::SetupOpen(_) => {}
@@ -200,7 +200,7 @@ async fn named_by_build<S, R>(
     ssid: &'static str,
     password: &'static str,
     saved: Option<Box<Store<R>>>,
-    setup: &mut Setup<'_>,
+    setup: &mut SetupMode<'_>,
 ) -> !
 where
     S: Station,
@@ -216,7 +216,7 @@ where
     };
     log::info!("[WIFI] this build joins the network named \"{ssid}\"");
     let mut saved = saved;
-    let start = *setup.front;
+    let start = *setup.host;
     loop {
         let ended = hold(
             station,
@@ -229,13 +229,13 @@ where
             setup.panel,
         )
         .await;
-        *setup.front = front_after_link(start, *setup.front, ended.ending());
+        *setup.host = host_after_link(start, *setup.host, ended.ending());
         match ended {
             Hold::Left => {
                 log::info!(
                     "[WIFI] the panel took this device off its build's network; setup mode opens \
-                     on the {:?} front until it names another",
-                    *setup.front,
+                     on the {:?} host until it names another",
+                    *setup.host,
                 );
                 unconfigured(station, stack, &mut saved, None, true, setup).await;
                 log::info!(
@@ -285,7 +285,7 @@ pub(super) async fn hold<S, R>(
     origin: Provenance,
     refusal: Refusal,
     mut saved: Option<&mut Store<R>>,
-    mut history: Option<&mut SurveyHistory>,
+    mut history: Option<&mut ScanHistory>,
     panel: Panel,
 ) -> Hold
 where

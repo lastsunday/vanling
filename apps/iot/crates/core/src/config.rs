@@ -81,7 +81,7 @@ impl core::fmt::Display for Unreachable {
 mod tests {
     use super::*;
     use crate::demand::DemandKey;
-    use crate::demand::{Claim, Sensitivity};
+    use crate::demand::{Claim, Priority};
 
     #[test]
     fn off_is_met_by_not_collecting_rather_than_by_a_configuration() {
@@ -121,10 +121,7 @@ mod tests {
 
     fn demanding(mode: Mode) -> EffectiveDemand {
         let mut demand = EffectiveDemand::none();
-        demand.set(
-            DemandKey::MOTION,
-            Claim::new(mode, 0, Sensitivity::Secondary),
-        );
+        demand.set(DemandKey::MOTION, Claim::new(mode, 0, Priority::Secondary));
         demand
     }
 

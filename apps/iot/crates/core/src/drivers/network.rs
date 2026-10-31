@@ -12,35 +12,35 @@ pub const PASSWORD_BYTES: usize = 64;
 /// How many access points a scan keeps.
 pub const MAX_LISTED_APS: usize = 8;
 
-/// How long the loop that surveys an unconfigured device rests between rounds.
-pub const SURVEY_PAUSE_MS: u64 = 5_000;
+/// How long the loop that scans an unconfigured device rests between rounds.
+pub const SCAN_PAUSE_MS: u64 = 5_000;
 
 /// How long it rests after a round that found nothing, while an empty round still reads as
 /// a hiccup rather than as the truth.
-pub const SURVEY_EMPTY_PAUSE_MS: u64 = 1_000;
+pub const SCAN_EMPTY_PAUSE_MS: u64 = 1_000;
 
 /// How many empty rounds in a row are still read as that hiccup.
-pub const SURVEY_EMPTY_RETRIES: u8 = 3;
+pub const SCAN_EMPTY_RETRIES: u8 = 3;
 
 /// How long to rest once the room has been read a few times and nobody has acted on it.
-pub const SURVEY_IDLE_PAUSE_MS: u64 = 15_000;
-pub const SURVEY_IDLE_MAX_PAUSE_MS: u64 = 30_000;
+pub const SCAN_IDLE_PAUSE_MS: u64 = 15_000;
+pub const SCAN_IDLE_MAX_PAUSE_MS: u64 = 30_000;
 
 /// How many idle rounds each step of that backoff lasts.
-pub const SURVEY_IDLE_ROUNDS: u8 = 3;
+pub const SCAN_IDLE_ROUNDS: u8 = 3;
 
-/// How long to rest after a survey round, given empty rounds and idle rounds in a row.
-pub fn survey_pause_after(front: Front, empty_rounds: u8, idle_rounds: u8) -> Option<u64> {
-    if front == Front::AccessPoint {
+/// How long to rest after a scan round, given empty rounds and idle rounds in a row.
+pub fn scan_pause_after(host: SetupHost, empty_rounds: u8, idle_rounds: u8) -> Option<u64> {
+    if host == SetupHost::AccessPoint {
         return None;
     }
-    if matches!(empty_rounds, 1..=SURVEY_EMPTY_RETRIES) {
-        return Some(SURVEY_EMPTY_PAUSE_MS);
+    if matches!(empty_rounds, 1..=SCAN_EMPTY_RETRIES) {
+        return Some(SCAN_EMPTY_PAUSE_MS);
     }
-    Some(match idle_rounds / SURVEY_IDLE_ROUNDS {
-        0 => SURVEY_PAUSE_MS,
-        1 => SURVEY_IDLE_PAUSE_MS,
-        _ => SURVEY_IDLE_MAX_PAUSE_MS,
+    Some(match idle_rounds / SCAN_IDLE_ROUNDS {
+        0 => SCAN_PAUSE_MS,
+        1 => SCAN_IDLE_PAUSE_MS,
+        _ => SCAN_IDLE_MAX_PAUSE_MS,
     })
 }
 
@@ -89,7 +89,7 @@ impl AddressWatch {
     }
 }
 
-/// How a link stopped being held, as far as [`front_after_link`] is concerned.
+/// How a link stopped being held, as far as [`host_after_link`] is concerned.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LinkEnding {
     Named,
@@ -97,8 +97,12 @@ pub enum LinkEnding {
     Left,
 }
 
-/// Which front the next stretch of setup mode opens on.
-pub const fn front_after_link(start: Front, current: Front, ending: LinkEnding) -> Front {
+/// Which host the next stretch of setup mode opens on.
+pub const fn host_after_link(
+    start: SetupHost,
+    current: SetupHost,
+    ending: LinkEnding,
+) -> SetupHost {
     match ending {
         LinkEnding::Named | LinkEnding::Left => start,
         LinkEnding::Refused => current,
@@ -322,22 +326,22 @@ impl Listed {
     };
 }
 
-/// The list the page shows, carried from one survey round to the next.
+/// The list the page shows, carried from one scan round to the next.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct SurveyHistory {
+pub struct ScanHistory {
     entries: [Listed; MAX_LISTED_APS],
     len: u8,
     fresh: bool,
     published: ApList,
 }
 
-impl Default for SurveyHistory {
+impl Default for ScanHistory {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SurveyHistory {
+impl ScanHistory {
     pub const fn new() -> Self {
         Self {
             entries: [Listed::EMPTY; MAX_LISTED_APS],
@@ -733,8 +737,10 @@ pub enum NetworkError {
     Driver,
 }
 
+/// Where setup mode is offered: the board's own panel, or the access point a phone connects
+/// to and configures the device through.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum Front {
+pub enum SetupHost {
     #[default]
     Panel,
     AccessPoint,
@@ -750,7 +756,7 @@ pub struct LinkStatus {
     /// The address DHCP handed out, which is what makes the phase `Connected`.
     pub address: Option<Ipv4>,
     /// Whether setup mode is what the page is about: the access point is up when
-    /// [`Self::front`] is [`Front::AccessPoint`].
+    /// [`Self::host`] is [`SetupHost::AccessPoint`].
     pub setup: bool,
     /// Whether the page is the offline list: nothing is saved, no setup mode is running,
     /// and `SCAN | AP` is still offered.
@@ -759,8 +765,8 @@ pub struct LinkStatus {
     pub setup_cancellable: bool,
     /// Whether this device keeps at least one network.
     pub saved: bool,
-    /// Which front is offering setup, and with it whether the access point is up.
-    pub front: Front,
+    /// Which host is offering setup, and with it whether the access point is up.
+    pub host: SetupHost,
     /// The passphrase the setup access point is up with, when it has one.
     pub setup_password: Option<SetupPass>,
 }
@@ -771,18 +777,18 @@ impl LinkStatus {
         matches!(self.phase, LinkPhase::Connecting | LinkPhase::Connected)
     }
 
-    /// Whether the phone's setup box is the page's screen: the access point is up and a
-    /// phone is the front it is up for.
+    /// Whether the phone's setup box is the page's screen: the access point is up and the
+    /// phone is the host it serves.
     pub fn shows_setup_box(&self) -> bool {
-        self.setup && self.front == Front::AccessPoint
+        self.setup && self.host == SetupHost::AccessPoint
     }
 
-    /// This status as one setup front reports it.
-    pub fn on_setup_face(self, front: Front, cancellable: bool) -> Self {
+    /// This status as one setup host reports it.
+    pub fn on_setup_host(self, host: SetupHost, cancellable: bool) -> Self {
         Self {
             setup: true,
             setup_cancellable: cancellable,
-            front,
+            host,
             ..self
         }
     }
@@ -1109,11 +1115,11 @@ mod tests {
 
     #[test]
     fn a_leave_or_a_pick_opens_setup_where_the_build_put_it() {
-        for start in [Front::Panel, Front::AccessPoint] {
-            for current in [Front::Panel, Front::AccessPoint] {
+        for start in [SetupHost::Panel, SetupHost::AccessPoint] {
+            for current in [SetupHost::Panel, SetupHost::AccessPoint] {
                 for ending in [LinkEnding::Named, LinkEnding::Left] {
                     assert_eq!(
-                        front_after_link(start, current, ending),
+                        host_after_link(start, current, ending),
                         start,
                         "{ending:?} from {current:?} with the build on {start:?}"
                     );
@@ -1124,10 +1130,10 @@ mod tests {
 
     #[test]
     fn a_refused_credential_keeps_the_front_it_was_typed_on() {
-        for start in [Front::Panel, Front::AccessPoint] {
-            for current in [Front::Panel, Front::AccessPoint] {
+        for start in [SetupHost::Panel, SetupHost::AccessPoint] {
+            for current in [SetupHost::Panel, SetupHost::AccessPoint] {
                 assert_eq!(
-                    front_after_link(start, current, LinkEnding::Refused),
+                    host_after_link(start, current, LinkEnding::Refused),
                     current,
                     "refused with the build on {start:?}"
                 );
@@ -1136,10 +1142,10 @@ mod tests {
     }
 
     #[test]
-    fn a_survey_that_found_something_rests_the_whole_pause() {
+    fn a_scan_that_found_something_rests_the_whole_pause() {
         assert_eq!(
-            survey_pause_after(Front::Panel, 0, 0),
-            Some(SURVEY_PAUSE_MS)
+            scan_pause_after(SetupHost::Panel, 0, 0),
+            Some(SCAN_PAUSE_MS)
         );
     }
 
@@ -1147,7 +1153,7 @@ mod tests {
     fn the_access_points_front_never_rests_into_another_round() {
         for (empty, idle) in [(0, 0), (1, 0), (u8::MAX, 0), (0, u8::MAX)] {
             assert_eq!(
-                survey_pause_after(Front::AccessPoint, empty, idle),
+                scan_pause_after(SetupHost::AccessPoint, empty, idle),
                 None,
                 "{empty} empty, {idle} idle rounds"
             );
@@ -1163,15 +1169,15 @@ mod tests {
             setup_password: Some(SetupPass::from_array(*b"k3mq9t7w2x")),
             ..LinkStatus::default()
         };
-        for (front, cancellable) in [
-            (Front::Panel, true),
-            (Front::Panel, false),
-            (Front::AccessPoint, true),
-            (Front::AccessPoint, false),
+        for (host, cancellable) in [
+            (SetupHost::Panel, true),
+            (SetupHost::Panel, false),
+            (SetupHost::AccessPoint, true),
+            (SetupHost::AccessPoint, false),
         ] {
-            let published = station.on_setup_face(front, cancellable);
+            let published = station.on_setup_host(host, cancellable);
 
-            assert_eq!(published.front, front);
+            assert_eq!(published.host, host);
             assert_eq!(published.setup_cancellable, cancellable);
             assert!(published.setup, "a publish from setup mode says so");
             assert_eq!(published.phase, station.phase);
@@ -1183,20 +1189,20 @@ mod tests {
 
     #[test]
     fn an_empty_place_stops_being_retried_every_second() {
-        for rounds in 1..=SURVEY_EMPTY_RETRIES {
+        for rounds in 1..=SCAN_EMPTY_RETRIES {
             assert_eq!(
-                survey_pause_after(Front::Panel, rounds, 0),
-                Some(SURVEY_EMPTY_PAUSE_MS),
+                scan_pause_after(SetupHost::Panel, rounds, 0),
+                Some(SCAN_EMPTY_PAUSE_MS),
                 "{rounds} empty rounds"
             );
         }
         assert_eq!(
-            survey_pause_after(Front::Panel, SURVEY_EMPTY_RETRIES + 1, 0),
-            Some(SURVEY_PAUSE_MS)
+            scan_pause_after(SetupHost::Panel, SCAN_EMPTY_RETRIES + 1, 0),
+            Some(SCAN_PAUSE_MS)
         );
         assert_eq!(
-            survey_pause_after(Front::Panel, u8::MAX, 0),
-            Some(SURVEY_PAUSE_MS),
+            scan_pause_after(SetupHost::Panel, u8::MAX, 0),
+            Some(SCAN_PAUSE_MS),
             "a count that long is still an empty place"
         );
     }
@@ -1204,27 +1210,27 @@ mod tests {
     #[test]
     fn a_room_nobody_acts_on_is_read_less_and_less_often() {
         let steps = [
-            (0, SURVEY_PAUSE_MS),
-            (SURVEY_IDLE_ROUNDS - 1, SURVEY_PAUSE_MS),
-            (SURVEY_IDLE_ROUNDS, SURVEY_IDLE_PAUSE_MS),
-            (2 * SURVEY_IDLE_ROUNDS - 1, SURVEY_IDLE_PAUSE_MS),
-            (2 * SURVEY_IDLE_ROUNDS, SURVEY_IDLE_MAX_PAUSE_MS),
-            (u8::MAX, SURVEY_IDLE_MAX_PAUSE_MS),
+            (0, SCAN_PAUSE_MS),
+            (SCAN_IDLE_ROUNDS - 1, SCAN_PAUSE_MS),
+            (SCAN_IDLE_ROUNDS, SCAN_IDLE_PAUSE_MS),
+            (2 * SCAN_IDLE_ROUNDS - 1, SCAN_IDLE_PAUSE_MS),
+            (2 * SCAN_IDLE_ROUNDS, SCAN_IDLE_MAX_PAUSE_MS),
+            (u8::MAX, SCAN_IDLE_MAX_PAUSE_MS),
         ];
         for (idle, pause) in steps {
             assert_eq!(
-                survey_pause_after(Front::Panel, 0, idle),
+                scan_pause_after(SetupHost::Panel, 0, idle),
                 Some(pause),
                 "{idle} idle rounds"
             );
         }
         assert_eq!(
-            survey_pause_after(
-                Front::Panel,
-                SURVEY_EMPTY_RETRIES + 1,
-                2 * SURVEY_IDLE_ROUNDS
+            scan_pause_after(
+                SetupHost::Panel,
+                SCAN_EMPTY_RETRIES + 1,
+                2 * SCAN_IDLE_ROUNDS
             ),
-            Some(SURVEY_IDLE_MAX_PAUSE_MS)
+            Some(SCAN_IDLE_MAX_PAUSE_MS)
         );
     }
 
@@ -1234,7 +1240,7 @@ mod tests {
 
     #[test]
     fn a_reading_within_the_band_does_not_move_a_row() {
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         assert!(
             history
                 .observe(&[reading(1, -60), reading(2, -70)], None)
@@ -1264,7 +1270,7 @@ mod tests {
 
     #[test]
     fn a_row_survives_the_rounds_that_missed_it() {
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         let mut shown = history
             .observe(&[reading(1, -50), reading(2, -60), reading(3, -70)], None)
             .expect("the first round is always a change");
@@ -1292,7 +1298,7 @@ mod tests {
 
     #[test]
     fn a_round_that_draws_the_same_rows_is_not_a_change() {
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         assert!(
             history
                 .observe(&[reading(1, -60), reading(2, -70)], None)
@@ -1318,7 +1324,7 @@ mod tests {
 
     #[test]
     fn a_newcomer_takes_the_weakest_rows_place_when_the_list_is_full() {
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         let full: Vec<AccessPoint> = (0..MAX_LISTED_APS)
             .map(|index| reading(index as u8 + 1, -50 - index as i8))
             .collect();
@@ -1345,7 +1351,7 @@ mod tests {
 
     #[test]
     fn entering_the_page_reads_the_room_again() {
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         let round = [reading(1, -60)];
         assert!(history.observe(&round, None).is_some());
         assert_eq!(history.observe(&round, None), None);
@@ -1418,7 +1424,7 @@ mod tests {
     #[test]
     fn a_round_that_only_moved_the_marks_is_a_round_the_page_hears_about() {
         let round = [reading(1, -60), reading(2, -70)];
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         assert!(history.observe(&round, None).is_some());
         assert_eq!(
             history.observe(&round, Some(&store(&["net"]))),
@@ -1439,7 +1445,7 @@ mod tests {
     #[test]
     fn a_forget_is_the_same_list_with_the_mark_taken_off() {
         let round = [reading(1, -60), reading(2, -70)];
-        let mut history = SurveyHistory::new();
+        let mut history = ScanHistory::new();
         assert!(history.observe(&round, Some(&store(&["net"]))).is_some());
 
         let list = history.marked(None).expect("the marks moved");

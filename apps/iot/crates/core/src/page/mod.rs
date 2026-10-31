@@ -12,7 +12,7 @@ mod splash;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-pub use self::network::{Part, joining, walk};
+pub use self::network::{Band, each_band, joining};
 
 pub use self::splash::SPLASH_MS;
 
@@ -21,10 +21,10 @@ pub use self::light::{
     SOLID_BRIGHTNESS_STEPS,
 };
 
-use crate::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Sensitivity};
+use crate::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Priority};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, InputEvent};
-use crate::intent::{BusinessIntent, OperationIntent, PageIntent};
+use crate::intent::{ActionIntent, InputIntent, PageIntent};
 use crate::state::{Backed, DeviceState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -48,11 +48,11 @@ pub(crate) const CYCLE: [DisplayPage; 6] = [
     DisplayPage::Network,
 ];
 
-const MOTION_BACKGROUND: Claim = Claim::new(Mode::Continuous, 0, Sensitivity::Secondary);
+const MOTION_BACKGROUND: Claim = Claim::new(Mode::Continuous, 0, Priority::Secondary);
 
-const MOTION_FOREGROUND: Claim = Claim::new(Mode::Continuous, 0, Sensitivity::Primary);
+const MOTION_FOREGROUND: Claim = Claim::new(Mode::Continuous, 0, Priority::Primary);
 
-const ON_SCREEN: Claim = Claim::new(Mode::Continuous, 0, Sensitivity::Primary);
+const ON_SCREEN: Claim = Claim::new(Mode::Continuous, 0, Priority::Primary);
 
 impl DisplayPage {
     /// Every page, in `index()` order: must stay in step with `PAGES` and with `CYCLE`,
@@ -159,13 +159,13 @@ impl DisplayPage {
 
 pub(crate) fn translate(
     page: DisplayPage,
-    op: &OperationIntent,
+    op: &InputIntent,
     current: &DeviceState,
-) -> BusinessIntent {
+) -> ActionIntent {
     if page != DisplayPage::Splash
         && matches!(op.event, InputEvent::Button(ButtonEvent::TripleClick))
     {
-        return BusinessIntent::Page(PageIntent::NextPage);
+        return ActionIntent::Page(PageIntent::NextPage);
     }
     (PAGES[page.index()].translate)(op, current)
 }
@@ -204,7 +204,7 @@ struct PageSpec {
     /// Whether frames arrive from the camera instead of being drawn.
     draws_frames: bool,
     claim: fn(DemandKind) -> Claim,
-    translate: fn(&OperationIntent, &DeviceState) -> BusinessIntent,
+    translate: fn(&InputIntent, &DeviceState) -> ActionIntent,
     repaint: fn(&Diagnostics, &Diagnostics, bool) -> bool,
 }
 

@@ -2,7 +2,7 @@ use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use crate::intent::{AudioIntent, BusinessIntent, OperationIntent};
+use crate::intent::{ActionIntent, AudioIntent, InputIntent};
 use crate::page::light;
 use crate::state::{AudioPhase, DeviceState};
 
@@ -15,10 +15,10 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
     }
 }
 
-pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
+pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            BusinessIntent::Audio(capture_target(current.audio.phase))
+            ActionIntent::Audio(capture_target(current.audio.phase))
         }
         InputEvent::Button(ButtonEvent::DoubleClick) => light::step(current, op.source),
         InputEvent::Button(ButtonEvent::LongPress) => light::cycle(current, op.source),
@@ -28,7 +28,7 @@ pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> Business
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
             light::swipe(current, op.source, direction)
         }
-        _ => BusinessIntent::Invalid,
+        _ => ActionIntent::Invalid,
     }
 }
 
@@ -65,7 +65,7 @@ mod tests {
             let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_audio),
-                BusinessIntent::Audio(AudioIntent::Start),
+                ActionIntent::Audio(AudioIntent::Start),
                 "on the audio page the button is the record control, the same as the tap"
             );
             assert_eq!(
@@ -73,7 +73,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state_on(DisplayPage::Camera, DEFAULT_BREATH)
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
                 }),
@@ -84,7 +84,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state(DEFAULT_BREATH)
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
                 })
@@ -94,7 +94,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state_on(DisplayPage::Attitude, DEFAULT_BREATH)
                 ),
-                BusinessIntent::Light(LightIntent {
+                ActionIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
                 })
@@ -106,12 +106,12 @@ mod tests {
             let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_audio),
-                BusinessIntent::Audio(AudioIntent::Start),
+                ActionIntent::Audio(AudioIntent::Start),
                 "on the audio page the tap is the record control"
             );
             assert_eq!(
                 translate(&op(tap_gesture(0)), &state(LightState::Off)),
-                BusinessIntent::Invalid
+                ActionIntent::Invalid
             );
             assert_eq!(
                 target_in(

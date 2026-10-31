@@ -2,7 +2,7 @@ use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use crate::intent::{BusinessIntent, OperationIntent, PlaybackAction};
+use crate::intent::{ActionIntent, InputIntent, PlaybackAction};
 use crate::page::light;
 use crate::state::DeviceState;
 
@@ -14,20 +14,20 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
     }
 }
 
-pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
+pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            BusinessIntent::Playback(PlaybackAction::Next)
+            ActionIntent::Playback(PlaybackAction::Next)
         }
         InputEvent::Button(ButtonEvent::LongPress)
         | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-            BusinessIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
+            ActionIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
         }
         InputEvent::Button(ButtonEvent::DoubleClick) => light::step(current, op.source),
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
             light::swipe(current, op.source, direction)
         }
-        _ => BusinessIntent::Invalid,
+        _ => ActionIntent::Invalid,
     }
 }
 
@@ -67,19 +67,19 @@ mod tests {
         fn a_tap_plays_and_a_long_press_mutes() {
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_speaker()),
-                BusinessIntent::Playback(PlaybackAction::Next)
+                ActionIntent::Playback(PlaybackAction::Next)
             );
             assert_eq!(
                 translate(&op(long_press_gesture()), &on_speaker()),
-                BusinessIntent::Playback(PlaybackAction::SetMuted(true))
+                ActionIntent::Playback(PlaybackAction::SetMuted(true))
             );
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_speaker()),
-                BusinessIntent::Playback(PlaybackAction::Next)
+                ActionIntent::Playback(PlaybackAction::Next)
             );
             assert_eq!(
                 translate(&op(long_press()), &on_speaker()),
-                BusinessIntent::Playback(PlaybackAction::SetMuted(true))
+                ActionIntent::Playback(PlaybackAction::SetMuted(true))
             );
         }
 
@@ -107,7 +107,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::TripleClick)),
                     &on_speaker()
                 ),
-                BusinessIntent::Page(PageIntent::NextPage)
+                ActionIntent::Page(PageIntent::NextPage)
             );
         }
 
@@ -129,7 +129,7 @@ mod tests {
             ] {
                 assert_ne!(
                     translate(&op(event), &on_speaker()),
-                    BusinessIntent::Playback(PlaybackAction::Finished),
+                    ActionIntent::Playback(PlaybackAction::Finished),
                     "{event:?} must not fake a driver report"
                 );
             }

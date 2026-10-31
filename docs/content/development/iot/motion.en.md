@@ -396,7 +396,7 @@ One tick can carry several cross-family events at the same time after arbitratio
 3. Declare the union of the capabilities that driver itself has; do not re-declare the core-derived part.
 4. Hook `MotionInput::new(driver)` onto the board layer's `take_motion`.
 
-Business mapping is a **separate layer**. `InputEvent::Motion` currently maps to `BusinessIntent::Invalid` — the framework is already in place, and wiring semantics onto concrete product intents is a business decision, not something done in the driver layer.
+Business mapping is a **separate layer**. `InputEvent::Motion` currently maps to `ActionIntent::Invalid` — the framework is already in place, and wiring semantics onto concrete product intents is a business decision, not something done in the driver layer.
 
 With multiple IMUs, sample, health-check and recognize each source independently, with one `MotionCapabilities` per source. A 50 Hz semantic bus does not suit scenarios like flight control / balancing vehicles that need a high-rate inertial stream — that is a different road.
 

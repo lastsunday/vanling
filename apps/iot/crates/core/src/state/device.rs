@@ -2,7 +2,7 @@
 //! across them.
 
 use crate::demand::{DemandKey, EffectiveDemand};
-use crate::drivers::network::{Front, LinkPhase};
+use crate::drivers::network::{LinkPhase, SetupHost};
 use crate::drivers::playback::Sound;
 use crate::page::DisplayPage;
 
@@ -51,7 +51,7 @@ impl DeviceState {
         if let Some(notice) = self.notice {
             return Some(notice.light);
         }
-        if self.network.link.setup && self.network.link.front == Front::AccessPoint {
+        if self.network.link.setup && self.network.link.host == SetupHost::AccessPoint {
             return Some(LightState::SETUP);
         }
         if self.network.link.phase == LinkPhase::Connecting && !self.network.link.saved {

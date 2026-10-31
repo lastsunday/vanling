@@ -1,10 +1,10 @@
-//! One survey round and the rest after it: what the list is, and what cuts the pause short.
+//! One scan round and the rest after it: what the list is, and what cuts the pause short.
 
 use core::future::pending;
 
 use embassy_futures::select::{Either4, select4};
 use embassy_time::{Duration, Timer};
-use iot_core::drivers::network::{SavedNetworks, Station, SurveyHistory, survey_pause_after};
+use iot_core::drivers::network::{SavedNetworks, ScanHistory, Station, scan_pause_after};
 use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::link::Panel;
@@ -22,9 +22,9 @@ pub(super) enum Rest {
     Left,
 }
 
-pub(super) async fn survey<S>(
+pub(super) async fn scan<S>(
     station: &mut S,
-    history: &mut SurveyHistory,
+    history: &mut ScanHistory,
     saved: Option<&SavedNetworks>,
     empty_rounds: &mut u8,
     idle_rounds: &mut u8,
@@ -58,7 +58,7 @@ where
         0
     };
     *idle_rounds = idle_rounds.saturating_add(1);
-    let pause = survey_pause_after(face.front, *empty_rounds, *idle_rounds);
+    let pause = scan_pause_after(face.host, *empty_rounds, *idle_rounds);
     let clock = async {
         match pause {
             Some(ms) => Timer::after(Duration::from_millis(ms)).await,

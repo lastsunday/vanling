@@ -26,13 +26,13 @@ impl Lit {
 }
 
 /// Writes appearances to a surface: dedupes a slow one, steps a breathing one.
-pub(super) struct ColourDriver {
+pub(super) struct ColorDriver {
     last: Option<Rgb>,
     breath: Option<Breath>,
     display: Mode,
 }
 
-impl ColourDriver {
+impl ColorDriver {
     pub(super) const fn new() -> Self {
         Self {
             last: None,

@@ -2,7 +2,7 @@
 //! asking of it, and the confirmation a destructive action waits on.
 
 use crate::drivers::network::{
-    AccessPoint, ApList, Front, JoinRequest, LinkPhase, LinkStatus, NetworkError, Ssid,
+    AccessPoint, ApList, JoinRequest, LinkPhase, LinkStatus, NetworkError, SetupHost, Ssid,
 };
 use crate::drivers::playback::Sound;
 use crate::intent::NetworkIntent;
@@ -27,7 +27,7 @@ pub struct NetworkState {
     pub aps: Option<ApList>,
     /// What the page is in the middle of taking: the row that was picked, the passphrase
     /// being typed on its keyboard, and the last refusal.
-    pub setup: NetworkSetup,
+    pub draft: NetworkDraft,
     /// Whether the button asked for setup mode on the splash, read once when the clock ends
     /// it.
     pub setup_wanted: bool,
@@ -37,15 +37,15 @@ pub struct NetworkState {
     /// The panel's request to leave the current link.
     pub leave: bool,
     /// The panel's request to close setup mode and go back to the network this device keeps,
-    /// carrying the front it was made on so a later front switch cannot apply it.
-    pub setup_cancel: Option<Front>,
-    /// The panel's request to offer setup mode through its other front end, and the front it
+    /// carrying the host it was made on so a later host switch cannot apply it.
+    pub setup_cancel: Option<SetupHost>,
+    /// The panel's request to offer setup mode through its other host, and the host it
     /// was made on.
-    pub switch_front: Option<Front>,
+    pub switch_host: Option<SetupHost>,
     /// The panel's request to put the setup access point up open or under a passphrase,
-    /// carrying the front it was made on and the state it should end in: `open` true,
+    /// carrying the host it was made on and the state it should end in: `open` true,
     /// secured false.
-    pub setup_open: Option<(Front, bool)>,
+    pub setup_open: Option<(SetupHost, bool)>,
     /// The panel's request to look around now, which is the action strip's other verb.
     pub scan_now: bool,
     /// The panel's request to forget a saved network, named by the row a finger held.
@@ -58,7 +58,7 @@ pub struct NetworkState {
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NetworkSetup {
+pub struct NetworkDraft {
     /// The scanned row the user picked, whose name the draft goes with.
     pub selected: Option<AccessPoint>,
     /// The draft, and with it what a passphrase is being typed for.
@@ -73,7 +73,7 @@ pub struct NetworkSetup {
     pub list_top: u8,
     /// The confirmation the page is asking, if it is asking one.
     pub confirm: Option<Confirm>,
-    /// Whether the action strip is waiting for a survey round it asked for.
+    /// Whether the action strip is waiting for a scan round it asked for.
     pub rescan_wait: bool,
 }
 
@@ -94,7 +94,7 @@ impl Confirm {
     }
 }
 
-impl NetworkSetup {
+impl NetworkDraft {
     /// The phase the page should show.
     pub fn phase(&self, link: LinkPhase) -> LinkPhase {
         match (self.refused, link) {
@@ -109,9 +109,9 @@ impl NetworkSetup {
 pub enum NetworkCommand {
     Join(JoinRequest),
     Leave,
-    LeaveSetup { from: Front },
-    SwitchFront { from: Front },
-    SetupOpen { from: Front, open: bool },
+    LeaveSetup { from: SetupHost },
+    SwitchHost { from: SetupHost },
+    SetupOpen { from: SetupHost, open: bool },
     ScanNow,
     Forget(Ssid),
 }
@@ -122,7 +122,7 @@ impl NetworkCommand {
     pub const fn is_setup(&self) -> bool {
         matches!(
             self,
-            Self::LeaveSetup { .. } | Self::SwitchFront { .. } | Self::SetupOpen { .. }
+            Self::LeaveSetup { .. } | Self::SwitchHost { .. } | Self::SetupOpen { .. }
         )
     }
 }
@@ -140,7 +140,7 @@ impl DeviceManager {
             return Some(NetworkCommand::LeaveSetup { from });
         }
         if let Some(from) = self.take_switch_front() {
-            return Some(NetworkCommand::SwitchFront { from });
+            return Some(NetworkCommand::SwitchHost { from });
         }
         if let Some((from, open)) = self.take_setup_open() {
             return Some(NetworkCommand::SetupOpen { from, open });
@@ -160,8 +160,8 @@ impl DeviceManager {
         core::mem::take(&mut self.state.network.leave)
     }
 
-    /// Take the panel's request to close setup mode, and the front it was made on.
-    pub fn take_setup_cancel(&mut self) -> Option<Front> {
+    /// Take the panel's request to close setup mode, and the host it was made on.
+    pub fn take_setup_cancel(&mut self) -> Option<SetupHost> {
         self.state.network.setup_cancel.take()
     }
 
@@ -170,15 +170,15 @@ impl DeviceManager {
         core::mem::take(&mut self.state.network.scan_now)
     }
 
-    /// Take the panel's request to offer setup through its other front end, and the front it
+    /// Take the panel's request to offer setup through its other host, and the host it
     /// was made on.
-    pub fn take_switch_front(&mut self) -> Option<Front> {
-        self.state.network.switch_front.take()
+    pub fn take_switch_front(&mut self) -> Option<SetupHost> {
+        self.state.network.switch_host.take()
     }
 
     /// Take the panel's request to put the setup access point up open (`open`) or under a
     /// passphrase, if it asked for either.
-    pub fn take_setup_open(&mut self) -> Option<(Front, bool)> {
+    pub fn take_setup_open(&mut self) -> Option<(SetupHost, bool)> {
         self.state.network.setup_open.take()
     }
 
@@ -204,14 +204,14 @@ impl NetworkState {
             NetworkIntent::Leave => self.leave_link(has_pages),
             NetworkIntent::Answer(confirm) => self.answer(confirm),
             NetworkIntent::CloseSetup => self.close_setup(),
-            NetworkIntent::SwitchFront => {
+            NetworkIntent::SwitchHost => {
                 if (self.link.setup || self.link.browsing) && has_pages {
-                    self.switch_front = Some(self.link.front);
+                    self.switch_host = Some(self.link.host);
                 }
             }
             NetworkIntent::ScanNow => self.scan_now(),
             NetworkIntent::SetOpenAccessPoint(open) => self.set_open(open),
-            NetworkIntent::Dismiss => self.setup.confirm = None,
+            NetworkIntent::Dismiss => self.draft.confirm = None,
         }
         Effects::default()
     }
@@ -221,19 +221,19 @@ impl NetworkState {
     fn report(&mut self, status: LinkStatus) -> Effects {
         match status.phase {
             LinkPhase::Failed(kind) => {
-                self.setup.refused = Some(kind);
+                self.draft.refused = Some(kind);
                 self.reopen_entry();
             }
-            LinkPhase::Connecting | LinkPhase::Connected => self.setup.refused = None,
+            LinkPhase::Connecting | LinkPhase::Connected => self.draft.refused = None,
             LinkPhase::Off | LinkPhase::Scanning => {}
         }
         if status.phase == LinkPhase::Connected {
-            self.setup.entry = None;
-            self.setup.keyboard = false;
-            self.setup.revealed = false;
+            self.draft.entry = None;
+            self.draft.keyboard = false;
+            self.draft.revealed = false;
         }
-        if !status.is_leavable() && self.setup.confirm == Some(Confirm::Leave) {
-            self.setup.confirm = None;
+        if !status.is_leavable() && self.draft.confirm == Some(Confirm::Leave) {
+            self.draft.confirm = None;
         }
         let sound = if status.setup && !self.link.setup {
             Some(Sound::Rise)
@@ -259,33 +259,33 @@ impl NetworkState {
                     _ => None,
                 }
             };
-        self.setup.rescan_wait = false;
+        self.draft.rescan_wait = false;
         self.link = status;
         Effects { sound, notice }
     }
 
     fn apply_key(&mut self, key: Key, at_ms: u32) {
-        if !self.setup.keyboard {
+        if !self.draft.keyboard {
             return;
         }
         match key {
             Key::Connect => {
-                let (Some(ap), Some(entry)) = (self.setup.selected, self.setup.entry) else {
+                let (Some(ap), Some(entry)) = (self.draft.selected, self.draft.entry) else {
                     return;
                 };
-                self.setup.keyboard = false;
-                self.setup.revealed = false;
+                self.draft.keyboard = false;
+                self.draft.revealed = false;
                 self.join = Some(JoinRequest::Typed(entry.credentials(ap.ssid)));
             }
             Key::Cancel => {
-                self.setup.keyboard = false;
-                self.setup.revealed = false;
-                self.setup.entry = None;
-                self.setup.selected = None;
+                self.draft.keyboard = false;
+                self.draft.revealed = false;
+                self.draft.entry = None;
+                self.draft.selected = None;
             }
-            Key::Reveal => self.setup.revealed = !self.setup.revealed,
+            Key::Reveal => self.draft.revealed = !self.draft.revealed,
             typing => {
-                if let Some(entry) = self.setup.entry.as_mut() {
+                if let Some(entry) = self.draft.entry.as_mut() {
                     entry.edit(typing, at_ms);
                 }
             }
@@ -293,11 +293,11 @@ impl NetworkState {
     }
 
     fn reopen_entry(&mut self) {
-        self.setup.confirm = None;
-        if self.setup.selected.is_some() {
-            self.setup.entry.get_or_insert_with(Entry::default);
+        self.draft.confirm = None;
+        if self.draft.selected.is_some() {
+            self.draft.entry.get_or_insert_with(Entry::default);
         }
-        self.setup.keyboard = self.setup.entry.is_some();
+        self.draft.keyboard = self.draft.entry.is_some();
     }
 
     fn pick_row(&mut self, ap: AccessPoint) {
@@ -308,35 +308,35 @@ impl NetworkState {
             return;
         };
         if ap.secured && self.aps.is_some_and(|list| list.is_saved(index)) {
-            self.setup.selected = Some(ap);
-            self.setup.entry = None;
-            self.setup.revealed = false;
-            self.setup.keyboard = false;
+            self.draft.selected = Some(ap);
+            self.draft.entry = None;
+            self.draft.revealed = false;
+            self.draft.keyboard = false;
             self.join = Some(JoinRequest::Held(ap.ssid));
             return;
         }
-        let same = self.setup.entry.is_some()
+        let same = self.draft.entry.is_some()
             && self
-                .setup
+                .draft
                 .selected
                 .is_some_and(|picked| picked.is_same_network(&ap));
         if !same {
-            self.setup.entry = Some(Entry::default());
-            self.setup.revealed = false;
+            self.draft.entry = Some(Entry::default());
+            self.draft.revealed = false;
         }
-        self.setup.selected = Some(ap);
+        self.draft.selected = Some(ap);
         if ap.secured {
-            self.setup.keyboard = true;
+            self.draft.keyboard = true;
             return;
         }
-        self.setup.keyboard = false;
-        let entry = self.setup.entry.unwrap_or_default();
+        self.draft.keyboard = false;
+        let entry = self.draft.entry.unwrap_or_default();
         self.join = Some(JoinRequest::Typed(entry.credentials(ap.ssid)));
     }
 
     fn no_copy(&mut self, ssid: Ssid) {
         if !self
-            .setup
+            .draft
             .selected
             .is_some_and(|picked| picked.ssid == ssid)
         {
@@ -357,7 +357,7 @@ impl NetworkState {
         if !self.aps.is_some_and(|list| list.is_saved(index)) {
             return;
         }
-        self.setup.confirm = Some(Confirm::Forget(ap));
+        self.draft.confirm = Some(Confirm::Forget(ap));
     }
 
     fn leave_link(&mut self, has_pages: bool) {
@@ -365,7 +365,7 @@ impl NetworkState {
             return;
         }
         if has_pages {
-            self.setup.confirm = Some(Confirm::Leave);
+            self.draft.confirm = Some(Confirm::Leave);
         } else {
             self.leave = true;
         }
@@ -373,28 +373,28 @@ impl NetworkState {
 
     fn close_setup(&mut self) {
         if self.link.setup && self.link.setup_cancellable {
-            self.setup_cancel = Some(self.link.front);
+            self.setup_cancel = Some(self.link.host);
         }
     }
 
     fn scan_now(&mut self) {
         if !self.link.is_leavable() {
             self.scan_now = true;
-            self.setup.rescan_wait = true;
+            self.draft.rescan_wait = true;
         }
     }
 
     fn set_open(&mut self, open: bool) {
         if self.link.shows_setup_box() {
-            self.setup_open = Some((self.link.front, open));
+            self.setup_open = Some((self.link.host, open));
         }
     }
 
     fn answer(&mut self, question: Confirm) {
-        if self.setup.confirm != Some(question) {
+        if self.draft.confirm != Some(question) {
             return;
         }
-        self.setup.confirm = None;
+        self.draft.confirm = None;
         match question {
             Confirm::Leave if self.link.is_leavable() => self.leave = true,
             Confirm::Leave => {}
@@ -416,8 +416,8 @@ impl NetworkState {
     }
 
     fn scroll(&mut self, rows: i8) {
-        let top = i16::from(self.setup.list_top) + i16::from(rows);
-        self.setup.list_top = top.clamp(0, i16::from(self.last_list_top())) as u8;
+        let top = i16::from(self.draft.list_top) + i16::from(rows);
+        self.draft.list_top = top.clamp(0, i16::from(self.last_list_top())) as u8;
     }
 }
 
@@ -426,7 +426,7 @@ impl DeviceManager {
         if self.state.backed.network {
             self.state.network.aps = Some(list);
             let last = self.state.network.last_list_top();
-            self.state.network.setup.list_top = self.state.network.setup.list_top.min(last);
+            self.state.network.draft.list_top = self.state.network.draft.list_top.min(last);
         }
     }
 }
@@ -476,21 +476,21 @@ mod network_page {
         manager.apply_scan(list);
     }
 
-    fn booted(setup: Setup) -> DeviceManager {
-        let mut manager = landed(DeviceManager::boot(setup));
+    fn booted(boot: Boot) -> DeviceManager {
+        let mut manager = landed(DeviceManager::boot(boot));
         manager.apply_scan(ApList::from_ranked(&[ap(b"neighbour"), ap(b"cafe")]));
         for _ in 0..CYCLE.len() {
             if manager.state().page == DisplayPage::Network {
                 break;
             }
-            manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+            manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         }
         assert_eq!(manager.state().page, DisplayPage::Network);
         manager
     }
 
     fn on_network_page() -> DeviceManager {
-        booted(Setup {
+        booted(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -507,9 +507,9 @@ mod network_page {
             held_ms: 40,
             at_ms,
         }));
-        manager.apply_operation(operation);
+        manager.apply_input(operation);
         let business = translate(&operation, &manager.state());
-        manager.apply_business(business);
+        manager.apply_action(business);
     }
 
     fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) {
@@ -523,7 +523,7 @@ mod network_page {
     }
 
     fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) {
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Key { key, at_ms }));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Key { key, at_ms }));
     }
 
     fn key(manager: &mut DeviceManager, key: Key) {
@@ -564,7 +564,7 @@ mod network_page {
             "nothing has reported one yet"
         );
         let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Mac(mac)));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Mac(mac)));
         assert_eq!(manager.state().network.mac, Some(mac));
     }
 
@@ -585,12 +585,12 @@ mod network_page {
         let mut manager = on_network_page();
         tap_band(&mut manager, 1);
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"cafe")),
             "the keyboard goes with the network the band was showing"
         );
         assert_eq!(
-            manager.state().network.setup.entry,
+            manager.state().network.draft.entry,
             Some(Entry::default()),
             "and starts empty"
         );
@@ -598,7 +598,7 @@ mod network_page {
             manager
                 .state()
                 .network
-                .setup
+                .draft
                 .entry
                 .map(|entry| entry.layer()),
             Some(Layer::Abc),
@@ -611,7 +611,7 @@ mod network_page {
         let mut manager = on_network_page();
         tap_band(&mut manager, 3);
         assert_eq!(
-            manager.state().network.setup.entry,
+            manager.state().network.draft.entry,
             None,
             "a band past the last network is the page's own background"
         );
@@ -619,7 +619,7 @@ mod network_page {
 
     #[test]
     fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -628,52 +628,52 @@ mod network_page {
         }));
         let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
         manager.apply_scan(ApList::from_ranked(&aps));
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
 
         tap_band(&mut manager, 0);
-        assert_eq!(manager.state().network.setup.selected, Some(ap(b"a")));
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Key {
+        assert_eq!(manager.state().network.draft.selected, Some(ap(b"a")));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Key {
             key: Key::Cancel,
             at_ms: 1,
         }));
 
-        assert_eq!(manager.state().network.setup.list_top, 0);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
+        assert_eq!(manager.state().network.draft.list_top, 0);
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Scroll { rows: 1 }));
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             1,
             "a slide forward moves the window one row"
         );
         tap_band(&mut manager, 0);
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"b")),
             "and the first band now holds the second network"
         );
         for _ in 0..(8 - keyboard::LIST_ROWS) {
-            manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
+            manager.apply_action(ActionIntent::Network(NetworkIntent::Scroll { rows: 1 }));
         }
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             (8 - keyboard::LIST_ROWS) as u8,
             "eight rows through a three-row window stop five rows down"
         );
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Scroll { rows: 1 }));
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             (8 - keyboard::LIST_ROWS) as u8,
             "and the end of the list is as far as it goes"
         );
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: -1 }));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Scroll { rows: -1 }));
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             (8 - keyboard::LIST_ROWS - 1) as u8
         );
         for _ in 0..8 {
-            manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: -1 }));
+            manager.apply_action(ActionIntent::Network(NetworkIntent::Scroll { rows: -1 }));
         }
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             0,
             "and the top of it is as far back"
         );
@@ -686,16 +686,16 @@ mod network_page {
             link_at(&mut manager, phase, b"neighbour");
             tap_band(&mut manager, 1);
             assert_eq!(
-                manager.state().network.setup.selected,
+                manager.state().network.draft.selected,
                 None,
                 "{phase:?} is a link, so the band is not a pick"
             );
             assert!(
-                !manager.state().network.setup.keyboard,
+                !manager.state().network.draft.keyboard,
                 "{phase:?}: no keyboard"
             );
             assert_eq!(
-                manager.state().network.setup.entry,
+                manager.state().network.draft.entry,
                 None,
                 "{phase:?}: no draft"
             );
@@ -714,12 +714,12 @@ mod network_page {
             link_at(&mut manager, phase, b"neighbour");
             tap_band(&mut manager, 1);
             assert_eq!(
-                manager.state().network.setup.selected,
+                manager.state().network.draft.selected,
                 Some(ap(b"cafe")),
                 "{phase:?} is not a link, so the band picks the row it shows"
             );
             assert!(
-                manager.state().network.setup.keyboard,
+                manager.state().network.draft.keyboard,
                 "{phase:?}: and opens the keyboard"
             );
         }
@@ -727,7 +727,7 @@ mod network_page {
 
     #[test]
     fn a_pick_of_an_open_row_is_read_only_under_a_link_too() {
-        let mut manager = DeviceManager::boot(Setup {
+        let mut manager = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -735,12 +735,12 @@ mod network_page {
             ..Default::default()
         });
         manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         link_at(&mut manager, LinkPhase::Connected, b"neighbour");
 
         tap_band(&mut manager, 0);
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             None,
             "the row is not a pick"
         );
@@ -759,7 +759,7 @@ mod network_page {
 
         hold_band(&mut manager, 1);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "a hold under the join box asks nothing"
         );
@@ -772,18 +772,18 @@ mod network_page {
         link_at(&mut manager, LinkPhase::Connecting, b"a");
         slide_list(&mut manager);
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             0,
             "the window stayed where the box was drawn over it"
         );
 
         let mut manager = eight_rows();
         slide_list(&mut manager);
-        assert_eq!(manager.state().network.setup.list_top, 1);
+        assert_eq!(manager.state().network.draft.list_top, 1);
     }
 
     fn eight_rows() -> DeviceManager {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -792,7 +792,7 @@ mod network_page {
         }));
         let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
         manager.apply_scan(ApList::from_ranked(&aps));
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         manager
     }
 
@@ -807,9 +807,9 @@ mod network_page {
             held_ms: 40,
             distance_px: (keyboard::LIST_ROW_H * 2) as u16,
         }));
-        manager.apply_operation(operation);
+        manager.apply_input(operation);
         let business = translate(&operation, &manager.state());
-        manager.apply_business(business);
+        manager.apply_action(business);
     }
 
     #[test]
@@ -820,14 +820,14 @@ mod network_page {
 
         tap_band(&mut manager, 1);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "a tap is not a question"
         );
 
         hold_band(&mut manager, 1);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             Some(Confirm::Forget(ap(b"cafe"))),
             "a hold still is"
         );
@@ -838,17 +838,17 @@ mod network_page {
         let mut manager = on_network_page();
         tap_band(&mut manager, 1);
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "the pick opened the keyboard"
         );
 
         link_at(&mut manager, LinkPhase::Connecting, b"neighbour");
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "and the association does not close it"
         );
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"cafe")),
             "the draft is still the row it was opened on"
         );
@@ -879,9 +879,9 @@ mod network_page {
             y,
             held_ms: u16::from(FINGER_LONG_PRESS) + 20,
         }));
-        manager.apply_operation(operation);
+        manager.apply_input(operation);
         let business = translate(&operation, &manager.state());
-        manager.apply_business(business);
+        manager.apply_action(business);
     }
 
     fn tap_answer(manager: &mut DeviceManager, choice: keyboard::DialogChoice) {
@@ -898,7 +898,7 @@ mod network_page {
     }
 
     fn link_at(manager: &mut DeviceManager, phase: LinkPhase, ssid: &[u8]) {
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase,
                 ap: Some(ap(ssid)),
@@ -915,7 +915,7 @@ mod network_page {
 
         tap_strip(&mut manager);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             Some(Confirm::Leave),
             "a link that is up is one to take down, and taking it down is asked about"
         );
@@ -932,11 +932,11 @@ mod network_page {
             "with no link there is something to look around for"
         );
         assert!(
-            manager.state().network.setup.rescan_wait,
+            manager.state().network.draft.rescan_wait,
             "and the strip waits for the round it asked for"
         );
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "nothing to confirm"
         );
@@ -951,7 +951,7 @@ mod network_page {
         for named in [None, Some(ap(b"neighbour"))] {
             for phase in [LinkPhase::Connecting, LinkPhase::Connected] {
                 let mut manager = on_network_page();
-                manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+                manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
                     LinkStatus {
                         phase,
                         ap: named,
@@ -961,7 +961,7 @@ mod network_page {
                 )));
                 tap_strip(&mut manager);
                 assert_eq!(
-                    manager.state().network.setup.confirm,
+                    manager.state().network.draft.confirm,
                     Some(Confirm::Leave),
                     "{phase:?} is a link to leave, named {named:?}"
                 );
@@ -984,9 +984,9 @@ mod network_page {
 
     fn long_press_the_button(manager: &mut DeviceManager) {
         let operation = op(InputEvent::Button(ButtonEvent::LongPress));
-        manager.apply_operation(operation);
+        manager.apply_input(operation);
         let business = translate(&operation, &manager.state());
-        manager.apply_business(business);
+        manager.apply_action(business);
     }
 
     #[test]
@@ -995,7 +995,7 @@ mod network_page {
             [SurfaceRole::Pages, SurfaceRole::Absent],
             [SurfaceRole::Lamp, SurfaceRole::Absent],
         ] {
-            let mut manager = DeviceManager::boot(Setup {
+            let mut manager = DeviceManager::boot(Boot {
                 backed: Backed {
                     network: true,
                     ..Backed::NONE
@@ -1009,7 +1009,7 @@ mod network_page {
                 "{kinds:?}: the request is latched"
             );
             assert_eq!(
-                manager.state().network.setup.confirm,
+                manager.state().network.draft.confirm,
                 None,
                 "{kinds:?}: the splash carries no question"
             );
@@ -1027,7 +1027,7 @@ mod network_page {
 
     #[test]
     fn the_splash_lands_on_the_page_that_offers_setup_when_it_was_asked_for() {
-        let mut manager = DeviceManager::boot(Setup {
+        let mut manager = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 camera: true,
@@ -1037,13 +1037,13 @@ mod network_page {
             ..Default::default()
         });
         long_press_the_button(&mut manager);
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(manager.state().page, DisplayPage::Network);
     }
 
     #[test]
     fn the_splash_lands_on_the_build_page_when_nothing_was_asked() {
-        let manager = landed(DeviceManager::boot(Setup {
+        let manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 camera: true,
@@ -1060,13 +1060,13 @@ mod network_page {
     fn a_board_with_no_radio_lands_on_its_page_even_after_the_hold() {
         let mut manager = DeviceManager::new();
         long_press_the_button(&mut manager);
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(manager.state().page, DisplayPage::Ambient);
     }
 
     #[test]
     fn a_long_press_after_the_splash_is_the_pages_own_verb() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -1079,7 +1079,7 @@ mod network_page {
 
         long_press_the_button(&mut manager);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "the press never raises the question the strip raises"
         );
@@ -1093,7 +1093,7 @@ mod network_page {
 
     #[test]
     fn a_strip_leave_on_a_board_with_no_screen_is_done_rather_than_asked_about() {
-        let mut manager = booted(Setup {
+        let mut manager = booted(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -1104,7 +1104,7 @@ mod network_page {
         link_up(&mut manager, b"neighbour");
 
         tap_strip(&mut manager);
-        assert_eq!(manager.state().network.setup.confirm, None);
+        assert_eq!(manager.state().network.draft.confirm, None);
         assert!(manager.take_leave(), "the strip's verb is the leave itself");
     }
 
@@ -1115,7 +1115,7 @@ mod network_page {
 
         tap_strip(&mut manager);
         tap_answer(&mut manager, keyboard::DialogChoice::Keep);
-        assert_eq!(manager.state().network.setup.confirm, None);
+        assert_eq!(manager.state().network.draft.confirm, None);
         assert!(!manager.take_leave(), "the safe answer takes nothing down");
         assert_eq!(
             manager.state().network.link.phase,
@@ -1126,7 +1126,7 @@ mod network_page {
         tap_strip(&mut manager);
         tap_answer(&mut manager, keyboard::DialogChoice::Act);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "the question is done"
         );
@@ -1138,9 +1138,9 @@ mod network_page {
         let mut manager = on_network_page();
         link_up(&mut manager, b"neighbour");
         tap_strip(&mut manager);
-        assert!(manager.state().network.setup.confirm.is_some());
+        assert!(manager.state().network.draft.confirm.is_some());
 
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Failed(NetworkError::NotFound),
                 ap: None,
@@ -1149,7 +1149,7 @@ mod network_page {
             },
         )));
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "a link that is gone takes its own question with it"
         );
@@ -1157,15 +1157,15 @@ mod network_page {
     }
 
     #[test]
-    fn a_survey_round_ends_the_strips_wait() {
+    fn a_scan_round_ends_the_strips_wait() {
         let mut manager = on_network_page();
         tap_strip(&mut manager);
-        assert!(manager.state().network.setup.rescan_wait);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        assert!(manager.state().network.draft.rescan_wait);
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus::default(),
         )));
         assert!(
-            !manager.state().network.setup.rescan_wait,
+            !manager.state().network.draft.rescan_wait,
             "the round came back, so the strip stops waiting"
         );
     }
@@ -1176,15 +1176,15 @@ mod network_page {
         marked(&mut manager, &["cafe"]);
         hold_band(&mut manager, 1);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             Some(Confirm::Forget(ap(b"cafe"))),
             "the band held is the network the box asks about"
         );
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "a hold is not a tap: nothing is picked and nothing is typed"
         );
-        assert_eq!(manager.state().network.setup.selected, None);
+        assert_eq!(manager.state().network.draft.selected, None);
 
         tap_answer(&mut manager, keyboard::DialogChoice::Act);
         assert_eq!(
@@ -1202,9 +1202,9 @@ mod network_page {
 
         manager.state.network.join = Some(JoinRequest::Held(Ssid::from_octets(b"neighbour")));
         manager.state.network.leave = true;
-        manager.state.network.setup_cancel = Some(Front::Panel);
-        manager.state.network.switch_front = Some(Front::Panel);
-        manager.state.network.setup_open = Some((Front::Panel, true));
+        manager.state.network.setup_cancel = Some(SetupHost::Panel);
+        manager.state.network.switch_host = Some(SetupHost::Panel);
+        manager.state.network.setup_open = Some((SetupHost::Panel, true));
         manager.state.network.scan_now = true;
         manager.state.network.forget = Some(Ssid::from_octets(b"cafe"));
 
@@ -1218,16 +1218,20 @@ mod network_page {
         assert_eq!(manager.take_command(), Some(NetworkCommand::Leave));
         assert_eq!(
             manager.take_command(),
-            Some(NetworkCommand::LeaveSetup { from: Front::Panel })
+            Some(NetworkCommand::LeaveSetup {
+                from: SetupHost::Panel
+            })
         );
         assert_eq!(
             manager.take_command(),
-            Some(NetworkCommand::SwitchFront { from: Front::Panel })
+            Some(NetworkCommand::SwitchHost {
+                from: SetupHost::Panel
+            })
         );
         assert_eq!(
             manager.take_command(),
             Some(NetworkCommand::SetupOpen {
-                from: Front::Panel,
+                from: SetupHost::Panel,
                 open: true
             })
         );
@@ -1250,7 +1254,7 @@ mod network_page {
             "the splash is still up, so there is no landing to report"
         );
 
-        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.take_splash_end(),
             Some(true),
@@ -1267,17 +1271,17 @@ mod network_page {
     fn a_hold_on_a_row_this_device_has_not_saved_asks_nothing() {
         let mut manager = on_network_page();
         hold_band(&mut manager, 0);
-        assert_eq!(manager.state().network.setup.confirm, None);
+        assert_eq!(manager.state().network.draft.confirm, None);
         assert_eq!(manager.take_forget(), None);
 
         marked(&mut manager, &["neighbour"]);
         hold_band(&mut manager, 0);
-        assert!(manager.state().network.setup.confirm.is_some());
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Dismiss));
+        assert!(manager.state().network.draft.confirm.is_some());
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Dismiss));
         marked(&mut manager, &[]);
         hold_band(&mut manager, 0);
         assert_eq!(
-            manager.state().network.setup.confirm,
+            manager.state().network.draft.confirm,
             None,
             "a name the store no longer holds is not one to ask about"
         );
@@ -1305,7 +1309,7 @@ mod network_page {
     #[test]
     fn the_same_row_is_a_request_to_join_while_the_link_is_not_on_it() {
         let mut manager = on_network_page();
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Failed(NetworkError::Credentials),
                 ap: Some(ap(b"neighbour")),
@@ -1320,7 +1324,7 @@ mod network_page {
             manager
                 .state()
                 .network
-                .setup
+                .draft
                 .selected
                 .is_some_and(|picked| picked.is_same_network(&ap(b"neighbour"))),
             "the row is a selection, and the passphrase can be fixed from there"
@@ -1338,11 +1342,11 @@ mod network_page {
             "a tap on the link's own row is not a leave"
         );
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "and it is not a pick while the link is up"
         );
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             None,
             "nothing on the page moved"
         );
@@ -1350,7 +1354,7 @@ mod network_page {
 
     #[test]
     fn a_scan_that_shrank_pulls_the_list_back_to_its_own_end() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -1359,18 +1363,18 @@ mod network_page {
         }));
         let eight: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
         manager.apply_scan(ApList::from_ranked(&eight));
-        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
-        assert_eq!(manager.state().network.setup.list_top, 1);
+        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::Scroll { rows: 1 }));
+        assert_eq!(manager.state().network.draft.list_top, 1);
 
         manager.apply_scan(ApList::from_ranked(&[ap(b"a"), ap(b"b")]));
         assert_eq!(
-            manager.state().network.setup.list_top,
+            manager.state().network.draft.list_top,
             0,
             "a list shorter than its own window cannot be scrolled past its end"
         );
         tap_band(&mut manager, 1);
-        assert_eq!(manager.state().network.setup.selected, Some(ap(b"b")));
+        assert_eq!(manager.state().network.draft.selected, Some(ap(b"b")));
     }
 
     #[test]
@@ -1385,16 +1389,16 @@ mod network_page {
         assert_eq!(credential.ssid, Ssid::from_octets(b"neighbour"));
         assert_eq!(credential.password.as_bytes(), b"bd");
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "the keyboard closes on connect: the radio says whether it worked"
         );
         assert_eq!(
-            manager.state().network.setup.entry.map(|entry| entry.len()),
+            manager.state().network.draft.entry.map(|entry| entry.len()),
             Some(2),
             "and the draft stays: a refusal comes back to the text it refused"
         );
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"neighbour")),
             "the page keeps showing which network is being tried"
         );
@@ -1411,11 +1415,11 @@ mod network_page {
         manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
         tap_band(&mut manager, 0);
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "no keyboard for a network that asks for nothing"
         );
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(open(b"cafe")),
             "but the page still says which network is being tried"
         );
@@ -1438,12 +1442,12 @@ mod network_page {
             "the tap names the row for the store rather than for the keyboard"
         );
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "and nothing is asked for"
         );
-        assert_eq!(manager.state().network.setup.entry, None);
+        assert_eq!(manager.state().network.draft.entry, None);
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"neighbour")),
             "with the row still saying which network is being tried"
         );
@@ -1455,7 +1459,7 @@ mod network_page {
         manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
         marked(&mut manager, &["cafe"]);
         tap_band(&mut manager, 0);
-        assert!(!manager.state().network.setup.keyboard);
+        assert!(!manager.state().network.draft.keyboard);
         let credential = handed_over(&mut manager).expect("the pick hands one over");
         assert!(credential.password.is_empty());
     }
@@ -1465,20 +1469,20 @@ mod network_page {
         let mut manager = on_network_page();
         marked(&mut manager, &["neighbour"]);
         tap_band(&mut manager, 0);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::NoCopy(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::NoCopy(
             Ssid::from_octets(b"neighbour"),
         )));
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "the page has to ask"
         );
         assert_eq!(
-            manager.state().network.setup.entry,
+            manager.state().network.draft.entry,
             Some(Entry::default()),
             "over an empty draft, which is what the keys are drawn from"
         );
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"neighbour")),
             "on the row the finger picked"
         );
@@ -1489,7 +1493,7 @@ mod network_page {
         let mut manager = on_network_page();
         marked(&mut manager, &["neighbour"]);
         tap_band(&mut manager, 0);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Failed(NetworkError::Credentials),
                 ap: Some(ap(b"neighbour")),
@@ -1498,12 +1502,12 @@ mod network_page {
             },
         )));
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "the refusal asks for a fix"
         );
-        assert_eq!(manager.state().network.setup.entry, Some(Entry::default()));
+        assert_eq!(manager.state().network.draft.entry, Some(Entry::default()));
         assert_eq!(
-            manager.state().network.setup.refused,
+            manager.state().network.draft.refused,
             Some(NetworkError::Credentials),
             "and the page says what went wrong"
         );
@@ -1516,16 +1520,16 @@ mod network_page {
         tap_band(&mut manager, 0);
         manager.take_join();
         tap_band(&mut manager, 1);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::NoCopy(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::NoCopy(
             Ssid::from_octets(b"neighbour"),
         )));
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "the answer is about a row that is not the picked one"
         );
-        assert_eq!(manager.state().network.setup.entry, None);
+        assert_eq!(manager.state().network.draft.entry, None);
         assert_eq!(
-            manager.state().network.setup.selected,
+            manager.state().network.draft.selected,
             Some(ap(b"cafe")),
             "which is still the row the finger is on"
         );
@@ -1548,14 +1552,14 @@ mod network_page {
         ]));
         tap_band(&mut manager, 0);
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "the same row opens the entry again over the draft"
         );
         assert_eq!(
             manager
                 .state()
                 .network
-                .setup
+                .draft
                 .entry
                 .map(|entry| entry.as_bytes().to_vec()),
             Some(b"b".to_vec()),
@@ -1564,10 +1568,10 @@ mod network_page {
         key(&mut manager, Key::Cancel);
         tap_band(&mut manager, 1);
         assert_eq!(
-            manager.state().network.setup.entry.map(|entry| entry.len()),
+            manager.state().network.draft.entry.map(|entry| entry.len()),
             Some(0)
         );
-        assert_eq!(manager.state().network.setup.selected, Some(ap(b"cafe")));
+        assert_eq!(manager.state().network.draft.selected, Some(ap(b"cafe")));
     }
 
     #[test]
@@ -1578,14 +1582,14 @@ mod network_page {
         key(&mut manager, Key::Connect);
         link_up(&mut manager, b"neighbour");
         assert!(
-            manager.state().network.setup.selected.is_some()
-                && manager.state().network.setup.entry.is_none(),
+            manager.state().network.draft.selected.is_some()
+                && manager.state().network.draft.entry.is_none(),
             "the link kept the row and dropped the draft"
         );
 
         tap_strip(&mut manager);
         tap_answer(&mut manager, keyboard::DialogChoice::Act);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus::default(),
         )));
         assert!(
@@ -1595,11 +1599,11 @@ mod network_page {
 
         tap_band(&mut manager, 0);
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "the row the link was on is a request to join it again"
         );
         assert_eq!(
-            manager.state().network.setup.entry.map(|entry| entry.len()),
+            manager.state().network.draft.entry.map(|entry| entry.len()),
             Some(0),
             "and the entry under the keys is a new one, not the draft the link dropped"
         );
@@ -1612,42 +1616,42 @@ mod network_page {
         type_letter(&mut manager, b'b', 0);
         key(&mut manager, Key::Connect);
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "the keyboard is down while the radio tries"
         );
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Failed(NetworkError::Credentials),
                 ..LinkStatus::default()
             },
         )));
         assert_eq!(
-            manager.state().network.setup.refused,
+            manager.state().network.draft.refused,
             Some(NetworkError::Credentials)
         );
         assert!(
-            manager.state().network.setup.keyboard,
+            manager.state().network.draft.keyboard,
             "the keyboard comes back to fix the passphrase"
         );
         assert_eq!(
             manager
                 .state()
                 .network
-                .setup
+                .draft
                 .entry
                 .map(|entry| entry.as_bytes().to_vec()),
             Some(b"b".to_vec()),
             "over the draft that was refused, not over an empty field"
         );
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Connected,
                 ..LinkStatus::default()
             },
         )));
-        assert_eq!(manager.state().network.setup.entry, None);
+        assert_eq!(manager.state().network.draft.entry, None);
         assert!(
-            !manager.state().network.setup.keyboard,
+            !manager.state().network.draft.keyboard,
             "and a link that came up has nothing left to type"
         );
     }
@@ -1657,14 +1661,14 @@ mod network_page {
         let mut manager = on_network_page();
         tap_band(&mut manager, 0);
         type_letter(&mut manager, b'b', 0);
-        assert!(!manager.state().network.setup.revealed);
+        assert!(!manager.state().network.draft.revealed);
         key(&mut manager, Key::Reveal);
-        assert!(manager.state().network.setup.revealed);
+        assert!(manager.state().network.draft.revealed);
         assert_eq!(
             manager
                 .state()
                 .network
-                .setup
+                .draft
                 .entry
                 .map(|entry| entry.as_bytes().to_vec()),
             Some(b"b".to_vec()),
@@ -1672,7 +1676,7 @@ mod network_page {
         );
         key(&mut manager, Key::Cancel);
         assert!(
-            !manager.state().network.setup.revealed,
+            !manager.state().network.draft.revealed,
             "and leaving the entry puts the stars back"
         );
     }
@@ -1695,8 +1699,8 @@ mod network_page {
         tap_band(&mut manager, 0);
         key(&mut manager, Key::Char(b'2'));
         key(&mut manager, Key::Cancel);
-        assert_eq!(manager.state().network.setup.entry, None);
-        assert_eq!(manager.state().network.setup.selected, None);
+        assert_eq!(manager.state().network.draft.entry, None);
+        assert_eq!(manager.state().network.draft.selected, None);
         assert_eq!(
             handed_over(&mut manager),
             None,
@@ -1859,31 +1863,31 @@ mod network_page {
             phase: LinkPhase::Failed(NetworkError::Driver),
             ..LinkStatus::default()
         };
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(failed)));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(failed)));
         assert_eq!(
-            manager.state().network.setup.phase(LinkPhase::Off),
+            manager.state().network.draft.phase(LinkPhase::Off),
             LinkPhase::Failed(NetworkError::Driver),
             "the round's own phase does not bury the refusal"
         );
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Scanning,
                 ..LinkStatus::default()
             },
         )));
         assert_eq!(
-            manager.state().network.setup.phase(LinkPhase::Scanning),
+            manager.state().network.draft.phase(LinkPhase::Scanning),
             LinkPhase::Failed(NetworkError::Driver),
-            "nor does the survey that follows it"
+            "nor does the scan that follows it"
         );
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 phase: LinkPhase::Connecting,
                 ..LinkStatus::default()
             },
         )));
         assert_eq!(
-            manager.state().network.setup.phase(LinkPhase::Connecting),
+            manager.state().network.draft.phase(LinkPhase::Connecting),
             LinkPhase::Connecting
         );
     }
@@ -1898,16 +1902,16 @@ mod network_page {
             "nothing is on the air yet"
         );
         assert_eq!(
-            manager.state().network.setup.selected.map(|ap| ap.ssid),
+            manager.state().network.draft.selected.map(|ap| ap.ssid),
             Some(Ssid::from_octets(b"neighbour"))
         );
     }
     fn setup_mode(manager: &mut DeviceManager, cancellable: bool) {
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 setup: true,
                 setup_cancellable: cancellable,
-                front: crate::drivers::network::Front::AccessPoint,
+                host: crate::drivers::network::SetupHost::AccessPoint,
                 setup_password: Some(crate::drivers::network::SetupPass::from_array(
                     *b"k3mq9t7w2x",
                 )),
@@ -1928,7 +1932,7 @@ mod network_page {
         tap_strip_left(&mut manager);
         assert_eq!(
             manager.take_setup_cancel(),
-            Some(Front::AccessPoint),
+            Some(SetupHost::AccessPoint),
             "a device that keeps a network has a way back to it"
         );
         assert_eq!(
@@ -1937,29 +1941,29 @@ mod network_page {
             "a command is handed over once, like every other"
         );
         tap_strip(&mut manager);
-        assert_eq!(manager.take_switch_front(), Some(Front::AccessPoint));
+        assert_eq!(manager.take_switch_front(), Some(SetupHost::AccessPoint));
         assert_eq!(manager.take_switch_front(), None);
     }
 
     #[test]
     fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
-        let mut manager = landed(DeviceManager::boot(Setup {
+        let mut manager = landed(DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
             },
             ..Default::default()
         }));
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 browsing: true,
                 ..LinkStatus::default()
             },
         )));
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::SwitchFront));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::SwitchHost));
         assert_eq!(
             manager.take_switch_front(),
-            Some(Front::Panel),
+            Some(SetupHost::Panel),
             "the cell is still the way in"
         );
 
@@ -1967,14 +1971,14 @@ mod network_page {
         let business = translate(&operation, &manager.state());
         assert_ne!(
             business,
-            BusinessIntent::Network(NetworkIntent::SwitchFront),
-            "a hold outside setup mode does not switch the front"
+            ActionIntent::Network(NetworkIntent::SwitchHost),
+            "a hold outside setup mode does not switch the host"
         );
     }
 
     #[test]
     fn a_board_with_no_display_has_no_front_to_switch_to() {
-        let mut manager = DeviceManager::boot(Setup {
+        let mut manager = DeviceManager::boot(Boot {
             backed: Backed {
                 network: true,
                 ..Backed::NONE
@@ -1983,7 +1987,7 @@ mod network_page {
             ..Default::default()
         });
         setup_mode(&mut manager, false);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::SwitchFront));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::SwitchHost));
         assert_eq!(
             manager.take_switch_front(),
             None,
@@ -1995,14 +1999,14 @@ mod network_page {
     fn a_front_switch_that_outlives_setup_mode_is_dropped() {
         let mut manager = on_network_page();
         setup_mode(&mut manager, true);
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus::default(),
         )));
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::SwitchFront));
+        manager.apply_action(ActionIntent::Network(NetworkIntent::SwitchHost));
         assert_eq!(
             manager.take_switch_front(),
             None,
-            "a queued switch cannot ask for another front once the mode is gone"
+            "a queued switch cannot ask for another host once the mode is gone"
         );
     }
 
@@ -2014,18 +2018,18 @@ mod network_page {
         assert_eq!(manager.take_setup_cancel(), None);
         assert_eq!(
             manager.take_switch_front(),
-            Some(Front::AccessPoint),
-            "the strip's one action is the other front end"
+            Some(SetupHost::AccessPoint),
+            "the strip's one action is the other host"
         );
     }
 
     #[test]
     fn the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back() {
         let mut manager = on_network_page();
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 setup: true,
-                front: crate::drivers::network::Front::Panel,
+                host: crate::drivers::network::SetupHost::Panel,
                 ..LinkStatus::default()
             },
         )));
@@ -2036,7 +2040,7 @@ mod network_page {
             "a device with no way back still asks the radio to look around"
         );
         assert!(
-            manager.state().network.setup.rescan_wait,
+            manager.state().network.draft.rescan_wait,
             "and the strip says so"
         );
         assert_eq!(manager.take_switch_front(), None);
@@ -2044,7 +2048,7 @@ mod network_page {
         tap_strip(&mut manager);
         assert_eq!(
             manager.take_switch_front(),
-            Some(Front::Panel),
+            Some(SetupHost::Panel),
             "the right half is the switch"
         );
         assert!(!manager.take_scan_now());
@@ -2056,19 +2060,19 @@ mod network_page {
         setup_mode(&mut manager, true);
         assert!(manager.state().network.link.shows_setup_box());
 
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 setup: true,
-                front: crate::drivers::network::Front::Panel,
+                host: crate::drivers::network::SetupHost::Panel,
                 ..LinkStatus::default()
             },
         )));
         assert!(
             !manager.state().network.link.shows_setup_box(),
-            "the list is what the panel's own front shows"
+            "the list is what the panel's own host shows"
         );
 
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus::default(),
         )));
         setup_mode(&mut manager, true);
@@ -2080,17 +2084,20 @@ mod network_page {
         let mut manager = on_network_page();
         setup_mode(&mut manager, true);
         tap_answer(&mut manager, keyboard::DialogChoice::Keep);
-        assert_eq!(manager.take_setup_open(), Some((Front::AccessPoint, true)));
+        assert_eq!(
+            manager.take_setup_open(),
+            Some((SetupHost::AccessPoint, true))
+        );
         assert_eq!(manager.take_setup_open(), None);
 
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
             LinkStatus {
                 setup: true,
-                front: crate::drivers::network::Front::Panel,
+                host: crate::drivers::network::SetupHost::Panel,
                 ..LinkStatus::default()
             },
         )));
-        manager.apply_business(BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(
+        manager.apply_action(ActionIntent::Network(NetworkIntent::SetOpenAccessPoint(
             true,
         )));
         assert_eq!(manager.take_setup_open(), None);
@@ -2098,7 +2105,7 @@ mod network_page {
 
     #[test]
     fn the_radio_s_three_moments_are_heard() {
-        let mut manager = booted(Setup {
+        let mut manager = booted(Boot {
             backed: Backed {
                 network: true,
                 playback: true,
@@ -2115,7 +2122,7 @@ mod network_page {
             "entering setup mode"
         );
 
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         link_up(&mut manager, b"neighbour");
         assert_eq!(
             manager.playback_state().sound,
@@ -2123,7 +2130,7 @@ mod network_page {
             "the network answered"
         );
 
-        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         link_at(
             &mut manager,
             LinkPhase::Failed(NetworkError::Credentials),

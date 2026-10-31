@@ -4,14 +4,14 @@ use alloc::boxed::Box;
 
 use crate::demand::{DemandKey, Mode};
 use crate::drivers::surface::RgbLight;
-use crate::render::colour::ColourDriver;
-use crate::render::{Activity, LightAppearance, Renderer, Slot, SlotAppearance};
+use crate::render::color::ColorDriver;
+use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 
 pub struct LampRenderer {
     instance: u8,
     light: Box<dyn RgbLight>,
-    slots: [Slot; 2],
-    colour: ColourDriver,
+    consumers: [Consumer; 2],
+    color: ColorDriver,
     appearance: Option<LightAppearance>,
 }
 
@@ -20,8 +20,8 @@ impl LampRenderer {
         Self {
             instance,
             light,
-            slots: [Slot::Surface(instance), Slot::Diagnostics],
-            colour: ColourDriver::new(),
+            consumers: [Consumer::Surface(instance), Consumer::Diagnostics],
+            color: ColorDriver::new(),
             appearance: None,
         }
     }
@@ -31,11 +31,11 @@ impl LampRenderer {
             return;
         };
         // A lamp has no repaint throttle of its own: any colour difference is worth writing.
-        self.colour.show(&mut *self.light, 0, declared, now_ms);
+        self.color.show(&mut *self.light, 0, declared, now_ms);
     }
 
     fn activity(&self) -> Activity {
-        if self.colour.breathing() {
+        if self.color.breathing() {
             Activity::TimeDriven
         } else {
             Activity::Idle
@@ -44,22 +44,22 @@ impl LampRenderer {
 }
 
 impl Renderer for LampRenderer {
-    fn slots(&self) -> &[Slot] {
-        &self.slots
+    fn consumers(&self) -> &[Consumer] {
+        &self.consumers
     }
 
-    fn on_appearance(&mut self, appearance: SlotAppearance, now_ms: u32) -> Activity {
+    fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {
         match appearance {
-            SlotAppearance::Diagnostics(diagnostics) => {
-                self.colour
+            Appearance::Diagnostics(diagnostics) => {
+                self.color
                     .set_display(diagnostics.demand.claim(DemandKey::DISPLAY).mode);
-                if self.colour.display() == Mode::Off {
-                    self.colour.stop();
+                if self.color.display() == Mode::Off {
+                    self.color.stop();
                     return Activity::Idle;
                 }
                 self.activity()
             }
-            SlotAppearance::Surface {
+            Appearance::Surface {
                 instance,
                 appearance,
             } => {
@@ -72,7 +72,7 @@ impl Renderer for LampRenderer {
     }
 
     fn step(&mut self, now_ms: u32) -> Activity {
-        match self.colour.step(&mut *self.light, 0, now_ms) {
+        match self.color.step(&mut *self.light, 0, now_ms) {
             Some(_) => Activity::TimeDriven,
             None => Activity::Idle,
         }
@@ -82,7 +82,7 @@ impl Renderer for LampRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::demand::{Claim, EffectiveDemand, Mode, Sensitivity};
+    use crate::demand::{Claim, EffectiveDemand, Mode, Priority};
     use crate::diagnostics::Diagnostics;
     use crate::paint::Rgb;
     use crate::render::light_appearance;
@@ -118,28 +118,28 @@ mod tests {
         }
     }
 
-    fn display(display: Mode) -> SlotAppearance {
+    fn display(display: Mode) -> Appearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
-            Claim::new(display, 0, Sensitivity::Primary),
+            Claim::new(display, 0, Priority::Primary),
         );
-        SlotAppearance::Diagnostics(Diagnostics {
+        Appearance::Diagnostics(Diagnostics {
             demand,
             page: DisplayPage::Network,
             ..Diagnostics::default()
         })
     }
 
-    fn breathing() -> SlotAppearance {
-        SlotAppearance::Surface {
+    fn breathing() -> Appearance {
+        Appearance::Surface {
             instance: 0,
             appearance: light_appearance(LightState::boot()),
         }
     }
 
-    fn color(color: Rgb) -> SlotAppearance {
-        SlotAppearance::Surface {
+    fn color(color: Rgb) -> Appearance {
+        Appearance::Surface {
             instance: 0,
             appearance: LightAppearance::Color(color),
         }
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn an_off_lamp_writes_black_once() {
         let (mut r, lamp) = renderer();
-        let off = SlotAppearance::Surface {
+        let off = Appearance::Surface {
             instance: 0,
             appearance: LightAppearance::Off,
         };

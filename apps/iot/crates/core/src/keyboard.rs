@@ -276,7 +276,7 @@ pub enum ToolbarCell {
     Right,
 }
 
-/// How many cells the strip has while it is split: the way back, and the front switch.
+/// How many cells the strip has while it is split: the way back, and the host switch.
 pub const TOOLBAR_CELLS: usize = 2;
 
 /// The seam between two cells, taken out of the cells rather than out of the slots, so the

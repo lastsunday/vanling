@@ -46,7 +46,7 @@ weight = 10
 - **iot-ui 是页面层**：`Canvas` 只持有帧缓冲、尺寸与 ground，`Surface` 在它之上借用 `&Diagnostics`、灯位、FPS、调试开关、SPL 偏移与可选的平台栈探针，页面以立即模式绘制。它不认芯片、板卡或传感器；`bsp-esp` 只负责帧缓冲、DMA、面板与相机采样，然后把页面的字节写出去。页面因此在宿主机可测，`iot-ui` 的测试不依赖面板
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
-- **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`FRONT` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
+- **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
 - **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。读数到字形、字模和页面布局已随页面层进入 `iot-ui`；`core` 里留下 `overlay`/`stamp`/`keyboard`，因为页面与 `intent` 两边都要读
@@ -62,13 +62,13 @@ weight = 10
 | `lib.rs` | 组合根：取能力、建 `DeviceManager`、起四个 future |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, speaker, net }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
+| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, net }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
 | `pipeline.rs` | 协调者 `run_loop`：应用意图、发布状态、转发命令、等待下一帧 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
 | `audio/{mod,dispatch,capture,sounds}.rs` | 播放工作者、状态→命令、采集窗口的驱动实现、声音目录 |
-| `net/{mod,link,setup,provision,survey,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `net/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
 
@@ -109,7 +109,7 @@ workers  → ∅
 | ---------- | ---------- | ----------------------------------------------------- | -------------------------------------- |
 | **模式**   | 产不产     | `Mode`：`Off` / `OnChange` / `Continuous`             | 轮询是否发生、是否按时钟产             |
 | **节奏**   | 多频繁     | `Claim::period_ms`（0 = 板级节奏）                    | 轮询周期的下限                         |
-| **敏感度** | 多旧还算对 | `Sensitivity`：`Primary` / `Secondary` / `Background` | 本板无处落地（见下），只参与仲裁与日志 |
+| **优先级** | 谁在问     | `Priority`：`Primary` / `Secondary` / `Background`      | 本板不据此改节奏（见下），只在快照与日志里标明 |
 
 而「怎么取」——寄存器组、FIFO、片上引擎、传输——是采集配置（`MotionConfig` 等），由驱动选定，页面永远不点名。
 
@@ -117,9 +117,9 @@ workers  → ∅
 
 把两者合成一个「档位」序数，等于同时编码「要什么」和「怎么取」。降档既像降保真、又像省资源，而降档并不等于省资源。
 
-`Sensitivity` 在本板改不动任何节奏，这是硬件决定的。Android 的 `max_report_latency` 前提是事件按时钟采集、只在上报前压在 FIFO 里，所以「采得勤、报得晚」是两句独立的话。本板 IMU 没有 FIFO，报得晚只能换成采得稀，而那正是 `period_ms` 已经说出口的话。
+`Priority` 在本板改不动任何节奏，这是硬件决定的。Android 的 `max_report_latency` 前提是事件按时钟采集、只在上报前压在 FIFO 里，所以「采得勤、报得晚」是两句独立的话。本板 IMU 没有 FIFO，报得晚只能换成采得稀，而那正是 `period_ms` 已经说出口的话。
 
-所以「class → 毫秒」那层查表在本板不可兑现：它只会把 `period_ms` 乘一个系数再取 max。
+所以「priority → 毫秒」那层查表在本板不可兑现：它只会把 `period_ms` 乘一个系数再取 max。
 
 Android 那一侧给的两条形状照抄过来：
 
@@ -163,13 +163,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ### 更改：复用现有 intent 管道
 
-`apply_business` 已经是唯一改状态的入口；手势改页只有 `BusinessIntent::NextPage`，`SplashOver` 只在启动页结束时落到 build 的页。
+`apply_action` 已经是唯一改状态的入口；手势改页只有 `ActionIntent::NextPage`，`SplashOver` 只在启动页结束时落到 build 的页。
 
-新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
+新增场景 = 新增一个 `ActionIntent` 变体；运行期换节奏 = 再一个变体。`apply_action` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
-需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`BusinessIntent` 按域分组为 `Page`/`Network`/`Audio`/`Playback`/`Light`，`apply_business` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
+需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Network`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Setup`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
+`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
 
 ### 传输：协调者与工作者
 
@@ -191,12 +191,12 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 - **级别**走 `PageWatch`（`Net.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。
 - **最新值**走 `Latest`/窗口（`Net.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
 
-`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。协调者直接转发 `DeviceManager::take_command()`，不再逐个变体翻译；setup 类命令带上发出时的 `Front`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。协调者直接转发 `DeviceManager::take_command()`，不再逐个变体翻译；setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 
 ```
-DeviceState.page → light_diagnostics() → SlotAppearance::Diagnostics
+DeviceState.page → light_diagnostics() → Appearance::Diagnostics
   → RenderController::reconcile → ScreenRenderer::on_appearance
   → Screen::consume → camera.pause() / released()
 ```
@@ -363,9 +363,9 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面循环按次序表走一圈
 
-`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Setup::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
+`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Boot::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
 
-能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Setup` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `network` 是一个传进来的 `bool`，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
+能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `network` 是一个传进来的 `bool`，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 
 这条规约是修一个缺陷写下来的。
 
@@ -384,7 +384,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 ## 新增板
 
 1. `bsp-esp/` 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 `components/` 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配
-2. `app/src/main.rs` 加该板的 `FRONT` 常量（芯片内存不同再加 `HEAP_BYTES`）；feed 落点已按芯片分好
+2. `app/src/main.rs` 加该板的 `SETUP_HOST` 常量（芯片内存不同再加 `HEAP_BYTES`）；feed 落点已按芯片分好
 3. app feature 透传 `iot-bsp-esp/<board>`
 4. `reusable-iot-build.yml` 的 `platforms` 默认 JSON 与 `iot-dev-release.yml` 的 `platforms` 输入里加该板（xtensa 板需标 `use-xtensa-toolchain: true`，经 `build-s3` 任务构建：CI/发布用 espup 原生 `esp` 1.98.1.0 工具链，macOS Intel 本地用同版本 Docker 镜像）
 5. 验证：`cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`

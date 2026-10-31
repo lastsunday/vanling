@@ -18,9 +18,9 @@ pub fn start_rtos(timer: impl esp_rtos::TimerSource, int0: FROM_CPU_INTR0<'stati
     esp_rtos::start(timer, int0);
 }
 
-pub struct Table;
+pub struct Speeds;
 
-impl SpeedTable for Table {
+impl SpeedTable for Speeds {
     fn speed_for(_field: DemandKind) -> Speed {
         Speed::Fast
     }

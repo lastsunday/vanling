@@ -12,17 +12,17 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
 use iot_core::drivers::credentials::{FlashRegion, Store};
-use iot_core::drivers::network::{ApList, Front, LinkStatus, Ssid, Station};
-use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
+use iot_core::drivers::network::{ApList, LinkStatus, SetupHost, Station};
+use iot_core::intent::{ActionIntent, Intent, NetworkIntent};
 
 use crate::input::IntentBus;
 use crate::workers::Net;
 
 mod link;
 mod provision;
+mod scan;
 mod setup;
 mod store;
-mod survey;
 
 const SOCKETS: usize = 1;
 
@@ -49,7 +49,7 @@ fn heap_free() -> usize {
 pub async fn serve<S, R>(
     station: Option<Box<S>>,
     saved: Option<Box<Store<R>>>,
-    front: Front,
+    host: SetupHost,
     has_pages: bool,
     net: Net,
     bus: &'static IntentBus,
@@ -69,11 +69,11 @@ where
         .expect("the station hands its interface over on the first ask");
     let octets = hardware_octets(&device);
     let seed = seed_from(octets);
-    let setup_name = setup_ssid(octets);
+    let setup_name = iot_core::provision::setup_ap_ssid(octets);
     MAC.lock(|cell| cell.set(octets));
-    let _ = bus.try_send(Intent::Business(BusinessIntent::Network(
-        NetworkIntent::Mac(octets),
-    )));
+    let _ = bus.try_send(Intent::Action(ActionIntent::Network(NetworkIntent::Mac(
+        octets,
+    ))));
     publish(bus, station.status(), store::has_saved(&saved));
     let resources = Box::leak(Box::new(StackResources::<SOCKETS>::new()));
     let setup_resources = Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new()));
@@ -89,7 +89,7 @@ where
             saved,
             &setup_name,
             &mut *setup_resources,
-            front,
+            host,
             link::Panel {
                 net,
                 bus,
@@ -105,10 +105,6 @@ fn hardware_octets<D: Driver>(device: &D) -> [u8; 6] {
         HardwareAddress::Ethernet(octets) => octets,
         _ => [0; 6],
     }
-}
-
-fn setup_ssid(octets: [u8; 6]) -> Ssid {
-    iot_core::provision::ap_name(octets)
 }
 
 /// The link the panel was last told about.
@@ -135,7 +131,7 @@ impl LinkWatch {
             return;
         }
         if bus
-            .try_send(Intent::Business(BusinessIntent::Network(
+            .try_send(Intent::Action(ActionIntent::Network(
                 NetworkIntent::LinkReport(status),
             )))
             .is_ok()

@@ -10,7 +10,7 @@ use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use crate::drivers::network::{ApList, LinkStatus};
 use crate::drivers::playback::Sound;
 use crate::state::MAX_LIGHTS;
-use crate::state::{AudioPhase, DisplayPage, NetworkSetup, PlaybackPhase};
+use crate::state::{AudioPhase, DisplayPage, NetworkDraft, PlaybackPhase};
 
 /// Breathing mode's full dimension set carried by a light snapshot so the panel can print
 /// every parameter the mode exposes; all zero outside breathing so the overlay's fixed rows
@@ -108,7 +108,7 @@ pub struct Diagnostics {
     pub aps: Option<ApList>,
     /// What the Network page is in the middle of taking: the row a passphrase is being
     /// typed for, the draft, and the last refusal.
-    pub setup: NetworkSetup,
+    pub draft: NetworkDraft,
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,

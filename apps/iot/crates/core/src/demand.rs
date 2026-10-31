@@ -42,9 +42,10 @@ impl Mode {
 /// preview.
 pub const CAMERA_THUMBNAIL_PERIOD_MS: u32 = 200;
 
-/// How wrong a stale reading may be before it matters.
+/// How much one claim matters: the page someone is looking at first, the light behind it
+/// next, and a plane nobody is watching last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Sensitivity {
+pub enum Priority {
     Primary,
     Secondary,
     Background,
@@ -55,15 +56,15 @@ pub struct Claim {
     pub mode: Mode,
     /// The requested cadence in milliseconds; `0` means the board's own rate.
     pub period_ms: u32,
-    pub class: Sensitivity,
+    pub priority: Priority,
 }
 
 impl Claim {
-    pub const fn new(mode: Mode, period_ms: u32, class: Sensitivity) -> Self {
+    pub const fn new(mode: Mode, period_ms: u32, priority: Priority) -> Self {
         Self {
             mode,
             period_ms,
-            class,
+            priority,
         }
     }
 
@@ -71,18 +72,18 @@ impl Claim {
         Self {
             mode: Mode::Off,
             period_ms: 0,
-            class: Sensitivity::Background,
+            priority: Priority::Background,
         }
     }
 
-    /// Narrow this claim to a mode and period, keeping the class: the class is a property
+    /// Narrow this claim to a mode and period, keeping the priority: the priority is a property
     /// of the claim rather than of the spelling, so an override changes what is asked and
     /// not who is asking.
     pub const fn with(self, mode: Mode, period_ms: u32) -> Self {
         Self {
             mode,
             period_ms,
-            class: self.class,
+            priority: self.priority,
         }
     }
 }
@@ -149,7 +150,7 @@ impl Default for EffectiveDemand {
         let mut claims = BTreeMap::new();
         claims.insert(
             DemandKey::DISPLAY,
-            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
+            Claim::new(Mode::Continuous, 0, Priority::Primary),
         );
         Self {
             claims,
@@ -167,9 +168,13 @@ impl Default for Claim {
 impl core::fmt::Display for Claim {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.period_ms == 0 {
-            write!(f, "{:?}@{:?}", self.mode, self.class)
+            write!(f, "{:?}@{:?}", self.mode, self.priority)
         } else {
-            write!(f, "{:?}/{}ms@{:?}", self.mode, self.period_ms, self.class)
+            write!(
+                f,
+                "{:?}/{}ms@{:?}",
+                self.mode, self.period_ms, self.priority
+            )
         }
     }
 }
@@ -230,7 +235,7 @@ impl Override {
         self.named.insert(key, (mode, period_ms));
     }
 
-    /// Applies the modes this override names, in place, keeping each claim's class.
+    /// Applies the modes this override names, in place, keeping each claim's priority.
     pub fn apply(self, demand: &mut EffectiveDemand) {
         demand.speed = self.speed;
         for (key, (mode, period_ms)) in self.named {
@@ -429,24 +434,19 @@ pub fn poll_plan_of(key: DemandKey, demand: &EffectiveDemand, board_cadence_ms: 
     }
 }
 
-/// How far the controller is allowed to stop asking.
-pub struct InputLimiter;
-
-impl InputLimiter {
-    /// The schedule for one source: the demand's floor, the board's own, and the rate past
-    /// which this particular source would stop working.
-    pub fn plan(
-        key: DemandKey,
-        demand: &EffectiveDemand,
-        board_cadence_ms: u64,
-        accepts_slower_poll: bool,
-    ) -> PollPlan {
-        let mut plan = poll_plan_of(key, demand, board_cadence_ms);
-        if plan.cadence_ms > board_cadence_ms && !accepts_slower_poll {
-            plan.cadence_ms = board_cadence_ms;
-        }
-        plan
+/// The schedule for one source: the demand's floor, the board's own, and the rate past which
+/// this particular source would stop working.
+pub fn plan_poll(
+    key: DemandKey,
+    demand: &EffectiveDemand,
+    board_cadence_ms: u64,
+    accepts_slower_poll: bool,
+) -> PollPlan {
+    let mut plan = poll_plan_of(key, demand, board_cadence_ms);
+    if plan.cadence_ms > board_cadence_ms && !accepts_slower_poll {
+        plan.cadence_ms = board_cadence_ms;
     }
+    plan
 }
 
 /// The one executor number worth bounding, and why it is not a percentage.
@@ -477,7 +477,7 @@ impl EffectiveDemand {
 
     pub fn claim(&self, key: DemandKey) -> Claim {
         if key.kind() == DemandKind::Interaction {
-            return Claim::new(Mode::Continuous, 0, Sensitivity::Primary);
+            return Claim::new(Mode::Continuous, 0, Priority::Primary);
         }
         self.claims.get(&key).copied().unwrap_or_default()
     }
@@ -558,11 +558,11 @@ mod tests {
             let mut demand = EffectiveDemand::none();
             demand.set(
                 DemandKey::MOTION,
-                Claim::new(Mode::Continuous, 0, Sensitivity::Secondary),
+                Claim::new(Mode::Continuous, 0, Priority::Secondary),
             );
             demand.set(
                 DemandKey::AUDIO,
-                Claim::new(Mode::Continuous, 0, Sensitivity::Secondary),
+                Claim::new(Mode::Continuous, 0, Priority::Secondary),
             );
             demand
         }
@@ -614,7 +614,7 @@ mod tests {
         let mut demand = live_claims();
         demand.set(
             DemandKey::AUDIO,
-            Claim::new(Mode::Continuous, 500, Sensitivity::Secondary),
+            Claim::new(Mode::Continuous, 500, Priority::Secondary),
         );
         let plan = poll_plan_of(DemandKey::AUDIO, &demand, 20);
         assert_eq!(plan.cadence_ms, 500, "a slow request must not be sped up");
@@ -625,16 +625,16 @@ mod tests {
         let mut demand = live_claims();
         demand.set(
             DemandKey::AUDIO,
-            Claim::new(Mode::Continuous, 2_000, Sensitivity::Secondary),
+            Claim::new(Mode::Continuous, 2_000, Priority::Secondary),
         );
 
         assert_eq!(
-            InputLimiter::plan(DemandKey::AUDIO, &demand, 20, false).cadence_ms,
+            plan_poll(DemandKey::AUDIO, &demand, 20, false).cadence_ms,
             20,
             "a source whose clock dies when polled slower keeps the board's own cadence"
         );
         assert_eq!(
-            InputLimiter::plan(DemandKey::AUDIO, &demand, 20, true).cadence_ms,
+            plan_poll(DemandKey::AUDIO, &demand, 20, true).cadence_ms,
             2_000,
             "one that only goes stale takes the stretch the demand asked for"
         );
@@ -643,7 +643,7 @@ mod tests {
     #[test]
     fn the_interaction_path_takes_no_plan_at_all_even_from_a_source_that_cannot_go_slower() {
         let off = EffectiveDemand::none();
-        let plan = InputLimiter::plan(DemandKey::INTERACTION, &off, 10, false);
+        let plan = plan_poll(DemandKey::INTERACTION, &off, 10, false);
         assert!(
             plan.active,
             "a stale button reading is a device that cannot be steered off its page"
@@ -656,11 +656,11 @@ mod tests {
         let mut demand = live_claims();
         demand.set(
             DemandKey::MOTION,
-            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
+            Claim::new(Mode::Continuous, 0, Priority::Primary),
         );
         demand.set(
             DemandKey::AUDIO,
-            Claim::new(Mode::Continuous, 0, Sensitivity::Background),
+            Claim::new(Mode::Continuous, 0, Priority::Background),
         );
 
         let eager = poll_plan_of(DemandKey::MOTION, &demand, 20);
@@ -674,7 +674,7 @@ mod tests {
         let mut demand = EffectiveDemand::none();
         demand.set(
             DemandKey::MOTION,
-            Claim::new(Mode::OnChange, 0, Sensitivity::Secondary),
+            Claim::new(Mode::OnChange, 0, Priority::Secondary),
         );
         demand.set(DemandKey::AUDIO, Claim::off());
         demand.set(
@@ -682,12 +682,12 @@ mod tests {
             Claim::new(
                 Mode::Continuous,
                 CAMERA_THUMBNAIL_PERIOD_MS,
-                Sensitivity::Primary,
+                Priority::Primary,
             ),
         );
         demand.set(
             DemandKey::DISPLAY,
-            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
+            Claim::new(Mode::Continuous, 0, Priority::Primary),
         );
 
         assert_eq!(
@@ -711,8 +711,8 @@ mod tests {
         assert_eq!(demand.claim(DemandKey::AUDIO).mode, Mode::Off);
         assert_eq!(demand.claim(DemandKey::MOTION), before);
         assert_eq!(
-            demand.claim(DemandKey::AUDIO).class,
-            Sensitivity::Secondary,
+            demand.claim(DemandKey::AUDIO).priority,
+            Priority::Secondary,
             "narrowing a mode must not re-price the device under another budget"
         );
     }
@@ -792,11 +792,11 @@ mod tests {
         let mut demand = EffectiveDemand::none();
         demand.set(
             DemandKey::AUDIO,
-            Claim::new(Mode::Continuous, 500, Sensitivity::Secondary),
+            Claim::new(Mode::Continuous, 500, Priority::Secondary),
         );
         demand.set(
             DemandKey::DISPLAY,
-            Claim::new(Mode::Continuous, 0, Sensitivity::Primary),
+            Claim::new(Mode::Continuous, 0, Priority::Primary),
         );
 
         let mut override_ = Override::none();

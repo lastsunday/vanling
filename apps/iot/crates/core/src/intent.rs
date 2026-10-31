@@ -10,7 +10,7 @@ pub use crate::page::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OperationIntent {
+pub struct InputIntent {
     /// Wiring-order source that raised the event.
     pub source: u8,
     /// The raw/folded input signal, verbatim from the driver.
@@ -19,9 +19,9 @@ pub struct OperationIntent {
 
 /// What the device is asked to do, grouped by the domain that owns the answer. The manager
 /// routes one arm per domain; each domain matches its own group exhaustively, so a new
-/// variant cannot be left unanswered and the manager never learns a domain's operations.
+/// variant cannot be left unanswered and the manager never learns a domain's actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BusinessIntent {
+pub enum ActionIntent {
     /// Nothing the panel asked for survived translation.
     Invalid,
     Page(PageIntent),
@@ -52,7 +52,7 @@ pub enum NetworkIntent {
     Leave,
     Answer(Confirm),
     CloseSetup,
-    SwitchFront,
+    SwitchHost,
     ScanNow,
     SetOpenAccessPoint(bool),
     Dismiss,
@@ -84,22 +84,22 @@ pub enum PlaybackAction {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
-    Operation(OperationIntent),
-    Business(BusinessIntent),
+    Input(InputIntent),
+    Action(ActionIntent),
 }
 
 /// Stateless recognition: fold a raw input event plus its wiring-order source into an
-/// operation intent.
-pub fn recognize(event: InputEvent, source: u8) -> OperationIntent {
-    OperationIntent { source, event }
+/// input intent.
+pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
+    InputIntent { source, event }
 }
 
-pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
+pub fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     if current.page != DisplayPage::Splash
         && current.network.link.setup
         && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress))
     {
-        return BusinessIntent::Network(NetworkIntent::SwitchFront);
+        return ActionIntent::Network(NetworkIntent::SwitchHost);
     }
     page::translate(current.page, op, current)
 }
@@ -156,7 +156,7 @@ mod tests {
         };
         assert_eq!(
             translate(&op(long_press()), &setup),
-            BusinessIntent::Network(NetworkIntent::SwitchFront)
+            ActionIntent::Network(NetworkIntent::SwitchHost)
         );
     }
 }

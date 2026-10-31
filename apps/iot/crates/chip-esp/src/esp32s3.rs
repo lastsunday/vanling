@@ -136,9 +136,9 @@ fn reads_back(window: Window) -> bool {
     })
 }
 
-pub struct Table;
+pub struct Speeds;
 
-impl SpeedTable for Table {
+impl SpeedTable for Speeds {
     fn speed_for(kind: DemandKind) -> Speed {
         match kind {
             DemandKind::Interaction | DemandKind::Motion => Speed::Slow,

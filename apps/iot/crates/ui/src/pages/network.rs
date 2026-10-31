@@ -9,7 +9,7 @@ use iot_core::overlay::{
     Block, FONT_H, GLYPH_PITCH, PANEL_COLUMNS, ROW_PITCH, block_x, overlay_row_top,
 };
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
-use iot_core::state::{Entry, NetworkSetup};
+use iot_core::state::{Entry, NetworkDraft};
 
 use crate::layout::*;
 use crate::pages::draw::{
@@ -17,15 +17,15 @@ use crate::pages::draw::{
 };
 use crate::surface::Surface;
 use crate::text::{
-    NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
+    NETWORK_NAME_GLYPHS, SETUP_NOTICE_TITLE, body, format_address, format_bars,
     format_joining_title, format_network_name, format_phase, format_question, format_setup_name,
-    format_setup_notice_body, format_setup_notice_title, format_setup_pass,
+    format_setup_notice_body, format_setup_pass, joining_body,
 };
 
 impl Surface<'_> {
     pub(crate) fn stamp_header(
         &mut self,
-        setup: NetworkSetup,
+        draft: NetworkDraft,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
@@ -34,7 +34,7 @@ impl Surface<'_> {
         self.stamp_text(b"NETWORK", block_x(Block::First), overlay_row_top(0));
         if let Some(rows) = list_len {
             self.stamp_text(
-                format_window(setup.list_top, rows, &mut [0u8; 12]),
+                format_window(draft.list_top, rows, &mut [0u8; 12]),
                 block_x(Block::First) + (LIST_TITLE_GLYPHS + 1) * GLYPH_PITCH,
                 overlay_row_top(0),
             );
@@ -65,7 +65,7 @@ impl Surface<'_> {
         let word: &[u8] = if link.setup {
             b"SETUP"
         } else {
-            format_phase(setup.phase(link.phase), &mut phase_buf)
+            format_phase(draft.phase(link.phase), &mut phase_buf)
         };
         text[3..3 + word.len()].copy_from_slice(word);
         self.stamp_text(&text[..3 + word.len()], HEADER_PHASE_X, overlay_row_top(1));
@@ -78,13 +78,13 @@ impl Surface<'_> {
                 overlay_row_top(1),
             );
         }
-        if setup.keyboard {
-            let Some(entry) = setup.entry else {
+        if draft.keyboard {
+            let Some(entry) = draft.entry else {
                 return;
             };
             self.stamp_left(
                 b"PSK",
-                format_psk(&entry, setup.revealed, &mut [0u8; PSK_MASK_GLYPHS]),
+                format_psk(&entry, draft.revealed, &mut [0u8; PSK_MASK_GLYPHS]),
                 Block::First,
                 2,
             );
@@ -125,13 +125,13 @@ impl Surface<'_> {
 
     pub(crate) fn stamp_content(
         &mut self,
-        setup: NetworkSetup,
+        draft: NetworkDraft,
         link: LinkStatus,
         aps: Option<ApList>,
     ) {
-        if setup.keyboard {
-            if let Some(entry) = setup.entry {
-                self.stamp_keyboard(entry, setup.revealed);
+        if draft.keyboard {
+            if let Some(entry) = draft.entry {
+                self.stamp_keyboard(entry, draft.revealed);
             }
             return;
         }
@@ -140,14 +140,14 @@ impl Surface<'_> {
             Some(list) if list.is_empty() => self.stamp_band(b"NO NETWORKS"),
             Some(list) => {
                 for band in 0..LIST_ROWS {
-                    let index = usize::from(setup.list_top) + band;
+                    let index = usize::from(draft.list_top) + band;
                     let Some(ap) = list.get(index) else {
                         break;
                     };
-                    let marked = setup
+                    let marked = draft
                         .confirm
                         .and_then(|confirm| confirm.network(link))
-                        .or(setup.selected);
+                        .or(draft.selected);
                     if marked.is_some_and(|marked| marked.is_same_network(&ap)) {
                         self.stamp_band_fill(band);
                     }
@@ -185,8 +185,8 @@ impl Surface<'_> {
         self.stamp_line(right, y, right, bottom);
     }
 
-    pub(crate) fn stamp_strip(&mut self, setup: NetworkSetup, link: LinkStatus) {
-        let strip = controls::strip(setup, link);
+    pub(crate) fn stamp_strip(&mut self, draft: NetworkDraft, link: LinkStatus) {
+        let strip = controls::strip(draft, link);
         if strip.is_split() {
             self.stamp_cell(
                 keyboard::toolbar_cell(keyboard::ToolbarCell::Left),
@@ -215,13 +215,13 @@ impl Surface<'_> {
 
     pub(crate) fn stamp_box(
         &mut self,
-        setup: NetworkSetup,
+        draft: NetworkDraft,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
     ) {
-        if setup.confirm.is_some() {
-            self.stamp_confirm(setup, link);
+        if draft.confirm.is_some() {
+            self.stamp_confirm(draft, link);
         } else if link.shows_setup_box() {
             self.stamp_notice(link, mac);
         } else {
@@ -237,7 +237,7 @@ impl Surface<'_> {
             h: DIALOG_H,
         });
         let title_left = DIALOG_X + DIALOG_INSET;
-        self.stamp_text(format_setup_notice_title(), title_left, DIALOG_TITLE_TOP);
+        self.stamp_text(SETUP_NOTICE_TITLE, title_left, DIALOG_TITLE_TOP);
         let mut body = [0u8; SSID_BYTES];
         self.stamp_text(
             format_setup_notice_body(mac, &mut body),
@@ -279,11 +279,11 @@ impl Surface<'_> {
             title_left,
             DIALOG_TITLE_TOP,
         );
-        self.stamp_text(format_joining_body(shown_ap), title_left, DIALOG_BODY_TOP);
+        self.stamp_text(joining_body(shown_ap), title_left, DIALOG_BODY_TOP);
     }
 
-    fn stamp_confirm(&mut self, setup: NetworkSetup, link: LinkStatus) {
-        let Some(confirm) = setup.confirm else {
+    fn stamp_confirm(&mut self, draft: NetworkDraft, link: LinkStatus) {
+        let Some(confirm) = draft.confirm else {
             return;
         };
         self.fill(ControlRect {
@@ -296,7 +296,7 @@ impl Surface<'_> {
         let title = format_question(confirm, link, &mut question);
         let title_left = DIALOG_X + DIALOG_INSET;
         self.stamp_text(title, title_left, DIALOG_TITLE_TOP);
-        self.stamp_text(format_body(confirm), title_left, DIALOG_BODY_TOP);
+        self.stamp_text(body(confirm), title_left, DIALOG_BODY_TOP);
         let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
         let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
         for (rect, label) in [

@@ -21,7 +21,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use iot_core::demand::EffectiveDemand;
-use iot_core::drivers::audio::AudioSample;
+use iot_core::drivers::audio::{AudioSample, CaptureSink};
 use iot_core::drivers::network::ApList;
 use iot_core::state::{DisplayPage, NetworkCommand, PlaybackCommand};
 
@@ -56,21 +56,27 @@ impl CaptureWindow {
     }
 }
 
-pub(crate) static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());
-
-pub type SpeakerCommands = Channel<CriticalSectionRawMutex, PlaybackCommand, 4>;
-
-static SPEAKER_COMMANDS: SpeakerCommands = SpeakerCommands::new();
-
-/// The coordinator's handle on the speaker worker: commands go out, and a sound's completion
-/// comes back as an intent, so there is no `from` side here.
-#[derive(Clone, Copy)]
-pub struct Speaker {
-    pub to: &'static SpeakerCommands,
+impl CaptureSink for CaptureWindow {
+    fn publish(&self, sample: AudioSample) {
+        self.push(sample);
+    }
 }
 
-pub(crate) const SPEAKER: Speaker = Speaker {
-    to: &SPEAKER_COMMANDS,
+pub(crate) static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());
+
+pub type PlaybackQueue = Channel<CriticalSectionRawMutex, PlaybackCommand, 4>;
+
+static PLAYBACK_QUEUE: PlaybackQueue = PlaybackQueue::new();
+
+/// The coordinator's handle on the playback worker: commands go out, and a sound's completion
+/// comes back as an intent, so there is no `from` side here.
+#[derive(Clone, Copy)]
+pub struct Playback {
+    pub to: &'static PlaybackQueue,
+}
+
+pub(crate) static PLAYBACK: Playback = Playback {
+    to: &PLAYBACK_QUEUE,
 };
 
 /// How many commands may wait for the network worker. The coordinator keeps the one that
@@ -99,7 +105,7 @@ static PAGE: PageWatch = PageWatch::new();
 
 static SCAN: Latest<ApList> = Latest::new();
 
-pub const NET: Net = Net {
+pub static NET: Net = Net {
     commands: &NET_COMMANDS,
     page: &PAGE,
     scan: &SCAN,
@@ -151,7 +157,7 @@ impl<T: Copy + Send> Latest<T> {
         self.arrived.wait()
     }
 
-    /// By reference: the whole list would otherwise be copied into the survey future's frame.
+    /// By reference: the whole list would otherwise be copied into the scan future's frame.
     pub fn publish(&self, value: &T) {
         self.value.signal(*value);
         self.arrived.signal(());
@@ -252,7 +258,7 @@ impl PageWatch {
 #[derive(Clone, Copy)]
 pub struct Workers<'a> {
     pub input: Input<'a>,
-    pub speaker: Speaker,
+    pub playback: Playback,
     pub net: Net,
 }
 
@@ -260,7 +266,7 @@ pub struct Workers<'a> {
 mod tests {
     use super::*;
     use core::task::{Context, Waker};
-    use iot_core::drivers::network::{AccessPoint, Front, JoinRequest, Ssid};
+    use iot_core::drivers::network::{AccessPoint, JoinRequest, SetupHost, Ssid};
 
     fn cx() -> Context<'static> {
         Context::from_waker(Waker::noop())
@@ -284,7 +290,7 @@ mod tests {
         assert!(
             commands
                 .try_send(NetworkCommand::LeaveSetup {
-                    from: Front::AccessPoint
+                    from: SetupHost::AccessPoint
                 })
                 .is_ok()
         );

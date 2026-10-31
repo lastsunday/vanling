@@ -133,13 +133,8 @@ pub fn format_network_name(ap: AccessPoint, glyphs: usize, buf: &mut [u8; SSID_B
     &buf[..glyphs]
 }
 
-/// The verb a confirmation's question and its action share: what the page would do.
-pub fn format_verb(confirm: Confirm) -> &'static [u8] {
-    iot_core::controls::confirm_verb(confirm)
-}
-
 /// The consequence under the question: what the action costs, in the box's own width.
-pub fn format_body(confirm: Confirm) -> &'static [u8] {
+pub fn body(confirm: Confirm) -> &'static [u8] {
     match confirm {
         Confirm::Leave => LEAVE_BODY,
         Confirm::Forget(_) => FORGET_BODY,
@@ -152,13 +147,9 @@ const FORGET_BODY: &[u8] = b"THE SAVED KEY IS ERASED";
 const ASSOCIATING_BODY: &[u8] = b"WAIT FOR THE NETWORK";
 const ASSOCIATED_BODY: &[u8] = b"WAIT FOR AN ADDRESS";
 
-const SETUP_NOTICE_TITLE: &[u8] = b"SETUP MODE";
+/// The announcement's title: the same line every time, so it is the line itself.
+pub const SETUP_NOTICE_TITLE: &[u8] = b"SETUP MODE";
 const SETUP_NOTICE_PREFIX: &[u8] = b"AP ";
-
-/// The announcement's title, which is the same line every time.
-pub fn format_setup_notice_title() -> &'static [u8] {
-    SETUP_NOTICE_TITLE
-}
 
 /// The setup access point's own name, derived from the board's address here rather than
 /// carried in the state: the network task derives it the same way, and two copies of one
@@ -167,7 +158,7 @@ pub fn format_setup_name(mac: Option<[u8; 6]>, buf: &mut [u8; SSID_BYTES]) -> &[
     let Some(mac) = mac else {
         return b"";
     };
-    let name = iot_core::provision::ap_name(mac);
+    let name = iot_core::provision::setup_ap_ssid(mac);
     let Some(text) = name.as_display_text() else {
         return b"";
     };
@@ -247,7 +238,7 @@ const _: () = assert!(
 
 /// The question itself: the verb, and the network it is about in quotes.
 pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
-    let verb = format_verb(confirm);
+    let verb = iot_core::controls::confirm_verb(confirm);
     buf[..verb.len()].copy_from_slice(verb);
     let mut n = verb.len();
     let Some(ap) = confirm.network(link) else {
@@ -288,7 +279,7 @@ pub fn format_joining_title(ap: Option<AccessPoint>, buf: &mut [u8; DIALOG_GLYPH
 
 /// What the join box says under the word: which of the two things the attempt is waiting
 /// on.
-pub fn format_joining_body(ap: Option<AccessPoint>) -> &'static [u8] {
+pub fn joining_body(ap: Option<AccessPoint>) -> &'static [u8] {
     if ap.is_some() {
         ASSOCIATED_BODY
     } else {
@@ -350,13 +341,14 @@ pub const fn sound_label(sound: iot_core::drivers::playback::Sound) -> &'static 
 #[cfg(test)]
 mod tests {
     use super::{
-        NETWORK_NAME_GLYPHS, format_address, format_bars, format_body, format_joining_body,
+        NETWORK_NAME_GLYPHS, SETUP_NOTICE_TITLE, body, format_address, format_bars,
         format_joining_title, format_network_name, format_pair, format_phase, format_question,
-        format_setup_notice_body, format_setup_notice_title, format_setup_pass, format_u32,
-        format_verb, frame_fingerprint, sound_label, write_ratio, write_u64,
+        format_setup_notice_body, format_setup_pass, format_u32, frame_fingerprint, joining_body,
+        sound_label, write_ratio, write_u64,
     };
     use alloc::vec;
     use alloc::vec::Vec;
+    use iot_core::controls::confirm_verb;
     use iot_core::drivers::network::{
         AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass, Ssid,
     };
@@ -369,7 +361,7 @@ mod tests {
     fn a_sound_name_fits_its_block() {
         let value_x = block_value_x(Block::First);
         let next_block = block_x(Block::Second);
-        for sound in Sound::ALL {
+        for sound in Sound::CYCLE {
             let label = sound_label(sound);
             let end = level_value_end(value_x, label.len());
             assert!(
@@ -536,7 +528,7 @@ mod tests {
     #[test]
     fn the_setup_announcement_names_the_access_point_this_board_raises() {
         let mut buf = [0u8; SSID_BYTES];
-        assert_eq!(format_setup_notice_title(), b"SETUP MODE");
+        assert_eq!(SETUP_NOTICE_TITLE, b"SETUP MODE");
         assert_eq!(
             format_setup_notice_body(Some([0x24, 0x6f, 0x28, 0x1a, 0x2f, 0xc8]), &mut buf),
             b"AP vanling-2fc8"
@@ -566,12 +558,12 @@ mod tests {
         let mut buf = [0u8; DIALOG_GLYPHS];
         let named = ap(b"neighbour", [1, 2, 3, 4, 5, 6]);
         assert_eq!(format_joining_title(None, &mut buf), b"JOINING");
-        assert_eq!(format_joining_body(None), b"WAIT FOR THE NETWORK");
+        assert_eq!(joining_body(None), b"WAIT FOR THE NETWORK");
         assert_eq!(
             format_joining_title(Some(named), &mut buf),
             b"JOINED neighbour"
         );
-        assert_eq!(format_joining_body(Some(named)), b"WAIT FOR AN ADDRESS");
+        assert_eq!(joining_body(Some(named)), b"WAIT FOR AN ADDRESS");
 
         let long = ap(b"neighbour-extension-2.4GHz", [1, 2, 3, 4, 5, 6]);
         let drawn = format_joining_title(Some(long), &mut buf);
@@ -589,7 +581,7 @@ mod tests {
                 "the title is wider than the box's own line: {ap:?}"
             );
             assert!(
-                format_joining_body(ap).len() <= DIALOG_GLYPHS,
+                joining_body(ap).len() <= DIALOG_GLYPHS,
                 "what the radio is waiting on is wider than the box's own line"
             );
         }
@@ -599,7 +591,7 @@ mod tests {
     fn the_boxes_words_are_the_verbs_own_and_fit_the_box() {
         let cafe = ap(b"cafe", [1, 2, 3, 4, 5, 6]);
         for confirm in [Confirm::Leave, Confirm::Forget(cafe)] {
-            let verb = format_verb(confirm);
+            let verb = confirm_verb(confirm);
             let mut buf = [0u8; DIALOG_GLYPHS];
             let question = format_question(confirm, LinkStatus::default(), &mut buf);
             assert!(
@@ -611,7 +603,7 @@ mod tests {
                 "the word of the action does not fit the button that performs it"
             );
             assert!(
-                format_body(confirm).len() <= DIALOG_GLYPHS,
+                body(confirm).len() <= DIALOG_GLYPHS,
                 "the consequence does not fit the line under the question"
             );
         }

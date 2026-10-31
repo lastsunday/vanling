@@ -11,7 +11,7 @@ use crate::components::credentials::CredentialStore;
 use iot_core::drivers::board::{Board as BoardTrait, HasWifi};
 use iot_core::drivers::input::PollEntry;
 use iot_core::drivers::motion::MotionCapabilities;
-use iot_core::drivers::network::Front;
+use iot_core::drivers::network::SetupHost;
 use iot_core::drivers::playback::UnwiredSpeaker;
 use iot_core::drivers::surface::WiredSurface;
 use smart_leds::RGB8;
@@ -21,7 +21,7 @@ pub use crate::components::ws2812::{RMT_FREQ_HZ, Ws2812RgbLed};
 
 const LEDS: usize = 1;
 
-pub const FRONT: Front = Front::AccessPoint;
+pub const SETUP_HOST: SetupHost = SetupHost::AccessPoint;
 
 /// Board-level support for the ESP32-C6-DevKitC-1.
 pub struct Board<'d> {
