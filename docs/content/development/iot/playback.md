@@ -24,7 +24,7 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 驱动由 `Box<dyn Speaker>` 共享，因此 `play()` 与 `feed()` 不会互相踩坏对方正在写的环。这正是 `Speaker` 要求 `Send + 'static`、且错误类型是具名的 `SpeakerFault` 而不是各实现自定义的原因（trait object 没法写下一个未具名的关联类型）。
 
-C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环 `join4` 在同一个 executor 上，语义不变。
+C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在同一个 executor 上 `join`，语义不变。两者的落点由 `audio::playback_tasks` 一处决定：`run` 只 join 它一个，所以「spawn 而不是 join」这条规则和它解释的两个循环住在同一个文件里，而不是散在组合点上。
 
 `BusinessIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
 
@@ -40,7 +40,7 @@ C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环 `joi
 
 Speaker 页与 Audio 页是两个页。
 
-板级没找到 ES8311 时 `playback_enabled` 为假，该页不进入页面循环（`DisplayPage::next_page` 跳过没有能力背书的页），采集与其余页照常。出声是加法，不该是采集的前置条件。
+板级没找到 ES8311 时 `Backed::playback` 为假，该页不进入页面循环（`DisplayPage::next_page` 跳过没有能力背书的页），采集与其余页照常。出声是加法，不该是采集的前置条件。
 
 ## 声音从哪来
 

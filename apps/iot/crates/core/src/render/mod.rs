@@ -125,33 +125,33 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
     Diagnostics {
         demand: demand.clone(),
         touch: TouchDiagnostics {
-            taps: state.tap_count,
-            presses: state.press_count,
-            long_presses: state.long_press_count,
-            ghost: state.ghost_count,
-            swipes: state.swipe_count,
-            last_swipe_dir: state.last_swipe.map_or(0, |(dir, _)| dir.code()),
-            last_swipe_dist: state.last_swipe.map_or(0, |(_, dist)| dist),
-            last_gesture_origin: state.last_gesture_origin,
-            last_gesture_end: state.last_gesture_end,
-            chip_gesture_id: state.chip_gesture_id,
-            points: state.touch_points.map(|p| p.map(|l| (l.x, l.y))),
-            live_dir: state.live_dir,
-            two_finger_runs: state.two_finger_runs,
-            frames: state.touch_frames,
-            finger: state.finger,
-            held_ms: state.touch_held_ms,
+            taps: state.touch.tap_count,
+            presses: state.touch.press_count,
+            long_presses: state.touch.long_press_count,
+            ghost: state.touch.ghost_count,
+            swipes: state.touch.swipe_count,
+            last_swipe_dir: state.touch.last_swipe.map_or(0, |(dir, _)| dir.code()),
+            last_swipe_dist: state.touch.last_swipe.map_or(0, |(_, dist)| dist),
+            last_gesture_origin: state.touch.last_gesture_origin,
+            last_gesture_end: state.touch.last_gesture_end,
+            chip_gesture_id: state.touch.chip_gesture_id,
+            points: state.touch.points.map(|p| p.map(|l| (l.x, l.y))),
+            live_dir: state.touch.live_dir,
+            two_finger_runs: state.touch.two_finger_runs,
+            frames: state.touch.frames,
+            finger: state.touch.finger,
+            held_ms: state.touch.held_ms,
         },
         lights: state.lights.map(light_snapshot),
         page: state.page,
-        link: state.link,
-        mac: state.mac,
-        aps: state.aps,
-        setup: state.setup,
-        motion_enabled: state.motion_enabled,
-        motion: state.motion,
-        motion_counts: state.motion_counts,
-        motion_caps: state.motion_caps,
+        link: state.network.link,
+        mac: state.network.mac,
+        aps: state.network.aps,
+        setup: state.network.setup,
+        motion_enabled: state.backed.motion.is_some(),
+        motion: state.motion.sample,
+        motion_counts: state.motion.counts,
+        motion_caps: state.backed.motion_caps(),
         audio: state.audio_diagnostics(),
         playback: state.playback_diagnostics(),
     }
@@ -306,7 +306,7 @@ pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
 mod tests {
     use super::*;
     use crate::drivers::audio::{AudioEnvelope, AudioSample};
-    use crate::state::AudioPhase;
+    use crate::state::{AudioPhase, Backed};
 
     #[test]
     fn a_share_is_reported_whole_and_never_over_a_hundred() {
@@ -318,7 +318,7 @@ mod tests {
     }
     use crate::drivers::network::{AccessPoint, ApList, Front, Ipv4, LinkPhase, LinkStatus, Ssid};
     use crate::drivers::playback::Sound;
-    use crate::intent::{BusinessIntent, CaptureAction};
+    use crate::intent::{AudioIntent, BusinessIntent, PageIntent};
     use crate::state::{DeviceManager, PlaybackPhase};
 
     const BOOT_BREATH: crate::state::Breath = crate::state::Breath {
@@ -348,7 +348,7 @@ mod tests {
 
     fn landed() -> DeviceManager {
         let mut manager = DeviceManager::new();
-        manager.apply_business(BusinessIntent::SplashOver);
+        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
         manager
     }
 
@@ -360,7 +360,7 @@ mod tests {
     fn the_board_address_reaches_the_panel_with_the_rest_of_the_header() {
         let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
         let mut state = state(LightState::boot());
-        state.mac = Some(mac);
+        state.network.mac = Some(mac);
         assert_eq!(
             light_diagnostics(&state, &EffectiveDemand::default()).mac,
             Some(mac)
@@ -590,7 +590,13 @@ mod tests {
 
     #[test]
     fn the_audio_page_stamps_the_capture_the_phase_points_at() {
-        let mut manager = DeviceManager::new().with_audio(true);
+        let mut manager = DeviceManager::boot(crate::state::Setup {
+            backed: Backed {
+                audio: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         let mut envelope = AudioEnvelope::default();
         let mut samples = [0_i16; crate::drivers::audio::SAMPLES_PER_COLUMN as usize];
         samples[0] = i16::MIN;
@@ -609,8 +615,8 @@ mod tests {
             AudioPhase::Idle,
             "polling alone never starts a capture"
         );
-        manager.apply_business(BusinessIntent::Capture(CaptureAction::Start));
-        manager.apply_business(BusinessIntent::NextPage);
+        manager.apply_business(BusinessIntent::Audio(AudioIntent::Start));
+        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
         let recording = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
@@ -623,7 +629,7 @@ mod tests {
              recovered from still reads as a capture that simply went quiet"
         );
 
-        manager.apply_business(BusinessIntent::Capture(CaptureAction::Stop));
+        manager.apply_business(BusinessIntent::Audio(AudioIntent::Stop));
         let stopped = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(
@@ -698,7 +704,7 @@ mod tests {
         let boot = state(LightState::boot());
         collect(&mut ctl, &boot);
         let mut moved = boot.clone();
-        moved.touch = Some(crate::drivers::input::TouchEvent {
+        moved.touch.last = Some(crate::drivers::input::TouchEvent {
             points: [crate::drivers::input::TouchPoint {
                 id: 0,
                 x: 7,
@@ -907,10 +913,10 @@ mod tests {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::boot()));
         let mut changed = state(LightState::Off);
-        changed.tap_count = 7;
-        changed.press_count = 9;
-        changed.long_press_count = 1;
-        changed.touch_held_ms = 590;
+        changed.touch.tap_count = 7;
+        changed.touch.press_count = 9;
+        changed.touch.long_press_count = 1;
+        changed.touch.held_ms = 590;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.taps = 7;
         expected.touch.presses = 9;
@@ -938,7 +944,7 @@ mod tests {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut ghost = state(LightState::Off);
-        ghost.ghost_count = 3;
+        ghost.touch.ghost_count = 3;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.ghost = 3;
         assert_eq!(
@@ -948,7 +954,7 @@ mod tests {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut presses = state(LightState::Off);
-        presses.press_count = 1;
+        presses.touch.press_count = 1;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.presses = 1;
         assert_eq!(
@@ -1129,13 +1135,13 @@ mod tests {
         assert_eq!(
             breath.breath,
             BreathSnapshot {
-                period_ms: crate::state::DeviceManager::DEFAULT_PERIOD_MS as u16,
-                hue_period_ms: crate::state::DeviceManager::DEFAULT_HUE_PERIOD_MS as u16,
-                hue_span: crate::state::DeviceManager::DEFAULT_HUE_SPAN,
-                group_len: crate::state::DeviceManager::DEFAULT_GROUP_LEN,
-                min_brightness: crate::state::DeviceManager::DEFAULT_MIN_BRIGHTNESS,
-                max_brightness: crate::state::DeviceManager::DEFAULT_MAX_BRIGHTNESS,
-                saturation: crate::state::DeviceManager::DEFAULT_SATURATION,
+                period_ms: crate::state::LightState::DEFAULT_PERIOD_MS as u16,
+                hue_period_ms: crate::state::LightState::DEFAULT_HUE_PERIOD_MS as u16,
+                hue_span: crate::state::LightState::DEFAULT_HUE_SPAN,
+                group_len: crate::state::LightState::DEFAULT_GROUP_LEN,
+                min_brightness: crate::state::LightState::DEFAULT_MIN_BRIGHTNESS,
+                max_brightness: crate::state::LightState::DEFAULT_MAX_BRIGHTNESS,
+                saturation: crate::state::LightState::DEFAULT_SATURATION,
             },
             "breathing carries every dimension the overlay prints"
         );
@@ -1288,11 +1294,17 @@ mod tests {
             let status = DeviceState {
                 lights: [LightState::Off, LightState::Off],
                 surface_roles: kinds,
-                network_enabled: true,
-                link: LinkStatus {
-                    setup: true,
-                    front: Front::AccessPoint,
-                    ..LinkStatus::default()
+                backed: crate::state::Backed {
+                    network: true,
+                    ..crate::state::Backed::NONE
+                },
+                network: crate::state::NetworkState {
+                    link: LinkStatus {
+                        setup: true,
+                        front: Front::AccessPoint,
+                        ..LinkStatus::default()
+                    },
+                    ..Default::default()
                 },
                 ..DeviceState::default()
             };
@@ -1306,26 +1318,36 @@ mod tests {
 
     #[test]
     fn the_snapshot_carries_the_demand_in_force_not_the_pages_own() {
-        let mut manager =
-            DeviceManager::with_motion(true, crate::drivers::motion::MotionCapabilities::EMPTY)
-                .with_demand_keys(alloc::vec![
-                    DemandKey::MOTION,
-                    DemandKey::AUDIO,
-                    DemandKey::CAMERA,
-                    DemandKey::DISPLAY
-                ])
-                .with_audio(true)
-                .with_camera(true)
-                .with_boot_page(DisplayPage::Audio);
-        manager.apply_business(BusinessIntent::SplashOver);
-        assert_eq!(manager.state().page, DisplayPage::Audio);
-        let quiet = manager.demand().clone();
+        let setup = crate::state::Setup {
+            backed: Backed {
+                motion: Some(crate::drivers::motion::MotionCapabilities::EMPTY),
+                audio: true,
+                camera: true,
+                ..Backed::NONE
+            },
+            demand_keys: alloc::vec![
+                DemandKey::MOTION,
+                DemandKey::AUDIO,
+                DemandKey::CAMERA,
+                DemandKey::DISPLAY
+            ],
+            boot_page: DisplayPage::Audio,
+            ..Default::default()
+        };
+        let mut quiet_manager = DeviceManager::boot(setup.clone());
+        quiet_manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
+        assert_eq!(quiet_manager.state().page, DisplayPage::Audio);
+        let quiet = quiet_manager.demand().clone();
         assert_eq!(
             quiet.claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Continuous
         );
 
-        manager = manager.with_override(crate::demand::parse_override("audio=off"));
+        let mut manager = DeviceManager::boot(crate::state::Setup {
+            overrides: crate::demand::parse_override("audio=off"),
+            ..setup
+        });
+        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.demand().claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Off

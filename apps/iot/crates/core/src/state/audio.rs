@@ -1,7 +1,8 @@
-use super::*;
-
 use crate::diagnostics::AudioDiagnostics;
-use crate::intent::CaptureAction;
+use crate::drivers::audio::{AudioEnvelope, AudioSample};
+use crate::intent::AudioIntent;
+
+use super::{DeviceManager, DeviceState};
 
 /// Capture phase the Audio page drives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -53,20 +54,19 @@ impl AudioState {
     pub const fn boot() -> Self {
         Self::BOOT
     }
-}
 
-impl DeviceManager {
-    pub(super) fn apply_capture_intent(&mut self, action: CaptureAction) {
-        if !self.state.audio_enabled {
+    /// The Audio page's one transition, refused when the board wired no capture part.
+    pub(super) fn apply(&mut self, intent: AudioIntent, wired: bool) {
+        if !wired {
             return;
         }
-        match (action, self.state.audio.phase) {
-            (CaptureAction::Start, AudioPhase::Idle | AudioPhase::Stopped) => {
-                self.state.audio.phase = AudioPhase::Recording;
+        match (intent, self.phase) {
+            (AudioIntent::Start, AudioPhase::Idle | AudioPhase::Stopped) => {
+                self.phase = AudioPhase::Recording;
             }
-            (CaptureAction::Stop, AudioPhase::Recording) => {
-                self.state.audio.captured = self.state.audio.live;
-                self.state.audio.phase = AudioPhase::Stopped;
+            (AudioIntent::Stop, AudioPhase::Recording) => {
+                self.captured = self.live;
+                self.phase = AudioPhase::Stopped;
             }
             _ => {}
         }
@@ -91,7 +91,7 @@ impl DeviceState {
 
 impl DeviceManager {
     pub fn apply_capture(&mut self, sample: AudioSample) {
-        if self.state.audio_enabled {
+        if self.state.backed.audio {
             self.state.audio.live = sample;
         }
     }
@@ -100,6 +100,8 @@ impl DeviceManager {
 #[cfg(test)]
 mod audio_page {
     use super::*;
+    use crate::drivers::network::{AccessPoint, ApList, Ssid};
+    use crate::intent::*;
     use crate::state::test_support::*;
 
     use crate::drivers::audio::SAMPLES_PER_COLUMN;
@@ -127,7 +129,14 @@ mod audio_page {
     }
 
     fn on_audio_page() -> DeviceManager {
-        let mut manager = landed(DeviceManager::with_motion(true, ALL_CAPS).with_audio(true));
+        let mut manager = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                audio: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        }));
         apply(&mut manager, triple_click());
         apply(&mut manager, triple_click());
         assert_eq!(manager.state().page, DisplayPage::Audio);
@@ -147,27 +156,46 @@ mod audio_page {
     #[test]
     fn the_audio_page_only_appears_on_a_board_that_has_one() {
         assert_eq!(
-            DisplayPage::Ambient.next_page(true, false, false, false, false),
+            DisplayPage::Ambient.next_page(Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            }),
             DisplayPage::Attitude
         );
         assert_eq!(
-            DisplayPage::Attitude.next_page(true, false, false, false, false),
+            DisplayPage::Attitude.next_page(Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient,
             "a board without audio skips the page"
         );
         assert_eq!(
-            DisplayPage::Ambient.next_page(false, true, false, false, false),
+            DisplayPage::Ambient.next_page(Backed {
+                audio: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Audio
         );
         assert_eq!(
-            DisplayPage::Attitude.next_page(true, true, false, false, false),
+            DisplayPage::Attitude.next_page(Backed {
+                motion: Some(ALL_CAPS),
+                audio: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Audio
         );
     }
 
     #[test]
     fn the_page_switch_reaches_the_audio_page_and_back() {
-        let mut manager = landed(DeviceManager::new().with_audio(true));
+        let mut manager = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                audio: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        }));
         apply(&mut manager, triple_click());
         assert_eq!(manager.state().page, DisplayPage::Audio);
         apply(&mut manager, triple_click());
@@ -177,21 +205,27 @@ mod audio_page {
     #[test]
     fn the_camera_page_only_appears_on_a_board_that_has_one() {
         assert_eq!(
-            DisplayPage::Ambient.next_page(false, false, false, true, false),
+            DisplayPage::Ambient.next_page(Backed {
+                camera: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Camera
         );
         assert_eq!(
-            DisplayPage::Ambient.next_page(false, false, false, false, false),
+            DisplayPage::Ambient.next_page(Backed::NONE),
             DisplayPage::Ambient,
             "a board without a camera never reaches the page"
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(false, false, false, true, false),
+            DisplayPage::Audio.next_page(Backed {
+                camera: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Camera,
             "the camera follows the pages that need a wired source"
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(false, false, false, false, false),
+            DisplayPage::Audio.next_page(Backed::NONE),
             DisplayPage::Ambient,
             "and is skipped when there is none"
         );
@@ -200,30 +234,47 @@ mod audio_page {
     #[test]
     fn leaving_the_last_page_wraps_to_the_start_of_the_cycle() {
         assert_eq!(
-            DisplayPage::Network.next_page(true, false, false, false, true),
+            DisplayPage::Network.next_page(Backed {
+                motion: Some(ALL_CAPS),
+                network: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient,
             "a board that lost the link mid-cycle wraps rather than jumping ahead"
         );
         assert_eq!(
-            DisplayPage::Network.next_page(false, false, false, false, true),
+            DisplayPage::Network.next_page(Backed {
+                network: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient,
             "and a link is the only capability, so back to Ambient"
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(false, false, false, true, true),
+            DisplayPage::Camera.next_page(Backed {
+                camera: true,
+                network: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Network
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(true, false, false, false, false),
+            DisplayPage::Camera.next_page(Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient,
             "a board that lost the camera mid-cycle wraps rather than jumping ahead"
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(false, true, false, false, false),
+            DisplayPage::Camera.next_page(Backed {
+                audio: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(false, false, false, false, false),
+            DisplayPage::Camera.next_page(Backed::NONE),
             DisplayPage::Ambient,
             "and a camera is the only capability, so back to Ambient"
         );
@@ -243,10 +294,17 @@ mod audio_page {
             (true, false, false, true, true),
             (true, true, true, true, false),
         ] {
+            let wired = Backed {
+                motion: motion.then_some(ALL_CAPS),
+                audio,
+                playback,
+                camera,
+                network,
+            };
             let backed: Vec<DisplayPage> = CYCLE
                 .iter()
                 .copied()
-                .filter(|page| page.is_backed(motion, audio, playback, camera, network))
+                .filter(|page| page.is_backed(wired))
                 .collect();
             assert!(
                 !backed.is_empty(),
@@ -257,7 +315,7 @@ mod audio_page {
                 let mut seen = Vec::new();
                 let mut page = start;
                 for _ in 0..backed.len() {
-                    page = page.next_page(motion, audio, playback, camera, network);
+                    page = page.next_page(wired);
                     seen.push(page);
                 }
                 let mut expected = backed.clone();
@@ -285,7 +343,7 @@ mod audio_page {
             }
             if backed.len() == 1 {
                 assert_eq!(
-                    backed[0].next_page(motion, audio, playback, camera, network),
+                    backed[0].next_page(wired),
                     backed[0],
                     "a board that backs one page has nowhere to go and stays"
                 );
@@ -295,13 +353,17 @@ mod audio_page {
 
     #[test]
     fn the_boot_page_joins_the_cycle_it_was_asked_for() {
-        let mut manager = landed(
-            DeviceManager::with_motion(true, ALL_CAPS)
-                .with_audio(true)
-                .with_playback(true)
-                .with_camera(true)
-                .with_boot_page(DisplayPage::Camera),
-        );
+        let mut manager = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                audio: true,
+                playback: true,
+                camera: true,
+                ..Backed::NONE
+            },
+            boot_page: DisplayPage::Camera,
+            ..Default::default()
+        }));
         assert_eq!(manager.state().page, DisplayPage::Camera);
         apply(&mut manager, triple_click());
         assert_eq!(manager.state().page, DisplayPage::Ambient);
@@ -314,27 +376,43 @@ mod audio_page {
         let bare = landed(DeviceManager::new());
         let default_page = bare.state().page;
         for page in CYCLE {
-            let boot_page = landed(DeviceManager::new().with_boot_page(page))
-                .state()
-                .page;
+            let boot_page = landed(DeviceManager::boot(Setup {
+                boot_page: page,
+                ..Default::default()
+            }))
+            .state()
+            .page;
             assert_eq!(
                 boot_page, default_page,
                 "{page:?} needs no capability, so a board with nothing wired still lands \
                  on the same page either way"
             );
         }
-        let with_motion = landed(DeviceManager::with_motion(true, ALL_CAPS));
         assert_eq!(
-            landed(
-                DeviceManager::with_motion(true, ALL_CAPS).with_boot_page(DisplayPage::Attitude)
-            )
+            landed(DeviceManager::boot(Setup {
+                backed: Backed {
+                    motion: Some(ALL_CAPS),
+                    ..Backed::NONE
+                },
+                boot_page: DisplayPage::Attitude,
+                ..Default::default()
+            }))
             .state()
             .page,
             DisplayPage::Attitude,
             "the one capability it does have"
         );
         assert_eq!(
-            with_motion.with_boot_page(DisplayPage::Camera).state().page,
+            landed(DeviceManager::boot(Setup {
+                backed: Backed {
+                    motion: Some(ALL_CAPS),
+                    ..Backed::NONE
+                },
+                boot_page: DisplayPage::Camera,
+                ..Default::default()
+            }))
+            .state()
+            .page,
             DisplayPage::Ambient,
             "and the one it does not"
         );
@@ -343,11 +421,17 @@ mod audio_page {
     #[test]
     fn the_camera_page_cycles_from_the_board_and_back() {
         assert!(
-            !DeviceManager::new().state().camera_enabled,
+            !DeviceManager::new().state().backed.camera,
             "not declared until a board declares it"
         );
-        let mut manager = landed(DeviceManager::new().with_camera(true));
-        assert!(manager.state().camera_enabled);
+        let mut manager = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                camera: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        }));
+        assert!(manager.state().backed.camera);
         apply(&mut manager, triple_click());
         assert_eq!(manager.state().page, DisplayPage::Camera);
         apply(&mut manager, triple_click());
@@ -356,7 +440,14 @@ mod audio_page {
 
     #[test]
     fn a_board_without_a_camera_never_lands_on_its_page() {
-        let mut manager = landed(DeviceManager::new().with_audio(true).with_playback(true));
+        let mut manager = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                audio: true,
+                playback: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        }));
         for _ in 0..8 {
             apply(&mut manager, triple_click());
             assert_ne!(
@@ -373,7 +464,13 @@ mod audio_page {
         disabled.apply_capture(loud(8_000));
         assert_eq!(disabled.state().audio.live.envelope.committed(), 0);
 
-        let mut enabled = DeviceManager::new().with_audio(true);
+        let mut enabled = DeviceManager::boot(Setup {
+            backed: Backed {
+                audio: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         enabled.apply_capture(loud(8_000));
         assert_eq!(enabled.state().audio.live.envelope.committed(), 1);
         assert_eq!(
@@ -396,24 +493,36 @@ mod audio_page {
         let mut disabled = DeviceManager::new();
         disabled.apply_scan(list);
         assert_eq!(
-            disabled.state().aps,
+            disabled.state().network.aps,
             None,
             "a build with no link has no page to draw a list on"
         );
 
-        let mut enabled = DeviceManager::new().with_network(true);
+        let mut enabled = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         enabled.apply_scan(list);
-        assert_eq!(enabled.state().aps, Some(list));
+        assert_eq!(enabled.state().network.aps, Some(list));
     }
 
     #[test]
     fn an_empty_scan_is_a_reading_not_an_absence() {
-        let mut manager = DeviceManager::new().with_network(true);
-        assert_eq!(manager.state().aps, None, "nothing has scanned yet");
+        let mut manager = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
+        assert_eq!(manager.state().network.aps, None, "nothing has scanned yet");
 
         manager.apply_scan(ApList::empty());
         assert_eq!(
-            manager.state().aps,
+            manager.state().network.aps,
             Some(ApList::empty()),
             "a scan that found nothing is kept as an answer"
         );
@@ -470,7 +579,7 @@ mod audio_page {
         let mut manager = on_audio_page();
         let before = manager.state().lights[0];
 
-        manager.apply_business(BusinessIntent::NextPage);
+        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
         assert_eq!(
             manager.state().page,
             DisplayPage::Ambient,

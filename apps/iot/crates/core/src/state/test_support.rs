@@ -1,10 +1,13 @@
 pub(crate) use super::*;
 pub(crate) use crate::drivers::input::{
-    ButtonEvent, MAX_TOUCH_POINTS, TouchEvent, TouchPoint, TouchStatus,
+    ButtonEvent, GestureEvent, InputEvent, MAX_TOUCH_POINTS, SwipeDirection, TouchEvent,
+    TouchPoint, TouchStatus,
 };
 pub(crate) use crate::drivers::motion::MotionScale;
 pub(crate) use crate::drivers::network::{Ipv4, SavedNetworks};
-pub(crate) use crate::intent::{PlaybackAction, translate};
+pub(crate) use crate::intent::{
+    BusinessIntent, LightIntent, OperationIntent, PageIntent, translate,
+};
 pub(crate) use crate::page::CYCLE;
 
 pub(crate) const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
@@ -75,7 +78,7 @@ pub(crate) fn touch_event(status: TouchStatus) -> OperationIntent {
 }
 
 pub(crate) fn set_light(instance: u8, state: LightState) -> BusinessIntent {
-    BusinessIntent::SetLight { instance, state }
+    BusinessIntent::Light(LightIntent { instance, state })
 }
 
 pub(crate) fn press(id: u8, x: u16, y: u16) -> OperationIntent {
@@ -89,7 +92,7 @@ pub(crate) fn apply_page(manager: &mut DeviceManager, operation: OperationIntent
 }
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
-    manager.apply_business(BusinessIntent::SplashOver);
+    manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
     assert_ne!(manager.state().page, DisplayPage::Splash);
     manager
 }

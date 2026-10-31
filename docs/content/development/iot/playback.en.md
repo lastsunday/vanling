@@ -31,7 +31,7 @@ The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tr
 
 That is why `Speaker` demands `Send + 'static`, and why its error is the named `SpeakerFault` rather than each implementation's own type: a trait object cannot spell an unnamed associated type.
 
-The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join4`ed on one executor, with the same semantics.
+The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join`ed on one executor, with the same semantics. Where the feed lands is decided in one place, `audio::playback_tasks`, which `run` joins as a single future — so "spawned, not joined" lives beside the two loops it explains instead of at the composition point.
 
 `BusinessIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
 
@@ -47,7 +47,7 @@ A trigger while muted still plays to the end and still reports completion: mutin
 
 The Speaker page and the Audio page are two pages.
 
-With no ES8311 found, `playback_enabled` is false and the page does not enter the page loop (`DisplayPage::next_page` skips pages no capability backs); capture and every other page carry on. Making sound is an addition, not a precondition for capture.
+With no ES8311 found, `Backed::playback` is false and the page does not enter the page loop (`DisplayPage::next_page` skips pages no capability backs); capture and every other page carry on. Making sound is an addition, not a precondition for capture.
 
 ## Where the sound comes from
 

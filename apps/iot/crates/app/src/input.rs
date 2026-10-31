@@ -7,7 +7,7 @@ use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{DemandKind, EffectiveDemand, InputLimiter, MAX_SINGLE_HOLD_MS, PollPlan};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
-use iot_core::intent::{BusinessIntent, Intent, recognize};
+use iot_core::intent::{BusinessIntent, Intent, PageIntent, recognize};
 
 use crate::SharedDemand;
 use iot_core::config::{Configuration, Configurator, Unreachable};
@@ -158,7 +158,9 @@ pub async fn input_task(
             && now_ms >= iot_core::page::SPLASH_MS
             && !sources.iter().any(|entry| entry.held())
             && intent_bus
-                .try_send(Intent::Business(BusinessIntent::SplashOver))
+                .try_send(Intent::Business(BusinessIntent::Page(
+                    PageIntent::SplashOver,
+                )))
                 .is_ok()
         {
             splash_open = false;

@@ -2,7 +2,7 @@ use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, InputEvent};
-use crate::intent::{BusinessIntent, OperationIntent};
+use crate::intent::{BusinessIntent, OperationIntent, PageIntent};
 use crate::state::DeviceState;
 
 /// How long the boot page stays up before the build's page takes over. A page property:
@@ -19,7 +19,9 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 pub(super) fn translate(op: &OperationIntent, _current: &DeviceState) -> BusinessIntent {
     match op.event {
-        InputEvent::Button(ButtonEvent::LongPress) => BusinessIntent::RequestSetup,
+        InputEvent::Button(ButtonEvent::LongPress) => {
+            BusinessIntent::Page(PageIntent::RequestSetup)
+        }
         _ => BusinessIntent::Invalid,
     }
 }
@@ -33,18 +35,18 @@ mod tests {
     use super::*;
     use crate::drivers::input::{GestureEvent, SwipeDirection};
     use crate::drivers::network::LinkStatus;
-    use crate::intent::{BusinessIntent, translate};
+    use crate::intent::{BusinessIntent, LightIntent, translate};
     use crate::page::test_support::{
-        DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture,
+        DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
-    use crate::state::{DeviceState, DisplayPage, LightState};
+    use crate::state::{DisplayPage, LightState};
 
     #[test]
     fn the_splash_page_is_where_the_button_asks_for_setup_mode() {
         let booting = state_on(DisplayPage::Splash, LightState::Off);
         assert_eq!(
             translate(&op(long_press()), &booting),
-            BusinessIntent::RequestSetup
+            BusinessIntent::Page(PageIntent::RequestSetup)
         );
     }
 
@@ -70,34 +72,32 @@ mod tests {
                 "{event:?} on the splash"
             );
         }
-        let with_link = DeviceState {
-            link: LinkStatus {
+        let with_link = with_network(state_on(DisplayPage::Splash, LightState::Off), |net| {
+            net.link = LinkStatus {
                 phase: crate::drivers::network::LinkPhase::Connected,
                 ..LinkStatus::default()
-            },
-            ..state_on(DisplayPage::Splash, LightState::Off)
-        };
+            };
+        });
         assert_eq!(
             translate(&op(long_press()), &with_link),
-            BusinessIntent::RequestSetup
+            BusinessIntent::Page(PageIntent::RequestSetup)
         );
     }
 
     #[test]
     fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
-        let on_air = DeviceState {
-            link: LinkStatus {
+        let on_air = with_network(state_on(DisplayPage::Ambient, LightState::Off), |net| {
+            net.link = LinkStatus {
                 phase: crate::drivers::network::LinkPhase::Connected,
                 ..LinkStatus::default()
-            },
-            ..state_on(DisplayPage::Ambient, LightState::Off)
-        };
+            };
+        });
         assert_eq!(
             translate(&op(long_press()), &on_air),
-            BusinessIntent::SetLight {
+            BusinessIntent::Light(LightIntent {
                 instance: 0,
                 state: DEFAULT_BREATH,
-            }
+            })
         );
     }
 }

@@ -4,7 +4,7 @@ use crate::demand::{Claim, DemandKind};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::drivers::network::{AccessPoint, LinkPhase, LinkStatus};
-use crate::intent::{BusinessIntent, OperationIntent};
+use crate::intent::{BusinessIntent, NetworkIntent, OperationIntent};
 use crate::keyboard;
 use crate::state::{DeviceState, NetworkSetup};
 
@@ -62,21 +62,24 @@ pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> Business
             network_tap(current, x, y, at_ms)
         }
         InputEvent::Gesture(GestureEvent::LongPress { x, y, .. }) => network_hold(current, x, y),
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) if !current.setup.keyboard => {
-            if current.setup.confirm.is_some() {
-                return BusinessIntent::Dismiss;
+        InputEvent::Gesture(GestureEvent::Swipe { direction, .. })
+            if !current.network.setup.keyboard =>
+        {
+            if current.network.setup.confirm.is_some() {
+                return BusinessIntent::Network(NetworkIntent::Dismiss);
             }
-            if !Part::Content.showing(current.setup, current.link) {
+            if !Part::Content.showing(current.network.setup, current.network.link) {
                 return BusinessIntent::Invalid;
             }
             match direction {
-                SwipeDirection::Up => BusinessIntent::Scroll { rows: 1 },
-                SwipeDirection::Down => BusinessIntent::Scroll { rows: -1 },
+                SwipeDirection::Up => BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }),
+                SwipeDirection::Down => BusinessIntent::Network(NetworkIntent::Scroll { rows: -1 }),
                 _ => BusinessIntent::Invalid,
             }
         }
         InputEvent::Button(ButtonEvent::Click) => {
-            controls::strip(current.setup, current.link).command(keyboard::ToolbarCell::Right)
+            controls::strip(current.network.setup, current.network.link)
+                .command(keyboard::ToolbarCell::Right)
         }
         _ => BusinessIntent::Invalid,
     }
@@ -90,66 +93,72 @@ pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) ->
 }
 
 fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessIntent {
-    if current.setup.keyboard {
-        let Some(entry) = current.setup.entry else {
+    if current.network.setup.keyboard {
+        let Some(entry) = current.network.setup.entry else {
             return BusinessIntent::Invalid;
         };
         return keyboard::key_at(entry.layer(), x, y).map_or(BusinessIntent::Invalid, |key| {
-            BusinessIntent::Key { key, at_ms }
+            BusinessIntent::Network(NetworkIntent::Key { key, at_ms })
         });
     }
     if let Some(answer) = answer_at(current, x, y) {
         return answer;
     }
     if let Some(cell) = keyboard::toolbar_cell_at(x, y) {
-        return controls::strip(current.setup, current.link).command(cell);
+        return controls::strip(current.network.setup, current.network.link).command(cell);
     }
-    if !Part::Content.showing(current.setup, current.link) {
+    if !Part::Content.showing(current.network.setup, current.network.link) {
         return BusinessIntent::Invalid;
     }
     match keyboard::list_band_at(y) {
-        Some(band) => ap_at(current, band).map_or(BusinessIntent::Invalid, BusinessIntent::Choose),
+        Some(band) => ap_at(current, band).map_or(BusinessIntent::Invalid, |ap| {
+            BusinessIntent::Network(NetworkIntent::Choose(ap))
+        }),
         None => BusinessIntent::Invalid,
     }
 }
 
 fn network_hold(current: &DeviceState, x: u16, y: u16) -> BusinessIntent {
-    if current.setup.keyboard {
+    if current.network.setup.keyboard {
         return BusinessIntent::Invalid;
     }
     if let Some(answer) = answer_at(current, x, y) {
         return answer;
     }
-    if !Part::Content.showing(current.setup, current.link) {
+    if !Part::Content.showing(current.network.setup, current.network.link) {
         return BusinessIntent::Invalid;
     }
     match keyboard::list_band_at(y) {
-        Some(band) => {
-            ap_at(current, band).map_or(BusinessIntent::Invalid, BusinessIntent::AskForget)
-        }
+        Some(band) => ap_at(current, band).map_or(BusinessIntent::Invalid, |ap| {
+            BusinessIntent::Network(NetworkIntent::AskForget(ap))
+        }),
         None => BusinessIntent::Invalid,
     }
 }
 
 fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
-    if current.link.shows_setup_box() {
-        let answers = controls::answers(current.link);
+    if current.network.link.shows_setup_box() {
+        let answers = controls::answers(current.network.link);
         return match keyboard::dialog_choice_at(x, y) {
             Some(keyboard::DialogChoice::Keep) => Some(answers.keep.command),
             Some(keyboard::DialogChoice::Act) => Some(answers.act.command),
             None => None,
         };
     }
-    let confirm = current.setup.confirm?;
+    let confirm = current.network.setup.confirm?;
     Some(match keyboard::dialog_choice_at(x, y) {
-        Some(keyboard::DialogChoice::Act) => BusinessIntent::Answer(confirm),
-        Some(keyboard::DialogChoice::Keep) | None => BusinessIntent::Dismiss,
+        Some(keyboard::DialogChoice::Act) => {
+            BusinessIntent::Network(NetworkIntent::Answer(confirm))
+        }
+        Some(keyboard::DialogChoice::Keep) | None => {
+            BusinessIntent::Network(NetworkIntent::Dismiss)
+        }
     })
 }
 
 fn ap_at(current: &DeviceState, band: usize) -> Option<AccessPoint> {
-    let index = usize::from(current.setup.list_top) + band;
-    current.aps.and_then(|list| list.get(index))
+    let index = usize::from(current.network.setup.list_top) + band;
+    current.network.aps.and_then(|list| list.get(index))
 }
 
 #[cfg(test)]
@@ -374,8 +383,8 @@ mod parts {
 mod tests {
     use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
     use crate::drivers::network::{Front, LinkStatus};
-    use crate::intent::{BusinessIntent, translate};
-    use crate::page::test_support::{DEFAULT_BREATH, op, state_on};
+    use crate::intent::{BusinessIntent, NetworkIntent, translate};
+    use crate::page::test_support::{DEFAULT_BREATH, op, state_on, with_network};
     use crate::state::{DeviceState, DisplayPage};
 
     mod network_page {
@@ -398,22 +407,20 @@ mod tests {
         }
 
         fn on_network() -> DeviceState {
-            DeviceState {
-                aps: Some(ApList::from_ranked(&[ap(b"neighbour", -55)])),
-                ..state_on(DisplayPage::Network, DEFAULT_BREATH)
-            }
+            with_network(state_on(DisplayPage::Network, DEFAULT_BREATH), |net| {
+                net.aps = Some(ApList::from_ranked(&[ap(b"neighbour", -55)]));
+            })
         }
 
         fn typing() -> DeviceState {
-            DeviceState {
-                setup: crate::state::NetworkSetup {
+            with_network(on_network(), |net| {
+                net.setup = crate::state::NetworkSetup {
                     selected: Some(ap(b"neighbour", -55)),
                     entry: Some(crate::state::Entry::default()),
                     keyboard: true,
                     ..Default::default()
-                },
-                ..on_network()
-            }
+                };
+            })
         }
 
         fn tap_at(x: u16, y: u16) -> InputEvent {
@@ -436,13 +443,12 @@ mod tests {
         }
 
         fn asking() -> DeviceState {
-            DeviceState {
-                setup: crate::state::NetworkSetup {
+            with_network(on_network(), |net| {
+                net.setup = crate::state::NetworkSetup {
                     confirm: Some(crate::state::Confirm::Forget(ap(b"neighbour", -55))),
                     ..Default::default()
-                },
-                ..on_network()
-            }
+                };
+            })
         }
 
         fn swipe(direction: SwipeDirection) -> InputEvent {
@@ -465,22 +471,21 @@ mod tests {
 
         #[test]
         fn a_tap_on_a_band_is_that_band_of_the_list() {
-            let state = DeviceState {
-                aps: Some(ApList::from_ranked(&[
+            let state = with_network(on_network(), |net| {
+                net.aps = Some(ApList::from_ranked(&[
                     ap(b"neighbour", -55),
                     ap_with(b"cafe", -60, 7),
-                ])),
-                ..on_network()
-            };
+                ]));
+            });
             let first = keyboard::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(tap_at(30, first)), &state),
-                BusinessIntent::Choose(ap(b"neighbour", -55)),
+                BusinessIntent::Network(NetworkIntent::Choose(ap(b"neighbour", -55))),
                 "the list's first band is the first network"
             );
             assert_eq!(
                 translate(&op(tap_at(30, first + keyboard::LIST_ROW_H as u16)), &state),
-                BusinessIntent::Choose(ap_with(b"cafe", -60, 7)),
+                BusinessIntent::Network(NetworkIntent::Choose(ap_with(b"cafe", -60, 7))),
                 "a band down is the next network"
             );
             assert_eq!(
@@ -488,7 +493,7 @@ mod tests {
                     &op(tap_at(30, first + keyboard::LIST_ROW_H as u16 - 1)),
                     &state
                 ),
-                BusinessIntent::Choose(ap(b"neighbour", -55)),
+                BusinessIntent::Network(NetworkIntent::Choose(ap(b"neighbour", -55))),
                 "and the pixels below a band's glyphs still belong to that band"
             );
             assert_eq!(
@@ -503,12 +508,12 @@ mod tests {
             let state = on_network();
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                BusinessIntent::Scroll { rows: 1 },
+                BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }),
                 "a finger pushing the list up walks down it"
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Down)), &state),
-                BusinessIntent::Scroll { rows: -1 }
+                BusinessIntent::Network(NetworkIntent::Scroll { rows: -1 })
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Left)), &state),
@@ -523,14 +528,13 @@ mod tests {
 
         #[test]
         fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
-            let state = DeviceState {
-                aps: Some(ApList::from_ranked(&[
+            let state = with_network(on_network(), |net| {
+                net.aps = Some(ApList::from_ranked(&[
                     ap(b"neighbour", -55),
                     ap_with(b"cafe", -60, 7),
                     ap_with(b"bakery", -65, 8),
-                ])),
-                ..on_network()
-            };
+                ]));
+            });
             let strip = keyboard::toolbar_box();
             for (x, _cell) in [
                 (0, keyboard::ToolbarCell::Left),
@@ -541,14 +545,14 @@ mod tests {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
                         translate(&op(tap_at(x as u16, y as u16)), &state),
-                        BusinessIntent::ScanNow,
+                        BusinessIntent::Network(NetworkIntent::ScanNow),
                         "({x}, {y}) is the strip"
                     );
                 }
             }
             assert_eq!(
                 translate(&op(tap_at(160, (keyboard::TOOLBAR_TOP - 1) as u16)), &state),
-                BusinessIntent::Choose(ap_with(b"bakery", -65, 8)),
+                BusinessIntent::Network(NetworkIntent::Choose(ap_with(b"bakery", -65, 8))),
                 "the row above the strip is still the list's own last band"
             );
         }
@@ -557,20 +561,19 @@ mod tests {
         fn the_button_is_the_strip_verb_and_the_setup_box_asks_about_its_passphrase() {
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_network()),
-                BusinessIntent::ScanNow
+                BusinessIntent::Network(NetworkIntent::ScanNow)
             );
 
-            let announcing = DeviceState {
-                link: LinkStatus {
+            let announcing = with_network(on_network(), |net| {
+                net.link = LinkStatus {
                     setup: true,
                     front: Front::AccessPoint,
                     setup_password: Some(crate::drivers::network::SetupPass::from_array(
                         *b"k3mq9t7w2x",
                     )),
                     ..Default::default()
-                },
-                ..on_network()
-            };
+                };
+            });
             let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
             let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
             assert_eq!(
@@ -578,11 +581,11 @@ mod tests {
                     &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
                     &announcing
                 ),
-                BusinessIntent::SetOpenAccessPoint(true)
+                BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(true))
             );
             assert_eq!(
                 translate(&op(tap_at(act.x as u16 + 1, act.y as u16 + 1)), &announcing),
-                BusinessIntent::SwitchFront
+                BusinessIntent::Network(NetworkIntent::SwitchFront)
             );
             assert_eq!(
                 translate(&op(tap_at(10, 10)), &announcing),
@@ -596,24 +599,23 @@ mod tests {
 
         #[test]
         fn a_hold_on_a_band_is_that_band_asked_about() {
-            let state = DeviceState {
-                aps: Some(ApList::from_ranked(&[
+            let state = with_network(on_network(), |net| {
+                net.aps = Some(ApList::from_ranked(&[
                     ap(b"neighbour", -55),
                     ap_with(b"cafe", -60, 7),
-                ])),
-                ..on_network()
-            };
+                ]));
+            });
             let first = keyboard::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &state),
-                BusinessIntent::AskForget(ap(b"neighbour", -55))
+                BusinessIntent::Network(NetworkIntent::AskForget(ap(b"neighbour", -55)))
             );
             assert_eq!(
                 translate(
                     &op(long_press_at(30, first + keyboard::LIST_ROW_H as u16)),
                     &state
                 ),
-                BusinessIntent::AskForget(ap_with(b"cafe", -60, 7))
+                BusinessIntent::Network(NetworkIntent::AskForget(ap_with(b"cafe", -60, 7)))
             );
             assert_eq!(
                 translate(&op(long_press_at(30, 5)), &state),
@@ -648,7 +650,10 @@ mod tests {
                     )),
                     &state
                 ),
-                BusinessIntent::Answer(crate::state::Confirm::Forget(ap(b"neighbour", -55))),
+                BusinessIntent::Network(NetworkIntent::Answer(crate::state::Confirm::Forget(ap(
+                    b"neighbour",
+                    -55
+                )))),
                 "the action's own button is the whole of the yes"
             );
             assert_eq!(
@@ -659,7 +664,7 @@ mod tests {
                     )),
                     &state
                 ),
-                BusinessIntent::Dismiss,
+                BusinessIntent::Network(NetworkIntent::Dismiss),
                 "and the button that says no says no"
             );
             for (x, y) in [
@@ -673,13 +678,13 @@ mod tests {
             ] {
                 assert_eq!(
                     translate(&op(tap_at(x, y)), &state),
-                    BusinessIntent::Dismiss,
+                    BusinessIntent::Network(NetworkIntent::Dismiss),
                     "({x}, {y}) leaves the question undone"
                 );
             }
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                BusinessIntent::Dismiss,
+                BusinessIntent::Network(NetworkIntent::Dismiss),
                 "a swipe under the box does not slide a list it cannot see"
             );
             assert_eq!(
@@ -687,11 +692,11 @@ mod tests {
                     &op(long_press_at(30, keyboard::LIST_TOP as u16 + 2)),
                     &state
                 ),
-                BusinessIntent::Dismiss
+                BusinessIntent::Network(NetworkIntent::Dismiss)
             );
             assert_eq!(
                 translate(&op(tap_at(160, keyboard::TOOLBAR_TOP as u16 + 2)), &state),
-                BusinessIntent::Dismiss
+                BusinessIntent::Network(NetworkIntent::Dismiss)
             );
         }
 
@@ -716,10 +721,10 @@ mod tests {
             let state = typing();
             assert_eq!(
                 translate(&op(key_tap(1)), &state),
-                BusinessIntent::Key {
+                BusinessIntent::Network(NetworkIntent::Key {
                     key: Key::Char(b'2'),
                     at_ms: 1_000,
-                },
+                }),
                 "the phone layer's second key is the one printed 2"
             );
             assert_eq!(
@@ -729,10 +734,10 @@ mod tests {
                     )),
                     &state
                 ),
-                BusinessIntent::Key {
+                BusinessIntent::Network(NetworkIntent::Key {
                     key: Key::Shift,
                     at_ms: 1_000,
-                }
+                })
             );
             assert_eq!(
                 translate(
@@ -741,10 +746,10 @@ mod tests {
                     )),
                     &state
                 ),
-                BusinessIntent::Key {
+                BusinessIntent::Network(NetworkIntent::Key {
                     key: Key::Cancel,
                     at_ms: 1_000,
-                }
+                })
             );
             assert_eq!(
                 translate(
@@ -753,10 +758,10 @@ mod tests {
                     )),
                     &state
                 ),
-                BusinessIntent::Key {
+                BusinessIntent::Network(NetworkIntent::Key {
                     key: Key::Reveal,
                     at_ms: 1_000,
-                }
+                })
             );
             assert_eq!(
                 translate(&op(tap_at(30, 5)), &state),
@@ -787,10 +792,10 @@ mod tests {
                     })),
                     &typing()
                 ),
-                BusinessIntent::Key {
+                BusinessIntent::Network(NetworkIntent::Key {
                     key: Key::Char(b'1'),
                     at_ms: 4_321,
-                }
+                })
             );
         }
     }

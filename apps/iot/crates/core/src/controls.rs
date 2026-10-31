@@ -2,7 +2,7 @@
 //! it.
 
 use crate::drivers::network::{Front, LinkStatus};
-use crate::intent::{BusinessIntent, BusinessIntent::*};
+use crate::intent::{BusinessIntent, NetworkIntent};
 use crate::keyboard::ToolbarCell;
 use crate::state::{Confirm, NetworkSetup};
 
@@ -62,12 +62,12 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
                 Front::Panel => AP_LABEL,
                 Front::AccessPoint => PANEL_LABEL,
             },
-            command: SwitchFront,
+            command: BusinessIntent::Network(NetworkIntent::SwitchFront),
         };
         let left = match (link.front, link.setup_cancellable) {
             (_, true) => Some(Control {
                 label: CANCEL_LABEL,
-                command: CloseSetup,
+                command: BusinessIntent::Network(NetworkIntent::CloseSetup),
             }),
             (Front::Panel, false) => Some(Control {
                 label: if setup.rescan_wait {
@@ -75,7 +75,7 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
                 } else {
                     SCAN_LABEL
                 },
-                command: ScanNow,
+                command: BusinessIntent::Network(NetworkIntent::ScanNow),
             }),
             (Front::AccessPoint, false) => None,
         };
@@ -88,11 +88,11 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
             } else {
                 SCAN_LABEL
             },
-            command: ScanNow,
+            command: BusinessIntent::Network(NetworkIntent::ScanNow),
         };
         let right = Control {
             label: AP_LABEL,
-            command: SwitchFront,
+            command: BusinessIntent::Network(NetworkIntent::SwitchFront),
         };
         return Strip {
             left: Some(left),
@@ -102,7 +102,7 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
     let right = if link.is_leavable() {
         Control {
             label: LEAVE_LABEL,
-            command: Leave,
+            command: BusinessIntent::Network(NetworkIntent::Leave),
         }
     } else {
         Control {
@@ -111,7 +111,7 @@ pub fn strip(setup: NetworkSetup, link: LinkStatus) -> Strip {
             } else {
                 SCAN_LABEL
             },
-            command: ScanNow,
+            command: BusinessIntent::Network(NetworkIntent::ScanNow),
         }
     };
     Strip { left: None, right }
@@ -129,19 +129,19 @@ pub fn answers(link: LinkStatus) -> Answers {
     let keep = if link.setup_password.is_some() {
         Control {
             label: NO_PASS_LABEL,
-            command: SetOpenAccessPoint(true),
+            command: BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(true)),
         }
     } else {
         Control {
             label: PASS_LABEL,
-            command: SetOpenAccessPoint(false),
+            command: BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(false)),
         }
     };
     Answers {
         keep,
         act: Control {
             label: PANEL_LABEL,
-            command: SwitchFront,
+            command: BusinessIntent::Network(NetworkIntent::SwitchFront),
         },
     }
 }
@@ -177,12 +177,21 @@ mod tests {
         let linked = strip(NetworkSetup::default(), linked);
         assert!(!linked.is_split());
         assert_eq!(linked.label(ToolbarCell::Left), LEAVE_LABEL);
-        assert_eq!(linked.command(ToolbarCell::Left), Leave);
-        assert_eq!(linked.command(ToolbarCell::Right), Leave);
+        assert_eq!(
+            linked.command(ToolbarCell::Left),
+            BusinessIntent::Network(NetworkIntent::Leave)
+        );
+        assert_eq!(
+            linked.command(ToolbarCell::Right),
+            BusinessIntent::Network(NetworkIntent::Leave)
+        );
 
         let idle = strip(NetworkSetup::default(), LinkStatus::default());
         assert_eq!(idle.label(ToolbarCell::Right), SCAN_LABEL);
-        assert_eq!(idle.command(ToolbarCell::Right), ScanNow);
+        assert_eq!(
+            idle.command(ToolbarCell::Right),
+            BusinessIntent::Network(NetworkIntent::ScanNow)
+        );
 
         let waiting = NetworkSetup {
             rescan_wait: true,
@@ -190,7 +199,10 @@ mod tests {
         };
         let waiting = strip(waiting, LinkStatus::default());
         assert_eq!(waiting.label(ToolbarCell::Right), WAIT_LABEL);
-        assert_eq!(waiting.command(ToolbarCell::Right), ScanNow);
+        assert_eq!(
+            waiting.command(ToolbarCell::Right),
+            BusinessIntent::Network(NetworkIntent::ScanNow)
+        );
     }
 
     #[test]
@@ -198,9 +210,15 @@ mod tests {
         let split = strip(NetworkSetup::default(), setup(Front::Panel, true));
         assert!(split.is_split());
         assert_eq!(split.label(ToolbarCell::Left), CANCEL_LABEL);
-        assert_eq!(split.command(ToolbarCell::Left), CloseSetup);
+        assert_eq!(
+            split.command(ToolbarCell::Left),
+            BusinessIntent::Network(NetworkIntent::CloseSetup)
+        );
         assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
-        assert_eq!(split.command(ToolbarCell::Right), SwitchFront);
+        assert_eq!(
+            split.command(ToolbarCell::Right),
+            BusinessIntent::Network(NetworkIntent::SwitchFront)
+        );
     }
 
     #[test]
@@ -212,9 +230,15 @@ mod tests {
         let split = strip(NetworkSetup::default(), browsing);
         assert!(split.is_split());
         assert_eq!(split.label(ToolbarCell::Left), SCAN_LABEL);
-        assert_eq!(split.command(ToolbarCell::Left), ScanNow);
+        assert_eq!(
+            split.command(ToolbarCell::Left),
+            BusinessIntent::Network(NetworkIntent::ScanNow)
+        );
         assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
-        assert_eq!(split.command(ToolbarCell::Right), SwitchFront);
+        assert_eq!(
+            split.command(ToolbarCell::Right),
+            BusinessIntent::Network(NetworkIntent::SwitchFront)
+        );
     }
 
     #[test]
@@ -222,7 +246,10 @@ mod tests {
         let split = strip(NetworkSetup::default(), setup(Front::Panel, false));
         assert!(split.is_split());
         assert_eq!(split.label(ToolbarCell::Left), SCAN_LABEL);
-        assert_eq!(split.command(ToolbarCell::Left), ScanNow);
+        assert_eq!(
+            split.command(ToolbarCell::Left),
+            BusinessIntent::Network(NetworkIntent::ScanNow)
+        );
         assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
 
         let waiting = NetworkSetup {
@@ -239,7 +266,10 @@ mod tests {
         assert!(!one.is_split());
         for cell in [ToolbarCell::Left, ToolbarCell::Right] {
             assert_eq!(one.label(cell), PANEL_LABEL);
-            assert_eq!(one.command(cell), SwitchFront);
+            assert_eq!(
+                one.command(cell),
+                BusinessIntent::Network(NetworkIntent::SwitchFront)
+            );
         }
     }
 
@@ -253,9 +283,15 @@ mod tests {
         };
         let secured = answers(secured);
         assert_eq!(secured.keep.label, NO_PASS_LABEL);
-        assert_eq!(secured.keep.command, SetOpenAccessPoint(true));
+        assert_eq!(
+            secured.keep.command,
+            BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(true))
+        );
         assert_eq!(secured.act.label, PANEL_LABEL);
-        assert_eq!(secured.act.command, SwitchFront);
+        assert_eq!(
+            secured.act.command,
+            BusinessIntent::Network(NetworkIntent::SwitchFront)
+        );
 
         let open = LinkStatus {
             setup: true,
@@ -264,7 +300,10 @@ mod tests {
         };
         let open = answers(open);
         assert_eq!(open.keep.label, PASS_LABEL);
-        assert_eq!(open.keep.command, SetOpenAccessPoint(false));
+        assert_eq!(
+            open.keep.command,
+            BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(false))
+        );
     }
 
     #[test]

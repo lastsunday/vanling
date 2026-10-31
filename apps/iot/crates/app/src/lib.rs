@@ -7,17 +7,15 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use embassy_executor::SendSpawner;
-use embassy_futures::join::{join, join3, join4};
+use embassy_futures::join::join3;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use iot_core::config::Configurator;
-use iot_core::demand::{ClockSink, DemandKey, EffectiveDemand};
-use iot_core::drivers::board::{
-    Board as BoardTrait, HasAudio, HasCamera, HasInput, HasMotion, HasPlayback,
-};
+use iot_core::demand::{ClockSink, EffectiveDemand};
+use iot_core::drivers::board::{HasAudio, HasCamera, HasInput, HasMotion, HasPlayback};
 use iot_core::drivers::playback::Speaker;
 use iot_core::drivers::surface::WiredSurface;
-use iot_core::state::{DeviceManager, DisplayPage, MAX_LIGHTS, SurfaceRole};
+use iot_core::state::{Backed, DeviceManager, DisplayPage, Setup};
 
 pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
 
@@ -32,7 +30,7 @@ pub mod net;
 mod pipeline;
 mod surface;
 
-use audio::{CAPTURE, PLAYBACK_BUS, control_loop, feed_task, share};
+use audio::{CAPTURE, PLAYBACK_BUS, playback_tasks, share};
 use boot::{boot_override, boot_page};
 use bridge::{INBOUND, OUTBOUND};
 use input::{INTENT_BUS, input_task};
@@ -71,7 +69,7 @@ pub struct Wiring<C> {
 /// Application composition: one renderer per wired surface, then the persistent tasks.
 pub async fn run<B, C>(mut board: B, wiring: Wiring<C>) -> !
 where
-    B: BoardTrait + HasInput + HasMotion + HasAudio + HasPlayback + HasCamera + 'static,
+    B: HasInput + HasMotion + HasAudio + HasPlayback + HasCamera,
     C: ClockSink,
 {
     let Wiring {
@@ -80,106 +78,74 @@ where
         network,
         surfaces,
     } = wiring;
-    assert!(
-        surfaces.len() <= MAX_LIGHTS,
-        "more wired surfaces than slots"
-    );
-    let mut surface_roles = [SurfaceRole::Absent; MAX_LIGHTS];
-    for (role, wired) in surface_roles.iter_mut().zip(&surfaces) {
-        *role = wired.role();
-    }
+
+    // Take everything off the board once; nothing below asks it anything again.
     let mut sources = board.take_input().unwrap_or_default();
     let motion = board.take_motion();
-    let motion_enabled = motion.is_some();
+    let audio = board.take_audio(&CAPTURE);
+    let speaker = board.take_playback();
+    let camera = board.take_camera();
     let motion_caps = board.motion_capabilities();
+    let backed = Backed {
+        motion: motion.is_some().then_some(motion_caps),
+        audio: audio.is_some(),
+        playback: speaker.is_some(),
+        camera: camera.is_some(),
+        network: network.is_present(),
+    };
+    let configurator = Configurator::new(board.motion_configurations());
+    sources.extend(motion);
+    sources.extend(audio);
+
     log::info!(
         "[MOTION] {}, capabilities 0x{:X}",
-        if motion_enabled { "wired" } else { "absent" },
+        if backed.motion.is_some() {
+            "wired"
+        } else {
+            "absent"
+        },
         motion_caps.bits(),
     );
-    let audio = board.take_audio(&CAPTURE);
-    let audio_enabled = audio.is_some();
-    let mut demand_keys: Vec<DemandKey> = alloc::vec![DemandKey::DISPLAY];
-    if let Some(motion) = motion {
-        sources.push(motion);
-        demand_keys.push(DemandKey::MOTION);
-    }
-    if let Some(audio) = audio {
-        sources.push(audio);
-        demand_keys.push(DemandKey::AUDIO);
-    }
-
-    let speaker = board.take_playback();
-    let playback_enabled = speaker.is_some();
-    if !playback_enabled {
+    if !backed.playback {
         log::info!("[PLAY] no speaker wired");
     }
-
-    let camera = board.take_camera();
-    let camera_enabled = camera.is_some();
-    if camera_enabled {
-        demand_keys.push(DemandKey::CAMERA);
-    }
-    if !camera_enabled {
+    if !backed.camera {
         log::info!("[CAM] no camera wired, the Camera page stays dark");
     }
 
-    let render = wired(surfaces, camera);
-    let override_ = boot_override();
-    let mut manager = Box::new(
-        DeviceManager::with_motion(motion_enabled, motion_caps)
-            .with_demand_keys(demand_keys)
-            .with_audio(audio_enabled)
-            .with_playback(playback_enabled)
-            .with_camera(camera_enabled)
-            .with_network(network.is_present())
-            .with_surface_roles(surface_roles)
-            .with_boot_page(boot_page())
-            .with_override(override_),
-    );
-    if manager.boot_page() != DisplayPage::Ambient {
-        log::info!("[IOT] boot page is {:?}", manager.boot_page());
+    let (render, surface_roles) = wired(surfaces, camera);
+    let mut manager = Box::new(DeviceManager::boot(Setup {
+        backed,
+        demand_keys: backed.demand_keys(),
+        surface_roles,
+        boot_page: boot_page(),
+        overrides: boot_override(),
+    }));
+    let boot = manager.boot_page();
+    if boot != DisplayPage::Ambient {
+        log::info!("[IOT] boot page is {boot:?}");
     }
-    let configurator = Configurator::new(board.motion_configurations());
+
     // One shared handle: the feed runs on the preemptible executor, and the codec's I2C calls must not.
     let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));
-
-    // The feed loop gets no demand gate: its existence is what clocks the microphone.
     let demand = SharedDemand::new(RefCell::new(manager.demand().clone()));
     log::info!("[IOT] demand {}", manager.demand());
 
-    let input_future = input_task(&INTENT_BUS, sources, &configurator, &demand);
-    let pipeline_future = run_loop(
-        &INTENT_BUS,
-        &CAPTURE,
-        &OUTBOUND,
-        &INBOUND,
-        &PLAYBACK_BUS,
-        render,
-        &mut manager,
-        &mut clock,
-        &demand,
-    );
-    match (shared, feed) {
-        (Some(shared), Feed::Interrupt(spawner)) => {
-            // Spawned, not joined: joining a future on the executor this one does not run waits for ever.
-            spawner.spawn(
-                feed_task(shared).expect("the feed executor has room for the one task on it"),
-            );
-            match join3(
-                input_future,
-                pipeline_future,
-                control_loop(shared, &PLAYBACK_BUS, &INTENT_BUS),
-            )
-            .await {}
-        }
-        (Some(shared), Feed::Inline) => match join4(
-            input_future,
-            pipeline_future,
-            control_loop(shared, &PLAYBACK_BUS, &INTENT_BUS),
-            audio::feed_loop(shared),
-        )
-        .await {},
-        (None, _) => match join(input_future, pipeline_future).await {},
-    }
+    let playback = playback_tasks(shared, feed, &PLAYBACK_BUS, &INTENT_BUS);
+    match join3(
+        input_task(&INTENT_BUS, sources, &configurator, &demand),
+        run_loop(
+            &INTENT_BUS,
+            &CAPTURE,
+            &OUTBOUND,
+            &INBOUND,
+            &PLAYBACK_BUS,
+            render,
+            &mut manager,
+            &mut clock,
+            &demand,
+        ),
+        playback,
+    )
+    .await {}
 }

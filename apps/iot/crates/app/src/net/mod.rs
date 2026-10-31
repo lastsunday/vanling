@@ -13,7 +13,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{ApList, Front, LinkStatus, Ssid, Station};
-use iot_core::intent::{BusinessIntent, Intent};
+use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
 
 use crate::input::INTENT_BUS;
 
@@ -69,7 +69,9 @@ where
     let seed = seed_from(octets);
     let setup_name = setup_ssid(octets);
     MAC.lock(|cell| cell.set(octets));
-    let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::Mac(octets)));
+    let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::Network(
+        NetworkIntent::Mac(octets),
+    )));
     publish(station.status(), store::has_saved(&saved));
     let resources = Box::leak(Box::new(StackResources::<SOCKETS>::new()));
     let setup_resources = Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new()));

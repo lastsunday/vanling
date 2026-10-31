@@ -1,26 +1,23 @@
-use crate::drivers::input::{
-    ButtonEvent, FingerLast, GestureEvent, InputEvent, MAX_TRACKED_POINTS, SwipeDirection,
+use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
+use crate::drivers::motion::MotionCapabilities;
+use crate::intent::{
+    BusinessIntent, LightIntent, NetworkIntent, OperationIntent, PageIntent, recognize, translate,
 };
-use crate::drivers::motion::{MotionCapabilities, MotionCounts};
-use crate::intent::{BusinessIntent, OperationIntent, recognize, translate};
 use crate::state::MAX_LIGHTS;
-use crate::state::{
-    AudioState, Breath, DeviceManager, DeviceState, DisplayPage, LightState, PlaybackState,
-    SurfaceRole,
-};
+use crate::state::{Backed, Breath, DeviceState, DisplayPage, LightState, SurfaceRole};
 
 pub(crate) const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 
 pub(crate) const BREATH_BASE: Breath = Breath {
-    period_ms: DeviceManager::DEFAULT_PERIOD_MS,
-    hue_period_ms: DeviceManager::DEFAULT_HUE_PERIOD_MS,
-    hue_span: DeviceManager::DEFAULT_HUE_SPAN,
-    min_brightness: DeviceManager::DEFAULT_MIN_BRIGHTNESS,
-    max_brightness: DeviceManager::DEFAULT_MAX_BRIGHTNESS,
-    saturation: DeviceManager::DEFAULT_SATURATION,
-    hue: DeviceManager::DEFAULT_HUE,
-    group: DeviceManager::DEFAULT_GROUP,
-    group_len: DeviceManager::DEFAULT_GROUP_LEN,
+    period_ms: LightState::DEFAULT_PERIOD_MS,
+    hue_period_ms: LightState::DEFAULT_HUE_PERIOD_MS,
+    hue_span: LightState::DEFAULT_HUE_SPAN,
+    min_brightness: LightState::DEFAULT_MIN_BRIGHTNESS,
+    max_brightness: LightState::DEFAULT_MAX_BRIGHTNESS,
+    saturation: LightState::DEFAULT_SATURATION,
+    hue: LightState::DEFAULT_HUE,
+    group: LightState::DEFAULT_GROUP,
+    group_len: LightState::DEFAULT_GROUP_LEN,
 };
 
 pub(crate) fn state(light: LightState) -> DeviceState {
@@ -31,49 +28,27 @@ pub(crate) fn state_on(page: DisplayPage, light: LightState) -> DeviceState {
     DeviceState {
         lights: [light; MAX_LIGHTS],
         surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
-        notice: None,
-        outage_announced: false,
         page,
-        link: crate::drivers::network::LinkStatus::default(),
-        mac: None,
-        aps: None,
-        setup: crate::state::NetworkSetup::default(),
-        setup_wanted: false,
-        splash_reported: false,
-        join: None,
-        leave: false,
-        setup_cancel: false,
-        switch_front: false,
-        setup_open: None,
-        scan_now: false,
-        forget: None,
-        motion_enabled: true,
-        motion: None,
-        motion_counts: MotionCounts::default(),
-        motion_caps: MotionCapabilities::EMPTY,
-        audio_enabled: true,
-        audio: AudioState::default(),
-        playback_enabled: true,
-        playback: PlaybackState::default(),
-        camera_enabled: true,
-        network_enabled: true,
-        touch: None,
-        touch_points: [None; MAX_TRACKED_POINTS],
-        live_dir: [0; MAX_TRACKED_POINTS],
-        two_finger_runs: 0,
-        touch_frames: 0,
-        finger: [FingerLast::default(); MAX_TRACKED_POINTS],
-        touch_held_ms: 0,
-        tap_count: 0,
-        press_count: 0,
-        long_press_count: 0,
-        ghost_count: 0,
-        swipe_count: 0,
-        last_swipe: None,
-        last_gesture_origin: None,
-        last_gesture_end: None,
-        chip_gesture_id: 0,
+        backed: Backed {
+            motion: Some(MotionCapabilities::EMPTY),
+            audio: true,
+            playback: true,
+            camera: true,
+            network: true,
+        },
+        ..DeviceState::default()
     }
+}
+
+/// A state whose network record is the base's with one fact changed. The sites below each
+/// set a single network field, and nesting it by hand would bury that fact under a record
+/// that is otherwise untouched.
+pub(crate) fn with_network(
+    mut state: DeviceState,
+    change: impl FnOnce(&mut crate::state::NetworkState),
+) -> DeviceState {
+    change(&mut state.network);
+    state
 }
 
 pub(crate) fn op(event: InputEvent) -> OperationIntent {
@@ -90,27 +65,27 @@ pub(crate) fn target(event: InputEvent, current: LightState) -> Option<LightStat
 
 pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightState> {
     match translate(&op(event), current) {
-        BusinessIntent::SetLight { state, .. } => Some(state),
+        BusinessIntent::Light(LightIntent { state, .. }) => Some(state),
         BusinessIntent::Invalid
-        | BusinessIntent::NextPage
-        | BusinessIntent::Capture(_)
+        | BusinessIntent::Page(PageIntent::NextPage)
+        | BusinessIntent::Audio(_)
         | BusinessIntent::Playback(_)
-        | BusinessIntent::SplashOver
-        | BusinessIntent::RequestSetup
-        | BusinessIntent::LinkReport(_)
-        | BusinessIntent::NoCopy(_)
-        | BusinessIntent::Mac(_)
-        | BusinessIntent::Key { .. }
-        | BusinessIntent::Choose(_)
-        | BusinessIntent::AskForget(_)
-        | BusinessIntent::Scroll { .. }
-        | BusinessIntent::Leave
-        | BusinessIntent::Answer(_)
-        | BusinessIntent::CloseSetup
-        | BusinessIntent::SwitchFront
-        | BusinessIntent::ScanNow
-        | BusinessIntent::SetOpenAccessPoint(_)
-        | BusinessIntent::Dismiss => None,
+        | BusinessIntent::Page(PageIntent::SplashOver)
+        | BusinessIntent::Page(PageIntent::RequestSetup)
+        | BusinessIntent::Network(NetworkIntent::LinkReport(_))
+        | BusinessIntent::Network(NetworkIntent::NoCopy(_))
+        | BusinessIntent::Network(NetworkIntent::Mac(_))
+        | BusinessIntent::Network(NetworkIntent::Key { .. })
+        | BusinessIntent::Network(NetworkIntent::Choose(_))
+        | BusinessIntent::Network(NetworkIntent::AskForget(_))
+        | BusinessIntent::Network(NetworkIntent::Scroll { .. })
+        | BusinessIntent::Network(NetworkIntent::Leave)
+        | BusinessIntent::Network(NetworkIntent::Answer(_))
+        | BusinessIntent::Network(NetworkIntent::CloseSetup)
+        | BusinessIntent::Network(NetworkIntent::SwitchFront)
+        | BusinessIntent::Network(NetworkIntent::ScanNow)
+        | BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(_))
+        | BusinessIntent::Network(NetworkIntent::Dismiss) => None,
     }
 }
 

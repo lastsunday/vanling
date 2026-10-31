@@ -1,7 +1,7 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
-use crate::intent::{BusinessIntent, OperationIntent};
+use crate::intent::{BusinessIntent, LightIntent, OperationIntent};
 use crate::paint::{GROUP_CAPACITY, Rgb};
-use crate::state::{Breath, DeviceManager, DeviceState, LightState};
+use crate::state::{Breath, DeviceState, LightState};
 
 pub const PALETTE: [Rgb; 7] = [
     Rgb(255, 64, 48),
@@ -91,17 +91,17 @@ pub(super) fn step(current: &DeviceState, source: u8) -> BusinessIntent {
 
 pub(super) fn cycle(current: &DeviceState, source: u8) -> BusinessIntent {
     let slot = slot(current, source);
-    BusinessIntent::SetLight {
+    BusinessIntent::Light(LightIntent {
         instance: slot as u8,
         state: cycle_mode(current.lights[slot]),
-    }
+    })
 }
 
 pub(super) fn cycle_panel(current: &DeviceState, source: u8) -> BusinessIntent {
-    BusinessIntent::SetLight {
+    BusinessIntent::Light(LightIntent {
         instance: 0,
         state: cycle_mode(current.lights[slot(current, source)]),
-    }
+    })
 }
 
 pub(super) fn swipe(
@@ -121,9 +121,11 @@ fn slot(current: &DeviceState, source: u8) -> usize {
 }
 
 fn target_for(step: Option<LightState>, instance: usize) -> BusinessIntent {
-    step.map_or(BusinessIntent::Invalid, |state| BusinessIntent::SetLight {
-        instance: instance as u8,
-        state,
+    step.map_or(BusinessIntent::Invalid, |state| {
+        BusinessIntent::Light(LightIntent {
+            instance: instance as u8,
+            state,
+        })
     })
 }
 
@@ -132,7 +134,7 @@ fn cycle_mode(current: LightState) -> LightState {
         LightState::Off => LightState::default(),
         LightState::Breath { .. } => LightState::Solid {
             color: PALETTE[0],
-            brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
+            brightness: LightState::SOLID_DEFAULT_BRIGHTNESS,
         },
         LightState::Solid { .. } => LightState::Off,
     }
@@ -280,11 +282,11 @@ fn retreat_color_group(breath: &Breath) -> ColorGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intent::{BusinessIntent, recognize, translate};
+    use crate::intent::{BusinessIntent, LightIntent, recognize, translate};
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, long_press, op, state, swipe_event, tap_gesture, target,
     };
-    use crate::state::{DeviceManager, DeviceState, LightState};
+    use crate::state::{DeviceState, LightState};
 
     mod buttons {
         use super::*;
@@ -303,10 +305,10 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state(DEFAULT_BREATH)
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                }
+                })
             );
             assert_eq!(
                 translate(
@@ -316,13 +318,13 @@ mod tests {
                         brightness: 140,
                     })
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[3],
                         brightness: 140,
                     },
-                }
+                })
             );
         }
 
@@ -330,10 +332,10 @@ mod tests {
         fn long_press_cycles_the_mode_ring() {
             assert_eq!(
                 translate(&op(long_press()), &state(LightState::Off)),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: DEFAULT_BREATH,
-                }
+                })
             );
             let slow = Breath {
                 period_ms: 5_000,
@@ -341,13 +343,13 @@ mod tests {
             };
             assert_eq!(
                 translate(&op(long_press()), &state(LightState::Breath(slow))),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[0],
-                        brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
+                        brightness: LightState::SOLID_DEFAULT_BRIGHTNESS,
                     },
-                }
+                })
             );
             assert_eq!(
                 translate(
@@ -357,10 +359,10 @@ mod tests {
                         brightness: 255,
                     })
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Off,
-                }
+                })
             );
             let mut light = LightState::Off;
             light = target(long_press(), light).unwrap();
@@ -385,13 +387,13 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::DoubleClick)),
                     &state(DEFAULT_BREATH)
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(Breath {
                         period_ms: 5_000,
                         ..BREATH_BASE
                     }),
-                }
+                })
             );
             let mut breath = Breath {
                 period_ms: BREATH_PERIODS_MS[0],
@@ -402,7 +404,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::DoubleClick)),
                     &state(LightState::Breath(breath)),
                 );
-                let BusinessIntent::SetLight { state, .. } = business else {
+                let BusinessIntent::Light(LightIntent { state, .. }) = business else {
                     panic!("double click must stay in breathing");
                 };
                 assert!(
@@ -427,13 +429,13 @@ mod tests {
                         brightness: 140,
                     })
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[0],
                         brightness: 200,
                     },
-                }
+                })
             );
             assert_eq!(
                 translate(
@@ -443,13 +445,13 @@ mod tests {
                         brightness: 255,
                     })
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Solid {
                         color: PALETTE[0],
                         brightness: 32,
                     },
-                }
+                })
             );
         }
     }
@@ -493,10 +495,10 @@ mod tests {
                     })),
                     &state(LightState::Off)
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: DEFAULT_BREATH,
-                }
+                })
             );
             assert_eq!(
                 target(
@@ -510,7 +512,7 @@ mod tests {
                 ),
                 Some(LightState::Solid {
                     color: PALETTE[0],
-                    brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
+                    brightness: LightState::SOLID_DEFAULT_BRIGHTNESS,
                 })
             );
         }
@@ -732,21 +734,21 @@ mod tests {
                     &recognize(InputEvent::Button(ButtonEvent::Click), 1),
                     &two_lights()
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 1,
                     state: LightState::Solid {
                         color: PALETTE[1],
                         brightness: 140,
                     },
-                },
+                }),
                 "each button drives the surface its wiring order names"
             );
             assert_eq!(
                 translate(&recognize(long_press(), 1), &two_lights()),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 1,
                     state: LightState::Off,
-                },
+                }),
                 "the mode cycle walks surface 1 from its own solid head"
             );
         }
@@ -758,13 +760,13 @@ mod tests {
                     &recognize(InputEvent::Button(ButtonEvent::DoubleClick), 7),
                     &two_lights()
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 1,
                     state: LightState::Solid {
                         color: PALETTE[0],
                         brightness: 200,
                     },
-                },
+                }),
                 "out-of-range sources clamp to the last surface"
             );
         }

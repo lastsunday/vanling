@@ -1,6 +1,10 @@
 //! The light surfaces as the render loop reads them: the breathing schedule and the
 //! behavior a page's snapshot carries.
-use super::*;
+
+use crate::drivers::network::NetworkError;
+use crate::paint::{GROUP_CAPACITY, Rgb};
+
+use super::DeviceManager;
 
 /// A breathing schedule: brightness envelope plus the hue path it travels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,17 +85,37 @@ impl core::fmt::Display for LampLine {
 }
 
 impl LightState {
+    pub const DEFAULT_PERIOD_MS: u32 = 3_000;
+    pub const DEFAULT_HUE_PERIOD_MS: u32 = 60_000;
+    pub const DEFAULT_HUE_SPAN: u8 = 255;
+    pub const DEFAULT_MIN_BRIGHTNESS: u8 = 24;
+    pub const DEFAULT_MAX_BRIGHTNESS: u8 = 80;
+    pub const DEFAULT_SATURATION: u8 = 200;
+    pub const DEFAULT_HUE: u8 = 0;
+    /// Warm sunset: amber, golden, deep rose — low-blue palette favored by circadian
+    /// research for a calm ambient breathing glow.
+    pub const DEFAULT_GROUP: [u8; Breath::MAX_GROUP] = [16, 32, 3, 0, 0, 0, 0];
+    pub const DEFAULT_GROUP_LEN: u8 = 3;
+
+    /// Full-brightness entry point for solid mode; dimming is a long-press advance from
+    /// here.
+    pub const SOLID_DEFAULT_BRIGHTNESS: u8 = 255;
+
+    /// Backlight floor for the breathing envelope: the panel never sinks below this percent
+    /// while pixels are lit, so the trough stays a dim glow instead of a hard on/off blip.
+    pub const BACKLIGHT_FLOOR_PCT: u8 = 12;
+
     pub const fn boot() -> Self {
         LightState::Breath(Breath {
-            period_ms: DeviceManager::DEFAULT_PERIOD_MS,
-            hue_period_ms: DeviceManager::DEFAULT_HUE_PERIOD_MS,
-            hue_span: DeviceManager::DEFAULT_HUE_SPAN,
-            min_brightness: DeviceManager::DEFAULT_MIN_BRIGHTNESS,
-            max_brightness: DeviceManager::DEFAULT_MAX_BRIGHTNESS,
-            saturation: DeviceManager::DEFAULT_SATURATION,
-            hue: DeviceManager::DEFAULT_HUE,
-            group: DeviceManager::DEFAULT_GROUP,
-            group_len: DeviceManager::DEFAULT_GROUP_LEN,
+            period_ms: LightState::DEFAULT_PERIOD_MS,
+            hue_period_ms: LightState::DEFAULT_HUE_PERIOD_MS,
+            hue_span: LightState::DEFAULT_HUE_SPAN,
+            min_brightness: LightState::DEFAULT_MIN_BRIGHTNESS,
+            max_brightness: LightState::DEFAULT_MAX_BRIGHTNESS,
+            saturation: LightState::DEFAULT_SATURATION,
+            hue: LightState::DEFAULT_HUE,
+            group: LightState::DEFAULT_GROUP,
+            group_len: LightState::DEFAULT_GROUP_LEN,
         })
     }
 
@@ -239,7 +263,7 @@ impl Default for LightState {
 
 impl DeviceManager {
     pub(super) fn announce(&mut self, kind: NoticeKind) {
-        if !self.state.has_lamp() || !self.state.network_enabled {
+        if !self.state.has_lamp() || !self.state.backed.network {
             return;
         }
         self.state.notice = Some(Notice::new(kind));
@@ -416,18 +440,23 @@ mod tests {
 #[cfg(test)]
 mod lamp {
     use super::*;
+    use crate::drivers::network::{Front, LinkPhase, LinkStatus};
+    use crate::intent::*;
     use crate::state::test_support::*;
 
-    use crate::drivers::network::Front;
-
     fn lamp_only() -> DeviceManager {
-        DeviceManager::new()
-            .with_network(true)
-            .with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent])
+        DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            surface_roles: [SurfaceRole::Lamp, SurfaceRole::Absent],
+            ..Default::default()
+        })
     }
 
     fn report(manager: &mut DeviceManager, status: LinkStatus) {
-        manager.apply_business(BusinessIntent::LinkReport(status));
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(status)));
     }
 
     fn setup(manager: &mut DeviceManager) {
@@ -504,9 +533,14 @@ mod lamp {
         setup(&mut lamp);
         assert_eq!(lamp.state().link_notice(), Some(LightState::SETUP));
 
-        let mut screened = DeviceManager::new()
-            .with_network(true)
-            .with_surface_roles([SurfaceRole::Pages, SurfaceRole::Absent]);
+        let mut screened = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
+            ..Default::default()
+        });
         setup(&mut screened);
         assert_eq!(
             screened.state().link_notice(),
@@ -514,9 +548,14 @@ mod lamp {
             "a display has a page to say it, so nothing is routed to a lamp"
         );
 
-        let mut both = DeviceManager::new()
-            .with_network(true)
-            .with_surface_roles([SurfaceRole::Pages, SurfaceRole::Lamp]);
+        let mut both = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            surface_roles: [SurfaceRole::Pages, SurfaceRole::Lamp],
+            ..Default::default()
+        });
         setup(&mut both);
         assert_eq!(
             both.state().link_notice(),
@@ -524,9 +563,14 @@ mod lamp {
             "a lamp still speaks beside a display"
         );
 
-        let mut no_radio = DeviceManager::new()
-            .with_network(false)
-            .with_surface_roles([SurfaceRole::Lamp, SurfaceRole::Absent]);
+        let mut no_radio = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: false,
+                ..Backed::NONE
+            },
+            surface_roles: [SurfaceRole::Lamp, SurfaceRole::Absent],
+            ..Default::default()
+        });
         setup(&mut no_radio);
         assert_eq!(no_radio.state().link_notice(), None);
     }
@@ -617,7 +661,7 @@ mod lamp {
     fn a_boot_with_nothing_saved_flashes_amber_and_then_shows_the_page() {
         let mut manager = lamp_only();
         assert_eq!(manager.state().page, DisplayPage::Splash);
-        manager.apply_business(BusinessIntent::SplashOver);
+        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
@@ -635,10 +679,15 @@ mod lamp {
 
     #[test]
     fn a_board_with_a_display_and_a_lamp_still_announces_on_the_lamp() {
-        let mut manager = DeviceManager::new()
-            .with_network(true)
-            .with_surface_roles([SurfaceRole::Pages, SurfaceRole::Lamp]);
-        manager.apply_business(BusinessIntent::SplashOver);
+        let mut manager = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            surface_roles: [SurfaceRole::Pages, SurfaceRole::Lamp],
+            ..Default::default()
+        });
+        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
@@ -649,8 +698,8 @@ mod lamp {
     #[test]
     fn a_splash_hold_opens_setup_instead_of_flashing_offline() {
         let mut manager = lamp_only();
-        manager.apply_business(BusinessIntent::RequestSetup);
-        manager.apply_business(BusinessIntent::SplashOver);
+        manager.apply_business(BusinessIntent::Page(PageIntent::RequestSetup));
+        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
         assert_eq!(manager.state().notice, None);
         assert_eq!(manager.state().page, DisplayPage::Network);
     }

@@ -14,7 +14,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use iot_core::drivers::network::{ApList, Front, JoinRequest, LinkStatus, Ssid};
-use iot_core::intent::{BusinessIntent, Intent};
+use iot_core::intent::{BusinessIntent, Intent, NetworkIntent};
 use iot_core::state::DisplayPage;
 
 use crate::input::INTENT_BUS;
@@ -149,7 +149,9 @@ impl LinkWatch {
             return;
         }
         if INTENT_BUS
-            .try_send(Intent::Business(BusinessIntent::LinkReport(status)))
+            .try_send(Intent::Business(BusinessIntent::Network(
+                NetworkIntent::LinkReport(status),
+            )))
             .is_ok()
         {
             self.last.lock(|last| last.set(Some(status)));

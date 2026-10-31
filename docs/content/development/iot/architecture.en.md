@@ -172,7 +172,9 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_business`. No new mechanism.
 
-A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module: `state/playback.rs`, `state/audio.rs` and `state/network.rs` each own their capability's transitions, its diagnostics fold and its private helpers, and `apply_business` keeps a single call for each; `state/mod.rs` is left with device-wide routing (the light, the page turn, the splash, and the one-write verbs). A new capability of that kind is a module plus one arm; a scenario that changes one field is still written inline in `apply_business`.
+A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `BusinessIntent` is grouped by domain into `Page`/`Network`/`Audio`/`Playback`/`Light`, and `apply_business` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
+
+`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Setup`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen.
 
 ### Transport: three downstream paths, of different kinds
 
@@ -369,9 +371,9 @@ The per-device figures and their individual basis labels are in the [implementat
 
 `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end.
 
-The boot page (`with_boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
+The boot page (`Setup::boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
 
-The capability test is one bool per page (`is_backed`), injected at the composition point: motion, audio, playback, camera and the link. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `iot_app::Network` is shaped like `Feed`: **a wiring fact passed in as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`network`; `run` only copies them into `surface_roles` — no surface is ever asked back whether it draws pages, and an empty slot never appears as a handle.
+The capability test is one column of each page's row (`PageSpec::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Setup` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `iot_app::Network` is shaped like `Feed`: **a wiring fact passed in as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`network`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
 
 This rule exists because of a defect it fixed.
 

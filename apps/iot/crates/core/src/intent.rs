@@ -17,15 +17,31 @@ pub struct OperationIntent {
     pub event: InputEvent,
 }
 
+/// What the device is asked to do, grouped by the domain that owns the answer. The manager
+/// routes one arm per domain; each domain matches its own group exhaustively, so a new
+/// variant cannot be left unanswered and the manager never learns a domain's operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BusinessIntent {
+    /// Nothing the panel asked for survived translation.
     Invalid,
-    SetLight { instance: u8, state: LightState },
-    NextPage,
-    Capture(CaptureAction),
+    Page(PageIntent),
+    Network(NetworkIntent),
+    Audio(AudioIntent),
     Playback(PlaybackAction),
+    Light(LightIntent),
+}
+
+/// The page's own transitions: the splash ends, the button asks for setup, the page turns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageIntent {
+    NextPage,
     SplashOver,
     RequestSetup,
+}
+
+/// What the panel asks of the link, and what the link reports back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkIntent {
     LinkReport(LinkStatus),
     NoCopy(Ssid),
     Mac([u8; 6]),
@@ -45,9 +61,16 @@ pub enum BusinessIntent {
 /// The Audio page's one transition: a recording starts, or the one in progress stops and
 /// keeps what it captured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CaptureAction {
+pub enum AudioIntent {
     Start,
     Stop,
+}
+
+/// An absolute target for one light surface, clamped by the manager to the wired slots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LightIntent {
+    pub instance: u8,
+    pub state: LightState,
 }
 
 /// What the Speaker page asks of the output, or the report that comes back.
@@ -73,10 +96,10 @@ pub fn recognize(event: InputEvent, source: u8) -> OperationIntent {
 
 pub fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
     if current.page != DisplayPage::Splash
-        && current.link.setup
+        && current.network.link.setup
         && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress))
     {
-        return BusinessIntent::SwitchFront;
+        return BusinessIntent::Network(NetworkIntent::SwitchFront);
     }
     page::translate(current.page, op, current)
 }
@@ -86,7 +109,7 @@ mod tests {
     use super::*;
     use crate::drivers::input::{GestureEvent, SwipeDirection};
     use crate::page::test_support::{long_press, op, state_on};
-    use crate::state::LightState;
+    use crate::state::{LightState, NetworkState};
 
     mod recognize {
         use super::*;
@@ -122,15 +145,18 @@ mod tests {
     #[test]
     fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
         let setup = DeviceState {
-            link: LinkStatus {
-                setup: true,
-                ..LinkStatus::default()
+            network: NetworkState {
+                link: LinkStatus {
+                    setup: true,
+                    ..LinkStatus::default()
+                },
+                ..NetworkState::default()
             },
             ..state_on(DisplayPage::Ambient, LightState::Off)
         };
         assert_eq!(
             translate(&op(long_press()), &setup),
-            BusinessIntent::SwitchFront
+            BusinessIntent::Network(NetworkIntent::SwitchFront)
         );
     }
 }

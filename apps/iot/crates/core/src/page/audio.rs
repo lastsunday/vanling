@@ -2,7 +2,7 @@ use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use crate::intent::{BusinessIntent, CaptureAction, OperationIntent};
+use crate::intent::{AudioIntent, BusinessIntent, OperationIntent};
 use crate::page::light;
 use crate::state::{AudioPhase, DeviceState};
 
@@ -18,7 +18,7 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 pub(super) fn translate(op: &OperationIntent, current: &DeviceState) -> BusinessIntent {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            BusinessIntent::Capture(capture_target(current.audio.phase))
+            BusinessIntent::Audio(capture_target(current.audio.phase))
         }
         InputEvent::Button(ButtonEvent::DoubleClick) => light::step(current, op.source),
         InputEvent::Button(ButtonEvent::LongPress) => light::cycle(current, op.source),
@@ -39,18 +39,18 @@ pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) ->
         || prev.audio.dba_lsb != next.audio.dba_lsb
 }
 
-fn capture_target(phase: AudioPhase) -> CaptureAction {
+fn capture_target(phase: AudioPhase) -> AudioIntent {
     if phase == AudioPhase::Recording {
-        CaptureAction::Stop
+        AudioIntent::Stop
     } else {
-        CaptureAction::Start
+        AudioIntent::Start
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intent::translate;
+    use crate::intent::{LightIntent, translate};
     use crate::page::light::COLOR_GROUPS;
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, op, state, state_on, tap_gesture, target, target_in,
@@ -65,7 +65,7 @@ mod tests {
             let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_audio),
-                BusinessIntent::Capture(CaptureAction::Start),
+                BusinessIntent::Audio(AudioIntent::Start),
                 "on the audio page the button is the record control, the same as the tap"
             );
             assert_eq!(
@@ -73,10 +73,10 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state_on(DisplayPage::Camera, DEFAULT_BREATH)
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                },
+                }),
                 "the camera page is not a control page, so the colour still walks"
             );
             assert_eq!(
@@ -84,20 +84,20 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state(DEFAULT_BREATH)
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                }
+                })
             );
             assert_eq!(
                 translate(
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state_on(DisplayPage::Attitude, DEFAULT_BREATH)
                 ),
-                BusinessIntent::SetLight {
+                BusinessIntent::Light(LightIntent {
                     instance: 0,
                     state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                }
+                })
             );
         }
 
@@ -106,7 +106,7 @@ mod tests {
             let on_audio = state_on(DisplayPage::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_audio),
-                BusinessIntent::Capture(CaptureAction::Start),
+                BusinessIntent::Audio(AudioIntent::Start),
                 "on the audio page the tap is the record control"
             );
             assert_eq!(

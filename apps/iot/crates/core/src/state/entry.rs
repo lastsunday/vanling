@@ -1,6 +1,8 @@
 //! A passphrase being typed: the draft's octets, the shift state, and the pending character
 //! a repeat of the same key can still cycle.
-use super::*;
+
+use crate::drivers::network::{Credentials, PASSWORD_BYTES, Password, Ssid};
+use crate::keyboard::{Cycling, Key, Layer, MULTITAP_WINDOW_MS};
 
 /// A passphrase being typed on the Network page's keyboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

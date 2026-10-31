@@ -53,7 +53,7 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 - **安全与证据不可删**: `# Safety`、`// SAFETY:`、hazard 与已知限制任何清理都不得删除，只可收紧措辞。注释中的断言须有测试或实测支撑，否则标「据称」并注明未复现；不写历史叙事（曾经做错、对比旧实现），此类内容归 `docs/content/records/`（带 `<!-- doc-audience: ai -->`）
 - **下载器**: `--data-dir ../../data`，从 `apps/server/` 执行
 - **重命名**: 确认旧名无残留后再收工
-- **IoT 分层**: `iot-core → iot-ui / iot-chip-esp → iot-bsp-esp → iot-app`；接线只在 bsp 板模块（`Board::new` 固定引脚、业务零引脚号）；板层用板名、应用层用产品名 `vanling`。新增板/多芯片流程见 `iot/architecture.md`
+- **IoT 分层**: `iot-core → iot-ui / iot-chip-esp → iot-bsp-esp → iot-app`；接线只在 bsp 板模块（`Board::new` 固定引脚、业务零引脚号）；板层用板名、应用层用产品名 `vanling`；状态一域一文件（`state/mod.rs` 只做 barrel，领域文件禁 `use super::*`，测试除外），意图按域分组、域内穷尽 `apply`。新增板/多芯片流程见 `iot/architecture.md`
 - **IoT 组合**: 组合点 = bin 板清单（能力 move 注入，缺能力即编译错）；产品档 = feature 别名；渲染层运行时可插拔（`RenderController` + renderer 注册表）。详见 architecture.md
 - **IoT 日志**: 只用 `log` façade，输出通道由家族 `iot-chip-esp` 初始化（esp 为 `esp_println::logger`）；业务代码禁止 `println!` / `esp_println::println!`
 - **IoT 软 feature**: 一个 feature = 一个模块（`mod` 处门控一次、off 即文件不存在）；消费者文件禁 `#[cfg(feature=...)]`（能力经 trait 注入）；新增须每子集独立编译过测；判据与六规则见 `iot/features.md`

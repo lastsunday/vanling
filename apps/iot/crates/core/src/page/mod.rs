@@ -24,8 +24,8 @@ pub use self::light::{
 use crate::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Sensitivity};
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, InputEvent};
-use crate::intent::{BusinessIntent, OperationIntent};
-use crate::state::DeviceState;
+use crate::intent::{BusinessIntent, OperationIntent, PageIntent};
+use crate::state::{Backed, DeviceState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayPage {
@@ -67,27 +67,14 @@ impl DisplayPage {
         Self::Splash,
     ];
 
-    pub const fn next_page(
-        &self,
-        motion_enabled: bool,
-        audio_enabled: bool,
-        playback_enabled: bool,
-        camera_enabled: bool,
-        network_enabled: bool,
-    ) -> Self {
+    pub fn next_page(&self, backed: Backed) -> Self {
         if matches!(self, Self::Splash) {
             return Self::Ambient;
         }
         let mut step = 1;
         while step <= CYCLE.len() {
             let candidate = CYCLE[(self.index() + step) % CYCLE.len()];
-            if candidate.is_backed(
-                motion_enabled,
-                audio_enabled,
-                playback_enabled,
-                camera_enabled,
-                network_enabled,
-            ) {
+            if candidate.is_backed(backed) {
                 return candidate;
             }
             step += 1;
@@ -95,23 +82,10 @@ impl DisplayPage {
         *self
     }
 
-    pub(crate) const fn is_backed(
-        &self,
-        motion_enabled: bool,
-        audio_enabled: bool,
-        playback_enabled: bool,
-        camera_enabled: bool,
-        network_enabled: bool,
-    ) -> bool {
-        match self {
-            Self::Ambient => true,
-            Self::Attitude => motion_enabled,
-            Self::Audio => audio_enabled,
-            Self::Speaker => playback_enabled,
-            Self::Camera => camera_enabled,
-            Self::Network => network_enabled,
-            Self::Splash => true,
-        }
+    /// Whether the board can show this page: the row's own `needs`, so a page declares what
+    /// it takes next to what it draws.
+    pub(crate) fn is_backed(&self, backed: Backed) -> bool {
+        (PAGES[self.index()].needs)(backed)
     }
 
     // Out of line on purpose: inlined, the jump table sits beside every caller — 456 B of DRAM
@@ -167,18 +141,15 @@ impl DisplayPage {
     }
 
     /// The fill this page grounds the panel with, or `None` when the page draws over what
-    /// the light was already showing. A page that covers the whole panel says so here
+    /// the light was already showing. A page that covers the whole panel says so in its row
     /// rather than in each board's screen.
-    pub const fn ground(&self) -> Option<crate::paint::Rgb> {
-        match self {
-            Self::Network | Self::Camera => Some(crate::paint::Rgb(0, 0, 0)),
-            _ => None,
-        }
+    pub fn ground(&self) -> Option<crate::paint::Rgb> {
+        PAGES[self.index()].ground
     }
 
     /// Whether this page's frames arrive from the camera instead of being drawn.
-    pub const fn draws_frames(&self) -> bool {
-        matches!(self, Self::Camera)
+    pub fn draws_frames(&self) -> bool {
+        PAGES[self.index()].draws_frames
     }
 
     fn claim_for(&self, key: DemandKey) -> Claim {
@@ -194,7 +165,7 @@ pub(crate) fn translate(
     if page != DisplayPage::Splash
         && matches!(op.event, InputEvent::Button(ButtonEvent::TripleClick))
     {
-        return BusinessIntent::NextPage;
+        return BusinessIntent::Page(PageIntent::NextPage);
     }
     (PAGES[page.index()].translate)(op, current)
 }
@@ -225,6 +196,13 @@ const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
 struct PageSpec {
     #[cfg_attr(not(test), allow(dead_code))]
     page: DisplayPage,
+    /// What the board must wire for this page to be reachable at all.
+    needs: fn(Backed) -> bool,
+    /// The fill that covers the panel before the page draws, or `None` when it draws over
+    /// what the light already showed.
+    ground: Option<crate::paint::Rgb>,
+    /// Whether frames arrive from the camera instead of being drawn.
+    draws_frames: bool,
     claim: fn(DemandKind) -> Claim,
     translate: fn(&OperationIntent, &DeviceState) -> BusinessIntent,
     repaint: fn(&Diagnostics, &Diagnostics, bool) -> bool,
@@ -233,42 +211,63 @@ struct PageSpec {
 const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
     PageSpec {
         page: DisplayPage::Ambient,
+        needs: |_| true,
+        ground: None,
+        draws_frames: false,
         claim: ambient::claim,
         translate: light::translate,
         repaint: ambient::repaint,
     },
     PageSpec {
         page: DisplayPage::Attitude,
+        needs: |backed| backed.motion.is_some(),
+        ground: None,
+        draws_frames: false,
         claim: attitude::claim,
         translate: light::translate,
         repaint: attitude::repaint,
     },
     PageSpec {
         page: DisplayPage::Audio,
+        needs: |backed| backed.audio,
+        ground: None,
+        draws_frames: false,
         claim: audio::claim,
         translate: audio::translate,
         repaint: audio::repaint,
     },
     PageSpec {
         page: DisplayPage::Speaker,
+        needs: |backed| backed.playback,
+        ground: None,
+        draws_frames: false,
         claim: speaker::claim,
         translate: speaker::translate,
         repaint: speaker::repaint,
     },
     PageSpec {
         page: DisplayPage::Camera,
+        needs: |backed| backed.camera,
+        ground: Some(crate::paint::Rgb(0, 0, 0)),
+        draws_frames: true,
         claim: camera::claim,
         translate: light::translate,
         repaint: camera::repaint,
     },
     PageSpec {
         page: DisplayPage::Network,
+        needs: |backed| backed.network,
+        ground: Some(crate::paint::Rgb(0, 0, 0)),
+        draws_frames: false,
         claim: network::claim,
         translate: network::translate,
         repaint: network::repaint,
     },
     PageSpec {
         page: DisplayPage::Splash,
+        needs: |_| true,
+        ground: None,
+        draws_frames: false,
         claim: splash::claim,
         translate: splash::translate,
         repaint: splash::repaint,

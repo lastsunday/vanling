@@ -163,7 +163,9 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
-需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块：`state/playback.rs`、`state/audio.rs`、`state/network.rs` 各自拥有该能力的转移、诊断折叠与私有 helper，`apply_business` 只留一行调用；`state/mod.rs` 只剩设备级路由（灯、翻页、启动页、按键与确认这些一行写入）。新增这类能力 = 新模块 + 一条臂；只改一个字段的场景仍直接写在 `apply_business` 里。
+需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`BusinessIntent` 按域分组为 `Page`/`Network`/`Audio`/`Playback`/`Light`，`apply_business` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
+
+`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Setup`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
 
 ### 传输：三条下行路径，性质不同
 
@@ -344,9 +346,9 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面循环按次序表走一圈
 
-`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`with_boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
+`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Setup::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
 
-能力判定是每条页自己的一个 bool（`is_backed`），由组合点注入：运动、音频、回放、相机、链路。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Network` 与 `Feed` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`run` 只把它照抄成 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现。
+能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Setup` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `iot_app::Network` 与 `Feed` 同形，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 
 这条规约是修一个缺陷写下来的。
 

@@ -1,3 +1,12 @@
+use crate::demand::DemandKey;
+use crate::drivers::input::FingerLast;
+use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
+use crate::drivers::network::{
+    AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError, Ssid,
+};
+use crate::intent::*;
+use crate::keyboard::Layer;
+use crate::paint::Rgb;
 use crate::state::test_support::*;
 
 mod demand {
@@ -6,16 +15,27 @@ mod demand {
     use crate::demand::{ALL_KEYS, Claim, DemandKey, DemandKind, Mode, Sensitivity};
 
     fn fully_wired() -> DeviceManager {
-        DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
-            .with_demand_keys(alloc::vec![
+        fully_wired_on(DisplayPage::Ambient)
+    }
+
+    fn fully_wired_on(boot_page: DisplayPage) -> DeviceManager {
+        DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                audio: true,
+                playback: true,
+                camera: true,
+                ..Backed::NONE
+            },
+            demand_keys: alloc::vec![
                 DemandKey::MOTION,
                 DemandKey::AUDIO,
                 DemandKey::CAMERA,
                 DemandKey::DISPLAY
-            ])
-            .with_audio(true)
-            .with_playback(true)
-            .with_camera(true)
+            ],
+            boot_page,
+            ..Default::default()
+        })
     }
 
     #[test]
@@ -59,7 +79,10 @@ mod demand {
 
     #[test]
     fn a_device_the_board_did_not_declare_is_never_claimed() {
-        let panel_only = DeviceManager::new().with_demand_keys(alloc::vec![DemandKey::DISPLAY]);
+        let panel_only = DeviceManager::boot(Setup {
+            demand_keys: alloc::vec![DemandKey::DISPLAY],
+            ..Default::default()
+        });
         let demand = panel_only.demand();
 
         assert_eq!(demand.claim(DemandKey::MOTION).mode, Mode::Off);
@@ -105,10 +128,13 @@ mod demand {
 
     #[test]
     fn two_of_one_kind_can_be_demanded_apart() {
-        let twin = DeviceManager::new().with_demand_keys(alloc::vec![
-            DemandKey::instance(DemandKind::Audio, 0),
-            DemandKey::instance(DemandKind::Audio, 1),
-        ]);
+        let twin = DeviceManager::boot(Setup {
+            demand_keys: alloc::vec![
+                DemandKey::instance(DemandKind::Audio, 0),
+                DemandKey::instance(DemandKind::Audio, 1),
+            ],
+            ..Default::default()
+        });
         let mut demand = twin.demand().clone();
         demand.set(
             DemandKey::instance(DemandKind::Audio, 0),
@@ -139,7 +165,7 @@ mod demand {
         let mut manager = landed(fully_wired());
         let before = manager.demand().clone();
 
-        manager.apply_business(BusinessIntent::NextPage);
+        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
 
         assert_ne!(
             manager.demand(),
@@ -156,18 +182,42 @@ mod demand {
     #[test]
     fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
         let mut by_page = landed(fully_wired());
-        by_page.apply_business(BusinessIntent::NextPage);
+        by_page.apply_business(BusinessIntent::Page(PageIntent::NextPage));
         assert_eq!(
             by_page.demand(),
             &DeviceManager::proposed(&by_page.state, &by_page.demand_keys, &by_page.override_)
         );
 
         for manager in [
-            DeviceManager::with_motion(false, MotionCapabilities::EMPTY).with_camera(true),
-            DeviceManager::with_motion(false, MotionCapabilities::EMPTY).with_audio(true),
-            DeviceManager::with_motion(false, MotionCapabilities::EMPTY).with_playback(true),
-            DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
-                .with_boot_page(DisplayPage::Attitude),
+            DeviceManager::boot(Setup {
+                backed: Backed {
+                    camera: true,
+                    ..Backed::NONE
+                },
+                ..Default::default()
+            }),
+            DeviceManager::boot(Setup {
+                backed: Backed {
+                    audio: true,
+                    ..Backed::NONE
+                },
+                ..Default::default()
+            }),
+            DeviceManager::boot(Setup {
+                backed: Backed {
+                    playback: true,
+                    ..Backed::NONE
+                },
+                ..Default::default()
+            }),
+            DeviceManager::boot(Setup {
+                backed: Backed {
+                    motion: Some(MotionCapabilities::EMPTY),
+                    ..Backed::NONE
+                },
+                boot_page: DisplayPage::Attitude,
+                ..Default::default()
+            }),
         ] {
             assert_eq!(
                 manager.demand(),
@@ -178,7 +228,7 @@ mod demand {
 
     #[test]
     fn a_committed_demand_survives_being_read_back() {
-        let mut manager = landed(fully_wired().with_boot_page(DisplayPage::Camera));
+        let mut manager = landed(fully_wired_on(DisplayPage::Camera));
         assert_eq!(manager.state().page, DisplayPage::Camera);
         assert_eq!(
             manager.demand().claim(DemandKey::CAMERA).mode,
@@ -230,7 +280,7 @@ mod demand {
         manager.commit_demand(manager.demand().without(DemandKey::MOTION));
         assert_eq!(manager.demand().claim(DemandKey::MOTION).mode, Mode::Off);
 
-        manager.apply_business(BusinessIntent::NextPage);
+        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
 
         assert_ne!(
             manager.demand().claim(DemandKey::MOTION).mode,
@@ -251,17 +301,75 @@ mod boot {
         assert_eq!(DeviceManager::default().light_state(), BREATH);
         let state = manager.state();
         assert_eq!(manager.touch_state(), None);
-        assert_eq!(state.tap_count, 0);
-        assert_eq!(state.press_count, 0);
-        assert_eq!(state.long_press_count, 0);
-        assert_eq!(state.ghost_count, 0);
-        assert_eq!(state.swipe_count, 0);
-        assert_eq!(state.two_finger_runs, 0);
-        assert_eq!(state.touch_frames, 0);
-        assert_eq!(state.chip_gesture_id, 0);
-        assert_eq!(state.last_swipe, None);
-        assert_eq!(state.last_gesture_origin, None);
-        assert_eq!(state.last_gesture_end, None);
+        assert_eq!(state.touch.tap_count, 0);
+        assert_eq!(state.touch.press_count, 0);
+        assert_eq!(state.touch.long_press_count, 0);
+        assert_eq!(state.touch.ghost_count, 0);
+        assert_eq!(state.touch.swipe_count, 0);
+        assert_eq!(state.touch.two_finger_runs, 0);
+        assert_eq!(state.touch.frames, 0);
+        assert_eq!(state.touch.chip_gesture_id, 0);
+        assert_eq!(state.touch.last_swipe, None);
+        assert_eq!(state.touch.last_gesture_origin, None);
+        assert_eq!(state.touch.last_gesture_end, None);
+    }
+
+    #[test]
+    fn the_wiring_record_is_what_the_page_table_asks() {
+        let bare = DeviceManager::new().state().backed;
+        assert_eq!(bare, Backed::NONE);
+        assert_eq!(
+            bare.motion_caps(),
+            MotionCapabilities::EMPTY,
+            "a board with no part declares nothing, whatever the board would report"
+        );
+        assert!(!DisplayPage::Attitude.is_backed(bare));
+
+        let wired = DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(MotionCapabilities::TAP),
+                audio: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        })
+        .state()
+        .backed;
+        assert_eq!(wired.motion, Some(MotionCapabilities::TAP));
+        assert_eq!(wired.motion_caps(), MotionCapabilities::TAP);
+        assert!(DisplayPage::Attitude.is_backed(wired));
+        assert!(DisplayPage::Audio.is_backed(wired));
+        assert!(!DisplayPage::Speaker.is_backed(wired));
+    }
+
+    #[test]
+    fn every_present_device_claims_its_key_in_a_fixed_order() {
+        let all = Backed {
+            motion: Some(MotionCapabilities::EMPTY),
+            audio: true,
+            playback: true,
+            camera: true,
+            ..Backed::NONE
+        };
+        assert_eq!(
+            all.demand_keys(),
+            alloc::vec![
+                DemandKey::DISPLAY,
+                DemandKey::MOTION,
+                DemandKey::AUDIO,
+                DemandKey::CAMERA
+            ],
+            "a page claims exactly the devices the board declared; playback owns no demand key"
+        );
+    }
+
+    #[test]
+    fn an_absent_device_never_enters_the_demand() {
+        assert_eq!(
+            Backed::NONE.demand_keys(),
+            alloc::vec![DemandKey::DISPLAY],
+            "only the panel is claimed when the board declared nothing else"
+        );
     }
 }
 
@@ -302,7 +410,13 @@ mod motion {
         apply_page(&mut disabled, triple_click());
         assert_eq!(disabled.state().page, DisplayPage::Ambient);
 
-        let mut enabled = landed(DeviceManager::with_motion(true, ALL_CAPS));
+        let mut enabled = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            },
+            ..Default::default()
+        }));
         apply_page(&mut enabled, triple_click());
         assert_eq!(enabled.state().page, DisplayPage::Attitude);
         apply_page(&mut enabled, triple_click());
@@ -316,7 +430,13 @@ mod motion {
         assert_eq!(disabled.motion_state(), None);
         assert_eq!(disabled.motion_counts_state(), MotionCounts::default());
 
-        let mut enabled = DeviceManager::with_motion(true, ALL_CAPS);
+        let mut enabled = DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         enabled.apply_operation(op(InputEvent::Motion(MotionBatch::new(sample()))));
         assert_eq!(enabled.motion_state(), Some(sample()));
         assert_eq!(
@@ -345,7 +465,13 @@ mod motion {
             (MotionEvent::Landscape, |c| c.landscapes),
         ];
         for (event, bucket) in cases {
-            let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+            let mut manager = DeviceManager::boot(Setup {
+                backed: Backed {
+                    motion: Some(ALL_CAPS),
+                    ..Backed::NONE
+                },
+                ..Default::default()
+            });
             poll(&mut manager, &[event]);
             let counts = manager.motion_counts_state();
             assert_eq!(bucket(&counts), 1, "{event:?} counted once");
@@ -360,7 +486,13 @@ mod motion {
 
     #[test]
     fn one_poll_counts_every_semantic_it_carried() {
-        let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+        let mut manager = DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         poll(
             &mut manager,
             &[
@@ -377,7 +509,13 @@ mod motion {
 
     #[test]
     fn repeated_polls_accumulate_and_then_saturate() {
-        let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+        let mut manager = DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         poll(&mut manager, &[MotionEvent::Place]);
         poll(&mut manager, &[MotionEvent::Place]);
         poll(&mut manager, &[MotionEvent::Place]);
@@ -403,12 +541,21 @@ mod motion {
             &[MotionEvent::Shake, MotionEvent::Tap { count: 1 }],
         );
         assert_eq!(manager.motion_counts_state(), MotionCounts::default());
-        assert_eq!(manager.state().motion_caps, MotionCapabilities::EMPTY);
+        assert_eq!(
+            manager.state().backed.motion_caps(),
+            MotionCapabilities::EMPTY
+        );
     }
 
     #[test]
     fn a_knock_and_a_finger_tap_are_recorded_as_separate_acts() {
-        let mut manager = DeviceManager::with_motion(true, ALL_CAPS);
+        let mut manager = DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(ALL_CAPS),
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Tap {
             id: 0,
             x: 20,
@@ -417,7 +564,11 @@ mod motion {
             at_ms: 40,
         })));
         poll(&mut manager, &[MotionEvent::Tap { count: 1 }]);
-        assert_eq!(manager.state().tap_count, 1, "the finger tap still tallies");
+        assert_eq!(
+            manager.state().touch.tap_count,
+            1,
+            "the finger tap still tallies"
+        );
         assert_eq!(
             manager.motion_counts_state().taps,
             1,
@@ -436,7 +587,7 @@ mod business {
         assert_eq!(manager.light_state(), LightState::Off);
         let solid = LightState::Solid {
             color: Rgb(3, 4, 5),
-            brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
+            brightness: LightState::SOLID_DEFAULT_BRIGHTNESS,
         };
         manager.apply_business(set_light(0, solid));
         assert_eq!(manager.light_state(), solid);
@@ -454,7 +605,7 @@ mod business {
     #[test]
     fn a_link_report_lands_whole_and_an_unwired_board_reads_off() {
         let mut manager = DeviceManager::new();
-        assert_eq!(manager.state().link.phase, LinkPhase::Off);
+        assert_eq!(manager.state().network.link.phase, LinkPhase::Off);
 
         let status = LinkStatus {
             phase: LinkPhase::Connected,
@@ -468,8 +619,8 @@ mod business {
             address: Some(Ipv4::from_octets([192, 168, 1, 136])),
             ..LinkStatus::default()
         };
-        manager.apply_business(BusinessIntent::LinkReport(status));
-        assert_eq!(manager.state().link, status);
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(status)));
+        assert_eq!(manager.state().network.link, status);
     }
 }
 
@@ -492,7 +643,7 @@ mod touch {
         manager.apply_operation(op(InputEvent::Touch(first)));
         assert_eq!(manager.touch_state(), Some(first));
         assert_eq!(
-            manager.state().press_count,
+            manager.state().touch.press_count,
             0,
             "a raw frame is a snapshot, not the classifier press pulse"
         );
@@ -522,27 +673,27 @@ mod touch {
     #[test]
     fn heartbeat_counts_only_applied_frames() {
         let mut manager = DeviceManager::new();
-        assert_eq!(manager.state().touch_frames, 0);
+        assert_eq!(manager.state().touch.frames, 0);
         manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Press {
             id: 0,
             x: 10,
             y: 20,
         })));
         assert_eq!(
-            manager.state().touch_frames,
+            manager.state().touch.frames,
             0,
             "a classifier press pulse is not a raw frame"
         );
         manager.apply_operation(touch_event(TouchStatus::Down));
         manager.apply_operation(touch_event(TouchStatus::Contact));
         assert_eq!(
-            manager.state().touch_frames,
+            manager.state().touch.frames,
             2,
             "every stored snapshot ticks the heartbeat once"
         );
         manager.apply_operation(tap());
         assert_eq!(
-            manager.state().touch_frames,
+            manager.state().touch.frames,
             2,
             "resolved gestures never tick the raw-frame heartbeat"
         );
@@ -559,9 +710,9 @@ mod tallies {
             manager.apply_operation(tap());
         }
         let state = manager.state();
-        assert_eq!(state.tap_count, 3);
+        assert_eq!(state.touch.tap_count, 3);
         assert_eq!(
-            state.last_gesture_origin,
+            state.touch.last_gesture_origin,
             Some((1, 2)),
             "the tap records its touch point as the gesture origin"
         );
@@ -576,9 +727,9 @@ mod tallies {
     fn long_press_tallies_on_its_own_row() {
         let mut manager = DeviceManager::new();
         manager.apply_operation(long_press());
-        assert_eq!(manager.state().long_press_count, 1);
+        assert_eq!(manager.state().touch.long_press_count, 1);
         assert_eq!(
-            manager.state().press_count,
+            manager.state().touch.press_count,
             0,
             "the hold's down-edge press and the long-press are separate tallies"
         );
@@ -591,7 +742,7 @@ mod tallies {
             manager.apply_operation(tap());
         }
         assert_eq!(
-            manager.state().tap_count,
+            manager.state().touch.tap_count,
             0,
             "255 taps wrap to 0, keeping the diagnostic digit bounded"
         );
@@ -602,9 +753,9 @@ mod tallies {
         let mut manager = DeviceManager::new();
         manager.apply_operation(press(0, 12, 34));
         manager.apply_operation(press(0, 12, 34));
-        assert_eq!(manager.state().press_count, 2);
+        assert_eq!(manager.state().touch.press_count, 2);
         assert_eq!(
-            manager.state().touch_points,
+            manager.state().touch.points,
             [
                 Some(LivePoint {
                     id: 0,
@@ -619,7 +770,7 @@ mod tallies {
             wraps.apply_operation(press(0, 12, 34));
         }
         assert_eq!(
-            wraps.state().press_count,
+            wraps.state().touch.press_count,
             0,
             "255 presses wrap to 0, keeping the diagnostic digit bounded"
         );
@@ -630,12 +781,12 @@ mod tallies {
         let mut manager = DeviceManager::new();
         manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Ghost)));
         manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Ghost)));
-        assert_eq!(manager.state().ghost_count, 2);
+        assert_eq!(manager.state().touch.ghost_count, 2);
         for _ in 0..(u8::MAX as u32).saturating_add(1) {
             manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Ghost)));
         }
         assert_eq!(
-            manager.state().ghost_count,
+            manager.state().touch.ghost_count,
             u8::MAX,
             "the ghost tally saturates instead of wrapping, preserving the record"
         );
@@ -646,22 +797,25 @@ mod tallies {
         let mut manager = DeviceManager::new();
         manager.apply_operation(swipe());
         let state = manager.state();
-        assert_eq!(state.swipe_count, 1);
-        assert_eq!(state.last_swipe, Some((SwipeDirection::Down, 73)));
-        assert_eq!(state.last_gesture_origin, Some((80, 30)));
-        assert_eq!(state.last_gesture_end, Some((80, 60)));
-        assert_eq!(state.touch_held_ms, 42);
+        assert_eq!(state.touch.swipe_count, 1);
+        assert_eq!(state.touch.last_swipe, Some((SwipeDirection::Down, 73)));
+        assert_eq!(state.touch.last_gesture_origin, Some((80, 30)));
+        assert_eq!(state.touch.last_gesture_end, Some((80, 60)));
+        assert_eq!(state.touch.held_ms, 42);
         assert_eq!(
             state.lights[0],
             LightState::default(),
             "the swipe op tallies; the light move is the translated business intent"
         );
         assert_eq!(
-            state.touch_points,
+            state.touch.points,
             [None, None],
             "resolution frees the live slot"
         );
-        assert_eq!(state.live_dir[0], 0, "resolution clears the movement arrow");
+        assert_eq!(
+            state.touch.live_dir[0], 0,
+            "resolution clears the movement arrow"
+        );
         let mut wraps = DeviceManager::new();
         for _ in 0..(u8::MAX as u32).saturating_add(1) {
             wraps.apply_operation(op(InputEvent::Gesture(GestureEvent::Swipe {
@@ -676,7 +830,7 @@ mod tallies {
             })));
         }
         assert_eq!(
-            wraps.state().swipe_count,
+            wraps.state().touch.swipe_count,
             0,
             "255 swipes wrap to 0, keeping the diagnostic digit bounded"
         );
@@ -686,7 +840,7 @@ mod tallies {
     fn chip_gesture_stores_verbatim_without_touching_light() {
         let mut manager = DeviceManager::new();
         manager.apply_operation(op(InputEvent::ChipGesture(0x10)));
-        assert_eq!(manager.state().chip_gesture_id, 0x10);
+        assert_eq!(manager.state().touch.chip_gesture_id, 0x10);
         assert_eq!(manager.light_state(), LightState::default());
     }
 }
@@ -703,16 +857,16 @@ mod separation {
         manager.apply_operation(touch_event(TouchStatus::Contact));
         manager.apply_operation(touch_event(TouchStatus::Release));
         assert_eq!(manager.light_state(), LightState::default());
-        assert_eq!(manager.state().tap_count, 1);
-        assert_eq!(manager.state().ghost_count, 1);
+        assert_eq!(manager.state().touch.tap_count, 1);
+        assert_eq!(manager.state().touch.ghost_count, 1);
         assert_eq!(
-            manager.state().press_count,
+            manager.state().touch.press_count,
             1,
             "only a classifier press pulse earns a press tally, never a raw frame"
         );
         let target = LightState::Solid {
             color: Rgb(1, 2, 3),
-            brightness: DeviceManager::SOLID_DEFAULT_BRIGHTNESS,
+            brightness: LightState::SOLID_DEFAULT_BRIGHTNESS,
         };
         manager.apply_business(set_light(0, target));
         assert_eq!(manager.light_state(), target);
@@ -723,7 +877,7 @@ mod separation {
             "an invalid intent is a no-op"
         );
         assert_eq!(
-            manager.state().tap_count,
+            manager.state().touch.tap_count,
             1,
             "the business move never inflates the operation tally"
         );
@@ -739,8 +893,8 @@ mod separation {
         manager.apply_business(business);
         assert_eq!(business, BusinessIntent::Invalid);
         assert_eq!(manager.light_state(), LightState::Off);
-        assert_eq!(manager.state().tap_count, 1);
-        assert_eq!(manager.state().last_gesture_origin, Some((1, 2)));
+        assert_eq!(manager.state().touch.tap_count, 1);
+        assert_eq!(manager.state().touch.last_gesture_origin, Some((1, 2)));
     }
 
     #[test]
@@ -753,13 +907,17 @@ mod separation {
         manager.apply_business(business);
         assert_eq!(business, BusinessIntent::Invalid);
         assert_eq!(manager.light_state(), LightState::Off);
-        assert_eq!(manager.state().swipe_count, 1);
-        assert_eq!(manager.state().last_swipe, Some((SwipeDirection::Down, 73)));
+        assert_eq!(manager.state().touch.swipe_count, 1);
+        assert_eq!(
+            manager.state().touch.last_swipe,
+            Some((SwipeDirection::Down, 73))
+        );
     }
 }
 
 mod trackers {
     use super::*;
+    use crate::drivers::input::{FINGER_SWIPE, FINGER_TAP};
 
     #[test]
     fn live_points_follow_down_contact_release() {
@@ -785,7 +943,7 @@ mod trackers {
             contacts: 1,
         })));
         assert_eq!(
-            manager.state().touch_points,
+            manager.state().touch.points,
             [
                 Some(LivePoint {
                     id: 0,
@@ -801,7 +959,7 @@ mod trackers {
             "each tracker upserts into its own slot"
         );
         assert_eq!(
-            manager.state().two_finger_runs,
+            manager.state().touch.two_finger_runs,
             1,
             "two live slots in one transition counts one run"
         );
@@ -816,7 +974,7 @@ mod trackers {
             contacts: 1,
         })));
         assert_eq!(
-            manager.state().touch_points,
+            manager.state().touch.points,
             [
                 None,
                 Some(LivePoint {
@@ -837,9 +995,9 @@ mod trackers {
             len: 1,
             contacts: 1,
         })));
-        assert_eq!(manager.state().touch_points, [None, None]);
+        assert_eq!(manager.state().touch.points, [None, None]);
         assert_eq!(
-            manager.state().two_finger_runs,
+            manager.state().touch.two_finger_runs,
             1,
             "releasing a finger never grows the run counter"
         );
@@ -854,21 +1012,24 @@ mod trackers {
             y: 200,
         })));
         assert_eq!(
-            manager.state().live_dir,
+            manager.state().touch.live_dir,
             [0, 0],
             "a fresh landing reads as still until the finger moves"
         );
         manager.apply_operation(touch_at(0, 100, 150, TouchStatus::Contact));
         assert_eq!(
-            manager.state().live_dir[0],
+            manager.state().touch.live_dir[0],
             SwipeDirection::Up.code(),
             "climbing the panel is an up-move in framebuffer space"
         );
         manager.apply_operation(touch_at(0, 60, 150, TouchStatus::Contact));
-        assert_eq!(manager.state().live_dir[0], SwipeDirection::Left.code());
+        assert_eq!(
+            manager.state().touch.live_dir[0],
+            SwipeDirection::Left.code()
+        );
         manager.apply_operation(touch_at(0, 61, 151, TouchStatus::Contact));
         assert_eq!(
-            manager.state().live_dir[0],
+            manager.state().touch.live_dir[0],
             SwipeDirection::Left.code(),
             "sub-deadband jitter keeps the last axis instead of flickering to 0"
         );
@@ -881,13 +1042,13 @@ mod trackers {
         manager.apply_operation(touch_at(1, 200, 200, TouchStatus::Down));
         manager.apply_operation(touch_at(1, 150, 200, TouchStatus::Contact));
         assert_eq!(
-            manager.state().live_dir,
+            manager.state().touch.live_dir,
             [0, SwipeDirection::Left.code()],
             "each slot carries only its own finger's axis"
         );
         manager.apply_operation(touch_at(1, 0, 0, TouchStatus::Release));
         assert_eq!(
-            manager.state().live_dir,
+            manager.state().touch.live_dir,
             [0, 0],
             "releasing a finger frees its slot back to still"
         );
@@ -898,7 +1059,7 @@ mod trackers {
         let mut manager = DeviceManager::new();
         manager.apply_operation(press(0, 10, 20));
         assert_eq!(
-            manager.state().touch_points,
+            manager.state().touch.points,
             [
                 Some(LivePoint {
                     id: 0,
@@ -911,13 +1072,13 @@ mod trackers {
         );
         manager.apply_operation(press(1, 50, 60));
         assert_eq!(
-            manager.state().two_finger_runs,
+            manager.state().touch.two_finger_runs,
             1,
             "two live slots count one two-finger run"
         );
         manager.apply_operation(press(0, 11, 21));
         assert_eq!(
-            manager.state().two_finger_runs,
+            manager.state().touch.two_finger_runs,
             1,
             "an upsert over a live slot is not a new run"
         );
@@ -971,7 +1132,7 @@ mod trackers {
             })));
         }
         assert_eq!(
-            manager.state().two_finger_runs,
+            manager.state().touch.two_finger_runs,
             u8::MAX,
             "the run counter saturates instead of wrapping, preserving the record"
         );
@@ -1000,12 +1161,12 @@ mod trackers {
             at_ms: 90,
         })));
         assert_eq!(
-            manager.state().touch_points,
+            manager.state().touch.points,
             [None, None],
             "each resolved gesture frees only its own slot"
         );
         assert_eq!(
-            manager.state().finger,
+            manager.state().touch.finger,
             [
                 FingerLast {
                     kind: FINGER_SWIPE,
@@ -1029,7 +1190,7 @@ mod trackers {
         manager.apply_operation(touch_at(0, 80, 80, TouchStatus::Contact));
         let light = manager.state().lights[0];
         assert_ne!(
-            manager.state().live_dir[0],
+            manager.state().touch.live_dir[0],
             0,
             "the slide mints a diagonal arrow"
         );
@@ -1048,13 +1209,19 @@ mod trackers {
             state.lights[0], light,
             "an operation never moves the light; the identity resolves in translate"
         );
-        assert_eq!(state.swipe_count, 1, "the diagonal still tallies");
-        assert_eq!(state.last_swipe, Some((SwipeDirection::DownRight, 28)));
+        assert_eq!(state.touch.swipe_count, 1, "the diagonal still tallies");
         assert_eq!(
-            state.touch_points[0], None,
+            state.touch.last_swipe,
+            Some((SwipeDirection::DownRight, 28))
+        );
+        assert_eq!(
+            state.touch.points[0], None,
             "resolution frees the live slot"
         );
-        assert_eq!(state.live_dir[0], 0, "resolution clears the movement arrow");
+        assert_eq!(
+            state.touch.live_dir[0], 0,
+            "resolution clears the movement arrow"
+        );
     }
 
     #[test]
@@ -1062,11 +1229,11 @@ mod trackers {
         let mut manager = DeviceManager::new();
         manager.apply_operation(swipe());
         assert_eq!(
-            manager.state().last_gesture_origin,
+            manager.state().touch.last_gesture_origin,
             Some((80, 30)),
             "a swipe records its origin"
         );
-        assert_eq!(manager.state().last_gesture_end, Some((80, 60)));
+        assert_eq!(manager.state().touch.last_gesture_end, Some((80, 60)));
 
         manager.apply_operation(op(InputEvent::Gesture(GestureEvent::Tap {
             id: 0,
@@ -1076,12 +1243,12 @@ mod trackers {
             at_ms: 0,
         })));
         assert_eq!(
-            manager.state().last_gesture_origin,
+            manager.state().touch.last_gesture_origin,
             Some((11, 12)),
             "a tap stamps its own point as the origin"
         );
         assert_eq!(
-            manager.state().last_gesture_end,
+            manager.state().touch.last_gesture_end,
             None,
             "a single-point tap clears the previous trailing point"
         );
@@ -1093,9 +1260,9 @@ mod trackers {
             y: 14,
             held_ms: 0,
         })));
-        assert_eq!(manager.state().last_gesture_origin, Some((13, 14)));
+        assert_eq!(manager.state().touch.last_gesture_origin, Some((13, 14)));
         assert_eq!(
-            manager.state().last_gesture_end,
+            manager.state().touch.last_gesture_end,
             None,
             "a single-point long-press clears the previous trailing point"
         );
@@ -1112,12 +1279,12 @@ mod trackers {
             distance_px: 3,
         })));
         assert_eq!(
-            manager.state().last_gesture_origin,
+            manager.state().touch.last_gesture_origin,
             Some((21, 22)),
             "a slide shows where it started"
         );
         assert_eq!(
-            manager.state().last_gesture_end,
+            manager.state().touch.last_gesture_end,
             Some((23, 24)),
             "a slide shows where it ended"
         );
@@ -1160,10 +1327,10 @@ mod reachable {
     fn key(state: &DeviceState) -> Vec<u8> {
         let mut key = Vec::with_capacity(64);
         key.push(state.page as u8);
-        key.push(u8::from(state.link.is_leavable()));
-        encode_ap(&mut key, state.link.ap);
-        key.push(u8::from(state.link.address.is_some()));
-        match state.aps {
+        key.push(u8::from(state.network.link.is_leavable()));
+        encode_ap(&mut key, state.network.link.ap);
+        key.push(u8::from(state.network.link.address.is_some()));
+        match state.network.aps {
             None => key.push(0),
             Some(list) => {
                 key.push(1);
@@ -1177,11 +1344,11 @@ mod reachable {
                 }
             }
         }
-        encode_ap(&mut key, state.setup.selected);
-        key.push(u8::from(state.setup.entry.is_some()));
-        key.push(u8::from(state.setup.keyboard));
-        key.push(state.setup.list_top);
-        match state.setup.confirm {
+        encode_ap(&mut key, state.network.setup.selected);
+        key.push(u8::from(state.network.setup.entry.is_some()));
+        key.push(u8::from(state.network.setup.keyboard));
+        key.push(state.network.setup.list_top);
+        match state.network.setup.confirm {
             None => key.push(0),
             Some(Confirm::Leave) => key.push(1),
             Some(Confirm::Forget(ap)) => {
@@ -1189,14 +1356,14 @@ mod reachable {
                 encode_ap(&mut key, Some(ap));
             }
         }
-        key.push(u8::from(state.leave));
-        key.push(u8::from(state.scan_now));
-        match state.join {
+        key.push(u8::from(state.network.leave));
+        key.push(u8::from(state.network.scan_now));
+        match state.network.join {
             None => key.push(0),
             Some(JoinRequest::Typed(_)) => key.push(1),
             Some(JoinRequest::Held(_)) => key.push(2),
         }
-        key.push(u8::from(state.forget.is_some()));
+        key.push(u8::from(state.network.forget.is_some()));
         key
     }
 
@@ -1218,26 +1385,27 @@ mod reachable {
     // something that is not there — the failures this page has no way to be loud about, because
     // what breaks is what the panel puts on the glass.
     fn broken(state: &DeviceState) -> Option<&'static str> {
-        if state.setup.keyboard && state.setup.entry.is_none() {
+        if state.network.setup.keyboard && state.network.setup.entry.is_none() {
             return Some(
                 "the keyboard is up with no draft under it. The keys are drawn from the draft \
                      and the strip is hidden with them, so the page draws nothing between the \
                      header and the bottom edge, and no control on it can be reached",
             );
         }
-        if state.setup.entry.is_some() && state.setup.selected.is_none() {
+        if state.network.setup.entry.is_some() && state.network.setup.selected.is_none() {
             return Some(
                 "a draft is kept for no row, so nothing names the network it would be handed \
                      to",
             );
         }
-        if state.setup.confirm == Some(Confirm::Leave) && !state.link.is_leavable() {
+        if state.network.setup.confirm == Some(Confirm::Leave) && !state.network.link.is_leavable()
+        {
             return Some(
                 "the page is asking about leaving a link that is not up, so the box has no \
                      answer left to take",
             );
         }
-        if state.setup.rescan_wait && state.link.is_leavable() {
+        if state.network.setup.rescan_wait && state.network.link.is_leavable() {
             return Some(
                 "the strip is waiting for a survey round under a link it would offer to leave",
             );
@@ -1363,7 +1531,7 @@ mod reachable {
     }
 
     fn link_to(manager: &mut DeviceManager, status: LinkStatus) {
-        manager.apply_business(BusinessIntent::LinkReport(status));
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::LinkReport(status)));
     }
 
     fn scan_of(manager: &mut DeviceManager, rows: &[AccessPoint]) {
@@ -1432,7 +1600,7 @@ mod reachable {
         applied(manager, InputEvent::Button(ButtonEvent::TripleClick));
     }
     fn splash_over(manager: &mut DeviceManager) {
-        manager.apply_business(BusinessIntent::SplashOver);
+        manager.apply_business(BusinessIntent::Page(PageIntent::SplashOver));
     }
     fn click(manager: &mut DeviceManager) {
         applied(manager, InputEvent::Button(ButtonEvent::Click));
@@ -1549,7 +1717,7 @@ mod reachable {
     }
     fn the_missing_copy_is_reported(manager: &mut DeviceManager) {
         if let Some(JoinRequest::Held(ssid)) = manager.take_join() {
-            manager.apply_business(BusinessIntent::NoCopy(ssid));
+            manager.apply_business(BusinessIntent::Network(NetworkIntent::NoCopy(ssid)));
         }
     }
     fn the_scan_request_is_carried_out(manager: &mut DeviceManager) {
@@ -1560,7 +1728,7 @@ mod reachable {
     }
     fn the_forget_is_carried_out(manager: &mut DeviceManager) {
         if manager.take_forget().is_some() {
-            let mut list = manager.state().aps.unwrap_or_else(ApList::empty);
+            let mut list = manager.state().network.aps.unwrap_or_else(ApList::empty);
             list.mark_saved(0);
             manager.apply_scan(list);
         }
@@ -1731,7 +1899,13 @@ mod reachable {
     #[test]
     fn every_state_the_page_can_reach_keeps_its_invariants() {
         let moves = alphabet();
-        let start = DeviceManager::new().with_network(true);
+        let start = DeviceManager::boot(Setup {
+            backed: Backed {
+                network: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        });
         assert_eq!(
             broken(&start.state()),
             None,
@@ -1775,40 +1949,41 @@ mod reachable {
             states.iter().any(|manager| wanted(&manager.state()))
         };
         assert!(
-            reached(|state| state.setup.keyboard && state.setup.entry.is_some()),
+            reached(|state| state.network.setup.keyboard && state.network.setup.entry.is_some()),
             "the keyboard never came up over a draft"
         );
         assert!(
-            reached(|state| state.setup.selected.is_some() && state.setup.entry.is_none()),
+            reached(|state| state.network.setup.selected.is_some()
+                && state.network.setup.entry.is_none()),
             "a row was never left picked with no draft: the state a link that came up leaves \
                  behind, and the one the pick after it reads"
         );
         assert!(
-            reached(|state| state.setup.confirm == Some(Confirm::Leave)),
+            reached(|state| state.network.setup.confirm == Some(Confirm::Leave)),
             "the strip never asked about leaving"
         );
         assert!(
-            reached(|state| matches!(state.setup.confirm, Some(Confirm::Forget(_)))),
+            reached(|state| matches!(state.network.setup.confirm, Some(Confirm::Forget(_)))),
             "a hold never asked about a saved row"
         );
         assert!(
-            reached(|state| state.leave),
+            reached(|state| state.network.leave),
             "a leave was never waiting for the network task"
         );
         assert!(
-            reached(|state| state.scan_now),
+            reached(|state| state.network.scan_now),
             "the strip never asked to look around"
         );
         assert!(
-            reached(|state| matches!(state.join, Some(JoinRequest::Typed(_)))),
+            reached(|state| matches!(state.network.join, Some(JoinRequest::Typed(_)))),
             "a credential was never handed up"
         );
         assert!(
-            reached(|state| matches!(state.join, Some(JoinRequest::Held(_)))),
+            reached(|state| matches!(state.network.join, Some(JoinRequest::Held(_)))),
             "a saved row was never asked for by name"
         );
         assert!(
-            reached(|state| state.link.is_leavable()),
+            reached(|state| state.network.link.is_leavable()),
             "the link was never up"
         );
         assert!(

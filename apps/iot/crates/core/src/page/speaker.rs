@@ -39,7 +39,7 @@ pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) ->
 mod tests {
     use super::*;
     use crate::drivers::input::SwipeDirection;
-    use crate::intent::translate;
+    use crate::intent::{PageIntent, translate};
     use crate::page::light::COLOR_GROUPS;
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, target,
@@ -107,7 +107,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::TripleClick)),
                     &on_speaker()
                 ),
-                BusinessIntent::NextPage
+                BusinessIntent::Page(PageIntent::NextPage)
             );
         }
 

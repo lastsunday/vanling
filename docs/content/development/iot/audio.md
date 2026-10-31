@@ -16,7 +16,7 @@ ES7210 只是一个来源。页面对外暴露的是**电平**——这一刻多
 
 相位只有三态：`IDLE`（未采，面板只画 `TAP TO REC`，不画扫描条）→ `REC`（跟随实时包络）→ `STOP`（画锁存的那一份）。`IDLE` 与 `STOP` 上单击都直接回到 `REC`，没有"继续"语义：锁存的是**停止那一刻的窗**，不是一段录音。
 
-板级没有找到 ES7210 时 `audio_enabled` 为假，`AUDIO` 页不进入页面循环（`DisplayPage::next_page` 跳过没有能力背书的页），其余页照常。进入本页是三连击按键或三指点（`NextPage`）。
+板级没有找到 ES7210 时 `Backed::audio` 为假，`AUDIO` 页不进入页面循环（`DisplayPage::next_page` 跳过没有能力背书的页），其余页照常。进入本页是三连击按键或三指点（`NextPage`）。
 
 出声的那一侧在[放音语义](@/development/iot/playback.md)。两页共用一根 12.288 MHz MCLK，但契约相反：采集**从不停止**，放音放完就停——所以放音有相位而本页没有。
 

@@ -23,7 +23,7 @@ There are three phases: `IDLE` (nothing captured, the panel draws only `TAP TO R
 
 There is no "resume" semantic, because what gets latched is the window at the moment of stopping, not a recording.
 
-When the board finds no ES7210, `audio_enabled` is false and the `AUDIO` page never enters the page cycle (`DisplayPage::next_page` skips pages no capability backs); every other page is unaffected. Getting to the page is a triple-click of the button or a three-finger tap (`NextPage`).
+When the board finds no ES7210, `Backed::audio` is false and the `AUDIO` page never enters the page cycle (`DisplayPage::next_page` skips pages no capability backs); every other page is unaffected. Getting to the page is a triple-click of the button or a three-finger tap (`NextPage`).
 
 The side that makes sound is in [Playback Semantics](@/development/iot/playback.en.md). The two pages share one 12.288 MHz MCLK but their contracts are opposite: capture **never stops**, playback is over when the sound is — which is why playback has a phase and this page does not.
 

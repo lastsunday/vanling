@@ -36,7 +36,7 @@ use iot_core::drivers::network::{
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
-use iot_core::intent::{BusinessIntent, Intent, PALETTE};
+use iot_core::intent::{BusinessIntent, Intent, NetworkIntent, PALETTE};
 use iot_core::keyboard::Key;
 use iot_core::paint::Rgb;
 use iot_core::state::{Confirm, DisplayPage, PlaybackPhase};
@@ -828,7 +828,9 @@ async fn scenario() {
         let _ = iot_app::input::INTENT_BUS.try_send(Intent::Business(intent));
     };
 
-    send(BusinessIntent::Choose(list.get(0).expect("a row to pick")));
+    send(BusinessIntent::Network(NetworkIntent::Choose(
+        list.get(0).expect("a row to pick"),
+    )));
     Timer::after(Duration::from_millis(100)).await;
 
     let mut at_ms = 100;
@@ -839,7 +841,7 @@ async fn scenario() {
         Key::Shift,
         Key::Char(b'8'),
     ] {
-        send(BusinessIntent::Key { key, at_ms });
+        send(BusinessIntent::Network(NetworkIntent::Key { key, at_ms }));
         at_ms += 100;
     }
     attempts = 0;
@@ -853,10 +855,10 @@ async fn scenario() {
         "the keyboard's draft never reached the panel's snapshot"
     );
 
-    send(BusinessIntent::Key {
+    send(BusinessIntent::Network(NetworkIntent::Key {
         key: Key::Connect,
         at_ms,
-    });
+    }));
     attempts = 0;
     let mut handed = JOIN.take();
     while handed.is_none() && attempts < 100 {
@@ -879,10 +881,10 @@ async fn scenario() {
         "the credential did not carry what was typed"
     );
 
-    send(BusinessIntent::Key {
+    send(BusinessIntent::Network(NetworkIntent::Key {
         key: Key::Cancel,
         at_ms,
-    });
+    }));
     Timer::after(Duration::from_millis(100)).await;
 
     let mut store = SavedNetworks::empty();
@@ -904,7 +906,7 @@ async fn scenario() {
         "a marked list published on the link's contract never reached the panel's snapshot"
     );
 
-    send(BusinessIntent::ScanNow);
+    send(BusinessIntent::Network(NetworkIntent::ScanNow));
     assert!(
         select(RESCAN.ready(), Timer::after(Duration::from_secs(1)))
             .await
@@ -912,12 +914,12 @@ async fn scenario() {
         "the strip's request to look around never reached the survey's contract"
     );
 
-    send(BusinessIntent::AskForget(
+    send(BusinessIntent::Network(NetworkIntent::AskForget(
         list.get(0).expect("a row to ask about"),
-    ));
+    )));
     Timer::after(Duration::from_millis(100)).await;
-    send(BusinessIntent::Answer(Confirm::Forget(
-        list.get(0).expect("the row the question named"),
+    send(BusinessIntent::Network(NetworkIntent::Answer(
+        Confirm::Forget(list.get(0).expect("the row the question named")),
     )));
     match select(FORGET.ready(), Timer::after(Duration::from_secs(1))).await {
         Either::First(ssid) => assert_eq!(

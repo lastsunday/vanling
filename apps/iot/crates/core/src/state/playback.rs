@@ -1,7 +1,8 @@
-use super::*;
-
 use crate::diagnostics::PlaybackDiagnostics;
+use crate::drivers::playback::Sound;
 use crate::intent::PlaybackAction;
+
+use super::{DeviceManager, DeviceState};
 
 /// Playback phase the Speaker page drives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -67,28 +68,27 @@ impl PlaybackState {
     pub const fn boot() -> Self {
         Self::BOOT
     }
-}
 
-impl DeviceManager {
-    pub(super) fn apply_playback(&mut self, action: PlaybackAction) {
-        if !self.state.playback_enabled {
+    /// What the Speaker page asks, refused when the board wired no output part.
+    pub(super) fn apply(&mut self, action: PlaybackAction, wired: bool) {
+        if !wired {
             return;
         }
         match action {
-            PlaybackAction::Next => match self.state.playback.phase {
+            PlaybackAction::Next => match self.phase {
                 PlaybackPhase::Playing => {
-                    self.state.playback.dropped = self.state.playback.dropped.saturating_add(1);
+                    self.dropped = self.dropped.saturating_add(1);
                 }
                 PlaybackPhase::Idle => {
-                    self.state.playback.sound = self.state.playback.sound.next();
-                    self.state.playback.phase = PlaybackPhase::Playing;
-                    self.state.playback.plays = self.state.playback.plays.saturating_add(1);
+                    self.sound = self.sound.next();
+                    self.phase = PlaybackPhase::Playing;
+                    self.plays = self.plays.saturating_add(1);
                 }
             },
-            PlaybackAction::SetMuted(muted) => self.state.playback.muted = muted,
+            PlaybackAction::SetMuted(muted) => self.muted = muted,
             PlaybackAction::Finished => {
-                if self.state.playback.phase == PlaybackPhase::Playing {
-                    self.state.playback.phase = PlaybackPhase::Idle;
+                if self.phase == PlaybackPhase::Playing {
+                    self.phase = PlaybackPhase::Idle;
                 }
             }
         }
@@ -109,7 +109,7 @@ impl DeviceState {
 
 impl DeviceManager {
     pub(super) fn ring(&mut self, sound: Sound) {
-        if !self.state.playback_enabled || self.state.playback.phase != PlaybackPhase::Idle {
+        if !self.state.backed.playback || self.state.playback.phase != PlaybackPhase::Idle {
             return;
         }
         self.state.playback.sound = sound;
@@ -121,16 +121,22 @@ impl DeviceManager {
 #[cfg(test)]
 mod speaker_page {
     use super::*;
+    use crate::drivers::motion::MotionCapabilities;
+    use crate::intent::*;
     use crate::state::test_support::*;
 
     use crate::drivers::playback::Sound;
 
     fn on_speaker() -> DeviceManager {
-        let mut manager = landed(
-            DeviceManager::with_motion(true, MotionCapabilities::EMPTY)
-                .with_audio(true)
-                .with_playback(true),
-        );
+        let mut manager = landed(DeviceManager::boot(Setup {
+            backed: Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                audio: true,
+                playback: true,
+                ..Backed::NONE
+            },
+            ..Default::default()
+        }));
         for _ in 0..=3 {
             if manager.state().page == DisplayPage::Speaker {
                 break;
@@ -172,24 +178,44 @@ mod speaker_page {
     #[test]
     fn the_speaker_page_only_appears_on_a_board_that_has_one() {
         assert_eq!(
-            DisplayPage::Ambient.next_page(true, false, true, false, false),
+            DisplayPage::Ambient.next_page(Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                playback: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Attitude
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(true, true, true, false, false),
+            DisplayPage::Audio.next_page(Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                audio: true,
+                playback: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Speaker
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(true, true, false, false, false),
+            DisplayPage::Audio.next_page(Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                audio: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient,
             "a board without a speaker skips the page"
         );
         assert_eq!(
-            DisplayPage::Ambient.next_page(false, false, true, false, false),
+            DisplayPage::Ambient.next_page(Backed {
+                playback: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Speaker
         );
         assert_eq!(
-            DisplayPage::Speaker.next_page(true, true, false, false, false),
+            DisplayPage::Speaker.next_page(Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                audio: true,
+                ..Backed::NONE
+            }),
             DisplayPage::Ambient
         );
     }
@@ -203,10 +229,10 @@ mod speaker_page {
             DisplayPage::Audio,
         ];
         for expected in pages {
-            manager.apply_business(BusinessIntent::NextPage);
+            manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
             assert_eq!(manager.state().page, expected);
         }
-        manager.apply_business(BusinessIntent::NextPage);
+        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
         assert_eq!(manager.state().page, DisplayPage::Speaker, "and back round");
     }
 
@@ -330,7 +356,7 @@ mod speaker_page {
     #[test]
     fn a_board_without_a_speaker_plays_nothing() {
         let mut manager = landed(DeviceManager::new());
-        manager.apply_business(BusinessIntent::NextPage);
+        manager.apply_business(BusinessIntent::Page(PageIntent::NextPage));
         assert_eq!(manager.state().page, DisplayPage::Ambient, "no page either");
         manager.apply_business(BusinessIntent::Playback(PlaybackAction::Next));
         assert_eq!(manager.playback_state(), PlaybackState::boot());

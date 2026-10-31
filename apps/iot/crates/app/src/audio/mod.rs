@@ -11,6 +11,7 @@ use crate::input::IntentBus;
 use alloc::boxed::Box;
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use embassy_futures::join::join;
 use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -153,6 +154,37 @@ pub async fn feed_loop(shared: &'static Shared) -> ! {
 #[embassy_executor::task]
 pub async fn feed_task(shared: &'static Shared) {
     feed_loop(shared).await
+}
+
+/// No speaker: nothing to play or feed. A joined future that never resolves keeps the tasks
+/// beside it running.
+async fn silent() -> ! {
+    match core::future::pending::<core::convert::Infallible>().await {}
+}
+
+/// Owns the audio-side task topology: who feeds the ring, and on which executor.
+pub async fn playback_tasks(
+    shared: Option<&'static Shared>,
+    feed: crate::Feed,
+    playback_bus: &'static PlaybackBus,
+    intent_bus: &'static IntentBus,
+) -> ! {
+    let Some(shared) = shared else { silent().await };
+    match feed {
+        crate::Feed::Interrupt(spawner) => {
+            // Spawned, not joined: joining a future on the executor this one does not run
+            // waits for ever.
+            spawner.spawn(
+                feed_task(shared).expect("the feed executor has room for the one task on it"),
+            );
+            control_loop(shared, playback_bus, intent_bus).await
+        }
+        crate::Feed::Inline => match join(
+            control_loop(shared, playback_bus, intent_bus),
+            feed_loop(shared),
+        )
+        .await {},
+    }
 }
 
 pub async fn control_loop(

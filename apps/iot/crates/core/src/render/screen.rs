@@ -7,7 +7,7 @@ use crate::drivers::camera::FrameSource;
 use crate::drivers::surface::PageSurface;
 use crate::render::colour::ColourDriver;
 use crate::render::{Activity, LightAppearance, Renderer, Slot, SlotAppearance};
-use crate::state::{DeviceManager, DisplayPage};
+use crate::state::{DisplayPage, LightState};
 
 pub struct ScreenRenderer {
     instance: u8,
@@ -50,7 +50,7 @@ impl ScreenRenderer {
         }
         let lit = self.colour.show(&mut *self.surface, step, declared, now_ms);
         self.surface
-            .set_backlight(lit.backlight(now_ms, DeviceManager::BACKLIGHT_FLOOR_PCT));
+            .set_backlight(lit.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
     }
 
     fn on_camera_page(&self) -> bool {
@@ -79,7 +79,7 @@ impl Renderer for ScreenRenderer {
                     }
                     Mode::OnChange => self
                         .surface
-                        .set_backlight_ceiling(DeviceManager::BACKLIGHT_FLOOR_PCT),
+                        .set_backlight_ceiling(LightState::BACKLIGHT_FLOOR_PCT),
                     Mode::Continuous => self.surface.set_backlight_ceiling(100),
                 }
                 if page_changed {
@@ -112,7 +112,7 @@ impl Renderer for ScreenRenderer {
         match self.colour.step(&mut *self.surface, step, now_ms) {
             Some(lit) => {
                 self.surface
-                    .set_backlight(lit.backlight(now_ms, DeviceManager::BACKLIGHT_FLOOR_PCT));
+                    .set_backlight(lit.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
                 Activity::TimeDriven
             }
             None => Activity::Idle,
@@ -301,7 +301,7 @@ mod tests {
     fn a_dimmed_panel_is_brightness_only_and_keeps_its_cadence() {
         let (mut r, panel) = renderer();
         r.on_appearance(panel_asked(Mode::OnChange), 0);
-        assert_eq!(panel.borrow().ceiling, DeviceManager::BACKLIGHT_FLOOR_PCT);
+        assert_eq!(panel.borrow().ceiling, LightState::BACKLIGHT_FLOOR_PCT);
 
         r.on_appearance(ambient_breath(0), 0);
         assert_eq!(

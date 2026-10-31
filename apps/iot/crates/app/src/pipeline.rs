@@ -30,7 +30,7 @@ pub async fn run_loop<C: ClockSink>(
     demand: &SharedDemand,
 ) -> ! {
     let mut last_page = manager.state().page;
-    let mut last_front = manager.state().link.front;
+    let mut last_front = manager.state().network.link.front;
     let mut last_lamp = manager.state().link_notice();
     let mut frame = FrameClock::new(Instant::now());
     // Loop-local: a second `run` in one process must not answer for the first.
@@ -53,11 +53,11 @@ pub async fn run_loop<C: ClockSink>(
             }
             playback.dispatch(playback_bus, manager.playback_state());
         }
-        if manager.state().link.front != last_front {
-            last_front = manager.state().link.front;
+        if manager.state().network.link.front != last_front {
+            last_front = manager.state().network.link.front;
             log::info!(
                 "[WIFI] setup mode is offered on the {:?} front",
-                manager.state().link.front
+                manager.state().network.link.front
             );
         }
         let lamp = manager.state().link_notice();
@@ -84,7 +84,7 @@ pub async fn run_loop<C: ClockSink>(
         if let Some(list) = inbound.scan.take() {
             manager.apply_scan(list);
         }
-        let asked_on = manager.state().link.front;
+        let asked_on = manager.state().network.link.front;
         while let Some(command) = manager.take_command() {
             match command {
                 NetworkCommand::Join(asked) => {
