@@ -3,8 +3,8 @@ title = "Input and Touch Implementation Record"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "9ce89147995fc7c09ff4790e2500d3d6278360ae"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "d2e0c99dabdb32d0da4bef1d8cbd4fd1cd4f172d"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -60,6 +60,25 @@ That line also makes "did one gesture become several operations" falsifiable —
 `[test]` The capture path may not be batched (`Es7210Rx::accepts_slower_poll()` answers `false`), because the ring is emptied only by `sample()` — see the [audio record](@/records/iot/audio.en.md).
 
 `[measured]` `capture 0 ms` is not "cheaper", it is **a ring with nothing in it** — see the failure chain in the [audio record](@/records/iot/audio.en.md). Reading that line, `0 ms` and `1 ms` mean opposite things, and the first one is a fault.
+
+---
+
+## I2C goes from 100 kHz to 400 kHz, and the input side's hold halves (2026-11-01)
+
+`[measured]` This bus (PCA9557 button, FT6336 touch, QMI8658 motion, ES7210 and ES8311 codecs) ran on esp-hal's default **100 kHz**, and every poll is a blocking `write_read` straight off the cooperative executor. Raising it to fast-mode **400 kHz** (`I2C_FREQ_HZ` and `i2c_config()` in `lckfb_szpi_esp32s3/mod.rs`):
+
+| window | 100 kHz | 400 kHz |
+| --- | --- | --- |
+| `[INPUT] held the executor`, 5 s steady state | 1,293–1,302 ms (26%) | **531–574 ms (11%)** |
+| same, for the 5 s window holding the boot association | 1,871 ms | 1,147 ms |
+| worst single hold, steady state | 4 ms | 1–3 ms |
+| `[DISPLAY]` side, same windows | 8–14% | 4–11% |
+
+`[measured]` All of it comes out of polling: the frame-write window reads the same on both (`worst write 15–17 ms`, i.e. 153,600 B / 80 MHz). The 11% steady state is already below the "every device `Off` floor" of 10.87% quoted above — that floor was measured at 100 kHz.
+
+`[measured]` Acceptance on the board (`/dev/cu.usbmodem1442301`): `[HW] 7 devices: 7 present, 0 degraded, 0 absent`; `[AUDIO] ES7210 serial: 16-bit word, I2S`, `[PLAY] Tap`, `[CAM] chain verified: 40 descriptors` and `[WIFI] Connected, address …` all unchanged; 70 s with no `[INPUT]`/`[DISPLAY]` line over bound (at 100 kHz every window printed one).
+
+`[measured]` **The 597 ms is not something this change fixes**: the same 597–601 ms single hold shows up at both clocks, lands on whichever source was polling (once `touch 597 ms`, once `motion 599 ms`), appears once in the boot window and never again. So it is not touch-driver cost — the whole core stops for that long once during association/DHCP, and the poll just happens to be the code that was running.
 
 ---
 

@@ -60,6 +60,25 @@ sort_by = "weight"
 
 ---
 
+## I2C 从 100 kHz 提到 400 kHz：输入侧持有砍半（2026-11-01）
+
+`[实测]` 这条总线（PCA9557 按键、FT6336 触摸、QMI8658 姿态、ES7210 与 ES8311 两个 codec）一直跑在 esp-hal 的默认 **100 kHz** 上，而每一次轮询都是一次阻塞 `write_read`，直接吃协作执行器。改成 fast mode 的 **400 kHz**（`lckfb_szpi_esp32s3/mod.rs` 的 `I2C_FREQ_HZ` 与 `i2c_config()`）之后：
+
+| 窗口 | 100 kHz | 400 kHz |
+| --- | --- | --- |
+| `[INPUT] held the executor`，5 s 稳态 | 1,293–1,302 ms（26%） | **531–574 ms（11%）** |
+| 同上，含开机关联那一个 5 s 窗口 | 1,871 ms | 1,147 ms |
+| 单次最长持有，稳态 | 4 ms | 1–3 ms |
+| `[DISPLAY]` 侧同窗口 | 8–14% | 4–11% |
+
+`[实测]` 省下来的全在轮询里：帧写窗口值两边一样（`worst write 15–17 ms`，即 153,600 B / 80 MHz）。稳态 11% 已经低于本记录上面那条「全部设备 `Off` 的地板 10.87%」——那个地板是按 100 kHz 量的。
+
+`[实测]` 上板判据（`/dev/cu.usbmodem1442301`）：`[HW] 7 devices: 7 present, 0 degraded, 0 absent`；`[AUDIO] ES7210 serial: 16-bit word, I2S`、`[PLAY] Tap`、`[CAM] chain verified: 40 descriptors`、`[WIFI] Connected, address …` 全部照旧；连续 70 s 没有任何 `[INPUT]`/`[DISPLAY]` 越界行（100 kHz 下每个窗口都会打一行）。
+
+`[实测]` **那 597 ms 不是这一条能修的**：同形态的 597–601 ms 单次持有在 100 kHz 与 400 kHz 下都出现，落在哪个源上随机（一次 `touch 597 ms`，一次 `motion 599 ms`），只在开机那个 5 s 窗口里出现一次，之后不再复现。所以它不是触摸驱动的开销，而是那段时间整核停住一次（关联/拿地址的窗口），轮询只是恰好跑到谁身上。
+
+---
+
 ## 触摸坐标要过一次帧变换，`IDENTITY` 一直是错的
 
 `[据称]` 这块模组的数字转换器报的是**面板控制器自己的 240×320 竖幅窗口**，而面板被写成 320×240 横幅（`MADCTL = MV|MX`）：两者差一次**转置 + 镜像**，正确的净变换是

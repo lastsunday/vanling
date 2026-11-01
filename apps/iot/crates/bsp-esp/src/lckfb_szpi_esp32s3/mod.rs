@@ -85,6 +85,11 @@ const MOTION_RETRY_MS: u32 = 10;
 const SPI_COPY_BUF_BYTES: usize = 64;
 const BACKLIGHT_PWM_HZ: u32 = 5_000;
 
+// Every part on this bus (PCA9557, FT6336, QMI8658, ES7210, ES8311) is rated for
+// fast mode; esp-hal's default is 100 kHz, and the touch, motion and button polls
+// run off this clock on the same executor that paints the panel.
+const I2C_FREQ_HZ: u32 = 400_000;
+
 static BACKLIGHT_TIMER: esp_hal::__macro_implementation::static_cell::StaticCell<
     ledc_timer::Timer<'static, LowSpeed>,
 > = esp_hal::__macro_implementation::static_cell::StaticCell::new();
@@ -206,6 +211,10 @@ fn retry<E>(
     last
 }
 
+fn i2c_config() -> i2c_master::Config {
+    i2c_master::Config::default().with_frequency(Rate::from_hz(I2C_FREQ_HZ))
+}
+
 fn bring_up_i2c(
     i2c: i2c_master::I2c<'static, Blocking>,
 ) -> Result<(&'static SharedI2cBus, Pca9557<SharedI2cDevice>), BoardError> {
@@ -310,7 +319,7 @@ impl Board<'static> {
         backlight.set_level_pct(0);
 
         let (bus, mut pca9557) = bring_up_i2c(
-            i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+            i2c_master::I2c::new(I2C0, i2c_config())
                 .map_err(BoardError::I2cConfig)?
                 .with_sda(GPIO1)
                 .with_scl(GPIO2),
@@ -485,7 +494,7 @@ impl Board<'static> {
         } = peripherals;
 
         let (bus, _pca9557) = bring_up_i2c(
-            i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+            i2c_master::I2c::new(I2C0, i2c_config())
                 .map_err(BoardError::I2cConfig)?
                 .with_sda(GPIO1)
                 .with_scl(GPIO2),
@@ -530,7 +539,7 @@ impl Board<'static> {
         } = peripherals;
 
         let (bus, mut pca9557) = bring_up_i2c(
-            i2c_master::I2c::new(I2C0, i2c_master::Config::default())
+            i2c_master::I2c::new(I2C0, i2c_config())
                 .map_err(BoardError::I2cConfig)?
                 .with_sda(GPIO1)
                 .with_scl(GPIO2),

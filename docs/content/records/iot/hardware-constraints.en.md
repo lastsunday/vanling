@@ -3,7 +3,7 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "7a61d153e9ee3ba2363f5f22ec3fd90432beb1b9"
+source_file_hash = "304d31ee3509d3505e90861a002ffd36ef8deab5"
 translated_at = "2026-10-30T00:00:00Z"
 +++
 
@@ -211,6 +211,37 @@ All three readings come from the same tree and the same ruler (`nm -S apps/iot/t
 `[measured]` The same round cut the radio driver's `dram_seg` share from 16 KiB to 8 KiB (`INTERNAL_BYTES` in `radio/esp32s3.rs`): boot prints `[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it`, so the total goes 49,152 → **40,960 B** and the main stack 109,328 → **117,520 B** (+8,192, matching the share taken away byte for byte). Against the driver's already-measured 33,332 B peak that leaves about **7.6 KB** (32.2% → 23.1%); the product associates, gets an address and holds it at that size with no `OutOfMemory`. The S3 and C6 driver heaps are no longer the same size (the C6 keeps a single 48 KiB block).
 
 `[measured]` The heap went 96 KiB → 512 KiB: boot prints `[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window`. Before, boot left about 1.6 KB free, so the next `Box` was an allocation failure; the PSRAM window is 8 MiB, so 512 KiB costs no internal DRAM.
+
+### The IRAM mirror is 47,396 B and none of it is this repo's (`[measured]`, 2026-11-01)
+
+`[measured]` On the S3, IRAM and DRAM are two views of the same SRAM, so every piece of code placed in IRAM also occupies a same-sized mirror inside `dram_seg` — that is what `.rwdata_dummy` is: **47,396 B**, the sum of three sections (`objdump -h`):
+
+| section | bytes | what it is |
+| --- | --- | --- |
+| `.vectors` | 1,024 | the interrupt vector table |
+| `.rwtext` | 14,392 | esp-hal / esp-rtos / esp-storage / xtensa-runtime code placed in IRAM |
+| `.rwtext.wifi` | 31,980 | the radio blob's IRAM copy (an ESP-IDF requirement for the blob) |
+
+`[measured]` Grouping `.rwtext` by symbol (`nm -S` over `0x40378400..0x4037bc38`):
+
+| owner | bytes | why it has to be in IRAM |
+| --- | --- | --- |
+| esp-hal | 4,843 | PSRAM init and mapping (cannot fetch from flash while it rewrites the cache/SPI0), GPIO and I2C ISRs, cache setup |
+| esp-rtos | 3,547 | the scheduler: `trigger_task_switch`, `RunQueue`, `timer_tick_handler`, all in interrupt context |
+| xtensa runtime, exception/interrupt entry | 1,789 | `Reset`, `save_context`/`restore_context`, `__level_{1..7}_interrupt`, `__INTERRUPTS` |
+| esp-radio / phy glue | 1,048 | `semphr_take/give`, `interrupt_dispatch`, `tx_done_cb`, `__esp_phy_*`, `__pender` |
+| esp-storage | 765 | `spiflash_read/write/erase_*`: the cache is off while flash is being written |
+| linker symbol table and alignment | 2,400 | the `sym_*` address table (984 B) plus the gaps between 127 symbols |
+
+`[measured]` **This repo contributes 0 of those 14,392 B**: `rg '#\[ram'` finds exactly one use, `RECLAIMED_MEM` in `radio/esp32s3.rs`, and that is data rather than code. So "move the functions that do not need IRAM back to flash" has no target here — the only movable bytes are esp-hal's own choices (about 1.7 KB of PSRAM init, 410 B of `gpio::wakeup::record_wakeup`), and taking them means patching a dependency, which is not worth it.
+
+`[measured]` **D-cache 32 → 16 KB is not an option**: the S3 has only 32 KB and 64 KB. Setting `ESP_HAL_CONFIG_DATA_CACHE_SIZE` to `16KB` is rejected by esp-hal's build script:
+
+```
+Validation error for crate esp-hal, option data-cache-size: Expected one of ["32KB", "64KB"], found '16KB'
+```
+
+`[measured]` **The second core is not free**: `Stack<N>` is a DRAM static (the probes use 8 KiB / 16 KiB), so it takes the same amount straight out of the main-stack wall; and `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which the product's `Priority2` speaker feed executor already holds (`start_feed_executor(feed_intr)`). Using the second core means re-allocating the `FROM_CPU_INTR*` lines first and paying for the cross-core plumbing — an architecture change, not a tuning knob.
 
 ---
 

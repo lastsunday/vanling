@@ -209,6 +209,37 @@ audio: Option<Box<Es7210Rx<…, REFERENCE_SAMPLES>>>,   // 原 Option<Es7210Rx<�
 
 `[实测]` 堆 96 KiB → 512 KiB：开机 `[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window`。改前开机只剩约 1.6 KB，下一次 `Box` 就是分配失败；PSRAM 窗口 8 MiB，抬到 512 KiB 不动内部 DRAM。
 
+### IRAM 的 DRAM 镜像 47,396 B：一个字节都不属于本仓（`[实测]`，2026-11-01）
+
+`[实测]` S3 的 IRAM 与 DRAM 是同一块 SRAM 的两个视图，所以每一段放进 IRAM 的代码都在 `dram_seg` 里占一份同样大的镜像 —— `.rwdata_dummy` 就是这个占位，**47,396 B**，由三段相加而来（`objdump -h`）：
+
+| 节 | 字节 | 是什么 |
+| --- | --- | --- |
+| `.vectors` | 1,024 | 中断向量表 |
+| `.rwtext` | 14,392 | esp-hal / esp-rtos / esp-storage / xtensa 运行时放进 IRAM 的代码 |
+| `.rwtext.wifi` | 31,980 | 射频 blob 的 IRAM 副本（ESP-IDF 对 blob 的硬要求） |
+
+`[实测]` 把 `.rwtext` 按符号归类（`nm -S` 取 `0x40378400..0x4037bc38`）：
+
+| 归属 | 字节 | 为什么必须在 IRAM |
+| --- | --- | --- |
+| esp-hal | 4,843 | PSRAM 初始化与映射（改 cache/SPI0 时不能从 flash 取指）、GPIO 与 I2C 的 ISR、cache 配置 |
+| esp-rtos | 3,547 | 调度器：`trigger_task_switch`、`RunQueue`、`timer_tick_handler`，全在中断里跑 |
+| xtensa 运行时与异常/中断入口 | 1,789 | `Reset`、`save_context`/`restore_context`、`__level_{1..7}_interrupt`、`__INTERRUPTS` |
+| esp-radio / phy 胶水 | 1,048 | `semphr_take/give`、`interrupt_dispatch`、`tx_done_cb`、`__esp_phy_*`、`__pender` |
+| esp-storage | 765 | `spiflash_read/write/erase_*`：写 flash 期间 cache 是关的 |
+| 链接符号表与函数间对齐 | 2,400 | `sym_*` 那张地址表（984 B）加 127 个符号间的对齐缝隙 |
+
+`[实测]` **本仓在这 14,392 B 里占 0**：`rg '#\[ram'` 全仓只有一处，是 `radio/esp32s3.rs` 的 `RECLAIMED_MEM`（一块数据，不是代码）。所以「把不需要 IRAM 的函数移回 flash」这条在本仓没有对象 —— 能动的只有 esp-hal 自己的取舍（PSRAM 初始化的 ~1.7 KB、`gpio::wakeup::record_wakeup` 的 410 B），而那要 patch 依赖，不做。
+
+`[实测]` **D-cache 32 → 16 KB 不是选项**：S3 只有 32 KB 与 64 KB 两档。把 `ESP_HAL_CONFIG_DATA_CACHE_SIZE` 改成 `16KB` 时 esp-hal 的构建脚本直接拒绝：
+
+```
+Validation error for crate esp-hal, option data-cache-size: Expected one of ["32KB", "64KB"], found '16KB'
+```
+
+`[实测]` **第二个核不是白拿的**：`Stack<N>` 是 DRAM 里的静态量（探针用 8 KiB / 16 KiB），也就是直接从主栈墙里切同样大的一块；而且 `esp_rtos::start_second_core` 的签名固定要 `FROM_CPU_INTR1`，产品里那个 `Priority2` 的喇叭 feed executor 已经占着它（`start_feed_executor(feed_intr)`）。要用第二个核，先得重新分配 `FROM_CPU_INTR*`，再算上跨核同步的代码量 —— 这是一次架构改动，不是一次调参。
+
 ---
 
 ## `IOT_BOOT_PAGE` 必须在构建期解析（`[实测]`，2026-10-29）
