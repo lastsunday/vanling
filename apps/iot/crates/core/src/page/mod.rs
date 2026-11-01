@@ -25,6 +25,7 @@ use crate::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Priorit
 use crate::diagnostics::Diagnostics;
 use crate::drivers::input::{ButtonEvent, InputEvent};
 use crate::intent::{ActionIntent, InputIntent, PageIntent};
+use crate::render::DIAG_REPAINT_STEP_MS;
 use crate::state::{Backed, DeviceState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -179,6 +180,11 @@ pub(crate) fn repaint_due(
     (PAGES[page.index()].repaint)(prev, next, overlay)
 }
 
+/// The least wall time this page waits between diagnostics-driven repaints.
+pub(crate) fn repaint_step_ms(page: DisplayPage) -> u64 {
+    PAGES[page.index()].step_ms
+}
+
 const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
     if left.len() != right.len() {
         return false;
@@ -206,6 +212,10 @@ struct PageSpec {
     claim: fn(DemandKind) -> Claim,
     translate: fn(&InputIntent, &DeviceState) -> ActionIntent,
     repaint: fn(&Diagnostics, &Diagnostics, bool) -> bool,
+    /// The least wall time this page waits between diagnostics-driven repaints. A page whose
+    /// drift arrives faster than a person reads it raises this rather than making the whole
+    /// render layer slower.
+    step_ms: u64,
 }
 
 const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
@@ -217,6 +227,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: ambient::claim,
         translate: light::translate,
         repaint: ambient::repaint,
+        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Attitude,
@@ -226,6 +237,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: attitude::claim,
         translate: light::translate,
         repaint: attitude::repaint,
+        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Audio,
@@ -235,6 +247,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: audio::claim,
         translate: audio::translate,
         repaint: audio::repaint,
+        step_ms: audio::REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Speaker,
@@ -244,6 +257,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: speaker::claim,
         translate: speaker::translate,
         repaint: speaker::repaint,
+        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Camera,
@@ -253,6 +267,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: camera::claim,
         translate: light::translate,
         repaint: camera::repaint,
+        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Network,
@@ -262,6 +277,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: network::claim,
         translate: network::translate,
         repaint: network::repaint,
+        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Splash,
@@ -271,6 +287,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: splash::claim,
         translate: splash::translate,
         repaint: splash::repaint,
+        step_ms: DIAG_REPAINT_STEP_MS,
     },
 ];
 

@@ -38,7 +38,7 @@ pub trait HasAudio: Board {
 
 /// Board providing a camera.
 pub trait HasCamera: Board {
-    fn take_camera(&mut self) -> Option<Box<dyn crate::drivers::camera::FrameSource>>;
+    fn take_camera(&mut self) -> Option<Box<dyn crate::drivers::camera::FrameSource + Send>>;
 }
 
 /// Board providing a speaker.
@@ -84,7 +84,7 @@ mod tests {
             false
         }
 
-        fn attach_camera(&mut self, _camera: Box<dyn crate::drivers::camera::FrameSource>) {}
+        fn attach_camera(&mut self, _camera: Box<dyn crate::drivers::camera::FrameSource + Send>) {}
     }
 
     impl PageSurface for FakePage {}

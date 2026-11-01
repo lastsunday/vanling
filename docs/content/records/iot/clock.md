@@ -166,7 +166,7 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 
 **Motion 在 240 和 80 下都是 3 ms** —— 它的开销几乎全在 I2C 等待，不随时钟缩放。所以它是唯一一行「降频对它没有影响」的。
 
-**Display 按 render 的 4 ms 收，不按面板写的 16 ms** —— 写是 DMA，不随时钟变长；按 16 ms 收会让这张表在一个根本不该算进 CPU 成本的数字上高估自己。
+**Display 按 render 的 4 ms 收，不按面板写的 16 ms** —— 16 ms 是线上时间，不随频率变长；只有 4 ms 的 render 跟着时钟走。但它并非与 core 0 无关：分块前它**确实**是忙等（Audio 页 44 帧 × 18.6 ms = 819 ms，整笔都记在 `[DISPLAY] held` 里），只是不缩放，乘 3 仍然高估。分块后 `longest chunk` 1–2 ms，搬核后整段都不在 core 0，这张表绑的才真的只剩 render。
 
 **逐源最坏本来就是现成的**：`input.rs` 每个窗口已经在报 `worst source: button 0 ms, touch 1-3 ms, motion 3 ms, capture 5-8 ms`。所以这批数字不是新写的探针，是把产品一直在报的东西读出来。
 

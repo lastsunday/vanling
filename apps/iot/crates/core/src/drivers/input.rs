@@ -891,8 +891,8 @@ impl Default for TouchContinuity {
 pub struct PollEntry {
     source_id: u8,
     key: DemandKey,
-    source: Box<dyn InputSource>,
-    aggregator: Box<dyn EventAggregator>,
+    source: Box<dyn InputSource + Send>,
+    aggregator: Box<dyn EventAggregator + Send>,
     board_cadence_ms: u64,
     cadence_ms: u64,
     next_at_ms: u64,
@@ -903,8 +903,8 @@ impl PollEntry {
     pub fn new(
         source_id: u8,
         key: DemandKey,
-        source: Box<dyn InputSource>,
-        aggregator: Box<dyn EventAggregator>,
+        source: Box<dyn InputSource + Send>,
+        aggregator: Box<dyn EventAggregator + Send>,
         cadence_ms: u64,
     ) -> Self {
         Self {
@@ -921,7 +921,7 @@ impl PollEntry {
 
     /// A board button wired as an interaction source: debounced clicks folded into
     /// double- and triple-clicks at the shared button cadence.
-    pub fn button(source_id: u8, button: impl Button + 'static) -> Self {
+    pub fn button(source_id: u8, button: impl Button + Send + 'static) -> Self {
         Self::new(
             source_id,
             DemandKey::INTERACTION,
@@ -1108,12 +1108,29 @@ mod tests {
     use super::*;
     use crate::demand::DemandKey;
 
+    /// A stand-in's pressed flag is atomic rather than a `Cell`: `InputSource` carries `Send`,
+    /// so a double that could not cross a core could not stand in for a driver either.
+    struct Pressed(core::sync::atomic::AtomicBool);
+
+    impl Pressed {
+        const fn new(pressed: bool) -> Self {
+            Self(core::sync::atomic::AtomicBool::new(pressed))
+        }
+
+        fn get(&self) -> bool {
+            self.0.load(core::sync::atomic::Ordering::Relaxed)
+        }
+
+        fn set(&self, pressed: bool) {
+            self.0.store(pressed, core::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     mod button {
         use super::*;
-        use core::cell::Cell;
 
         struct FakeButton<'a> {
-            pressed: &'a Cell<bool>,
+            pressed: &'a Pressed,
         }
 
         impl Button for FakeButton<'_> {
@@ -1123,7 +1140,7 @@ mod tests {
         }
 
         fn hold_and_release(hold_ms: u64) -> Option<ButtonEvent> {
-            let pressed = Cell::new(false);
+            let pressed = Pressed::new(false);
             let btn = FakeButton { pressed: &pressed };
             let mut scanner = ButtonScanner::new(btn);
 
@@ -1144,7 +1161,7 @@ mod tests {
 
         #[test]
         fn debounce_confirms_a_click_only_after_n_consecutive_samples() {
-            let pressed = Cell::new(false);
+            let pressed = Pressed::new(false);
             let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
             for ms in [0, 10, 20] {
                 pressed.set(true);
@@ -1160,7 +1177,7 @@ mod tests {
                 scanner.poll(60),
                 Some(InputEvent::Button(ButtonEvent::Click))
             );
-            let pressed = Cell::new(false);
+            let pressed = Pressed::new(false);
             let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
             pressed.set(true);
             assert!(scanner.poll(0).is_none());
@@ -1184,7 +1201,7 @@ mod tests {
 
         #[test]
         fn a_held_button_stays_held_through_the_release_debounce() {
-            let pressed = Cell::new(false);
+            let pressed = Pressed::new(false);
             let mut scanner = ButtonScanner::new(FakeButton { pressed: &pressed });
             assert!(!scanner.held(), "nothing has been pressed");
             pressed.set(true);
@@ -1299,7 +1316,7 @@ mod tests {
 
         #[test]
         fn poll_entry_anchors_the_first_sample_on_the_cadence_grid() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1318,7 +1335,7 @@ mod tests {
 
         #[test]
         fn a_deactivated_source_is_due_immediately_once_it_comes_back() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1340,7 +1357,7 @@ mod tests {
 
         #[test]
         fn a_source_that_resumes_after_an_hour_lands_on_the_next_slot_once() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1361,7 +1378,7 @@ mod tests {
 
         #[test]
         fn a_zero_cadence_moves_the_schedule_instead_of_dividing_by_zero() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1378,7 +1395,7 @@ mod tests {
 
         #[test]
         fn deactivating_a_source_that_is_already_off_changes_nothing() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1394,7 +1411,7 @@ mod tests {
         }
 
         fn button_entry() -> PollEntry {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1467,7 +1484,7 @@ mod tests {
 
         #[test]
         fn poll_entry_wires_scanner_into_the_double_click() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::new(
                 0,
                 DemandKey::INTERACTION,
@@ -1483,7 +1500,7 @@ mod tests {
             assert!(entry.poll(40).is_none());
             assert!(entry.poll(50).is_none());
             assert_eq!(entry.poll(60), Some(InputEvent::Button(ButtonEvent::Click)));
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let mut entry = PollEntry::button(0, FakeButton { pressed });
             for ms in [0, 10, 20] {
                 pressed.set(true);
@@ -1509,7 +1526,7 @@ mod tests {
 
         #[test]
         fn a_board_button_carries_the_interaction_wiring() {
-            let pressed: &'static Cell<bool> = Box::leak(Box::new(Cell::new(false)));
+            let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
             let entry = PollEntry::button(4, FakeButton { pressed });
             assert_eq!(entry.source_id(), 4);
             assert_eq!(entry.key(), DemandKey::INTERACTION);

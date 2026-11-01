@@ -3,8 +3,8 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "f0b9422814f886e5485b926cacd1f5da94546920"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "5815ea2832e3af972daa6e3f624c9d2d304f4091"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -109,6 +109,8 @@ There is also a trap in the method itself: differencing yields a **marginal** co
 Motion gave up 14.0 points and the render loop took 13.2 of them, with the device total barely moving. Every frame is still 26 ms (10 ms render + a 16 ms whole-frame SPI write); what changed is the frame count, because a cooperative executor gives its time to whoever is awake and the panel's animation clock will draw more frames whenever it has CPU.
 
 **So adding a latency ceiling in percent was the wrong shape**: the two percentages are what add up to the device, and they trade against each other. The two sides must be read separately, and the panel side is a residual that may not be added to the polled side — the sum exceeds 100% of a core.
+
+`[accounting note]` (from 2026-11-01) The panel transfer now runs on the second core: `[DISPLAY] held` covers render only, the parked time is reported separately as `worst wait`, and the panel side is no longer a residual but another lane's wait. The "both sides" column above holds only for the arrangement it was taken from (same core, `hold` = render + whole-frame write); today core 0's account is input + render and core 1's is panel. This note does not overturn the conclusion — the two sides still may not be added, only what gets added has become two cores.
 
 ## The capture path cannot be batched
 

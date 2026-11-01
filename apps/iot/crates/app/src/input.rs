@@ -126,6 +126,7 @@ pub async fn input_task(
     let mut window_worst_hold_ms: u64 = 0;
     let mut window_ticks: u32 = 0;
     let mut last_report = Instant::now();
+    let mut stack_peak = 0usize;
     let mut splash_open = true;
     let mut plans: Vec<PollPlan> = Vec::with_capacity(sources.len());
     loop {
@@ -206,37 +207,62 @@ pub async fn input_task(
             worst_us.fill(0);
             polled.fill(false);
             last_report = now;
+            report_second_core_stack(&mut stack_peak);
         }
     }
+}
+
+/// One line per window, at info only when the peak moved a kilobyte or more: the number is
+/// monotone, so repeating it at debug is enough and an info line means "look at the budget".
+fn report_second_core_stack(peak: &mut usize) {
+    let Some((high, total)) = crate::executor_stack::second_core_peak() else {
+        return;
+    };
+    let grew = high >= *peak + 1_024;
+    log::log!(
+        if grew {
+            log::Level::Info
+        } else {
+            log::Level::Debug
+        },
+        "[STACK] core 1 peak {high} B of {total} B",
+    );
+    *peak = high;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use alloc::boxed::Box;
-    use alloc::rc::Rc;
+    use alloc::sync::Arc;
     use core::cell::RefCell;
+    use embassy_sync::blocking_mutex::Mutex;
+    use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
     use iot_core::config::MotionConfig;
     use iot_core::demand::{Claim, DemandKey, EffectiveDemand, Mode, Priority};
     use iot_core::drivers::input::{InputSource, PassThrough};
+
+    /// The shared cell a double needs now that `InputSource` carries `Send`: an `Rc`/`RefCell`
+    /// pair would make the stand-in ineligible for the same bundle as a real driver.
+    type Shared<T> = Arc<Mutex<CriticalSectionRawMutex, RefCell<Option<T>>>>;
 
     struct Recording {
         collecting: Option<bool>,
         polls: u32,
         batchable: bool,
-        told: Rc<RefCell<Option<MotionConfig>>>,
+        told: Shared<MotionConfig>,
     }
 
     impl Recording {
         fn new(batchable: bool) -> Self {
-            Self::with_tell_to(batchable, Rc::new(RefCell::new(None)))
+            Self::with_tell_to(batchable, Arc::new(Mutex::new(RefCell::new(None))))
         }
 
-        fn told_to(told: &Rc<RefCell<Option<MotionConfig>>>) -> Self {
-            Self::with_tell_to(true, Rc::clone(told))
+        fn told_to(told: &Shared<MotionConfig>) -> Self {
+            Self::with_tell_to(true, Arc::clone(told))
         }
 
-        fn with_tell_to(batchable: bool, told: Rc<RefCell<Option<MotionConfig>>>) -> Self {
+        fn with_tell_to(batchable: bool, told: Shared<MotionConfig>) -> Self {
             Self {
                 collecting: None,
                 polls: 0,
@@ -268,16 +294,13 @@ mod tests {
             &mut self,
             wanted: Option<MotionConfig>,
         ) -> Result<Option<MotionConfig>, MotionConfig> {
-            *self.told.borrow_mut() = wanted;
+            self.told.lock(|told| *told.borrow_mut() = wanted);
             Ok(wanted)
         }
     }
 
-    fn configurable_entry(
-        key: DemandKey,
-        cadence_ms: u64,
-    ) -> (PollEntry, Rc<RefCell<Option<MotionConfig>>>) {
-        let told = Rc::new(RefCell::new(None));
+    fn configurable_entry(key: DemandKey, cadence_ms: u64) -> (PollEntry, Shared<MotionConfig>) {
+        let told = Arc::new(Mutex::new(RefCell::new(None)));
         let entry = PollEntry::new(
             0,
             key,
@@ -325,7 +348,7 @@ mod tests {
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
 
         assert_eq!(
-            *told.borrow(),
+            told.lock(|told| *told.borrow()),
             Some(MotionConfig::PolledRegisters),
             "a configuration that never reaches the part has configured nothing"
         );
@@ -338,7 +361,7 @@ mod tests {
 
         apply(&mut sources, &demand_on_period(30_000), &configurator(), 0);
 
-        assert_eq!(*told.borrow(), None);
+        assert_eq!(told.lock(|told| *told.borrow()), None);
     }
 
     #[test]
@@ -354,7 +377,7 @@ mod tests {
         );
 
         assert_eq!(
-            *told.borrow(),
+            told.lock(|told| *told.borrow()),
             None,
             "a part that could not enter the configuration must not be moved to it"
         );

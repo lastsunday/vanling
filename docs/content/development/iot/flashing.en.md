@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "ef02307ee0e927947b4167b0547a076505fa097d"
-translated_at = "2026-10-29T02:30:00Z"
+source_file_hash = "0482c93ef52535ff1ed468a9f4112f09d5514ab8"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 # Firmware Installation
@@ -152,6 +152,14 @@ espflash monitor   # press enter in console to restart
 > and reset in one breath. It lands a few seconds later than the flash's own reset, so the
 > ROM's first line is in the transcript too. `script` hands the monitor the tty it demands
 > and records a copy; redirect rather than piping.
+
+> `[measured, 2026-11-01]` Every so often the USB-Serial/JTAG does not enumerate after a
+> watchdog reset: the port yields **not one byte** (the boot log stops mid-line at
+> `esp_image: segment …`) and the network is unreachable, so it looks like a dead image.
+> **Flashing the same image again brings it back**, with no rebuild. That is the way to tell
+> the two apart: same image comes up after a reflash = enumeration; still silent = look at the
+> image (the other silent case in that round was a broken core-1 startup, and reflashing it
+> three times did not help).
 
 `[measured]` **The C6 is the other way round**: it does **not** want `-a watchdog-reset` — a
 plain DTR reset boots it, and the ROM prints `rst:0x15 (USB_UART_HPSYS),boot:0x1c

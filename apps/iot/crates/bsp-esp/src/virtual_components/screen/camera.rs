@@ -15,7 +15,7 @@ use super::*;
 const THUMBNAIL_INTERVAL_MS: u64 = CAMERA_THUMBNAIL_PERIOD_MS as u64;
 
 pub(super) struct CameraFeed {
-    source: Option<Box<dyn FrameSource>>,
+    source: Option<Box<dyn FrameSource + Send>>,
     thumbnail_last_ms: Option<u64>,
 }
 
@@ -27,7 +27,7 @@ impl CameraFeed {
         }
     }
 
-    pub(super) fn attach(&mut self, camera: Box<dyn FrameSource>) {
+    pub(super) fn attach(&mut self, camera: Box<dyn FrameSource + Send>) {
         self.source = Some(camera);
     }
 
@@ -77,7 +77,7 @@ impl CameraTarget for Screen {
         Screen::paint_camera(self, now_ms)
     }
 
-    fn attach_camera(&mut self, camera: Box<dyn FrameSource>) {
+    fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>) {
         self.camera.attach(camera);
     }
 }

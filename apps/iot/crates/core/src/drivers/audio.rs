@@ -634,7 +634,7 @@ pub trait AudioSource {
     }
 }
 
-pub trait CaptureSink {
+pub trait CaptureSink: Send + Sync {
     fn publish(&self, sample: AudioSample);
 }
 
@@ -725,7 +725,7 @@ impl CornerSweep {
 mod tests {
     use super::*;
     use alloc::boxed::Box;
-    use core::cell::RefCell;
+    use std::sync::Mutex;
 
     #[derive(Debug, PartialEq)]
     struct FakeChain(u32);
@@ -855,12 +855,12 @@ mod tests {
 
     #[derive(Default)]
     struct Recording {
-        samples: RefCell<Vec<AudioSample>>,
+        samples: Mutex<Vec<AudioSample>>,
     }
 
     impl CaptureSink for Recording {
         fn publish(&self, sample: AudioSample) {
-            self.samples.borrow_mut().push(sample);
+            self.samples.lock().unwrap().push(sample);
         }
     }
 
@@ -888,7 +888,7 @@ mod tests {
                 "a poll reports no event of its own; the window is the sink's"
             );
         }
-        let samples = sink.samples.borrow();
+        let samples = sink.samples.lock().unwrap();
         assert_eq!(samples.len(), 3, "one window per cadence tick");
         for (sample, now_ms) in samples.iter().zip([20, 40, 60]) {
             assert_eq!(sample.envelope.committed(), 1);

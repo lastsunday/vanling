@@ -13,7 +13,7 @@ pub use audio_out::{Es8311Tx, REFERENCE_SAMPLES};
 #[cfg(feature = "screen")]
 pub mod screen;
 #[cfg(feature = "screen")]
-pub use screen::Screen;
+pub use screen::{PanelBus, Screen, panel_service};
 
 #[cfg(feature = "camera")]
 pub mod camera;

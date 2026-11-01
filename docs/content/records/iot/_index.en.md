@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "98324154aa687e59d07a7bcbba2c4d7535ac0b12"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "e62d5f8212bf78ec71cff723af3eeda31bb09bee"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -84,7 +84,7 @@ The system description lives in [development docs / IoT firmware](@/development/
 | The measurement used the wrong clock | The first version's "219 cycles/MAC" was converted at 240 MHz and is wrong. **A reference loop caught it** — a trivial integer loop should be faster, yet ran 193× slower | reference FIR **12** cycles/MAC @80 MHz |
 | **Block adaptation: it passes** | **Coefficients updated once every four samples.** Steady-state ERLE bit-identical; convergence slower | **L=16 9,680 µs ≤ 10 ms**; L=128 70,945 → **34,911 µs** |
 | Frequency-domain MDF (best practice) | Wrote the 512-point fixed-point FFT, measured it before discussing the architecture, **then deleted it** (no caller on the product path). **The transform alone is 1.8× over budget**; partitioning and filtering not yet counted | 3,046 µs each = **182% of budget**; RAM 3,064 B → 6 KB (no RAM saved) |
-| **The second core: identical digits** | `FROM_CPU_INTR1` is a second interrupt source on the *same* core. The product runs on core 0; core 1 is idle | twenty-odd measurements **all identical to the digit** → the bottleneck is shared |
+| **The second core: identical digits** | `FROM_CPU_INTR1` is a second interrupt source on the *same* core. When this was measured the product ran on core 0 and core 1 was idle (the panel transfer has since moved there, see the [hardware constraint record](@/records/iot/hardware-constraints.en.md)) | twenty-odd measurements **all identical to the digit** → the bottleneck is shared |
 | **IRAM: not that either** | The butterfly moved into `.rwtext`, confirmed at 0x4037a4c4 and not flash | 3,046 → **3,235 µs, 6% slower.** Fetch is not the bottleneck |
 | Four loops, IPC 0.1–0.33 | Fetch ruled out, second core ruled out, **so it is the memory system itself.** The cleanest code (FFT butterfly) has the lowest IPC | butterfly **0.09**; reference FIR 0.33 |
 | **The delay search can break the 30 ms bound alone** | One search is about **32 ms**, once every 256 ms, **3.0 ms per tick** amortised (31% of L=16). **Thinning the grid is ruled out** | Against a broadband reference **the correlation peak is one sample wide** — at a one-sample delay even adjacent lags 0 and 4 score nothing (146 against 1000) |

@@ -432,7 +432,7 @@ pub enum CpuClock {
 
 ### 第二核：数字逐位相同
 
-`FROM_CPU_INTR1` 是同一颗核上的第二个中断源（`InterruptExecutor<1>`），不是第二核——**产品固件全部跑在 core 0，core 1 完全空闲。**探针改成两个核先后跑同一份测量（不重叠，否则会抢总线）：
+`FROM_CPU_INTR1` 是同一颗核上的第二个中断源（`InterruptExecutor<1>`），不是第二核——测这一轮时**产品固件全部跑在 core 0，core 1 完全空闲**（之后面板的帧传输搬到了 core 1，见[硬件约束记录](@/records/iot/hardware-constraints.md)；那是一次搬运，不改这里的结论：两个核算同一份 FFT 的耗时逐位相同，瓶颈是两个核共享的总线和内存）。探针改成两个核先后跑同一份测量（不重叠，否则会抢总线）：
 
 | | cpu 0 | cpu 1 |
 | --- | ---: | ---: |

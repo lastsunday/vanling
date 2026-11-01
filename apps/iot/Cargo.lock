@@ -1394,6 +1394,7 @@ name = "iot-bsp-esp"
 version = "0.1.0"
 dependencies = [
  "embassy-embedded-hal",
+ "embassy-executor",
  "embassy-futures",
  "embassy-sync 0.8.0",
  "embedded-hal 1.0.0",

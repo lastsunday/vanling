@@ -150,11 +150,11 @@ impl Screen {
                 }
             }
         };
-        self.account_frame(pending.render, wire);
+        self.account_frame(pending.render, wire, started.elapsed());
     }
 
-    pub(super) fn account_frame(&mut self, render: Duration, wire: Wire) {
-        if let Some(cost) = self.metrics.fold_frame(render, wire) {
+    pub(super) fn account_frame(&mut self, render: Duration, wire: Wire, wait: Duration) {
+        if let Some(cost) = self.metrics.fold_frame(render, wire, wait) {
             let percent = windowed_percent(cost.hold.as_micros(), cost.window.as_micros());
             let over_budget = percent > 25 || cost.worst_write.as_millis() > 20;
             log::log!(
@@ -163,13 +163,14 @@ impl Screen {
                 } else {
                     log::Level::Debug
                 },
-                "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst write {} ms (longest chunk {} ms); asked {}",
+                "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst wait {} ms, worst write {} ms (longest chunk {} ms); asked {}",
                 self.diagnostics.page,
                 cost.frames,
                 cost.window.as_millis(),
                 cost.hold.as_millis(),
                 percent,
                 cost.worst_render.as_millis(),
+                cost.worst_wait.as_millis(),
                 cost.worst_write.as_millis(),
                 cost.worst_chunk.as_millis(),
                 self.diagnostics.demand,

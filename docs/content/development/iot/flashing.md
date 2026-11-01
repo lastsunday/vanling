@@ -140,6 +140,8 @@ espflash monitor   # console 内带回车重启
 >
 > 那个 `printf '\\x12'` 是 monitor 里的 `CTRL+R Reset chip`，从同一个 pty 喂进去 = 已接上 + 立即复位；它比烧录时那次复位晚几秒，所以 ROM 第一行也在日志里。`script` 给 monitor 一个 pty 并顺手录一份，加 `> /tmp/x.log` 存盘，别用管道刷屏。
 
+> `[实测，2026-11-01]` 偶尔 watchdog 复位之后 USB-Serial/JTAG 不再枚举：串口**一个字节都没有**（开机日志只剩半行 `esp_image: segment …`），网络也不通，看上去像镜像挂了。**把同一份镜像再烧一次就恢复**，不用重新构建。分辨办法就是这个：重烧同一份能出声 = 枚举问题；仍然静音 = 才去看镜像（同一轮里另一次静音是 core 1 的启动代码写坏了，重烧三次都没用）。
+
 `[实测]` **C6 是反过来的**：它**不需要** `-a watchdog-reset`，普通 DTR 复位就正常启动，ROM 打 `rst:0x15 (USB_UART_HPSYS),boot:0x1c (SPI_FAST_FLASH_BOOT)`。espflash 会直接拒绝这个选项（`The esp32c6 does not support watchdog reset`），所以 `flash-probe-*-c6` 的任务里不能带它 —— 带了会在最后一步失败，前面的烧录照样写完。
 
 ## 构建失败先看 Docker，再看别的

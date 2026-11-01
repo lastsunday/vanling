@@ -25,7 +25,7 @@ The loop that ties the three together is the app's playback module (`crates/app/
 
 That loop is split into two tasks on two executors, because a cadence and a blocking call are two things that cannot be mixed.
 
-`feed_loop` does nothing but the 5 ms cadence and one memory write, and is spawned onto the S3's `FROM_CPU_INTR1` at `Priority2`. `control_loop` handles commands (a sound is parsed outside the lock and only handed to the driver inside it), the I2C behind `set_muted()`, and reporting `finished` back on the intent bus, and stays on the cooperative `FROM_CPU_INTR0`.
+`feed_loop` does nothing but the 5 ms cadence and one memory write, and is spawned onto the S3's `FROM_CPU_INTR2` at `Priority2`. `control_loop` handles commands (a sound is parsed outside the lock and only handed to the driver inside it), the I2C behind `set_muted()`, and reporting `finished` back on the intent bus, and stays on the cooperative `FROM_CPU_INTR0`.
 
 The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tread on the ring the other is writing.
 
@@ -151,11 +151,11 @@ The 120 ms of runway is not an estimate, it is the ring's length — and being p
 
 Why the feed gets a preemptible executor of its own is that under cooperative scheduling "nothing else is running" is not a state you get to assume.
 
-On the same cooperative executor, a capture fold, a panel write and input diagnostics each hold the CPU for stretches well beyond the 5 ms cadence, so a feed is eventually pushed late. The playback ring has 120 ms of runway, and being pushed late once is enough to drain it.
+On the same cooperative executor, a capture fold and input diagnostics each hold the CPU for stretches well beyond the 5 ms cadence, so a feed is eventually pushed late. The playback ring has 120 ms of runway, and being pushed late once is enough to drain it. (A panel write used to be in that batch too; it now runs on the second core, see [Architecture](@/development/iot/architecture.en.md).)
 
 The per-task measurements, the warm-up soak, and the 158-second record taken after the move are in the [Playback Implementation Record](@/records/iot/playback.en.md).
 
-With `feed_loop` moved to `FROM_CPU_INTR1` at `Priority2`, the same board in the same environment over 158 continuous seconds: cadence 199.6–202.9 kHz against a 200 kHz target, worst gap 6 ms in any window, zero gaps over 20 ms, zero ring drys, zero DMA restarts.
+With `feed_loop` moved onto its own `Priority2` interrupt executor, the same board in the same environment over 158 continuous seconds: cadence 199.6–202.9 kHz against a 200 kHz target, worst gap 6 ms in any window, zero gaps over 20 ms, zero ring drys, zero DMA restarts. (The landing point was `FROM_CPU_INTR1` then; moving the panel to the second core gave that line to `esp_rtos::start_second_core` and moved the feed to `FROM_CPU_INTR2`.)
 
 The worst gap uses 5% of the 120 ms of runway.
 

@@ -64,6 +64,6 @@ pub(crate) mod esp32s3;
 
 #[cfg(feature = "esp32s3")]
 pub use esp32s3::{
-    Speeds, chip_init, chip_init_at, chip_init_for_product, set_cpu_clock, set_speed,
-    start_feed_executor, start_rtos, start_second_core,
+    Speeds, chip_init, chip_init_at, chip_init_for_product, panel_core_stack_peak, set_cpu_clock,
+    set_speed, start_feed_executor, start_panel_core, start_rtos, start_second_core,
 };

@@ -32,6 +32,13 @@ pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent
     }
 }
 
+/// Twice the default step. The Audio page is the one live page whose drift arrives faster
+/// than anyone reads it: a capture poll closes two envelope columns every 20 ms, so the
+/// default step already redraws a 200-column sweep every ~45 ms and this page alone held the
+/// executor 40% of the wall time on the S3. At twice the step a frame advances the sweep eight
+/// columns instead of four — still a sweep, at half the cost.
+pub(super) const REPAINT_STEP_MS: u64 = 80;
+
 pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) -> bool {
     prev.audio.phase != next.audio.phase
         || prev.audio.envelope != next.audio.envelope

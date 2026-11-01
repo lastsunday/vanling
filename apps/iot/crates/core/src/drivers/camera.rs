@@ -68,7 +68,7 @@ pub struct WindowGeometry {
 pub trait CameraTarget {
     fn paint_camera(&mut self, now_ms: u64) -> bool;
 
-    fn attach_camera(&mut self, camera: Box<dyn FrameSource>);
+    fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>);
 }
 
 /// Who owns the frame buffer a surface and a camera share.

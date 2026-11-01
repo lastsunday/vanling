@@ -14,7 +14,7 @@ pub type Renderers = Registry;
 /// come from this one pass, so a renderer can never outnumber the consumers it paints.
 pub fn wired(
     surfaces: Vec<WiredSurface>,
-    mut camera: Option<Box<dyn FrameSource>>,
+    mut camera: Option<Box<dyn FrameSource + Send>>,
 ) -> (Registry, [SurfaceRole; MAX_LIGHTS]) {
     assert!(
         surfaces.len() <= MAX_LIGHTS,

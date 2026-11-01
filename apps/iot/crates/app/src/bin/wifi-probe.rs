@@ -75,14 +75,14 @@ async fn main(_spawner: Spawner) -> ! {
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, HEAP_BYTES);
 
-    let (board, timg0, from_cpu_intr, _feed_intr) = match iot_bsp_esp::Board::new(peripherals) {
+    let (board, timer, tick, _feed, _panel) = match iot_bsp_esp::Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[PROBE] board bring-up failed, resetting: {error:?}");
             esp_hal::system::software_reset();
         }
     };
-    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
+    iot_chip_esp::start_rtos(timer.timer0, tick);
     measure(board).await
 }
 

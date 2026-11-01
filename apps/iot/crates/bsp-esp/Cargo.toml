@@ -24,7 +24,7 @@ st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi", "dep:embassy-futures
 # panel's own brightness channel, and this surface drives it to follow the
 # breathing envelope, so the component is named here rather than left to the
 # board aggregation that happens to enable it today.
-screen = ["st7789", "es7210", "backlight"]
+screen = ["st7789", "es7210", "backlight", "dep:embassy-sync", "dep:embassy-executor"]
 # The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
 # `embassy-sync` is the shared cell the reference between the two audio halves
 # sits in — the capture reads it from the cooperative input loop while the
@@ -83,6 +83,7 @@ mipidsi = { workspace = true, optional = true }
 # host build is what lets the pure `embedded_hal` components above be unit
 # tested on a workstation.
 [target.'cfg(target_os = "none")'.dependencies]
+embassy-executor = { workspace = true, optional = true }
 embassy-futures = { workspace = true, optional = true }
 esp-bootloader-esp-idf = { workspace = true, optional = true }
 esp-hal = { workspace = true, optional = true }

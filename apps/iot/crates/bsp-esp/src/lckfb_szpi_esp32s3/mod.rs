@@ -18,8 +18,8 @@ use esp_hal::ledc::timer as ledc_timer;
 use esp_hal::ledc::timer::TimerIFace as _;
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::peripherals::{
-    DMA_CH0, FROM_CPU_INTR0, FROM_CPU_INTR1, GPIO39, GPIO40, GPIO41, GPIO42, LEDC, Peripherals,
-    SPI3, WIFI,
+    CPU_CTRL, DMA_CH0, FROM_CPU_INTR0, FROM_CPU_INTR1, FROM_CPU_INTR2, GPIO39, GPIO40, GPIO41,
+    GPIO42, LEDC, Peripherals, SPI3, WIFI,
 };
 use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
@@ -49,10 +49,10 @@ use crate::components::qmi8658::{
 };
 use crate::components::st7789::{SPI_FREQ_HZ, SPI_MODE, St7789, St7789Error};
 use crate::virtual_components::Es7210Rx;
-pub use crate::virtual_components::Screen;
 use crate::virtual_components::audio as capture;
 use crate::virtual_components::audio_out as playback;
 use crate::virtual_components::reference;
+pub use crate::virtual_components::{PanelBus, Screen, panel_service};
 
 mod camera;
 
@@ -254,18 +254,29 @@ pub struct Board<'d> {
     motion: Option<Qmi8658<SharedI2cDevice>>,
     audio: Option<Box<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>>,
     speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
-    camera: Option<Box<dyn FrameSource>>,
+    camera: Option<Box<dyn FrameSource + Send>>,
     radio: Option<WIFI<'static>>,
     credentials: Option<Box<CredentialStore>>,
 }
 
-/// Completion of the chip-level wiring, handed to the application entry point.
+/// Completion of the chip-level wiring, handed to the application entry point: the board,
+/// the scheduler's timer and tick, the feed's executor interrupt, and — when this build wires
+/// a screen — the panel's bus with the second core it runs on.
 pub type Startup<'a> = (
     Board<'a>,
     TimerGroup<'static, esp_hal::peripherals::TIMG0<'static>>,
     FROM_CPU_INTR0<'static>,
-    FROM_CPU_INTR1<'static>,
+    FROM_CPU_INTR2<'static>,
+    Option<PanelBoot<'a>>,
 );
+
+/// What the panel needs to leave the coordinator's core: the bus, and the boot of the core
+/// that answers it.
+pub struct PanelBoot<'a> {
+    pub bus: PanelBus,
+    pub cpu_control: CPU_CTRL<'a>,
+    pub intr: FROM_CPU_INTR1<'a>,
+}
 
 impl Board<'static> {
     pub fn new(peripherals: Peripherals) -> Result<Startup<'static>, BoardError> {
@@ -290,6 +301,8 @@ impl Board<'static> {
             TIMG0,
             FROM_CPU_INTR0,
             FROM_CPU_INTR1,
+            FROM_CPU_INTR2,
+            CPU_CTRL,
             DMA_CH0,
             DMA_CH1,
             LCD_CAM,
@@ -348,7 +361,8 @@ impl Board<'static> {
         pca9557.set_output(DVP_PWDN_BIT)?;
 
         let panel = St7789::new(block_spi, dc, LCD_WIDTH, LCD_HEIGHT)?;
-        let mut screen = Box::new(Screen::new(0, panel, backlight, &mut frame_arena().0));
+        let (screen, panel_bus) = Screen::new(0, panel, backlight, &mut frame_arena().0);
+        let mut screen = Box::new(screen);
         let frame = screen.frame();
         let mut camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, frame) {
             Ok(camera) => Some(camera),
@@ -471,13 +485,18 @@ impl Board<'static> {
                 motion: Some(motion),
                 audio,
                 speaker,
-                camera: camera.map(|camera| Box::new(camera) as Box<dyn FrameSource>),
+                camera: camera.map(|camera| Box::new(camera) as Box<dyn FrameSource + Send>),
                 radio: Some(WIFI),
                 credentials,
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
-            FROM_CPU_INTR1,
+            FROM_CPU_INTR2,
+            Some(PanelBoot {
+                bus: panel_bus,
+                cpu_control: CPU_CTRL,
+                intr: FROM_CPU_INTR1,
+            }),
         ))
     }
 
@@ -489,7 +508,7 @@ impl Board<'static> {
             GPIO2,
             TIMG0,
             FROM_CPU_INTR0,
-            FROM_CPU_INTR1,
+            FROM_CPU_INTR2,
             ..
         } = peripherals;
 
@@ -516,7 +535,8 @@ impl Board<'static> {
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
-            FROM_CPU_INTR1,
+            FROM_CPU_INTR2,
+            None,
         ))
     }
 
@@ -533,7 +553,7 @@ impl Board<'static> {
             GPIO45,
             TIMG0,
             FROM_CPU_INTR0,
-            FROM_CPU_INTR1,
+            FROM_CPU_INTR2,
             DMA_CH1,
             ..
         } = peripherals;
@@ -588,7 +608,8 @@ impl Board<'static> {
             },
             TimerGroup::new(TIMG0),
             FROM_CPU_INTR0,
-            FROM_CPU_INTR1,
+            FROM_CPU_INTR2,
+            None,
         ))
     }
 }
@@ -686,7 +707,7 @@ impl HasAudio for Board<'static> {
 }
 
 impl HasCamera for Board<'static> {
-    fn take_camera(&mut self) -> Option<Box<dyn FrameSource>> {
+    fn take_camera(&mut self) -> Option<Box<dyn FrameSource + Send>> {
         self.camera.take()
     }
 }

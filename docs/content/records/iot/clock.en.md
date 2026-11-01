@@ -5,8 +5,8 @@ weight = 72
 sort_by = "weight"
 
 [extra]
-source_file_hash = "c0bd8b21a171a3d949e1fcec803bbaf10e2e5133"
-translated_at = "2026-10-29T00:00:00Z"
+source_file_hash = "b7294c1b016daad07b7d283c19b6abe4c060b21f"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -170,7 +170,7 @@ All three paths were checked on the product firmware: `Auto` fully loaded gives 
 
 **Motion is 3 ms at 240 and 3 ms at 80** — its cost is almost entirely I2C wait and does not scale with the clock, which makes it the only row downclocking does not touch.
 
-**Display is charged the 4 ms render, not the 16 ms panel write** — the write is DMA and does not stretch with a slower clock, and charging it would make the table pessimistic about the one figure that was never a CPU cost.
+**Display is charged the 4 ms render, not the 16 ms panel write** — the 16 ms is wall time and does not stretch with a slower clock; only the 4 ms render follows it. It was never unrelated to core 0, though: before chunking it really was a busy wait (the Audio page put 44 frames × 18.6 ms = 819 ms into `[DISPLAY] held`), it simply does not scale, so multiplying it by 3 would still overcharge. After chunking `longest chunk` is 1-2 ms, and after the move the whole span leaves core 0 — what this table charges is now render alone.
 
 **The per-source worst cases already existed**: `input.rs` reports `worst source: button 0 ms, touch 1-3 ms, motion 3 ms, capture 5-8 ms` every window. These figures are not a new probe; they are the product's own report being read.
 

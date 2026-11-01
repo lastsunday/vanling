@@ -24,6 +24,8 @@ use self::camera::CameraFeed;
 use self::metrics::Metrics;
 use self::panel::Panel;
 
+pub use self::panel::{PanelBus, panel_service};
+
 const REPAINT_STEP: u8 = 12;
 
 const DEBUG_DIAGNOSTICS: bool = true;
@@ -49,26 +51,32 @@ pub struct Screen {
 
 impl Screen {
     /// Takes the backlight dark and keeps it there until the first frame reaches the panel.
+    ///
+    /// The bus comes back out because it belongs on the other core: see [`PanelBus`].
     pub fn new(
         instance: u8,
         driver: St7789,
         backlight: Backlight,
         frame: &'static mut [u8],
-    ) -> Self {
+    ) -> (Self, PanelBus) {
         log::info!(
             "[DISPLAY] backlight dark until the first frame; main stack {} B",
             main_stack_bytes()
         );
-        Self {
-            instance,
-            panel: Panel::new(driver, backlight),
-            frame,
-            owner: FrameOwner::NeedsPaint,
-            camera: CameraFeed::new(),
-            diagnostics: Diagnostics::default(),
-            metrics: Metrics::new(),
-            pending: None,
-        }
+        let (panel, bus) = Panel::new(driver, backlight);
+        (
+            Self {
+                instance,
+                panel,
+                frame,
+                owner: FrameOwner::NeedsPaint,
+                camera: CameraFeed::new(),
+                diagnostics: Diagnostics::default(),
+                metrics: Metrics::new(),
+                pending: None,
+            },
+            bus,
+        )
     }
 
     /// This surface's whole buffer, for a board wiring a camera onto the same bytes.

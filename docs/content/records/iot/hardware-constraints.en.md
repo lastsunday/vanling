@@ -3,7 +3,7 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "cba87895ddb5f8326705f6edf50f14fec700929d"
+source_file_hash = "417ca711a57274b25e33614ecc090b8e776789e3"
 translated_at = "2026-11-01T00:00:00Z"
 +++
 
@@ -230,7 +230,7 @@ What is used instead: the driver stays `SpiDma<'static, Blocking>`, `write_frame
 
 Only one interface surface grew: `PageSurface::flush` / `Renderer::flush` return `Option<Pin<Box<dyn Future>>>` and `Registry::flush()` awaits it once after `tick`. Painting stays synchronous (RAM only); the transfer happens in the flush. `camera-probe` awaits the same `write_frame`.
 
-Accounting: `hold` is render + total wire time (the CPU load did not change, it is just no longer one unbroken stretch), and the new `worst chunk` is the longest single transfer — that is the **real longest contiguous hold**.
+Accounting: `hold` is render + total wire time (the CPU load did not change, it is just no longer one unbroken stretch), and the new `worst chunk` is the longest single transfer — that is the **real longest contiguous hold**. This section's readings use the old accounting; the next section moves the transfer to the second core, after which `hold` is render only and `worst wait` reports the parked time.
 
 | reading (Attitude page, `IOT_BOOT_PAGE=Attitude IOT_LOG_LEVEL=debug`) | before | after |
 | --- | --- | --- |
@@ -240,6 +240,72 @@ Accounting: `hold` is render + total wire time (the CPU load did not change, it 
 `worst write` is still 15–17 ms (the wire time does not shrink because it is chunked); what changed is that it is no longer one stretch: `longest chunk` is 1–2 ms. The occasional 6xx ms in the boot window is Wi-Fi association landing inside a single chunk transfer; it predates this change (the same window reports `[INPUT] worst single hold 597 ms … worst source: touch 597 ms`) and has nothing to do with chunking.
 
 `[measured]` Resources are unchanged: boot prints `[DISPLAY] … main stack 117520 B`, the same as HEAD (`nm` reads `_stack_start_cpu0 − _stack_end` = `0x3fce9710 − 0x3fcccc00`), with `.data` 18,904 B, `.data.wifi` 496 B, `.bss` 214,784 B and a 1,055,264 B app. Dropping the async driver also dropped the +88 B of `.data` it had added.
+
+### Audio repaint step doubled + panel transfer moved to the second core: core 0 holds 40% → 3% (`[measured]`, 2026-11-01)
+
+`[measured]` The section above cut a frame's **contiguous** hold from 15 ms to 1–2 ms, but the 16 ms of wire time was still core 0's bill: `SpiDma<Blocking>`'s busy wait was merely sliced, and the whole stretch still belonged to the cooperative executor. The Audio page makes that visible — `[DISPLAY] Audio 44 repaints in 2059 ms, held the executor 819 ms (40%)`, while `[INPUT]` takes 39% in the steady window of the same build (`1970 ms of 5003 ms`, below) — meaning core 0's bulk was always the capture fold, not the panel. Both were changed, cheapest first.
+
+**One: the Audio page's repaint step goes 40 → 80 ms.** The threshold moves off `render::DIAG_REPAINT_STEP_MS` onto a `PageSpec.step_ms` field (read through `page::repaint_step_ms(page)`); only Audio is `audio::REPAINT_STEP_MS = 80`, every other page stays at 40. The reason is that this page's drift arrives faster than anyone reads it: a capture poll closes two envelope columns every 20 ms, so the 40 ms step already redrew the 200-column sweep every ~45 ms; at twice the step a frame advances eight columns — still a sweep, at half the cost. `the_audio_page_waits_twice_the_default_step` pins it.
+
+| reading (`IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug`, ~2 s window) | before | step only | then second core |
+| --- | --- | --- | --- |
+| repaints | 44–45 | 27–30 | 26–30 |
+| `held the executor` | 819 ms (40%) | 505–561 ms (24–27%) | **65–76 ms (3%)** |
+| `worst render` | 3 ms | 2–3 ms | 2–3 ms |
+| `worst wait` | — | — | 17 ms |
+| `worst write` (`longest chunk`) | 16 ms (1–2 ms) | 16 ms (1–2 ms) | 15–16 ms (1 ms) |
+
+**Two: the panel's transfer moves to the second APP core.** Controller and bus become `PanelBus` and `Screen` keeps only a channel; the coordinator posts the finished frame as a `Ticket` (raw pointer plus length, `unsafe impl Send`) into `REQUESTS: Channel<_, Ticket, 1>` and then parks in `SHIPPED.wait()` for the answer, while `panel_service` runs `write_frame` on the other core and signals a `Result<Wire, Error>`. Safety is the handshake itself: the frame is the `'static` `static mut` arena, `Panel::write` sits in `wait()` for the ticket's whole life without touching it, and only one request is ever in flight.
+
+`[measured]` The trigger had to move: `esp_rtos::start_second_core` hard-codes `FROM_CPU_INTR1`, which the product's `Priority2` speaker feed executor already held, so the feed moves to `FROM_CPU_INTR2` (`InterruptExecutor<2>`) and the cross-core wakeup keeps INTR1. The second core's stack is a 16 KiB static (`PANEL_CORE_STACK` in `chip-esp`) — `.stack` fills whatever is left of the region, so this is a slice off the main-stack wall, not an addition.
+
+`[measured]` The accounting changes with it: `hold` is now render only (the coordinator's own CPU) and the parked time is its own `worst wait`. So "40% → 3%" is **a transfer of ownership of the hold**, not a shorter wire time: those 16 ms are still spent, just on the other core; `worst write` is still 15–16 ms and `longest chunk` 1 ms — but from this section on, `longest chunk` measures **core 1's hold** and no longer enters core 0's account; it is a jitter figure for the panel service's own lane and may not be added to the `[INPUT]`/`[DISPLAY]` holds.
+
+| resource (`size -A` / `nm`, same tree) | before | after | delta |
+| --- | --- | --- | --- |
+| `.text` | 850,713 B | 857,729 B | +7,016 B |
+| `.bss` | 214,784 B | 231,544 B | +16,760 B (16 KiB stack + channel/signal) |
+| `.data` | 18,904 B | 18,928 B | +24 B |
+| main stack (boot log / `_stack_start_cpu0 − _stack_end`) | 117,520 B (`0x3fcccc00`) | **100,728 B** (`0x3fcd0d98`) | −16,792 B |
+
+`[measured]` Nothing regressed: the Attitude page reads `[DISPLAY] Attitude 5–9 repaints in 2041–2560 ms, held the executor 16–29 ms (0–1%), worst render 3 ms, worst wait 16 ms, worst write 15 ms (longest chunk 1 ms)`; both pages report `stack peak 29848 B of 100728 B`, with no panic and no `[DISPLAY]` warning. Core 0's largest remaining holder is the capture fold (`[INPUT] held the executor 1970 ms of 5003 ms`, ~39%), untouched here.
+
+`[measured]` Checks: `check-s3`, `check-c6`, `check-host`, `check-features` (every subset), `build-s3` (only the pre-existing RWX linker warning), `cargo clippy -- -D warnings` for the S3 target, `lint`, `lint-host`, `test` and `test-bsp` all pass this round.
+
+### The driver half moves to core 1 whole: core 0 keeps only render's 4% (`[measured]`, 2026-11-01)
+
+The section above left core 0's remaining 39% — the capture fold — recorded as "untouched here". This section touches it: `input_task` and `control_loop`, together with the drivers they hold, become one `Io` bundle that an `IoPlacement` routes — `Elsewhere(&IoQueue)` hands it to `run_io_from` on the second core, `Inline(spawner)` keeps it on the coordinator's own executor. A single-core C6, and an S3 with no panel, take `Inline`: same tasks, same code path, only the place differs.
+
+| reading (`IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug`, ~2 s window, steady state) | before (panel on core 1) | after (driver half also on core 1) |
+| --- | --- | --- |
+| `[DISPLAY] Audio` repaints | 26–30 | 26–29 |
+| `held the executor` | 65–76 ms (3%) | 83–95 ms (4%) |
+| `worst render` | 2–3 ms | 3–4 ms |
+| `worst wait` | 17 ms | 26–47 ms |
+| `worst write` (`longest chunk`) | 15–16 ms (1 ms) | 15–16 ms (1 ms) |
+| `[INPUT] held the executor` | 1970 ms of 5003 ms (39%), charged to core 0 | 1677–2026 ms of 5001–5007 ms (33–40%), charged to core 1 |
+| `[INPUT] worst single hold` | — | 9–19 ms (bound 30 ms), capture 7–16 ms |
+| `[PLAY] cadence` | — | 400 feeds in 2000 ms (100% of nominal), 0 gaps over 20 ms, worst gap 5 ms, worst work 428–707 µs |
+| `stack peak` | 29848 B of 100728 B | 24008 B of 91824 B |
+
+`[measured]` The capture fold's bill moved house almost verbatim: the same `[INPUT] held the executor … of 5001 ms` reading, same numerator and denominator, now lands on core 1 instead of core 0; core 0's executor keeps only render's 4%. The price is single and nameable — the Audio page's `worst wait` goes from 17 ms to 26–47 ms: the panel service shares core 1's one cooperative executor with the capture poll (7 ms at worst, 16 ms in the boot window) and the speaker feed, so a full 15 ms transfer plus that stretch lands around 30 ms, with the occasional 47 ms. The repaint count is unchanged (26–29): the extra wait does not drop frames.
+
+`[measured]` Playback, motion and camera did not get worse: `[PLAY]` runs at the full 400 feeds/2 s with 0 gaps; the Attitude page reads `[DISPLAY] Attitude 5–9 repaints in 2022–2779 ms, held the executor 15–30 ms (0–1%), worst render 3–4 ms, worst wait 17–19 ms, worst write 15 ms (longest chunk 1 ms)` with `[INPUT] held the executor 632–637 ms of 5003–5005 ms` in the same window (12–13%: that page does not capture) and a 1856 B core-1 stack; the Camera page's steady state reads `[DISPLAY] Camera 11 repaints in 2118–2120 ms, held the executor 3–4 ms (0%), worst render 0 ms, worst wait 17 ms, worst write 15 ms (longest chunk 1 ms)`, the same order as before. Every boot onto the Camera page reports one `[CAM] no descriptor completed in 420 ms, stalled at 0 of 40, peripheral running (re-arm 1/2)` in its first window (same window: `worst wait 639 ms`) and never again; that path rides core 0's render loop (`advance(frame)` writes the panel frame during paint) and is untouched here.
+
+`[measured]` Resources: `.text` 857,729 → 857,321 B (−408), `.bss` 231,544 → 240,448 B (+8,904: second core's stack 16 → 24 KiB, the rest the `IoQueue` and `run_io_from`'s task slot), `.data` 18,928 B unchanged, App 1,062,400 B; main stack 100,728 → 91,824 B.
+
+`[measured]` Those 24 KiB now have a reading: one `[STACK] core 1 peak {high} B of {total} B` line every 5 s (info only once the peak moves a kilobyte, debug otherwise), one round per page:
+
+| page (`IOT_BOOT_PAGE=…`) | what stays on | core 1 stack peak |
+| --- | --- | --- |
+| Audio | capture + panel + playback | **4556 → 4780 B** of 24,576 B (19%) |
+| Speaker | panel + playback | 2336 B |
+| Attitude | panel + motion polling | 1856 B |
+| Camera | panel | 1920 B |
+
+`[measured]` The deepest path is the audio capture poll, and 19,796 B of the 24 KiB are left for the driver tasks still to come. The method is to fill the stack with 0xA5 (a word pattern: a lone byte turns up in ordinary data) and then find the lowest word that is still intact; the watermark only grows. The scan starts 512 B above the floor because esp-hal parks its own entry closure in the bottom few bytes before the second core starts, and without that skip the reading is always a full stack (the first attempt read 24,512 B). Re-painting from inside core 1 was tried and the board would not come up, so it was reverted: writing across cores into the stack you are standing on does not work.
+
+`[measured]` Checks: `check-s3`, `check-c6`, `check-host`, `check-features`, `lint`, `lint-host`, `test` (726 + 10 + 29 + 42), `test-bsp` (101), `cargo clippy -- -D warnings` for the S3 target and `build-s3` (only the pre-existing RWX linker warning) all pass; a C6 board flashed with it comes up on the Ambient page, lights the WS2812, no panic. The `Send` on the three trait objects (`InputSource`/`EventAggregator`/`FrameSource`) and on `CaptureSink` is a compile-time constraint: something that cannot cross a core cannot go into the bundle, and no per-site inspection is needed to say so.
 
 ### The IRAM mirror is 47,396 B and none of it is this repo's (`[measured]`, 2026-11-01)
 
@@ -270,7 +336,7 @@ Accounting: `hold` is render + total wire time (the CPU load did not change, it 
 Validation error for crate esp-hal, option data-cache-size: Expected one of ["32KB", "64KB"], found '16KB'
 ```
 
-`[measured]` **The second core is not free**: `Stack<N>` is a DRAM static (the probes use 8 KiB / 16 KiB), so it takes the same amount straight out of the main-stack wall; and `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which the product's `Priority2` speaker feed executor already holds (`start_feed_executor(feed_intr)`). Using the second core means re-allocating the `FROM_CPU_INTR*` lines first and paying for the cross-core plumbing — an architecture change, not a tuning knob.
+`[measured]` **The second core is not free**: `Stack<N>` is a DRAM static (the probes use 8 KiB / 16 KiB), so it takes the same amount straight out of the main-stack wall; and `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which the product's `Priority2` speaker feed executor used to hold (`start_feed_executor(feed_intr)`). Using the second core means moving the feed to `FROM_CPU_INTR2` first and paying for the cross-core plumbing — an architecture change, not a tuning knob; the panel transfer's price and payoff are in "Audio repaint step doubled + panel transfer moved to the second core" above (`.text` +7,016 B, `.bss` +16,760 B, main stack −16,792 B).
 
 ---
 

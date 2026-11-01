@@ -21,7 +21,7 @@ static mut HEAP_MEM: [u8; HEAP_BYTES] = [0; HEAP_BYTES];
 static HEAP: Heap = Heap::empty();
 
 #[esp_rtos::main]
-async fn main(_spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) -> ! {
     // SAFETY: called exactly once before any allocation; the region is a
     // private static never aliased elsewhere.
     unsafe {
@@ -36,7 +36,7 @@ async fn main(_spawner: Spawner) -> ! {
     iot_chip_esp::init_logging();
     log::info!("[ECHO] room probe: speaker and microphone together, no panel or motion");
 
-    let (mut board, timg0, from_cpu_intr, feed_intr) = match Board::new(peripherals) {
+    let (mut board, timer, tick, feed, panel) = match Board::new(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[ECHO] bring-up failed, resetting: {error:?}");
@@ -44,13 +44,18 @@ async fn main(_spawner: Spawner) -> ! {
         }
     };
 
-    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
+    iot_chip_esp::start_rtos(timer.timer0, tick);
+    // Inline, on the coordinator's core: this probe is about the room, not about where the
+    // panel's transfer runs.
+    if let Some(panel) = panel {
+        spawner.spawn(iot_bsp_esp::panel_service(panel.bus).expect("the panel task fits its slot"));
+    }
 
     let Some(capture) = board.take_capture() else {
         log::error!("[ECHO] no microphone wired, nothing to cancel from; resetting");
         esp_hal::system::software_reset();
     };
 
-    let feed = iot_chip_esp::start_feed_executor(feed_intr);
+    let feed = iot_chip_esp::start_feed_executor(feed);
     iot_app::bench::probe::echo_room::run(board, capture, feed).await
 }

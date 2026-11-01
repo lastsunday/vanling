@@ -10,7 +10,7 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::workers::NET;
-use iot_app::{Feed, Wiring, run};
+use iot_app::{Feed, IoPlacement, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
@@ -186,7 +186,7 @@ impl Button for HostButton {
 
 struct HostLight {
     instance: u8,
-    camera: Option<Box<dyn FrameSource>>,
+    camera: Option<Box<dyn FrameSource + Send>>,
     // The panel's ownership rule, so a page change that would deadlock there is shown to survive here.
     owner: FrameOwner,
     page: Option<DisplayPage>,
@@ -265,7 +265,7 @@ impl CameraTarget for HostLight {
         painted
     }
 
-    fn attach_camera(&mut self, camera: Box<dyn FrameSource>) {
+    fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>) {
         self.camera = Some(camera);
     }
 }
@@ -326,7 +326,7 @@ struct HostBoard {
     motion: Option<PollEntry>,
     audio: Option<HostAudio>,
     playback: Option<HostSpeaker>,
-    camera: Option<Box<dyn FrameSource>>,
+    camera: Option<Box<dyn FrameSource + Send>>,
 }
 
 impl HostBoard {
@@ -420,7 +420,7 @@ impl HasPlayback for HostBoard {
 }
 
 impl HasCamera for HostBoard {
-    fn take_camera(&mut self) -> Option<Box<dyn FrameSource>> {
+    fn take_camera(&mut self) -> Option<Box<dyn FrameSource + Send>> {
         self.camera.take()
     }
 }
@@ -521,6 +521,7 @@ async fn main(_spawner: Spawner) {
             Wiring {
                 clock: HostClock,
                 feed: Feed::Inline,
+                io: IoPlacement::Inline(_spawner),
                 network: true,
                 surfaces,
             },

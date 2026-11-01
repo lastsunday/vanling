@@ -18,16 +18,21 @@ const STACK_PEAK_STEP_BYTES: usize = 1_024;
 pub(super) struct CostSample {
     pub(super) frames: u32,
     pub(super) window: Duration,
-    // Every render-plus-transfer this window: the time the frame path spent on the executor.
-    // The transfer is sent in chunks with a yield between them, so it is still executor time,
-    // just not one long hold — `worst_chunk` is the length of the longest one. Summed rather
-    // than peaked: 11 frames at 16 ms is not 16 ms, and a window reporting only a peak reads
-    // as cheaper than one spending twice as long on shorter frames.
+    /// Every render this window: what the frame path costs the coordinator's own core. The
+    /// transfer is not in here — it runs on the bus's core — so this is the number that says
+    /// whether rendering is expensive, and it is the only part of the path that holds the
+    /// executor at all. Summed rather than peaked: 11 frames at 3 ms is not 3 ms, and a
+    /// window reporting only a peak reads as cheaper than one spending twice as long on
+    /// shorter frames.
     pub(super) hold: Duration,
     pub(super) worst_render: Duration,
+    /// The longest the coordinator was parked waiting for the bus to answer. Idle time, not
+    /// held time — reported because a wait that grows is a panel falling behind, and because
+    /// on a build with the bus inline this is the executor time the offload gave back.
+    pub(super) worst_wait: Duration,
     pub(super) worst_write: Duration,
-    /// The longest single transfer in the window: the longest stretch the executor was held
-    /// for, which is what the chunking is for.
+    /// The longest single transfer in the window. Kept apart from `worst_write` because the
+    /// chunking only moves this one.
     pub(super) worst_chunk: Duration,
 }
 
@@ -38,6 +43,7 @@ pub(super) struct Metrics {
     cost_frames: u32,
     cost_anchor: Instant,
     worst_render: Duration,
+    worst_wait: Duration,
     worst_write: Duration,
     worst_chunk: Duration,
     hold: Duration,
@@ -53,6 +59,7 @@ impl Metrics {
             cost_frames: 0,
             cost_anchor: Instant::now(),
             worst_render: Duration::ZERO,
+            worst_wait: Duration::ZERO,
             worst_write: Duration::ZERO,
             worst_chunk: Duration::ZERO,
             hold: Duration::ZERO,
@@ -64,10 +71,18 @@ impl Metrics {
         self.fps
     }
 
-    pub(super) fn fold_frame(&mut self, render: Duration, wire: Wire) -> Option<CostSample> {
+    pub(super) fn fold_frame(
+        &mut self,
+        render: Duration,
+        wire: Wire,
+        wait: Duration,
+    ) -> Option<CostSample> {
         self.cost_frames += 1;
         if render > self.worst_render {
             self.worst_render = render;
+        }
+        if wait > self.worst_wait {
+            self.worst_wait = wait;
         }
         if wire.total > self.worst_write {
             self.worst_write = wire.total;
@@ -75,7 +90,7 @@ impl Metrics {
         if wire.longest > self.worst_chunk {
             self.worst_chunk = wire.longest;
         }
-        self.hold += render + wire.total;
+        self.hold += render;
         let now = Instant::now();
         let window = now - self.cost_anchor;
         if window.as_millis() < COST_WINDOW_MS {
@@ -86,12 +101,14 @@ impl Metrics {
             window,
             hold: self.hold,
             worst_render: self.worst_render,
+            worst_wait: self.worst_wait,
             worst_write: self.worst_write,
             worst_chunk: self.worst_chunk,
         };
         self.cost_frames = 0;
         self.cost_anchor = now;
         self.worst_render = Duration::ZERO;
+        self.worst_wait = Duration::ZERO;
         self.worst_write = Duration::ZERO;
         self.worst_chunk = Duration::ZERO;
         self.hold = Duration::ZERO;

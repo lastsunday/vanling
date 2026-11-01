@@ -31,7 +31,7 @@ async fn main(_spawner: Spawner) -> ! {
     let peripherals = iot_chip_esp::chip_init();
     iot_chip_esp::init_logging();
 
-    let (mut board, timg0, from_cpu_intr, _feed_intr) = match Board::new_motion_only(peripherals) {
+    let (mut board, timer, tick, _feed, _panel) = match Board::new_motion_only(peripherals) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[PROBE] motion bring-up failed, resetting: {error:?}");
@@ -39,7 +39,7 @@ async fn main(_spawner: Spawner) -> ! {
         }
     };
 
-    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
+    iot_chip_esp::start_rtos(timer.timer0, tick);
 
     let Some(motion) = board.take_motion_driver() else {
         log::error!("[PROBE] no IMU wired, no matrix to walk");

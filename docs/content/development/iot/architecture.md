@@ -178,10 +178,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 | 工作者         | 拥有的东西                        | executor                          | 句柄 |
 | -------------- | --------------------------------- | --------------------------------- | ---- |
 | 渲染层 / 摄像头 | surface、camera                   | 协作                              | `Render` / `Diagnostics` |
-| `input_task`   | 输入器件与音频采集                | 协作                              | `Input { to, from }` |
-| `control_loop` | 编解码器、DMA                     | 协作                              | `Speaker { to }`（完成回报走 intent 总线） |
+| `input_task`   | 输入器件与音频采集                | 协作（S3：第二个核）              | `Input { to, from }` |
+| `control_loop` | 编解码器、DMA                     | 协作（S3：第二个核）              | `Speaker { to }`（完成回报走 intent 总线） |
 | `net::serve`   | 协议栈、链路、AP 服务             | 协作                              | `Net { commands, page, scan }` |
 | `feed_task`    | 麦克风时钟                        | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加** |
+| `panel_service` | 面板总线（帧传输）                | **第二个 APP core**                | 无句柄：`Screen` 只持通道（`Panel::write`） |
+
+`panel_service` 与驱动半边（`input_task`、`control_loop`）跑在第二个核上：帧传输是阻塞 DMA，采集折叠每 20 ms 忙等 7 ms，两者都会整段占住所在执行器。协调者把画完的帧投成票据等回执；驱动半边整体交给 `IoPlacement::Elsewhere` 的槽位，由核上的 `run_io_from` 取走。只有核上确实起了第二个执行器时才走这条路——没起（单核 C6、S3 无面板）时是 `IoPlacement::Inline`，同一份任务照旧跑在协调者的执行器上，所以 placement 由 `start_executors` 决定，那是有没有第二个核这件事唯一的知情处。`esp_rtos::start_second_core` 固定用 `FROM_CPU_INTR1`，因此 `feed_task` 用 `FROM_CPU_INTR2`。
 
 句柄集中在组合根的 `Workers<'a>`：一个工作者一个字段，加第二个协议只加字段，不在调用点新增一对 `TO_X`/`FROM_X`。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。
 

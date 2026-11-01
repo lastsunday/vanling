@@ -10,12 +10,17 @@ use iot_core::state::SurfaceRole;
 
 type Board = iot_bsp_esp::Board<'static>;
 
+/// The driver half's pickup slot. Core 1 is already running when the coordinator builds the
+/// bundle, so the two sides meet here rather than at a call.
+#[cfg(feature = "esp32s3")]
+static IO_QUEUE: iot_app::IoQueue = iot_app::IoQueue::new();
+
 #[global_allocator]
 static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
 
 #[esp_rtos::main]
-async fn main(_spawner: Spawner) -> ! {
-    let (mut board, feed) = boot_board();
+async fn main(spawner: Spawner) -> ! {
+    let (mut board, feed, io) = boot_board(spawner);
 
     let station = board.take_wifi();
 
@@ -34,6 +39,7 @@ async fn main(_spawner: Spawner) -> ! {
                 feed,
                 network,
                 surfaces,
+                io,
             },
         ),
         iot_app::net::serve(
@@ -48,7 +54,7 @@ async fn main(_spawner: Spawner) -> ! {
     .await {}
 }
 
-fn boot_board() -> (Board, iot_app::Feed) {
+fn boot_board(spawner: Spawner) -> (Board, iot_app::Feed, iot_app::IoPlacement) {
     let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
     iot_chip_esp::init_radio_heap();
@@ -67,20 +73,43 @@ fn boot_board() -> (Board, iot_app::Feed) {
         }
     };
 
-    start_executors(startup)
+    start_executors(startup, spawner)
 }
 
 #[cfg(feature = "esp32s3")]
-fn start_executors(startup: iot_bsp_esp::Startup<'static>) -> (Board, iot_app::Feed) {
-    let (board, timg0, from_cpu_intr, feed_intr) = startup;
-    iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    let feed = iot_chip_esp::start_feed_executor(feed_intr);
-    (board, iot_app::Feed::Interrupt(feed))
+fn start_executors(
+    startup: iot_bsp_esp::Startup<'static>,
+    spawner: Spawner,
+) -> (Board, iot_app::Feed, iot_app::IoPlacement) {
+    let (board, timer, tick, feed, panel) = startup;
+    iot_chip_esp::start_rtos(timer.timer0, tick);
+    let feed = iot_chip_esp::start_feed_executor(feed);
+    // The driver half follows the second core when there is one, and the placement is decided
+    // here because this is the only place that knows whether it was started: without a panel
+    // the board hands out no way to start it, and nothing waits for a pickup that never comes.
+    let mut placement = iot_app::IoPlacement::Inline(spawner);
+    if let Some(panel) = panel {
+        iot_chip_esp::start_panel_core(panel.cpu_control, panel.intr, move |spawner| {
+            spawner.spawn(
+                iot_bsp_esp::panel_service(panel.bus).expect("the panel task fits its slot"),
+            );
+            spawner.spawn(iot_app::run_io_from(&IO_QUEUE).expect("the driver task fits its slot"));
+        });
+        placement = iot_app::IoPlacement::Elsewhere(&IO_QUEUE);
+    }
+    (board, iot_app::Feed::Interrupt(feed), placement)
 }
 
 #[cfg(feature = "esp32c6")]
-fn start_executors(startup: iot_bsp_esp::Startup<'static>) -> (Board, iot_app::Feed) {
+fn start_executors(
+    startup: iot_bsp_esp::Startup<'static>,
+    spawner: Spawner,
+) -> (Board, iot_app::Feed, iot_app::IoPlacement) {
     let (board, timg0, from_cpu_intr) = startup;
     iot_chip_esp::start_rtos(timg0.timer0, from_cpu_intr);
-    (board, iot_app::Feed::Inline)
+    (
+        board,
+        iot_app::Feed::Inline,
+        iot_app::IoPlacement::Inline(spawner),
+    )
 }

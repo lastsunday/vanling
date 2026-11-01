@@ -32,7 +32,7 @@ impl ScreenRenderer {
         }
     }
 
-    pub fn with_camera(mut self, camera: Box<dyn FrameSource>) -> Self {
+    pub fn with_camera(mut self, camera: Box<dyn FrameSource + Send>) -> Self {
         self.surface.attach_camera(camera);
         self.page = None;
         self
@@ -210,7 +210,7 @@ mod tests {
             true
         }
 
-        fn attach_camera(&mut self, _camera: Box<dyn FrameSource>) {
+        fn attach_camera(&mut self, _camera: Box<dyn FrameSource + Send>) {
             self.0.borrow_mut().camera = true;
         }
     }

@@ -164,7 +164,8 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
 /// Audio sweep follows the capture, the attitude dial the motion sample —
 /// repaint every 20 ms snapshot and hold the shared cooperative executor in a
 /// ~15 ms block almost continuously, starving the playback feed and the
-/// capture poll past their ring runway.
+/// capture poll past their ring runway. A page may raise it for itself; see
+/// `page::repaint_step_ms`.
 pub const DIAG_REPAINT_STEP_MS: u64 = 40;
 
 pub fn diag_repaint_due(
@@ -174,12 +175,13 @@ pub fn diag_repaint_due(
     since_ms: u64,
     overlay: bool,
 ) -> bool {
+    let step = crate::page::repaint_step_ms(page);
     match next.demand.claim(DemandKey::DISPLAY).mode {
         Mode::Off => return false,
-        Mode::OnChange => return since_ms >= DIAG_REPAINT_STEP_MS * 4 && prev != next,
+        Mode::OnChange => return since_ms >= step * 4 && prev != next,
         Mode::Continuous => {}
     }
-    if since_ms < DIAG_REPAINT_STEP_MS {
+    if since_ms < step {
         return false;
     }
     crate::page::repaint_due(page, prev, next, overlay)
@@ -385,6 +387,26 @@ mod tests {
         envelope
     }
 
+    /// The Audio page sets its own step, so the tests follow the table rather than the
+    /// default — a page that changed its cadence without changing this would fail here.
+    fn audio_step() -> u64 {
+        crate::page::repaint_step_ms(DisplayPage::Audio)
+    }
+
+    #[test]
+    fn the_audio_page_waits_twice_the_default_step() {
+        assert_eq!(audio_step(), DIAG_REPAINT_STEP_MS * 2);
+        for page in DisplayPage::ALL {
+            if page != DisplayPage::Audio {
+                assert_eq!(
+                    crate::page::repaint_step_ms(page),
+                    DIAG_REPAINT_STEP_MS,
+                    "{page:?} has no reason to repaint slower than the default"
+                );
+            }
+        }
+    }
+
     #[test]
     fn diag_repaint_waits_out_the_step() {
         let base = Diagnostics::default();
@@ -394,14 +416,14 @@ mod tests {
             DisplayPage::Audio,
             &base,
             &moved,
-            DIAG_REPAINT_STEP_MS - 1,
+            audio_step() - 1,
             false
         ));
         assert!(diag_repaint_due(
             DisplayPage::Audio,
             &base,
             &moved,
-            DIAG_REPAINT_STEP_MS,
+            audio_step(),
             false
         ));
     }
@@ -415,7 +437,7 @@ mod tests {
             DisplayPage::Audio,
             &base,
             &ticked,
-            DIAG_REPAINT_STEP_MS,
+            audio_step(),
             false
         ));
     }
@@ -433,13 +455,7 @@ mod tests {
         level.audio.dba_lsb = 0x8000;
         for next in [phase, envelope, restarts, level] {
             assert!(
-                diag_repaint_due(
-                    DisplayPage::Audio,
-                    &base,
-                    &next,
-                    DIAG_REPAINT_STEP_MS,
-                    false
-                ),
+                diag_repaint_due(DisplayPage::Audio, &base, &next, audio_step(), false),
                 "an Audio drift the page draws must repaint"
             );
         }
@@ -1245,20 +1261,14 @@ mod tests {
         let mut dim_moved = dim.clone();
         dim_moved.audio.phase = AudioPhase::Recording;
         assert!(
-            !diag_repaint_due(
-                DisplayPage::Audio,
-                &dim,
-                &dim_moved,
-                DIAG_REPAINT_STEP_MS,
-                false
-            ),
+            !diag_repaint_due(DisplayPage::Audio, &dim, &dim_moved, audio_step(), false),
             "a dim panel waits out the base cadence before it spends a frame"
         );
         assert!(diag_repaint_due(
             DisplayPage::Audio,
             &dim,
             &dim_moved,
-            DIAG_REPAINT_STEP_MS * 4,
+            audio_step() * 4,
             false
         ));
     }

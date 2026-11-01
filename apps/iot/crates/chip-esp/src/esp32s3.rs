@@ -5,7 +5,7 @@ use embassy_executor::{SendSpawner, Spawner};
 use esp_bootloader_esp_idf::esp_app_desc;
 use esp_hal::clock::CpuClock;
 use esp_hal::peripherals::{
-    CPU_CTRL, FROM_CPU_INTR0, FROM_CPU_INTR1, LPWR, PSRAM, Peripherals, SYSTEM,
+    CPU_CTRL, FROM_CPU_INTR0, FROM_CPU_INTR1, FROM_CPU_INTR2, LPWR, PSRAM, Peripherals, SYSTEM,
 };
 use esp_hal::psram::{Psram, PsramConfig};
 use esp_hal::rom::ets_update_cpu_frequency_rom;
@@ -224,7 +224,7 @@ pub fn start_rtos(timer: impl esp_rtos::TimerSource, int0: FROM_CPU_INTR0<'stati
 }
 
 static FEED_EXECUTOR: esp_hal::__macro_implementation::static_cell::StaticCell<
-    esp_rtos::embassy::InterruptExecutor<1>,
+    esp_rtos::embassy::InterruptExecutor<2>,
 > = esp_hal::__macro_implementation::static_cell::StaticCell::new();
 
 /// Starts the executor the speaker's feed loop runs on, and hands back its spawner.
@@ -237,8 +237,11 @@ static FEED_EXECUTOR: esp_hal::__macro_implementation::static_cell::StaticCell<
 ///
 /// Exactly one level above the thread: higher and the feed would starve input and
 /// render instead.
-pub fn start_feed_executor(intr1: FROM_CPU_INTR1<'static>) -> SendSpawner {
-    let executor = FEED_EXECUTOR.init(esp_rtos::embassy::InterruptExecutor::new(intr1));
+///
+/// The second software interrupt, not the first: `FROM_CPU_INTR1` is what
+/// `esp_rtos::start_second_core` wakes the APP core with, so the two cannot share one.
+pub fn start_feed_executor(intr2: FROM_CPU_INTR2<'static>) -> SendSpawner {
+    let executor = FEED_EXECUTOR.init(esp_rtos::embassy::InterruptExecutor::new(intr2));
     executor.start(esp_hal::interrupt::Priority::Priority2)
 }
 
@@ -257,4 +260,83 @@ pub fn start_second_core<const STACK_SIZE: usize>(
         let executor = SECOND_CORE_EXECUTOR.init(esp_rtos::embassy::Executor::new());
         executor.run(init);
     });
+}
+
+const PANEL_CORE_STACK_BYTES: usize = 24 * 1024;
+
+/// What the second core's stack is filled with before the core starts, so the deepest word it
+/// ever wrote can be found afterwards: everything below the watermark is still paint. A whole
+/// word rather than a byte, because a lone `0xA5` byte turns up in ordinary data.
+const STACK_PAINT: u8 = 0xA5;
+
+/// The bytes above the stack's floor that the scan skips: esp-hal parks its entry closure in
+/// them before the core is running, so they read as used whatever the tasks do. Skipping them
+/// costs the bottom 512 B of the watermark's resolution — a real overflow lands there with the
+/// canary check, not with this reading.
+const STACK_SCRUB_BYTES: usize = 512;
+
+static PANEL_CORE_STACK: esp_hal::__macro_implementation::static_cell::StaticCell<
+    Stack<PANEL_CORE_STACK_BYTES>,
+> = esp_hal::__macro_implementation::static_cell::StaticCell::new();
+
+static PANEL_CORE_STACK_BOTTOM: AtomicUsize = AtomicUsize::new(0);
+
+/// How deep the second core's stack has been, in bytes below its ceiling, and how big it is.
+///
+/// `None` until [`start_panel_core`] has painted the stack. The reading is the historical
+/// maximum, not the current depth, and it is monotone: a task that went deep leaves paint
+/// destroyed below it. Only meaningful from an executor on that core — the scan reads a region
+/// nobody else writes, and a cooperative executor does not switch under it.
+///
+/// The firmware's own guard is elsewhere: `ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION` checks
+/// the canary below the floor on every context switch. This is headroom accounting, so a stack
+/// that is too big can be seen to be too big rather than merely believed to be needed.
+pub fn panel_core_stack_peak() -> Option<(usize, usize)> {
+    let bottom = PANEL_CORE_STACK_BOTTOM.load(Ordering::Relaxed);
+    if bottom == 0 {
+        return None;
+    }
+    let size = PANEL_CORE_STACK_BYTES;
+    // Up from the floor to the first word that is no longer paint. The ceiling itself is not
+    // written either, so walking down from it stops at the very first word. This direction reads
+    // the whole untouched remainder — 24 KiB of volatile loads every report — which is ~0.4 ms
+    // once per 5 s window.
+    let deepest = (STACK_SCRUB_BYTES..size)
+        .step_by(4)
+        .find(|&at| {
+            // SAFETY: `bottom + .. bottom + size` is this module's own static stack, and the
+            // writes it sees come from the core that is asking — a cooperative executor cannot
+            // switch to another task between these reads.
+            (0..4).any(|byte| unsafe {
+                core::ptr::read_volatile((bottom as *const u8).add(at + byte)) != STACK_PAINT
+            })
+        })
+        .unwrap_or(size);
+    Some((size - deepest, size))
+}
+
+/// Boots the second core with a stack of its own, for everything the product runs there: the
+/// panel's transfers and every driver that blocks. 24 KiB of internal DRAM out of the main
+/// stack's wall — `.stack` fills whatever is left of the region, so this is a trade, not an
+/// addition.
+///
+/// The depth that size was chosen for is measured, not assumed: [`panel_core_stack_peak`]
+/// reports it, and the product logs it from the driver half that runs here.
+pub fn start_panel_core(
+    cpu_control: CPU_CTRL<'static>,
+    intr1: FROM_CPU_INTR1<'static>,
+    init: impl FnOnce(Spawner) + Send + 'static,
+) {
+    let stack = PANEL_CORE_STACK.init(Stack::new());
+    // SAFETY: the region is uninitialized memory and nothing has started using it yet — the
+    // second core begins after this write and takes the same bytes as its stack.
+    unsafe {
+        core::ptr::write_bytes(
+            stack.mem.as_mut_ptr() as *mut u8,
+            STACK_PAINT,
+            PANEL_CORE_STACK_BYTES,
+        );
+    }
+    PANEL_CORE_STACK_BOTTOM.store(stack.bottom() as usize, Ordering::Relaxed);
+    start_second_core(cpu_control, intr1, stack, init);
 }

@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "833a17dc9c3cdca75dd23441ccafaaf19e098b28"
-translated_at = "2026-10-31T00:00:00Z"
+source_file_hash = "e4beea5d1640105201ebe75bd632a962130c2c5f"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 # Architecture
@@ -187,10 +187,13 @@ A capability that carries rules (multi-step transitions, invariants, edges acros
 | Worker                 | Owns                                | Executor                                   | Handle |
 | ---------------------- | ----------------------------------- | ------------------------------------------ | -------- |
 | Render layer / camera  | surface, camera                     | cooperative                                | `Render` / `Diagnostics` |
-| `input_task`           | input devices and audio capture     | cooperative                                | `Input { to, from }` |
-| `control_loop`         | codec, DMA                          | cooperative                                | `Speaker { to }` (completion returns on the intent bus) |
+| `input_task`           | input devices and audio capture     | cooperative (S3: the second core)          | `Input { to, from }` |
+| `control_loop`         | codec, DMA                          | cooperative (S3: the second core)          | `Speaker { to }` (completion returns on the intent bus) |
 | `net::serve`           | stack, link, AP services            | cooperative                                | `Net { commands, page, scan }` |
 | `feed_task`            | the microphone clock                | **Priority2 interrupt, separate executor** | ⚠️ **deliberately dependency-free; none may be added** |
+| `panel_service`        | the panel bus (frame transfers)     | **the second APP core**                    | no handle: `Screen` holds only the channel (`Panel::write`) |
+
+`panel_service` and the driver half (`input_task`, `control_loop`) run on the second core: a frame transfer is a blocking DMA call, and the capture fold busy-waits 7 ms out of every 20, so each would hold its executor in one piece. The coordinator posts the finished frame as a ticket and parks for the answer; the driver half goes over as one bundle into the `IoPlacement::Elsewhere` slot, where `run_io_from` picks it up. That path exists only when a second executor was actually started — a single-core C6, or an S3 with no panel, gets `IoPlacement::Inline` and the very same task runs on the coordinator's executor, which is why the placement is decided in `start_executors`: that is the only place that knows about the second core. `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which is why `feed_task` uses `FROM_CPU_INTR2`.
 
 The handles live together in the composition root's `Workers<'a>`: one field per worker, so a second protocol adds a field rather than a `TO_X`/`FROM_X` pair at the call site. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct.
 

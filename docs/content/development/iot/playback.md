@@ -20,7 +20,7 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 这个循环被拆成两个任务、跑在两个 executor 上，因为节拍和阻塞是两种不能混的东西。
 
-`feed_loop` 只做 5 ms 节拍与一次内存写，spawn 到 S3 的 `FROM_CPU_INTR1` 上（`Priority2`）。`control_loop` 处理命令（声音在锁外解析、锁内只交给驱动）、走 I2C 的 `set_muted()`、以及把 `finished` 送回 intent 总线，留在协作式的 `FROM_CPU_INTR0` 上。
+`feed_loop` 只做 5 ms 节拍与一次内存写，spawn 到 S3 的 `FROM_CPU_INTR2` 上（`Priority2`）。`control_loop` 处理命令（声音在锁外解析、锁内只交给驱动）、走 I2C 的 `set_muted()`、以及把 `finished` 送回 intent 总线，留在协作式的 `FROM_CPU_INTR0` 上。
 
 命令从协调者经 `Workers.speaker.to`（`Channel<PlaybackCommand, 4>`）交进来，`control_loop` 只读这一个队列；放完的回报走 intent 总线，所以 `Speaker` 句柄没有 `from` 一侧。
 
@@ -140,11 +140,11 @@ Speaker 页没有动画，它的 `repaint`（`page/speaker.rs`）只比 `playbac
 
 为什么喂要独占一个可抢占的 executor，是因为协作式调度下「没有别的任务在跑」并不成立。
 
-同一个协作 executor 上，capture、面板写和 input 诊断各自持有一段远超 5 ms 节拍的工作，于是喂迟早被推后；而播放环只有 120 ms，被推后一次就放空一次 DMA。
+同一个协作 executor 上，capture 折叠和 input 诊断各自持有一段远超 5 ms 节拍的工作，于是喂迟早被推后；而播放环只有 120 ms，被推后一次就放空一次 DMA。（面板写原本也在这一批里，现在跑在第二个核上，见[架构](@/development/iot/architecture.md)。）
 
 支撑这个判断的逐项测量（各任务占用、暖机 soak、迁移后的 158 秒连续记录）在[放音实现记录](@/records/iot/playback.md)。
 
-把 `feed_loop` 挪到 `FROM_CPU_INTR1` 的 `Priority2` 之后，节拍回到目标附近，capture 与面板写不再能推迟它。这正是这两个 executor 存在的理由。测量数据见[放音实现记录](@/records/iot/playback.md)。
+把 `feed_loop` 挪到自己的 `Priority2` 中断执行器上之后，节拍回到目标附近，capture 与面板写不再能推迟它。这正是这两个 executor 存在的理由。测量数据见[放音实现记录](@/records/iot/playback.md)。（当时落点是 `FROM_CPU_INTR1`；面板搬到第二个核后让给 `esp_rtos::start_second_core`，feed 改到 `FROM_CPU_INTR2`。）
 
 `Priority2` 是有意的上限：再高一级，喂就会反过来饿死 input 和渲染，成为所有人都在等的东西。
 

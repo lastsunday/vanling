@@ -227,7 +227,7 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 
 接口面只多一条：`PageSurface::flush` / `Renderer::flush` 返回 `Option<Pin<Box<dyn Future>>>`，`Registry::flush()` 在 `tick` 之后 await 一次；绘制仍同步（只写 RAM），传输落在 flush 里。`camera-probe` 也 await 同一个 `write_frame`。
 
-计量口径：`hold` = render + 线上总时间（CPU 负载没变，只是不再连成一整段），新增 `worst chunk` = 最长单次传输，也就是**真正的最长连续持有**。
+计量口径：`hold` = render + 线上总时间（CPU 负载没变，只是不再连成一整段），新增 `worst chunk` = 最长单次传输，也就是**真正的最长连续持有**。本节读数用的是旧口径；下一节把传输搬到第二个核之后，`hold` 只剩 render，`worst wait` 记的是被 park 的时间。
 
 | 读数（Attitude 页，`IOT_BOOT_PAGE=Attitude IOT_LOG_LEVEL=debug`） | 改前 | 改后 |
 | --- | --- | --- |
@@ -237,6 +237,72 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 `worst write` 仍是 15–17 ms（线上时间不会因为分块变短），变的是它不再是一整段：`longest chunk` 1–2 ms。开机窗偶见的 6xx ms 是 WiFi 关联落在单块传输里，改前同样存在（同一时段 `[INPUT]` 报 `worst single hold 597 ms … worst source: touch 597 ms`），与分块无关。
 
 `[实测]` 资源不变：开机 `[DISPLAY] … main stack 117520 B` 与 HEAD 相同（`nm` 读数 `_stack_start_cpu0 − _stack_end` = `0x3fce9710 − 0x3fcccc00`），`.data` 18,904 B、`.data.wifi` 496 B、`.bss` 214,784 B，App 1,055,264 B。回退 async 驱动顺带丢掉了它带来的 +88 B `.data`。
+
+### Audio 重绘步长翻倍 + 面板传输搬到第二个核：core 0 持有 40% → 3%（`[实测]`，2026-11-01）
+
+`[实测]` 上一节把一帧的**连续**持有从 15 ms 压到 1–2 ms，但 16 ms 的线上时间仍是 core 0 的账：`SpiDma<Blocking>` 的忙等只是被切成小段，整段仍归协作执行器。Audio 页把这件事放大到看得见 —— `[DISPLAY] Audio 44 repaints in 2059 ms, held the executor 819 ms (40%)`，而 `[INPUT]` 在同一构建的稳态窗里是 39%（`1970 ms of 5003 ms`，见下文），也就是说 core 0 的大头一直是采集折叠，不是面板。两处一起改，先改便宜的。
+
+**一、Audio 页的重绘步长 40 → 80 ms。** 门槛从 `render::DIAG_REPAINT_STEP_MS` 挪到 `PageSpec.step_ms` 字段（`page::repaint_step_ms(page)` 取值），只有 Audio 是 `audio::REPAINT_STEP_MS = 80`，其余页面仍是 40。理由是这一页的漂移来得比谁读得都快：capture 每 20 ms 折两列包络，40 ms 的步长已经把 200 列的扫线每 ~45 ms 重画一次；80 ms 下一帧推进八列，仍是扫线，代价减半。`the_audio_page_waits_twice_the_default_step` 钉住这条。
+
+| 读数（`IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug`，~2 s 窗） | 改前 | 只改步长 | 再搬第二个核 |
+| --- | --- | --- | --- |
+| 重绘次数 | 44–45 | 27–30 | 26–30 |
+| `held the executor` | 819 ms (40%) | 505–561 ms (24–27%) | **65–76 ms (3%)** |
+| `worst render` | 3 ms | 2–3 ms | 2–3 ms |
+| `worst wait` | — | — | 17 ms |
+| `worst write`（`longest chunk`） | 16 ms (1–2 ms) | 16 ms (1–2 ms) | 15–16 ms (1 ms) |
+
+**二、面板的传输搬到第二个 APP core。** 控制器和总线成为 `PanelBus`，`Screen` 只留一条通道；协调者把画完的帧当 `Ticket`（裸指针 + 长度，`unsafe impl Send`）投进 `REQUESTS: Channel<_, Ticket, 1>`，然后 park 在 `SHIPPED.wait()` 上等结果，`panel_service` 在另一个核上 `write_frame` 并回一个 `Result<Wire, Error>`。安全性靠握手本身：帧是 `'static` 的 `static mut` 竞技场，`Panel::write` 在票据整个生命周期内都停在 `wait()` 里不碰它，总线上只有一次请求在飞。
+
+`[实测]` 触发点必须换：`esp_rtos::start_second_core` 硬编码 `FROM_CPU_INTR1`，而产品里 `Priority2` 的喇叭 feed executor 已经占着它，所以 feed 改到 `FROM_CPU_INTR2`（`InterruptExecutor<2>`），核间唤醒留在 INTR1。第二个核的栈是 16 KiB 静态量（`chip-esp` 的 `PANEL_CORE_STACK`）—— `.stack` 填满区域剩余部分，所以这是从主栈墙上切走的一块，不是额外拿到的一块。
+
+`[实测]` 计量口径随之改：`hold` 现在只算 render（协调者自己的 CPU），被 park 的时间单列 `worst wait`。所以「40% → 3%」是**持有归属的转移**，不是线上时间变短：那 16 ms 仍在花，只是花在另一个核上；`worst write` 仍 15–16 ms，`longest chunk` 1 ms —— 但从这一节起，`longest chunk` 量的是 **core 1 的持有**，不再进 core 0 的账；它是面板服务自己那条 lane 的抖动指标，不能和 `[INPUT]`/`[DISPLAY]` 的持有相加。
+
+| 资源（`size -A` / `nm`，同一棵树） | 改前 | 改后 | 差 |
+| --- | --- | --- | --- |
+| `.text` | 850,713 B | 857,729 B | +7,016 B |
+| `.bss` | 214,784 B | 231,544 B | +16,760 B（16 KiB 栈 + 通道/信号量） |
+| `.data` | 18,904 B | 18,928 B | +24 B |
+| 主栈（开机日志 / `_stack_start_cpu0 − _stack_end`） | 117,520 B（`0x3fcccc00`） | **100,728 B**（`0x3fcd0d98`） | −16,792 B |
+
+`[实测]` 行为没有回退：Attitude 页 `[DISPLAY] Attitude 5–9 repaints in 2041–2560 ms, held the executor 16–29 ms (0–1%), worst render 3 ms, worst wait 16 ms, worst write 15 ms (longest chunk 1 ms)`；两页 `stack peak 29848 B of 100728 B`，无 panic、无 `[DISPLAY]` 告警。core 0 剩下最大的持有者是 capture 折叠（`[INPUT] held the executor 1970 ms of 5003 ms`，~39%），本次不动。
+
+`[实测]` 检查面：`check-s3`、`check-c6`、`check-host`、`check-features`（全部子集）、`build-s3`（只剩既有的 RWX 链接告警）、S3 目标的 `cargo clippy -- -D warnings`、`lint`、`lint-host`、`test`、`test-bsp` 本轮全部通过。
+
+### 驱动半边整体搬到 core 1：core 0 只剩 render 的 4%（`[实测]`，2026-11-01）
+
+上一节末尾把 core 0 剩下的 39% 记成「本次不动」的采集折叠。这一节动它：`input_task` 与 `control_loop` 连同它们持有的驱动成为一个 `Io` 束，由 `IoPlacement` 决定落在哪——`Elsewhere(&IoQueue)` 交给第二个核上的 `run_io_from`，`Inline(spawner)` 留在协调者自己的执行器上。单核 C6 和没有面板的 S3 走 `Inline`，任务与代码路径完全相同，只是位置不同。
+
+| 读数（`IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug`，~2 s 窗，稳态） | 改前（面板在 core 1） | 改后（驱动半边也在 core 1） |
+| --- | --- | --- |
+| `[DISPLAY] Audio` 重绘 | 26–30 | 26–29 |
+| `held the executor` | 65–76 ms (3%) | 83–95 ms (4%) |
+| `worst render` | 2–3 ms | 3–4 ms |
+| `worst wait` | 17 ms | 26–47 ms |
+| `worst write`（`longest chunk`） | 15–16 ms (1 ms) | 15–16 ms (1 ms) |
+| `[INPUT] held the executor` | 1970 ms of 5003 ms（39%），记在 core 0 | 1677–2026 ms of 5001–5007 ms（33–40%），记在 core 1 |
+| `[INPUT] worst single hold` | — | 9–19 ms（bound 30 ms），capture 7–16 ms |
+| `[PLAY] cadence` | — | 400 feeds in 2000 ms（100% of nominal），0 gaps over 20 ms，worst gap 5 ms，worst work 428–707 µs |
+| `stack peak` | 29848 B of 100728 B | 24008 B of 91824 B |
+
+`[实测]` 采集折叠的账几乎原样搬了家：`[INPUT] held the executor … of 5001 ms` 这条读数的分子分母都没变，只是从 core 0 换到 core 1；core 0 的执行器现在只剩 render 的 4%。代价单一且可指认——Audio 页的 `worst wait` 从 17 ms 涨到 26–47 ms：面板服务在 core 1 上与采集轮询（最长 7 ms，开机首个窗口 16 ms）和喇叭喂数排同一个协作执行器，一次完整传输 ~15 ms 加上这段，落在 30 ms 上下，偶发一次 47 ms。重绘数没变（26–29），多出来的等待没有丢帧。
+
+`[实测]` 播放、运动与摄像头都没有因此变差：`[PLAY]` 满速 400 feeds/2 s、0 gaps；Attitude 页 `[DISPLAY] Attitude 5–9 repaints in 2022–2779 ms, held the executor 15–30 ms (0–1%), worst render 3–4 ms, worst wait 17–19 ms, worst write 15 ms (longest chunk 1 ms)`，同一窗口 `[INPUT] held the executor 632–637 ms of 5003–5005 ms`（12–13%，这页不开采集）、core 1 栈 1856 B；Camera 页稳态 `[DISPLAY] Camera 11 repaints in 2118–2120 ms, held the executor 3–4 ms (0%), worst render 0 ms, worst wait 17 ms, worst write 15 ms (longest chunk 1 ms)`，与改前同量级。Camera 页每次开机都会在第一个窗口报一次 `[CAM] no descriptor completed in 420 ms, stalled at 0 of 40, peripheral running (re-arm 1/2)`（同一窗口 `worst wait 639 ms`），此后不再出现；那条路径在 core 0 的渲染里（`advance(frame)` 在绘制里写面板帧），本次不动。摄像头仍走 core 0 的渲染链路（`advance(frame)` 在绘制里写面板帧），本次不动。
+
+`[实测]` 资源：`.text` 857,729 → 857,321 B（−408），`.bss` 231,544 → 240,448 B（+8,904：第二个核的栈 16 → 24 KiB，其余是 `IoQueue` 与 `run_io_from` 的任务槽），`.data` 18,928 B 不变，App 1,062,400 B；主栈 100,728 → 91,824 B。
+
+`[实测]` 那 24 KiB 现在有读数：每 5 s 一条 `[STACK] core 1 peak {high} B of {total} B`（涨 ≥1 KiB 才升到 info，否则 debug），三页各跑一轮：
+
+| 页（`IOT_BOOT_PAGE=…`） | 常开的东西 | core 1 栈水位 |
+| --- | --- | --- |
+| Audio | 采集 + 面板 + 播放 | **4556 → 4780 B** of 24,576 B（19%） |
+| Speaker | 面板 + 播放 | 2336 B |
+| Attitude | 面板 + 运动轮询 | 1856 B |
+| Camera | 面板 | 1920 B |
+
+`[实测]` 最深的一条路是音频采集的轮询，24 KiB 里还剩 19,796 B 给后续的驱动任务。量法是把栈刷成 0xA5（字模式，单字节会撞上普通数据）再找最下面一个仍然完整的字，水位只增不减；扫描从栈底 512 B 之上开始——esp-hal 在第二核启动前会把自己的入口闭包停在栈底那几个字节里，不跳过就永远读成满栈（第一次量正是读成 24,512 B）。从 core 1 内部补刷一遍漆这条路试过，板子起不来，已回退：跨核写自己正在用的栈不可行。
+
+`[实测]` 检查面：`check-s3`、`check-c6`、`check-host`、`check-features`、`lint`、`lint-host`、`test`（726 + 10 + 29 + 42）、`test-bsp`（101）、S3 目标的 `clippy -- -D warnings`、`build-s3`（只剩既有的 RWX 链接告警）全绿；C6 实机烧写后 Ambient 页正常起、WS2812 亮、无 panic。三个 trait object（`InputSource`/`EventAggregator`/`FrameSource`）与 `CaptureSink` 上的 `Send` 是编译期约束：束里放不进一个不能跨核的东西，不靠逐处检查。
 
 ### IRAM 的 DRAM 镜像 47,396 B：一个字节都不属于本仓（`[实测]`，2026-11-01）
 
@@ -267,7 +333,7 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 Validation error for crate esp-hal, option data-cache-size: Expected one of ["32KB", "64KB"], found '16KB'
 ```
 
-`[实测]` **第二个核不是白拿的**：`Stack<N>` 是 DRAM 里的静态量（探针用 8 KiB / 16 KiB），也就是直接从主栈墙里切同样大的一块；而且 `esp_rtos::start_second_core` 的签名固定要 `FROM_CPU_INTR1`，产品里那个 `Priority2` 的喇叭 feed executor 已经占着它（`start_feed_executor(feed_intr)`）。要用第二个核，先得重新分配 `FROM_CPU_INTR*`，再算上跨核同步的代码量 —— 这是一次架构改动，不是一次调参。
+`[实测]` **第二个核不是白拿的**：`Stack<N>` 是 DRAM 里的静态量（探针用 8 KiB / 16 KiB），也就是直接从主栈墙里切同样大的一块；而且 `esp_rtos::start_second_core` 的签名固定要 `FROM_CPU_INTR1`，产品里那个 `Priority2` 的喇叭 feed executor 原本占着它（`start_feed_executor(feed_intr)`）。用第二个核得先把 feed 挪到 `FROM_CPU_INTR2`，再算上跨核同步的代码量 —— 这是一次架构改动，不是一次调参；面板传输这一次的代价与收益见上文「Audio 重绘步长翻倍 + 面板传输搬到第二个核」（`.text` +7,016 B、`.bss` +16,760 B、主栈 −16,792 B）。
 
 ---
 

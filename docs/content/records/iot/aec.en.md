@@ -3,8 +3,8 @@ title = "Echo Cancellation Implementation Record"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "6f0ce82128f902f4425edf567be0cbfa01cb56b8"
-translated_at = "2026-10-31T00:00:00Z"
+source_file_hash = "d64e260336379379206948d69285080f74654f88"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -436,7 +436,7 @@ Smaller frames do not rescue it: the per-sample cost goes as 3·5·2M·log(2M)/M
 
 ### The second core: identical to the digit
 
-`FROM_CPU_INTR1` is a second timer interrupt source on the *same* core (`InterruptExecutor<1>`), not a second core — **the product runs entirely on core 0 and core 1 is idle.** The probe now runs the same measurement on both, one after the other (never overlapping, which would compete for the very memory the question is about):
+`FROM_CPU_INTR1` is a second timer interrupt source on the *same* core (`InterruptExecutor<1>`), not a second core — **when this was measured the product ran entirely on core 0 and core 1 was idle** (the panel's frame transfer has since moved to core 1, see the [hardware constraint record](@/records/iot/hardware-constraints.en.md); that is a relocation and does not change this conclusion: the two cores time the same FFT identically to the digit, so the bottleneck is the bus and memory they share). The probe now runs the same measurement on both, one after the other (never overlapping, which would compete for the very memory the question is about):
 
 | | cpu 0 | cpu 1 |
 | --- | ---: | ---: |
