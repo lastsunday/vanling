@@ -1,6 +1,8 @@
 //! The surfaces a board hands the render layer, split by what they can show.
 
 use alloc::boxed::Box;
+use core::future::Future;
+use core::pin::Pin;
 
 use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::camera::CameraTarget;
@@ -21,6 +23,14 @@ pub trait PageSurface: RgbLight + DiagnosticsSink + CameraTarget {
 
     fn repaint_step(&self) -> u8 {
         0
+    }
+
+    /// Ships whatever the last paint left in the buffer, if anything. Separate from painting
+    /// because the panel's transfer is a DMA operation: awaiting it lets the executor run
+    /// between chunks instead of holding it for the whole frame. Surfaces without a bus, and
+    /// surfaces with nothing to send, answer `None` rather than a future that does nothing.
+    fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
+        None
     }
 }
 

@@ -16,7 +16,7 @@ es8311 = ["dep:embedded-hal"]
 ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
 gc2145 = ["dep:embedded-hal"]
 ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
-st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi"]
+st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi", "dep:embassy-futures"]
 # Virtual components: assembled from real components.
 # The Audio page reports the codec's own levels, so it needs the calibration
 # that codec's gain and analog rail imply — which is why the driver is one of
@@ -83,6 +83,7 @@ mipidsi = { workspace = true, optional = true }
 # host build is what lets the pure `embedded_hal` components above be unit
 # tested on a workstation.
 [target.'cfg(target_os = "none")'.dependencies]
+embassy-futures = { workspace = true, optional = true }
 esp-bootloader-esp-idf = { workspace = true, optional = true }
 esp-hal = { workspace = true, optional = true }
 esp-hal-smartled = { workspace = true, optional = true }

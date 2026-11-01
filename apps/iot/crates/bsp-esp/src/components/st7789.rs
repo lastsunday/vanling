@@ -7,6 +7,7 @@ use esp_hal::delay::Delay;
 use esp_hal::gpio::Output;
 use esp_hal::spi::Mode;
 use esp_hal::spi::master as spi_master;
+use esp_hal::time::{Duration, Instant};
 use mipidsi::interface::{Interface, InterfaceKind};
 use mipidsi::models::ST7789;
 use mipidsi::options::ColorInversion;
@@ -48,6 +49,29 @@ impl DelayNs for NoDelay {
     fn delay_ns(&mut self, _ns: u32) {}
 }
 
+/// What one frame cost the bus.
+#[derive(Clone, Copy, Debug)]
+pub struct Wire {
+    /// Time the pixels spent in transfers, with the yields between them excluded.
+    pub total: Duration,
+    /// The longest single transfer: the longest stretch the executor was held for.
+    pub longest: Duration,
+}
+
+impl Wire {
+    const ZERO: Self = Self {
+        total: Duration::ZERO,
+        longest: Duration::ZERO,
+    };
+
+    fn add(&mut self, chunk: Duration) {
+        self.total += chunk;
+        if chunk > self.longest {
+            self.longest = chunk;
+        }
+    }
+}
+
 struct Spi4 {
     spi: spi_master::SpiDma<'static, Blocking>,
     dc: Output<'static>,
@@ -82,6 +106,29 @@ impl Spi4 {
             SpiBus::write(&mut self.spi, args)?;
         }
         Ok(())
+    }
+
+    /// Sends the frame a chunk at a time, yielding between chunks. One transfer for the whole
+    /// frame holds the cooperative executor for the ~15 ms the pixels take on the wire; a
+    /// chunk is ~1.5 ms, so the feed and the capture poll keep their turns.
+    async fn write_pixels(&mut self, data: &[u8]) -> Result<Wire, esp_hal::spi::Error> {
+        self.dc.set_high();
+        let mut wire = Wire::ZERO;
+        let mut chunks = data.chunks(FRAME_CHUNK_BYTES);
+        if let Some(first) = chunks.next() {
+            wire.add(self.write_chunk(first)?);
+        }
+        for chunk in chunks {
+            embassy_futures::yield_now().await;
+            wire.add(self.write_chunk(chunk)?);
+        }
+        Ok(wire)
+    }
+
+    fn write_chunk(&mut self, chunk: &[u8]) -> Result<Duration, esp_hal::spi::Error> {
+        let started = Instant::now();
+        SpiBus::write(&mut self.spi, chunk)?;
+        Ok(started.elapsed())
     }
 }
 
@@ -148,6 +195,16 @@ const MADCTL_LANDSCAPE: u8 = 0x60;
 const CONTROLLER_WIDTH: u16 = 240;
 const CONTROLLER_HEIGHT: u16 = 320;
 
+/// Bytes per transfer: 32 of the controller's rows. The frame goes out in these so the
+/// executor runs between them — 15,360 B is ~1.5 ms at 80 MHz, against ~15 ms for the whole
+/// frame in one transfer.
+const FRAME_CHUNK_BYTES: usize = CONTROLLER_WIDTH as usize * 2 * 32;
+
+// esp-hal's SPI master refuses a single DMA transfer over 32,736 B (`MAX_DMA_SIZE` in
+// `esp-hal/src/spi/master/dma.rs`, private to the crate). A chunk past it fails at run time
+// with `MaxDmaTransferSizeExceeded`, which on this path means a frame never reaches the glass.
+const _: () = assert!(FRAME_CHUNK_BYTES <= 32_736);
+
 /// ST7789 panel on a 4-wire SPI transport.
 pub struct St7789 {
     spi: Spi4,
@@ -199,8 +256,8 @@ impl St7789 {
         self.height
     }
 
-    /// Push one full frame to panel VRAM.
-    pub fn write_frame(&mut self, frame: &[u8]) -> Result<(), esp_hal::spi::Error> {
+    /// Push one full frame to panel VRAM, reporting what its pixels cost the bus.
+    pub async fn write_frame(&mut self, frame: &[u8]) -> Result<Wire, esp_hal::spi::Error> {
         let x_end = self.width - 1;
         let y_end = self.height - 1;
         self.spi.emit_command(0x2A, &[])?;
@@ -210,8 +267,7 @@ impl St7789 {
         self.spi
             .write_data(&[0x00, 0x00, (y_end >> 8) as u8, y_end as u8])?;
         self.spi.emit_command(0x2C, &[])?;
-        self.spi.write_data(frame)?;
-        Ok(())
+        self.spi.write_pixels(frame).await
     }
 }
 

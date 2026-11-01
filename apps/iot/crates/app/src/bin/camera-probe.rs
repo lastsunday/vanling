@@ -107,8 +107,8 @@ async fn run(mut panel: St7789, capture: &mut Gc2145Capture<Gc2145<SharedI2cDevi
         let sample = capture.poll(start.elapsed().as_millis());
         if let Some(pixels) = capture.latest_frame() {
             fingerprint.observe(pixels);
-            match panel.write_frame(pixels) {
-                Ok(()) => painted = painted.saturating_add(1),
+            match panel.write_frame(pixels).await {
+                Ok(_) => painted = painted.saturating_add(1),
                 Err(error) => log::error!("[PROBE] panel write failed: {error:?}"),
             }
         }

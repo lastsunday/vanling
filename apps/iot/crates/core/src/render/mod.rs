@@ -15,6 +15,8 @@ use crate::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagno
 use crate::paint::{Rgb, rgb_hue, scale_brightness};
 use crate::state::{Breath, DeviceState, DisplayPage, LightState, MAX_LIGHTS, SurfaceRole};
 use alloc::boxed::Box;
+use core::future::Future;
+use core::pin::Pin;
 
 /// Light-mode codes carried by [`LightSnapshot::mode`]: `0` off, `1` breathing, `2` solid.
 pub const MODE_OFF: u8 = 0;
@@ -199,6 +201,13 @@ pub trait Renderer {
     fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity;
 
     fn step(&mut self, now_ms: u32) -> Activity;
+
+    /// Ships whatever the last appearance or step left buffered, if anything. Renderers that
+    /// own no bus, or have nothing pending, answer `None`; the panel's transfer is awaited
+    /// here so the executor keeps running between its DMA chunks.
+    fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
+        None
+    }
 }
 
 /// Central judge of the device surface: diffs successive [`DeviceState`] snapshots and

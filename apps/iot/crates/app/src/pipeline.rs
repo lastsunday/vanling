@@ -117,6 +117,7 @@ pub async fn run_loop<C: ClockSink>(
         }
         let active =
             renderers.tick(&state, manager.demand(), frame.elapsed_ms()) || manager.notice_active();
+        renderers.flush().await;
         match frame.tick(active) {
             Wait::At(deadline) => Timer::at(deadline).await,
             Wait::Park => {

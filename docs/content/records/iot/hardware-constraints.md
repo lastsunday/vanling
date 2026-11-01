@@ -209,6 +209,35 @@ audio: Option<Box<Es7210Rx<…, REFERENCE_SAMPLES>>>,   // 原 Option<Es7210Rx<�
 
 `[实测]` 堆 96 KiB → 512 KiB：开机 `[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window`。改前开机只剩约 1.6 KB，下一次 `Box` 就是分配失败；PSRAM 窗口 8 MiB，抬到 512 KiB 不动内部 DRAM。
 
+### 面板帧传输按 32 行分块 + yield：最长连续持有 15 ms → 1–2 ms（`[实测]`，2026-11-01）
+
+`[实测]` 一帧 153,600 B / 80 MHz = **15.36 ms**，原先一次 `SpiBus::write` 把这一整段连续占住 core 0 的协作执行器 —— 喂数、触摸/运动轮询、capture 轮询与渲染共用它。修法不是换驱动，而是让这段传输中间让出执行器。
+
+**async DMA 这条路走不通**：`SpiDma<Async>::write_async` 把它的 `[DmaDescriptor; LINK_DESCRIPTOR_COUNT]`（`MAX_DMA_SIZE.div_ceil(CHUNK_SIZE) + 3`）放在协程帧里，而本仓的 future 一律 `Box::pin` 到 PSRAM 堆上，于是真机一写就 panic：
+
+```
+panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMemoryRegion
+```
+
+描述符必须落内部 DRAM，堆上的 boxed future 给不了它。所以本板**不能**把 esp-hal 的 async DMA 与堆上 future 一起用。
+
+采用的做法：驱动仍是 `SpiDma<'static, Blocking>`，`write_frame` 变 `async`，帧按 **32 个控制器行 = 15,360 B** 分块发送，块间 `embassy_futures::yield_now().await`；描述符继续留在 blocking 调用自己的栈帧（内部 DRAM）。`FRAME_CHUNK_BYTES ≤ 32,736`（esp-hal 私有的 `MAX_DMA_SIZE`）由 `const _: () = assert!(...)` 在编译期钉住，越界会在运行时报 `MaxDmaTransferSizeExceeded`、表现为整帧不上屏。
+
+**线上安全**：`panel_spi` 不接 CS（只有 `.with_sck().with_mosi()`），分块只是插入 SCK 空闲间隙，DC 全程为高，字节流与一次发完完全一致；渲染结果与页面行为不变。
+
+接口面只多一条：`PageSurface::flush` / `Renderer::flush` 返回 `Option<Pin<Box<dyn Future>>>`，`Registry::flush()` 在 `tick` 之后 await 一次；绘制仍同步（只写 RAM），传输落在 flush 里。`camera-probe` 也 await 同一个 `write_frame`。
+
+计量口径：`hold` = render + 线上总时间（CPU 负载没变，只是不再连成一整段），新增 `worst chunk` = 最长单次传输，也就是**真正的最长连续持有**。
+
+| 读数（Attitude 页，`IOT_BOOT_PAGE=Attitude IOT_LOG_LEVEL=debug`） | 改前 | 改后 |
+| --- | --- | --- |
+| 首窗 | `6 repaints in 2046 ms, held 110 ms (5%), worst render 3 ms, worst write 15 ms` | `6 repaints in 2724 ms, held 110 ms (4%), worst render 2 ms, worst write 17 ms (longest chunk 2 ms)` |
+| 稳态窗 | `10 repaints in 2097 ms, held 193 ms (9%), worst render 4 ms, worst write 16 ms` | `12 repaints in 2202 ms, held 229 ms (10%), worst render 3 ms, worst write 16 ms (longest chunk 2 ms)` |
+
+`worst write` 仍是 15–17 ms（线上时间不会因为分块变短），变的是它不再是一整段：`longest chunk` 1–2 ms。开机窗偶见的 6xx ms 是 WiFi 关联落在单块传输里，改前同样存在（同一时段 `[INPUT]` 报 `worst single hold 597 ms … worst source: touch 597 ms`），与分块无关。
+
+`[实测]` 资源不变：开机 `[DISPLAY] … main stack 117520 B` 与 HEAD 相同（`nm` 读数 `_stack_start_cpu0 − _stack_end` = `0x3fce9710 − 0x3fcccc00`），`.data` 18,904 B、`.data.wifi` 496 B、`.bss` 214,784 B，App 1,055,264 B。回退 async 驱动顺带丢掉了它带来的 +88 B `.data`。
+
 ### IRAM 的 DRAM 镜像 47,396 B：一个字节都不属于本仓（`[实测]`，2026-11-01）
 
 `[实测]` S3 的 IRAM 与 DRAM 是同一块 SRAM 的两个视图，所以每一段放进 IRAM 的代码都在 `dram_seg` 里占一份同样大的镜像 —— `.rwdata_dummy` 就是这个占位，**47,396 B**，由三段相加而来（`objdump -h`）：

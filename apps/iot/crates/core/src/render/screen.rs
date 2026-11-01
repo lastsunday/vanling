@@ -1,6 +1,8 @@
 //! The panel's renderer: pages over the colour, the backlight, and the camera feed.
 
 use alloc::boxed::Box;
+use core::future::Future;
+use core::pin::Pin;
 
 use crate::demand::{DemandKey, Mode};
 use crate::drivers::camera::FrameSource;
@@ -61,6 +63,10 @@ impl ScreenRenderer {
 impl Renderer for ScreenRenderer {
     fn consumers(&self) -> &[Consumer] {
         &self.consumers
+    }
+
+    fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
+        self.surface.flush()
     }
 
     fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {

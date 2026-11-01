@@ -16,6 +16,7 @@ use iot_core::stamp::rgb565;
 use iot_ui::{Canvas, Surface};
 
 use crate::components::es7210::SPL_OFFSET_DECIBELS;
+use crate::components::st7789::Wire;
 use crate::stack::{high_water, main_stack_bytes, note_stack_high_water};
 
 use super::*;
@@ -112,24 +113,48 @@ impl Screen {
             surface.render(self.diagnostics.page);
         }
 
-        // The render and the transfer are timed apart rather than together: this
-        // whole path runs on the one cooperative executor the playback feed and
-        // the capture poll share, and "the frame cost 20 ms" does not say whether
-        // the frame can be made cheaper or whether the SPI transfer has to yield
-        // the bus. Those need different fixes, so the log has to tell them apart.
-        let render = render_start.elapsed();
-        let write_start = Instant::now();
-        if let Err(e) = self.panel.write(self.frame) {
-            log::error!("[DISPLAY] frame write failed: {e:?}");
-            self.owner = FrameOwner::NeedsPaint;
-        } else {
-            self.panel.note_frame_shipped();
-        }
-        self.account_frame(render, write_start.elapsed());
+        // The render and the transfer are timed apart rather than together: "the frame cost
+        // 20 ms" does not say which of the two has to be made cheaper, so they are reported as
+        // separate peaks. `worst_chunk` is the transfer's longest single hold, which is the
+        // number the chunking moves; `worst write` stays the whole frame's wire time.
+        self.pending = Some(Pending {
+            camera: false,
+            render: render_start.elapsed(),
+        });
     }
 
-    pub(super) fn account_frame(&mut self, render: Duration, write: Duration) {
-        if let Some(cost) = self.metrics.fold_frame(render, write) {
+    /// Ships whatever the last paint left in the buffer, then accounts for the frame. Split
+    /// from painting because the panel's transfer is a DMA operation: awaiting it lets the
+    /// executor run between chunks instead of holding it for the whole frame.
+    pub(super) async fn flush_pending(&mut self) {
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        let started = Instant::now();
+        let wire = match self.panel.write(self.frame).await {
+            Ok(wire) => {
+                self.panel.note_frame_shipped();
+                wire
+            }
+            Err(error) => {
+                if pending.camera {
+                    log::error!("[DISPLAY] camera frame write failed: {error:?}");
+                } else {
+                    log::error!("[DISPLAY] frame write failed: {error:?}");
+                    self.owner = FrameOwner::NeedsPaint;
+                }
+                let spent = started.elapsed();
+                Wire {
+                    total: spent,
+                    longest: spent,
+                }
+            }
+        };
+        self.account_frame(pending.render, wire);
+    }
+
+    pub(super) fn account_frame(&mut self, render: Duration, wire: Wire) {
+        if let Some(cost) = self.metrics.fold_frame(render, wire) {
             let percent = windowed_percent(cost.hold.as_micros(), cost.window.as_micros());
             let over_budget = percent > 25 || cost.worst_write.as_millis() > 20;
             log::log!(
@@ -138,7 +163,7 @@ impl Screen {
                 } else {
                     log::Level::Debug
                 },
-                "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst write {} ms; asked {}",
+                "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst write {} ms (longest chunk {} ms); asked {}",
                 self.diagnostics.page,
                 cost.frames,
                 cost.window.as_millis(),
@@ -146,6 +171,7 @@ impl Screen {
                 percent,
                 cost.worst_render.as_millis(),
                 cost.worst_write.as_millis(),
+                cost.worst_chunk.as_millis(),
                 self.diagnostics.demand,
             );
             self.report_stack_high_water();

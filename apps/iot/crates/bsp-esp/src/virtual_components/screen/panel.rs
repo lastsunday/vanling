@@ -1,7 +1,7 @@
 //! The glass: one controller, one backlight, and the write that reaches them.
 
 use crate::components::backlight::Backlight;
-use crate::components::st7789::St7789;
+use crate::components::st7789::{St7789, Wire};
 
 pub(super) struct Panel {
     driver: St7789,
@@ -34,8 +34,8 @@ impl Panel {
         usize::from(self.width()) * usize::from(self.height()) * 2
     }
 
-    pub(super) fn write(&mut self, frame: &[u8]) -> Result<(), esp_hal::spi::Error> {
-        self.driver.write_frame(frame)
+    pub(super) async fn write(&mut self, frame: &[u8]) -> Result<Wire, esp_hal::spi::Error> {
+        self.driver.write_frame(frame).await
     }
 
     pub(super) fn set_backlight(&mut self, level_pct: u8) {

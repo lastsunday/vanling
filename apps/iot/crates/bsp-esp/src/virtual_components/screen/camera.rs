@@ -114,14 +114,10 @@ impl Screen {
             surface.stamp_camera(readout);
         }
         let render = render_start.elapsed();
-
-        let write_start = Instant::now();
-        if let Err(error) = self.panel.write(frame) {
-            log::error!("[DISPLAY] camera frame write failed: {error:?}");
-        } else {
-            self.panel.note_frame_shipped();
-        }
-        self.account_frame(render, write_start.elapsed());
+        self.pending = Some(Pending {
+            camera: true,
+            render,
+        });
         // Sampled here because the camera page reaches the panel through this path and nowhere
         // else: without it the reading is `0 B` on this page for the whole run, which says
         // nothing about the stack. `consume` covers the light pages and the audio page samples

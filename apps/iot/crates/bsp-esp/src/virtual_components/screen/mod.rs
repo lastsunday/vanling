@@ -1,6 +1,11 @@
 //! The screen: the panel, the one frame buffer the board gives it, and the sources that
 //! fill those bytes.
 
+use alloc::boxed::Box;
+use core::future::Future;
+use core::pin::Pin;
+
+use esp_hal::time::Duration;
 use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::camera::FrameOwner;
 use iot_core::drivers::surface::{PageSurface, RgbLight};
@@ -23,6 +28,13 @@ const REPAINT_STEP: u8 = 12;
 
 const DEBUG_DIAGNOSTICS: bool = true;
 
+/// A frame the last paint left in the buffer, waiting for the bus.
+pub(super) struct Pending {
+    /// Whether the camera drew it: its failures are logged apart and do not force a repaint.
+    pub(super) camera: bool,
+    pub(super) render: Duration,
+}
+
 /// ST7789 panel carrying the pages, the backlight and the camera's frame buffer.
 pub struct Screen {
     instance: u8,
@@ -32,6 +44,7 @@ pub struct Screen {
     camera: CameraFeed,
     diagnostics: Diagnostics,
     metrics: Metrics,
+    pending: Option<Pending>,
 }
 
 impl Screen {
@@ -54,6 +67,7 @@ impl Screen {
             camera: CameraFeed::new(),
             diagnostics: Diagnostics::default(),
             metrics: Metrics::new(),
+            pending: None,
         }
     }
 
@@ -76,6 +90,11 @@ impl RgbLight for Screen {
 impl PageSurface for Screen {
     fn repaint_step(&self) -> u8 {
         REPAINT_STEP
+    }
+
+    fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
+        self.pending.as_ref()?;
+        Some(Box::pin(self.flush_pending()))
     }
 
     fn set_backlight(&mut self, level_pct: u8) {

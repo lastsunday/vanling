@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "304d31ee3509d3505e90861a002ffd36ef8deab5"
-translated_at = "2026-10-30T00:00:00Z"
+source_file_hash = "cba87895ddb5f8326705f6edf50f14fec700929d"
+translated_at = "2026-11-01T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -211,6 +211,35 @@ All three readings come from the same tree and the same ruler (`nm -S apps/iot/t
 `[measured]` The same round cut the radio driver's `dram_seg` share from 16 KiB to 8 KiB (`INTERNAL_BYTES` in `radio/esp32s3.rs`): boot prints `[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it`, so the total goes 49,152 → **40,960 B** and the main stack 109,328 → **117,520 B** (+8,192, matching the share taken away byte for byte). Against the driver's already-measured 33,332 B peak that leaves about **7.6 KB** (32.2% → 23.1%); the product associates, gets an address and holds it at that size with no `OutOfMemory`. The S3 and C6 driver heaps are no longer the same size (the C6 keeps a single 48 KiB block).
 
 `[measured]` The heap went 96 KiB → 512 KiB: boot prints `[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window`. Before, boot left about 1.6 KB free, so the next `Box` was an allocation failure; the PSRAM window is 8 MiB, so 512 KiB costs no internal DRAM.
+
+### The panel frame goes out in 32-row chunks with a yield: longest contiguous hold 15 ms → 1–2 ms (`[measured]`, 2026-11-01)
+
+`[measured]` One frame is 153,600 B / 80 MHz = **15.36 ms**, and a single `SpiBus::write` held core 0's cooperative executor for that whole stretch — the feed, the touch/motion poll, the capture poll and the render all share it. The fix is not a different driver but a transfer that lets go of the executor in the middle.
+
+**Async DMA does not work here**: `SpiDma<Async>::write_async` puts its `[DmaDescriptor; LINK_DESCRIPTOR_COUNT]` (`MAX_DMA_SIZE.div_ceil(CHUNK_SIZE) + 3`) inside the coroutine frame, and this repo always `Box::pin`s futures onto the PSRAM heap, so the first real write panics:
+
+```
+panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMemoryRegion
+```
+
+The descriptors have to live in internal DRAM, which a heap-boxed future cannot offer. So this board **cannot** use esp-hal's async DMA together with a boxed future.
+
+What is used instead: the driver stays `SpiDma<'static, Blocking>`, `write_frame` becomes `async`, and the frame ships in **32 controller rows = 15,360 B** chunks with `embassy_futures::yield_now().await` between them; the descriptors stay in the blocking call's own stack frame (internal DRAM). `FRAME_CHUNK_BYTES ≤ 32,736` (esp-hal's private `MAX_DMA_SIZE`) is pinned at compile time by `const _: () = assert!(...)`, because overrunning it fails at run time with `MaxDmaTransferSizeExceeded` and shows up as a frame that never reaches the glass.
+
+**Safe on the wire**: `panel_spi` wires no CS pin (only `.with_sck().with_mosi()`), so chunking inserts SCK idle gaps, DC stays high throughout, and the byte stream is identical to one transfer; rendered output and page behaviour are unchanged.
+
+Only one interface surface grew: `PageSurface::flush` / `Renderer::flush` return `Option<Pin<Box<dyn Future>>>` and `Registry::flush()` awaits it once after `tick`. Painting stays synchronous (RAM only); the transfer happens in the flush. `camera-probe` awaits the same `write_frame`.
+
+Accounting: `hold` is render + total wire time (the CPU load did not change, it is just no longer one unbroken stretch), and the new `worst chunk` is the longest single transfer — that is the **real longest contiguous hold**.
+
+| reading (Attitude page, `IOT_BOOT_PAGE=Attitude IOT_LOG_LEVEL=debug`) | before | after |
+| --- | --- | --- |
+| first window | `6 repaints in 2046 ms, held 110 ms (5%), worst render 3 ms, worst write 15 ms` | `6 repaints in 2724 ms, held 110 ms (4%), worst render 2 ms, worst write 17 ms (longest chunk 2 ms)` |
+| steady window | `10 repaints in 2097 ms, held 193 ms (9%), worst render 4 ms, worst write 16 ms` | `12 repaints in 2202 ms, held 229 ms (10%), worst render 3 ms, worst write 16 ms (longest chunk 2 ms)` |
+
+`worst write` is still 15–17 ms (the wire time does not shrink because it is chunked); what changed is that it is no longer one stretch: `longest chunk` is 1–2 ms. The occasional 6xx ms in the boot window is Wi-Fi association landing inside a single chunk transfer; it predates this change (the same window reports `[INPUT] worst single hold 597 ms … worst source: touch 597 ms`) and has nothing to do with chunking.
+
+`[measured]` Resources are unchanged: boot prints `[DISPLAY] … main stack 117520 B`, the same as HEAD (`nm` reads `_stack_start_cpu0 − _stack_end` = `0x3fce9710 − 0x3fcccc00`), with `.data` 18,904 B, `.data.wifi` 496 B, `.bss` 214,784 B and a 1,055,264 B app. Dropping the async driver also dropped the +88 B of `.data` it had added.
 
 ### The IRAM mirror is 47,396 B and none of it is this repo's (`[measured]`, 2026-11-01)
 

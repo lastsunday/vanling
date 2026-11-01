@@ -3,6 +3,8 @@
 use esp_hal::time::{Duration, Instant};
 use iot_core::render::windowed_rate;
 
+use crate::components::st7789::Wire;
+
 const FPS_WINDOW_MS: u64 = 500;
 
 const COST_WINDOW_MS: u64 = 2_000;
@@ -16,12 +18,17 @@ const STACK_PEAK_STEP_BYTES: usize = 1_024;
 pub(super) struct CostSample {
     pub(super) frames: u32,
     pub(super) window: Duration,
-    // Every render-plus-write this window. The peaks cannot be summed into it:
-    // 11 frames at 16 ms is not 16 ms, and a window reporting only a peak reads as cheaper
-    // than one spending twice as long on shorter frames.
+    // Every render-plus-transfer this window: the time the frame path spent on the executor.
+    // The transfer is sent in chunks with a yield between them, so it is still executor time,
+    // just not one long hold — `worst_chunk` is the length of the longest one. Summed rather
+    // than peaked: 11 frames at 16 ms is not 16 ms, and a window reporting only a peak reads
+    // as cheaper than one spending twice as long on shorter frames.
     pub(super) hold: Duration,
     pub(super) worst_render: Duration,
     pub(super) worst_write: Duration,
+    /// The longest single transfer in the window: the longest stretch the executor was held
+    /// for, which is what the chunking is for.
+    pub(super) worst_chunk: Duration,
 }
 
 pub(super) struct Metrics {
@@ -32,6 +39,7 @@ pub(super) struct Metrics {
     cost_anchor: Instant,
     worst_render: Duration,
     worst_write: Duration,
+    worst_chunk: Duration,
     hold: Duration,
     reported_high_water: usize,
 }
@@ -46,6 +54,7 @@ impl Metrics {
             cost_anchor: Instant::now(),
             worst_render: Duration::ZERO,
             worst_write: Duration::ZERO,
+            worst_chunk: Duration::ZERO,
             hold: Duration::ZERO,
             reported_high_water: 0,
         }
@@ -55,15 +64,18 @@ impl Metrics {
         self.fps
     }
 
-    pub(super) fn fold_frame(&mut self, render: Duration, write: Duration) -> Option<CostSample> {
+    pub(super) fn fold_frame(&mut self, render: Duration, wire: Wire) -> Option<CostSample> {
         self.cost_frames += 1;
         if render > self.worst_render {
             self.worst_render = render;
         }
-        if write > self.worst_write {
-            self.worst_write = write;
+        if wire.total > self.worst_write {
+            self.worst_write = wire.total;
         }
-        self.hold += render + write;
+        if wire.longest > self.worst_chunk {
+            self.worst_chunk = wire.longest;
+        }
+        self.hold += render + wire.total;
         let now = Instant::now();
         let window = now - self.cost_anchor;
         if window.as_millis() < COST_WINDOW_MS {
@@ -75,11 +87,13 @@ impl Metrics {
             hold: self.hold,
             worst_render: self.worst_render,
             worst_write: self.worst_write,
+            worst_chunk: self.worst_chunk,
         };
         self.cost_frames = 0;
         self.cost_anchor = now;
         self.worst_render = Duration::ZERO;
         self.worst_write = Duration::ZERO;
+        self.worst_chunk = Duration::ZERO;
         self.hold = Duration::ZERO;
         Some(sample)
     }

@@ -66,6 +66,17 @@ impl Registry {
         }
         any
     }
+
+    /// Ships what the last [`Registry::tick`] buffered. Awaited rather than folded into the
+    /// tick because the panel's transfer yields between DMA chunks, and the tick must stay a
+    /// plain state diff for the callers that only want to know whether frames are still due.
+    pub async fn flush(&mut self) {
+        for entry in self.renderers.iter_mut() {
+            if let Some(flush) = entry.renderer.flush() {
+                flush.await;
+            }
+        }
+    }
 }
 
 impl Default for Registry {
