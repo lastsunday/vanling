@@ -7,10 +7,10 @@ const RECLAIMED_BYTES: usize = 32 * 1024;
 static mut RECLAIMED_MEM: [core::mem::MaybeUninit<u8>; RECLAIMED_BYTES] =
     [const { core::mem::MaybeUninit::uninit() }; RECLAIMED_BYTES];
 
-// The driver's share of `dram_seg`: 16 KiB, 48 KiB with the reclaimed region above.
-// `[实测]` 32,204 B free at 64 KiB across a scan, association and 40 s of leases; 15,820 B at
-// 48 KiB. The ledger is in `@/records/iot/wifi.md`.
-const INTERNAL_BYTES: usize = 16 * 1024;
+// The driver's share of `dram_seg`: 8 KiB, 40 KiB with the reclaimed region above. The
+// driver's measured peak is 33,332 B, so this leaves ~7.6 KB; the 48 KiB it came from left
+// 15,820 B, and 64 KiB left 32,204 B. The ledger is in `@/records/iot/wifi.md`.
+const INTERNAL_BYTES: usize = 8 * 1024;
 
 static mut INTERNAL_MEM: [core::mem::MaybeUninit<u8>; INTERNAL_BYTES] =
     [const { core::mem::MaybeUninit::uninit() }; INTERNAL_BYTES];

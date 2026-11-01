@@ -191,6 +191,27 @@ All three readings come from the same tree and the same ruler (`nm -S apps/iot/t
 
 `check-s3`, `check-c6`, `check-host`, `build-s3` and `cargo clippy -- -D warnings` on the S3 target all pass this round.
 
+### Panel SPI copy buffers 8 KiB → 128 B, widening the stack wall by 8,088 B (`[measured]`, 2026-11-01)
+
+`[measured]` The panel bus's two 4 KiB `with_buffers` never take part in a frame transfer. `SpiDma::write`'s `DmaOperationKind::for_write` calls an **internal-DRAM slice** `InPlace` (`memory_range!("DRAM")` is `0x3FC88000..0x3FD00000`; `FRAME_ARENA` sits at `0x3fc9b420`), so the 153,600-byte frame and the on-stack commands and arguments all go straight through; only a **constant slice rustc promoted into `.rodata`** (`&[0x01]` and friends) lands in flash, out of the DMA's reach, and takes the copy buffers.
+
+`[measured]` Dropping `with_buffers` outright **does not boot**: `board init failed, resetting: Spi(DmaError(BufferTooSmall))` — the software reset in `panel_spi` writes exactly such a constant. The buffers therefore stay, sized by the longest command argument: 64 B each, 128 B together.
+
+| quantity | before | after | delta |
+| --- | --- | --- | --- |
+| `.bss` | 231,064 B | 222,976 B | −8,088 B |
+| `.stack` (the `dram_seg` half) | 43,880 B | 52,000 B | +8,120 B |
+| `main stack` (boot log) | 101,240 B | **109,328 B** | +8,088 B |
+| `[HEAP]` | 96 KiB | **512 KiB** | the heap is PSRAM, not internal DRAM |
+
+`dram_seg` is still 341,760 B with no slack: the linker folds whatever is saved straight into the main stack, so the gain is a **wider wall**, not bytes that become available.
+
+`[measured]` The frame transfer did not slow down: with the 64 B buffers, eight of the nine repaints in one window landed at 15–19 ms (153,600 B / 80 MHz = 15.36 ms). The ninth read 610 ms, and in that same window `[INPUT]` reported `worst single hold 597 ms … worst source: touch 597 ms` — the touch poll was holding the executor, not the buffers (the frame lives in `.bss` and never goes near them).
+
+`[measured]` The same round cut the radio driver's `dram_seg` share from 16 KiB to 8 KiB (`INTERNAL_BYTES` in `radio/esp32s3.rs`): boot prints `[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it`, so the total goes 49,152 → **40,960 B** and the main stack 109,328 → **117,520 B** (+8,192, matching the share taken away byte for byte). Against the driver's already-measured 33,332 B peak that leaves about **7.6 KB** (32.2% → 23.1%); the product associates, gets an address and holds it at that size with no `OutOfMemory`. The S3 and C6 driver heaps are no longer the same size (the C6 keeps a single 48 KiB block).
+
+`[measured]` The heap went 96 KiB → 512 KiB: boot prints `[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window`. Before, boot left about 1.6 KB free, so the next `Box` was an allocation failure; the PSRAM window is 8 MiB, so 512 KiB costs no internal DRAM.
+
 ---
 
 ## `IOT_BOOT_PAGE` must be resolved at build time (`[measured]`, 2026-10-29)

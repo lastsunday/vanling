@@ -332,6 +332,12 @@ that log line lives there.
 line of the board log is those two blocks: `[WIFI] driver heap: 16384 B in dram_seg + 32768 B
 above it (dcache-reclaimed), both internal`.
 
+> `[measured]` **Since 2026-11-01 the S3 is 40,960 B (8 KiB + 32 KiB reclaimed)** and the two
+> parts no longer match: `[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it`, leaving
+> about 7.6 KB against the 33,332 B peak quoted below. The rest of this section keeps the 48 KiB
+> round's measurements and reasoning; the readings and the main-stack change are in the
+> "Panel SPI copy buffers" section of `hardware-constraints.en.md`.
+
 `[measured]` **The S3's `dram_seg` half went from 32 KiB to 16 KiB (2026-10-16)** for the bill
 above: the blob's IRAM code reserves a mirror of its size in `dram_seg` (31,980 B), and with
 the product's own statics the statics run past the end of `RWDATA`, leaving the main stack's

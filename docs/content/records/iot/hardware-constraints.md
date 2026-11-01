@@ -188,6 +188,27 @@ audio: Option<Box<Es7210Rx<…, REFERENCE_SAMPLES>>>,   // 原 Option<Es7210Rx<�
 
 `check-s3`、`check-c6`、`check-host`、`build-s3` 与 S3 目标的 `cargo clippy -- -D warnings` 本轮全部通过。
 
+### 面板 SPI 拷贝缓冲 8 KiB → 128 B，主栈墙宽 8,088 B（`[实测]`，2026-11-01）
+
+`[实测]` 面板 SPI 那两个 4 KiB `with_buffers` 不参与帧传输。`SpiDma::write` 的 `DmaOperationKind::for_write` 对**内部 DRAM 切片**判 `InPlace`（`memory_range!("DRAM")` = `0x3FC88000..0x3FD00000`，`FRAME_ARENA` 在 `0x3fc9b420`），所以 153,600 B 的帧、以及栈上的命令与参数都是直传；只有 **rustc 提升到 `.rodata` 的常量切片**（`&[0x01]` 这种）落在 flash、DMA 读不到，才走拷贝缓冲。
+
+`[实测]` 干脆删掉 `with_buffers` **起不来**：`board init failed, resetting: Spi(DmaError(BufferTooSmall))` —— `panel_spi` 里的软件复位 `&[0x01]` 正是那种常量。所以缓冲必须留，尺寸按「最长的一条命令参数」定：两个 64 B，合计 128 B。
+
+| 量 | 改前 | 改后 | 差 |
+| --- | --- | --- | --- |
+| `.bss` | 231,064 B | 222,976 B | −8,088 B |
+| `.stack`（dram_seg 一侧） | 43,880 B | 52,000 B | +8,120 B |
+| `main stack`（开机日志） | 101,240 B | **109,328 B** | +8,088 B |
+| `[HEAP]` | 96 KiB | **512 KiB** | 堆在 PSRAM，不占内部 DRAM |
+
+`dram_seg` 总量仍是 341,760 B、余量仍是 0：省下来的字节被链接脚本直接并进主栈，所以收益是**墙更宽**，不是「多出可用字节」。
+
+`[实测]` 帧传输没变慢：64 B 缓冲下同一窗口 9 次重绘里 8 次落在 15–19 ms（153,600 B / 80 MHz = 15.36 ms）。另一次读数 610 ms，同一时段 `[INPUT]` 报 `worst single hold 597 ms … worst source: touch 597 ms` —— 是触摸轮询占住执行器，与缓冲无关（帧在 `.bss`，本来就不经拷贝缓冲）。
+
+`[实测]` 同一轮把射频驱动堆的 `dram_seg` 份额从 16 KiB 收到 8 KiB（`radio/esp32s3.rs` 的 `INTERNAL_BYTES`）：开机 `[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it`，总量 49,152 → **40,960 B**，主栈 109,328 → **117,520 B**（+8,192，与收掉的份额一一对应）。余量按已量的驱动峰值 33,332 B 算约 **7.6 KB**（32.2% → 23.1%）；产品在该尺寸下关联、拿到地址并稳定持有，没有 `OutOfMemory`。S3 与 C6 的驱动堆就此不再同尺寸（C6 仍是单块 48 KiB）。
+
+`[实测]` 堆 96 KiB → 512 KiB：开机 `[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window`。改前开机只剩约 1.6 KB，下一次 `Box` 就是分配失败；PSRAM 窗口 8 MiB，抬到 512 KiB 不动内部 DRAM。
+
 ---
 
 ## `IOT_BOOT_PAGE` 必须在构建期解析（`[实测]`，2026-10-29）

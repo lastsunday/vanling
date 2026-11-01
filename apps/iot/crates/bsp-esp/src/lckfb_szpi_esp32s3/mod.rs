@@ -76,7 +76,13 @@ const PCA9557_RETRY_ATTEMPTS: u8 = 5;
 const PCA9557_RETRY_MS: u32 = 20;
 const MOTION_RETRY_ATTEMPTS: u8 = 3;
 const MOTION_RETRY_MS: u32 = 10;
-const SPI_DMA_BUF_BYTES: usize = 4096;
+// The panel's own writes are internal-DRAM slices — the frame in `.bss`, commands and
+// arguments on the stack — and `SpiDma::write` transfers those in place, so the copy
+// buffers below never see them. The one thing that does go through them is a *promoted
+// constant*: `&[0x01]` has no runtime home, so rustc parks it in `.rodata`, which is flash
+// and out of the DMA's reach. Those are command arguments, a handful of bytes; 64 is
+// already more than the longest one, and anything larger is simply chunked through it.
+const SPI_COPY_BUF_BYTES: usize = 64;
 const BACKLIGHT_PWM_HZ: u32 = 5_000;
 
 static BACKLIGHT_TIMER: esp_hal::__macro_implementation::static_cell::StaticCell<
@@ -146,8 +152,8 @@ fn panel_spi(
     .with_mosi(mosi)
     .with_dma(dma_ch0)
     .with_buffers(
-        dma_rx_buffer!(SPI_DMA_BUF_BYTES)?,
-        dma_tx_buffer!(SPI_DMA_BUF_BYTES)?,
+        dma_rx_buffer!(SPI_COPY_BUF_BYTES)?,
+        dma_tx_buffer!(SPI_COPY_BUF_BYTES)?,
     );
     let dc = Output::new(dc, Level::Low, OutputConfig::default());
     SpiBus::write(&mut spi, &[0x01]).map_err(BoardError::Spi)?;

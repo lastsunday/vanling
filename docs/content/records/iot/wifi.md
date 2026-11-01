@@ -162,6 +162,8 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 
 `[实测]` **两颗芯片现在是同一个总数 49,152 B（48 KiB）、不同的分法**：C6 只有 `dram_seg` 一块 48 KiB，S3 是 32 KiB reclaimed + **16 KiB** `dram_seg`。上板日志一行就是这两块：`[WIFI] driver heap: 16384 B in dram_seg + 32768 B above it (dcache-reclaimed), both internal`。
 
+> `[实测]` **2026-11-01 起 S3 是 40,960 B（8 KiB + 32 KiB reclaimed）**，两块板不再同尺寸：`[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it`，余量按下面的 33,332 B 峰值算约 7.6 KB。下面这一节保留 48 KiB 那一轮的量法与理由；读数与主栈的变化见 `hardware-constraints.md` 的「面板 SPI 拷贝缓冲」一节。
+
 `[实测]` **S3 的 `dram_seg` 那一半从 32 KiB 收到 16 KiB（2026-10-16）**，理由是上面那条账：blob 的 IRAM 代码要在 `dram_seg` 里留一份同样大的镜像（31,980 B），加上产品自己的静态量之后静态量越过 `RWDATA` 的末尾，主栈位置只剩 53,272 B（短断言 **12,264 B**），链接**失败** —— 把常量改回 32 KiB 可以一行复现。收的是 `dram_seg` 那一半，不是 reclaimed 那半 —— 后者落在 `0x3fcf0000`，在 `dram_seg` 之外，本来就不占主栈。
 
 收完的实测（链接期看符号，运行值看上板日志）：
