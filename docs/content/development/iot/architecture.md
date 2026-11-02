@@ -67,7 +67,7 @@ weight = 10
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `audio/{mod,dispatch,capture,sounds}.rs` | 播放工作者、状态→命令、采集窗口的驱动实现、声音目录 |
+| `playback/{mod,dispatch,sounds}.rs` | 播放工作者、状态→命令、声音目录；采集窗口在 `workers.rs` |
 | `net/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
@@ -77,15 +77,15 @@ weight = 10
 ```
 main → { lib, workers }
 lib  → { boot, pipeline, workers, net }
-pipeline → { workers, surface, input, audio, bench::replay }
+pipeline → { workers, surface, input, playback, bench::replay }
 net      → { workers, input }
-audio    → { workers }
+playback → { workers }
 input    → { workers }
 workers  → ∅
 ```
 
 - `workers` 不带 `wifi` 门控：host 构建照样持有 `Net`，只是没人应答
-- `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `audio`/`net`/`input` 才能单向引用它
+- `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`net`/`input` 才能单向引用它
 - `net` 不依赖 `surface`/`pipeline`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
 - `core` 不认识 `iot_app`
@@ -97,7 +97,7 @@ workers  → ∅
 - **组合点 = bin 板清单**：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
-- **渲染层运行时可插拔**：core 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调），app 里一个堆上的 `Render` 注册表（`embedded-alloc` 32 KB 堆）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线
+- **渲染层运行时可插拔**：core 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调），app 里一个堆上的 `Render` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 

@@ -3,7 +3,7 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "e62d5f8212bf78ec71cff723af3eeda31bb09bee"
+source_file_hash = "7d8bf14787670104929efcf080eb9c041b01e872"
 translated_at = "2026-11-01T00:00:00Z"
 +++
 
@@ -44,7 +44,7 @@ The system description lives in [development docs / IoT firmware](@/development/
 | May the capture path be throttled | **No.** Only `sample()` drains the ring, so batching to 30 s fills it and halts I2S | ring full at 60 ms |
 | How `Off` is implemented | The chain must be parked from the consumer side, not merely left unpoll'ed | chain stops 1 ms after the demand lands |
 | Silence detection | Must read as "no change", or the whole diff chain spins | — |
-| A device's marginal cost |
+| A device's marginal cost | A difference is "what this device adds in this scenario", so it moves with context and cannot be cited as a fixed cost | 12.52% dark / 15.73% lit |
 | What throttling achieves | Does not save the device total; it moves executor from one place to another | 94.8% → 94.0% |
 | Scaling the poll side | Scaled by the cadence in force, matching measurement at both ends | +0.6% / −4.1% (40% high before scaling) |
 | Quantisation noise | Feeds a **65 dBA phantom floor**; the dBA table needs converting against the raw table | 65 dBA |

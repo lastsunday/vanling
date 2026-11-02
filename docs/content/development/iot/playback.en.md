@@ -3,7 +3,7 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "e3c515c475bc23bddfc69143428a227b68c8b707"
+source_file_hash = "6c90637cb8f3b078999d5c39e519011f4cce5d15"
 translated_at = "2026-10-31T00:00:00Z"
 +++
 
@@ -31,7 +31,7 @@ The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tr
 
 That is why `Speaker` demands `Send + 'static`, and why its error is the named `SpeakerFault` rather than each implementation's own type: a trait object cannot spell an unnamed associated type.
 
-The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join`ed on one executor, with the same semantics. Where the feed lands is decided in one place, `audio::playback_tasks`, which `run` joins as a single future — so "spawned, not joined" lives beside the two loops it explains instead of at the composition point.
+The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join`ed on one executor, with the same semantics. Where the feed lands is decided in one place, `playback::playback_tasks`, which `run` joins as a single future — so "spawned, not joined" lives beside the two loops it explains instead of at the composition point.
 
 `ActionIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
 

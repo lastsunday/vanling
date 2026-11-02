@@ -3,7 +3,7 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "417ca711a57274b25e33614ecc090b8e776789e3"
+source_file_hash = "21000cae6c7458798cbfca50c4d731c03b9ccae1"
 translated_at = "2026-11-01T00:00:00Z"
 +++
 
@@ -133,7 +133,7 @@ _stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB
 
 These addresses are byte-identical to the readings before the split, so the two rounds add **0** to the S3 static footprint: what moved is where code lives, not the layout. The images are S3 `1,059,888 → 1,059,904 B` (+16 B); C6's last recorded figure was `826,976 B`, but rebuilt at HEAD with the same command it is **826,656 → 842,400 B (+15,744 B)**.
 
-**That 15.7 KB sits entirely on the C6 side, and the source is measured**: `app/src/sounds.rs`'s `play` now parses before handing a source to the speaker, whereas at HEAD the parse lived in the S3 driver — C6's `UnwiredSpeaker::play(Sound)` did nothing, so LTO dropped it. The symbols show it: HEAD's C6 image has **zero** occurrences of `from_midi`, the `Score::into_notes` sort or `Tone::fill`; this round has seven. `control_loop::poll` therefore grew by 5,466 B, and `iot_core::drivers::playback` symbols total 10,608 B this round. C6's `take_playback()` returns `None`, so the path never runs: it costs slot, not cycles. C6 has 206,176 B left, so this is recorded rather than urgent — whether to put the parse back behind compile time (a soft feature, or keeping `play` only in builds with a speaker) remains an open decision.
+**That 15.7 KB sits entirely on the C6 side, and the source is measured**: `app/src/playback/sounds.rs`'s `play` now parses before handing a source to the speaker, whereas at HEAD the parse lived in the S3 driver — C6's `UnwiredSpeaker::play(Sound)` did nothing, so LTO dropped it. The symbols show it: HEAD's C6 image has **zero** occurrences of `from_midi`, the `Score::into_notes` sort or `Tone::fill`; this round has seven. `control_loop::poll` therefore grew by 5,466 B, and `iot_core::drivers::playback` symbols total 10,608 B this round. C6's `take_playback()` returns `None`, so the path never runs: it costs slot, not cycles. C6 has 206,176 B left, so this is recorded rather than urgent — whether to put the parse back behind compile time (a soft feature, or keeping `play` only in builds with a speaker) remains an open decision.
 
 That build set no `IOT_WIFI_*`, and credential strings shift `_stack_end`, so this wall is comparable only with builds that also carry no credentials.
 

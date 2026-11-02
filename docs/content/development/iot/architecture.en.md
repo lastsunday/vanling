@@ -2,7 +2,7 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "e4beea5d1640105201ebe75bd632a962130c2c5f"
+source_file_hash = "6795f6d03ee3f90f760c8daeb4b441c71c58a75a"
 translated_at = "2026-11-01T00:00:00Z"
 +++
 
@@ -71,7 +71,7 @@ A pipeline-logic system whose trigger points are intents.
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `frame.rs` | `FrameClock` (logical frames, including catch-up) |
 | `input.rs` | input worker: polling, demand scheduling, gesture recognition |
-| `audio/{mod,dispatch,capture,sounds}.rs` | playback worker, state→command, the capture window's driver side, sound catalogue |
+| `playback/{mod,dispatch,sounds}.rs` | playback worker, state→command, sound catalogue; the capture window lives in `workers.rs` |
 | `net/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
@@ -82,15 +82,15 @@ check module cycles inside a crate):
 ```
 main → { lib, workers }
 lib  → { boot, pipeline, workers, net }
-pipeline → { workers, surface, input, audio, bench::replay }
+pipeline → { workers, surface, input, playback, bench::replay }
 net      → { workers, input }
-audio    → { workers }
+playback → { workers }
 input    → { workers }
 workers  → ∅
 ```
 
 - `workers` carries no `wifi` gate: the host build still holds `Net`, nobody answers
-- `workers` never reaches a worker: it knows only `core` types, so `audio`/`net`/`input` can depend on it one way
+- `workers` never reaches a worker: it knows only `core` types, so `playback`/`net`/`input` can depend on it one way
 - `net` does not reach `surface`/`pipeline`: the network worker reads the page and commands from `workers`, not device state
 - `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
 - `core` does not know `iot_app`
@@ -102,7 +102,7 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Composition point = bin board manifest**: capabilities injected by move, generic over capabilities, shared by boards with the same capability set; enabling a module that lacks a capability is a compile error, never silent.
 - **Product tier = feature alias**: the tier fixes the module set, the board fixes the supported set, and the intersection is trimmed and checked at compile time.
 - **Module configurability** = feature switch + const parameters.
-- **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback) plus `iot-app`'s heap `Render` registry (`embedded-alloc` 32KB heap). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus.
+- **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback) plus `iot-app`'s heap `Render` registry (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus.
 
 ## The demand model (what / how often / how sensitive)
 

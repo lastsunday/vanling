@@ -184,7 +184,7 @@ mod tests {
             instance: 0,
             appearance: LightAppearance::Off,
         };
-        assert_eq!(r.on_appearance(off.clone(), 0), Activity::Idle);
+        assert_eq!(r.on_appearance(off, 0), Activity::Idle);
         assert_eq!(lamp.borrow().color, Rgb(0, 0, 0));
         r.on_appearance(off, 100);
         assert_eq!(lamp.borrow().writes, 1);

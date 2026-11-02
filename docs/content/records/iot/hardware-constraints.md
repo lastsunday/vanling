@@ -130,7 +130,7 @@ _stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB
 
 这一组地址与拆分之前逐字节相同，所以这两轮对 S3 静态量的净增量是 **0**：搬的是代码的归属，不是布局。镜像是 S3 `1,059,888 → 1,059,904 B`（+16 B）；C6 上一版记的是 `826,976 B`，但与 HEAD 用同一条命令重编比，C6 是 **826,656 → 842,400 B（+15,744 B）**。
 
-**这 15.7 KB 全在 C6 一侧，出处已经量到**：`app/src/sounds.rs` 的 `play` 现在先解析再交给喇叭，而 HEAD 上解析发生在 S3 的驱动里——C6 的 `UnwiredSpeaker::play(Sound)` 什么都不做，LTO 就把解析摘掉了。证据是符号：HEAD 的 C6 镜像里 `from_midi`、`Score::into_notes` 的排序、`Tone::fill` **0 处**，本轮 7 处；`control_loop::poll` 因此长了 5,466 B，`iot_core::drivers::playback` 的符号在本轮合计 10,608 B。C6 的 `take_playback()` 返回 `None`，这条路径运行时不执行，付的是槽位不是周期。C6 还剩 206,176 B，所以这条只记录：要不要把解析重新关在编译期（软 feature，或只在有喇叭的构建里保留 `play`）是一个待定项。
+**这 15.7 KB 全在 C6 一侧，出处已经量到**：`app/src/playback/sounds.rs` 的 `play` 现在先解析再交给喇叭，而 HEAD 上解析发生在 S3 的驱动里——C6 的 `UnwiredSpeaker::play(Sound)` 什么都不做，LTO 就把解析摘掉了。证据是符号：HEAD 的 C6 镜像里 `from_midi`、`Score::into_notes` 的排序、`Tone::fill` **0 处**，本轮 7 处；`control_loop::poll` 因此长了 5,466 B，`iot_core::drivers::playback` 的符号在本轮合计 10,608 B。C6 的 `take_playback()` 返回 `None`，这条路径运行时不执行，付的是槽位不是周期。C6 还剩 206,176 B，所以这条只记录：要不要把解析重新关在编译期（软 feature，或只在有喇叭的构建里保留 `play`）是一个待定项。
 
 该次构建没有设 `IOT_WIFI_*`，凭证字符串会挪 `_stack_end`，所以这组墙只与同样不带凭证的构建比。
 

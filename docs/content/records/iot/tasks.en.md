@@ -3,7 +3,7 @@ title = "Check tasks and caching record"
 weight = 80
 sort_by = "weight"
 [extra]
-source_file_hash = "401cf8e79082b6eebf6e5aa4e2ef025315f3b806"
+source_file_hash = "e42594955b6385db5c6d25d9dd1f48d4be5cdb8d"
 translated_at = "2026-10-17T08:56:39Z"
 +++
 
@@ -35,7 +35,7 @@ Before, the model was "every `moon run` recompiles the whole matrix": `check-fea
 
 `[measured]` Verified directly (using `check-host` as the target, with the script temporarily added to its `inputs`): the baseline key was `0973f854`; after appending one comment line to `scripts/iot-xtensa.sh` the task **ran** and the key became `577401ca`; after restoring a byte-identical file the key went back to `0973f854` and the task **hit the cache** — the script's content is in the key, and the key is content-addressed.
 
-So those tasks now name their inputs explicitly (`@group(build-inputs)`, plus its own script for `check-features`). `check-c6` is not one of them: it no longer goes through the dispatcher.
+So those tasks now name their inputs explicitly (`@group(build-inputs)`, plus its own script for `check-features`). `check-c6` does not go through the dispatcher, but its `inputs` are the same list `check` declares, so it takes the same group.
 
 ## `check-features`: `cache: false` became a content hash
 

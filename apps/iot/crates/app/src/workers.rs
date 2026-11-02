@@ -12,7 +12,7 @@
 //! Compiled with and without `wifi`: the coordinator holds these handles either way, and a
 //! build with no radio simply never answers them.
 
-use core::cell::RefCell;
+use core::cell::Cell;
 use core::future::Future;
 use core::sync::atomic::{AtomicU8, Ordering};
 
@@ -26,8 +26,9 @@ use iot_core::drivers::network::ApList;
 use iot_core::state::{DisplayPage, NetworkCommand, PlaybackCommand};
 
 /// The demand the input worker reads and the coordinator writes, under the same lock the
-/// feed interrupt takes.
-pub type SharedDemand = Mutex<CriticalSectionRawMutex, RefCell<EffectiveDemand>>;
+/// feed interrupt takes. A `Copy` record in a `Cell`, so the lock covers a compare and one
+/// bounded copy rather than replacing a map handle.
+pub type SharedDemand = Mutex<CriticalSectionRawMutex, Cell<EffectiveDemand>>;
 
 /// The coordinator's handle on the input worker.
 #[derive(Clone, Copy)]

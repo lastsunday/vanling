@@ -135,7 +135,7 @@ pub async fn input_task(
         let loop_start = Instant::now();
         let decision = input
             .to
-            .lock(|current| decide(&sources, &current.borrow(), configurator, &mut plans));
+            .lock(|current| decide(&sources, &current.get(), configurator, &mut plans));
         apply_decision(&mut sources, decision, &plans, now_ms);
         for (index, entry) in sources.iter_mut().enumerate() {
             if !entry.is_active() || entry.next_at_ms() > now_ms {

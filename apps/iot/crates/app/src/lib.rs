@@ -4,7 +4,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::cell::RefCell;
+use core::cell::Cell;
 
 use embassy_executor::SendSpawner;
 use embassy_futures::join::join;
@@ -183,9 +183,8 @@ where
     let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));
     // Leaked because the driver half outlives this future: on a second core it is another
     // task, and a task cannot borrow the frame loop's stack.
-    let demand: &'static SharedDemand = Box::leak(Box::new(SharedDemand::new(RefCell::new(
-        manager.demand().clone(),
-    ))));
+    let demand: &'static SharedDemand =
+        Box::leak(Box::new(SharedDemand::new(Cell::new(*manager.demand()))));
     log::info!("[IOT] demand {}", manager.demand());
 
     let drivers = Io {

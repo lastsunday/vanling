@@ -37,30 +37,30 @@ pub async fn run_loop<C: ClockSink>(
             match intent {
                 Intent::Input(op) => {
                     manager.apply_input(op);
-                    let business = iot_core::intent::translate(&op, &manager.state());
+                    let business = iot_core::intent::translate(&op, manager.state_ref());
                     manager.apply_action(business);
                 }
                 Intent::Action(business) => manager.apply_action(business),
             }
-            if manager.state().page != last_page {
-                log::info!("[INPUT] page is now {:?}", manager.state().page);
-                last_page = manager.state().page;
+            if manager.state_ref().page != last_page {
+                log::info!("[INPUT] page is now {:?}", manager.state_ref().page);
+                last_page = manager.state_ref().page;
             }
             playback.dispatch(workers.playback.to, manager.playback_state());
         }
-        if manager.state().network.link.host != last_front {
-            last_front = manager.state().network.link.host;
+        if manager.state_ref().network.link.host != last_front {
+            last_front = manager.state_ref().network.link.host;
             log::info!(
                 "[WIFI] setup mode is offered on the {:?} host",
-                manager.state().network.link.host
+                manager.state_ref().network.link.host
             );
         }
-        let lamp = manager.state().link_notice();
+        let lamp = manager.state_ref().link_notice();
         if lamp != last_lamp {
             log::info!("{}", LampLine(lamp));
             last_lamp = lamp;
         }
-        workers.net.page.publish(manager.state().page);
+        workers.net.page.publish(manager.state_ref().page);
         if let Some(setup) = manager.take_splash_end() {
             log::info!(
                 "[INPUT] the splash is over; setup mode {}",
@@ -95,13 +95,14 @@ pub async fn run_loop<C: ClockSink>(
         // the loop replay skipped steps. `[实测]` on the C6, three 100 ms flashes collapsed into
         // 19 ms right after an association.
         manager.tick_notice(Instant::now().as_millis() as u32);
-        let state = manager.state();
-        // Compare outside the critical section, and move the copy in rather than cloning
-        // inside: the feed interrupt takes the same lock.
-        let next = manager.demand().clone();
+        let state = manager.state_ref();
+        // The cell holds a `Copy` record, so a change costs one bounded copy rather than a
+        // map clone. The feed interrupt takes the same lock, so the section only compares and
+        // stores.
+        let wanted = *manager.demand();
         workers.input.to.lock(|current| {
-            if *current.borrow() != next {
-                *current.borrow_mut() = next;
+            if current.get() != wanted {
+                current.set(wanted);
             }
         });
         if let Some(applied) = governor.apply(manager.demand(), clock)
@@ -116,7 +117,7 @@ pub async fn run_loop<C: ClockSink>(
             );
         }
         let active =
-            renderers.tick(&state, manager.demand(), frame.elapsed_ms()) || manager.notice_active();
+            renderers.tick(state, manager.demand(), frame.elapsed_ms()) || manager.notice_active();
         renderers.flush().await;
         match frame.tick(active) {
             Wait::At(deadline) => Timer::at(deadline).await,

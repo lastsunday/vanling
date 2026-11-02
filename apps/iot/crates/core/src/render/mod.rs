@@ -41,7 +41,7 @@ pub enum LightAppearance {
 
 /// The intended appearance of every known consumer, derived from [`DeviceState`].
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Appearance {
     Surface {
         instance: u8,
@@ -125,7 +125,7 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
 
 fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnostics {
     Diagnostics {
-        demand: demand.clone(),
+        demand: *demand,
         touch: TouchDiagnostics {
             taps: state.touch.tap_count,
             presses: state.touch.press_count,
@@ -244,7 +244,7 @@ impl RenderController {
         };
         let changed = self.last.as_deref() != Some(&next);
         if changed {
-            notify(Appearance::Diagnostics(next.diagnostics.clone()));
+            notify(Appearance::Diagnostics(next.diagnostics));
             for (instance, light) in next.lights.iter().enumerate() {
                 if state.surface_roles[instance] == SurfaceRole::Absent {
                     continue;
@@ -279,7 +279,7 @@ impl RenderController {
                     last.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
                 ),
             },
-            Consumer::Diagnostics => Appearance::Diagnostics(last.diagnostics.clone()),
+            Consumer::Diagnostics => Appearance::Diagnostics(last.diagnostics),
         })
     }
 }
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn diag_repaint_waits_out_the_step() {
         let base = Diagnostics::default();
-        let mut moved = base.clone();
+        let mut moved = base;
         moved.audio.phase = AudioPhase::Recording;
         assert!(!diag_repaint_due(
             DisplayPage::Audio,
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn diag_repaint_ignores_the_wall_time_counter() {
         let base = Diagnostics::default();
-        let mut ticked = base.clone();
+        let mut ticked = base;
         ticked.audio.elapsed_ms = 1_234;
         assert!(!diag_repaint_due(
             DisplayPage::Audio,
@@ -445,13 +445,13 @@ mod tests {
     #[test]
     fn diag_repaint_audio_tracks_everything_else_it_draws() {
         let base = Diagnostics::default();
-        let mut phase = base.clone();
+        let mut phase = base;
         phase.audio.phase = AudioPhase::Recording;
-        let mut envelope = base.clone();
+        let mut envelope = base;
         envelope.audio.envelope = live_envelope();
-        let mut restarts = base.clone();
+        let mut restarts = base;
         restarts.audio.restarts = 3;
-        let mut level = base.clone();
+        let mut level = base;
         level.audio.dba_lsb = 0x8000;
         for next in [phase, envelope, restarts, level] {
             assert!(
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn diag_repaint_attitude_follows_every_snapshot() {
         let base = Diagnostics::default();
-        let mut ticked = base.clone();
+        let mut ticked = base;
         ticked.audio.elapsed_ms = 10;
         assert!(!diag_repaint_due(
             DisplayPage::Attitude,
@@ -485,7 +485,7 @@ mod tests {
     #[test]
     fn diag_repaint_ambient_only_for_the_overlay() {
         let base = Diagnostics::default();
-        let mut ticked = base.clone();
+        let mut ticked = base;
         ticked.audio.phase = AudioPhase::Recording;
         assert!(!diag_repaint_due(
             DisplayPage::Ambient,
@@ -506,15 +506,15 @@ mod tests {
     #[test]
     fn diag_repaint_speaker_tracks_the_row_it_stamps() {
         let base = Diagnostics::default();
-        let mut playing = base.clone();
+        let mut playing = base;
         playing.playback.phase = PlaybackPhase::Playing;
-        let mut source = base.clone();
+        let mut source = base;
         source.playback.sound = Sound::Rise;
-        let mut muted = base.clone();
+        let mut muted = base;
         muted.playback.muted = true;
-        let mut played = base.clone();
+        let mut played = base;
         played.playback.plays = 7;
-        let mut dropped = base.clone();
+        let mut dropped = base;
         dropped.playback.dropped = 2;
         for next in [playing, source, muted, played, dropped] {
             assert!(
@@ -533,7 +533,7 @@ mod tests {
     #[test]
     fn diag_repaint_speaker_ignores_a_drift_it_does_not_draw() {
         let base = Diagnostics::default();
-        let mut drifting = base.clone();
+        let mut drifting = base;
         drifting.audio.envelope = live_envelope();
         for overlay in [false, true] {
             assert!(
@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn diag_repaint_network_tracks_the_link_and_the_list() {
         let base = Diagnostics::default();
-        let mut associated = base.clone();
+        let mut associated = base;
         associated.link.phase = LinkPhase::Connecting;
         associated.link.ap = Some(AccessPoint {
             ssid: Ssid::from_octets(b"neighbour"),
@@ -561,9 +561,9 @@ mod tests {
             rssi: -55,
             secured: true,
         });
-        let mut addressed = base.clone();
+        let mut addressed = base;
         addressed.link.address = Some(Ipv4::from_octets([192, 168, 1, 136]));
-        let mut scanned = base.clone();
+        let mut scanned = base;
         scanned.aps = Some(ApList::from_ranked(&[AccessPoint::default()]));
         for next in [associated, addressed, scanned] {
             assert!(
@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn diag_repaint_network_takes_the_board_address_the_first_time_it_arrives() {
         let base = Diagnostics::default();
-        let mut addressed = base.clone();
+        let mut addressed = base;
         addressed.mac = Some([0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef]);
         assert!(diag_repaint_due(
             DisplayPage::Network,
@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn diag_repaint_network_ignores_a_drift_it_does_not_draw() {
         let base = Diagnostics::default();
-        let mut drifting = base.clone();
+        let mut drifting = base;
         drifting.audio.envelope = live_envelope();
         drifting.touch.taps = 12;
         for overlay in [false, true] {
@@ -796,7 +796,7 @@ mod tests {
         let seen = collect(&mut ctl, &second);
         assert_eq!(seen.len(), 3, "diagnostics ride along with the light diff");
         assert!(matches!(
-            seen[0].clone(),
+            seen[0],
             Appearance::Diagnostics(t) if t == diagnostics_for(second.lights[0])
         ));
         assert!(matches!(
@@ -903,7 +903,7 @@ mod tests {
                 },
             ]
         );
-        let Appearance::Diagnostics(d) = seen[0].clone() else {
+        let Appearance::Diagnostics(d) = seen[0] else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(d.lights.len(), MAX_LIGHTS);
@@ -1041,7 +1041,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Diagnostics(diagnostics) = seen[0].clone() else {
+        let Appearance::Diagnostics(diagnostics) = seen[0] else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(
@@ -1076,7 +1076,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Diagnostics(diagnostics) = seen[0].clone() else {
+        let Appearance::Diagnostics(diagnostics) = seen[0] else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(diagnostics.touch.swipes, 1);
@@ -1103,7 +1103,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Diagnostics(diagnostics) = seen[0].clone() else {
+        let Appearance::Diagnostics(diagnostics) = seen[0] else {
             panic!("first diff must carry the diagnostics");
         };
         assert_eq!(diagnostics.touch.taps, 1);
@@ -1223,12 +1223,12 @@ mod tests {
         let base = Diagnostics::default();
         assert_eq!(base.demand.claim(DemandKey::DISPLAY).mode, Mode::Continuous);
 
-        let mut unlit = base.clone();
+        let mut unlit = base;
         unlit.demand.set(
             DemandKey::DISPLAY,
             crate::demand::Claim::new(Mode::Off, 0, crate::demand::Priority::Primary),
         );
-        let mut wobble = unlit.clone();
+        let mut wobble = unlit;
         wobble.audio.phase = AudioPhase::Recording;
 
         assert!(
@@ -1242,7 +1242,7 @@ mod tests {
             "a panel nobody is looking at does not get frames no matter what drifts"
         );
 
-        let mut dim = base.clone();
+        let mut dim = base;
         dim.demand.set(
             DemandKey::DISPLAY,
             crate::demand::Claim::new(Mode::OnChange, 0, crate::demand::Priority::Primary),
@@ -1258,7 +1258,7 @@ mod tests {
             "nothing changed, so there is nothing to redraw"
         );
 
-        let mut dim_moved = dim.clone();
+        let mut dim_moved = dim;
         dim_moved.audio.phase = AudioPhase::Recording;
         assert!(
             !diag_repaint_due(DisplayPage::Audio, &dim, &dim_moved, audio_step(), false),
@@ -1355,7 +1355,7 @@ mod tests {
         let mut quiet_manager = DeviceManager::boot(setup.clone());
         quiet_manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(quiet_manager.state().page, DisplayPage::Audio);
-        let quiet = quiet_manager.demand().clone();
+        let quiet = *quiet_manager.demand();
         assert_eq!(
             quiet.claim(DemandKey::AUDIO).mode,
             crate::demand::Mode::Continuous

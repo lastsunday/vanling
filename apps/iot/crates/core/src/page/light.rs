@@ -76,8 +76,8 @@ pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent
 }
 
 pub(super) fn click(current: &DeviceState, source: u8) -> ActionIntent {
-    let slot = slot(current, source);
-    target_for(advance_color(current.lights[slot]), slot)
+    let instance = slot(current, source);
+    target_for(advance_color(current.lights[instance]), instance)
 }
 
 pub(super) fn tap(current: &DeviceState, source: u8) -> ActionIntent {
@@ -144,14 +144,14 @@ fn advance_step(current: LightState) -> Option<LightState> {
     match current {
         LightState::Off => None,
         LightState::Breath(breath) => {
-            let next_period = advance(&BREATH_PERIODS_MS, breath.period_ms);
+            let next_period = table_step(&BREATH_PERIODS_MS, breath.period_ms, 1);
             Some(LightState::Breath(Breath {
                 period_ms: next_period,
                 ..breath
             }))
         }
         LightState::Solid { color, brightness } => {
-            let next = advance_u8(&SOLID_BRIGHTNESS_STEPS, brightness);
+            let next = table_step(&SOLID_BRIGHTNESS_STEPS, brightness, 1);
             Some(LightState::Solid {
                 color,
                 brightness: next,
@@ -177,19 +177,11 @@ fn swipe_color(current: LightState, forward: bool) -> Option<LightState> {
     match current {
         LightState::Off => None,
         LightState::Breath(breath) => {
-            let next_group = if forward {
-                advance_color_group(&breath)
-            } else {
-                retreat_color_group(&breath)
-            };
+            let next_group = color_group_step(&breath, forward);
             Some(LightState::Breath(next_group.into_breath(breath)))
         }
         LightState::Solid { color, brightness } => {
-            let next_color = if forward {
-                advance_palette(color)
-            } else {
-                retreat_palette(color)
-            };
+            let next_color = table_step(&PALETTE, color, if forward { 1 } else { -1 });
             Some(LightState::Solid {
                 color: next_color,
                 brightness,
@@ -203,11 +195,7 @@ fn swipe_brightness(current: LightState, up: bool) -> Option<LightState> {
         LightState::Off => None,
         LightState::Breath(breath) => Some(LightState::Breath(shift_envelope(breath, up))),
         LightState::Solid { color, brightness } => {
-            let next = if up {
-                advance_u8(&SOLID_BRIGHTNESS_STEPS, brightness)
-            } else {
-                retreat_u8(&SOLID_BRIGHTNESS_STEPS, brightness)
-            };
+            let next = table_step(&SOLID_BRIGHTNESS_STEPS, brightness, if up { 1 } else { -1 });
             Some(LightState::Solid {
                 color,
                 brightness: next,
@@ -238,26 +226,6 @@ fn table_step<T: Copy + PartialEq>(table: &[T], current: T, dir: isize) -> T {
     table[((idx as isize + dir).rem_euclid(len)) as usize]
 }
 
-fn advance(table: &[u32], current: u32) -> u32 {
-    table_step(table, current, 1)
-}
-
-fn advance_u8(table: &[u8], current: u8) -> u8 {
-    table_step(table, current, 1)
-}
-
-fn retreat_u8(table: &[u8], current: u8) -> u8 {
-    table_step(table, current, -1)
-}
-
-fn advance_palette(current: Rgb) -> Rgb {
-    table_step(&PALETTE, current, 1)
-}
-
-fn retreat_palette(current: Rgb) -> Rgb {
-    table_step(&PALETTE, current, -1)
-}
-
 fn color_group_idx(breath: &Breath) -> usize {
     COLOR_GROUPS
         .iter()
@@ -265,14 +233,14 @@ fn color_group_idx(breath: &Breath) -> usize {
         .unwrap_or(0)
 }
 
-fn advance_color_group(breath: &Breath) -> ColorGroup {
+fn color_group_step(breath: &Breath, forward: bool) -> ColorGroup {
     let idx = color_group_idx(breath);
-    COLOR_GROUPS[(idx + 1) % COLOR_GROUPS.len()]
-}
-
-fn retreat_color_group(breath: &Breath) -> ColorGroup {
-    let idx = color_group_idx(breath);
-    COLOR_GROUPS[(idx + COLOR_GROUPS.len() - 1) % COLOR_GROUPS.len()]
+    let len = COLOR_GROUPS.len();
+    COLOR_GROUPS[if forward {
+        (idx + 1) % len
+    } else {
+        (idx + len - 1) % len
+    }]
 }
 
 #[cfg(test)]
@@ -781,10 +749,13 @@ mod tests {
 
         #[test]
         fn advance_falls_back_to_head_when_current_not_in_table() {
-            assert_eq!(advance(&BREATH_PERIODS_MS, 9999), BREATH_PERIODS_MS[1]);
-            assert_eq!(advance_palette(Rgb(0, 0, 0)), PALETTE[1]);
             assert_eq!(
-                advance_u8(&SOLID_BRIGHTNESS_STEPS, 7),
+                table_step(&BREATH_PERIODS_MS, 9999, 1),
+                BREATH_PERIODS_MS[1]
+            );
+            assert_eq!(table_step(&PALETTE, Rgb(0, 0, 0), 1), PALETTE[1]);
+            assert_eq!(
+                table_step(&SOLID_BRIGHTNESS_STEPS, 7, 1),
                 SOLID_BRIGHTNESS_STEPS[1]
             );
             let unknown = Breath {
@@ -792,16 +763,16 @@ mod tests {
                 group_len: 3,
                 ..BREATH_BASE
             };
-            assert_eq!(advance_color_group(&unknown), COLOR_GROUPS[1]);
+            assert_eq!(color_group_step(&unknown, true), COLOR_GROUPS[1]);
         }
 
         #[test]
         fn retreat_and_table_step_wrap_backwards() {
             let last = *PALETTE.last().unwrap();
-            assert_eq!(retreat_palette(PALETTE[0]), last);
-            assert_eq!(advance_palette(last), PALETTE[0]);
-            assert_eq!(retreat_u8(&SOLID_BRIGHTNESS_STEPS, 32), 255);
-            assert_eq!(retreat_u8(&SOLID_BRIGHTNESS_STEPS, 140), 100);
+            assert_eq!(table_step(&PALETTE, PALETTE[0], -1), last);
+            assert_eq!(table_step(&PALETTE, last, 1), PALETTE[0]);
+            assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 32, -1), 255);
+            assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 140, -1), 100);
             assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 7, -1), 255);
         }
 

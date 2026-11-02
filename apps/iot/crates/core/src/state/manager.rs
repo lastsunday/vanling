@@ -20,6 +20,9 @@ pub struct DeviceManager {
     pub(super) demand_keys: Vec<DemandKey>,
     pub(super) override_: Override,
     demand: EffectiveDemand,
+    /// The page `demand` was derived from: the proposal reads the page and nothing else, so a
+    /// state write that cannot have moved it does not need to rebuild the table.
+    demand_page: DisplayPage,
 }
 
 impl DeviceManager {
@@ -40,6 +43,7 @@ impl DeviceManager {
         };
         Self {
             demand: Self::proposed(&state, &boot.demand_keys, &boot.overrides),
+            demand_page: state.page,
             boot_page: DeviceState::landed_on(boot.boot_page, backed),
             state,
             demand_keys: boot.demand_keys,
@@ -58,7 +62,11 @@ impl DeviceManager {
     }
 
     fn propose_demand(&mut self) {
+        if self.demand_page == self.state.page {
+            return;
+        }
         self.demand = Self::proposed(&self.state, &self.demand_keys, &self.override_);
+        self.demand_page = self.state.page;
     }
 
     /// The page this device lands on once the splash is over.
@@ -170,6 +178,13 @@ impl DeviceManager {
 
     pub fn state(&self) -> DeviceState {
         self.state.clone()
+    }
+
+    /// The state itself, for a caller that only reads it: [`state`](Self::state) copies the
+    /// whole record, which the coordinator did several times per pass just to compare a page
+    /// or a host.
+    pub fn state_ref(&self) -> &DeviceState {
+        &self.state
     }
 
     /// What the device is committed to, which is the proposal narrowed to what the parts

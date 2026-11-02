@@ -135,7 +135,7 @@ mod demand {
             ],
             ..Default::default()
         });
-        let mut demand = twin.demand().clone();
+        let mut demand = *twin.demand();
         demand.set(
             DemandKey::instance(DemandKind::Audio, 0),
             Claim::new(Mode::Continuous, 0, Priority::Primary),
@@ -163,7 +163,7 @@ mod demand {
     #[test]
     fn demand_follows_the_page_instead_of_lagging_it() {
         let mut manager = landed(fully_wired());
-        let before = manager.demand().clone();
+        let before = *manager.demand();
 
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
 

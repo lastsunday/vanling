@@ -10,9 +10,11 @@ use embedded_alloc::LlffHeap as Heap;
 
 type Board = iot_bsp_esp::Board<'static>;
 
-// The product's heap. `Board::new` brings up panel and camera whether or not this probe paints
-// them: 32 KB died there with `memory allocation of 9048 bytes failed` (8 KB SPI scratch + the
-// boxed camera), so the figure matches the product's.
+// The probe's own heap, in internal DRAM — not the product's: `main` gets its 512 KiB from the
+// S3's PSRAM (`iot_chip_esp::init_heap`), and a static here cannot. `Board::new` brings up panel
+// and camera whether or not this probe paints them, and 32 KB died there with `memory
+// allocation of 9048 bytes failed` (8 KB SPI scratch + the boxed camera), so 64 KB is what this
+// path needs, not what the product runs with.
 const HEAP_BYTES: usize = 64 * 1024;
 
 static mut HEAP_MEM: [u8; HEAP_BYTES] = [0; HEAP_BYTES];

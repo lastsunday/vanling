@@ -51,7 +51,7 @@ impl Registry {
             let consumer = appearance.consumer();
             for entry in entries.iter_mut() {
                 if entry.renderer.consumers().contains(&consumer) {
-                    entry.activity = entry.renderer.on_appearance(appearance.clone(), now_ms);
+                    entry.activity = entry.renderer.on_appearance(appearance, now_ms);
                 }
             }
         });

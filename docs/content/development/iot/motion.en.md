@@ -3,7 +3,7 @@ title = "Motion Semantic Framework"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "76fb204df7e8eb7dade314b647859605d6ee389c"
+source_file_hash = "5459d360325916313780893668fcde4675f1aa6a"
 translated_at = "2026-10-31T00:00:00Z"
 +++
 
@@ -15,10 +15,10 @@ QMI8658A is only one source. What the framework exposes is **meaning** — "knoc
 
 One motion input carries both paths at once, and both are first-class:
 
-| Path |
+| Path | Carries | Owns |
 | --- | --- | --- |
-| Data path |
-| Semantic path |
+| Data path | `MotionSample`: raw counts, acceleration in mG, angular rate in dps×10, roll/pitch/yaw | driver |
+| Semantic path | `MotionEvents`: `Tap` / `Still` / `TiltEnter` / `Shake` / `Lift` … | the QMI8658 engine (`Still`) **and** the core recognizers (everything else) |
 
 There is no "output semantics / output raw data" either-or.
 

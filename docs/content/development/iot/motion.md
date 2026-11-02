@@ -12,7 +12,7 @@ QMI8658A 只是一个来源。框架对外暴露的是**语义**——"敲了一
 
 一条运动输入同时携带两路，二者都是一等公民：
 
-| 路径 |
+| 路径 | 携带什么 | 归属 |
 | --- | --- | --- |
 | 数据面 | `MotionSample`：原始计数、加速度 mG、角速度 dps×10、roll/pitch/yaw | 驱动 |
 | 语义面 | `MotionEvents`：`Tap` / `Still` / `TiltEnter` / `Shake` / `Lift` … | QMI8658 引擎（`Still`）**与** core 识别器（其余） |

@@ -93,7 +93,7 @@ pub struct PlaybackDiagnostics {
 /// The on-surface diagnostics payload: touch-path counters/readout, display page, motion
 /// sample, and one [`LightSnapshot`] per light surface slot, fused so one diff carries the
 /// corner digits and the current page data.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Diagnostics {
     pub touch: TouchDiagnostics,
     pub demand: EffectiveDemand,

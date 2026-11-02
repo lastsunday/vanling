@@ -139,23 +139,31 @@ impl DemandKey {
     pub const INTERACTION: Self = Self::of(DemandKind::Interaction);
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A demand holds at most this many claims: the four devices plus the interaction path, and
+/// room for a second unit of any one of them. Fixed capacity keeps the record `Copy`, and it
+/// rides in the diagnostics snapshot, which is rebuilt and compared every frame — a map here
+/// allocated on every proposal, every snapshot and every appearance.
+const CLAIM_CAPACITY: usize = 8;
+
+const EMPTY_CLAIM: (DemandKey, Claim) = (DemandKey::INTERACTION, Claim::off());
+
+/// What the device wants of each data plane: claims kept in key order so iteration matches
+/// the sorted map this replaced, plus the clock the page asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EffectiveDemand {
-    claims: BTreeMap<DemandKey, Claim>,
+    claims: [(DemandKey, Claim); CLAIM_CAPACITY],
+    len: u8,
     speed: SpeedRequest,
 }
 
 impl Default for EffectiveDemand {
     fn default() -> Self {
-        let mut claims = BTreeMap::new();
-        claims.insert(
+        let mut demand = Self::none();
+        demand.set(
             DemandKey::DISPLAY,
             Claim::new(Mode::Continuous, 0, Priority::Primary),
         );
-        Self {
-            claims,
-            speed: SpeedRequest::Auto,
-        }
+        demand
     }
 }
 
@@ -181,7 +189,7 @@ impl core::fmt::Display for Claim {
 
 impl core::fmt::Display for EffectiveDemand {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        for (index, (key, demand)) in self.claims.iter().enumerate() {
+        for (index, (key, demand)) in self.entries().iter().enumerate() {
             if index > 0 {
                 f.write_str(" ")?;
             }
@@ -464,7 +472,8 @@ impl EffectiveDemand {
     /// Nothing demanded.
     pub const fn none() -> Self {
         Self {
-            claims: BTreeMap::new(),
+            claims: [EMPTY_CLAIM; CLAIM_CAPACITY],
+            len: 0,
             speed: SpeedRequest::Auto,
         }
     }
@@ -475,25 +484,49 @@ impl EffectiveDemand {
         self.speed
     }
 
+    fn entries(&self) -> &[(DemandKey, Claim)] {
+        &self.claims[..usize::from(self.len)]
+    }
+
+    fn position(&self, key: DemandKey) -> Result<usize, usize> {
+        self.entries()
+            .binary_search_by(|(candidate, _)| candidate.cmp(&key))
+    }
+
     pub fn claim(&self, key: DemandKey) -> Claim {
         if key.kind() == DemandKind::Interaction {
             return Claim::new(Mode::Continuous, 0, Priority::Primary);
         }
-        self.claims.get(&key).copied().unwrap_or_default()
+        match self.position(key) {
+            Ok(index) => self.claims[index].1,
+            Err(_) => Claim::default(),
+        }
     }
 
+    /// Sets one claim, keeping the array sorted. A claim past [`CLAIM_CAPACITY`] is dropped in
+    /// release rather than panicking on the device; the reachable key set is smaller than the
+    /// capacity, so the debug assertion is the one that would fire.
     pub fn set(&mut self, key: DemandKey, demand: Claim) {
-        self.claims.insert(key, demand);
+        match self.position(key) {
+            Ok(index) => self.claims[index].1 = demand,
+            Err(index) if usize::from(self.len) < CLAIM_CAPACITY => {
+                let end = usize::from(self.len);
+                self.claims.copy_within(index..end, index + 1);
+                self.claims[index] = (key, demand);
+                self.len += 1;
+            }
+            Err(_) => debug_assert!(false, "a demand holds at most {CLAIM_CAPACITY} claims"),
+        }
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &DemandKey> {
-        self.claims.keys()
+        self.entries().iter().map(|(key, _)| key)
     }
 
     pub fn without(&self, key: DemandKey) -> Self {
-        let mut demand = self.clone();
+        let mut demand = *self;
         if key.kind() != DemandKind::Interaction {
-            demand.claims.insert(key, Claim::off());
+            demand.set(key, Claim::off());
         }
         demand
     }

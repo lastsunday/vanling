@@ -82,8 +82,8 @@ impl PanelBench {
         if !BENCH {
             return;
         }
-        let state = manager.state();
-        self.read_parts(&state);
+        let state = manager.state_ref();
+        self.read_parts(state);
         if self.script.is_none() {
             let Some((ssid, psk)) = ssid().zip(psk()) else {
                 if state.page == DisplayPage::Network && state.network.aps.is_some() {
@@ -91,7 +91,7 @@ impl PanelBench {
                 }
                 return;
             };
-            let Some(script) = self.script(&state, ssid, psk) else {
+            let Some(script) = self.script(state, ssid, psk) else {
                 return;
             };
             self.script = Some(script);
@@ -250,19 +250,19 @@ impl PanelBench {
     }
 
     fn walk(&mut self, manager: &DeviceManager, bus: &IntentBus) {
-        let state = manager.state();
+        let state = manager.state_ref();
         self.passes = self.passes.saturating_add(1);
         match self.act {
             Act::TapRowUnderLink => {
                 if !self.sent {
                     if !state.network.link.is_leavable() {
-                        return self.unwalkable(&state, "no link is up");
+                        return self.unwalkable(state, "no link is up");
                     }
                     log::info!("[BENCH] tapping band 0 under the link, which must pick nothing");
-                    self.picked = Some(a_pick_showing(&state));
+                    self.picked = Some(a_pick_showing(state));
                     return self.send(bus, row_point(0));
                 }
-                if self.picked != Some(a_pick_showing(&state)) {
+                if self.picked != Some(a_pick_showing(state)) {
                     log::error!(
                         "[BENCH] the row under the link took a pick: a link to leave is not a row \
                          to pick"
@@ -276,7 +276,7 @@ impl PanelBench {
             Act::AskToLeave => {
                 if !self.sent {
                     if !state.network.link.is_leavable() {
-                        return self.unwalkable(&state, "no link is up");
+                        return self.unwalkable(state, "no link is up");
                     }
                     log::info!("[BENCH] tapping the strip, which asks to leave the link it is on");
                     return self.send(bus, strip_point());
@@ -339,9 +339,9 @@ impl PanelBench {
                 ));
             }
             Act::RejoinTheRowJustLeft => {
-                let Some(band) = picked_band(&state) else {
+                let Some(band) = picked_band(state) else {
                     return self
-                        .unwalkable(&state, "the row the link was on is not on a band showing");
+                        .unwalkable(state, "the row the link was on is not on a band showing");
                 };
                 if !self.sent {
                     log::info!(
@@ -360,7 +360,7 @@ impl PanelBench {
                         self.act = Act::Done;
                         return;
                     }
-                    if saved_band(&state).is_none() {
+                    if saved_band(state).is_none() {
                         log::error!(
                             "[BENCH] the row that brought the link back is not one this device has \
                              saved, so the copy it joined with came from nowhere"
@@ -382,9 +382,9 @@ impl PanelBench {
                 ));
             }
             Act::ReopenTheRowJustLeft => {
-                let Some(band) = picked_band(&state) else {
+                let Some(band) = picked_band(state) else {
                     return self
-                        .unwalkable(&state, "the row the link was on is not on a band showing");
+                        .unwalkable(state, "the row the link was on is not on a band showing");
                 };
                 if !self.sent {
                     log::info!("[BENCH] tapping band {band}, the row the link was just taken off");
@@ -428,8 +428,8 @@ impl PanelBench {
                 ));
             }
             Act::AskToForget => {
-                let Some(band) = saved_band(&state) else {
-                    return self.unwalkable(&state, "no saved row is on one of the bands showing");
+                let Some(band) = saved_band(state) else {
+                    return self.unwalkable(state, "no saved row is on one of the bands showing");
                 };
                 if !self.sent {
                     log::info!("[BENCH] holding band {band}, which asks to forget that network");
@@ -451,14 +451,14 @@ impl PanelBench {
                 if !self.sent {
                     return self.send(bus, answer_point(DialogChoice::Act));
                 }
-                if saved_band(&state).is_none() && state.network.draft.confirm.is_none() {
+                if saved_band(state).is_none() && state.network.draft.confirm.is_none() {
                     log::info!("[BENCH] the saved mark is gone from the row the finger held");
                     return self.advance(Act::ReopenTheRowJustLeft);
                 }
                 self.stop_if_stale(format_args!(
                     "the action's own tap left the row the finger held marked ({:#010b} over {} \
                      rows) with the question {:?}",
-                    marks(&state),
+                    marks(state),
                     state.network.aps.map_or(0, |list| list.len()),
                     state.network.draft.confirm,
                 ));
@@ -816,7 +816,7 @@ mod tests {
             .expect("the row the bench's scan published");
         manager.apply_action(ActionIntent::Network(NetworkIntent::Choose(picked)));
         assert!(
-            manager.state().network.draft.keyboard,
+            manager.state_ref().network.draft.keyboard,
             "the pick is there to begin with"
         );
         manager.apply_scan(marked(&["target"], &["target"]));
@@ -829,8 +829,8 @@ mod tests {
             },
         )));
         assert!(
-            manager.state().network.draft.selected.is_some()
-                && !manager.state().network.draft.keyboard,
+            manager.state_ref().network.draft.selected.is_some()
+                && !manager.state_ref().network.draft.keyboard,
             "the link cleared the draft and kept the row it was for"
         );
 
@@ -849,7 +849,7 @@ mod tests {
                 match intent {
                     Intent::Input(op) => {
                         manager.apply_input(op);
-                        let business = translate(&op, &manager.state());
+                        let business = translate(&op, manager.state_ref());
                         manager.apply_action(business);
                     }
                     Intent::Action(business) => manager.apply_action(business),
@@ -887,9 +887,10 @@ mod tests {
                     LinkStatus::default(),
                 )));
             }
-            if bench.act == Act::ReopenTheRowJustLeft && manager.state().network.draft.keyboard {
+            if bench.act == Act::ReopenTheRowJustLeft && manager.state_ref().network.draft.keyboard
+            {
                 assert!(
-                    manager.state().network.draft.entry.is_some(),
+                    manager.state_ref().network.draft.entry.is_some(),
                     "the keyboard came up over no draft, which is a page with nothing on it"
                 );
                 reopened += 1;
@@ -898,8 +899,8 @@ mod tests {
                 break;
             }
             assert!(
-                !manager.state().network.link.is_leavable()
-                    || !manager.state().network.draft.keyboard,
+                !manager.state_ref().network.link.is_leavable()
+                    || !manager.state_ref().network.draft.keyboard,
                 "a row took a pick while a link was up"
             );
         }
@@ -939,7 +940,7 @@ mod tests {
             reopened > 0,
             "the row the link was left from never opened an entry for the walk to read"
         );
-        let state = manager.state();
+        let state = manager.state_ref();
         assert!(!state.network.link.is_leavable(), "the link is down");
         assert!(
             !state.network.aps.expect("the list is still up").is_saved(0),

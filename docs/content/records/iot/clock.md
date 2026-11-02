@@ -147,7 +147,7 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 
 设备表按实测重填之后，`Auto` 不再是常量：
 
-| 在跑的键 |
+| 在跑的键 | 时钟 |
 |---|---|
 | motion + audio + display（默认开机形态） | **240 MHz** |
 | **只有 motion** | **80 MHz** |

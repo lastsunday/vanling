@@ -68,7 +68,7 @@ impl DiagnosticsSink for Screen {
         // above rather than saved into a local: `Diagnostics` embeds a 1.6 KB
         // audio envelope, and one by-value copy of it is a large slice of a main
         // stack this path is already close to overflowing.
-        self.diagnostics = diagnostics.clone();
+        self.diagnostics = *diagnostics;
         if !repaint {
             return;
         }

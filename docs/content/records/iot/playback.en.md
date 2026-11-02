@@ -3,7 +3,7 @@ title = "Playback Implementation Record"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "3c70c3e19e026f225347dca9549a4d2f3d5a8a48"
+source_file_hash = "54b8951c8ef17218f012679810defead8ef8dd13"
 translated_at = "2026-10-31T00:00:00Z"
 +++
 
@@ -149,7 +149,7 @@ Generating assets is not a test, so the table and the `.mid` generator moved out
 
 The cost is that **the two sides cannot see each other**: the recipes no longer read `Sound`, and the firmware cannot read the recipes. What is left is the filename convention (`Rise` becomes `rise.mid`, and `sound_label` in `iot-ui` has to say the same thing).
 
-One test holds it: `the_catalogue_names_the_same_files` reads the `include_bytes!` list out of `app/src/sounds.rs` and checks it against the recipes. Without it a rename done on one side only passes silently — both files exist, both are claimed by something, and only the device plays the wrong one.
+One test holds it: `the_catalogue_names_the_same_files` reads the `include_bytes!` list out of `app/src/playback/sounds.rs` and checks it against the recipes. Without it a rename done on one side only passes silently — both files exist, both are claimed by something, and only the device plays the wrong one.
 
 ### The cost of moving it out: bare-metal `--workspace`
 

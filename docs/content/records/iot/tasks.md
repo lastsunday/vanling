@@ -32,7 +32,7 @@ sort_by = "weight"
 
 `[实测]` 直接验过（拿 `check-host` 当靶子，把脚本临时加进它的 `inputs`）：基线键 `0973f854`；给 `scripts/iot-xtensa.sh` 追加一行注释后任务**真跑**、键变 `577401ca`；还原成逐字节相同的文件后键回到 `0973f854` 且**命中缓存**。⇒ 脚本内容确实进键，且键是内容寻址的。
 
-所以这些任务的 `inputs` 现在显式写出来（`@group(build-inputs)`，`check-features` 另加自己那个脚本）。`check-c6` 不在其中——它已经不经分派脚本。
+所以这些任务的 `inputs` 现在显式写出来（`@group(build-inputs)`，`check-features` 另加自己那个脚本）。`check-c6` 不经分派脚本，但它的 `inputs` 就是 `check` 那份清单，所以一并引用同一个组。
 
 ## `check-features`：`cache: false` 换成内容哈希
 

@@ -148,14 +148,9 @@ impl LightState {
     });
 }
 
-const JOINED_ON_MS: u32 = 100;
-const JOINED_OFF_MS: u32 = 100;
-
-const OFFLINE_ON_MS: u32 = 160;
-const OFFLINE_OFF_MS: u32 = 160;
-
-const REFUSED_ON_MS: u32 = 120;
-const REFUSED_OFF_MS: u32 = 120;
+const JOINED_FLASH_MS: u32 = 100;
+const OFFLINE_FLASH_MS: u32 = 160;
+const REFUSED_FLASH_MS: u32 = 120;
 
 const FLASHES: u32 = 3;
 
@@ -182,45 +177,47 @@ impl NoticeKind {
         }
     }
 
+    /// The colour this news shows while its flash is lit.
+    pub const fn color(self) -> LightState {
+        match self {
+            Self::Joined => LightState::Solid {
+                color: Rgb(0, 255, 0),
+                brightness: 64,
+            },
+            Self::Offline => LightState::Solid {
+                color: Rgb(255, 155, 0),
+                brightness: 96,
+            },
+            Self::Refused => LightState::Solid {
+                color: Rgb(255, 0, 0),
+                brightness: 96,
+            },
+        }
+    }
+
+    /// How long each half of one flash lasts.
+    const fn flash_ms(self) -> u32 {
+        match self {
+            Self::Joined => JOINED_FLASH_MS,
+            Self::Offline => OFFLINE_FLASH_MS,
+            Self::Refused => REFUSED_FLASH_MS,
+        }
+    }
+
     /// What the lamp shows this many milliseconds into the announcement, or `None` once the
-    /// news is over.
+    /// news is over. The last flash ends on its dark half so the count matches the time.
     pub const fn light_at(self, elapsed_ms: u32) -> Option<LightState> {
-        let (on_ms, off_ms, color) = match self {
-            Self::Joined => (
-                JOINED_ON_MS,
-                JOINED_OFF_MS,
-                LightState::Solid {
-                    color: Rgb(0, 255, 0),
-                    brightness: 64,
-                },
-            ),
-            Self::Offline => (
-                OFFLINE_ON_MS,
-                OFFLINE_OFF_MS,
-                LightState::Solid {
-                    color: Rgb(255, 155, 0),
-                    brightness: 96,
-                },
-            ),
-            Self::Refused => (
-                REFUSED_ON_MS,
-                REFUSED_OFF_MS,
-                LightState::Solid {
-                    color: Rgb(255, 0, 0),
-                    brightness: 96,
-                },
-            ),
-        };
-        let step = on_ms + off_ms;
+        let flash_ms = self.flash_ms();
+        let step = flash_ms * 2;
         let flash = elapsed_ms / step;
         if flash >= FLASHES {
             return None;
         }
-        if flash + 1 == FLASHES && elapsed_ms % step >= on_ms {
+        if flash + 1 == FLASHES && elapsed_ms % step >= flash_ms {
             return None;
         }
-        if elapsed_ms % step < on_ms {
-            Some(color)
+        if elapsed_ms % step < flash_ms {
+            Some(self.color())
         } else {
             Some(LightState::Off)
         }
@@ -241,16 +238,10 @@ pub struct Notice {
 
 impl Notice {
     pub const fn new(kind: NoticeKind) -> Self {
-        let light = match kind.light_at(0) {
-            Some(light) => light,
-            // Both announcements start lit; the arm is here because the clock reads this as an
-            // `Option` and a default is cheaper than a panic.
-            None => LightState::Off,
-        };
         Self {
             kind,
             started_ms: None,
-            light,
+            light: kind.color(),
         }
     }
 }
@@ -318,17 +309,20 @@ mod tests {
         assert!(joining.period_ms < setup.period_ms);
     }
 
-    fn flashes(kind: NoticeKind, on: u32, off: u32, lit: LightState) {
-        let step = on + off;
+    fn flashes(kind: NoticeKind, flash_ms: u32, lit: LightState) {
+        let step = flash_ms * 2;
         let dark = Some(LightState::Off);
         assert_eq!(kind.light_at(0), Some(lit));
-        assert_eq!(kind.light_at(on - 1), Some(lit));
-        assert_eq!(kind.light_at(on), dark);
+        assert_eq!(kind.light_at(flash_ms - 1), Some(lit));
+        assert_eq!(kind.light_at(flash_ms), dark);
         assert_eq!(kind.light_at(step - 1), dark);
         assert_eq!(kind.light_at(step), Some(lit));
         assert_eq!(kind.light_at((FLASHES - 1) * step), Some(lit));
-        assert_eq!(kind.light_at((FLASHES - 1) * step + on - 1), Some(lit));
-        assert_eq!(kind.light_at((FLASHES - 1) * step + on), None);
+        assert_eq!(
+            kind.light_at((FLASHES - 1) * step + flash_ms - 1),
+            Some(lit)
+        );
+        assert_eq!(kind.light_at((FLASHES - 1) * step + flash_ms), None);
         assert_eq!(kind.light_at(FLASHES * step), None);
     }
 
@@ -336,8 +330,7 @@ mod tests {
     fn a_join_that_worked_is_three_green_flashes_and_then_over() {
         flashes(
             NoticeKind::Joined,
-            JOINED_ON_MS,
-            JOINED_OFF_MS,
+            JOINED_FLASH_MS,
             LightState::Solid {
                 color: Rgb(0, 255, 0),
                 brightness: 64,
@@ -349,8 +342,7 @@ mod tests {
     fn an_offline_link_is_three_amber_flashes_and_then_over() {
         flashes(
             NoticeKind::Offline,
-            OFFLINE_ON_MS,
-            OFFLINE_OFF_MS,
+            OFFLINE_FLASH_MS,
             LightState::Solid {
                 color: Rgb(255, 155, 0),
                 brightness: 96,
@@ -362,8 +354,7 @@ mod tests {
     fn a_refusal_is_three_red_flashes_and_then_over() {
         flashes(
             NoticeKind::Refused,
-            REFUSED_ON_MS,
-            REFUSED_OFF_MS,
+            REFUSED_FLASH_MS,
             LightState::Solid {
                 color: Rgb(255, 0, 0),
                 brightness: 96,

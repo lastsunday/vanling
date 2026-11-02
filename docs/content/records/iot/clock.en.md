@@ -5,7 +5,7 @@ weight = 72
 sort_by = "weight"
 
 [extra]
-source_file_hash = "b7294c1b016daad07b7d283c19b6abe4c060b21f"
+source_file_hash = "e1ec272ab06ca70542985a3abcce21cf1cfd8dde"
 translated_at = "2026-11-01T00:00:00Z"
 +++
 
@@ -151,7 +151,7 @@ The same work at a third of the clock finishes a third to a half of the repaints
 
 With the device table refilled from measurement, `Auto` is no longer a constant:
 
-| Devices running |
+| Devices running | Clock |
 |---|---|
 | motion + audio + display (the default boot shape) | **240 MHz** |
 | **motion alone** | **80 MHz** |
