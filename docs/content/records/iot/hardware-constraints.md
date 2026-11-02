@@ -304,6 +304,34 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 
 `[实测]` 检查面：`check-s3`、`check-c6`、`check-host`、`check-features`、`lint`、`lint-host`、`test`（726 + 10 + 29 + 42）、`test-bsp`（101）、S3 目标的 `clippy -- -D warnings`、`build-s3`（只剩既有的 RWX 链接告警）全绿；C6 实机烧写后 Ambient 页正常起、WS2812 亮、无 panic。三个 trait object（`InputSource`/`EventAggregator`/`FrameSource`）与 `CaptureSink` 上的 `Send` 是编译期约束：束里放不进一个不能跨核的东西，不靠逐处检查。
 
+### 网络工作者从 `join` 改成任务：主栈区 −64 B（`[实测]`，2026-11-02）
+
+`main` 不再 `join(run, net::serve)`：网络是一个 `#[embassy_executor::task]`（那一版由 `run` 起），和驱动半边同一种生命周期。静态量从 `main` 的池挪到网络自己的池，总量只差一个任务头。同一棵树、同一条命令（`bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc --no-default-features --features lckfb-szpi-esp32s3,console-auto`）前后各量一次：
+
+| 读数（`nm -S`，S3 `vanling`） | 改前 | 改后 |
+| --- | --- | --- |
+| `__embassy_main::POOL` | 2,528 B（`0x9e0`） | 1,432 B（`0x598`） |
+| `network_task::POOL` | — | 1,168 B（`0x490`） |
+| `_stack_start_cpu0 − _stack_end_cpu0` | 96,432 B | 96,368 B |
+
+`[实测]` 两个池相加从 2,528 涨到 2,600 B（+72 B），主栈区只少了 64 B；`network_task` 的 future 只有 1,168 B，因为 `link` 里的大件（凭据库、扫描历史、`browsing` 的 future）本来就是堆上的。`_stack_end_cpu0` 落在 `0x3fcd1ea0`，距 65,536 B 的下限还很远。`check-s3` 只 type-check，这个差值只有链接后的 `nm` 看得见。
+
+同一份镜像的开机日志把「任务真的起来了」对上号（那一版 `run` 才起工作者，所以顺序是）：`[IOT] starting the net worker` 出现在 `[IOT] demand …` 之后、`[DISPLAY] stack peak` 之前，紧接着 `[WIFI] network stack up, DHCP requested`；`[DISPLAY] backlight dark until the first frame; main stack 96368 B` 与 `[DISPLAY] stack peak 14917 B of 96368 B` 和 `nm` 的分区尺寸一致，说明池搬家没有改变主栈区的大小。
+
+### 网络工作者改在组合点 `spawn`：池 −16 B，主栈区 +32 B（`[实测]`，2026-11-02）
+
+`WorkerStart { name, start }` 删除：网络任务的驱动类型只有入口认识，于是 `main` 在交给 `run` 之前直接 `spawn`，`run` 不再持 worker 清单，也不再拥有「这次要起哪些工作者」这件事。同一棵树、同一条命令：
+
+| 读数（`nm -S`，S3 `vanling`） | 上一版 | 本版 |
+| --- | --- | --- |
+| `__embassy_main::POOL` | 1,432 B（`0x598`） | 1,416 B（`0x588`） |
+| `network_task::POOL` | 1,168 B（`0x490`） | 1,152 B（`0x480`） |
+| `_stack_start_cpu0 − _stack_end_cpu0` | 96,368 B | 96,400 B |
+
+`[实测]` 池合计少 32 B、主栈区多 32 B，两者互为镜像，净额为零；没有逐符号归因。`_stack_end_cpu0` = `0x3fcd1e80`。App 1,062,128 B（S3）/ 845,392 B（C6，分区 80.62%）。
+
+`[实测]` 开机日志把新的启动顺序和启动页结论都钉住了：S3 先打 `[IOT] starting the net worker`、再打 `[IOT] demand …`（因为 `spawn` 在 `run` 之前），`[DISPLAY] … main stack 96400 B` 与 `nm` 读数一致；`[INPUT] the splash is over; setup mode was not asked for` 之后 8 ms 就出现 `[WIFI] this device saved a network; joining …`，说明工作者确实在等 `NetworkCommand::SplashOver` 而不是别的信号。C6 同样 `[IOT] starting the net worker` → `[WIFI] network stack up`，启动页结束后立刻 `[WIFI] no page surface and no saved network; waiting offline`，WS2812 走完离线提示回到页面自己的灯。两块板都无 panic。
+
 ### IRAM 的 DRAM 镜像 47,396 B：一个字节都不属于本仓（`[实测]`，2026-11-01）
 
 `[实测]` S3 的 IRAM 与 DRAM 是同一块 SRAM 的两个视图，所以每一段放进 IRAM 的代码都在 `dram_seg` 里占一份同样大的镜像 —— `.rwdata_dummy` 就是这个占位，**47,396 B**，由三段相加而来（`objdump -h`）：

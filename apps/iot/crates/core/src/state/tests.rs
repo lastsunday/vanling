@@ -619,7 +619,7 @@ mod business {
             address: Some(Ipv4::from_octets([192, 168, 1, 136])),
             ..LinkStatus::default()
         };
-        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(status)));
+        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(status)));
         assert_eq!(manager.state().network.link, status);
     }
 }
@@ -1342,11 +1342,11 @@ mod reachable {
                 }
             }
         }
-        encode_ap(&mut key, state.network.view.selected);
-        key.push(u8::from(state.network.view.entry.is_some()));
-        key.push(u8::from(state.network.view.keyboard));
-        key.push(state.network.view.list_top);
-        match state.network.view.confirm {
+        encode_ap(&mut key, state.network_page.selected);
+        key.push(u8::from(state.network_page.entry.is_some()));
+        key.push(u8::from(state.network_page.keyboard));
+        key.push(state.network_page.list_top);
+        match state.network_page.confirm {
             None => key.push(0),
             Some(Confirm::Leave) => key.push(1),
             Some(Confirm::Forget(ap)) => {
@@ -1375,26 +1375,26 @@ mod reachable {
     // something that is not there — the failures this page has no way to be loud about, because
     // what breaks is what the panel puts on the glass.
     fn broken(state: &DeviceState) -> Option<&'static str> {
-        if state.network.view.keyboard && state.network.view.entry.is_none() {
+        if state.network_page.keyboard && state.network_page.entry.is_none() {
             return Some(
                 "the keyboard is up with no draft under it. The keys are drawn from the draft \
                      and the strip is hidden with them, so the page draws nothing between the \
                      header and the bottom edge, and no control on it can be reached",
             );
         }
-        if state.network.view.entry.is_some() && state.network.view.selected.is_none() {
+        if state.network_page.entry.is_some() && state.network_page.selected.is_none() {
             return Some(
                 "a draft is kept for no row, so nothing names the network it would be handed \
                      to",
             );
         }
-        if state.network.view.confirm == Some(Confirm::Leave) && !state.network.link.is_leavable() {
+        if state.network_page.confirm == Some(Confirm::Leave) && !state.network.link.is_leavable() {
             return Some(
                 "the page is asking about leaving a link that is not up, so the box has no \
                      answer left to take",
             );
         }
-        if state.network.view.rescan_wait && state.network.link.is_leavable() {
+        if state.network_page.rescan_wait && state.network.link.is_leavable() {
             return Some(
                 "the strip is waiting for a scan round under a link it would offer to leave",
             );
@@ -1524,7 +1524,7 @@ mod reachable {
     }
 
     fn link_to(manager: &mut DeviceManager, status: LinkStatus) -> Option<NetworkCommand> {
-        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(status)))
+        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(status)))
     }
 
     fn scan_of(manager: &mut DeviceManager, rows: &[AccessPoint]) {
@@ -1709,7 +1709,8 @@ mod reachable {
                 }) {
                     associated(manager);
                 } else {
-                    manager.apply_action(ActionIntent::Network(NetworkIntent::NoCopy(ssid)));
+                    manager
+                        .apply_action(ActionIntent::NetworkPage(NetworkPageIntent::NoCopy(ssid)));
                 }
             }
             NetworkCommand::Leave => {
@@ -1726,7 +1727,8 @@ mod reachable {
             }
             NetworkCommand::LeaveSetup { .. }
             | NetworkCommand::SwitchHost { .. }
-            | NetworkCommand::SetupOpen { .. } => {}
+            | NetworkCommand::SetupOpen { .. }
+            | NetworkCommand::SplashOver { .. } => {}
         }
     }
 
@@ -1935,22 +1937,22 @@ mod reachable {
             states.iter().any(|manager| wanted(&manager.state()))
         };
         assert!(
-            reached(|state| state.network.view.keyboard && state.network.view.entry.is_some()),
+            reached(|state| state.network_page.keyboard && state.network_page.entry.is_some()),
             "the keyboard never came up over a draft"
         );
         assert!(
             reached(
-                |state| state.network.view.selected.is_some() && state.network.view.entry.is_none()
+                |state| state.network_page.selected.is_some() && state.network_page.entry.is_none()
             ),
             "a row was never left picked with no draft: the state a link that came up leaves \
                  behind, and the one the pick after it reads"
         );
         assert!(
-            reached(|state| state.network.view.confirm == Some(Confirm::Leave)),
+            reached(|state| state.network_page.confirm == Some(Confirm::Leave)),
             "the strip never asked about leaving"
         );
         assert!(
-            reached(|state| matches!(state.network.view.confirm, Some(Confirm::Forget(_)))),
+            reached(|state| matches!(state.network_page.confirm, Some(Confirm::Forget(_)))),
             "a hold never asked about a saved row"
         );
         for (wanted, seen) in [

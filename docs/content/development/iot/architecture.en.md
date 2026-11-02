@@ -63,7 +63,7 @@ A pipeline-logic system whose trigger points are intents.
 
 | Path | Responsibility |
 | --- | --- |
-| `lib.rs` | composition root: take capabilities, build `DeviceManager`, start the four futures |
+| `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator |
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, net }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
@@ -176,9 +176,13 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 A new scenario is a new `ActionIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_action`. No new mechanism.
 
-A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Network`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
+A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
-`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Boot`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. Business state and view state sit apart: every domain keeps a `view` sub-record (`NetworkState.view`, `AudioView`, `PlaybackView`, `TouchView`) holding only what the page is in the middle of — the selected row, the draft, keys, fingers and the last gesture — and notifications and rendering read that. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
+`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Boot`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen.
+
+Business state and page state sit apart, and **whoever writes a field owns it**: `NetworkState` holds only what the radio reported (`link` / `mac` / `aps` / `outage_announced`) and only `LinkIntent` writes it; `NetworkPage` holds only what the page is in the middle of (the selected row, the draft, keys, the confirmation, the list's scroll position) and only the finger's `NetworkPageIntent` writes it. The page reads `&NetworkState`; the link never reads or writes a page field, so neither "a worker's report lands in a page field" nor "a page edit changes what the radio said" can happen. The other domains keep a `view` sub-record (`AudioView`, `PlaybackView`, `TouchView`) with the same meaning: only what the page is in the middle of, read by notifications and rendering. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
+
+Where a command comes from follows the same boundary: the page domain's `apply` returns `Option<NetworkCommand>` directly, and `Effects` carries only in-device sounds and notices — there is no outbox, and one path from an intent to the worker.
 
 ### Transport: coordinators and workers
 
@@ -189,18 +193,20 @@ A capability that carries rules (multi-step transitions, invariants, edges acros
 | Render layer / camera  | surface, camera                     | cooperative                                | `Render` / `Diagnostics` |
 | `input_task`           | input devices and audio capture     | cooperative (S3: the second core)          | `Input { to, from }` |
 | `control_loop`         | codec, DMA                          | cooperative (S3: the second core)          | `Speaker { to }` (completion returns on the intent bus) |
-| `net::serve`           | stack, link, AP services            | cooperative                                | `Net { commands, page, scan }` |
+| `net::serve`           | stack, link, AP services            | cooperative (a task on core 0)             | `Net { commands, page, scan }` |
 | `feed_task`            | the microphone clock                | **Priority2 interrupt, separate executor** | ⚠️ **deliberately dependency-free; none may be added** |
 | `panel_service`        | the panel bus (frame transfers)     | **the second APP core**                    | no handle: `Screen` holds only the channel (`Panel::write`) |
 
 `panel_service` and the driver half (`input_task`, `control_loop`) run on the second core: a frame transfer is a blocking DMA call, and the capture fold busy-waits 7 ms out of every 20, so each would hold its executor in one piece. The coordinator posts the finished frame as a ticket and parks for the answer; the driver half goes over as one bundle into the `IoPlacement::Elsewhere` slot, where `run_io_from` picks it up. That path exists only when a second executor was actually started — a single-core C6, or an S3 with no panel, gets `IoPlacement::Inline` and the very same task runs on the coordinator's executor, which is why the placement is decided in `start_executors`: that is the only place that knows about the second core. `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which is why `feed_task` uses `FROM_CPU_INTR2`.
+
+**A worker is started by the composition point that owns its drivers.** The driver half is spawned by `run` through `Wiring.spawner` (`IoPlacement::Inline`) or handed to the second core (`Elsewhere`). The network worker's driver types are only known to the entry point, so `main` spawns it right there beside the driver half — `run` neither knows the radio exists nor holds a worker list; adding a worker is one more `spawn` at the composition point, not another shape handed to `run`. `main` therefore joins no worker at all, and `run_loop` is the only future it awaits. `feed_task` and `panel_service` stay with `start_executors` — that is the only place that knows the interrupt executor and the second core. `net::serve` is spawned with the local `Spawner`, so its future need not be `Send`: it stays on core 0's executor, and the only thing that crosses a core is the `Io` bundle.
 
 The handles live together in the composition root's `Workers<'a>`: one field per worker, so a second protocol adds a field rather than a `TO_X`/`FROM_X` pair at the call site. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct.
 
 The shape follows the semantics, not convenience:
 
 - **Commands** use a `Channel` (`Net.commands`, `Speaker.to`). Each pass the coordinator hands over only what the worker has room for; a command that found none waits for the next pass and is never dropped.
-- **Levels** use `PageWatch` (`Net.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge.
+- **Levels** use `PageWatch` (`Net.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge. The splash's verdict is not a level but a **one-shot event**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
 - **Latest values** use `Latest`/a window (`Net.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
 
 The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_action()` returns the command and `run_loop` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next pass and that pass takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.

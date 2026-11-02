@@ -10,7 +10,7 @@ use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
     Credentials, JoinRequest, LinkStatus, NetworkMode, ScanHistory, SetupHost, Ssid, Station,
 };
-use iot_core::intent::{ActionIntent, Intent, NetworkIntent};
+use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent};
 use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::link::{Hold, Panel, Provenance, Refusal, hold};
@@ -379,8 +379,8 @@ pub(super) fn asked_for<R: FlashRegion>(
                     "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
                     ssid.as_display_text().unwrap_or("<unprintable>"),
                 );
-                let _ = bus.try_send(Intent::Action(ActionIntent::Network(
-                    NetworkIntent::NoCopy(ssid),
+                let _ = bus.try_send(Intent::Action(ActionIntent::NetworkPage(
+                    NetworkPageIntent::NoCopy(ssid),
                 )));
             }
             copy.map(|credentials| (credentials, Provenance::Stored))

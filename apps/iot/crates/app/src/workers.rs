@@ -165,10 +165,11 @@ impl<T: Copy + Send> Latest<T> {
     }
 }
 
-/// The panel's page, for the network worker, which cannot reach device state.
+/// The panel's page, for the network worker, which cannot reach device state. A level, not
+/// an edge: the worker asks whether the list is on screen, and the end of the splash reaches
+/// it as a command like everything else the panel asks for.
 pub struct PageWatch {
     page: AtomicU8,
-    splash: AtomicU8,
     changed: Signal<CriticalSectionRawMutex, ()>,
 }
 
@@ -176,7 +177,6 @@ impl PageWatch {
     const fn new() -> Self {
         Self {
             page: AtomicU8::new(DisplayPage::Ambient as u8),
-            splash: AtomicU8::new(0),
             changed: Signal::new(),
         }
     }
@@ -186,29 +186,12 @@ impl PageWatch {
             self.changed.signal(());
         }
     }
-
-    /// `setup` is whether the button asked for setup mode while the splash was up.
-    pub fn end_splash(&self, setup: bool) {
-        self.splash
-            .store(if setup { 2 } else { 1 }, Ordering::Relaxed);
-        self.changed.signal(());
-    }
 }
 
 #[cfg(any(feature = "wifi", test))]
 impl PageWatch {
     pub fn shows(&self, page: DisplayPage) -> bool {
         self.page.load(Ordering::Relaxed) == page as u8
-    }
-
-    /// `true` when setup was asked for while the splash was up.
-    pub async fn wait_for_splash_end(&self) -> bool {
-        loop {
-            match self.splash.load(Ordering::Relaxed) {
-                0 => self.changed.wait().await,
-                ended => return ended == 2,
-            }
-        }
     }
 
     /// Waits until the panel is on `page`.

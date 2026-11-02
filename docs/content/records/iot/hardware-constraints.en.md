@@ -307,6 +307,34 @@ The section above left core 0's remaining 39% — the capture fold — recorded 
 
 `[measured]` Checks: `check-s3`, `check-c6`, `check-host`, `check-features`, `lint`, `lint-host`, `test` (726 + 10 + 29 + 42), `test-bsp` (101), `cargo clippy -- -D warnings` for the S3 target and `build-s3` (only the pre-existing RWX linker warning) all pass; a C6 board flashed with it comes up on the Ambient page, lights the WS2812, no panic. The `Send` on the three trait objects (`InputSource`/`EventAggregator`/`FrameSource`) and on `CaptureSink` is a compile-time constraint: something that cannot cross a core cannot go into the bundle, and no per-site inspection is needed to say so.
 
+### The network worker moves from `join` to a task: the stack region loses 64 B (`[measured]`, 2026-11-02)
+
+`main` no longer `join(run, net::serve)`: the network is an `#[embassy_executor::task]` (started by `run` in that cut), the same lifecycle as the driver half. Its static storage moves out of `main`'s pool into a pool of its own, so the total differs by one task header. Measured before and after on the same tree with the same command (`bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc --no-default-features --features lckfb-szpi-esp32s3,console-auto`):
+
+| Reading (`nm -S`, S3 `vanling`) | Before | After |
+| --- | --- | --- |
+| `__embassy_main::POOL` | 2,528 B (`0x9e0`) | 1,432 B (`0x598`) |
+| `network_task::POOL` | — | 1,168 B (`0x490`) |
+| `_stack_start_cpu0 − _stack_end_cpu0` | 96,432 B | 96,368 B |
+
+`[measured]` The two pools add up from 2,528 to 2,600 B (+72 B) and the stack region loses only 64 B. `network_task`'s future is just 1,168 B because the large pieces inside `link` (the credential store, the scan history, `browsing`'s future) are already on the heap. `_stack_end_cpu0` sits at `0x3fcd1ea0`, still far above the 65,536 B floor. `check-s3` only type-checks; this delta is visible only to `nm` on a linked image.
+
+The boot log from that image confirms the task actually starts (in that cut `run` started the worker, hence the order): `[IOT] starting the net worker` appears after `[IOT] demand …` and before `[DISPLAY] stack peak`, immediately followed by `[WIFI] network stack up, DHCP requested`. `[DISPLAY] backlight dark until the first frame; main stack 96368 B` and `[DISPLAY] stack peak 14917 B of 96368 B` agree with the region size from `nm`, so moving the pool did not change the stack region.
+
+### The network worker is spawned at the composition point: pool −16 B, stack region +32 B (`[measured]`, 2026-11-02)
+
+`WorkerStart { name, start }` is gone: only the entry point knows the network task's driver types, so `main` spawns it directly before handing control to `run`; `run` holds no worker list and no longer owns "which workers start this boot". Same tree, same command:
+
+| Reading (`nm -S`, S3 `vanling`) | Previous | This cut |
+| --- | --- | --- |
+| `__embassy_main::POOL` | 1,432 B (`0x598`) | 1,416 B (`0x588`) |
+| `network_task::POOL` | 1,168 B (`0x490`) | 1,152 B (`0x480`) |
+| `_stack_start_cpu0 − _stack_end_cpu0` | 96,368 B | 96,400 B |
+
+`[measured]` The pools lose 32 B and the stack region gains 32 B — mirror images, so the net is zero; no per-symbol attribution. `_stack_end_cpu0` = `0x3fcd1e80`. App 1,062,128 B (S3) / 845,392 B (C6, 80.62% of its partition).
+
+`[measured]` The boot log pins both the new start order and the splash verdict: the S3 prints `[IOT] starting the net worker` and then `[IOT] demand …` (because `spawn` happens before `run`), and `[DISPLAY] … main stack 96400 B` matches the `nm` reading. Eight milliseconds after `[INPUT] the splash is over; setup mode was not asked for` comes `[WIFI] this device saved a network; joining …`, so the worker really was waiting on `NetworkCommand::SplashOver` and not on some other signal. The C6 shows the same `[IOT] starting the net worker` → `[WIFI] network stack up`, then `[WIFI] no page surface and no saved network; waiting offline` as soon as the splash ends, with the WS2812 walking the offline burst back to the page's own light. Neither board panicked.
+
 ### The IRAM mirror is 47,396 B and none of it is this repo's (`[measured]`, 2026-11-01)
 
 `[measured]` On the S3, IRAM and DRAM are two views of the same SRAM, so every piece of code placed in IRAM also occupies a same-sized mirror inside `dram_seg` — that is what `.rwdata_dummy` is: **47,396 B**, the sum of three sections (`objdump -h`):

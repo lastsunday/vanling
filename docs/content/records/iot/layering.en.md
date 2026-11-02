@@ -25,6 +25,8 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 - The build-time network name is read in one place (`boot::build_wifi_credentials`); the bench exception is decided by the product-side `boot::wifi_credentials`. A probe always wants the name its build was given, so it reads the former.
 - Link-status delivery and de-duplication live in `bridge::deliver` (`LinkWatch`); `PageWatch` is parameterized by page and injected into `net`; a scan list has one double publish (`net::publish_scan`); saved-mark recomputation returns a list from `store::remark`, so the store no longer publishes.
 - The product heap size belongs to the chip layer (`iot-chip-esp::PRODUCT_HEAP_BYTES`) and the starting setup front to the board layer (`iot-bsp-esp::FRONT`); `main.rs` only reads them.
+- The link's business state and the Network page's state are two records: `NetworkState` is written only by `LinkIntent`, `NetworkPage` only by the fingers' `NetworkPageIntent`, and the page reads `&NetworkState` while the link never touches a page field. `Effects` no longer carries an outbox: the page domain returns `NetworkCommand` directly, so there is one path from an intent to the worker.
+- The network worker no longer reaches `run` through a `WorkerStart`: its driver types are only known to the entry point, so it is spawned there beside the driver half, and `run` holds no worker list. The splash's verdict travels as `NetworkCommand::SplashOver { setup }`; `PageWatch` is only a page level and no longer carries a splash edge.
 
 ## Blocker: the probe's board `#[cfg]` did not move down
 

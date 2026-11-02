@@ -700,9 +700,9 @@ point (`HasWifi`). `components/wifi.rs` is itself chip-agnostic: it takes only
 `peripherals::WIFI` and the driver's types, and it now compiles for each part.
 
 `Station`'s methods return `impl Future` (RPITIT) and deliberately **do not** carry
-`+ Send`: the product joins those futures with input/render/control/feed on one task stack
-with no spawn. (`Speaker` does need `Send` because its feed runs on a separate
-higher-priority executor.)
+`+ Send`: the network worker is a task on core 0's executor, started with the local
+`Spawner` (which accepts non-`Send` futures), so it never crosses a core or an executor.
+(`Speaker` does need `Send` because its feed runs on a separate higher-priority executor.)
 
 `take_wifi()` cannot happen inside `Board::new`: **the driver's start needs the scheduler
 running**, and `esp_rtos::start()` belongs to the app's entry point, so the board hands over
@@ -2362,7 +2362,7 @@ What this cut changes is **where that press lands** and **what the radio does du
 | --- | --- | --- |
 | Long press on the splash | `Toolbar(Right)`: leave the link if there is one, `Invalid` otherwise | `BusinessIntent::RequestSetup`: the request is only **latched** (`setup_wanted`); no page change, no access point |
 | The splash closing | back to `boot_page` | asked for and `backed.network` → **`Network`**; otherwise `boot_page` |
-| The link during the splash | read a credential and associate; the hold then tears it down | **no link at all**: `link()` waits on `PAGE.wait_for_splash_end()` before reading a credential |
+| The link during the splash | read a credential and associate; the hold then tears it down | **no link at all**: `link()` waits on `NetworkCommand::SplashOver` before reading a credential |
 | After the request | associate, then leave | skip association: `Front::AccessPoint` goes straight into setup mode |
 | What decides it | `is_leavable()` on the link | nothing about the link: a press inside the window counts, the same answer on both boards |
 | A device with no credentials at boot | enters setup mode by itself and raises the access point | **works offline**: no setup mode, no access point |
@@ -2388,8 +2388,8 @@ The rules:
   never writes `state.page`, so a bench build with `IOT_BOOT_PAGE=network` still lands on the
   network page.
 - **No link is built during the splash** (`[measured]`): the first thing `link()` does is wait on
-  `PAGE.wait_for_splash_end()`; until it resolves, neither a credential is read nor the radio
-  touched — the splash window produces no `joining`/`leaving` line. When the request is there the
+  the coordinator's `NetworkCommand::SplashOver`; until it arrives, neither a credential is read nor
+  the radio touched — the splash window produces no `joining`/`leaving` line. When the request is there the
   path goes straight into `Front::AccessPoint`, with no association at all; an "associate, then tear
   down" implementation would leave two lines in that window and put the access point front 2–3 s
   later.

@@ -9,7 +9,7 @@ use iot_core::overlay::{
     Block, FONT_H, GLYPH_PITCH, PANEL_COLUMNS, ROW_PITCH, block_x, overlay_row_top,
 };
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
-use iot_core::state::{Entry, NetworkDraft};
+use iot_core::state::{Entry, NetworkPage};
 
 use crate::layout::*;
 use crate::pages::draw::{
@@ -25,7 +25,7 @@ use crate::text::{
 impl Surface<'_> {
     pub(crate) fn stamp_header(
         &mut self,
-        draft: NetworkDraft,
+        draft: NetworkPage,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
@@ -125,7 +125,7 @@ impl Surface<'_> {
 
     pub(crate) fn stamp_content(
         &mut self,
-        draft: NetworkDraft,
+        draft: NetworkPage,
         link: LinkStatus,
         aps: Option<ApList>,
     ) {
@@ -185,7 +185,7 @@ impl Surface<'_> {
         self.stamp_line(right, y, right, bottom);
     }
 
-    pub(crate) fn stamp_strip(&mut self, draft: NetworkDraft, link: LinkStatus) {
+    pub(crate) fn stamp_strip(&mut self, draft: NetworkPage, link: LinkStatus) {
         let strip = controls::strip(draft, link);
         if strip.is_split() {
             self.stamp_cell(
@@ -215,7 +215,7 @@ impl Surface<'_> {
 
     pub(crate) fn stamp_box(
         &mut self,
-        draft: NetworkDraft,
+        draft: NetworkPage,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
@@ -282,7 +282,7 @@ impl Surface<'_> {
         self.stamp_text(joining_body(shown_ap), title_left, DIALOG_BODY_TOP);
     }
 
-    fn stamp_confirm(&mut self, draft: NetworkDraft, link: LinkStatus) {
+    fn stamp_confirm(&mut self, draft: NetworkPage, link: LinkStatus) {
         let Some(confirm) = draft.confirm else {
             return;
         };

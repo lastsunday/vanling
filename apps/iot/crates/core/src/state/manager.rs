@@ -5,8 +5,9 @@ use alloc::vec::Vec;
 
 use crate::demand::{DemandKey, EffectiveDemand, Override};
 use crate::drivers::input::InputEvent;
+use crate::drivers::network::ApList;
 
-use crate::intent::{ActionIntent, InputIntent, PageIntent};
+use crate::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
 use crate::page::DisplayPage;
 
 use super::device::Effects;
@@ -103,12 +104,11 @@ impl DeviceManager {
         }
     }
 
-    /// Route one action intent to the domain that owns it. Each domain matches its own
-    /// group, so the manager knows the groups and never a domain's actions.
     /// Route one action intent to the domain that owns it, and answer with the command the
-    /// network task has to carry out. Every other group asks for nothing outside the core, so
-    /// they answer `None`; the caller that owns the worker is the only one that can deliver
-    /// it, and it gets exactly one pass at it.
+    /// network task has to carry out. Each domain matches its own group, so the manager knows
+    /// the groups and never a domain's actions; every group but the Network page's asks for
+    /// nothing outside the core, and the caller that owns the worker is the only one that can
+    /// deliver a command, so it gets exactly one pass at it.
     pub fn apply_action(&mut self, intent: ActionIntent) -> Option<NetworkCommand> {
         let command = match intent {
             ActionIntent::Invalid => None,
@@ -116,12 +116,19 @@ impl DeviceManager {
                 self.apply_page(intent);
                 None
             }
-            ActionIntent::Network(intent) => {
-                let has_pages = self.state.has_pages();
-                let mut effects = self.state.network.apply(intent, has_pages);
-                let command = effects.command.take();
+            ActionIntent::Link(intent) => {
+                let effects = self.state.network.apply(intent);
+                if let LinkIntent::LinkReport(status) = intent {
+                    self.state.network_page.on_link(status);
+                }
                 self.apply_effects(effects);
-                command
+                None
+            }
+            ActionIntent::NetworkPage(intent) => {
+                let has_pages = self.state.has_pages();
+                self.state
+                    .network_page
+                    .apply(intent, &self.state.network, has_pages)
             }
             ActionIntent::Audio(intent) => {
                 self.state.audio.apply(intent, self.state.backed.audio);
@@ -142,8 +149,18 @@ impl DeviceManager {
         command
     }
 
+    /// A scan round landed: the link keeps the list everyone reads, and the page's scroll
+    /// clamps to it.
+    pub fn apply_scan(&mut self, list: ApList) {
+        if !self.state.backed.network {
+            return;
+        }
+        self.state.network.set_scan(list);
+        let rows = self.state.network.len();
+        self.state.network_page.clamp_top(rows);
+    }
+
     /// What a domain asked the rest of the device for, applied after its own state settled.
-    /// The one ask that leaves the core is taken out before this runs.
     fn apply_effects(&mut self, effects: Effects) {
         if let Some(sound) = effects.sound {
             self.ring(sound);
@@ -186,9 +203,8 @@ impl DeviceManager {
             && self.state.backed.network
             && !self.state.network.link.saved
             && !self.state.network.link.mode.is_setup()
-            && !self.state.network.outage_announced
+            && self.state.network.note_offline_once()
         {
-            self.state.network.outage_announced = true;
             self.announce(NoticeKind::Offline);
         }
     }

@@ -15,6 +15,8 @@ mod motion;
 
 mod network;
 
+mod network_page;
+
 mod playback;
 
 mod touch;
@@ -33,7 +35,9 @@ pub use self::manager::DeviceManager;
 
 pub use self::motion::MotionState;
 
-pub use self::network::{Confirm, NetworkCommand, NetworkDraft, NetworkState};
+pub use self::network::{NetworkCommand, NetworkState};
+
+pub use self::network_page::{Confirm, NetworkPage};
 
 pub use self::playback::{PlaybackCommand, PlaybackPhase, PlaybackState, PlaybackView};
 

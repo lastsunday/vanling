@@ -13,7 +13,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{ApList, LinkStatus, SetupHost, Station};
-use iot_core::intent::{ActionIntent, Intent, NetworkIntent};
+use iot_core::intent::{ActionIntent, Intent, LinkIntent};
 
 use crate::input::IntentBus;
 use crate::workers::Net;
@@ -46,19 +46,30 @@ fn heap_free() -> usize {
     HEAP_FREE.lock(|slot| slot.get())()
 }
 
-pub async fn serve<S, R>(
-    station: Option<Box<S>>,
-    saved: Option<Box<Store<R>>>,
-    host: SetupHost,
-    has_pages: bool,
-    net: Net,
-    bus: &'static IntentBus,
-) -> !
+/// What the composition root hands the network worker: the board's radio and its credential
+/// store, plus what this product opens setup mode on and whether it has pages at all.
+pub struct NetBoot<S, R> {
+    pub station: Option<Box<S>>,
+    pub saved: Option<Box<Store<R>>>,
+    pub host: SetupHost,
+    pub has_pages: bool,
+}
+
+pub async fn serve<S, R>(boot: NetBoot<S, R>) -> !
 where
     S: Station,
     S::Device: Driver,
     R: FlashRegion,
 {
+    let NetBoot {
+        station,
+        saved,
+        host,
+        has_pages,
+    } = boot;
+    let net = crate::workers::NET;
+    let bus = &crate::input::INTENT_BUS;
+
     let Some(mut station) = station else {
         log::warn!("[WIFI] this build wired no radio, so the link stays off");
         park().await
@@ -71,9 +82,7 @@ where
     let seed = seed_from(octets);
     let setup_name = iot_core::provision::setup_ap_ssid(octets);
     MAC.lock(|cell| cell.set(octets));
-    let _ = bus.try_send(Intent::Action(ActionIntent::Network(NetworkIntent::Mac(
-        octets,
-    ))));
+    let _ = bus.try_send(Intent::Action(ActionIntent::Link(LinkIntent::Mac(octets))));
     publish(bus, station.status(), store::has_saved(&saved));
     let resources = Box::leak(Box::new(StackResources::<SOCKETS>::new()));
     let setup_resources = Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new()));
@@ -131,9 +140,9 @@ impl LinkWatch {
             return;
         }
         if bus
-            .try_send(Intent::Action(ActionIntent::Network(
-                NetworkIntent::LinkReport(status),
-            )))
+            .try_send(Intent::Action(ActionIntent::Link(LinkIntent::LinkReport(
+                status,
+            ))))
             .is_ok()
         {
             self.last.lock(|last| last.set(Some(status)));

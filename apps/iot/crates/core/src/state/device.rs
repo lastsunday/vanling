@@ -7,7 +7,7 @@ use crate::drivers::playback::Sound;
 use crate::page::DisplayPage;
 
 use super::{
-    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkCommand, NetworkState, Notice,
+    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkPage, NetworkState, Notice,
     NoticeKind, PlaybackState, SurfaceRole, TouchState,
 };
 
@@ -28,7 +28,10 @@ pub struct DeviceState {
     pub motion: MotionState,
     pub audio: AudioState,
     pub playback: PlaybackState,
+    /// What the radio reported. Written only by the link's own reports.
     pub network: NetworkState,
+    /// What the Network page is drafting. Reads the link; the link never reads or writes it.
+    pub network_page: NetworkPage,
     pub touch: TouchState,
 }
 
@@ -79,12 +82,10 @@ impl DeviceState {
 /// What a domain asked the rest of the device for, applied by the manager once that domain's
 /// own state has settled. A domain never reaches into another's state to get it done.
 ///
-/// `command` is the one ask that leaves the core: the manager applies the rest and hands the
-/// command back to the caller, which owns the task that carries it out. It is not `Copy`
-/// because a join carries a whole credential.
+/// The command that leaves the core is not here: the page's asks answer with it directly, so
+/// there is one path from an intent to the worker rather than two.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct Effects {
     pub sound: Option<Sound>,
     pub notice: Option<NoticeKind>,
-    pub command: Option<NetworkCommand>,
 }

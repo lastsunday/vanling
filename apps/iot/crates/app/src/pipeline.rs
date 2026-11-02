@@ -79,7 +79,11 @@ pub async fn run_loop<C: ClockSink>(
             last_lamp = lamp;
         }
         workers.net.page.publish(manager.state_ref().page);
-        if let Some(setup) = manager.take_splash_end() {
+        // Only taken when the queue can hold it, so the verdict is neither lost nor able to
+        // displace a command that is already waiting for room.
+        if unsent.is_none()
+            && let Some(setup) = manager.take_splash_end()
+        {
             log::info!(
                 "[INPUT] the splash is over; setup mode {}",
                 if setup {
@@ -88,7 +92,13 @@ pub async fn run_loop<C: ClockSink>(
                     "was not asked for"
                 }
             );
-            workers.net.page.end_splash(setup);
+            if let Err(embassy_sync::channel::TrySendError::Full(command)) = workers
+                .net
+                .commands
+                .try_send(NetworkCommand::SplashOver { setup })
+            {
+                unsent = Some(command);
+            }
         }
         bench.step(manager, bus);
         if let Some(sample) = workers.input.from.take() {

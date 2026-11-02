@@ -34,7 +34,7 @@ use iot_core::drivers::network::{
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
-use iot_core::intent::{ActionIntent, Intent, NetworkIntent, PALETTE};
+use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent, PALETTE};
 use iot_core::keyboard::Key;
 use iot_core::paint::Rgb;
 use iot_core::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
@@ -521,7 +521,8 @@ async fn main(_spawner: Spawner) {
             Wiring {
                 clock: HostClock,
                 feed: Feed::Inline,
-                io: IoPlacement::Inline(_spawner),
+                io: IoPlacement::Inline,
+                spawner: _spawner,
                 network: true,
                 surfaces,
             },
@@ -825,7 +826,7 @@ async fn scenario() {
         let _ = iot_app::input::INTENT_BUS.try_send(Intent::Action(intent));
     };
 
-    send(ActionIntent::Network(NetworkIntent::Choose(
+    send(ActionIntent::NetworkPage(NetworkPageIntent::Choose(
         list.get(0).expect("a row to pick"),
     )));
     Timer::after(Duration::from_millis(100)).await;
@@ -838,7 +839,10 @@ async fn scenario() {
         Key::Shift,
         Key::Char(b'8'),
     ] {
-        send(ActionIntent::Network(NetworkIntent::Key { key, at_ms }));
+        send(ActionIntent::NetworkPage(NetworkPageIntent::Key {
+            key,
+            at_ms,
+        }));
         at_ms += 100;
     }
     attempts = 0;
@@ -852,7 +856,7 @@ async fn scenario() {
         "the keyboard's draft never reached the panel's snapshot"
     );
 
-    send(ActionIntent::Network(NetworkIntent::Key {
+    send(ActionIntent::NetworkPage(NetworkPageIntent::Key {
         key: Key::Connect,
         at_ms,
     }));
@@ -882,7 +886,7 @@ async fn scenario() {
         "the credential did not carry what was typed"
     );
 
-    send(ActionIntent::Network(NetworkIntent::Key {
+    send(ActionIntent::NetworkPage(NetworkPageIntent::Key {
         key: Key::Cancel,
         at_ms,
     }));
@@ -907,7 +911,7 @@ async fn scenario() {
         "a marked list published through the link never reached the panel's snapshot"
     );
 
-    send(ActionIntent::Network(NetworkIntent::ScanNow));
+    send(ActionIntent::NetworkPage(NetworkPageIntent::ScanNow));
     attempts = 0;
     let mut scanned = false;
     while !scanned && attempts < 100 {
@@ -924,11 +928,11 @@ async fn scenario() {
         "the strip's request to look around never reached the network worker"
     );
 
-    send(ActionIntent::Network(NetworkIntent::AskForget(
+    send(ActionIntent::NetworkPage(NetworkPageIntent::AskForget(
         list.get(0).expect("a row to ask about"),
     )));
     Timer::after(Duration::from_millis(100)).await;
-    send(ActionIntent::Network(NetworkIntent::Answer(
+    send(ActionIntent::NetworkPage(NetworkPageIntent::Answer(
         Confirm::Forget(list.get(0).expect("the row the question named")),
     )));
     attempts = 0;

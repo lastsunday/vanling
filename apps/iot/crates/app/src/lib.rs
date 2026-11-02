@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use embassy_executor::SendSpawner;
+use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
 use iot_core::config::Configurator;
 use iot_core::demand::ClockSink;
@@ -40,13 +40,13 @@ pub enum Feed {
     Inline,
 }
 
-/// Where the I/O half runs. `Inline` spawns it on the caller's executor, which is what a
-/// single-core chip has; `Elsewhere` parks it on `queue` for whatever executor the caller
+/// Where the I/O half runs. `Inline` spawns it on the coordinator's executor, which is what
+/// a single-core chip has; `Elsewhere` parks it on `queue` for whatever executor the caller
 /// started on another core. The task is the same either way — a placement changes timing,
 /// never meaning.
 #[derive(Clone, Copy)]
 pub enum IoPlacement {
-    Inline(embassy_executor::Spawner),
+    Inline,
     Elsewhere(&'static IoQueue),
 }
 
@@ -71,14 +71,17 @@ pub struct Io {
 pub struct Wiring<C> {
     pub clock: C,
     pub feed: Feed,
-    /// Whether a radio came up. `run` never sees the station — `serve` takes it — so the
-    /// caller states the bit that gates the Network page.
+    /// Whether a radio came up. `run` never sees the station — the network worker takes it —
+    /// so the caller states the bit that gates the Network page.
     pub network: bool,
     /// The wired output surfaces, each carrying what the board says it is for.
     pub surfaces: Vec<WiredSurface>,
     /// Where the driver half runs; the caller is the only one that knows how many cores it
     /// has.
     pub io: IoPlacement,
+    /// The executor the driver half starts on. Every other worker is spawned by whoever owns
+    /// its drivers, before this call.
+    pub spawner: Spawner,
 }
 
 /// The driver half: poll the sources, keep the codec fed, answer playback commands.
@@ -118,7 +121,8 @@ pub async fn run_io_from(queue: &'static IoQueue) {
     io_loop(io).await
 }
 
-/// The coordinator half: one renderer per wired surface, then the frame loop.
+/// The coordinator half: one renderer per wired surface, the driver half, then the frame
+/// loop. Every other worker was spawned by whoever owns its drivers, before this call.
 pub async fn run<B, C>(mut board: B, wiring: Wiring<C>) -> !
 where
     B: HasInput + HasMotion + HasAudio + HasPlayback + HasCamera,
@@ -130,6 +134,7 @@ where
         network,
         surfaces,
         io,
+        spawner,
     } = wiring;
 
     // Take everything off the board once; nothing below asks it anything again.
@@ -195,7 +200,7 @@ where
         feed,
     };
     match io {
-        IoPlacement::Inline(spawner) => {
+        IoPlacement::Inline => {
             spawner.spawn(run_io(drivers).expect("the driver task fits its slot"));
         }
         IoPlacement::Elsewhere(queue) => queue.send(drivers).await,

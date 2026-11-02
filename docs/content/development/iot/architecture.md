@@ -59,7 +59,7 @@ weight = 10
 
 | 路径 | 职责 |
 | --- | --- |
-| `lib.rs` | 组合根：取能力、建 `DeviceManager`、起四个 future |
+| `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, net }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
@@ -167,9 +167,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 新增场景 = 新增一个 `ActionIntent` 变体；运行期换节奏 = 再一个变体。`apply_action` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
-需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Network`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
+需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。业务状态与视图状态分开放：每个领域带一个 `view` 子记录（`NetworkState.view`、`AudioView`、`PlaybackView`、`TouchView`），只装页面正在做的事——选中的行、草稿、按键、手指与最近一次手势——通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
+`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
+
+业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkPage` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），只有手指的 `NetworkPageIntent` 写它。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
+
+命令的出处也随这条边界走：页面域的 `apply` 直接返回 `Option<NetworkCommand>`，`Effects` 只装设备内的回声与提示，不留发件箱——从意图到工作者只有一条路径。
 
 ### 传输：协调者与工作者
 
@@ -180,18 +184,20 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 | 渲染层 / 摄像头 | surface、camera                   | 协作                              | `Render` / `Diagnostics` |
 | `input_task`   | 输入器件与音频采集                | 协作（S3：第二个核）              | `Input { to, from }` |
 | `control_loop` | 编解码器、DMA                     | 协作（S3：第二个核）              | `Speaker { to }`（完成回报走 intent 总线） |
-| `net::serve`   | 协议栈、链路、AP 服务             | 协作                              | `Net { commands, page, scan }` |
+| `net::serve`   | 协议栈、链路、AP 服务             | 协作（core 0 上的任务）           | `Net { commands, page, scan }` |
 | `feed_task`    | 麦克风时钟                        | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加** |
 | `panel_service` | 面板总线（帧传输）                | **第二个 APP core**                | 无句柄：`Screen` 只持通道（`Panel::write`） |
 
 `panel_service` 与驱动半边（`input_task`、`control_loop`）跑在第二个核上：帧传输是阻塞 DMA，采集折叠每 20 ms 忙等 7 ms，两者都会整段占住所在执行器。协调者把画完的帧投成票据等回执；驱动半边整体交给 `IoPlacement::Elsewhere` 的槽位，由核上的 `run_io_from` 取走。只有核上确实起了第二个执行器时才走这条路——没起（单核 C6、S3 无面板）时是 `IoPlacement::Inline`，同一份任务照旧跑在协调者的执行器上，所以 placement 由 `start_executors` 决定，那是有没有第二个核这件事唯一的知情处。`esp_rtos::start_second_core` 固定用 `FROM_CPU_INTR1`，因此 `feed_task` 用 `FROM_CPU_INTR2`。
+
+**工作者由拥有其驱动的组合点启动。** 驱动半边由 `run` 用 `Wiring.spawner` 起（`IoPlacement::Inline`）或交给第二核（`Elsewhere`）。网络工作者的驱动类型只有入口认识，所以它在 `main` 里就地 `spawn`，和驱动半边并列——`run` 既不认识射频，也不再持有一张 worker 清单；加一个工作者就等于在组合点多一行 `spawn`，而不是多一种交给 `run` 的形状。`main` 因此不 `join` 任何工作者，`run_loop` 是它唯一 `await` 的协调者。`feed_task` 与 `panel_service` 仍由 `start_executors` 起——只有那里知道中断执行器与第二个核。`net::serve` 用本地 `Spawner` 起成任务，future 不必 `Send`：它留在 core 0 的执行器上，跨核的只有 `Io` 束。
 
 句柄集中在组合根的 `Workers<'a>`：一个工作者一个字段，加第二个协议只加字段，不在调用点新增一对 `TO_X`/`FROM_X`。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。
 
 三种形状按语义选，不按方便选：
 
 - **命令**走 `Channel`（`Net.commands`、`Speaker.to`）。协调者每 pass 只交工作者有空位的那些；队列满时把这一条留到下一 pass，命令不会被丢掉。
-- **级别**走 `PageWatch`（`Net.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。
+- **级别**走 `PageWatch`（`Net.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。启动页的结论不是级别而是**一次性事件**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求共用一条队列，工作者不必再看页面演进到哪一步。
 - **最新值**走 `Latest`/窗口（`Net.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
 
 `NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_action()` 直接返回，`run_loop` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一 pass，并让本 pass 不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。

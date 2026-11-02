@@ -331,7 +331,7 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 
 `wifi` 是**元件 feature（模块轴）**，在 `iot-bsp-esp` 里一个文件一个模块，门控只在 `components/mod.rs` 一处；**两块板的板 feature 都聚合它**（两块板都有射频焊在板上）。`iot-core` 零 cfg：能力经组合点注入（`HasWifi`）。`components/wifi.rs` 本身跨芯片可用 —— 它只拿 `peripherals::WIFI` 与驱动的类型，两颗芯片各编译过一遍。
 
-`Station` 的方法用 RPITIT 返回 `impl Future`，**不要 `+ Send`**：产品把这些 future 与 input/render/control/feed 一起 `join` 在同一个任务栈上，没有 spawn。（`Speaker` 需要 `Send` 是因为它的 feed 在独立的高优先级 executor 上。）
+`Station` 的方法用 RPITIT 返回 `impl Future`，**不要 `+ Send`**：网络工作者是 core 0 执行器上的一个任务，由本地 `Spawner` 启动（它接受非 `Send` future），不需要跨核或跨执行器。（`Speaker` 需要 `Send` 是因为它的 feed 在独立的高优先级 executor 上。）
 
 `take_wifi()` 不能在 `Board::new` 里做：**驱动的启动需要调度器已经跑起来**（`esp_rtos::start()` 在 app 的入口里），所以板子交出的是**外设**而不是 station。
 
@@ -1124,7 +1124,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 | --- | --- | --- |
 | 启动页上长按 | `Toolbar(Right)`：有链路就离开，没有就 `Invalid` | `BusinessIntent::RequestSetup`：**只记请求**（`setup_wanted`），不改页、不开 AP |
 | 启动页关闭 | 回 `boot_page` | 请求过且 `backed.network` → **落 `Network`**；否则回 `boot_page` |
-| 启动页期间的链路 | 读凭据、关联，长按再把它拆掉 | **一条链路都不建**：`link()` 先等 `PAGE.wait_for_splash_end()` 才读凭据 |
+| 启动页期间的链路 | 读凭据、关联，长按再把它拆掉 | **一条链路都不建**：`link()` 先等 `NetworkCommand::SplashOver` 才读凭据 |
 | 请求过之后 | 先关联、再离开 | 跳过关联：`Front::AccessPoint` 直接进设置模式 |
 | 判断依据 | `is_leavable()` 看链路 | 与链路无关：窗口内按下就算数，两块板同一个答案 |
 | 无凭据开机 | 自动进设置模式、AP 起来 | **离线可用**：不自动进设置模式、不起 AP |
@@ -1136,7 +1136,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 - **判据是按下时刻在窗口内，不是松手在窗口内**：时钟到期时若手指还按着（`InputSource::held()`，含去抖中尚未上报的释放），启动页**等松手再关**（`app/src/input.rs`）。1.4 s 按下、2.1 s 抬起那一下仍然算数，不会在按住的时候被时钟从手指下面抽走。
 - **一次性是结构上的**：`Splash` 不在 `CYCLE` 里，`next_page(Splash)` 直接回 `Ambient`，`DeviceState::landed_on` 同样把它折回 `Ambient`，唯一的出口是输入任务到期报的 `BusinessIntent::SplashOver`（总线满时下一拍重试）。开机之后没有任何手势能回到这一页。
 - **落点是 `boot_page`，除非请求过**：`Setup::boot_page` 只记「启动页关掉之后落在哪」（构建输入 `IOT_BOOT_PAGE`、默认 `Ambient`；未 back 的页在 `landed_on` 里退回 `Ambient`）。`SplashOver` 读 `setup_wanted`：请求过且这块板开着网络，就落 `Network`；否则落 `boot_page`。启动页本身不改 `state.page`，所以 `IOT_BOOT_PAGE=network` 的 bench 构建照旧落在网络页。
-- **启动页期间一条链路都不建**（`[实测]`）：`link()` 的第一件事是 `PAGE.wait_for_splash_end()`，它没结束时既不读凭据也不碰射频 —— 启动页窗口里不会出现 `joining`/`leaving`。请求过就直接 `Front::AccessPoint` 进设置模式，一次关联也不做；「先连上再拆掉」的写法会在这个窗口里留下两条日志，也会让 AP 档晚 2–3 s 才起来。
+- **启动页期间一条链路都不建**（`[实测]`）：`link()` 的第一件事是等协调者发来的 `NetworkCommand::SplashOver`，它没结束时既不读凭据也不碰射频 —— 启动页窗口里不会出现 `joining`/`leaving`。请求过就直接 `Front::AccessPoint` 进设置模式，一次关联也不做；「先连上再拆掉」的写法会在这个窗口里留下两条日志，也会让 AP 档晚 2–3 s 才起来。
 - **无凭据 = 离线可用**：`first_saved()` 为空时 `browsing()` 接住这台设备 —— 只在 `PAGE.shows(DisplayPage::Network)`（面板停在 Network 页）时扫描，页离开就停，`JOIN` 来了才 `hold`（此时才写盘）。不自动进设置模式，也不起 AP；面板页的两格仍在（`SCAN | AP`），点 `AP` 才把 AP 拉起来。C6 没有面板，配网仍要复位后在启动页按住 BOOT，这是它唯一的入口。
 - **面板页常驻**：扫描、列表、键盘、`JOIN` 从设置模式的循环里拆了出来（`pick`），`link.setup` 现在表示**页面在设置面上**：面板档不起 AP，接入点档才起。S3 无凭据时三击到 Network 就是活的列表（`browsing()`），左 `SCAN` 右 `AP`，点 `AP` 才拉 AP；点一行 → `JOIN` → `hold`。
 - **入口不止一个**：离线页的 `AP` 格、有链路时面板的 `LEAVE`（`Hold::Left`）、已存凭据被拒（`Hold::Refused`）都进设置模式 —— 都是手指自己的动作。

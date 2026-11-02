@@ -19,7 +19,7 @@ use super::setup::{Choice, Face, SetupMode, asked_for, pick, unconfigured};
 use super::store::{drop_saved, first_saved, has_saved, keep, keeps_any, remark};
 use super::{SETUP_SOCKETS, park, publish, publish_scan};
 use crate::input::IntentBus;
-use crate::workers::{Net, discard_setup};
+use crate::workers::{Net, NetCommands, discard_setup};
 
 const WINDOW_MS: u64 = 2_000;
 
@@ -33,6 +33,18 @@ pub(super) struct Panel {
     pub(super) net: Net,
     pub(super) bus: &'static IntentBus,
     pub(super) has_pages: bool,
+}
+
+/// The splash's verdict, taken from the same queue as everything else the panel asks for:
+/// the coordinator sends it once the splash is over. Nothing else is meaningful before then,
+/// so anything else that reached the queue first is dropped.
+async fn splash_over(commands: &NetCommands) -> bool {
+    loop {
+        match commands.receive().await {
+            NetworkCommand::SplashOver { setup } => return setup,
+            other => log::debug!("[WIFI] dropping {other:?} before the splash ends"),
+        }
+    }
 }
 
 pub(super) async fn link<S, R>(
@@ -53,7 +65,7 @@ where
     let start = host;
     let mut saved = saved;
 
-    let landing = panel.net.page.wait_for_splash_end().await;
+    let landing = splash_over(panel.net.commands).await;
     let mut setup = SetupMode {
         name: setup_name,
         resources: setup_resources,

@@ -149,7 +149,7 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
         link: state.network.link,
         mac: state.network.mac,
         aps: state.network.aps,
-        draft: state.network.view,
+        draft: state.network_page,
         motion: state.motion.sample,
         motion_counts: state.motion.counts,
         motion_caps: state.backed.motion_caps(),

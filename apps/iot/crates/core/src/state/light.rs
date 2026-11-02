@@ -447,7 +447,7 @@ mod lamp {
     }
 
     fn report(manager: &mut DeviceManager, status: LinkStatus) {
-        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(status)));
+        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(status)));
     }
 
     fn setup(manager: &mut DeviceManager) {

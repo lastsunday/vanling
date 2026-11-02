@@ -25,7 +25,10 @@ pub enum ActionIntent {
     /// Nothing the panel asked for survived translation.
     Invalid,
     Page(PageIntent),
-    Network(NetworkIntent),
+    /// What the radio reports. Written by the worker, never by a finger.
+    Link(LinkIntent),
+    /// What a finger asks of the Network page.
+    NetworkPage(NetworkPageIntent),
     Audio(AudioIntent),
     Playback(PlaybackAction),
     Light(LightIntent),
@@ -39,12 +42,11 @@ pub enum PageIntent {
     RequestSetup,
 }
 
-/// What the panel asks of the link, and what the link reports back.
+/// What the panel's fingers ask of the Network page: the draft, the list, the box. The link
+/// is not asked anything here — the page turns these into [`NetworkCommand`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NetworkIntent {
-    LinkReport(LinkStatus),
+pub enum NetworkPageIntent {
     NoCopy(Ssid),
-    Mac([u8; 6]),
     Key { key: Key, at_ms: u32 },
     Choose(AccessPoint),
     AskForget(AccessPoint),
@@ -56,6 +58,13 @@ pub enum NetworkIntent {
     ScanNow,
     SetOpenAccessPoint(bool),
     Dismiss,
+}
+
+/// What the radio reports, and nothing the page decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkIntent {
+    LinkReport(LinkStatus),
+    Mac([u8; 6]),
 }
 
 /// The Audio page's one transition: a recording starts, or the one in progress stops and
@@ -99,7 +108,7 @@ pub fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
         && current.network.link.mode.is_setup()
         && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress))
     {
-        return ActionIntent::Network(NetworkIntent::SwitchHost);
+        return ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost);
     }
     page::translate(current.page, op, current)
 }
@@ -159,7 +168,7 @@ mod tests {
         };
         assert_eq!(
             translate(&op(long_press()), &setup),
-            ActionIntent::Network(NetworkIntent::SwitchHost)
+            ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
         );
     }
 }

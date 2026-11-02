@@ -99,7 +99,7 @@ impl PanelBench {
         let script = self.script.as_ref().expect("built just above");
         if let Some(touch) = script.get(self.next) {
             if self.next + 1 == script.len() {
-                self.typed = Some(state.network.view.entry.map_or(0, |entry| entry.len()));
+                self.typed = Some(state.network_page.entry.map_or(0, |entry| entry.len()));
             }
             self.publish(bus, *touch);
             self.next += 1;
@@ -142,8 +142,8 @@ impl PanelBench {
         if state.page != DisplayPage::Network {
             return;
         }
-        let showing = |part: Band| part.showing(state.network.view, state.network.link);
-        if state.network.view.keyboard && state.network.view.entry.is_none() && !self.draftless_read
+        let showing = |part: Band| part.showing(state.network_page, state.network.link);
+        if state.network_page.keyboard && state.network_page.entry.is_none() && !self.draftless_read
         {
             self.draftless_read = true;
             log::error!(
@@ -152,7 +152,7 @@ impl PanelBench {
                  header and no control left on it"
             );
         }
-        if state.network.view.keyboard && !self.typed_parts_read {
+        if state.network_page.keyboard && !self.typed_parts_read {
             self.typed_parts_read = true;
             if showing(Band::Content) && !showing(Band::Controls) && !showing(Band::Overlay) {
                 log::info!("[BENCH] a finger is typing, and the strip is not drawn with the keys");
@@ -186,7 +186,7 @@ impl PanelBench {
     }
 
     fn script(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
-        if state.page != DisplayPage::Network || state.network.view.keyboard {
+        if state.page != DisplayPage::Network || state.network_page.keyboard {
             return None;
         }
         let list = state.network.aps?;
@@ -279,7 +279,7 @@ impl PanelBench {
                     log::info!("[BENCH] tapping the strip, which asks to leave the link it is on");
                     return self.send(bus, strip_point());
                 }
-                if state.network.view.confirm == Some(Confirm::Leave) {
+                if state.network_page.confirm == Some(Confirm::Leave) {
                     log::info!("[BENCH] the strip asked about leaving, and nothing is down yet");
                     return self.advance(Act::KeepTheLink);
                 }
@@ -291,7 +291,7 @@ impl PanelBench {
                 if !self.sent {
                     return self.send(bus, answer_point(DialogChoice::Keep));
                 }
-                if state.network.view.confirm.is_none() {
+                if state.network_page.confirm.is_none() {
                     if state.network.link.is_leavable() {
                         log::info!("[BENCH] KEEP left the question undone and the link up");
                     } else {
@@ -303,14 +303,14 @@ impl PanelBench {
                 }
                 self.stop_if_stale(format_args!(
                     "the box's own KEEP did not take the question away, which leaves it saying {:?}",
-                    state.network.view.confirm,
+                    state.network_page.confirm,
                 ));
             }
             Act::LeaveAsk => {
                 if !self.sent {
                     return self.send(bus, strip_point());
                 }
-                if state.network.view.confirm == Some(Confirm::Leave) {
+                if state.network_page.confirm == Some(Confirm::Leave) {
                     log::info!("[BENCH] the strip asked again; the action's own answer is next");
                     return self.advance(Act::LeaveGo);
                 }
@@ -349,7 +349,7 @@ impl PanelBench {
                     return self.send(bus, row_point(band));
                 }
                 if state.network.link.is_leavable() {
-                    if state.network.view.keyboard || state.network.view.entry.is_some() {
+                    if state.network_page.keyboard || state.network_page.entry.is_some() {
                         log::error!(
                             "[BENCH] a row this device has the passphrase for opened the keyboard: \
                              the copy on the part is what such a row is joined with, and asking for \
@@ -388,8 +388,8 @@ impl PanelBench {
                     log::info!("[BENCH] tapping band {band}, the row the link was just taken off");
                     return self.send(bus, row_point(band));
                 }
-                match state.network.view.entry {
-                    None if state.network.view.keyboard => {
+                match state.network_page.entry {
+                    None if state.network_page.keyboard => {
                         log::error!(
                             "[BENCH] the row the link was left from opened the keyboard over no \
                              draft: the page drew nothing below its header"
@@ -414,15 +414,15 @@ impl PanelBench {
                 if !self.sent {
                     return self.send(bus, cancel_point());
                 }
-                if !state.network.view.keyboard && state.network.view.selected.is_none() {
+                if !state.network_page.keyboard && state.network_page.selected.is_none() {
                     log::info!("[BENCH] the entry's own cancel puts the page back on the list");
                     return self.advance(Act::Rescan);
                 }
                 self.stop_if_stale(format_args!(
                     "the keyboard's cancel left the entry where it was: keyboard up {}, row \
                      picked {}",
-                    state.network.view.keyboard,
-                    state.network.view.selected.is_some(),
+                    state.network_page.keyboard,
+                    state.network_page.selected.is_some(),
                 ));
             }
             Act::AskToForget => {
@@ -433,7 +433,7 @@ impl PanelBench {
                     log::info!("[BENCH] holding band {band}, which asks to forget that network");
                     return self.send(bus, hold_point(band));
                 }
-                if let Some(Confirm::Forget(ap)) = state.network.view.confirm {
+                if let Some(Confirm::Forget(ap)) = state.network_page.confirm {
                     log::info!(
                         "[BENCH] the hold asked to forget {:?}",
                         ap.ssid.as_display_text().unwrap_or("<unprintable>"),
@@ -442,14 +442,14 @@ impl PanelBench {
                 }
                 self.stop_if_stale(format_args!(
                     "the hold asked nothing, which leaves the question {:?}",
-                    state.network.view.confirm,
+                    state.network_page.confirm,
                 ));
             }
             Act::Forget => {
                 if !self.sent {
                     return self.send(bus, answer_point(DialogChoice::Act));
                 }
-                if saved_band(state).is_none() && state.network.view.confirm.is_none() {
+                if saved_band(state).is_none() && state.network_page.confirm.is_none() {
                     log::info!("[BENCH] the saved mark is gone from the row the finger held");
                     return self.advance(Act::ReopenTheRowJustLeft);
                 }
@@ -458,7 +458,7 @@ impl PanelBench {
                      rows) with the question {:?}",
                     marks(state),
                     state.network.aps.map_or(0, |list| list.len()),
-                    state.network.view.confirm,
+                    state.network_page.confirm,
                 ));
             }
             Act::Rescan => {
@@ -466,7 +466,7 @@ impl PanelBench {
                     log::info!("[BENCH] tapping the strip with no link, which asks to look around");
                     return self.send(bus, strip_point());
                 }
-                if !state.network.view.rescan_wait {
+                if !state.network_page.rescan_wait {
                     log::info!("[BENCH] the strip's own round came back");
                     return self.advance(Act::Done);
                 }
@@ -578,14 +578,14 @@ fn hold_point(band: usize) -> Touch {
 
 fn a_pick_showing(state: &DeviceState) -> (bool, bool) {
     (
-        state.network.view.keyboard,
-        state.network.view.selected.is_some(),
+        state.network_page.keyboard,
+        state.network_page.selected.is_some(),
     )
 }
 
 fn band_where(state: &DeviceState, matches: impl Fn(&ApList, usize) -> bool) -> Option<usize> {
     let list = state.network.aps?;
-    let top = usize::from(state.network.view.list_top);
+    let top = usize::from(state.network_page.list_top);
     (top..top + LIST_ROWS)
         .find(|index| matches(&list, *index))
         .map(|index| index - top)
@@ -605,7 +605,7 @@ fn marks(state: &DeviceState) -> u8 {
 }
 
 fn picked_band(state: &DeviceState) -> Option<usize> {
-    let picked = state.network.view.selected?;
+    let picked = state.network_page.selected?;
     band_where(state, |list, index| {
         list.get(index)
             .is_some_and(|ap| ap.is_same_network(&picked))
@@ -646,7 +646,7 @@ mod tests {
     use iot_core::drivers::network::{
         AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
     };
-    use iot_core::intent::{ActionIntent, NetworkIntent, PageIntent, translate};
+    use iot_core::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent, translate};
     use iot_core::keyboard::Layer;
     use iot_core::state::{Backed, Boot, NetworkCommand};
 
@@ -780,13 +780,13 @@ mod tests {
         };
         assert_eq!(picked_band(&state), None, "nothing is picked yet");
 
-        state.network.view.selected = Some(rows[2]);
+        state.network_page.selected = Some(rows[2]);
         assert_eq!(picked_band(&state), Some(2), "the row is the band it is on");
 
-        state.network.view.list_top = 2;
+        state.network_page.list_top = 2;
         assert_eq!(picked_band(&state), Some(0), "with the window slid onto it");
 
-        state.network.view.selected = Some(rows[0]);
+        state.network_page.selected = Some(rows[0]);
         assert_eq!(
             picked_band(&state),
             None,
@@ -812,23 +812,21 @@ mod tests {
             .aps
             .and_then(|list| list.get(0))
             .expect("the row the bench's scan published");
-        manager.apply_action(ActionIntent::Network(NetworkIntent::Choose(picked)));
+        manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Choose(picked)));
         assert!(
-            manager.state_ref().network.view.keyboard,
+            manager.state_ref().network_page.keyboard,
             "the pick is there to begin with"
         );
         manager.apply_scan(marked(&["target"], &["target"]));
-        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
-            LinkStatus {
-                phase: LinkPhase::Connected,
-                ap: Some(ap("target")),
-                address: None,
-                ..LinkStatus::default()
-            },
-        )));
+        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+            phase: LinkPhase::Connected,
+            ap: Some(ap("target")),
+            address: None,
+            ..LinkStatus::default()
+        })));
         assert!(
-            manager.state_ref().network.view.selected.is_some()
-                && !manager.state_ref().network.view.keyboard,
+            manager.state_ref().network_page.selected.is_some()
+                && !manager.state_ref().network_page.keyboard,
             "the link cleared the draft and kept the row it was for"
         );
 
@@ -859,7 +857,7 @@ mod tests {
                 match command {
                     NetworkCommand::Leave => {
                         leaves += 1;
-                        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
+                        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
                             LinkStatus::default(),
                         )));
                     }
@@ -874,7 +872,7 @@ mod tests {
                             Ssid::from_octets(b"target"),
                             "the row the walk tapped"
                         );
-                        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
+                        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
                             LinkStatus {
                                 phase: LinkPhase::Connecting,
                                 ap: Some(ap("target")),
@@ -885,19 +883,20 @@ mod tests {
                     }
                     NetworkCommand::ScanNow => {
                         rounds += 1;
-                        manager.apply_action(ActionIntent::Network(NetworkIntent::LinkReport(
+                        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
                             LinkStatus::default(),
                         )));
                     }
                     NetworkCommand::Join(_)
                     | NetworkCommand::LeaveSetup { .. }
                     | NetworkCommand::SwitchHost { .. }
-                    | NetworkCommand::SetupOpen { .. } => {}
+                    | NetworkCommand::SetupOpen { .. }
+                    | NetworkCommand::SplashOver { .. } => {}
                 }
             }
-            if bench.act == Act::ReopenTheRowJustLeft && manager.state_ref().network.view.keyboard {
+            if bench.act == Act::ReopenTheRowJustLeft && manager.state_ref().network_page.keyboard {
                 assert!(
-                    manager.state_ref().network.view.entry.is_some(),
+                    manager.state_ref().network_page.entry.is_some(),
                     "the keyboard came up over no draft, which is a page with nothing on it"
                 );
                 reopened += 1;
@@ -907,7 +906,7 @@ mod tests {
             }
             assert!(
                 !manager.state_ref().network.link.is_leavable()
-                    || !manager.state_ref().network.view.keyboard,
+                    || !manager.state_ref().network_page.keyboard,
                 "a row took a pick while a link was up"
             );
         }
@@ -954,11 +953,11 @@ mod tests {
             "and the saved mark is gone"
         );
         assert_eq!(
-            state.network.view.confirm, None,
+            state.network_page.confirm, None,
             "with no question left open"
         );
         assert!(
-            !state.network.view.rescan_wait,
+            !state.network_page.rescan_wait,
             "and the strip is not waiting"
         );
     }
@@ -1021,7 +1020,7 @@ mod tests {
         assert!(!bench.absent_reported, "nothing has been looked at yet");
 
         state.network.aps = Some(ApList::from_ranked(&[ap("target")]));
-        state.network.view.keyboard = true;
+        state.network_page.keyboard = true;
         assert!(bench.script(&state, "target", "ab").is_none());
         assert!(!bench.missing_reported);
     }

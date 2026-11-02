@@ -1,7 +1,8 @@
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::drivers::motion::MotionCapabilities;
 use crate::intent::{
-    ActionIntent, InputIntent, LightIntent, NetworkIntent, PageIntent, recognize, translate,
+    ActionIntent, InputIntent, LightIntent, LinkIntent, NetworkPageIntent, PageIntent, recognize,
+    translate,
 };
 use crate::state::MAX_LIGHTS;
 use crate::state::{Backed, Breath, DeviceState, DisplayPage, LightState, SurfaceRole};
@@ -51,6 +52,15 @@ pub(crate) fn with_network(
     state
 }
 
+/// The same for the Network page's own record, which the link never writes.
+pub(crate) fn with_network_page(
+    mut state: DeviceState,
+    change: impl FnOnce(&mut crate::state::NetworkPage),
+) -> DeviceState {
+    change(&mut state.network_page);
+    state
+}
+
 pub(crate) fn op(event: InputEvent) -> InputIntent {
     recognize(event, 0)
 }
@@ -72,20 +82,20 @@ pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<Ligh
         | ActionIntent::Playback(_)
         | ActionIntent::Page(PageIntent::SplashOver)
         | ActionIntent::Page(PageIntent::RequestSetup)
-        | ActionIntent::Network(NetworkIntent::LinkReport(_))
-        | ActionIntent::Network(NetworkIntent::NoCopy(_))
-        | ActionIntent::Network(NetworkIntent::Mac(_))
-        | ActionIntent::Network(NetworkIntent::Key { .. })
-        | ActionIntent::Network(NetworkIntent::Choose(_))
-        | ActionIntent::Network(NetworkIntent::AskForget(_))
-        | ActionIntent::Network(NetworkIntent::Scroll { .. })
-        | ActionIntent::Network(NetworkIntent::Leave)
-        | ActionIntent::Network(NetworkIntent::Answer(_))
-        | ActionIntent::Network(NetworkIntent::CloseSetup)
-        | ActionIntent::Network(NetworkIntent::SwitchHost)
-        | ActionIntent::Network(NetworkIntent::ScanNow)
-        | ActionIntent::Network(NetworkIntent::SetOpenAccessPoint(_))
-        | ActionIntent::Network(NetworkIntent::Dismiss) => None,
+        | ActionIntent::Link(LinkIntent::LinkReport(_))
+        | ActionIntent::NetworkPage(NetworkPageIntent::NoCopy(_))
+        | ActionIntent::Link(LinkIntent::Mac(_))
+        | ActionIntent::NetworkPage(NetworkPageIntent::Key { .. })
+        | ActionIntent::NetworkPage(NetworkPageIntent::Choose(_))
+        | ActionIntent::NetworkPage(NetworkPageIntent::AskForget(_))
+        | ActionIntent::NetworkPage(NetworkPageIntent::Scroll { .. })
+        | ActionIntent::NetworkPage(NetworkPageIntent::Leave)
+        | ActionIntent::NetworkPage(NetworkPageIntent::Answer(_))
+        | ActionIntent::NetworkPage(NetworkPageIntent::CloseSetup)
+        | ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+        | ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
+        | ActionIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(_))
+        | ActionIntent::NetworkPage(NetworkPageIntent::Dismiss) => None,
     }
 }
 
