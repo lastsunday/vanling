@@ -85,29 +85,29 @@ pub(crate) static PLAYBACK: Playback = Playback {
 /// fill.
 const COMMAND_SLOTS: usize = 2;
 
-pub type NetCommands = Channel<CriticalSectionRawMutex, NetworkCommand, COMMAND_SLOTS>;
+pub type NetworkQueue = Channel<CriticalSectionRawMutex, NetworkCommand, COMMAND_SLOTS>;
 
 /// The coordinator's handle on the network worker.
 ///
 /// `Copy`: every field is a handle to a static, so either side can take it by value.
 #[derive(Clone, Copy)]
-pub struct Net {
+pub struct Network {
     /// Coordinator → worker: what the panel asked the link to do.
-    pub commands: &'static NetCommands,
+    pub commands: &'static NetworkQueue,
     /// Coordinator → worker: the page the panel is showing, as a level.
     pub page: &'static PageWatch,
     /// Worker → coordinator: the newest scan list.
     pub scan: &'static Latest<ApList>,
 }
 
-static NET_COMMANDS: NetCommands = NetCommands::new();
+static NETWORK_QUEUE: NetworkQueue = NetworkQueue::new();
 
 static PAGE: PageWatch = PageWatch::new();
 
 static SCAN: Latest<ApList> = Latest::new();
 
-pub static NET: Net = Net {
-    commands: &NET_COMMANDS,
+pub static NETWORK: Network = Network {
+    commands: &NETWORK_QUEUE,
     page: &PAGE,
     scan: &SCAN,
 };
@@ -118,7 +118,7 @@ pub static NET: Net = Net {
 /// no `clear()` of its own. The array is as deep as the channel, so it holds everything that
 /// is not stale.
 #[cfg(any(feature = "wifi", test))]
-pub(crate) fn discard_setup(commands: &NetCommands) {
+pub(crate) fn discard_setup(commands: &NetworkQueue) {
     let mut kept: [Option<NetworkCommand>; COMMAND_SLOTS] = core::array::from_fn(|_| None);
     let mut held = 0;
     while let Ok(command) = commands.try_receive() {
@@ -138,20 +138,33 @@ pub(crate) fn discard_setup(commands: &NetCommands) {
 /// The newest value only: the panel draws one list, so a burst of scans is one list plus the
 /// news that it changed.
 pub struct Latest<T> {
-    value: Signal<CriticalSectionRawMutex, T>,
+    value: Mutex<CriticalSectionRawMutex, Cell<Option<T>>>,
+    fresh: Mutex<CriticalSectionRawMutex, Cell<bool>>,
     arrived: Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl<T: Copy + Send> Latest<T> {
     const fn new() -> Self {
         Self {
-            value: Signal::new(),
+            value: Mutex::new(Cell::new(None)),
+            fresh: Mutex::new(Cell::new(false)),
             arrived: Signal::new(),
         }
     }
 
+    /// Takes the newest value once per publish, leaving it in place: the panel draws it and the
+    /// phone's page reads the same list with [`Self::peek`], so a taken list is not a gone list.
     pub fn take(&self) -> Option<T> {
-        self.value.try_take()
+        if !self.fresh.lock(|slot| slot.replace(false)) {
+            return None;
+        }
+        self.value.lock(|slot| slot.get())
+    }
+
+    /// Reads the newest value without taking it: setup mode's page and the panel draw the same
+    /// list, and the phone's request is not a consumer.
+    pub fn peek(&self) -> Option<T> {
+        self.value.lock(|slot| slot.get())
     }
 
     pub fn ready(&self) -> impl Future<Output = ()> {
@@ -160,7 +173,8 @@ impl<T: Copy + Send> Latest<T> {
 
     /// By reference: the whole list would otherwise be copied into the scan future's frame.
     pub fn publish(&self, value: &T) {
-        self.value.signal(*value);
+        self.value.lock(|slot| slot.set(Some(*value)));
+        self.fresh.lock(|slot| slot.set(true));
         self.arrived.signal(());
     }
 }
@@ -243,7 +257,7 @@ impl PageWatch {
 pub struct Workers<'a> {
     pub input: Input<'a>,
     pub playback: Playback,
-    pub net: Net,
+    pub network: Network,
 }
 
 #[cfg(test)]
@@ -270,7 +284,7 @@ mod tests {
 
     #[test]
     fn a_cancel_left_over_from_the_last_session_does_not_survive_into_the_next() {
-        let commands = NetCommands::new();
+        let commands = NetworkQueue::new();
         assert!(
             commands
                 .try_send(NetworkCommand::LeaveSetup {
@@ -300,12 +314,19 @@ mod tests {
         latest.publish(&round_list(true));
         latest.publish(&round_list(false));
 
-        let list = latest.take().expect("a list is waiting");
+        let list = latest.take().expect("the newest list is handed over");
         assert!(
             !list.is_saved(0),
             "the newest list is the one the page is handed, and the mark is off it"
         );
-        assert!(latest.take().is_none(), "and it is handed over once");
+        assert!(
+            latest.take().is_none(),
+            "and it is handed over once per publish"
+        );
+        assert!(
+            latest.peek().is_some(),
+            "the copy stays for the phone's page, which is not a consumer"
+        );
     }
 
     #[test]

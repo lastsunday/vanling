@@ -20,7 +20,7 @@ sort_by = "weight"
 - 在线判据 `AddressWatch` 与 `ADDRESS_LOST_WINDOWS` 落在 `core::drivers::network`，链路循环只喂观察值。
 - 扫频参数属于会议室探针，留在 `bench/probe/echo_room`；产品音色表不再生成它，探针用 `audio::start_source` 播放自己构造的激励。
 - 构建期网络名的读取只有一处（`boot::build_wifi_credentials`），bench 例外由产品侧的 `boot::wifi_credentials` 决定；探针要的永远是构建时给的名字，所以直接读前者。
-- 链路状态投递与去重归 `bridge::deliver`（`LinkWatch`）；页面观察 `PageWatch` 按页参数化并注入 net；扫描列表单点双发布（`net::publish_scan`）；保存标记的重算由 `store::remark` 返回列表，存储层不再直接发布。
+- 链路状态投递与去重归 `network::publish_link`（`LinkWatch`）；页面观察 `PageWatch` 按页参数化并注入 `network`；扫描列表只由 `NETWORK.scan` 持有，`scan` 的每轮与 `store::remark_and_publish` 都往这一处发布，所以面板与手机看到的是同一份标记。
 - 产品堆大小归芯片层（`iot-chip-esp::PRODUCT_HEAP_BYTES`），setup 起始 front 归板层（`iot-bsp-esp::FRONT`），`main.rs` 只读取。
 - 链路业务状态与网络页状态拆成两个记录：`NetworkState` 只由 `LinkIntent` 写，`NetworkPage` 只由手指的 `NetworkPageIntent` 写，页面读 `&NetworkState` 而链路从不碰页面字段；`Effects` 不再留发件箱，页面域直接返回 `NetworkCommand`，从意图到工作者只有一条路径。
 - 网络工作者不再经 `WorkerStart` 交给 `run`：驱动类型只有入口认识，就在入口与驱动半边并列 `spawn`，`run` 不再持 worker 清单。启动页结论改走 `NetworkCommand::SplashOver { setup }`，`PageWatch` 只剩页面级别，不再携带启动页边沿。

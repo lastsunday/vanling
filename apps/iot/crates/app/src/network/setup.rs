@@ -8,66 +8,34 @@ use embassy_net::{Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    Credentials, JoinRequest, LinkStatus, NetworkMode, ScanHistory, SetupHost, Ssid, Station,
+    Credentials, JoinRequest, NetworkMode, ScanHistory, SetupHost, Ssid, Station,
 };
 use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent};
 use iot_core::state::{DisplayPage, NetworkCommand};
 
-use super::link::{Hold, Panel, Provenance, Refusal, hold};
+use super::link::{Origin, Outcome, hold};
 use super::scan::{Rest, scan};
-use super::store::{drop_saved, has_saved, remark};
-use super::{
-    MAC, SETUP_SOCKETS, hardware_octets, heap_free, park, publish, publish_scan, seed_from,
-};
-use crate::input::IntentBus;
+use super::store::{any, forget};
+use super::{NETWORK, SETUP_SOCKETS, heap_free, mac_of, park, provision, publish_link, seed_from};
+use crate::input::INTENT_BUS;
 use crate::workers::discard_setup;
 
+/// Everything setup mode needs to run: one value, because a session on the panel and one on the
+/// access point are the same session on two hosts.
 pub(super) struct SetupMode<'d> {
     pub(super) name: &'d Ssid,
+    pub(super) mac: [u8; 6],
     pub(super) resources: &'d mut StackResources<SETUP_SOCKETS>,
-    pub(super) host: &'d mut SetupHost,
-    pub(super) has_pages: bool,
-    pub(super) secure_on_entry: bool,
-    pub(super) panel: Panel,
-}
-
-#[derive(Clone, Copy)]
-pub(super) struct Face {
     pub(super) host: SetupHost,
-    cancellable: bool,
-    pub(super) setup: bool,
-    browsing: bool,
-}
-
-impl Face {
-    pub(super) fn status(self, station: LinkStatus) -> LinkStatus {
-        if self.setup {
-            station.on_setup_host(self.host, self.cancellable)
-        } else {
-            LinkStatus {
-                mode: if self.browsing {
-                    NetworkMode::Browsing
-                } else {
-                    NetworkMode::Link
-                },
-                ..station
-            }
-        }
-    }
-
-    pub(super) const fn browsing() -> Self {
-        Self {
-            host: SetupHost::Panel,
-            cancellable: false,
-            setup: false,
-            browsing: true,
-        }
-    }
+    /// Whether the first access point this mode raises starts under a passphrase; the splash
+    /// decides, so `serve` leaves it off and `link` sets it the moment the verdict lands.
+    pub(super) secure_on_entry: bool,
+    pub(super) has_pages: bool,
 }
 
 /// What one round of the panel's list came to.
 pub(super) enum Choice {
-    Named(Credentials, Provenance),
+    Network(Credentials, Origin),
     /// The panel left the list; browsing waits for it to come back.
     Hidden,
     /// The panel closed setup mode.
@@ -78,11 +46,12 @@ pub(super) enum Choice {
     SetupOpen(bool),
 }
 
-pub(super) async fn unconfigured<S, R>(
+/// Runs setup mode until someone names a network, or until the panel closes it.
+pub(super) async fn await_network<S, R>(
     station: &mut S,
     stack: &Stack<'_>,
     saved: &mut Option<Box<Store<R>>>,
-    first: Option<(Credentials, Provenance)>,
+    first: Option<(Credentials, Origin)>,
     cancellable: bool,
     setup: &mut SetupMode<'_>,
 ) where
@@ -95,7 +64,7 @@ pub(super) async fn unconfigured<S, R>(
     loop {
         let (credentials, origin) = match pending.take() {
             Some(chosen) => chosen,
-            None => match configure(station, &mut history, saved, cancellable, setup).await {
+            None => match setup_session(station, &mut history, saved, cancellable, setup).await {
                 Some(chosen) => chosen,
                 None => return,
             },
@@ -112,51 +81,41 @@ pub(super) async fn unconfigured<S, R>(
             stack,
             &credentials,
             origin,
-            Refusal::GiveBack,
             saved.as_deref_mut(),
             Some(&mut history),
-            setup.panel,
         )
         .await
         {
-            Hold::Named(next, origin) => pending = Some((*next, origin)),
-            Hold::Refused | Hold::Left => {}
+            Outcome::Next(next, origin) => pending = Some((*next, origin)),
+            Outcome::Refused | Outcome::Left => {}
         }
     }
 }
 
-async fn configure<S, R>(
+async fn setup_session<S, R>(
     station: &mut S,
     history: &mut ScanHistory,
     saved: &mut Option<Box<Store<R>>>,
     cancellable: bool,
     setup: &mut SetupMode<'_>,
-) -> Option<(Credentials, Provenance)>
+) -> Option<(Credentials, Origin)>
 where
     S: Station,
     S::Device: Driver,
     R: FlashRegion,
 {
-    let panel = setup.panel;
-    let setup_name = setup.name;
-    let resources = &mut *setup.resources;
-    let host = &mut *setup.host;
-    let has_pages = setup.has_pages;
-    let secure_on_entry = setup.secure_on_entry;
-    discard_setup(panel.net.commands);
+    discard_setup(NETWORK.commands);
     loop {
-        match *host {
+        match setup.host {
             SetupHost::Panel => {
-                let face = Face {
+                let mode = NetworkMode::Setup {
                     host: SetupHost::Panel,
                     cancellable,
-                    setup: true,
-                    browsing: false,
                 };
-                publish(panel.bus, face.status(station.status()), has_saved(saved));
-                match pick(station, history, saved, face, false, panel).await {
-                    Choice::Named(credentials, origin) => return Some((credentials, origin)),
-                    Choice::SwitchHost => *host = SetupHost::AccessPoint,
+                publish_link(station.status().with_mode(mode), any(saved.as_deref()));
+                match pick(station, history, saved, mode).await {
+                    Choice::Network(credentials, origin) => return Some((credentials, origin)),
+                    Choice::SwitchHost => setup.host = SetupHost::AccessPoint,
                     Choice::Cancel => {
                         log::info!("[WIFI] the panel closed setup mode; the list goes down");
                         return None;
@@ -166,9 +125,9 @@ where
                 }
             }
             SetupHost::AccessPoint => {
-                let mut secured = secure_on_entry;
+                let mut secured = setup.secure_on_entry;
                 loop {
-                    let device = match station.begin_setup(setup_name, secured) {
+                    let device = match station.begin_setup(setup.name, secured) {
                         Ok(device) => device,
                         Err(error) => {
                             log::error!(
@@ -177,52 +136,41 @@ where
                             park().await
                         }
                     };
-                    let seed = seed_from(hardware_octets(&device));
+                    let seed = seed_from(mac_of(&device));
                     let (stack, runner) = embassy_net::new(
                         device,
-                        crate::net::provision::setup_config(),
-                        resources,
+                        provision::setup_config(),
+                        &mut *setup.resources,
                         seed,
                     );
                     log::info!(
                         "[WIFI] setup access point \"{}\" is up, {}",
-                        setup_name.as_display_text().unwrap_or("<not drawable>"),
+                        setup.name.as_display_text().unwrap_or("<not drawable>"),
                         if secured {
                             "under a passphrase"
                         } else {
                             "open"
                         },
                     );
-                    let face = Face {
+                    let mode = NetworkMode::Setup {
                         host: SetupHost::AccessPoint,
                         cancellable,
-                        setup: true,
-                        browsing: false,
                     };
-                    publish(panel.bus, face.status(station.status()), has_saved(saved));
+                    publish_link(station.status().with_mode(mode), any(saved.as_deref()));
 
                     // Boxed, not inline: four server loops with their socket buffers inside the
                     // product's one task, whose static pool is the scarce resource on the S3
                     // (`@/records/iot/wifi.md`). One allocation for a loop that ends on drop is
                     // the cheapest thing on offer.
-                    let page_serve = Box::pin(crate::net::provision::serve(
-                        stack,
-                        runner,
-                        MAC.lock(|cell| cell.get()),
-                        panel.net,
-                    ));
+                    let page_serve = Box::pin(provision::serve(stack, runner, setup.mac));
                     log::info!("[HEAP] {} B free with setup mode's future up", heap_free());
-                    let ending = select3(
-                        pick(station, history, saved, face, false, panel),
-                        page_serve,
-                        page_idle(),
-                    )
-                    .await;
+                    let ending =
+                        select3(pick(station, history, saved, mode), page_serve, page_idle()).await;
                     if let Err(error) = station.end_setup() {
                         log::warn!("[WIFI] the setup access point would not come down: {error:?}");
                     }
                     match ending {
-                        Either3::First(Choice::Named(credentials, origin)) => {
+                        Either3::First(Choice::Network(credentials, origin)) => {
                             return Some((credentials, origin));
                         }
                         Either3::Second(never) => match never {},
@@ -230,7 +178,7 @@ where
                             log::info!(
                                 "[WIFI] the panel took its own host back; the access point goes down"
                             );
-                            *host = SetupHost::Panel;
+                            setup.host = SetupHost::Panel;
                             break;
                         }
                         Either3::First(Choice::SetupOpen(open)) => {
@@ -251,12 +199,12 @@ where
                             return None;
                         }
                         Either3::First(Choice::Hidden) => {}
-                        Either3::Third(()) if has_pages => {
+                        Either3::Third(()) if setup.has_pages => {
                             log::info!(
                                 "[WIFI] nobody read the page in {} s; the access point goes down",
                                 SETUP_IDLE_MS / 1_000
                             );
-                            *host = SetupHost::Panel;
+                            setup.host = SetupHost::Panel;
                             break;
                         }
                         Either3::Third(()) => {
@@ -265,7 +213,7 @@ where
                                  and the saved network is tried again",
                                 SETUP_IDLE_MS / 1_000
                             );
-                            publish(panel.bus, station.status(), has_saved(saved));
+                            publish_link(station.status(), any(saved.as_deref()));
                             return None;
                         }
                     }
@@ -281,7 +229,7 @@ async fn page_idle() {
     loop {
         match select(
             Timer::after(Duration::from_millis(SETUP_IDLE_MS)),
-            crate::net::provision::page_read(),
+            provision::page_read(),
         )
         .await
         {
@@ -297,9 +245,7 @@ pub(super) async fn pick<S, R>(
     station: &mut S,
     history: &mut ScanHistory,
     saved: &mut Option<Box<Store<R>>>,
-    face: Face,
-    stop_when_hidden: bool,
-    panel: Panel,
+    mode: NetworkMode,
 ) -> Choice
 where
     S: Station,
@@ -309,10 +255,11 @@ where
     let mut idle_rounds: u8 = 0;
     let mut panel_was_showing = false;
     loop {
-        if stop_when_hidden && !panel.net.page.shows(DisplayPage::Network) {
+        let showing = NETWORK.page.shows(DisplayPage::Network);
+        // Browsing ends when the panel leaves; setup keeps the scan up for the phone.
+        if mode.is_browsing() && !showing {
             return Choice::Hidden;
         }
-        let showing = panel.net.page.shows(DisplayPage::Network);
         if showing && !panel_was_showing {
             empty_rounds = 0;
             idle_rounds = 0;
@@ -325,36 +272,33 @@ where
             saved.as_deref().map(|store| store.networks()),
             &mut empty_rounds,
             &mut idle_rounds,
-            face,
-            panel,
+            mode,
         )
         .await
         {
             Rest::Again => {}
-            Rest::Left if stop_when_hidden => return Choice::Hidden,
+            Rest::Left if mode.is_browsing() => return Choice::Hidden,
             Rest::Left => {}
             Rest::Command(command) => match command {
                 NetworkCommand::Join(asked) => {
-                    if let Some((credentials, origin)) =
-                        asked_for(panel.bus, asked, saved.as_deref())
-                    {
-                        return Choice::Named(credentials, origin);
+                    if let Some((credentials, origin)) = resolve_join(asked, saved.as_deref()) {
+                        return Choice::Network(credentials, origin);
                     }
                 }
                 NetworkCommand::Forget(ssid) => {
-                    drop_saved(saved.as_deref_mut(), &ssid);
-                    if let Some(list) = remark(history, saved.as_deref()) {
-                        publish_scan(panel.net, &list);
-                    }
+                    forget(saved.as_deref_mut(), Some(history), &ssid);
                 }
-                NetworkCommand::SwitchHost { from } if from == face.host => {
+                NetworkCommand::SwitchHost { from } if mode.host() == Some(from) => {
                     return Choice::SwitchHost;
                 }
-                NetworkCommand::LeaveSetup { from } if face.setup && from == face.host => {
+                NetworkCommand::LeaveSetup { from }
+                    if mode.is_setup() && mode.host() == Some(from) =>
+                {
                     return Choice::Cancel;
                 }
                 NetworkCommand::SetupOpen { from, open }
-                    if face.setup && face.host == SetupHost::AccessPoint && from == face.host =>
+                    if mode.host() == Some(SetupHost::AccessPoint)
+                        && from == SetupHost::AccessPoint =>
                 {
                     return Choice::SetupOpen(open);
                 }
@@ -365,13 +309,12 @@ where
     }
 }
 
-pub(super) fn asked_for<R: FlashRegion>(
-    bus: &IntentBus,
+pub(super) fn resolve_join<R: FlashRegion>(
     asked: JoinRequest,
     saved: Option<&Store<R>>,
-) -> Option<(Credentials, Provenance)> {
+) -> Option<(Credentials, Origin)> {
     match asked {
-        JoinRequest::Typed(credentials) => Some((credentials, Provenance::Named)),
+        JoinRequest::Typed(credentials) => Some((credentials, Origin::Typed)),
         JoinRequest::Held(ssid) => {
             let copy = saved.and_then(|store| store.networks().copy_of(&ssid));
             if copy.is_none() {
@@ -379,11 +322,11 @@ pub(super) fn asked_for<R: FlashRegion>(
                     "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
                     ssid.as_display_text().unwrap_or("<unprintable>"),
                 );
-                let _ = bus.try_send(Intent::Action(ActionIntent::NetworkPage(
+                let _ = INTENT_BUS.try_send(Intent::Action(ActionIntent::NetworkPage(
                     NetworkPageIntent::NoCopy(ssid),
                 )));
             }
-            copy.map(|credentials| (credentials, Provenance::Stored))
+            copy.map(|credentials| (credentials, Origin::Stored))
         }
     }
 }

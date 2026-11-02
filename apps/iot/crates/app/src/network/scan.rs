@@ -4,13 +4,13 @@ use core::future::pending;
 
 use embassy_futures::select::{Either4, select4};
 use embassy_time::{Duration, Timer};
-use iot_core::drivers::network::{SavedNetworks, ScanHistory, Station, scan_pause_after};
+use iot_core::drivers::network::{
+    NetworkMode, SavedNetworks, ScanHistory, Station, scan_pause_after,
+};
 use iot_core::state::{DisplayPage, NetworkCommand};
 
-use super::link::Panel;
-use super::publish;
-use super::setup::Face;
-use super::store::keeps_any;
+use super::store::any_marked;
+use super::{NETWORK, provision, publish_link};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Rest {
@@ -28,8 +28,7 @@ pub(super) async fn scan<S>(
     saved: Option<&SavedNetworks>,
     empty_rounds: &mut u8,
     idle_rounds: &mut u8,
-    face: Face,
-    panel: Panel,
+    mode: NetworkMode,
 ) -> Rest
 where
     S: Station,
@@ -37,10 +36,10 @@ where
     let empty = match station.scan().await {
         Ok(ranked) => {
             let empty = ranked.is_empty();
-            publish(panel.bus, face.status(station.status()), keeps_any(saved));
+            publish_link(station.status().with_mode(mode), any_marked(saved));
             if let Some(list) = history.observe(&ranked, saved) {
                 log::info!("[WIFI] {} access points, the page redraws", list.len());
-                super::publish_scan(panel.net, &list);
+                NETWORK.scan.publish(&list);
             } else {
                 log::debug!("[WIFI] {} access points, unchanged", ranked.len());
             }
@@ -48,7 +47,7 @@ where
         }
         Err(error) => {
             log::error!("[WIFI] the radio would not scan: {error:?}");
-            publish(panel.bus, face.status(station.status()), keeps_any(saved));
+            publish_link(station.status().with_mode(mode), any_marked(saved));
             false
         }
     };
@@ -58,7 +57,7 @@ where
         0
     };
     *idle_rounds = idle_rounds.saturating_add(1);
-    let pause = scan_pause_after(face.host, *empty_rounds, *idle_rounds);
+    let pause = scan_pause_after(mode, *empty_rounds, *idle_rounds);
     let clock = async {
         match pause {
             Some(ms) => Timer::after(Duration::from_millis(ms)).await,
@@ -67,20 +66,20 @@ where
     };
     match select4(
         clock,
-        panel.net.commands.receive(),
+        NETWORK.commands.receive(),
         async {
-            if face.setup {
-                panel.net.page.wait_for_return(DisplayPage::Network).await;
+            if mode.is_setup() {
+                NETWORK.page.wait_for_return(DisplayPage::Network).await;
             } else {
-                panel.net.page.wait_until_away(DisplayPage::Network).await;
+                NETWORK.page.wait_until_away(DisplayPage::Network).await;
             }
         },
-        crate::net::provision::page_read(),
+        provision::page_read(),
     )
     .await
     {
         Either4::Second(command) => Rest::Command(command),
-        Either4::Third(()) if !face.setup => Rest::Left,
+        Either4::Third(()) if !mode.is_setup() => Rest::Left,
         _ => Rest::Again,
     }
 }

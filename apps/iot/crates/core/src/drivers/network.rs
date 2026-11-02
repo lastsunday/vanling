@@ -29,9 +29,16 @@ pub const SCAN_IDLE_MAX_PAUSE_MS: u64 = 30_000;
 /// How many idle rounds each step of that backoff lasts.
 pub const SCAN_IDLE_ROUNDS: u8 = 3;
 
-/// How long to rest after a scan round, given empty rounds and idle rounds in a row.
-pub fn scan_pause_after(host: SetupHost, empty_rounds: u8, idle_rounds: u8) -> Option<u64> {
-    if host == SetupHost::AccessPoint {
+/// How long to rest after a scan round, given empty rounds and idle rounds in a row. The access
+/// point's own front never rests: the phone's page is being read while it scans.
+pub fn scan_pause_after(mode: NetworkMode, empty_rounds: u8, idle_rounds: u8) -> Option<u64> {
+    if matches!(
+        mode,
+        NetworkMode::Setup {
+            host: SetupHost::AccessPoint,
+            ..
+        }
+    ) {
         return None;
     }
     if matches!(empty_rounds, 1..=SCAN_EMPTY_RETRIES) {
@@ -86,26 +93,6 @@ impl AddressWatch {
     /// How many windows in a row have gone without an address.
     pub const fn missing(&self) -> u8 {
         self.missing
-    }
-}
-
-/// How a link stopped being held, as far as [`host_after_link`] is concerned.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum LinkEnding {
-    Named,
-    Refused,
-    Left,
-}
-
-/// Which host the next stretch of setup mode opens on.
-pub const fn host_after_link(
-    start: SetupHost,
-    current: SetupHost,
-    ending: LinkEnding,
-) -> SetupHost {
-    match ending {
-        LinkEnding::Named | LinkEnding::Left => start,
-        LinkEnding::Refused => current,
     }
 }
 
@@ -825,12 +812,10 @@ impl LinkStatus {
         self.mode.host() == Some(SetupHost::AccessPoint)
     }
 
-    /// This status as one setup host reports it.
-    pub fn on_setup_host(self, host: SetupHost, cancellable: bool) -> Self {
-        Self {
-            mode: NetworkMode::Setup { host, cancellable },
-            ..self
-        }
+    /// This status as one page mode reports it: the panel's list is browsing, setup names its
+    /// host, and everything else is the link itself.
+    pub fn with_mode(self, mode: NetworkMode) -> Self {
+        Self { mode, ..self }
     }
 
     /// This status with the stack's current address folded in — the definition in
@@ -1154,46 +1139,27 @@ mod tests {
     }
 
     #[test]
-    fn a_leave_or_a_pick_opens_setup_where_the_build_put_it() {
-        for start in [SetupHost::Panel, SetupHost::AccessPoint] {
-            for current in [SetupHost::Panel, SetupHost::AccessPoint] {
-                for ending in [LinkEnding::Named, LinkEnding::Left] {
-                    assert_eq!(
-                        host_after_link(start, current, ending),
-                        start,
-                        "{ending:?} from {current:?} with the build on {start:?}"
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn a_refused_credential_keeps_the_front_it_was_typed_on() {
-        for start in [SetupHost::Panel, SetupHost::AccessPoint] {
-            for current in [SetupHost::Panel, SetupHost::AccessPoint] {
-                assert_eq!(
-                    host_after_link(start, current, LinkEnding::Refused),
-                    current,
-                    "refused with the build on {start:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn a_scan_that_found_something_rests_the_whole_pause() {
-        assert_eq!(
-            scan_pause_after(SetupHost::Panel, 0, 0),
-            Some(SCAN_PAUSE_MS)
-        );
+        for mode in [
+            NetworkMode::Setup {
+                host: SetupHost::Panel,
+                cancellable: false,
+            },
+            NetworkMode::Browsing,
+        ] {
+            assert_eq!(scan_pause_after(mode, 0, 0), Some(SCAN_PAUSE_MS));
+        }
     }
 
     #[test]
     fn the_access_points_front_never_rests_into_another_round() {
+        let mode = NetworkMode::Setup {
+            host: SetupHost::AccessPoint,
+            cancellable: false,
+        };
         for (empty, idle) in [(0, 0), (1, 0), (u8::MAX, 0), (0, u8::MAX)] {
             assert_eq!(
-                scan_pause_after(SetupHost::AccessPoint, empty, idle),
+                scan_pause_after(mode, empty, idle),
                 None,
                 "{empty} empty, {idle} idle rounds"
             );
@@ -1215,7 +1181,7 @@ mod tests {
             (SetupHost::AccessPoint, true),
             (SetupHost::AccessPoint, false),
         ] {
-            let published = station.on_setup_host(host, cancellable);
+            let published = station.with_mode(NetworkMode::Setup { host, cancellable });
 
             assert_eq!(published.mode.host(), Some(host));
             assert_eq!(published.mode.is_cancellable(), cancellable);
@@ -1234,17 +1200,17 @@ mod tests {
     fn an_empty_place_stops_being_retried_every_second() {
         for rounds in 1..=SCAN_EMPTY_RETRIES {
             assert_eq!(
-                scan_pause_after(SetupHost::Panel, rounds, 0),
+                scan_pause_after(setup(SetupHost::Panel), rounds, 0),
                 Some(SCAN_EMPTY_PAUSE_MS),
                 "{rounds} empty rounds"
             );
         }
         assert_eq!(
-            scan_pause_after(SetupHost::Panel, SCAN_EMPTY_RETRIES + 1, 0),
+            scan_pause_after(setup(SetupHost::Panel), SCAN_EMPTY_RETRIES + 1, 0),
             Some(SCAN_PAUSE_MS)
         );
         assert_eq!(
-            scan_pause_after(SetupHost::Panel, u8::MAX, 0),
+            scan_pause_after(setup(SetupHost::Panel), u8::MAX, 0),
             Some(SCAN_PAUSE_MS),
             "a count that long is still an empty place"
         );
@@ -1262,19 +1228,26 @@ mod tests {
         ];
         for (idle, pause) in steps {
             assert_eq!(
-                scan_pause_after(SetupHost::Panel, 0, idle),
+                scan_pause_after(setup(SetupHost::Panel), 0, idle),
                 Some(pause),
                 "{idle} idle rounds"
             );
         }
         assert_eq!(
             scan_pause_after(
-                SetupHost::Panel,
+                setup(SetupHost::Panel),
                 SCAN_EMPTY_RETRIES + 1,
                 2 * SCAN_IDLE_ROUNDS
             ),
             Some(SCAN_IDLE_MAX_PAUSE_MS)
         );
+    }
+
+    fn setup(host: SetupHost) -> NetworkMode {
+        NetworkMode::Setup {
+            host,
+            cancellable: false,
+        }
     }
 
     fn reading(bssid: u8, rssi: i8) -> AccessPoint {

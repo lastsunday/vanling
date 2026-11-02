@@ -70,8 +70,8 @@ mod tests {
                 "{event:?} on the splash"
             );
         }
-        let with_link = with_network(state_on(DisplayPage::Splash, LightState::Off), |net| {
-            net.link = LinkStatus {
+        let with_link = with_network(state_on(DisplayPage::Splash, LightState::Off), |network| {
+            network.link = LinkStatus {
                 phase: crate::drivers::network::LinkPhase::Connected,
                 ..LinkStatus::default()
             };
@@ -84,8 +84,8 @@ mod tests {
 
     #[test]
     fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
-        let on_air = with_network(state_on(DisplayPage::Ambient, LightState::Off), |net| {
-            net.link = LinkStatus {
+        let on_air = with_network(state_on(DisplayPage::Ambient, LightState::Off), |network| {
+            network.link = LinkStatus {
                 phase: crate::drivers::network::LinkPhase::Connected,
                 ..LinkStatus::default()
             };

@@ -14,11 +14,6 @@ pub use http::{Body, Cache, Method, ParseError, Request, Response, Status};
 pub use route::{Action, MAC_TEXT_BYTES, MAC_TOKEN, SEED_AT, SEED_SLOT, mac_text, page_len, route};
 pub use scan::{PIECE_BYTES, Piece, ScanJson, scan_json_len, scan_json_row};
 
-/// Characters in the setup access point's passphrase.
-///
-/// Ten symbols from the alphabet the generator uses: about 50 bits, which is what a phone's own
-/// keypad can be expected to take without a second look, and long enough that a captured handshake
-/// is not the afternoon of a GPU's time that six would be.
 pub use crate::drivers::network::SETUP_PASS_LEN;
 
 /// The name the setup access point offers, from the board's own address: `vanling-` and the

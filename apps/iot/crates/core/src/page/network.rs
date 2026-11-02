@@ -418,8 +418,8 @@ mod tests {
         }
 
         fn on_network() -> DeviceState {
-            with_network(state_on(DisplayPage::Network, DEFAULT_BREATH), |net| {
-                net.aps = Some(ApList::from_ranked(&[ap(b"neighbour", -55)]));
+            with_network(state_on(DisplayPage::Network, DEFAULT_BREATH), |network| {
+                network.aps = Some(ApList::from_ranked(&[ap(b"neighbour", -55)]));
             })
         }
 
@@ -482,8 +482,8 @@ mod tests {
 
         #[test]
         fn a_tap_on_a_band_is_that_band_of_the_list() {
-            let state = with_network(on_network(), |net| {
-                net.aps = Some(ApList::from_ranked(&[
+            let state = with_network(on_network(), |network| {
+                network.aps = Some(ApList::from_ranked(&[
                     ap(b"neighbour", -55),
                     ap_with(b"cafe", -60, 7),
                 ]));
@@ -539,8 +539,8 @@ mod tests {
 
         #[test]
         fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
-            let state = with_network(on_network(), |net| {
-                net.aps = Some(ApList::from_ranked(&[
+            let state = with_network(on_network(), |network| {
+                network.aps = Some(ApList::from_ranked(&[
                     ap(b"neighbour", -55),
                     ap_with(b"cafe", -60, 7),
                     ap_with(b"bakery", -65, 8),
@@ -575,8 +575,8 @@ mod tests {
                 ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
             );
 
-            let announcing = with_network(on_network(), |net| {
-                net.link = LinkStatus {
+            let announcing = with_network(on_network(), |network| {
+                network.link = LinkStatus {
                     mode: crate::drivers::network::NetworkMode::Setup {
                         host: SetupHost::AccessPoint,
                         cancellable: false,
@@ -612,8 +612,8 @@ mod tests {
 
         #[test]
         fn a_hold_on_a_band_is_that_band_asked_about() {
-            let state = with_network(on_network(), |net| {
-                net.aps = Some(ApList::from_ranked(&[
+            let state = with_network(on_network(), |network| {
+                network.aps = Some(ApList::from_ranked(&[
                     ap(b"neighbour", -55),
                     ap_with(b"cafe", -60, 7),
                 ]));

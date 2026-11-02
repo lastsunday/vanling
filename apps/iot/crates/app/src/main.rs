@@ -3,8 +3,6 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
-
 use embassy_executor::Spawner;
 use iot_core::drivers::board::{HasSurface, HasWifi};
 use iot_core::state::SurfaceRole;
@@ -23,27 +21,33 @@ static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
 async fn main(spawner: Spawner) -> ! {
     let (mut board, feed, io) = boot_board();
 
-    let station = board.take_wifi();
-
-    let saved = board.take_credentials();
-    let network = station.is_some();
     let surfaces = board.take_surfaces().expect("board has a wired surface");
     let has_pages = surfaces
         .iter()
         .any(|wired| wired.role() == SurfaceRole::Pages);
 
-    // The network worker is the board's: its driver types are only nameable here, so it is
-    // spawned here like every other worker the composition root owns. `run` never learns the
-    // radio exists.
-    log::info!("[IOT] starting the net worker");
-    spawner.spawn(network_task(station, saved, has_pages).expect("the network task fits its slot"));
+    // The radio is the board's: its station and store are taken off the board right here, and
+    // the worker that uses them is built here. `run` starts the closure without learning what
+    // the radio is.
+    let wifi = match board.take_wifi() {
+        Some(station) => iot_app::Wifi::Worker(iot_app::network::worker(
+            station,
+            board.take_credentials(),
+            iot_bsp_esp::SETUP_HOST,
+            has_pages,
+        )),
+        None => {
+            log::info!("[WIFI] this build wired no radio, so the link stays off");
+            iot_app::Wifi::Absent
+        }
+    };
 
     iot_app::run(
         board,
         iot_app::Wiring {
             clock: iot_chip_esp::Clock,
             feed,
-            network,
+            wifi,
             surfaces,
             io,
             spawner,
@@ -52,29 +56,12 @@ async fn main(spawner: Spawner) -> ! {
     .await
 }
 
-/// The network worker's task. A task cannot be generic, so the concrete station and flash
-/// types are named at the composition point that took them off the board.
-#[embassy_executor::task]
-async fn network_task(
-    station: Option<Box<iot_bsp_esp::components::wifi::EspStation>>,
-    saved: Option<Box<iot_bsp_esp::components::credentials::CredentialStore>>,
-    has_pages: bool,
-) -> ! {
-    iot_app::net::serve(iot_app::net::NetBoot {
-        station,
-        saved,
-        host: iot_bsp_esp::SETUP_HOST,
-        has_pages,
-    })
-    .await
-}
-
 fn boot_board() -> (Board, iot_app::Feed, iot_app::IoPlacement) {
     let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES);
-    iot_app::net::report_heap_free(iot_chip_esp::heap_free);
+    iot_app::network::report_heap_free(iot_chip_esp::heap_free);
 
     log::info!("[IOT] boot complete");
 

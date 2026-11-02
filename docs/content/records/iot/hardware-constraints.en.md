@@ -314,10 +314,10 @@ The section above left core 0's remaining 39% — the capture fold — recorded 
 | Reading (`nm -S`, S3 `vanling`) | Before | After |
 | --- | --- | --- |
 | `__embassy_main::POOL` | 2,528 B (`0x9e0`) | 1,432 B (`0x598`) |
-| `network_task::POOL` | — | 1,168 B (`0x490`) |
+| `network::task::POOL` | — | 1,168 B (`0x490`) |
 | `_stack_start_cpu0 − _stack_end_cpu0` | 96,432 B | 96,368 B |
 
-`[measured]` The two pools add up from 2,528 to 2,600 B (+72 B) and the stack region loses only 64 B. `network_task`'s future is just 1,168 B because the large pieces inside `link` (the credential store, the scan history, `browsing`'s future) are already on the heap. `_stack_end_cpu0` sits at `0x3fcd1ea0`, still far above the 65,536 B floor. `check-s3` only type-checks; this delta is visible only to `nm` on a linked image.
+`[measured]` The two pools add up from 2,528 to 2,600 B (+72 B) and the stack region loses only 64 B. `network::task`'s future is just 1,168 B because the large pieces inside `link` (the credential store, the scan history, `browsing`'s future) are already on the heap. `_stack_end_cpu0` sits at `0x3fcd1ea0`, still far above the 65,536 B floor. `check-s3` only type-checks; this delta is visible only to `nm` on a linked image.
 
 The boot log from that image confirms the task actually starts (in that cut `run` started the worker, hence the order): `[IOT] starting the net worker` appears after `[IOT] demand …` and before `[DISPLAY] stack peak`, immediately followed by `[WIFI] network stack up, DHCP requested`. `[DISPLAY] backlight dark until the first frame; main stack 96368 B` and `[DISPLAY] stack peak 14917 B of 96368 B` agree with the region size from `nm`, so moving the pool did not change the stack region.
 
@@ -328,12 +328,14 @@ The boot log from that image confirms the task actually starts (in that cut `run
 | Reading (`nm -S`, S3 `vanling`) | Previous | This cut |
 | --- | --- | --- |
 | `__embassy_main::POOL` | 1,432 B (`0x598`) | 1,416 B (`0x588`) |
-| `network_task::POOL` | 1,168 B (`0x490`) | 1,152 B (`0x480`) |
+| `network::task::POOL` | 1,168 B (`0x490`) | 1,152 B (`0x480`) |
 | `_stack_start_cpu0 − _stack_end_cpu0` | 96,368 B | 96,400 B |
 
 `[measured]` The pools lose 32 B and the stack region gains 32 B — mirror images, so the net is zero; no per-symbol attribution. `_stack_end_cpu0` = `0x3fcd1e80`. App 1,062,128 B (S3) / 845,392 B (C6, 80.62% of its partition).
 
 `[measured]` The boot log pins both the new start order and the splash verdict: the S3 prints `[IOT] starting the net worker` and then `[IOT] demand …` (because `spawn` happens before `run`), and `[DISPLAY] … main stack 96400 B` matches the `nm` reading. Eight milliseconds after `[INPUT] the splash is over; setup mode was not asked for` comes `[WIFI] this device saved a network; joining …`, so the worker really was waiting on `NetworkCommand::SplashOver` and not on some other signal. The C6 shows the same `[IOT] starting the net worker` → `[WIFI] network stack up`, then `[WIFI] no page surface and no saved network; waiting offline` as soon as the splash ends, with the WS2812 walking the offline burst back to the page's own light. Neither board panicked.
+
+`[not re-measured]` The later Wi-Fi rewrite moved the start back into `run`: the entry point only hands over `Wifi::Worker(NetworkWorker)`, a closure taking a `Spawner`, and `run` runs it before `run_loop`. The two pool readings above belong to the "entry point spawns directly" cut; the rewrite ran only `check-s3` / `check-c6` / `check-host` (type-check only), so there is no new `nm` reading.
 
 ### The IRAM mirror is 47,396 B and none of it is this repo's (`[measured]`, 2026-11-01)
 

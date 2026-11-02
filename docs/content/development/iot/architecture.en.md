@@ -66,13 +66,13 @@ A pipeline-logic system whose trigger points are intents.
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator |
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, net }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
+| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, network }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
 | `pipeline.rs` | the coordinator `run_loop`: apply intents, publish state, forward commands, wait for the next frame |
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `frame.rs` | `FrameClock` (logical frames, including catch-up) |
 | `input.rs` | input worker: polling, demand scheduling, gesture recognition |
 | `playback/{mod,dispatch,sounds}.rs` | playback worker, state→command, sound catalogue; the capture window lives in `workers.rs` |
-| `net/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
+| `network/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
 
@@ -81,17 +81,17 @@ check module cycles inside a crate):
 
 ```
 main → { lib, workers }
-lib  → { boot, pipeline, workers, net }
+lib  → { boot, pipeline, workers, network }
 pipeline → { workers, surface, input, playback, bench::replay }
-net      → { workers, input }
+network  → { workers, input }
 playback → { workers }
 input    → { workers }
 workers  → ∅
 ```
 
-- `workers` carries no `wifi` gate: the host build still holds `Net`, nobody answers
-- `workers` never reaches a worker: it knows only `core` types, so `playback`/`net`/`input` can depend on it one way
-- `net` does not reach `surface`/`pipeline`: the network worker reads the page and commands from `workers`, not device state
+- `workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
+- `workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
+- `network` does not reach `surface`/`pipeline`: the network worker reads the page and commands from `workers`, not device state
 - `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
 - `core` does not know `iot_app`
 
@@ -193,21 +193,21 @@ Where a command comes from follows the same boundary: the page domain's `apply` 
 | Render layer / camera  | surface, camera                     | cooperative                                | `Render` / `Diagnostics` |
 | `input_task`           | input devices and audio capture     | cooperative (S3: the second core)          | `Input { to, from }` |
 | `control_loop`         | codec, DMA                          | cooperative (S3: the second core)          | `Speaker { to }` (completion returns on the intent bus) |
-| `net::serve`           | stack, link, AP services            | cooperative (a task on core 0)             | `Net { commands, page, scan }` |
+| `network::serve`           | stack, link, AP services            | cooperative (a task on core 0)             | `Network { commands, page, scan }` |
 | `feed_task`            | the microphone clock                | **Priority2 interrupt, separate executor** | ⚠️ **deliberately dependency-free; none may be added** |
 | `panel_service`        | the panel bus (frame transfers)     | **the second APP core**                    | no handle: `Screen` holds only the channel (`Panel::write`) |
 
 `panel_service` and the driver half (`input_task`, `control_loop`) run on the second core: a frame transfer is a blocking DMA call, and the capture fold busy-waits 7 ms out of every 20, so each would hold its executor in one piece. The coordinator posts the finished frame as a ticket and parks for the answer; the driver half goes over as one bundle into the `IoPlacement::Elsewhere` slot, where `run_io_from` picks it up. That path exists only when a second executor was actually started — a single-core C6, or an S3 with no panel, gets `IoPlacement::Inline` and the very same task runs on the coordinator's executor, which is why the placement is decided in `start_executors`: that is the only place that knows about the second core. `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which is why `feed_task` uses `FROM_CPU_INTR2`.
 
-**A worker is started by the composition point that owns its drivers.** The driver half is spawned by `run` through `Wiring.spawner` (`IoPlacement::Inline`) or handed to the second core (`Elsewhere`). The network worker's driver types are only known to the entry point, so `main` spawns it right there beside the driver half — `run` neither knows the radio exists nor holds a worker list; adding a worker is one more `spawn` at the composition point, not another shape handed to `run`. `main` therefore joins no worker at all, and `run_loop` is the only future it awaits. `feed_task` and `panel_service` stay with `start_executors` — that is the only place that knows the interrupt executor and the second core. `net::serve` is spawned with the local `Spawner`, so its future need not be `Send`: it stays on core 0's executor, and the only thing that crosses a core is the `Io` bundle.
+**A worker is started by the composition point that owns its drivers.** The driver half is spawned by `run` through `Wiring.spawner` (`IoPlacement::Inline`) or handed to the second core (`Elsewhere`). The network worker's driver types are only known to the entry point, so the entry point takes the station and store off the board and builds `Wifi::Worker(NetworkWorker)` right there — a closure that takes only a `Spawner`; `run` runs it before `run_loop`, knowing neither what the radio is nor any worker list. Adding a worker is still one closure at the composition point, not another shape handed to `run`. `main` therefore joins no worker at all, and `run_loop` is the only future it awaits. `feed_task` and `panel_service` stay with `start_executors` — that is the only place that knows the interrupt executor and the second core. `network::serve` is spawned with the local `Spawner`, so its future need not be `Send`: it stays on core 0's executor, and the only thing that crosses a core is the `Io` bundle.
 
 The handles live together in the composition root's `Workers<'a>`: one field per worker, so a second protocol adds a field rather than a `TO_X`/`FROM_X` pair at the call site. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct.
 
 The shape follows the semantics, not convenience:
 
-- **Commands** use a `Channel` (`Net.commands`, `Speaker.to`). Each pass the coordinator hands over only what the worker has room for; a command that found none waits for the next pass and is never dropped.
-- **Levels** use `PageWatch` (`Net.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge. The splash's verdict is not a level but a **one-shot event**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
-- **Latest values** use `Latest`/a window (`Net.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
+- **Commands** use a `Channel` (`Network.commands`, `Speaker.to`). Each pass the coordinator hands over only what the worker has room for; a command that found none waits for the next pass and is never dropped.
+- **Levels** use `PageWatch` (`Network.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge. The splash's verdict is not a level but a **one-shot event**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
+- **Latest values** use `Latest`/a window (`Network.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
 
 The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_action()` returns the command and `run_loop` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next pass and that pass takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
@@ -399,7 +399,7 @@ The per-device figures and their individual basis labels are in the [implementat
 
 The boot page (`Boot::boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
 
-The capability test is one column of each page's row (`PageSpec::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So `network` is a `bool` passed in: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`network`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
+The capability test is one column of each page's row (`PageSpec::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So the entry point hands over a `Wifi` (`Absent` / `Unattended` / `Worker`), and `run` folds it into that `bool` with `wifi.wired()`: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`wifi`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
 
 This rule exists because of a defect it fixed.
 

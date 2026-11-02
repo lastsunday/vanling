@@ -54,7 +54,7 @@ fn assert_no_reference(files: Vec<(PathBuf, String)>, forbidden: &[&str]) {
 #[test]
 fn the_network_never_reaches_the_panel() {
     assert_no_reference(
-        sources(&app_src().join("net")),
+        sources(&app_src().join("network")),
         &["crate::surface", "crate::pipeline"],
     );
 }
@@ -75,7 +75,7 @@ fn the_panel_side_never_reaches_the_radio() {
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
     }
-    assert_no_reference(files, &["crate::net"]);
+    assert_no_reference(files, &["crate::network"]);
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn the_worker_handles_never_reach_a_worker() {
         vec![(path, text)],
         &[
             "crate::playback",
-            "crate::net",
+            "crate::network",
             "crate::surface",
             "crate::pipeline",
             "crate::input",

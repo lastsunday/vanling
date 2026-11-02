@@ -45,7 +45,7 @@ gained a **reachable-state sweep** (35 moves, 8,800 states, four invariants — 
 into the row a link was left from, and one dropped list correction"). **A board with no panel has a
 front door now too**: `iot-core::provision` is the protocol (45 host tests), `iot-app::provision`
 wires it to an open access point + DHCP + an answer-everything name server + a config page, and
-`configure` races it against the panel's own path through `select` (see "How a board with no panel
+`setup_session` races it against the panel's own path through `select` (see "How a board with no panel
 gets configured"); the panel's path itself is untouched. **Both boards have since walked that door on
 the bench** (the C6 end to end, the S3 after three fixes — see "The bench: from link, to phone, with
 four corrections").**One way back into setup mode is the splash page**: both boards draw it for 1.5 s at boot, holding
@@ -445,10 +445,10 @@ probe does (`SCAN_ROUNDS = 6`, 500 ms apart).
 
 The product **asks the radio only while the scan list is really on the panel**
 (`DisplayPage::Network` — see "When the page scans"). While it is scanning, the rhythm lives in
-`iot-core::drivers::network` (`SURVEY_PAUSE_MS = 5_000`, `SURVEY_EMPTY_PAUSE_MS = 1_000`,
-`SURVEY_EMPTY_RETRIES = 3`, and the idle backoff's `SURVEY_IDLE_PAUSE_MS = 15_000` /
-`SURVEY_IDLE_MAX_PAUSE_MS = 30_000` / `SURVEY_IDLE_ROUNDS = 3`, decided by
-`survey_pause_after(empty_rounds, idle_rounds)`) because, like `MAX_LISTED_APS`, it is a policy
+`iot-core::drivers::network` (`SCAN_PAUSE_MS = 5_000`, `SCAN_EMPTY_PAUSE_MS = 1_000`,
+`SCAN_EMPTY_RETRIES = 3`, and the idle backoff's `SCAN_IDLE_PAUSE_MS = 15_000` /
+`SCAN_IDLE_MAX_PAUSE_MS = 30_000` / `SCAN_IDLE_ROUNDS = 3`, decided by
+`scan_pause_after(empty_rounds, idle_rounds)`) because, like `MAX_LISTED_APS`, it is a policy
 about how the radio is asked rather than an implementation detail of the loop — and a path only
 the device can run has to be pinned by a test.
 
@@ -465,7 +465,7 @@ radio and most of the main stack drawing nothing new.
 `an_empty_place_stops_being_retried_every_second`,
 `a_room_nobody_acts_on_is_read_less_and_less_often`). The first two were written because the
 board caught the mistake first: with the condition written as
-`*empty_rounds <= SURVEY_EMPTY_RETRIES`, a **non-empty** round (count zero) also fell into the
+`*empty_rounds <= SCAN_EMPTY_RETRIES`, a **non-empty** round (count zero) also fell into the
 fast-retry arm, and the log immediately showed a round every 1.8 s instead of 5.8 s. Reflashed
 after the fix, the interval is back at 5.8 s and the empty round's retry landed 1.76 s later.
 
@@ -477,7 +477,7 @@ between neighbouring rounds: rows a round came in at 0 rows 17 times, 1 row 53, 
 2.1. And `rank_aps` **already orders by signal, strongest first** — so the jumping was not a wrong
 order, it was **reordering on one reading, every round**.
 
-The policy therefore lives in core (`SurveyHistory` in `core/src/drivers/network.rs`), alongside
+The policy therefore lives in core (`ScanHistory` in `core/src/drivers/network.rs`), alongside
 `<n>-<m>/8` as a statement about how the radio is read rather than an implementation detail of the
 loop:
 
@@ -634,7 +634,7 @@ host tests pin the slot rules, a save interrupted by power loss, and how a bad C
 | --- | --- | --- |
 | Reading the table and opening the store | `Board::new`, **before the radio** | reading the table wants a 3 KiB buffer, and that frame is still available before the other parts are up; a table that will not read, or one with no `creds`, logs one line and hands over `None` — **no partition means nothing is kept**, and the device still joins networks |
 | Which credential to try | `link`: the build input first, then the **first** entry of the stored list (the one saved most recently), and only then `setup` | a stored credential that is refused is a `GiveBack` rather than a `Retry`: the panel is one tap away, which is this device's other answer; retrying with backoff is what a build that named its only network does |
-| Writing | `hold`: **the moment an association succeeds**, once per credential, and **only for a passphrase from the build or from the panel** (`Provenance::Named`) | what is being written is the passphrase, and its answer is in hand right there; waiting for DHCP would put "the link gets an address" between a working passphrase and the next boot's copy of it. The `Refusal::Retry` path does not write twice — `kept` is the latch. **The copy the store itself handed over is not written** (`Provenance::Stored`: the boot read's first entry, and the tapped saved row): that copy *is* the entry on the part, so writing it back only burns a sector, and the boot entry is already the first one; the price is that joining a saved row does **not** move it to the front (so `remember` now only promotes on a passphrase typed into the panel again) |
+| Writing | `hold`: **the moment an association succeeds**, once per credential, and **only for a passphrase from the build or from the panel** (`Origin::Build` / `Origin::Typed`) | what is being written is the passphrase, and its answer is in hand right there; waiting for DHCP would put "the link gets an address" between a working passphrase and the next boot's copy of it. The build credential's retry path does not write twice — `written` is the latch. **The copy the store itself handed over is not written** (`Origin::Stored`: the boot read's first entry, and the tapped saved row): that copy *is* the entry on the part, so writing it back only burns a sector, and the boot entry is already the first one; the price is that joining a saved row does **not** move it to the front (so `remember` now only promotes on a passphrase typed into the panel again) |
 | Erasing | `Store::forget`: the moment a **stored** row is long-pressed and the confirmation answers "forget", the whole record is rewritten | what is erased is a passphrase, and that is not reversible — joining again means typing it from the start, which is why only this one asks; leaving can be redone, so it costs little |
 
 **The write itself.** The S3 uses `FlashStorage::multicore_auto_park()`, the C6 constructs it
@@ -793,7 +793,7 @@ Every decision sits where a test can reach it:
 | A long press on a row forgets it | `Touch::Hold` → `BusinessIntent::AskForget(ap)`: only a row that is **stored** opens the `FORGET` confirmation, and the record is erased only when the verb is answered | forgetting is not reversible (the passphrase has to be typed from the start), which is why only it asks; a long press rather than another button, because it holds for few rows and drawing it would take the row's right edge. The name in the confirmation comes from that row's `ApList` entry, and the erase goes through `Store::forget` (the whole record rewritten, the two slots still written in turn) |
 | A rescan does not ask | with no link the strip is `SCAN`, and a tap sends a `RESCAN` signal to the survey task at once | scanning is read-only and repeatable, so there is nothing irreversible to confirm; with a link up there is **no `SCAN`**, because `survey` is not reached at all while a link is held (`setup` is awaiting `hold` at that point), so the two actions never hold at once and the strip need not say "and" about them |
 | Sliding the list | swipe up/down is `BusinessIntent::Scroll { rows: ±1 }`, moving `list_top ± 1` and pulling the end back to the last full window | paging left the last page of a short list blank and made the window reading jump by three; a row a slide makes every row reachable and keeps `n-m/8` continuous |
-| Why the list does not jump | the ordering policy lives in core (`SurveyHistory`: 4 dB of hysteresis, a row surviving 2 missed rounds, published only when what is drawn changed) | every scan reading wobbles (σ≈3.1 dB on channel 11), so reordering on a single reading is the list jumping. The mechanism and the evidence are in "Why the list does not jump" |
+| Why the list does not jump | the ordering policy lives in core (`ScanHistory`: 4 dB of hysteresis, a row surviving 2 missed rounds, published only when what is drawn changed) | every scan reading wobbles (σ≈3.1 dB on channel 11), so reordering on a single reading is the list jumping. The mechanism and the evidence are in "Why the list does not jump" |
 | Failure classes | `NetworkError` splits into `NotFound` (`NOAP`) / `Credentials` (`AUTH`) / `Busy` (`BUSY`) / `InvalidArguments` (`NAME`) / `NoMemory` (`MEM`) / `Driver` (`DRV`); a failure **raises the keyboard again** and draws its word in the typing row's middle slot | the four-glyph words are drawn the same way the phase word is (the four-glyph test on `format_phase`). Only the driver's enumerable reasons that can be argued for are mapped; the rest fall to `Driver` — **the mapping as measured is below** |
 | What the page's ground is | `DiagnosticsSink::draws_pages()` (default `false`) is overridden to `true` by `Screen`; `app::render::LightRenderer` gives a black fill, 100% backlight and no breathing when "the surface draws pages && the page is Network" | deriving an appearance from the page in core would be wrong: not every light has a screen (the C6's WS2812 is light instance 0 too), and whether a surface draws pages is something only the surface knows |
 | Hit testing and drawing share one source | `keyboard::{key_of, key_at, key_box, list_band_at}` | where a key is drawn and where a tap lands are the same functions, so a geometry change cannot miss the hits |
@@ -1129,7 +1129,7 @@ leaving the second one in means the `*` on a row sometimes stays after the netwo
   same millisecond, because a forget is acted on in that round's own pause), the network task re-marks
   the list against a store that no longer holds the name and publishes it again — with the first one
   still in the slot, the second was dropped. The page kept a saved mark for a network that no longer
-  existed, and **no round after put it right**: `SurveyHistory` had taken the correction as "the list
+  existed, and **no round after put it right**: `ScanHistory` had taken the correction as "the list
   the page is showing", so the next round compared, said "the list is unchanged", and drew nothing.
   The channel is now a slot that **overwrites** (a `Signal` holding the value plus a wake signal of its
   own; the wake is separate because the render loop **parks on it**, and a park must not take the list
@@ -1229,8 +1229,8 @@ answer (does the store have it, will it connect) comes from the radio.
   `static`**.
 - **With no copy in the store, the page is told.** The network task reads that channel in **two**
   places (`setup`'s own top, and `hold`'s window once the link is up) and both go through one
-  `asked_for()`: `Typed` is used straight away (`Provenance::Named`); `Held(name)` goes through
-  `SavedNetworks::copy_of(name)` — found, that copy is used (`Provenance::Stored`); not found,
+  `resolve_join()`: `Typed` is used straight away (`Origin::Build` / `Origin::Typed`); `Held(name)` goes through
+  `SavedNetworks::copy_of(name)` — found, that copy is used (`Origin::Stored`); not found,
   `BusinessIntent::NoCopy(name)` goes out (over the existing `INTENT_BUS`, the same road a `Link`
   report takes). The page's `no_copy()` acts only if the name is the one **currently selected** (a
   row tapped since is a newer question, and the stale answer is dropped) and raises the keyboard.
@@ -1241,7 +1241,7 @@ answer (does the store have it, will it connect) comes from the radio.
   exactly the one that would only ever be tapped a second time (tap it → the store's copy → refused →
   no keyboard → the only thing left to tap is that row again). Filling in an empty draft is the only
   way out of that loop, and it is the one place `reopen_entry` **creates** a draft.
-- **The write test parts with it** (`Provenance`): a passphrase from the build or from the panel is
+- **The write test parts with it** (`Origin`): a passphrase from the build or from the panel is
   something the device **learned**, and it is written the moment the association succeeds (as
   before); the copy the store handed over is something the device **already has**, and it is not
   written. That also fixes a pointless write: the boot read's entry used to rewrite itself on every
@@ -1284,10 +1284,10 @@ rescan) is the build walking its own coordinates:
 
 | Time | Log |
 | --- | --- |
-| 4.71 s | `[WIFI] associated with "<ssid>" on channel 11` → `[WIFI] this network is saved for the next boot` — this one is **the passphrase the bench typed into the panel** (`Provenance::Named`), and it is written as before |
+| 4.71 s | `[WIFI] associated with "<ssid>" on channel 11` → `[WIFI] this network is saved for the next boot` — this one is **the passphrase the bench typed into the panel** (`Origin::Build` / `Origin::Typed`), and it is written as before |
 | 5.13 s | `[BENCH] tapping band 0, the row the link was just taken off and this device has the passphrase for` → `[WIFI] the panel asked for the copy this device keeps of "<ssid>"` — **all the page handed over was the name** |
 | 5.89 s | `[WIFI] joining the network the panel named: "<ssid>"` — the store's copy went to the radio; between the name arriving and this line there is **no keyboard and no draft** |
-| 5.92 s | `[BENCH] the saved row brought the link back up with the copy on the part, and the page asked for nothing` — **this round's main reading**; and there is **no** `this network is saved for the next boot` anywhere near it: `Provenance::Stored` writes nothing, and the board agrees |
+| 5.92 s | `[BENCH] the saved row brought the link back up with the copy on the part, and the page asked for nothing` — **this round's main reading**; and there is **no** `this network is saved for the next boot` anywhere near it: `Origin::Stored` writes nothing, and the board agrees |
 | 7.50 s | the second leave: `the panel asked to leave this network; the link is down` (the first was at 5.02 s) — **which is why the forget lands on the no-link side of the page** (a long press with a link up asks nothing) |
 | 8.27 s | `[WIFI] "<ssid>" is forgotten; the next boot will not join it` → `[BENCH] the saved mark is gone from the row the finger held` |
 | 8.36 s | `[BENCH] the row the link was left from opens a fresh entry: the keyboard is up over 0 characters, and the draft the link dropped is not back` — after the forget that row is back in the "something to type for" arm |
@@ -1311,9 +1311,10 @@ written by the same owner, so a mark being there means that round's store did ha
 backstop for the "do not trust the mark, ask the store" rule and today only host tests reach it. A
 **failed write** of the store's copy and the boot read's "does not write" are likewise code-reading
 only (see still-to-do 5) — the latter is code-reading because this boot is the panel arm, with `creds`
-erased, and never reaches it: what backs it is that `hold`'s call sites pass `Stored` (the boot entry
-and the tapped row) and `Named` (a passphrase from the build or the panel), and `keep` is called on
-the `Named` path alone (`app/src/network/{link,store}.rs`).
+erased, and never reaches it: what backs it is that `hold`'s call sites pass `Origin::Stored` (the boot
+entry and the tapped row) and `Origin::Build`/`Origin::Typed` (a passphrase from the build or the
+panel), and `save` is called only when the origin is not `Stored`
+(`app/src/network/{link,store}.rs`).
 
 ## How a board with no panel gets configured: an open AP behind a page (`[measured]`/`[test]`)
 
@@ -1329,7 +1330,7 @@ alongside it, and the C6 has the page alone.
 | --- | --- | --- | --- |
 | Protocol | `iot-core::provision` (`http`/`dns`/`route`/`scan`/`wire`, plus two `include_str!` HTML files and an icon under `assets/`) | request parsing, routing, answers, what a name gets answered with, the list as JSON — **and no allocation anywhere** (form fields decode into the caller's stack buffers) | host: **45** tests (the `#[test]`s in `provision/*.rs`) |
 | Device | `iot-app::provision` | four loops (DHCP server, name server, page, `embassy-net` runner) wired to sockets | the bench (still-to-do 8) |
-| Wiring | `configure` in `iot-app::network` | raises the AP, races the page against the panel, hands the credential back to the `JOIN` channel | the bench (still-to-do 8) |
+| Wiring | `setup_session` in `iot-app::network` | raises the AP, races the page against the panel, hands the credential back to the `JOIN` channel | the bench (still-to-do 8) |
 
 Routes: `GET /` (and `/index.html`) for the page (**with the list embedded**), `GET /scan` for the
 list as JSON, `GET /rescan` for that same list and **a wake for the next survey round**, `POST
@@ -1350,10 +1351,10 @@ room.
 
 ### The answer reaches the phone before setup mode ends
 
-`provision::serve` returns `Infallible`, so in `configure` it races the panel's own path
+`provision::serve` returns `Infallible`, so in `setup_session` it races the panel's own path
 (`pick`) through `select`: **whichever names a credential first ends setup mode**, the
 page's future is dropped with the `select`, and the access point goes down with its `Runner`. The
-credential travels the existing `JOIN` channel, so `hold`, the store and `Provenance` are reused
+credential travels the existing `JOIN` channel, so `hold`, the store and `Origin` are reused
 unchanged — the page and the panel are the same path at the level of "where a credential came from".
 
 The page publishes the credential only after writing the answer **and waiting for the peer to
@@ -1397,7 +1398,7 @@ see "The rhythm of a round"), replacing the "wait for the panel to arrive" gate
 (`PAGE.wait_for(DisplayPage::Network)`) with a non-blocking `PAGE.shows(DisplayPage::Network)` plus
 a rising edge. The reason: on the C6 nobody ever reaches that page, and the page is reading exactly
 this list.
-`SurveyHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
+`ScanHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
 is unchanged.
 
 The list exists **twice**, one per reader: the panel's rides the `SCAN` channel (which the render loop
@@ -1434,13 +1435,13 @@ One ruler (`nm` for `_stack_start_cpu0 − _stack_end_cpu0`), one command (`--bi
 | setup mode wired in, the page's future inline | 50,984 B | **link failure**: `stack.x:13 cannot move location counter backwards` |
 | the page's future `Box::pin`ned | 43,552 B | 65,464 B (72 B short of the 65,536 B assertion floor) |
 | `LATEST` boxed + `&Ssid`/`&ApList` | 43,408 B | 65,592 B (56 B of margin) |
-| `SurveyHistory` boxed | 42,728 B | **66,264 B (728 B of margin)** |
+| `ScanHistory` boxed | 42,728 B | **66,264 B (728 B of margin)** |
 
 Both boxings reuse the rule this record already has (see the `Store` under "The account for the main
 stack"): **every frame that carries a large value by value is a fixed static's worth of the product's
 one task**. The page's four loops plus their socket buffers are **7,432 B** of future, which
 `Box::pin` moves wholesale to the heap (PSRAM on the S3, that 64 KiB app heap on the C6);
-`SurveyHistory` is another ~700 B (the 344 B `LATEST` was boxed too at one point, and on the bench one
+`ScanHistory` is another ~700 B (the 344 B `LATEST` was boxed too at one point, and on the bench one
 338 B allocation per round is what killed the S3; it is a static again — see the next section). The
 last row ends up **288 B above HEAD's margin**: the whole feature
 nets the static budget back about 300 B, and both the C6 and the S3 link.
@@ -1745,7 +1746,7 @@ Three places where we **differ from it**:
 ## Setup mode becomes a gear the panel can see and leave (`[measured]`/`[test]`, 2026-10-20)
 
 Until now setup mode was **implicit**: no credential, a `LEAVE`, or a refusal sent the network task
-into `unconfigured()` for good, and the only thing the panel could say was the phase word on the
+into `await_network()` for good, and the only thing the panel could say was the phase word on the
 header. Two things were impossible because of it: **seeing that the device is being set up** (an AP
 that is up and a link that is retrying drew the same page), and **coming back out** — after `LEAVE`
 the only way on was scanning the list again.
@@ -1755,7 +1756,7 @@ This round turns it into a gear that is visible and reversible:
 | Thing | Before | Now |
 | --- | --- | --- |
 | Into setup mode from a link | strip `LEAVE`, a box asking "leave?" | strip `LEAVE`, a box asking `LEAVE "cafe"?` / `THE LINK GOES DOWN` (it was called `SETUP` for one round and then put back — see "The link-up cell goes back to `LEAVE`") |
-| Out of setup mode | not possible (`unconfigured` diverged) | strip `CANCEL` → the `CANCEL_SETUP` channel (now `SETUP_ASK`) → `unconfigured` returns → `link` retries what it holds |
+| Out of setup mode | not possible (`await_network` diverged) | strip `CANCEL` → the `CANCEL_SETUP` channel (now `SETUP_ASK`) → `await_network` returns → `link` retries what it holds |
 | Knowing the mode is on | no such field | `LinkStatus.setup` / `setup_cancellable`, header `ST SETUP` |
 | The header's network | the link's access point (none in setup) | `AP vanling-xxxx` derived from the MAC — the same name the phone's list shows, not a second copy in the state |
 | The address row | the station's address (none in setup) | `IP 192.168.4.1` |
@@ -1768,7 +1769,7 @@ Four rules were settled here, and each is pinned by a test in core:
 
 - **`CANCEL` is only offered when there is a way back**: `setup_cancellable` is computed by the
   caller (`link` asks whether the saved list is non-empty; the build-named path is always true),
-  not by the network task reading the store — the store is still mutable inside `unconfigured`,
+  not by the network task reading the store — the store is still mutable inside `await_network`,
   and "where does a cancel go" is the caller's question. Without a way back the strip falls back
   to `SCAN`: on a device that was never set up, `CANCEL` would only take its own AP down and raise
   it again, which a phone sees as the page disappearing.
@@ -1933,18 +1934,18 @@ This round splits it into **two front ends, one at a time**:
 
 | Thing | Before | Now |
 | --- | --- | --- |
-| A board with a panel entering setup mode | AP and panel list both live | the panel's front first (`Front::Panel`), no AP |
+| A board with a panel entering setup mode | AP and panel list both live | the panel's front first (`SetupHost::Panel`), no AP |
 | Switching to a phone | join the AP | strip's right cell `AP`: the AP comes up, the list is covered by a box |
 | Back to the panel | not possible | `CLOSE` in the box, or the strip's right cell `PANEL`: the AP goes down, the list is back |
-| A board with no panel (C6) | AP always up | boots on `Front::AccessPoint`, an **open** AP (see the note after this section) |
+| A board with no panel (C6) | AP always up | boots on `SetupHost::AccessPoint`, an **open** AP (see the note after this section) |
 | Whether the AP has a passphrase | always open | **per entry**: open from the splash page; on a running board with a panel, the AP starts on WPA2 with a random 10 characters (not remembered); the C6 has no screen, so it can only be open |
 | Nobody reading the page | AP stays up | 3 minutes without a page request takes the AP down and returns to the panel |
 | A broken touch panel | power-cycle only | a Boot long press **on any page** in setup mode switches fronts |
 
 The rules settled here:
 
-- **Two fronts, not two paths**: both share `pick`, `SurveyHistory`, the list, the page,
-  `JOIN`/`FORGET`/`CANCEL`; `Front` only decides which one is open. Splitting the code would make
+- **Two fronts, not two paths**: both share `pick`, `ScanHistory`, the list, the page,
+  `JOIN`/`FORGET`/`CANCEL`; `SetupHost` only decides which one is open. Splitting the code would make
   "switch back" a second implementation.
 - **The station makes and holds the passphrase**: `begin_setup(ssid, secured)` says which kind of AP
   to raise in one call, and `status()` reports `setup_password`. The panel reads it off the link
@@ -1971,7 +1972,7 @@ The rules settled here:
 - **A stray tap in the box does not take the AP down**: `answer_at` returns `None` outside the two
   answers, so the strip underneath still answers. This front has no "any tap dismisses", because a
   finger wandering across the box must not tear down the AP a phone is being walked onto.
-- **The access point front does not survey on a clock**: `survey_pause_after(Front::AccessPoint, …)` returns
+- **The access point front does not survey on a clock**: `scan_pause_after(SetupHost::AccessPoint, …)` returns
   `None` — not a zero-length pause but no clock at all. Entering the front surveys once to fill the
   page; after that only the page's own `RESCAN` asks for a round.
 - **3 minutes** (`SETUP_IDLE_MS`): every page read resets it, `CLOSE` takes the AP down at once. It
@@ -2003,7 +2004,7 @@ Geometry and wording:
   header keeps `ST SETUP` and the list.
 
 `[test]` What the host pins: `LinkStatus.front` and `shows_setup_box()` (= setup mode and the access point
-front); `survey_pause_after(AccessPoint, …) == None` while the other three gears keep their clocks; the
+front); `scan_pause_after(AccessPoint, …) == None` while the other three gears keep their clocks; the
 two cells' geometry (equal width, seam inside the cells, `toolbar_cell_at` on both halves and on the
 boundary); `switch_front`/`take_setup_open` only acting in the right front, and `take_*` handing the
 request over once; the box's two answers and "outside them is `None`"; the Boot long press on any
@@ -2028,7 +2029,7 @@ one `Signal`, one static and one `select` arm fewer), and `setup_password` narro
 `[DISPLAY] main stack 65592 B`, `stack peak 38696 B of 65592 B`.
 
 `[measured]` The access point front on the bench: to see this front without a finger, the S3 branch's
-initial front was changed to `Front::AccessPoint` **temporarily** (one line, reverted after measuring; the
+initial front was changed to `SetupHost::AccessPoint` **temporarily** (one line, reverted after measuring; the
 product still starts on the panel front):
 
 ```
@@ -2079,9 +2080,9 @@ of it is a matter of feel:
   carrying `AP` alone — so `SCAN` vanished entirely and the switch did not look like a cell
   either. This board's `creds` is empty (no saved network), so `setup_cancellable == false` is the
   normal case here, not a corner.
-- **The box closing itself**. `SetupAsk` is an `embassy_sync::Signal`: raising the AP takes ≈ 1 s,
-  and a second tap on `AP` during it (or one tap read twice) leaves a `Front` request on the
-  the channel; the next reader is the **access point** front's loop, which reads `Front` as "back to the panel" —
+- **The box closing itself**. `NetworkCommand` is an `embassy_sync::Signal`: raising the AP takes ≈ 1 s,
+  and a second tap on `AP` during it (or one tap read twice) leaves a `SetupHost` request on the
+  the channel; the next reader is the **access point** front's loop, which reads `SetupHost` as "back to the panel" —
   the box opens and closes at once. The channel does not remember **which front** a request was made
   on.
 - **Fix one: two cells, always two cells** (strip option A). Left cell = `CANCEL` when there is a way
@@ -2091,8 +2092,8 @@ of it is a matter of feel:
   cell would be a control that does nothing. The right cell is always `AP`/`PANEL`.
   `state::toolbar` reads the same conditions: left cell = cancel / scan / switch.
 - **Fix two: the request carries the front it was made on**
-  (`SetupAsk::{Cancel, Front, Pass} { from: Front }`). The render loop publishes the current
-  `link.front`; each front's loop takes only requests where `applies_to(its own front)`, drops the
+  (`NetworkCommand::{LeaveSetup, SwitchHost, SetupOpen} { from: SetupHost }`). The render loop publishes the current
+  `link.mode.host()`; each front's loop takes only requests where `applies_to(its own front)`, drops the
   rest and logs one line: `dropped a setup request made on the panel's front; the access point stays
   up` (the other direction is `... made on the access point's front; the box is not open`). No time window:
   a request was either made on this front or it was not.
@@ -2105,7 +2106,7 @@ front's test renamed to `..._has_only_the_front_switch_on_the_access_points_fron
 `[measured]` Gates: `cargo fmt --check`, `moon run iot:test` (core **657**, app 35),
 `iot:test-bsp` (113), `iot:lint`, `iot:check-host`, `iot:check-s3`, `iot:check-c6`,
 `moon run iot:image` all pass; `nm` is still **65,592 B** (56 B left), since this round touched a few
-lines of code and two `Front` fields and no stack. Flashed and booted: `[DISPLAY] main stack 65592
+lines of code and two `SetupHost` fields and no stack. Flashed and booted: `[DISPLAY] main stack 65592
 B`, `stack peak 38696 B`, with no `setup access point up` (the product still starts on the panel
 front).
 
@@ -2118,7 +2119,7 @@ front).
 - **The box no longer closing itself, and the two cells being visible**: the first needs a finger
   (the code path and its tests are there, but "a second tap inside the second the AP takes" only
   reproduces by hand); the second is pixels and needs an eye.
-- **The C6's open AP**: the policy and the code are there (`serve(..., Front::AccessPoint, false)`),
+- **The C6's open AP**: the policy and the code are there (`serve(..., SetupHost::AccessPoint, false)`),
   `iot:check-c6` compiles it, but the C6 has no product path, so it is **not measured**.
 - **A no-hands walk of the front switch**: this round tried adding one to `IOT_PANEL_BENCH` (tap the
   right cell → the box rises → tap `NO PASS` → tap the right cell back to the panel, all through the
@@ -2130,7 +2131,7 @@ front).
 
 ### Every survey round wrote the panel front back: the station's status does not know its front (`[measured]`/`[test]`, 2026-10-21)
 
-The previous section put "the box closes itself" on a stale `SetupAsk`; `applies_to` stopped that one
+The previous section put "the box closes itself" on a stale `NetworkCommand`; `applies_to` stopped that one
 (there is a `dropped ...` in the log at 05:24), but what happened **every round** was another line:
 
 ```
@@ -2149,12 +2150,12 @@ read "not on the access point front" and the box vanished; on a board with a sav
 would have become `SCAN` every five seconds as well. It also explains the shape of the report: **nobody
 touched it.**
 
-Fix: `LinkStatus::on_setup_face(front, cancellable)` (core) writes the front and the way back in one
+Fix: `LinkStatus::with_mode(front, cancellable)` (core) writes the front and the way back in one
 place and passes phase/AP/address/passphrase through untouched; the network task's four publishes
 (panel front, access point front, survey ok, survey failed) all go through it, and `survey()` takes the
-same `Face`.
+same `NetworkMode`.
 
-`[measured]` The no-hands reading: the S3 branch's initial front was changed to `Front::AccessPoint`
+`[measured]` The no-hands reading: the S3 branch's initial front was changed to `SetupHost::AccessPoint`
 temporarily (one line, reverted after measuring), and the serial log shows one front change and no
 flip back after the scan:
 
@@ -2163,7 +2164,7 @@ flip back after the scan:
 [WIFI] survey found 2 access points
 ```
 
-The product image, back on `Front::Panel`, boots with no `setup access point up` and no front-change
+The product image, back on `SetupHost::Panel`, boots with no `setup access point up` and no front-change
 line, and surveys every 5–6 s. The render loop now logs
 `[WIFI] setup mode is offered on the {front:?} front` whenever the front changes — that line is the
 reading that does not need an eye on the box.
@@ -2180,7 +2181,7 @@ passphrase do not move.
 `PHONE` was the only one of the three names that named **what you happen to hold**: it is wrong for a
 laptop and it is not the industry word. Espressif calls the whole thing *provisioning* (with SoftAP and
 WEB transports), WLED, Tasmota and Shelly all say **AP mode**, and the box's first line was already
-`AP vanling-xxxx`. So: the strip's right cell is `AP`, the variant is `Front::AccessPoint`,
+`AP vanling-xxxx`. So: the strip's right cell is `AP`, the variant is `SetupHost::AccessPoint`,
 `PHONE_LABEL` became `AP_LABEL`, and `phone_idle` became `page_idle` (it waits for page requests, not
 for a phone). Prose about configuring **from** a phone stays as it is — that names the method, not the
 front.
@@ -2198,7 +2199,7 @@ What was wrong on the bench was two words, not two mechanisms:
   destination, but the panel front raises no access point, so entering setup mode *is* leaving the
   link — a word about the destination hid the cost. It is `LEAVE` again: the box asks
   `LEAVE "cafe"?`, the body is still `THE LINK GOES DOWN`, the two answers are `KEEP` | `LEAVE`.
-  Where it lands has not moved (`Hold::Left` → `unconfigured()`'s panel front), and the left cell
+  Where it lands has not moved (`Outcome::Left` → `await_network()`'s panel front), and the left cell
   inside the mode is `CANCEL`, which joins the saved network back — `LEAVE`/`CANCEL` are a pair.
   The front switch still names destinations (`AP`/`PANEL`): you cannot judge a front you have not
   switched to, while the whole point of leaving **is** the cost, so this is the one exception.
@@ -2212,9 +2213,10 @@ What was wrong on the bench was two words, not two mechanisms:
   been configured through the phone's page therefore kept `front` on the access point, and a
   `LEAVE` tapped at the panel reopened the access point: a tap made at the panel opening the mode
   on the phone. `Setup`'s comment only promised the carry *across refused credentials* (a passphrase
-  retyped on the phone stays on the phone's page), never across a successful join. The fix is
-  `front_after_link(start, current, ended)`: `Left` and `Named` go back to the build's answer (the
-  panel where there is one, the access point where there is not), and `Refused` stays where it is.
+  retyped on the phone stays on the phone's page), never across a successful join. The fix became a
+  pure rule, now inlined in the `Stopped` branches of `network/link.rs`: `Left` goes back to the
+  build's answer (the panel where there is one, the access point where there is not), and `Refused`
+  stays where it is.
   Both entry logs now name the front (`on the {:?} front`), because the next report of this kind
   could not be answered from the serial log without it.
 - **`AP MAC` and the address read as one run.** The label and the value were a **single**
@@ -2240,15 +2242,14 @@ this passed one more `LinkStatus` into two synchronous functions and added no st
 left and `AP` on the right; the serial log should say `setup mode opens on the Panel front`); and
 the page's `AP MAC` has a visible gap before the address, which is a shade brighter than the label.
 
-`[test]` `front_after_link` used to have no host test: it lived in `network.rs` behind the `wifi`
+`[test]` This pure decision once had no host test: it lived in `network.rs` behind the `wifi`
 feature, which pulls in `iot-bsp-esp/wifi`, and no host build compiled it (`iot:test`'s `host` has no
-`wifi`). Splitting `network` into four files moved this pure decision into core (`LinkEnding` and
-`front_after_link` in `core/src/drivers/network.rs`), and two host tests now pin it:
-`a_leave_or_a_pick_opens_setup_where_the_build_put_it` (the six cells of start front × current front
-× `Named`/`Left` all return to the start) and `a_refused_credential_keeps_the_front_it_was_typed_on`
-(`Refused` keeps the current front). The `link`/`configure` loops themselves still have no host
-harness: that would first need a fake-`Station` bench for the link task, so the evidence for them
-remains the serial log of one `LEAVE` and the front the panel shows.
+`wifi`). Splitting `network` into four files moved it into core (`LinkEnding` and `front_after_link`
+in `core/src/drivers/network.rs`), where two host tests pinned it. Rewriting the network worker
+deleted the function and inlined the rule, so both tests went with it. The `link`/`setup_session`
+loops themselves still have no host harness: that would first need a fake-`Station` bench for the
+link task, so the evidence for them remains the serial log of one `LEAVE` and the front the panel
+shows.
 
 ### A reload no longer earns `ERR_CONNECTION_REFUSED`: keep-alive, six listeners and half a second (`[measured]`/`[test]`, 2026-10-21)
 
@@ -2363,7 +2364,7 @@ What this cut changes is **where that press lands** and **what the radio does du
 | Long press on the splash | `Toolbar(Right)`: leave the link if there is one, `Invalid` otherwise | `BusinessIntent::RequestSetup`: the request is only **latched** (`setup_wanted`); no page change, no access point |
 | The splash closing | back to `boot_page` | asked for and `backed.network` → **`Network`**; otherwise `boot_page` |
 | The link during the splash | read a credential and associate; the hold then tears it down | **no link at all**: `link()` waits on `NetworkCommand::SplashOver` before reading a credential |
-| After the request | associate, then leave | skip association: `Front::AccessPoint` goes straight into setup mode |
+| After the request | associate, then leave | skip association: `SetupHost::AccessPoint` goes straight into setup mode |
 | What decides it | `is_leavable()` on the link | nothing about the link: a press inside the window counts, the same answer on both boards |
 | A device with no credentials at boot | enters setup mode by itself and raises the access point | **works offline**: no setup mode, no access point |
 | The page the press lands on | the box drawn on top of the splash | the page lands on `Network` first; `link()` raises the access point front afterwards, and nothing is ever stacked on the splash |
@@ -2390,7 +2391,7 @@ The rules:
 - **No link is built during the splash** (`[measured]`): the first thing `link()` does is wait on
   the coordinator's `NetworkCommand::SplashOver`; until it arrives, neither a credential is read nor
   the radio touched — the splash window produces no `joining`/`leaving` line. When the request is there the
-  path goes straight into `Front::AccessPoint`, with no association at all; an "associate, then tear
+  path goes straight into `SetupHost::AccessPoint`, with no association at all; an "associate, then tear
   down" implementation would leave two lines in that window and put the access point front 2–3 s
   later.
 - **No credentials means an offline device**: when `first_saved()` is empty, `browsing()` takes the
@@ -2400,12 +2401,12 @@ The rules:
   cells, and `AP` is what raises the access point. The C6 has no panel, so configuring it still means
   reset, then hold BOOT on the splash; that is its only way in.
 - **The panel's page is resident**: scanning, the list, the keyboard and `JOIN` were split out of the
-  setup loop (`pick`), and `link.setup` now means **the page is on the setup face**: the
+  setup loop (`pick`), and `link.mode.is_setup()` now means **the page is on the setup face**: the
   panel front raises no access point, the access point front does. On an S3 with no credentials,
   three taps to Network give a live list (`browsing()`) with `SCAN | AP`; tapping `AP` raises it, and
   a row picked sends `JOIN`, which `hold` receives.
 - **The ways in remain**: the offline page's `AP` cell, the panel's `LEAVE` on a live link
-  (`Hold::Left`) and a saved credential that is refused (`Hold::Refused`) all enter setup mode — each
+  (`Outcome::Left`) and a saved credential that is refused (`Outcome::Refused`) all enter setup mode — each
   is the finger's own doing.
 - **The idle clock is always armed**: `page_idle()` no longer takes `armed`; the access point front
   starts 180 s, every page request restarts it, and the exit goes back to the panel front or, on a
@@ -2471,7 +2472,7 @@ module boundary costs **+224 B**.
 
 `[measured]` Gates and the static wall: after the splash round, this round's futures grew past the
 wall again — **72 B** short. The fix is not cutting a feature but keeping a credential out of every
-frame: `hold` now takes `&Credentials`, `Hold::Named` carries `Box<Credentials>`, and the credential
+frame: `hold` now takes `&Credentials`, `Outcome::Next` carries `Box<Credentials>`, and the credential
 `link` holds is boxed (one allocation per credential, not per window). `nm` reads
 `_stack_end_cpu0 = 0x3fcd9658`, `_stack_start_cpu0 − _stack_end_cpu0` = **65,720 B** (floor 65,536,
 184 B left), and the main task's `POOL` = 42,704 B. `.cargo/config.toml` carries no
@@ -2481,7 +2482,7 @@ C6 `820,384 / 1,048,576 B` (78.24%).
 `[not done]`:
 
 - **The hold itself needs a finger**: hold BOOT within 1.5 s of reset, and the landing should be
-  `Network` in `Front::AccessPoint`, with no `joining` in the log and `setup mode ... is open`
+  `Network` in `SetupHost::AccessPoint`, with no `joining` in the log and `setup mode ... is open`
   instead. Once on each board.
 - **The S3's three-line pixels need a person**: the layout is covered by tests (the three lines land
   on the panel, the pitch and the centring) and the 1.5 s timing is measured (closes at
@@ -2499,11 +2500,10 @@ C6 `820,384 / 1,048,576 B` (78.24%).
   with a random 10 characters where there is a panel (`PASS …` + `NO PASS`). Both buttons last for
   one visit; going away and back restores the entry's default. The C6 has no screen, so it is
   always open.
-- **The offline page keeps both cells**: `Face::browsing()` reports `browsing: true` and
-  `setup: false` (`front` stays `Panel`), so the Network page still offers `SCAN | AP`, but the
+- **The offline page keeps both cells**: `LinkStatus.mode` is `NetworkMode::Browsing` (no host), so the Network page still offers `SCAN | AP`, but the
   header draws the link's phase rather than `ST SETUP`, and a hold no longer switches fronts.
-  `SETUP_ASK` catches `AP` and hands back to `link()`, which enters `unconfigured()` with
-  `Front::AccessPoint`; only then does the AP come up. Offline still means no automatic setup mode
+  `NetworkCommand::SwitchHost` catches `AP` and hands back to `link()`, which enters `await_network()` with
+  `SetupHost::AccessPoint`; only then does the AP come up. Offline still means no automatic setup mode
   and no AP, and the 180 s idle clock still closes it.
 - **Glyphs**: Spleen 5×8 (Frederic Cambus, BSD-2-Clause), natively five columns by eight rows, so
   `m/M/w/W`, `0` and `\\` share one face; `FONT_H` stays 8, `OVERLAY_ROW_GAP` 5, pitch 9×13. The
@@ -2555,9 +2555,9 @@ where the stored list is the answer to "this device has been set up".
 Both defects came from the same habit: a boolean standing in for a mode, then a page reading the
 approximation.
 
-- **A hold outside the splash opened the AP**: `Face::browsing()` reported the offline list as
-  `setup: true`, so `link.setup` stayed true after setup mode ended; the hold gate in `intent.rs`
-  reads only `link.setup`, so every hold became `SwitchFront`. The lamp stayed amber because
+- **A hold outside the splash opened the AP**: the browsing mode reported the offline list as
+  `setup: true`, so `link.mode.is_setup()` stayed true after setup mode ended; the hold gate in `intent.rs`
+  reads only `link.mode.is_setup()`, so every hold became `SwitchHost`. The lamp stayed amber because
   `link_notice()` only says `SETUP` for `setup && front == AccessPoint` — hence "not in setup
   mode, yet a hold raises the AP".
 - **The C6 did not rejoin after reset**: `iot:flash` ran `cargo run`, whose runner is
@@ -2568,11 +2568,11 @@ approximation.
 
 The fix:
 
-- `LinkStatus` gains `browsing: bool`; `Face::browsing()` reports `setup: false`, `browsing: true`.
-  `controls::strip` draws `SCAN | AP` for `browsing`, and the header draws the link's phase rather
+- `LinkStatus.mode` gains `NetworkMode::Browsing` (no host).
+  `controls::strip` draws `SCAN | AP` for it, and the header draws the link's phase rather
   than `ST SETUP`.
-- `SwitchFront` accepts `setup || browsing` but still requires `panel.is_wired()`. The hold gate
-  stays on `link.setup`, so only the splash's 1.5 seconds and real setup mode answer a hold; the
+- `SwitchHost` accepts `setup || browsing` but still requires `panel.is_wired()`. The hold gate
+  stays on `link.mode.is_setup()`, so only the splash's 1.5 seconds and real setup mode answer a hold; the
   offline page enters setup only by an explicit tap on `AP`.
 - With no panel and nothing saved, `link()` no longer enters `browsing()`: it waits in place.
   There is no page to browse and no cell to tap, and the splash is the only entry this board
@@ -2581,7 +2581,7 @@ The fix:
   --partition-table partitions/esp32c6-devkitc-1.csv --monitor`, with `moon.yml` saying why
   `cargo run` cannot carry the table.
 
-`[test]`: `a_board_with_no_panel_has_no_front_to_switch_to` (`SwitchFront` is a no-op without a
+`[test]`: `a_board_with_no_panel_has_no_front_to_switch_to` (`SwitchHost` is a no-op without a
 panel), `an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one` (the `AP` cell still
 works, the hold does not switch), and `controls::tests::the_offline_list_keeps_both_cells`. All
 691 `iot-core` tests pass, and `check-s3`, `check-c6` and `check-host` pass.
@@ -2666,7 +2666,7 @@ the erased state.
      implementation did **not** take the route of "a channel carrying the stored names into
      `DeviceState`": against the S3's static-memory wall, a `SavedNetworks` (~980 B) landing in the
      app either by value or as an `&EMPTY` blows it, so the **mask travels with the list itself**
-     (`ApList.saved: u8`, one bit a row) and `SurveyHistory::{observe, marked}` take an
+     (`ApList.saved: u8`, one bit a row) and `ScanHistory::{observe, marked}` take an
      `Option<&SavedNetworks>` so no value is built in the app. The price is that the state and the
      history each hold a list, so the `SCAN` channel has to be one that **takes every publish and drops
      none** (this round turned it into a slot that overwrites — see the fourth run). The erase goes
@@ -2690,7 +2690,7 @@ the erased state.
      are in "Tapping a saved row joins it with the copy the device keeps"): the page hands over a
      **name**, the network task looks it up with `SavedNetworks::copy_of` and takes the passphrase
      from there, and a name with no copy is reported back as `NoCopy` so the page raises the
-     keyboard; the copy the store handed over is **not written** (`Provenance`). **With no bench
+     keyboard; the copy the store handed over is **not written** (`Origin`). **With no bench
      reading**: the `NoCopy` backstop (the mark and the store share one owner, so "a mark without a
      store entry" cannot be produced on the bench), a failed write of that copy, and the boot read's
      own "does not write" (this boot is the panel arm, with `creds` erased) — code reading only.

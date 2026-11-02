@@ -7,10 +7,10 @@ use iot_core::drivers::credentials::{FlashRegion, Opened, RegionError, Store};
 const PARTITION_LABEL: &str = "creds";
 
 /// The store over this board's credential partition.
-pub type CredentialStore = Store<CredsRegion<'static>>;
+pub type CredentialStore = Store<CredentialRegion<'static>>;
 
 /// One partition of flash, addressed from its own start.
-pub struct CredsRegion<'d> {
+pub struct CredentialRegion<'d> {
     flash: FlashStorage<'d>,
     base: u32,
     len: u32,
@@ -37,7 +37,7 @@ pub fn load(mut flash: FlashStorage<'static>) -> Option<CredentialStore> {
         return None;
     };
 
-    let (store, opened) = Store::open(CredsRegion { flash, base, len });
+    let (store, opened) = Store::open(CredentialRegion { flash, base, len });
     match opened {
         Opened::Loaded => {
             let count = store.networks().len();
@@ -54,7 +54,7 @@ pub fn load(mut flash: FlashStorage<'static>) -> Option<CredentialStore> {
     Some(store)
 }
 
-impl FlashRegion for CredsRegion<'_> {
+impl FlashRegion for CredentialRegion<'_> {
     fn read(&mut self, offset: u32, into: &mut [u8]) -> Result<(), RegionError> {
         let at = self.address(offset, into.len() as u32)?;
         self.flash.read(at, into).map_err(refusal)
@@ -71,7 +71,7 @@ impl FlashRegion for CredsRegion<'_> {
     }
 }
 
-impl CredsRegion<'_> {
+impl CredentialRegion<'_> {
     fn address(&self, offset: u32, bytes: u32) -> Result<u32, RegionError> {
         if offset.checked_add(bytes).is_some_and(|end| end <= self.len) {
             Ok(self.base + offset)

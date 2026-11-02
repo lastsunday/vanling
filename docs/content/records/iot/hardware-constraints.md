@@ -311,10 +311,10 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 | 读数（`nm -S`，S3 `vanling`） | 改前 | 改后 |
 | --- | --- | --- |
 | `__embassy_main::POOL` | 2,528 B（`0x9e0`） | 1,432 B（`0x598`） |
-| `network_task::POOL` | — | 1,168 B（`0x490`） |
+| `network::task::POOL` | — | 1,168 B（`0x490`） |
 | `_stack_start_cpu0 − _stack_end_cpu0` | 96,432 B | 96,368 B |
 
-`[实测]` 两个池相加从 2,528 涨到 2,600 B（+72 B），主栈区只少了 64 B；`network_task` 的 future 只有 1,168 B，因为 `link` 里的大件（凭据库、扫描历史、`browsing` 的 future）本来就是堆上的。`_stack_end_cpu0` 落在 `0x3fcd1ea0`，距 65,536 B 的下限还很远。`check-s3` 只 type-check，这个差值只有链接后的 `nm` 看得见。
+`[实测]` 两个池相加从 2,528 涨到 2,600 B（+72 B），主栈区只少了 64 B；`network::task` 的 future 只有 1,168 B，因为 `link` 里的大件（凭据库、扫描历史、`browsing` 的 future）本来就是堆上的。`_stack_end_cpu0` 落在 `0x3fcd1ea0`，距 65,536 B 的下限还很远。`check-s3` 只 type-check，这个差值只有链接后的 `nm` 看得见。
 
 同一份镜像的开机日志把「任务真的起来了」对上号（那一版 `run` 才起工作者，所以顺序是）：`[IOT] starting the net worker` 出现在 `[IOT] demand …` 之后、`[DISPLAY] stack peak` 之前，紧接着 `[WIFI] network stack up, DHCP requested`；`[DISPLAY] backlight dark until the first frame; main stack 96368 B` 与 `[DISPLAY] stack peak 14917 B of 96368 B` 和 `nm` 的分区尺寸一致，说明池搬家没有改变主栈区的大小。
 
@@ -325,12 +325,14 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 | 读数（`nm -S`，S3 `vanling`） | 上一版 | 本版 |
 | --- | --- | --- |
 | `__embassy_main::POOL` | 1,432 B（`0x598`） | 1,416 B（`0x588`） |
-| `network_task::POOL` | 1,168 B（`0x490`） | 1,152 B（`0x480`） |
+| `network::task::POOL` | 1,168 B（`0x490`） | 1,152 B（`0x480`） |
 | `_stack_start_cpu0 − _stack_end_cpu0` | 96,368 B | 96,400 B |
 
 `[实测]` 池合计少 32 B、主栈区多 32 B，两者互为镜像，净额为零；没有逐符号归因。`_stack_end_cpu0` = `0x3fcd1e80`。App 1,062,128 B（S3）/ 845,392 B（C6，分区 80.62%）。
 
 `[实测]` 开机日志把新的启动顺序和启动页结论都钉住了：S3 先打 `[IOT] starting the net worker`、再打 `[IOT] demand …`（因为 `spawn` 在 `run` 之前），`[DISPLAY] … main stack 96400 B` 与 `nm` 读数一致；`[INPUT] the splash is over; setup mode was not asked for` 之后 8 ms 就出现 `[WIFI] this device saved a network; joining …`，说明工作者确实在等 `NetworkCommand::SplashOver` 而不是别的信号。C6 同样 `[IOT] starting the net worker` → `[WIFI] network stack up`，启动页结束后立刻 `[WIFI] no page surface and no saved network; waiting offline`，WS2812 走完离线提示回到页面自己的灯。两块板都无 panic。
+
+`[未重测]` 之后的 Wi-Fi 重写把启动点收回 `run`：入口只交出 `Wifi::Worker(NetworkWorker)`（一个接收 `Spawner` 的闭包），`run` 在 `run_loop` 之前执行它。上表的两个池读数是「入口直接 `spawn`」那一版的；这次重写只跑了 `check-s3` / `check-c6` / `check-host`（均只 type-check），没有重新链接，因此没有新的 `nm` 读数。
 
 ### IRAM 的 DRAM 镜像 47,396 B：一个字节都不属于本仓（`[实测]`，2026-11-01）
 

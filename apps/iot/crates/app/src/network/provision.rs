@@ -1,6 +1,5 @@
 //! Setup mode's device side: the access point, its DHCP and DNS services, and the page.
 
-use core::cell::RefCell;
 use core::convert::Infallible;
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
@@ -14,7 +13,6 @@ use embassy_net::driver::Driver;
 use embassy_net::tcp::{State, TcpSocket};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::{Config, Ipv4Cidr, Runner, Stack, StaticConfigV4};
-use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
@@ -25,7 +23,7 @@ use iot_core::provision::{
 };
 use iot_core::state::NetworkCommand;
 
-use crate::workers::Net;
+use crate::workers::NETWORK;
 
 const HTTP_PORT: u16 = 80;
 const DNS_PORT: u16 = 53;
@@ -40,18 +38,6 @@ const LEAVE_GRACE: Duration = Duration::from_secs(2);
 pub const PAGE_SOCKETS: usize = 6;
 const PAGE_RX_BYTES: usize = 1_460;
 const PAGE_TX_BYTES: usize = 1_460;
-
-static LATEST: Mutex<CriticalSectionRawMutex, RefCell<ApList>> =
-    Mutex::new(RefCell::new(ApList::empty()));
-
-/// By reference: the caller's copy would otherwise be repeated in its frame.
-pub fn publish_scan(list: &ApList) {
-    LATEST.lock(|cell| *cell.borrow_mut() = *list);
-}
-
-fn latest_scan() -> ApList {
-    LATEST.lock(|cell| *cell.borrow())
-}
 
 static PAGE_READ: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
@@ -69,12 +55,7 @@ pub fn setup_config() -> Config {
 }
 
 /// Serve setup mode on `stack` until the caller drops the future.
-pub async fn serve<'d, D>(
-    stack: Stack<'d>,
-    mut runner: Runner<'d, D>,
-    mac: [u8; 6],
-    net: Net,
-) -> Infallible
+pub async fn serve<'d, D>(stack: Stack<'d>, mut runner: Runner<'d, D>, mac: [u8; 6]) -> Infallible
 where
     D: Driver,
 {
@@ -82,13 +63,7 @@ where
         "[WIFI] setup mode: an access point, a lease for whoever joins it, and the page at \
          {BASE_URL}"
     );
-    match join4(
-        runner.run(),
-        leases(stack),
-        names(stack),
-        page(stack, mac, net),
-    )
-    .await {}
+    match join4(runner.run(), leases(stack), names(stack), page(stack, mac)).await {}
 }
 
 async fn leases(stack: Stack<'_>) {
@@ -157,7 +132,7 @@ async fn names(stack: Stack<'_>) {
     }
 }
 
-async fn page(stack: Stack<'_>, mac: [u8; 6], net: Net) {
+async fn page(stack: Stack<'_>, mac: [u8; 6]) {
     let mut first_rx = [0u8; PAGE_RX_BYTES];
     let mut first_tx = [0u8; PAGE_TX_BYTES];
     let mut second_rx = [0u8; PAGE_RX_BYTES];
@@ -221,7 +196,7 @@ async fn page(stack: Stack<'_>, mac: [u8; 6], net: Net) {
                 }
             }
         };
-        let joining = answer(socket, mac, net).await;
+        let joining = answer(socket, mac).await;
         socket.close();
         if let Err(error) = socket.flush().await {
             log::warn!("[WIFI] an answer did not finish: {error:?}");
@@ -246,7 +221,8 @@ async fn page(stack: Stack<'_>, mac: [u8; 6], net: Net) {
         if let Some(credentials) = joining {
             log::info!("[WIFI] the page named a network, so the link is joining it");
             Timer::after(LEAVE_GRACE).await;
-            net.commands
+            NETWORK
+                .commands
                 .send(NetworkCommand::Join(JoinRequest::Typed(credentials)))
                 .await;
             core::future::pending::<()>().await;
@@ -258,7 +234,7 @@ fn armable(state: State) -> bool {
     matches!(state, State::Closed | State::TimeWait)
 }
 
-async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6], net: Net) -> Option<Credentials> {
+async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials> {
     let mut bytes = [0u8; REQUEST_BYTES];
     let mut piece = [0u8; PIECE_BYTES];
     let mut wait = PENDING_TIMEOUT;
@@ -297,16 +273,17 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6], net: Net) -> Option<Cr
                 Err(ParseError::Malformed) => {
                     log::warn!("[WIFI] a request line did not parse, so it was refused");
                     let refused = Response::text(Status::BadRequest, "malformed request");
-                    send_answer(socket, &refused, &mut piece, mac, &latest_scan(), true).await;
+                    let aps = NETWORK.scan.peek().unwrap_or_default();
+                    send_answer(socket, &refused, &mut piece, mac, &aps, true).await;
                     return None;
                 }
             }
         };
 
         if request.path == "/rescan" {
-            net.commands.send(NetworkCommand::ScanNow).await;
+            NETWORK.commands.send(NetworkCommand::ScanNow).await;
         }
-        let aps = latest_scan();
+        let aps = NETWORK.scan.peek().unwrap_or_default();
         let mut keep = !request.close;
         match route(&request, &aps) {
             Action::Respond(response) => {

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
-use iot_app::workers::NET;
+use iot_app::workers::NETWORK;
 use iot_app::{Feed, IoPlacement, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
@@ -523,7 +523,7 @@ async fn main(_spawner: Spawner) {
                 feed: Feed::Inline,
                 io: IoPlacement::Inline,
                 spawner: _spawner,
-                network: true,
+                wifi: iot_app::Wifi::Unattended,
                 surfaces,
             },
         ),
@@ -540,7 +540,7 @@ async fn main(_spawner: Spawner) {
 /// commands on the host, so this is where a command is read rather than acted on.
 fn take_commands() -> Vec<NetworkCommand> {
     let mut taken = Vec::new();
-    while let Ok(command) = NET.commands.try_receive() {
+    while let Ok(command) = NETWORK.commands.try_receive() {
         taken.push(command);
     }
     taken
@@ -809,7 +809,7 @@ async fn scenario() {
         rssi: -55,
         secured: true,
     }]);
-    NET.scan.publish(&list);
+    NETWORK.scan.publish(&list);
 
     attempts = 0;
     while NETWORK_APS.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -899,7 +899,7 @@ async fn scenario() {
     let mut marked = list;
     let marks = store.mask(&marked);
     marked.mark_saved(marks);
-    NET.scan.publish(&marked);
+    NETWORK.scan.publish(&marked);
     attempts = 0;
     while NETWORK_SAVED.load(Ordering::SeqCst) == 0 && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;

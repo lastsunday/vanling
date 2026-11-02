@@ -62,13 +62,13 @@ weight = 10
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, net }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
+| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, network }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
 | `pipeline.rs` | 协调者 `run_loop`：应用意图、发布状态、转发命令、等待下一帧 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
 | `playback/{mod,dispatch,sounds}.rs` | 播放工作者、状态→命令、声音目录；采集窗口在 `workers.rs` |
-| `net/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `network/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
 
@@ -76,17 +76,17 @@ weight = 10
 
 ```
 main → { lib, workers }
-lib  → { boot, pipeline, workers, net }
+lib  → { boot, pipeline, workers, network }
 pipeline → { workers, surface, input, playback, bench::replay }
-net      → { workers, input }
+network  → { workers, input }
 playback → { workers }
 input    → { workers }
 workers  → ∅
 ```
 
-- `workers` 不带 `wifi` 门控：host 构建照样持有 `Net`，只是没人应答
-- `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`net`/`input` 才能单向引用它
-- `net` 不依赖 `surface`/`pipeline`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- `workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
+- `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
+- `network` 不依赖 `surface`/`pipeline`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
 - `core` 不认识 `iot_app`
 
@@ -184,21 +184,21 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 | 渲染层 / 摄像头 | surface、camera                   | 协作                              | `Render` / `Diagnostics` |
 | `input_task`   | 输入器件与音频采集                | 协作（S3：第二个核）              | `Input { to, from }` |
 | `control_loop` | 编解码器、DMA                     | 协作（S3：第二个核）              | `Speaker { to }`（完成回报走 intent 总线） |
-| `net::serve`   | 协议栈、链路、AP 服务             | 协作（core 0 上的任务）           | `Net { commands, page, scan }` |
+| `network::serve`   | 协议栈、链路、AP 服务             | 协作（core 0 上的任务）           | `Network { commands, page, scan }` |
 | `feed_task`    | 麦克风时钟                        | **Priority2 中断，独立 executor** | ⚠️ **故意无依赖，不能加** |
 | `panel_service` | 面板总线（帧传输）                | **第二个 APP core**                | 无句柄：`Screen` 只持通道（`Panel::write`） |
 
 `panel_service` 与驱动半边（`input_task`、`control_loop`）跑在第二个核上：帧传输是阻塞 DMA，采集折叠每 20 ms 忙等 7 ms，两者都会整段占住所在执行器。协调者把画完的帧投成票据等回执；驱动半边整体交给 `IoPlacement::Elsewhere` 的槽位，由核上的 `run_io_from` 取走。只有核上确实起了第二个执行器时才走这条路——没起（单核 C6、S3 无面板）时是 `IoPlacement::Inline`，同一份任务照旧跑在协调者的执行器上，所以 placement 由 `start_executors` 决定，那是有没有第二个核这件事唯一的知情处。`esp_rtos::start_second_core` 固定用 `FROM_CPU_INTR1`，因此 `feed_task` 用 `FROM_CPU_INTR2`。
 
-**工作者由拥有其驱动的组合点启动。** 驱动半边由 `run` 用 `Wiring.spawner` 起（`IoPlacement::Inline`）或交给第二核（`Elsewhere`）。网络工作者的驱动类型只有入口认识，所以它在 `main` 里就地 `spawn`，和驱动半边并列——`run` 既不认识射频，也不再持有一张 worker 清单；加一个工作者就等于在组合点多一行 `spawn`，而不是多一种交给 `run` 的形状。`main` 因此不 `join` 任何工作者，`run_loop` 是它唯一 `await` 的协调者。`feed_task` 与 `panel_service` 仍由 `start_executors` 起——只有那里知道中断执行器与第二个核。`net::serve` 用本地 `Spawner` 起成任务，future 不必 `Send`：它留在 core 0 的执行器上，跨核的只有 `Io` 束。
+**工作者由拥有其驱动的组合点启动。** 驱动半边由 `run` 用 `Wiring.spawner` 起（`IoPlacement::Inline`）或交给第二核（`Elsewhere`）。网络工作者的驱动类型只有入口认识，所以入口把 station 与 store 取走后就地建出 `Wifi::Worker(NetworkWorker)`——一个只接收 `Spawner` 的闭包；`run` 在 `run_loop` 之前执行它，既不认识射频，也不持有 worker 清单。加一个工作者仍是组合点的一行闭包，而不是多一种交给 `run` 的形状。`main` 因此不 `join` 任何工作者，`run_loop` 是它唯一 `await` 的协调者。`feed_task` 与 `panel_service` 仍由 `start_executors` 起——只有那里知道中断执行器与第二个核。`network::serve` 用本地 `Spawner` 起成任务，future 不必 `Send`：它留在 core 0 的执行器上，跨核的只有 `Io` 束。
 
 句柄集中在组合根的 `Workers<'a>`：一个工作者一个字段，加第二个协议只加字段，不在调用点新增一对 `TO_X`/`FROM_X`。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。
 
 三种形状按语义选，不按方便选：
 
-- **命令**走 `Channel`（`Net.commands`、`Speaker.to`）。协调者每 pass 只交工作者有空位的那些；队列满时把这一条留到下一 pass，命令不会被丢掉。
-- **级别**走 `PageWatch`（`Net.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。启动页的结论不是级别而是**一次性事件**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求共用一条队列，工作者不必再看页面演进到哪一步。
-- **最新值**走 `Latest`/窗口（`Net.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
+- **命令**走 `Channel`（`Network.commands`、`Speaker.to`）。协调者每 pass 只交工作者有空位的那些；队列满时把这一条留到下一 pass，命令不会被丢掉。
+- **级别**走 `PageWatch`（`Network.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。启动页的结论不是级别而是**一次性事件**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求共用一条队列，工作者不必再看页面演进到哪一步。
+- **最新值**走 `Latest`/窗口（`Network.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
 
 `NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_action()` 直接返回，`run_loop` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一 pass，并让本 pass 不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
@@ -374,7 +374,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 `DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Boot::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
 
-能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以 `network` 是一个传进来的 `bool`，是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`network` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
+能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以入口交进来的是 `Wifi`（`Absent` / `Unattended` / `Worker`），`run` 在组合 `Backed` 时用 `wifi.wired()` 落成那个 `bool`：是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`wifi` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 
 这条规约是修一个缺陷写下来的。
 

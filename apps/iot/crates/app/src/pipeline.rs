@@ -38,7 +38,7 @@ pub async fn run_loop<C: ClockSink>(
         // rather than a request the panel asked for and never sent.
         if let Some(command) = unsent.take()
             && let Err(embassy_sync::channel::TrySendError::Full(command)) =
-                workers.net.commands.try_send(command)
+                workers.network.commands.try_send(command)
         {
             unsent = Some(command);
         }
@@ -56,7 +56,7 @@ pub async fn run_loop<C: ClockSink>(
             };
             if let Some(command) = command
                 && let Err(embassy_sync::channel::TrySendError::Full(command)) =
-                    workers.net.commands.try_send(command)
+                    workers.network.commands.try_send(command)
             {
                 unsent = Some(command);
             }
@@ -78,7 +78,7 @@ pub async fn run_loop<C: ClockSink>(
             log::info!("{}", LampLine(lamp));
             last_lamp = lamp;
         }
-        workers.net.page.publish(manager.state_ref().page);
+        workers.network.page.publish(manager.state_ref().page);
         // Only taken when the queue can hold it, so the verdict is neither lost nor able to
         // displace a command that is already waiting for room.
         if unsent.is_none()
@@ -93,7 +93,7 @@ pub async fn run_loop<C: ClockSink>(
                 }
             );
             if let Err(embassy_sync::channel::TrySendError::Full(command)) = workers
-                .net
+                .network
                 .commands
                 .try_send(NetworkCommand::SplashOver { setup })
             {
@@ -104,7 +104,7 @@ pub async fn run_loop<C: ClockSink>(
         if let Some(sample) = workers.input.from.take() {
             manager.apply_capture(sample);
         }
-        if let Some(list) = workers.net.scan.take() {
+        if let Some(list) = workers.network.scan.take() {
             manager.apply_scan(list);
         }
         // Wall clock, not the frame counter: a frame clock is logical, and a held executor makes
@@ -141,7 +141,7 @@ pub async fn run_loop<C: ClockSink>(
                 select3(
                     bus.ready_to_receive(),
                     workers.input.from.ready(),
-                    workers.net.scan.ready(),
+                    workers.network.scan.ready(),
                 )
                 .await;
                 frame.reanchor(Instant::now());

@@ -22,7 +22,7 @@ mod executor_stack;
 mod frame;
 pub mod input;
 #[cfg(feature = "wifi")]
-pub mod net;
+pub mod network;
 mod pipeline;
 mod playback;
 mod surface;
@@ -33,7 +33,7 @@ use input::{INTENT_BUS, input_task};
 use pipeline::run_loop;
 use playback::{playback_tasks, share};
 use surface::wired;
-use workers::{CAPTURE, Input, NET, PLAYBACK, SharedDemand, Workers};
+use workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand, Workers};
 
 pub enum Feed {
     Interrupt(SendSpawner),
@@ -68,12 +68,42 @@ pub struct Io {
     pub feed: Feed,
 }
 
+/// Starts the network worker. The composition root built it from the station it took off the
+/// board, so `run` starts it without ever naming the radio or the driver.
+pub struct NetworkWorker(Box<dyn FnOnce(Spawner)>);
+
+impl NetworkWorker {
+    pub fn new(start: impl FnOnce(Spawner) + 'static) -> Self {
+        Self(Box::new(start))
+    }
+
+    fn spawn(self, spawner: Spawner) {
+        (self.0)(spawner);
+    }
+}
+
+/// The radio as the composition root hands it over. One value, because there is one radio:
+/// `Absent` leaves the Network page dark, `Unattended` is a wired radio this composition starts
+/// no worker for — the host smoke drives the page on its own — and `Worker` is how `run` starts
+/// it.
+pub enum Wifi {
+    Absent,
+    Unattended,
+    Worker(NetworkWorker),
+}
+
+impl Wifi {
+    /// The page's gate is the radio, not the worker.
+    pub const fn wired(&self) -> bool {
+        !matches!(self, Self::Absent)
+    }
+}
+
 pub struct Wiring<C> {
     pub clock: C,
     pub feed: Feed,
-    /// Whether a radio came up. `run` never sees the station — the network worker takes it —
-    /// so the caller states the bit that gates the Network page.
-    pub network: bool,
+    /// The radio: whether there is one, and how to start the worker that uses it.
+    pub wifi: Wifi,
     /// The wired output surfaces, each carrying what the board says it is for.
     pub surfaces: Vec<WiredSurface>,
     /// Where the driver half runs; the caller is the only one that knows how many cores it
@@ -99,7 +129,7 @@ async fn io_loop(io: Io) {
             from: &CAPTURE,
         },
         playback: PLAYBACK,
-        net: NET,
+        network: NETWORK,
     };
     match join(
         input_task(&INTENT_BUS, sources, &configurator, workers.input),
@@ -131,7 +161,7 @@ where
     let Wiring {
         mut clock,
         feed,
-        network,
+        wifi,
         surfaces,
         io,
         spawner,
@@ -149,7 +179,7 @@ where
         audio: audio.is_some(),
         playback: speaker.is_some(),
         camera: camera.is_some(),
-        network,
+        network: wifi.wired(),
     };
     let configurator = Configurator::new(board.motion_configurations());
     sources.extend(motion);
@@ -206,13 +236,19 @@ where
         IoPlacement::Elsewhere(queue) => queue.send(drivers).await,
     }
 
+    // Started here, where the coordinator is built: the closure is the composition root's, so
+    // this half names neither the radio nor its driver.
+    if let Wifi::Worker(worker) = wifi {
+        worker.spawn(spawner);
+    }
+
     let workers = Workers {
         input: Input {
             to: demand,
             from: &CAPTURE,
         },
         playback: PLAYBACK,
-        net: NET,
+        network: NETWORK,
     };
     run_loop(&INTENT_BUS, workers, renderers, &mut manager, &mut clock).await
 }
