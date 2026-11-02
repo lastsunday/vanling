@@ -10,7 +10,7 @@ use crate::intent::{ActionIntent, InputIntent, PageIntent};
 use crate::page::DisplayPage;
 
 use super::device::Effects;
-use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NoticeKind, PlaybackState};
+use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKind, PlaybackState};
 
 /// Single owner of device state.
 #[cfg_attr(test, derive(Clone))]
@@ -23,6 +23,11 @@ pub struct DeviceManager {
     /// The page `demand` was derived from: the proposal reads the page and nothing else, so a
     /// state write that cannot have moved it does not need to rebuild the table.
     demand_page: DisplayPage,
+    /// Whether the button asked for setup mode while the splash was up. A boot decision the
+    /// splash landing reads, not something the link knows.
+    setup_wanted: bool,
+    /// What the splash landing has to tell the network task, once.
+    splash_end: Option<bool>,
 }
 
 impl DeviceManager {
@@ -48,6 +53,8 @@ impl DeviceManager {
             state,
             demand_keys: boot.demand_keys,
             override_: boot.overrides,
+            setup_wanted: false,
+            splash_end: None,
         }
     }
 
@@ -92,34 +99,51 @@ impl DeviceManager {
             }
             InputEvent::Touch(event) => self.state.touch.on_frame(event),
             InputEvent::Gesture(gesture) => self.state.touch.on_gesture(gesture),
-            InputEvent::ChipGesture(id) => self.state.touch.chip_gesture_id = id,
+            InputEvent::ChipGesture(id) => self.state.touch.view.chip_gesture_id = id,
         }
     }
 
     /// Route one action intent to the domain that owns it. Each domain matches its own
     /// group, so the manager knows the groups and never a domain's actions.
-    pub fn apply_action(&mut self, intent: ActionIntent) {
-        match intent {
-            ActionIntent::Invalid => {}
-            ActionIntent::Page(intent) => self.apply_page(intent),
+    /// Route one action intent to the domain that owns it, and answer with the command the
+    /// network task has to carry out. Every other group asks for nothing outside the core, so
+    /// they answer `None`; the caller that owns the worker is the only one that can deliver
+    /// it, and it gets exactly one pass at it.
+    pub fn apply_action(&mut self, intent: ActionIntent) -> Option<NetworkCommand> {
+        let command = match intent {
+            ActionIntent::Invalid => None,
+            ActionIntent::Page(intent) => {
+                self.apply_page(intent);
+                None
+            }
             ActionIntent::Network(intent) => {
                 let has_pages = self.state.has_pages();
-                let effects = self.state.network.apply(intent, has_pages);
+                let mut effects = self.state.network.apply(intent, has_pages);
+                let command = effects.command.take();
                 self.apply_effects(effects);
+                command
             }
-            ActionIntent::Audio(intent) => self.state.audio.apply(intent, self.state.backed.audio),
-            ActionIntent::Playback(action) => self
-                .state
-                .playback
-                .apply(action, self.state.backed.playback),
+            ActionIntent::Audio(intent) => {
+                self.state.audio.apply(intent, self.state.backed.audio);
+                None
+            }
+            ActionIntent::Playback(action) => {
+                self.state
+                    .playback
+                    .apply(action, self.state.backed.playback);
+                None
+            }
             ActionIntent::Light(intent) => {
-                self.apply_to(usize::from(intent.instance), intent.state)
+                self.apply_to(usize::from(intent.instance), intent.state);
+                None
             }
-        }
+        };
         self.propose_demand();
+        command
     }
 
     /// What a domain asked the rest of the device for, applied after its own state settled.
+    /// The one ask that leaves the core is taken out before this runs.
     fn apply_effects(&mut self, effects: Effects) {
         if let Some(sound) = effects.sound {
             self.ring(sound);
@@ -137,7 +161,7 @@ impl DeviceManager {
             }
             PageIntent::RequestSetup => {
                 if self.state.page == DisplayPage::Splash {
-                    self.state.network.setup_wanted = true;
+                    self.setup_wanted = true;
                 }
             }
             PageIntent::SplashOver => self.land_after_splash(),
@@ -148,19 +172,20 @@ impl DeviceManager {
         if self.state.page != DisplayPage::Splash {
             return;
         }
-        self.state.page = if self.state.network.setup_wanted && self.state.backed.network {
+        self.state.page = if self.setup_wanted && self.state.backed.network {
             DisplayPage::Network
         } else {
             self.boot_page
         };
+        self.splash_end = Some(self.setup_wanted);
         // A device that boots with nothing to join has nothing to say after the splash
         // except that: one amber burst, then the page's own light. A hold that asked for
         // setup is not this — the access point is the answer to it, and the mode has its own
         // colour.
-        if !self.state.network.setup_wanted
+        if !self.setup_wanted
             && self.state.backed.network
             && !self.state.network.link.saved
-            && !self.state.network.link.setup
+            && !self.state.network.link.mode.is_setup()
             && !self.state.network.outage_announced
         {
             self.state.network.outage_announced = true;
@@ -168,12 +193,15 @@ impl DeviceManager {
         }
     }
 
+    /// What the splash landing owes the network task, handed over once.
     pub fn take_splash_end(&mut self) -> Option<bool> {
-        if self.state.network.splash_reported || self.state.page == DisplayPage::Splash {
-            return None;
-        }
-        self.state.network.splash_reported = true;
-        Some(self.state.network.setup_wanted)
+        self.splash_end.take()
+    }
+
+    /// Whether the button asked for setup mode while the splash was up.
+    #[cfg(test)]
+    pub fn setup_wanted(&self) -> bool {
+        self.setup_wanted
     }
 
     pub fn state(&self) -> DeviceState {

@@ -23,7 +23,7 @@ pub async fn run_loop<C: ClockSink>(
     clock: &mut C,
 ) -> ! {
     let mut last_page = manager.state().page;
-    let mut last_front = manager.state().network.link.host;
+    let mut last_front = manager.state().network.link.mode.host();
     let mut last_lamp = manager.state().link_notice();
     let mut frame = FrameClock::new(Instant::now());
     // Loop-local: a second `run` in one process must not answer for the first.
@@ -33,14 +33,32 @@ pub async fn run_loop<C: ClockSink>(
     // The command the worker had no room for last pass; offered again before anything new.
     let mut unsent: Option<NetworkCommand> = None;
     loop {
-        while let Ok(intent) = bus.try_receive() {
-            match intent {
+        // A command the worker had no room for goes first. If it still does not fit, this
+        // pass takes no new intent: the bus is the backlog, so a busy worker costs a frame
+        // rather than a request the panel asked for and never sent.
+        if let Some(command) = unsent.take()
+            && let Err(embassy_sync::channel::TrySendError::Full(command)) =
+                workers.net.commands.try_send(command)
+        {
+            unsent = Some(command);
+        }
+        while unsent.is_none() {
+            let Ok(intent) = bus.try_receive() else {
+                break;
+            };
+            let command = match intent {
                 Intent::Input(op) => {
                     manager.apply_input(op);
                     let business = iot_core::intent::translate(&op, manager.state_ref());
-                    manager.apply_action(business);
+                    manager.apply_action(business)
                 }
                 Intent::Action(business) => manager.apply_action(business),
+            };
+            if let Some(command) = command
+                && let Err(embassy_sync::channel::TrySendError::Full(command)) =
+                    workers.net.commands.try_send(command)
+            {
+                unsent = Some(command);
             }
             if manager.state_ref().page != last_page {
                 log::info!("[INPUT] page is now {:?}", manager.state_ref().page);
@@ -48,12 +66,12 @@ pub async fn run_loop<C: ClockSink>(
             }
             playback.dispatch(workers.playback.to, manager.playback_state());
         }
-        if manager.state_ref().network.link.host != last_front {
-            last_front = manager.state_ref().network.link.host;
-            log::info!(
-                "[WIFI] setup mode is offered on the {:?} host",
-                manager.state_ref().network.link.host
-            );
+        let front = manager.state_ref().network.link.mode.host();
+        if front != last_front {
+            last_front = front;
+            if let Some(host) = front {
+                log::info!("[WIFI] setup mode is offered on the {host:?} host");
+            }
         }
         let lamp = manager.state_ref().link_notice();
         if lamp != last_lamp {
@@ -78,18 +96,6 @@ pub async fn run_loop<C: ClockSink>(
         }
         if let Some(list) = workers.net.scan.take() {
             manager.apply_scan(list);
-        }
-        // The state machine names the commands; this pass hands over as many as the worker
-        // has room for, and keeps the one that found none for the next pass.
-        let mut held = unsent.take();
-        while let Some(command) = held.take().or_else(|| manager.take_command()) {
-            match workers.net.commands.try_send(command) {
-                Ok(()) => {}
-                Err(embassy_sync::channel::TrySendError::Full(command)) => {
-                    unsent = Some(command);
-                    break;
-                }
-            }
         }
         // Wall clock, not the frame counter: a frame clock is logical, and a held executor makes
         // the loop replay skipped steps. `[实测]` on the C6, three 100 ms flashes collapsed into

@@ -624,6 +624,16 @@ pub struct AudioSample {
     pub dba_lsb: u16,
 }
 
+impl AudioSample {
+    /// A blank poll: the envelope the page draws before a capture runs.
+    pub const ZERO: Self = Self {
+        envelope: AudioEnvelope::ZERO,
+        elapsed_ms: 0,
+        restarts: 0,
+        dba_lsb: 0,
+    };
+}
+
 pub trait AudioSource {
     fn sample(&mut self, now_ms: u64) -> AudioSample;
 

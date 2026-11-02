@@ -102,7 +102,7 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Composition point = bin board manifest**: capabilities injected by move, generic over capabilities, shared by boards with the same capability set; enabling a module that lacks a capability is a compile error, never silent.
 - **Product tier = feature alias**: the tier fixes the module set, the board fixes the supported set, and the intersection is trimmed and checked at compile time.
 - **Module configurability** = feature switch + const parameters.
-- **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback) plus `iot-app`'s heap `Render` registry (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus.
+- **Runtime-pluggable render layer**: `iot-core`'s allocation-free central `RenderController` (reconcile closure callback; selections are computed per consumer first, only the ones that moved are notified, and the snapshot is written once at the end) plus `iot-app`'s heap `Render` registry (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus.
 
 ## The demand model (what / how often / how sensitive)
 
@@ -178,7 +178,7 @@ A new scenario is a new `ActionIntent` variant; switching cadence at runtime is 
 
 A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Network`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
-`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Boot`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen.
+`state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Boot`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. Business state and view state sit apart: every domain keeps a `view` sub-record (`NetworkState.view`, `AudioView`, `PlaybackView`, `TouchView`) holding only what the page is in the middle of — the selected row, the draft, keys, fingers and the last gesture — and notifications and rendering read that. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
 
 ### Transport: coordinators and workers
 
@@ -203,7 +203,7 @@ The shape follows the semantics, not convenience:
 - **Levels** use `PageWatch` (`Net.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge.
 - **Latest values** use `Latest`/a window (`Net.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. The coordinator forwards `DeviceManager::take_command()` directly instead of translating each variant, and setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_action()` returns the command and `run_loop` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next pass and that pass takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
 **The render layer costs nothing**: `Diagnostics` in `core/src/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`, and `DiagnosticsSink::consume` is already the "state into consumers" channel.
 

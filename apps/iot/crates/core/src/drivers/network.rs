@@ -746,6 +746,56 @@ pub enum SetupHost {
     AccessPoint,
 }
 
+/// What the page is about, when that is not simply the link.
+///
+/// Setup mode and the offline list are modes the page is in, and each carries the facts that
+/// only mean something inside it — which host is serving setup, whether there is a way back.
+/// Kept together as one value so a page that is in setup mode on no host, or browsing with a
+/// link up, is not a state anyone can write down.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum NetworkMode {
+    /// The page is about the link: [`LinkStatus::phase`] says what it is doing.
+    #[default]
+    Link,
+    /// Nothing is saved and nothing is running: the offline list, still offering `SCAN | AP`.
+    Browsing,
+    /// Setup mode, served by `host`, with a way back when the device keeps a network to
+    /// return to.
+    Setup { host: SetupHost, cancellable: bool },
+}
+
+impl NetworkMode {
+    /// Whether setup mode is what the page is about: the access point is up when the host is
+    /// [`SetupHost::AccessPoint`].
+    pub const fn is_setup(&self) -> bool {
+        matches!(self, Self::Setup { .. })
+    }
+
+    /// Whether the page is the offline list.
+    pub const fn is_browsing(&self) -> bool {
+        matches!(self, Self::Browsing)
+    }
+
+    /// Which host is offering setup, if one is.
+    pub const fn host(&self) -> Option<SetupHost> {
+        match self {
+            Self::Setup { host, .. } => Some(*host),
+            Self::Link | Self::Browsing => None,
+        }
+    }
+
+    /// Whether setup mode has somewhere to go back to.
+    pub const fn is_cancellable(&self) -> bool {
+        matches!(
+            self,
+            Self::Setup {
+                cancellable: true,
+                ..
+            }
+        )
+    }
+}
+
 /// The link as the rest of the device reads it: one snapshot, copied rather than shared so
 /// the panel can hold it without borrowing the driver.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -755,18 +805,10 @@ pub struct LinkStatus {
     pub ap: Option<AccessPoint>,
     /// The address DHCP handed out, which is what makes the phase `Connected`.
     pub address: Option<Ipv4>,
-    /// Whether setup mode is what the page is about: the access point is up when
-    /// [`Self::host`] is [`SetupHost::AccessPoint`].
-    pub setup: bool,
-    /// Whether the page is the offline list: nothing is saved, no setup mode is running,
-    /// and `SCAN | AP` is still offered.
-    pub browsing: bool,
-    /// Whether setup mode has somewhere to go back to.
-    pub setup_cancellable: bool,
+    /// Whether the page is about the link, the offline list, or setup mode.
+    pub mode: NetworkMode,
     /// Whether this device keeps at least one network.
     pub saved: bool,
-    /// Which host is offering setup, and with it whether the access point is up.
-    pub host: SetupHost,
     /// The passphrase the setup access point is up with, when it has one.
     pub setup_password: Option<SetupPass>,
 }
@@ -780,15 +822,13 @@ impl LinkStatus {
     /// Whether the phone's setup box is the page's screen: the access point is up and the
     /// phone is the host it serves.
     pub fn shows_setup_box(&self) -> bool {
-        self.setup && self.host == SetupHost::AccessPoint
+        self.mode.host() == Some(SetupHost::AccessPoint)
     }
 
     /// This status as one setup host reports it.
     pub fn on_setup_host(self, host: SetupHost, cancellable: bool) -> Self {
         Self {
-            setup: true,
-            setup_cancellable: cancellable,
-            host,
+            mode: NetworkMode::Setup { host, cancellable },
             ..self
         }
     }
@@ -1177,9 +1217,12 @@ mod tests {
         ] {
             let published = station.on_setup_host(host, cancellable);
 
-            assert_eq!(published.host, host);
-            assert_eq!(published.setup_cancellable, cancellable);
-            assert!(published.setup, "a publish from setup mode says so");
+            assert_eq!(published.mode.host(), Some(host));
+            assert_eq!(published.mode.is_cancellable(), cancellable);
+            assert!(
+                published.mode.is_setup(),
+                "a publish from setup mode says so"
+            );
             assert_eq!(published.phase, station.phase);
             assert_eq!(published.ap, station.ap);
             assert_eq!(published.address, station.address);

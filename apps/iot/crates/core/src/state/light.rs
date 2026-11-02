@@ -454,8 +454,10 @@ mod lamp {
         report(
             manager,
             LinkStatus {
-                setup: true,
-                host: SetupHost::AccessPoint,
+                mode: crate::drivers::network::NetworkMode::Setup {
+                    host: SetupHost::AccessPoint,
+                    cancellable: false,
+                },
                 ..LinkStatus::default()
             },
         );

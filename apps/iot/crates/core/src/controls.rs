@@ -1,7 +1,7 @@
 //! The Network page's controls as behaviour: what each box does, named beside the word on
 //! it.
 
-use crate::drivers::network::{LinkStatus, SetupHost};
+use crate::drivers::network::{LinkStatus, NetworkMode, SetupHost};
 use crate::intent::{ActionIntent, NetworkIntent};
 use crate::keyboard::ToolbarCell;
 use crate::state::{Confirm, NetworkDraft};
@@ -56,15 +56,15 @@ impl Strip {
 
 /// The strip the page is offering right now.
 pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
-    if link.setup {
+    if let NetworkMode::Setup { host, cancellable } = link.mode {
         let right = Control {
-            label: match link.host {
+            label: match host {
                 SetupHost::Panel => AP_LABEL,
                 SetupHost::AccessPoint => PANEL_LABEL,
             },
             command: ActionIntent::Network(NetworkIntent::SwitchHost),
         };
-        let left = match (link.host, link.setup_cancellable) {
+        let left = match (host, cancellable) {
             (_, true) => Some(Control {
                 label: CANCEL_LABEL,
                 command: ActionIntent::Network(NetworkIntent::CloseSetup),
@@ -81,7 +81,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
         };
         return Strip { left, right };
     }
-    if link.browsing {
+    if link.mode.is_browsing() {
         let left = Control {
             label: if draft.rescan_wait {
                 WAIT_LABEL
@@ -161,9 +161,7 @@ mod tests {
 
     fn in_setup(host: SetupHost, cancellable: bool) -> LinkStatus {
         LinkStatus {
-            setup: true,
-            host,
-            setup_cancellable: cancellable,
+            mode: NetworkMode::Setup { host, cancellable },
             ..LinkStatus::default()
         }
     }
@@ -224,7 +222,7 @@ mod tests {
     #[test]
     fn the_offline_list_keeps_both_cells() {
         let browsing = LinkStatus {
-            browsing: true,
+            mode: NetworkMode::Browsing,
             ..LinkStatus::default()
         };
         let split = strip(NetworkDraft::default(), browsing);
@@ -279,8 +277,10 @@ mod tests {
     #[test]
     fn the_passphrase_answer_names_the_state_it_moves_to() {
         let secured = LinkStatus {
-            setup: true,
-            host: SetupHost::AccessPoint,
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
             setup_password: Some(SetupPass::from_array(*b"k3mq9t7w2x")),
             ..LinkStatus::default()
         };
@@ -297,8 +297,10 @@ mod tests {
         );
 
         let open = LinkStatus {
-            setup: true,
-            host: SetupHost::AccessPoint,
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
             ..LinkStatus::default()
         };
         let open = answers(open);

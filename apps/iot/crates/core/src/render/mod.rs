@@ -127,29 +127,29 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
     Diagnostics {
         demand: *demand,
         touch: TouchDiagnostics {
-            taps: state.touch.tap_count,
-            presses: state.touch.press_count,
-            long_presses: state.touch.long_press_count,
-            ghost: state.touch.ghost_count,
-            swipes: state.touch.swipe_count,
-            last_swipe_dir: state.touch.last_swipe.map_or(0, |(dir, _)| dir.code()),
-            last_swipe_dist: state.touch.last_swipe.map_or(0, |(_, dist)| dist),
-            last_gesture_origin: state.touch.last_gesture_origin,
-            last_gesture_end: state.touch.last_gesture_end,
-            chip_gesture_id: state.touch.chip_gesture_id,
+            taps: state.touch.view.tap_count,
+            presses: state.touch.view.press_count,
+            long_presses: state.touch.view.long_press_count,
+            ghost: state.touch.view.ghost_count,
+            swipes: state.touch.view.swipe_count,
+            last_swipe_dir: state.touch.view.last_swipe.map_or(0, |(dir, _)| dir.code()),
+            last_swipe_dist: state.touch.view.last_swipe.map_or(0, |(_, dist)| dist),
+            last_gesture_origin: state.touch.view.last_gesture_origin,
+            last_gesture_end: state.touch.view.last_gesture_end,
+            chip_gesture_id: state.touch.view.chip_gesture_id,
             points: state.touch.points.map(|p| p.map(|l| (l.x, l.y))),
             live_dir: state.touch.live_dir,
             two_finger_runs: state.touch.two_finger_runs,
             frames: state.touch.frames,
-            finger: state.touch.finger,
-            held_ms: state.touch.held_ms,
+            finger: state.touch.view.finger,
+            held_ms: state.touch.view.held_ms,
         },
         lights: state.lights.map(light_snapshot),
         page: state.page,
         link: state.network.link,
         mac: state.network.mac,
         aps: state.network.aps,
-        draft: state.network.draft,
+        draft: state.network.view,
         motion: state.motion.sample,
         motion_counts: state.motion.counts,
         motion_caps: state.backed.motion_caps(),
@@ -232,6 +232,11 @@ impl RenderController {
 
     /// Diff `state` against the last snapshot, invoking `notify` per changed consumer; the
     /// first call reports every known consumer.
+    ///
+    /// What each consumer shows is selected from the state first — the diagnostics the screen
+    /// reads, the appearance one surface reads — and only the consumers whose selection moved
+    /// are notified. A renderer therefore never receives an appearance it would have to throw
+    /// away, and the state is written once at the end, after the selections are compared.
     pub fn reconcile(
         &mut self,
         state: &DeviceState,
@@ -242,24 +247,29 @@ impl RenderController {
             diagnostics: light_diagnostics(state, demand),
             lights: status_lights(state),
         };
-        let changed = self.last.as_deref() != Some(&next);
-        if changed {
+        let diagnostics_moved = self.last.as_deref() != Some(&next);
+        let surfaces: [bool; MAX_LIGHTS] = core::array::from_fn(|instance| {
+            state.surface_roles[instance] != SurfaceRole::Absent
+                && self
+                    .last
+                    .as_deref()
+                    .is_none_or(|last| last.lights[instance] != next.lights[instance])
+        });
+        // The screen draws the lights as well as the page, so a surface moving is also a
+        // diagnostics move; the reverse is not true, and that is what this selection keeps.
+        if diagnostics_moved || surfaces.iter().any(|moved| *moved) {
             notify(Appearance::Diagnostics(next.diagnostics));
-            for (instance, light) in next.lights.iter().enumerate() {
-                if state.surface_roles[instance] == SurfaceRole::Absent {
-                    continue;
-                }
-                let moved = match self.last.as_deref() {
-                    None => true,
-                    Some(last) => last.lights[instance] != *light,
-                };
-                if moved {
-                    notify(Appearance::Surface {
-                        instance: instance as u8,
-                        appearance: light_appearance(*light),
-                    });
-                }
+        }
+        for (instance, moved) in surfaces.iter().enumerate() {
+            if *moved {
+                notify(Appearance::Surface {
+                    instance: instance as u8,
+                    appearance: light_appearance(next.lights[instance]),
+                });
             }
+        }
+        let changed = diagnostics_moved || surfaces.iter().any(|moved| *moved);
+        if changed {
             match &mut self.last {
                 Some(last) => **last = next,
                 None => self.last = Some(Box::new(next)),
@@ -939,10 +949,10 @@ mod tests {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::boot()));
         let mut changed = state(LightState::Off);
-        changed.touch.tap_count = 7;
-        changed.touch.press_count = 9;
-        changed.touch.long_press_count = 1;
-        changed.touch.held_ms = 590;
+        changed.touch.view.tap_count = 7;
+        changed.touch.view.press_count = 9;
+        changed.touch.view.long_press_count = 1;
+        changed.touch.view.held_ms = 590;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.taps = 7;
         expected.touch.presses = 9;
@@ -970,7 +980,7 @@ mod tests {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut ghost = state(LightState::Off);
-        ghost.touch.ghost_count = 3;
+        ghost.touch.view.ghost_count = 3;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.ghost = 3;
         assert_eq!(
@@ -980,7 +990,7 @@ mod tests {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut presses = state(LightState::Off);
-        presses.touch.press_count = 1;
+        presses.touch.view.press_count = 1;
         let mut expected = diagnostics_for(LightState::Off);
         expected.touch.presses = 1;
         assert_eq!(
@@ -1318,8 +1328,10 @@ mod tests {
                 },
                 network: crate::state::NetworkState {
                     link: LinkStatus {
-                        setup: true,
-                        host: SetupHost::AccessPoint,
+                        mode: crate::drivers::network::NetworkMode::Setup {
+                            host: SetupHost::AccessPoint,
+                            cancellable: false,
+                        },
                         ..LinkStatus::default()
                     },
                     ..Default::default()

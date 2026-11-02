@@ -33,6 +33,14 @@ pub struct TouchState {
     pub two_finger_runs: u8,
     /// Applied raw-frame heartbeat: incremented on every stored touch snapshot.
     pub frames: u16,
+    /// What the overlay draws: one record per resolved gesture and the tallies beside it.
+    pub view: TouchView,
+}
+
+/// The classifier's own record, drawn on the live page and nowhere acted on: which gesture
+/// each slot last resolved, and how many of each a threshold can be calibrated against.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TouchView {
     /// Last resolved gesture of each tracked slot, aligned with `points`.
     pub finger: [FingerLast; MAX_TRACKED_POINTS],
     /// Classifier-measured hold duration (ms) of the most recent resolved gesture lift, for
@@ -78,16 +86,16 @@ impl TouchState {
                     self.live_dir[slot] = 0;
                 }
                 self.bump_two_finger_runs(before);
-                self.press_count = self.press_count.wrapping_add(1);
+                self.view.press_count = self.view.press_count.wrapping_add(1);
             }
             GestureEvent::Ghost => {
-                self.ghost_count = self.ghost_count.saturating_add(1);
+                self.view.ghost_count = self.view.ghost_count.saturating_add(1);
             }
             GestureEvent::Tap {
                 id, x, y, held_ms, ..
             } => {
-                self.tap_count = self.tally(
-                    self.tap_count,
+                self.view.tap_count = self.tally(
+                    self.view.tap_count,
                     GestureRecord {
                         id,
                         last: FingerLast {
@@ -101,8 +109,8 @@ impl TouchState {
                 );
             }
             GestureEvent::LongPress { id, x, y, held_ms } => {
-                self.long_press_count = self.tally(
-                    self.long_press_count,
+                self.view.long_press_count = self.tally(
+                    self.view.long_press_count,
                     GestureRecord {
                         id,
                         last: FingerLast {
@@ -125,9 +133,9 @@ impl TouchState {
                 held_ms,
                 distance_px,
             } => {
-                self.last_swipe = Some((direction, distance_px));
-                self.swipe_count = self.tally(
-                    self.swipe_count,
+                self.view.last_swipe = Some((direction, distance_px));
+                self.view.swipe_count = self.tally(
+                    self.view.swipe_count,
                     GestureRecord {
                         id,
                         last: FingerLast {
@@ -199,16 +207,16 @@ impl TouchState {
     }
 
     fn tally(&mut self, counter: u8, record: GestureRecord) -> u8 {
-        self.held_ms = record.held_ms;
-        self.last_gesture_origin = Some(record.origin);
-        self.last_gesture_end = record.end;
+        self.view.held_ms = record.held_ms;
+        self.view.last_gesture_origin = Some(record.origin);
+        self.view.last_gesture_end = record.end;
         self.record_gesture(record.id, record.last);
         counter.wrapping_add(1)
     }
 
     fn record_gesture(&mut self, id: u8, last: FingerLast) {
         if let Some(slot) = self.point_slot(id) {
-            self.finger[slot] = last;
+            self.view.finger[slot] = last;
             self.points[slot] = None;
             self.live_dir[slot] = 0;
         }

@@ -7,8 +7,8 @@ use crate::drivers::playback::Sound;
 use crate::page::DisplayPage;
 
 use super::{
-    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, NoticeKind,
-    PlaybackState, SurfaceRole, TouchState,
+    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkCommand, NetworkState, Notice,
+    NoticeKind, PlaybackState, SurfaceRole, TouchState,
 };
 
 /// All state owned by the device manager: one record per domain, each living in the module
@@ -51,7 +51,7 @@ impl DeviceState {
         if let Some(notice) = self.notice {
             return Some(notice.light);
         }
-        if self.network.link.setup && self.network.link.host == SetupHost::AccessPoint {
+        if self.network.link.mode.host() == Some(SetupHost::AccessPoint) {
             return Some(LightState::SETUP);
         }
         if self.network.link.phase == LinkPhase::Connecting && !self.network.link.saved {
@@ -78,8 +78,13 @@ impl DeviceState {
 
 /// What a domain asked the rest of the device for, applied by the manager once that domain's
 /// own state has settled. A domain never reaches into another's state to get it done.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+///
+/// `command` is the one ask that leaves the core: the manager applies the rest and hands the
+/// command back to the caller, which owns the task that carries it out. It is not `Copy`
+/// because a join carries a whole credential.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct Effects {
     pub sound: Option<Sound>,
     pub notice: Option<NoticeKind>,
+    pub command: Option<NetworkCommand>,
 }

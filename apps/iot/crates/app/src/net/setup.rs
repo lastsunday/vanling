@@ -8,7 +8,7 @@ use embassy_net::{Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    Credentials, JoinRequest, LinkStatus, ScanHistory, SetupHost, Ssid, Station,
+    Credentials, JoinRequest, LinkStatus, NetworkMode, ScanHistory, SetupHost, Ssid, Station,
 };
 use iot_core::intent::{ActionIntent, Intent, NetworkIntent};
 use iot_core::state::{DisplayPage, NetworkCommand};
@@ -45,7 +45,11 @@ impl Face {
             station.on_setup_host(self.host, self.cancellable)
         } else {
             LinkStatus {
-                browsing: self.browsing,
+                mode: if self.browsing {
+                    NetworkMode::Browsing
+                } else {
+                    NetworkMode::Link
+                },
                 ..station
             }
         }

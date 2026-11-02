@@ -96,7 +96,7 @@ pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
 
 pub fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     if current.page != DisplayPage::Splash
-        && current.network.link.setup
+        && current.network.link.mode.is_setup()
         && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress))
     {
         return ActionIntent::Network(NetworkIntent::SwitchHost);
@@ -147,7 +147,10 @@ mod tests {
         let setup = DeviceState {
             network: NetworkState {
                 link: LinkStatus {
-                    setup: true,
+                    mode: crate::drivers::network::NetworkMode::Setup {
+                        host: crate::drivers::network::SetupHost::Panel,
+                        cancellable: false,
+                    },
                     ..LinkStatus::default()
                 },
                 ..NetworkState::default()

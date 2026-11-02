@@ -21,7 +21,7 @@ mod touch;
 
 mod wiring;
 
-pub use self::audio::{AudioPhase, AudioState};
+pub use self::audio::{AudioPhase, AudioState, AudioView};
 
 pub use self::device::DeviceState;
 
@@ -35,9 +35,9 @@ pub use self::motion::MotionState;
 
 pub use self::network::{Confirm, NetworkCommand, NetworkDraft, NetworkState};
 
-pub use self::playback::{PlaybackCommand, PlaybackPhase, PlaybackState};
+pub use self::playback::{PlaybackCommand, PlaybackPhase, PlaybackState, PlaybackView};
 
-pub use self::touch::{LivePoint, TouchState};
+pub use self::touch::{LivePoint, TouchState, TouchView};
 
 pub use self::wiring::{Backed, Boot, SurfaceRole};
 

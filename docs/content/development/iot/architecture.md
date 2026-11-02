@@ -97,7 +97,7 @@ workers  → ∅
 - **组合点 = bin 板清单**：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
-- **渲染层运行时可插拔**：core 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调），app 里一个堆上的 `Render` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线
+- **渲染层运行时可插拔**：core 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调；先按 consumer 选出各自该显示什么，只对选中项变化的 consumer 通知，最后一次性写回快照），app 里一个堆上的 `Render` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 
@@ -169,7 +169,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Network`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
+`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。业务状态与视图状态分开放：每个领域带一个 `view` 子记录（`NetworkState.view`、`AudioView`、`PlaybackView`、`TouchView`），只装页面正在做的事——选中的行、草稿、按键、手指与最近一次手势——通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 
 ### 传输：协调者与工作者
 
@@ -194,7 +194,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 - **级别**走 `PageWatch`（`Net.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。
 - **最新值**走 `Latest`/窗口（`Net.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
 
-`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。协调者直接转发 `DeviceManager::take_command()`，不再逐个变体翻译；setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_action()` 直接返回，`run_loop` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一 pass，并让本 pass 不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 

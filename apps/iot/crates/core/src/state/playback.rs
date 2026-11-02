@@ -20,6 +20,14 @@ pub struct PlaybackState {
     pub sound: Sound,
     /// The output latch.
     pub muted: bool,
+    /// What the page counts: the sounds that played and the taps that lost.
+    pub view: PlaybackView,
+}
+
+/// The tallies the Speaker page draws. They are the page's own numbers: nothing in the
+/// playback logic reads them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaybackView {
     /// Sounds actually started; the panel's `PLY` row.
     pub plays: u16,
     /// Taps that arrived while a sound was sounding and were therefore not heard; the
@@ -61,8 +69,10 @@ impl PlaybackState {
         phase: PlaybackPhase::Idle,
         sound: Sound::Tap,
         muted: false,
-        plays: 0,
-        dropped: 0,
+        view: PlaybackView {
+            plays: 0,
+            dropped: 0,
+        },
     };
 
     pub const fn boot() -> Self {
@@ -77,12 +87,12 @@ impl PlaybackState {
         match action {
             PlaybackAction::Next => match self.phase {
                 PlaybackPhase::Playing => {
-                    self.dropped = self.dropped.saturating_add(1);
+                    self.view.dropped = self.view.dropped.saturating_add(1);
                 }
                 PlaybackPhase::Idle => {
                     self.sound = self.sound.next();
                     self.phase = PlaybackPhase::Playing;
-                    self.plays = self.plays.saturating_add(1);
+                    self.view.plays = self.view.plays.saturating_add(1);
                 }
             },
             PlaybackAction::SetMuted(muted) => self.muted = muted,
@@ -101,8 +111,8 @@ impl DeviceState {
             phase: self.playback.phase,
             sound: self.playback.sound,
             muted: self.playback.muted,
-            plays: self.playback.plays,
-            dropped: self.playback.dropped,
+            plays: self.playback.view.plays,
+            dropped: self.playback.view.dropped,
         }
     }
 }
@@ -114,7 +124,7 @@ impl DeviceManager {
         }
         self.state.playback.sound = sound;
         self.state.playback.phase = PlaybackPhase::Playing;
-        self.state.playback.plays = self.state.playback.plays.saturating_add(1);
+        self.state.playback.view.plays = self.state.playback.view.plays.saturating_add(1);
     }
 }
 
@@ -249,8 +259,8 @@ mod speaker_page {
         let played = manager.playback_state();
         assert_eq!(played.phase, PlaybackPhase::Playing);
         assert_eq!(played.sound, second, "the tap advanced the catalogue");
-        assert_eq!(played.plays, 1);
-        assert_eq!(played.dropped, 0);
+        assert_eq!(played.view.plays, 1);
+        assert_eq!(played.view.dropped, 0);
 
         play(&mut manager);
         let dropped = manager.playback_state();
@@ -260,8 +270,8 @@ mod speaker_page {
             "still the same sound"
         );
         assert_eq!(dropped.sound, second, "and not the next one");
-        assert_eq!(dropped.plays, 1, "so no second sound started");
-        assert_eq!(dropped.dropped, 1);
+        assert_eq!(dropped.view.plays, 1, "so no second sound started");
+        assert_eq!(dropped.view.dropped, 1);
 
         manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
@@ -272,9 +282,9 @@ mod speaker_page {
             second.next(),
             "the catalogue kept walking",
         );
-        assert_eq!(second_play.plays, 2);
+        assert_eq!(second_play.view.plays, 2);
         assert_eq!(
-            second_play.dropped, 1,
+            second_play.view.dropped, 1,
             "the dropped tally is kept across plays"
         );
     }
@@ -370,12 +380,12 @@ mod speaker_page {
     #[test]
     fn the_tallies_saturate_rather_than_wrap() {
         let mut manager = on_speaker();
-        manager.state.playback.plays = u16::MAX;
-        manager.state.playback.dropped = u16::MAX;
+        manager.state.playback.view.plays = u16::MAX;
+        manager.state.playback.view.dropped = u16::MAX;
         play(&mut manager);
         manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
         let saturated = manager.playback_state();
-        assert_eq!(saturated.plays, u16::MAX);
-        assert_eq!(saturated.dropped, u16::MAX);
+        assert_eq!(saturated.view.plays, u16::MAX);
+        assert_eq!(saturated.view.dropped, u16::MAX);
     }
 }

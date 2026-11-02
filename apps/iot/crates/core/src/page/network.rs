@@ -63,12 +63,12 @@ pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent
         }
         InputEvent::Gesture(GestureEvent::LongPress { x, y, .. }) => network_hold(current, x, y),
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. })
-            if !current.network.draft.keyboard =>
+            if !current.network.view.keyboard =>
         {
-            if current.network.draft.confirm.is_some() {
+            if current.network.view.confirm.is_some() {
                 return ActionIntent::Network(NetworkIntent::Dismiss);
             }
-            if !Band::Content.showing(current.network.draft, current.network.link) {
+            if !Band::Content.showing(current.network.view, current.network.link) {
                 return ActionIntent::Invalid;
             }
             match direction {
@@ -78,7 +78,7 @@ pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent
             }
         }
         InputEvent::Button(ButtonEvent::Click) => {
-            controls::strip(current.network.draft, current.network.link)
+            controls::strip(current.network.view, current.network.link)
                 .command(keyboard::ToolbarCell::Right)
         }
         _ => ActionIntent::Invalid,
@@ -93,8 +93,8 @@ pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) ->
 }
 
 fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> ActionIntent {
-    if current.network.draft.keyboard {
-        let Some(entry) = current.network.draft.entry else {
+    if current.network.view.keyboard {
+        let Some(entry) = current.network.view.entry else {
             return ActionIntent::Invalid;
         };
         return keyboard::key_at(entry.layer(), x, y).map_or(ActionIntent::Invalid, |key| {
@@ -105,9 +105,9 @@ fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> ActionInten
         return answer;
     }
     if let Some(cell) = keyboard::toolbar_cell_at(x, y) {
-        return controls::strip(current.network.draft, current.network.link).command(cell);
+        return controls::strip(current.network.view, current.network.link).command(cell);
     }
-    if !Band::Content.showing(current.network.draft, current.network.link) {
+    if !Band::Content.showing(current.network.view, current.network.link) {
         return ActionIntent::Invalid;
     }
     match keyboard::list_band_at(y) {
@@ -119,13 +119,13 @@ fn network_tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> ActionInten
 }
 
 fn network_hold(current: &DeviceState, x: u16, y: u16) -> ActionIntent {
-    if current.network.draft.keyboard {
+    if current.network.view.keyboard {
         return ActionIntent::Invalid;
     }
     if let Some(answer) = answer_at(current, x, y) {
         return answer;
     }
-    if !Band::Content.showing(current.network.draft, current.network.link) {
+    if !Band::Content.showing(current.network.view, current.network.link) {
         return ActionIntent::Invalid;
     }
     match keyboard::list_band_at(y) {
@@ -145,7 +145,7 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<ActionIntent> {
             None => None,
         };
     }
-    let confirm = current.network.draft.confirm?;
+    let confirm = current.network.view.confirm?;
     Some(match keyboard::dialog_choice_at(x, y) {
         Some(keyboard::DialogChoice::Act) => ActionIntent::Network(NetworkIntent::Answer(confirm)),
         Some(keyboard::DialogChoice::Keep) | None => ActionIntent::Network(NetworkIntent::Dismiss),
@@ -153,7 +153,7 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<ActionIntent> {
 }
 
 fn ap_at(current: &DeviceState, band: usize) -> Option<AccessPoint> {
-    let index = usize::from(current.network.draft.list_top) + band;
+    let index = usize::from(current.network.view.list_top) + band;
     current.network.aps.and_then(|list| list.get(index))
 }
 
@@ -252,8 +252,10 @@ mod parts {
     fn the_setup_box_covers_the_list_and_leaves_the_strip_offered() {
         let draft = NetworkDraft::default();
         let link = LinkStatus {
-            setup: true,
-            host: crate::drivers::network::SetupHost::AccessPoint,
+            mode: crate::drivers::network::NetworkMode::Setup {
+                host: crate::drivers::network::SetupHost::AccessPoint,
+                cancellable: false,
+            },
             ..LinkStatus::default()
         };
         assert!(Band::Content.hidden(draft, link));
@@ -272,7 +274,10 @@ mod parts {
     fn a_phone_less_front_has_no_box_over_the_list() {
         let draft = NetworkDraft::default();
         let link = LinkStatus {
-            setup: true,
+            mode: crate::drivers::network::NetworkMode::Setup {
+                host: crate::drivers::network::SetupHost::Panel,
+                cancellable: false,
+            },
             ..LinkStatus::default()
         };
         assert!(!link.shows_setup_box());
@@ -410,7 +415,7 @@ mod tests {
 
         fn typing() -> DeviceState {
             with_network(on_network(), |net| {
-                net.draft = crate::state::NetworkDraft {
+                net.view = crate::state::NetworkDraft {
                     selected: Some(ap(b"neighbour", -55)),
                     entry: Some(crate::state::Entry::default()),
                     keyboard: true,
@@ -440,7 +445,7 @@ mod tests {
 
         fn asking() -> DeviceState {
             with_network(on_network(), |net| {
-                net.draft = crate::state::NetworkDraft {
+                net.view = crate::state::NetworkDraft {
                     confirm: Some(crate::state::Confirm::Forget(ap(b"neighbour", -55))),
                     ..Default::default()
                 };
@@ -562,8 +567,10 @@ mod tests {
 
             let announcing = with_network(on_network(), |net| {
                 net.link = LinkStatus {
-                    setup: true,
-                    host: SetupHost::AccessPoint,
+                    mode: crate::drivers::network::NetworkMode::Setup {
+                        host: SetupHost::AccessPoint,
+                        cancellable: false,
+                    },
                     setup_password: Some(crate::drivers::network::SetupPass::from_array(
                         *b"k3mq9t7w2x",
                     )),

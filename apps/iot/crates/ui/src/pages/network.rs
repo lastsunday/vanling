@@ -43,7 +43,7 @@ impl Surface<'_> {
             let mut text = [0u8; MAC_TEXT_BYTES];
             self.stamp_text_right(mac_text(mac, &mut text), PANEL_RIGHT, overlay_row_top(0));
         }
-        if link.setup {
+        if link.mode.is_setup() {
             if link.shows_setup_box()
                 && let Some(mac) = mac
             {
@@ -62,7 +62,7 @@ impl Surface<'_> {
         let mut text = [0u8; 3 + 5];
         text[..3].copy_from_slice(b"ST ");
         let mut phase_buf = [0u8; 4];
-        let word: &[u8] = if link.setup {
+        let word: &[u8] = if link.mode.is_setup() {
             b"SETUP"
         } else {
             format_phase(draft.phase(link.phase), &mut phase_buf)
@@ -70,7 +70,7 @@ impl Surface<'_> {
         text[3..3 + word.len()].copy_from_slice(word);
         self.stamp_text(&text[..3 + word.len()], HEADER_PHASE_X, overlay_row_top(1));
         if let Some(ap) = shown_ap
-            && !link.setup
+            && !link.mode.is_setup()
         {
             self.stamp_text_right(
                 format_bars(ap.bars(), &mut [0u8; 4]),
@@ -90,7 +90,7 @@ impl Surface<'_> {
             );
         } else {
             let mut quad = [0u8; 16];
-            let address = if link.setup {
+            let address = if link.mode.is_setup() {
                 if link.shows_setup_box() {
                     Some(Ipv4::from_octets(iot_core::provision::ADDRESS))
                 } else {
@@ -99,7 +99,7 @@ impl Surface<'_> {
             } else {
                 link.address
             };
-            if address.is_some() || !link.setup {
+            if address.is_some() || !link.mode.is_setup() {
                 let quad = format_address(address, &mut quad);
                 let mut text = [0u8; 3 + 16];
                 text[..3].copy_from_slice(b"IP ");
@@ -111,7 +111,7 @@ impl Surface<'_> {
                 );
             }
             if let Some(ap) = shown_ap
-                && !link.setup
+                && !link.mode.is_setup()
             {
                 let mut text = [0u8; MAC_TEXT_BYTES];
                 self.stamp_text_right(

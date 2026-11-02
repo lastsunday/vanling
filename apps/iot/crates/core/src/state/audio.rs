@@ -1,5 +1,5 @@
 use crate::diagnostics::AudioDiagnostics;
-use crate::drivers::audio::{AudioEnvelope, AudioSample};
+use crate::drivers::audio::AudioSample;
 use crate::intent::AudioIntent;
 
 use super::{DeviceManager, DeviceState};
@@ -16,7 +16,16 @@ pub enum AudioPhase {
 /// Capture state behind the Audio page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AudioState {
+    /// What the page asked for: the capture that runs, and the one that was stopped.
     pub phase: AudioPhase,
+    /// What the page draws: the samples behind the phase.
+    pub view: AudioView,
+}
+
+/// The samples the Audio page draws. Nothing outside the page's own drawing reads them, so
+/// they are kept apart from the phase the capture logic decides on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioView {
     /// The most recent capture poll, always current even while stopped — the driver keeps
     /// running underneath, so resuming picks the sweep up wherever it has moved to rather
     /// than where the previous capture left it.
@@ -37,17 +46,9 @@ impl AudioState {
     /// page draws a flat line until a capture runs.
     pub const BOOT: Self = Self {
         phase: AudioPhase::Idle,
-        live: AudioSample {
-            envelope: AudioEnvelope::ZERO,
-            elapsed_ms: 0,
-            restarts: 0,
-            dba_lsb: 0,
-        },
-        captured: AudioSample {
-            envelope: AudioEnvelope::ZERO,
-            elapsed_ms: 0,
-            restarts: 0,
-            dba_lsb: 0,
+        view: AudioView {
+            live: AudioSample::ZERO,
+            captured: AudioSample::ZERO,
         },
     };
 
@@ -65,7 +66,7 @@ impl AudioState {
                 self.phase = AudioPhase::Recording;
             }
             (AudioIntent::Stop, AudioPhase::Recording) => {
-                self.captured = self.live;
+                self.view.captured = self.view.live;
                 self.phase = AudioPhase::Stopped;
             }
             _ => {}
@@ -76,8 +77,8 @@ impl AudioState {
 impl DeviceState {
     pub(crate) fn audio_diagnostics(&self) -> AudioDiagnostics {
         let shown = match self.audio.phase {
-            AudioPhase::Stopped => &self.audio.captured,
-            AudioPhase::Recording | AudioPhase::Idle => &self.audio.live,
+            AudioPhase::Stopped => &self.audio.view.captured,
+            AudioPhase::Recording | AudioPhase::Idle => &self.audio.view.live,
         };
         AudioDiagnostics {
             phase: self.audio.phase,
@@ -92,7 +93,7 @@ impl DeviceState {
 impl DeviceManager {
     pub fn apply_capture(&mut self, sample: AudioSample) {
         if self.state.backed.audio {
-            self.state.audio.live = sample;
+            self.state.audio.view.live = sample;
         }
     }
 }
@@ -100,6 +101,7 @@ impl DeviceManager {
 #[cfg(test)]
 mod audio_page {
     use super::*;
+    use crate::drivers::audio::AudioEnvelope;
     use crate::drivers::network::{AccessPoint, ApList, Ssid};
     use crate::intent::*;
     use crate::state::test_support::*;
@@ -462,7 +464,7 @@ mod audio_page {
     fn a_capture_poll_is_kept_only_when_audio_is_enabled() {
         let mut disabled = DeviceManager::new();
         disabled.apply_capture(loud(8_000));
-        assert_eq!(disabled.state().audio.live.envelope.committed(), 0);
+        assert_eq!(disabled.state().audio.view.live.envelope.committed(), 0);
 
         let mut enabled = DeviceManager::boot(Boot {
             backed: Backed {
@@ -472,7 +474,7 @@ mod audio_page {
             ..Default::default()
         });
         enabled.apply_capture(loud(8_000));
-        assert_eq!(enabled.state().audio.live.envelope.committed(), 1);
+        assert_eq!(enabled.state().audio.view.live.envelope.committed(), 1);
         assert_eq!(
             enabled.state().audio.phase,
             AudioPhase::Idle,
@@ -538,7 +540,7 @@ mod audio_page {
         tap_in_place(&mut manager);
         assert_eq!(manager.state().audio.phase, AudioPhase::Stopped);
         assert_eq!(
-            manager.state().audio.captured.envelope.committed(),
+            manager.state().audio.view.captured.envelope.committed(),
             1,
             "the poll on record is latched for the panel"
         );
@@ -550,17 +552,17 @@ mod audio_page {
         tap_in_place(&mut manager);
         manager.apply_capture(loud(8_000));
         tap_in_place(&mut manager);
-        let stopped = manager.state().audio.captured;
+        let stopped = manager.state().audio.view.captured;
 
         let polled_on = loud(20_000);
         manager.apply_capture(polled_on);
         assert_eq!(
-            manager.state().audio.captured,
+            manager.state().audio.view.captured,
             stopped,
             "the driver keeps polling but a stopped capture is frozen"
         );
         assert_eq!(
-            manager.state().audio.live,
+            manager.state().audio.view.live,
             polled_on,
             "live is the driver's latest poll, so resuming picks the scope up"
         );
