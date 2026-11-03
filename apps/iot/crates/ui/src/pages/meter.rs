@@ -5,8 +5,9 @@ use iot_core::horizon::{SCALE, horizon};
 use iot_core::overlay::{Block, FONT_H, block_value_x, block_x, level_columns, overlay_row_top};
 
 use crate::layout::*;
-use crate::pages::draw::{bar_rows, decibels_row, format_decibels, format_i32, format_span};
+use crate::pages::draw::{bar_rows, decibels_row, format_decibels, format_span};
 use crate::surface::Surface;
+use crate::text::format_i32;
 
 impl Surface<'_> {
     // The meter: a logarithmic band, each column's A-weighted sustained level

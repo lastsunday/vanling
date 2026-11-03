@@ -374,7 +374,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面循环按次序表走一圈
 
-`DisplayPage::CYCLE` 是次序的定义（`Ambient → Attitude → Audio → Speaker → Camera → Network`），`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Boot::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。
+`DisplayPage::CYCLE` 是次序的定义，它和枚举、`ALL`、`index`、`name`、`PAGES` 一样由 `core/src/page/mod.rs` 的 `pages!` 清单生成：一行声明一个页面（名字、能力、底色、是否出帧、claim、重绘步长、是否可启动、生存期），不再有第二份手写列表。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕。启动页（`Boot::boot_page`）用同一份能力判定夹取，所以一次「走一圈」从任何一页出发都是全部可用页各一次并回到起点。`CYCLE` 按清单顺序取 `cycle: true` 的行，因此这些行必须是清单的前缀——`crates/tool/tests/page_table.rs` 守着这条，以及每个页面在 `ui/src/surface.rs` 的渲染分支与 `ui/src/pages/` 的视图模块。
 
 能力判定是每条页自己的一列（`PageSpec::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以入口交进来的是 `Wifi`（`Absent` / `Unattended` / `Worker`），`run` 在组合 `Backed` 时用 `wifi.wired()` 落成那个 `bool`：是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`wifi` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 

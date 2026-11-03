@@ -45,11 +45,11 @@ const fn boot_page_from_env(name: Option<&str>) -> DisplayPage {
 }
 
 /// `Splash` is a page and has a name, but it is the transient the boot lands *through*, never
-/// on, so it is not a boot page.
+/// on, so its manifest row is not bootable.
 const fn bootable_page(name: &str) -> Option<DisplayPage> {
     match DisplayPage::named(name) {
-        Some(DisplayPage::Splash) => None,
-        other => other,
+        Some(page) if page.bootable() => Some(page),
+        _ => None,
     }
 }
 
@@ -67,12 +67,13 @@ const fn unknown_page(name: Option<&str>) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{boot_page_from_env, unknown_page};
+    use iot_core::page::SPLASH_MS;
     use iot_core::state::DisplayPage;
 
     #[test]
-    fn every_page_but_the_splash_answers_to_its_name() {
+    fn every_bootable_page_answers_to_its_name() {
         for page in DisplayPage::ALL {
-            if page == DisplayPage::Splash {
+            if !page.bootable() {
                 continue;
             }
             assert_eq!(boot_page_from_env(Some(page.name())), page, "{page:?}");
@@ -122,6 +123,8 @@ mod tests {
 
     #[test]
     fn the_splash_is_not_a_boot_page() {
+        assert!(!DisplayPage::Splash.bootable());
+        assert_eq!(DisplayPage::Splash.timeout_ms(), Some(SPLASH_MS));
         assert_eq!(boot_page_from_env(Some("splash")), DisplayPage::Ambient);
         assert_eq!(unknown_page(Some("splash")), Some("splash"));
     }

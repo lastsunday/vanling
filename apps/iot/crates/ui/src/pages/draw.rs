@@ -7,7 +7,7 @@ use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::state::Entry;
 
 use crate::layout::{PSK_MASK_GLYPHS, SCOPE_DECIBEL_FLOOR, WAVE_CY, WAVE_HALF};
-use crate::text::write_u64;
+use crate::text::{format_i32, write_u64};
 
 pub(crate) fn bar_rows(peak_lsb: u16) -> isize {
     WAVE_HALF * isize::from(iot_core::drivers::audio::scope_height(peak_lsb)) / isize::from(u8::MAX)
@@ -114,34 +114,6 @@ pub(crate) fn format_window(top: u8, rows: usize, buf: &mut [u8; 12]) -> &[u8] {
     buf[n] = b'/';
     n = write_u64(rows as u64, buf, n + 1);
     &buf[..n]
-}
-
-pub(crate) fn format_i32(value: i32, buf: &mut [u8; 12]) -> &[u8] {
-    let n = write_signed(value.unsigned_abs() as u64, value < 0, buf, 0);
-    &buf[..n]
-}
-
-fn write_signed(magnitude: u64, negative: bool, buf: &mut [u8], mut n: usize) -> usize {
-    if negative {
-        buf[n] = b'-';
-        n += 1;
-    }
-    write_u64(magnitude, buf, n)
-}
-
-pub(crate) fn format_dba(decibels: i16, buf: &mut [u8; 12]) -> &[u8] {
-    let n = write_u64(u64::from(decibels.unsigned_abs()), buf, 0);
-    buf[n] = b' ';
-    buf[n + 1..n + 4].copy_from_slice(b"dBA");
-    &buf[..n + 4]
-}
-
-pub(crate) fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
-    let magnitude = value.unsigned_abs() as u64;
-    let n = write_signed(magnitude / 10, value < 0, buf, 0);
-    buf[n] = b'.';
-    buf[n + 1] = b'0' + (magnitude % 10) as u8;
-    &buf[..n + 2]
 }
 
 pub(crate) fn mode_word(mode: u8) -> &'static [u8] {

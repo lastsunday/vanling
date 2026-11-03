@@ -164,9 +164,9 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
 /// Audio sweep follows the capture, the attitude dial the motion sample —
 /// repaint every 20 ms snapshot and hold the shared cooperative executor in a
 /// ~15 ms block almost continuously, starving the playback feed and the
-/// capture poll past their ring runway. A page may raise it for itself; see
-/// [`repaint_step_ms`].
-pub const DIAG_REPAINT_STEP_MS: u64 = 40;
+/// capture poll past their ring runway. A page may raise it for itself in its
+/// page manifest row; see [`repaint_step_ms`].
+pub use crate::page::DIAG_REPAINT_STEP_MS;
 
 pub fn diag_repaint_due(
     page: DisplayPage,
@@ -188,16 +188,12 @@ pub fn diag_repaint_due(
 }
 
 /// The least wall time this page waits between diagnostics-driven repaints. The Audio page
-/// is the one live page whose drift arrives faster than anyone reads it: a capture poll
-/// closes two envelope columns every 20 ms, so the default step already redraws a 200-column
-/// sweep every ~45 ms and this page alone held the executor 40% of the wall time on the S3.
-/// At twice the step a frame advances the sweep eight columns instead of four — still a
-/// sweep, at half the cost.
+/// raises it in its manifest row: a capture poll closes two envelope columns every 20 ms, so
+/// the default step already redraws a 200-column sweep every ~45 ms and this page alone held
+/// the executor 40% of the wall time on the S3. At twice the step a frame advances the sweep
+/// eight columns instead of four — still a sweep, at half the cost.
 pub(crate) fn repaint_step_ms(page: DisplayPage) -> u64 {
-    match page {
-        DisplayPage::Audio => 80,
-        _ => DIAG_REPAINT_STEP_MS,
-    }
+    page.repaint_step_ms()
 }
 
 fn repaint_due(page: DisplayPage, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
@@ -438,20 +434,6 @@ mod tests {
     /// default — a page that changed its cadence without changing this would fail here.
     fn audio_step() -> u64 {
         repaint_step_ms(DisplayPage::Audio)
-    }
-
-    #[test]
-    fn the_audio_page_waits_twice_the_default_step() {
-        assert_eq!(audio_step(), DIAG_REPAINT_STEP_MS * 2);
-        for page in DisplayPage::ALL {
-            if page != DisplayPage::Audio {
-                assert_eq!(
-                    repaint_step_ms(page),
-                    DIAG_REPAINT_STEP_MS,
-                    "{page:?} has no reason to repaint slower than the default"
-                );
-            }
-        }
     }
 
     #[test]
@@ -709,6 +691,29 @@ mod tests {
             stopped.envelope, poll.envelope,
             "the latch stands in once the driver moves on"
         );
+    }
+
+    #[test]
+    fn the_diagnostics_projection_owns_every_state_domain() {
+        // Compile-time guard rather than a behaviour test: `light_diagnostics` projects
+        // `DeviceState` field by field, and a new domain must be looked at there instead of
+        // silently reading as its `Default` on the panel.
+        fn project_every_field(state: DeviceState) {
+            let DeviceState {
+                backed: _,
+                page: _,
+                lights: _,
+                surface_roles: _,
+                notice: _,
+                motion: _,
+                audio: _,
+                playback: _,
+                network: _,
+                network_page: _,
+                touch: _,
+            } = state;
+        }
+        project_every_field(DeviceState::default());
     }
 
     #[test]

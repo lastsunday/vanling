@@ -10,7 +10,7 @@ use crate::workers::{COMMAND_SLOTS, NetworkQueue, PageWatch};
 
 impl PageWatch {
     pub fn shows(&self, page: DisplayPage) -> bool {
-        self.page.load(Ordering::Relaxed) == page as u8
+        self.page.load(Ordering::Relaxed) == page.code()
     }
 
     /// Waits until the panel is on `page`.
@@ -22,7 +22,7 @@ impl PageWatch {
 
     /// Edge, not level: a panel that never left `page` must not satisfy it.
     pub async fn wait_for_return(&self, page: DisplayPage) {
-        let wanted = page as u8;
+        let wanted = page.code();
         let mut seen = self.page.load(Ordering::Relaxed);
         loop {
             self.changed.wait().await;
@@ -38,7 +38,7 @@ impl PageWatch {
     }
 
     pub async fn wait_until_away(&self, page: DisplayPage) {
-        let unwanted = page as u8;
+        let unwanted = page.code();
         let mut seen = self.page.load(Ordering::Relaxed);
         if seen != unwanted {
             return;
@@ -113,6 +113,13 @@ mod tests {
             commands.try_receive().is_err(),
             "the previous session's cancel is gone"
         );
+    }
+
+    #[test]
+    fn a_fresh_watch_starts_on_the_manifest_default_page() {
+        let watch = PageWatch::new();
+        assert!(watch.shows(DisplayPage::Ambient), "the declared default");
+        assert!(!watch.shows(DisplayPage::Network));
     }
 
     #[test]

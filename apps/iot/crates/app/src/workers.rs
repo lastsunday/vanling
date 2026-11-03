@@ -167,13 +167,13 @@ pub struct PageWatch {
 impl PageWatch {
     pub(crate) const fn new() -> Self {
         Self {
-            page: AtomicU8::new(DisplayPage::Ambient as u8),
+            page: AtomicU8::new(DisplayPage::Ambient.code()),
             changed: Signal::new(),
         }
     }
 
     pub fn publish(&self, page: DisplayPage) {
-        if self.page.swap(page as u8, Ordering::Relaxed) != page as u8 {
+        if self.page.swap(page.code(), Ordering::Relaxed) != page.code() {
             self.changed.signal(());
         }
     }

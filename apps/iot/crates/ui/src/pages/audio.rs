@@ -3,9 +3,9 @@ use iot_core::overlay::{Block, block_x, overlay_row_top};
 use iot_core::state::AudioPhase;
 
 use crate::layout::{PANEL_RIGHT, WAVE_TOP};
-use crate::pages::draw::{format_dba, format_i32};
 use crate::surface::Surface;
 use crate::text::format_u16;
+use crate::text::{format_dba, format_i32};
 
 impl Surface<'_> {
     pub(crate) fn stamp_audio(&mut self) {

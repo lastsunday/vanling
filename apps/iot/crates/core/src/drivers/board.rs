@@ -1,5 +1,5 @@
 use crate::config::MotionConfig;
-use crate::demand::DemandKey;
+use crate::demand::{DemandKey, DemandKind};
 use crate::drivers::audio::CaptureSink;
 use crate::drivers::input::PollEntry;
 use crate::drivers::motion::MotionCapabilities;
@@ -42,21 +42,31 @@ impl Backed {
         }
     }
 
-    /// The keys this wiring claims: `DISPLAY` always, and each part only when it was handed
-    /// over. `playback` owns no key of its own.
+    /// The keys this wiring claims, `DISPLAY` first and then the device planes in the order
+    /// [`DemandKind::ALL`] lists them. `playback` owns no key of its own, and the interaction
+    /// path is not gated.
     pub fn demand_keys(&self) -> Vec<DemandKey> {
-        let mut keys = Vec::with_capacity(4);
-        keys.push(DemandKey::DISPLAY);
-        for (present, key) in [
-            (self.motion.is_some(), DemandKey::MOTION),
-            (self.audio, DemandKey::AUDIO),
-            (self.camera, DemandKey::CAMERA),
-        ] {
-            if present {
-                keys.push(key);
-            }
+        core::iter::once(DemandKind::Display)
+            .chain(
+                DemandKind::ALL
+                    .into_iter()
+                    .filter(|kind| !matches!(kind, DemandKind::Display | DemandKind::Interaction)),
+            )
+            .map(DemandKey::of)
+            .filter(|key| self.claims(*key))
+            .collect()
+    }
+
+    /// Whether this board answers for `key`'s plane. Exhaustive over the kind, so a new
+    /// demand kind cannot be added without saying what wiring backs it.
+    pub fn claims(&self, key: DemandKey) -> bool {
+        match key.kind() {
+            DemandKind::Motion => self.motion.is_some(),
+            DemandKind::Audio => self.audio,
+            DemandKind::Camera => self.camera,
+            DemandKind::Display => true,
+            DemandKind::Interaction => false,
         }
-        keys
     }
 }
 

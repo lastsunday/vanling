@@ -12,14 +12,15 @@ use esp_hal::dma::DmaBufError;
 use esp_hal::gpio::{DriveMode, Level, Output, OutputConfig};
 use esp_hal::i2c::master as i2c_master;
 use esp_hal::i2s::master as i2s_master;
+use esp_hal::i2s::master::I2sTx;
 use esp_hal::ledc::channel as ledc_channel;
 use esp_hal::ledc::channel::ChannelIFace as _;
 use esp_hal::ledc::timer as ledc_timer;
 use esp_hal::ledc::timer::TimerIFace as _;
 use esp_hal::ledc::{LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::peripherals::{
-    CPU_CTRL, DMA_CH0, FROM_CPU_INTR0, FROM_CPU_INTR1, FROM_CPU_INTR2, GPIO39, GPIO40, GPIO41,
-    GPIO42, LEDC, Peripherals, SPI3, WIFI,
+    CPU_CTRL, DMA_CH0, FROM_CPU_INTR0, FROM_CPU_INTR1, FROM_CPU_INTR2, GPIO1, GPIO2, GPIO39,
+    GPIO40, GPIO41, GPIO42, I2C0, LEDC, Peripherals, SPI3, TIMG0, WIFI,
 };
 use esp_hal::spi::master as spi_master;
 use esp_hal::time::Rate;
@@ -229,6 +230,45 @@ fn bring_up_i2c(
     }
 }
 
+fn open_i2c(
+    i2c0: I2C0<'static>,
+    sda: GPIO1<'static>,
+    scl: GPIO2<'static>,
+) -> Result<(&'static SharedI2cBus, Pca9557<SharedI2cDevice>), BoardError> {
+    bring_up_i2c(
+        i2c_master::I2c::new(i2c0, i2c_config())
+            .map_err(BoardError::I2cConfig)?
+            .with_sda(sda)
+            .with_scl(scl),
+    )
+}
+
+/// Arms the transmit stream and the mute latch. Both audio paths end here; the caller owns
+/// the codec probe and the amplifier enable that says whether there is anything to drive.
+fn start_speaker(
+    tx: I2sTx<'static, Blocking>,
+    codec: Es8311<SharedI2cDevice>,
+    reference: &'static reference::Shared<{ playback::REFERENCE_SAMPLES }>,
+) -> Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>> {
+    match playback::Es8311Tx::new(tx, codec, reference::Writer::new(reference)) {
+        Ok(speaker) => Some(Box::new(speaker)),
+        Err(error) => {
+            log::error!("[PLAY] stream would not start: {error:?}");
+            None
+        }
+    }
+}
+
+fn startup(
+    board: Board<'static>,
+    timg0: TIMG0<'static>,
+    intr0: FROM_CPU_INTR0<'static>,
+    intr2: FROM_CPU_INTR2<'static>,
+    panel: Option<PanelBoot<'static>>,
+) -> Startup<'static> {
+    (board, TimerGroup::new(timg0), intr0, intr2, panel)
+}
+
 fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<SharedI2cDevice>> {
     let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
     let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
@@ -331,12 +371,7 @@ impl Board<'static> {
         let mut backlight = panel_backlight(LEDC, GPIO42)?;
         backlight.set_level_pct(0);
 
-        let (bus, mut pca9557) = bring_up_i2c(
-            i2c_master::I2c::new(I2C0, i2c_config())
-                .map_err(BoardError::I2cConfig)?
-                .with_sda(GPIO1)
-                .with_scl(GPIO2),
-        )?;
+        let (bus, mut pca9557) = open_i2c(I2C0, GPIO1, GPIO2)?;
         let mut delay = Delay::new();
 
         let (block_spi, dc) = panel_spi(SPI3, DMA_CH0, GPIO41, GPIO40, GPIO39)?;
@@ -454,14 +489,7 @@ impl Board<'static> {
                 let speaker = match (tx, speaker_codec) {
                     (Some(tx), Some(codec)) => {
                         pca9557.set_output_bit(PA_EN_PIN, true)?;
-                        match playback::Es8311Tx::new(tx, codec, reference::Writer::new(reference))
-                        {
-                            Ok(speaker) => Some(Box::new(speaker)),
-                            Err(error) => {
-                                log::error!("[PLAY] stream would not start: {error:?}");
-                                None
-                            }
-                        }
+                        start_speaker(tx, codec, reference)
                     }
                     _ => None,
                 };
@@ -477,7 +505,7 @@ impl Board<'static> {
             .include(camera.as_mut())
             .finish();
 
-        Ok((
+        Ok(startup(
             Self {
                 screen: Some(screen),
                 button: Some(button),
@@ -489,7 +517,7 @@ impl Board<'static> {
                 radio: Some(WIFI),
                 credentials,
             },
-            TimerGroup::new(TIMG0),
+            TIMG0,
             FROM_CPU_INTR0,
             FROM_CPU_INTR2,
             Some(PanelBoot {
@@ -512,16 +540,11 @@ impl Board<'static> {
             ..
         } = peripherals;
 
-        let (bus, _pca9557) = bring_up_i2c(
-            i2c_master::I2c::new(I2C0, i2c_config())
-                .map_err(BoardError::I2cConfig)?
-                .with_sda(GPIO1)
-                .with_scl(GPIO2),
-        )?;
+        let (bus, _pca9557) = open_i2c(I2C0, GPIO1, GPIO2)?;
 
         let motion = Qmi8658::new(I2cDevice::new(bus), QMI8658_I2C_ADDR);
 
-        Ok((
+        Ok(startup(
             Self {
                 screen: None,
                 button: None,
@@ -533,7 +556,7 @@ impl Board<'static> {
                 radio: None,
                 credentials: None,
             },
-            TimerGroup::new(TIMG0),
+            TIMG0,
             FROM_CPU_INTR0,
             FROM_CPU_INTR2,
             None,
@@ -558,12 +581,7 @@ impl Board<'static> {
             ..
         } = peripherals;
 
-        let (bus, mut pca9557) = bring_up_i2c(
-            i2c_master::I2c::new(I2C0, i2c_config())
-                .map_err(BoardError::I2cConfig)?
-                .with_sda(GPIO1)
-                .with_scl(GPIO2),
-        )?;
+        let (bus, mut pca9557) = open_i2c(I2C0, GPIO1, GPIO2)?;
 
         let speaker_codec = probe_es8311(bus, "the probe has nothing to drive");
 
@@ -579,22 +597,16 @@ impl Board<'static> {
                     .with_ws(GPIO13)
                     .with_dout(GPIO45)
                     .build();
-                match playback::Es8311Tx::new(
+                start_speaker(
                     tx,
                     codec,
-                    reference::Writer::new(reference::share::<{ playback::REFERENCE_SAMPLES }>()),
-                ) {
-                    Ok(speaker) => Some(Box::new(speaker)),
-                    Err(error) => {
-                        log::error!("[PLAY] stream would not start: {error:?}");
-                        None
-                    }
-                }
+                    reference::share::<{ playback::REFERENCE_SAMPLES }>(),
+                )
             }
             None => None,
         };
 
-        Ok((
+        Ok(startup(
             Self {
                 screen: None,
                 button: None,
@@ -606,7 +618,7 @@ impl Board<'static> {
                 radio: None,
                 credentials: None,
             },
-            TimerGroup::new(TIMG0),
+            TIMG0,
             FROM_CPU_INTR0,
             FROM_CPU_INTR2,
             None,
