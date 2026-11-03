@@ -2,10 +2,9 @@ use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirectio
 use crate::drivers::motion::MotionCapabilities;
 use crate::intent::{
     ActionIntent, InputIntent, LightIntent, LinkIntent, NetworkPageIntent, PageIntent, recognize,
-    translate,
 };
 use crate::state::MAX_LIGHTS;
-use crate::state::{Backed, Breath, DeviceState, DisplayPage, LightState, SurfaceRole};
+use crate::state::{Backed, Breath, DeviceState, DisplayPage, LightState, SurfaceRole, translate};
 
 pub(crate) const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 

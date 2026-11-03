@@ -34,9 +34,10 @@ use iot_core::drivers::network::{
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
-use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent, PALETTE};
+use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent};
 use iot_core::keyboard::Key;
 use iot_core::paint::Rgb;
+use iot_core::state::PALETTE;
 use iot_core::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
 
 static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());
@@ -247,7 +248,7 @@ impl FrameSource for HostCamera {
 }
 
 impl CameraTarget for HostLight {
-    fn paint_camera(&mut self, now_ms: u64) -> bool {
+    fn paint_camera(&mut self, now_ms: u64, _period_ms: u32) -> bool {
         if !self.owner.is_camera() {
             let Some(camera) = self.camera.as_mut() else {
                 return false;
@@ -268,18 +269,20 @@ impl CameraTarget for HostLight {
     fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>) {
         self.camera = Some(camera);
     }
-}
 
-impl DiagnosticsSink for HostLight {
-    fn consume(&mut self, diagnostics: &Diagnostics) {
-        let page_changed = self.page != Some(diagnostics.page);
-        if page_changed && self.owner.is_camera() {
+    fn release_camera(&mut self) {
+        if self.owner.is_camera() {
             if let Some(camera) = self.camera.as_mut() {
                 camera.pause();
             }
             self.owner.released();
             RELEASED.fetch_add(1, Ordering::SeqCst);
         }
+    }
+}
+
+impl DiagnosticsSink for HostLight {
+    fn consume(&mut self, diagnostics: &Diagnostics) {
         self.page = Some(diagnostics.page);
         PAGES.lock().unwrap().push(diagnostics.page);
         AUDIO_COLUMNS.fetch_max(

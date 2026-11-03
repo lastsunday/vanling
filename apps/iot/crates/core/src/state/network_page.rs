@@ -10,8 +10,10 @@ use crate::drivers::network::{
 use crate::intent::NetworkPageIntent;
 use crate::keyboard::{Key, LIST_ROWS};
 
+use crate::drivers::network::NetworkCommand;
+
 use super::entry::Entry;
-use super::network::{NetworkCommand, NetworkState};
+use super::network::NetworkState;
 
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.

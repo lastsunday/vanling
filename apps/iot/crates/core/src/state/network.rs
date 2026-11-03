@@ -2,9 +2,7 @@
 //! it owes. What the page is in the middle of drafting is [`NetworkPage`](super::NetworkPage)'s,
 //! not this record's; this one is written by the worker's reports and read by everyone else.
 
-use crate::drivers::network::{
-    AccessPoint, ApList, JoinRequest, LinkPhase, LinkStatus, NetworkMode, SetupHost, Ssid,
-};
+use crate::drivers::network::{AccessPoint, ApList, LinkPhase, LinkStatus, NetworkMode, SetupHost};
 use crate::drivers::playback::Sound;
 use crate::intent::LinkIntent;
 
@@ -25,41 +23,6 @@ pub struct NetworkState {
     /// Whether this boot has already announced that the link is down, so an outage says its
     /// piece once rather than on every failed attempt.
     pub outage_announced: bool,
-}
-
-/// What the network task must do, taken from the panel one request at a time.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum NetworkCommand {
-    Join(JoinRequest),
-    Leave,
-    LeaveSetup {
-        from: SetupHost,
-    },
-    SwitchHost {
-        from: SetupHost,
-    },
-    SetupOpen {
-        from: SetupHost,
-        open: bool,
-    },
-    ScanNow,
-    Forget(Ssid),
-    /// The splash is over, and this is whether the hold asked for setup mode. A boot decision
-    /// the page made; the worker takes it as a command rather than watching the page.
-    SplashOver {
-        setup: bool,
-    },
-}
-
-impl NetworkCommand {
-    /// Setup requests only mean something inside a setup session; everywhere else they are
-    /// stale and the worker drops them.
-    pub const fn is_setup(&self) -> bool {
-        matches!(
-            self,
-            Self::LeaveSetup { .. } | Self::SwitchHost { .. } | Self::SetupOpen { .. }
-        )
-    }
 }
 
 impl NetworkState {

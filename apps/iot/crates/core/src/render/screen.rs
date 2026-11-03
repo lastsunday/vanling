@@ -18,6 +18,9 @@ pub struct ScreenRenderer {
     color: ColorDriver,
     appearance: Option<LightAppearance>,
     page: Option<DisplayPage>,
+    /// The cadence the last snapshot's camera claim asked for, passed through to the
+    /// surface rather than read there.
+    camera_period_ms: u32,
 }
 
 impl ScreenRenderer {
@@ -29,6 +32,7 @@ impl ScreenRenderer {
             color: ColorDriver::new(),
             appearance: None,
             page: None,
+            camera_period_ms: 0,
         }
     }
 
@@ -73,6 +77,17 @@ impl Renderer for ScreenRenderer {
         match appearance {
             Appearance::Diagnostics(diagnostics) => {
                 let page_changed = self.page != Some(diagnostics.page);
+                let camera = diagnostics.demand.claim(DemandKey::CAMERA);
+                self.camera_period_ms = camera.period_ms;
+                // Handing the buffer back belongs to this side of the boundary: a chain
+                // left running would overwrite every fill after it a row at a time, and
+                // the surface cannot tell a demand the page withdrew from one an
+                // application never made. It runs before `consume` because taking the
+                // buffer is what clears the colour `paint` reads: a release gated on
+                // there being a colour would deadlock the very page that cleared it.
+                if !camera.mode.is_collecting() {
+                    self.surface.release_camera();
+                }
                 self.surface.consume(&diagnostics);
                 self.page = Some(diagnostics.page);
                 self.color
@@ -111,7 +126,8 @@ impl Renderer for ScreenRenderer {
 
     fn step(&mut self, now_ms: u32) -> Activity {
         if self.on_camera_page() {
-            self.surface.paint_camera(u64::from(now_ms));
+            self.surface
+                .paint_camera(u64::from(now_ms), self.camera_period_ms);
             return Activity::TimeDriven;
         }
         let step = self.surface.repaint_step();
@@ -153,6 +169,8 @@ mod tests {
         backlight: u8,
         ceiling: u8,
         camera_paints: u32,
+        camera_releases: u32,
+        camera_period: u32,
         camera: bool,
     }
 
@@ -166,6 +184,8 @@ mod tests {
                 backlight: 100,
                 ceiling: 100,
                 camera_paints: 0,
+                camera_releases: 0,
+                camera_period: 0,
                 camera: false,
             })))
         }
@@ -205,13 +225,19 @@ mod tests {
     }
 
     impl crate::drivers::camera::CameraTarget for FakeScreen {
-        fn paint_camera(&mut self, _now_ms: u64) -> bool {
-            self.0.borrow_mut().camera_paints += 1;
+        fn paint_camera(&mut self, _now_ms: u64, period_ms: u32) -> bool {
+            let mut panel = self.0.borrow_mut();
+            panel.camera_paints += 1;
+            panel.camera_period = period_ms;
             true
         }
 
         fn attach_camera(&mut self, _camera: Box<dyn FrameSource + Send>) {
             self.0.borrow_mut().camera = true;
+        }
+
+        fn release_camera(&mut self) {
+            self.0.borrow_mut().camera_releases += 1;
         }
     }
 
@@ -230,6 +256,23 @@ mod tests {
 
     fn panel_asked(display: Mode) -> Appearance {
         panel_on(DisplayPage::Ambient, display)
+    }
+
+    fn panel_collecting(page: DisplayPage, period_ms: u32) -> Appearance {
+        let mut demand = EffectiveDemand::default();
+        demand.set(
+            DemandKey::DISPLAY,
+            Claim::new(Mode::Continuous, 0, Priority::Primary),
+        );
+        demand.set(
+            DemandKey::CAMERA,
+            Claim::new(Mode::Continuous, period_ms, Priority::Primary),
+        );
+        Appearance::Diagnostics(Diagnostics {
+            demand,
+            page,
+            ..Diagnostics::default()
+        })
     }
 
     fn ambient_breath(instance: u8) -> Appearance {
@@ -388,6 +431,41 @@ mod tests {
             panel.borrow().camera_paints,
             1,
             "the panel pulls the next frame"
+        );
+    }
+
+    #[test]
+    fn the_camera_cadence_is_handed_to_the_surface_rather_than_read_there() {
+        let (mut r, panel) = renderer();
+        r.on_appearance(panel_collecting(DisplayPage::Camera, 200), 0);
+        r.step(1_000);
+        assert_eq!(
+            panel.borrow().camera_period,
+            200,
+            "the claim's cadence is the policy the page asked for"
+        );
+        assert_eq!(
+            panel.borrow().camera_releases,
+            0,
+            "a collecting demand keeps the buffer"
+        );
+    }
+
+    #[test]
+    fn the_camera_is_released_when_the_demand_stops_collecting() {
+        let (mut r, panel) = renderer();
+        r.on_appearance(panel_collecting(DisplayPage::Camera, 0), 0);
+        r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 1);
+        assert_eq!(
+            panel.borrow().camera_releases,
+            1,
+            "the renderer hands the buffer back; the surface only does as it is told"
+        );
+        r.on_appearance(panel_on(DisplayPage::Ambient, Mode::Continuous), 2);
+        assert_eq!(
+            panel.borrow().camera_releases,
+            2,
+            "and it asks every snapshot, leaving the surface's own guard to make it a no-op"
         );
     }
 

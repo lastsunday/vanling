@@ -210,8 +210,8 @@ const _: () = assert!(
     "a confirmation's consequence is wider than the line the box gives it"
 );
 const _: () = assert!(
-    iot_core::controls::LEAVE_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W
-        && iot_core::controls::FORGET_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
+    iot_core::state::controls::LEAVE_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W
+        && iot_core::state::controls::FORGET_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
     "a confirmation's own button cannot hold the word of the action it performs"
 );
 const _: () = assert!(
@@ -238,7 +238,7 @@ const _: () = assert!(
 
 /// The question itself: the verb, and the network it is about in quotes.
 pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
-    let verb = iot_core::controls::confirm_verb(confirm);
+    let verb = iot_core::state::controls::confirm_verb(confirm);
     buf[..verb.len()].copy_from_slice(verb);
     let mut n = verb.len();
     let Some(ap) = confirm.network(link) else {
@@ -348,7 +348,6 @@ mod tests {
     };
     use alloc::vec;
     use alloc::vec::Vec;
-    use iot_core::controls::confirm_verb;
     use iot_core::drivers::network::{
         AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass, Ssid,
     };
@@ -356,6 +355,7 @@ mod tests {
     use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
     use iot_core::overlay::{Block, GLYPH_PITCH, block_value_x, block_x, level_value_end};
     use iot_core::state::Confirm;
+    use iot_core::state::controls::confirm_verb;
 
     #[test]
     fn a_sound_name_fits_its_block() {

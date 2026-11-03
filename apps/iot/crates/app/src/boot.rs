@@ -23,21 +23,11 @@ pub(crate) fn boot_override() -> Override {
 }
 
 /// The network this build was named, if it was named one. Probes join it regardless of the
-/// panel; the product does not (`wifi_credentials`).
+/// panel; the product's own path decides separately (`network::link`).
 pub fn build_wifi_credentials() -> Option<(&'static str, &'static str)> {
     let ssid = option_env!("IOT_WIFI_SSID")?;
     let password = option_env!("IOT_WIFI_PSK")?;
     Some((ssid, password))
-}
-
-/// The network this build was named, unless the build is a bench run: a bench image has to
-/// join whatever the panel names, not the credential its build happens to carry.
-#[cfg(feature = "wifi")]
-pub(crate) fn wifi_credentials() -> Option<(&'static str, &'static str)> {
-    if crate::bench::replay::BENCH {
-        return None;
-    }
-    build_wifi_credentials()
 }
 
 const BOOT_PAGE: DisplayPage = boot_page_from_env(option_env!("IOT_BOOT_PAGE"));

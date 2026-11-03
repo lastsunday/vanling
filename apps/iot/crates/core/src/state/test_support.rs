@@ -5,7 +5,7 @@ pub(crate) use crate::drivers::input::{
 };
 pub(crate) use crate::drivers::motion::MotionScale;
 pub(crate) use crate::drivers::network::{Ipv4, SavedNetworks};
-pub(crate) use crate::intent::{ActionIntent, InputIntent, LightIntent, PageIntent, translate};
+pub(crate) use crate::intent::{ActionIntent, InputIntent, LightIntent, PageIntent};
 pub(crate) use crate::page::CYCLE;
 
 pub(crate) const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);

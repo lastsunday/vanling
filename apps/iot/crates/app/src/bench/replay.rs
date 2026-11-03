@@ -6,8 +6,7 @@ use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, Swip
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
 use iot_core::intent::{Intent, recognize};
 use iot_core::keyboard::{self, DialogChoice, Key, LIST_ROWS};
-use iot_core::page::Band;
-use iot_core::state::{Confirm, DeviceManager, DeviceState, DisplayPage};
+use iot_core::state::{Band, Confirm, DeviceManager, DeviceState, DisplayPage};
 
 use crate::input::IntentBus;
 
@@ -646,8 +645,9 @@ mod tests {
     use iot_core::drivers::network::{
         AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
     };
-    use iot_core::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent, translate};
+    use iot_core::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
     use iot_core::keyboard::Layer;
+    use iot_core::state::translate;
     use iot_core::state::{Backed, Boot, NetworkCommand};
 
     fn ap(name: &str) -> AccessPoint {

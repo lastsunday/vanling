@@ -1,5 +1,7 @@
-use iot_core::overlay::{Block, FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS};
-use iot_core::page::{Band, each_band};
+//! The diagnostics overlay: the touch path's counters and the light's parameters, stamped
+//! over whichever page is showing when the build asks for them.
+
+use iot_core::overlay::Block;
 use iot_core::render::{MODE_BREATH, MODE_SOLID};
 
 use crate::pages::draw::{direction_arrow, format_u16, gesture_glyph, mode_word};
@@ -161,51 +163,4 @@ impl Surface<'_> {
             _ => self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0),
         }
     }
-
-    pub(crate) fn stamp_network(&mut self) {
-        let link = self.diagnostics.link;
-        // Copied rather than borrowed: the borrow would be of `self.diagnostics`, and every
-        // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
-        // reason, and a list is 350 B against the envelope's kilobyte and a half.
-        let aps = self.diagnostics.aps;
-        let setup = self.diagnostics.draft;
-        let shown_ap = if setup.keyboard {
-            setup.selected
-        } else {
-            link.ap.or(setup.selected)
-        };
-
-        each_band(setup, link, |band| match band {
-            Band::Header => self.stamp_header(
-                setup,
-                link,
-                shown_ap,
-                self.diagnostics.mac,
-                aps.filter(|list| !list.is_empty()).map(|list| list.len()),
-            ),
-            Band::Content => self.stamp_content(setup, link, aps),
-            Band::Controls => self.stamp_strip(setup, link),
-            Band::Overlay => self.stamp_box(setup, link, shown_ap, self.diagnostics.mac),
-        });
-    }
-
-    pub(crate) fn stamp_splash(&mut self) {
-        let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
-        let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;
-        let top = self.height().saturating_sub(block) / 2;
-        for (line, text) in lines.iter().enumerate() {
-            let ink = text.len() * GLYPH_PITCH - OVERLAY_GAP;
-            let left = self.width().saturating_sub(ink) / 2;
-            self.stamp_text(text, left, top + line * SPLASH_PITCH);
-        }
-    }
 }
-
-const SPLASH_LINES: usize = 3;
-
-const SPLASH_PITCH: usize = 3 * FONT_H;
-
-const _: () = assert!(
-    b"HOLD BOOT".len() * GLYPH_PITCH - OVERLAY_GAP <= PANEL_COLUMNS,
-    "the widest splash line has to fit the panel"
-);

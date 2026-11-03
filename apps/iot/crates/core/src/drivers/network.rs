@@ -865,6 +865,41 @@ pub trait Station {
     fn end_setup(&mut self) -> Result<(), NetworkError>;
 }
 
+/// What the network task must do, taken from the panel one request at a time.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum NetworkCommand {
+    Join(JoinRequest),
+    Leave,
+    LeaveSetup {
+        from: SetupHost,
+    },
+    SwitchHost {
+        from: SetupHost,
+    },
+    SetupOpen {
+        from: SetupHost,
+        open: bool,
+    },
+    ScanNow,
+    Forget(Ssid),
+    /// The splash is over, and this is whether the hold asked for setup mode. A boot decision
+    /// the page made; the worker takes it as a command rather than watching the page.
+    SplashOver {
+        setup: bool,
+    },
+}
+
+impl NetworkCommand {
+    /// Setup requests only mean something inside a setup session; everywhere else they are
+    /// stale and the worker drops them.
+    pub const fn is_setup(&self) -> bool {
+        matches!(
+            self,
+            Self::LeaveSetup { .. } | Self::SwitchHost { .. } | Self::SetupOpen { .. }
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,10 +1,10 @@
 //! The Network page's controls as behaviour: what each box does, named beside the word on
 //! it.
 
+use super::{Confirm, NetworkPage};
 use crate::drivers::network::{LinkStatus, NetworkMode, SetupHost};
 use crate::intent::{ActionIntent, NetworkPageIntent};
 use crate::keyboard::ToolbarCell;
-use crate::state::{Confirm, NetworkPage};
 
 pub const CANCEL_LABEL: &[u8] = b"CANCEL";
 pub const SCAN_LABEL: &[u8] = b"SCAN";

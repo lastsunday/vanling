@@ -1,13 +1,7 @@
-use crate::drivers::input::{ButtonEvent, InputEvent};
+use crate::drivers::input::InputEvent;
 use crate::drivers::network::{AccessPoint, LinkStatus, Ssid};
 use crate::keyboard::Key;
-use crate::page::{self, DisplayPage};
-use crate::state::{Confirm, DeviceState, LightState};
-
-pub use crate::page::{
-    BREATH_PERIODS_MS, BRIGHTNESS_ENVELOPE_STEP, COLOR_GROUPS, ColorGroup, PALETTE,
-    SOLID_BRIGHTNESS_STEPS,
-};
+use crate::state::{Confirm, LightState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputIntent {
@@ -103,22 +97,12 @@ pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
     InputIntent { source, event }
 }
 
-pub fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
-    if current.page != DisplayPage::Splash
-        && current.network.link.mode.is_setup()
-        && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress))
-    {
-        return ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost);
-    }
-    page::translate(current.page, op, current)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drivers::input::{GestureEvent, SwipeDirection};
+    use crate::drivers::input::{ButtonEvent, GestureEvent, SwipeDirection};
     use crate::page::test_support::{long_press, op, state_on};
-    use crate::state::{LightState, NetworkState};
+    use crate::state::{DeviceState, DisplayPage, LightState, NetworkState, translate};
 
     mod recognize {
         use super::*;

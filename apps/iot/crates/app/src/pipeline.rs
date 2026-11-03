@@ -49,7 +49,7 @@ pub async fn run_loop<C: ClockSink>(
             let command = match intent {
                 Intent::Input(op) => {
                     manager.apply_input(op);
-                    let business = iot_core::intent::translate(&op, manager.state_ref());
+                    let business = iot_core::state::translate(&op, manager.state_ref());
                     manager.apply_action(business)
                 }
                 Intent::Action(business) => manager.apply_action(business),

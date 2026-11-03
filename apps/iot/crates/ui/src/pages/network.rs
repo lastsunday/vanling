@@ -1,5 +1,4 @@
 //! The Network page's setup UI: list, join, keyboard and dialogs.
-use iot_core::controls;
 use iot_core::drivers::network::{AccessPoint, ApList, Ipv4, LinkStatus, SSID_BYTES};
 use iot_core::keyboard::{
     self, ControlRect, DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP,
@@ -9,13 +8,44 @@ use iot_core::overlay::{
     Block, FONT_H, GLYPH_PITCH, PANEL_COLUMNS, ROW_PITCH, block_x, overlay_row_top,
 };
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
-use iot_core::state::{Entry, NetworkPage};
+use iot_core::state::controls;
+use iot_core::state::{Band, Entry, NetworkPage, each_band};
 
 use crate::layout::*;
 use crate::pages::draw::{
     HIDE_LABEL, Mark, band_top, control_label, format_psk, format_window, text_left, text_width,
 };
 use crate::surface::Surface;
+
+impl Surface<'_> {
+    pub(crate) fn stamp_network(&mut self) {
+        let link = self.diagnostics.link;
+        // Copied rather than borrowed: the borrow would be of `self.diagnostics`, and every
+        // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
+        // reason, and a list is 350 B against the envelope's kilobyte and a half.
+        let aps = self.diagnostics.aps;
+        let setup = self.diagnostics.draft;
+        let shown_ap = if setup.keyboard {
+            setup.selected
+        } else {
+            link.ap.or(setup.selected)
+        };
+
+        each_band(setup, link, |band| match band {
+            Band::Header => self.stamp_header(
+                setup,
+                link,
+                shown_ap,
+                self.diagnostics.mac,
+                aps.filter(|list| !list.is_empty()).map(|list| list.len()),
+            ),
+            Band::Content => self.stamp_content(setup, link, aps),
+            Band::Controls => self.stamp_strip(setup, link),
+            Band::Overlay => self.stamp_box(setup, link, shown_ap, self.diagnostics.mac),
+        });
+    }
+}
+
 use crate::text::{
     NETWORK_NAME_GLYPHS, SETUP_NOTICE_TITLE, body, format_address, format_bars,
     format_joining_title, format_network_name, format_phase, format_question, format_setup_name,

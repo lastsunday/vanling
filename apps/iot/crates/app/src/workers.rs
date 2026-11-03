@@ -83,7 +83,7 @@ pub(crate) static PLAYBACK: Playback = Playback {
 /// How many commands may wait for the network worker. The coordinator keeps the one that
 /// found no room and offers it again next pass, so this is slack, not a depth the panel can
 /// fill.
-const COMMAND_SLOTS: usize = 2;
+pub(crate) const COMMAND_SLOTS: usize = 2;
 
 pub type NetworkQueue = Channel<CriticalSectionRawMutex, NetworkCommand, COMMAND_SLOTS>;
 
@@ -111,29 +111,6 @@ pub static NETWORK: Network = Network {
     page: &PAGE,
     scan: &SCAN,
 };
-
-/// Drops setup requests left over from a previous session; every other command goes back.
-///
-/// A cancel made while the last session was up must not close the next one, and a queue has
-/// no `clear()` of its own. The array is as deep as the channel, so it holds everything that
-/// is not stale.
-#[cfg(any(feature = "wifi", test))]
-pub(crate) fn discard_setup(commands: &NetworkQueue) {
-    let mut kept: [Option<NetworkCommand>; COMMAND_SLOTS] = core::array::from_fn(|_| None);
-    let mut held = 0;
-    while let Ok(command) = commands.try_receive() {
-        if command.is_setup() {
-            continue;
-        }
-        if let Some(slot) = kept.get_mut(held) {
-            *slot = Some(command);
-            held += 1;
-        }
-    }
-    for command in kept.into_iter().flatten() {
-        let _ = commands.try_send(command);
-    }
-}
 
 /// The newest value only: the panel draws one list, so a burst of scans is one list plus the
 /// news that it changed.
@@ -183,12 +160,12 @@ impl<T: Copy + Send> Latest<T> {
 /// an edge: the worker asks whether the list is on screen, and the end of the splash reaches
 /// it as a command like everything else the panel asks for.
 pub struct PageWatch {
-    page: AtomicU8,
-    changed: Signal<CriticalSectionRawMutex, ()>,
+    pub(crate) page: AtomicU8,
+    pub(crate) changed: Signal<CriticalSectionRawMutex, ()>,
 }
 
 impl PageWatch {
-    const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             page: AtomicU8::new(DisplayPage::Ambient as u8),
             changed: Signal::new(),
@@ -198,56 +175,6 @@ impl PageWatch {
     pub fn publish(&self, page: DisplayPage) {
         if self.page.swap(page as u8, Ordering::Relaxed) != page as u8 {
             self.changed.signal(());
-        }
-    }
-}
-
-#[cfg(any(feature = "wifi", test))]
-impl PageWatch {
-    pub fn shows(&self, page: DisplayPage) -> bool {
-        self.page.load(Ordering::Relaxed) == page as u8
-    }
-
-    /// Waits until the panel is on `page`.
-    pub async fn wait_for(&self, page: DisplayPage) {
-        while !self.shows(page) {
-            self.changed.wait().await;
-        }
-    }
-
-    /// Edge, not level: a panel that never left `page` must not satisfy it.
-    pub async fn wait_for_return(&self, page: DisplayPage) {
-        let wanted = page as u8;
-        let mut seen = self.page.load(Ordering::Relaxed);
-        loop {
-            self.changed.wait().await;
-            let page = self.page.load(Ordering::Relaxed);
-            if page == seen {
-                continue;
-            }
-            seen = page;
-            if page == wanted {
-                return;
-            }
-        }
-    }
-
-    pub async fn wait_until_away(&self, page: DisplayPage) {
-        let unwanted = page as u8;
-        let mut seen = self.page.load(Ordering::Relaxed);
-        if seen != unwanted {
-            return;
-        }
-        loop {
-            self.changed.wait().await;
-            let page = self.page.load(Ordering::Relaxed);
-            if page == seen {
-                continue;
-            }
-            seen = page;
-            if page != unwanted {
-                return;
-            }
         }
     }
 }
@@ -264,7 +191,7 @@ pub struct Workers<'a> {
 mod tests {
     use super::*;
     use core::task::{Context, Waker};
-    use iot_core::drivers::network::{AccessPoint, JoinRequest, SetupHost, Ssid};
+    use iot_core::drivers::network::{AccessPoint, Ssid};
 
     fn cx() -> Context<'static> {
         Context::from_waker(Waker::noop())
@@ -280,32 +207,6 @@ mod tests {
         }]);
         list.mark_saved(u8::from(saved));
         list
-    }
-
-    #[test]
-    fn a_cancel_left_over_from_the_last_session_does_not_survive_into_the_next() {
-        let commands = NetworkQueue::new();
-        assert!(
-            commands
-                .try_send(NetworkCommand::LeaveSetup {
-                    from: SetupHost::AccessPoint
-                })
-                .is_ok()
-        );
-        let join = NetworkCommand::Join(JoinRequest::Held(Ssid::from_octets(b"cafe")));
-        assert!(commands.try_send(join.clone()).is_ok());
-
-        discard_setup(&commands);
-
-        assert_eq!(
-            commands.try_receive(),
-            Ok(join),
-            "the join is not setup state and goes back untouched"
-        );
-        assert!(
-            commands.try_receive().is_err(),
-            "the previous session's cancel is gone"
-        );
     }
 
     #[test]
@@ -341,49 +242,6 @@ mod tests {
         assert!(
             latest.take().is_some(),
             "the take at the top of the pass is the one that takes the list"
-        );
-    }
-
-    #[test]
-    fn a_rest_on_the_list_is_not_cut_short_by_the_list_being_up() {
-        let watch = PageWatch::new();
-        watch.publish(DisplayPage::Network);
-        let mut level = core::pin::pin!(watch.wait_for(DisplayPage::Network));
-        let mut back = core::pin::pin!(watch.wait_for_return(DisplayPage::Network));
-        assert!(
-            level.as_mut().poll(&mut cx()).is_ready(),
-            "the level check answers \"is the list up?\", and it is"
-        );
-        assert!(
-            back.as_mut().poll(&mut cx()).is_pending(),
-            "a return cannot be satisfied by never having left"
-        );
-
-        watch.publish(DisplayPage::Ambient);
-        assert!(back.as_mut().poll(&mut cx()).is_pending());
-        watch.publish(DisplayPage::Network);
-        assert!(
-            back.as_mut().poll(&mut cx()).is_ready(),
-            "away and back is the return the pause waits on"
-        );
-    }
-
-    #[test]
-    fn the_same_watch_answers_for_whichever_page_the_caller_names() {
-        let watch = PageWatch::new();
-        watch.publish(DisplayPage::Camera);
-
-        assert!(watch.shows(DisplayPage::Camera));
-        assert!(!watch.shows(DisplayPage::Network));
-        let mut away = core::pin::pin!(watch.wait_until_away(DisplayPage::Network));
-        assert!(
-            away.as_mut().poll(&mut cx()).is_ready(),
-            "the camera is already away from the network page"
-        );
-        let mut list = core::pin::pin!(watch.wait_for(DisplayPage::Network));
-        assert!(
-            list.as_mut().poll(&mut cx()).is_pending(),
-            "and the camera is not the page a caller waiting for the list is after"
         );
     }
 }

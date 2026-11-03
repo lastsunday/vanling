@@ -8,7 +8,6 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use esp_hal::time::{Duration, Instant};
-use iot_core::demand::DemandKey;
 use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::camera::FrameOwner;
 use iot_core::render::{diag_repaint_due, windowed_percent};
@@ -29,24 +28,6 @@ impl DiagnosticsSink for Screen {
             return;
         }
         let page_changed = self.diagnostics.page != diagnostics.page;
-        // Leaving the camera's page is what hands the buffer back, and it is done here rather
-        // than in `paint` for two reasons. A chain left running would overwrite every fill
-        // after it a row at a time; and waiting for `paint` to release it deadlocked the
-        // panel, because taking the buffer is what clears the colour `paint` reads to know
-        // what to draw — so the call that had to release it was gated on there being a colour,
-        // and the page that needed releasing was the one that had cleared it.
-        // Gated on the demand rather than on the page: a demand granting no mode is
-        // something an application other than a page switch could ask for.
-        if !diagnostics
-            .demand
-            .claim(DemandKey::CAMERA)
-            .mode
-            .is_collecting()
-            && self.owner.is_camera()
-        {
-            self.camera.pause();
-            self.owner.released();
-        }
         // A page switch is drawn immediately; a diagnostics drift is only drawn
         // when the page redraws it and the rate gate has opened. The gate exists
         // because a repaint ships the whole 320×240 frame down one blocking SPI

@@ -1,12 +1,8 @@
 use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
-use crate::diagnostics::Diagnostics;
-use crate::drivers::input::{ButtonEvent, InputEvent};
-use crate::intent::{ActionIntent, InputIntent, PageIntent};
-use crate::state::DeviceState;
 
 /// How long the boot page stays up before the build's page takes over. A page property:
-/// the splash owns its claim, gestures and repaint; this is how long it exists.
+/// the splash owns its claim; this is how long it exists.
 pub const SPLASH_MS: u64 = 1_500;
 
 pub(super) const fn claim(kind: DemandKind) -> Claim {
@@ -17,27 +13,15 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
     }
 }
 
-pub(super) fn translate(op: &InputIntent, _current: &DeviceState) -> ActionIntent {
-    match op.event {
-        InputEvent::Button(ButtonEvent::LongPress) => ActionIntent::Page(PageIntent::RequestSetup),
-        _ => ActionIntent::Invalid,
-    }
-}
-
-pub(super) const fn repaint(_prev: &Diagnostics, _next: &Diagnostics, _overlay: bool) -> bool {
-    false
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::drivers::input::{GestureEvent, SwipeDirection};
+    use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
     use crate::drivers::network::LinkStatus;
-    use crate::intent::{ActionIntent, LightIntent, translate};
+    use crate::intent::{ActionIntent, LightIntent, PageIntent};
     use crate::page::test_support::{
         DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
-    use crate::state::{DisplayPage, LightState};
+    use crate::state::{DisplayPage, LightState, translate};
 
     #[test]
     fn the_splash_page_is_where_the_button_asks_for_setup_mode() {

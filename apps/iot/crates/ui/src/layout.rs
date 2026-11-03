@@ -1,6 +1,5 @@
 //! Panel geometry the page renderer draws against.
 
-use iot_core::controls::{AP_LABEL, CANCEL_LABEL, NO_PASS_LABEL, PANEL_LABEL};
 use iot_core::drivers::audio::ENVELOPE_COLUMNS;
 use iot_core::keyboard::{
     self, DIALOG_ANSWER_W, KEY_H, KEYBOARD_TOP, LIST_ROW_H, LIST_ROWS, LIST_TOP, ROWS,
@@ -10,6 +9,7 @@ use iot_core::overlay::{
     RIGHT_EDGE_X, block_value_x, block_x, level_value_end, overlay_row_top,
 };
 use iot_core::provision::MAC_TEXT_BYTES;
+use iot_core::state::controls::{AP_LABEL, CANCEL_LABEL, NO_PASS_LABEL, PANEL_LABEL};
 
 use crate::text::NETWORK_NAME_GLYPHS;
 

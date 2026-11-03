@@ -165,7 +165,7 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
 /// repaint every 20 ms snapshot and hold the shared cooperative executor in a
 /// ~15 ms block almost continuously, starving the playback feed and the
 /// capture poll past their ring runway. A page may raise it for itself; see
-/// `page::repaint_step_ms`.
+/// [`repaint_step_ms`].
 pub const DIAG_REPAINT_STEP_MS: u64 = 40;
 
 pub fn diag_repaint_due(
@@ -175,7 +175,7 @@ pub fn diag_repaint_due(
     since_ms: u64,
     overlay: bool,
 ) -> bool {
-    let step = crate::page::repaint_step_ms(page);
+    let step = repaint_step_ms(page);
     match next.demand.claim(DemandKey::DISPLAY).mode {
         Mode::Off => return false,
         Mode::OnChange => return since_ms >= step * 4 && prev != next,
@@ -184,7 +184,44 @@ pub fn diag_repaint_due(
     if since_ms < step {
         return false;
     }
-    crate::page::repaint_due(page, prev, next, overlay)
+    repaint_due(page, prev, next, overlay)
+}
+
+/// The least wall time this page waits between diagnostics-driven repaints. The Audio page
+/// is the one live page whose drift arrives faster than anyone reads it: a capture poll
+/// closes two envelope columns every 20 ms, so the default step already redraws a 200-column
+/// sweep every ~45 ms and this page alone held the executor 40% of the wall time on the S3.
+/// At twice the step a frame advances the sweep eight columns instead of four — still a
+/// sweep, at half the cost.
+pub(crate) fn repaint_step_ms(page: DisplayPage) -> u64 {
+    match page {
+        DisplayPage::Audio => 80,
+        _ => DIAG_REPAINT_STEP_MS,
+    }
+}
+
+fn repaint_due(page: DisplayPage, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
+    match page {
+        // A frame arriving is a data event and not anything a snapshot diff can see.
+        // Forcing a repaint here would ship a full frame that is a copy of the last one —
+        // ~15 ms of blocking SPI.
+        DisplayPage::Camera | DisplayPage::Splash => false,
+        DisplayPage::Ambient => overlay,
+        DisplayPage::Attitude => true,
+        DisplayPage::Audio => {
+            prev.audio.phase != next.audio.phase
+                || prev.audio.envelope != next.audio.envelope
+                || prev.audio.restarts != next.audio.restarts
+                || prev.audio.dba_lsb != next.audio.dba_lsb
+        }
+        DisplayPage::Speaker => prev.playback != next.playback,
+        DisplayPage::Network => {
+            prev.link != next.link
+                || prev.aps != next.aps
+                || prev.draft != next.draft
+                || prev.mac != next.mac
+        }
+    }
 }
 
 /// How a renderer wants to be driven after an appearance sync.
@@ -400,7 +437,7 @@ mod tests {
     /// The Audio page sets its own step, so the tests follow the table rather than the
     /// default — a page that changed its cadence without changing this would fail here.
     fn audio_step() -> u64 {
-        crate::page::repaint_step_ms(DisplayPage::Audio)
+        repaint_step_ms(DisplayPage::Audio)
     }
 
     #[test]
@@ -409,7 +446,7 @@ mod tests {
         for page in DisplayPage::ALL {
             if page != DisplayPage::Audio {
                 assert_eq!(
-                    crate::page::repaint_step_ms(page),
+                    repaint_step_ms(page),
                     DIAG_REPAINT_STEP_MS,
                     "{page:?} has no reason to repaint slower than the default"
                 );

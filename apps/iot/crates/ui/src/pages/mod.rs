@@ -2,8 +2,10 @@
 
 mod attitude;
 mod audio;
+pub(crate) mod camera;
 pub(crate) mod draw;
 mod live;
 mod meter;
 mod network;
 mod speaker;
+mod splash;

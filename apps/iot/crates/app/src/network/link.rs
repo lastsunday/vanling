@@ -16,8 +16,8 @@ use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::setup::{Choice, SetupMode, await_network, pick, resolve_join};
 use super::store::{any, first_saved, forget, remark_and_publish, save};
-use super::{NETWORK, park, publish_link};
-use crate::workers::{NetworkQueue, discard_setup};
+use super::{NETWORK, discard_setup, park, publish_link};
+use crate::workers::NetworkQueue;
 
 const WINDOW_MS: u64 = 2_000;
 
@@ -33,6 +33,15 @@ pub(super) enum Origin {
     Stored,
     Build,
     Typed,
+}
+
+/// The network this build was named, unless the build is a bench run: a bench image has to
+/// join whatever the panel names, not the credential its build happens to carry.
+fn build_credentials() -> Option<(&'static str, &'static str)> {
+    if crate::bench::replay::BENCH {
+        return None;
+    }
+    crate::boot::build_wifi_credentials()
 }
 
 /// The splash's verdict, taken from the same queue as everything else the panel asks for: the
@@ -76,7 +85,7 @@ where
 
     // The network this build was named is joined before the saved list and is never handed back
     // to setup: it is what the build says this device runs on.
-    let build = crate::boot::wifi_credentials().and_then(|(ssid, password)| {
+    let build = build_credentials().and_then(|(ssid, password)| {
         match Credentials::from_text(ssid, password) {
             Ok(credentials) => {
                 log::info!("[WIFI] this build joins the network named \"{ssid}\"");

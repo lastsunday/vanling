@@ -18,6 +18,10 @@ fn app_src() -> PathBuf {
     repo_root().join("apps/iot/crates/app/src")
 }
 
+fn core_src() -> PathBuf {
+    repo_root().join("apps/iot/crates/core/src")
+}
+
 fn sources(dir: &Path) -> Vec<(PathBuf, String)> {
     let mut found = Vec::new();
     collect(dir, &mut found);
@@ -48,6 +52,228 @@ fn assert_no_reference(files: Vec<(PathBuf, String)>, forbidden: &[&str]) {
                 path.display()
             );
         }
+    }
+}
+
+/// The same sources, shipping code only: every `#[cfg(test)]` item and every comment is
+/// removed. A test may name whatever it likes to build a fixture, and a doc comment may
+/// link anywhere; the graph asserted here is the one the compiler sees.
+fn shipping_sources(dir: &Path) -> Vec<(PathBuf, String)> {
+    sources(dir)
+        .into_iter()
+        .filter(|(path, _)| {
+            path.file_name()
+                .is_some_and(|name| name != "test_support.rs")
+        })
+        .map(|(path, text)| (path, without_comments(&without_tests(&text))))
+        .collect()
+}
+
+fn shipping_source(path: PathBuf) -> Vec<(PathBuf, String)> {
+    let text = std::fs::read_to_string(&path).expect("the scanned source is readable");
+    vec![(path, without_comments(&without_tests(&text)))]
+}
+
+/// The text with every comment replaced by one space. String and character literals are
+/// copied verbatim, so a `//` inside one is not a comment.
+fn without_comments(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                out.push(b' ');
+                i = line_end(bytes, i);
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                out.push(b' ');
+                i = block_end(bytes, i);
+            }
+            b'"' => {
+                let end = string_end(bytes, i);
+                out.extend_from_slice(&bytes[i..end]);
+                i = end;
+            }
+            b'r' => match raw_string_end(bytes, i) {
+                Some(end) => {
+                    out.extend_from_slice(&bytes[i..end]);
+                    i = end;
+                }
+                None => {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            },
+            b'\'' => {
+                let end = char_end(bytes, i);
+                out.extend_from_slice(&bytes[i..end]);
+                i = end;
+            }
+            byte => {
+                out.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).expect("dropping comments leaves valid UTF-8")
+}
+
+fn without_tests(text: &str) -> String {
+    const MARK: &str = "#[cfg(test)]";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(MARK) {
+        out.push_str(&rest[..at]);
+        match item_end(&rest[at + MARK.len()..]) {
+            Some(end) => rest = &rest[at + MARK.len() + end..],
+            // An attribute with nothing after it cannot hide anything.
+            None => return out,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Where the item after a `#[cfg(test)]` ends: past its `;` for a declaration, past its
+/// matching `}` for a body. Braces in strings, characters and comments are not structure.
+fn item_end(text: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b';' => return Some(i + 1),
+            b'{' => {
+                let mut depth = 0usize;
+                while i < bytes.len() {
+                    match bytes[i] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(i + 1);
+                            }
+                        }
+                        b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                            i = line_end(bytes, i);
+                            continue;
+                        }
+                        b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                            i = block_end(bytes, i);
+                            continue;
+                        }
+                        b'"' => {
+                            i = string_end(bytes, i);
+                            continue;
+                        }
+                        b'r' => {
+                            if let Some(end) = raw_string_end(bytes, i) {
+                                i = end;
+                                continue;
+                            }
+                        }
+                        b'\'' => {
+                            i = char_end(bytes, i);
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                return None;
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'/') => i = line_end(bytes, i),
+            b'/' if bytes.get(i + 1) == Some(&b'*') => i = block_end(bytes, i),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn line_end(bytes: &[u8], i: usize) -> usize {
+    bytes[i..]
+        .iter()
+        .position(|&byte| byte == b'\n')
+        .map_or(bytes.len(), |at| i + at + 1)
+}
+
+fn block_end(bytes: &[u8], i: usize) -> usize {
+    let mut at = i + 2;
+    let mut depth = 1;
+    while at < bytes.len() {
+        if bytes[at..].starts_with(b"/*") {
+            depth += 1;
+            at += 2;
+        } else if bytes[at..].starts_with(b"*/") {
+            depth -= 1;
+            at += 2;
+            if depth == 0 {
+                return at;
+            }
+        } else {
+            at += 1;
+        }
+    }
+    bytes.len()
+}
+
+fn string_end(bytes: &[u8], i: usize) -> usize {
+    let mut at = i + 1;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at += 2,
+            b'"' => return at + 1,
+            _ => at += 1,
+        }
+    }
+    bytes.len()
+}
+
+/// `Some(end)` only when the `r` at `i` opens a raw string; otherwise the caller reads it
+/// as an ordinary identifier byte.
+fn raw_string_end(bytes: &[u8], i: usize) -> Option<usize> {
+    let mut at = i + 1;
+    let mut hashes = 0;
+    while bytes.get(at) == Some(&b'#') {
+        hashes += 1;
+        at += 1;
+    }
+    if bytes.get(at) != Some(&b'"') {
+        return None;
+    }
+    at += 1;
+    while at < bytes.len() {
+        if bytes[at] == b'"'
+            && bytes[at + 1..]
+                .iter()
+                .take(hashes)
+                .filter(|&&b| b == b'#')
+                .count()
+                == hashes
+        {
+            return Some(at + 1 + hashes);
+        }
+        at += 1;
+    }
+    Some(bytes.len())
+}
+
+/// A character literal ends after its closing quote; a lifetime is left as one byte.
+fn char_end(bytes: &[u8], i: usize) -> usize {
+    if bytes.get(i + 1) == Some(&b'\\') {
+        let mut at = i + 2;
+        while at < bytes.len() {
+            if bytes[at] == b'\'' {
+                return at + 1;
+            }
+            at += 1;
+        }
+        return bytes.len();
+    }
+    if bytes.get(i + 2) == Some(&b'\'') {
+        i + 3
+    } else {
+        i + 1
     }
 }
 
@@ -126,5 +352,61 @@ fn the_worker_handles_never_reach_a_worker() {
             "crate::pipeline",
             "crate::input",
         ],
+    );
+}
+
+#[test]
+fn the_page_table_is_a_leaf() {
+    assert_no_reference(
+        shipping_sources(&core_src().join("page")),
+        &["crate::state", "crate::render", "crate::diagnostics"],
+    );
+}
+
+#[test]
+fn intents_name_what_is_asked_and_not_what_answers_it() {
+    assert_no_reference(
+        shipping_source(core_src().join("intent.rs")),
+        &["crate::page", "crate::render", "crate::diagnostics"],
+    );
+}
+
+#[test]
+fn state_neither_draws_nor_snapshots_itself() {
+    assert_no_reference(
+        shipping_sources(&core_src().join("state")),
+        &["crate::render", "crate::diagnostics"],
+    );
+}
+
+#[test]
+fn drivers_never_reach_up() {
+    let src = core_src().join("drivers");
+    let upward = &[
+        "crate::state",
+        "crate::page",
+        "crate::render",
+        "crate::intent",
+    ];
+    let mut plain = Vec::new();
+    let mut surface = Vec::new();
+    for (path, text) in shipping_sources(&src) {
+        if path == src.join("surface.rs") {
+            surface.push((path, text));
+        } else {
+            plain.push((path, text));
+        }
+    }
+    assert_no_reference(plain, upward);
+    // `surface.rs` is the one driver file allowed to name `crate::diagnostics`: the
+    // `PageSurface` sink's parameter is the snapshot itself. The upward edges still hold.
+    assert_no_reference(surface, upward);
+}
+
+#[test]
+fn diagnostics_snapshots_without_drawing() {
+    assert_no_reference(
+        shipping_source(core_src().join("diagnostics.rs")),
+        &["crate::render"],
     );
 }

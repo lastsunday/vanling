@@ -1,7 +1,10 @@
+//! Light control as behaviour: what one gesture does to the light on the page showing it.
+
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use crate::intent::{ActionIntent, InputIntent, LightIntent};
 use crate::paint::{GROUP_CAPACITY, Rgb};
-use crate::state::{Breath, DeviceState, LightState};
+
+use super::{Breath, DeviceState, LightState};
 
 pub const PALETTE: [Rgb; 7] = [
     Rgb(255, 64, 48),
@@ -246,10 +249,11 @@ fn color_group_step(breath: &Breath, forward: bool) -> ColorGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intent::{ActionIntent, LightIntent, recognize, translate};
+    use crate::intent::{ActionIntent, LightIntent, recognize};
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, long_press, op, state, swipe_event, tap_gesture, target,
     };
+    use crate::state::translate;
     use crate::state::{DeviceState, LightState};
 
     mod buttons {

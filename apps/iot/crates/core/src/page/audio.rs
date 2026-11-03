@@ -1,10 +1,5 @@
 use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
-use crate::diagnostics::Diagnostics;
-use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use crate::intent::{ActionIntent, AudioIntent, InputIntent};
-use crate::page::light;
-use crate::state::{AudioPhase, DeviceState};
 
 pub(super) const fn claim(kind: DemandKind) -> Claim {
     match kind {
@@ -15,54 +10,14 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
     }
 }
 
-pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
-    match op.event {
-        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            ActionIntent::Audio(capture_target(current.audio.phase))
-        }
-        InputEvent::Button(ButtonEvent::DoubleClick) => light::step(current, op.source),
-        InputEvent::Button(ButtonEvent::LongPress) => light::cycle(current, op.source),
-        InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-            light::cycle_panel(current, op.source)
-        }
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-            light::swipe(current, op.source, direction)
-        }
-        _ => ActionIntent::Invalid,
-    }
-}
-
-/// Twice the default step. The Audio page is the one live page whose drift arrives faster
-/// than anyone reads it: a capture poll closes two envelope columns every 20 ms, so the
-/// default step already redraws a 200-column sweep every ~45 ms and this page alone held the
-/// executor 40% of the wall time on the S3. At twice the step a frame advances the sweep eight
-/// columns instead of four — still a sweep, at half the cost.
-pub(super) const REPAINT_STEP_MS: u64 = 80;
-
-pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) -> bool {
-    prev.audio.phase != next.audio.phase
-        || prev.audio.envelope != next.audio.envelope
-        || prev.audio.restarts != next.audio.restarts
-        || prev.audio.dba_lsb != next.audio.dba_lsb
-}
-
-fn capture_target(phase: AudioPhase) -> AudioIntent {
-    if phase == AudioPhase::Recording {
-        AudioIntent::Stop
-    } else {
-        AudioIntent::Start
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::intent::{LightIntent, translate};
-    use crate::page::light::COLOR_GROUPS;
+    use crate::drivers::input::{ButtonEvent, InputEvent};
+    use crate::intent::{ActionIntent, AudioIntent, LightIntent};
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, op, state, state_on, tap_gesture, target, target_in,
     };
-    use crate::state::{DisplayPage, LightState};
+    use crate::state::{COLOR_GROUPS, DisplayPage, LightState, translate};
 
     mod audio_page {
         use super::*;

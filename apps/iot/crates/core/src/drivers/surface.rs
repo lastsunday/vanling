@@ -7,7 +7,21 @@ use core::pin::Pin;
 use crate::diagnostics::DiagnosticsSink;
 use crate::drivers::camera::CameraTarget;
 use crate::paint::Rgb;
-use crate::state::SurfaceRole;
+
+/// Surface slots one device can carry, dimensioning the state's lights and the render slots.
+pub const MAX_LIGHTS: usize = 2;
+
+/// What one wired surface is for: pages, ambient light, or nothing at all.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SurfaceRole {
+    /// Draws the pages and puts the questions on them.
+    #[default]
+    Pages,
+    /// Shows light only; the link's news lands here when there is no page to say it.
+    Lamp,
+    /// This slot carries no surface.
+    Absent,
+}
 
 /// A surface that accepts one colour.
 pub trait RgbLight {

@@ -6,6 +6,15 @@ mod weighting;
 pub use decimator::{DECIMATION, Decimator};
 use weighting::{AWeight, DbaMeter};
 
+/// Capture phase the Audio page drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AudioPhase {
+    #[default]
+    Idle,
+    Recording,
+    Stopped,
+}
+
 /// The codec's frame rate: one I2S frame per this many nanoseconds, which is what the
 /// capture driver clocks the peripheral at and what a frame's worth of samples is counted
 /// against.

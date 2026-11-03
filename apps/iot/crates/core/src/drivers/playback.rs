@@ -6,6 +6,14 @@ use alloc::vec::Vec;
 
 use crate::drivers::audio::{BYTES_PER_FRAME, SAMPLE_RATE_HZ};
 
+/// Playback phase the Speaker page drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PlaybackPhase {
+    #[default]
+    Idle,
+    Playing,
+}
+
 /// What the speaker is asked to play.
 ///
 /// Everything but [`Self::Sweep`] names a sound in the MIDI catalogue; a sweep is handed in as

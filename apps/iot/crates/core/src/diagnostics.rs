@@ -4,13 +4,14 @@
 //! [`DiagnosticsSink`]s.
 
 use crate::demand::EffectiveDemand;
-use crate::drivers::audio::AudioEnvelope;
 use crate::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use crate::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use crate::drivers::network::{ApList, LinkStatus};
-use crate::drivers::playback::Sound;
-use crate::state::MAX_LIGHTS;
-use crate::state::{AudioPhase, DisplayPage, NetworkPage, PlaybackPhase};
+use crate::drivers::surface::MAX_LIGHTS;
+use crate::page::DisplayPage;
+use crate::state::NetworkPage;
+
+pub use crate::state::{AudioDiagnostics, PlaybackDiagnostics};
 
 /// Breathing mode's full dimension set carried by a light snapshot so the panel can print
 /// every parameter the mode exposes; all zero outside breathing so the overlay's fixed rows
@@ -63,31 +64,6 @@ pub struct TouchDiagnostics {
     /// Last raw chip gesture id (`0x10` up / `0x14` left / `0x18` down / `0x1C` right on
     /// the FT5x06 family), `0` when none.
     pub chip_gesture_id: u8,
-}
-
-/// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
-/// it should draw.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct AudioDiagnostics {
-    pub phase: AudioPhase,
-    pub envelope: AudioEnvelope,
-    pub elapsed_ms: u32,
-    /// How many times the capture's DMA had to be re-armed.
-    pub restarts: u16,
-    /// A-weighted sound level of the shown capture, in LSB, slow-tracked.
-    pub dba_lsb: u16,
-}
-
-/// Playback state stamped on the Speaker page: the phase the page is showing, the sound a
-/// tap would play, the mute latch, and the two tallies that make a busy finger visible —
-/// sounds started against taps that arrived over one and were therefore not heard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PlaybackDiagnostics {
-    pub phase: PlaybackPhase,
-    pub sound: Sound,
-    pub muted: bool,
-    pub plays: u16,
-    pub dropped: u16,
 }
 
 /// The on-surface diagnostics payload: touch-path counters/readout, display page, motion

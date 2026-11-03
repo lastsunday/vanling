@@ -1,10 +1,10 @@
-//! The pages: what each demands, what a gesture means on it, and when it repaints.
+//! The pages as vocabulary: the order they cycle in, what each needs from the board,
+//! what it grounds the panel with, whether it draws frames, and what it claims of a demand.
 
 mod ambient;
 mod attitude;
 mod audio;
 mod camera;
-mod light;
 mod network;
 mod speaker;
 mod splash;
@@ -12,21 +12,10 @@ mod splash;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-pub use self::network::{Band, each_band, joining};
-
 pub use self::splash::SPLASH_MS;
 
-pub use self::light::{
-    BREATH_PERIODS_MS, BRIGHTNESS_ENVELOPE_STEP, COLOR_GROUPS, ColorGroup, PALETTE,
-    SOLID_BRIGHTNESS_STEPS,
-};
-
 use crate::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Priority};
-use crate::diagnostics::Diagnostics;
-use crate::drivers::input::{ButtonEvent, InputEvent};
-use crate::intent::{ActionIntent, InputIntent, PageIntent};
-use crate::render::DIAG_REPAINT_STEP_MS;
-use crate::state::{Backed, DeviceState};
+use crate::drivers::board::Backed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayPage {
@@ -158,33 +147,6 @@ impl DisplayPage {
     }
 }
 
-pub(crate) fn translate(
-    page: DisplayPage,
-    op: &InputIntent,
-    current: &DeviceState,
-) -> ActionIntent {
-    if page != DisplayPage::Splash
-        && matches!(op.event, InputEvent::Button(ButtonEvent::TripleClick))
-    {
-        return ActionIntent::Page(PageIntent::NextPage);
-    }
-    (PAGES[page.index()].translate)(op, current)
-}
-
-pub(crate) fn repaint_due(
-    page: DisplayPage,
-    prev: &Diagnostics,
-    next: &Diagnostics,
-    overlay: bool,
-) -> bool {
-    (PAGES[page.index()].repaint)(prev, next, overlay)
-}
-
-/// The least wall time this page waits between diagnostics-driven repaints.
-pub(crate) fn repaint_step_ms(page: DisplayPage) -> u64 {
-    PAGES[page.index()].step_ms
-}
-
 const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
     if left.len() != right.len() {
         return false;
@@ -210,12 +172,6 @@ struct PageSpec {
     /// Whether frames arrive from the camera instead of being drawn.
     draws_frames: bool,
     claim: fn(DemandKind) -> Claim,
-    translate: fn(&InputIntent, &DeviceState) -> ActionIntent,
-    repaint: fn(&Diagnostics, &Diagnostics, bool) -> bool,
-    /// The least wall time this page waits between diagnostics-driven repaints. A page whose
-    /// drift arrives faster than a person reads it raises this rather than making the whole
-    /// render layer slower.
-    step_ms: u64,
 }
 
 const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
@@ -225,9 +181,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: None,
         draws_frames: false,
         claim: ambient::claim,
-        translate: light::translate,
-        repaint: ambient::repaint,
-        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Attitude,
@@ -235,9 +188,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: None,
         draws_frames: false,
         claim: attitude::claim,
-        translate: light::translate,
-        repaint: attitude::repaint,
-        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Audio,
@@ -245,9 +195,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: None,
         draws_frames: false,
         claim: audio::claim,
-        translate: audio::translate,
-        repaint: audio::repaint,
-        step_ms: audio::REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Speaker,
@@ -255,9 +202,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: None,
         draws_frames: false,
         claim: speaker::claim,
-        translate: speaker::translate,
-        repaint: speaker::repaint,
-        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Camera,
@@ -265,9 +209,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: Some(crate::paint::Rgb(0, 0, 0)),
         draws_frames: true,
         claim: camera::claim,
-        translate: light::translate,
-        repaint: camera::repaint,
-        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Network,
@@ -275,9 +216,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: Some(crate::paint::Rgb(0, 0, 0)),
         draws_frames: false,
         claim: network::claim,
-        translate: network::translate,
-        repaint: network::repaint,
-        step_ms: DIAG_REPAINT_STEP_MS,
     },
     PageSpec {
         page: DisplayPage::Splash,
@@ -285,9 +223,6 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         ground: None,
         draws_frames: false,
         claim: splash::claim,
-        translate: splash::translate,
-        repaint: splash::repaint,
-        step_ms: DIAG_REPAINT_STEP_MS,
     },
 ];
 

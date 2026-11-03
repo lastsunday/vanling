@@ -1,10 +1,5 @@
 use super::{MOTION_BACKGROUND, ON_SCREEN};
 use crate::demand::{Claim, DemandKind};
-use crate::diagnostics::Diagnostics;
-use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use crate::intent::{ActionIntent, InputIntent, PlaybackAction};
-use crate::page::light;
-use crate::state::DeviceState;
 
 pub(super) const fn claim(kind: DemandKind) -> Claim {
     match kind {
@@ -14,38 +9,15 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
     }
 }
 
-pub(super) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
-    match op.event {
-        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            ActionIntent::Playback(PlaybackAction::Next)
-        }
-        InputEvent::Button(ButtonEvent::LongPress)
-        | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-            ActionIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
-        }
-        InputEvent::Button(ButtonEvent::DoubleClick) => light::step(current, op.source),
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-            light::swipe(current, op.source, direction)
-        }
-        _ => ActionIntent::Invalid,
-    }
-}
-
-pub(super) fn repaint(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) -> bool {
-    prev.playback != next.playback
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::drivers::input::SwipeDirection;
-    use crate::intent::{PageIntent, translate};
-    use crate::page::light::COLOR_GROUPS;
+    use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
+    use crate::intent::{ActionIntent, PageIntent, PlaybackAction};
     use crate::page::test_support::{
         BREATH_BASE, DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, target,
         target_in,
     };
-    use crate::state::{DisplayPage, LightState};
+    use crate::state::{COLOR_GROUPS, DeviceState, DisplayPage, LightState, translate};
 
     mod speaker_page {
         use super::*;

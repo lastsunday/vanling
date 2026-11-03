@@ -16,9 +16,11 @@ use iot_core::state::{DisplayPage, NetworkCommand};
 use super::link::{Origin, Outcome, hold};
 use super::scan::{Rest, scan};
 use super::store::{any, forget};
-use super::{NETWORK, SETUP_SOCKETS, heap_free, mac_of, park, provision, publish_link, seed_from};
+use super::{
+    NETWORK, SETUP_SOCKETS, discard_setup, heap_free, mac_of, park, provision, publish_link,
+    seed_from,
+};
 use crate::input::INTENT_BUS;
-use crate::workers::discard_setup;
 
 /// Everything setup mode needs to run: one value, because a session on the panel and one on the
 /// access point are the same session on two hosts.

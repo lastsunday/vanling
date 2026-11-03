@@ -25,6 +25,9 @@ mod provision;
 mod scan;
 mod setup;
 mod store;
+mod watch;
+
+pub(crate) use watch::discard_setup;
 
 const SOCKETS: usize = 1;
 

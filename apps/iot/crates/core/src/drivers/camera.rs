@@ -66,9 +66,16 @@ pub struct WindowGeometry {
 
 /// A surface a [`FrameSource`] can be bound to.
 pub trait CameraTarget {
-    fn paint_camera(&mut self, now_ms: u64) -> bool;
+    /// Pulls one frame, if one has arrived. `period_ms` is the cadence the demand asked
+    /// for: a surface at or slower than the thumbnail period reports less often, and the
+    /// rate is the caller's policy rather than the panel's.
+    fn paint_camera(&mut self, now_ms: u64, period_ms: u32) -> bool;
 
     fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>);
+
+    /// Hands the frame buffer back once nothing is collecting frames. The render layer
+    /// decides when; a surface only does it.
+    fn release_camera(&mut self) {}
 }
 
 /// Who owns the frame buffer a surface and a camera share.

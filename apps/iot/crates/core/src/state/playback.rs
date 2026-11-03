@@ -1,15 +1,18 @@
-use crate::diagnostics::PlaybackDiagnostics;
-use crate::drivers::playback::Sound;
+use crate::drivers::playback::{PlaybackPhase, Sound};
 use crate::intent::PlaybackAction;
 
 use super::{DeviceManager, DeviceState};
 
-/// Playback phase the Speaker page drives.
+/// Playback state stamped on the Speaker page: the phase the page is showing, the sound a
+/// tap would play, the mute latch, and the two tallies that make a busy finger visible —
+/// sounds started against taps that arrived over one and were therefore not heard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PlaybackPhase {
-    #[default]
-    Idle,
-    Playing,
+pub struct PlaybackDiagnostics {
+    pub phase: PlaybackPhase,
+    pub sound: Sound,
+    pub muted: bool,
+    pub plays: u16,
+    pub dropped: u16,
 }
 
 /// Playback state behind the Speaker page.

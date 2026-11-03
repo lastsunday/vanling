@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use esp_hal::time::Instant;
-use iot_core::demand::{CAMERA_THUMBNAIL_PERIOD_MS, DemandKey};
+use iot_core::demand::CAMERA_THUMBNAIL_PERIOD_MS;
 use iot_core::drivers::camera::{CameraTarget, FrameAdvance, FrameSource};
 use iot_ui::{CameraReadout, Canvas, Surface};
 
@@ -73,17 +73,24 @@ impl CameraFeed {
 }
 
 impl CameraTarget for Screen {
-    fn paint_camera(&mut self, now_ms: u64) -> bool {
-        Screen::paint_camera(self, now_ms)
+    fn paint_camera(&mut self, now_ms: u64, period_ms: u32) -> bool {
+        Screen::paint_camera(self, now_ms, period_ms)
     }
 
     fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>) {
         self.camera.attach(camera);
     }
+
+    fn release_camera(&mut self) {
+        if self.owner.is_camera() {
+            self.camera.pause();
+            self.owner.released();
+        }
+    }
 }
 
 impl Screen {
-    fn paint_camera(&mut self, now_ms: u64) -> bool {
+    fn paint_camera(&mut self, now_ms: u64, period_ms: u32) -> bool {
         let bytes = self.panel.frame_bytes();
         let width = usize::from(self.panel.width());
         let height = usize::from(self.panel.height());
@@ -95,7 +102,6 @@ impl Screen {
             }
             self.owner.taken();
         }
-        let period_ms = self.diagnostics.demand.claim(DemandKey::CAMERA).period_ms;
         let Some(readout) = self.camera.advance(frame, now_ms, period_ms) else {
             return false;
         };

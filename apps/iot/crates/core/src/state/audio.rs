@@ -1,16 +1,19 @@
-use crate::diagnostics::AudioDiagnostics;
-use crate::drivers::audio::AudioSample;
+use crate::drivers::audio::{AudioPhase, AudioSample};
 use crate::intent::AudioIntent;
 
 use super::{DeviceManager, DeviceState};
 
-/// Capture phase the Audio page drives.
+/// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
+/// it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AudioPhase {
-    #[default]
-    Idle,
-    Recording,
-    Stopped,
+pub struct AudioDiagnostics {
+    pub phase: AudioPhase,
+    pub envelope: crate::drivers::audio::AudioEnvelope,
+    pub elapsed_ms: u32,
+    /// How many times the capture's DMA had to be re-armed.
+    pub restarts: u16,
+    /// A-weighted sound level of the shown capture, in LSB, slow-tracked.
+    pub dba_lsb: u16,
 }
 
 /// Capture state behind the Audio page.
