@@ -1,9 +1,8 @@
 use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 use iot_core::state::PlaybackPhase;
 
-use crate::pages::draw::format_u16;
 use crate::surface::Surface;
-use crate::text::sound_label;
+use crate::text::{format_u16, sound_label};
 
 impl Surface<'_> {
     pub(crate) fn stamp_speaker(&mut self) {

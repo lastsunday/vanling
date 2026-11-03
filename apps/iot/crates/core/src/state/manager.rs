@@ -27,8 +27,6 @@ pub struct DeviceManager {
     /// Whether the button asked for setup mode while the splash was up. A boot decision the
     /// splash landing reads, not something the link knows.
     setup_wanted: bool,
-    /// What the splash landing has to tell the network task, once.
-    splash_end: Option<bool>,
 }
 
 impl DeviceManager {
@@ -55,7 +53,6 @@ impl DeviceManager {
             demand_keys: boot.demand_keys,
             override_: boot.overrides,
             setup_wanted: false,
-            splash_end: None,
         }
     }
 
@@ -112,10 +109,7 @@ impl DeviceManager {
     pub fn apply_action(&mut self, intent: ActionIntent) -> Option<NetworkCommand> {
         let command = match intent {
             ActionIntent::Invalid => None,
-            ActionIntent::Page(intent) => {
-                self.apply_page(intent);
-                None
-            }
+            ActionIntent::Page(intent) => self.apply_page(intent),
             ActionIntent::Link(intent) => {
                 let effects = self.state.network.apply(intent);
                 if let LinkIntent::LinkReport(status) = intent {
@@ -171,30 +165,33 @@ impl DeviceManager {
     }
 
     /// The page's transitions, which read the wiring, the link and the boot page together.
-    fn apply_page(&mut self, intent: PageIntent) {
+    /// A landing answers with the boot decision the network task cannot observe, on the same
+    /// return path as every other command.
+    fn apply_page(&mut self, intent: PageIntent) -> Option<NetworkCommand> {
         match intent {
             PageIntent::NextPage => {
                 self.state.page = self.state.page.next_page(self.state.backed);
+                None
             }
             PageIntent::RequestSetup => {
                 if self.state.page == DisplayPage::Splash {
                     self.setup_wanted = true;
                 }
+                None
             }
             PageIntent::SplashOver => self.land_after_splash(),
         }
     }
 
-    fn land_after_splash(&mut self) {
+    fn land_after_splash(&mut self) -> Option<NetworkCommand> {
         if self.state.page != DisplayPage::Splash {
-            return;
+            return None;
         }
         self.state.page = if self.setup_wanted && self.state.backed.network {
             DisplayPage::Network
         } else {
             self.boot_page
         };
-        self.splash_end = Some(self.setup_wanted);
         // A device that boots with nothing to join has nothing to say after the splash
         // except that: one amber burst, then the page's own light. A hold that asked for
         // setup is not this — the access point is the answer to it, and the mode has its own
@@ -207,11 +204,9 @@ impl DeviceManager {
         {
             self.announce(NoticeKind::Offline);
         }
-    }
-
-    /// What the splash landing owes the network task, handed over once.
-    pub fn take_splash_end(&mut self) -> Option<bool> {
-        self.splash_end.take()
+        Some(NetworkCommand::SplashOver {
+            setup: self.setup_wanted,
+        })
     }
 
     /// Whether the button asked for setup mode while the splash was up.

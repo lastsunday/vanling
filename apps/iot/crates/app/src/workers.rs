@@ -187,6 +187,18 @@ pub struct Workers<'a> {
     pub network: Network,
 }
 
+impl<'a> Workers<'a> {
+    /// The handles as the composition root builds them. One constructor, so a new worker
+    /// cannot be added to the struct and wired in one place but not the other.
+    pub fn new(to: &'a SharedDemand) -> Self {
+        Self {
+            input: Input { to, from: &CAPTURE },
+            playback: PLAYBACK,
+            network: NETWORK,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

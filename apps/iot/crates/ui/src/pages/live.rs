@@ -4,9 +4,9 @@
 use iot_core::overlay::Block;
 use iot_core::render::{MODE_BREATH, MODE_SOLID};
 
-use crate::pages::draw::{direction_arrow, format_u16, gesture_glyph, mode_word};
+use crate::pages::draw::{direction_arrow, gesture_glyph, mode_word};
 use crate::surface::Surface;
-use crate::text::{format_pair, write_u16};
+use crate::text::{format_pair, format_u16, write_u16};
 
 impl Surface<'_> {
     pub(crate) fn stamp_diagnostics(&mut self, live: (u8, u8)) {

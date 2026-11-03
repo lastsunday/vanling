@@ -1,11 +1,25 @@
 //! Acquisition configuration: *how* a part is wired to produce what a demand asks for.
 
-use crate::demand::{DemandKey, EffectiveDemand, Mode};
+use crate::demand::{DemandKey, DemandKind, EffectiveDemand, Mode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Configuration {
     /// `None` when the demand needs no motion configuration, which is `Mode::Off`.
     pub motion: Option<MotionConfig>,
+}
+
+impl Configuration {
+    /// What this configuration says for a kind of device. Exhaustive so a new kind has to be
+    /// answered here rather than silently reading the motion field.
+    pub const fn for_kind(self, kind: DemandKind) -> Option<MotionConfig> {
+        match kind {
+            DemandKind::Motion => self.motion,
+            DemandKind::Interaction
+            | DemandKind::Audio
+            | DemandKind::Camera
+            | DemandKind::Display => None,
+        }
+    }
 }
 
 /// Turns a demand into the configurations its parts must be in.
@@ -82,6 +96,20 @@ mod tests {
     use super::*;
     use crate::demand::DemandKey;
     use crate::demand::{Claim, Priority};
+
+    #[test]
+    fn only_the_motion_kind_reads_the_motion_field() {
+        let configuration = Configuration {
+            motion: Some(MotionConfig::PolledRegisters),
+        };
+        for kind in DemandKind::ALL {
+            assert_eq!(
+                configuration.for_kind(kind),
+                (kind == DemandKind::Motion).then_some(MotionConfig::PolledRegisters),
+                "{kind:?}"
+            );
+        }
+    }
 
     #[test]
     fn off_is_met_by_not_collecting_rather_than_by_a_configuration() {

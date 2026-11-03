@@ -3,16 +3,34 @@
 use core::ops::{Deref, DerefMut};
 
 use iot_core::diagnostics::Diagnostics;
+use iot_core::drivers::camera::{CameraCounters, WindowGeometry};
 use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
-use iot_core::paint::{Rgb, rgb_hue};
+use iot_core::paint::{Rgb, brightness_of, rgb_hue};
 use iot_core::render::MODE_BREATH;
 use iot_core::state::DisplayPage;
 
 use crate::canvas::Canvas;
 use crate::layout::{FPS_Y, PANEL_RIGHT};
-use crate::pages::draw::{brightness_of, format_u16};
+use crate::text::format_u16;
 
-pub use crate::pages::camera::CameraReadout;
+/// The camera's readings at the instant its page is stamped.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CameraReadout {
+    pub counters: CameraCounters,
+    pub geometry: Option<WindowGeometry>,
+    /// The page has just been entered and no frame has arrived yet, so the numbers would
+    /// all read zero and `NOBUS` would claim there is no sensor.
+    pub starting: bool,
+}
+
+impl CameraReadout {
+    /// The tick where the page has just been entered and the sensor has not delivered yet.
+    pub const STARTING: Self = Self {
+        counters: CameraCounters::ZERO,
+        geometry: None,
+        starting: true,
+    };
+}
 
 /// One page's drawing: the frame, the snapshot it reads, and the surface's own identity.
 pub struct Surface<'a> {

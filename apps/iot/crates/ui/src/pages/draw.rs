@@ -4,11 +4,10 @@ use iot_core::drivers::audio::{COLUMN_MS, ENVELOPE_COLUMNS};
 use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
 use iot_core::keyboard::{ControlRect, Key, LIST_ROW_H, LIST_ROWS, LIST_TOP, Layer};
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP};
-use iot_core::paint::Rgb;
 use iot_core::state::Entry;
 
 use crate::layout::{PSK_MASK_GLYPHS, SCOPE_DECIBEL_FLOOR, WAVE_CY, WAVE_HALF};
-use crate::text::{write_u16, write_u64};
+use crate::text::write_u64;
 
 pub(crate) fn bar_rows(peak_lsb: u16) -> isize {
     WAVE_HALF * isize::from(iot_core::drivers::audio::scope_height(peak_lsb)) / isize::from(u8::MAX)
@@ -143,15 +142,6 @@ pub(crate) fn format_tenths(value: i32, buf: &mut [u8; 12]) -> &[u8] {
     buf[n] = b'.';
     buf[n + 1] = b'0' + (magnitude % 10) as u8;
     &buf[..n + 2]
-}
-
-pub(crate) fn format_u16(value: u16, buf: &mut [u8; 6]) -> &[u8] {
-    let n = write_u16(value, buf, 0);
-    &buf[..n]
-}
-
-pub(crate) fn brightness_of(Rgb(r, g, b): Rgb) -> u8 {
-    r.max(g).max(b)
 }
 
 pub(crate) fn mode_word(mode: u8) -> &'static [u8] {

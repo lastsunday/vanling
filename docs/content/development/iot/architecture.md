@@ -63,26 +63,28 @@ weight = 10
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, network }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
-| `pipeline.rs` | 协调者 `run_loop`：应用意图、发布状态、转发命令、等待下一帧 |
+| `pipeline/{mod,network}.rs` | 协调者 `run_loop`：应用意图、发布状态；网络侧的命令出站（`NetworkOutbox`）与镜像（`NetworkMirror`）在 `network.rs`，循环体只做编排 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
 | `playback/{mod,dispatch,sounds}.rs` | 播放工作者、状态→命令、声音目录；采集窗口在 `workers.rs` |
-| `network/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据、链路/设置页报告 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
 
-依赖方向（`iot-tool/tests/module_boundaries.rs` 断言，编译器不查 crate 内模块环）：
+依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 
 ```
-main → { lib, workers }
-lib  → { boot, pipeline, workers, network }
-pipeline → { workers, surface, input, playback, bench::replay }
-network  → { workers, input }
-playback → { workers }
+lib      → { boot, input, pipeline, playback, surface, workers }
+pipeline → { workers, surface, input, playback, frame, bench }
+network  → { workers, input, boot, bench }
+playback → { workers, input }
 input    → { workers }
-workers  → ∅
+bench    → { input, playback }
+boot, frame, surface, workers → ∅
 ```
+
+`main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
 - `workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它

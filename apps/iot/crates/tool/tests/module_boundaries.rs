@@ -4,6 +4,7 @@
 //! app's codemap relies on are asserted here, where a stray `use` fails the build instead of
 //! quietly reversing an edge the next reader has to rediscover.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -20,6 +21,10 @@ fn app_src() -> PathBuf {
 
 fn core_src() -> PathBuf {
     repo_root().join("apps/iot/crates/core/src")
+}
+
+fn ui_src() -> PathBuf {
+    repo_root().join("apps/iot/crates/ui/src")
 }
 
 fn sources(dir: &Path) -> Vec<(PathBuf, String)> {
@@ -290,13 +295,8 @@ fn the_panel_side_never_reaches_the_radio() {
     let src = app_src();
     let mut files = sources(&src.join("surface"));
     files.extend(sources(&src.join("playback")));
-    for name in [
-        "pipeline.rs",
-        "input.rs",
-        "workers.rs",
-        "frame.rs",
-        "boot.rs",
-    ] {
+    files.extend(sources(&src.join("pipeline")));
+    for name in ["input.rs", "workers.rs", "frame.rs", "boot.rs"] {
         let path = src.join(name);
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
@@ -320,6 +320,14 @@ fn the_core_never_knows_the_app() {
     assert_no_reference(
         sources(&repo_root().join("apps/iot/crates/core/src")),
         &["iot_app"],
+    );
+}
+
+#[test]
+fn the_surface_never_names_a_page() {
+    assert_no_reference(
+        shipping_source(ui_src().join("surface.rs")),
+        &["crate::pages"],
     );
 }
 
@@ -380,6 +388,14 @@ fn state_neither_draws_nor_snapshots_itself() {
 }
 
 #[test]
+fn translation_dispatches_without_naming_page_geometry() {
+    assert_no_reference(
+        shipping_source(core_src().join("state/translate.rs")),
+        &["keyboard::", "Band::", "controls::", "Confirm"],
+    );
+}
+
+#[test]
 fn drivers_never_reach_up() {
     let src = core_src().join("drivers");
     let upward = &[
@@ -408,5 +424,126 @@ fn diagnostics_snapshots_without_drawing() {
     assert_no_reference(
         shipping_source(core_src().join("diagnostics.rs")),
         &["crate::render"],
+    );
+}
+
+/// Every module in the library: a directory or a top-level file, minus the binary's own root
+/// and `bin/`.
+fn app_modules(src: &Path) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for entry in std::fs::read_dir(src).expect("the app's source is readable") {
+        let path = entry
+            .expect("the source tree does not change while it is read")
+            .path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|name| name != "bin") {
+                names.insert(path.file_name().unwrap().to_string_lossy().into_owned());
+            }
+        } else if let Some(stem) = path.file_stem() {
+            let stem = stem.to_string_lossy();
+            if stem != "main" {
+                names.insert(stem.into_owned());
+            }
+        }
+    }
+    names
+}
+
+fn ident_prefix(text: &str) -> &str {
+    let end = text
+        .char_indices()
+        .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '_'))
+        .map_or(text.len(), |(at, _)| at);
+    &text[..end]
+}
+
+/// The library modules a source names, written either `crate::module` or `use module::…`.
+fn local_references(text: &str, modules: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut found = BTreeSet::new();
+    let mut rest = text;
+    while let Some(at) = rest.find("crate::") {
+        rest = &rest[at + "crate::".len()..];
+        let ident = ident_prefix(rest);
+        if modules.contains(ident) {
+            found.insert(ident.to_string());
+        }
+    }
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(item) = line
+            .strip_prefix("pub use ")
+            .or_else(|| line.strip_prefix("use "))
+        else {
+            continue;
+        };
+        let ident = ident_prefix(item);
+        if modules.contains(ident) {
+            found.insert(ident.to_string());
+        }
+    }
+    found
+}
+
+#[test]
+fn the_app_module_graph_is_the_one_the_codemap_draws() {
+    let src = app_src();
+    let modules = app_modules(&src);
+    let allowed: BTreeSet<(String, String)> = [
+        ("bench", "input"),
+        ("bench", "playback"),
+        ("input", "workers"),
+        ("lib", "boot"),
+        ("lib", "input"),
+        ("lib", "pipeline"),
+        ("lib", "playback"),
+        ("lib", "surface"),
+        ("lib", "workers"),
+        ("network", "bench"),
+        ("network", "boot"),
+        ("network", "input"),
+        ("network", "workers"),
+        ("pipeline", "bench"),
+        ("pipeline", "frame"),
+        ("pipeline", "input"),
+        ("pipeline", "playback"),
+        ("pipeline", "surface"),
+        ("pipeline", "workers"),
+        ("playback", "input"),
+        ("playback", "workers"),
+    ]
+    .into_iter()
+    .map(|(from, to)| (from.to_string(), to.to_string()))
+    .collect();
+
+    let mut actual = BTreeSet::new();
+    for (path, text) in shipping_sources(&src) {
+        let rel = path.strip_prefix(&src).expect("a source below the app");
+        let first = rel
+            .components()
+            .next()
+            .expect("a source has a path")
+            .as_os_str()
+            .to_string_lossy()
+            .into_owned();
+        let from = first.strip_suffix(".rs").unwrap_or(&first).to_string();
+        if from == "main" || !modules.contains(&from) {
+            continue;
+        }
+        for target in local_references(&text, &modules) {
+            if target != from {
+                actual.insert((from.clone(), target));
+            }
+        }
+    }
+
+    let missing: Vec<_> = actual.difference(&allowed).collect();
+    let stale: Vec<_> = allowed.difference(&actual).collect();
+    assert!(
+        missing.is_empty(),
+        "module edges not in the codemap: {missing:?}"
+    );
+    assert!(
+        stale.is_empty(),
+        "codemap edges the sources no longer form: {stale:?}"
     );
 }

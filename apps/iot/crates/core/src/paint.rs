@@ -88,6 +88,11 @@ pub fn rgb_hue(Rgb(r, g, b): Rgb) -> u8 {
     if hue > 255 { 255 } else { hue as u8 }
 }
 
+/// The brightest channel: how much a colour is on, independent of its hue.
+pub fn brightness_of(Rgb(r, g, b): Rgb) -> u8 {
+    r.max(g).max(b)
+}
+
 /// Scale every `color` channel toward black by `brightness`/255.
 pub fn scale_brightness(color: Rgb, brightness: u8) -> Rgb {
     let scale = u16::from(brightness);

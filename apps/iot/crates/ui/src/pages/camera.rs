@@ -1,30 +1,10 @@
 //! The Camera page: the sensor's frame, and the readout stamped over it.
 
-use iot_core::drivers::camera::{CameraCounters, WindowGeometry};
 use iot_core::overlay::{Block, block_value_x, block_x, overlay_row_top};
 
 use crate::pages::draw::mode_word;
-use crate::surface::Surface;
+use crate::surface::{CameraReadout, Surface};
 use crate::text::{format_pair, format_u32, frame_fingerprint, write_ratio};
-
-/// The camera's readings at the instant its page is stamped.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CameraReadout {
-    pub counters: CameraCounters,
-    pub geometry: Option<WindowGeometry>,
-    /// The page has just been entered and no frame has arrived yet, so the numbers would
-    /// all read zero and `NOBUS` would claim there is no sensor.
-    pub starting: bool,
-}
-
-impl CameraReadout {
-    /// The tick where the page has just been entered and the sensor has not delivered yet.
-    pub const STARTING: Self = Self {
-        counters: CameraCounters::ZERO,
-        geometry: None,
-        starting: true,
-    };
-}
 
 impl Surface<'_> {
     /// The camera's own frame, after the sensor has filled it.
@@ -86,6 +66,7 @@ mod tests {
     use super::*;
     use alloc::vec;
     use iot_core::diagnostics::Diagnostics;
+    use iot_core::drivers::camera::CameraCounters;
     use iot_core::state::DisplayPage;
 
     use crate::canvas::Canvas;

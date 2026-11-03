@@ -1,7 +1,27 @@
+use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use crate::drivers::playback::{PlaybackPhase, Sound};
-use crate::intent::PlaybackAction;
+use crate::intent::{ActionIntent, InputIntent, PlaybackAction};
 
-use super::{DeviceManager, DeviceState};
+use super::{DeviceManager, DeviceState, light_control};
+
+/// The Speaker page's gestures: a tap walks the catalogue, a hold mutes, and the button and
+/// swipes are the lamp's, as on every page without a verb of its own for them.
+pub(in crate::state) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
+    match op.event {
+        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
+            ActionIntent::Playback(PlaybackAction::Next)
+        }
+        InputEvent::Button(ButtonEvent::LongPress)
+        | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
+            ActionIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
+        }
+        InputEvent::Button(ButtonEvent::DoubleClick) => light_control::step(current, op.source),
+        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
+            light_control::swipe(current, op.source, direction)
+        }
+        _ => ActionIntent::Invalid,
+    }
+}
 
 /// Playback state stamped on the Speaker page: the phase the page is showing, the sound a
 /// tap would play, the mute latch, and the two tallies that make a busy finger visible —

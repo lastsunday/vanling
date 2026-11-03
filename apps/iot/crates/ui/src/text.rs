@@ -47,6 +47,12 @@ pub fn write_u16(value: u16, buf: &mut [u8], n: usize) -> usize {
     write_u64(u64::from(value), buf, n)
 }
 
+/// A `u16` in a six-glyph buffer, returned as the filled prefix.
+pub fn format_u16(value: u16, buf: &mut [u8; 6]) -> &[u8] {
+    let n = write_u16(value, buf, 0);
+    &buf[..n]
+}
+
 /// Decimal ASCII digits of `value` (no leading zeros) written into `buf` from `n`, returned
 /// as the index one past the last digit.
 pub fn write_u64(mut value: u64, buf: &mut [u8], mut n: usize) -> usize {

@@ -2,8 +2,9 @@ use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::overlay::{Block, block_x, overlay_row_top};
 
 use crate::layout::{ESTIMATOR_ROWS, MOTION_SEMANTIC_ROWS, NOT_AVAILABLE};
-use crate::pages::draw::{format_i32, format_tenths, format_u16};
+use crate::pages::draw::{format_i32, format_tenths};
 use crate::surface::Surface;
+use crate::text::format_u16;
 
 impl Surface<'_> {
     pub(crate) fn stamp_attitude(&mut self) {

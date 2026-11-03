@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
-use iot_core::demand::{DemandKind, EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
+use iot_core::demand::{EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{ActionIntent, Intent, PageIntent, recognize};
 
@@ -66,9 +66,7 @@ fn apply_decision(
         }
     };
     for entry in sources.iter_mut() {
-        if entry.key().kind() == DemandKind::Motion {
-            let _ = entry.configure_for(configuration.motion);
-        }
+        let _ = entry.configure_for(configuration.for_kind(entry.key().kind()));
     }
     let mut moved = false;
     for (entry, plan) in sources.iter_mut().zip(plans.iter().copied()) {
@@ -117,6 +115,7 @@ pub async fn input_task(
     mut sources: Vec<PollEntry>,
     configurator: &Configurator,
     input: crate::workers::Input<'_>,
+    second_core_peak: fn() -> Option<(usize, usize)>,
 ) -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(INPUT_BASE_MS));
     let mut now_ms: u64 = 0;
@@ -207,15 +206,15 @@ pub async fn input_task(
             worst_us.fill(0);
             polled.fill(false);
             last_report = now;
-            report_second_core_stack(&mut stack_peak);
+            report_second_core_stack(&mut stack_peak, second_core_peak);
         }
     }
 }
 
 /// One line per window, at info only when the peak moved a kilobyte or more: the number is
 /// monotone, so repeating it at debug is enough and an info line means "look at the budget".
-fn report_second_core_stack(peak: &mut usize) {
-    let Some((high, total)) = crate::executor_stack::second_core_peak() else {
+fn report_second_core_stack(peak: &mut usize, second_core_peak: fn() -> Option<(usize, usize)>) {
+    let Some((high, total)) = second_core_peak() else {
         return;
     };
     let grew = high >= *peak + 1_024;

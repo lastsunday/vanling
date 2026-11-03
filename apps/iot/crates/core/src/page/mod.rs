@@ -162,7 +162,9 @@ const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
 }
 
 struct PageSpec {
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// Only the test can see the label: at runtime a page reads its own row by index, so a
+    /// label here would be dead weight the compiler has to be told to ignore.
+    #[cfg(test)]
     page: DisplayPage,
     /// What the board must wire for this page to be reachable at all.
     needs: fn(Backed) -> bool,
@@ -176,6 +178,7 @@ struct PageSpec {
 
 const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Ambient,
         needs: |_| true,
         ground: None,
@@ -183,6 +186,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: ambient::claim,
     },
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Attitude,
         needs: |backed| backed.motion.is_some(),
         ground: None,
@@ -190,6 +194,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: attitude::claim,
     },
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Audio,
         needs: |backed| backed.audio,
         ground: None,
@@ -197,6 +202,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: audio::claim,
     },
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Speaker,
         needs: |backed| backed.playback,
         ground: None,
@@ -204,6 +210,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: speaker::claim,
     },
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Camera,
         needs: |backed| backed.camera,
         ground: Some(crate::paint::Rgb(0, 0, 0)),
@@ -211,6 +218,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: camera::claim,
     },
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Network,
         needs: |backed| backed.network,
         ground: Some(crate::paint::Rgb(0, 0, 0)),
@@ -218,6 +226,7 @@ const PAGES: [PageSpec; DisplayPage::ALL.len()] = [
         claim: network::claim,
     },
     PageSpec {
+        #[cfg(test)]
         page: DisplayPage::Splash,
         needs: |_| true,
         ground: None,

@@ -24,6 +24,8 @@ sort_by = "weight"
 - 产品堆大小归芯片层（`iot-chip-esp::PRODUCT_HEAP_BYTES`），setup 起始 front 归板层（`iot-bsp-esp::FRONT`），`main.rs` 只读取。
 - 链路业务状态与网络页状态拆成两个记录：`NetworkState` 只由 `LinkIntent` 写，`NetworkPage` 只由手指的 `NetworkPageIntent` 写，页面读 `&NetworkState` 而链路从不碰页面字段；`Effects` 不再留发件箱，页面域直接返回 `NetworkCommand`，从意图到工作者只有一条路径。
 - 网络工作者不再经 `WorkerStart` 交给 `run`：驱动类型只有入口认识，就在入口与驱动半边并列 `spawn`，`run` 不再持 worker 清单。启动页结论改走 `NetworkCommand::SplashOver { setup }`，`PageWatch` 只剩页面级别，不再携带启动页边沿。
+- `state` 与 `intent` 是**有意双向**：`state` 定义并持有意图的载荷类型（`Confirm`、`DisplayPage`、`AudioPhase` 等），`state::translate` 又读 `intent` 的动词把手指翻成 `ActionIntent`。两者都不是渲染/快照层，结构测试只禁 `state → {render, diagnostics}` 与 `intent → {page, render, diagnostics}`；审计时不要把这条当成新破口。
+- 协调者的网络机制收进 `pipeline/network.rs`：`NetworkOutbox` 持有没塞进队列的那条命令、`NetworkMirror` 发布页面级别并记录 front/lamp 边沿、回收扫描列表；`run_loop` 只留意图编排。`core` 侧则把 splash 判决并回 `apply_page` 的返回值，`take_splash_end` 侧信道删除，从意图到工作者确实只剩一条路径。
 
 ## 阻碍：probe 的 board `#[cfg]` 没有下移
 

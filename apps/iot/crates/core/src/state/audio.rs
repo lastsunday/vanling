@@ -1,7 +1,35 @@
 use crate::drivers::audio::{AudioPhase, AudioSample};
-use crate::intent::AudioIntent;
+use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use crate::intent::{ActionIntent, AudioIntent, InputIntent};
 
-use super::{DeviceManager, DeviceState};
+use super::{DeviceManager, DeviceState, light_control};
+
+/// The Audio page's gestures: a tap starts or stops the capture, and everything else is the
+/// lamp's, as on every page without a verb of its own for it.
+pub(in crate::state) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
+    match op.event {
+        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
+            ActionIntent::Audio(capture_target(current.audio.phase))
+        }
+        InputEvent::Button(ButtonEvent::DoubleClick) => light_control::step(current, op.source),
+        InputEvent::Button(ButtonEvent::LongPress) => light_control::cycle(current, op.source),
+        InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
+            light_control::cycle_panel(current, op.source)
+        }
+        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
+            light_control::swipe(current, op.source, direction)
+        }
+        _ => ActionIntent::Invalid,
+    }
+}
+
+fn capture_target(phase: AudioPhase) -> AudioIntent {
+    if phase == AudioPhase::Recording {
+        AudioIntent::Stop
+    } else {
+        AudioIntent::Start
+    }
+}
 
 /// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
 /// it should draw.
@@ -129,7 +157,7 @@ mod audio_page {
 
     fn apply(manager: &mut DeviceManager, operation: InputIntent) {
         manager.apply_input(operation);
-        let business = translate(&operation, &manager.state());
+        let business = crate::state::translate(&operation, &manager.state());
         manager.apply_action(business);
     }
 

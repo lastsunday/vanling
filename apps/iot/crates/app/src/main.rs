@@ -51,9 +51,20 @@ async fn main(spawner: Spawner) -> ! {
             surfaces,
             io,
             spawner,
+            second_core_peak,
         },
     )
     .await
+}
+
+#[cfg(feature = "esp32s3")]
+fn second_core_peak() -> Option<(usize, usize)> {
+    iot_chip_esp::panel_core_stack_peak()
+}
+
+#[cfg(feature = "esp32c6")]
+fn second_core_peak() -> Option<(usize, usize)> {
+    None
 }
 
 fn boot_board() -> (Board, iot_app::Feed, iot_app::IoPlacement) {

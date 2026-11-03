@@ -15,6 +15,8 @@ use crate::drivers::network::NetworkCommand;
 use super::entry::Entry;
 use super::network::NetworkState;
 
+pub(super) mod translate;
+
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1139,28 +1141,27 @@ mod tests {
     fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
         let mut manager = on_network_page();
         manager.state.page = DisplayPage::Splash;
-        assert_eq!(
-            manager.take_splash_end(),
-            Some(false),
-            "the boot's own landing is news once"
-        );
         long_press_the_button(&mut manager);
         assert_eq!(
-            manager.take_splash_end(),
-            None,
-            "the splash is still up, so there is no landing to report"
-        );
-
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
-        assert_eq!(
-            manager.take_splash_end(),
-            Some(true),
+            manager.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
+            Some(NetworkCommand::SplashOver { setup: true }),
             "one answer: the page ended, and setup mode was asked for on it"
         );
         assert_eq!(
-            manager.take_splash_end(),
+            manager.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
             None,
             "and the landing is news once"
+        );
+    }
+
+    #[test]
+    fn a_boot_through_the_splash_tells_the_link_that_setup_was_not_asked_for() {
+        let mut booting = on_network_page();
+        booting.state.page = DisplayPage::Splash;
+        assert_eq!(
+            booting.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
+            Some(NetworkCommand::SplashOver { setup: false }),
+            "the boot's own landing is news once"
         );
     }
 

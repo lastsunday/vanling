@@ -99,6 +99,16 @@ pub enum DemandKind {
 }
 
 impl DemandKind {
+    /// Every kind. The override parser walks this by [`Self::name`], so a new kind is a
+    /// single `match` arm rather than a second hand-written name table.
+    pub const ALL: [Self; 5] = [
+        Self::Interaction,
+        Self::Motion,
+        Self::Audio,
+        Self::Camera,
+        Self::Display,
+    ];
+
     /// The name a diagnostic line calls this kind of device by.
     pub const fn name(self) -> &'static str {
         match self {
@@ -259,14 +269,6 @@ impl Override {
     }
 }
 
-const KIND_NAMES: &[(&str, DemandKind)] = &[
-    ("input", DemandKind::Interaction),
-    ("motion", DemandKind::Motion),
-    ("audio", DemandKind::Audio),
-    ("camera", DemandKind::Camera),
-    ("display", DemandKind::Display),
-];
-
 fn mode_for(kind: DemandKind, name: &str) -> Option<(Mode, u32)> {
     let (name, asked_period_ms) = match name.split_once(':') {
         Some((mode, period)) => (mode, Some(period.parse().ok()?)),
@@ -290,10 +292,9 @@ fn mode_for(kind: DemandKind, name: &str) -> Option<(Mode, u32)> {
 fn parse_term(term: &str) -> Option<(DemandKey, (Mode, u32))> {
     let (kind_name, mode_name) = term.split_once('=')?;
     let wanted = mode_name.trim().to_ascii_lowercase();
-    let kind = KIND_NAMES
-        .iter()
-        .find(|(candidate, _)| *candidate == kind_name.trim().to_ascii_lowercase())
-        .map(|(_, kind)| *kind)?;
+    let kind = DemandKind::ALL
+        .into_iter()
+        .find(|kind| kind.name() == kind_name.trim().to_ascii_lowercase())?;
     let mode = mode_for(kind, wanted.as_str())?;
     Some((DemandKey::of(kind), mode))
 }
@@ -728,6 +729,24 @@ mod tests {
             "motion OnChange@Secondary audio Off@Background camera Continuous/200ms@Primary \
              display Continuous@Primary"
         );
+    }
+
+    #[test]
+    fn every_kind_the_diagnostics_print_is_a_kind_the_override_reads() {
+        use alloc::format;
+        for kind in DemandKind::ALL {
+            let term = format!("{}=off", kind.name());
+            let parsed = parse_term(&term);
+            if kind == DemandKind::Interaction {
+                assert_eq!(parsed, None, "interaction is not a switchable demand");
+            } else {
+                assert_eq!(
+                    parsed.map(|(key, _)| key.kind()),
+                    Some(kind),
+                    "{term} names the kind it was written for"
+                );
+            }
+        }
     }
 
     #[test]

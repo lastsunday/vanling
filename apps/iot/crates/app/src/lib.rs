@@ -18,7 +18,6 @@ use iot_core::state::{Backed, Boot, DeviceManager, DisplayPage};
 
 pub mod bench;
 pub mod boot;
-mod executor_stack;
 mod frame;
 pub mod input;
 #[cfg(feature = "wifi")]
@@ -33,7 +32,7 @@ use input::{INTENT_BUS, input_task};
 use pipeline::run_loop;
 use playback::{playback_tasks, share};
 use surface::wired;
-use workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand, Workers};
+use workers::{CAPTURE, SharedDemand, Workers};
 
 pub enum Feed {
     Interrupt(SendSpawner),
@@ -66,6 +65,9 @@ pub struct Io {
     pub demand: &'static SharedDemand,
     pub speaker: Option<&'static playback::Shared>,
     pub feed: Feed,
+    /// How to read the second core's stack, when the part has one. The composition root
+    /// injects it, so the library names no chip family.
+    pub second_core_peak: fn() -> Option<(usize, usize)>,
 }
 
 /// Starts the network worker. The composition root built it from the station it took off the
@@ -112,6 +114,9 @@ pub struct Wiring<C> {
     /// The executor the driver half starts on. Every other worker is spawned by whoever owns
     /// its drivers, before this call.
     pub spawner: Spawner,
+    /// How to read the second core's stack on this part; `None`-returning when it has no
+    /// second core. Injected by the family entry point, like the clock.
+    pub second_core_peak: fn() -> Option<(usize, usize)>,
 }
 
 /// The driver half: poll the sources, keep the codec fed, answer playback commands.
@@ -122,18 +127,18 @@ async fn io_loop(io: Io) {
         demand,
         speaker,
         feed,
+        second_core_peak,
     } = io;
-    let workers = Workers {
-        input: Input {
-            to: demand,
-            from: &CAPTURE,
-        },
-        playback: PLAYBACK,
-        network: NETWORK,
-    };
+    let workers = Workers::new(demand);
     match join(
-        input_task(&INTENT_BUS, sources, &configurator, workers.input),
-        playback_tasks(speaker, feed, PLAYBACK, &INTENT_BUS),
+        input_task(
+            &INTENT_BUS,
+            sources,
+            &configurator,
+            workers.input,
+            second_core_peak,
+        ),
+        playback_tasks(speaker, feed, workers.playback, &INTENT_BUS),
     )
     .await {}
 }
@@ -165,6 +170,7 @@ where
         surfaces,
         io,
         spawner,
+        second_core_peak,
     } = wiring;
 
     // Take everything off the board once; nothing below asks it anything again.
@@ -228,6 +234,7 @@ where
         demand,
         speaker: shared,
         feed,
+        second_core_peak,
     };
     match io {
         IoPlacement::Inline => {
@@ -242,13 +249,6 @@ where
         worker.spawn(spawner);
     }
 
-    let workers = Workers {
-        input: Input {
-            to: demand,
-            from: &CAPTURE,
-        },
-        playback: PLAYBACK,
-        network: NETWORK,
-    };
+    let workers = Workers::new(demand);
     run_loop(&INTENT_BUS, workers, renderers, &mut manager, &mut clock).await
 }

@@ -528,6 +528,7 @@ async fn main(_spawner: Spawner) {
                 spawner: _spawner,
                 wifi: iot_app::Wifi::Unattended,
                 surfaces,
+                second_core_peak: || None,
             },
         ),
         scenario(),
