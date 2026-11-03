@@ -90,6 +90,6 @@ pub(crate) fn apply_page(manager: &mut DeviceManager, operation: InputIntent) {
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
     manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
-    assert_ne!(manager.state().page, DisplayPage::Splash);
+    assert_ne!(manager.state().page(), DisplayPage::Splash);
     manager
 }

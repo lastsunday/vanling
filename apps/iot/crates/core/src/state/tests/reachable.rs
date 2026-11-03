@@ -25,7 +25,10 @@ const SWEEP_CAP: usize = 20_000;
 
 fn key(state: &DeviceState) -> Vec<u8> {
     let mut key = Vec::with_capacity(64);
-    key.push(state.page as u8);
+    key.push(state.nav.entries().len() as u8);
+    for page in state.nav.entries() {
+        key.push(page.code());
+    }
     key.push(u8::from(state.network.link.is_leavable()));
     encode_ap(&mut key, state.network.link.ap);
     key.push(u8::from(state.network.link.address.is_some()));
@@ -688,7 +691,7 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
         "the link was never up"
     );
     assert!(
-        reached(|state| state.page != DisplayPage::Network),
+        reached(|state| state.page() != DisplayPage::Network),
         "the page cycle was never walked"
     );
 }

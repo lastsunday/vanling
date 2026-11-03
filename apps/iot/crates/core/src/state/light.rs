@@ -653,7 +653,7 @@ mod lamp {
     #[test]
     fn a_boot_with_nothing_saved_flashes_amber_and_then_shows_the_page() {
         let mut manager = lamp_only();
-        assert_eq!(manager.state().page, DisplayPage::Splash);
+        assert_eq!(manager.state().page(), DisplayPage::Splash);
         manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
@@ -667,7 +667,7 @@ mod lamp {
             None,
             "the page owns the lamp again once the news is over"
         );
-        assert_eq!(manager.state().page, DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), DisplayPage::Ambient);
     }
 
     #[test]
@@ -694,7 +694,7 @@ mod lamp {
         manager.apply_action(ActionIntent::Page(PageIntent::RequestSetup));
         manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
         assert_eq!(manager.state().notice, None);
-        assert_eq!(manager.state().page, DisplayPage::Network);
+        assert_eq!(manager.state().page(), DisplayPage::Network);
     }
 
     #[test]

@@ -72,7 +72,7 @@ pub use crate::drivers::board::Backed;
 
 pub use crate::drivers::surface::{MAX_LIGHTS, SurfaceRole};
 
-pub use crate::page::DisplayPage;
+pub use crate::page::{DisplayPage, Navigator};
 
 #[cfg(test)]
 mod test_support;

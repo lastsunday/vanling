@@ -8,6 +8,7 @@ use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
 use iot_core::intent::{ActionIntent, Intent, PageIntent, recognize};
+use iot_core::state::DisplayPage;
 
 use iot_core::config::{Configuration, Configurator, Unreachable};
 
@@ -19,6 +20,12 @@ pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, INTENT_SLOTS>;
 pub static INTENT_BUS: IntentBus = IntentBus::new();
 
 const HOLD_REPORT_MS: u64 = 5_000;
+
+/// How long the boot transient stays up, read from its route so the timer and the page cannot
+/// disagree. A splash that stops being transient fails the build here rather than hanging.
+const SPLASH_TIMEOUT_MS: u64 = DisplayPage::Splash
+    .timeout_ms()
+    .expect("the splash route is a transient with a lifetime");
 
 /// The lock-side half of a tick: reads the demand and works out what each source should do.
 /// It touches no driver, logs nothing, and allocates nothing — the feed interrupt takes the
@@ -155,7 +162,7 @@ pub async fn input_task(
             }
         }
         if splash_open
-            && now_ms >= iot_core::page::SPLASH_MS
+            && now_ms >= SPLASH_TIMEOUT_MS
             && !sources.iter().any(|entry| entry.held())
             && intent_bus
                 .try_send(Intent::Action(ActionIntent::Page(PageIntent::SplashOver)))

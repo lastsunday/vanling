@@ -8,7 +8,7 @@ use crate::drivers::input::InputEvent;
 use crate::drivers::network::ApList;
 
 use crate::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
-use crate::page::DisplayPage;
+use crate::page::{DisplayPage, Navigator};
 
 use super::device::Effects;
 use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKind, PlaybackState};
@@ -17,7 +17,6 @@ use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKin
 #[cfg_attr(test, derive(Clone))]
 pub struct DeviceManager {
     pub(super) state: DeviceState,
-    boot_page: DisplayPage,
     pub(super) demand_keys: Vec<DemandKey>,
     pub(super) override_: Override,
     demand: EffectiveDemand,
@@ -36,19 +35,20 @@ impl DeviceManager {
     }
 
     /// The one constructor a board uses. Everything it lands on is in `boot`, so the boot
-    /// page is clamped and the demand derived once, with no call order to get wrong.
+    /// page is clamped once and pushed under the splash, with no call order to get wrong.
     pub fn boot(boot: Boot) -> Self {
         let backed = boot.backed;
+        let mut nav = Navigator::new(DeviceState::landed_on(boot.boot_page, backed));
+        nav.push(DisplayPage::Splash, backed);
         let state = DeviceState {
             backed,
-            page: DisplayPage::Splash,
+            nav,
             surface_roles: boot.surface_roles,
             ..DeviceState::default()
         };
         Self {
             demand: Self::proposed(&state, &boot.demand_keys, &boot.overrides),
-            demand_page: state.page,
-            boot_page: DeviceState::landed_on(boot.boot_page, backed),
+            demand_page: state.page(),
             state,
             demand_keys: boot.demand_keys,
             override_: boot.overrides,
@@ -67,16 +67,16 @@ impl DeviceManager {
     }
 
     fn propose_demand(&mut self) {
-        if self.demand_page == self.state.page {
+        if self.demand_page == self.state.page() {
             return;
         }
         self.demand = Self::proposed(&self.state, &self.demand_keys, &self.override_);
-        self.demand_page = self.state.page;
+        self.demand_page = self.state.page();
     }
 
-    /// The page this device lands on once the splash is over.
-    pub const fn boot_page(&self) -> DisplayPage {
-        self.boot_page
+    /// The page this device lands on once the splash is over: the root of the stack.
+    pub fn boot_page(&self) -> DisplayPage {
+        self.state.nav.root()
     }
 
     /// Apply an absolute target to the `instance`-th light surface, clamped to
@@ -170,11 +170,11 @@ impl DeviceManager {
     fn apply_page(&mut self, intent: PageIntent) -> Option<NetworkCommand> {
         match intent {
             PageIntent::NextPage => {
-                self.state.page = self.state.page.next_page(self.state.backed);
+                self.state.nav.advance(self.state.backed);
                 None
             }
             PageIntent::RequestSetup => {
-                if self.state.page == DisplayPage::Splash {
+                if self.state.page() == DisplayPage::Splash {
                     self.setup_wanted = true;
                 }
                 None
@@ -184,14 +184,13 @@ impl DeviceManager {
     }
 
     fn land_after_splash(&mut self) -> Option<NetworkCommand> {
-        if self.state.page != DisplayPage::Splash {
+        if self.state.page() != DisplayPage::Splash {
             return None;
         }
-        self.state.page = if self.setup_wanted && self.state.backed.network {
-            DisplayPage::Network
-        } else {
-            self.boot_page
-        };
+        self.state.nav.pop();
+        if self.setup_wanted && self.state.backed.network {
+            self.state.nav.go(DisplayPage::Network, self.state.backed);
+        }
         // A device that boots with nothing to join has nothing to say after the splash
         // except that: one amber burst, then the page's own light. A hold that asked for
         // setup is not this — the access point is the answer to it, and the mode has its own

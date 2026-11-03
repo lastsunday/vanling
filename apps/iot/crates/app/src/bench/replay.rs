@@ -85,7 +85,7 @@ impl PanelBench {
         self.read_parts(state);
         if self.script.is_none() {
             let Some((ssid, psk)) = ssid().zip(psk()) else {
-                if state.page == DisplayPage::Network && state.network.aps.is_some() {
+                if state.page() == DisplayPage::Network && state.network.aps.is_some() {
                     self.absent("this build was named no network and no passphrase to replay");
                 }
                 return;
@@ -138,7 +138,7 @@ impl PanelBench {
     }
 
     fn read_parts(&mut self, state: &DeviceState) {
-        if state.page != DisplayPage::Network {
+        if state.page() != DisplayPage::Network {
             return;
         }
         let showing = |part: Band| part.showing(state.network_page, state.network.link);
@@ -185,7 +185,7 @@ impl PanelBench {
     }
 
     fn script(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
-        if state.page != DisplayPage::Network || state.network_page.keyboard {
+        if state.page() != DisplayPage::Network || state.network_page.keyboard {
             return None;
         }
         let list = state.network.aps?;
@@ -674,7 +674,7 @@ mod tests {
     fn showing(names: &[&str]) -> DeviceState {
         let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
         DeviceState {
-            page: DisplayPage::Network,
+            nav: iot_core::state::Navigator::new(DisplayPage::Network),
             network: iot_core::state::NetworkState {
                 aps: Some(ApList::from_ranked(&rows)),
                 ..Default::default()
@@ -734,7 +734,7 @@ mod tests {
             })
             .collect();
         let state = DeviceState {
-            page: DisplayPage::Network,
+            nav: iot_core::state::Navigator::new(DisplayPage::Network),
             network: iot_core::state::NetworkState {
                 aps: Some(ApList::from_ranked(&rows)),
                 ..Default::default()
@@ -771,7 +771,7 @@ mod tests {
             })
             .collect();
         let mut state = DeviceState {
-            page: DisplayPage::Network,
+            nav: iot_core::state::Navigator::new(DisplayPage::Network),
             network: iot_core::state::NetworkState {
                 aps: Some(ApList::from_ranked(&rows)),
                 ..Default::default()
@@ -1011,7 +1011,7 @@ mod tests {
     #[test]
     fn no_run_is_built_before_the_list_is_there() {
         let mut state = DeviceState {
-            page: DisplayPage::Network,
+            nav: iot_core::state::Navigator::new(DisplayPage::Network),
             ..DeviceState::default()
         };
         let mut bench = PanelBench::new();

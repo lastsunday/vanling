@@ -4,7 +4,9 @@ use crate::intent::{
     ActionIntent, InputIntent, LightIntent, LinkIntent, NetworkPageIntent, PageIntent, recognize,
 };
 use crate::state::MAX_LIGHTS;
-use crate::state::{Backed, Breath, DeviceState, DisplayPage, LightState, SurfaceRole, translate};
+use crate::state::{
+    Backed, Breath, DeviceState, DisplayPage, LightState, Navigator, SurfaceRole, translate,
+};
 
 pub(crate) const DEFAULT_BREATH: LightState = LightState::Breath(BREATH_BASE);
 
@@ -28,7 +30,7 @@ pub(crate) fn state_on(page: DisplayPage, light: LightState) -> DeviceState {
     DeviceState {
         lights: [light; MAX_LIGHTS],
         surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
-        page,
+        nav: Navigator::new(page),
         backed: Backed {
             motion: Some(MotionCapabilities::EMPTY),
             audio: true,

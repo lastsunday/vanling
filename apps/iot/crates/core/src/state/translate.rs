@@ -16,12 +16,12 @@ pub fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     if let Some(intent) = network_page::translate::shortcut(op, current) {
         return intent;
     }
-    if current.page != DisplayPage::Splash
+    if current.page() != DisplayPage::Splash
         && matches!(op.event, InputEvent::Button(ButtonEvent::TripleClick))
     {
         return ActionIntent::Page(PageIntent::NextPage);
     }
-    match current.page {
+    match current.page() {
         DisplayPage::Ambient | DisplayPage::Attitude | DisplayPage::Camera => {
             light_control::translate(op, current)
         }

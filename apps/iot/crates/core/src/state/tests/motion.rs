@@ -32,7 +32,7 @@ type Bucket = fn(&MotionCounts) -> u16;
 fn the_page_switch_skips_pages_the_board_lacks() {
     let mut disabled = landed(DeviceManager::new());
     apply_page(&mut disabled, triple_click());
-    assert_eq!(disabled.state().page, DisplayPage::Ambient);
+    assert_eq!(disabled.state().page(), DisplayPage::Ambient);
 
     let mut enabled = landed(DeviceManager::boot(Boot {
         backed: Backed {
@@ -42,9 +42,9 @@ fn the_page_switch_skips_pages_the_board_lacks() {
         ..Default::default()
     }));
     apply_page(&mut enabled, triple_click());
-    assert_eq!(enabled.state().page, DisplayPage::Attitude);
+    assert_eq!(enabled.state().page(), DisplayPage::Attitude);
     apply_page(&mut enabled, triple_click());
-    assert_eq!(enabled.state().page, DisplayPage::Ambient);
+    assert_eq!(enabled.state().page(), DisplayPage::Ambient);
 }
 
 #[test]

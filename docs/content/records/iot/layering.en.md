@@ -3,8 +3,8 @@ title = "Layering review of the app crate: what landed"
 weight = 90
 sort_by = "weight"
 [extra]
-source_file_hash = "8b3bcdcdfd9ee9cff502db873bf4c265ccffdd4a"
-translated_at = "2026-10-31T00:00:00Z"
+source_file_hash = "ae14e5737534bf0a4e748bee94f71bd060576036"
+translated_at = "2026-11-03T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -27,6 +27,8 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 - The product heap size belongs to the chip layer (`iot-chip-esp::PRODUCT_HEAP_BYTES`) and the starting setup front to the board layer (`iot-bsp-esp::FRONT`); `main.rs` only reads them.
 - The link's business state and the Network page's state are two records: `NetworkState` is written only by `LinkIntent`, `NetworkPage` only by the fingers' `NetworkPageIntent`, and the page reads `&NetworkState` while the link never touches a page field. `Effects` no longer carries an outbox: the page domain returns `NetworkCommand` directly, so there is one path from an intent to the worker.
 - The network worker no longer reaches `run` through a `WorkerStart`: its driver types are only known to the entry point, so it builds `Wifi::Worker(NetworkWorker)` there — a closure that takes only a `Spawner` — and `run` starts it before `run_loop` without holding a worker list. The splash's verdict travels as `NetworkCommand::SplashOver { setup }`; `PageWatch` is only a page level and no longer carries a splash edge.
+- `state` and `intent` are **deliberately two-way**: `state` defines and owns the payload types an intent carries (`Confirm`, `DisplayPage`, `AudioPhase` and so on), and `state::translate` in turn reads `intent`'s verbs to turn a finger into an `ActionIntent`. Neither of them is a render or snapshot layer, so the structural test forbids only `state → {render, diagnostics}` and `intent → {page, render, diagnostics}`; an audit should not read this as a new hole.
+- The coordinator's network machinery moved into `pipeline/network.rs`: `NetworkOutbox` holds the one command that did not fit in the queue, `NetworkMirror` publishes the page level, records the front and lamp edges and reclaims the scan list, and `run_loop` keeps only intent orchestration. On the `core` side the splash verdict was folded back into `apply_page`'s return value and the `take_splash_end` side channel is gone, so from an intent to the worker there really is one path.
 
 ## Blocker: the probe's board `#[cfg]` did not move down
 

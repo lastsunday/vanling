@@ -217,7 +217,7 @@ fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
 #[test]
 fn a_committed_demand_survives_being_read_back() {
     let mut manager = landed(fully_wired_on(DisplayPage::Camera));
-    assert_eq!(manager.state().page, DisplayPage::Camera);
+    assert_eq!(manager.state().page(), DisplayPage::Camera);
     assert_eq!(
         manager.demand().claim(DemandKey::CAMERA).mode,
         Mode::Continuous

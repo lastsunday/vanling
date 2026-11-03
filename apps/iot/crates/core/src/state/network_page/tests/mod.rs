@@ -46,12 +46,12 @@ fn booted(boot: Boot) -> DeviceManager {
     let mut manager = landed(DeviceManager::boot(boot));
     manager.apply_scan(ApList::from_ranked(&[ap(b"neighbour"), ap(b"cafe")]));
     for _ in 0..CYCLE.len() {
-        if manager.state().page == DisplayPage::Network {
+        if manager.state().page() == DisplayPage::Network {
             break;
         }
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
     }
-    assert_eq!(manager.state().page, DisplayPage::Network);
+    assert_eq!(manager.state().page(), DisplayPage::Network);
     manager
 }
 

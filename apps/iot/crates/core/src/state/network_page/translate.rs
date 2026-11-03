@@ -10,7 +10,7 @@ use crate::state::{Band, Confirm, DeviceState, DisplayPage, controls};
 /// The setup-mode hold is a link decision, not a page one: switching the host is offered from
 /// anywhere but the splash, so it is answered before the page sees the gesture.
 pub(in crate::state) fn shortcut(op: &InputIntent, current: &DeviceState) -> Option<ActionIntent> {
-    (current.page != DisplayPage::Splash
+    (current.page() != DisplayPage::Splash
         && current.network.link.mode.is_setup()
         && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)))
     .then_some(ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost))

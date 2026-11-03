@@ -25,11 +25,36 @@ fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
         );
         assert_eq!(asked, None, "{kinds:?}: the request is not a leave");
         assert_eq!(
-            manager.state().page,
+            manager.state().page(),
             DisplayPage::Splash,
             "{kinds:?}: the page keeps its window"
         );
     }
+}
+
+#[test]
+fn the_splash_is_stacked_over_the_landing_page_and_pops_off_it() {
+    let mut manager = DeviceManager::boot(Boot {
+        backed: Backed {
+            network: true,
+            camera: true,
+            ..Backed::NONE
+        },
+        boot_page: DisplayPage::Camera,
+        ..Default::default()
+    });
+    assert_eq!(
+        manager.state().nav.entries(),
+        &[DisplayPage::Camera, DisplayPage::Splash],
+        "the landing page sits under the transient"
+    );
+    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    assert_eq!(
+        manager.state().nav.entries(),
+        &[DisplayPage::Camera],
+        "the transient is gone and the root is what remains"
+    );
+    assert_eq!(manager.boot_page(), DisplayPage::Camera);
 }
 
 #[test]
@@ -45,7 +70,12 @@ fn the_splash_lands_on_the_page_that_offers_setup_when_it_was_asked_for() {
     });
     long_press_the_button(&mut manager);
     manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
-    assert_eq!(manager.state().page, DisplayPage::Network);
+    assert_eq!(manager.state().page(), DisplayPage::Network);
+    assert_eq!(
+        manager.state().nav.entries(),
+        &[DisplayPage::Network],
+        "the setup landing replaces the boot page rather than stacking on it"
+    );
 }
 
 #[test]
@@ -59,7 +89,7 @@ fn the_splash_lands_on_the_build_page_when_nothing_was_asked() {
         boot_page: DisplayPage::Camera,
         ..Default::default()
     }));
-    assert_eq!(manager.state().page, DisplayPage::Camera);
+    assert_eq!(manager.state().page(), DisplayPage::Camera);
     assert!(!manager.setup_wanted());
 }
 
@@ -68,7 +98,7 @@ fn a_board_with_no_radio_lands_on_its_page_even_after_the_hold() {
     let mut manager = DeviceManager::new();
     long_press_the_button(&mut manager);
     manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
-    assert_eq!(manager.state().page, DisplayPage::Ambient);
+    assert_eq!(manager.state().page(), DisplayPage::Ambient);
 }
 
 #[test]
@@ -101,7 +131,10 @@ fn a_long_press_after_the_splash_is_the_pages_own_verb() {
 #[test]
 fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
     let mut manager = on_network_page();
-    manager.state.page = DisplayPage::Splash;
+    manager
+        .state
+        .nav
+        .push(DisplayPage::Splash, manager.state.backed);
     long_press_the_button(&mut manager);
     assert_eq!(
         manager.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
@@ -118,7 +151,10 @@ fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
 #[test]
 fn a_boot_through_the_splash_tells_the_link_that_setup_was_not_asked_for() {
     let mut booting = on_network_page();
-    booting.state.page = DisplayPage::Splash;
+    booting
+        .state
+        .nav
+        .push(DisplayPage::Splash, booting.state.backed);
     assert_eq!(
         booting.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
         Some(NetworkCommand::SplashOver { setup: false }),

@@ -47,7 +47,7 @@ const fn boot_page_from_env(name: Option<&str>) -> DisplayPage {
 /// `Splash` is a page and has a name, but it is the transient the boot lands *through*, never
 /// on, so its manifest row is not bootable.
 const fn bootable_page(name: &str) -> Option<DisplayPage> {
-    match DisplayPage::named(name) {
+    match DisplayPage::from_path(name) {
         Some(page) if page.bootable() => Some(page),
         _ => None,
     }
@@ -76,7 +76,7 @@ mod tests {
             if !page.bootable() {
                 continue;
             }
-            assert_eq!(boot_page_from_env(Some(page.name())), page, "{page:?}");
+            assert_eq!(boot_page_from_env(Some(page.path())), page, "{page:?}");
         }
     }
 

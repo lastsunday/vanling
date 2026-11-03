@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "6795f6d03ee3f90f760c8daeb4b441c71c58a75a"
-translated_at = "2026-11-01T00:00:00Z"
+source_file_hash = "ffcfd4549abaf2e746308ca5b785ff22478c5cbd"
+translated_at = "2026-11-03T00:00:00Z"
 +++
 
 # Architecture
@@ -391,15 +391,13 @@ This yields one rule for measurement: to ask what throttling does to the worst b
 
 The per-device figures and their individual basis labels are in the [implementation records](@/records/iot/_index.en.md).
 
-## The page cycle walks one ordered list
+## Pages: a route table plus a navigation stack
 
-`DisplayPage::CYCLE` is the definition of the order (`Ambient → Attitude → Audio → Speaker → Camera → Network`).
+`core/src/page/mod.rs` holds one route table: the `DisplayPage` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, ground, whether it draws frames, claim, repaint step, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the complete list in `code()` order (the wire code is its index), and `CYCLE` is the button's order, which must be a prefix of `ALL`; `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, the cycle prefix, and each page's render arm in `ui/src/surface.rs` and view module under `ui/src/pages/` (the render match itself is checked exhaustively by the compiler).
 
-`next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end.
+`Navigator` in `core/src/page/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 
-The boot page (`Boot::boot_page`) is clamped by the same capability test, so one full turn from any page visits every available page once and returns to where it started.
-
-The capability test is one column of each page's row (`PageSpec::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So the entry point hands over a `Wifi` (`Absent` / `Unattended` / `Worker`), and `run` folds it into that `bool` with `wifi.wired()`: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`wifi`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
+The capability test is one column of each route (`Route::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So the entry point hands over a `Wifi` (`Absent` / `Unattended` / `Worker`), and `run` folds it into that `bool` with `wifi.wired()`: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`wifi`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
 
 This rule exists because of a defect it fixed.
 

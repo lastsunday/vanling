@@ -61,7 +61,7 @@ pub(crate) struct NetworkMirror {
 impl NetworkMirror {
     pub(crate) fn new(state: &DeviceState) -> Self {
         Self {
-            page: state.page,
+            page: state.page(),
             front: state.network.link.mode.host(),
             lamp: state.link_notice(),
         }
@@ -70,10 +70,11 @@ impl NetworkMirror {
     /// Runs once per pass: the page level goes out, and the page it changed to, the setup host
     /// and the lamp say so once.
     pub(crate) fn observe(&mut self, network: &Network, state: &DeviceState) {
-        network.page.publish(state.page);
-        if state.page != self.page {
-            log::info!("[INPUT] page is now {:?}", state.page);
-            self.page = state.page;
+        let page = state.page();
+        network.page.publish(page);
+        if page != self.page {
+            log::info!("[INPUT] page is now {page:?}");
+            self.page = page;
         }
         let front = state.network.link.mode.host();
         if front != self.front {

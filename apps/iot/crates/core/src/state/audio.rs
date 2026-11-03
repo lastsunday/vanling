@@ -172,15 +172,15 @@ mod audio_page {
         }));
         apply(&mut manager, triple_click());
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Audio);
+        assert_eq!(manager.state().page(), DisplayPage::Audio);
         manager
     }
 
     fn tap_in_place(manager: &mut DeviceManager) {
-        let page = manager.state().page;
+        let page = manager.state().page();
         apply(manager, tap());
         assert_eq!(
-            manager.state().page,
+            manager.state().page(),
             page,
             "a tap on audio records instead of paging"
         );
@@ -230,9 +230,9 @@ mod audio_page {
             ..Default::default()
         }));
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Audio);
+        assert_eq!(manager.state().page(), DisplayPage::Audio);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), DisplayPage::Ambient);
     }
 
     #[test]
@@ -353,8 +353,8 @@ mod audio_page {
                 }
                 let mut expected = backed.clone();
                 let mut walked = seen.clone();
-                expected.sort_by_key(|page| page.index());
-                walked.sort_by_key(|page| page.index());
+                expected.sort_by_key(|page| page.code());
+                walked.sort_by_key(|page| page.code());
                 assert_eq!(
                     walked, expected,
                     "a full turn from {start:?} did not visit each backed page once \
@@ -397,24 +397,24 @@ mod audio_page {
             boot_page: DisplayPage::Camera,
             ..Default::default()
         }));
-        assert_eq!(manager.state().page, DisplayPage::Camera);
+        assert_eq!(manager.state().page(), DisplayPage::Camera);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), DisplayPage::Ambient);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Attitude);
+        assert_eq!(manager.state().page(), DisplayPage::Attitude);
     }
 
     #[test]
     fn the_boot_page_falls_back_for_every_capability_not_wired() {
         let bare = landed(DeviceManager::new());
-        let default_page = bare.state().page;
+        let default_page = bare.state().page();
         for page in CYCLE {
             let boot_page = landed(DeviceManager::boot(Boot {
                 boot_page: page,
                 ..Default::default()
             }))
             .state()
-            .page;
+            .page();
             assert_eq!(
                 boot_page, default_page,
                 "{page:?} needs no capability, so a board with nothing wired still lands \
@@ -431,7 +431,7 @@ mod audio_page {
                 ..Default::default()
             }))
             .state()
-            .page,
+            .page(),
             DisplayPage::Attitude,
             "the one capability it does have"
         );
@@ -445,7 +445,7 @@ mod audio_page {
                 ..Default::default()
             }))
             .state()
-            .page,
+            .page(),
             DisplayPage::Ambient,
             "and the one it does not"
         );
@@ -466,9 +466,9 @@ mod audio_page {
         }));
         assert!(manager.state().backed.camera);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Camera);
+        assert_eq!(manager.state().page(), DisplayPage::Camera);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page, DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), DisplayPage::Ambient);
     }
 
     #[test]
@@ -484,7 +484,7 @@ mod audio_page {
         for _ in 0..8 {
             apply(&mut manager, triple_click());
             assert_ne!(
-                manager.state().page,
+                manager.state().page(),
                 DisplayPage::Camera,
                 "the camera page is gated on the wiring, not on how long you press"
             );
@@ -603,7 +603,7 @@ mod audio_page {
     fn a_tap_records_without_leaving_the_audio_page() {
         let mut manager = on_audio_page();
         apply(&mut manager, tap());
-        assert_eq!(manager.state().page, DisplayPage::Audio, "the page holds");
+        assert_eq!(manager.state().page(), DisplayPage::Audio, "the page holds");
         assert_eq!(manager.state().audio.phase, AudioPhase::Recording);
     }
 
@@ -614,7 +614,7 @@ mod audio_page {
 
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
         assert_eq!(
-            manager.state().page,
+            manager.state().page(),
             DisplayPage::Ambient,
             "walked off audio"
         );

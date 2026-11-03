@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "3f0397a15cb2d131a7b233e2c122b43961da9dc3"
-translated_at = "2026-10-31T00:00:00Z"
+source_file_hash = "4376a5756f822fd4a29fd2f33ddf3829ed8ed246"
+translated_at = "2026-11-03T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

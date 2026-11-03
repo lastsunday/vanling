@@ -2,8 +2,8 @@
 title = "Cargo Feature Criteria and Cohesion"
 weight = 20
 [extra]
-source_file_hash = "84787b1bfb0d62970d8b2a09ce25cbcc2ac693a7"
-translated_at = "2026-10-25T00:00:00Z"
+source_file_hash = "a2d20703eb4a48d366f31faea582d456175bc25f"
+translated_at = "2026-11-03T00:00:00Z"
 +++
 
 # Cargo Feature Criteria and Cohesion
@@ -62,7 +62,7 @@ Cargo features are **additive** (union; enabling one must not disable another) a
 iot-core     — no [features]
 iot-ui       — no [features]
 iot-bsp-esp  — component features (backlight / button / pca9557 / qmi8658 / es7210 / es8311 /
-                             ft6336 / ws2812 / st7789 / wifi / screen / audio / audio-out)
+                             ft6336 / gc2145 / ws2812 / st7789 / wifi / screen / audio / audio-out / camera)
                board features (esp32c6-devkitc-1 / lckfb-szpi-esp32s3) = component aggregate
 iot-chip-esp — chip features (esp32c6 / esp32s3) + a component feature (radio: the C heap the
                Wi-Fi driver links against, and the scheduler integration it needs, which the

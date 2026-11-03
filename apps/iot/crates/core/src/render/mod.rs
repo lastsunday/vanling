@@ -145,7 +145,7 @@ fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnosti
             held_ms: state.touch.view.held_ms,
         },
         lights: state.lights.map(light_snapshot),
-        page: state.page,
+        page: state.page(),
         link: state.network.link,
         mac: state.network.mac,
         aps: state.network.aps,
@@ -701,7 +701,7 @@ mod tests {
         fn project_every_field(state: DeviceState) {
             let DeviceState {
                 backed: _,
-                page: _,
+                nav: _,
                 lights: _,
                 surface_roles: _,
                 notice: _,
@@ -1408,7 +1408,7 @@ mod tests {
         };
         let mut quiet_manager = DeviceManager::boot(setup.clone());
         quiet_manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
-        assert_eq!(quiet_manager.state().page, DisplayPage::Audio);
+        assert_eq!(quiet_manager.state().page(), DisplayPage::Audio);
         let quiet = *quiet_manager.demand();
         assert_eq!(
             quiet.claim(DemandKey::AUDIO).mode,

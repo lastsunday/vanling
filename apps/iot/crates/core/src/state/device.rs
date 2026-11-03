@@ -4,7 +4,7 @@
 use crate::demand::{DemandKey, EffectiveDemand};
 use crate::drivers::network::{LinkPhase, SetupHost};
 use crate::drivers::playback::Sound;
-use crate::page::DisplayPage;
+use crate::page::{DisplayPage, Navigator};
 
 use super::{
     AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkPage, NetworkState, Notice,
@@ -17,7 +17,8 @@ use super::{
 pub struct DeviceState {
     /// What the board wired. Every page asks this before it asks anything else.
     pub backed: Backed,
-    pub page: DisplayPage,
+    /// Where the panel is and what is stacked over it. Read through [`Self::page`].
+    pub nav: Navigator,
     pub lights: [LightState; MAX_LIGHTS],
     /// What each slot's surface is for, fixed by the wiring rather than by the current
     /// appearance. Not part of `backed`: presence and role answer different questions.
@@ -36,6 +37,11 @@ pub struct DeviceState {
 }
 
 impl DeviceState {
+    /// The page on screen: the top of the navigation stack.
+    pub fn page(&self) -> DisplayPage {
+        self.nav.current()
+    }
+
     /// Whether any wired surface draws the pages and puts the questions on them.
     pub fn has_pages(&self) -> bool {
         self.surface_roles.contains(&SurfaceRole::Pages)
@@ -65,7 +71,7 @@ impl DeviceState {
 
     /// The page's demand with the board's wiring clamped on top.
     pub fn demand(&self, keys: &[DemandKey]) -> EffectiveDemand {
-        self.page.demand(keys)
+        self.page().demand(keys)
     }
 
     /// The page that becomes the boot page: a splash has no page to land on, and a page the
