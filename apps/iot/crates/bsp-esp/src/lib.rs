@@ -2,17 +2,13 @@
 
 extern crate alloc;
 
-#[cfg(feature = "esp32c6-devkitc-1")]
-pub mod esp32c6_devkitc_1;
+pub mod boards;
 
 #[cfg(feature = "esp32c6-devkitc-1")]
-pub use esp32c6_devkitc_1::{Board, PullButton, SETUP_HOST, Startup, Ws2812RgbLed};
+pub use boards::esp32c6_devkitc_1::{Board, PullButton, SETUP_HOST, Startup, Ws2812RgbLed};
 
 #[cfg(feature = "lckfb-szpi-esp32s3")]
-pub mod lckfb_szpi_esp32s3;
-
-#[cfg(feature = "lckfb-szpi-esp32s3")]
-pub use lckfb_szpi_esp32s3::{
+pub use boards::lckfb_szpi_esp32s3::{
     Board, PanelBus, PullButton, SETUP_HOST, Screen, SharedI2cDevice, Startup, panel_service,
 };
 

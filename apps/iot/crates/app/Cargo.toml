@@ -168,4 +168,5 @@ esp-rtos = { workspace = true, optional = true }
 iot-bsp-esp = { workspace = true, optional = true }
 iot-chip-esp = { workspace = true, optional = true }
 iot-core = { workspace = true }
+iot-ui = { workspace = true }
 log = { workspace = true }

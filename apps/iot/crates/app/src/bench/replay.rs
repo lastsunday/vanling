@@ -2,11 +2,11 @@
 
 use alloc::vec::Vec;
 
+use crate::intent::{Intent, recognize};
+use crate::state::{Band, Confirm, DeviceManager, DeviceState, DisplayPage};
 use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
-use iot_core::intent::{Intent, recognize};
 use iot_core::keyboard::{self, DialogChoice, Key, LIST_ROWS};
-use iot_core::state::{Band, Confirm, DeviceManager, DeviceState, DisplayPage};
 
 use crate::input::IntentBus;
 
@@ -642,12 +642,12 @@ fn psk() -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
+    use crate::state::{Backed, Boot, NetworkCommand};
     use iot_core::drivers::network::{
         AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
     };
-    use iot_core::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
     use iot_core::keyboard::Layer;
-    use iot_core::state::{Backed, Boot, NetworkCommand};
 
     fn ap(name: &str) -> AccessPoint {
         AccessPoint {
@@ -673,8 +673,8 @@ mod tests {
     fn showing(names: &[&str]) -> DeviceState {
         let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
         DeviceState {
-            nav: iot_core::state::Navigator::new(DisplayPage::Network),
-            network: iot_core::state::NetworkState {
+            nav: crate::state::Navigator::new(DisplayPage::Network),
+            network: crate::state::NetworkState {
                 aps: Some(ApList::from_ranked(&rows)),
                 ..Default::default()
             },
@@ -733,8 +733,8 @@ mod tests {
             })
             .collect();
         let state = DeviceState {
-            nav: iot_core::state::Navigator::new(DisplayPage::Network),
-            network: iot_core::state::NetworkState {
+            nav: crate::state::Navigator::new(DisplayPage::Network),
+            network: crate::state::NetworkState {
                 aps: Some(ApList::from_ranked(&rows)),
                 ..Default::default()
             },
@@ -770,8 +770,8 @@ mod tests {
             })
             .collect();
         let mut state = DeviceState {
-            nav: iot_core::state::Navigator::new(DisplayPage::Network),
-            network: iot_core::state::NetworkState {
+            nav: crate::state::Navigator::new(DisplayPage::Network),
+            network: crate::state::NetworkState {
                 aps: Some(ApList::from_ranked(&rows)),
                 ..Default::default()
             },
@@ -1002,7 +1002,7 @@ mod tests {
     #[test]
     fn no_run_is_built_before_the_list_is_there() {
         let mut state = DeviceState {
-            nav: iot_core::state::Navigator::new(DisplayPage::Network),
+            nav: crate::state::Navigator::new(DisplayPage::Network),
             ..DeviceState::default()
         };
         let mut bench = PanelBench::new();

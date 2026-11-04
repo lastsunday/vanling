@@ -7,10 +7,10 @@
 mod clock;
 mod systems;
 
+use crate::state::DeviceManager;
 use embassy_futures::select::select3;
 use embassy_time::{Instant, Timer};
 use iot_core::demand::ClockSink;
-use iot_core::state::DeviceManager;
 
 use crate::input::IntentBus;
 use crate::surface::Renderers;

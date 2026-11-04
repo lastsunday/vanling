@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 extern crate alloc;
 
@@ -6,6 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
+use crate::state::{Backed, Boot, DeviceManager, DisplayPage};
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
 use iot_core::config::Configurator;
@@ -14,16 +15,22 @@ use iot_core::drivers::board::{HasAudio, HasCamera, HasInput, HasMotion, HasPlay
 use iot_core::drivers::input::PollEntry;
 use iot_core::drivers::playback::Speaker;
 use iot_core::drivers::surface::WiredSurface;
-use iot_core::state::{Backed, Boot, DeviceManager, DisplayPage};
 
+mod assets;
 pub mod bench;
 pub mod boot;
+pub mod diagnostics;
 mod frame_loop;
 pub mod input;
+pub mod intent;
 #[cfg(feature = "wifi")]
 pub mod network;
+pub mod page;
 mod playback;
+pub mod render;
+pub mod state;
 mod surface;
+pub mod ui;
 pub mod workers;
 
 use boot::{boot_override, boot_page};

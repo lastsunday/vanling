@@ -1,18 +1,18 @@
 //! The colour path: a fill, the page's rows over it, and the frame that ships.
 //!
-//! Page drawing is `iot-ui`'s; this module decides whether a frame is worth painting
-//! (`FrameOwner`, which also remembers what the CPU last painted) and owns the diagnostics
-//! repaint gate, which is what keeps a live page from holding the shared executor in a
-//! ~15 ms block every 20 ms snapshot.
+//! Page drawing belongs to the product: this module only decides whether a frame is worth
+//! painting (`FrameOwner`, which also remembers what the CPU last painted) and hands the
+//! buffer to the painter the app injected.
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::any::Any;
+use core::future::Future;
+use core::pin::Pin;
 
 use esp_hal::time::{Duration, Instant};
-use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::camera::FrameOwner;
-use iot_core::render::{diag_repaint_due, windowed_percent};
+use iot_core::drivers::surface::{PageSurface, PanelContext, PanelPainter, PanelTarget};
 use iot_core::stamp::rgb565;
-use iot_ui::{Canvas, Surface};
+use iot_core::stats::windowed_percent;
 
 use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::components::st7789::Wire;
@@ -20,53 +20,79 @@ use crate::stack::{high_water, main_stack_bytes, note_stack_high_water};
 
 use super::*;
 
-static DIAG_LAST_REPAINT_MS: AtomicU32 = AtomicU32::new(0);
+impl PageSurface for Screen {
+    fn repaint_step(&self) -> u8 {
+        REPAINT_STEP
+    }
 
-impl DiagnosticsSink for Screen {
-    fn consume(&mut self, diagnostics: &Diagnostics) {
-        if self.diagnostics == *diagnostics {
-            return;
+    fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
+        self.pending.as_ref()?;
+        Some(Box::pin(self.flush_pending()))
+    }
+
+    fn set_backlight(&mut self, level_pct: u8) {
+        self.panel.set_backlight(level_pct);
+    }
+
+    fn set_backlight_ceiling(&mut self, level_pct: u8) {
+        self.panel.set_ceiling(level_pct);
+    }
+
+    fn repaint(&mut self, painter: &dyn PanelPainter, snapshot: &dyn Any, force: bool) -> bool {
+        let Some(color) = self.owner.painted_color() else {
+            return false;
+        };
+        if !force && !self.page_dirty {
+            return false;
         }
-        let page_changed = self.diagnostics.page != diagnostics.page;
-        // A page switch is drawn immediately; a diagnostics drift is only drawn
-        // when the page redraws it and the rate gate has opened. The gate exists
-        // because a repaint ships the whole 320×240 frame down one blocking SPI
-        // transfer, and without it the live pages (Audio follows the capture,
-        // Attitude the motion sample) hold the shared cooperative executor in a
-        // ~15 ms block every 20 ms snapshot — starving the playback feed and the
-        // capture poll, which then restart their DMAs (the `RST` counter climbs).
-        let now_ms = Instant::now().duration_since_epoch().as_millis() as u32;
-        let since_ms = now_ms.wrapping_sub(DIAG_LAST_REPAINT_MS.load(Ordering::Relaxed)) as u64;
-        let repaint = page_changed
-            || diag_repaint_due(
-                diagnostics.page,
-                &self.diagnostics,
-                diagnostics,
-                since_ms,
-                DEBUG_DIAGNOSTICS,
-            );
-        // The previous snapshot is read through `self` right up to the decision
-        // above rather than saved into a local: `Diagnostics` embeds a 1.6 KB
-        // audio envelope, and one by-value copy of it is a large slice of a main
-        // stack this path is already close to overflowing.
-        self.diagnostics = *diagnostics;
-        if !repaint {
-            return;
-        }
-        if let Some(color) = self.owner.painted_color() {
-            note_stack_high_water();
-            self.paint(color);
-            DIAG_LAST_REPAINT_MS.store(now_ms, Ordering::Relaxed);
-        }
+        self.page_dirty = false;
+        note_stack_high_water();
+        self.paint(color, painter, snapshot);
+        true
     }
 }
 
 impl Screen {
-    pub(super) fn paint(&mut self, color: Rgb) {
+    pub(super) fn context(&self) -> PanelContext {
+        PanelContext {
+            instance: self.instance,
+            fps: self.metrics.fps(),
+            spl_offset_db: SPL_OFFSET_DECIBELS,
+            stack_probe: Some(note_stack_high_water),
+        }
+    }
+
+    pub(super) fn paint(&mut self, color: Rgb, painter: &dyn PanelPainter, snapshot: &dyn Any) {
         let render_start = Instant::now();
+        self.fill(color);
+
+        let bytes = self.panel.frame_bytes();
+        let context = self.context();
+        painter.paint(
+            PanelTarget {
+                frame: &mut self.frame[..bytes],
+                width: usize::from(self.panel.width()),
+                height: usize::from(self.panel.height()),
+                ground: Some(color),
+            },
+            context,
+            snapshot,
+        );
+
+        // The render and the transfer are timed apart rather than together: "the frame cost
+        // 20 ms" does not say which of the two has to be made cheaper, so they are reported as
+        // separate peaks. `worst_chunk` is the transfer's longest single hold, which is the
+        // number the chunking moves; `worst write` stays the whole frame's wire time.
+        self.pending = Some(Pending {
+            camera: false,
+            render: render_start.elapsed(),
+        });
+    }
+
+    /// Writes one colour into the whole frame and records it as the colour the CPU holds.
+    pub(super) fn fill(&mut self, color: Rgb) {
         self.owner.painted(color);
 
-        let height = self.panel.height();
         let width = usize::from(self.panel.width());
         let rgb565 = rgb565(color);
         let hi = (rgb565 >> 8) as u8;
@@ -77,31 +103,6 @@ impl Screen {
                 pixel[1] = lo;
             }
         }
-
-        let bytes = self.panel.frame_bytes();
-        let ground = self.owner.painted_color();
-        {
-            let canvas = Canvas::new(&mut self.frame[..bytes], width, usize::from(height), ground);
-            let mut surface = Surface::new(
-                canvas,
-                &self.diagnostics,
-                self.instance,
-                self.metrics.fps(),
-                DEBUG_DIAGNOSTICS,
-                SPL_OFFSET_DECIBELS,
-            )
-            .with_stack_probe(note_stack_high_water);
-            surface.render(self.diagnostics.page);
-        }
-
-        // The render and the transfer are timed apart rather than together: "the frame cost
-        // 20 ms" does not say which of the two has to be made cheaper, so they are reported as
-        // separate peaks. `worst_chunk` is the transfer's longest single hold, which is the
-        // number the chunking moves; `worst write` stays the whole frame's wire time.
-        self.pending = Some(Pending {
-            camera: false,
-            render: render_start.elapsed(),
-        });
     }
 
     /// Ships whatever the last paint left in the buffer, then accounts for the frame. Split
@@ -144,8 +145,7 @@ impl Screen {
                 } else {
                     log::Level::Debug
                 },
-                "[DISPLAY] {:?} {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst wait {} ms, worst write {} ms (longest chunk {} ms); asked {}",
-                self.diagnostics.page,
+                "[DISPLAY] {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst wait {} ms, worst write {} ms (longest chunk {} ms)",
                 cost.frames,
                 cost.window.as_millis(),
                 cost.hold.as_millis(),
@@ -154,7 +154,6 @@ impl Screen {
                 cost.worst_wait.as_millis(),
                 cost.worst_write.as_millis(),
                 cost.worst_chunk.as_millis(),
-                self.diagnostics.demand,
             );
             self.report_stack_high_water();
         }

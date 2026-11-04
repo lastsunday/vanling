@@ -9,11 +9,14 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
+use iot_app::diagnostics::Diagnostics;
+use iot_app::intent::{ActionIntent, Intent, NetworkPageIntent};
+use iot_app::state::PALETTE;
+use iot_app::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
 use iot_app::workers::NETWORK;
 use iot_app::{Feed, IoPlacement, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
-use iot_core::diagnostics::{Diagnostics, DiagnosticsSink};
 use iot_core::drivers::audio::{
     AudioEnvelope, AudioInput, AudioSample, AudioSource, CAPTURE_MS, COLUMNS_PER_POLL, CaptureSink,
     SAMPLES_PER_COLUMN, SampleStream, dbfs,
@@ -34,11 +37,8 @@ use iot_core::drivers::network::{
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
-use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent};
 use iot_core::keyboard::Key;
 use iot_core::paint::Rgb;
-use iot_core::state::PALETTE;
-use iot_core::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
 
 static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());
 
@@ -210,7 +210,20 @@ impl RgbLight for HostLight {
     }
 }
 
-impl PageSurface for HostLight {}
+impl PageSurface for HostLight {
+    fn repaint(
+        &mut self,
+        _painter: &dyn iot_core::drivers::surface::PanelPainter,
+        snapshot: &dyn core::any::Any,
+        _force: bool,
+    ) -> bool {
+        let Some(diagnostics) = snapshot.downcast_ref::<Diagnostics>() else {
+            return false;
+        };
+        self.consume(diagnostics);
+        false
+    }
+}
 
 struct HostCamera {
     frames: u32,
@@ -249,7 +262,13 @@ impl FrameSource for HostCamera {
 }
 
 impl CameraTarget for HostLight {
-    fn paint_camera(&mut self, now_ms: u64, _period_ms: u32) -> bool {
+    fn paint_camera(
+        &mut self,
+        now_ms: u64,
+        _period_ms: u32,
+        _painter: &dyn iot_core::drivers::surface::PanelPainter,
+        _snapshot: &dyn core::any::Any,
+    ) -> bool {
         if !self.owner.is_camera() {
             let Some(camera) = self.camera.as_mut() else {
                 return false;
@@ -282,7 +301,7 @@ impl CameraTarget for HostLight {
     }
 }
 
-impl DiagnosticsSink for HostLight {
+impl HostLight {
     fn consume(&mut self, diagnostics: &Diagnostics) {
         self.page = Some(diagnostics.page);
         PAGES.lock().unwrap().push(diagnostics.page);

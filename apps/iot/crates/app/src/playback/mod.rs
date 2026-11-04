@@ -3,6 +3,8 @@
 pub mod sounds;
 
 use crate::input::IntentBus;
+use crate::intent::{ActionIntent, Intent, PlaybackAction};
+use crate::state::PlaybackCommand;
 use crate::workers;
 use alloc::boxed::Box;
 use core::cell::RefCell;
@@ -14,8 +16,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::playback::{FEED_MS, Recovery, SampleSource, Sound, Speaker, SpeakerFault};
-use iot_core::intent::{ActionIntent, Intent, PlaybackAction};
-use iot_core::state::PlaybackCommand;
 
 /// Wakes the control side only when it has something to do: a sound ended, or the driver
 /// recorded a drain to repair. The feed loop signals it after releasing the speaker lock.
@@ -345,9 +345,9 @@ mod tests {
     #[test]
     fn a_capture_window_costs_one_slot_beside_the_ring() {
         use crate::input::INTENT_SLOTS;
+        use crate::intent::Intent;
         use crate::workers::CaptureWindow;
         use iot_core::drivers::audio::AudioSample;
-        use iot_core::intent::Intent;
 
         let ring = core::mem::size_of::<Intent>() * INTENT_SLOTS;
         let window = core::mem::size_of::<AudioSample>();

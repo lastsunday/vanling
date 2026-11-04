@@ -3,6 +3,7 @@
 use core::convert::Infallible;
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use crate::state::NetworkCommand;
 use edge_dhcp::io::{self, DEFAULT_SERVER_PORT};
 use edge_dhcp::server::{Server, ServerOptions};
 use edge_nal::UdpBind;
@@ -21,7 +22,6 @@ use iot_core::provision::{
     ADDRESS, Action, BASE_URL, MAC_TEXT_BYTES, MAC_TOKEN, PIECE_BYTES, ParseError, Piece, Request,
     Response, SEED_AT, SEED_SLOT, ScanJson, Status, mac_text, route, scan_json_row,
 };
-use iot_core::state::NetworkCommand;
 
 use crate::workers::NETWORK;
 
@@ -286,7 +286,7 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
         let scanned = NETWORK.scan.peek();
         let aps = scanned.unwrap_or_default();
         let mut keep = !request.close;
-        match route(&request, scanned.as_ref()) {
+        match route(&request, scanned.as_ref(), &crate::assets::SITE) {
             Action::Respond(response) => {
                 let sent =
                     send_answer(socket, &response, &mut piece, mac, &aps, request.close).await;

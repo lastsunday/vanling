@@ -2,12 +2,12 @@
 
 use core::future::pending;
 
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_futures::select::{Either3, select3};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::network::{
     NetworkMode, SavedNetworks, ScanHistory, Station, scan_pause_after,
 };
-use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::store::any_marked;
 use super::{NETWORK, publish_link};

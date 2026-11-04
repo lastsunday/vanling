@@ -64,12 +64,44 @@ pub struct WindowGeometry {
     pub crop_enabled: bool,
 }
 
+/// The camera's readings at the instant its page is stamped.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CameraSnapshot {
+    pub counters: CameraCounters,
+    pub geometry: Option<WindowGeometry>,
+    /// The page has just been entered and no frame has arrived yet, so the numbers would
+    /// all read zero and `NOBUS` would claim there is no sensor.
+    pub starting: bool,
+    /// Why the frame path is down, when it is. The page stays and says so, and its next tap
+    /// is the retry.
+    pub fault: Option<&'static str>,
+}
+
+impl CameraSnapshot {
+    /// The tick where the page has just been entered and the sensor has not delivered yet.
+    pub const STARTING: Self = Self {
+        counters: CameraCounters::ZERO,
+        geometry: None,
+        starting: true,
+        fault: None,
+    };
+}
+
 /// A surface a [`FrameSource`] can be bound to.
 pub trait CameraTarget {
     /// Pulls one frame, if one has arrived. `period_ms` is the cadence the demand asked
     /// for: a surface at or slower than the thumbnail period reports less often, and the
     /// rate is the caller's policy rather than the panel's.
-    fn paint_camera(&mut self, now_ms: u64, period_ms: u32) -> bool;
+    ///
+    /// The painter is the product's; the surface hands it the buffer and the reading and
+    /// names neither the page nor the snapshot type.
+    fn paint_camera(
+        &mut self,
+        now_ms: u64,
+        period_ms: u32,
+        painter: &dyn crate::drivers::surface::PanelPainter,
+        snapshot: &dyn core::any::Any,
+    ) -> bool;
 
     fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>);
 

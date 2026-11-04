@@ -4,6 +4,7 @@
 use alloc::boxed::Box;
 use core::cell::Cell;
 
+use crate::intent::{ActionIntent, Intent, LinkIntent};
 use embassy_futures::join::join;
 use embassy_net::driver::{Driver, HardwareAddress};
 use embassy_net::{Config, StackResources};
@@ -14,7 +15,6 @@ use iot_bsp_esp::components::credentials::CredentialStore;
 use iot_bsp_esp::components::wifi::EspStation;
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{LinkStatus, SetupHost, Station};
-use iot_core::intent::{ActionIntent, Intent, LinkIntent};
 
 use crate::NetworkWorker;
 use crate::input::INTENT_BUS;
@@ -93,7 +93,7 @@ where
     let mac = mac_of(&device);
     let seed = seed_from(mac);
     LINK.note_mac(mac);
-    let name = iot_core::provision::setup_ap_ssid(mac);
+    let name = iot_core::provision::setup_ap_ssid(crate::assets::AP_PREFIX, mac);
     let setup = setup::SetupMode {
         name: &name,
         mac,

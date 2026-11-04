@@ -3,6 +3,7 @@
 
 use alloc::boxed::Box;
 
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_futures::select::{Either, select};
 use embassy_net::Stack;
 use embassy_net::driver::Driver;
@@ -12,7 +13,6 @@ use iot_core::drivers::network::{
     ADDRESS_LOST_WINDOWS, AddressWatch, Credentials, Ipv4, LinkHint, LinkPhase, NetworkMode,
     ScanHistory, SetupHost, Station, same_network, setup_ap_starts_secured,
 };
-use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::setup::{Choice, SetupMode, await_network, pick, resolve_join};
 use super::store::{any, first_saved, forget, remark_and_publish, save};

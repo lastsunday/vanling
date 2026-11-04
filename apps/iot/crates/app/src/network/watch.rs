@@ -4,7 +4,7 @@
 
 use core::sync::atomic::Ordering;
 
-use iot_core::state::DisplayPage;
+use crate::state::DisplayPage;
 
 use crate::workers::{NetworkInbox, PageWatch};
 
@@ -68,9 +68,9 @@ pub(crate) fn discard_setup(commands: &NetworkInbox) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::NetworkCommand;
     use core::task::{Context, Waker};
     use iot_core::drivers::network::{JoinRequest, SetupHost, Ssid};
-    use iot_core::state::NetworkCommand;
 
     fn cx() -> Context<'static> {
         Context::from_waker(Waker::noop())

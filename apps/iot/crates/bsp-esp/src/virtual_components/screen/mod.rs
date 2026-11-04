@@ -2,13 +2,10 @@
 //! fill those bytes.
 
 use alloc::boxed::Box;
-use core::future::Future;
-use core::pin::Pin;
 
 use esp_hal::time::Duration;
-use iot_core::diagnostics::Diagnostics;
 use iot_core::drivers::camera::FrameOwner;
-use iot_core::drivers::surface::{PageSurface, RgbLight};
+use iot_core::drivers::surface::RgbLight;
 use iot_core::paint::Rgb;
 
 use crate::components::backlight::Backlight;
@@ -28,8 +25,6 @@ pub use self::panel::{PanelBus, panel_service};
 
 const REPAINT_STEP: u8 = 12;
 
-const DEBUG_DIAGNOSTICS: bool = true;
-
 /// A frame the last paint left in the buffer, waiting for the bus.
 pub(super) struct Pending {
     /// Whether the camera drew it: its failures are logged apart and do not force a repaint.
@@ -44,9 +39,11 @@ pub struct Screen {
     frame: &'static mut [u8],
     owner: FrameOwner,
     camera: CameraFeed,
-    diagnostics: Diagnostics,
     metrics: Metrics,
     pending: Option<Pending>,
+    /// A fill landed after the last page was drawn, so the next `repaint` has work even
+    /// when the product's own gate says nothing moved.
+    page_dirty: bool,
 }
 
 impl Screen {
@@ -71,9 +68,9 @@ impl Screen {
                 frame,
                 owner: FrameOwner::NeedsPaint,
                 camera: CameraFeed::new(),
-                diagnostics: Diagnostics::default(),
                 metrics: Metrics::new(),
                 pending: None,
+                page_dirty: true,
             },
             bus,
         )
@@ -91,26 +88,8 @@ impl RgbLight for Screen {
         if !self.owner.accepts_color(color) {
             return;
         }
-        self.paint(color);
-    }
-}
-
-impl PageSurface for Screen {
-    fn repaint_step(&self) -> u8 {
-        REPAINT_STEP
-    }
-
-    fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
-        self.pending.as_ref()?;
-        Some(Box::pin(self.flush_pending()))
-    }
-
-    fn set_backlight(&mut self, level_pct: u8) {
-        self.panel.set_backlight(level_pct);
-    }
-
-    fn set_backlight_ceiling(&mut self, level_pct: u8) {
-        self.panel.set_ceiling(level_pct);
+        self.fill(color);
+        self.page_dirty = true;
     }
 }
 

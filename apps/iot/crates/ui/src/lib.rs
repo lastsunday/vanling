@@ -1,4 +1,6 @@
-//! Portable page rendering for a panel-sized surface.
+//! Pixels and ink for a panel-sized surface: a canvas, a font, and glyph arithmetic.
+//!
+//! Nothing here knows a product, a page, or a reading.
 
 #![no_std]
 
@@ -7,10 +9,6 @@ extern crate alloc;
 
 pub mod canvas;
 mod font;
-mod layout;
-pub mod pages;
-pub mod surface;
 pub mod text;
 
 pub use canvas::Canvas;
-pub use surface::{CameraReadout, Surface};

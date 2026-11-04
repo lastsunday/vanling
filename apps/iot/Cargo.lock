@@ -1386,6 +1386,7 @@ dependencies = [
  "iot-bsp-esp",
  "iot-chip-esp",
  "iot-core",
+ "iot-ui",
  "log",
 ]
 
@@ -1405,7 +1406,6 @@ dependencies = [
  "esp-storage",
  "iot-chip-esp",
  "iot-core",
- "iot-ui",
  "log",
  "mipidsi",
  "smart-leds",

@@ -3,10 +3,10 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+use crate::render::{LampRenderer, Registry, Renderer, ScreenRenderer};
+use crate::state::{MAX_LIGHTS, SurfaceRole};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::surface::WiredSurface;
-use iot_core::render::{LampRenderer, Registry, Renderer, ScreenRenderer};
-use iot_core::state::{MAX_LIGHTS, SurfaceRole};
 
 pub type Renderers = Registry;
 
@@ -29,7 +29,8 @@ pub fn wired(
         let instance = instance as u8;
         let renderer: Box<dyn Renderer> = match surface {
             WiredSurface::Pages(surface) => {
-                let panel = ScreenRenderer::new(instance, surface);
+                let panel = ScreenRenderer::new(instance, surface)
+                    .with_painter(Box::new(crate::ui::AppPainter), true);
                 match camera.take() {
                     Some(taken) => Box::new(panel.with_camera(taken)),
                     None => Box::new(panel),

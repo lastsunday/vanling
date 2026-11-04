@@ -6,10 +6,15 @@ use super::BASE_URL;
 use super::http::{Method, Request, Response, Status};
 use super::scan::scan_json_len;
 
-const PAGE: &str = include_str!("assets/portal.html");
-const DONE: &str = include_str!("assets/done.html");
-const FAVICON: &str = include_str!("assets/favicon.svg");
 const KEY_BYTES: usize = 8;
+
+/// The product's bytes this protocol serves. The router owns the routes, the caller owns
+/// what a phone sees on them.
+pub struct Site {
+    pub page: &'static str,
+    pub done: &'static str,
+    pub favicon: &'static str,
+}
 
 /// Where a page writes the board's address, and how long that address is spelled.
 pub const MAC_TOKEN: &str = "00:00:00:00:00:00";
@@ -24,8 +29,8 @@ pub const SEED_SLOT: usize = 2;
 
 /// The length of the page once `aps` is written into its slot, for the head that has to
 /// name it.
-pub fn page_len(aps: &ApList) -> usize {
-    PAGE.len() + scan_json_len(aps) - SEED_SLOT
+pub fn page_len(site: &Site, aps: &ApList) -> usize {
+    site.page.len() + scan_json_len(aps) - SEED_SLOT
 }
 
 /// The board's address as a label reads it: `AA:BB:CC:DD:EE:FF`, the same address the
@@ -60,30 +65,32 @@ pub enum Action {
 
 /// Route one request. `scan` is the newest completed round, or `None` before the first one:
 /// an empty list is a room with nothing in it, not a radio that has not looked yet.
-pub fn route(request: &Request<'_>, scan: Option<&ApList>) -> Action {
+pub fn route(request: &Request<'_>, scan: Option<&ApList>, site: &Site) -> Action {
     let empty = ApList::empty();
     let aps = scan.unwrap_or(&empty);
     match (request.method, request.path) {
         (Method::Get, "/") | (Method::Get, "/index.html") => Action::Respond(Response {
-            content_length: page_len(aps),
-            ..Response::html(PAGE)
+            content_length: page_len(site, aps),
+            ..Response::html(site.page)
         }),
         (Method::Get, "/scan") => match scan {
             Some(aps) => Action::Scan(Response::json_list(scan_json_len(aps))),
             None => Action::Respond(Response::unavailable()),
         },
         (Method::Get | Method::Post, "/rescan") => Action::Rescan(Response::accepted()),
-        (Method::Post, "/submit") => submit(request),
+        (Method::Post, "/submit") => submit(request, site),
         (Method::Get, "/done") | (Method::Get, "/done.html") => {
-            Action::Respond(Response::html(DONE))
+            Action::Respond(Response::html(site.done))
         }
-        (Method::Get, "/favicon.svg") => Action::Respond(Response::asset("image/svg+xml", FAVICON)),
+        (Method::Get, "/favicon.svg") => {
+            Action::Respond(Response::asset("image/svg+xml", site.favicon))
+        }
         (Method::Get, "/favicon.ico") => Action::Respond(Response::no_content()),
         _ => Action::Respond(Response::redirect(BASE_URL)),
     }
 }
 
-fn submit(request: &Request<'_>) -> Action {
+fn submit(request: &Request<'_>, site: &Site) -> Action {
     let mut ssid = [0u8; SSID_BYTES];
     let mut password = [0u8; PASSWORD_BYTES - 1];
     let (ssid, password) = match (
@@ -100,7 +107,7 @@ fn submit(request: &Request<'_>) -> Action {
     match Credentials::from_text(ssid, password) {
         Ok(credentials) => Action::Join {
             credentials,
-            response: Response::html(DONE),
+            response: Response::html(site.done),
         },
         Err(_) => not_one_the_radio_takes(),
     }
@@ -191,6 +198,15 @@ mod tests {
     use crate::provision::Cache;
     use crate::provision::scan::{json, list};
 
+    const PAGE: &str = "<!doctype html>00:00:00:00:00:00/*scan*/[]";
+    const DONE: &str = "<!doctype html>done";
+    const FAVICON: &str = "<svg/>";
+    const SITE: Site = Site {
+        page: PAGE,
+        done: DONE,
+        favicon: FAVICON,
+    };
+
     fn get(path: &str) -> Response {
         match action(path, Some(&ApList::empty())) {
             Action::Respond(response) => response,
@@ -202,7 +218,7 @@ mod tests {
 
     fn action(path: &str, scan: Option<&ApList>) -> Action {
         let request = Request::parse(path.as_bytes()).expect("a request line and a blank line");
-        route(&request, scan)
+        route(&request, scan, &SITE)
     }
 
     fn post(body: &str) -> Action {
@@ -211,7 +227,7 @@ mod tests {
             body.len()
         );
         let request = Request::parse(raw.as_bytes()).expect("a form post");
-        route(&request, Some(&ApList::empty()))
+        route(&request, Some(&ApList::empty()), &SITE)
     }
 
     #[test]
@@ -226,14 +242,14 @@ mod tests {
     fn the_head_of_the_page_names_the_page_with_the_list_in_it() {
         let aps = list(&[("living", -55, true), ("caf\u{e9}", -70, false)]);
         let request = Request::parse(b"GET / HTTP/1.1\r\n\r\n").expect("a request");
-        let Action::Respond(response) = route(&request, Some(&aps)) else {
+        let Action::Respond(response) = route(&request, Some(&aps), &SITE) else {
             panic!("the root is a page");
         };
         let filled = PAGE.len() - SEED_SLOT + json(&aps).len();
         assert_eq!(response.content_length, filled);
         assert!(filled > PAGE.len(), "the list takes up the slot and more");
         assert_eq!(
-            page_len(&ApList::empty()),
+            page_len(&SITE, &ApList::empty()),
             PAGE.len(),
             "an empty list is the page as it stands"
         );
@@ -320,7 +336,7 @@ mod tests {
     fn the_scan_list_is_answered_with_its_head_and_not_its_bytes() {
         let aps = list(&[("living", -55, true)]);
         let request = Request::parse(b"GET /scan HTTP/1.1\r\n\r\n").expect("a request");
-        match route(&request, Some(&aps)) {
+        match route(&request, Some(&aps), &SITE) {
             Action::Scan(response) => {
                 assert_eq!(response.status, Status::Ok);
                 assert_eq!(response.content_type, "application/json");
@@ -381,18 +397,6 @@ mod tests {
     }
 
     #[test]
-    fn the_two_documents_are_documents() {
-        assert!(PAGE.contains("<!doctype html>"));
-        assert!(PAGE.contains("action=\"/submit\""));
-        assert!(DONE.contains("<!doctype html>"));
-        assert!(
-            get("GET / HTTP/1.1\r\n\r\n")
-                .body()
-                .starts_with(b"<!doctype html>")
-        );
-    }
-
-    #[test]
     fn the_icon_is_served_once_and_the_default_name_is_answered_with_nothing() {
         let icon = get("GET /favicon.svg HTTP/1.1\r\n\r\n");
         assert_eq!(icon.status, Status::Ok);
@@ -408,49 +412,6 @@ mod tests {
     }
 
     #[test]
-    fn both_pages_carry_the_icon_and_leave_one_place_for_the_address() {
-        // The address is substituted as the body is written, which is only length-preserving
-        // while the token is exactly as long as the text that replaces it — and a page with two
-        // tokens would be two substitutions the caller does not make. The icon is inline so that
-        // a reload does not open a connection for it.
-        assert_eq!(MAC_TOKEN.len(), MAC_TEXT_BYTES);
-        for page in [PAGE, DONE] {
-            assert!(
-                page.contains("rel=\"icon\" href=\"data:image/svg+xml,"),
-                "no icon carried"
-            );
-            assert_eq!(page.matches(MAC_TOKEN).count(), 1, "one address per page");
-        }
-    }
-
-    #[test]
-    fn the_page_waits_for_the_round_instead_of_the_clock() {
-        assert!(
-            PAGE.contains("X-Scan-Generation"),
-            "the page reads the round the device named"
-        );
-        assert!(
-            PAGE.contains("fetch('/rescan'"),
-            "the page asks for a round before polling"
-        );
-        assert!(
-            PAGE.contains("503"),
-            "an unfinished survey is not read as an empty room"
-        );
-        assert!(
-            !PAGE.contains("wait(1800)"),
-            "the fixed wait was a guess at the radio's timing"
-        );
-    }
-
-    #[test]
-    fn the_page_leaves_one_slot_for_the_list_and_it_stands_on_its_own() {
-        assert_eq!(PAGE.matches(SEED_AT).count(), 1, "one slot");
-        let at = PAGE.find(SEED_AT).expect("the slot") + SEED_AT.len();
-        assert_eq!(&PAGE[at..at + SEED_SLOT], "[]");
-    }
-
-    #[test]
     fn an_address_is_written_the_way_a_label_holds_it() {
         let mut text = [0u8; MAC_TEXT_BYTES];
         let written = mac_text([0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef], &mut text);
@@ -460,18 +421,5 @@ mod tests {
             MAC_TOKEN.len(),
             "a longer substitution would make the head's length a lie"
         );
-    }
-
-    #[test]
-    fn the_pages_speak_more_than_one_language() {
-        for page in [PAGE, DONE] {
-            assert!(page.contains("navigator.languages"), "no language detected");
-            assert!(
-                page.contains("localStorage.getItem('lang')"),
-                "no choice kept"
-            );
-            assert!(page.contains("zh-Hans"), "no Chinese");
-        }
-        assert!(PAGE.contains("data-lang=\"zh\""), "the switch is missing");
     }
 }

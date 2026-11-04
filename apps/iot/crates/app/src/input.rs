@@ -2,13 +2,13 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
+use crate::intent::{ActionIntent, Intent, PageIntent, recognize};
+use crate::state::DisplayPage;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
-use iot_core::intent::{ActionIntent, Intent, PageIntent, recognize};
-use iot_core::state::DisplayPage;
 
 use iot_core::config::{Configuration, Configurator, Unreachable};
 

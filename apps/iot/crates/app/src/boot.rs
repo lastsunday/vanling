@@ -4,8 +4,8 @@
 //! Both come from `option_env!` and are resolved by `const fn`, so the run-time path never
 //! turns them into a string — `@/development/iot/flashing.md` has the measurement behind that.
 
+use crate::state::DisplayPage;
 use iot_core::demand::{Override, parse_override};
-use iot_core::state::DisplayPage;
 
 pub(crate) fn boot_page() -> DisplayPage {
     if let Some(name) = UNKNOWN_BOOT_PAGE {
@@ -67,8 +67,8 @@ const fn unknown_page(name: Option<&str>) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{boot_page_from_env, unknown_page};
-    use iot_core::page::SPLASH_MS;
-    use iot_core::state::DisplayPage;
+    use crate::page::SPLASH_MS;
+    use crate::state::DisplayPage;
 
     #[test]
     fn every_bootable_page_answers_to_its_name() {

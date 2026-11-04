@@ -72,7 +72,6 @@ embedded-hal = { workspace = true, optional = true }
 embassy-embedded-hal = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 iot-core = { workspace = true }
-iot-ui = { workspace = true }
 # The chip layer: the radio domain's power-up and the heap it allocates from are this part's
 # business, not the app's.
 iot-chip-esp = { workspace = true, optional = true }

@@ -9,6 +9,11 @@ pub struct Rgb(pub u8, pub u8, pub u8);
 /// Max colour waypoints a `group` array can carry; unused slots pad with `0`.
 pub const GROUP_CAPACITY: usize = 7;
 
+/// Light-mode codes carried by a light snapshot: `0` off, `1` breathing, `2` solid.
+pub const MODE_OFF: u8 = 0;
+pub const MODE_BREATH: u8 = 1;
+pub const MODE_SOLID: u8 = 2;
+
 const FIXED_POINT: u64 = 1 << 16;
 
 /// Smooth sin² brightness envelope scaled to `[min_brightness, max_brightness]`.

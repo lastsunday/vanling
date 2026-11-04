@@ -887,7 +887,7 @@ impl Default for TouchContinuity {
 }
 
 /// A polled input source scheduled at its own cadence, paired with the aggregator that
-/// turns its raw samples into the events [`crate::intent::recognize`] packages.
+/// turns its raw samples into the events the intent layer's `recognize` packages.
 pub struct PollEntry {
     source_id: u8,
     key: DemandKey,

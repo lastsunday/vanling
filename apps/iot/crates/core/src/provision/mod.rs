@@ -11,19 +11,24 @@ use crate::drivers::network::{SSID_BYTES, Ssid};
 
 pub use dns::answer;
 pub use http::{Body, Cache, Method, ParseError, Request, Response, Status};
-pub use route::{Action, MAC_TEXT_BYTES, MAC_TOKEN, SEED_AT, SEED_SLOT, mac_text, page_len, route};
+pub use route::{
+    Action, MAC_TEXT_BYTES, MAC_TOKEN, SEED_AT, SEED_SLOT, Site, mac_text, page_len, route,
+};
 pub use scan::{PIECE_BYTES, Piece, ScanJson, scan_json_len, scan_json_row};
 
 pub use crate::drivers::network::SETUP_PASS_LEN;
 
-/// The name the setup access point offers, from the board's own address: `vanling-` and the
+/// The name the setup access point offers, from the board's own address: `prefix` and the
 /// last two octets in lowercase hex.
-pub fn setup_ap_ssid(mac: [u8; 6]) -> Ssid {
-    const PREFIX: &[u8] = b"vanling-";
+pub fn setup_ap_ssid(prefix: &[u8], mac: [u8; 6]) -> Ssid {
     const HEX: &[u8; 16] = b"0123456789abcdef";
+    assert!(
+        prefix.len() <= SSID_BYTES - 4,
+        "a prefix that long leaves no room for the board's own suffix"
+    );
     let mut name = [0u8; SSID_BYTES];
-    name[..PREFIX.len()].copy_from_slice(PREFIX);
-    let mut at = PREFIX.len();
+    name[..prefix.len()].copy_from_slice(prefix);
+    let mut at = prefix.len();
     for octet in [mac[4], mac[5]] {
         name[at] = HEX[usize::from(octet >> 4)];
         name[at + 1] = HEX[usize::from(octet & 0x0f)];
@@ -45,24 +50,24 @@ mod tests {
     #[test]
     fn the_access_point_is_named_for_the_board() {
         assert_eq!(
-            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x1f, 0xc2]).as_display_text(),
-            Some("vanling-1fc2")
+            setup_ap_ssid(b"probe-", [0xaa, 0x00, 0x00, 0x00, 0x1f, 0xc2]).as_display_text(),
+            Some("probe-1fc2")
         );
     }
 
     #[test]
     fn two_boards_of_one_build_are_two_names() {
         assert_ne!(
-            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x00, 0x01]).as_bytes(),
-            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x00, 0x02]).as_bytes()
+            setup_ap_ssid(b"probe-", [0xaa, 0x00, 0x00, 0x00, 0x00, 0x01]).as_bytes(),
+            setup_ap_ssid(b"probe-", [0xaa, 0x00, 0x00, 0x00, 0x00, 0x02]).as_bytes()
         );
     }
 
     #[test]
     fn leading_zeroes_are_kept() {
         assert_eq!(
-            setup_ap_ssid([0xaa, 0x00, 0x00, 0x00, 0x00, 0x07]).as_display_text(),
-            Some("vanling-0007")
+            setup_ap_ssid(b"probe-", [0xaa, 0x00, 0x00, 0x00, 0x00, 0x07]).as_display_text(),
+            Some("probe-0007")
         );
     }
 }

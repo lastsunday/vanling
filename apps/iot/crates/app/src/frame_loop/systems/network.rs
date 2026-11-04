@@ -1,8 +1,8 @@
 //! The network worker's side of a frame: the page it watches, the scan list coming back, and
 //! the changes worth a log line.
 
+use crate::state::{DeviceManager, DeviceState, DisplayPage, LampLine, LightState};
 use iot_core::drivers::network::SetupHost;
-use iot_core::state::{DeviceManager, DeviceState, DisplayPage, LampLine, LightState};
 
 use crate::workers::Network;
 

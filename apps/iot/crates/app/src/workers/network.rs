@@ -1,6 +1,6 @@
 //! The network worker's side: what the panel asks for, the page it is showing, and the scan
 //! list coming back. The command vocabulary itself belongs to the state machine
-//! (`iot_core::state::NetworkCommand`); this file only carries it.
+//! (`crate::state::NetworkCommand`); this file only carries it.
 //!
 //! This is the one file under `workers` that names the radio's types, because the coordinator
 //! and the radio cannot reach each other and this is the ground they share.
@@ -8,10 +8,10 @@
 use core::future::Future;
 use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use iot_core::drivers::network::ApList;
-use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::inbox::{Inbox, Retained};
 

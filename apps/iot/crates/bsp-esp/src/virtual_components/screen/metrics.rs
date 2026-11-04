@@ -1,7 +1,7 @@
 //! Per-screen frame accounting: how often the panel ships, and what each ship costs.
 
 use esp_hal::time::{Duration, Instant};
-use iot_core::render::windowed_rate;
+use iot_core::stats::windowed_rate;
 
 use crate::components::st7789::Wire;
 

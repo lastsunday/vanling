@@ -1,13 +1,13 @@
 //! The camera feed bound to this screen's frame buffer.
 
 use alloc::boxed::Box;
+use core::any::Any;
 
 use esp_hal::time::Instant;
 use iot_core::demand::CAMERA_THUMBNAIL_PERIOD_MS;
-use iot_core::drivers::camera::{CameraTarget, FrameAdvance, FrameSource};
-use iot_ui::{CameraReadout, Canvas, Surface};
+use iot_core::drivers::camera::{CameraSnapshot, CameraTarget, FrameAdvance, FrameSource};
+use iot_core::drivers::surface::{PanelPainter, PanelTarget};
 
-use crate::components::es7210::SPL_OFFSET_DECIBELS;
 use crate::stack::note_stack_high_water;
 
 use super::*;
@@ -50,7 +50,7 @@ impl CameraFeed {
         frame: &mut [u8],
         now_ms: u64,
         period_ms: u32,
-    ) -> Option<CameraReadout> {
+    ) -> Option<CameraSnapshot> {
         let source = self.source.as_mut()?;
         let advance = source.advance(frame, now_ms);
         let fault = source.fault();
@@ -66,7 +66,7 @@ impl CameraFeed {
             }
             self.thumbnail_last_ms = Some(now_ms);
         }
-        Some(CameraReadout {
+        Some(CameraSnapshot {
             counters: source.counters(),
             geometry: source.geometry(),
             starting: false,
@@ -76,8 +76,14 @@ impl CameraFeed {
 }
 
 impl CameraTarget for Screen {
-    fn paint_camera(&mut self, now_ms: u64, period_ms: u32) -> bool {
-        Screen::paint_camera(self, now_ms, period_ms)
+    fn paint_camera(
+        &mut self,
+        now_ms: u64,
+        period_ms: u32,
+        painter: &dyn PanelPainter,
+        snapshot: &dyn Any,
+    ) -> bool {
+        Screen::paint_camera(self, now_ms, period_ms, painter, snapshot)
     }
 
     fn attach_camera(&mut self, camera: Box<dyn FrameSource + Send>) {
@@ -93,10 +99,17 @@ impl CameraTarget for Screen {
 }
 
 impl Screen {
-    fn paint_camera(&mut self, now_ms: u64, period_ms: u32) -> bool {
+    fn paint_camera(
+        &mut self,
+        now_ms: u64,
+        period_ms: u32,
+        painter: &dyn PanelPainter,
+        snapshot: &dyn Any,
+    ) -> bool {
         let bytes = self.panel.frame_bytes();
         let width = usize::from(self.panel.width());
         let height = usize::from(self.panel.height());
+        let context = self.context();
         let frame = &mut self.frame[..bytes];
 
         if !self.owner.is_camera() {
@@ -110,18 +123,17 @@ impl Screen {
         };
 
         let render_start = Instant::now();
-        {
-            let canvas = Canvas::new(frame, width, height, None);
-            let mut surface = Surface::new(
-                canvas,
-                &self.diagnostics,
-                self.instance,
-                self.metrics.fps(),
-                DEBUG_DIAGNOSTICS,
-                SPL_OFFSET_DECIBELS,
-            );
-            surface.stamp_camera(readout);
-        }
+        painter.paint_camera(
+            PanelTarget {
+                frame,
+                width,
+                height,
+                ground: None,
+            },
+            readout,
+            context,
+            snapshot,
+        );
         let render = render_start.elapsed();
         self.pending = Some(Pending {
             camera: true,
@@ -129,7 +141,7 @@ impl Screen {
         });
         // Sampled here because the camera page reaches the panel through this path and nowhere
         // else: without it the reading is `0 B` on this page for the whole run, which says
-        // nothing about the stack. `consume` covers the light pages and the audio page samples
+        // nothing about the stack. `repaint` covers the light pages and the audio page samples
         // its own working set through the surface's probe.
         note_stack_high_water();
         true

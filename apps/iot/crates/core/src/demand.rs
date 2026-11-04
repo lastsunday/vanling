@@ -461,7 +461,6 @@ pub fn plan_poll(
 /// The one executor number worth bounding, and why it is not a percentage.
 pub const MAX_SINGLE_HOLD_MS: u32 = 30;
 
-#[cfg(test)]
 pub const ALL_KEYS: &[DemandKey] = &[
     DemandKey::MOTION,
     DemandKey::AUDIO,
@@ -904,7 +903,11 @@ mod tests {
 
     #[test]
     fn an_override_on_the_camera_page_can_reach_off() {
-        let mut demand = crate::state::DisplayPage::Camera.demand(ALL_KEYS);
+        let mut demand = EffectiveDemand::none();
+        demand.set(
+            DemandKey::CAMERA,
+            Claim::new(Mode::Continuous, 0, Priority::Primary),
+        );
         assert_eq!(demand.claim(DemandKey::CAMERA).mode, Mode::Continuous);
 
         parse_override("camera=off").apply(&mut demand);

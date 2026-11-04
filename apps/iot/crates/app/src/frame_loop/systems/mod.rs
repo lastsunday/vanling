@@ -8,8 +8,8 @@ mod network;
 mod notice;
 mod playback;
 
+use crate::state::{DeviceManager, DeviceState};
 use iot_core::demand::ClockSink;
-use iot_core::state::{DeviceManager, DeviceState};
 
 use crate::input::IntentBus;
 use crate::workers::Workers;

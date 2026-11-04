@@ -1,9 +1,9 @@
 //! The playback worker's side: commands go out, and a sound's completion comes back as an
 //! intent, so there is no `from` side here.
 
+use crate::state::PlaybackCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use iot_core::state::PlaybackCommand;
 
 pub type PlaybackQueue = Channel<CriticalSectionRawMutex, PlaybackCommand, 4>;
 

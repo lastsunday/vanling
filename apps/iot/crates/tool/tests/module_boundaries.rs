@@ -325,10 +325,16 @@ fn the_core_never_knows_the_app() {
 }
 
 #[test]
-fn the_surface_never_names_a_page() {
+fn the_pixel_layer_names_no_product() {
     assert_no_reference(
-        shipping_source(ui_src().join("surface.rs")),
-        &["crate::pages"],
+        sources(&ui_src()),
+        &[
+            "iot_app",
+            "DisplayPage",
+            "Diagnostics",
+            "NetworkPage",
+            "vanling",
+        ],
     );
 }
 
@@ -365,7 +371,7 @@ fn the_worker_handles_never_reach_a_worker() {
 #[test]
 fn the_page_table_is_a_leaf() {
     assert_no_reference(
-        shipping_sources(&core_src().join("page")),
+        shipping_sources(&app_src().join("page")),
         &["crate::state", "crate::render", "crate::diagnostics"],
     );
 }
@@ -373,7 +379,7 @@ fn the_page_table_is_a_leaf() {
 #[test]
 fn intents_name_what_is_asked_and_not_what_answers_it() {
     assert_no_reference(
-        shipping_source(core_src().join("intent.rs")),
+        shipping_source(app_src().join("intent.rs")),
         &["crate::page", "crate::render", "crate::diagnostics"],
     );
 }
@@ -381,7 +387,7 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
 #[test]
 fn state_neither_draws_nor_snapshots_itself() {
     assert_no_reference(
-        shipping_sources(&core_src().join("state")),
+        shipping_sources(&app_src().join("state")),
         &["crate::render", "crate::diagnostics"],
     );
 }
@@ -389,7 +395,7 @@ fn state_neither_draws_nor_snapshots_itself() {
 #[test]
 fn translation_dispatches_without_naming_page_geometry() {
     assert_no_reference(
-        shipping_source(core_src().join("state/translate.rs")),
+        shipping_source(app_src().join("state/translate.rs")),
         &["keyboard::", "Band::", "controls::", "Confirm"],
     );
 }
@@ -397,12 +403,7 @@ fn translation_dispatches_without_naming_page_geometry() {
 #[test]
 fn drivers_never_reach_up() {
     let src = core_src().join("drivers");
-    let upward = &[
-        "crate::state",
-        "crate::page",
-        "crate::render",
-        "crate::intent",
-    ];
+    let upward = &["iot_app", "DisplayPage", "Diagnostics"];
     let mut plain = Vec::new();
     let mut surface = Vec::new();
     for (path, text) in shipping_sources(&src) {
@@ -413,15 +414,13 @@ fn drivers_never_reach_up() {
         }
     }
     assert_no_reference(plain, upward);
-    // `surface.rs` is the one driver file allowed to name `crate::diagnostics`: the
-    // `PageSurface` sink's parameter is the snapshot itself. The upward edges still hold.
     assert_no_reference(surface, upward);
 }
 
 #[test]
 fn diagnostics_snapshots_without_drawing() {
     assert_no_reference(
-        shipping_source(core_src().join("diagnostics.rs")),
+        shipping_source(app_src().join("diagnostics.rs")),
         &["crate::render"],
     );
 }
@@ -501,12 +500,40 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("lib", "playback"),
         ("lib", "surface"),
         ("lib", "workers"),
+        ("network", "assets"),
         ("network", "bench"),
         ("network", "boot"),
         ("network", "input"),
         ("network", "workers"),
+        ("bench", "intent"),
+        ("bench", "state"),
+        ("boot", "state"),
+        ("diagnostics", "page"),
+        ("diagnostics", "state"),
+        ("frame_loop", "state"),
+        ("input", "intent"),
+        ("input", "state"),
+        ("intent", "state"),
+        ("lib", "state"),
+        ("network", "intent"),
+        ("network", "state"),
         ("playback", "input"),
+        ("playback", "intent"),
+        ("playback", "state"),
         ("playback", "workers"),
+        ("render", "diagnostics"),
+        ("render", "page"),
+        ("render", "state"),
+        ("state", "intent"),
+        ("state", "page"),
+        ("surface", "render"),
+        ("surface", "state"),
+        ("surface", "ui"),
+        ("ui", "assets"),
+        ("ui", "diagnostics"),
+        ("ui", "state"),
+        ("ui", "surface"),
+        ("workers", "state"),
     ]
     .into_iter()
     .map(|(from, to)| (from.to_string(), to.to_string()))

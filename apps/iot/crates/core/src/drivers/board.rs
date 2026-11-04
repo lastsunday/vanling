@@ -119,9 +119,8 @@ mod tests {
     use super::*;
     use crate::drivers::input::{BUTTON_SCAN_MS, Button};
     use crate::drivers::playback::{Recovery, SpeakerFault, Tone};
-    use crate::drivers::surface::{PageSurface, RgbLight};
+    use crate::drivers::surface::{PageSurface, RgbLight, SurfaceRole};
     use crate::paint::Rgb;
-    use crate::state::SurfaceRole;
     use alloc::{boxed::Box, vec};
 
     struct FakeLight;
@@ -136,10 +135,14 @@ mod tests {
         fn set_rgb(&mut self, _color: Rgb) {}
     }
 
-    impl crate::diagnostics::DiagnosticsSink for FakePage {}
-
     impl crate::drivers::camera::CameraTarget for FakePage {
-        fn paint_camera(&mut self, _now_ms: u64, _period_ms: u32) -> bool {
+        fn paint_camera(
+            &mut self,
+            _now_ms: u64,
+            _period_ms: u32,
+            _painter: &dyn crate::drivers::surface::PanelPainter,
+            _snapshot: &dyn core::any::Any,
+        ) -> bool {
             false
         }
 

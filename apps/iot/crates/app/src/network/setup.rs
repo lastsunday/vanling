@@ -2,6 +2,8 @@
 
 use alloc::boxed::Box;
 
+use crate::intent::{ActionIntent, Intent, NetworkPageIntent};
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
 use embassy_net::{Stack, StackResources};
@@ -10,8 +12,6 @@ use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
     Credentials, JoinRequest, NetworkMode, ScanHistory, SetupHost, Ssid, Station,
 };
-use iot_core::intent::{ActionIntent, Intent, NetworkPageIntent};
-use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::link::{Origin, Outcome, hold};
 use super::scan::{Rest, scan};
