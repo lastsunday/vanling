@@ -1,9 +1,6 @@
 //! Playback task: the one place a sound actually happens.
 
-mod dispatch;
 pub mod sounds;
-
-pub(crate) use dispatch::PlaybackDispatch;
 
 use crate::input::IntentBus;
 use crate::workers;

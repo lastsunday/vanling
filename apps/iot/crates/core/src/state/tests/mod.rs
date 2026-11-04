@@ -12,6 +12,7 @@ use crate::state::test_support::*;
 mod boot;
 mod business;
 mod demand;
+mod intent;
 mod motion;
 mod reachable;
 mod separation;

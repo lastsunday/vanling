@@ -5,7 +5,7 @@ pub(crate) use crate::drivers::input::{
 };
 pub(crate) use crate::drivers::motion::MotionScale;
 pub(crate) use crate::drivers::network::{Ipv4, SavedNetworks};
-pub(crate) use crate::intent::{ActionIntent, InputIntent, LightIntent, PageIntent};
+pub(crate) use crate::intent::{ActionIntent, InputIntent, Intent, LightIntent, PageIntent};
 pub(crate) use crate::page::CYCLE;
 
 pub(crate) const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
@@ -83,9 +83,7 @@ pub(crate) fn press(id: u8, x: u16, y: u16) -> InputIntent {
 }
 
 pub(crate) fn apply_page(manager: &mut DeviceManager, operation: InputIntent) {
-    manager.apply_input(operation);
-    let business = translate(&operation, &manager.state());
-    manager.apply_action(business);
+    manager.apply_intent(Intent::Input(operation));
 }
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {

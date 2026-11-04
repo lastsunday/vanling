@@ -1,6 +1,5 @@
-//! The network worker's side of the coordinator, kept out of the loop body: the commands that
-//! had nowhere to go, the page level it watches, the scan list coming back, and the edges
-//! worth a log line.
+//! The network worker's side of a frame: the commands that had nowhere to go, the page level
+//! it watches, the scan list coming back, and the edges worth a log line.
 
 use embassy_sync::channel::TrySendError;
 use iot_core::drivers::network::SetupHost;
@@ -10,8 +9,48 @@ use iot_core::state::{
 
 use crate::workers::{Network, NetworkQueue};
 
+use super::{Frame, System};
+
+/// The coordinator's half of the network worker: what it feeds, what it watches, what it takes.
+pub(crate) struct NetworkSystem {
+    outbox: NetworkOutbox,
+    mirror: NetworkMirror,
+}
+
+impl NetworkSystem {
+    pub(crate) fn new(state: &DeviceState) -> Self {
+        Self {
+            outbox: NetworkOutbox::new(),
+            mirror: NetworkMirror::new(state),
+        }
+    }
+
+    /// Whether a command is still waiting for room. While it is, a frame takes no intent.
+    pub(crate) fn pending(&self) -> bool {
+        self.outbox.pending()
+    }
+
+    /// Offers the held command again, oldest request first.
+    pub(crate) fn retry(&mut self, network: &Network) {
+        self.outbox.retry(network.commands);
+    }
+
+    /// Hands over what an intent produced, holding it when the queue has no room.
+    pub(crate) fn send(&mut self, network: &Network, command: Option<NetworkCommand>) {
+        self.outbox.send(network.commands, command);
+    }
+}
+
+impl System for NetworkSystem {
+    fn tick(&mut self, frame: &mut Frame<'_>) {
+        self.mirror
+            .observe(&frame.workers.network, frame.manager.state_ref());
+        self.mirror.drain(&frame.workers.network, frame.manager);
+    }
+}
+
 /// Commands on their way to the worker, with room for the one that did not fit. The queue is
-/// slack rather than a depth the panel can fill, so a command refused this pass is offered
+/// slack rather than a depth the panel can fill, so a command refused this frame is offered
 /// again before any new intent is taken: the bus is the backlog, and a busy worker costs a
 /// frame instead of a request the panel asked for and never sent.
 pub(crate) struct NetworkOutbox {
@@ -51,7 +90,7 @@ impl NetworkOutbox {
 }
 
 /// What the coordinator publishes to the network worker and the edges worth a log line, in
-/// the order a pass sees them.
+/// the order a frame sees them.
 pub(crate) struct NetworkMirror {
     page: DisplayPage,
     front: Option<SetupHost>,
@@ -67,7 +106,7 @@ impl NetworkMirror {
         }
     }
 
-    /// Runs once per pass: the page level goes out, and the page it changed to, the setup host
+    /// Runs once per frame: the page level goes out, and the page it changed to, the setup host
     /// and the lamp say so once.
     pub(crate) fn observe(&mut self, network: &Network, state: &DeviceState) {
         let page = state.page();

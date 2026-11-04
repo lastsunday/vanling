@@ -7,7 +7,7 @@ weight = 10
 
 ## 概览
 
-以意图(Intent)为触发点的管道逻辑系统
+以意图(Intent)为触发点、按帧推进的状态机
 
 ### 流程
 
@@ -63,11 +63,10 @@ weight = 10
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, network }`、`Latest`/`Scan`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
-| `pipeline/{mod,network}.rs` | 协调者 `run_loop`：应用意图、发布状态；网络侧的命令出站（`NetworkOutbox`）与镜像（`NetworkMirror`）在 `network.rs`，循环体只做编排 |
+| `frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；每帧单元是一个 `System`，`Schedule` 的声明顺序就是执行顺序；`clock.rs` 是逻辑帧时钟 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
-| `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `playback/{mod,dispatch,sounds}.rs` | 播放工作者、状态→命令、声音目录；采集窗口在 `workers.rs` |
+| `playback/{mod,sounds}.rs` | 播放工作者、声音目录；状态→命令在 `frame_loop/systems/playback.rs`，采集窗口在 `workers.rs` |
 | `network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据、链路/设置页报告 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
@@ -75,20 +74,20 @@ weight = 10
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 
 ```
-lib      → { boot, input, pipeline, playback, surface, workers }
-pipeline → { workers, surface, input, playback, frame, bench }
-network  → { workers, input, boot, bench }
-playback → { workers, input }
-input    → { workers }
-bench    → { input, playback }
-boot, frame, surface, workers → ∅
+lib        → { boot, frame_loop, input, playback, surface, workers }
+frame_loop → { bench, input, surface, workers }
+network    → { bench, boot, input, workers }
+playback   → { workers, input }
+input      → { workers }
+bench      → { input, playback }
+boot, surface, workers → ∅
 ```
 
 `main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
 - `workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
-- `network` 不依赖 `surface`/`pipeline`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- `network` 不依赖 `surface`/`frame_loop`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
 - `core` 不认识 `iot_app`
 
@@ -163,9 +162,9 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ## 需求的更改与传输
 
-### 更改：复用现有 intent 管道
+### 更改：复用现有意图路径
 
-`apply_action` 已经是唯一改状态的入口；手势改页只有 `ActionIntent::NextPage`，`SplashOver` 只在启动页结束时落到 build 的页。
+`apply_intent` 是状态变化的唯一入口（输入先写进记录再翻译），内部仍只经 `apply_action` 落状态；手势改页只有 `ActionIntent::NextPage`，`SplashOver` 只在启动页结束时落到 build 的页。
 
 新增场景 = 新增一个 `ActionIntent` 变体；运行期换节奏 = 再一个变体。`apply_action` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
@@ -179,7 +178,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ### 传输：协调者与工作者
 
-`run_loop` 是**协调者**：它只做不阻塞的事——应用意图、发布状态、把已经就绪的窗口和命令交出去、等下一帧。任何会等驱动、等 I2C、等协议栈的工作都属于**工作者**：
+`run_loop` 是**协调者**：它只做不阻塞的事，一帧四段——取意图、让系统各走一步、呈现、等下一帧。任何会等驱动、等 I2C、等协议栈的工作都属于**工作者**：
 
 | 工作者         | 拥有的东西                        | executor                          | 句柄 |
 | -------------- | --------------------------------- | --------------------------------- | ---- |
@@ -198,11 +197,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 三种形状按语义选，不按方便选：
 
-- **命令**走 `Channel`（`Network.commands`、`Speaker.to`）。协调者每 pass 只交工作者有空位的那些；队列满时把这一条留到下一 pass，命令不会被丢掉。
+- **命令**走 `Channel`（`Network.commands`、`Speaker.to`）。协调者每帧只交工作者有空位的那些；队列满时把这一条留到下一帧，命令不会被丢掉。
 - **级别**走 `PageWatch`（`Network.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。启动页的结论不是级别而是**一次性事件**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求共用一条队列，工作者不必再看页面演进到哪一步。
 - **最新值**走 `Latest`/窗口（`Network.scan` 是 `Latest` + 代次的 `Scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队；代次让页面能等到「这一轮扫完」而不必猜时间。
 
-`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_action()` 直接返回，`run_loop` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一 pass，并让本 pass 不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::intake` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一帧，并让本帧不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+
+**每帧逻辑按边界拆成系统。** `frame_loop/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（出站里压着的那条命令、上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条边沿不能合并，队列满时下一帧重发），所以那三行留在 `intake`。
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 
@@ -224,7 +225,7 @@ DeviceState.page → light_diagnostics() → Appearance::Diagnostics
 
 第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，窗口自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
 
-顺序是顺带的：`input_task` 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一次 pass 画过的那一帧。
+顺序是顺带的：`input_task` 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一帧画过的那一张。
 
 句柄由组合点造并注入（复用 `playback::share()` 的形状），满足 `input.rs` 的约定：句柄传进去，没有消费者按名字摸全局。
 

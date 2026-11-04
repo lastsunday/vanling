@@ -18,18 +18,17 @@ use iot_core::state::{Backed, Boot, DeviceManager, DisplayPage};
 
 pub mod bench;
 pub mod boot;
-mod frame;
+mod frame_loop;
 pub mod input;
 #[cfg(feature = "wifi")]
 pub mod network;
-mod pipeline;
 mod playback;
 mod surface;
 pub mod workers;
 
 use boot::{boot_override, boot_page};
+use frame_loop::run_loop;
 use input::{INTENT_BUS, input_task};
-use pipeline::run_loop;
 use playback::{playback_tasks, share};
 use surface::wired;
 use workers::{CAPTURE, SharedDemand, Workers};

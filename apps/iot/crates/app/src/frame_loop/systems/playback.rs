@@ -1,21 +1,24 @@
-//! `PlaybackState` to `PlaybackCommand`, once per pass over the intent bus.
+//! `PlaybackState` to `PlaybackCommand`: once per intent, so two edges in one frame do not
+//! collapse; and once per frame, so a command the queue had no room for is offered again.
 
 use embassy_sync::channel::TrySendError;
 
 use crate::workers::PlaybackQueue;
 use iot_core::state::{PlaybackCommand, PlaybackState};
 
-pub(crate) struct PlaybackDispatch {
+use super::{Frame, System};
+
+pub(crate) struct PlaybackSystem {
     previous: PlaybackState,
 }
 
-impl PlaybackDispatch {
+impl PlaybackSystem {
     pub(crate) fn new(state: PlaybackState) -> Self {
         Self { previous: state }
     }
 
     /// Queues the edges this state crossed. A command that found no room leaves its field
-    /// behind, so the next pass offers the same edge again instead of losing it.
+    /// behind, so the next call offers the same edge again instead of losing it.
     pub(crate) fn dispatch(&mut self, to: &PlaybackQueue, after: PlaybackState) {
         if let Some(command) = after.mute_command(&self.previous)
             && queue(to, command)
@@ -26,6 +29,12 @@ impl PlaybackDispatch {
             Some(command) if !queue(to, command) => {}
             _ => self.previous.phase = after.phase,
         }
+    }
+}
+
+impl System for PlaybackSystem {
+    fn tick(&mut self, frame: &mut Frame<'_>) {
+        self.dispatch(frame.workers.playback.to, frame.manager.playback_state());
     }
 }
 

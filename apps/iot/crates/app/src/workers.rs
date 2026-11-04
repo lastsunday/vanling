@@ -39,6 +39,19 @@ pub struct Input<'a> {
     pub from: &'static CaptureWindow,
 }
 
+impl Input<'_> {
+    /// The coordinator's half of the demand slot: the cell holds a `Copy` record, and the feed
+    /// interrupt takes the same lock, so the section is one compare and at most one bounded copy.
+    pub fn publish(&self, demand: &EffectiveDemand) {
+        let wanted = *demand;
+        self.to.lock(|current| {
+            if current.get() != wanted {
+                current.set(wanted);
+            }
+        });
+    }
+}
+
 /// Off the intent ring: at 1.7 KB the window would set every ring slot that wide.
 pub struct CaptureWindow(Channel<CriticalSectionRawMutex, AudioSample, 1>);
 

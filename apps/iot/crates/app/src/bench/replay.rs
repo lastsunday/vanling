@@ -647,7 +647,6 @@ mod tests {
     };
     use iot_core::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
     use iot_core::keyboard::Layer;
-    use iot_core::state::translate;
     use iot_core::state::{Backed, Boot, NetworkCommand};
 
     fn ap(name: &str) -> AccessPoint {
@@ -843,15 +842,7 @@ mod tests {
             }
             let mut asked: Vec<NetworkCommand> = Vec::new();
             while let Ok(intent) = bus.try_receive() {
-                let command = match intent {
-                    Intent::Input(op) => {
-                        manager.apply_input(op);
-                        let business = translate(&op, manager.state_ref());
-                        manager.apply_action(business)
-                    }
-                    Intent::Action(business) => manager.apply_action(business),
-                };
-                asked.extend(command);
+                asked.extend(manager.apply_intent(intent));
             }
             for command in asked {
                 match command {

@@ -156,9 +156,7 @@ mod audio_page {
     }
 
     fn apply(manager: &mut DeviceManager, operation: InputIntent) {
-        manager.apply_input(operation);
-        let business = crate::state::translate(&operation, &manager.state());
-        manager.apply_action(business);
+        manager.apply_intent(Intent::Input(operation));
     }
 
     fn on_audio_page() -> DeviceManager {

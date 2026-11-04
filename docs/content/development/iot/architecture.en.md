@@ -10,7 +10,7 @@ translated_at = "2026-11-04T00:00:00Z"
 
 ## Overview
 
-A pipeline-logic system whose trigger points are intents.
+A state machine whose trigger points are intents, advanced one frame at a time.
 
 ### Flow
 
@@ -67,11 +67,10 @@ A pipeline-logic system whose trigger points are intents.
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, network }`, `Latest`/`Scan`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
-| `pipeline.rs` | the coordinator `run_loop`: apply intents, publish state, forward commands, wait for the next frame |
+| `frame_loop/{mod,clock}.rs`, `frame_loop/systems/*.rs` | the coordinator `run_loop`: four steps per frame (intake, system sweep, present, wait); each per-frame unit is a `System` and the `Schedule` declaration order is the execution order; `clock.rs` holds the logical frame clock |
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
-| `frame.rs` | `FrameClock` (logical frames, including catch-up) |
 | `input.rs` | input worker: polling, demand scheduling, gesture recognition |
-| `playback/{mod,dispatch,sounds}.rs` | playback worker, state→command, sound catalogue; the capture window lives in `workers.rs` |
+| `playback/{mod,sounds}.rs` | playback worker and sound catalogue; state→command lives in `frame_loop/systems/playback.rs`, the capture window in `workers.rs` |
 | `network/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
@@ -80,18 +79,19 @@ Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the c
 check module cycles inside a crate):
 
 ```
-main → { lib, workers }
-lib  → { boot, pipeline, workers, network }
-pipeline → { workers, surface, input, playback, bench::replay }
-network  → { workers, input }
-playback → { workers }
-input    → { workers }
-workers  → ∅
+main       → { lib, workers }
+lib        → { boot, frame_loop, input, playback, surface, workers }
+frame_loop → { bench, input, surface, workers }
+network    → { bench, boot, input, workers }
+playback   → { workers, input }
+input      → { workers }
+bench      → { input, playback }
+boot, surface, workers → ∅
 ```
 
 - `workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
-- `network` does not reach `surface`/`pipeline`: the network worker reads the page and commands from `workers`, not device state
+- `network` does not reach `surface`/`frame_loop`: the network worker reads the page and commands from `workers`, not device state
 - `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
 - `core` does not know `iot_app`
 
@@ -170,9 +170,9 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 ## Changing and transporting demands
 
-### Changing: reuse the existing intent pipeline
+### Changing: reuse the existing intent path
 
-`apply_action` is already the single place state changes; the only gesture-driven page change is `ActionIntent::NextPage`, and `SplashOver` lands on the build's page when the splash ends.
+`apply_intent` is the single entry point for state changes (the input half is written to the record before it is translated) and still lands everything through `apply_action`; the only gesture-driven page change is `ActionIntent::NextPage`, and `SplashOver` lands on the build's page when the splash ends.
 
 A new scenario is a new `ActionIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_action`. No new mechanism.
 
@@ -186,7 +186,7 @@ Where a command comes from follows the same boundary: the page domain's `apply` 
 
 ### Transport: coordinators and workers
 
-`run_loop` is the **coordinator**: it only does non-blocking work — apply intents, publish state, hand over the windows and commands already ready, wait for the next frame. Anything that waits on a driver, an I2C bus or a network stack belongs to a **worker**:
+`run_loop` is the **coordinator**: it only does non-blocking work, in four steps per frame — take intents, let each system take one step, present, wait for the next frame. Anything that waits on a driver, an I2C bus or a network stack belongs to a **worker**:
 
 | Worker                 | Owns                                | Executor                                   | Handle |
 | ---------------------- | ----------------------------------- | ------------------------------------------ | -------- |
@@ -205,11 +205,13 @@ The handles live together in the composition root's `Workers<'a>`: one field per
 
 The shape follows the semantics, not convenience:
 
-- **Commands** use a `Channel` (`Network.commands`, `Speaker.to`). Each pass the coordinator hands over only what the worker has room for; a command that found none waits for the next pass and is never dropped.
+- **Commands** use a `Channel` (`Network.commands`, `Speaker.to`). Each frame the coordinator hands over only what the worker has room for; a command that found none waits for the next frame and is never dropped.
 - **Levels** use `PageWatch` (`Network.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge. The splash's verdict is not a level but a **one-shot event**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
 - **Latest values** use `Latest`/a window (`Network.scan` is a `Scan`: a `Latest` plus a generation, and `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing; the generation lets the page wait for "this round finished" instead of guessing a duration.
 
-The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_action()` returns the command and `run_loop` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next pass and that pass takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command and `Schedule::intake` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next frame and that frame takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+
+**Per-frame logic is split by boundary.** One `System` per file under `frame_loop/systems/`; it holds only what must survive a frame (the command held in the outbox, the last playback state, the last page, the governor) while `Frame` hands it the state and the handles. Systems never call each other. Adding a feature is one file plus one line in `Schedule::tick`, whose declaration order is the execution order; reordering it is a behaviour change. The intent side does not go through `System`: the command an intent produced must reach its system at once (two edges in one frame must not collapse, and a full queue re-offers it next frame), so those three lines stay in `intake`.
 
 **The render layer costs nothing**: `Diagnostics` in `core/src/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`, and `DiagnosticsSink::consume` is already the "state into consumers" channel.
 

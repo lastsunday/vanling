@@ -286,7 +286,7 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
 fn the_network_never_reaches_the_panel() {
     assert_no_reference(
         sources(&app_src().join("network")),
-        &["crate::surface", "crate::pipeline"],
+        &["crate::surface", "crate::frame_loop"],
     );
 }
 
@@ -295,8 +295,8 @@ fn the_panel_side_never_reaches_the_radio() {
     let src = app_src();
     let mut files = sources(&src.join("surface"));
     files.extend(sources(&src.join("playback")));
-    files.extend(sources(&src.join("pipeline")));
-    for name in ["input.rs", "workers.rs", "frame.rs", "boot.rs"] {
+    files.extend(sources(&src.join("frame_loop")));
+    for name in ["input.rs", "workers.rs", "boot.rs"] {
         let path = src.join(name);
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
@@ -357,7 +357,7 @@ fn the_worker_handles_never_reach_a_worker() {
             "crate::playback",
             "crate::network",
             "crate::surface",
-            "crate::pipeline",
+            "crate::frame_loop",
             "crate::input",
         ],
     );
@@ -491,10 +491,14 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
     let allowed: BTreeSet<(String, String)> = [
         ("bench", "input"),
         ("bench", "playback"),
+        ("frame_loop", "bench"),
+        ("frame_loop", "input"),
+        ("frame_loop", "surface"),
+        ("frame_loop", "workers"),
         ("input", "workers"),
         ("lib", "boot"),
+        ("lib", "frame_loop"),
         ("lib", "input"),
-        ("lib", "pipeline"),
         ("lib", "playback"),
         ("lib", "surface"),
         ("lib", "workers"),
@@ -502,12 +506,6 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("network", "boot"),
         ("network", "input"),
         ("network", "workers"),
-        ("pipeline", "bench"),
-        ("pipeline", "frame"),
-        ("pipeline", "input"),
-        ("pipeline", "playback"),
-        ("pipeline", "surface"),
-        ("pipeline", "workers"),
         ("playback", "input"),
         ("playback", "workers"),
     ]

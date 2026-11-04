@@ -7,10 +7,11 @@ use crate::demand::{DemandKey, EffectiveDemand, Override};
 use crate::drivers::input::InputEvent;
 use crate::drivers::network::ApList;
 
-use crate::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
+use crate::intent::{ActionIntent, InputIntent, Intent, LinkIntent, PageIntent};
 use crate::page::{DisplayPage, Navigator};
 
 use super::device::Effects;
+use super::translate::translate;
 use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKind, PlaybackState};
 
 /// Single owner of device state.
@@ -83,6 +84,19 @@ impl DeviceManager {
     /// the installed array so one out-of-range intent can never panic.
     pub fn apply_to(&mut self, instance: usize, state: LightState) {
         self.state.lights[instance.min(MAX_LIGHTS - 1)] = state;
+    }
+
+    /// One intent in, at most one command out. The input half is written to the record before
+    /// it is translated, so the page's answer is read against the state that gesture produced.
+    pub fn apply_intent(&mut self, intent: Intent) -> Option<NetworkCommand> {
+        let action = match intent {
+            Intent::Input(op) => {
+                self.apply_input(op);
+                translate(&op, &self.state)
+            }
+            Intent::Action(action) => action,
+        };
+        self.apply_action(action)
     }
 
     /// Route one input event to the record that owns it: motion to the part's tallies,

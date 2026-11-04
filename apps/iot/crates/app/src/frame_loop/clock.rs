@@ -1,4 +1,4 @@
-//! The render loop's frame clock.
+//! The frame loop's clock.
 
 use embassy_time::{Duration, Instant};
 
