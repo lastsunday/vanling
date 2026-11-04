@@ -826,6 +826,18 @@ pub trait Speaker: Send + 'static {
 
     fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault>;
 
+    /// Whether the output is answering right now. A wired part that failed its bring-up
+    /// reports false, and its page shows the reason instead of pretending to play.
+    fn online(&self) -> bool {
+        true
+    }
+
+    /// The board's words for why the output is not answering, when [`online`](Self::online)
+    /// is false. A page shows this rather than a generic state.
+    fn fault(&self) -> Option<&'static str> {
+        None
+    }
+
     fn feed(&mut self, now_ms: u64) -> bool;
 
     /// Whether [`feed`](Speaker::feed) recorded a drain that still needs
@@ -853,6 +865,53 @@ impl Speaker for UnwiredSpeaker {
 
     fn set_muted(&mut self, _muted: bool) -> Result<(), SpeakerFault> {
         Ok(())
+    }
+
+    fn online(&self) -> bool {
+        false
+    }
+
+    fn fault(&self) -> Option<&'static str> {
+        Some("the board wired no output part")
+    }
+
+    fn feed(&mut self, _now_ms: u64) -> bool {
+        false
+    }
+
+    fn recover(&mut self) -> Option<Recovery> {
+        None
+    }
+}
+
+/// A wired output whose stream could not be started. The page stays, and every attempt
+/// reports the board's words for why; nothing pretends a sound played.
+#[derive(Debug, Clone, Copy)]
+pub struct SilentOutput {
+    pub reason: &'static str,
+}
+
+impl SilentOutput {
+    pub const fn new(reason: &'static str) -> Self {
+        Self { reason }
+    }
+}
+
+impl Speaker for SilentOutput {
+    fn play(&mut self, _source: Box<dyn SampleSource>) -> Result<(), SpeakerFault> {
+        Err(SpeakerFault::new(SpeakerOp::Play, self.reason))
+    }
+
+    fn set_muted(&mut self, _muted: bool) -> Result<(), SpeakerFault> {
+        Err(SpeakerFault::new(SpeakerOp::SetMuted, self.reason))
+    }
+
+    fn online(&self) -> bool {
+        false
+    }
+
+    fn fault(&self) -> Option<&'static str> {
+        Some(self.reason)
     }
 
     fn feed(&mut self, _now_ms: u64) -> bool {

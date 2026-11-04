@@ -496,7 +496,7 @@ after `clear`).
 
 ### When the page scans
 
-`PageWatch` (`PAGE` in `app/src/workers.rs`) is the **only shared reading** of the page: the render
+`PageWatch` (`PAGE` in `app/src/workers/network.rs`) is the **only shared reading** of the page: the render
 loop publishes `manager.state().page` once a pass, and the network task waits on
 `PAGE.wait_for(DisplayPage::Network)` for "the list is on the panel", waking on `select3` between
 "the scan interval is up", "the page has come **back** to the list" and "a staged credential is
@@ -772,7 +772,7 @@ Every decision sits where a test can reach it:
 | Decision | Value | Why |
 | --- | --- | --- |
 | When the page exists | the wiring fact the entry point reports (`iot_app::Link`: `Wired` / `Absent`) | the station is taken by the entry point — starting it needs the scheduler — so `run` cannot look at the radio any more. With a build fact (`cfg!(feature = "wifi")`) the host smoke could never reach this page, and what this page most needs checked is exactly "did the composition wire the capability in". `Link` has the same shape as `SpeakerRunner`: a wiring fact passed in. Not a new method on `Board`: that would be two ways to say one thing, and they can disagree |
-| Where the scan list travels | its own single-slot channel (`Latest` / `SCAN`), not the intent ring | `Intent` is `Copy` and every slot is priced by the widest message: an `ApList` (8 × 42 + 1 = 337 B) on the ring would be 8 slots ≈ 2.7 KB, against a ring whose window is `size_of::<AudioSample>()` (1,760 B). The size test in `app/src/input.rs` (`a_capture_window_costs_one_slot_beside_the_ring`) stops it outright |
+| Where the scan list travels | its own single-slot channel (`Retained` / `SCAN`), not the intent ring | `Intent` is `Copy` and every slot is priced by the widest message: an `ApList` (8 × 42 + 1 = 337 B) on the ring would be 8 slots ≈ 2.7 KB, against a ring whose window is `size_of::<AudioSample>()` (1,760 B). The size test in `app/src/input.rs` (`a_capture_window_costs_one_slot_beside_the_ring`) stops it outright |
 | "Never scanned" against "scanned, found nothing" | `DeviceState.aps: Option<ApList>` | the two are different sentences on the page (`NOT SCANNED` / `NO NETWORKS`). A build holding its own credentials does not scan, so it can only say it never looked; a scan that found nothing is a statement about the room |
 | How tall a list row is | 3 rows × 47 px (6.0 mm), the header still three rows, and a 44 px strip below the list | the panel is 320×240 = 40.6×30.5 mm (0.127 mm/px). 61 px (7.75 mm) met the usual minimum, but the strip has to cut 44 px out of those 232, and 3 rows × 47 px is what is left over. 47 px = 6.0 mm is under the 7 mm minimum touch target — the same **break that is known and accepted** as the keyboard's 46 px (both the digit block and the list are hit blind by a thumb) |
 | Where the keyboard starts | at the **same y as the list** (row 3 = 47 px), with the header keeping its three rows | the typing state used to squeeze its header to one row to push the keyboard up; on the board those three readings (phase, network and signal, draft) turned out to be worth keeping, and the four-row keyboard can give up 6 px and still be pressable. Starting both states at one y also removes a jump between them |
@@ -1579,7 +1579,7 @@ over the same credential at once cannot tear down a working link to build it aga
 `route::tests::a_scan_that_has_not_finished_is_not_an_empty_room`,
 `asking_again_is_accepted_without_the_old_list`,
 `the_page_waits_for_the_round_instead_of_the_clock`,
-`workers::tests::a_round_advances_the_generation_even_when_the_list_is_the_same`,
+`workers::network::tests::a_round_advances_the_generation_even_when_the_list_is_the_same`,
 `drivers::network::tests::a_join_for_the_network_already_held_is_not_a_new_association`.
 
 The byte account: the page went from **4,468 to 14,819 B** (+10,351: the i18n dictionary, the dialog,

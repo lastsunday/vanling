@@ -216,6 +216,27 @@ impl<D: I2c> HpfCorner for Es7210<D> {
     }
 }
 
+/// What a capture poll needs to bring its codec back after a failed start.
+pub trait CaptureCodec: HpfCorner {
+    type InitError;
+
+    fn init(&mut self) -> Result<(), Self::InitError>;
+
+    fn running(&self) -> bool;
+}
+
+impl<D: I2c> CaptureCodec for Es7210<D> {
+    type InitError = Es7210Error<D::Error>;
+
+    fn init(&mut self) -> Result<(), Es7210Error<D::Error>> {
+        Es7210::init(self)
+    }
+
+    fn running(&self) -> bool {
+        self.running
+    }
+}
+
 pub struct Es7210<D> {
     i2c: D,
     addr: u8,

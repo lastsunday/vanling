@@ -661,6 +661,7 @@ mod tests {
             elapsed_ms: 1_000,
             restarts: 2,
             dba_lsb: 0,
+            fault: None,
         };
         manager.apply_capture(poll);
         assert_eq!(

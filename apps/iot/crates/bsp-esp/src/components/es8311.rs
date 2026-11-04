@@ -251,6 +251,69 @@ impl<D: I2c> Mute for Es8311<D> {
     }
 }
 
+/// What playback needs from the codec driver: the mute latch, and a bring-up it can retry
+/// when the part did not answer at boot.
+pub trait StartableCodec: Mute {
+    /// Brings the part up if it is not running, trying the alternate address when the
+    /// primary does not answer. The returned words are the reason a page shows, so they name
+    /// the part's behaviour rather than an internal operation.
+    fn ensure_started(&mut self) -> Result<(), &'static str>;
+
+    /// Whether the part answered its bring-up and is running.
+    fn online(&self) -> bool;
+
+    /// The board's words for why the part is not running, when it is not.
+    fn fault(&self) -> Option<&'static str>;
+}
+
+impl<D: I2c> StartableCodec for Es8311<D> {
+    fn ensure_started(&mut self) -> Result<(), &'static str> {
+        if self.running {
+            return Ok(());
+        }
+        let original = self.addr;
+        for addr in core::iter::once(original).chain(self.alternate) {
+            self.addr = addr;
+            if !self.chip_id().is_ok_and(ChipId::is_expected) {
+                continue;
+            }
+            return match self.init() {
+                Ok(()) => {
+                    if self.fault.is_some() {
+                        log::info!("[PLAY] codec answered after retry");
+                    }
+                    self.fault = None;
+                    Ok(())
+                }
+                Err(_) => {
+                    self.addr = original;
+                    if self.fault.is_none() {
+                        log::warn!(
+                            "[PLAY] codec answered but its bring-up did not, retrying later"
+                        );
+                    }
+                    self.fault = Some("the codec answered but its bring-up did not");
+                    Err("the codec answered but its bring-up did not")
+                }
+            };
+        }
+        self.addr = original;
+        if self.fault.is_none() {
+            log::warn!("[PLAY] codec did not answer on I2C, retrying later");
+        }
+        self.fault = Some("the codec did not answer on I2C");
+        Err("the codec did not answer on I2C")
+    }
+
+    fn online(&self) -> bool {
+        self.running
+    }
+
+    fn fault(&self) -> Option<&'static str> {
+        self.fault
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Es8311Error<E> {
     Bus(E),
@@ -265,7 +328,12 @@ impl<E> From<E> for Es8311Error<E> {
 pub struct Es8311<D> {
     i2c: D,
     addr: u8,
+    /// The same part with its address pin strapped the other way, for a board that does not
+    /// know which strap it got until one of them answers.
+    alternate: Option<u8>,
     running: bool,
+    /// Why the last bring-up attempt failed, kept so a page can name it without trying again.
+    fault: Option<&'static str>,
 }
 
 impl<D: I2c> Es8311<D> {
@@ -273,7 +341,21 @@ impl<D: I2c> Es8311<D> {
         Self {
             i2c,
             addr,
+            alternate: None,
             running: false,
+            fault: None,
+        }
+    }
+
+    /// A part whose address strap is not known in advance: the bring-up tries `addr` and
+    /// then `alternate`, and keeps whichever one answers.
+    pub const fn with_alternate(i2c: D, addr: u8, alternate: u8) -> Self {
+        Self {
+            i2c,
+            addr,
+            alternate: Some(alternate),
+            running: false,
+            fault: None,
         }
     }
 
@@ -340,7 +422,7 @@ impl<D: I2c> crate::hardware::SelfCheck for Es8311<D> {
 mod tests {
     use super::*;
 
-    use crate::components::mock_i2c::{MockI2c, NACK};
+    use crate::components::mock_i2c::{MockI2c, NACK, Unresponsive};
 
     type Mock = MockI2c<0xFF>;
 
@@ -367,6 +449,37 @@ mod tests {
         let mut codec = codec();
         codec.init().expect("init");
         codec
+    }
+
+    #[test]
+    fn a_codec_that_nacked_its_bring_up_starts_on_a_later_attempt() {
+        let mut codec = codec();
+        codec.i2c.fail_at = Some(0);
+        assert_eq!(
+            codec.ensure_started(),
+            Err("the codec answered but its bring-up did not")
+        );
+        assert!(!codec.online());
+        assert_eq!(
+            codec.fault(),
+            Some("the codec answered but its bring-up did not")
+        );
+
+        codec.i2c.fail_at = None;
+        codec.ensure_started().expect("the retry starts the part");
+        assert!(codec.online());
+        assert_eq!(codec.fault(), None);
+    }
+
+    #[test]
+    fn a_silent_part_is_named_as_not_answering() {
+        let mut codec = Es8311::new(Unresponsive, ES8311_I2C_ADDR);
+        assert_eq!(
+            codec.ensure_started(),
+            Err("the codec did not answer on I2C")
+        );
+        assert_eq!(codec.fault(), Some("the codec did not answer on I2C"));
+        assert!(!codec.online());
     }
 
     #[test]
@@ -532,7 +645,6 @@ mod tests {
 
     #[test]
     fn a_self_check_tells_a_wrong_chip_from_a_silent_one() {
-        use crate::components::mock_i2c::Unresponsive;
         use crate::hardware::{SelfCheck, Status};
 
         assert_eq!(codec().check(), Status::refused("not running"));

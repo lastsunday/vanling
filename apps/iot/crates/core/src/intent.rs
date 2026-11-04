@@ -76,12 +76,20 @@ pub struct LightIntent {
     pub state: LightState,
 }
 
-/// What the Speaker page asks of the output, or the report that comes back.
+/// What the Speaker page asks of the output, or the report that comes back. A tap while the
+/// part is down still reaches the worker: that is the recovery attempt, and `Started` is what
+/// confirms a sound actually played.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackAction {
     Next,
     SetMuted(bool),
     Finished,
+    /// The worker started the sound the page asked for.
+    Started,
+    /// The worker found the output answering, with no sound involved.
+    Ready,
+    /// The worker could not carry out the request; the board's own words say why.
+    Refused(&'static str),
 }
 
 #[allow(clippy::large_enum_variant)]

@@ -22,6 +22,10 @@ use self::network::NetworkSystem;
 use self::notice::NoticeSystem;
 use self::playback::PlaybackSystem;
 
+/// One pass takes at most [`crate::input::INTENT_SLOTS`] intents and each can carry a command,
+/// so the network inbox is at least that deep: on the normal path nothing is given up.
+const _: () = assert!(crate::workers::COMMAND_SLOTS >= crate::input::INTENT_SLOTS);
+
 /// Everything a system may touch in one frame. The wall clock rather than the frame counter:
 /// a held executor makes a logical clock replay the steps it skipped.
 pub(crate) struct Frame<'a> {
@@ -64,21 +68,19 @@ impl<'a, C: ClockSink> Schedule<'a, C> {
     }
 
     /// Bus → state. The command an intent produced goes out before the next intent is taken:
-    /// two edges in one frame (mute, then unmute) must not collapse into the last one, and a
-    /// command the queue had no room for must not be replaced by the next intent's.
-    pub(crate) fn intake(
+    /// two edges in one frame (mute, then unmute) must not collapse into the last one. The
+    /// network inbox takes it without waiting, giving up its oldest entry when it has no room,
+    /// so a busy worker costs the panel a request instead of costing the coordinator a frame.
+    pub(crate) fn process_intents(
         &mut self,
         bus: &IntentBus,
         workers: Workers<'_>,
         manager: &mut DeviceManager,
     ) {
-        self.network.retry(&workers.network);
-        while !self.network.pending() {
-            let Ok(intent) = bus.try_receive() else {
-                break;
-            };
-            let command = manager.apply_intent(intent);
-            self.network.send(&workers.network, command);
+        while let Ok(intent) = bus.try_receive() {
+            if let Some(command) = manager.apply_intent(intent) {
+                workers.network.commands.publish(command);
+            }
             self.playback
                 .dispatch(workers.playback.to, manager.playback_state());
         }

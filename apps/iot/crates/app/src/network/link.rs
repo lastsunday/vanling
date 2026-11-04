@@ -17,7 +17,7 @@ use iot_core::state::{DisplayPage, NetworkCommand};
 use super::setup::{Choice, SetupMode, await_network, pick, resolve_join};
 use super::store::{any, first_saved, forget, remark_and_publish, save};
 use super::{NETWORK, discard_setup, park, publish_link};
-use crate::workers::NetworkQueue;
+use crate::workers::NetworkInbox;
 
 const WINDOW_MS: u64 = 2_000;
 
@@ -47,7 +47,7 @@ fn build_credentials() -> Option<(&'static str, &'static str)> {
 /// The splash's verdict, taken from the same queue as everything else the panel asks for: the
 /// coordinator sends it once the splash is over. Nothing else is meaningful before then, so
 /// anything else that reached the queue first is dropped.
-async fn splash_setup(commands: &NetworkQueue) -> bool {
+async fn splash_setup(commands: &NetworkInbox) -> bool {
     loop {
         match commands.receive().await {
             NetworkCommand::SplashOver { setup } => return setup,

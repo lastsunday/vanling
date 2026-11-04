@@ -13,10 +13,11 @@ use iot_core::drivers::audio::{
     BYTES_PER_FRAME, CAPTURE_BYTES_PER_FRAME, DECIMATION, SAMPLE_RATE_HZ,
 };
 use iot_core::drivers::playback::{
-    PlayStreamWatchdog, Recovery, SampleSource, Speaker, SpeakerFault, SpeakerOp, interleave_mono,
+    PlayStreamWatchdog, Recovery, SampleSource, SilentOutput, Speaker, SpeakerFault, SpeakerOp,
+    interleave_mono,
 };
 
-use crate::components::es8311::Mute;
+use crate::components::es8311::StartableCodec;
 use crate::virtual_components::reference::{Writer, samples_for};
 
 // This is the distance between where a sample is *put on the ring* and where it
@@ -216,9 +217,12 @@ impl<C> Es8311Tx<C> {
 }
 impl<C> Speaker for Es8311Tx<C>
 where
-    C: Mute + Send + 'static,
+    C: StartableCodec + Send + 'static,
 {
     fn play(&mut self, source: Box<dyn SampleSource>) -> Result<(), SpeakerFault> {
+        self.codec
+            .ensure_started()
+            .map_err(|reason| SpeakerFault::new(SpeakerOp::Play, reason))?;
         self.voice = Some(source);
         self.tail = false;
         Ok(())
@@ -228,6 +232,14 @@ where
         self.codec.set_muted(muted).map_err(|_| {
             SpeakerFault::new(SpeakerOp::SetMuted, "the codec stopped answering on I2C")
         })
+    }
+
+    fn online(&self) -> bool {
+        self.codec.online()
+    }
+
+    fn fault(&self) -> Option<&'static str> {
+        self.codec.fault()
     }
 
     fn feed(&mut self, now_ms: u64) -> bool {
@@ -291,5 +303,90 @@ impl<C: crate::hardware::SelfCheck> crate::hardware::SelfCheck for Es8311Tx<C> {
 }
 
 impl<C: crate::hardware::Named> crate::hardware::Named for Es8311Tx<C> {
+    const NAME: &'static str = C::NAME;
+}
+
+/// The board's output as one object: the running stream, or the reason it never started.
+/// Both are wired outputs, so the Speaker page stays either way.
+pub enum BoardSpeaker<C> {
+    Codec(Box<Es8311Tx<C>>),
+    Silent(SilentOutput),
+}
+
+impl<C: StartableCodec + Send + 'static> Speaker for BoardSpeaker<C> {
+    fn play(&mut self, source: Box<dyn SampleSource>) -> Result<(), SpeakerFault> {
+        match self {
+            Self::Codec(speaker) => speaker.play(source),
+            Self::Silent(speaker) => speaker.play(source),
+        }
+    }
+
+    fn set_muted(&mut self, muted: bool) -> Result<(), SpeakerFault> {
+        match self {
+            Self::Codec(speaker) => speaker.set_muted(muted),
+            Self::Silent(speaker) => speaker.set_muted(muted),
+        }
+    }
+
+    fn online(&self) -> bool {
+        match self {
+            Self::Codec(speaker) => speaker.online(),
+            Self::Silent(speaker) => speaker.online(),
+        }
+    }
+
+    fn fault(&self) -> Option<&'static str> {
+        match self {
+            Self::Codec(speaker) => speaker.fault(),
+            Self::Silent(speaker) => speaker.fault(),
+        }
+    }
+
+    fn feed(&mut self, now_ms: u64) -> bool {
+        match self {
+            Self::Codec(speaker) => speaker.feed(now_ms),
+            Self::Silent(speaker) => speaker.feed(now_ms),
+        }
+    }
+
+    fn needs_recovery(&self) -> bool {
+        match self {
+            Self::Codec(speaker) => speaker.needs_recovery(),
+            Self::Silent(_) => false,
+        }
+    }
+
+    fn recover(&mut self) -> Option<Recovery> {
+        match self {
+            Self::Codec(speaker) => speaker.recover(),
+            Self::Silent(speaker) => speaker.recover(),
+        }
+    }
+}
+
+impl<C: crate::hardware::SelfCheck> crate::hardware::SelfCheck for BoardSpeaker<C> {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Codec(speaker) => speaker.name(),
+            Self::Silent(_) => "speaker",
+        }
+    }
+
+    fn id(&self) -> Option<crate::hardware::Address> {
+        match self {
+            Self::Codec(speaker) => speaker.id(),
+            Self::Silent(_) => None,
+        }
+    }
+
+    fn check(&mut self) -> crate::hardware::Status {
+        match self {
+            Self::Codec(speaker) => speaker.check(),
+            Self::Silent(speaker) => crate::hardware::Status::refused(speaker.reason),
+        }
+    }
+}
+
+impl<C: crate::hardware::Named> crate::hardware::Named for BoardSpeaker<C> {
     const NAME: &'static str = C::NAME;
 }

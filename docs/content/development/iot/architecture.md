@@ -62,11 +62,11 @@ weight = 10
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, network }`、`Latest`/`Scan`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
+| `workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄，一个工作者一个文件：`mod.rs` 只有 `Workers { input, playback, network }`，`inbox.rs` 是 `Inbox`/`Retained`，其余文件是各工作者的句柄与协议（`network.rs` 含 `Scan`/`PageWatch` 与命令入口）；网络命令词汇表在 `core/state/network.rs` |
 | `frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；每帧单元是一个 `System`，`Schedule` 的声明顺序就是执行顺序；`clock.rs` 是逻辑帧时钟 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `playback/{mod,sounds}.rs` | 播放工作者、声音目录；状态→命令在 `frame_loop/systems/playback.rs`，采集窗口在 `workers.rs` |
+| `playback/{mod,sounds}.rs` | 播放工作者、声音目录；状态→命令在 `frame_loop/systems/playback.rs`，采集窗口在 `workers/input.rs` |
 | `network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据、链路/设置页报告 |
 | `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
@@ -197,13 +197,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 三种形状按语义选，不按方便选：
 
-- **命令**走 `Channel`（`Network.commands`、`Speaker.to`）。协调者每帧只交工作者有空位的那些；队列满时把这一条留到下一帧，命令不会被丢掉。
-- **级别**走 `PageWatch`（`Network.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。启动页的结论不是级别而是**一次性事件**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求共用一条队列，工作者不必再看页面演进到哪一步。
-- **最新值**走 `Latest`/窗口（`Network.scan` 是 `Latest` + 代次的 `Scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队；代次让页面能等到「这一轮扫完」而不必猜时间。
+- **命令**走 `Inbox`（`Network.commands`）：每个工作者一条入场队列。不等的发布者用 `publish`，满时让最旧的一条让位——协调者每帧只能走这条；不能丢的发布者用 `send().await`，等到有空位才入队（手机侧那条 `Join` 就是这样，它发完就停在自己的页面上）。队列深度取一帧最大的命令数（8 条意图），所以正常路径一条不丢，丢只发生在工作者落后一整帧以上。
+- **保留值**走 `PageWatch`/`Retained`（`Network.page`、`Scan` 的列表）：写入替换旧值，读走之后仍然在，所以面板与手机页面读的是同一份。启动页的结论不是保留值而是**一次性命令**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求同一条队列，工作者不必再看页面演进到哪一步。
+- **最新窗口**走 `Input.from`：1.7 KB 的采集样本只留最新一份，覆盖而不是排队。
 
-`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::intake` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一帧，并让本帧不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::process_intents` 拿到就 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
-**每帧逻辑按边界拆成系统。** `frame_loop/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（出站里压着的那条命令、上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条边沿不能合并，队列满时下一帧重发），所以那三行留在 `intake`。
+**每帧逻辑按边界拆成系统。** `frame_loop/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条命令不能合并成一条），所以那几行留在 `process_intents`。
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 
@@ -388,6 +388,14 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 跳着写会漏掉闭环的那一页，走一张表再回绕不会。
 
 `iot-core` 里有一条测试遍历能力组合 × 起点断言这一点（`every_page_the_board_can_back_is_shown_on_the_way_round`），把旧的 `Camera → Attitude` 放回去它会失败并打出上面那串。
+
+### 页面缺席 = 没接线；件坏了 = 页面在
+
+`Backed` 回答的是**板子有没有把这件东西焊出来**，在组合点一次决定、运行期不变：S3 的 `take_*` 总是交出扬声器、麦克风和相机的驱动对象（探针失败也给），C6 没有这条产品路径就不交。于是页面消失只有一种解释：这块板没接这件东西。
+
+器件答不答是另一回事，归**运行期健康**：回放/采集的 `Health::Down(reason)`、相机的 `FrameSource::fault()` 都落在页面上，写成 `NO OUT` / `NO IN` / `NO CAM` 加一行原因；页面不消失，指纹与计数只是停更。
+
+恢复发生在**用它的地方**，不在启动循环里：扬声器在第一次轻点时 `ensure_started()`（两个地址都试、记住应答的那个），麦克风在轮询里最多每 1 s 重试并丢弃旧样本，相机在页面打开期间每 5 s 重试 `receive` 与传感器 bring-up。重试有界、有间隔，失败只把原因写进健康，不阻塞面板，也不复位。
 
 ## 日志
 

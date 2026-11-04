@@ -302,3 +302,29 @@ MIDI 不解决合成能力——它不带音色，逐音符包络两个版本都
 那次测量是在 RX 仍拥有 BCLK/WS 引脚的前提下做的。`rx_slave_mod=1` 会让 RX 一边驱动引脚一边又变成从单元，组合本身自相矛盾——坏掉的是「引脚归属 + 从模式」这一对，不是 loopback。把引脚交回 TX 之后，`loopback=true` 是唯一同时喂饱两只 codec 的排法（四格对照表见[放音开发文档](@/development/iot/playback.md)）。
 
 结论方向被反过来过一次，所以那一格在开发文档里改成按机制解释，而不是按「实测会炸」记。
+
+---
+
+## 首启 ES8311 没应答：探针吞了 init 的错误，页面也跟着消失
+
+### 症状
+
+`[实测]` 烧录后的第一次启动，串口报 `[HW] speaker 0x18 absent`，紧接 `[PLAY] no speaker wired`，Speaker 页整个不在轮播里。复位 4 次后同一块板 7 个设备全在。
+
+### 根因
+
+`probe_es8311` 先读 `chip_id`，再 `es8311.init().ok().map(|()| es8311)`：ID 对、init NACK 时 `ok()` 把错误丢掉并返回 `None`，日志里只剩「找不到」。
+
+更关键的是 `Option<Es8311>` 同时被当成**接线事实**：运行期一次探针失败就把页面从导航里删掉，用户看到的是「这块板没有喇叭」，而不是「喇叭这次没起来」。
+
+### 修法
+
+- `probe_es8311` 不再返回 `Option`：`Es8311::with_alternate` 带着两个地址回来，启动时 `retry(3, 20 ms)` 只记日志。
+- `StartableCodec::ensure_started()` 在第一次轻点时懒启动；两个地址都试，记住应答的那个。I2S 的共用时钟由板子接线决定，不再由探针结果决定。
+- 页面缺席只由 `Backed`（接线）决定；器件健康走 `Health::Down(reason)` / `Speaker::fault()`，页面写 `NO OUT` + 原因，轻点就是重试。
+- 同一形状套到 Audio（`NO IN`，1 s 重试并丢弃旧样本）和 Camera（`NO CAM`，5 s 重试 `receive` + bring-up）。
+- `plays` 改由 worker 确认的 `PlaybackAction::Started` 计数，不再在轻点时乐观加一；失败的那次不会留下「响过了」的假读数。
+
+`[测试]` `a_codec_that_nacked_its_bring_up_starts_on_a_later_attempt`、`a_silent_part_is_named_as_not_answering`、Speaker 页的拒绝/重试测试、Audio/Camera 的 fault 读数测试。
+
+`[实测]` 恢复：临时让 `ensure_started` 的前 3 次（正好是启动探测的 3 次重试）返回失败，用 `IOT_BOOT_PAGE=speaker` 启动。串口是 `[PLAY] ES8311 deferred, retrying on the first tap`、`[HW] speaker 0x18 degraded: not running`，紧接 `[IOT] boot page is Speaker`（页面没有消失）；3.16 s 后第一声 `[PLAY] Tap` 时打出 `[PLAY] codec answered after retry`。临时补丁已回退，产品镜像重新烧录后复测为 `[HW] 7 devices: 7 present`。

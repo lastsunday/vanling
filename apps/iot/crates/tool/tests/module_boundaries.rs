@@ -296,7 +296,8 @@ fn the_panel_side_never_reaches_the_radio() {
     let mut files = sources(&src.join("surface"));
     files.extend(sources(&src.join("playback")));
     files.extend(sources(&src.join("frame_loop")));
-    for name in ["input.rs", "workers.rs", "boot.rs"] {
+    files.extend(sources(&src.join("workers")));
+    for name in ["input.rs", "boot.rs"] {
         let path = src.join(name);
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
@@ -349,10 +350,8 @@ fn the_worker_handles_compile_without_the_radio() {
 
 #[test]
 fn the_worker_handles_never_reach_a_worker() {
-    let path = app_src().join("workers.rs");
-    let text = std::fs::read_to_string(&path).expect("the worker handles");
     assert_no_reference(
-        vec![(path, text)],
+        sources(&app_src().join("workers")),
         &[
             "crate::playback",
             "crate::network",

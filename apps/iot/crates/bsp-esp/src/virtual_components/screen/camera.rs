@@ -52,7 +52,9 @@ impl CameraFeed {
         period_ms: u32,
     ) -> Option<CameraReadout> {
         let source = self.source.as_mut()?;
-        if source.advance(frame, now_ms) != FrameAdvance::Fresh {
+        let advance = source.advance(frame, now_ms);
+        let fault = source.fault();
+        if fault.is_none() && advance != FrameAdvance::Fresh {
             return None;
         }
         if period_ms >= CAMERA_THUMBNAIL_PERIOD_MS {
@@ -68,6 +70,7 @@ impl CameraFeed {
             counters: source.counters(),
             geometry: source.geometry(),
             starting: false,
+            fault,
         })
     }
 }

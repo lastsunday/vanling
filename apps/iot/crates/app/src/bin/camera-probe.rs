@@ -82,6 +82,13 @@ async fn run(mut panel: St7789, capture: &mut Gc2145Capture<Gc2145<SharedI2cDevi
     let start = Instant::now();
     let mut fingerprint = Fingerprint::new();
 
+    // The capture is handed over unstarted so the product path can retry a part that was not
+    // ready at boot; the probe wants it now, and reports why if it will not come up.
+    capture.poll(0);
+    if let Some(fault) = capture.fault() {
+        log::error!("[PROBE] {fault}");
+    }
+
     match capture.sensor().read_window_geometry() {
         Ok(geometry) => log::info!(
             "[PROBE] part holds out={}x{} read={}x{} 0x99=0x{:02x} 0x9a=0x{:02x} \

@@ -21,6 +21,9 @@ pub struct CameraReadout {
     /// The page has just been entered and no frame has arrived yet, so the numbers would
     /// all read zero and `NOBUS` would claim there is no sensor.
     pub starting: bool,
+    /// Why the frame path is down, when it is. The page stays and says so, and its next tap
+    /// is the retry.
+    pub fault: Option<&'static str>,
 }
 
 impl CameraReadout {
@@ -29,6 +32,7 @@ impl CameraReadout {
         counters: CameraCounters::ZERO,
         geometry: None,
         starting: true,
+        fault: None,
     };
 }
 

@@ -187,15 +187,22 @@ pub async fn control_loop(
     playback: workers::Playback,
     intent_bus: &'static IntentBus,
 ) -> ! {
+    match shared.lock(|s| s.speaker.borrow().fault()) {
+        Some(reason) => report(intent_bus, PlaybackAction::Refused(reason)).await,
+        None => report(intent_bus, PlaybackAction::Ready).await,
+    }
     let mut last_report = Instant::now();
     loop {
         while let Ok(command) = playback.to.try_receive() {
             match command {
                 PlaybackCommand::Play(sound) => {
                     log::info!("[PLAY] {sound:?}");
-                    if let Err(error) = start(shared, sound) {
-                        log::error!("[PLAY] {sound:?} refused: {error}");
-                        finished(intent_bus).await;
+                    match start(shared, sound) {
+                        Ok(()) => report(intent_bus, PlaybackAction::Started).await,
+                        Err(error) => {
+                            log::error!("[PLAY] {sound:?} refused: {error}");
+                            report(intent_bus, PlaybackAction::Refused(error.reason)).await;
+                        }
                     }
                 }
                 PlaybackCommand::SetMuted(muted) => {
@@ -204,6 +211,7 @@ pub async fn control_loop(
                     // lock; it must stay one bounded register write, with no log or alloc.
                     if let Err(error) = shared.lock(|s| s.speaker.borrow_mut().set_muted(muted)) {
                         log::error!("[PLAY] mute refused: {error}");
+                        report(intent_bus, PlaybackAction::Refused(error.reason)).await;
                     }
                 }
             }
@@ -270,10 +278,12 @@ pub fn report_recovery(tag: &str, recovery: &Recovery) {
 }
 
 async fn finished(intent_bus: &'static IntentBus) {
+    report(intent_bus, PlaybackAction::Finished).await;
+}
+
+async fn report(intent_bus: &'static IntentBus, action: PlaybackAction) {
     intent_bus
-        .send(Intent::Action(ActionIntent::Playback(
-            PlaybackAction::Finished,
-        )))
+        .send(Intent::Action(ActionIntent::Playback(action)))
         .await;
 }
 

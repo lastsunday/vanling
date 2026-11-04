@@ -11,6 +11,8 @@ mod device;
 
 mod entry;
 
+mod health;
+
 mod light;
 
 mod light_control;
@@ -40,6 +42,8 @@ pub use self::band::{Band, each_band, joining};
 pub use self::device::DeviceState;
 
 pub use self::entry::Entry;
+
+pub use self::health::Health;
 
 pub use self::light::{Breath, LampLine, LightState, Notice, NoticeKind};
 

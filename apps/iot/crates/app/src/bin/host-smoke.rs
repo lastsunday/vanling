@@ -113,6 +113,7 @@ impl AudioSource for HostAudio {
             elapsed_ms: now_ms.min(u64::from(u32::MAX)) as u32,
             restarts: HOST_RESTARTS,
             dba_lsb: self.stream.dba_lsb(),
+            fault: None,
         }
     }
 }
@@ -544,7 +545,7 @@ async fn main(_spawner: Spawner) {
 /// commands on the host, so this is where a command is read rather than acted on.
 fn take_commands() -> Vec<NetworkCommand> {
     let mut taken = Vec::new();
-    while let Ok(command) = NETWORK.commands.try_receive() {
+    while let Some(command) = NETWORK.commands.try_receive() {
         taken.push(command);
     }
     taken
@@ -685,10 +686,15 @@ async fn scenario() {
         played[0] > 0,
         "the driver was handed a source with no sound in it"
     );
+    attempts = 0;
+    while PLAYBACK_PLAYS.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
     assert_eq!(
         PLAYBACK_PLAYS.load(Ordering::SeqCst),
         1,
-        "the panel's play count did not follow the tap"
+        "the panel's play count did not follow the worker's confirmation"
     );
 
     click(1).await;

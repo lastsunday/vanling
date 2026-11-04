@@ -307,3 +307,29 @@ The count was never the problem; readability was. 342 tests cannot be read, so t
 That measurement was taken while RX still owned the BCLK/WS pins. `rx_slave_mod=1` then makes RX drive the pins while simultaneously being a slave unit, which is self-contradictory — what broke was the pin-ownership-plus-slave pairing, not loopback. With the pins handed back to TX, `loopback=true` is the only arrangement that feeds both codecs at once (the four-way comparison table is in the [playback development doc](@/development/iot/playback.en.md)).
 
 The conclusion got reversed once, so that cell in the development doc now explains the mechanism rather than recording "measured: it blows up".
+
+---
+
+## First boot with an ES8311 that did not answer: the probe swallowed the init error, and the page went with it
+
+### Symptom
+
+`[measured]` On the first boot after flashing, the serial log reported `[HW] speaker 0x18 absent`, immediately followed by `[PLAY] no speaker wired`, and the Speaker page was missing from the cycle entirely. After four resets, all seven devices on the same board were present.
+
+### Root cause
+
+`probe_es8311` read `chip_id`, then ran `es8311.init().ok().map(|()| es8311)`: when the ID matched and `init` NACKed, `ok()` dropped the error and returned `None`, leaving only "not found" in the log.
+
+More importantly, `Option<Es8311>` was being used as the **wiring fact** at the same time: one runtime probe failure deleted the page from navigation, so the user saw "this board has no speaker" rather than "the speaker did not come up this time".
+
+### Fix
+
+- `probe_es8311` no longer returns `Option`: `Es8311::with_alternate` comes back carrying both addresses, and the boot-time `retry(3, 20 ms)` only logs.
+- `StartableCodec::ensure_started()` brings the codec up lazily on the first tap; it tries both addresses and remembers the one that answers. The I2S clock sharing is decided by board wiring, not by the probe result.
+- A page is absent only because of `Backed` (wiring); part health lives in `Health::Down(reason)` / `Speaker::fault()`, the page writes `NO OUT` plus the reason, and a tap is the retry.
+- The same shape covers Audio (`NO IN`, retries once a second and discards stale samples) and Camera (`NO CAM`, retries `receive` and the sensor bring-up every 5 s).
+- `plays` is now confirmed by the worker's `PlaybackAction::Started` rather than incremented optimistically on tap, so a failed attempt leaves no false "it played" reading.
+
+`[test]` `a_codec_that_nacked_its_bring_up_starts_on_a_later_attempt`, `a_silent_part_is_named_as_not_answering`, the Speaker page's refusal/retry tests, and the Audio/Camera fault readout tests.
+
+`[measured]` Recovery: a temporary patch made the first 3 calls to `ensure_started` (exactly the boot probe's 3 retries) fail, and the board booted with `IOT_BOOT_PAGE=speaker`. The serial log showed `[PLAY] ES8311 deferred, retrying on the first tap`, `[HW] speaker 0x18 degraded: not running`, then `[IOT] boot page is Speaker` (the page stayed); 3.16 s later the first sound, `[PLAY] Tap`, logged `[PLAY] codec answered after retry`. The patch was reverted, the product image reflashed, and the recheck read `[HW] 7 devices: 7 present`.

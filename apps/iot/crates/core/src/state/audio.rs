@@ -2,7 +2,7 @@ use crate::drivers::audio::{AudioPhase, AudioSample};
 use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use crate::intent::{ActionIntent, AudioIntent, InputIntent};
 
-use super::{DeviceManager, DeviceState, light_control};
+use super::{DeviceManager, DeviceState, Health, light_control};
 
 /// The Audio page's gestures: a tap starts or stops the capture, and everything else is the
 /// lamp's, as on every page without a verb of its own for it.
@@ -42,6 +42,8 @@ pub struct AudioDiagnostics {
     pub restarts: u16,
     /// A-weighted sound level of the shown capture, in LSB, slow-tracked.
     pub dba_lsb: u16,
+    /// Whether the capture part is answering, and why not when it is not.
+    pub health: Health,
 }
 
 /// Capture state behind the Audio page.
@@ -49,6 +51,8 @@ pub struct AudioDiagnostics {
 pub struct AudioState {
     /// What the page asked for: the capture that runs, and the one that was stopped.
     pub phase: AudioPhase,
+    /// Whether the capture part is answering. The page stays; the poll retries the part.
+    pub health: Health,
     /// What the page draws: the samples behind the phase.
     pub view: AudioView,
 }
@@ -77,6 +81,7 @@ impl AudioState {
     /// page draws a flat line until a capture runs.
     pub const BOOT: Self = Self {
         phase: AudioPhase::Idle,
+        health: Health::Ready,
         view: AudioView {
             live: AudioSample::ZERO,
             captured: AudioSample::ZERO,
@@ -117,6 +122,7 @@ impl DeviceState {
             elapsed_ms: shown.elapsed_ms,
             restarts: shown.restarts,
             dba_lsb: shown.dba_lsb,
+            health: self.audio.health,
         }
     }
 }
@@ -124,6 +130,10 @@ impl DeviceState {
 impl DeviceManager {
     pub fn apply_capture(&mut self, sample: AudioSample) {
         if self.state.backed.audio {
+            self.state.audio.health = match sample.fault {
+                Some(reason) => Health::Down(reason),
+                None => Health::Ready,
+            };
             self.state.audio.view.live = sample;
         }
     }
@@ -152,6 +162,7 @@ mod audio_page {
             elapsed_ms: 7,
             restarts: 0,
             dba_lsb: 0,
+            fault: None,
         }
     }
 
@@ -181,6 +192,25 @@ mod audio_page {
             manager.state().page(),
             page,
             "a tap on audio records instead of paging"
+        );
+    }
+
+    #[test]
+    fn a_capture_that_lost_its_codec_reports_it_and_clears_it_when_it_returns() {
+        let mut manager = on_audio_page();
+        let mut lost = loud(1_000);
+        lost.fault = Some("the codec did not answer on I2C");
+        manager.apply_capture(lost);
+        assert_eq!(
+            manager.state().audio_diagnostics().health,
+            Health::Down("the codec did not answer on I2C"),
+            "a fault reaches the page instead of dropping the part"
+        );
+        manager.apply_capture(loud(1_000));
+        assert_eq!(
+            manager.state().audio_diagnostics().health,
+            Health::Ready,
+            "the next clean sample clears it, so the page can leave NO IN"
         );
     }
 

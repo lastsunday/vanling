@@ -4,9 +4,9 @@
 
 use core::sync::atomic::Ordering;
 
-use iot_core::state::{DisplayPage, NetworkCommand};
+use iot_core::state::DisplayPage;
 
-use crate::workers::{COMMAND_SLOTS, NetworkQueue, PageWatch};
+use crate::workers::{NetworkInbox, PageWatch};
 
 impl PageWatch {
     pub fn shows(&self, page: DisplayPage) -> bool {
@@ -20,7 +20,8 @@ impl PageWatch {
         }
     }
 
-    /// Edge, not level: a panel that never left `page` must not satisfy it.
+    /// A panel that never left `page` must not satisfy it: the wait starts from the page the
+    /// panel is on now and returns only after a change brings it back.
     pub async fn wait_for_return(&self, page: DisplayPage) {
         let wanted = page.code();
         let mut seen = self.page.load(Ordering::Relaxed);
@@ -59,24 +60,9 @@ impl PageWatch {
 
 /// Drops setup requests left over from a previous session; every other command goes back.
 ///
-/// A cancel made while the last session was up must not close the next one, and a queue has
-/// no `clear()` of its own. The array is as deep as the channel, so it holds everything that
-/// is not stale.
-pub(crate) fn discard_setup(commands: &NetworkQueue) {
-    let mut kept: [Option<NetworkCommand>; COMMAND_SLOTS] = core::array::from_fn(|_| None);
-    let mut held = 0;
-    while let Ok(command) = commands.try_receive() {
-        if command.is_setup() {
-            continue;
-        }
-        if let Some(slot) = kept.get_mut(held) {
-            *slot = Some(command);
-            held += 1;
-        }
-    }
-    for command in kept.into_iter().flatten() {
-        let _ = commands.try_send(command);
-    }
+/// A cancel made while the last session was up must not close the next one.
+pub(crate) fn discard_setup(commands: &NetworkInbox) {
+    commands.retain(|command| !command.is_setup());
 }
 
 #[cfg(test)]
@@ -84,6 +70,7 @@ mod tests {
     use super::*;
     use core::task::{Context, Waker};
     use iot_core::drivers::network::{JoinRequest, SetupHost, Ssid};
+    use iot_core::state::NetworkCommand;
 
     fn cx() -> Context<'static> {
         Context::from_waker(Waker::noop())
@@ -91,26 +78,22 @@ mod tests {
 
     #[test]
     fn a_cancel_left_over_from_the_last_session_does_not_survive_into_the_next() {
-        let commands = NetworkQueue::new();
-        assert!(
-            commands
-                .try_send(NetworkCommand::LeaveSetup {
-                    from: SetupHost::AccessPoint
-                })
-                .is_ok()
-        );
+        let commands = NetworkInbox::new();
+        commands.publish(NetworkCommand::LeaveSetup {
+            from: SetupHost::AccessPoint,
+        });
         let join = NetworkCommand::Join(JoinRequest::Held(Ssid::from_octets(b"cafe")));
-        assert!(commands.try_send(join.clone()).is_ok());
+        commands.publish(join.clone());
 
         discard_setup(&commands);
 
         assert_eq!(
             commands.try_receive(),
-            Ok(join),
+            Some(join),
             "the join is not setup state and goes back untouched"
         );
         assert!(
-            commands.try_receive().is_err(),
+            commands.try_receive().is_none(),
             "the previous session's cancel is gone"
         );
     }
@@ -126,11 +109,11 @@ mod tests {
     fn a_rest_on_the_list_is_not_cut_short_by_the_list_being_up() {
         let watch = PageWatch::new();
         watch.publish(DisplayPage::Network);
-        let mut level = core::pin::pin!(watch.wait_for(DisplayPage::Network));
+        let mut up = core::pin::pin!(watch.wait_for(DisplayPage::Network));
         let mut back = core::pin::pin!(watch.wait_for_return(DisplayPage::Network));
         assert!(
-            level.as_mut().poll(&mut cx()).is_ready(),
-            "the level check answers \"is the list up?\", and it is"
+            up.as_mut().poll(&mut cx()).is_ready(),
+            "the page check answers \"is the list up?\", and it is"
         );
         assert!(
             back.as_mut().poll(&mut cx()).is_pending(),

@@ -290,3 +290,16 @@ write_reg(sensor->slv_addr, 0x0f, L8(win_w + 16));
 `[据称]` Espressif FAQ 在"支持广角吗"一节推荐 BF3005 和 OV2640，**GC2145 不在其中**。该传感器的低分辨率裁切在 espressif/esp32-camera issue #845 有人提过（场景正是广角镜头下的低分辨率），无官方回应。
 
 结合上文"视野是算术"一条：**视野窄若换传感器配置无效，剩下的就是镜头与传感器本身。**
+---
+
+## 传感器没起来时相机页不消失
+
+### 行为
+
+`Gc2145Capture::pending()` 把启动期 `receive` 的结果和传感器一起交给 capture：DMA 没起来就把 `(camera, ring)` 留在 `parked`，传感器没起来就留下原因。页面打开期间 `ensure_ready()` 每 5 s 重试一次；`FrameSource::fault()` 把原因交给 `CameraReadout.fault`，页面画 `NO CAM`、原因和 `RETRYING`，而不是从轮播里消失。
+
+DMA 链在 `rearm` 或 `resume` 时失败也走同一条路：把 `(camera, ring)` 留回 `parked`、记下原因，下一轮从页面重试 `receive`，不再只是打一行 "going dark" 然后永久静默。
+
+### 证据
+
+`[实测]` 临时让页面上的第一次传感器 bring-up 返回失败，用 `IOT_BOOT_PAGE=camera` 启动。串口在 2.17 s 打出 `[CAM] sensor deferred, retrying while the page is open: the sensor did not answer`，8.25 s 打出 `[CAM] sensor id 0x2145`、`[CAM] sensor answered, capture running`、`[CAM] first frame arrived`；`[IOT] boot page is Camera` 始终在日志里。临时补丁已回退，产品镜像重烧后 `[HW] camera 0x3C present`。

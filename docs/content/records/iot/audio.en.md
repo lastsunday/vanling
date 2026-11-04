@@ -201,3 +201,19 @@ Three code-side hard constraints are explained there as well: why `Cost::basis` 
 The premise at the time was that the two registers addressed the first and second filter stages, though nothing public determines which stage comes first. The two values differ only in bit 5, and bit 5 carries no cutoff-frequency meaning, so the swap did not exchange stage order at all — it selected a different mode, and the bench says that mode is worse.
 
 The driver is back on the byte order `esp-bsp` emits (the one with bit 5 cleared first, then the set one), and the registers are named after the bits they carry rather than after a stage.
+
+---
+
+## A codec that did not answer keeps the Audio page, and the page is the retry
+
+### Behaviour
+
+`Es7210Rx::ensure_ready()` asks the codec to init at most once a second while the page is open. Until it answers, `poll()` drains and discards the DMA ring and returns a zero-envelope `AudioSample` carrying `fault: Some("the codec did not answer on I2C")`; the state maps that to `Health::Down`, and the page draws `NO IN` plus the reason instead of disappearing.
+
+A codec that fails at boot is no longer dropped: `Board::new` always builds the RX transfer and the `Es7210Rx`, and the boot-time `retry(3, 20 ms)` only logs. `Backed.audio` is a wiring fact, so it stays true.
+
+`[test]` `a_capture_that_lost_its_codec_reports_it_and_clears_it_when_it_returns` holds `fault` → `Health::Down`, and the next clean sample clearing it back to `Ready`.
+
+### Evidence
+
+`[measured]` A temporary patch failed the first `ensure_ready()` on the page, and the board booted with `IOT_BOOT_PAGE=audio`. The serial log showed `[AUDIO] ES7210 deferred, retrying while the page is open: forced` at 2.17 s, then `[AUDIO] ES7210 answered, capture running` at 3.18 s — one retry interval later — and the HPF corner walk resumed. `[IOT] boot page is Audio` stayed in the log, and the next product boot read `[HW] 7 devices: 7 present`. The patch was reverted.

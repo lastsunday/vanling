@@ -3,12 +3,52 @@
 
 use super::*;
 
-use crate::components::gc2145::{
-    EXTRACT_RATIO, FORMAT_RGB565, GC2145_I2C_ADDR, Gc2145, Gc2145Error,
-};
-use crate::virtual_components::camera::{self as dvp, FrameRing, Gc2145Capture};
+use crate::components::gc2145::{EXTRACT_RATIO, FORMAT_RGB565, GC2145_I2C_ADDR, Gc2145};
+use crate::virtual_components::camera::{self as dvp, FrameRing, Gc2145Capture, SensorStart};
 
 type BoardCamera = Gc2145Capture<Gc2145<SharedI2cDevice>>;
+
+impl SensorStart for Gc2145<SharedI2cDevice> {
+    fn bring_up(&mut self) -> Result<(), &'static str> {
+        let mut delay = Delay::new();
+        self.init(&mut delay)
+            .map_err(|_| "the sensor did not answer")?;
+        self.set_window(
+            dvp::FRAME_WIDTH,
+            dvp::FRAME_HEIGHT,
+            EXTRACT_RATIO,
+            &mut delay,
+        )
+        .map_err(|_| "the sensor would not set its window")?;
+        self.set_hmirror(true)
+            .map_err(|_| "the sensor would not mirror")?;
+        let chip_id = self.read_id().map_err(|_| "the sensor id would not read")?;
+        log::info!("[CAM] sensor id {chip_id:#06x}");
+        if let Ok(geometry) = self.read_window_geometry() {
+            let format = self.read_format().unwrap_or_default();
+            log::info!(
+                "[CAM] sensor reports {}x{} out, read {}x{} at {},{} ratio {}:{}, format \
+                 0x{format:02x} (RGB565 is 0x{FORMAT_RGB565:02x})",
+                geometry.out_width,
+                geometry.out_height,
+                geometry.win_width,
+                geometry.win_height,
+                geometry.row_start,
+                geometry.col_start,
+                geometry.subsample >> 4,
+                geometry.subsample & 0x0f,
+            );
+            log::debug!(
+                "[CAM] decim regs: 0x99=0x{:02x} 0x9a=0x{:02x} bins={:02x?} crop={}",
+                geometry.subsample,
+                geometry.subsample_mode,
+                geometry.sub_bins,
+                u8::from(geometry.crop_enabled),
+            );
+        }
+        Ok(())
+    }
+}
 
 const PANEL_BYTES: usize = LCD_WIDTH as usize * LCD_HEIGHT as usize * 2;
 
@@ -67,8 +107,6 @@ pub type CameraOnly = (
 pub enum CameraError {
     Board(BoardError),
     CameraConfig(esp_hal::lcd_cam::cam::ConfigError),
-    CameraStart(esp_hal::dma::DmaError),
-    Sensor(Gc2145Error<I2cDeviceError<i2c_master::Error>>),
 }
 
 impl From<BoardError> for CameraError {
@@ -130,53 +168,22 @@ impl Board<'static> {
         dvp_peripheral: esp_hal::lcd_cam::cam::Camera<'static>,
         bus: &'static SharedI2cBus,
         arena: &mut [u8],
-    ) -> Result<BoardCamera, CameraError> {
-        let mut delay = Delay::new();
-        let mut sensor = Gc2145::new(I2cDevice::new(bus), GC2145_I2C_ADDR);
-        sensor.init(&mut delay).map_err(CameraError::Sensor)?;
-        sensor
-            .set_window(
-                dvp::FRAME_WIDTH,
-                dvp::FRAME_HEIGHT,
-                EXTRACT_RATIO,
-                &mut delay,
-            )
-            .map_err(CameraError::Sensor)?;
-        sensor.set_hmirror(true).map_err(CameraError::Sensor)?;
-
-        let geometry = sensor.read_window_geometry().map_err(CameraError::Sensor)?;
-        let format = sensor.read_format().map_err(CameraError::Sensor)?;
-        let chip_id = sensor.read_id().map_err(CameraError::Sensor)?;
-        log::info!("[CAM] sensor id {chip_id:#06x}");
-        log::info!(
-            "[CAM] sensor reports {}x{} out, read {}x{} at {},{} ratio {}:{}, format 0x{format:02x} \
-             (RGB565 is 0x{FORMAT_RGB565:02x})",
-            geometry.out_width,
-            geometry.out_height,
-            geometry.win_width,
-            geometry.win_height,
-            geometry.row_start,
-            geometry.col_start,
-            geometry.subsample >> 4,
-            geometry.subsample & 0x0f,
-        );
-        log::debug!(
-            "[CAM] decim regs: 0x99=0x{:02x} 0x9a=0x{:02x} bins={:02x?} crop={}",
-            geometry.subsample,
-            geometry.subsample_mode,
-            geometry.sub_bins,
-            u8::from(geometry.crop_enabled),
-        );
+    ) -> BoardCamera {
+        let sensor = Gc2145::new(I2cDevice::new(bus), GC2145_I2C_ADDR);
 
         // SAFETY: `arena` is the board's frame buffer — one region, nothing else names it, and
         // it cannot move or be freed while the ring is in use.
-        let ring = unsafe { FrameRing::new(arena.as_mut_ptr()) }.map_err(BoardError::Dma)?;
-        let transfer = dvp_peripheral
-            .receive(ring)
-            .map_err(|(error, _camera, _ring)| CameraError::CameraStart(error))?;
+        let start = match unsafe { FrameRing::new(arena.as_mut_ptr()) } {
+            Ok(ring) => dvp_peripheral.receive(ring),
+            Err(error) => {
+                log::error!("[CAM] frame ring could not be laid out: {error:?}");
+                return Gc2145Capture::without_path(sensor);
+            }
+        };
+        // `receive` is reported into the capture rather than returned: a path that did not
+        // start keeps its page and is tried again from there.
         dvp::report_peripheral_config("after receive");
-
-        Ok(Gc2145Capture::new(transfer, sensor))
+        Gc2145Capture::pending(start, sensor)
     }
 
     pub(super) fn new_camera(
@@ -184,8 +191,10 @@ impl Board<'static> {
         bus: &'static SharedI2cBus,
         dvp_peripheral: esp_hal::lcd_cam::cam::Camera<'static>,
         arena: &mut [u8],
-    ) -> Result<BoardCamera, CameraError> {
-        pca9557.set_output(0).map_err(BoardError::from)?;
+    ) -> BoardCamera {
+        if let Err(error) = pca9557.set_output(0) {
+            log::warn!("[CAM] the power pin did not answer, retrying from the page: {error:?}");
+        }
         Self::new_sensor_capture(dvp_peripheral, bus, arena)
     }
 
@@ -253,8 +262,7 @@ impl Board<'static> {
             GPIO46,
         })?;
 
-        let capture = Self::new_sensor_capture(dvp_peripheral, bus, &mut frame_arena().0)?;
-
+        let capture = Self::new_sensor_capture(dvp_peripheral, bus, &mut frame_arena().0);
         Ok((panel, capture, TimerGroup::new(TIMG0), FROM_CPU_INTR0))
     }
 }

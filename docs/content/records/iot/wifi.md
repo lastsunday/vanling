@@ -246,7 +246,7 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 
 ### 页面何时扫
 
-`PageWatch`（`app/src/workers.rs` 的 `PAGE`）是页面状态的**唯一共享读数**：渲染循环每 pass 把 `manager.state().page` 发布进去，网络任务用 `PAGE.wait_for(DisplayPage::Network)` 等「列表在屏上」，并 `select3` 在「扫描间隔到」/「页面**回到**列表」/「staged 凭据就绪」之间醒。
+`PageWatch`（`app/src/workers/network.rs` 的 `PAGE`）是页面状态的**唯一共享读数**：渲染循环每 pass 把 `manager.state().page` 发布进去，网络任务用 `PAGE.wait_for(DisplayPage::Network)` 等「列表在屏上」，并 `select3` 在「扫描间隔到」/「页面**回到**列表」/「staged 凭据就绪」之间醒。
 
 放共享状态而不是加一条消息：页面是状态（幂等、只有最新值有意义），走 channel 就要一个深度 1 的队列、写者侧的变化检测、以及被拒发送时的重试 —— 三个只为绕开「状态被当消息送」而存在的机制。这与 `EffectiveDemand` 同一形状。
 
@@ -368,7 +368,7 @@ X  0  OK | SHOW
 | 决定 | 取值 | 为什么 |
 | --- | --- | --- |
 | 页面何时存在 | 入口点报的接线事实（`iot_app::Link`：`Wired` / `Absent`） | station 由入口点取走（它的启动要调度器），`run` 里已经看不到射频；用 build 事实（`cfg!(feature = "wifi")`）则宿主机冒烟永远到不了这一页，而这一页最需要的验证恰恰是「组合有没有把能力接进来」——`Link` 与 `SpeakerRunner` 同一形状：接线事实由入口点传进来。不是 `Board` 上再开一个方法：那会有两种说法说同一件事，且能互相打架 |
-| 扫描列表走哪 | 独立单槽通道（`Latest` / `SCAN`），不进 intent ring | `Intent` 是 `Copy`，每个槽按最宽消息定价：`ApList`（8 × 42 + 1 = 337 B）进 ring 就是 8 槽 ≈ 2.7 KB，而 ring 的窗口是 `size_of::<AudioSample>()`（1,760 B）。`app/src/input.rs` 的尺寸测试直接拦下（`a_capture_window_costs_one_slot_beside_the_ring`） |
+| 扫描列表走哪 | 独立单槽通道（`Retained` / `SCAN`），不进 intent ring | `Intent` 是 `Copy`，每个槽按最宽消息定价：`ApList`（8 × 42 + 1 = 337 B）进 ring 就是 8 槽 ≈ 2.7 KB，而 ring 的窗口是 `size_of::<AudioSample>()`（1,760 B）。`app/src/input.rs` 的尺寸测试直接拦下（`a_capture_window_costs_one_slot_beside_the_ring`） |
 | 「没扫过」与「扫了没扫到」 | `DeviceState.aps: Option<ApList>` | 两态在页面上是两句话（`NOT SCANNED` / `NO NETWORKS`）。带自己凭据的构建不去扫，只能说「没扫过」；扫了没扫到是在说这个房间 |
 | 列表一行多高 | 3 行 × 47 px（6.0 mm），表头仍是 3 行，行下多一条 44 px 的工具条 | 面板 320×240 = 40.6×30.5 mm（0.127 mm/px）。61 px（7.75 mm）原本达标，但工具条要从这 232 px 里切出 44 px，3 行 × 47 px 是「切完还剩多少就多少」：47 px = 6.0 mm 低于 7 mm 的通行最小触点，与键盘 46 px 同一条**已知并接受的破例**（数字块与列表都是拇指盲按的） |
 | 键盘从哪起 | 键盘起点抬到与列表**同一个 y**（第 3 行 = 47 px），表头保留三行 | 原来打字态只有一行表头，为的是把键盘顶上去；上板看下来那三行信息（阶段、当前网络与信号、草稿）都值得留，而 4 行的键盘让出 6 px 仍够按。两态从同一个 y 起还省掉了一次「页面跳一下」 |
@@ -711,7 +711,7 @@ C6 先跑通：手机连上 `vanling-1234`、拿到租约、页面**自己**打�
 
 **页面第三版**（`portal.html` 14,819 B，内联 CSS/JS 仍是刻意的）：语言切换从页脚搬到**页头右上**的分段控件；密码输入从行内字段改成 `<dialog>` 从底部弹出的表单（带「显示/隐藏」与 `minlength=8`，点背景或 Esc 取消，老浏览器退回 `open` 属性）；每行 = 名字 + **该网络自己的 BSSID**（小字、等宽，同名的 mesh/中继因此能分开）+ 四格信号 + 锁/开锁 + `已保存` 胶囊；列表下面是**「重新扫描」**（`GET /rescan` → 等 1.8 s 让那一轮扫完 → 读 `/scan`）。`done.html` 只换了图标并沿用同一个语言键。
 
-**页面第四版：扫描的完成语义（`[测试]`，2026-11-04）**：`/rescan` 原先答的是**上一轮**列表，页面只能 `wait(1800)` 猜射频什么时候扫完；现在 `NETWORK.scan` 是「列表 + 代次」的 `Scan`，每完成一轮成功扫描（即使 `ScanHistory` 判定列表没变）代次 +1。`/rescan` 答 `202 Accepted` 和按下时的代次，页面每 400 ms 读一次 `/scan`，代次前进才收工，10 s 不前进才报「读不到列表」。`/scan` 在第一轮完成前答 `503 + Retry-After: 1`（`scan.peek()` 为 `None`），完成后即使没有网络也是 `200 []` —— 「没扫过」与「扫了没扫到」不再是同一张空列表。`hold` 收到与当前关联完全相同的 `Join` 时只记一条 debug 并忽略，避免面板与页面同时交同一份凭据时把已经连上的链路断掉重连。宿主机测试：`http::tests::a_survey_that_has_not_finished_asks_to_be_asked_again`、`a_scan_answer_names_the_round_it_carries`、`a_rescan_is_answered_before_the_round_it_asked_for`，`route::tests::a_scan_that_has_not_finished_is_not_an_empty_room`、`asking_again_is_accepted_without_the_old_list`、`the_page_waits_for_the_round_instead_of_the_clock`，`workers::tests::a_round_advances_the_generation_even_when_the_list_is_the_same`，`drivers::network::tests::a_join_for_the_network_already_held_is_not_a_new_association`。
+**页面第四版：扫描的完成语义（`[测试]`，2026-11-04）**：`/rescan` 原先答的是**上一轮**列表，页面只能 `wait(1800)` 猜射频什么时候扫完；现在 `NETWORK.scan` 是「列表 + 代次」的 `Scan`，每完成一轮成功扫描（即使 `ScanHistory` 判定列表没变）代次 +1。`/rescan` 答 `202 Accepted` 和按下时的代次，页面每 400 ms 读一次 `/scan`，代次前进才收工，10 s 不前进才报「读不到列表」。`/scan` 在第一轮完成前答 `503 + Retry-After: 1`（`scan.peek()` 为 `None`），完成后即使没有网络也是 `200 []` —— 「没扫过」与「扫了没扫到」不再是同一张空列表。`hold` 收到与当前关联完全相同的 `Join` 时只记一条 debug 并忽略，避免面板与页面同时交同一份凭据时把已经连上的链路断掉重连。宿主机测试：`http::tests::a_survey_that_has_not_finished_asks_to_be_asked_again`、`a_scan_answer_names_the_round_it_carries`、`a_rescan_is_answered_before_the_round_it_asked_for`，`route::tests::a_scan_that_has_not_finished_is_not_an_empty_room`、`asking_again_is_accepted_without_the_old_list`、`the_page_waits_for_the_round_instead_of_the_clock`，`workers::network::tests::a_round_advances_the_generation_even_when_the_list_is_the_same`，`drivers::network::tests::a_join_for_the_network_already_held_is_not_a_new_association`。
 
 字节的账：页面从 **4,468 → 14,819 B**（+10,351：i18n 词典、对话框、卡片式布局、每行 BSSID、内联图标），但**一次刷新的往返从 3～6 条连接降到 1 条**，且首屏不再等一次 XHR。`/favicon.svg` 仍按名服务（缓存一天），`/favicon.ico` 仍是 204。
 

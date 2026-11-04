@@ -3,10 +3,11 @@
 
 use esp_hal::dma::aligned::{DmaAlignedMut, DmaAlignedRef};
 use esp_hal::dma::{
-    BurstConfig, DmaBufError, DmaDescriptor, DmaRxBuffer, InternalBurstConfig, Owner, Preparation,
+    BurstConfig, DmaBufError, DmaDescriptor, DmaError, DmaRxBuffer, InternalBurstConfig, Owner,
+    Preparation,
 };
 use esp_hal::dma_descriptors_chunk_size;
-use esp_hal::lcd_cam::cam::{self, CameraTransfer, EofMode, VhdeMode};
+use esp_hal::lcd_cam::cam::{self, Camera, CameraTransfer, EofMode, VhdeMode};
 use esp_hal::time::Rate;
 use iot_core::drivers::camera::{CameraCounters, FrameAdvance, FrameSource, WindowGeometry};
 
@@ -15,6 +16,14 @@ use crate::components::gc2145::WindowGeometry as SensorGeometry;
 /// A sensor that can report the window it is reading out.
 pub trait WindowReadable {
     fn window(&mut self) -> Option<SensorGeometry>;
+}
+
+/// A sensor the capture can bring up after the frame path exists, so a part that did not
+/// answer at boot is retried while its page is open.
+pub trait SensorStart {
+    /// Configures the window this capture reads and starts the part. The reason is what the
+    /// Camera page shows.
+    fn bring_up(&mut self) -> Result<(), &'static str>;
 }
 
 impl<D: embedded_hal::i2c::I2c> WindowReadable for crate::components::gc2145::Gc2145<D> {
@@ -108,6 +117,14 @@ const _: () = assert!(
 const PIXEL_CLOCK_HZ: u32 = 24_000_000;
 
 const STALL_MS: u64 = 400;
+
+/// How often a frame path that never started, or a sensor that did not answer, is asked
+/// again. The bring-up holds the I2C bus for a couple of register sequences, so retrying on
+/// every frame would starve the panel.
+const SENSOR_RETRY_MS: u64 = 5_000;
+
+/// The page's words for a frame path whose DMA would not start.
+const START_FAULT: &str = "the camera stream would not start";
 
 /// Data-enable, not sync-and-enable: the sensor has no HSYNC line, and asking for one
 /// leaves the peripheral waiting on a pin that never moves.
@@ -363,11 +380,17 @@ pub struct Gc2145Capture<S> {
     latest: Option<usize>,
     rearm_pending: bool,
     geometry: Option<WindowGeometry>,
+    /// Whether the sensor answered its bring-up and frames are meaningful.
+    ready: bool,
+    /// Why the frame path is down, when it is.
+    fault: Option<&'static str>,
+    /// When the sensor was last asked, so a dead part is not polled every frame.
+    retried_at_ms: Option<u64>,
 }
 
 impl<S> Gc2145Capture<S> {
-    /// Takes a transfer armed on a ring built by [`FrameRing::new`], and the sensor that
-    /// was brought up alongside it.
+    /// Takes a transfer armed on a ring built by [`FrameRing::new`], and a sensor that is
+    /// already up.
     pub fn new(transfer: Transfer, sensor: S) -> Self {
         log::info!(
             "[CAM] {FRAME_WIDTH}x{FRAME_HEIGHT} RGB565, ring {RING_FRAMES} frames \
@@ -386,13 +409,138 @@ impl<S> Gc2145Capture<S> {
             latest: None,
             rearm_pending: false,
             geometry: None,
+            ready: true,
+            fault: None,
+            retried_at_ms: None,
+        }
+    }
+
+    /// Takes whatever the frame path could hand over at boot — a running transfer, or the
+    /// peripheral and ring that would not start — and a sensor still to be brought up. The
+    /// first page entry retries both, and reports why nothing is drawn in the meantime.
+    pub fn pending(
+        start: Result<Transfer, (DmaError, Camera<'static>, FrameRing)>,
+        sensor: S,
+    ) -> Self {
+        let mut capture = Self {
+            transfer: None,
+            parked: None,
+            sensor,
+            frames: 0,
+            repeated: 0,
+            restarts: 0,
+            finished: 0,
+            advanced_at: None,
+            latest: None,
+            rearm_pending: false,
+            geometry: None,
+            ready: false,
+            fault: None,
+            retried_at_ms: None,
+        };
+        match start {
+            Ok(transfer) => capture.transfer = Some(transfer),
+            Err((error, camera, ring)) => {
+                log::warn!(
+                    "[CAM] capture could not start, retrying while the page is open: {error:?}"
+                );
+                capture.parked = Some((camera, ring));
+                capture.fault = Some(START_FAULT);
+            }
+        }
+        capture
+    }
+
+    /// A capture whose frame path could not be laid out at all. The page stays and names the
+    /// reason, though no retry can bring the path back.
+    pub fn without_path(sensor: S) -> Self {
+        log::error!("[CAM] the frame ring could not be laid out, the Camera page stays up empty");
+        Self {
+            transfer: None,
+            parked: None,
+            sensor,
+            frames: 0,
+            repeated: 0,
+            restarts: 0,
+            finished: 0,
+            advanced_at: None,
+            latest: None,
+            rearm_pending: false,
+            geometry: None,
+            ready: false,
+            fault: Some(START_FAULT),
+            retried_at_ms: None,
+        }
+    }
+
+    /// Whether the frame path is up.
+    pub const fn ready(&self) -> bool {
+        self.ready
+    }
+
+    /// Why nothing is being drawn, when nothing is.
+    pub const fn fault(&self) -> Option<&'static str> {
+        self.fault
+    }
+
+    /// Asks the frame path and the sensor to come up. The first failure and the recovery are
+    /// each logged once; the retry is paced by [`SENSOR_RETRY_MS`].
+    fn ensure_ready(&mut self, now_ms: u64)
+    where
+        S: SensorStart,
+    {
+        if self.ready && self.transfer.is_some() {
+            self.fault = None;
+            return;
+        }
+        if self
+            .retried_at_ms
+            .is_some_and(|at| now_ms.saturating_sub(at) < SENSOR_RETRY_MS)
+        {
+            return;
+        }
+        self.retried_at_ms = Some(now_ms);
+        if self.transfer.is_none() {
+            let Some((camera, ring)) = self.parked.take() else {
+                self.fault = Some(START_FAULT);
+                return;
+            };
+            match camera.receive(ring) {
+                Ok(transfer) => self.transfer = Some(transfer),
+                Err((error, camera, ring)) => {
+                    log::warn!("[CAM] capture still will not start: {error:?}");
+                    self.parked = Some((camera, ring));
+                    self.fault = Some(START_FAULT);
+                    return;
+                }
+            }
+        }
+        if self.ready {
+            self.fault = None;
+            return;
+        }
+        match self.sensor.bring_up() {
+            Ok(()) => {
+                self.ready = true;
+                self.fault = None;
+                log::info!("[CAM] sensor answered, capture running");
+            }
+            Err(reason) => {
+                if self.fault.is_none() {
+                    log::warn!("[CAM] sensor deferred, retrying while the page is open: {reason}");
+                }
+                self.fault = Some(reason);
+            }
         }
     }
 }
 
-impl<S: WindowReadable> Gc2145Capture<S> {
+impl<S: WindowReadable + SensorStart> Gc2145Capture<S> {
     /// The sensor's readout window as the part reports it, read once and kept.
     pub fn geometry(&mut self) -> Option<WindowGeometry> {
+        if !self.ready {
+            return None;
+        }
         if self.geometry.is_none() {
             self.geometry = window_geometry(&mut self.sensor);
         }
@@ -411,6 +559,10 @@ impl<S: WindowReadable> Gc2145Capture<S> {
 
     /// Looks at the ring and reports what it found.
     pub fn poll(&mut self, now_ms: u64) -> CameraCounters {
+        self.ensure_ready(now_ms);
+        if !self.ready {
+            return self.counters();
+        }
         let Some(transfer) = self.transfer.as_mut() else {
             return self.counters();
         };
@@ -425,6 +577,9 @@ impl<S: WindowReadable> Gc2145Capture<S> {
             self.repeated = self.repeated.saturating_add(1);
         } else {
             self.frames = self.frames.saturating_add(1);
+            if self.frames == 1 {
+                log::info!("[CAM] first frame arrived");
+            }
             self.latest = Some(pick.frame);
         }
         if pick.finished >= DESCRIPTOR_COUNT {
@@ -475,8 +630,13 @@ impl<S: WindowReadable> Gc2145Capture<S> {
         self.rearm_pending = false;
         match camera.receive(buffer) {
             Ok(transfer) => self.transfer = Some(transfer),
-            Err((error, _camera, _buffer)) => {
-                log::error!("[CAM] capture could not be re-armed, going dark: {error:?}");
+            Err((error, camera, buffer)) => {
+                log::error!(
+                    "[CAM] capture could not be re-armed, retrying from the page: {error:?}"
+                );
+                self.parked = Some((camera, buffer));
+                self.fault = Some(START_FAULT);
+                self.retried_at_ms = None;
             }
         }
     }
@@ -493,7 +653,7 @@ impl<S: WindowReadable> Gc2145Capture<S> {
     }
 }
 
-impl<S: WindowReadable> FrameSource for Gc2145Capture<S> {
+impl<S: WindowReadable + SensorStart> FrameSource for Gc2145Capture<S> {
     fn advance(&mut self, _frame: &mut [u8], now_ms: u64) -> FrameAdvance {
         let stalled_at = self.finished;
         self.poll(now_ms);
@@ -526,8 +686,13 @@ impl<S: WindowReadable> FrameSource for Gc2145Capture<S> {
         };
         match camera.receive(ring) {
             Ok(transfer) => self.transfer = Some(transfer),
-            Err((error, _camera, _ring)) => {
-                log::error!("[CAM] capture could not be resumed, going dark: {error:?}");
+            Err((error, camera, ring)) => {
+                log::error!(
+                    "[CAM] capture could not be resumed, retrying from the page: {error:?}"
+                );
+                self.parked = Some((camera, ring));
+                self.fault = Some(START_FAULT);
+                self.retried_at_ms = None;
             }
         }
     }
@@ -538,6 +703,10 @@ impl<S: WindowReadable> FrameSource for Gc2145Capture<S> {
 
     fn geometry(&mut self) -> Option<WindowGeometry> {
         Gc2145Capture::geometry(self)
+    }
+
+    fn fault(&self) -> Option<&'static str> {
+        Gc2145Capture::fault(self)
     }
 }
 

@@ -137,6 +137,12 @@ pub trait FrameSource {
     fn counters(&self) -> CameraCounters;
 
     fn geometry(&mut self) -> Option<WindowGeometry>;
+
+    /// Why nothing is being drawn, when the frame path or the sensor is down. `None` while
+    /// the path is up.
+    fn fault(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 #[cfg(test)]

@@ -295,3 +295,16 @@ That boundary decides which call sites can carry a "read-back, not write-echo" n
 `[reported]` The Espressif FAQ's wide-angle answer recommends BF3005 and OV2640, and **GC2145 is not among them**. Low-resolution cropping on this sensor was raised in espressif/esp32-camera issue #845 — in exactly the wide-angle-lens-at-low-resolution case — with no official response.
 
 Set against "field of view is arithmetic" above: **if changing the sensor configuration does not widen the view, what is left is the lens and the sensor itself.**
+---
+
+## A sensor that did not come up does not take the Camera page with it
+
+### Behaviour
+
+`Gc2145Capture::pending()` takes the boot-time `receive` result and the sensor together: when the DMA did not start it keeps `(camera, ring)` in `parked`, and when the sensor did not answer it keeps the reason. While the page is open, `ensure_ready()` retries every 5 s; `FrameSource::fault()` hands the reason to `CameraReadout.fault`, and the page draws `NO CAM`, the reason and `RETRYING` instead of dropping out of the cycle.
+
+A DMA chain that fails in `rearm` or `resume` takes the same route: `(camera, ring)` goes back into `parked`, the reason is recorded, and the next page pass retries `receive` rather than only logging "going dark" and staying silent for good.
+
+### Evidence
+
+`[measured]` A temporary patch made the first sensor bring-up on the page fail, and the board booted with `IOT_BOOT_PAGE=camera`. The serial log showed `[CAM] sensor deferred, retrying while the page is open: the sensor did not answer` at 2.17 s, then `[CAM] sensor id 0x2145`, `[CAM] sensor answered, capture running` and `[CAM] first frame arrived` at 8.25 s; `[IOT] boot page is Camera` stayed in the log throughout. The patch was reverted and the product image reflashed; `[HW] camera 0x3C present`.

@@ -36,13 +36,14 @@ use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::input::{PassThrough, PollEntry, TOUCH_SCAN_MS, TouchGestures};
 use iot_core::drivers::motion::{MOTION_SCAN_MS, MotionCapabilities, MotionInput};
 use iot_core::drivers::network::SetupHost;
+use iot_core::drivers::playback::SilentOutput;
 use iot_core::drivers::surface::WiredSurface;
 
 use crate::components::backlight::Backlight;
 pub use crate::components::button::PullButton;
 use crate::components::credentials::CredentialStore;
 use crate::components::es7210::{ES7210_I2C_ADDR, Es7210};
-use crate::components::es8311::{ChipId, ES8311_I2C_ADDR, ES8311_I2C_ADDR_ALT, Es8311};
+use crate::components::es8311::{ES8311_I2C_ADDR, ES8311_I2C_ADDR_ALT, Es8311, StartableCodec};
 use crate::components::ft6336::{self, FT6336_I2C_ADDR, Ft6336};
 use crate::components::pca9557::Pca9557;
 use crate::components::qmi8658::{
@@ -77,6 +78,8 @@ const PCA9557_RETRY_ATTEMPTS: u8 = 5;
 const PCA9557_RETRY_MS: u32 = 20;
 const MOTION_RETRY_ATTEMPTS: u8 = 3;
 const MOTION_RETRY_MS: u32 = 10;
+const CODEC_RETRY_ATTEMPTS: u8 = 3;
+const CODEC_RETRY_MS: u32 = 20;
 // The panel's own writes are internal-DRAM slices — the frame in `.bss`, commands and
 // arguments on the stack — and `SpiDma::write` transfers those in place, so the copy
 // buffers below never see them. The one thing that does go through them is a *promoted
@@ -249,12 +252,12 @@ fn start_speaker(
     tx: I2sTx<'static, Blocking>,
     codec: Es8311<SharedI2cDevice>,
     reference: &'static reference::Shared<{ playback::REFERENCE_SAMPLES }>,
-) -> Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>> {
+) -> playback::BoardSpeaker<Es8311<SharedI2cDevice>> {
     match playback::Es8311Tx::new(tx, codec, reference::Writer::new(reference)) {
-        Ok(speaker) => Some(Box::new(speaker)),
+        Ok(speaker) => playback::BoardSpeaker::Codec(Box::new(speaker)),
         Err(error) => {
             log::error!("[PLAY] stream would not start: {error:?}");
-            None
+            playback::BoardSpeaker::Silent(SilentOutput::new("the output stream would not start"))
         }
     }
 }
@@ -269,17 +272,17 @@ fn startup(
     (board, TimerGroup::new(timg0), intr0, intr2, panel)
 }
 
-fn probe_es8311(bus: &'static SharedI2cBus, absent_note: &str) -> Option<Es8311<SharedI2cDevice>> {
-    let mut es8311 = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR);
-    let mut es8311_alt = Es8311::new(I2cDevice::new(bus), ES8311_I2C_ADDR_ALT);
-    if es8311.chip_id().is_ok_and(ChipId::is_expected) {
-        es8311.init().ok().map(|()| es8311)
-    } else if es8311_alt.chip_id().is_ok_and(ChipId::is_expected) {
-        es8311_alt.init().ok().map(|()| es8311_alt)
-    } else {
-        log::warn!("[PLAY] ES8311 not found, {absent_note}");
-        None
+/// Brings the codec up, and hands it back either way: a part that did not answer keeps its
+/// page, and the first tap is the retry. The boot attempts are bounded so a broken part does
+/// not hold the panel at boot.
+fn probe_es8311(bus: &'static SharedI2cBus) -> Es8311<SharedI2cDevice> {
+    let mut codec =
+        Es8311::with_alternate(I2cDevice::new(bus), ES8311_I2C_ADDR, ES8311_I2C_ADDR_ALT);
+    let mut delay = Delay::new();
+    if let Some(reason) = retry(3, 20, &mut delay, |_| codec.ensure_started()) {
+        log::warn!("[PLAY] ES8311 deferred, retrying on the first tap: {reason}");
     }
+    codec
 }
 
 /// The host this board opens setup mode on: it has a panel, so the page is where a person
@@ -293,7 +296,7 @@ pub struct Board<'d> {
     touch: Option<Ft6336<SharedI2cDevice>>,
     motion: Option<Qmi8658<SharedI2cDevice>>,
     audio: Option<Box<Es7210Rx<Es7210<SharedI2cDevice>, { playback::REFERENCE_SAMPLES }>>>,
-    speaker: Option<Box<playback::Es8311Tx<Es8311<SharedI2cDevice>>>>,
+    speaker: Option<playback::BoardSpeaker<Es8311<SharedI2cDevice>>>,
     camera: Option<Box<dyn FrameSource + Send>>,
     radio: Option<WIFI<'static>>,
     credentials: Option<Box<CredentialStore>>,
@@ -399,13 +402,7 @@ impl Board<'static> {
         let (screen, panel_bus) = Screen::new(0, panel, backlight, &mut frame_arena().0);
         let mut screen = Box::new(screen);
         let frame = screen.frame();
-        let mut camera = match Board::new_camera(&mut pca9557, bus, dvp_peripheral, frame) {
-            Ok(camera) => Some(camera),
-            Err(error) => {
-                log::warn!("[CAM] camera bring-up failed, the Camera page stays dark: {error:?}");
-                None
-            }
-        };
+        let mut camera = Some(Board::new_camera(&mut pca9557, bus, dvp_peripheral, frame));
         let mut button = PullButton::new(GPIO0);
         let mut touch = Ft6336::new(
             I2cDevice::new(bus),
@@ -425,78 +422,42 @@ impl Board<'static> {
         }
 
         let mut es7210 = Es7210::new(I2cDevice::new(bus), ES7210_I2C_ADDR);
-        let capture_codec = match es7210.init() {
-            Ok(()) => Some(es7210),
-            Err(error) => {
-                log::warn!("[AUDIO] ES7210 not found, the Audio page stays dark: {error:?}");
-                None
-            }
-        };
+        if let Some(error) = retry(CODEC_RETRY_ATTEMPTS, CODEC_RETRY_MS, &mut delay, |_| {
+            es7210.init()
+        }) {
+            log::warn!("[AUDIO] ES7210 deferred, retrying from the first poll: {error:?}");
+        }
 
-        let speaker_codec = probe_es8311(bus, "the Speaker page stays dark");
+        let speaker_codec = probe_es8311(bus);
 
-        let shared_clocks = speaker_codec.is_some();
-        let config = if shared_clocks {
-            playback::shared_tdm_config()
-        } else {
-            capture::tdm_config()
-        };
-        let (mut audio, mut speaker) = match (capture_codec, speaker_codec) {
-            (capture_codec, speaker_codec)
-                if capture_codec.is_some() || speaker_codec.is_some() =>
-            {
-                let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, config)
-                    .map_err(BoardError::I2sConfig)?
-                    .with_mclk(GPIO38);
-                let (tx, rx) = if shared_clocks {
-                    let tx = Some(
-                        i2s.i2s_tx
-                            .with_bclk(GPIO14)
-                            .with_ws(GPIO13)
-                            .with_dout(GPIO45)
-                            .build(),
-                    );
-                    let rx = i2s.i2s_rx.with_din(GPIO12).build();
-                    (tx, rx)
-                } else {
-                    (
-                        None,
-                        i2s.i2s_rx
-                            .with_bclk(GPIO14)
-                            .with_ws(GPIO13)
-                            .with_din(GPIO12)
-                            .build(),
-                    )
-                };
-                // One cell both audio paths reach: the speaker fills it and the
-                // microphone reads it. Made here because this is the only place
-                // both drivers are visible — see `virtual_components::reference`
-                // for why it has to be shared rather than owned by either.
-                let reference = reference::share::<{ playback::REFERENCE_SAMPLES }>();
-                let audio = match capture_codec {
-                    Some(codec) => {
-                        let transfer = rx
-                            .read(capture::stream())
-                            .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
-                        Some(Box::new(Es7210Rx::new(
-                            transfer,
-                            codec,
-                            reference::Side::wired(reference),
-                        )))
-                    }
-                    None => None,
-                };
-                let speaker = match (tx, speaker_codec) {
-                    (Some(tx), Some(codec)) => {
-                        pca9557.set_output_bit(PA_EN_PIN, true)?;
-                        start_speaker(tx, codec, reference)
-                    }
-                    _ => None,
-                };
-                (audio, speaker)
-            }
-            _ => (None, None),
-        };
+        // The product always wires one codec clock pair; the probe decides only whether the
+        // codec is answering, not which I2S direction exists. A part that failed its probe
+        // still gets its stream, so the first tap can retry it.
+        let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, playback::shared_tdm_config())
+            .map_err(BoardError::I2sConfig)?
+            .with_mclk(GPIO38);
+        let tx = i2s
+            .i2s_tx
+            .with_bclk(GPIO14)
+            .with_ws(GPIO13)
+            .with_dout(GPIO45)
+            .build();
+        let rx = i2s.i2s_rx.with_din(GPIO12).build();
+        // One cell both audio paths reach: the speaker fills it and the microphone reads it.
+        // Made here because this is the only place both drivers are visible — see
+        // `virtual_components::reference` for why it has to be shared rather than owned by
+        // either.
+        let reference = reference::share::<{ playback::REFERENCE_SAMPLES }>();
+        let transfer = rx
+            .read(capture::stream())
+            .map_err(|(error, _, _)| BoardError::I2sStart(error))?;
+        let mut audio = Some(Box::new(Es7210Rx::new(
+            transfer,
+            es7210,
+            reference::Side::wired(reference),
+        )));
+        pca9557.set_output_bit(PA_EN_PIN, true)?;
+        let mut speaker = Some(start_speaker(tx, speaker_codec, reference));
 
         hardware::identity();
         hardware::Report::of([&mut *screen, &mut button, &mut touch, &mut motion])
@@ -583,28 +544,23 @@ impl Board<'static> {
 
         let (bus, mut pca9557) = open_i2c(I2C0, GPIO1, GPIO2)?;
 
-        let speaker_codec = probe_es8311(bus, "the probe has nothing to drive");
+        let speaker_codec = probe_es8311(bus);
 
-        let speaker = match speaker_codec {
-            Some(codec) => {
-                pca9557.set_output_bit(PA_EN_PIN, true)?;
-                let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, playback::shared_tdm_config())
-                    .map_err(BoardError::I2sConfig)?
-                    .with_mclk(GPIO38);
-                let tx = i2s
-                    .i2s_tx
-                    .with_bclk(GPIO14)
-                    .with_ws(GPIO13)
-                    .with_dout(GPIO45)
-                    .build();
-                start_speaker(
-                    tx,
-                    codec,
-                    reference::share::<{ playback::REFERENCE_SAMPLES }>(),
-                )
-            }
-            None => None,
-        };
+        pca9557.set_output_bit(PA_EN_PIN, true)?;
+        let i2s = i2s_master::I2s::new(I2S0, DMA_CH1, playback::shared_tdm_config())
+            .map_err(BoardError::I2sConfig)?
+            .with_mclk(GPIO38);
+        let tx = i2s
+            .i2s_tx
+            .with_bclk(GPIO14)
+            .with_ws(GPIO13)
+            .with_dout(GPIO45)
+            .build();
+        let speaker = Some(start_speaker(
+            tx,
+            speaker_codec,
+            reference::share::<{ playback::REFERENCE_SAMPLES }>(),
+        ));
 
         Ok(startup(
             Self {
@@ -697,10 +653,10 @@ impl iot_core::drivers::board::HasMotion for Board<'static> {
 }
 
 impl HasPlayback for Board<'static> {
-    type Speaker = playback::Es8311Tx<Es8311<SharedI2cDevice>>;
+    type Speaker = playback::BoardSpeaker<Es8311<SharedI2cDevice>>;
 
     fn take_playback(&mut self) -> Option<Box<Self::Speaker>> {
-        self.speaker.take()
+        self.speaker.take().map(Box::new)
     }
 }
 

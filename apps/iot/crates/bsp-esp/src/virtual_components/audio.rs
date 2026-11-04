@@ -8,18 +8,27 @@ use esp_hal::i2s::master::{Channels, DataFormat, TdmConfig};
 use esp_hal::time::Rate;
 use iot_core::drivers::aec::{EchoOutcome, EchoStage, lag_in_samples};
 use iot_core::drivers::audio::{
-    Armed, AudioSample, AudioSource, BYTES_PER_POLL, BYTES_PER_SAMPLE, CAPTURE_BYTES_PER_FRAME,
-    CaptureBacklog, CaptureWatchdog, Chain, CornerStep, CornerSweep, DECIMATION, Decimator,
-    SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
+    Armed, AudioEnvelope, AudioSample, AudioSource, BYTES_PER_POLL, BYTES_PER_SAMPLE,
+    CAPTURE_BYTES_PER_FRAME, CaptureBacklog, CaptureWatchdog, Chain, CornerStep, CornerSweep,
+    DECIMATION, Decimator, SAMPLE_RATE_HZ, SampleStream, dbfs, spl,
 };
 
-use crate::components::es7210::{HPF_CORNER, HPF_CORNER_CODES, HpfCorner, SPL_OFFSET_DECIBELS};
+use crate::components::es7210::{
+    CaptureCodec, HPF_CORNER, HPF_CORNER_CODES, HpfCorner, SPL_OFFSET_DECIBELS,
+};
 use crate::virtual_components::reference::{Reference, Side};
 
 const HPF_CORNER_WALK: bool = true;
 
 const CAL_SPL_LOG: bool = false;
 const CAL_LOG_MS: u64 = 5_000;
+
+/// How often a codec that failed its bring-up is asked again. One register sequence costs a
+/// few milliseconds on the shared bus, so the retry is paced rather than per poll.
+const CODEC_RETRY_MS: u64 = 1_000;
+
+/// The reason the Audio page shows when the codec does not answer.
+const CODEC_FAULT: &str = "the microphone codec did not answer on I2C";
 
 // Bytes per DMA descriptor. A quarter of the poll period's worth of audio, so
 // the descriptors hand data over at a granularity a 20 ms poll does not notice
@@ -160,6 +169,13 @@ pub struct Es7210Rx<C, const R: usize> {
     walk: Option<CornerSweep>,
     last_cal_log_ms: u64,
     codec: C,
+    /// Whether the codec answered its bring-up. A part that did not still gets its ring, so
+    /// the page stays and every poll is a chance to recover.
+    ready: bool,
+    /// Why the last bring-up failed, when it did.
+    fault: Option<&'static str>,
+    /// When the codec was last asked, so a dead part does not hold the bus every poll.
+    retried_at_ms: Option<u64>,
     decimator: Decimator,
     echo: EchoStage<AEC_TAPS>,
     // Whether to run the canceller at all. Follows the microphone; see
@@ -258,8 +274,9 @@ pub trait EchoCapture {
 
 impl<C, const R: usize> EchoCapture for Es7210Rx<C, R>
 where
-    C: HpfCorner,
+    C: CaptureCodec,
     C::CornerError: core::fmt::Debug,
+    C::InitError: core::fmt::Debug,
 {
     fn cancel_echo(&self) -> bool {
         Es7210Rx::cancel_echo(self)
@@ -310,6 +327,9 @@ impl<C, const R: usize> Es7210Rx<C, R> {
             walk: HPF_CORNER_WALK.then_some(CornerSweep::new(HPF_CORNER_CODES)),
             last_cal_log_ms: 0,
             codec,
+            ready: false,
+            fault: None,
+            retried_at_ms: None,
             decimator: Decimator::new(),
             echo: EchoStage::new(),
             cancel_echo: AEC_ENABLED,
@@ -584,11 +604,51 @@ impl<C, const R: usize> Es7210Rx<C, R> {
 
 impl<C, const R: usize> Es7210Rx<C, R>
 where
-    C: HpfCorner,
+    C: CaptureCodec,
     C::CornerError: core::fmt::Debug,
+    C::InitError: core::fmt::Debug,
 {
-    /// One poll: drain, pair against the reference, and report.
+    /// Asks the codec to run if it is not already. The first failure and the recovery are
+    /// each logged once; the retry itself is paced by [`CODEC_RETRY_MS`].
+    fn ensure_ready(&mut self, now_ms: u64) {
+        if self.ready {
+            return;
+        }
+        if self
+            .retried_at_ms
+            .is_some_and(|at| now_ms.saturating_sub(at) < CODEC_RETRY_MS)
+        {
+            return;
+        }
+        self.retried_at_ms = Some(now_ms);
+        match self.codec.init() {
+            Ok(()) => {
+                self.ready = true;
+                self.fault = None;
+                log::info!("[AUDIO] ES7210 answered, capture running");
+            }
+            Err(error) => {
+                if self.fault.is_none() {
+                    log::warn!(
+                        "[AUDIO] ES7210 deferred, retrying while the page is open: {error:?}"
+                    );
+                }
+                self.fault = Some(CODEC_FAULT);
+            }
+        }
+    }
+
+    /// One poll: drain, pair against the reference, and report. A poll taken while the codec
+    /// is down drains and discards, so its silence never reaches the envelope.
     pub fn poll(&mut self, now_ms: u64) -> AudioSample {
+        self.ensure_ready(now_ms);
+        if self.fault.is_some() {
+            let taken = self.discard();
+            self.arrived = taken;
+            self.drained = taken;
+            self.stream.clear();
+            return self.offline_summary(now_ms);
+        }
         let reference = self.reference;
         let reference: &dyn Reference = &reference;
         let produced = match self.chain.running_mut() {
@@ -634,14 +694,44 @@ where
             elapsed_ms: now_ms.min(u64::from(u32::MAX)) as u32,
             restarts: self.restarts,
             dba_lsb: self.stream.dba_lsb(),
+            fault: self.fault,
         }
+    }
+
+    fn offline_summary(&self, now_ms: u64) -> AudioSample {
+        AudioSample {
+            envelope: AudioEnvelope::ZERO,
+            elapsed_ms: now_ms.min(u64::from(u32::MAX)) as u32,
+            restarts: self.restarts,
+            dba_lsb: 0,
+            fault: self.fault,
+        }
+    }
+
+    /// Drains whatever the DMA holds without folding it, so a silent codec's samples never
+    /// reach the envelope and the ring does not stay full for the poll after recovery.
+    fn discard(&mut self) -> usize {
+        let Some(transfer) = self.chain.running_mut() else {
+            return 0;
+        };
+        let mut taken = 0;
+        while transfer.available_bytes() > 0 {
+            let len = transfer.peek().len();
+            if len == 0 {
+                break;
+            }
+            transfer.consume(len);
+            taken += len;
+        }
+        taken
     }
 }
 
 impl<C, const R: usize> AudioSource for Es7210Rx<C, R>
 where
-    C: HpfCorner,
+    C: CaptureCodec,
     C::CornerError: core::fmt::Debug,
+    C::InitError: core::fmt::Debug,
 {
     fn accepts_slower_poll(&self) -> bool {
         false

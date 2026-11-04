@@ -1,4 +1,4 @@
-//! The main flow: one frame is intake, a sweep over the systems, present, and wait.
+//! The main flow: one frame is process_intents, a sweep over the systems, present, and wait.
 //!
 //! A frame's order is semantic, so it is written here rather than discovered at runtime:
 //! intents are applied before anything reads state, systems run in their declared order, and
@@ -30,7 +30,7 @@ pub async fn run_loop<C: ClockSink>(
     let mut schedule = Schedule::new(manager.state_ref(), clock);
     loop {
         let now_ms = Instant::now().as_millis() as u32;
-        schedule.intake(bus, workers, manager);
+        schedule.process_intents(bus, workers, manager);
         schedule.tick(&mut Frame {
             bus,
             manager,

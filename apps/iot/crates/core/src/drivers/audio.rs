@@ -395,6 +395,13 @@ impl SampleStream {
         }
     }
 
+    /// Drops what the stream holds, so a poll taken while the codec was silent cannot show
+    /// through once it answers again.
+    pub fn clear(&mut self) {
+        self.envelope = AudioEnvelope::ZERO;
+        self.pending = None;
+    }
+
     /// Folds a run of little-endian 16-bit samples in, holding a trailing odd byte until
     /// the next call: a transfer hands out whatever its descriptor boundary happened to be,
     /// and that is rarely a sample boundary.
@@ -631,6 +638,9 @@ pub struct AudioSample {
     pub restarts: u16,
     /// The A-weighted level of the same capture, as an RMS in LSB.
     pub dba_lsb: u16,
+    /// Why this poll carries no capture, when the part is not answering. `None` means the
+    /// samples are live.
+    pub fault: Option<&'static str>,
 }
 
 impl AudioSample {
@@ -640,6 +650,7 @@ impl AudioSample {
         elapsed_ms: 0,
         restarts: 0,
         dba_lsb: 0,
+        fault: None,
     };
 }
 
@@ -868,6 +879,7 @@ mod tests {
                 elapsed_ms: now_ms as u32,
                 restarts: self.restarts,
                 dba_lsb: 0,
+                fault: None,
             }
         }
     }

@@ -66,11 +66,11 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator |
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, network }`, `Latest`/`Scan`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
-| `frame_loop/{mod,clock}.rs`, `frame_loop/systems/*.rs` | the coordinator `run_loop`: four steps per frame (intake, system sweep, present, wait); each per-frame unit is a `System` and the `Schedule` declaration order is the execution order; `clock.rs` holds the logical frame clock |
+| `workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary, one file per worker: `mod.rs` holds only `Workers { input, playback, network }`, `inbox.rs` holds `Inbox`/`Retained`, and the rest are each worker's handles and protocol (`network.rs` carries `Scan`/`PageWatch` and the command inbox); the network command vocabulary lives in `core/state/network.rs` |
+| `frame_loop/{mod,clock}.rs`, `frame_loop/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); each per-frame unit is a `System` and the `Schedule` declaration order is the execution order; `clock.rs` holds the logical frame clock |
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `input.rs` | input worker: polling, demand scheduling, gesture recognition |
-| `playback/{mod,sounds}.rs` | playback worker and sound catalogue; state→command lives in `frame_loop/systems/playback.rs`, the capture window in `workers.rs` |
+| `playback/{mod,sounds}.rs` | playback worker and sound catalogue; state→command lives in `frame_loop/systems/playback.rs`, the capture window in `workers/input.rs` |
 | `network/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
@@ -205,13 +205,13 @@ The handles live together in the composition root's `Workers<'a>`: one field per
 
 The shape follows the semantics, not convenience:
 
-- **Commands** use a `Channel` (`Network.commands`, `Speaker.to`). Each frame the coordinator hands over only what the worker has room for; a command that found none waits for the next frame and is never dropped.
-- **Levels** use `PageWatch` (`Network.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge. The splash's verdict is not a level but a **one-shot event**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
-- **Latest values** use `Latest`/a window (`Network.scan` is a `Scan`: a `Latest` plus a generation, and `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing; the generation lets the page wait for "this round finished" instead of guessing a duration.
+- **Commands** use an `Inbox` (`Network.commands`): one arrival queue per worker. A publisher that cannot wait uses `publish`, which gives up the oldest entry when the queue is full — the coordinator is the only one that may go this way. A publisher that must not lose its message uses `send().await`, which waits for room (the phone's `Join` does, because it parks on its own page right after asking). The depth is one frame's largest command burst (8 intents), so the normal path loses nothing; an entry gives way only when the worker is more than a frame behind.
+- **Retained values** use `PageWatch`/`Retained` (`Network.page`, the list inside `Scan`): a write replaces the old value and reading does not consume it, so the panel and the phone's page read the same copy. The splash's verdict is not a retained value but a **one-shot command**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
+- **The newest window** uses `Input.from`: a 1.7 KB capture sample only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command and `Schedule::intake` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next frame and that frame takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command and `Schedule::process_intents` publishes it on the spot — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
-**Per-frame logic is split by boundary.** One `System` per file under `frame_loop/systems/`; it holds only what must survive a frame (the command held in the outbox, the last playback state, the last page, the governor) while `Frame` hands it the state and the handles. Systems never call each other. Adding a feature is one file plus one line in `Schedule::tick`, whose declaration order is the execution order; reordering it is a behaviour change. The intent side does not go through `System`: the command an intent produced must reach its system at once (two edges in one frame must not collapse, and a full queue re-offers it next frame), so those three lines stay in `intake`.
+**Per-frame logic is split by boundary.** One `System` per file under `frame_loop/systems/`; it holds only what must survive a frame (the last playback state, the last page, the governor) while `Frame` hands it the state and the handles. Systems never call each other. Adding a feature is one file plus one line in `Schedule::tick`, whose declaration order is the execution order; reordering it is a behaviour change. The intent side does not go through `System`: the command an intent produced must reach its system at once (two commands in one frame must not collapse into one), so those lines stay in `process_intents`.
 
 **The render layer costs nothing**: `Diagnostics` in `core/src/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`, and `DiagnosticsSink::consume` is already the "state into consumers" channel.
 
@@ -408,6 +408,14 @@ This rule exists because of a defect it fixed.
 Written as pairs, a cycle drops the page that closes it; a single list walked with a wrap cannot.
 
 A test in `iot-core` walks capability combinations × start pages to hold that (`every_page_the_board_can_back_is_shown_on_the_way_round`) — restoring the old `Camera → Attitude` makes it fail and print the string above.
+
+### A missing page means no wiring; a broken part keeps its page
+
+`Backed` answers **whether the board soldered the part down**, decided once at the composition point and never changing at runtime: the S3's `take_*` calls always hand out a speaker, microphone and camera driver object (even when the probe failed), while the C6 has no such product path and hands out none. So a page disappearing has exactly one meaning: this board does not wire that part.
+
+Whether the part answers is a separate, **runtime** fact: `Health::Down(reason)` for playback and capture, and `FrameSource::fault()` for the camera, land on the page as `NO OUT` / `NO IN` / `NO CAM` plus one line of reason. The page stays; its fingerprint and counters simply stop moving.
+
+Recovery happens **where the part is used**, not in a boot loop: the speaker's `ensure_started()` runs on the first tap (tries both addresses and remembers the one that answers), the microphone retries at most once a second while polling and discards stale samples, and the camera retries `receive` and the sensor's bring-up every 5 s while its page is open. Retries are bounded and spaced out; a failure only writes the reason into health, never blocks the panel, and never resets the board.
 
 ## Logging
 

@@ -199,3 +199,19 @@ A 计权在低频几乎平坦，而滤波器极点靠近单位圆。定标器状
 当时的前提是猜这两个寄存器对应前后两级滤波器，而没有任何公开资料能判定哪一级在前。两值只差 bit 5，bit 5 又不携带截止频率语义，所以对调并没有交换级序，只是换成了另一个模式；实测证明那个模式更差。
 
 现已回到 `esp-bsp` 发出的字节次序（先 bit 5 清零的那个，再置位的），寄存器按它携带的位而不是按级命名。
+
+---
+
+## 没应答的 codec 不拿走 Audio 页，页面本身就是重试点
+
+### 行为
+
+`Es7210Rx::ensure_ready()` 在页面打开期间最多每 1 s 让 codec 重新 init 一次。答应之前，`poll()` 排空并丢弃 DMA 环里的样本，返回 `fault: Some("the codec did not answer on I2C")`、包络归零的 `AudioSample`；state 把它映射成 `Health::Down`，页面画 `NO IN` 加原因，而不是消失。
+
+启动时失败的 codec 不再被丢掉：`Board::new` 总是建 RX transfer 和 `Es7210Rx`，启动期的 `retry(3, 20 ms)` 只记日志。`Backed.audio` 是接线事实，因此仍然是 true。
+
+`[测试]` `a_capture_that_lost_its_codec_reports_it_and_clears_it_when_it_returns` 守住 `fault` → `Health::Down`，以及下一次干净采样把它清回 `Ready`。
+
+### 证据
+
+`[实测]` 临时让页面上的第一次 `ensure_ready()` 失败，用 `IOT_BOOT_PAGE=audio` 启动。串口在 2.17 s 打出 `[AUDIO] ES7210 deferred, retrying while the page is open: forced`，3.18 s 打出 `[AUDIO] ES7210 answered, capture running`——正好一个重试间隔——之后 HPF 扫角继续。`[IOT] boot page is Audio` 始终在日志里，随后重新烧回产品镜像复测 `[HW] 7 devices: 7 present`。临时补丁已回退。

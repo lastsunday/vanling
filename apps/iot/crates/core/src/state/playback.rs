@@ -2,7 +2,7 @@ use crate::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use crate::drivers::playback::{PlaybackPhase, Sound};
 use crate::intent::{ActionIntent, InputIntent, PlaybackAction};
 
-use super::{DeviceManager, DeviceState, light_control};
+use super::{DeviceManager, DeviceState, Health, light_control};
 
 /// The Speaker page's gestures: a tap walks the catalogue, a hold mutes, and the button and
 /// swipes are the lamp's, as on every page without a verb of its own for them.
@@ -33,6 +33,8 @@ pub struct PlaybackDiagnostics {
     pub muted: bool,
     pub plays: u16,
     pub dropped: u16,
+    /// Whether the output is answering, and why not when it is not.
+    pub health: Health,
 }
 
 /// Playback state behind the Speaker page.
@@ -43,6 +45,9 @@ pub struct PlaybackState {
     pub sound: Sound,
     /// The output latch.
     pub muted: bool,
+    /// Whether the output is answering. A tap while it is down is still sent: that attempt
+    /// is the recovery.
+    pub health: Health,
     /// What the page counts: the sounds that played and the taps that lost.
     pub view: PlaybackView,
 }
@@ -92,6 +97,7 @@ impl PlaybackState {
         phase: PlaybackPhase::Idle,
         sound: Sound::Tap,
         muted: false,
+        health: Health::Ready,
         view: PlaybackView {
             plays: 0,
             dropped: 0,
@@ -102,7 +108,10 @@ impl PlaybackState {
         Self::BOOT
     }
 
-    /// What the Speaker page asks, refused when the board wired no output part.
+    /// What the Speaker page asks, refused when the board wired no output part. A tap while
+    /// the part is down still leaves the state as `Playing`, so the worker gets the request
+    /// and can retry the part: `Started` confirms it, `Refused` takes the page back to idle
+    /// and records the reason.
     pub(super) fn apply(&mut self, action: PlaybackAction, wired: bool) {
         if !wired {
             return;
@@ -115,11 +124,21 @@ impl PlaybackState {
                 PlaybackPhase::Idle => {
                     self.sound = self.sound.next();
                     self.phase = PlaybackPhase::Playing;
-                    self.view.plays = self.view.plays.saturating_add(1);
                 }
             },
             PlaybackAction::SetMuted(muted) => self.muted = muted,
             PlaybackAction::Finished => {
+                if self.phase == PlaybackPhase::Playing {
+                    self.phase = PlaybackPhase::Idle;
+                }
+            }
+            PlaybackAction::Started => {
+                self.health = Health::Ready;
+                self.view.plays = self.view.plays.saturating_add(1);
+            }
+            PlaybackAction::Ready => self.health = Health::Ready,
+            PlaybackAction::Refused(reason) => {
+                self.health = Health::Down(reason);
                 if self.phase == PlaybackPhase::Playing {
                     self.phase = PlaybackPhase::Idle;
                 }
@@ -136,6 +155,7 @@ impl DeviceState {
             muted: self.playback.muted,
             plays: self.playback.view.plays,
             dropped: self.playback.view.dropped,
+            health: self.playback.health,
         }
     }
 }
@@ -147,7 +167,6 @@ impl DeviceManager {
         }
         self.state.playback.sound = sound;
         self.state.playback.phase = PlaybackPhase::Playing;
-        self.state.playback.view.plays = self.state.playback.view.plays.saturating_add(1);
     }
 }
 
@@ -195,6 +214,7 @@ mod speaker_page {
                 before.sound,
                 "a heard tap advances to the next sound"
             );
+            manager.apply_action(ActionIntent::Playback(PlaybackAction::Started));
         }
     }
 
@@ -353,6 +373,58 @@ mod speaker_page {
         mute(&mut manager);
         mute(&mut manager);
         assert!(!manager.playback_state().muted);
+    }
+
+    #[test]
+    fn a_refused_play_leaves_the_page_idle_and_names_the_reason() {
+        let mut manager = on_speaker();
+        apply_page(&mut manager, tap());
+        let asked = manager.playback_state();
+        assert_eq!(
+            asked.phase,
+            PlaybackPhase::Playing,
+            "the tap still reaches the worker, which is the recovery attempt"
+        );
+        assert_eq!(asked.view.plays, 0, "nothing is counted before it started");
+
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Refused(
+            "the codec did not answer on I2C",
+        )));
+        let refused = manager.playback_state();
+        assert_eq!(refused.phase, PlaybackPhase::Idle);
+        assert_eq!(
+            refused.health,
+            Health::Down("the codec did not answer on I2C")
+        );
+        assert_eq!(refused.view.plays, 0);
+
+        apply_page(&mut manager, tap());
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Started));
+        let recovered = manager.playback_state();
+        assert_eq!(recovered.health, Health::Ready);
+        assert_eq!(recovered.view.plays, 1, "the retry is what gets counted");
+    }
+
+    #[test]
+    fn the_boot_report_reaches_the_page_and_a_ready_clears_the_reason() {
+        let mut manager = on_speaker();
+        assert_eq!(
+            manager.state().playback_diagnostics().health,
+            Health::Ready,
+            "the page starts assuming nothing is wrong"
+        );
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Refused("no codec")));
+        assert_eq!(
+            manager.state().playback_diagnostics().health,
+            Health::Down("no codec"),
+            "the worker's boot report is what the page shows"
+        );
+        manager.apply_action(ActionIntent::Playback(PlaybackAction::Ready));
+        assert_eq!(
+            manager.state().playback_diagnostics().health,
+            Health::Ready,
+            "a later report clears NO OUT"
+        );
     }
 
     #[test]

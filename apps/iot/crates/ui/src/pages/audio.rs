@@ -1,5 +1,5 @@
 use iot_core::drivers::audio::{dbfs, spl};
-use iot_core::overlay::{Block, block_x, overlay_row_top};
+use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 use iot_core::state::AudioPhase;
 
 use crate::layout::{PANEL_RIGHT, WAVE_TOP};
@@ -10,6 +10,7 @@ use crate::text::{format_dba, format_i32};
 impl Surface<'_> {
     pub(crate) fn stamp_audio(&mut self) {
         self.stamp_text(b"AUDIO", block_x(Block::First), overlay_row_top(0));
+        let fault = self.diagnostics.audio.health.fault();
         let dba_lsb = self.diagnostics.audio.dba_lsb;
         let offset = self.spl_offset_db;
         self.stamp_text_right(
@@ -25,10 +26,11 @@ impl Surface<'_> {
         );
         self.stamp_left(
             b"ST",
-            match self.diagnostics.audio.phase {
-                AudioPhase::Idle => b"IDLE",
-                AudioPhase::Recording => b"REC",
-                AudioPhase::Stopped => b"STOP",
+            match (fault, self.diagnostics.audio.phase) {
+                (Some(_), _) => b"NO IN",
+                (None, AudioPhase::Idle) => b"IDLE",
+                (None, AudioPhase::Recording) => b"REC",
+                (None, AudioPhase::Stopped) => b"STOP",
             },
             Block::RightEdge,
             1,
@@ -59,6 +61,15 @@ impl Surface<'_> {
         );
         if self.diagnostics.audio.envelope.clipped() {
             self.stamp_text(b"CLIP", block_x(Block::RightEdge), overlay_row_top(5));
+        }
+        if let Some(reason) = fault {
+            self.stamp_text(reason.as_bytes(), block_x(Block::First), WAVE_TOP as usize);
+            self.stamp_text(
+                b"TAP RETRY",
+                block_x(Block::First),
+                WAVE_TOP as usize + ROW_PITCH,
+            );
+            return;
         }
         if self.diagnostics.audio.phase == AudioPhase::Idle {
             self.stamp_text(b"TAP TO REC", block_x(Block::First), WAVE_TOP as usize);
