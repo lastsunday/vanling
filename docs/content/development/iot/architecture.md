@@ -62,7 +62,7 @@ weight = 10
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, network }`、`Latest`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
+| `workers.rs` | 协调者 ↔ 工作者的全部句柄：`Workers { input, playback, network }`、`Latest`/`Scan`/`PageWatch`、采集窗口与命令队列；网络命令词汇表在 `core/state/network.rs` |
 | `pipeline/{mod,network}.rs` | 协调者 `run_loop`：应用意图、发布状态；网络侧的命令出站（`NetworkOutbox`）与镜像（`NetworkMirror`）在 `network.rs`，循环体只做编排 |
 | `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
 | `frame.rs` | `FrameClock`（逻辑帧，含追帧） |
@@ -200,7 +200,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 - **命令**走 `Channel`（`Network.commands`、`Speaker.to`）。协调者每 pass 只交工作者有空位的那些；队列满时把这一条留到下一 pass，命令不会被丢掉。
 - **级别**走 `PageWatch`（`Network.page`）：页面是幂等的当前值，消费者等的是“回到某页/离开某页”的边沿。启动页的结论不是级别而是**一次性事件**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求共用一条队列，工作者不必再看页面演进到哪一步。
-- **最新值**走 `Latest`/窗口（`Network.scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队。
+- **最新值**走 `Latest`/窗口（`Network.scan` 是 `Latest` + 代次的 `Scan`、`Input.from`）：扫描列表与采集窗口只有最新一份有意义，覆盖而不是排队；代次让页面能等到「这一轮扫完」而不必猜时间。
 
 `NetworkCommand` 的词汇表留在 `core/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_action()` 直接返回，`run_loop` 拿到就转发，不逐个变体翻译、也不在状态里留发件箱；工作者队列满时这一条留到下一 pass，并让本 pass 不取新意图——总线就是积压处。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 

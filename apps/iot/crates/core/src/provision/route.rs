@@ -50,22 +50,29 @@ pub fn mac_text(mac: [u8; 6], out: &mut [u8; MAC_TEXT_BYTES]) -> &[u8] {
 pub enum Action {
     Respond(Response),
     Scan(Response),
+    /// The list the caller is showing is old, so the work is queued and this answer says so.
+    Rescan(Response),
     Join {
         credentials: Credentials,
         response: Response,
     },
 }
 
-/// Route one request.
-pub fn route(request: &Request<'_>, aps: &ApList) -> Action {
+/// Route one request. `scan` is the newest completed round, or `None` before the first one:
+/// an empty list is a room with nothing in it, not a radio that has not looked yet.
+pub fn route(request: &Request<'_>, scan: Option<&ApList>) -> Action {
+    let empty = ApList::empty();
+    let aps = scan.unwrap_or(&empty);
     match (request.method, request.path) {
         (Method::Get, "/") | (Method::Get, "/index.html") => Action::Respond(Response {
             content_length: page_len(aps),
             ..Response::html(PAGE)
         }),
-        (Method::Get, "/scan") | (Method::Get, "/rescan") => {
-            Action::Scan(Response::json_list(scan_json_len(aps)))
-        }
+        (Method::Get, "/scan") => match scan {
+            Some(aps) => Action::Scan(Response::json_list(scan_json_len(aps))),
+            None => Action::Respond(Response::unavailable()),
+        },
+        (Method::Get | Method::Post, "/rescan") => Action::Rescan(Response::accepted()),
         (Method::Post, "/submit") => submit(request),
         (Method::Get, "/done") | (Method::Get, "/done.html") => {
             Action::Respond(Response::html(DONE))
@@ -185,12 +192,17 @@ mod tests {
     use crate::provision::scan::{json, list};
 
     fn get(path: &str) -> Response {
-        let request = Request::parse(path.as_bytes()).expect("a request line and a blank line");
-        match route(&request, &ApList::empty()) {
+        match action(path, Some(&ApList::empty())) {
             Action::Respond(response) => response,
             Action::Scan(_) => panic!("{path} is not the scan list"),
+            Action::Rescan(_) => panic!("{path} does not ask for a scan"),
             Action::Join { .. } => panic!("{path} is not a form post"),
         }
+    }
+
+    fn action(path: &str, scan: Option<&ApList>) -> Action {
+        let request = Request::parse(path.as_bytes()).expect("a request line and a blank line");
+        route(&request, scan)
     }
 
     fn post(body: &str) -> Action {
@@ -199,7 +211,7 @@ mod tests {
             body.len()
         );
         let request = Request::parse(raw.as_bytes()).expect("a form post");
-        route(&request, &ApList::empty())
+        route(&request, Some(&ApList::empty()))
     }
 
     #[test]
@@ -214,7 +226,7 @@ mod tests {
     fn the_head_of_the_page_names_the_page_with_the_list_in_it() {
         let aps = list(&[("living", -55, true), ("caf\u{e9}", -70, false)]);
         let request = Request::parse(b"GET / HTTP/1.1\r\n\r\n").expect("a request");
-        let Action::Respond(response) = route(&request, &aps) else {
+        let Action::Respond(response) = route(&request, Some(&aps)) else {
             panic!("the root is a page");
         };
         let filled = PAGE.len() - SEED_SLOT + json(&aps).len();
@@ -251,6 +263,7 @@ mod tests {
             }
             Action::Respond(_) => panic!("a named network is a join"),
             Action::Scan(_) => panic!("a form post is not the scan list"),
+            Action::Rescan(_) => panic!("a form post does not ask for a scan"),
         }
     }
 
@@ -260,6 +273,7 @@ mod tests {
             Action::Join { credentials, .. } => assert!(credentials.password.is_empty()),
             Action::Respond(_) => panic!("an open network is a join"),
             Action::Scan(_) => panic!("a form post is not the scan list"),
+            Action::Rescan(_) => panic!("a form post does not ask for a scan"),
         }
     }
 
@@ -269,6 +283,7 @@ mod tests {
             Action::Respond(response) => assert_eq!(response.status, Status::BadRequest),
             Action::Join { .. } => panic!("nothing was named"),
             Action::Scan(_) => panic!("a form post is not the scan list"),
+            Action::Rescan(_) => panic!("a form post does not ask for a scan"),
         }
     }
 
@@ -286,6 +301,7 @@ mod tests {
                 Action::Respond(response) => assert_eq!(response.status, Status::BadRequest),
                 Action::Join { .. } => panic!("{over} is not a credential"),
                 Action::Scan(_) => panic!("a form post is not the scan list"),
+                Action::Rescan(_) => panic!("a form post does not ask for a scan"),
             }
         }
     }
@@ -296,6 +312,7 @@ mod tests {
             Action::Respond(response) => assert_eq!(response.status, Status::BadRequest),
             Action::Join { .. } => panic!("a value that cannot be read is not a credential"),
             Action::Scan(_) => panic!("a form post is not the scan list"),
+            Action::Rescan(_) => panic!("a form post does not ask for a scan"),
         }
     }
 
@@ -303,7 +320,7 @@ mod tests {
     fn the_scan_list_is_answered_with_its_head_and_not_its_bytes() {
         let aps = list(&[("living", -55, true)]);
         let request = Request::parse(b"GET /scan HTTP/1.1\r\n\r\n").expect("a request");
-        match route(&request, &aps) {
+        match route(&request, Some(&aps)) {
             Action::Scan(response) => {
                 assert_eq!(response.status, Status::Ok);
                 assert_eq!(response.content_type, "application/json");
@@ -314,7 +331,52 @@ mod tests {
                 );
             }
             Action::Respond(_) => panic!("the list is not an answer that carries its own bytes"),
+            Action::Rescan(_) => panic!("/scan reads, it does not ask for a round"),
             Action::Join { .. } => panic!("/scan names no network"),
+        }
+    }
+
+    #[test]
+    fn a_scan_that_has_not_finished_is_not_an_empty_room() {
+        match action("GET /scan HTTP/1.1\r\n\r\n", None) {
+            Action::Respond(response) => {
+                assert_eq!(response.status, Status::ServiceUnavailable);
+                assert_eq!(response.content_length, "no survey yet".len());
+            }
+            Action::Scan(_) => panic!("nothing has been scanned, so there is no list"),
+            Action::Rescan(_) => panic!("/scan does not ask for a round"),
+            Action::Join { .. } => panic!("/scan names no network"),
+        }
+
+        let empty = ApList::empty();
+        match action("GET /scan HTTP/1.1\r\n\r\n", Some(&empty)) {
+            Action::Scan(response) => {
+                assert_eq!(response.status, Status::Ok);
+                assert_eq!(response.content_length, json(&empty).len());
+            }
+            Action::Respond(_) => panic!("a finished empty round is a list"),
+            Action::Rescan(_) => panic!("/scan does not ask for a round"),
+            Action::Join { .. } => panic!("/scan names no network"),
+        }
+    }
+
+    #[test]
+    fn asking_again_is_accepted_without_the_old_list() {
+        let aps = list(&[("living", -55, true)]);
+        for method in ["GET", "POST"] {
+            let path = alloc::format!("{method} /rescan HTTP/1.1\r\n\r\n");
+            match action(&path, Some(&aps)) {
+                Action::Rescan(response) => {
+                    assert_eq!(response.status, Status::Accepted);
+                    assert_eq!(
+                        response.content_length, 0,
+                        "the old list is not what a rescan answers with"
+                    );
+                }
+                Action::Scan(_) | Action::Respond(_) | Action::Join { .. } => {
+                    panic!("{path} asks for a round")
+                }
+            }
         }
     }
 
@@ -362,22 +424,30 @@ mod tests {
     }
 
     #[test]
+    fn the_page_waits_for_the_round_instead_of_the_clock() {
+        assert!(
+            PAGE.contains("X-Scan-Generation"),
+            "the page reads the round the device named"
+        );
+        assert!(
+            PAGE.contains("fetch('/rescan'"),
+            "the page asks for a round before polling"
+        );
+        assert!(
+            PAGE.contains("503"),
+            "an unfinished survey is not read as an empty room"
+        );
+        assert!(
+            !PAGE.contains("wait(1800)"),
+            "the fixed wait was a guess at the radio's timing"
+        );
+    }
+
+    #[test]
     fn the_page_leaves_one_slot_for_the_list_and_it_stands_on_its_own() {
         assert_eq!(PAGE.matches(SEED_AT).count(), 1, "one slot");
         let at = PAGE.find(SEED_AT).expect("the slot") + SEED_AT.len();
         assert_eq!(&PAGE[at..at + SEED_SLOT], "[]");
-    }
-
-    #[test]
-    fn asking_again_is_the_same_answer_as_reading_the_list() {
-        let aps = list(&[("living", -55, true)]);
-        for path in ["GET /scan HTTP/1.1\r\n\r\n", "GET /rescan HTTP/1.1\r\n\r\n"] {
-            let request = Request::parse(path.as_bytes()).expect("a request");
-            match route(&request, &aps) {
-                Action::Scan(response) => assert_eq!(response.content_length, json(&aps).len()),
-                Action::Respond(_) | Action::Join { .. } => panic!("{path} is the list"),
-            }
-        }
     }
 
     #[test]

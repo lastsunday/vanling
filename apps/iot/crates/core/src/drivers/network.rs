@@ -685,6 +685,12 @@ pub enum JoinRequest {
     Held(Ssid),
 }
 
+/// Whether a join request names the association already held: a retry, or the other host asking
+/// for the same row, must not make the radio drop a working link to build the same one again.
+pub fn same_network(asked: &Credentials, held: &Credentials) -> bool {
+    asked == held
+}
+
 /// An IPv4 address, kept as octets so nothing here needs a formatting crate.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Ipv4 {
@@ -1036,6 +1042,27 @@ mod tests {
             Credentials::from_text("net", &"x".repeat(PASSWORD_BYTES)),
             Err(NetworkError::InvalidArguments),
             "63 characters is the longest passphrase; 64 is rejected, not truncated"
+        );
+    }
+
+    #[test]
+    fn a_join_for_the_network_already_held_is_not_a_new_association() {
+        let held = Credentials::from_text("home", "secret").expect("valid");
+        let retried = Credentials::from_text("home", "secret").expect("valid");
+        let other_key = Credentials::from_text("home", "changed").expect("valid");
+        let other_name = Credentials::from_text("away", "secret").expect("valid");
+
+        assert!(
+            same_network(&retried, &held),
+            "a retried form names the association already held"
+        );
+        assert!(
+            !same_network(&other_key, &held),
+            "a different passphrase is a different association"
+        );
+        assert!(
+            !same_network(&other_name, &held),
+            "a different name is a different association"
         );
     }
 

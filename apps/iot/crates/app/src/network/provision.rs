@@ -280,12 +280,13 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
             }
         };
 
-        if request.path == "/rescan" {
-            NETWORK.commands.send(NetworkCommand::ScanNow).await;
-        }
-        let aps = NETWORK.scan.peek().unwrap_or_default();
+        // The generation is read before the list: `complete()` happens after `publish()`, so a
+        // generation of N promises a list from round N or later, never an older one.
+        let generation = NETWORK.scan.generation();
+        let scanned = NETWORK.scan.peek();
+        let aps = scanned.unwrap_or_default();
         let mut keep = !request.close;
-        match route(&request, &aps) {
+        match route(&request, scanned.as_ref()) {
             Action::Respond(response) => {
                 let sent =
                     send_answer(socket, &response, &mut piece, mac, &aps, request.close).await;
@@ -293,12 +294,26 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
                 keep = sent && keep;
             }
             Action::Scan(response) => {
+                let response = Response {
+                    generation: Some(generation),
+                    ..response
+                };
                 let sent = send_head(socket, &response, &mut piece, request.close).await;
                 if sent {
                     send_scan(socket, &aps, &mut piece).await;
                 }
                 log_answer(&request, &response, picked.elapsed());
                 keep = sent && keep;
+            }
+            Action::Rescan(response) => {
+                let response = Response {
+                    generation: Some(generation),
+                    ..response
+                };
+                let sent = send_head(socket, &response, &mut piece, request.close).await;
+                log_answer(&request, &response, picked.elapsed());
+                keep = sent && keep;
+                NETWORK.commands.send(NetworkCommand::ScanNow).await;
             }
             Action::Join {
                 credentials,

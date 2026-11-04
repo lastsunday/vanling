@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "ffcfd4549abaf2e746308ca5b785ff22478c5cbd"
-translated_at = "2026-11-03T00:00:00Z"
+source_file_hash = "e74553f5fa028a9fba6b5060fb60f7362daf2513"
+translated_at = "2026-11-04T00:00:00Z"
 +++
 
 # Architecture
@@ -66,7 +66,7 @@ A pipeline-logic system whose trigger points are intents.
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator |
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, network }`, `Latest`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
+| `workers.rs` | the whole coordinator ↔ worker vocabulary: `Workers { input, playback, network }`, `Latest`/`Scan`/`PageWatch`, the capture window and command queues; the network command vocabulary lives in `core/state/network.rs` |
 | `pipeline.rs` | the coordinator `run_loop`: apply intents, publish state, forward commands, wait for the next frame |
 | `surface/mod.rs` | `Render` registry: one `ScreenRenderer` / `LampRenderer` per role |
 | `frame.rs` | `FrameClock` (logical frames, including catch-up) |
@@ -207,7 +207,7 @@ The shape follows the semantics, not convenience:
 
 - **Commands** use a `Channel` (`Network.commands`, `Speaker.to`). Each pass the coordinator hands over only what the worker has room for; a command that found none waits for the next pass and is never dropped.
 - **Levels** use `PageWatch` (`Network.page`): the page is idempotent current state, and consumers wait on the "back to / away from a page" edge. The splash's verdict is not a level but a **one-shot event**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
-- **Latest values** use `Latest`/a window (`Network.scan`, `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing.
+- **Latest values** use `Latest`/a window (`Network.scan` is a `Scan`: a `Latest` plus a generation, and `Input.from`): a scan list or a capture window only has a newest copy worth keeping, so it overwrites instead of queueing; the generation lets the page wait for "this round finished" instead of guessing a duration.
 
 The `NetworkCommand` vocabulary stays in `core/state/network.rs`; the handle only carries it. `DeviceManager::apply_action()` returns the command and `run_loop` forwards it on the spot — no variant-by-variant translation, and no outbox in the state. When the worker's queue is full the command waits for the next pass and that pass takes no new intent: the bus is the backlog. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 

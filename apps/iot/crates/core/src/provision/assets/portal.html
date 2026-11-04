@@ -177,6 +177,7 @@
 
   var language = pick();
   var networks = APS || [];
+  var generation = 0;
   var said = null;
   var scanning = false;
 
@@ -305,10 +306,33 @@
     return new Promise(function (done) { setTimeout(done, ms); });
   }
 
+  // A scan answer is a list with the round it came from, a survey that has not finished (503),
+  // or a connection the device could not take. The page has to tell them apart: an empty list
+  // is a room with nothing in it, not a round that has not looked yet.
+  function readScan() {
+    return fetch('/scan', { cache: 'no-store' }).then(function (response) {
+      if (response.status === 503) {
+        return response.text().then(function () { return { pending: true }; });
+      }
+      if (!response.ok) { throw new Error('scan'); }
+      var round = Number(response.headers.get('X-Scan-Generation') || 0);
+      return response.json().then(function (found) {
+        return { found: found, round: round };
+      });
+    });
+  }
+
   function load(attempt) {
-    return fetch('/scan', { cache: 'no-store' })
-      .then(function (response) { return response.json(); })
-      .then(function (found) { setNetworks(found); })
+    return readScan()
+      .then(function (got) {
+        if (got.pending) {
+          if (attempt < 20) { return wait(500).then(function () { return load(attempt + 1); }); }
+          say('unreadable');
+          return;
+        }
+        generation = got.round;
+        setNetworks(got.found);
+      })
       .catch(function () {
         // A connection the device could not take is one that was never answered, so asking again
         // is the only way to tell it from a page that has nothing to show yet.
@@ -317,6 +341,20 @@
         }
         say('unreadable');
       });
+  }
+
+  // A round the radio has to run: the accepted answer names the round the device was showing,
+  // and the list is only new once that number moves. Asking once and waiting a fixed time was a
+  // guess about how long the radio takes; this is the device saying when it is done.
+  function awaitRound(start, attempt) {
+    if (attempt >= 25) { say('unreadable'); return Promise.resolve(); }
+    return wait(400).then(function () {
+      return readScan().then(function (got) {
+        if (got.pending || got.round <= start) { return awaitRound(start, attempt + 1); }
+        generation = got.round;
+        setNetworks(got.found);
+      }, function () { return awaitRound(start, attempt + 1); });
+    });
   }
 
   each('[data-lang]', function (button) {
@@ -332,12 +370,14 @@
     scanning = true;
     rescan.disabled = true;
     say('scanning');
-    // A round the radio has to run: the list it answers with here is the one from before it, so
-    // the page reads again once the round has had time to finish.
-    fetch('/rescan', { cache: 'no-store' })
-      .catch(function () {})
-      .then(function () { return wait(1800); })
-      .then(function () { return load(0); })
+    fetch('/rescan', { method: 'POST', cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) { throw new Error('rescan'); }
+        var named = response.headers.get('X-Scan-Generation');
+        var start = named === null ? generation : Number(named);
+        return awaitRound(start, 0);
+      })
+      .catch(function () { say('unreadable'); })
       .then(function () {
         scanning = false;
         rescan.disabled = false;
@@ -356,11 +396,12 @@
   ask.addEventListener('click', function (event) { if (event.target === ask) { shut(); } });
 
   speak();
-  // A device asked before its first survey has finished has nothing to send, so it gets one list
-  // the honest way — a second connection, paid only by the page that had nothing to draw.
+  // The device writes the newest list it had into this document. An empty slot may mean the
+  // first round has not finished, so the page asks and waits for a finished answer instead of
+  // calling the room empty; `load` tells 503 from a real empty list.
   if (!networks.length) {
-    say('none');
-    setTimeout(function () { load(0); }, 1200);
+    say('scanning');
+    load(0);
   }
 })();
 </script>

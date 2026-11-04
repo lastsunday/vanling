@@ -134,18 +134,22 @@ fn connection_close<'a>(lines: impl Iterator<Item = &'a str>) -> bool {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Status {
     Ok,
+    Accepted,
     NoContent,
     Redirect,
     BadRequest,
+    ServiceUnavailable,
 }
 
 impl Status {
     fn line(self) -> &'static str {
         match self {
             Self::Ok => "200 OK",
+            Self::Accepted => "202 Accepted",
             Self::NoContent => "204 No Content",
             Self::Redirect => "302 Found",
             Self::BadRequest => "400 Bad Request",
+            Self::ServiceUnavailable => "503 Service Unavailable",
         }
     }
 }
@@ -191,6 +195,9 @@ pub struct Response {
     pub content_type: &'static str,
     /// How many bytes follow the head, which is what the head has to name.
     pub content_length: usize,
+    /// Which scan round the answer carries, for the answers that are about one. `None` keeps
+    /// the header off, so a client cannot mistake an unrelated answer for a scan snapshot.
+    pub generation: Option<u32>,
     pub cache: Cache,
     pub body: Body,
 }
@@ -202,6 +209,7 @@ impl Response {
             location: None,
             content_type,
             content_length: body.as_bytes().len(),
+            generation: None,
             cache: Cache::NoStore,
             body,
         }
@@ -224,6 +232,21 @@ impl Response {
         Self::new(Status::NoContent, "text/plain; charset=utf-8", Body::Empty)
     }
 
+    /// The request was taken, and the work it asked for runs after this answer.
+    pub fn accepted() -> Self {
+        Self::new(Status::Accepted, "text/plain; charset=utf-8", Body::Empty)
+    }
+
+    /// Nothing to answer yet: the client should ask again rather than read an empty list as
+    /// the state of the room.
+    pub fn unavailable() -> Self {
+        Self::new(
+            Status::ServiceUnavailable,
+            "text/plain; charset=utf-8",
+            Body::Static("no survey yet"),
+        )
+    }
+
     /// The head of a JSON list the caller writes after it, `length` bytes of it.
     pub fn json_list(length: usize) -> Self {
         Self {
@@ -231,6 +254,7 @@ impl Response {
             location: None,
             content_type: "application/json",
             content_length: length,
+            generation: None,
             cache: Cache::NoStore,
             body: Body::Empty,
         }
@@ -246,6 +270,7 @@ impl Response {
             location: Some(location),
             content_type: "text/plain; charset=utf-8",
             content_length: 0,
+            generation: None,
             cache: Cache::NoStore,
             body: Body::Empty,
         }
@@ -272,6 +297,10 @@ impl Response {
             && self.location.is_none_or(|location| {
                 sink.write(b"\r\nLocation: ") && sink.write(location.as_bytes())
             })
+            && self.generation.is_none_or(|generation| {
+                sink.write(b"\r\nX-Scan-Generation: ") && push_usize(sink, generation as usize)
+            })
+            && (self.status != Status::ServiceUnavailable || sink.write(b"\r\nRetry-After: 1"))
             && sink.write(b"\r\nCache-Control: ")
             && sink.write(self.cache.line().as_bytes())
             && sink.write(if close {
@@ -449,6 +478,8 @@ mod tests {
             Response::text(Status::BadRequest, "no"),
             Response::redirect(super::super::BASE_URL),
             Response::no_content(),
+            Response::accepted(),
+            Response::unavailable(),
             Response::asset("image/svg+xml", "<svg/>"),
             Response::json_list(usize::MAX),
         ];
@@ -459,6 +490,45 @@ mod tests {
                 "{response:?} does not fit {PIECE_BYTES} B"
             );
         }
+    }
+
+    #[test]
+    fn a_scan_answer_names_the_round_it_carries() {
+        let mut response = Response::json_list(2);
+        response.generation = Some(9);
+        let written = composed(&response);
+        let text = core::str::from_utf8(&written).expect("ascii");
+        assert!(text.contains("\r\nX-Scan-Generation: 9\r\n"), "{text}");
+
+        let written = composed(&Response::json_list(2));
+        let text = core::str::from_utf8(&written).expect("ascii");
+        assert!(
+            !text.contains("X-Scan-Generation"),
+            "an answer with no round must not name one: {text}"
+        );
+    }
+
+    #[test]
+    fn a_survey_that_has_not_finished_asks_to_be_asked_again() {
+        let written = composed(&Response::unavailable());
+        let text = core::str::from_utf8(&written).expect("ascii");
+        assert!(
+            text.starts_with("HTTP/1.1 503 Service Unavailable\r\n"),
+            "{text}"
+        );
+        assert!(text.contains("\r\nRetry-After: 1\r\n"), "{text}");
+        assert!(
+            !text.contains("X-Scan-Generation"),
+            "nothing has been scanned, so there is no round to name: {text}"
+        );
+    }
+
+    #[test]
+    fn a_rescan_is_answered_before_the_round_it_asked_for() {
+        let written = composed(&Response::accepted());
+        let text = core::str::from_utf8(&written).expect("ascii");
+        assert!(text.starts_with("HTTP/1.1 202 Accepted\r\n"), "{text}");
+        assert!(text.contains("\r\nContent-Length: 0\r\n"), "{text}");
     }
 
     #[test]

@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "4376a5756f822fd4a29fd2f33ddf3829ed8ed246"
-translated_at = "2026-11-03T00:00:00Z"
+source_file_hash = "c4347f130e606dc08ef0a85b6d1472beba72bc00"
+translated_at = "2026-11-04T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -54,9 +54,10 @@ BOOT during it asks for the mode and lands on the network page, and **no link is
 device**: no setup mode of its own and no access point, the panel's page scans only while somebody is
 on it (it still offers `SCAN | AP`, and `AP` is what raises the access point — secured on a board
 with a panel), and a saved network carries its BSSID/channel so the next boot goes straight there
-(`fast_connect`). The config page is on its third version: **the first list is embedded, the icon is
-inline, a reload costs one connection, and only the button wakes a scan** — the language switch sits in
-the header, the passphrase is a bottom sheet and each row carries its BSSID (see "Seven or eight
+(`fast_connect`). The config page is on its fourth version: **the first list is embedded, the icon is
+inline, a reload costs one connection, only the button wakes a scan, and a finished scan is decided by
+the generation rather than a fixed wait** — the language switch sits in the header, the passphrase is a
+bottom sheet and each row carries its BSSID (see "Seven or eight
 reloads and the page goes white"); the panel's list rows gained that network's own BSSID on the same
 day (a second line under the name, same section). The loose ends are at the
 [bottom](#Still_to_do_([not_done])).
@@ -1328,17 +1329,20 @@ alongside it, and the C6 has the page alone.
 
 | Layer | Where | What it is | Who tests it |
 | --- | --- | --- | --- |
-| Protocol | `iot-core::provision` (`http`/`dns`/`route`/`scan`/`wire`, plus two `include_str!` HTML files and an icon under `assets/`) | request parsing, routing, answers, what a name gets answered with, the list as JSON — **and no allocation anywhere** (form fields decode into the caller's stack buffers) | host: **45** tests (the `#[test]`s in `provision/*.rs`) |
+| Protocol | `iot-core::provision` (`http`/`dns`/`route`/`scan`/`wire`, plus two `include_str!` HTML files and an icon under `assets/`) | request parsing, routing, answers, what a name gets answered with, the list as JSON — **and no allocation anywhere** (form fields decode into the caller's stack buffers) | host: **53** tests (the `#[test]`s in `provision/*.rs`) |
 | Device | `iot-app::provision` | four loops (DHCP server, name server, page, `embassy-net` runner) wired to sockets | the bench (still-to-do 8) |
 | Wiring | `setup_session` in `iot-app::network` | raises the AP, races the page against the panel, hands the credential back to the `JOIN` channel | the bench (still-to-do 8) |
 
-Routes: `GET /` (and `/index.html`) for the page (**with the list embedded**), `GET /scan` for the
-list as JSON, `GET /rescan` for that same list and **a wake for the next survey round**, `POST
-/submit` to take a credential and answer **inline** with the done page, `GET /done` (and
-`/done.html`) for that same page, `GET /favicon.svg` for the icon (cached for a day), `GET
-/favicon.ico` for a `204`, and **everything else 302s to `BASE_URL`** — that last one is the feature
-rather than a fallback: the paths a phone probes with (connectivity checks, assorted probes) get a
-redirect, and the page is what that answer is for.
+Routes: `GET /` (and `/index.html`) for the page (**with the list embedded**); `GET /scan` for the
+list as JSON, which answers **`503 Service Unavailable` + `Retry-After: 1` until the first round
+finishes** and only then `200 []` (genuinely no networks) or the list, with `X-Scan-Generation` on
+both finished answers; `GET`/`POST /rescan` answers `202 Accepted` with the current generation and
+wakes a survey round — **it no longer answers with the previous round's list**, and the page polls
+`/scan` until the generation moves; `POST /submit` to take a credential and answer **inline** with
+the done page; `GET /done` (and `/done.html`) for that same page, `GET /favicon.svg` for the icon
+(cached for a day), `GET /favicon.ico` for a `204`, and **everything else 302s to `BASE_URL`** —
+that last one is the feature rather than a fallback: the paths a phone probes with (connectivity
+checks, assorted probes) get a redirect, and the page is what that answer is for.
 
 On the radio side the `Station` trait gained `begin_setup`/`end_setup`, and the bsp lands them on
 `Config::AccessPointStation(StationConfig::default(), ap)` (**APSTA**, so scanning still runs while
@@ -1530,7 +1534,7 @@ page socket's buffers from 256 B to 1,460 B, which fixed **how many round trips 
 | Account | Before this round | Now |
 | --- | --- | --- |
 | Connections per reload | page + `/scan` + icon (including the `.ico` 204) + the phone's own connectivity checks = **3 to 6**, against 3 page sockets; the extra handshakes are refused **silently** by the stack | **1** (the page itself: the icon is inline as a `data:` URI and the first list is embedded in the document); the phone's own probes are still their own connections and get one 302 |
-| What the page does to the radio | reads `/scan` every 4 s, and the device called `RESCAN.request()` on **every** `/scan` — a page left open meant a radio scanning continuously | only the **Scan again** button goes through `GET /rescan`; reading the list (`/scan`) no longer wakes the survey |
+| What the page does to the radio | reads `/scan` every 4 s, and the device called `RESCAN.request()` on **every** `/scan` — a page left open meant a radio scanning continuously | only the **Scan again** button goes through `POST /rescan`; reading the list (`/scan`) no longer wakes the survey |
 | What the first paint waits for | the document, then an XHR for the list before any row can be tapped | the list is in the document, so the first paint is already tappable |
 
 **Why "the page scanning on its own" hurts**: the setup access point is APSTA, and a channel-by-channel
@@ -1558,6 +1562,25 @@ now the name + **that network's own BSSID** (small, tabular, so two mesh or repe
 looking alike) + four signal bars + lock/open + a `Saved` chip; under the list is **Scan again**
 (`GET /rescan` → wait 1.8 s for that round → read `/scan`). `done.html` only swapped its icon and
 keeps reading the same language key.
+
+**The page, fourth version: what "a scan finished" means** (`[test]`, 2026-11-04): `/rescan` used
+to answer with the **previous** round's list, so the page could only `wait(1800)` and guess when the
+radio was done. `NETWORK.scan` is now a `Scan` — a list plus a generation that advances once per
+completed successful round, even when `ScanHistory` finds the list unchanged. `/rescan` answers
+`202 Accepted` with the generation at the moment of the press; the page reads `/scan` every 400 ms
+and stops only when the generation moves, reporting "cannot read the list" after 10 s without
+movement. Before the first round finishes `/scan` answers `503 + Retry-After: 1` (`scan.peek()` is
+`None`); after it, even with no networks, the answer is `200 []` — "has not scanned" and "scanned
+and found nothing" are no longer the same empty list. When `hold` receives a `Join` exactly equal to
+the association it holds, it logs one debug line and ignores it, so the panel and the page handing
+over the same credential at once cannot tear down a working link to build it again. Host tests:
+`http::tests::a_survey_that_has_not_finished_asks_to_be_asked_again`,
+`a_scan_answer_names_the_round_it_carries`, `a_rescan_is_answered_before_the_round_it_asked_for`,
+`route::tests::a_scan_that_has_not_finished_is_not_an_empty_room`,
+`asking_again_is_accepted_without_the_old_list`,
+`the_page_waits_for_the_round_instead_of_the_clock`,
+`workers::tests::a_round_advances_the_generation_even_when_the_list_is_the_same`,
+`drivers::network::tests::a_join_for_the_network_already_held_is_not_a_new_association`.
 
 The byte account: the page went from **4,468 to 14,819 B** (+10,351: the i18n dictionary, the dialog,
 the card layout, a BSSID per row, the inline icon), while **a reload went from 3 to 6 connections down

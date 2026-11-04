@@ -2,7 +2,7 @@
 
 use core::future::pending;
 
-use embassy_futures::select::{Either4, select4};
+use embassy_futures::select::{Either3, select3};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::network::{
     NetworkMode, SavedNetworks, ScanHistory, Station, scan_pause_after,
@@ -10,11 +10,11 @@ use iot_core::drivers::network::{
 use iot_core::state::{DisplayPage, NetworkCommand};
 
 use super::store::any_marked;
-use super::{NETWORK, provision, publish_link};
+use super::{NETWORK, publish_link};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Rest {
-    /// The pause is over, the panel came back, or the phone read the page: scan again.
+    /// The pause is over or the panel came back: scan again.
     Again,
     /// A command the caller must act on; the queue does not keep a copy.
     Command(NetworkCommand),
@@ -43,6 +43,7 @@ where
             } else {
                 log::debug!("[WIFI] {} access points, unchanged", ranked.len());
             }
+            NETWORK.scan.complete();
             empty
         }
         Err(error) => {
@@ -64,22 +65,17 @@ where
             None => pending().await,
         }
     };
-    match select4(
-        clock,
-        NETWORK.commands.receive(),
-        async {
-            if mode.is_setup() {
-                NETWORK.page.wait_for_return(DisplayPage::Network).await;
-            } else {
-                NETWORK.page.wait_until_away(DisplayPage::Network).await;
-            }
-        },
-        provision::page_read(),
-    )
+    match select3(clock, NETWORK.commands.receive(), async {
+        if mode.is_setup() {
+            NETWORK.page.wait_for_return(DisplayPage::Network).await;
+        } else {
+            NETWORK.page.wait_until_away(DisplayPage::Network).await;
+        }
+    })
     .await
     {
-        Either4::Second(command) => Rest::Command(command),
-        Either4::Third(()) if !mode.is_setup() => Rest::Left,
+        Either3::Second(command) => Rest::Command(command),
+        Either3::Third(()) if !mode.is_setup() => Rest::Left,
         _ => Rest::Again,
     }
 }

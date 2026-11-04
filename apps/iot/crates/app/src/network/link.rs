@@ -10,7 +10,7 @@ use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
     ADDRESS_LOST_WINDOWS, AddressWatch, Credentials, Ipv4, LinkHint, LinkPhase, NetworkMode,
-    ScanHistory, SetupHost, Station, setup_ap_starts_secured,
+    ScanHistory, SetupHost, Station, same_network, setup_ap_starts_secured,
 };
 use iot_core::state::{DisplayPage, NetworkCommand};
 
@@ -345,6 +345,10 @@ where
             {
                 Either::Second(NetworkCommand::Join(asked)) => {
                     if let Some((next, origin)) = resolve_join(asked, saved.as_deref()) {
+                        if same_network(&next, credentials) {
+                            log::debug!("[WIFI] a join for the network already held was ignored");
+                            continue;
+                        }
                         log::info!("[WIFI] the panel named another network; leaving this one");
                         let _ = station.disconnect().await;
                         return Outcome::Next(Box::new(next), origin);

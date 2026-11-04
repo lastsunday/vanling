@@ -14,7 +14,7 @@
 
 use core::cell::Cell;
 use core::future::Future;
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -96,21 +96,66 @@ pub struct Network {
     pub commands: &'static NetworkQueue,
     /// Coordinator → worker: the page the panel is showing, as a level.
     pub page: &'static PageWatch,
-    /// Worker → coordinator: the newest scan list.
-    pub scan: &'static Latest<ApList>,
+    /// Worker → coordinator: the newest scan list, and which round produced it.
+    pub scan: &'static Scan,
 }
 
 static NETWORK_QUEUE: NetworkQueue = NetworkQueue::new();
 
 static PAGE: PageWatch = PageWatch::new();
 
-static SCAN: Latest<ApList> = Latest::new();
+static SCAN: Scan = Scan::new();
 
 pub static NETWORK: Network = Network {
     commands: &NETWORK_QUEUE,
     page: &PAGE,
     scan: &SCAN,
 };
+
+/// The scan worker's published snapshot: the newest list, plus a counter that advances once
+/// per completed round even when the list did not change. The page asks `/rescan`, reads the
+/// counter from that answer, and polls until it moves — a list alone cannot say whether the
+/// round it asked for has run or is still the one from before.
+pub struct Scan {
+    list: Latest<ApList>,
+    generation: AtomicU32,
+}
+
+impl Scan {
+    pub(crate) const fn new() -> Self {
+        Self {
+            list: Latest::new(),
+            generation: AtomicU32::new(0),
+        }
+    }
+
+    pub fn take(&self) -> Option<ApList> {
+        self.list.take()
+    }
+
+    pub fn peek(&self) -> Option<ApList> {
+        self.list.peek()
+    }
+
+    pub fn ready(&self) -> impl Future<Output = ()> {
+        self.list.ready()
+    }
+
+    pub fn publish(&self, list: &ApList) {
+        self.list.publish(list);
+    }
+
+    /// One successful scan round finished, whether or not its list differed from the last. The
+    /// release pairs with [`Self::generation`], so a reader that sees round N reads a list from N
+    /// or later.
+    pub fn complete(&self) {
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn generation(&self) -> u32 {
+        self.generation.load(Ordering::Acquire)
+    }
+}
 
 /// The newest value only: the panel draws one list, so a burst of scans is one list plus the
 /// news that it changed.
@@ -254,6 +299,36 @@ mod tests {
         assert!(
             latest.take().is_some(),
             "the take at the top of the pass is the one that takes the list"
+        );
+    }
+
+    #[test]
+    fn a_round_advances_the_generation_even_when_the_list_is_the_same() {
+        let scan = Scan::new();
+        assert_eq!(scan.generation(), 0, "nothing has been scanned yet");
+
+        scan.publish(&round_list(false));
+        assert_eq!(
+            scan.generation(),
+            0,
+            "publishing a list is not the end of a round"
+        );
+
+        scan.complete();
+        scan.complete();
+        assert_eq!(
+            scan.generation(),
+            2,
+            "each finished round is a new generation, changed list or not"
+        );
+        assert_eq!(
+            scan.peek().map(|list| list.len()),
+            Some(1),
+            "the list the page reads is still the published one"
+        );
+        assert!(
+            scan.take().is_some(),
+            "the panel takes the list once, as before"
         );
     }
 }
