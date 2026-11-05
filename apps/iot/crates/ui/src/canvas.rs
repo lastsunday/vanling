@@ -1,6 +1,6 @@
 //! The pixels a page is drawn into, and the only ink there is.
 
-use iot_core::keyboard::ControlRect;
+use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::paint::Rgb;
 use iot_core::stamp::{fill_surface, invert_rgb565};

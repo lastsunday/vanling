@@ -47,14 +47,14 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
 - **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `PageSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
-- **iot-ui knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`ui::Surface`), layout, page views and network words live in `iot-app`, so they stay host-testable without a panel.
+- **iot-ui knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`ui::Surface`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
 - **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `PanelTarget`/`PanelContext` to the app through `core`'s `PanelPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `Diagnostics` nor any page type.
 - **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
 - **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
-- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-ui`; the page shell, layout and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`keyboard`/`paint`) are there because both the pages and `intent` read them.
+- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page and lives in `app::controls`.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
@@ -68,7 +68,8 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `main.rs` | chip bring-up, executor choice, family entry |
 | `assets.rs`, `assets/` | the product's own bytes: the `vanling-` setup AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
 | `diagnostics.rs`, `intent.rs`, `page/`, `state/`, `render/` | product snapshot, intent vocabulary, page routes, device state machine and render consumers; these types no longer belong in reusable `core` |
-| `ui/{mod,surface,layout,text,pages}` | product page shell and views: immediate-mode drawing over `iot_ui::Canvas`, with page layout and network/sound words |
+| `ui/{mod,surface,text,widgets,components,views}` | product page shell and views: `widgets/` holds the primitives (frame, row, label), `components/` the cross-page pieces (the dialog), and `views/` assembles them per page; network/sound words live in `text` and `views/network/text` |
+| `controls/{mod,keyboard,list,toolbar,dialog}.rs` | panel-control geometry and hit testing: key grid, scan list, action strip, confirmation box; drawing and taps read the same coordinates |
 | `boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary, one file per worker: `mod.rs` holds only `Workers { input, playback, network }`, `inbox.rs` holds `Inbox`/`Retained`, and the rest are each worker's handles and protocol (`network.rs` carries `Scan`/`PageWatch` and the command inbox); the network command vocabulary lives in `app/src/state/network.rs` |
 | `frame_loop/{mod,clock}.rs`, `frame_loop/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); each per-frame unit is a `System` and the `Schedule` declaration order is the execution order; `clock.rs` holds the logical frame clock |
@@ -76,7 +77,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `input.rs` | input worker: polling, demand scheduling, gesture recognition |
 | `playback/{mod,sounds}.rs` | playback worker and sound catalogue; state→command lives in `frame_loop/systems/playback.rs`, the capture window in `workers/input.rs` |
 | `network/{mod,link,setup,provision,scan,store}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
-| `bench/replay.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) |
+| `bench/replay.rs`, `bench/script.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid |
 | `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
 
 Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the compiler does not
@@ -89,13 +90,13 @@ frame_loop → { bench, input, state, surface, workers }
 network    → { assets, bench, boot, input, intent, state, workers }
 playback   → { input, intent, state, workers }
 input      → { intent, state, workers }
-bench      → { input, intent, playback, state }
-state      → { intent, page }
-intent     → { state }
+bench      → { controls, input, intent, playback, state }
+state      → { controls, intent, page }
+intent     → { controls, state }
 diagnostics→ { page, state }
 render     → { diagnostics, page, state }
 surface    → { render, state, ui }
-ui         → { assets, diagnostics, state, surface }
+ui         → { assets, controls, diagnostics, state, surface }
 workers    → { state }
 boot       → { state }
 ```
@@ -406,7 +407,7 @@ The per-device figures and their individual basis labels are in the [implementat
 
 ## Pages: a route table plus a navigation stack
 
-`app/src/page/mod.rs` holds one route table: the `DisplayPage` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, ground, whether it draws frames, claim, repaint step, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the complete list in `code()` order (the wire code is its index), and `CYCLE` is the button's order, which must be a prefix of `ALL`; `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, the cycle prefix, and each page's render arm in `app/src/ui/surface.rs` and view module under `app/src/ui/pages/` (the render match itself is checked exhaustively by the compiler).
+`app/src/page/mod.rs` holds one route table: the `DisplayPage` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, ground, whether it draws frames, claim, repaint step, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the complete list in `code()` order (the wire code is its index), and `CYCLE` is the button's order, which must be a prefix of `ALL`; `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, the cycle prefix, and each page's render arm in `app/src/ui/surface.rs` and view module under `app/src/ui/views/` (the render match itself is checked exhaustively by the compiler).
 
 `Navigator` in `app/src/page/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 

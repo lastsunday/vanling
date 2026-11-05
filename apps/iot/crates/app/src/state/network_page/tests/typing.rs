@@ -3,18 +3,6 @@
 use super::*;
 
 #[test]
-fn a_script_types_its_own_text_through_the_keyboard() {
-    for text in [b"pass".as_slice(), b"aZ9.# 0_", b"00", b"z9", b"AaA", b" "] {
-        let mut entry = Entry::default();
-        for tap in keyboard::script_for(text).expect("a text the keyboard carries") {
-            let key = keyboard::key_of(entry.layer(), tap.cell).expect("a cell of the grid");
-            entry.edit(key, tap.at_ms);
-        }
-        assert_eq!(entry.as_bytes(), text, "{text:?} did not come back");
-    }
-}
-
-#[test]
 fn the_reveal_key_shows_the_draft_without_touching_it() {
     let mut manager = on_network_page();
     tap_band(&mut manager, 0);

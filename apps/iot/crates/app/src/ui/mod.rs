@@ -1,10 +1,10 @@
 //! The product's ink: the pages, their shell, and what the board's panel asks them to draw.
 
-mod layout;
-mod network_text;
-mod pages;
+mod components;
 mod surface;
 mod text;
+mod views;
+mod widgets;
 
 pub use surface::Surface;
 

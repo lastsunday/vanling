@@ -2,11 +2,13 @@
 
 use alloc::vec::Vec;
 
+use crate::bench::script;
+use crate::controls;
+use crate::controls::{DialogChoice, Key, LIST_ROWS};
 use crate::intent::{Intent, recognize};
 use crate::state::{Band, Confirm, DeviceManager, DeviceState, DisplayPage};
 use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
-use iot_core::keyboard::{self, DialogChoice, Key, LIST_ROWS};
 
 use crate::input::IntentBus;
 
@@ -209,7 +211,7 @@ impl PanelBench {
             self.answered = true;
             return None;
         }
-        let script = keyboard::script_for(psk.as_bytes())?;
+        let script = script::script_for(psk.as_bytes())?;
         let mut touches = Vec::with_capacity(script.len() + 2);
         let slides = index
             .saturating_sub(LIST_ROWS - 1)
@@ -224,14 +226,14 @@ impl PanelBench {
             at_ms: 0,
         });
         for tap in &script {
-            let rect = keyboard::key_box(tap.cell).expect("a script only taps cells the grid has");
+            let rect = controls::key_box(tap.cell).expect("a script only taps cells the grid has");
             touches.push(Touch::At {
                 x: (rect.x + rect.w / 2) as u16,
                 y: (rect.y + rect.h / 2) as u16,
                 at_ms: tap.at_ms,
             });
         }
-        let ok = keyboard::key_box(keyboard::cell_of(Key::Connect).expect("the grid has connect"))
+        let ok = controls::key_box(controls::cell_of(Key::Connect).expect("the grid has connect"))
             .expect("a cell of the grid");
         touches.push(Touch::At {
             x: (ok.x + ok.w / 2) as u16,
@@ -546,13 +548,13 @@ impl PanelBench {
 fn strip_point() -> Touch {
     Touch::At {
         x: BAND_X,
-        y: (keyboard::TOOLBAR_TOP + keyboard::TOOLBAR_H / 2) as u16,
+        y: (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
         at_ms: 0,
     }
 }
 
 fn answer_point(choice: DialogChoice) -> Touch {
-    let rect = keyboard::dialog_answer_box(choice);
+    let rect = controls::dialog_answer_box(choice);
     Touch::At {
         x: (rect.x + rect.w / 2) as u16,
         y: (rect.y + rect.h / 2) as u16,
@@ -612,8 +614,8 @@ fn picked_band(state: &DeviceState) -> Option<usize> {
 }
 
 fn cancel_point() -> Touch {
-    let cell = keyboard::cell_of(Key::Cancel).expect("the grid holds cancel");
-    let rect = keyboard::key_box(cell).expect("a cell of the grid");
+    let cell = controls::cell_of(Key::Cancel).expect("the grid holds cancel");
+    let rect = controls::key_box(cell).expect("a cell of the grid");
     Touch::At {
         x: (rect.x + rect.w / 2) as u16,
         y: (rect.y + rect.h / 2) as u16,
@@ -628,7 +630,7 @@ impl Default for PanelBench {
 }
 
 fn band_center(band: usize) -> u16 {
-    (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2) as u16
+    (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16
 }
 
 fn ssid() -> Option<&'static str> {
@@ -642,12 +644,12 @@ fn psk() -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controls::Layer;
     use crate::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
     use crate::state::{Backed, Boot, NetworkCommand};
     use iot_core::drivers::network::{
         AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
     };
-    use iot_core::keyboard::Layer;
 
     fn ap(name: &str) -> AccessPoint {
         AccessPoint {
@@ -683,8 +685,8 @@ mod tests {
     }
 
     fn key_center(key: Key) -> Touch {
-        let cell = keyboard::cell_of(key).expect("the grid holds every control");
-        let rect = keyboard::key_box(cell).expect("a cell of the grid");
+        let cell = controls::cell_of(key).expect("the grid holds every control");
+        let rect = controls::key_box(cell).expect("a cell of the grid");
         Touch::At {
             x: (rect.x + rect.w / 2) as u16,
             y: (rect.y + rect.h / 2) as u16,
@@ -715,7 +717,7 @@ mod tests {
                 at_ms: 0
             }
         );
-        assert_eq!(keyboard::list_band_at(band_center(2)), Some(2));
+        assert_eq!(controls::list_band_at(band_center(2)), Some(2));
     }
 
     #[test]
@@ -752,7 +754,7 @@ mod tests {
                 .count();
             let (_, y) = point(script[slides]);
             assert_eq!(
-                keyboard::list_band_at(y),
+                controls::list_band_at(y),
                 Some(index - slides),
                 "row {index} is the band its tap lands on after {slides} slides"
             );
@@ -962,14 +964,14 @@ mod tests {
         let last = script.last().copied().expect("a run has taps");
         assert_eq!(point(last), point(key_center(Key::Connect)));
         assert_eq!(
-            keyboard::key_at(Layer::Abc, point(last).0, point(last).1),
+            controls::key_at(Layer::Abc, point(last).0, point(last).1),
             Some(Key::Connect),
             "the last tap is the key that hands the credential over, not a cell beside it"
         );
         for tap in &script[..script.len() - 1] {
             let (x, y) = point(*tap);
             assert!(
-                keyboard::key_at(Layer::Abc, x, y).is_some(),
+                controls::key_at(Layer::Abc, x, y).is_some(),
                 "the tap at ({x}, {y}) is on a key"
             );
         }

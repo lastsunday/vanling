@@ -46,11 +46,11 @@ pub fn each_band<F: FnMut(Band)>(draft: NetworkPage, link: LinkStatus, mut draw:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controls;
     use crate::state::{Confirm, Entry};
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{AccessPoint, LinkPhase, LinkStatus, NetworkMode, SetupHost};
-    use iot_core::keyboard;
 
     fn asking() -> NetworkPage {
         NetworkPage {
@@ -213,8 +213,8 @@ mod tests {
 
     #[test]
     fn the_strip_is_hidden_under_a_keyboard_because_the_two_are_the_same_band() {
-        let strip = keyboard::toolbar_box();
-        let last = keyboard::key_box(keyboard::COLUMNS * (keyboard::ROWS - 1))
+        let strip = controls::toolbar_box();
+        let last = controls::key_box(controls::COLUMNS * (controls::ROWS - 1))
             .expect("the keyboard's last row is a row of keys");
         assert!(
             strip.y < last.y + last.h,

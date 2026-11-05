@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
+use iot_app::controls::Key;
 use iot_app::diagnostics::Diagnostics;
 use iot_app::intent::{ActionIntent, Intent, NetworkPageIntent};
 use iot_app::state::PALETTE;
@@ -37,7 +38,6 @@ use iot_core::drivers::network::{
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
-use iot_core::keyboard::Key;
 use iot_core::paint::Rgb;
 
 static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());

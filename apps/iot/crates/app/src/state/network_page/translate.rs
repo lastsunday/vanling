@@ -1,11 +1,11 @@
 //! What one gesture means on the Network page: the keyboard, the list, the two dialogs, and
 //! the setup-mode hold that answers from any page but the splash.
 
+use crate::controls;
 use crate::intent::{ActionIntent, InputIntent, NetworkPageIntent};
-use crate::state::{Band, Confirm, DeviceState, DisplayPage, controls};
+use crate::state::{Band, Confirm, DeviceState, DisplayPage, controls as page_controls};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::AccessPoint;
-use iot_core::keyboard;
 
 /// The setup-mode hold is a link decision, not a page one: switching the host is offered from
 /// anywhere but the splash, so it is answered before the page sees the gesture.
@@ -40,8 +40,8 @@ pub(in crate::state) fn translate(op: &InputIntent, current: &DeviceState) -> Ac
             }
         }
         InputEvent::Button(ButtonEvent::Click) => {
-            controls::strip(current.network_page, current.network.link)
-                .command(keyboard::ToolbarCell::Right)
+            page_controls::strip(current.network_page, current.network.link)
+                .command(controls::ToolbarCell::Right)
         }
         _ => ActionIntent::Invalid,
     }
@@ -52,20 +52,20 @@ fn tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> ActionIntent {
         let Some(entry) = current.network_page.entry else {
             return ActionIntent::Invalid;
         };
-        return keyboard::key_at(entry.layer(), x, y).map_or(ActionIntent::Invalid, |key| {
+        return controls::key_at(entry.layer(), x, y).map_or(ActionIntent::Invalid, |key| {
             ActionIntent::NetworkPage(NetworkPageIntent::Key { key, at_ms })
         });
     }
     if let Some(answer) = answer_at(current, x, y) {
         return answer;
     }
-    if let Some(cell) = keyboard::toolbar_cell_at(x, y) {
-        return controls::strip(current.network_page, current.network.link).command(cell);
+    if let Some(cell) = controls::toolbar_cell_at(x, y) {
+        return page_controls::strip(current.network_page, current.network.link).command(cell);
     }
     if !Band::Content.showing(current.network_page, current.network.link) {
         return ActionIntent::Invalid;
     }
-    match keyboard::list_band_at(y) {
+    match controls::list_band_at(y) {
         Some(band) => ap_at(current, band).map_or(ActionIntent::Invalid, |ap| {
             ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap))
         }),
@@ -83,7 +83,7 @@ fn hold(current: &DeviceState, x: u16, y: u16) -> ActionIntent {
     if !Band::Content.showing(current.network_page, current.network.link) {
         return ActionIntent::Invalid;
     }
-    match keyboard::list_band_at(y) {
+    match controls::list_band_at(y) {
         Some(band) => ap_at(current, band).map_or(ActionIntent::Invalid, |ap| {
             ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap))
         }),
@@ -93,19 +93,19 @@ fn hold(current: &DeviceState, x: u16, y: u16) -> ActionIntent {
 
 fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<ActionIntent> {
     if current.network.link.shows_setup_box() {
-        let answers = controls::answers(current.network.link);
-        return match keyboard::dialog_choice_at(x, y) {
-            Some(keyboard::DialogChoice::Keep) => Some(answers.keep.command),
-            Some(keyboard::DialogChoice::Act) => Some(answers.act.command),
+        let answers = page_controls::answers(current.network.link);
+        return match controls::dialog_choice_at(x, y) {
+            Some(controls::DialogChoice::Keep) => Some(answers.keep.command),
+            Some(controls::DialogChoice::Act) => Some(answers.act.command),
             None => None,
         };
     }
     let confirm: Confirm = current.network_page.confirm?;
-    Some(match keyboard::dialog_choice_at(x, y) {
-        Some(keyboard::DialogChoice::Act) => {
+    Some(match controls::dialog_choice_at(x, y) {
+        Some(controls::DialogChoice::Act) => {
             ActionIntent::NetworkPage(NetworkPageIntent::Answer(confirm))
         }
-        Some(keyboard::DialogChoice::Keep) | None => {
+        Some(controls::DialogChoice::Keep) | None => {
             ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
         }
     })

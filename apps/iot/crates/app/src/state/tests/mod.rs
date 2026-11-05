@@ -1,3 +1,4 @@
+use crate::controls::Layer;
 use crate::intent::*;
 use crate::state::test_support::*;
 use iot_core::demand::DemandKey;
@@ -6,7 +7,6 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError, Ssid,
 };
-use iot_core::keyboard::Layer;
 use iot_core::paint::Rgb;
 
 mod boot;

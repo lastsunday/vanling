@@ -1,10 +1,23 @@
 use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::overlay::{Block, block_x, overlay_row_top};
 
-use crate::ui::layout::{ESTIMATOR_ROWS, MOTION_SEMANTIC_ROWS, NOT_AVAILABLE};
 use crate::ui::surface::Surface;
 use crate::ui::text::format_u16;
-use crate::ui::text::{format_i32, format_tenths};
+use crate::ui::text::{NOT_AVAILABLE, format_i32, format_tenths};
+use crate::ui::widgets::panel::LAST_BLOCK_ROW;
+
+const ESTIMATOR_ROWS: usize = 4;
+const MOTION_SEMANTIC_ROWS: usize = 14;
+const ATTITUDE_LAST_AXIS_ROW: usize = 15;
+
+const _: () = assert!(
+    ESTIMATOR_ROWS + MOTION_SEMANTIC_ROWS <= LAST_BLOCK_ROW + 1,
+    "the attitude page's second block runs off the bottom of the panel"
+);
+const _: () = assert!(
+    ATTITUDE_LAST_AXIS_ROW <= LAST_BLOCK_ROW,
+    "the attitude page's first block runs off the bottom of the panel"
+);
 
 impl Surface<'_> {
     pub(crate) fn stamp_attitude(&mut self) {

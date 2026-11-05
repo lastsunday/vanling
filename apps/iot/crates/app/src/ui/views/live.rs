@@ -1,12 +1,29 @@
 //! The diagnostics overlay: the touch path's counters and the light's parameters, stamped
 //! over whichever page is showing when the build asks for them.
 
+use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
 use iot_core::overlay::Block;
 use iot_core::paint::{MODE_BREATH, MODE_SOLID};
 
-use crate::ui::pages::draw::{direction_arrow, gesture_glyph, mode_word};
 use crate::ui::surface::Surface;
-use crate::ui::text::{format_pair, format_u16, write_u16};
+use crate::ui::text::{format_pair, format_u16, light_mode_word, write_u16};
+
+fn direction_arrow(dir: u8) -> u8 {
+    match dir {
+        0 => b'-',
+        d @ 1..=9 => b'0' + d,
+        _ => b'-',
+    }
+}
+
+fn gesture_glyph(kind: u8) -> u8 {
+    match kind {
+        FINGER_TAP => b'1',
+        FINGER_LONG_PRESS => b'2',
+        FINGER_SWIPE => b'3',
+        _ => b'-',
+    }
+}
 
 impl Surface<'_> {
     pub(crate) fn stamp_diagnostics(&mut self, live: (u8, u8)) {
@@ -100,7 +117,7 @@ impl Surface<'_> {
 
         match light.mode {
             MODE_BREATH => {
-                self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0);
+                self.stamp_left(light_mode_word(light.mode), b"MOD", Block::Third, 0);
                 self.stamp_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
@@ -146,7 +163,7 @@ impl Surface<'_> {
                 );
             }
             MODE_SOLID => {
-                self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0);
+                self.stamp_left(light_mode_word(light.mode), b"MOD", Block::Third, 0);
                 self.stamp_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
@@ -160,7 +177,7 @@ impl Surface<'_> {
                     2,
                 );
             }
-            _ => self.stamp_left(mode_word(light.mode), b"MOD", Block::Third, 0),
+            _ => self.stamp_left(light_mode_word(light.mode), b"MOD", Block::Third, 0),
         }
     }
 }

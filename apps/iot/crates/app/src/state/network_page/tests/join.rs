@@ -154,7 +154,7 @@ fn a_hold_on_a_saved_row_asks_to_forget_it() {
     assert_eq!(manager.state().network_page.selected, None);
 
     assert_eq!(
-        tap_answer(&mut manager, keyboard::DialogChoice::Act),
+        tap_answer(&mut manager, controls::DialogChoice::Act),
         Some(NetworkCommand::Forget(Ssid::from_octets(b"cafe"))),
         "the answer hands the name to the task that holds the store"
     );
@@ -429,7 +429,7 @@ fn the_row_a_link_was_left_from_opens_a_new_draft() {
     );
 
     tap_strip(&mut manager);
-    tap_answer(&mut manager, keyboard::DialogChoice::Act);
+    tap_answer(&mut manager, controls::DialogChoice::Act);
     manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
         LinkStatus::default(),
     )));

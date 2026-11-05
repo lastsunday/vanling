@@ -15,9 +15,9 @@
 //! a field left out that a move reads would merge two states the page tells apart.
 
 use super::*;
+use crate::controls::{self, DialogChoice, Key};
 use alloc::collections::{BTreeSet, VecDeque};
 use alloc::string::String;
-use iot_core::keyboard::{self, DialogChoice, Key};
 
 const LIST_X: u16 = 30;
 
@@ -128,7 +128,7 @@ fn path(origin: &[(Option<usize>, &'static str)], at: usize, this: &str) -> Stri
 }
 
 fn band_y(band: usize) -> u16 {
-    (keyboard::LIST_TOP + band * keyboard::LIST_ROW_H + keyboard::LIST_ROW_H / 2) as u16
+    (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16
 }
 
 fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<NetworkCommand> {
@@ -185,12 +185,12 @@ fn swipe(
 }
 
 fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<NetworkCommand> {
-    let cell = keyboard::cell_of(key)
+    let cell = controls::cell_of(key)
         .or_else(|| {
-            (0..keyboard::KEYS).find(|cell| keyboard::key_of(Layer::Abc, *cell) == Some(key))
+            (0..controls::KEYS).find(|cell| controls::key_of(Layer::Abc, *cell) == Some(key))
         })
         .expect("the grid holds every key");
-    let rect = keyboard::key_box(cell).expect("a cell of the grid");
+    let rect = controls::key_box(cell).expect("a cell of the grid");
     tap_at(
         manager,
         (rect.x + rect.w / 2) as u16,
@@ -199,7 +199,7 @@ fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<NetworkCommand> {
 }
 
 fn tap_answer(manager: &mut DeviceManager, choice: DialogChoice) -> Option<NetworkCommand> {
-    let choice = keyboard::dialog_answer_box(choice);
+    let choice = controls::dialog_answer_box(choice);
     tap_at(
         manager,
         (choice.x + choice.w / 2) as u16,
@@ -246,7 +246,7 @@ fn tap_the_strip(manager: &mut DeviceManager) -> Option<NetworkCommand> {
     tap_at(
         manager,
         160,
-        (keyboard::TOOLBAR_TOP + keyboard::TOOLBAR_H / 2) as u16,
+        (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
     )
 }
 fn tap_the_header(manager: &mut DeviceManager) -> Option<NetworkCommand> {

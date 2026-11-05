@@ -1,17 +1,115 @@
 //! Network, setup and question text: the words the link's readings become.
 
-use crate::state::Confirm;
+use crate::controls::{
+    DIALOG_ANSWER_W, DIALOG_GLYPHS, Key, LIST_ROWS, Layer, ToolbarCell, toolbar_cell,
+};
+use crate::state::controls::{ControlKind, confirm_verb};
+use crate::state::{Confirm, Entry};
 use iot_core::drivers::network::{
     AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass,
 };
-use iot_core::keyboard::{DIALOG_ANSWER_W, DIALOG_GLYPHS};
-use iot_core::overlay::GLYPH_PITCH;
+use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::provision::SETUP_PASS_LEN;
 
-use iot_ui::text::write_u16;
+use iot_ui::text::{write_u16, write_u64};
 
 /// Glyphs a network name is given on a scan-list row.
-pub const NETWORK_NAME_GLYPHS: usize = 24;
+pub(super) const NETWORK_NAME_GLYPHS: usize = 24;
+
+/// The key grid's own words: what each control prints, and what the reveal says while the
+/// draft is on screen.
+pub fn key_label(key: Key, layer: Layer) -> &'static [u8] {
+    match key {
+        Key::Layer => match layer {
+            Layer::Abc => b"123",
+            Layer::Digits => b"#&?",
+            Layer::Symbols => b"abc",
+        },
+        Key::Shift => b"SH",
+        Key::Backspace => b"<-",
+        Key::Connect => b"OK",
+        Key::Cancel => b"X",
+        Key::Reveal => b"SHOW",
+        Key::Char(_) => b"",
+    }
+}
+
+pub(super) const HIDE_LABEL: &[u8] = b"HIDE";
+
+/// The word a control's box carries.
+pub const fn control_label(kind: ControlKind) -> &'static [u8] {
+    match kind {
+        ControlKind::Cancel => b"CANCEL",
+        ControlKind::Scan => b"SCAN",
+        ControlKind::Wait => b"WAIT",
+        ControlKind::Leave => b"LEAVE",
+        ControlKind::Forget => b"FORGET",
+        ControlKind::Keep => b"KEEP",
+        ControlKind::AccessPoint => b"AP",
+        ControlKind::Panel => b"PANEL",
+        ControlKind::Pass => b"PASS",
+        ControlKind::NoPass => b"NO PASS",
+    }
+}
+
+const _: () = assert!(
+    control_label(ControlKind::Cancel).len() * GLYPH_PITCH - OVERLAY_GAP
+        <= toolbar_cell(ToolbarCell::Left).w,
+    "the way out of setup mode does not fit the cell the strip gives it"
+);
+const _: () = assert!(
+    control_label(ControlKind::AccessPoint).len() * GLYPH_PITCH - OVERLAY_GAP
+        <= toolbar_cell(ToolbarCell::Right).w
+        && control_label(ControlKind::Panel).len() * GLYPH_PITCH - OVERLAY_GAP
+            <= toolbar_cell(ToolbarCell::Right).w,
+    "the host switch does not fit the cell the strip gives it"
+);
+const _: () = assert!(
+    control_label(ControlKind::NoPass).len() * GLYPH_PITCH - OVERLAY_GAP <= DIALOG_ANSWER_W,
+    "the box's own answer cannot hold the word of what it does"
+);
+
+/// The scan list's window, as `first-last/total`, on the page's title row.
+pub fn format_window(top: u8, rows: usize, buf: &mut [u8; 12]) -> &[u8] {
+    let first = usize::from(top) + 1;
+    let last = (usize::from(top) + LIST_ROWS).min(rows);
+    let mut n = write_u64(first as u64, buf, 0);
+    buf[n] = b'-';
+    n = write_u64(last as u64, buf, n + 1);
+    buf[n] = b'/';
+    n = write_u64(rows as u64, buf, n + 1);
+    &buf[..n]
+}
+
+// The draft as the row above the keyboard shows it: masked, or as typed while the reveal is on.
+//
+// The *tail* of it rather than the head, because the end is what the finger just typed and a
+// character to fix is at the end of a passphrase about as often as anywhere. What does not fit is
+// marked with a leading `+` rather than silently dropped, and the mark is one of the row's own
+// glyphs: the row's width is what the columns above leave it, so a draft a glyph wider than that
+// would run into the phase word beside it.
+pub fn format_psk<'a>(entry: &Entry, revealed: bool, buf: &'a mut [u8]) -> &'a [u8] {
+    let shown = entry.len().min(buf.len());
+    let more = entry.len() > shown;
+    let tail = if more { shown - 1 } else { shown };
+    let mut n = 0;
+    if more {
+        buf[0] = b'+';
+        n = 1;
+    }
+    let bytes = entry.as_bytes();
+    for (slot, byte) in buf[n..n + tail]
+        .iter_mut()
+        .zip(&bytes[bytes.len() - tail..])
+    {
+        *slot = match (revealed, byte.is_ascii_graphic()) {
+            (true, true) => *byte,
+            (true, false) => b'?',
+            (false, _) => b'*',
+        };
+    }
+    &buf[..n + tail]
+}
 
 /// The link's phase as one four-glyph word, and a failure as what failed rather than as the
 /// fact of failing: the driver logs its own error code with the call that produced it, so
@@ -145,8 +243,8 @@ const _: () = assert!(
     "a confirmation's consequence is wider than the line the box gives it"
 );
 const _: () = assert!(
-    crate::state::controls::LEAVE_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W
-        && crate::state::controls::FORGET_LABEL.len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
+    control_label(ControlKind::Leave).len() * GLYPH_PITCH <= DIALOG_ANSWER_W
+        && control_label(ControlKind::Forget).len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
     "a confirmation's own button cannot hold the word of the action it performs"
 );
 const _: () = assert!(
@@ -173,7 +271,7 @@ const _: () = assert!(
 
 /// The question itself: the verb, and the network it is about in quotes.
 pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
-    let verb = crate::state::controls::confirm_verb(confirm);
+    let verb = control_label(confirm_verb(confirm));
     buf[..verb.len()].copy_from_slice(verb);
     let mut n = verb.len();
     let Some(ap) = confirm.network(link) else {
@@ -246,4 +344,67 @@ fn write_bssid(bssid: &[u8; 6], buf: &mut [u8; SSID_BYTES]) -> usize {
         n += 2;
     }
     n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KINDS: [ControlKind; 10] = [
+        ControlKind::Cancel,
+        ControlKind::Scan,
+        ControlKind::Wait,
+        ControlKind::Leave,
+        ControlKind::Forget,
+        ControlKind::Keep,
+        ControlKind::AccessPoint,
+        ControlKind::Panel,
+        ControlKind::Pass,
+        ControlKind::NoPass,
+    ];
+
+    #[test]
+    fn every_control_kind_has_a_word_and_no_two_share_one() {
+        let mut words = Vec::new();
+        for kind in KINDS {
+            let word = control_label(kind);
+            assert!(!word.is_empty(), "{kind:?} has nothing to put on its box");
+            assert!(
+                !words.contains(&word),
+                "{kind:?} repeats another box's word"
+            );
+            words.push(word);
+        }
+    }
+
+    #[test]
+    fn a_controls_word_names_what_it_does() {
+        assert_eq!(control_label(ControlKind::Cancel), b"CANCEL");
+        assert_eq!(control_label(ControlKind::Scan), b"SCAN");
+        assert_eq!(control_label(ControlKind::Wait), b"WAIT");
+        assert_eq!(control_label(ControlKind::Leave), b"LEAVE");
+        assert_eq!(control_label(ControlKind::Forget), b"FORGET");
+        assert_eq!(control_label(ControlKind::Keep), b"KEEP");
+        assert_eq!(control_label(ControlKind::AccessPoint), b"AP");
+        assert_eq!(control_label(ControlKind::Panel), b"PANEL");
+        assert_eq!(control_label(ControlKind::Pass), b"PASS");
+        assert_eq!(control_label(ControlKind::NoPass), b"NO PASS");
+    }
+
+    #[test]
+    fn the_layer_key_names_the_layer_it_switches_to() {
+        assert_eq!(key_label(Key::Layer, Layer::Abc), b"123");
+        assert_eq!(key_label(Key::Layer, Layer::Digits), b"#&?");
+        assert_eq!(key_label(Key::Layer, Layer::Symbols), b"abc");
+    }
+
+    #[test]
+    fn a_control_key_carries_its_own_word_and_a_character_has_none() {
+        assert_eq!(key_label(Key::Shift, Layer::Abc), b"SH");
+        assert_eq!(key_label(Key::Backspace, Layer::Abc), b"<-");
+        assert_eq!(key_label(Key::Connect, Layer::Abc), b"OK");
+        assert_eq!(key_label(Key::Cancel, Layer::Abc), b"X");
+        assert_eq!(key_label(Key::Reveal, Layer::Abc), b"SHOW");
+        assert_eq!(key_label(Key::Char(0), Layer::Abc), b"");
+    }
 }

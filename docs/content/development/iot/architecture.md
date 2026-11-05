@@ -43,14 +43,14 @@ weight = 10
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
 - **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `PageSurface`）。板模块只做选引脚与装配，元件本身跨板通用
-- **iot-ui 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、诊断、网络、产品或芯片。页面壳（`ui::Surface`）、布局、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖面板
+- **iot-ui 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、诊断、网络、产品或芯片。页面壳（`ui::Surface`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖面板
 - **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `PanelPainter` 接缝把 `PanelTarget`/`PanelContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `Diagnostics` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-ui`；页面壳、布局与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`keyboard`/`paint`，因为页面与 `intent` 两边都要读
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，已在 `app::controls`
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
@@ -64,7 +64,8 @@ weight = 10
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
 | `assets.rs`、`assets/` | 产品自己的字节：`vanling-` 设置热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
 | `diagnostics.rs`、`intent.rs`、`page/`、`state/`、`render/` | 产品快照、意图词汇、页面路由、设备状态机与渲染消费者；这些类型不再属于可复用的 `core` |
-| `ui/{mod,surface,layout,text,pages}` | 产品页面壳与视图：在 `iot_ui::Canvas` 上立即模式绘制，页面布局与网络/声音词都在这里 |
+| `ui/{mod,surface,text,widgets,components,views}` | 产品页面壳与视图：`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件（确认框），`views/` 按页组装；网络/声音词在 `text` 与 `views/network/text` |
+| `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；绘制与点击读同一份坐标 |
 | `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄，一个工作者一个文件：`mod.rs` 只有 `Workers { input, playback, network }`，`inbox.rs` 是 `Inbox`/`Retained`，其余文件是各工作者的句柄与协议（`network.rs` 含 `Scan`/`PageWatch` 与命令入口）；网络命令词汇表在 `app/src/state/network.rs` |
 | `frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；每帧单元是一个 `System`，`Schedule` 的声明顺序就是执行顺序；`clock.rs` 是逻辑帧时钟 |
@@ -72,7 +73,7 @@ weight = 10
 | `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
 | `playback/{mod,sounds}.rs` | 播放工作者、声音目录；状态→命令在 `frame_loop/systems/playback.rs`，采集窗口在 `workers/input.rs` |
 | `network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据、链路/设置页报告 |
-| `bench/replay.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`） |
+| `bench/replay.rs`、`bench/script.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本 |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
 
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
@@ -83,13 +84,13 @@ frame_loop → { bench, input, state, surface, workers }
 network    → { assets, bench, boot, input, intent, state, workers }
 playback   → { input, intent, state, workers }
 input      → { intent, state, workers }
-bench      → { input, intent, playback, state }
-state      → { intent, page }
-intent     → { state }
+bench      → { controls, input, intent, playback, state }
+state      → { controls, intent, page }
+intent     → { controls, state }
 diagnostics→ { page, state }
 render     → { diagnostics, page, state }
 surface    → { render, state, ui }
-ui         → { assets, diagnostics, state, surface }
+ui         → { assets, controls, diagnostics, state, surface }
 workers    → { state }
 boot       → { state }
 ```
@@ -386,7 +387,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面：路由表 + 导航栈
 
-`app/src/page/mod.rs` 只写一份路由表：枚举 `DisplayPage` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、底色、是否出帧、claim、重绘步长、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/ui/surface.rs` 的渲染分支与 `app/src/ui/pages/` 的视图模块（渲染分支本身由编译器穷尽检查）。
+`app/src/page/mod.rs` 只写一份路由表：枚举 `DisplayPage` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、底色、是否出帧、claim、重绘步长、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/ui/surface.rs` 的渲染分支与 `app/src/ui/views/` 的视图模块（渲染分支本身由编译器穷尽检查）。
 
 `app/src/page/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕；瞬态没有次序，停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 

@@ -22,8 +22,8 @@ mod tests {
 
     mod network_page {
         use super::*;
+        use crate::controls::{self, Key};
         use iot_core::drivers::network::{AccessPoint, ApList, Ssid};
-        use iot_core::keyboard::{self, Key};
 
         fn ap(ssid: &[u8], rssi: i8) -> AccessPoint {
             ap_with(ssid, rssi, 6)
@@ -98,7 +98,7 @@ mod tests {
         }
 
         fn key_tap(cell: usize) -> InputEvent {
-            let rect = keyboard::key_box(cell).expect("a cell of the grid");
+            let rect = controls::key_box(cell).expect("a cell of the grid");
             tap_at((rect.x + rect.w / 2) as u16, (rect.y + rect.h / 2) as u16)
         }
 
@@ -110,20 +110,20 @@ mod tests {
                     ap_with(b"cafe", -60, 7),
                 ]));
             });
-            let first = keyboard::LIST_TOP as u16;
+            let first = controls::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(tap_at(30, first)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
                 "the list's first band is the first network"
             );
             assert_eq!(
-                translate(&op(tap_at(30, first + keyboard::LIST_ROW_H as u16)), &state),
+                translate(&op(tap_at(30, first + controls::LIST_ROW_H as u16)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"cafe", -60, 7))),
                 "a band down is the next network"
             );
             assert_eq!(
                 translate(
-                    &op(tap_at(30, first + keyboard::LIST_ROW_H as u16 - 1)),
+                    &op(tap_at(30, first + controls::LIST_ROW_H as u16 - 1)),
                     &state
                 ),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
@@ -168,12 +168,12 @@ mod tests {
                     ap_with(b"bakery", -65, 8),
                 ]));
             });
-            let strip = keyboard::toolbar_box();
+            let strip = controls::toolbar_box();
             for (x, _cell) in [
-                (0, keyboard::ToolbarCell::Left),
-                (strip.w / 2 - 1, keyboard::ToolbarCell::Left),
-                (strip.w / 2, keyboard::ToolbarCell::Right),
-                (strip.w - 1, keyboard::ToolbarCell::Right),
+                (0, controls::ToolbarCell::Left),
+                (strip.w / 2 - 1, controls::ToolbarCell::Left),
+                (strip.w / 2, controls::ToolbarCell::Right),
+                (strip.w - 1, controls::ToolbarCell::Right),
             ] {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
@@ -184,7 +184,7 @@ mod tests {
                 }
             }
             assert_eq!(
-                translate(&op(tap_at(160, (keyboard::TOOLBAR_TOP - 1) as u16)), &state),
+                translate(&op(tap_at(160, (controls::TOOLBAR_TOP - 1) as u16)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"bakery", -65, 8))),
                 "the row above the strip is still the list's own last band"
             );
@@ -209,8 +209,8 @@ mod tests {
                     ..Default::default()
                 };
             });
-            let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
-            let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
+            let keep = controls::dialog_answer_box(controls::DialogChoice::Keep);
+            let act = controls::dialog_answer_box(controls::DialogChoice::Act);
             assert_eq!(
                 translate(
                     &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
@@ -240,14 +240,14 @@ mod tests {
                     ap_with(b"cafe", -60, 7),
                 ]));
             });
-            let first = keyboard::LIST_TOP as u16;
+            let first = controls::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap(b"neighbour", -55)))
             );
             assert_eq!(
                 translate(
-                    &op(long_press_at(30, first + keyboard::LIST_ROW_H as u16)),
+                    &op(long_press_at(30, first + controls::LIST_ROW_H as u16)),
                     &state
                 ),
                 ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap_with(b"cafe", -60, 7)))
@@ -259,7 +259,7 @@ mod tests {
             );
             assert_eq!(
                 translate(
-                    &op(long_press_at(160, keyboard::TOOLBAR_TOP as u16)),
+                    &op(long_press_at(160, controls::TOOLBAR_TOP as u16)),
                     &state
                 ),
                 ActionIntent::Invalid,
@@ -275,8 +275,8 @@ mod tests {
         #[test]
         fn a_question_is_answered_by_where_a_finger_lands_and_by_nothing_else() {
             let state = asking();
-            let act = keyboard::dialog_answer_box(keyboard::DialogChoice::Act);
-            let keep = keyboard::dialog_answer_box(keyboard::DialogChoice::Keep);
+            let act = controls::dialog_answer_box(controls::DialogChoice::Act);
+            let keep = controls::dialog_answer_box(controls::DialogChoice::Keep);
             assert_eq!(
                 translate(
                     &op(tap_at(
@@ -303,11 +303,11 @@ mod tests {
             );
             for (x, y) in [
                 (30, 5),
-                (30, keyboard::LIST_TOP as u16 + 2),
-                (160, keyboard::TOOLBAR_TOP as u16 + 2),
+                (30, controls::LIST_TOP as u16 + 2),
+                (160, controls::TOOLBAR_TOP as u16 + 2),
                 (
-                    (keyboard::DIALOG_X + 2) as u16,
-                    (keyboard::DIALOG_TOP + 2) as u16,
+                    (controls::DIALOG_X + 2) as u16,
+                    (controls::DIALOG_TOP + 2) as u16,
                 ),
             ] {
                 assert_eq!(
@@ -323,13 +323,13 @@ mod tests {
             );
             assert_eq!(
                 translate(
-                    &op(long_press_at(30, keyboard::LIST_TOP as u16 + 2)),
+                    &op(long_press_at(30, controls::LIST_TOP as u16 + 2)),
                     &state
                 ),
                 ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
             );
             assert_eq!(
-                translate(&op(tap_at(160, keyboard::TOOLBAR_TOP as u16 + 2)), &state),
+                translate(&op(tap_at(160, controls::TOOLBAR_TOP as u16 + 2)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
             );
         }
@@ -364,7 +364,7 @@ mod tests {
             assert_eq!(
                 translate(
                     &op(key_tap(
-                        keyboard::cell_of(Key::Shift).expect("a control's own cell")
+                        controls::cell_of(Key::Shift).expect("a control's own cell")
                     )),
                     &state
                 ),
@@ -376,7 +376,7 @@ mod tests {
             assert_eq!(
                 translate(
                     &op(key_tap(
-                        keyboard::cell_of(Key::Cancel).expect("a control's own cell")
+                        controls::cell_of(Key::Cancel).expect("a control's own cell")
                     )),
                     &state
                 ),
@@ -388,7 +388,7 @@ mod tests {
             assert_eq!(
                 translate(
                     &op(key_tap(
-                        keyboard::cell_of(Key::Reveal).expect("a control's own cell")
+                        controls::cell_of(Key::Reveal).expect("a control's own cell")
                     )),
                     &state
                 ),
@@ -402,7 +402,7 @@ mod tests {
                 translate(
                     &op(tap_at(
                         30,
-                        (keyboard::KEYBOARD_TOP + keyboard::ROWS * keyboard::KEY_H) as u16
+                        (controls::KEYBOARD_TOP + controls::ROWS * controls::KEY_H) as u16
                     )),
                     &state
                 ),
@@ -416,8 +416,8 @@ mod tests {
                 translate(
                     &op(InputEvent::Gesture(GestureEvent::Tap {
                         id: 0,
-                        x: keyboard::KEY_W as u16 / 2,
-                        y: (keyboard::KEYBOARD_TOP + keyboard::KEY_H / 2) as u16,
+                        x: controls::KEY_W as u16 / 2,
+                        y: (controls::KEYBOARD_TOP + controls::KEY_H / 2) as u16,
                         held_ms: 40,
                         at_ms: 4_321,
                     })),

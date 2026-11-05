@@ -151,7 +151,7 @@ fn every_variant_has_exactly_one_route_and_one_all_entry() {
     );
     assert_eq!(variants.len(), rows.len(), "a variant is missing its route");
 
-    let all = items(&span(&source, "pub const ALL:", "];"), "Self::");
+    let all = items(span(&source, "pub const ALL:", "];"), "Self::");
     assert_eq!(variants.len(), all.len(), "a variant is missing from ALL");
     for variant in &variants {
         assert_eq!(
@@ -188,9 +188,9 @@ fn every_page_has_a_unique_path() {
 #[test]
 fn the_cycle_is_a_prefix_of_all_and_leaves_only_transients_out() {
     let source = source();
-    let all = items(&span(&source, "pub const ALL:", "];"), "Self::");
+    let all = items(span(&source, "pub const ALL:", "];"), "Self::");
     let cycle = items(
-        &span(&source, "pub(crate) const CYCLE:", "];"),
+        span(&source, "pub(crate) const CYCLE:", "];"),
         "DisplayPage::",
     );
     assert!(!cycle.is_empty(), "the button would cycle through nothing");
@@ -240,10 +240,11 @@ fn every_page_has_a_view() {
         if row.path == "ambient" {
             continue;
         }
-        let module = format!("apps/iot/crates/app/src/ui/pages/{}.rs", row.path);
+        let single = format!("apps/iot/crates/app/src/ui/views/{}.rs", row.path);
+        let split = format!("apps/iot/crates/app/src/ui/views/{}/mod.rs", row.path);
         assert!(
-            repo_root().join(&module).exists(),
-            "{} names no view module at {module}",
+            repo_root().join(&single).exists() || repo_root().join(&split).exists(),
+            "{} names no view module at {single} or {split}",
             row.variant
         );
     }

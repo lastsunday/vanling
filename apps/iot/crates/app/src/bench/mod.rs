@@ -4,3 +4,4 @@
 
 pub mod probe;
 pub mod replay;
+pub mod script;

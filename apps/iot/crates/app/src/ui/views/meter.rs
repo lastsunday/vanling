@@ -1,13 +1,118 @@
 //! The audio band, its ruler and peak holds, and the attitude dial.
-use iot_core::drivers::audio::{ENVELOPE_COLUMNS, scope_height, spl};
+use iot_core::drivers::audio::{COLUMN_MS, ENVELOPE_COLUMNS, scope_height};
 use iot_core::drivers::motion::MotionSample;
 use iot_core::horizon::{SCALE, horizon};
-use iot_core::overlay::{Block, FONT_H, block_value_x, block_x, level_columns, overlay_row_top};
+use iot_core::overlay::{
+    Block, FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, PANEL_ROWS, RIGHT_EDGE_X, block_x,
+    overlay_row_top,
+};
 
-use crate::ui::layout::*;
-use crate::ui::pages::draw::{bar_rows, decibels_row, format_decibels, format_span};
 use crate::ui::surface::Surface;
 use crate::ui::text::format_i32;
+
+const SCOPE_DECIBEL_FLOOR: i16 = iot_core::drivers::audio::SCOPE_FLOOR_DECIBELS as i16;
+
+const HORIZON_CX: isize = 266;
+const HORIZON_CY: isize = 120;
+const HORIZON_R: isize = 48;
+
+pub(crate) const WAVE_TOP: isize = 42;
+const WAVE_CY: isize = 132;
+const WAVE_HALF: isize = 90;
+
+// Decibels per grid line, chosen so a line lands on a whole row and the
+// ten-octave window divides into whole steps: [`WAVE_HALF`] rows per 90 dB is
+// one row per decibel, so twelve decibels is exactly twelve rows. A scale whose
+// lines land off-pixel reads as a scale that is wrong.
+const GRID_DECIBELS: i16 = 12;
+
+const SCAN_X: isize = 40;
+const SCAN_COLUMNS: isize = 200;
+
+const RULER_RIGHT: isize = 29;
+const RULER_TICK_X: isize = 32;
+const RULER_TICK_COLUMNS: isize = 6;
+
+const SPAN_Y: usize = 224;
+
+const AUDIO_LAST_FULL_WIDTH_ROW: usize = 2;
+
+const CLIP_MARK_WIDTH: isize = 3;
+
+const _: () = assert!(
+    SCAN_COLUMNS as usize <= ENVELOPE_COLUMNS,
+    "the sweep draws one panel column per envelope column, so a wider sweep reads past the window"
+);
+const _: () = assert!(
+    SCAN_X >= RULER_TICK_X + RULER_TICK_COLUMNS,
+    "the ruler's tick runs into the sweep"
+);
+const _: () = assert!(
+    RULER_RIGHT as usize + OVERLAY_GAP >= 3 * GLYPH_PITCH,
+    "the widest ruler label is three glyphs, so the labels would hang off the panel's left edge"
+);
+const _: () = assert!(
+    SCAN_X + (SCAN_COLUMNS - 1) + (CLIP_MARK_WIDTH - 1) < RIGHT_EDGE_X as isize,
+    "the clip mark runs under the right-edge readouts"
+);
+const _: () = assert!(
+    SCAN_X + SCAN_COLUMNS <= RIGHT_EDGE_X as isize,
+    "the sweep runs under the right-edge readouts"
+);
+const _: () = assert!(
+    WAVE_CY - WAVE_HALF == WAVE_TOP,
+    "the band's top edge is where the window's floor falls, which is what the ruler's top label points at"
+);
+const _: () = assert!(
+    WAVE_CY + WAVE_HALF <= SPAN_Y as isize,
+    "the band's bottom edge runs through the span label"
+);
+const _: () = assert!(
+    WAVE_HALF * GRID_DECIBELS as isize % SCOPE_DECIBEL_FLOOR as isize == 0,
+    "a grid line lands off a whole number of rows, which reads as a scale that is wrong"
+);
+const _: () = assert!(
+    WAVE_TOP as usize >= overlay_row_top(AUDIO_LAST_FULL_WIDTH_ROW) + FONT_H,
+    "the band is drawn through the Audio page's level rows"
+);
+const _: () = assert!(
+    SPAN_Y + FONT_H <= PANEL_ROWS,
+    "the sweep's span label runs off the bottom of the panel"
+);
+const _: () = assert!(
+    HORIZON_CY - HORIZON_R >= 0 && (HORIZON_CY + HORIZON_R) as usize + FONT_H <= PANEL_ROWS,
+    "the attitude dial runs off the top or bottom of the panel"
+);
+const _: () = assert!(
+    HORIZON_CX - HORIZON_R >= block_x(Block::Third) as isize
+        && (HORIZON_CX + HORIZON_R) as usize <= PANEL_COLUMNS,
+    "the attitude dial is not inside the third text block it is anchored to"
+);
+
+fn bar_rows(peak_lsb: u16) -> isize {
+    WAVE_HALF * isize::from(iot_core::drivers::audio::scope_height(peak_lsb)) / isize::from(u8::MAX)
+}
+
+fn decibels_row(decibels: i16) -> isize {
+    WAVE_CY - WAVE_HALF * (SCOPE_DECIBEL_FLOOR - decibels) as isize / SCOPE_DECIBEL_FLOOR as isize
+}
+
+fn format_decibels(decibels: i16, buf: &mut [u8; 12]) -> &[u8] {
+    format_i32(i32::from(decibels), buf)
+}
+
+fn format_span(buf: &mut [u8; 12]) -> &[u8] {
+    let tenths = ENVELOPE_COLUMNS as u32 * COLUMN_MS as u32 / 100;
+    let mut whole = [0u8; 12];
+    let seconds = format_i32((tenths / 10) as i32, &mut whole);
+    buf[..seconds.len()].copy_from_slice(seconds);
+    let mut len = seconds.len();
+    for tail in [b'.', b'0' + (tenths % 10) as u8, b'S'] {
+        buf[len] = tail;
+        len += 1;
+    }
+    &buf[..len]
+}
 
 impl Surface<'_> {
     // The meter: a logarithmic band, each column's A-weighted sustained level
@@ -113,29 +218,6 @@ impl Surface<'_> {
                 self.stamp_pixel(SCAN_X + column + offset, row);
             }
         }
-    }
-
-    pub(crate) fn stamp_left(&mut self, label: &[u8], value: &[u8], block: Block, row: usize) {
-        let top = overlay_row_top(row);
-        self.stamp_text(label, block_x(block), top);
-        self.stamp_text(value, block_value_x(block), top);
-    }
-
-    pub(crate) fn stamp_level(&mut self, label: &[u8], decibels: i16, row: usize) {
-        let top = overlay_row_top(row);
-        let columns = level_columns();
-        self.stamp_text(label, block_x(Block::First), top);
-        self.stamp_text(
-            format_i32(i32::from(decibels), &mut [0u8; 12]),
-            columns.value_x,
-            top,
-        );
-        self.stamp_text(b"DBFS", columns.unit_x, top);
-        let offset = self.spl_offset_db;
-        let mut spl_buf = [0u8; 12];
-        let spl_text = format_i32(i32::from(spl(decibels, offset)), &mut spl_buf);
-        self.stamp_text(spl_text, columns.spl_x, top);
-        self.stamp_text(b"SPL", columns.spl_unit_x, top);
     }
 
     pub(crate) fn stamp_horizon(&mut self, sample: &MotionSample) {

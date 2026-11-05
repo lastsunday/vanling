@@ -1,7 +1,7 @@
+use crate::controls::Key;
 use crate::state::{Confirm, LightState};
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
-use iot_core::keyboard::Key;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputIntent {

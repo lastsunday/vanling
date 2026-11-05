@@ -112,9 +112,6 @@ pub const fn block_value_glyphs(block: Block) -> usize {
     }
 }
 
-/// The Network page's first list row: the row below its three-row header.
-pub const NETWORK_LIST_ROW: usize = 3;
-
 /// Where one level row's text sits, as the left edge of each of its four columns.
 pub struct LevelColumns {
     pub value_x: usize,

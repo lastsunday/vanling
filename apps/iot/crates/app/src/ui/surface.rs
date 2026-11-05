@@ -9,8 +9,8 @@ use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::paint::MODE_BREATH;
 use iot_core::paint::{Rgb, brightness_of, rgb_hue};
 
-use crate::ui::layout::{FPS_Y, PANEL_RIGHT};
 use crate::ui::text::format_u16;
+use crate::ui::widgets::panel::{FPS_Y, PANEL_RIGHT};
 use iot_ui::Canvas;
 
 /// One page's drawing: the frame, the snapshot it reads, and the surface's own identity.
@@ -139,6 +139,60 @@ mod tests {
             surface.render(page);
         }
         frame
+    }
+
+    /// A full-frame FNV-1a, used only by the golden table: the sampling fingerprint the camera
+    /// page compares frames with is deliberately sparse and would miss small ink changes.
+    fn fingerprint(frame: &[u8]) -> u32 {
+        let mut hash = 0x811c_9dc5u32;
+        for &byte in frame {
+            hash = (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193);
+        }
+        hash
+    }
+
+    /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
+    const GOLDEN: [(&str, bool, u32); 14] = [
+        ("ambient", false, 0xc18e_7dc5),
+        ("ambient", true, 0xc104_7691),
+        ("attitude", false, 0x3d8d_fc2f),
+        ("attitude", true, 0xc9e3_2c21),
+        ("audio", false, 0xe52b_405d),
+        ("audio", true, 0x5dca_544f),
+        ("speaker", false, 0x9370_7f03),
+        ("speaker", true, 0x0302_faf5),
+        ("camera", false, 0x311b_aeb1),
+        ("camera", true, 0x9903_7aa3),
+        ("network", false, 0x53df_7d41),
+        ("network", true, 0x5c55_fd33),
+        ("splash", false, 0x328a_4c63),
+        ("splash", true, 0xe51b_5e55),
+    ];
+
+    #[test]
+    fn every_page_draws_the_picture_the_golden_table_expects() {
+        let update = std::env::var_os("PAGE_GOLDEN_UPDATE").is_some();
+        for page in DisplayPage::ALL {
+            let ground = (page != DisplayPage::Camera).then_some(Rgb(0, 0, 0));
+            for debug in [false, true] {
+                let actual = fingerprint(&render(page, debug, ground));
+                if update {
+                    std::println!("    (\"{}\", {debug}, 0x{actual:08x}),", page.path());
+                    continue;
+                }
+                let expected = GOLDEN
+                    .iter()
+                    .find(|(path, state, _)| *path == page.path() && *state == debug)
+                    .map(|(_, _, hash)| *hash)
+                    .expect("every page has a golden row; run with PAGE_GOLDEN_UPDATE=1");
+                assert_eq!(
+                    actual,
+                    expected,
+                    "{} (debug={debug}) changed; regenerate only for an intended pixel change",
+                    page.path()
+                );
+            }
+        }
     }
 
     #[test]

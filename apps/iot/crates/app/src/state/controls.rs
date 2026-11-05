@@ -1,26 +1,30 @@
-//! The Network page's controls as behaviour: what each box does, named beside the word on
-//! it.
+//! The Network page's controls as behaviour: what each box does, named by its outcome rather
+//! than by the word the view puts on it.
 
 use super::{Confirm, NetworkPage};
+use crate::controls::ToolbarCell;
 use crate::intent::{ActionIntent, NetworkPageIntent};
 use iot_core::drivers::network::{LinkStatus, NetworkMode, SetupHost};
-use iot_core::keyboard::ToolbarCell;
 
-pub const CANCEL_LABEL: &[u8] = b"CANCEL";
-pub const SCAN_LABEL: &[u8] = b"SCAN";
-pub const WAIT_LABEL: &[u8] = b"WAIT";
-pub const AP_LABEL: &[u8] = b"AP";
-pub const PANEL_LABEL: &[u8] = b"PANEL";
-pub const PASS_LABEL: &[u8] = b"PASS";
-pub const NO_PASS_LABEL: &[u8] = b"NO PASS";
-pub const LEAVE_LABEL: &[u8] = b"LEAVE";
-pub const FORGET_LABEL: &[u8] = b"FORGET";
-pub const KEEP_LABEL: &[u8] = b"KEEP";
+/// What a box does, which is also what the view has to call it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlKind {
+    Cancel,
+    Scan,
+    Wait,
+    Leave,
+    Forget,
+    Keep,
+    AccessPoint,
+    Panel,
+    Pass,
+    NoPass,
+}
 
-/// One box: the word on it and the command a tap sends.
+/// One box: the outcome it asks for and the command a tap sends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Control {
-    pub label: &'static [u8],
+    pub kind: ControlKind,
     pub command: ActionIntent,
 }
 
@@ -40,11 +44,11 @@ impl Strip {
         }
     }
 
-    /// The word `cell` draws.
-    pub fn label(self, cell: ToolbarCell) -> &'static [u8] {
+    /// What `cell` does.
+    pub fn kind(self, cell: ToolbarCell) -> ControlKind {
         match (cell, self.left) {
-            (ToolbarCell::Left, Some(left)) => left.label,
-            _ => self.right.label,
+            (ToolbarCell::Left, Some(left)) => left.kind,
+            _ => self.right.kind,
         }
     }
 
@@ -58,22 +62,22 @@ impl Strip {
 pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
     if let NetworkMode::Setup { host, cancellable } = link.mode {
         let right = Control {
-            label: match host {
-                SetupHost::Panel => AP_LABEL,
-                SetupHost::AccessPoint => PANEL_LABEL,
+            kind: match host {
+                SetupHost::Panel => ControlKind::AccessPoint,
+                SetupHost::AccessPoint => ControlKind::Panel,
             },
             command: ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         };
         let left = match (host, cancellable) {
             (_, true) => Some(Control {
-                label: CANCEL_LABEL,
+                kind: ControlKind::Cancel,
                 command: ActionIntent::NetworkPage(NetworkPageIntent::CloseSetup),
             }),
             (SetupHost::Panel, false) => Some(Control {
-                label: if draft.rescan_wait {
-                    WAIT_LABEL
+                kind: if draft.rescan_wait {
+                    ControlKind::Wait
                 } else {
-                    SCAN_LABEL
+                    ControlKind::Scan
                 },
                 command: ActionIntent::NetworkPage(NetworkPageIntent::ScanNow),
             }),
@@ -83,15 +87,15 @@ pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
     }
     if link.mode.is_browsing() {
         let left = Control {
-            label: if draft.rescan_wait {
-                WAIT_LABEL
+            kind: if draft.rescan_wait {
+                ControlKind::Wait
             } else {
-                SCAN_LABEL
+                ControlKind::Scan
             },
             command: ActionIntent::NetworkPage(NetworkPageIntent::ScanNow),
         };
         let right = Control {
-            label: AP_LABEL,
+            kind: ControlKind::AccessPoint,
             command: ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         };
         return Strip {
@@ -101,15 +105,15 @@ pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
     }
     let right = if link.is_leavable() {
         Control {
-            label: LEAVE_LABEL,
+            kind: ControlKind::Leave,
             command: ActionIntent::NetworkPage(NetworkPageIntent::Leave),
         }
     } else {
         Control {
-            label: if draft.rescan_wait {
-                WAIT_LABEL
+            kind: if draft.rescan_wait {
+                ControlKind::Wait
             } else {
-                SCAN_LABEL
+                ControlKind::Scan
             },
             command: ActionIntent::NetworkPage(NetworkPageIntent::ScanNow),
         }
@@ -117,7 +121,7 @@ pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
     Strip { left: None, right }
 }
 
-/// The setup box's two answers: what each does, and what each is called.
+/// The setup box's two answers: what each does, and what each asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Answers {
     pub keep: Control,
@@ -128,29 +132,29 @@ pub struct Answers {
 pub fn answers(link: LinkStatus) -> Answers {
     let keep = if link.setup_password.is_some() {
         Control {
-            label: NO_PASS_LABEL,
+            kind: ControlKind::NoPass,
             command: ActionIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true)),
         }
     } else {
         Control {
-            label: PASS_LABEL,
+            kind: ControlKind::Pass,
             command: ActionIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(false)),
         }
     };
     Answers {
         keep,
         act: Control {
-            label: PANEL_LABEL,
+            kind: ControlKind::Panel,
             command: ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         },
     }
 }
 
-/// The word on a confirmation's action button: the thing it does, not the button it is.
-pub fn confirm_verb(confirm: Confirm) -> &'static [u8] {
+/// What a confirmation's action button does: the thing itself, not the button it is.
+pub fn confirm_verb(confirm: Confirm) -> ControlKind {
     match confirm {
-        Confirm::Leave => LEAVE_LABEL,
-        Confirm::Forget(_) => FORGET_LABEL,
+        Confirm::Leave => ControlKind::Leave,
+        Confirm::Forget(_) => ControlKind::Forget,
     }
 }
 
@@ -174,7 +178,7 @@ mod tests {
         };
         let linked = strip(NetworkPage::default(), linked);
         assert!(!linked.is_split());
-        assert_eq!(linked.label(ToolbarCell::Left), LEAVE_LABEL);
+        assert_eq!(linked.kind(ToolbarCell::Left), ControlKind::Leave);
         assert_eq!(
             linked.command(ToolbarCell::Left),
             ActionIntent::NetworkPage(NetworkPageIntent::Leave)
@@ -185,7 +189,7 @@ mod tests {
         );
 
         let idle = strip(NetworkPage::default(), LinkStatus::default());
-        assert_eq!(idle.label(ToolbarCell::Right), SCAN_LABEL);
+        assert_eq!(idle.kind(ToolbarCell::Right), ControlKind::Scan);
         assert_eq!(
             idle.command(ToolbarCell::Right),
             ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
@@ -196,7 +200,7 @@ mod tests {
             ..NetworkPage::default()
         };
         let waiting = strip(waiting, LinkStatus::default());
-        assert_eq!(waiting.label(ToolbarCell::Right), WAIT_LABEL);
+        assert_eq!(waiting.kind(ToolbarCell::Right), ControlKind::Wait);
         assert_eq!(
             waiting.command(ToolbarCell::Right),
             ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
@@ -207,12 +211,12 @@ mod tests {
     fn setup_offers_the_way_back_beside_the_front_switch() {
         let split = strip(NetworkPage::default(), in_setup(SetupHost::Panel, true));
         assert!(split.is_split());
-        assert_eq!(split.label(ToolbarCell::Left), CANCEL_LABEL);
+        assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Cancel);
         assert_eq!(
             split.command(ToolbarCell::Left),
             ActionIntent::NetworkPage(NetworkPageIntent::CloseSetup)
         );
-        assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
         assert_eq!(
             split.command(ToolbarCell::Right),
             ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
@@ -227,12 +231,12 @@ mod tests {
         };
         let split = strip(NetworkPage::default(), browsing);
         assert!(split.is_split());
-        assert_eq!(split.label(ToolbarCell::Left), SCAN_LABEL);
+        assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
         assert_eq!(
             split.command(ToolbarCell::Left),
             ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
-        assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
         assert_eq!(
             split.command(ToolbarCell::Right),
             ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
@@ -243,19 +247,19 @@ mod tests {
     fn a_panel_with_nothing_to_go_back_to_still_has_the_next_round() {
         let split = strip(NetworkPage::default(), in_setup(SetupHost::Panel, false));
         assert!(split.is_split());
-        assert_eq!(split.label(ToolbarCell::Left), SCAN_LABEL);
+        assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
         assert_eq!(
             split.command(ToolbarCell::Left),
             ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
-        assert_eq!(split.label(ToolbarCell::Right), AP_LABEL);
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
 
         let waiting = NetworkPage {
             rescan_wait: true,
             ..NetworkPage::default()
         };
         let waiting = strip(waiting, in_setup(SetupHost::Panel, false));
-        assert_eq!(waiting.label(ToolbarCell::Left), WAIT_LABEL);
+        assert_eq!(waiting.kind(ToolbarCell::Left), ControlKind::Wait);
     }
 
     #[test]
@@ -266,7 +270,7 @@ mod tests {
         );
         assert!(!one.is_split());
         for cell in [ToolbarCell::Left, ToolbarCell::Right] {
-            assert_eq!(one.label(cell), PANEL_LABEL);
+            assert_eq!(one.kind(cell), ControlKind::Panel);
             assert_eq!(
                 one.command(cell),
                 ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
@@ -285,12 +289,12 @@ mod tests {
             ..LinkStatus::default()
         };
         let secured = answers(secured);
-        assert_eq!(secured.keep.label, NO_PASS_LABEL);
+        assert_eq!(secured.keep.kind, ControlKind::NoPass);
         assert_eq!(
             secured.keep.command,
             ActionIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true))
         );
-        assert_eq!(secured.act.label, PANEL_LABEL);
+        assert_eq!(secured.act.kind, ControlKind::Panel);
         assert_eq!(
             secured.act.command,
             ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
@@ -304,7 +308,7 @@ mod tests {
             ..LinkStatus::default()
         };
         let open = answers(open);
-        assert_eq!(open.keep.label, PASS_LABEL);
+        assert_eq!(open.keep.kind, ControlKind::Pass);
         assert_eq!(
             open.keep.command,
             ActionIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(false))
@@ -313,12 +317,12 @@ mod tests {
 
     #[test]
     fn a_confirmation_is_named_by_what_it_does() {
-        assert_eq!(confirm_verb(Confirm::Leave), LEAVE_LABEL);
+        assert_eq!(confirm_verb(Confirm::Leave), ControlKind::Leave);
         assert_eq!(
             confirm_verb(Confirm::Forget(
                 iot_core::drivers::network::AccessPoint::default()
             )),
-            FORGET_LABEL
+            ControlKind::Forget
         );
     }
 }

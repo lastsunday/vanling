@@ -3,13 +3,12 @@
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::overlay::{Block, block_value_x, block_x, overlay_row_top};
 
-use crate::ui::pages::draw::mode_word;
 use crate::ui::surface::Surface;
-use crate::ui::text::{format_pair, format_u32, frame_fingerprint, write_ratio};
+use crate::ui::text::{format_pair, format_u32, frame_fingerprint, light_mode_word, write_ratio};
 
 impl Surface<'_> {
     /// The camera's own frame, after the sensor has filled it.
-    pub fn stamp_camera(&mut self, readout: CameraSnapshot) {
+    pub(crate) fn stamp_camera(&mut self, readout: CameraSnapshot) {
         let fault = readout.fault;
         let fingerprint =
             (!readout.starting && fault.is_none()).then(|| frame_fingerprint(self.frame()));
@@ -55,7 +54,7 @@ impl Surface<'_> {
             self.stamp_text(b"RM", block_x(Block::Second), overlay_row_top(1));
             self.stamp_text(restarts, block_value_x(Block::Second), overlay_row_top(1));
             let live = self.diagnostics.lights[0];
-            let mode = mode_word(live.mode);
+            let mode = light_mode_word(live.mode);
             self.stamp_text(b"MOD", block_x(Block::Second), overlay_row_top(2));
             self.stamp_text(mode, block_value_x(Block::Second), overlay_row_top(2));
 

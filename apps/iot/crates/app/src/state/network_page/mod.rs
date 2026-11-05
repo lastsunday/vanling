@@ -4,11 +4,11 @@
 //! from the worker cannot land in a page field and a page edit cannot change what the radio
 //! said.
 
+use crate::controls::{Key, LIST_ROWS};
 use crate::intent::NetworkPageIntent;
 use iot_core::drivers::network::{
     AccessPoint, JoinRequest, LinkPhase, LinkStatus, NetworkError, NetworkMode, Ssid,
 };
-use iot_core::keyboard::{Key, LIST_ROWS};
 
 use iot_core::drivers::network::NetworkCommand;
 

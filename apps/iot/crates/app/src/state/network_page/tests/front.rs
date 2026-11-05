@@ -27,7 +27,7 @@ fn the_strip_trades_a_link_for_setup_mode_and_closes_it_again() {
     link_up(&mut manager, b"neighbour");
     tap_strip(&mut manager);
     assert_eq!(
-        tap_answer(&mut manager, keyboard::DialogChoice::Act),
+        tap_answer(&mut manager, controls::DialogChoice::Act),
         Some(NetworkCommand::Leave),
         "the question is asked, and answered"
     );
@@ -182,7 +182,7 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
     let mut manager = on_network_page();
     setup_mode(&mut manager, true);
     assert_eq!(
-        tap_answer(&mut manager, keyboard::DialogChoice::Keep),
+        tap_answer(&mut manager, controls::DialogChoice::Keep),
         Some(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: true

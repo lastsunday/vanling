@@ -1,6 +1,6 @@
 //! The panel's ink and paper: how a fill is written into a frame of RGB565 pixels.
 
-use crate::keyboard::ControlRect;
+use crate::geometry::ControlRect;
 use crate::overlay::CONTENT_BOTTOM;
 use crate::paint::Rgb;
 
