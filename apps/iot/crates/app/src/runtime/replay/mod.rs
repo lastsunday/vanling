@@ -1,5 +1,6 @@
 //! The panel's own controls, replayed by a bench build that has no finger.
 
+mod point;
 mod script;
 
 use alloc::vec::Vec;
@@ -13,17 +14,14 @@ use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
 
 use crate::runtime::input::IntentBus;
 
+use self::point::{
+    Touch, answer_point, band_center, cancel_point, hold_point, row_point, strip_point,
+};
+
 /// Whether this build replays a credential through the panel rather than being handed one.
 pub const BENCH: bool = option_env!("IOT_PANEL_BENCH").is_some();
 
 const BAND_X: u16 = 4;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Touch {
-    At { x: u16, y: u16, at_ms: u32 },
-    Hold { x: u16, y: u16 },
-    NextPage,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Act {
@@ -44,7 +42,7 @@ enum Act {
 const ACT_PASSES: u16 = 120;
 
 pub struct PanelBench {
-    script: Option<Vec<Touch>>,
+    touches: Option<Vec<Touch>>,
     next: usize,
     answered: bool,
     typed: Option<usize>,
@@ -63,7 +61,7 @@ pub struct PanelBench {
 impl PanelBench {
     pub const fn new() -> Self {
         Self {
-            script: None,
+            touches: None,
             next: 0,
             answered: false,
             typed: None,
@@ -86,21 +84,21 @@ impl PanelBench {
         }
         let state = manager.state_ref();
         self.read_parts(state);
-        if self.script.is_none() {
+        if self.touches.is_none() {
             let Some((ssid, psk)) = ssid().zip(psk()) else {
                 if state.page() == DisplayPage::Network && state.network.aps.is_some() {
                     self.absent("this build was named no network and no passphrase to replay");
                 }
                 return;
             };
-            let Some(script) = self.script(state, ssid, psk) else {
+            let Some(plan) = self.plan(state, ssid, psk) else {
                 return;
             };
-            self.script = Some(script);
+            self.touches = Some(plan);
         }
-        let script = self.script.as_ref().expect("built just above");
-        if let Some(touch) = script.get(self.next) {
-            if self.next + 1 == script.len() {
+        let plan = self.touches.as_ref().expect("built just above");
+        if let Some(touch) = plan.get(self.next) {
+            if self.next + 1 == plan.len() {
                 self.typed = Some(state.network_page.entry.map_or(0, |entry| entry.len()));
             }
             self.publish(bus, *touch);
@@ -120,7 +118,7 @@ impl PanelBench {
                     log::info!(
                         "[BENCH] the panel's own credential is on the air: {typed} characters typed, \
                          {} taps, and the radio has an address",
-                        script.len()
+                        plan.len()
                     );
                 } else {
                     log::error!(
@@ -133,7 +131,7 @@ impl PanelBench {
                 self.answered = true;
                 log::error!(
                     "[BENCH] the radio refused what the panel typed: {kind:?} after {} taps",
-                    script.len()
+                    plan.len()
                 );
             }
             LinkPhase::Off | LinkPhase::Scanning | LinkPhase::Connecting => {}
@@ -187,7 +185,7 @@ impl PanelBench {
         }
     }
 
-    fn script(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
+    fn plan(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
         if state.page() != DisplayPage::Network || state.network_page.keyboard {
             return None;
         }
@@ -546,38 +544,6 @@ impl PanelBench {
     }
 }
 
-fn strip_point() -> Touch {
-    Touch::At {
-        x: BAND_X,
-        y: (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
-        at_ms: 0,
-    }
-}
-
-fn answer_point(choice: DialogChoice) -> Touch {
-    let rect = controls::dialog_answer_box(choice);
-    Touch::At {
-        x: (rect.x + rect.w / 2) as u16,
-        y: (rect.y + rect.h / 2) as u16,
-        at_ms: 0,
-    }
-}
-
-fn row_point(band: usize) -> Touch {
-    Touch::At {
-        x: BAND_X,
-        y: band_center(band),
-        at_ms: 0,
-    }
-}
-
-fn hold_point(band: usize) -> Touch {
-    Touch::Hold {
-        x: BAND_X,
-        y: band_center(band),
-    }
-}
-
 fn a_pick_showing(state: &DeviceState) -> (bool, bool) {
     (
         state.network_page.keyboard,
@@ -614,24 +580,10 @@ fn picked_band(state: &DeviceState) -> Option<usize> {
     })
 }
 
-fn cancel_point() -> Touch {
-    let cell = controls::cell_of(Key::Cancel).expect("the grid holds cancel");
-    let rect = controls::key_box(cell).expect("a cell of the grid");
-    Touch::At {
-        x: (rect.x + rect.w / 2) as u16,
-        y: (rect.y + rect.h / 2) as u16,
-        at_ms: 0,
-    }
-}
-
 impl Default for PanelBench {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn band_center(band: usize) -> u16 {
-    (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16
 }
 
 fn ssid() -> Option<&'static str> {
@@ -643,379 +595,4 @@ fn psk() -> Option<&'static str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::controls::Layer;
-    use crate::model::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
-    use crate::model::state::{Backed, Boot, NetworkCommand};
-    use iot_core::drivers::network::{
-        AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
-    };
-
-    fn ap(name: &str) -> AccessPoint {
-        AccessPoint {
-            ssid: Ssid::from_octets(name.as_bytes()),
-            bssid: [7; 6],
-            channel: 11,
-            rssi: -50,
-            secured: true,
-        }
-    }
-
-    fn marked(names: &[&str], saved: &[&str]) -> ApList {
-        let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
-        let mut list = ApList::from_ranked(&rows);
-        let mut store = SavedNetworks::empty();
-        for name in saved {
-            store.remember(&Credentials::from_text(name, "ab").expect("a credential"));
-        }
-        list.mark_saved(store.mask(&list));
-        list
-    }
-
-    fn showing(names: &[&str]) -> DeviceState {
-        let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
-        DeviceState {
-            nav: crate::model::state::Navigator::new(DisplayPage::Network),
-            network: crate::model::state::NetworkState {
-                aps: Some(ApList::from_ranked(&rows)),
-                ..Default::default()
-            },
-            ..DeviceState::default()
-        }
-    }
-
-    fn key_center(key: Key) -> Touch {
-        let cell = controls::cell_of(key).expect("the grid holds every control");
-        let rect = controls::key_box(cell).expect("a cell of the grid");
-        Touch::At {
-            x: (rect.x + rect.w / 2) as u16,
-            y: (rect.y + rect.h / 2) as u16,
-            at_ms: 0,
-        }
-    }
-
-    fn point(touch: Touch) -> (u16, u16) {
-        match touch {
-            Touch::At { x, y, .. } => (x, y),
-            Touch::NextPage => panic!("a slide is not a point"),
-            Touch::Hold { .. } => panic!("a hold is not a point"),
-        }
-    }
-
-    #[test]
-    fn a_run_taps_the_row_the_named_network_is_on() {
-        let state = showing(&["aaa", "bbb", "ccc", "target", "eee"]);
-        let mut bench = PanelBench::new();
-        let script = bench.script(&state, "target", "ab").expect("a run");
-
-        assert_eq!(script[0], Touch::NextPage);
-        assert_eq!(
-            script[1],
-            Touch::At {
-                x: BAND_X,
-                y: band_center(2),
-                at_ms: 0
-            }
-        );
-        assert_eq!(controls::list_band_at(band_center(2)), Some(2));
-    }
-
-    #[test]
-    fn every_row_a_scan_can_carry_is_reachable_by_the_bench() {
-        let names = [
-            "net0", "net1", "net2", "net3", "net4", "net5", "net6", "net7",
-        ];
-        let rows: Vec<AccessPoint> = names
-            .iter()
-            .enumerate()
-            .map(|(index, name)| AccessPoint {
-                ssid: Ssid::from_octets(name.as_bytes()),
-                rssi: -50 - index as i8,
-                ..ap("taken")
-            })
-            .collect();
-        let state = DeviceState {
-            nav: crate::model::state::Navigator::new(DisplayPage::Network),
-            network: crate::model::state::NetworkState {
-                aps: Some(ApList::from_ranked(&rows)),
-                ..Default::default()
-            },
-            ..DeviceState::default()
-        };
-
-        for (index, name) in names.iter().enumerate() {
-            let mut bench = PanelBench::new();
-            let script = bench
-                .script(&state, name, "ab")
-                .unwrap_or_else(|| panic!("row {index} has no run"));
-            let slides = script
-                .iter()
-                .take_while(|touch| matches!(touch, Touch::NextPage))
-                .count();
-            let (_, y) = point(script[slides]);
-            assert_eq!(
-                controls::list_band_at(y),
-                Some(index - slides),
-                "row {index} is the band its tap lands on after {slides} slides"
-            );
-        }
-    }
-
-    #[test]
-    fn the_row_the_page_keeps_picked_is_the_band_its_own_tap_lands_on() {
-        let rows: Vec<AccessPoint> = ["aaa", "bbb", "target", "ddd", "eee"]
-            .iter()
-            .enumerate()
-            .map(|(index, name)| AccessPoint {
-                bssid: [7, 0, 0, 0, 0, index as u8 + 1],
-                ..ap(name)
-            })
-            .collect();
-        let mut state = DeviceState {
-            nav: crate::model::state::Navigator::new(DisplayPage::Network),
-            network: crate::model::state::NetworkState {
-                aps: Some(ApList::from_ranked(&rows)),
-                ..Default::default()
-            },
-            ..DeviceState::default()
-        };
-        assert_eq!(picked_band(&state), None, "nothing is picked yet");
-
-        state.network_page.selected = Some(rows[2]);
-        assert_eq!(picked_band(&state), Some(2), "the row is the band it is on");
-
-        state.network_page.list_top = 2;
-        assert_eq!(picked_band(&state), Some(0), "with the window slid onto it");
-
-        state.network_page.selected = Some(rows[0]);
-        assert_eq!(
-            picked_band(&state),
-            None,
-            "and a row the window has scrolled past is one the bench cannot tap either"
-        );
-    }
-
-    #[test]
-    fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
-        let mut manager = DeviceManager::boot(Boot {
-            backed: Backed {
-                network: true,
-                ..Backed::NONE
-            },
-            ..Default::default()
-        });
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
-        manager.apply_scan(marked(&["target"], &[]));
-        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
-        let picked = manager
-            .state()
-            .network
-            .aps
-            .and_then(|list| list.get(0))
-            .expect("the row the bench's scan published");
-        manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Choose(picked)));
-        assert!(
-            manager.state_ref().network_page.keyboard,
-            "the pick is there to begin with"
-        );
-        manager.apply_scan(marked(&["target"], &["target"]));
-        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
-            phase: LinkPhase::Connected,
-            ap: Some(ap("target")),
-            address: None,
-            ..LinkStatus::default()
-        })));
-        assert!(
-            manager.state_ref().network_page.selected.is_some()
-                && !manager.state_ref().network_page.keyboard,
-            "the link cleared the draft and kept the row it was for"
-        );
-
-        let bus = IntentBus::new();
-        let mut bench = PanelBench::new();
-        bench.answered = true;
-        let (mut leaves, mut forgets, mut rounds, mut joins) = (0, 0, 0, 0);
-        let mut reopened = 0;
-        let mut visited: Vec<Act> = Vec::new();
-        for _ in 0..ACT_PASSES * 6 {
-            bench.walk(&manager, &bus);
-            if visited.last() != Some(&bench.act) {
-                visited.push(bench.act);
-            }
-            let mut asked: Vec<NetworkCommand> = Vec::new();
-            while let Ok(intent) = bus.try_receive() {
-                asked.extend(manager.apply_intent(intent));
-            }
-            for command in asked {
-                match command {
-                    NetworkCommand::Leave => {
-                        leaves += 1;
-                        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
-                            LinkStatus::default(),
-                        )));
-                    }
-                    NetworkCommand::Forget(_) => {
-                        forgets += 1;
-                        manager.apply_scan(marked(&["target"], &[]));
-                    }
-                    NetworkCommand::Join(iot_core::drivers::network::JoinRequest::Held(ssid)) => {
-                        joins += 1;
-                        assert_eq!(
-                            ssid,
-                            Ssid::from_octets(b"target"),
-                            "the row the walk tapped"
-                        );
-                        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
-                            LinkStatus {
-                                phase: LinkPhase::Connecting,
-                                ap: Some(ap("target")),
-                                address: None,
-                                ..LinkStatus::default()
-                            },
-                        )));
-                    }
-                    NetworkCommand::ScanNow => {
-                        rounds += 1;
-                        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
-                            LinkStatus::default(),
-                        )));
-                    }
-                    NetworkCommand::Join(_)
-                    | NetworkCommand::LeaveSetup { .. }
-                    | NetworkCommand::SwitchHost { .. }
-                    | NetworkCommand::SetupOpen { .. }
-                    | NetworkCommand::SplashOver { .. } => {}
-                }
-            }
-            if bench.act == Act::ReopenTheRowJustLeft && manager.state_ref().network_page.keyboard {
-                assert!(
-                    manager.state_ref().network_page.entry.is_some(),
-                    "the keyboard came up over no draft, which is a page with nothing on it"
-                );
-                reopened += 1;
-            }
-            if bench.act == Act::Done {
-                break;
-            }
-            assert!(
-                !manager.state_ref().network.link.is_leavable()
-                    || !manager.state_ref().network_page.keyboard,
-                "a row took a pick while a link was up"
-            );
-        }
-
-        assert_eq!(bench.act, Act::Done, "the walk reached the end of the page");
-        assert_eq!(
-            visited,
-            alloc::vec![
-                Act::TapRowUnderLink,
-                Act::AskToLeave,
-                Act::KeepTheLink,
-                Act::LeaveAsk,
-                Act::LeaveGo,
-                Act::RejoinTheRowJustLeft,
-                Act::AskToLeave,
-                Act::KeepTheLink,
-                Act::LeaveAsk,
-                Act::LeaveGo,
-                Act::AskToForget,
-                Act::Forget,
-                Act::ReopenTheRowJustLeft,
-                Act::DropTheKeyboard,
-                Act::Rescan,
-                Act::Done,
-            ],
-            "the acts the walk was in, in the order it was in them"
-        );
-        assert_eq!(
-            leaves, 2,
-            "KEEP left the link up and the action took it down, twice: the build's own network and \
-             the one the saved row brought back"
-        );
-        assert_eq!(joins, 1, "the saved row was asked for by name, and once");
-        assert_eq!(forgets, 1, "the hold's own answer is the one forget");
-        assert_eq!(rounds, 1, "and the strip's other verb asked for one round");
-        assert!(
-            reopened > 0,
-            "the row the link was left from never opened an entry for the walk to read"
-        );
-        let state = manager.state_ref();
-        assert!(!state.network.link.is_leavable(), "the link is down");
-        assert!(
-            !state.network.aps.expect("the list is still up").is_saved(0),
-            "and the saved mark is gone"
-        );
-        assert_eq!(
-            state.network_page.confirm, None,
-            "with no question left open"
-        );
-        assert!(
-            !state.network_page.rescan_wait,
-            "and the strip is not waiting"
-        );
-    }
-
-    #[test]
-    fn a_run_ends_on_the_key_that_hands_the_passphrase_over() {
-        let state = showing(&["target"]);
-        let mut bench = PanelBench::new();
-        let script = bench.script(&state, "target", "ab").expect("a run");
-
-        let last = script.last().copied().expect("a run has taps");
-        assert_eq!(point(last), point(key_center(Key::Connect)));
-        assert_eq!(
-            controls::key_at(Layer::Abc, point(last).0, point(last).1),
-            Some(Key::Connect),
-            "the last tap is the key that hands the credential over, not a cell beside it"
-        );
-        for tap in &script[..script.len() - 1] {
-            let (x, y) = point(*tap);
-            assert!(
-                controls::key_at(Layer::Abc, x, y).is_some(),
-                "the tap at ({x}, {y}) is on a key"
-            );
-        }
-    }
-
-    #[test]
-    fn a_row_that_is_not_listed_is_reported_rather_than_silently_skipped() {
-        let state = showing(&["aaa"]);
-        let mut bench = PanelBench::new();
-        assert!(bench.script(&state, "target", "ab").is_none());
-        assert!(bench.missing_reported, "the bench says the row is missing");
-        assert!(
-            !bench.answered,
-            "and it is waiting to be told what the row is"
-        );
-    }
-
-    #[test]
-    fn an_open_network_is_refused_rather_than_typed_into() {
-        let mut state = showing(&["target"]);
-        state.network.aps = Some(ApList::from_ranked(&[AccessPoint {
-            secured: false,
-            ..ap("target")
-        }]));
-        let mut bench = PanelBench::new();
-        assert!(bench.script(&state, "target", "ab").is_none());
-        assert!(bench.answered, "there is no run to wait for");
-    }
-
-    #[test]
-    fn no_run_is_built_before_the_list_is_there() {
-        let mut state = DeviceState {
-            nav: crate::model::state::Navigator::new(DisplayPage::Network),
-            ..DeviceState::default()
-        };
-        let mut bench = PanelBench::new();
-        assert!(bench.script(&state, "target", "ab").is_none());
-        assert!(!bench.missing_reported, "nothing has been looked at yet");
-        assert!(!bench.absent_reported, "nothing has been looked at yet");
-
-        state.network.aps = Some(ApList::from_ranked(&[ap("target")]));
-        state.network_page.keyboard = true;
-        assert!(bench.script(&state, "target", "ab").is_none());
-        assert!(!bench.missing_reported);
-    }
-}
+mod tests;

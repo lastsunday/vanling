@@ -73,18 +73,18 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `model/boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `display/` | the display side's entry: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `display/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state |
-| `display/render/` | render consumers and the registry: `RenderController` decides *what* to show, a renderer decides *how* |
+| `display/render/{mod,appearance,repaint,controller}.rs` | render consumers and the registry: `RenderController` decides *what* to show (`controller.rs`), state→appearance lives in `appearance.rs`, repaint pacing in `repaint.rs`, and a renderer decides *how* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | product page shell and views: `placement.rs` holds the placement constants every page shares, `widgets/` the primitives (frame, row, label), `components/` the cross-page pieces, and `views/` assembles them per page |
 | `runtime/` | the tasks beside the model: the frame loop, the workers it drives, and the I/O each worker owns |
 | `runtime/frame_loop/{mod,clock}.rs`, `frame_loop/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only `Workers { input, playback, network }`, the rest are each worker's handles and protocol; the network command vocabulary lives in `model/state/network.rs` |
 | `runtime/input.rs` | input worker: polling, demand scheduling, gesture recognition |
-| `runtime/playback/{mod,sounds}.rs` | playback worker and sound catalogue; state→command lives in `frame_loop/systems/playback.rs` |
+| `runtime/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `frame_loop/systems/playback.rs` |
 | `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
-| `runtime/replay/{mod,script}.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid |
+| `runtime/replay/{mod,point}.rs`, `replay/script.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid; `point.rs` holds only the landing coordinates |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | panel-control geometry and hit testing: key grid, scan list, action strip, confirmation box; `model` and `display` read the same coordinates |
-| `assets.rs`, `assets/` | the product's own bytes: the `vanling-` setup AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
-| `bench/probe/`, `bin/` | build-time probes and thin entries; not on the product path |
+| `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
+| `bench/probe/`, `bin/` | build-time probes and thin entries (`bin/host-smoke/` splits the fake board from the scenario); not on the product path |
 
 Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the compiler does not
 check module cycles inside a crate):

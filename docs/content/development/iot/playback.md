@@ -46,7 +46,7 @@ Speaker 页与 Audio 页是两个页。
 
 ## 声音从哪来
 
-目录里五个声音，**每个都是一份 MIDI 文件**（`app/src/assets/*.mid`），格式是同一种：Standard MIDI File，任何 DAW 都能打开、放、改。
+目录里五个声音，**每个都是一份 MIDI 文件**（`app/src/runtime/playback/sounds/*.mid`），格式是同一种：Standard MIDI File，任何 DAW 都能打开、放、改。
 
 选 MIDI 不是为了合成能力——MIDI 不带音色，逐音符包络两个版本都没有——是为了**出处**。存成 PCM blob 的话，声音是不可追溯的二进制，只有一份构建不运行的配方注释跟着它；存成 MIDI 的话，任何人打开文件就知道它是什么、怎么改。
 
@@ -227,7 +227,7 @@ moon run iot:smoke-host  # 贯通：声音目录、丢弃、完成、静音
 
 分两处，因为两者要的东西不同。
 
-`moon run iot:test` 里 `app/src/runtime/playback/sounds.rs` 的七条按 `Sound::CYCLE` 遍历，每个声音都断言：起于零、止于近零、不顶轨、是 100–400 ms 的 one-shot、没有短于 82.5 ms 的音符、ramp 合乎推断规则。**它们对着真实文件跑**，所以一个文件解析不出来、或者被改成了一个合成吃不下的谱，这里就红。
+`moon run iot:test` 里 `app/src/runtime/playback/sounds/mod.rs` 的七条按 `Sound::CYCLE` 遍历，每个声音都断言：起于零、止于近零、不顶轨、是 100–400 ms 的 one-shot、没有短于 82.5 ms 的音符、ramp 合乎推断规则。**它们对着真实文件跑**，所以一个文件解析不出来、或者被改成了一个合成吃不下的谱，这里就红。
 
 `moon run iot:test-tool` 里的六条管的是**文件和配方**：磁盘上的 `.mid` 逐字节等于配方生成的字节、目录里没有没人认领的 `.mid`、配方表自己的形状规则（音区隔 3 个半音、时长各不相同）、以及板子 `include_bytes!` 的文件名和配方对得上。**在 DAW 里改了一个音而没改 `RECIPES` 那张表，`moon run iot:test-tool` 就红。**
 

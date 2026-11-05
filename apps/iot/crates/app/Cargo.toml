@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "host-smoke"
-path = "src/bin/host-smoke.rs"
+path = "src/bin/host-smoke/main.rs"
 required-features = ["host"]
 
 # Playback isolation probe. Gated on the S3 board because that is the only board

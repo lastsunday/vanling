@@ -69,18 +69,18 @@ weight = 10
 | `model/boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `display/` | 显示侧入口：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
 | `display/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态 |
-| `display/render/` | 渲染消费者与注册表：`RenderController` 决定*显示什么*，renderer 决定*怎么显示* |
+| `display/render/{mod,appearance,repaint,controller}.rs` | 渲染消费者与注册表：`RenderController` 决定*显示什么*（`controller.rs`），状态→外观在 `appearance.rs`，重绘节拍在 `repaint.rs`，renderer 决定*怎么显示* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | 产品页面壳与视图：`placement.rs` 是各页共用的版面常量，`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件，`views/` 按页组装 |
 | `runtime/` | 模型旁边的任务：帧循环、工作者与它们各自拥有的 I/O |
 | `runtime/frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`clock.rs` 是逻辑帧时钟 |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄；`mod.rs` 只有 `Workers { input, playback, network }`，其余是各工作者的句柄与协议；网络命令词汇表在 `model/state/network.rs` |
 | `runtime/input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `runtime/playback/{mod,sounds}.rs` | 播放工作者与声音目录；状态→命令在 `frame_loop/systems/playback.rs` |
+| `runtime/playback/{mod,sounds/}` | 播放工作者与声音目录（`sounds/mod.rs` 加五份 `.mid`）；状态→命令在 `frame_loop/systems/playback.rs` |
 | `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
-| `runtime/replay/{mod,script}.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本 |
+| `runtime/replay/{mod,point}.rs`、`replay/script.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本；`point.rs` 只放落点坐标 |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；`model` 与 `display` 读同一份坐标 |
-| `assets.rs`、`assets/` | 产品自己的字节：`vanling-` 设置热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
-| `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
+| `assets/` | 设置侧自己的字节：`vanling-` 热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
+| `bench/probe/`、`bin/` | 构建期探针与薄入口（`bin/host-smoke/` 按假板与场景分开），不进产品路径 |
 
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 

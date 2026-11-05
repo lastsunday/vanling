@@ -7,9 +7,9 @@ pub const AP_PREFIX: &[u8] = b"vanling-";
 
 #[cfg(any(test, feature = "wifi"))]
 pub const SITE: Site = Site {
-    page: include_str!("assets/portal.html"),
-    done: include_str!("assets/done.html"),
-    favicon: include_str!("assets/favicon.svg"),
+    page: include_str!("portal.html"),
+    done: include_str!("done.html"),
+    favicon: include_str!("favicon.svg"),
 };
 
 #[cfg(test)]

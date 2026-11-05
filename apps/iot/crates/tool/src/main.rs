@@ -17,7 +17,7 @@ fn main() -> std::process::ExitCode {
     };
 
     match command.as_str() {
-        "midi" => match midi::write(&midi::assets_dir()) {
+        "midi" => match midi::write(&midi::sounds_dir()) {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("midi: {e}");

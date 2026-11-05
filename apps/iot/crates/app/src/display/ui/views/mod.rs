@@ -2,9 +2,9 @@
 
 mod attitude;
 mod audio;
+mod bands;
 mod camera;
-mod live;
-mod meter;
 mod network;
+mod overlay;
 mod speaker;
 mod splash;

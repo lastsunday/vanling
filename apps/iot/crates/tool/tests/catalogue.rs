@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 
-use iot_tool::midi::{RECIPES, REST, assets_dir, file_name, mid};
+use iot_tool::midi::{RECIPES, REST, file_name, mid, sounds_dir};
 
 #[test]
 fn the_files_are_what_the_recipes_generate() {
     for (sound, track_name, notes) in RECIPES {
-        let path = assets_dir().join(file_name(sound));
+        let path = sounds_dir().join(file_name(sound));
         let on_disk = std::fs::read(&path).unwrap_or_else(|e| {
             panic!(
                 "{}: {e} — run `cargo run -p iot-tool -- midi`",
@@ -23,8 +23,8 @@ fn the_files_are_what_the_recipes_generate() {
 
 #[test]
 fn every_midi_file_has_a_recipe() {
-    let found: BTreeSet<String> = std::fs::read_dir(assets_dir())
-        .unwrap_or_else(|e| panic!("assets directory: {e}"))
+    let found: BTreeSet<String> = std::fs::read_dir(sounds_dir())
+        .unwrap_or_else(|e| panic!("sounds directory: {e}"))
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .filter(|name| name.ends_with(".mid"))
         .collect();
@@ -118,9 +118,9 @@ fn every_recipe_has_a_track_name() {
 fn the_catalogue_names_the_same_files() {
     let catalogue = catalogue_source();
     let named: BTreeSet<&str> = catalogue
-        .match_indices("assets/")
+        .match_indices("include_bytes!(\"")
         .map(|(at, _)| {
-            let rest = &catalogue[at + "assets/".len()..];
+            let rest = &catalogue[at + "include_bytes!(\"".len()..];
             &rest[..rest.find('"').expect("an asset path with no closing quote")]
         })
         .collect();
@@ -135,6 +135,6 @@ fn the_catalogue_names_the_same_files() {
 }
 
 fn catalogue_source() -> String {
-    let path = assets_dir().join("../runtime/playback/sounds.rs");
+    let path = sounds_dir().join("mod.rs");
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }

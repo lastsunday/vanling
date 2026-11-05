@@ -6,7 +6,7 @@ use crate::display::ui::placement::PANEL_RIGHT;
 use crate::display::ui::surface::Surface;
 use crate::display::ui::text::format_u16;
 use crate::display::ui::text::{format_dba, format_i32};
-use crate::display::ui::views::meter::WAVE_TOP;
+use crate::display::ui::views::bands::WAVE_TOP;
 
 impl Surface<'_> {
     pub(crate) fn stamp_audio(&mut self) {

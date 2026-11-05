@@ -4,11 +4,11 @@ use alloc::boxed::Box;
 
 use iot_core::drivers::playback::{SampleSource, Sound, SpeakerFault, SpeakerOp, Tone, from_midi};
 
-const TAP: &[u8] = include_bytes!("../../assets/tap.mid");
-const NOTICE: &[u8] = include_bytes!("../../assets/notice.mid");
-const WARN: &[u8] = include_bytes!("../../assets/warn.mid");
-const ERROR: &[u8] = include_bytes!("../../assets/error.mid");
-const RISE: &[u8] = include_bytes!("../../assets/rise.mid");
+const TAP: &[u8] = include_bytes!("tap.mid");
+const NOTICE: &[u8] = include_bytes!("notice.mid");
+const WARN: &[u8] = include_bytes!("warn.mid");
+const ERROR: &[u8] = include_bytes!("error.mid");
+const RISE: &[u8] = include_bytes!("rise.mid");
 
 /// A file that would not parse is refused rather than played as silence, which would leave
 /// the page in `Playing` for ever.

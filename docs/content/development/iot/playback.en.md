@@ -51,7 +51,7 @@ With no ES8311 found, `Backed::playback` is false and the page does not enter th
 
 ## Where the sound comes from
 
-The catalogue holds five sounds, and **each one is a MIDI file** (`app/src/assets/*.mid`) in the same format: a Standard MIDI File, which any DAW can open, play and edit.
+The catalogue holds five sounds, and **each one is a MIDI file** (`app/src/runtime/playback/sounds/*.mid`) in the same format: a Standard MIDI File, which any DAW can open, play and edit.
 
 MIDI is not here for its synthesis abilities — it carries no timbre and no per-note envelope in either version — it is here for **provenance**. Stored as PCM blobs, the sounds are untraceable binaries with a recipe in a comment that the build does not run; stored as MIDI, anyone who opens a file can tell what it is and change it.
 
@@ -250,7 +250,7 @@ moon run iot:smoke-host  # end to end: the catalogue, a drop, completion, mute
 
 They are in two places, because they need different things.
 
-The seven in `app/src/runtime/playback/sounds.rs` under `moon run iot:test` walk the catalogue over `Sound::CYCLE` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
+The seven in `app/src/runtime/playback/sounds/mod.rs` under `moon run iot:test` walk the catalogue over `Sound::CYCLE` and assert of every sound that it opens on zero, ends near zero, does not reach the rail, is a one-shot of 100–400 ms, has no note under 82.5 ms, and ramps by the inferred rule. **They run against the real files**, so a file that will not parse, or that was edited into something the synthesiser cannot play, goes red here.
 
 The six under `moon run iot:test-tool` are about **files and recipes**: that the `.mid` on disk is byte for byte what the recipes generate, that the directory holds no `.mid` no recipe claims, that the table's own shape rules hold (registers three semitones apart, lengths all different), and that the catalogue's `include_bytes!` filenames match the recipes. **A sound edited in a DAW without the `RECIPES` table updated makes `moon run iot:test-tool` go red.**
 
