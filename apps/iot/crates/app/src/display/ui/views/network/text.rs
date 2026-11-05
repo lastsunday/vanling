@@ -11,7 +11,7 @@ use iot_core::drivers::network::{
 use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::provision::SETUP_PASS_LEN;
 
-use iot_ui::text::{write_u16, write_u64};
+use iot_core::ui::text::{write_u16, write_u64};
 
 /// Glyphs a network name is given on a scan-list row.
 pub(super) const NETWORK_NAME_GLYPHS: usize = 24;

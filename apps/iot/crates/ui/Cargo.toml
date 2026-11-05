@@ -1,7 +1,0 @@
-[package]
-name = "iot-ui"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-iot-core = { workspace = true }

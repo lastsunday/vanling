@@ -1,4 +1,4 @@
-//! The frame loop's clock.
+//! The coordinator's clock.
 
 use embassy_time::{Duration, Instant};
 

@@ -25,7 +25,7 @@ pub mod runtime;
 
 use display::wired;
 use model::boot::{boot_override, boot_page};
-use runtime::frame_loop::run_loop;
+use runtime::coordinator::run_loop;
 use runtime::input::{INTENT_BUS, input_task};
 use runtime::playback::{playback_tasks, share};
 use runtime::workers::{CAPTURE, SharedDemand, Workers};
@@ -54,7 +54,7 @@ pub type IoQueue = embassy_sync::channel::Channel<
 
 /// The half of the composition that touches drivers: input polling, the codec, the speaker
 /// and the panel bus. Everything in here blocks, so it is the part that must not share an
-/// executor with the frame loop.
+/// executor with the coordinator.
 pub struct Io {
     pub sources: Vec<PollEntry>,
     pub configurator: Configurator,
@@ -219,7 +219,7 @@ where
     // One shared handle: the feed runs on the preemptible executor, and the codec's I2C calls must not.
     let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));
     // Leaked because the driver half outlives this future: on a second core it is another
-    // task, and a task cannot borrow the frame loop's stack.
+    // task, and a task cannot borrow the coordinator's stack.
     let demand: &'static SharedDemand =
         Box::leak(Box::new(SharedDemand::new(Cell::new(*manager.demand()))));
     log::info!("[IOT] demand {}", manager.demand());

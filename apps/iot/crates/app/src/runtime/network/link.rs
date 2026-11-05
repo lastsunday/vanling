@@ -38,7 +38,7 @@ pub(super) enum Origin {
 /// The network this build was named, unless the build is a bench run: a bench image has to
 /// join whatever the panel names, not the credential its build happens to carry.
 fn build_credentials() -> Option<(&'static str, &'static str)> {
-    if crate::runtime::replay::BENCH {
+    if crate::bench::replay::BENCH {
         return None;
     }
     crate::model::boot::build_wifi_credentials()

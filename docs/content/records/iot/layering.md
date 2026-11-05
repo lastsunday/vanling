@@ -13,7 +13,7 @@ sort_by = "weight"
 ## 已归位
 
 - 呼吸灯的取色与背光包络是 `Breath` 的属性，落在 `core::state::light`；渲染器只问 `rgb()` / `backlight()`，不再各自复算一遍色相与亮度。
-- `LampRenderer` / `ScreenRenderer` 与 renderer 注册表落在 `core::render`：`Renderer` 接口本来就在 core，`iot-ui` 才是页面层，所以渲染器不放进 UI。
+- `LampRenderer` / `ScreenRenderer` 与 renderer 注册表落在 `core::render`：`Renderer` 接口本来就在 core，`core::ui` 才是像素与字形层，所以渲染器不放进 UI。
 - 播放命令（`Play` / `SetMuted`）与边沿判定（`mute_command` / `play_command`）归 `PlaybackState`；app 的 dispatch 只负责排队与满队重试。
 - `InputSource::name`、`PollEntry::name`、`DemandKind::name` 由驱动与需求层回答，app 不再维护一张按位置索引的名字表。
 - 页面整屏铺底与「画面来自摄像头」是页面属性（`DisplayPage::ground` / `draws_frames`），渲染器直接问页面，板级与设备都不再各写一份 `matches!`。
@@ -25,8 +25,8 @@ sort_by = "weight"
 - 链路业务状态与网络页状态拆成两个记录：`NetworkState` 只由 `LinkIntent` 写，`NetworkPage` 只由手指的 `NetworkPageIntent` 写，页面读 `&NetworkState` 而链路从不碰页面字段；`Effects` 不再留发件箱，页面域直接返回 `NetworkCommand`，从意图到工作者只有一条路径。
 - 网络工作者不再经 `WorkerStart` 交给 `run`：驱动类型只有入口认识，就在入口与驱动半边并列 `spawn`，`run` 不再持 worker 清单。启动页结论改走 `NetworkCommand::SplashOver { setup }`，`PageWatch` 只剩页面级别，不再携带启动页边沿。
 - `state` 与 `intent` 是**有意双向**：`state` 定义并持有意图的载荷类型（`Confirm`、`DisplayPage`、`AudioPhase` 等），`state::translate` 又读 `intent` 的动词把手指翻成 `ActionIntent`。两者都不是渲染/快照层，结构测试只禁 `state → {render, diagnostics}` 与 `intent → {page, render, diagnostics}`；审计时不要把这条当成新破口。
-- 协调者的网络机制收进 `frame_loop/systems/network.rs`：`NetworkOutbox` 持有没塞进队列的那条命令、`NetworkMirror` 发布页面级别并记录 front/lamp 边沿、回收扫描列表；`run_loop` 只留意图编排。`core` 侧则把 splash 判决并回 `apply_page` 的返回值，`take_splash_end` 侧信道删除，从意图到工作者确实只剩一条路径。
-- 协调者按边界拆成系统：`frame_loop/systems/*.rs` 一个文件一个 `System`（`frame_loop::systems::Schedule` 的声明顺序就是执行顺序），只持跨帧记忆；状态与工作者句柄由 `Frame` 传入。意图 → 状态 → 命令的配方收进 `DeviceManager::apply_intent`，测试不再各抄一份；需求槽的锁回到 `workers::Input::publish`。同日实测（S3 产品镜像）：`_stack_end` 比 HEAD 低 96 B，`.text` 少 2,188 B，`.data`/`.bss` 不变。
+- 协调者的网络机制收进 `coordinator/systems/network.rs`：`NetworkOutbox` 持有没塞进队列的那条命令、`NetworkMirror` 发布页面级别并记录 front/lamp 边沿、回收扫描列表；`run_loop` 只留意图编排。`core` 侧则把 splash 判决并回 `apply_page` 的返回值，`take_splash_end` 侧信道删除，从意图到工作者确实只剩一条路径。
+- 协调者按边界拆成系统：`coordinator/systems/*.rs` 一个文件一个 `System`（`coordinator::systems::Schedule` 的声明顺序就是执行顺序），只持跨帧记忆；状态与工作者句柄由 `Frame` 传入。意图 → 状态 → 命令的配方收进 `DeviceManager::apply_intent`，测试不再各抄一份；需求槽的锁回到 `workers::Input::publish`。同日实测（S3 产品镜像）：`_stack_end` 比 HEAD 低 96 B，`.text` 少 2,188 B，`.data`/`.bss` 不变。
 
 ## 阻碍：probe 的 board `#[cfg]` 没有下移
 

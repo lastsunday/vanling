@@ -24,7 +24,7 @@ fn core_src() -> PathBuf {
 }
 
 fn ui_src() -> PathBuf {
-    repo_root().join("apps/iot/crates/ui/src")
+    repo_root().join("apps/iot/crates/core/src/ui")
 }
 
 fn sources(dir: &Path) -> Vec<(PathBuf, String)> {
@@ -286,7 +286,7 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
 fn the_network_never_reaches_the_panel() {
     assert_no_reference(
         sources(&app_src().join("runtime/network")),
-        &["crate::display", "crate::runtime::frame_loop"],
+        &["crate::display", "crate::runtime::coordinator"],
     );
 }
 
@@ -295,7 +295,7 @@ fn the_panel_side_never_reaches_the_radio() {
     let src = app_src();
     let mut files = sources(&src.join("display"));
     files.extend(sources(&src.join("runtime/playback")));
-    files.extend(sources(&src.join("runtime/frame_loop")));
+    files.extend(sources(&src.join("runtime/coordinator")));
     files.extend(sources(&src.join("runtime/workers")));
     for name in ["runtime/input.rs", "model/boot.rs"] {
         let path = src.join(name);
@@ -305,6 +305,8 @@ fn the_panel_side_never_reaches_the_radio() {
     assert_no_reference(files, &["crate::runtime::network"]);
 }
 
+/// Probes are the bodies of separate binaries. The panel replay under `bench` is reached by the
+/// product loop, so it is not one of them and is not filtered out here.
 #[test]
 fn probes_stay_out_of_the_product_path() {
     let src = app_src();
@@ -363,7 +365,7 @@ fn the_worker_handles_never_reach_a_worker() {
             "crate::runtime::playback",
             "crate::runtime::network",
             "crate::display",
-            "crate::runtime::frame_loop",
+            "crate::runtime::coordinator",
             "crate::runtime::input",
         ],
     );
@@ -677,6 +679,10 @@ fn app_edges(src: &Path) -> BTreeSet<(String, String)> {
 #[test]
 fn the_app_module_graph_is_the_one_the_codemap_draws() {
     let allowed: BTreeSet<(String, String)> = [
+        ("bench", "controls"),
+        ("bench", "model::intent"),
+        ("bench", "model::state"),
+        ("bench", "runtime::input"),
         ("bench", "runtime::playback"),
         ("display", "display::render"),
         ("display", "display::ui"),
@@ -693,7 +699,7 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("lib", "display"),
         ("lib", "model::boot"),
         ("lib", "model::state"),
-        ("lib", "runtime::frame_loop"),
+        ("lib", "runtime::coordinator"),
         ("lib", "runtime::input"),
         ("lib", "runtime::playback"),
         ("lib", "runtime::workers"),
@@ -703,29 +709,25 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("model::state", "controls"),
         ("model::state", "model::intent"),
         ("model::state", "model::route"),
-        ("runtime::frame_loop", "display"),
-        ("runtime::frame_loop", "model::state"),
-        ("runtime::frame_loop", "runtime::input"),
-        ("runtime::frame_loop", "runtime::replay"),
-        ("runtime::frame_loop", "runtime::workers"),
+        ("runtime::coordinator", "bench"),
+        ("runtime::coordinator", "display"),
+        ("runtime::coordinator", "model::state"),
+        ("runtime::coordinator", "runtime::input"),
+        ("runtime::coordinator", "runtime::workers"),
         ("runtime::input", "model::intent"),
         ("runtime::input", "model::state"),
         ("runtime::input", "runtime::workers"),
         ("runtime::network", "assets"),
+        ("runtime::network", "bench"),
         ("runtime::network", "model::boot"),
         ("runtime::network", "model::intent"),
         ("runtime::network", "model::state"),
         ("runtime::network", "runtime::input"),
-        ("runtime::network", "runtime::replay"),
         ("runtime::network", "runtime::workers"),
         ("runtime::playback", "model::intent"),
         ("runtime::playback", "model::state"),
         ("runtime::playback", "runtime::input"),
         ("runtime::playback", "runtime::workers"),
-        ("runtime::replay", "controls"),
-        ("runtime::replay", "model::intent"),
-        ("runtime::replay", "model::state"),
-        ("runtime::replay", "runtime::input"),
         ("runtime::workers", "model::state"),
     ]
     .into_iter()

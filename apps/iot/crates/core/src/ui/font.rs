@@ -1,7 +1,7 @@
 //! The panel's glyph table: printable ASCII `0x20`–`0x7E`, five columns per glyph,
 //! column-major, bit 0 the top row.
 
-/// Columns one glyph occupies; the panel's cell is [`iot_core::overlay::FONT_W`] wide.
+/// Columns one glyph occupies; the panel's cell is [`crate::overlay::FONT_W`] wide.
 pub const GLYPH_COLUMNS: usize = 5;
 
 /// One column byte per glyph column, bit `row` set where the glyph has ink.

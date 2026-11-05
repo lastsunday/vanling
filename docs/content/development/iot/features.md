@@ -57,7 +57,6 @@ Cargo feature 是**加法语义**（union，开启一个不应关闭另一个）
 
 ```
 iot-core     — 无 [features]
-iot-ui       — 无 [features]
 iot-bsp-esp  — 元件 feature（backlight / button / pca9557 / qmi8658 / es7210 / es8311 /
                              ft6336 / gc2145 / ws2812 / st7789 / wifi / screen / audio / audio-out / camera）
                板 feature（esp32c6-devkitc-1 / lckfb-szpi-esp32s3）＝ 元件聚合

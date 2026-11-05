@@ -1386,7 +1386,6 @@ dependencies = [
  "iot-bsp-esp",
  "iot-chip-esp",
  "iot-core",
- "iot-ui",
  "log",
 ]
 
@@ -1438,13 +1437,6 @@ dependencies = [
 [[package]]
 name = "iot-tool"
 version = "0.1.0"
-
-[[package]]
-name = "iot-ui"
-version = "0.1.0"
-dependencies = [
- "iot-core",
-]
 
 [[package]]
 name = "itoa"

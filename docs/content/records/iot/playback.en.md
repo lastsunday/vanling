@@ -147,7 +147,7 @@ The recipe **is** the file: the five `assets/*.mid` come to 488 bytes together, 
 
 Generating assets is not a test, so the table and the `.mid` generator moved out of `bsp-esp`'s test module into an `iot-tool` with no dependencies.
 
-The cost is that **the two sides cannot see each other**: the recipes no longer read `Sound`, and the firmware cannot read the recipes. What is left is the filename convention (`Rise` becomes `rise.mid`, and `sound_label` in `iot-ui` has to say the same thing).
+The cost is that **the two sides cannot see each other**: the recipes no longer read `Sound`, and the firmware cannot read the recipes. What is left is the filename convention (`Rise` becomes `rise.mid`, and `sound_label` in `iot-core::ui` has to say the same thing).
 
 One test holds it: `the_catalogue_names_the_same_files` reads the `include_bytes!` list out of `app/src/playback/sounds.rs` and checks it against the recipes. Without it a rename done on one side only passes silently — both files exist, both are claimed by something, and only the device plays the wrong one.
 

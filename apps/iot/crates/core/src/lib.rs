@@ -12,3 +12,4 @@ pub mod paint;
 pub mod provision;
 pub mod stamp;
 pub mod stats;
+pub mod ui;

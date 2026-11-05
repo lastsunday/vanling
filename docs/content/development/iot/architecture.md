@@ -39,18 +39,18 @@ weight = 10
 
 ## 分层
 
-`iot-core(纯逻辑与驱动接缝) → iot-ui(像素与字形) / iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(产品页面与状态机)`
+`iot-core(纯逻辑、驱动接缝与像素/字形) → iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(产品页面与状态机)`
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
 - **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `PageSurface`）。板模块只做选引脚与装配，元件本身跨板通用
-- **iot-ui 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、诊断、网络、产品或芯片。页面壳（`ui::Surface`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖面板
+- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、诊断、网络、产品或芯片。页面壳（`ui::Surface`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖面板
 - **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `PanelPainter` 接缝把 `PanelTarget`/`PanelContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `Diagnostics` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，已在 `app::controls`
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，已在 `app::controls`
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
@@ -71,21 +71,20 @@ weight = 10
 | `display/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态 |
 | `display/render/{mod,appearance,repaint,controller}.rs` | 渲染消费者与注册表：`RenderController` 决定*显示什么*（`controller.rs`），状态→外观在 `appearance.rs`，重绘节拍在 `repaint.rs`，renderer 决定*怎么显示* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | 产品页面壳与视图：`placement.rs` 是各页共用的版面常量，`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件，`views/` 按页组装 |
-| `runtime/` | 模型旁边的任务：帧循环、工作者与它们各自拥有的 I/O |
-| `runtime/frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`clock.rs` 是逻辑帧时钟 |
+| `runtime/` | 模型旁边的任务：协调者、工作者与它们各自拥有的 I/O |
+| `runtime/coordinator/{mod,clock}.rs`、`coordinator/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`clock.rs` 是逻辑帧时钟 |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄；`mod.rs` 只有 `Workers { input, playback, network }`，其余是各工作者的句柄与协议；网络命令词汇表在 `model/state/network.rs` |
 | `runtime/input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `runtime/playback/{mod,sounds/}` | 播放工作者与声音目录（`sounds/mod.rs` 加五份 `.mid`）；状态→命令在 `frame_loop/systems/playback.rs` |
+| `runtime/playback/{mod,sounds/}` | 播放工作者与声音目录（`sounds/mod.rs` 加五份 `.mid`）；状态→命令在 `coordinator/systems/playback.rs` |
 | `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
-| `runtime/replay/{mod,point}.rs`、`replay/script.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本；`point.rs` 只放落点坐标 |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；`model` 与 `display` 读同一份坐标 |
 | `assets/` | 设置侧自己的字节：`vanling-` 热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
-| `bench/probe/`、`bin/` | 构建期探针与薄入口（`bin/host-smoke/` 按假板与场景分开），不进产品路径 |
+| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用，不进产品路径；`replay/` 是产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），被协调者/网络工作者引用，非 bench 构建编译期折叠 |
 
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 
 ```
-lib       → { display, model::{boot, state}, runtime::{frame_loop, input, playback, workers} }
+lib       → { display, model::{boot, state}, runtime::{coordinator, input, playback, workers} }
 model::boot   → { model::state }
 model::intent → { controls, model::state }
 model::state  → { controls, model::{intent, route} }
@@ -93,23 +92,22 @@ display              → { display::{render, ui}, model::state }
 display::diagnostics → { model::{route, state} }
 display::render      → { display::diagnostics, model::{route, state} }
 display::ui          → { assets, controls, display::diagnostics, model::state }
-runtime::frame_loop → { display, model::state, runtime::{input, replay, workers} }
+runtime::coordinator → { bench, display, model::state, runtime::{input, workers} }
 runtime::input      → { model::{intent, state}, runtime::workers }
-runtime::network    → { assets, model::{boot, intent, state}, runtime::{input, replay, workers} }
+runtime::network    → { assets, bench, model::{boot, intent, state}, runtime::{input, workers} }
 runtime::playback   → { model::{intent, state}, runtime::{input, workers} }
-runtime::replay     → { controls, model::{intent, state}, runtime::input }
 runtime::workers    → { model::state }
-bench               → { runtime::playback }
+bench               → { controls, model::{intent, state}, runtime::{input, playback} }
 ```
 
 `main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`runtime::network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
-- 三层只向内倒（`the_layers_lean_inward_only`）：`model` 不认识 `runtime`/`display`，`display` 不认识 `runtime`；唯一的向外边是 `runtime::frame_loop → display`，因为帧循环负责呈现模型已经定下的状态
+- 三层只向内倒（`the_layers_lean_inward_only`）：`model` 不认识 `runtime`/`display`，`display` 不认识 `runtime`；唯一的向外边是 `runtime::coordinator → display`，因为协调者负责呈现模型已经定下的状态
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
-- `runtime::network` 不依赖 `display`/`runtime::frame_loop`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- `runtime::network` 不依赖 `display`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `controls`、`assets` 留在顶层：它们同时被 `model` 与 `display` 消费，放进任何一层都会制造反向依赖
-- `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
+- `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用；`bench::replay` 被 `coordinator`/`network` 引用，但非 bench 构建编译期折叠
 - `core` 不认识 `iot_app`
 
 ## 组合（三轴正交）
@@ -224,7 +222,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 `NetworkCommand` 的词汇表留在 `app/src/model/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::process_intents` 拿到就 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
-**每帧逻辑按边界拆成系统。** `frame_loop/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条命令不能合并成一条），所以那几行留在 `process_intents`。
+**每帧逻辑按边界拆成系统。** `coordinator/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条命令不能合并成一条），所以那几行留在 `process_intents`。
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 

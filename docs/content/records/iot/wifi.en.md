@@ -805,7 +805,7 @@ What gets drawn is decided by `diag_repaint_due`'s Network predicate: any change
 access point, address, list or entry repaints, while the envelope and the touch counters do not
 (`[test]` two tests, one per direction).
 
-The arithmetic that turns readings into glyphs all lives in `apps/iot/crates/ui/src/text.rs`
+The arithmetic that turns readings into glyphs all lives in `apps/iot/crates/core/src/ui/text.rs`
 (where every page's drawing arithmetic lives, and where the host can test it; this page's
 `[test]` ten): the phase word (a failure draws one of six — `NOAP`/`AUTH`/`BUSY`/`NAME`/`MEM`/`DRV`,
 where `MEM` is the one reading that means "this build's heap budget is wrong"), the dotted

@@ -60,7 +60,6 @@ Cargo features are **additive** (union; enabling one must not disable another) a
 
 ```
 iot-core     — no [features]
-iot-ui       — no [features]
 iot-bsp-esp  — component features (backlight / button / pca9557 / qmi8658 / es7210 / es8311 /
                              ft6336 / gc2145 / ws2812 / st7789 / wifi / screen / audio / audio-out / camera)
                board features (esp32c6-devkitc-1 / lckfb-szpi-esp32s3) = component aggregate

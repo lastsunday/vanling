@@ -11,7 +11,7 @@ use iot_core::paint::{Rgb, brightness_of, rgb_hue};
 
 use crate::display::ui::placement::{FPS_Y, PANEL_RIGHT};
 use crate::display::ui::text::format_u16;
-use iot_ui::Canvas;
+use iot_core::ui::Canvas;
 
 /// One page's drawing: the frame, the snapshot it reads, and the surface's own identity.
 pub struct Surface<'a> {

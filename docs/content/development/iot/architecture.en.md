@@ -43,18 +43,18 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 
 ## Layers
 
-`iot-core (mechanisms and driver seams) → iot-ui (pixels and glyphs) / iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (product pages and state machine)`
+`iot-core (mechanisms, driver seams, pixels and glyphs) → iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (product pages and state machine)`
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
 - **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `PageSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
-- **iot-ui knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`ui::Surface`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
+- **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`ui::Surface`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
 - **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `PanelTarget`/`PanelContext` to the app through `core`'s `PanelPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `Diagnostics` nor any page type.
 - **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
 - **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
-- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page and lives in `app::controls`.
+- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page and lives in `app::controls`.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
@@ -75,22 +75,21 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `display/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state |
 | `display/render/{mod,appearance,repaint,controller}.rs` | render consumers and the registry: `RenderController` decides *what* to show (`controller.rs`), state→appearance lives in `appearance.rs`, repaint pacing in `repaint.rs`, and a renderer decides *how* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | product page shell and views: `placement.rs` holds the placement constants every page shares, `widgets/` the primitives (frame, row, label), `components/` the cross-page pieces, and `views/` assembles them per page |
-| `runtime/` | the tasks beside the model: the frame loop, the workers it drives, and the I/O each worker owns |
-| `runtime/frame_loop/{mod,clock}.rs`, `frame_loop/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
+| `runtime/` | the tasks beside the model: the coordinator, the workers it drives, and the I/O each worker owns |
+| `runtime/coordinator/{mod,clock}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only `Workers { input, playback, network }`, the rest are each worker's handles and protocol; the network command vocabulary lives in `model/state/network.rs` |
 | `runtime/input.rs` | input worker: polling, demand scheduling, gesture recognition |
-| `runtime/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `frame_loop/systems/playback.rs` |
+| `runtime/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
-| `runtime/replay/{mod,point}.rs`, `replay/script.rs` | the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid; `point.rs` holds only the landing coordinates |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | panel-control geometry and hit testing: key grid, scan list, action strip, confirmation box; `model` and `display` read the same coordinates |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
-| `bench/probe/`, `bin/` | build-time probes and thin entries (`bin/host-smoke/` splits the fake board from the scenario); not on the product path |
+| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs` and stays off the product path; `replay/` is the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached by the coordinator/network worker and folded away outside a bench build |
 
 Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the compiler does not
 check module cycles inside a crate):
 
 ```
-lib       → { display, model::{boot, state}, runtime::{frame_loop, input, playback, workers} }
+lib       → { display, model::{boot, state}, runtime::{coordinator, input, playback, workers} }
 model::boot   → { model::state }
 model::intent → { controls, model::state }
 model::state  → { controls, model::{intent, route} }
@@ -98,23 +97,22 @@ display              → { display::{render, ui}, model::state }
 display::diagnostics → { model::{route, state} }
 display::render      → { display::diagnostics, model::{route, state} }
 display::ui          → { assets, controls, display::diagnostics, model::state }
-runtime::frame_loop → { display, model::state, runtime::{input, replay, workers} }
+runtime::coordinator → { bench, display, model::state, runtime::{input, workers} }
 runtime::input      → { model::{intent, state}, runtime::workers }
-runtime::network    → { assets, model::{boot, intent, state}, runtime::{input, replay, workers} }
+runtime::network    → { assets, bench, model::{boot, intent, state}, runtime::{input, workers} }
 runtime::playback   → { model::{intent, state}, runtime::{input, workers} }
-runtime::replay     → { controls, model::{intent, state}, runtime::input }
 runtime::workers    → { model::state }
-bench               → { runtime::playback }
+bench               → { controls, model::{intent, state}, runtime::{input, playback} }
 ```
 
 `main` is the binary crate root and reaches `lib`/`runtime::network` through `iot_app::`, so it is
 outside this graph; the chip family injects `second_core_peak` and the rest of the capabilities
 into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
 
-- the three layers lean inward only (`the_layers_lean_inward_only`): `model` knows neither `runtime` nor `display`, and `display` never knows `runtime`; the one edge outward is `runtime::frame_loop → display`, because the frame loop presents what the model already settled on
+- the three layers lean inward only (`the_layers_lean_inward_only`): `model` knows neither `runtime` nor `display`, and `display` never knows `runtime`; the one edge outward is `runtime::coordinator → display`, because the coordinator presents what the model already settled on
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
-- `runtime::network` does not reach `display`/`runtime::frame_loop`: the network worker reads the page and commands from `workers`, not device state
+- `runtime::network` does not reach `display`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
 - `controls` and `assets` stay at the top: both are read by `model` and `display`, so placing them in either layer would manufacture a reverse dependency
 - `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
 - `core` does not know `iot_app`
@@ -235,7 +233,7 @@ The shape follows the semantics, not convenience:
 
 The `NetworkCommand` vocabulary stays in `app/src/model/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command and `Schedule::process_intents` publishes it on the spot — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
-**Per-frame logic is split by boundary.** One `System` per file under `frame_loop/systems/`; it holds only what must survive a frame (the last playback state, the last page, the governor) while `Frame` hands it the state and the handles. Systems never call each other. Adding a feature is one file plus one line in `Schedule::tick`, whose declaration order is the execution order; reordering it is a behaviour change. The intent side does not go through `System`: the command an intent produced must reach its system at once (two commands in one frame must not collapse into one), so those lines stay in `process_intents`.
+**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds only what must survive a frame (the last playback state, the last page, the governor) while `Frame` hands it the state and the handles. Systems never call each other. Adding a feature is one file plus one line in `Schedule::tick`, whose declaration order is the execution order; reordering it is a behaviour change. The intent side does not go through `System`: the command an intent produced must reach its system at once (two commands in one frame must not collapse into one), so those lines stay in `process_intents`.
 
 **The render layer costs nothing**: `Diagnostics` in `app/src/display/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`; the screen renderer reads it through the painter seam.
 

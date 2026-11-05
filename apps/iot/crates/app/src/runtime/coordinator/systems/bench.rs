@@ -3,7 +3,7 @@
 
 use alloc::boxed::Box;
 
-use crate::runtime::replay::{BENCH, PanelBench};
+use crate::bench::replay::{BENCH, PanelBench};
 
 use super::{Frame, System};
 

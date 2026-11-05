@@ -84,7 +84,7 @@ mod tests {
     use alloc::vec;
     use iot_core::drivers::camera::CameraCounters;
 
-    use iot_ui::Canvas;
+    use iot_core::ui::Canvas;
 
     const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
     const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;

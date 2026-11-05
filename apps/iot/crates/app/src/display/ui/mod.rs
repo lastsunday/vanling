@@ -14,7 +14,7 @@ use core::any::Any;
 use crate::display::diagnostics::Diagnostics;
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{PanelContext, PanelPainter, PanelTarget};
-use iot_ui::Canvas;
+use iot_core::ui::Canvas;
 
 const DEBUG_DIAGNOSTICS: bool = true;
 

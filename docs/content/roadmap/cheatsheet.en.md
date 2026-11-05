@@ -238,9 +238,9 @@ cd apps/server && cargo run -p vanling-server --features cuda -- \
 | `moon run iot:check-features` | Compile every component feature on its own | The only task that covers single-feature builds; about 15 subsets |
 | `moon run iot:format` | `cargo fmt --check` | Check only, does not write |
 | `moon run iot:lint` | Clippy against the S3 target | Needs the Xtensa toolchain or the image |
-| `moon run iot:lint-host` | Clippy for `iot-core` and `iot-ui` | — |
+| `moon run iot:lint-host` | Clippy for `iot-core` | — |
 | `moon run iot:lint-smoke` | Clippy for `host-smoke` | — |
-| `moon run iot:test` | core, ui, and app (host backend) tests | — |
+| `moon run iot:test` | core and app (host backend) tests | — |
 | `moon run iot:test-bsp` | Board-level tests with every component feature | — |
 | `moon run iot:test-tool` | Check the sound catalogue against its generated table | — |
 | `moon run iot:smoke-host` | Host smoke run | Hits the cache; replay with `--force` |

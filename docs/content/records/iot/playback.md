@@ -144,7 +144,7 @@ watchdog 的方向错法同类，但更贵：`tx_idle` 在 FIFO 瞬时空的那�
 
 生成资产不是测试，所以配方表和 `.mid` 生成器搬出了 `bsp-esp` 的测试模块，进了零依赖的 `iot-tool`。
 
-代价是**两边看不见对方**：配方不再能读到 `Sound`，固件也读不到配方，唯一的联结只剩文件名约定（`Rise` → `rise.mid`，`iot-ui` 的 `sound_label` 得说同一件事）。
+代价是**两边看不见对方**：配方不再能读到 `Sound`，固件也读不到配方，唯一的联结只剩文件名约定（`Rise` → `rise.mid`，`iot-core::ui` 的 `sound_label` 得说同一件事）。
 
 这条约定只有一处能验：`the_catalogue_names_the_same_files` 读 `app/src/playback/sounds.rs` 的 `include_bytes!` 清单，跟配方表对。少了它，一次只改一边的重命名会静默通过——两个文件都在，两边都认领了各自的，只有设备放错。
 

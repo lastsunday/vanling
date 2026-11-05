@@ -406,7 +406,7 @@ The software canary checks the sentinel below the stack floor on every context s
 
 ## The panel's glyph table: Spleen 5×8, one face (`[test]`, 2026-10-22)
 
-The table lives in `apps/iot/crates/ui/src/font.rs`: 95 printable ASCII glyphs, five columns by
+The table lives in `apps/iot/crates/core/src/ui/font.rs`: 95 printable ASCII glyphs, five columns by
 eight rows, column-major, bit 0 the top row. The pitch is still 9×13 (`FONT_W 5 + OVERLAY_GAP 4`,
 `FONT_H 8 + OVERLAY_ROW_GAP 5`).
 

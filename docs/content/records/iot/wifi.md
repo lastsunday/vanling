@@ -398,7 +398,7 @@ X  0  OK | SHOW
 
 画什么由 `diag_repaint_due` 的 Network 谓词定：阶段、当前 AP、地址、列表、打字态任一有变就重画，包络与触摸计数不重画（`[测试]` 两条，两个方向）。
 
-数字到字形的换算全在 `apps/iot/crates/ui/src/text.rs`（跨页的绘制算术都在那，宿主机可测；本页的 `[测试]` 10 条）：阶段词（失败画六种之一：`NOAP`/`AUTH`/`BUSY`/`NAME`/`MEM`/`DRV`，`MEM` 是「这个构建的堆预算错了」唯一的读数）、点分地址（无地址是 `-`，不是 `0.0.0.0`）、信号条 `#`/`.`（与列表同一把尺子 `bars_for`）、名字（画不出 ASCII 就显示 BSSID；超过 24 字形保留头部并以 `~` 标记，否则折在同一处的两个网络会画成同一行）、请求框的标题与两个答案词、以及连接框的标题与正文（`JOINING`/`JOINED` + 名字、`WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`；名字超出剩余宽度时折的是名字，`JOINING`/`JOINED` 那个词不动）。
+数字到字形的换算全在 `apps/iot/crates/core/src/ui/text.rs`（跨页的绘制算术都在那，宿主机可测；本页的 `[测试]` 10 条）：阶段词（失败画六种之一：`NOAP`/`AUTH`/`BUSY`/`NAME`/`MEM`/`DRV`，`MEM` 是「这个构建的堆预算错了」唯一的读数）、点分地址（无地址是 `-`，不是 `0.0.0.0`）、信号条 `#`/`.`（与列表同一把尺子 `bars_for`）、名字（画不出 ASCII 就显示 BSSID；超过 24 字形保留头部并以 `~` 标记，否则折在同一处的两个网络会画成同一行）、请求框的标题与两个答案词、以及连接框的标题与正文（`JOINING`/`JOINED` + 名字、`WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`；名字超出剩余宽度时折的是名字，`JOINING`/`JOINED` 那个词不动）。
 
 ### 手势删减：延迟在分类器里，不在面板
 

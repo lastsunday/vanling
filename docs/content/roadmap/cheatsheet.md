@@ -235,9 +235,9 @@ cd apps/server && cargo run -p vanling-server --features cuda -- \
 | `moon run iot:check-features` | 逐个单独编译每个组件 feature | 唯一覆盖单 feature 编译的任务；矩阵含约 15 个子集 |
 | `moon run iot:format` | `cargo fmt --check` | 只检查，不写回 |
 | `moon run iot:lint` | 对 S3 目标执行 clippy | 需 Xtensa 工具链或镜像 |
-| `moon run iot:lint-host` | 对 `iot-core`、`iot-ui` 执行 clippy | — |
+| `moon run iot:lint-host` | 对 `iot-core` 执行 clippy | — |
 | `moon run iot:lint-smoke` | 对 `host-smoke` 执行 clippy | — |
-| `moon run iot:test` | core、ui 与 app（host 后端）测试 | — |
+| `moon run iot:test` | core 与 app（host 后端）测试 | — |
 | `moon run iot:test-bsp` | 板级测试，启用全部组件 feature | — |
 | `moon run iot:test-tool` | 音效目录与生成表的一致性测试 | — |
 | `moon run iot:smoke-host` | 宿主冒烟 | 命中缓存，`--force` 重放 |
