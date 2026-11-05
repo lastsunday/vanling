@@ -155,7 +155,9 @@ fn a_hold_on_a_saved_row_asks_to_forget_it() {
 
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Act),
-        Some(NetworkCommand::Forget(Ssid::from_octets(b"cafe"))),
+        Some(Command::Network(NetworkCommand::Forget(Ssid::from_octets(
+            b"cafe"
+        )))),
         "the answer hands the name to the task that holds the store"
     );
     assert_eq!(manager.state().network_page.confirm, None, "once");
@@ -191,7 +193,7 @@ fn the_same_row_is_a_request_to_join_while_the_link_is_not_on_it() {
     })));
 
     let asked = tap_band(&mut manager, 0);
-    assert_ne!(asked, Some(NetworkCommand::Leave));
+    assert_ne!(asked, Some(Command::Network(NetworkCommand::Leave)));
     assert!(
         manager
             .state()
@@ -283,8 +285,8 @@ fn a_tap_on_a_saved_row_asks_for_the_copy_the_device_keeps() {
     marked(&mut manager, &["neighbour"]);
     assert_eq!(
         tap_band(&mut manager, 0),
-        Some(NetworkCommand::Join(JoinRequest::Held(Ssid::from_octets(
-            b"neighbour"
+        Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(
+            Ssid::from_octets(b"neighbour")
         )))),
         "the tap names the row for the store rather than for the keyboard"
     );
@@ -362,8 +364,8 @@ fn an_answer_about_another_row_is_not_this_rows_question() {
     tap_band(&mut manager, 0);
     assert_eq!(
         tap_band(&mut manager, 1),
-        Some(NetworkCommand::Join(JoinRequest::Held(Ssid::from_octets(
-            b"cafe"
+        Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(
+            Ssid::from_octets(b"cafe")
         )))),
         "the newer row is the one the page asks for"
     );

@@ -2,6 +2,9 @@
 
 mod point;
 mod script;
+mod slot;
+
+pub(crate) use self::slot::Slot;
 
 use alloc::vec::Vec;
 
@@ -20,6 +23,15 @@ use self::point::{
 
 /// Whether this build replays a credential through the panel rather than being handed one.
 pub const BENCH: bool = option_env!("IOT_PANEL_BENCH").is_some();
+
+/// The network this build was named, unless the build is a bench run: a bench image has to join
+/// whatever the panel names, not the credential its build happens to carry.
+pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
+    if BENCH {
+        return None;
+    }
+    crate::model::boot::build_wifi_credentials()
+}
 
 const BAND_X: u16 = 4;
 
@@ -79,9 +91,6 @@ impl PanelBench {
     }
 
     pub fn step(&mut self, manager: &DeviceManager, bus: &IntentBus) {
-        if !BENCH {
-            return;
-        }
         let state = manager.state_ref();
         self.read_parts(state);
         if self.touches.is_none() {
@@ -586,12 +595,16 @@ impl Default for PanelBench {
     }
 }
 
+fn credentials() -> Option<(&'static str, &'static str)> {
+    crate::model::boot::build_wifi_credentials()
+}
+
 fn ssid() -> Option<&'static str> {
-    option_env!("IOT_WIFI_SSID")
+    credentials().map(|(ssid, _)| ssid)
 }
 
 fn psk() -> Option<&'static str> {
-    option_env!("IOT_WIFI_PSK")
+    credentials().map(|(_, psk)| psk)
 }
 
 #[cfg(test)]

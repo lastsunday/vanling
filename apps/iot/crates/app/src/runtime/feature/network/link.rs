@@ -17,6 +17,7 @@ use iot_core::drivers::network::{
 use super::setup::{Choice, SetupMode, await_network, pick, resolve_join};
 use super::store::{any, first_saved, forget, remark_and_publish, save};
 use super::{NETWORK, discard_setup, park, publish_link};
+use crate::bench::replay::build_credentials;
 use crate::runtime::workers::NetworkInbox;
 
 const WINDOW_MS: u64 = 2_000;
@@ -33,15 +34,6 @@ pub(super) enum Origin {
     Stored,
     Build,
     Typed,
-}
-
-/// The network this build was named, unless the build is a bench run: a bench image has to
-/// join whatever the panel names, not the credential its build happens to carry.
-fn build_credentials() -> Option<(&'static str, &'static str)> {
-    if crate::bench::replay::BENCH {
-        return None;
-    }
-    crate::model::boot::build_wifi_credentials()
 }
 
 /// The splash's verdict, taken from the same queue as everything else the panel asks for: the

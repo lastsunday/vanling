@@ -72,19 +72,20 @@ weight = 10
 | `display/render/{mod,appearance,repaint,controller}.rs` | 渲染消费者与注册表：`RenderController` 决定*显示什么*（`controller.rs`），状态→外观在 `appearance.rs`，重绘节拍在 `repaint.rs`，renderer 决定*怎么显示* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | 产品页面壳与视图：`placement.rs` 是各页共用的版面常量，`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件，`views/` 按页组装 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
+| `runtime/system.rs` | `Frame` 与 `System` 契约：一帧交给系统的共享件（意图总线、状态、时钟），`tick` 与 `intent` 两个入口；worker 句柄由系统自己持有，不经 `Frame` |
 | `runtime/coordinator/{mod,clock}.rs`、`coordinator/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`clock.rs` 是逻辑帧时钟 |
-| `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄；`mod.rs` 只有 `Workers { input, playback, network }`，其余是各工作者的句柄与协议；网络命令词汇表在 `model/state/network.rs` |
+| `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄与协议；`mod.rs` 只有再导出与停帧线 `WAKE`，不再聚合句柄；网络命令词汇表在 `model/state/network.rs` |
 | `runtime/feature/{mod,input}.rs` | 功能工作者；`mod.rs` 是唯一的 `wifi` 门控点。输入工作者：轮询、demand 调度、手势识别 |
 | `runtime/feature/playback/{mod,sounds/}` | 播放工作者与声音目录（`sounds/mod.rs` 加五份 `.mid`）；状态→命令在 `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；`model` 与 `display` 读同一份坐标 |
 | `assets/` | 设置侧自己的字节：`vanling-` 热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
-| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用，不进产品路径；`replay/` 是产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），被协调者/网络工作者引用，非 bench 构建编译期折叠 |
+| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用，不进产品路径；`replay/` 是产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），被组合根在 bench 构建下注册为普通 `System`、被网络工作者用来取构建凭据，非 bench 构建编译期折叠 |
 
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 
 ```
-lib       → { display, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
+lib       → { bench, display, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
 model::boot   → { model::state }
 model::intent → { controls, model::state }
 model::state  → { controls, model::{intent, route} }
@@ -92,12 +93,13 @@ display              → { display::{render, ui}, model::state }
 display::diagnostics → { model::{route, state} }
 display::render      → { display::diagnostics, model::{route, state} }
 display::ui          → { assets, controls, display::diagnostics, model::state }
-runtime::coordinator → { bench, display, model::state, runtime::{feature::input, workers} }
+runtime::coordinator → { display, model::state, runtime::{feature::input, system, workers} }
+runtime::system       → { model::state, runtime::feature::input }
 runtime::feature::input    → { model::{intent, state}, runtime::workers }
-runtime::feature::network  → { assets, bench, model::{boot, intent, state}, runtime::{feature::input, workers} }
+runtime::feature::network  → { assets, bench, model::{intent, state}, runtime::{feature::input, workers} }
 runtime::feature::playback → { model::{intent, state}, runtime::{feature::input, workers} }
 runtime::workers    → { model::state }
-bench               → { controls, model::{intent, state}, runtime::feature::{input, playback} }
+bench               → { controls, model::{boot, intent, state}, runtime::{feature::{input, playback}, system} }
 ```
 
 `main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`runtime::feature::network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
@@ -107,7 +109,7 @@ bench               → { controls, model::{intent, state}, runtime::feature::{i
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
 - `runtime::feature::network` 不依赖 `display`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `controls`、`assets` 留在顶层：它们同时被 `model` 与 `display` 消费，放进任何一层都会制造反向依赖
-- `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用；`bench::replay` 被 `coordinator`/`network` 引用，但非 bench 构建编译期折叠
+- `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用；`bench::replay` 被组合根（注册 `Slot`）与网络工作者（取构建凭据）引用，但非 bench 构建编译期折叠
 - `core` 不认识 `iot_app`
 
 ## 组合（三轴正交）
@@ -212,7 +214,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 **工作者由拥有其驱动的组合点启动。** 驱动半边由 `run` 用 `Wiring.spawner` 起（`IoPlacement::Inline`）或交给第二核（`Elsewhere`）。网络工作者的驱动类型只有入口认识，所以入口把 station 与 store 取走后就地建出 `Wifi::Worker(NetworkWorker)`——一个只接收 `Spawner` 的闭包；`run` 在 `run_loop` 之前执行它，既不认识射频，也不持有 worker 清单。加一个工作者仍是组合点的一行闭包，而不是多一种交给 `run` 的形状。`main` 因此不 `join` 任何工作者，`run_loop` 是它唯一 `await` 的协调者。`feed_task` 与 `panel_service` 仍由 `start_executors` 起——只有那里知道中断执行器与第二个核。`network::serve` 用本地 `Spawner` 起成任务，future 不必 `Send`：它留在 core 0 的执行器上，跨核的只有 `Io` 束。
 
-句柄集中在组合根的 `Workers<'a>`：一个工作者一个字段，加第二个协议只加字段，不在调用点新增一对 `TO_X`/`FROM_X`。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。
+句柄由各自的系统持有，组合根在 `register` 时交给它：一个工作者一个系统，加第二个协议只加一个文件与一行 `register`，不改共享结构体。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。停帧时只等一条 `WAKE` 线，由异步发布的工作者 poke，主循环因此不点名任何 worker。
 
 三种形状按语义选，不按方便选：
 
@@ -220,9 +222,9 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 - **保留值**走 `PageWatch`/`Retained`（`Network.page`、`Scan` 的列表）：写入替换旧值，读走之后仍然在，所以面板与手机页面读的是同一份。启动页的结论不是保留值而是**一次性命令**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求同一条队列，工作者不必再看页面演进到哪一步。
 - **最新窗口**走 `Input.from`：1.7 KB 的采集样本只留最新一份，覆盖而不是排队。
 
-`NetworkCommand` 的词汇表留在 `app/src/model/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::process_intents` 拿到就 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `app/src/model/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 作为 `Command` 返回，`Schedule::process_intents` 按注册顺序交给每个系统，`NetworkSystem` 取走 `Command::Network` 那一支后 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
-**每帧逻辑按边界拆成系统。** `coordinator/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条命令不能合并成一条），所以那几行留在 `process_intents`。
+**每帧逻辑按边界拆成系统。** `coordinator/systems/*.rs` 一个文件一个 `System`，它持有自己那条边界的 worker 句柄与跨帧记忆（上一条播报状态、上一页、governor），共享状态由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在组合根 `Schedule::register` 一行（句柄在那里交给系统），注册顺序就是执行顺序，改顺序就是改语义。意图那一侧也走 `System`：每条意图应用后，模型留下的 `Command` 按注册顺序交给每个系统，拥有该边界的系统取走自己那一支；同一帧的两条命令不会合并，没人取走则由 `debug_assert` 暴露漏注册。
 
 **渲染层零成本**：`Diagnostics` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`DiagnosticsSink::consume` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 

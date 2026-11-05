@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "e74553f5fa028a9fba6b5060fb60f7362daf2513"
-translated_at = "2026-11-04T00:00:00Z"
+source_file_hash = "31a081d25c1749e220f43d7585337bee358da729"
+translated_at = "2026-11-05T00:00:00Z"
 +++
 
 # Architecture
@@ -76,20 +76,21 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `display/render/{mod,appearance,repaint,controller}.rs` | render consumers and the registry: `RenderController` decides *what* to show (`controller.rs`), state→appearance lives in `appearance.rs`, repaint pacing in `repaint.rs`, and a renderer decides *how* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | product page shell and views: `placement.rs` holds the placement constants every page shares, `widgets/` the primitives (frame, row, label), `components/` the cross-page pieces, and `views/` assembles them per page |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
+| `runtime/system.rs` | the `Frame` and `System` contract: the shared pieces one frame hands a system (intent bus, state, clock), with `tick` and `intent` as its two entries; a worker handle is held by the system, not by the frame |
 | `runtime/coordinator/{mod,clock}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
-| `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only `Workers { input, playback, network }`, the rest are each worker's handles and protocol; the network command vocabulary lives in `model/state/network.rs` |
+| `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports and the parked-frame line `WAKE`, with no aggregate handle struct, and the rest are each worker's handles and protocol; the network command vocabulary lives in `model/state/network.rs` |
 | `runtime/feature/{mod,input}.rs` | the feature workers; `mod.rs` is the one `wifi` gate. Input worker: polling, demand scheduling, gesture recognition |
 | `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | panel-control geometry and hit testing: key grid, scan list, action strip, confirmation box; `model` and `display` read the same coordinates |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
-| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs` and stays off the product path; `replay/` is the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached by the coordinator/network worker and folded away outside a bench build |
+| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs` and stays off the product path; `replay/` is the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), registered by the composition root as an ordinary `System` in a bench build and read by the network worker for the build's credential, folded away outside a bench build |
 
 Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the compiler does not
 check module cycles inside a crate):
 
 ```
-lib       → { display, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
+lib       → { bench, display, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
 model::boot   → { model::state }
 model::intent → { controls, model::state }
 model::state  → { controls, model::{intent, route} }
@@ -97,12 +98,13 @@ display              → { display::{render, ui}, model::state }
 display::diagnostics → { model::{route, state} }
 display::render      → { display::diagnostics, model::{route, state} }
 display::ui          → { assets, controls, display::diagnostics, model::state }
-runtime::coordinator → { bench, display, model::state, runtime::{feature::input, workers} }
+runtime::coordinator → { display, model::state, runtime::{feature::input, system, workers} }
+runtime::system       → { model::state, runtime::feature::input }
 runtime::feature::input    → { model::{intent, state}, runtime::workers }
-runtime::feature::network  → { assets, bench, model::{boot, intent, state}, runtime::{feature::input, workers} }
+runtime::feature::network  → { assets, bench, model::{intent, state}, runtime::{feature::input, workers} }
 runtime::feature::playback → { model::{intent, state}, runtime::{feature::input, workers} }
 runtime::workers    → { model::state }
-bench               → { controls, model::{intent, state}, runtime::feature::{input, playback} }
+bench               → { controls, model::{boot, intent, state}, runtime::{feature::{input, playback}, system} }
 ```
 
 `main` is the binary crate root and reaches `lib`/`runtime::feature::network` through `iot_app::`, so it is
@@ -223,7 +225,7 @@ Where a command comes from follows the same boundary: the page domain's `apply` 
 
 **A worker is started by the composition point that owns its drivers.** The driver half is spawned by `run` through `Wiring.spawner` (`IoPlacement::Inline`) or handed to the second core (`Elsewhere`). The network worker's driver types are only known to the entry point, so the entry point takes the station and store off the board and builds `Wifi::Worker(NetworkWorker)` right there — a closure that takes only a `Spawner`; `run` runs it before `run_loop`, knowing neither what the radio is nor any worker list. Adding a worker is still one closure at the composition point, not another shape handed to `run`. `main` therefore joins no worker at all, and `run_loop` is the only future it awaits. `feed_task` and `panel_service` stay with `start_executors` — that is the only place that knows the interrupt executor and the second core. `network::serve` is spawned with the local `Spawner`, so its future need not be `Send`: it stays on core 0's executor, and the only thing that crosses a core is the `Io` bundle.
 
-The handles live together in the composition root's `Workers<'a>`: one field per worker, so a second protocol adds a field rather than a `TO_X`/`FROM_X` pair at the call site. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct.
+Each system holds the handle for its own boundary, and the composition root hands it over at `register`: one worker, one system, so a second protocol adds a file and one `register` line rather than a field on a shared struct. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct. A parked frame waits on a single `WAKE` line that an asynchronously publishing worker pokes, so the loop names no worker.
 
 The shape follows the semantics, not convenience:
 
@@ -231,9 +233,9 @@ The shape follows the semantics, not convenience:
 - **Retained values** use `PageWatch`/`Retained` (`Network.page`, the list inside `Scan`): a write replaces the old value and reading does not consume it, so the panel and the phone's page read the same copy. The splash's verdict is not a retained value but a **one-shot command**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
 - **The newest window** uses `Input.from`: a 1.7 KB capture sample only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `app/src/model/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command and `Schedule::process_intents` publishes it on the spot — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `app/src/model/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command as a `Command`, `Schedule::process_intents` offers it to each registered system in registration order, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
-**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds only what must survive a frame (the last playback state, the last page, the governor) while `Frame` hands it the state and the handles. Systems never call each other. Adding a feature is one file plus one line in `Schedule::tick`, whose declaration order is the execution order; reordering it is a behaviour change. The intent side does not go through `System`: the command an intent produced must reach its system at once (two commands in one frame must not collapse into one), so those lines stay in `process_intents`.
+**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `Frame` hands it the shared state. Systems never call each other. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is offered in registration order, and the system that owns that boundary takes its own; two commands in one frame do not collapse, and a command nobody took is exposed by a `debug_assert` as a missing registration.
 
 **The render layer costs nothing**: `Diagnostics` in `app/src/display/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`; the screen renderer reads it through the painter seam.
 

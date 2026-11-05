@@ -6,4 +6,5 @@
 
 pub(crate) mod coordinator;
 pub mod feature;
+pub(crate) mod system;
 pub mod workers;

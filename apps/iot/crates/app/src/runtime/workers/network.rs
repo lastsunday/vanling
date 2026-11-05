@@ -79,6 +79,7 @@ impl Scan {
 
     pub fn publish(&self, list: &ApList) {
         self.list.publish(list);
+        super::WAKE.signal(());
     }
 
     /// One successful scan round finished, whether or not its list differed from the last. The

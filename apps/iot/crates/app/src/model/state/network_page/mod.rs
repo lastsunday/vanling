@@ -12,6 +12,7 @@ use iot_core::drivers::network::{
 
 use iot_core::drivers::network::NetworkCommand;
 
+use super::command::Command;
 use super::entry::Entry;
 use super::network::NetworkState;
 
@@ -70,13 +71,13 @@ impl NetworkPage {
     }
 
     /// The page's intents: every ask the panel makes of the link, answered with the command
-    /// the caller hands to the worker. The link is read, never written.
+    /// the caller hands to the runtime. The link is read, never written.
     pub(super) fn apply(
         &mut self,
         intent: NetworkPageIntent,
         link: &NetworkState,
         has_pages: bool,
-    ) -> Option<NetworkCommand> {
+    ) -> Option<Command> {
         match intent {
             NetworkPageIntent::Key { key, at_ms } => self.apply_key(key, at_ms),
             NetworkPageIntent::Choose(ap) => self.pick_row(ap, link),
@@ -132,7 +133,7 @@ impl NetworkPage {
         self.list_top = self.list_top.min(Self::last_list_top(rows));
     }
 
-    fn apply_key(&mut self, key: Key, at_ms: u32) -> Option<NetworkCommand> {
+    fn apply_key(&mut self, key: Key, at_ms: u32) -> Option<Command> {
         if !self.keyboard {
             return None;
         }
@@ -143,9 +144,9 @@ impl NetworkPage {
                 };
                 self.keyboard = false;
                 self.revealed = false;
-                Some(NetworkCommand::Join(JoinRequest::Typed(
+                Some(Command::Network(NetworkCommand::Join(JoinRequest::Typed(
                     entry.credentials(ap.ssid),
-                )))
+                ))))
             }
             Key::Cancel => {
                 self.keyboard = false;
@@ -175,7 +176,7 @@ impl NetworkPage {
         self.keyboard = self.entry.is_some();
     }
 
-    fn pick_row(&mut self, ap: AccessPoint, link: &NetworkState) -> Option<NetworkCommand> {
+    fn pick_row(&mut self, ap: AccessPoint, link: &NetworkState) -> Option<Command> {
         if link.link.is_leavable() {
             return None;
         }
@@ -185,7 +186,9 @@ impl NetworkPage {
             self.entry = None;
             self.revealed = false;
             self.keyboard = false;
-            return Some(NetworkCommand::Join(JoinRequest::Held(ap.ssid)));
+            return Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(
+                ap.ssid,
+            ))));
         }
         let same = self.entry.is_some()
             && self
@@ -202,9 +205,9 @@ impl NetworkPage {
         }
         self.keyboard = false;
         let entry = self.entry.unwrap_or_default();
-        Some(NetworkCommand::Join(JoinRequest::Typed(
+        Some(Command::Network(NetworkCommand::Join(JoinRequest::Typed(
             entry.credentials(ap.ssid),
-        )))
+        ))))
     }
 
     fn no_copy(&mut self, ssid: Ssid) {
@@ -224,7 +227,7 @@ impl NetworkPage {
         self.confirm = Some(Confirm::Forget(ap));
     }
 
-    fn leave_link(&mut self, link: &NetworkState, has_pages: bool) -> Option<NetworkCommand> {
+    fn leave_link(&mut self, link: &NetworkState, has_pages: bool) -> Option<Command> {
         if !link.link.is_leavable() {
             return None;
         }
@@ -232,16 +235,16 @@ impl NetworkPage {
             self.confirm = Some(Confirm::Leave);
             None
         } else {
-            Some(NetworkCommand::Leave)
+            Some(Command::Network(NetworkCommand::Leave))
         }
     }
 
-    fn switch_host(&mut self, link: &NetworkState, has_pages: bool) -> Option<NetworkCommand> {
+    fn switch_host(&mut self, link: &NetworkState, has_pages: bool) -> Option<Command> {
         let from = link.setup_host()?;
-        has_pages.then_some(NetworkCommand::SwitchHost { from })
+        has_pages.then_some(Command::Network(NetworkCommand::SwitchHost { from }))
     }
 
-    fn close_setup(&mut self, link: &NetworkState) -> Option<NetworkCommand> {
+    fn close_setup(&mut self, link: &NetworkState) -> Option<Command> {
         let NetworkMode::Setup {
             host,
             cancellable: true,
@@ -249,39 +252,41 @@ impl NetworkPage {
         else {
             return None;
         };
-        Some(NetworkCommand::LeaveSetup { from: host })
+        Some(Command::Network(NetworkCommand::LeaveSetup { from: host }))
     }
 
-    fn scan_now(&mut self, link: &NetworkState) -> Option<NetworkCommand> {
+    fn scan_now(&mut self, link: &NetworkState) -> Option<Command> {
         if link.link.is_leavable() {
             return None;
         }
         self.rescan_wait = true;
-        Some(NetworkCommand::ScanNow)
+        Some(Command::Network(NetworkCommand::ScanNow))
     }
 
-    fn set_open(&mut self, open: bool, link: &NetworkState) -> Option<NetworkCommand> {
+    fn set_open(&mut self, open: bool, link: &NetworkState) -> Option<Command> {
         if !link.link.shows_setup_box() {
             return None;
         }
-        Some(NetworkCommand::SetupOpen {
+        Some(Command::Network(NetworkCommand::SetupOpen {
             from: link.setup_host()?,
             open,
-        })
+        }))
     }
 
-    fn answer(&mut self, question: Confirm, link: &NetworkState) -> Option<NetworkCommand> {
+    fn answer(&mut self, question: Confirm, link: &NetworkState) -> Option<Command> {
         if self.confirm != Some(question) {
             return None;
         }
         self.confirm = None;
         match question {
-            Confirm::Leave if link.link.is_leavable() => Some(NetworkCommand::Leave),
+            Confirm::Leave if link.link.is_leavable() => {
+                Some(Command::Network(NetworkCommand::Leave))
+            }
             Confirm::Leave => None,
             Confirm::Forget(ap) => {
                 let index = link.index_of(ap)?;
                 link.is_saved(index)
-                    .then_some(NetworkCommand::Forget(ap.ssid))
+                    .then_some(Command::Network(NetworkCommand::Forget(ap.ssid)))
             }
         }
     }

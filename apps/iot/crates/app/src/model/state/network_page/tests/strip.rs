@@ -18,7 +18,7 @@ fn the_action_strip_leaves_while_a_link_is_up_and_looks_around_while_it_is_not()
     let mut manager = on_network_page();
     assert_eq!(
         tap_strip(&mut manager),
-        Some(NetworkCommand::ScanNow),
+        Some(Command::Network(NetworkCommand::ScanNow)),
         "with no link there is something to look around for"
     );
     assert!(
@@ -60,7 +60,7 @@ fn a_link_that_is_coming_up_is_already_one_to_leave() {
         link_at(&mut manager, phase, b"neighbour");
         assert_eq!(
             tap_strip(&mut manager),
-            Some(NetworkCommand::ScanNow),
+            Some(Command::Network(NetworkCommand::ScanNow)),
             "{phase:?} is not a link, so the strip looks around instead"
         );
     }
@@ -80,7 +80,7 @@ fn a_strip_leave_on_a_board_with_no_screen_is_done_rather_than_asked_about() {
 
     assert_eq!(
         tap_strip(&mut manager),
-        Some(NetworkCommand::Leave),
+        Some(Command::Network(NetworkCommand::Leave)),
         "the strip's verb is the leave itself"
     );
     assert_eq!(manager.state().network_page.confirm, None);
@@ -104,7 +104,7 @@ fn leaving_happens_when_the_question_is_answered_and_not_when_it_is_left_alone()
     tap_strip(&mut manager);
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Act),
-        Some(NetworkCommand::Leave),
+        Some(Command::Network(NetworkCommand::Leave)),
         "and the request is on its way"
     );
     assert_eq!(
@@ -167,8 +167,8 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     marked(&mut manager, &["neighbour"]);
     assert_eq!(
         tap_band(&mut manager, 0),
-        Some(NetworkCommand::Join(JoinRequest::Held(Ssid::from_octets(
-            b"neighbour"
+        Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(
+            Ssid::from_octets(b"neighbour")
         )))),
         "a saved row is the credential the task is handed"
     );
@@ -178,7 +178,7 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     tap_strip(&mut manager);
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Act),
-        Some(NetworkCommand::Leave),
+        Some(Command::Network(NetworkCommand::Leave)),
         "the answered question is the leave"
     );
 
@@ -186,31 +186,31 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     setup_mode(&mut manager, true);
     assert_eq!(
         tap_strip_left(&mut manager),
-        Some(NetworkCommand::LeaveSetup {
+        Some(Command::Network(NetworkCommand::LeaveSetup {
             from: SetupHost::AccessPoint
-        })
+        }))
     );
     assert_eq!(
         tap_strip(&mut manager),
-        Some(NetworkCommand::SwitchHost {
+        Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::AccessPoint
-        })
+        }))
     );
 
     let mut manager = on_network_page();
     setup_mode(&mut manager, true);
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Keep),
-        Some(NetworkCommand::SetupOpen {
+        Some(Command::Network(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: true
-        })
+        }))
     );
 
     let mut manager = on_network_page();
     assert_eq!(
         tap_strip(&mut manager),
-        Some(NetworkCommand::ScanNow),
+        Some(Command::Network(NetworkCommand::ScanNow)),
         "with no link the strip is the scan"
     );
 
@@ -219,6 +219,8 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     hold_band(&mut manager, 1);
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Act),
-        Some(NetworkCommand::Forget(Ssid::from_octets(b"cafe")))
+        Some(Command::Network(NetworkCommand::Forget(Ssid::from_octets(
+            b"cafe"
+        ))))
     );
 }

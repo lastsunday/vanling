@@ -23,12 +23,16 @@ pub mod display;
 pub mod model;
 pub mod runtime;
 
+use bench::replay::{BENCH, Slot};
 use display::wired;
 use model::boot::{boot_override, boot_page};
-use runtime::coordinator::run_loop;
+use runtime::coordinator::{
+    CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
+    Schedule, run_loop,
+};
 use runtime::feature::input::{INTENT_BUS, input_task};
 use runtime::feature::playback::{playback_tasks, share};
-use runtime::workers::{CAPTURE, SharedDemand, Workers};
+use runtime::workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand};
 
 pub enum Feed {
     Interrupt(SendSpawner),
@@ -125,16 +129,10 @@ async fn io_loop(io: Io) {
         feed,
         second_core_peak,
     } = io;
-    let workers = Workers::new(demand);
+    let input = Input::new(demand);
     match join(
-        input_task(
-            &INTENT_BUS,
-            sources,
-            &configurator,
-            workers.input,
-            second_core_peak,
-        ),
-        playback_tasks(speaker, feed, workers.playback, &INTENT_BUS),
+        input_task(&INTENT_BUS, sources, &configurator, input, second_core_peak),
+        playback_tasks(speaker, feed, PLAYBACK, &INTENT_BUS),
     )
     .await {}
 }
@@ -245,6 +243,17 @@ where
         worker.spawn(spawner);
     }
 
-    let workers = Workers::new(demand);
-    run_loop(&INTENT_BUS, workers, renderers, &mut manager, &mut clock).await
+    let state = manager.state_ref();
+    let mut schedule = Schedule::new();
+    schedule.register(CaptureSystem::new(&CAPTURE));
+    schedule.register(NetworkSystem::new(state, NETWORK));
+    schedule.register(PlaybackSystem::new(state.playback, PLAYBACK));
+    schedule.register(NoticeSystem);
+    schedule.register(DemandSystem::new(Input::new(demand)));
+    schedule.register(GovernorSystem::new(&mut clock));
+    if BENCH {
+        schedule.register(Slot::new());
+    }
+
+    run_loop(&INTENT_BUS, renderers, &mut manager, &mut schedule).await
 }

@@ -131,14 +131,14 @@ fn band_y(band: usize) -> u16 {
     (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16
 }
 
-fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<NetworkCommand> {
+fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<Command> {
     let operation = op(event);
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
     manager.apply_action(business)
 }
 
-fn tap_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<NetworkCommand> {
+fn tap_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
     applied(
         manager,
         InputEvent::Gesture(GestureEvent::Tap {
@@ -151,7 +151,7 @@ fn tap_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<NetworkCommand>
     )
 }
 
-fn hold_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<NetworkCommand> {
+fn hold_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
     applied(
         manager,
         InputEvent::Gesture(GestureEvent::LongPress {
@@ -163,11 +163,7 @@ fn hold_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<NetworkCommand
     )
 }
 
-fn swipe(
-    manager: &mut DeviceManager,
-    direction: SwipeDirection,
-    end_y: u16,
-) -> Option<NetworkCommand> {
+fn swipe(manager: &mut DeviceManager, direction: SwipeDirection, end_y: u16) -> Option<Command> {
     let y = band_y(1);
     applied(
         manager,
@@ -184,7 +180,7 @@ fn swipe(
     )
 }
 
-fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<NetworkCommand> {
+fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<Command> {
     let cell = controls::cell_of(key)
         .or_else(|| {
             (0..controls::KEYS).find(|cell| controls::key_of(Layer::Abc, *cell) == Some(key))
@@ -198,7 +194,7 @@ fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<NetworkCommand> {
     )
 }
 
-fn tap_answer(manager: &mut DeviceManager, choice: DialogChoice) -> Option<NetworkCommand> {
+fn tap_answer(manager: &mut DeviceManager, choice: DialogChoice) -> Option<Command> {
     let choice = controls::dialog_answer_box(choice);
     tap_at(
         manager,
@@ -225,7 +221,7 @@ fn cafe() -> AccessPoint {
     ap_named(b"cafe", 2)
 }
 
-fn link_to(manager: &mut DeviceManager, status: LinkStatus) -> Option<NetworkCommand> {
+fn link_to(manager: &mut DeviceManager, status: LinkStatus) -> Option<Command> {
     manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(status)))
 }
 
@@ -233,81 +229,81 @@ fn scan_of(manager: &mut DeviceManager, rows: &[AccessPoint]) {
     manager.apply_scan(ApList::from_ranked(rows));
 }
 
-fn tap_first_band(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_first_band(manager: &mut DeviceManager) -> Option<Command> {
     tap_at(manager, LIST_X, band_y(0))
 }
-fn tap_second_band(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_second_band(manager: &mut DeviceManager) -> Option<Command> {
     tap_at(manager, LIST_X, band_y(1))
 }
-fn tap_third_band(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_third_band(manager: &mut DeviceManager) -> Option<Command> {
     tap_at(manager, LIST_X, band_y(2))
 }
-fn tap_the_strip(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_the_strip(manager: &mut DeviceManager) -> Option<Command> {
     tap_at(
         manager,
         160,
         (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
     )
 }
-fn tap_the_header(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_the_header(manager: &mut DeviceManager) -> Option<Command> {
     tap_at(manager, 2, 2)
 }
-fn tap_keep(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_keep(manager: &mut DeviceManager) -> Option<Command> {
     tap_answer(manager, DialogChoice::Keep)
 }
-fn tap_the_action(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_the_action(manager: &mut DeviceManager) -> Option<Command> {
     tap_answer(manager, DialogChoice::Act)
 }
-fn hold_first_band(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn hold_first_band(manager: &mut DeviceManager) -> Option<Command> {
     hold_at(manager, LIST_X, band_y(0))
 }
-fn hold_second_band(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn hold_second_band(manager: &mut DeviceManager) -> Option<Command> {
     hold_at(manager, LIST_X, band_y(1))
 }
-fn slide_down(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn slide_down(manager: &mut DeviceManager) -> Option<Command> {
     swipe(manager, SwipeDirection::Down, band_y(2))
 }
-fn slide_up(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn slide_up(manager: &mut DeviceManager) -> Option<Command> {
     swipe(manager, SwipeDirection::Up, 0)
 }
-fn tap_a_character(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_a_character(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Char(Layer::Abc.face(0)))
 }
-fn tap_shift(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_shift(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Shift)
 }
-fn tap_backspace(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_backspace(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Backspace)
 }
-fn tap_layer(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_layer(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Layer)
 }
-fn tap_reveal(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_reveal(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Reveal)
 }
-fn tap_connect(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_connect(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Connect)
 }
-fn tap_cancel(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_cancel(manager: &mut DeviceManager) -> Option<Command> {
     tap_key(manager, Key::Cancel)
 }
-fn triple_click(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn triple_click(manager: &mut DeviceManager) -> Option<Command> {
     applied(manager, InputEvent::Button(ButtonEvent::TripleClick))
 }
-fn splash_over(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn splash_over(manager: &mut DeviceManager) -> Option<Command> {
     manager.apply_action(ActionIntent::Page(PageIntent::SplashOver))
 }
-fn click(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn click(manager: &mut DeviceManager) -> Option<Command> {
     applied(manager, InputEvent::Button(ButtonEvent::Click))
 }
-fn hold_the_button(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn hold_the_button(manager: &mut DeviceManager) -> Option<Command> {
     applied(manager, InputEvent::Button(ButtonEvent::LongPress))
 }
 
-fn nothing_on_the_air(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn nothing_on_the_air(manager: &mut DeviceManager) -> Option<Command> {
     link_to(manager, LinkStatus::default())
 }
-fn looking_around(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn looking_around(manager: &mut DeviceManager) -> Option<Command> {
     link_to(
         manager,
         LinkStatus {
@@ -316,7 +312,7 @@ fn looking_around(manager: &mut DeviceManager) -> Option<NetworkCommand> {
         },
     )
 }
-fn attempt_without_a_name(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn attempt_without_a_name(manager: &mut DeviceManager) -> Option<Command> {
     link_to(
         manager,
         LinkStatus {
@@ -327,7 +323,7 @@ fn attempt_without_a_name(manager: &mut DeviceManager) -> Option<NetworkCommand>
         },
     )
 }
-fn associated(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn associated(manager: &mut DeviceManager) -> Option<Command> {
     link_to(
         manager,
         LinkStatus {
@@ -338,7 +334,7 @@ fn associated(manager: &mut DeviceManager) -> Option<NetworkCommand> {
         },
     )
 }
-fn connected(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn connected(manager: &mut DeviceManager) -> Option<Command> {
     link_to(
         manager,
         LinkStatus {
@@ -349,7 +345,7 @@ fn connected(manager: &mut DeviceManager) -> Option<NetworkCommand> {
         },
     )
 }
-fn refused(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn refused(manager: &mut DeviceManager) -> Option<Command> {
     link_to(
         manager,
         LinkStatus {
@@ -360,7 +356,7 @@ fn refused(manager: &mut DeviceManager) -> Option<NetworkCommand> {
         },
     )
 }
-fn the_driver_refused(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn the_driver_refused(manager: &mut DeviceManager) -> Option<Command> {
     link_to(
         manager,
         LinkStatus {
@@ -372,11 +368,11 @@ fn the_driver_refused(manager: &mut DeviceManager) -> Option<NetworkCommand> {
     )
 }
 
-fn scan_two(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn scan_two(manager: &mut DeviceManager) -> Option<Command> {
     scan_of(manager, &[neighbour(), cafe()]);
     None
 }
-fn scan_one_open(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn scan_one_open(manager: &mut DeviceManager) -> Option<Command> {
     scan_of(
         manager,
         &[AccessPoint {
@@ -386,7 +382,7 @@ fn scan_one_open(manager: &mut DeviceManager) -> Option<NetworkCommand> {
     );
     None
 }
-fn scan_with_a_saved_row(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn scan_with_a_saved_row(manager: &mut DeviceManager) -> Option<Command> {
     let mut list = ApList::from_ranked(&[neighbour(), cafe()]);
     let mut store = SavedNetworks::empty();
     let credentials =
@@ -435,7 +431,7 @@ fn carry_out(manager: &mut DeviceManager, command: NetworkCommand) {
 
 struct Move {
     name: &'static str,
-    run: fn(&mut DeviceManager) -> Option<NetworkCommand>,
+    run: fn(&mut DeviceManager) -> Option<Command>,
 }
 
 fn alphabet() -> Vec<Move> {
@@ -611,6 +607,7 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
             // state, so the sweep carries it out here.
             let mut outcomes = alloc::vec![next];
             if let Some(command) = command {
+                let Command::Network(command) = command;
                 let mut answered = outcomes[0].clone();
                 carry_out(&mut answered, command.clone());
                 outcomes.push(answered);

@@ -3,7 +3,7 @@
 use super::*;
 use crate::controls::Layer;
 use crate::model::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
-use crate::model::state::{Backed, Boot, NetworkCommand};
+use crate::model::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
 };
@@ -199,11 +199,14 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         if visited.last() != Some(&bench.act) {
             visited.push(bench.act);
         }
-        let mut asked: Vec<NetworkCommand> = Vec::new();
+        let mut asked: Vec<Command> = Vec::new();
         while let Ok(intent) = bus.try_receive() {
-            asked.extend(manager.apply_intent(intent));
+            if let Some(command) = manager.apply_intent(intent) {
+                asked.push(command);
+            }
         }
         for command in asked {
+            let Command::Network(command) = command;
             match command {
                 NetworkCommand::Leave => {
                     leaves += 1;

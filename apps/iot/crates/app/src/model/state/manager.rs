@@ -12,7 +12,9 @@ use crate::model::route::{DisplayPage, Navigator};
 
 use super::device::Effects;
 use super::translate::translate;
-use super::{Boot, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKind, PlaybackState};
+use super::{
+    Boot, Command, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKind, PlaybackState,
+};
 
 /// Single owner of device state.
 #[cfg_attr(test, derive(Clone))]
@@ -86,9 +88,12 @@ impl DeviceManager {
         self.state.lights[instance.min(MAX_LIGHTS - 1)] = state;
     }
 
-    /// One intent in, at most one command out. The input half is written to the record before
-    /// it is translated, so the page's answer is read against the state that gesture produced.
-    pub fn apply_intent(&mut self, intent: Intent) -> Option<NetworkCommand> {
+    /// Route one intent all the way to the state it moves, and answer with what the model
+    /// cannot do itself. The input half is written to the record before it is translated, so
+    /// the page's answer is read against the state that gesture produced. The caller hands
+    /// that answer to the systems in registration order, and the one that owns the boundary
+    /// takes it.
+    pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
         let action = match intent {
             Intent::Input(op) => {
                 self.apply_input(op);
@@ -115,12 +120,12 @@ impl DeviceManager {
         }
     }
 
-    /// Route one action intent to the domain that owns it, and answer with the command the
-    /// network task has to carry out. Each domain matches its own group, so the manager knows
-    /// the groups and never a domain's actions; every group but the Network page's asks for
-    /// nothing outside the core, and the caller that owns the worker is the only one that can
-    /// deliver a command, so it gets exactly one pass at it.
-    pub fn apply_action(&mut self, intent: ActionIntent) -> Option<NetworkCommand> {
+    /// Route one action intent to the domain that owns it, and answer with what that domain
+    /// asked the runtime for. Each domain matches its own group, so the manager knows the
+    /// groups and never a domain's actions; a domain that needs nothing outside the core
+    /// answers `None`, and the caller that owns a worker is the only one that can deliver a
+    /// command, so it gets exactly one pass at it.
+    pub fn apply_action(&mut self, intent: ActionIntent) -> Option<Command> {
         let command = match intent {
             ActionIntent::Invalid => None,
             ActionIntent::Page(intent) => self.apply_page(intent),
@@ -179,9 +184,9 @@ impl DeviceManager {
     }
 
     /// The page's transitions, which read the wiring, the link and the boot page together.
-    /// A landing answers with the boot decision the network task cannot observe, on the same
+    /// A landing answers with the boot decision the runtime cannot observe, on the same
     /// return path as every other command.
-    fn apply_page(&mut self, intent: PageIntent) -> Option<NetworkCommand> {
+    fn apply_page(&mut self, intent: PageIntent) -> Option<Command> {
         match intent {
             PageIntent::NextPage => {
                 self.state.nav.advance(self.state.backed);
@@ -197,7 +202,7 @@ impl DeviceManager {
         }
     }
 
-    fn land_after_splash(&mut self) -> Option<NetworkCommand> {
+    fn land_after_splash(&mut self) -> Option<Command> {
         if self.state.page() != DisplayPage::Splash {
             return None;
         }
@@ -217,9 +222,9 @@ impl DeviceManager {
         {
             self.announce(NoticeKind::Offline);
         }
-        Some(NetworkCommand::SplashOver {
+        Some(Command::Network(NetworkCommand::SplashOver {
             setup: self.setup_wanted,
-        })
+        }))
     }
 
     /// Whether the button asked for setup mode while the splash was up.

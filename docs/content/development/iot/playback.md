@@ -22,11 +22,11 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 `feed_loop` 只做 5 ms 节拍与一次内存写，spawn 到 S3 的 `FROM_CPU_INTR2` 上（`Priority2`）。`control_loop` 处理命令（声音在锁外解析、锁内只交给驱动）、走 I2C 的 `set_muted()`、以及把 `finished` 送回 intent 总线，留在协作式的 `FROM_CPU_INTR0` 上。
 
-命令从协调者经 `Workers.speaker.to`（`Channel<PlaybackCommand, 4>`）交进来，`control_loop` 只读这一个队列；放完的回报走 intent 总线，所以 `Speaker` 句柄没有 `from` 一侧。
+命令从协调者经 `Playback.to`（`Channel<PlaybackCommand, 4>`）交进来，`control_loop` 只读这一个队列；放完的回报走 intent 总线，所以 `Playback` 句柄没有 `from` 一侧。
 
 驱动由 `Box<dyn Speaker>` 共享，因此 `play()` 与 `feed()` 不会互相踩坏对方正在写的环。这正是 `Speaker` 要求 `Send + 'static`、且错误类型是具名的 `SpeakerFault` 而不是各实现自定义的原因（trait object 没法写下一个未具名的关联类型）。
 
-C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在同一个 executor 上 `join`，语义不变。两者的落点由 `playback::playback_tasks` 一处决定：`run` 只 join 它一个，并把 `Workers.speaker` 按值传进去，所以「spawn 而不是 join」这条规则和它解释的两个循环住在同一个文件里，而不是散在组合点上。
+C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在同一个 executor 上 `join`，语义不变。两者的落点由 `playback::playback_tasks` 一处决定：`run` 只 join 它一个，并把 `Playback` 按值传进去，所以「spawn 而不是 join」这条规则和它解释的两个循环住在同一个文件里，而不是散在组合点上。
 
 `ActionIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
 

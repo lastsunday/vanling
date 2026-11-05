@@ -3,8 +3,8 @@ title = "Audio Implementation Record"
 weight = 40
 sort_by = "weight"
 [extra]
-source_file_hash = "5815ea2832e3af972daa6e3f624c9d2d304f4091"
-translated_at = "2026-11-01T00:00:00Z"
+source_file_hash = "d675cd46a318b4156acfc062b2436c7d5a25415a"
+translated_at = "2026-11-05T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

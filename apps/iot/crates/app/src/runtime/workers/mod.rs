@@ -2,9 +2,11 @@
 //! vocabulary they share: one file per worker, and the shapes those handles are made of.
 //!
 //! A worker is a task that owns something the coordinator must not block on: the drivers it
-//! polls, the codec's I2C, the radio's stack. Each field of [`Workers`] is that worker's side
-//! of the boundary; adding a worker adds a field and a file, not a `TO_X`/`FROM_X` pair at the
-//! call site. [`inbox`] holds the two shapes the handles are made of and names no worker.
+//! polls, the codec's I2C, the radio's stack. Each handle is that worker's side of the
+//! boundary; the system that drives it holds the handle, so adding a worker adds a file, one
+//! `register` at the composition root, and — if it publishes asynchronously — one [`WAKE`]
+//! poke. There is no shared handle struct to edit. [`inbox`] holds the two shapes the handles
+//! are made of and names no worker.
 //!
 //! Reports go the other way as intents, so the only thing a worker publishes here is state it
 //! owns, such as the scan list. Compiled with and without `wifi`: the coordinator holds these
@@ -20,26 +22,13 @@ pub(crate) use self::input::CAPTURE;
 pub use self::input::{CaptureWindow, Input, SharedDemand};
 pub(crate) use self::network::COMMAND_SLOTS;
 pub use self::network::{NETWORK, Network, NetworkInbox, PageWatch, Scan};
+pub(crate) use self::playback::PLAYBACK;
 pub use self::playback::{Playback, PlaybackQueue};
 
-use self::playback::PLAYBACK;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 
-/// The coordinator's handles on every worker, in one value.
-#[derive(Clone, Copy)]
-pub struct Workers<'a> {
-    pub input: Input<'a>,
-    pub playback: Playback,
-    pub network: Network,
-}
-
-impl<'a> Workers<'a> {
-    /// The handles as the composition root builds them. One constructor, so a new worker
-    /// cannot be added to the struct and wired in one place but not the other.
-    pub fn new(to: &'a SharedDemand) -> Self {
-        Self {
-            input: Input { to, from: &CAPTURE },
-            playback: PLAYBACK,
-            network: NETWORK,
-        }
-    }
-}
+/// What a parked frame waits on. A worker that publishes something the coordinator must see
+/// before the next paced frame pokes it; the loop waits here rather than on each inbox, so a
+/// new worker never changes the loop.
+pub(crate) static WAKE: Signal<CriticalSectionRawMutex, ()> = Signal::new();

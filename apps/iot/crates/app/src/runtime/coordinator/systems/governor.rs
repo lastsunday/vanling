@@ -3,7 +3,7 @@
 
 use iot_core::demand::{ClockGovernor, ClockSink};
 
-use super::{Frame, System};
+use crate::runtime::system::{Frame, System};
 
 /// The governor is loop-local: a second `run` in one process must not answer for the first.
 pub(crate) struct GovernorSystem<'a, C: ClockSink> {

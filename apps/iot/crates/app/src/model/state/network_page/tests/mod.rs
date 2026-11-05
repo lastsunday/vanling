@@ -65,7 +65,7 @@ fn on_network_page() -> DeviceManager {
     })
 }
 
-fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) -> Option<NetworkCommand> {
+fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) -> Option<Command> {
     let operation = op(InputEvent::Gesture(GestureEvent::Tap {
         id: 0,
         x,
@@ -78,30 +78,32 @@ fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) -> Option<
     manager.apply_action(business)
 }
 
-fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) -> Option<NetworkCommand> {
+fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
     tap_on_at(manager, x, y, 40)
 }
 
-fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<NetworkCommand> {
+fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
     let y = (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16;
     tap_on(manager, 30, y)
 }
 
-fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) -> Option<NetworkCommand> {
+fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) -> Option<Command> {
     manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Key {
         key,
         at_ms,
     }))
 }
 
-fn key(manager: &mut DeviceManager, key: Key) -> Option<NetworkCommand> {
+fn key(manager: &mut DeviceManager, key: Key) -> Option<Command> {
     key_at(manager, key, 40)
 }
 
-fn handed_over(command: Option<NetworkCommand>) -> Option<Credentials> {
+fn handed_over(command: Option<Command>) -> Option<Credentials> {
     match command {
-        Some(NetworkCommand::Join(JoinRequest::Typed(credentials))) => Some(credentials),
-        Some(NetworkCommand::Join(JoinRequest::Held(_))) => {
+        Some(Command::Network(NetworkCommand::Join(JoinRequest::Typed(credentials)))) => {
+            Some(credentials)
+        }
+        Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(_)))) => {
             panic!("the page handed over a name where a passphrase was expected")
         }
         _ => None,
@@ -137,7 +139,7 @@ fn eight_rows() -> DeviceManager {
     manager
 }
 
-fn slide_list(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
     let operation = op(InputEvent::Gesture(GestureEvent::Swipe {
         id: 0,
         direction: SwipeDirection::Up,
@@ -153,7 +155,7 @@ fn slide_list(manager: &mut DeviceManager) -> Option<NetworkCommand> {
     manager.apply_action(business)
 }
 
-fn tap_strip(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_strip(manager: &mut DeviceManager) -> Option<Command> {
     tap_on(
         manager,
         160,
@@ -161,7 +163,7 @@ fn tap_strip(manager: &mut DeviceManager) -> Option<NetworkCommand> {
     )
 }
 
-fn tap_strip_left(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn tap_strip_left(manager: &mut DeviceManager) -> Option<Command> {
     tap_on(
         manager,
         40,
@@ -169,7 +171,7 @@ fn tap_strip_left(manager: &mut DeviceManager) -> Option<NetworkCommand> {
     )
 }
 
-fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<NetworkCommand> {
+fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
     let y = (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16;
     let operation = op(InputEvent::Gesture(GestureEvent::LongPress {
         id: 0,
@@ -182,10 +184,7 @@ fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<NetworkCommand>
     manager.apply_action(business)
 }
 
-fn tap_answer(
-    manager: &mut DeviceManager,
-    choice: controls::DialogChoice,
-) -> Option<NetworkCommand> {
+fn tap_answer(manager: &mut DeviceManager, choice: controls::DialogChoice) -> Option<Command> {
     let box_ = controls::dialog_answer_box(choice);
     tap_on(
         manager,
@@ -207,7 +206,7 @@ fn link_at(manager: &mut DeviceManager, phase: LinkPhase, ssid: &[u8]) {
     })));
 }
 
-fn long_press_the_button(manager: &mut DeviceManager) -> Option<NetworkCommand> {
+fn long_press_the_button(manager: &mut DeviceManager) -> Option<Command> {
     let operation = op(InputEvent::Button(ButtonEvent::LongPress));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());

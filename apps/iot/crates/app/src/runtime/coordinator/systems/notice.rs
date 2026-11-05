@@ -1,6 +1,6 @@
 //! Time-driven notices, advanced from the wall clock.
 
-use super::{Frame, System};
+use crate::runtime::system::{Frame, System};
 
 pub(crate) struct NoticeSystem;
 

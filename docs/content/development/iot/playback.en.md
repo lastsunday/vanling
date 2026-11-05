@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "6c90637cb8f3b078999d5c39e519011f4cce5d15"
-translated_at = "2026-10-31T00:00:00Z"
+source_file_hash = "70f436d5ae131727e3f61c52481afeab931f3065"
+translated_at = "2026-11-05T00:00:00Z"
 +++
 
 # Playback Semantics
@@ -27,11 +27,13 @@ That loop is split into two tasks on two executors, because a cadence and a bloc
 
 `feed_loop` does nothing but the 5 ms cadence and one memory write, and is spawned onto the S3's `FROM_CPU_INTR2` at `Priority2`. `control_loop` handles commands (a sound is parsed outside the lock and only handed to the driver inside it), the I2C behind `set_muted()`, and reporting `finished` back on the intent bus, and stays on the cooperative `FROM_CPU_INTR0`.
 
+Commands reach it from the coordinator through `Playback.to` (`Channel<PlaybackCommand, 4>`), and `control_loop` reads that one queue; completion travels back over the intent bus, so the `Playback` handle has no `from` side.
+
 The driver is shared as a `Box<dyn Speaker>`, so `play()` and `feed()` cannot tread on the ring the other is writing.
 
 That is why `Speaker` demands `Send + 'static`, and why its error is the named `SpeakerFault` rather than each implementation's own type: a trait object cannot spell an unnamed associated type.
 
-The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join`ed on one executor, with the same semantics. Where the feed lands is decided in one place, `playback::playback_tasks`, which `run` joins as a single future — so "spawned, not joined" lives beside the two loops it explains instead of at the composition point.
+The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join`ed on one executor, with the same semantics. Where the feed lands is decided in one place, `playback::playback_tasks`, which `run` joins as a single future and is handed `Playback` by value — so "spawned, not joined" lives beside the two loops it explains instead of at the composition point.
 
 `ActionIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
 

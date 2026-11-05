@@ -24,6 +24,12 @@ pub struct Input<'a> {
     pub from: &'static CaptureWindow,
 }
 
+impl<'a> Input<'a> {
+    pub fn new(to: &'a SharedDemand) -> Self {
+        Self { to, from: &CAPTURE }
+    }
+}
+
 impl Input<'_> {
     /// The coordinator's half of the demand slot: the cell holds a `Copy` record, and the feed
     /// interrupt takes the same lock, so the section is one compare and at most one bounded copy.
@@ -51,7 +57,9 @@ impl CaptureWindow {
 
     /// The driver's half: the newest window replaces the one nobody took.
     pub(crate) fn push(&self, sample: AudioSample) {
-        let _ = self.0.try_send(sample);
+        if self.0.try_send(sample).is_ok() {
+            super::WAKE.signal(());
+        }
     }
 }
 

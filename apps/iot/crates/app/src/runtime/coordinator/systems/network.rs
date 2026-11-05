@@ -1,24 +1,26 @@
 //! The network worker's side of a frame: the page it watches, the scan list coming back, and
 //! the changes worth a log line.
 
-use crate::model::state::{DeviceManager, DeviceState, DisplayPage, LampLine, LightState};
+use crate::model::state::{Command, DeviceManager, DeviceState, DisplayPage, LampLine, LightState};
 use iot_core::drivers::network::SetupHost;
 
 use crate::runtime::workers::Network;
 
-use super::{Frame, System};
+use crate::runtime::system::{Frame, System};
 
-/// What the coordinator publishes to the network worker and the changes worth a log line, in
-/// the order a frame sees them.
+/// What the coordinator observes about the network boundary, and the handle it drives it
+/// through, in the order a frame sees them.
 pub(crate) struct NetworkSystem {
+    network: Network,
     page: DisplayPage,
     front: Option<SetupHost>,
     lamp: Option<LightState>,
 }
 
 impl NetworkSystem {
-    pub(crate) fn new(state: &DeviceState) -> Self {
+    pub(crate) fn new(state: &DeviceState, network: Network) -> Self {
         Self {
+            network,
             page: state.page(),
             front: state.network.link.mode.host(),
             lamp: state.link_notice(),
@@ -27,9 +29,9 @@ impl NetworkSystem {
 
     /// Runs once per frame: the page goes out, and the page it changed to, the setup host and
     /// the lamp say so once.
-    fn observe(&mut self, network: &Network, state: &DeviceState) {
+    fn observe(&mut self, state: &DeviceState) {
         let page = state.page();
-        network.page.publish(page);
+        self.network.page.publish(page);
         if page != self.page {
             log::info!("[INPUT] page is now {page:?}");
             self.page = page;
@@ -49,8 +51,8 @@ impl NetworkSystem {
     }
 
     /// Hands the worker's newest scan list to state, when it published one.
-    fn drain(&mut self, network: &Network, manager: &mut DeviceManager) {
-        if let Some(list) = network.scan.take() {
+    fn drain(&mut self, manager: &mut DeviceManager) {
+        if let Some(list) = self.network.scan.take() {
             manager.apply_scan(list);
         }
     }
@@ -58,7 +60,14 @@ impl NetworkSystem {
 
 impl System for NetworkSystem {
     fn tick(&mut self, frame: &mut Frame<'_>) {
-        self.observe(&frame.workers.network, frame.manager.state_ref());
-        self.drain(&frame.workers.network, frame.manager);
+        self.observe(frame.manager.state_ref());
+        self.drain(frame.manager);
+    }
+
+    fn intent(&mut self, _frame: &mut Frame<'_>, command: &mut Option<Command>) {
+        match command.take() {
+            Some(Command::Network(command)) => self.network.commands.publish(command),
+            other => *command = other,
+        }
     }
 }

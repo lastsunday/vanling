@@ -138,7 +138,7 @@ fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
     long_press_the_button(&mut manager);
     assert_eq!(
         manager.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
-        Some(NetworkCommand::SplashOver { setup: true }),
+        Some(Command::Network(NetworkCommand::SplashOver { setup: true })),
         "one answer: the page ended, and setup mode was asked for on it"
     );
     assert_eq!(
@@ -157,7 +157,9 @@ fn a_boot_through_the_splash_tells_the_link_that_setup_was_not_asked_for() {
         .push(DisplayPage::Splash, booting.state.backed);
     assert_eq!(
         booting.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
-        Some(NetworkCommand::SplashOver { setup: false }),
+        Some(Command::Network(NetworkCommand::SplashOver {
+            setup: false
+        })),
         "the boot's own landing is news once"
     );
 }

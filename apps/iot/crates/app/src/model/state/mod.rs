@@ -5,6 +5,8 @@ mod audio;
 
 mod band;
 
+mod command;
+
 mod device;
 
 mod entry;
@@ -36,6 +38,8 @@ pub use self::audio::{AudioDiagnostics, AudioState, AudioView};
 pub use iot_core::drivers::audio::AudioPhase;
 
 pub use self::band::{Band, each_band, joining};
+
+pub use self::command::Command;
 
 pub use self::device::DeviceState;
 

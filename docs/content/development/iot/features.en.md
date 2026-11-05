@@ -2,8 +2,8 @@
 title = "Cargo Feature Criteria and Cohesion"
 weight = 20
 [extra]
-source_file_hash = "a2d20703eb4a48d366f31faea582d456175bc25f"
-translated_at = "2026-11-03T00:00:00Z"
+source_file_hash = "f12ace0dede01825fcd9a2f13227392b43b717da"
+translated_at = "2026-11-05T00:00:00Z"
 +++
 
 # Cargo Feature Criteria and Cohesion

@@ -28,23 +28,23 @@ fn the_strip_trades_a_link_for_setup_mode_and_closes_it_again() {
     tap_strip(&mut manager);
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Act),
-        Some(NetworkCommand::Leave),
+        Some(Command::Network(NetworkCommand::Leave)),
         "the question is asked, and answered"
     );
 
     setup_mode(&mut manager, true);
     assert_eq!(
         tap_strip_left(&mut manager),
-        Some(NetworkCommand::LeaveSetup {
+        Some(Command::Network(NetworkCommand::LeaveSetup {
             from: SetupHost::AccessPoint
-        }),
+        })),
         "a device that keeps a network has a way back to it"
     );
     assert_eq!(
         tap_strip(&mut manager),
-        Some(NetworkCommand::SwitchHost {
+        Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::AccessPoint
-        })
+        }))
     );
 }
 
@@ -63,9 +63,9 @@ fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
     })));
     assert_eq!(
         manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
-        Some(NetworkCommand::SwitchHost {
+        Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::Panel
-        }),
+        })),
         "the cell is still the way in"
     );
 
@@ -116,9 +116,9 @@ fn a_device_with_nothing_saved_has_only_the_front_switch_on_the_access_points_fr
     setup_mode(&mut manager, false);
     assert_eq!(
         tap_strip_left(&mut manager),
-        Some(NetworkCommand::SwitchHost {
+        Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::AccessPoint
-        }),
+        })),
         "the strip's one action is the other host"
     );
 }
@@ -135,7 +135,7 @@ fn the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back() 
     })));
     assert_eq!(
         tap_strip_left(&mut manager),
-        Some(NetworkCommand::ScanNow),
+        Some(Command::Network(NetworkCommand::ScanNow)),
         "a device with no way back still asks the radio to look around"
     );
     assert!(
@@ -145,9 +145,9 @@ fn the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back() 
 
     assert_eq!(
         tap_strip(&mut manager),
-        Some(NetworkCommand::SwitchHost {
+        Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::Panel
-        }),
+        })),
         "the right half is the switch"
     );
 }
@@ -183,10 +183,10 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
     setup_mode(&mut manager, true);
     assert_eq!(
         tap_answer(&mut manager, controls::DialogChoice::Keep),
-        Some(NetworkCommand::SetupOpen {
+        Some(Command::Network(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: true
-        })
+        }))
     );
 
     manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
