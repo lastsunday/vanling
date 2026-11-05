@@ -1199,6 +1199,32 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 `[未完成]`：C6 重新配一次网后，长按 Ambient 应能看到页面灯换档（状态灯让位），这条要人看。两块板的连接已由台架确认正常（2026-10-24；S3 已配网，**自动重连这一条本轮没有串口读数**）。C6 的 `creds` 有 1 条 —— 2026-10-24 的复位自动重连读数见上一节（`[CREDS] 1 saved network(s)` → `joining` → `associated ... channel 11` → `Connected`），不再是被测试擦空的状态。
 
+## 第一次保存凭据后的整机死锁；列表的已存标记不再等下一轮扫描（`[实测]`/`[测试]`，2026-11-05/06）
+
+两个缺陷叠在面板的同一条路上：从面板打一次口令、**第一次**把网络存进 `creds`，几毫秒后整颗芯片停住；修掉之后，离开链路再点回那一行，页面又回到「要你重打口令」。
+
+### `multicore_auto_park()` 在 esp-rtos 下把两颗核一起卡死
+
+- **现象**：面板打字 → `OK` → `JOINING` 框起（0.3 s）→ `associated` → `this network is saved for the next boot` → 之后**两颗核都不再打一行**：没有 panic、没有看门狗复位；`[PLAY]` 的 2 s 节奏、`[INPUT]` 的 5 s 报表、`[DISPLAY]` 的重画全部停在同一毫秒，USB-JTAG 也一起不答。重启后 `creds` 里是一条**完整有效**的记录 —— 写盘本身成功了，死的是写完之后。
+- **根因**：esp-rs/esp-hal#6438。`esp-storage` 的 `FlashStorage::multicore_auto_park()` 在**每次** ROM 调用前后各停/放一次另一颗核，而两次停核之间（以及最后一次 ROM 调用返回后、`unpark` 之前）本核的中断是开着的。挂起的中断于是在本核上跑，而 APP 核仍被硬件 stall；中断要拿的东西若正被 APP 核持有，两边互等，谁也回不来。台架越忙（音频喂数 + 显示重画）越容易撞上，正是本应用的样子。
+- **修法**（issue 里的 A 方案，reporter 已验）：把「停另一核 → 写 → 放另一核」整个 span 包在 `critical_section` 里，本核在这段时间不接中断。落在 `iot-chip-esp::with_other_core_parked`：S3 用 `CpuControl::{park_core, unpark_core}` 停 `Cpu::other()` 里 `is_running` 的那颗；C6 单核，直接执行 `f`。`bsp-esp` 的 `CredentialRegion::{erase, write}` 是唯一包住它的地方（凭据库是唯一会写 flash 的人）。
+- **板级那行 `.multicore_auto_park()` 保留**：我们先把 APP 核停下来，`is_running` 于是为假，`esp-storage` 自己的停核变成 no-op；它不是白留 —— 以后若有别的调用者绕过 `CredentialRegion`，那层仍是兜底。
+- **代价是量出来的**：4,096 B 擦除 **3,939 µs**、124 B 写入 **6,392 µs**（写入含 `FlashStorage` 自己的读-改-擦-写）。合计约 10 ms 的本核关中断窗口；同一轮里 `[PLAY]` 仍是 400 feeds / 2 s（100%）、`[INPUT]` 的 worst hold 1–2 ms、`[DISPLAY]` 每 3 s 照常重画，75 s 观察里没有一次欠载。
+- **为什么不升依赖**：`esp-storage` 最新发行仍是 0.10.0（2026-08-26），修复未发布。上游发版后删掉 `with_other_core_parked` 与这两处包裹即可；在那之前它是本仓唯一一处 `esp_hal::system::CpuControl` 的直接使用者。
+  顺带一条**没做**的优化：一次保存里 `Store::write_out` 先擦 4 KiB，`FlashStorage::write` 内部又对自己的扇区做一次读-改-擦-写，也就是**同一块被擦两次**。它不在这一轮的死锁路径上，且要动 `Store` 的槽格式，留作以后。
+
+### 保存之后列表的已存标记是旧的，点那一行又问一次口令
+
+- **现象**（bench 的 `RejoinTheRowJustLeft` 卡住）：`LEAVE` 后几十毫秒内点回刚离开的那一行，`pick_row` 读到 `saved = false` → 走「没存过」那一支：升键盘、`entry = Some(空草稿)`，链路再也不回来；页面看上去停在列表上，什么也没发生。这正是「点已存的行又让你重打一遍」，也是本轮报来的「点 `OK` 之后停在列表上」的另一面。
+- **根因**：从面板打字那条路是 `browse()` 拿到的凭据，`hold()` 由 `link()` 在 browse 返回**之后**调用，手里的 `history` 是 `None`。写盘成功后 `remark_and_publish` 原来带着 `&& let Some(history)` 的门 —— 没有 history 就什么也不发，页面继续画 browse 那轮扫描的列表（那时库里还没有这条，`saved` 全是 0），要等**下一轮扫描**（实测 0.8 s，浏览态最长 5 s）才纠正。台架恰好在这个窗口里点了。第四轮那次能过，但同一段日志里没有扫描读数，**它为什么没撞上这个窗口无法从日志复原**；同一把 walk 的两次读数本来也不该靠运气。
+- **修法**：`Scan::remark` 把**页面正在显示的那份列表**（`Retained` 槽里已有，`peek()` 取）重新按库里的标记一遍再发；`remark_and_publish(history: Option<&mut ScanHistory>, ...)` 在有会话历史时仍走 `history.marked()`（保持 `ScanHistory` 的轮次簿记与页面一致），没有历史时走 `Scan::remark`。保存与忘记两条路现在都无条件经过它。
+- **`[测试]`**：`runtime::workers::network::tests::a_save_marks_the_list_the_page_is_already_showing`（发布一份未标记的列表 → `remark(Some(store))` → 那一行带标记；`remark(None)` → 标记撤回），`moon run iot:test` 350 条全过。
+- **`[实测]`**（`creds` 擦空、S3 一次开机、同一条 28 击 walk）：`18.431 s` `the link is down and the page is back on the list` → `18.433 s` `tapping band 0, the row the link was just taken off…` → `pick … saved Some(true) phase Off mode Setup { host: Panel, cancellable: true }`（临时探针读数，交前已删）→ `19.245 s` `the saved row brought the link back up with the copy on the part, and the page asked for nothing` → 继续 `AskToLeave → KeepTheLink → LeaveAsk → LeaveGo → AskToForget → Forget → ReopenTheRowJustLeft → DropTheKeyboard → Rescan`，`Act::Done`，没有一条 `120 passes`。同一份镜像在修前同一点是 `saved Some(false)`，键盘起来、走不下去。
+
+### `LEAVE` 之后工具条是 `CANCEL` 而不是 `SCAN`：这是设计
+
+有已存网络时离开链路会进 `Setup { host: Panel, cancellable: true }`；工具条左格此时是 `CANCEL`（退出设置模式、回去连设备保留的那条网络），`SCAN` 只在浏览态、或设置模式没有回头路（`cancellable = false`）时出现 —— 判据与理由见「设置模式的两档前端」里的「`CANCEL` 只在有回头路时出现」。离开后想看新列表不必按 `SCAN`：设置模式的扫描每 5 s 自己走一轮。这一条不改，本轮把读数补齐在这里。
+
 ## 待办（`[未完成]`）
 
 1. **两颗芯片的驱动堆余量都只剩约三成**（C6 14,124 B / 49,152 B = 28.7%；S3 15,820 B / 49,152 B = 32.2%，两颗都是实测值）。谁调大 `DYNAMIC_RX_BUFFERS` 或 `STATIC_RX_BUFFERS`，两块板就一起付账 —— 要么在改那两个常量的同一个提交里把两颗都量一次，要么把该板的份额抬到 56 KiB（文档区间的高端：S3 的主栈有余量付这 8 KiB，C6 没有）。
@@ -1208,7 +1234,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 5. **产品页第二片：面板键盘 + 凭据持久化 + 已存标记与忘记**。三片都已落地：键盘与交互见「产品页」，凭据见「凭据落在哪」，已存 `*` 与长按忘记见「离开后点回那一行、以及一次丢掉的列表修正」，点已存行用库里的口令见 ⑦。还剩下的：
 
     - **① 真机验证**：**整条「点一行 → 输口令 → OK → 关联 → 拿到地址 → 断开 → 忘记」已由 `IOT_PANEL_BENCH` 构建在板上走通**，也含「链路在飞时点那一行没有反应」「打字态不画工具条」「连接框在射频答复之前就画出来」（见「按面板路径打字」「工具条、确认框与忘记」「连上时点行不接、弹窗盖住列表」「打字态没有工具条、连接中有一个框」，全程不需要手指），以及第五轮那条「点回已存的那一行 → 库那份口令自己把链路接回来 → 页面什么都没问」（见「点已存的一行就用库里的口令」）。剩下非得人来的只有两件：4×4 键、列表行与工具条的**触摸手感**（含第四行键现在不再被工具条压着）、纯黑底色与背光 100%、以及连接框的观感与它出现/消失的时机 —— 这些是像素与触感。弹窗**盖没盖住列表**与**连接框挂没挂在那儿**都不是这两件之一 —— 它们是宿主机可测的事实（`Part::hidden`、`Part::showing`、`page::walk`、`Part::IN_ORDER`、`stamp::fill_surface`）。
-    - **② 存**（**已落地**，格式、槽规则与写盘策略见「凭据落在哪」）：接线撞上的三件事都在不烧板的前提下定完 —— ① **MD5 条目 espflash 自己会写**：表里前三条 96 B 的 MD5 = `5b7fb69b103d49aee6dd86b70ccdddcf`，`esp-bootloader-esp-idf` 的 `validation` 找的正是它，**不用改**；② **双核写**：本应用从不启动第二核，默认策略今天也能写，仍选 `multicore_auto_park()`（每次写前停另一核、写完放开，几毫秒），换来以后真起第二核不会踩到；③ **多一条 `data` 分区**：子类型必须写**名字**（`creds,data,undefined,,0x2000,` 转出来是 `01 06`），写十六进制会让 `esp-idf-part` 在 `unwrap()` 上 panic。板上三次开机验过（空盘写下来、以及**产品镜像不带任何构建输入自己连回已存网络**，日志见「凭据落在哪」）。
+    - **② 存**（**已落地**，格式、槽规则与写盘策略见「凭据落在哪」）：接线撞上的三件事都在不烧板的前提下定完 —— ① **MD5 条目 espflash 自己会写**：表里前三条 96 B 的 MD5 = `5b7fb69b103d49aee6dd86b70ccdddcf`，`esp-bootloader-esp-idf` 的 `validation` 找的正是它，**不用改**；② **双核写**：**本应用确实启动第二核**（面板核），所以 `esp-storage` 的 `multicore_auto_park()` 不是保险而是必须；它在 esp-rtos 下会与本核中断互锁，本仓因此把整个停核 span 包进 `critical_section`（`with_other_core_parked`，见「第一次保存凭据后的整机死锁」）。板层那行 `.multicore_auto_park()` 保留为兜底；③ **多一条 `data` 分区**：子类型必须写**名字**（`creds,data,undefined,,0x2000,` 转出来是 `01 06`），写十六进制会让 `esp-idf-part` 在 `unwrap()` 上 panic。板上三次开机验过（空盘写下来、以及**产品镜像不带任何构建输入自己连回已存网络**，日志见「凭据落在哪」）。
     - **⑥ 已存网络的标识与忘记**（**已落地**）：列表里给已存网络画 `*`、长按那一行 = 忘记（`Touch::Hold` → `BusinessIntent::AskForget(ap)`，只对已存行弹 `FORGET` 确认框）。实现没有走「把名字集经一个通道送进 `DeviceState`」那条路：S3 静态内存墙下 `SavedNetworks`（约 980 B）在 app 里落成值或 `&EMPTY` 都会顶爆，于是**掩码跟着列表自己走**（`ApList.saved: u8`，一位一行），`ScanHistory::{observe, marked}` 收 `Option<&SavedNetworks>` 以免在 app 里造值。代价是两份列表各自持一份，`SCAN` 通道因此必须投得进去也丢不掉（见第四轮）。擦除走 `Store::forget`，板上验过（见「凭据落在哪」第 4 次）。
     - **③ 细节**（已完成）：选中行整条反色、失败词画在打字态中槽、失败后自动重开键盘并保留草稿、`SHOW`/`HIDE` 回显、开放网络的 `OPEN` 标记与免键盘直连。
     - **④ 失败分档的真机映射**（已实测）：错口令 → 驱动 reason `FourWayHandshakeTimeout` → `NetworkError::Credentials` → 面板画 `AUTH`，从交出凭据到被拒 **37.6 s**（等的是驱动自己那次四步握手的超时）。映射表 `kind_of_disconnect` 只认能辩护的几种（`NoAccessPointFound|BeaconTimeout` → `NotFound`、`AuthenticationFailed|FourWayHandshakeTimeout|HandshakeTimeout` → `Credentials`），其余 `Driver`；`NotFound` 那半仍**未实测**（要一次把 AP 关掉的台架）。

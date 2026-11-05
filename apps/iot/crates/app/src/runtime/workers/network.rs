@@ -11,7 +11,7 @@ use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 use crate::model::state::{DisplayPage, NetworkCommand};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use iot_core::drivers::network::ApList;
+use iot_core::drivers::network::{ApList, SavedNetworks};
 
 use super::inbox::{Inbox, Retained};
 
@@ -82,6 +82,18 @@ impl Scan {
         super::WAKE.signal(());
     }
 
+    /// Re-marks the list the page is already showing against the store, without waiting for the
+    /// next scan round: a save the panel made is the page's own row, and a tap on it seconds
+    /// later must join with the copy the part now holds rather than ask for a passphrase again.
+    /// A list that is not up says nothing to re-mark.
+    pub fn remark(&self, saved: Option<&SavedNetworks>) {
+        let Some(mut list) = self.list.peek() else {
+            return;
+        };
+        list.mark_saved(saved.map_or(0, |networks| networks.mask(&list)));
+        self.publish(&list);
+    }
+
     /// One successful scan round finished, whether or not its list differed from the last. The
     /// release pairs with [`Self::generation`], so a reader that sees round N reads a list from N
     /// or later.
@@ -121,7 +133,7 @@ impl PageWatch {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use iot_core::drivers::network::{AccessPoint, Ssid};
+    use iot_core::drivers::network::{AccessPoint, Credentials, Ssid};
 
     fn round_list(saved: bool) -> ApList {
         let mut list = ApList::from_ranked(&[AccessPoint {
@@ -162,6 +174,27 @@ mod tests {
         assert!(
             scan.take().is_some(),
             "the panel takes the list once, as before"
+        );
+    }
+
+    #[test]
+    fn a_save_marks_the_list_the_page_is_already_showing() {
+        let scan = Scan::new();
+        scan.publish(&round_list(false));
+        let mut store = SavedNetworks::empty();
+        store.remember(&Credentials::from_text("target", "ab").expect("a credential"));
+
+        scan.remark(Some(&store));
+        assert!(
+            scan.peek().expect("the list is still there").is_saved(0),
+            "the row the panel just saved is marked on the list it is already drawing, without \
+             waiting for the next scan round"
+        );
+
+        scan.remark(None);
+        assert!(
+            !scan.peek().expect("the list is still there").is_saved(0),
+            "and a store that no longer holds it takes the mark back"
         );
     }
 }

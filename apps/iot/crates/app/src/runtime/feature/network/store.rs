@@ -69,18 +69,27 @@ pub(super) fn forget<R: FlashRegion>(
         },
         None => log::warn!("[WIFI] the panel asked to forget a network, but this board keeps none"),
     }
-    if let Some(history) = history {
-        remark_and_publish(history, saved.as_deref());
-    }
+    remark_and_publish(history, saved.as_deref());
 }
 
 /// Hands the re-marked list to both consumers at once. A refresh that reached one and not the
 /// other would leave the phone and the panel showing different lists.
+///
+/// The session's own history is the better source while it exists: it keeps the round's
+/// bookkeeping in step with the marks. Outside a session — the browse pass that named the
+/// network a moment before it was written — there is no history left, and the list the page is
+/// already drawing is the one to mark.
 pub(super) fn remark_and_publish<R: FlashRegion>(
-    history: &mut ScanHistory,
+    history: Option<&mut ScanHistory>,
     saved: Option<&Store<R>>,
 ) {
-    if let Some(list) = history.marked(saved.map(|store| store.networks())) {
-        NETWORK.scan.publish(&list);
+    let marks = saved.map(|store| store.networks());
+    match history {
+        Some(history) => {
+            if let Some(list) = history.marked(marks) {
+                NETWORK.scan.publish(&list);
+            }
+        }
+        None => NETWORK.scan.remark(marks),
     }
 }

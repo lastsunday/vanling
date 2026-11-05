@@ -262,6 +262,34 @@ pub fn start_second_core<const STACK_SIZE: usize>(
     });
 }
 
+/// Holds the other core still, with this core's interrupts masked, for a span that writes
+/// flash.
+///
+/// `esp-storage`'s `multicore_auto_park` parks around each ROM call and lets interrupts back on
+/// in between — including after the last call, before it unparks. A pending scheduler interrupt
+/// then runs on this core while the other core is still stalled, and if that core was stalled
+/// holding what the interrupt wants to take, both wait on each other forever
+/// (esp-rs/esp-hal#6438; `[实测]` this board stops dead a few milliseconds after a credential is
+/// first saved, both cores, no panic). Masking this core for the whole span leaves nothing to
+/// run until the other core is running again.
+pub fn with_other_core_parked<R>(f: impl FnOnce() -> R) -> R {
+    critical_section::with(|_| {
+        // SAFETY: `esp_rtos::start_second_core` consumed `CPU_CTRL`, and nothing else writes
+        // the park registers after boot. `park_core` asks its caller to name a core other than
+        // the one running this, which is exactly what `Cpu::other` yields.
+        let mut control = esp_hal::system::CpuControl::new(unsafe { CPU_CTRL::steal() });
+        let held = esp_hal::system::Cpu::other().find(|core| esp_hal::system::is_running(*core));
+        if let Some(core) = held {
+            unsafe { control.park_core(core) };
+        }
+        let out = f();
+        if let Some(core) = held {
+            control.unpark_core(core);
+        }
+        out
+    })
+}
+
 const PANEL_CORE_STACK_BYTES: usize = 24 * 1024;
 
 /// What the second core's stack is filled with before the core starts, so the deepest word it

@@ -62,12 +62,12 @@ impl FlashRegion for CredentialRegion<'_> {
 
     fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), RegionError> {
         let at = self.address(offset, bytes.len() as u32)?;
-        self.flash.write(at, bytes).map_err(refusal)
+        iot_chip_esp::with_other_core_parked(|| self.flash.write(at, bytes)).map_err(refusal)
     }
 
     fn erase(&mut self, offset: u32, bytes: u32) -> Result<(), RegionError> {
         let at = self.address(offset, bytes)?;
-        self.flash.erase(at, at + bytes).map_err(refusal)
+        iot_chip_esp::with_other_core_parked(|| self.flash.erase(at, at + bytes)).map_err(refusal)
     }
 }
 

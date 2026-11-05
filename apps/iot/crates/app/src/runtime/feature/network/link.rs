@@ -307,8 +307,8 @@ where
                 }
             }
         }
-        if saved_now && let Some(history) = history.as_deref_mut() {
-            remark_and_publish(history, saved.as_deref());
+        if saved_now {
+            remark_and_publish(history.as_deref_mut(), saved.as_deref());
         }
 
         let address = match select(

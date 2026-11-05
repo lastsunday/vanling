@@ -40,3 +40,11 @@ pub fn set_speed(_speed: Speed) -> Speed {
 pub(crate) const fn clock_mhz(_speed: Speed) -> u32 {
     160
 }
+
+/// Runs `f` as it stands: this part has one core, so a flash write has nothing to hold still.
+///
+/// The name and the contract are shared with the two-core parts, where the same call parks the
+/// APP core for the span — see its `esp32s3` counterpart for why that is not optional there.
+pub fn with_other_core_parked<R>(f: impl FnOnce() -> R) -> R {
+    f()
+}

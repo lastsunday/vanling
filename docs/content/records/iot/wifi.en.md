@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "947dc8de943016816da81012fe71ebf58d884ff2"
-translated_at = "2026-11-05T00:00:00Z"
+source_file_hash = "04c077749f80af9728021628acc483a280970ee3"
+translated_at = "2026-11-06T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -2632,6 +2632,32 @@ The C6's `creds` holds one network — the 2026-10-24 reset reconnected (`[CREDS
 `joining` → `associated ... channel 11` → `Connected`, see the reading above) — so it is no longer
 the erased state.
 
+## The whole part deadlocks after the first credential is saved; the list's stored marks no longer wait for the next round (`[measured]`/`[test]`, 2026-11-05/06)
+
+Two defects sat on the same panel path: type a passphrase on the panel and let it save a network into `creds` for the **first** time, and a few milliseconds later the whole chip stops; with that fixed, leave the link and tap that row again, and the page is back to "type the passphrase again".
+
+### `multicore_auto_park()` under esp-rtos stalls both cores
+
+- **Symptom**: panel typing → `OK` → the `JOINING` box comes up (0.3 s) → `associated` → `this network is saved for the next boot` → after that **neither core prints another line**: no panic, no watchdog reset; the `[PLAY]` 2 s cadence, the `[INPUT]` 5 s reports and every `[DISPLAY]` repaint stop in the same millisecond, and USB-JTAG stops answering too. After a reboot `creds` holds **one complete, valid** record — the write itself succeeded; what died was everything after it.
+- **Root cause**: esp-rs/esp-hal#6438. `esp-storage`'s `FlashStorage::multicore_auto_park()` parks and releases the other core around **every** ROM call, and between two parks (and after the last ROM call returns, before `unpark`) this core's interrupts are on again. A pending interrupt then runs on this core while the APP core is still stalled in hardware; if the interrupt wants what the APP core holds, both wait on each other and neither comes back. The busier the bench (audio feeds plus display repaints), the easier it is to hit — which is exactly what this application looks like.
+- **Fix** (option A in the issue, verified by the reporter): wrap the whole "park the other core → write → release it" span in a `critical_section`, so this core takes no interrupts for that stretch. It lives in `iot-chip-esp::with_other_core_parked`: the S3 parks whichever of `Cpu::other()` is `is_running` through `CpuControl::{park_core, unpark_core}`; the C6 has one core and just runs `f`. `bsp-esp`'s `CredentialRegion::{erase, write}` is the only place that wraps it (the credential store is the only writer of flash).
+- **The board's `.multicore_auto_park()` line stays**: we park the APP core first, so `is_running` is false and `esp-storage`'s own park becomes a no-op; it is not left there for nothing — if some later caller bypasses `CredentialRegion`, that layer is still the backstop.
+- **The price is measured**: a 4,096 B erase costs **3,939 µs** and a 124 B write **6,392 µs** (the write includes `FlashStorage`'s own read-modify-erase-write). That is about 10 ms of interrupts off on this core; in the same run `[PLAY]` still kept 400 feeds / 2 s (100%), `[INPUT]`'s worst hold was 1–2 ms, `[DISPLAY]` repainted every 3 s as before, and in 75 s of observation there was not one underrun.
+- **Why not just bump the dependency**: the newest `esp-storage` release is still 0.10.0 (2026-08-26) and the fix is unreleased. Once upstream ships it, delete `with_other_core_parked` and these two wrappings; until then this is the repository's only direct user of `esp_hal::system::CpuControl`.
+  One optimization **not** done along the way: one save has `Store::write_out` erase 4 KiB first, and then `FlashStorage::write` does its own read-modify-erase-write on its sector, so **the same block is erased twice**. It is not on this round's deadlock path and would mean changing `Store`'s slot format, so it is left for later.
+
+### After a save the list's stored marks are old, and tapping that row asks for the passphrase again
+
+- **Symptom** (the bench's `RejoinTheRowJustLeft` stalls): tap back into the row just left within tens of milliseconds of `LEAVE`, and `pick_row` reads `saved = false` → takes the "never stored" branch: the keyboard comes up, `entry = Some(empty draft)`, and the link never comes back; the page looks like it is sitting on the list and nothing happened. This is both "tapping a stored row makes you retype the passphrase" and the other face of this round's "after `OK` it stays on the list".
+- **Root cause**: the panel-typing path gets its credential from `browse()`, and `link()` calls `hold()` **after** browse returns, holding `history` = `None`. After a successful write `remark_and_publish` used to sit behind `&& let Some(history)` — with no history it sent nothing, and the page kept drawing the browse round's list (which had no record in the store yet, so every `saved` bit was 0) until the **next scan round** (0.8 s measured, up to 5 s while browsing) corrected it. The bench happened to tap inside that window. The fourth run passed, but the same log has no scan reading, so **why it did not hit this window cannot be recovered from the log**; two readings of the same walk were never supposed to depend on luck.
+- **Fix**: `Scan::remark` takes **the list the page is already showing** (already in the `Retained` slot, via `peek()`) and re-marks it from the store before publishing; `remark_and_publish(history: Option<&mut ScanHistory>, ...)` still goes through `history.marked()` when there is session history (keeping `ScanHistory`'s round bookkeeping in step with the page), and through `Scan::remark` when there is none. Save and forget now both go through it unconditionally.
+- **`[test]`**: `runtime::workers::network::tests::a_save_marks_the_list_the_page_is_already_showing` (publish an unmarked list → `remark(Some(store))` → that row carries the mark; `remark(None)` → the mark is taken back); `moon run iot:test` passes all 350.
+- **`[measured]`** (`creds` erased, one S3 boot, the same 28-tap walk): `18.431 s` `the link is down and the page is back on the list` → `18.433 s` `tapping band 0, the row the link was just taken off…` → `pick … saved Some(true) phase Off mode Setup { host: Panel, cancellable: true }` (temporary probe output, removed before delivery) → `19.245 s` `the saved row brought the link back up with the copy on the part, and the page asked for nothing` → on through `AskToLeave → KeepTheLink → LeaveAsk → LeaveGo → AskToForget → Forget → ReopenTheRowJustLeft → DropTheKeyboard → Rescan`, `Act::Done`, with no `120 passes`. The same image before the fix read `saved Some(false)` at the same point, raised the keyboard and could not go on.
+
+### After `LEAVE` the strip is `CANCEL`, not `SCAN`: that is the design
+
+With a stored network, leaving a link enters `Setup { host: Panel, cancellable: true }`; the strip's left cell is then `CANCEL` (leave setup mode and go back to the network the device keeps), and `SCAN` appears only while browsing or in setup mode with no way back (`cancellable = false`) — the rule and the reasons are in "Two front ends of setup mode, one at a time" under "`CANCEL` is only offered when there is a way back". After leaving, a new list does not need `SCAN`: setup mode's survey runs a round on its own every 5 s. This is not changed; this round only fills the reading in here.
+
 ## Still to do (`[not done]`)
 
 1. **Both parts' driver heaps have only about a third left** (C6 14,124 B of 49,152 B =
@@ -2673,12 +2699,12 @@ the erased state.
      sixteen bytes it stores are the MD5 of the first 96 (`dd bs=1 count=96 | md5` =
      `5b7fb69b103d49aee6dd86b70ccdddcf`, byte for byte what the table holds) — the entry
      `esp-bootloader-esp-idf` with `default = ["validation"]` looks for, so **nothing to change**.
-     ② **writing on a multicore part**: `esp-storage` 0.10's default refuses a write while the other
-     core runs (`is_running(other_cpu)`), and this app **never starts a second core** (`esp_rtos::start`
-     brings one up, the audio `InterruptExecutor` is a software interrupt on the same one), so the
-     default would write too — `FlashStorage::multicore_auto_park()` is still the choice (it parks the
-     other core through `CPU_CTRL` around each write and releases it after, a few milliseconds) for
-     "starting a second core later cannot break this". ③ **an extra `data` partition**: the subtype has
+     ② **writing on a multicore part**: **this app does start a second core** (the panel core), so
+     `esp-storage`'s `multicore_auto_park()` is not insurance but a requirement; under esp-rtos it
+     locks up against this core's interrupts, so this repository wraps the whole park span in a
+     `critical_section` (`with_other_core_parked`, see "The whole part deadlocks after the first
+     credential is saved"). The board's `.multicore_auto_park()` line stays as the backstop;
+     ③ **an extra `data` partition**: the subtype has
      to be a **name** (`phy`, `nvs`, `coredump`, `nvs_keys`, `efuse`, `undefined` all parse) — a hex one
      (`0x40`) makes `esp-idf-part` panic on an `unwrap`, while `creds,data,undefined,,0x2000,` comes out
      as type/subtype `01 06` (`DATA_UNDEFINED`), placed after `factory`. Three boots on the board show
