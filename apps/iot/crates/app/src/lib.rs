@@ -26,8 +26,8 @@ pub mod runtime;
 use display::wired;
 use model::boot::{boot_override, boot_page};
 use runtime::coordinator::run_loop;
-use runtime::input::{INTENT_BUS, input_task};
-use runtime::playback::{playback_tasks, share};
+use runtime::feature::input::{INTENT_BUS, input_task};
+use runtime::feature::playback::{playback_tasks, share};
 use runtime::workers::{CAPTURE, SharedDemand, Workers};
 
 pub enum Feed {
@@ -59,7 +59,7 @@ pub struct Io {
     pub sources: Vec<PollEntry>,
     pub configurator: Configurator,
     pub demand: &'static SharedDemand,
-    pub speaker: Option<&'static runtime::playback::Shared>,
+    pub speaker: Option<&'static runtime::feature::playback::Shared>,
     pub feed: Feed,
     /// How to read the second core's stack, when the part has one. The composition root
     /// injects it, so the library names no chip family.

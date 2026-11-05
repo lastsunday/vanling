@@ -307,7 +307,7 @@ pub(super) async fn scenario() {
     );
 
     let send = |intent: ActionIntent| {
-        let _ = iot_app::runtime::input::INTENT_BUS.try_send(Intent::Action(intent));
+        let _ = iot_app::runtime::feature::input::INTENT_BUS.try_send(Intent::Action(intent));
     };
 
     send(ActionIntent::NetworkPage(NetworkPageIntent::Choose(

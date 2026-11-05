@@ -17,7 +17,7 @@ use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{LinkStatus, SetupHost, Station};
 
 use crate::NetworkWorker;
-use crate::runtime::input::INTENT_BUS;
+use crate::runtime::feature::input::INTENT_BUS;
 use crate::runtime::workers::NETWORK;
 
 mod link;

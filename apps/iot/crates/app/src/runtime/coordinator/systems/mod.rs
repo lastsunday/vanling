@@ -11,7 +11,7 @@ mod playback;
 use crate::model::state::{DeviceManager, DeviceState};
 use iot_core::demand::ClockSink;
 
-use crate::runtime::input::IntentBus;
+use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers::Workers;
 
 use self::bench::BenchSystem;
@@ -22,10 +22,10 @@ use self::network::NetworkSystem;
 use self::notice::NoticeSystem;
 use self::playback::PlaybackSystem;
 
-/// One pass takes at most [`crate::runtime::input::INTENT_SLOTS`] intents and each can carry a command,
+/// One pass takes at most [`crate::runtime::feature::input::INTENT_SLOTS`] intents and each can carry a command,
 /// so the network inbox is at least that deep: on the normal path nothing is given up.
 const _: () =
-    assert!(crate::runtime::workers::COMMAND_SLOTS >= crate::runtime::input::INTENT_SLOTS);
+    assert!(crate::runtime::workers::COMMAND_SLOTS >= crate::runtime::feature::input::INTENT_SLOTS);
 
 /// Everything a system may touch in one frame. The wall clock rather than the frame counter:
 /// a held executor makes a logical clock replay the steps it skipped.

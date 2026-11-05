@@ -71,12 +71,12 @@ weight = 10
 | `display/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态 |
 | `display/render/{mod,appearance,repaint,controller}.rs` | 渲染消费者与注册表：`RenderController` 决定*显示什么*（`controller.rs`），状态→外观在 `appearance.rs`，重绘节拍在 `repaint.rs`，renderer 决定*怎么显示* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | 产品页面壳与视图：`placement.rs` 是各页共用的版面常量，`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件，`views/` 按页组装 |
-| `runtime/` | 模型旁边的任务：协调者、工作者与它们各自拥有的 I/O |
+| `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
 | `runtime/coordinator/{mod,clock}.rs`、`coordinator/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`clock.rs` 是逻辑帧时钟 |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄；`mod.rs` 只有 `Workers { input, playback, network }`，其余是各工作者的句柄与协议；网络命令词汇表在 `model/state/network.rs` |
-| `runtime/input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `runtime/playback/{mod,sounds/}` | 播放工作者与声音目录（`sounds/mod.rs` 加五份 `.mid`）；状态→命令在 `coordinator/systems/playback.rs` |
-| `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `runtime/feature/{mod,input}.rs` | 功能工作者；`mod.rs` 是唯一的 `wifi` 门控点。输入工作者：轮询、demand 调度、手势识别 |
+| `runtime/feature/playback/{mod,sounds/}` | 播放工作者与声音目录（`sounds/mod.rs` 加五份 `.mid`）；状态→命令在 `coordinator/systems/playback.rs` |
+| `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；`model` 与 `display` 读同一份坐标 |
 | `assets/` | 设置侧自己的字节：`vanling-` 热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
 | `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用，不进产品路径；`replay/` 是产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），被协调者/网络工作者引用，非 bench 构建编译期折叠 |
@@ -84,7 +84,7 @@ weight = 10
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 
 ```
-lib       → { display, model::{boot, state}, runtime::{coordinator, input, playback, workers} }
+lib       → { display, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
 model::boot   → { model::state }
 model::intent → { controls, model::state }
 model::state  → { controls, model::{intent, route} }
@@ -92,20 +92,20 @@ display              → { display::{render, ui}, model::state }
 display::diagnostics → { model::{route, state} }
 display::render      → { display::diagnostics, model::{route, state} }
 display::ui          → { assets, controls, display::diagnostics, model::state }
-runtime::coordinator → { bench, display, model::state, runtime::{input, workers} }
-runtime::input      → { model::{intent, state}, runtime::workers }
-runtime::network    → { assets, bench, model::{boot, intent, state}, runtime::{input, workers} }
-runtime::playback   → { model::{intent, state}, runtime::{input, workers} }
+runtime::coordinator → { bench, display, model::state, runtime::{feature::input, workers} }
+runtime::feature::input    → { model::{intent, state}, runtime::workers }
+runtime::feature::network  → { assets, bench, model::{boot, intent, state}, runtime::{feature::input, workers} }
+runtime::feature::playback → { model::{intent, state}, runtime::{feature::input, workers} }
 runtime::workers    → { model::state }
-bench               → { controls, model::{intent, state}, runtime::{input, playback} }
+bench               → { controls, model::{intent, state}, runtime::feature::{input, playback} }
 ```
 
-`main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`runtime::network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
+`main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`runtime::feature::network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
 - 三层只向内倒（`the_layers_lean_inward_only`）：`model` 不认识 `runtime`/`display`，`display` 不认识 `runtime`；唯一的向外边是 `runtime::coordinator → display`，因为协调者负责呈现模型已经定下的状态
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
-- `runtime::network` 不依赖 `display`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- `runtime::feature::network` 不依赖 `display`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `controls`、`assets` 留在顶层：它们同时被 `model` 与 `display` 消费，放进任何一层都会制造反向依赖
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用；`bench::replay` 被 `coordinator`/`network` 引用，但非 bench 构建编译期折叠
 - `core` 不认识 `iot_app`

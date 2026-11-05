@@ -7,7 +7,7 @@ env:
 # What the tasks that compile this project read. Declaring `inputs` *replaces* moon's
 # default for a task, and the default is what these tasks had: every file of this
 # project. `**/*` keeps exactly that coverage (dotfiles and the non-Rust inputs —
-# `runtime/playback/sounds/*.mid`, `partitions/*.csv`, `linker/*.x` — all still reach the hash) instead
+# `runtime/feature/playback/sounds/*.mid`, `partitions/*.csv`, `linker/*.x` — all still reach the hash) instead
 # of listing globs that would have to be kept in step by hand. The script is here
 # because no glob can leave the project (`..` is not a legal input) and iot-xtensa.sh
 # decides what the tasks that go through it compile; without it, editing the
@@ -73,7 +73,7 @@ tasks:
   test-tool:
     command: 'cargo test -p iot-tool'
 
-  # Rebuild `runtime/playback/sounds/*.mid` from the recipes. Writes the source tree, and running
+  # Rebuild `runtime/feature/playback/sounds/*.mid` from the recipes. Writes the source tree, and running
   # it in CI would paper over exactly the failure `test-tool` exists to catch.
   gen-midi-assets:
     command: 'cargo run --quiet -p iot-tool -- midi'

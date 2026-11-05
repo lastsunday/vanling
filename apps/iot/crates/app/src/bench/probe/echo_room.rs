@@ -11,7 +11,7 @@ use iot_core::drivers::audio::{AudioSample, CAPTURE_MS, ENVELOPE_COLUMNS, dbfs};
 use iot_core::drivers::board::HasPlayback;
 use iot_core::drivers::playback::{Chirp, FEED_MS, Sound, Speaker};
 
-use crate::runtime::playback::{Shared, feed_task, share, take_stats};
+use crate::runtime::feature::playback::{Shared, feed_task, share, take_stats};
 
 // The excitation is the bench's, not the catalogue's: a sweep is what measures a room, and
 // the product never plays one. 300 Hz–6 kHz keeps the codec's settling filters out of the
@@ -101,7 +101,7 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
     let mut last_report = Instant::now();
     let mut held_since = Instant::now();
     if PATH_RUN {
-        if let Err(error) = crate::runtime::playback::start_source(
+        if let Err(error) = crate::runtime::feature::playback::start_source(
             shared,
             Box::new(Chirp::new(SWEEP_FROM_HZ, SWEEP_TO_HZ, SWEEP_MS)),
         ) {
@@ -114,7 +114,7 @@ async fn keep_sounding(shared: &'static Shared) -> ! {
         );
     }
     loop {
-        if !PATH_RUN && let Err(error) = crate::runtime::playback::start(shared, sound) {
+        if !PATH_RUN && let Err(error) = crate::runtime::feature::playback::start(shared, sound) {
             log::error!("[ECHO] {sound:?} refused: {error}");
         }
         Timer::after(Duration::from_millis(if PATH_RUN {

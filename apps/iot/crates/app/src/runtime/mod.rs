@@ -5,8 +5,5 @@
 //! defines a page or paints a pixel.
 
 pub(crate) mod coordinator;
-pub mod input;
-#[cfg(feature = "wifi")]
-pub mod network;
-pub(crate) mod playback;
+pub mod feature;
 pub mod workers;

@@ -46,7 +46,7 @@ pub const RECIPES: [Recipe; 5] = [
 ];
 
 pub fn sounds_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/src/runtime/playback/sounds")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../app/src/runtime/feature/playback/sounds")
 }
 
 pub fn file_name(sound: &str) -> String {

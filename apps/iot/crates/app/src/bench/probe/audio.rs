@@ -9,7 +9,7 @@ use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::board::HasPlayback;
 use iot_core::drivers::playback::{FEED_MS, Sound, Speaker};
 
-use crate::runtime::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
+use crate::runtime::feature::playback::{FEED_LATE_MS, Shared, feed_loop, share, take_stats};
 
 pub async fn run<B>(mut board: B) -> !
 where
@@ -36,7 +36,7 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
     let mut last_report = Instant::now();
 
     loop {
-        match crate::runtime::playback::start(shared, sound) {
+        match crate::runtime::feature::playback::start(shared, sound) {
             Ok(()) => {
                 plays += 1;
                 log::info!("[PROBE] playing {sound:?}, play {plays}");
@@ -53,7 +53,7 @@ async fn walk_catalogue(shared: &'static Shared) -> ! {
         }
 
         if let Some(recovery) = shared.lock(|shared| shared.speaker.borrow_mut().recover()) {
-            crate::runtime::playback::report_recovery("PROBE", &recovery);
+            crate::runtime::feature::playback::report_recovery("PROBE", &recovery);
         }
 
         let now = Instant::now();

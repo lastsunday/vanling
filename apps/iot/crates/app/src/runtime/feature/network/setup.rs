@@ -20,7 +20,7 @@ use super::{
     NETWORK, SETUP_SOCKETS, discard_setup, heap_free, mac_of, park, provision, publish_link,
     seed_from,
 };
-use crate::runtime::input::INTENT_BUS;
+use crate::runtime::feature::input::INTENT_BUS;
 
 /// Everything setup mode needs to run: one value, because a session on the panel and one on the
 /// access point are the same session on two hosts.

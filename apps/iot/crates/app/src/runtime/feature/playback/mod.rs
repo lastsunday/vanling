@@ -4,7 +4,7 @@ pub mod sounds;
 
 use crate::model::intent::{ActionIntent, Intent, PlaybackAction};
 use crate::model::state::PlaybackCommand;
-use crate::runtime::input::IntentBus;
+use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers;
 use alloc::boxed::Box;
 use core::cell::RefCell;
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn a_capture_window_costs_one_slot_beside_the_ring() {
         use crate::model::intent::Intent;
-        use crate::runtime::input::INTENT_SLOTS;
+        use crate::runtime::feature::input::INTENT_SLOTS;
         use crate::runtime::workers::CaptureWindow;
         use iot_core::drivers::audio::AudioSample;
 

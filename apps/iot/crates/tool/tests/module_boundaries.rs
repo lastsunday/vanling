@@ -285,7 +285,7 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
 #[test]
 fn the_network_never_reaches_the_panel() {
     assert_no_reference(
-        sources(&app_src().join("runtime/network")),
+        sources(&app_src().join("runtime/feature/network")),
         &["crate::display", "crate::runtime::coordinator"],
     );
 }
@@ -294,15 +294,15 @@ fn the_network_never_reaches_the_panel() {
 fn the_panel_side_never_reaches_the_radio() {
     let src = app_src();
     let mut files = sources(&src.join("display"));
-    files.extend(sources(&src.join("runtime/playback")));
+    files.extend(sources(&src.join("runtime/feature/playback")));
     files.extend(sources(&src.join("runtime/coordinator")));
     files.extend(sources(&src.join("runtime/workers")));
-    for name in ["runtime/input.rs", "model/boot.rs"] {
+    for name in ["runtime/feature/input.rs", "model/boot.rs"] {
         let path = src.join(name);
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
     }
-    assert_no_reference(files, &["crate::runtime::network"]);
+    assert_no_reference(files, &["crate::runtime::feature::network"]);
 }
 
 /// Probes are the bodies of separate binaries. The panel replay under `bench` is reached by the
@@ -355,6 +355,20 @@ fn the_worker_handles_compile_without_the_radio() {
             .any(|line| line.trim_start().starts_with("#[cfg")),
         "the handles are the panel/worker boundary; gating them on wifi removes them from the host build"
     );
+
+    let feature = std::fs::read_to_string(app_src().join("runtime/feature/mod.rs"))
+        .expect("the feature module");
+    let lines: Vec<_> = feature.lines().collect();
+    let at = lines
+        .iter()
+        .position(|line| line.trim() == "pub mod network;")
+        .expect("the feature module declares the network worker");
+    assert!(
+        lines[at.saturating_sub(1)..at]
+            .iter()
+            .any(|line| line.trim_start().starts_with("#[cfg")),
+        "the network worker is the radio; a host build must not compile it"
+    );
 }
 
 #[test]
@@ -362,11 +376,9 @@ fn the_worker_handles_never_reach_a_worker() {
     assert_no_reference(
         sources(&app_src().join("runtime/workers")),
         &[
-            "crate::runtime::playback",
-            "crate::runtime::network",
+            "crate::runtime::feature",
             "crate::display",
             "crate::runtime::coordinator",
-            "crate::runtime::input",
         ],
     );
 }
@@ -490,16 +502,21 @@ fn join(prefix: &str, name: &str) -> String {
     }
 }
 
+/// A layer's grouped children are nodes too: grouping features under one directory must not
+/// flatten their edges into a single node.
+const GROUPS: [&str; 1] = ["runtime::feature"];
+
 /// A node is a top-level module or a layer's direct child. Deeper modules belong to the node
 /// that contains them, so moving a file inside a node does not redraw the graph.
 fn is_node(module: &str) -> bool {
-    let mut parts = module.split("::");
-    let Some(first) = parts.next().filter(|first| !first.is_empty()) else {
-        return false;
-    };
-    match (parts.next(), parts.next()) {
-        (None, _) => true,
-        (Some(_), None) => LAYERS.contains(&first),
+    let parts: Vec<&str> = module.split("::").collect();
+    match parts.as_slice() {
+        [first, ..] if first.is_empty() => false,
+        [_] => true,
+        [first, _] => LAYERS.contains(first) || GROUPS.contains(&module),
+        [first, second, _] => GROUPS
+            .iter()
+            .any(|group| format!("{first}::{second}") == *group),
         _ => false,
     }
 }
@@ -682,8 +699,8 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("bench", "controls"),
         ("bench", "model::intent"),
         ("bench", "model::state"),
-        ("bench", "runtime::input"),
-        ("bench", "runtime::playback"),
+        ("bench", "runtime::feature::input"),
+        ("bench", "runtime::feature::playback"),
         ("display", "display::render"),
         ("display", "display::ui"),
         ("display", "model::state"),
@@ -700,8 +717,8 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("lib", "model::boot"),
         ("lib", "model::state"),
         ("lib", "runtime::coordinator"),
-        ("lib", "runtime::input"),
-        ("lib", "runtime::playback"),
+        ("lib", "runtime::feature::input"),
+        ("lib", "runtime::feature::playback"),
         ("lib", "runtime::workers"),
         ("model::boot", "model::state"),
         ("model::intent", "controls"),
@@ -712,22 +729,22 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("runtime::coordinator", "bench"),
         ("runtime::coordinator", "display"),
         ("runtime::coordinator", "model::state"),
-        ("runtime::coordinator", "runtime::input"),
+        ("runtime::coordinator", "runtime::feature::input"),
         ("runtime::coordinator", "runtime::workers"),
-        ("runtime::input", "model::intent"),
-        ("runtime::input", "model::state"),
-        ("runtime::input", "runtime::workers"),
-        ("runtime::network", "assets"),
-        ("runtime::network", "bench"),
-        ("runtime::network", "model::boot"),
-        ("runtime::network", "model::intent"),
-        ("runtime::network", "model::state"),
-        ("runtime::network", "runtime::input"),
-        ("runtime::network", "runtime::workers"),
-        ("runtime::playback", "model::intent"),
-        ("runtime::playback", "model::state"),
-        ("runtime::playback", "runtime::input"),
-        ("runtime::playback", "runtime::workers"),
+        ("runtime::feature::input", "model::intent"),
+        ("runtime::feature::input", "model::state"),
+        ("runtime::feature::input", "runtime::workers"),
+        ("runtime::feature::network", "assets"),
+        ("runtime::feature::network", "bench"),
+        ("runtime::feature::network", "model::boot"),
+        ("runtime::feature::network", "model::intent"),
+        ("runtime::feature::network", "model::state"),
+        ("runtime::feature::network", "runtime::feature::input"),
+        ("runtime::feature::network", "runtime::workers"),
+        ("runtime::feature::playback", "model::intent"),
+        ("runtime::feature::playback", "model::state"),
+        ("runtime::feature::playback", "runtime::feature::input"),
+        ("runtime::feature::playback", "runtime::workers"),
         ("runtime::workers", "model::state"),
     ]
     .into_iter()

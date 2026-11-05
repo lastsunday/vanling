@@ -75,12 +75,12 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 | `display/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state |
 | `display/render/{mod,appearance,repaint,controller}.rs` | render consumers and the registry: `RenderController` decides *what* to show (`controller.rs`), state→appearance lives in `appearance.rs`, repaint pacing in `repaint.rs`, and a renderer decides *how* |
 | `display/ui/{mod,surface,text,placement,widgets,components,views}` | product page shell and views: `placement.rs` holds the placement constants every page shares, `widgets/` the primitives (frame, row, label), `components/` the cross-page pieces, and `views/` assembles them per page |
-| `runtime/` | the tasks beside the model: the coordinator, the workers it drives, and the I/O each worker owns |
+| `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
 | `runtime/coordinator/{mod,clock}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only `Workers { input, playback, network }`, the rest are each worker's handles and protocol; the network command vocabulary lives in `model/state/network.rs` |
-| `runtime/input.rs` | input worker: polling, demand scheduling, gesture recognition |
-| `runtime/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `coordinator/systems/playback.rs` |
-| `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
+| `runtime/feature/{mod,input}.rs` | the feature workers; `mod.rs` is the one `wifi` gate. Input worker: polling, demand scheduling, gesture recognition |
+| `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `coordinator/systems/playback.rs` |
+| `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `controls/{mod,keyboard,list,toolbar,dialog}.rs` | panel-control geometry and hit testing: key grid, scan list, action strip, confirmation box; `model` and `display` read the same coordinates |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
 | `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs` and stays off the product path; `replay/` is the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached by the coordinator/network worker and folded away outside a bench build |
@@ -89,7 +89,7 @@ Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the c
 check module cycles inside a crate):
 
 ```
-lib       → { display, model::{boot, state}, runtime::{coordinator, input, playback, workers} }
+lib       → { display, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
 model::boot   → { model::state }
 model::intent → { controls, model::state }
 model::state  → { controls, model::{intent, route} }
@@ -97,22 +97,22 @@ display              → { display::{render, ui}, model::state }
 display::diagnostics → { model::{route, state} }
 display::render      → { display::diagnostics, model::{route, state} }
 display::ui          → { assets, controls, display::diagnostics, model::state }
-runtime::coordinator → { bench, display, model::state, runtime::{input, workers} }
-runtime::input      → { model::{intent, state}, runtime::workers }
-runtime::network    → { assets, bench, model::{boot, intent, state}, runtime::{input, workers} }
-runtime::playback   → { model::{intent, state}, runtime::{input, workers} }
+runtime::coordinator → { bench, display, model::state, runtime::{feature::input, workers} }
+runtime::feature::input    → { model::{intent, state}, runtime::workers }
+runtime::feature::network  → { assets, bench, model::{boot, intent, state}, runtime::{feature::input, workers} }
+runtime::feature::playback → { model::{intent, state}, runtime::{feature::input, workers} }
 runtime::workers    → { model::state }
-bench               → { controls, model::{intent, state}, runtime::{input, playback} }
+bench               → { controls, model::{intent, state}, runtime::feature::{input, playback} }
 ```
 
-`main` is the binary crate root and reaches `lib`/`runtime::network` through `iot_app::`, so it is
+`main` is the binary crate root and reaches `lib`/`runtime::feature::network` through `iot_app::`, so it is
 outside this graph; the chip family injects `second_core_peak` and the rest of the capabilities
 into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
 
 - the three layers lean inward only (`the_layers_lean_inward_only`): `model` knows neither `runtime` nor `display`, and `display` never knows `runtime`; the one edge outward is `runtime::coordinator → display`, because the coordinator presents what the model already settled on
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
-- `runtime::network` does not reach `display`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
+- `runtime::feature::network` does not reach `display`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
 - `controls` and `assets` stay at the top: both are read by `model` and `display`, so placing them in either layer would manufacture a reverse dependency
 - `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
 - `core` does not know `iot_app`

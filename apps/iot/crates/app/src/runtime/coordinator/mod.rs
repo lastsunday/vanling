@@ -13,7 +13,7 @@ use embassy_time::{Instant, Timer};
 use iot_core::demand::ClockSink;
 
 use crate::display::Renderers;
-use crate::runtime::input::IntentBus;
+use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers::Workers;
 
 use self::clock::{FrameClock, Wait};

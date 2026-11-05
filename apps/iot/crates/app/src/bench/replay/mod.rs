@@ -12,7 +12,7 @@ use crate::model::state::{Band, Confirm, DeviceManager, DeviceState, DisplayPage
 use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
 
-use crate::runtime::input::IntentBus;
+use crate::runtime::feature::input::IntentBus;
 
 use self::point::{
     Touch, answer_point, band_center, cancel_point, hold_point, row_point, strip_point,
