@@ -10,11 +10,11 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_time::{Duration, Timer};
 use iot_app::controls::Key;
-use iot_app::diagnostics::Diagnostics;
-use iot_app::intent::{ActionIntent, Intent, NetworkPageIntent};
-use iot_app::state::PALETTE;
-use iot_app::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
-use iot_app::workers::NETWORK;
+use iot_app::display::diagnostics::Diagnostics;
+use iot_app::model::intent::{ActionIntent, Intent, NetworkPageIntent};
+use iot_app::model::state::PALETTE;
+use iot_app::model::state::{Confirm, DisplayPage, NetworkCommand, PlaybackPhase};
+use iot_app::runtime::workers::NETWORK;
 use iot_app::{Feed, IoPlacement, Wiring, run};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
@@ -852,7 +852,7 @@ async fn scenario() {
     );
 
     let send = |intent: ActionIntent| {
-        let _ = iot_app::input::INTENT_BUS.try_send(Intent::Action(intent));
+        let _ = iot_app::runtime::input::INTENT_BUS.try_send(Intent::Action(intent));
     };
 
     send(ActionIntent::NetworkPage(NetworkPageIntent::Choose(

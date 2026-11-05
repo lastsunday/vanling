@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use embassy_executor::Spawner;
-use iot_app::state::SurfaceRole;
+use iot_app::model::state::SurfaceRole;
 use iot_core::drivers::board::{HasSurface, HasWifi};
 
 type Board = iot_bsp_esp::Board<'static>;
@@ -30,7 +30,7 @@ async fn main(spawner: Spawner) -> ! {
     // the worker that uses them is built here. `run` starts the closure without learning what
     // the radio is.
     let wifi = match board.take_wifi() {
-        Some(station) => iot_app::Wifi::Worker(iot_app::network::worker(
+        Some(station) => iot_app::Wifi::Worker(iot_app::runtime::network::worker(
             station,
             board.take_credentials(),
             iot_bsp_esp::SETUP_HOST,
@@ -72,7 +72,7 @@ fn boot_board() -> (Board, iot_app::Feed, iot_app::IoPlacement) {
     iot_chip_esp::init_logging();
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES);
-    iot_app::network::report_heap_free(iot_chip_esp::heap_free);
+    iot_app::runtime::network::report_heap_free(iot_chip_esp::heap_free);
 
     log::info!("[IOT] boot complete");
 

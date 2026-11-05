@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use crate::state::{Backed, Boot, DeviceManager, DisplayPage};
+use crate::model::state::{Backed, Boot, DeviceManager, DisplayPage};
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
 use iot_core::config::Configurator;
@@ -18,28 +18,17 @@ use iot_core::drivers::surface::WiredSurface;
 
 mod assets;
 pub mod bench;
-pub mod boot;
 pub mod controls;
-pub mod diagnostics;
-mod frame_loop;
-pub mod input;
-pub mod intent;
-#[cfg(feature = "wifi")]
-pub mod network;
-pub mod page;
-mod playback;
-pub mod render;
-pub mod state;
-mod surface;
-pub mod ui;
-pub mod workers;
+pub mod display;
+pub mod model;
+pub mod runtime;
 
-use boot::{boot_override, boot_page};
-use frame_loop::run_loop;
-use input::{INTENT_BUS, input_task};
-use playback::{playback_tasks, share};
-use surface::wired;
-use workers::{CAPTURE, SharedDemand, Workers};
+use display::wired;
+use model::boot::{boot_override, boot_page};
+use runtime::frame_loop::run_loop;
+use runtime::input::{INTENT_BUS, input_task};
+use runtime::playback::{playback_tasks, share};
+use runtime::workers::{CAPTURE, SharedDemand, Workers};
 
 pub enum Feed {
     Interrupt(SendSpawner),
@@ -70,7 +59,7 @@ pub struct Io {
     pub sources: Vec<PollEntry>,
     pub configurator: Configurator,
     pub demand: &'static SharedDemand,
-    pub speaker: Option<&'static playback::Shared>,
+    pub speaker: Option<&'static runtime::playback::Shared>,
     pub feed: Feed,
     /// How to read the second core's stack, when the part has one. The composition root
     /// injects it, so the library names no chip family.

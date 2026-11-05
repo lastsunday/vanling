@@ -10,10 +10,10 @@ pub mod keyboard;
 pub mod list;
 pub mod toolbar;
 
-pub use dialog::*;
-pub use keyboard::*;
-pub use list::*;
-pub use toolbar::*;
+pub use self::dialog::*;
+pub use self::keyboard::*;
+pub use self::list::*;
+pub use self::toolbar::*;
 
 /// The height of one touch target, in panel rows: what a finger can be asked to aim at.
 pub const TOUCH_MIN: usize = 44;

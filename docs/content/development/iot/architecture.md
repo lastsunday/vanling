@@ -56,50 +56,59 @@ weight = 10
 
 ## iot-app 内部分区
 
-`app/src/` 按领域分目录，组合根只做接线：
+`app/src/` 分成三层加两个共享叶子，组合根只做接线：
 
 | 路径 | 职责 |
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
+| `model/` | 产品自己的词汇：页面、状态、意图、构建期配置。不读文件、不驱动引脚、不画像素，没有板子也能在宿主机编过 |
+| `model/route/{mod,nav}.rs` | 路由表与 `Navigator`：`DisplayPage` 是目的地，`route()` 是穷尽 `match`，`ALL`/`CYCLE` 是次序 |
+| `model/state/` | 设备状态机，一域一文件；`network_page/` 是 Network 页自己的状态与它的控件行为 |
+| `model/intent.rs` | 意图词汇：输入被问成什么 |
+| `model/boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
+| `display/` | 显示侧入口：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
+| `display/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态 |
+| `display/render/` | 渲染消费者与注册表：`RenderController` 决定*显示什么*，renderer 决定*怎么显示* |
+| `display/ui/{mod,surface,text,placement,widgets,components,views}` | 产品页面壳与视图：`placement.rs` 是各页共用的版面常量，`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件，`views/` 按页组装 |
+| `runtime/` | 模型旁边的任务：帧循环、工作者与它们各自拥有的 I/O |
+| `runtime/frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`clock.rs` 是逻辑帧时钟 |
+| `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄；`mod.rs` 只有 `Workers { input, playback, network }`，其余是各工作者的句柄与协议；网络命令词汇表在 `model/state/network.rs` |
+| `runtime/input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
+| `runtime/playback/{mod,sounds}.rs` | 播放工作者与声音目录；状态→命令在 `frame_loop/systems/playback.rs` |
+| `runtime/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
+| `runtime/replay/{mod,script}.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本 |
+| `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；`model` 与 `display` 读同一份坐标 |
 | `assets.rs`、`assets/` | 产品自己的字节：`vanling-` 设置热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
-| `diagnostics.rs`、`intent.rs`、`page/`、`state/`、`render/` | 产品快照、意图词汇、页面路由、设备状态机与渲染消费者；这些类型不再属于可复用的 `core` |
-| `ui/{mod,surface,text,widgets,components,views}` | 产品页面壳与视图：`widgets/` 是框、行、文字等原语，`components/` 是跨页组合件（确认框），`views/` 按页组装；网络/声音词在 `text` 与 `views/network/text` |
-| `controls/{mod,keyboard,list,toolbar,dialog}.rs` | 面板控件的几何与命中测试：键格、扫描列表、动作条、确认框；绘制与点击读同一份坐标 |
-| `boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄，一个工作者一个文件：`mod.rs` 只有 `Workers { input, playback, network }`，`inbox.rs` 是 `Inbox`/`Retained`，其余文件是各工作者的句柄与协议（`network.rs` 含 `Scan`/`PageWatch` 与命令入口）；网络命令词汇表在 `app/src/state/network.rs` |
-| `frame_loop/{mod,clock}.rs`、`frame_loop/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；每帧单元是一个 `System`，`Schedule` 的声明顺序就是执行顺序；`clock.rs` 是逻辑帧时钟 |
-| `surface/mod.rs` | `Render` 注册表：按角色建 `ScreenRenderer` / `LampRenderer` |
-| `input.rs` | 输入工作者：轮询、demand 调度、手势识别 |
-| `playback/{mod,sounds}.rs` | 播放工作者、声音目录；状态→命令在 `frame_loop/systems/playback.rs`，采集窗口在 `workers/input.rs` |
-| `network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据、链路/设置页报告 |
-| `bench/replay.rs`、`bench/script.rs` | 产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本 |
 | `bench/probe/`、`bin/` | 构建期探针与薄入口，不进产品路径 |
 
 依赖方向（`iot-tool/tests/module_boundaries.rs` 的 `the_app_module_graph_is_the_one_the_codemap_draws` 断言，编译器不查 crate 内模块环）：
 
 ```
-lib        → { boot, frame_loop, input, playback, state, surface, workers }
-frame_loop → { bench, input, state, surface, workers }
-network    → { assets, bench, boot, input, intent, state, workers }
-playback   → { input, intent, state, workers }
-input      → { intent, state, workers }
-bench      → { controls, input, intent, playback, state }
-state      → { controls, intent, page }
-intent     → { controls, state }
-diagnostics→ { page, state }
-render     → { diagnostics, page, state }
-surface    → { render, state, ui }
-ui         → { assets, controls, diagnostics, state, surface }
-workers    → { state }
-boot       → { state }
+lib       → { display, model::{boot, state}, runtime::{frame_loop, input, playback, workers} }
+model::boot   → { model::state }
+model::intent → { controls, model::state }
+model::state  → { controls, model::{intent, route} }
+display              → { display::{render, ui}, model::state }
+display::diagnostics → { model::{route, state} }
+display::render      → { display::diagnostics, model::{route, state} }
+display::ui          → { assets, controls, display::diagnostics, model::state }
+runtime::frame_loop → { display, model::state, runtime::{input, replay, workers} }
+runtime::input      → { model::{intent, state}, runtime::workers }
+runtime::network    → { assets, model::{boot, intent, state}, runtime::{input, replay, workers} }
+runtime::playback   → { model::{intent, state}, runtime::{input, workers} }
+runtime::replay     → { controls, model::{intent, state}, runtime::input }
+runtime::workers    → { model::state }
+bench               → { runtime::playback }
 ```
 
-`main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
+`main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`runtime::network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
-- `workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
-- `workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
-- `network` 不依赖 `surface`/`frame_loop`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- 三层只向内倒（`the_layers_lean_inward_only`）：`model` 不认识 `runtime`/`display`，`display` 不认识 `runtime`；唯一的向外边是 `runtime::frame_loop → display`，因为帧循环负责呈现模型已经定下的状态
+- `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
+- `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
+- `runtime::network` 不依赖 `display`/`runtime::frame_loop`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- `controls`、`assets` 留在顶层：它们同时被 `model` 与 `display` 消费，放进任何一层都会制造反向依赖
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用
 - `core` 不认识 `iot_app`
 
@@ -182,7 +191,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-`state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
+`model/state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`，`wiring.rs` 放 `Backed`/`Boot`/`SurfaceRole`，`device.rs` 放 `DeviceState` 与查询，`manager.rs` 放构造、路由与访问器。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。
 
 业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkPage` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），只有手指的 `NetworkPageIntent` 写它。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 
@@ -213,7 +222,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 - **保留值**走 `PageWatch`/`Retained`（`Network.page`、`Scan` 的列表）：写入替换旧值，读走之后仍然在，所以面板与手机页面读的是同一份。启动页的结论不是保留值而是**一次性命令**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求同一条队列，工作者不必再看页面演进到哪一步。
 - **最新窗口**走 `Input.from`：1.7 KB 的采集样本只留最新一份，覆盖而不是排队。
 
-`NetworkCommand` 的词汇表留在 `app/src/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::process_intents` 拿到就 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `app/src/model/state/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()` 直接返回，`Schedule::process_intents` 拿到就 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
 **每帧逻辑按边界拆成系统。** `frame_loop/systems/*.rs` 一个文件一个 `System`，它只持有跨帧记忆（上一条播报状态、上一页、governor），状态与句柄由 `Frame` 交给它；系统之间不互相调用。加一个特性 = 加一个文件 + 在 `Schedule::tick` 里加一行，声明顺序就是执行顺序，改顺序就是改语义。意图那一侧不走 `System`：一条意图产出的命令要立刻交给它要去的那个系统（同一帧的两条命令不能合并成一条），所以那几行留在 `process_intents`。
 
@@ -387,9 +396,9 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面：路由表 + 导航栈
 
-`app/src/page/mod.rs` 只写一份路由表：枚举 `DisplayPage` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、底色、是否出帧、claim、重绘步长、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/ui/surface.rs` 的渲染分支与 `app/src/ui/views/` 的视图模块（渲染分支本身由编译器穷尽检查）。
+`app/src/model/route/mod.rs` 只写一份路由表：枚举 `DisplayPage` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、底色、是否出帧、claim、重绘步长、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/display/ui/surface.rs` 的渲染分支与 `app/src/display/ui/views/` 的视图模块（渲染分支本身由编译器穷尽检查）。
 
-`app/src/page/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕；瞬态没有次序，停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
+`app/src/model/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕；瞬态没有次序，停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 
 能力判定是每条路由自己的一列（`Route::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以入口交进来的是 `Wifi`（`Absent` / `Unattended` / `Worker`），`run` 在组合 `Backed` 时用 `wifi.wired()` 落成那个 `bool`：是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`wifi` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 

@@ -4,7 +4,7 @@
 //! app's codemap relies on are asserted here, where a stray `use` fails the build instead of
 //! quietly reversing an edge the next reader has to rediscover.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -285,24 +285,24 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
 #[test]
 fn the_network_never_reaches_the_panel() {
     assert_no_reference(
-        sources(&app_src().join("network")),
-        &["crate::surface", "crate::frame_loop"],
+        sources(&app_src().join("runtime/network")),
+        &["crate::display", "crate::runtime::frame_loop"],
     );
 }
 
 #[test]
 fn the_panel_side_never_reaches_the_radio() {
     let src = app_src();
-    let mut files = sources(&src.join("surface"));
-    files.extend(sources(&src.join("playback")));
-    files.extend(sources(&src.join("frame_loop")));
-    files.extend(sources(&src.join("workers")));
-    for name in ["input.rs", "boot.rs"] {
+    let mut files = sources(&src.join("display"));
+    files.extend(sources(&src.join("runtime/playback")));
+    files.extend(sources(&src.join("runtime/frame_loop")));
+    files.extend(sources(&src.join("runtime/workers")));
+    for name in ["runtime/input.rs", "model/boot.rs"] {
         let path = src.join(name);
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
     }
-    assert_no_reference(files, &["crate::network"]);
+    assert_no_reference(files, &["crate::runtime::network"]);
 }
 
 #[test]
@@ -340,12 +340,13 @@ fn the_pixel_layer_names_no_product() {
 
 #[test]
 fn the_worker_handles_compile_without_the_radio() {
-    let lib = std::fs::read_to_string(app_src().join("lib.rs")).expect("the composition root");
-    let lines: Vec<_> = lib.lines().collect();
+    let runtime =
+        std::fs::read_to_string(app_src().join("runtime/mod.rs")).expect("the runtime module");
+    let lines: Vec<_> = runtime.lines().collect();
     let at = lines
         .iter()
         .position(|line| line.trim() == "pub mod workers;")
-        .expect("the composition root declares the worker handles");
+        .expect("the runtime declares the worker handles");
     assert!(
         !lines[at.saturating_sub(1)..at]
             .iter()
@@ -357,13 +358,13 @@ fn the_worker_handles_compile_without_the_radio() {
 #[test]
 fn the_worker_handles_never_reach_a_worker() {
     assert_no_reference(
-        sources(&app_src().join("workers")),
+        sources(&app_src().join("runtime/workers")),
         &[
-            "crate::playback",
-            "crate::network",
-            "crate::surface",
-            "crate::frame_loop",
-            "crate::input",
+            "crate::runtime::playback",
+            "crate::runtime::network",
+            "crate::display",
+            "crate::runtime::frame_loop",
+            "crate::runtime::input",
         ],
     );
 }
@@ -371,31 +372,39 @@ fn the_worker_handles_never_reach_a_worker() {
 #[test]
 fn the_page_table_is_a_leaf() {
     assert_no_reference(
-        shipping_sources(&app_src().join("page")),
-        &["crate::state", "crate::render", "crate::diagnostics"],
+        shipping_sources(&app_src().join("model/route")),
+        &[
+            "crate::model::state",
+            "crate::display::render",
+            "crate::display::diagnostics",
+        ],
     );
 }
 
 #[test]
 fn intents_name_what_is_asked_and_not_what_answers_it() {
     assert_no_reference(
-        shipping_source(app_src().join("intent.rs")),
-        &["crate::page", "crate::render", "crate::diagnostics"],
+        shipping_source(app_src().join("model/intent.rs")),
+        &[
+            "crate::model::route",
+            "crate::display::render",
+            "crate::display::diagnostics",
+        ],
     );
 }
 
 #[test]
 fn state_neither_draws_nor_snapshots_itself() {
     assert_no_reference(
-        shipping_sources(&app_src().join("state")),
-        &["crate::render", "crate::diagnostics"],
+        shipping_sources(&app_src().join("model/state")),
+        &["crate::display::render", "crate::display::diagnostics"],
     );
 }
 
 #[test]
 fn translation_dispatches_without_naming_page_geometry() {
     assert_no_reference(
-        shipping_source(app_src().join("state/translate.rs")),
+        shipping_source(app_src().join("model/state/translate.rs")),
         &["keyboard::", "Band::", "controls::", "Confirm"],
     );
 }
@@ -420,31 +429,88 @@ fn drivers_never_reach_up() {
 #[test]
 fn diagnostics_snapshots_without_drawing() {
     assert_no_reference(
-        shipping_source(app_src().join("diagnostics.rs")),
-        &["crate::render"],
+        shipping_source(app_src().join("display/diagnostics.rs")),
+        &["crate::display::render"],
     );
 }
 
-/// Every module in the library: a directory or a top-level file, minus the binary's own root
-/// and `bin/`.
-fn app_modules(src: &Path) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    for entry in std::fs::read_dir(src).expect("the app's source is readable") {
+/// The three layers: each one's direct children are nodes of the graph, and the rule between
+/// the layers is the point of drawing it at all.
+const LAYERS: [&str; 3] = ["model", "display", "runtime"];
+
+/// Every module the library declares, by logical path (`model::state`), with the file that
+/// defines it. `main.rs` and `bin/` are separate crates, so they are not in the tree; the
+/// library root is named `lib`.
+fn module_tree(src: &Path) -> BTreeMap<String, PathBuf> {
+    let mut modules = BTreeMap::new();
+    collect_modules(src, "", &mut modules);
+    modules
+}
+
+fn collect_modules(dir: &Path, prefix: &str, modules: &mut BTreeMap<String, PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("every source directory is readable") {
         let path = entry
             .expect("the source tree does not change while it is read")
             .path();
         if path.is_dir() {
-            if path.file_name().is_some_and(|name| name != "bin") {
-                names.insert(path.file_name().unwrap().to_string_lossy().into_owned());
+            let name = path
+                .file_name()
+                .expect("a directory has a name")
+                .to_string_lossy();
+            if name == "bin" {
+                continue;
             }
-        } else if let Some(stem) = path.file_stem() {
+            // A directory with no `mod.rs` holds no modules; `assets/` is bytes.
+            let owner = path.join("mod.rs");
+            if owner.is_file() {
+                let module = join(prefix, &name);
+                modules.insert(module.clone(), owner);
+                collect_modules(&path, &module, modules);
+            }
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            let Some(stem) = path.file_stem() else {
+                continue;
+            };
             let stem = stem.to_string_lossy();
-            if stem != "main" {
-                names.insert(stem.into_owned());
+            if matches!(&*stem, "lib" | "main" | "mod") {
+                continue;
             }
+            modules.insert(join(prefix, &stem), path);
         }
     }
-    names
+}
+
+fn join(prefix: &str, name: &str) -> String {
+    if prefix.is_empty() {
+        name.to_string()
+    } else {
+        format!("{prefix}::{name}")
+    }
+}
+
+/// A node is a top-level module or a layer's direct child. Deeper modules belong to the node
+/// that contains them, so moving a file inside a node does not redraw the graph.
+fn is_node(module: &str) -> bool {
+    let mut parts = module.split("::");
+    let Some(first) = parts.next().filter(|first| !first.is_empty()) else {
+        return false;
+    };
+    match (parts.next(), parts.next()) {
+        (None, _) => true,
+        (Some(_), None) => LAYERS.contains(&first),
+        _ => false,
+    }
+}
+
+/// The node a module belongs to: the longest node path it starts with.
+fn node_of(module: &str, nodes: &BTreeSet<String>) -> Option<String> {
+    let mut end = module.len();
+    loop {
+        if nodes.contains(&module[..end]) {
+            return Some(module[..end].to_string());
+        }
+        end = module[..end].rfind("::")?;
+    }
 }
 
 fn ident_prefix(text: &str) -> &str {
@@ -455,17 +521,38 @@ fn ident_prefix(text: &str) -> &str {
     &text[..end]
 }
 
-/// The library modules a source names, written either `crate::module` or `use module::…`.
-fn local_references(text: &str, modules: &BTreeSet<String>) -> BTreeSet<String> {
-    let mut found = BTreeSet::new();
+/// The identifiers in a `a::b::c` path, starting at `text`.
+fn segments(text: &str) -> Vec<&str> {
+    let mut found = Vec::new();
     let mut rest = text;
-    while let Some(at) = rest.find("crate::") {
-        rest = &rest[at + "crate::".len()..];
-        let ident = ident_prefix(rest);
-        if modules.contains(ident) {
-            found.insert(ident.to_string());
+    loop {
+        let end = ident_prefix(rest).len();
+        if end == 0 {
+            return found;
+        }
+        found.push(&rest[..end]);
+        match rest[end..].strip_prefix("::") {
+            Some(tail) => rest = tail,
+            None => return found,
         }
     }
+}
+
+/// Every `crate::a::b` written anywhere in the source, as a path.
+fn crate_paths(text: &str) -> Vec<Vec<&str>> {
+    const PREFIX: &str = "crate::";
+    let mut paths = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(PREFIX) {
+        rest = &rest[at + PREFIX.len()..];
+        paths.push(segments(rest));
+    }
+    paths
+}
+
+/// The path every `use` names before its braces: `use super::{A, B}` names `super`.
+fn use_paths(text: &str) -> Vec<Vec<&str>> {
+    let mut paths = Vec::new();
     for line in text.lines() {
         let line = line.trim();
         let Some(item) = line
@@ -474,96 +561,178 @@ fn local_references(text: &str, modules: &BTreeSet<String>) -> BTreeSet<String> 
         else {
             continue;
         };
-        let ident = ident_prefix(item);
-        if modules.contains(ident) {
-            found.insert(ident.to_string());
+        let end = item
+            .char_indices()
+            .find(|(_, c)| !(c.is_ascii_alphanumeric() || *c == '_' || *c == ':'))
+            .map_or(item.len(), |(at, _)| at);
+        let mut path = &item[..end];
+        while let Some(trimmed) = path.strip_suffix("::") {
+            path = trimmed;
+        }
+        if !path.is_empty() {
+            paths.push(path.split("::").collect());
         }
     }
-    found
+    paths
+}
+
+/// Where a path written in `module` lands: `crate::` from the root, `self`/`super` by walking,
+/// and a bare first segment as Rust 2018's uniform path — the module's own child when it has
+/// one, otherwise a top-level module. `None` for a path that names no module of this crate,
+/// which is every `iot_core::`/`alloc::` import.
+fn resolve(path: &[&str], module: &str, modules: &BTreeMap<String, PathBuf>) -> Option<String> {
+    let mut base: Vec<&str> = module.split("::").filter(|part| !part.is_empty()).collect();
+    let mut rest = path;
+    match *path.first()? {
+        "crate" => {
+            base.clear();
+            rest = &path[1..];
+        }
+        "self" => rest = &path[1..],
+        "super" => {
+            while let Some(&"super") = rest.first() {
+                base.pop();
+                rest = &rest[1..];
+            }
+        }
+        first => {
+            let child = join(module, first);
+            if modules.contains_key(&child) {
+                base.push(first);
+                rest = &path[1..];
+            } else if modules.contains_key(first) {
+                base.clear();
+                base.push(first);
+                rest = &path[1..];
+            } else {
+                return None;
+            }
+        }
+    }
+    base.extend_from_slice(rest);
+    let full = base.join("::");
+    let mut end = full.len();
+    loop {
+        if modules.contains_key(&full[..end]) {
+            return Some(full[..end].to_string());
+        }
+        end = full[..end].rfind("::")?;
+    }
+}
+
+/// The library modules a source names, as logical module paths.
+fn local_references(
+    text: &str,
+    module: &str,
+    modules: &BTreeMap<String, PathBuf>,
+) -> BTreeSet<String> {
+    crate_paths(text)
+        .into_iter()
+        .chain(use_paths(text))
+        .filter_map(|path| resolve(&path, module, modules))
+        .collect()
+}
+
+/// The edges the sources form between the codemap's nodes.
+fn app_edges(src: &Path) -> BTreeSet<(String, String)> {
+    let modules = module_tree(src);
+    let nodes: BTreeSet<String> = modules
+        .keys()
+        .filter(|module| is_node(module))
+        .cloned()
+        .collect();
+    let owner: BTreeMap<&Path, &str> = modules
+        .iter()
+        .map(|(module, path)| (path.as_path(), module.as_str()))
+        .collect();
+    let mut edges = BTreeSet::new();
+    for (path, text) in shipping_sources(src) {
+        // `lib.rs` is the root; `main.rs` and the bins are other crates and own their edges.
+        let module = match owner.get(path.as_path()) {
+            Some(module) => module.to_string(),
+            None if path == src.join("lib.rs") => String::new(),
+            None => continue,
+        };
+        let from = if module.is_empty() {
+            "lib".to_string()
+        } else {
+            node_of(&module, &nodes)
+                .unwrap_or_else(|| panic!("{} belongs to no codemap node", path.display()))
+        };
+        for target in local_references(&text, &module, &modules) {
+            let Some(to) = node_of(&target, &nodes) else {
+                panic!(
+                    "{} reaches {target}, which belongs to no codemap node",
+                    path.display()
+                );
+            };
+            if to != from {
+                edges.insert((from.clone(), to));
+            }
+        }
+    }
+    edges
 }
 
 #[test]
 fn the_app_module_graph_is_the_one_the_codemap_draws() {
-    let src = app_src();
-    let modules = app_modules(&src);
     let allowed: BTreeSet<(String, String)> = [
-        ("bench", "input"),
-        ("bench", "playback"),
-        ("bench", "controls"),
-        ("frame_loop", "bench"),
-        ("frame_loop", "input"),
-        ("frame_loop", "surface"),
-        ("frame_loop", "workers"),
-        ("input", "workers"),
-        ("lib", "boot"),
-        ("lib", "frame_loop"),
-        ("lib", "input"),
-        ("lib", "playback"),
-        ("lib", "surface"),
-        ("lib", "workers"),
-        ("network", "assets"),
-        ("network", "bench"),
-        ("network", "boot"),
-        ("network", "input"),
-        ("network", "workers"),
-        ("bench", "intent"),
-        ("bench", "state"),
-        ("boot", "state"),
-        ("diagnostics", "page"),
-        ("diagnostics", "state"),
-        ("frame_loop", "state"),
-        ("input", "intent"),
-        ("input", "state"),
-        ("intent", "controls"),
-        ("intent", "state"),
-        ("lib", "state"),
-        ("network", "intent"),
-        ("network", "state"),
-        ("playback", "input"),
-        ("playback", "intent"),
-        ("playback", "state"),
-        ("playback", "workers"),
-        ("render", "diagnostics"),
-        ("render", "page"),
-        ("render", "state"),
-        ("state", "controls"),
-        ("state", "intent"),
-        ("state", "page"),
-        ("surface", "render"),
-        ("surface", "state"),
-        ("surface", "ui"),
-        ("ui", "assets"),
-        ("ui", "controls"),
-        ("ui", "diagnostics"),
-        ("ui", "state"),
-        ("ui", "surface"),
-        ("workers", "state"),
+        ("bench", "runtime::playback"),
+        ("display", "display::render"),
+        ("display", "display::ui"),
+        ("display", "model::state"),
+        ("display::diagnostics", "model::route"),
+        ("display::diagnostics", "model::state"),
+        ("display::render", "display::diagnostics"),
+        ("display::render", "model::route"),
+        ("display::render", "model::state"),
+        ("display::ui", "assets"),
+        ("display::ui", "controls"),
+        ("display::ui", "display::diagnostics"),
+        ("display::ui", "model::state"),
+        ("lib", "display"),
+        ("lib", "model::boot"),
+        ("lib", "model::state"),
+        ("lib", "runtime::frame_loop"),
+        ("lib", "runtime::input"),
+        ("lib", "runtime::playback"),
+        ("lib", "runtime::workers"),
+        ("model::boot", "model::state"),
+        ("model::intent", "controls"),
+        ("model::intent", "model::state"),
+        ("model::state", "controls"),
+        ("model::state", "model::intent"),
+        ("model::state", "model::route"),
+        ("runtime::frame_loop", "display"),
+        ("runtime::frame_loop", "model::state"),
+        ("runtime::frame_loop", "runtime::input"),
+        ("runtime::frame_loop", "runtime::replay"),
+        ("runtime::frame_loop", "runtime::workers"),
+        ("runtime::input", "model::intent"),
+        ("runtime::input", "model::state"),
+        ("runtime::input", "runtime::workers"),
+        ("runtime::network", "assets"),
+        ("runtime::network", "model::boot"),
+        ("runtime::network", "model::intent"),
+        ("runtime::network", "model::state"),
+        ("runtime::network", "runtime::input"),
+        ("runtime::network", "runtime::replay"),
+        ("runtime::network", "runtime::workers"),
+        ("runtime::playback", "model::intent"),
+        ("runtime::playback", "model::state"),
+        ("runtime::playback", "runtime::input"),
+        ("runtime::playback", "runtime::workers"),
+        ("runtime::replay", "controls"),
+        ("runtime::replay", "model::intent"),
+        ("runtime::replay", "model::state"),
+        ("runtime::replay", "runtime::input"),
+        ("runtime::workers", "model::state"),
     ]
     .into_iter()
     .map(|(from, to)| (from.to_string(), to.to_string()))
     .collect();
 
-    let mut actual = BTreeSet::new();
-    for (path, text) in shipping_sources(&src) {
-        let rel = path.strip_prefix(&src).expect("a source below the app");
-        let first = rel
-            .components()
-            .next()
-            .expect("a source has a path")
-            .as_os_str()
-            .to_string_lossy()
-            .into_owned();
-        let from = first.strip_suffix(".rs").unwrap_or(&first).to_string();
-        if from == "main" || !modules.contains(&from) {
-            continue;
-        }
-        for target in local_references(&text, &modules) {
-            if target != from {
-                actual.insert((from.clone(), target));
-            }
-        }
-    }
-
+    let actual = app_edges(&app_src());
     let missing: Vec<_> = actual.difference(&allowed).collect();
     let stale: Vec<_> = allowed.difference(&actual).collect();
     assert!(
@@ -574,4 +743,42 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         stale.is_empty(),
         "codemap edges the sources no longer form: {stale:?}"
     );
+}
+
+/// The layers lean inward only: the model knows neither the runtime nor the display, and the
+/// display never drives a worker. The one edge outward from the runtime is the frame loop
+/// presenting what the model settled on.
+#[test]
+fn the_layers_lean_inward_only() {
+    for (from, to) in app_edges(&app_src()) {
+        let outward = if from.starts_with("model::") {
+            to.starts_with("display") || to.starts_with("runtime")
+        } else if from.starts_with("display") {
+            to.starts_with("runtime")
+        } else {
+            false
+        };
+        assert!(!outward, "{from} reaches {to}; a layer only leans inward");
+    }
+}
+
+/// The top of the tree is the three layers, the two leaves they share, and the entries.
+#[test]
+fn the_app_tree_is_three_layers_two_leaves_and_the_entries() {
+    let src = app_src();
+    let mut top: BTreeSet<String> = module_tree(&src)
+        .keys()
+        .filter(|module| !module.contains("::"))
+        .cloned()
+        .collect();
+    top.insert("bin".to_string());
+    top.insert("main".to_string());
+    top.insert("lib".to_string());
+    let expected: BTreeSet<String> = [
+        "assets", "bench", "bin", "controls", "display", "lib", "main", "model", "runtime",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    assert_eq!(top, expected, "the app's top level moved");
 }

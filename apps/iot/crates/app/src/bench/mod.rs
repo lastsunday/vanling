@@ -1,7 +1,6 @@
-//! Bench code: probe bodies and the panel replay that stands in for a finger.
+//! Build-time probes: the bodies behind `bin/*-probe.rs`.
 //!
-//! `src/bin/` is the only entry; the product build touches only `replay`.
+//! The panel replay a product build can reach is not here — it lives with the runtime that
+//! drives it (`runtime::replay`).
 
 pub mod probe;
-pub mod replay;
-pub mod script;

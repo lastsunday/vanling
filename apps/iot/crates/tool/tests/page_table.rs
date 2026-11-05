@@ -1,7 +1,7 @@
 //! The route table is written by hand, and this test holds the parts the compiler cannot.
 //!
 //! `route()` is an exhaustive match, so a variant without a row does not compile, and the
-//! view match in `app/src/ui/surface.rs` is exhaustive too. What is *not* compiler-checked is that
+//! view match in `app/src/display/ui/surface.rs` is exhaustive too. What is *not* compiler-checked is that
 //! `ALL` lists every variant, that the cycle stays a prefix of it, that a page is either
 //! bootable or transient, and that a page still has a view module. This test reads the table
 //! as source and checks those edges, so a half-added page fails here rather than on a bench.
@@ -22,7 +22,7 @@ fn read(relative: &str) -> String {
         .unwrap_or_else(|error| panic!("{} is readable: {error}", path.display()))
 }
 
-const PAGE: &str = "apps/iot/crates/app/src/page/mod.rs";
+const PAGE: &str = "apps/iot/crates/app/src/model/route/mod.rs";
 
 fn source() -> String {
     read(PAGE)
@@ -230,18 +230,21 @@ fn a_page_that_cannot_be_booted_says_why() {
 
 #[test]
 fn every_page_has_a_view() {
-    let surface = read("apps/iot/crates/app/src/ui/surface.rs");
+    let surface = read("apps/iot/crates/app/src/display/ui/surface.rs");
     for row in rows(&source()) {
         assert!(
             surface.contains(&format!("DisplayPage::{}", row.variant)),
-            "{} has no arm in app/src/ui/surface.rs::render; the match must stay exhaustive",
+            "{} has no arm in app/src/display/ui/surface.rs::render; the match must stay exhaustive",
             row.variant
         );
         if row.path == "ambient" {
             continue;
         }
-        let single = format!("apps/iot/crates/app/src/ui/views/{}.rs", row.path);
-        let split = format!("apps/iot/crates/app/src/ui/views/{}/mod.rs", row.path);
+        let single = format!("apps/iot/crates/app/src/display/ui/views/{}.rs", row.path);
+        let split = format!(
+            "apps/iot/crates/app/src/display/ui/views/{}/mod.rs",
+            row.path
+        );
         assert!(
             repo_root().join(&single).exists() || repo_root().join(&split).exists(),
             "{} names no view module at {single} or {split}",
