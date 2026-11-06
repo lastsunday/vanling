@@ -3,6 +3,8 @@
 //! A system owns one boundary: the worker handle it reads and writes, and the state that has
 //! to survive a frame. The frame hands it only what is shared.
 
+use core::any::TypeId;
+
 use crate::model::state::{Command, DeviceManager};
 use crate::runtime::feature::input::IntentBus;
 
@@ -20,7 +22,16 @@ pub(crate) struct Frame<'a> {
 pub(crate) trait System {
     fn tick(&mut self, frame: &mut Frame<'_>);
 
-    /// Once per applied intent, in registration order. `command` is what the model asked the
-    /// runtime for; the system that owns that boundary takes its own and leaves the rest.
-    fn intent(&mut self, _frame: &mut Frame<'_>, _command: &mut Option<Command>) {}
+    /// The command type this system takes off the bus. Registration builds the dispatch table
+    /// from this, so the system never sees the schedule.
+    fn takes(&self) -> Option<TypeId> {
+        None
+    }
+
+    /// Takes the command declared by [`takes`](Self::takes), leaving one it does not own.
+    fn take(&mut self, _command: &mut Option<Command>) {}
+
+    /// Once per applied intent, in registration order: the reaction that owns no command.
+    /// Delivery has already happened by the time this runs.
+    fn intent(&mut self, _frame: &mut Frame<'_>) {}
 }

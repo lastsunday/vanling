@@ -8,7 +8,9 @@ mod notice;
 mod playback;
 
 use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
+use core::any::TypeId;
 
 use crate::model::state::Command;
 use crate::runtime::system::{Frame, System};
@@ -29,29 +31,57 @@ const _: () =
 /// decides a frame's sequence; the schedule names no worker and no feature.
 pub(crate) struct Schedule<'a> {
     steps: Vec<Box<dyn System + 'a>>,
+    /// Which registered system takes which command type, keyed by the payload its `Command`
+    /// variant carries. `register` builds it, so a boundary is still one line at the root.
+    owners: BTreeMap<TypeId, usize>,
 }
 
 impl<'a> Schedule<'a> {
     pub(crate) fn new() -> Self {
-        Self { steps: Vec::new() }
+        Self {
+            steps: Vec::new(),
+            owners: BTreeMap::new(),
+        }
     }
 
     pub(crate) fn register(&mut self, system: impl System + 'a) {
+        if let Some(kind) = system.takes() {
+            let slot = self.steps.len();
+            assert!(
+                self.owners.insert(kind, slot).is_none(),
+                "two systems take the same command type"
+            );
+        }
         self.steps.push(Box::new(system));
     }
 
-    /// Bus → state. Each intent is applied, then every system is offered what the model left
-    /// behind before the next intent is taken: two edges in one frame (mute, then unmute) must
-    /// not collapse into the last one. The system that owns a boundary takes its own command,
-    /// so a leftover one means a boundary was registered without its system.
+    /// Bus → state. Each intent is applied and its command delivered to the system that
+    /// declared its type, and only then is every system asked to react: two edges in one frame
+    /// (mute, then unmute) must not collapse into the last one. A leftover command means the
+    /// boundary was registered without a system that takes it.
     pub(crate) fn process_intents(&mut self, frame: &mut Frame<'_>) {
         while let Ok(intent) = frame.bus.try_receive() {
             let mut command: Option<Command> = frame.manager.apply_intent(intent);
+            self.deliver(&mut command);
             for step in &mut self.steps {
-                step.intent(frame, &mut command);
+                step.intent(frame);
             }
-            debug_assert!(command.is_none(), "no registered system took {command:?}");
         }
+    }
+
+    /// A command nobody takes is logged in release too: `debug_assert` alone is compiled out
+    /// of the product build.
+    fn deliver(&mut self, command: &mut Option<Command>) {
+        let Some(kind) = command.as_ref().map(Command::type_id) else {
+            return;
+        };
+        if let Some(&owner) = self.owners.get(&kind) {
+            self.steps[owner].take(command);
+        }
+        if let Some(rest) = command.as_ref() {
+            log::error!("[COORD] no system takes {rest:?}");
+        }
+        debug_assert!(command.is_none(), "no system takes {command:?}");
     }
 
     pub(crate) fn tick(&mut self, frame: &mut Frame<'_>) {
@@ -88,7 +118,7 @@ mod tests {
             self.log.borrow_mut().push(self.name);
         }
 
-        fn intent(&mut self, _frame: &mut Frame<'_>, _command: &mut Option<Command>) {
+        fn intent(&mut self, _frame: &mut Frame<'_>) {
             self.log.borrow_mut().push(self.name);
         }
     }
@@ -185,7 +215,7 @@ mod tests {
 
     #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "no registered system took")]
+    #[should_panic(expected = "no system takes")]
     fn a_command_nobody_takes_is_not_dropped_silently() {
         let bus = IntentBus::new();
         let mut manager = manager();

@@ -3,7 +3,7 @@
 
 use embassy_sync::channel::TrySendError;
 
-use crate::model::state::{Command, PlaybackCommand, PlaybackState};
+use crate::model::state::{PlaybackCommand, PlaybackState};
 use crate::runtime::workers::{Playback, PlaybackQueue};
 
 use crate::runtime::system::{Frame, System};
@@ -41,7 +41,7 @@ impl System for PlaybackSystem {
         self.dispatch(frame.manager.playback_state());
     }
 
-    fn intent(&mut self, frame: &mut Frame<'_>, _command: &mut Option<Command>) {
+    fn intent(&mut self, frame: &mut Frame<'_>) {
         self.dispatch(frame.manager.playback_state());
     }
 }

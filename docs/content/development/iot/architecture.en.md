@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "31a081d25c1749e220f43d7585337bee358da729"
-translated_at = "2026-11-05T00:00:00Z"
+source_file_hash = "1e8b096dabe25134326cd18dc22aab2da4a97f34"
+translated_at = "2026-11-06T00:00:00Z"
 +++
 
 # Architecture
@@ -233,9 +233,9 @@ The shape follows the semantics, not convenience:
 - **Retained values** use `PageWatch`/`Retained` (`Network.page`, the list inside `Scan`): a write replaces the old value and reading does not consume it, so the panel and the phone's page read the same copy. The splash's verdict is not a retained value but a **one-shot command**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
 - **The newest window** uses `Input.from`: a 1.7 KB capture sample only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `app/src/model/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command as a `Command`, `Schedule::process_intents` offers it to each registered system in registration order, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `app/src/model/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` returns the command as a `Command`, `Schedule::process_intents` looks it up by `Command::type_id()` in the registry and hands it to the one system that declared `System::takes`, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
-**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `Frame` hands it the shared state. Systems never call each other. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is offered in registration order, and the system that owns that boundary takes its own; two commands in one frame do not collapse, and a command nobody took is exposed by a `debug_assert` as a missing registration.
+**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `Frame` hands it the shared state. Systems never call each other. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is looked up in the registry by type and handed to the system that declared `System::takes`; two commands in one frame do not collapse, and a command nobody took is logged as an error under `[COORD]` in release too (debug builds have an assertion as well).
 
 **The render layer costs nothing**: `Diagnostics` in `app/src/display/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`; the screen renderer reads it through the painter seam.
 

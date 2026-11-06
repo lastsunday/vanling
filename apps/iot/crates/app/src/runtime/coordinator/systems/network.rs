@@ -1,7 +1,11 @@
 //! The network worker's side of a frame: the page it watches, the scan list coming back, and
 //! the changes worth a log line.
 
-use crate::model::state::{Command, DeviceManager, DeviceState, DisplayPage, LampLine, LightState};
+use core::any::TypeId;
+
+use crate::model::state::{
+    Command, DeviceManager, DeviceState, DisplayPage, LampLine, LightState, NetworkCommand,
+};
 use iot_core::drivers::network::SetupHost;
 
 use crate::runtime::workers::Network;
@@ -64,7 +68,11 @@ impl System for NetworkSystem {
         self.drain(frame.manager);
     }
 
-    fn intent(&mut self, _frame: &mut Frame<'_>, command: &mut Option<Command>) {
+    fn takes(&self) -> Option<TypeId> {
+        Some(TypeId::of::<NetworkCommand>())
+    }
+
+    fn take(&mut self, command: &mut Option<Command>) {
         match command.take() {
             Some(Command::Network(command)) => self.network.commands.publish(command),
             other => *command = other,

@@ -25,7 +25,9 @@ use self::point::{
 pub const BENCH: bool = option_env!("IOT_PANEL_BENCH").is_some();
 
 /// The network this build was named, unless the build is a bench run: a bench image has to join
-/// whatever the panel names, not the credential its build happens to carry.
+/// whatever the panel names, not the credential its build happens to carry. Only the network
+/// worker asks for it, and that worker exists only with `wifi`.
+#[cfg(feature = "wifi")]
 pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
     if BENCH {
         return None;
