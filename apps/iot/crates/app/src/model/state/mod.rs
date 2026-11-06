@@ -63,7 +63,8 @@ pub use self::network::NetworkState;
 pub use iot_core::drivers::network::NetworkCommand;
 
 pub use self::network_page::{
-    Answers, Confirm, Control, ControlKind, NetworkPage, Strip, answers, confirm_verb, strip,
+    Answers, Confirm, Control, ControlKind, NetworkPage, SetupWait, Strip, answers, confirm_verb,
+    strip,
 };
 
 pub use self::playback::{PlaybackCommand, PlaybackDiagnostics, PlaybackState, PlaybackView};

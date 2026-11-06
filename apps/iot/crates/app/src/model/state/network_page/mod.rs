@@ -7,7 +7,7 @@
 use crate::controls::{Key, LIST_ROWS};
 use crate::model::intent::NetworkPageIntent;
 use iot_core::drivers::network::{
-    AccessPoint, JoinRequest, LinkPhase, LinkStatus, NetworkError, NetworkMode, Ssid,
+    AccessPoint, JoinRequest, LinkPhase, LinkStatus, NetworkError, NetworkMode, SetupHost, Ssid,
 };
 
 use iot_core::drivers::network::NetworkCommand;
@@ -42,6 +42,17 @@ pub struct NetworkPage {
     pub confirm: Option<Confirm>,
     /// Whether the action strip is waiting for a scan round it asked for.
     pub rescan_wait: bool,
+    /// Whether a join the page handed over is still waiting for the radio's own word.
+    pub join_wait: bool,
+    /// The setup change the page asked for and has not seen reported yet.
+    pub setup_wait: Option<SetupWait>,
+}
+
+/// What a setup tap is waiting on: the other host, or the access point's new passphrase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetupWait {
+    Host(SetupHost),
+    Open(bool),
 }
 
 /// The action a confirmation is standing in front of.
@@ -62,6 +73,16 @@ impl Confirm {
 }
 
 impl NetworkPage {
+    /// Whether the page is waiting on an ask of its own, so the strip has nothing to offer.
+    pub fn busy(&self) -> bool {
+        self.rescan_wait || self.join_wait || self.setup_wait.is_some()
+    }
+
+    /// Whether the box the page is about to draw is the access point's.
+    pub fn setup_box_pending(&self) -> bool {
+        self.setup_wait == Some(SetupWait::Host(SetupHost::AccessPoint))
+    }
+
     /// The phase the page should show.
     pub fn phase(&self, link: LinkPhase) -> LinkPhase {
         match (self.refused, link) {
@@ -114,8 +135,22 @@ impl NetworkPage {
                 self.refused = Some(kind);
                 self.reopen_entry();
             }
-            LinkPhase::Connecting | LinkPhase::Connected => self.refused = None,
+            LinkPhase::Connecting | LinkPhase::Connected => {
+                self.refused = None;
+                self.join_wait = false;
+            }
             LinkPhase::Off | LinkPhase::Scanning => {}
+        }
+        if let Some(wait) = self.setup_wait {
+            let done = match wait {
+                SetupWait::Host(host) => after.mode.host() == Some(host),
+                SetupWait::Open(open) => {
+                    !after.shows_setup_box() || after.setup_password.is_some() != open
+                }
+            };
+            if done || matches!(after.phase, LinkPhase::Failed(_)) || !after.mode.is_setup() {
+                self.setup_wait = None;
+            }
         }
         if after.phase == LinkPhase::Connected {
             self.entry = None;
@@ -144,6 +179,7 @@ impl NetworkPage {
                 };
                 self.keyboard = false;
                 self.revealed = false;
+                self.join_wait = true;
                 Some(Command::Network(NetworkCommand::Join(JoinRequest::Typed(
                     entry.credentials(ap.ssid),
                 ))))
@@ -170,6 +206,7 @@ impl NetworkPage {
 
     fn reopen_entry(&mut self) {
         self.confirm = None;
+        self.join_wait = false;
         if self.selected.is_some() {
             self.entry.get_or_insert_with(Entry::default);
         }
@@ -177,7 +214,7 @@ impl NetworkPage {
     }
 
     fn pick_row(&mut self, ap: AccessPoint, link: &NetworkState) -> Option<Command> {
-        if link.link.is_leavable() {
+        if self.join_wait || link.link.is_leavable() {
             return None;
         }
         let index = link.index_of(ap)?;
@@ -186,6 +223,7 @@ impl NetworkPage {
             self.entry = None;
             self.revealed = false;
             self.keyboard = false;
+            self.join_wait = true;
             return Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(
                 ap.ssid,
             ))));
@@ -205,6 +243,7 @@ impl NetworkPage {
         }
         self.keyboard = false;
         let entry = self.entry.unwrap_or_default();
+        self.join_wait = true;
         Some(Command::Network(NetworkCommand::Join(JoinRequest::Typed(
             entry.credentials(ap.ssid),
         ))))
@@ -240,11 +279,22 @@ impl NetworkPage {
     }
 
     fn switch_host(&mut self, link: &NetworkState, has_pages: bool) -> Option<Command> {
+        if !has_pages || self.join_wait || self.setup_wait.is_some() {
+            return None;
+        }
         let from = link.setup_host()?;
-        has_pages.then_some(Command::Network(NetworkCommand::SwitchHost { from }))
+        let to = match from {
+            SetupHost::Panel => SetupHost::AccessPoint,
+            SetupHost::AccessPoint => SetupHost::Panel,
+        };
+        self.setup_wait = Some(SetupWait::Host(to));
+        Some(Command::Network(NetworkCommand::SwitchHost { from }))
     }
 
     fn close_setup(&mut self, link: &NetworkState) -> Option<Command> {
+        if self.setup_wait.is_some() {
+            return None;
+        }
         let NetworkMode::Setup {
             host,
             cancellable: true,
@@ -256,7 +306,7 @@ impl NetworkPage {
     }
 
     fn scan_now(&mut self, link: &NetworkState) -> Option<Command> {
-        if link.link.is_leavable() {
+        if self.busy() || link.link.is_leavable() {
             return None;
         }
         self.rescan_wait = true;
@@ -264,13 +314,12 @@ impl NetworkPage {
     }
 
     fn set_open(&mut self, open: bool, link: &NetworkState) -> Option<Command> {
-        if !link.link.shows_setup_box() {
+        if self.join_wait || self.setup_wait.is_some() || !link.link.shows_setup_box() {
             return None;
         }
-        Some(Command::Network(NetworkCommand::SetupOpen {
-            from: link.setup_host()?,
-            open,
-        }))
+        let from = link.setup_host()?;
+        self.setup_wait = Some(SetupWait::Open(open));
+        Some(Command::Network(NetworkCommand::SetupOpen { from, open }))
     }
 
     fn answer(&mut self, question: Confirm, link: &NetworkState) -> Option<Command> {

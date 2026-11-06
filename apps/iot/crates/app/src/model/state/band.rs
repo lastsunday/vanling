@@ -16,7 +16,7 @@ impl Band {
 
     pub fn hidden(self, draft: NetworkPage, link: LinkStatus) -> bool {
         let question = draft.confirm.is_some();
-        let boxed = question || link.shows_setup_box();
+        let boxed = question || link.shows_setup_box() || draft.setup_box_pending();
         let joining = joining(draft, link);
         match self {
             Band::Controls => question || draft.keyboard,
@@ -32,7 +32,7 @@ impl Band {
 }
 
 pub fn joining(draft: NetworkPage, link: LinkStatus) -> bool {
-    !draft.keyboard && link.phase == LinkPhase::Connecting
+    !draft.keyboard && (link.phase == LinkPhase::Connecting || draft.join_wait)
 }
 
 pub fn each_band<F: FnMut(Band)>(draft: NetworkPage, link: LinkStatus, mut draw: F) {
@@ -47,10 +47,12 @@ pub fn each_band<F: FnMut(Band)>(draft: NetworkPage, link: LinkStatus, mut draw:
 mod tests {
     use super::*;
     use crate::controls;
-    use crate::model::state::{Confirm, Entry};
+    use crate::model::state::{Confirm, Entry, SetupWait};
     use alloc::vec;
     use alloc::vec::Vec;
-    use iot_core::drivers::network::{AccessPoint, LinkPhase, LinkStatus, NetworkMode, SetupHost};
+    use iot_core::drivers::network::{
+        AccessPoint, LinkPhase, LinkStatus, NetworkMode, SetupHost, SetupPass,
+    };
 
     fn asking() -> NetworkPage {
         NetworkPage {
@@ -262,6 +264,53 @@ mod tests {
         assert_eq!(
             bands(NetworkPage::default(), attempting()),
             vec![Band::Header, Band::Controls, Band::Overlay]
+        );
+    }
+
+    #[test]
+    fn a_join_the_page_handed_over_is_a_box_before_the_radio_reports() {
+        let draft = NetworkPage {
+            join_wait: true,
+            ..NetworkPage::default()
+        };
+        assert_eq!(
+            bands(draft, LinkStatus::default()),
+            vec![Band::Header, Band::Controls, Band::Overlay],
+            "the box comes up on the tap's own frame, not on the radio's answer"
+        );
+    }
+
+    #[test]
+    fn an_access_point_the_page_is_waiting_for_puts_its_box_up_first() {
+        let waiting = NetworkPage {
+            setup_wait: Some(SetupWait::Host(SetupHost::AccessPoint)),
+            ..NetworkPage::default()
+        };
+        assert_eq!(
+            bands(waiting, LinkStatus::default()),
+            vec![Band::Header, Band::Controls, Band::Overlay],
+            "the setup box is on the glass while the radio is still being reconfigured"
+        );
+    }
+
+    #[test]
+    fn a_passphrase_change_alone_keeps_the_box_it_was_answered_in() {
+        let draft = NetworkPage {
+            setup_wait: Some(SetupWait::Open(true)),
+            ..NetworkPage::default()
+        };
+        let link = LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
+            setup_password: Some(SetupPass::from_array(*b"k3mq9t7w2x")),
+            ..LinkStatus::default()
+        };
+        assert_eq!(
+            bands(draft, link),
+            vec![Band::Header, Band::Controls, Band::Overlay],
+            "the box is already the access point's, and the strip is how the panel gets back"
         );
     }
 }

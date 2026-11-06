@@ -10,7 +10,8 @@ use embassy_net::{Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{
-    Credentials, JoinRequest, NetworkMode, ScanHistory, SetupHost, Ssid, Station,
+    Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkMode, ScanHistory, SetupHost, Ssid,
+    Station,
 };
 
 use super::link::{Origin, Outcome, hold};
@@ -128,51 +129,51 @@ where
             }
             SetupHost::AccessPoint => {
                 let mut secured = setup.secure_on_entry;
-                loop {
-                    let device = match station.begin_setup(setup.name, secured) {
-                        Ok(device) => device,
-                        Err(error) => {
-                            log::error!(
-                                "[WIFI] the setup access point would not come up: {error:?}"
-                            );
-                            park().await
-                        }
-                    };
-                    let seed = seed_from(mac_of(&device));
-                    let (stack, runner) = embassy_net::new(
-                        device,
-                        provision::setup_config(),
-                        &mut *setup.resources,
-                        seed,
-                    );
-                    log::info!(
-                        "[WIFI] setup access point \"{}\" is up, {}",
-                        setup.name.as_display_text().unwrap_or("<not drawable>"),
-                        if secured {
-                            "under a passphrase"
-                        } else {
-                            "open"
-                        },
-                    );
-                    let mode = NetworkMode::Setup {
-                        host: SetupHost::AccessPoint,
-                        cancellable,
-                    };
-                    publish_link(station.status().with_mode(mode), any(saved.as_deref()));
-
-                    // Boxed, not inline: four server loops with their socket buffers inside the
-                    // product's one task, whose static pool is the scarce resource on the S3
-                    // (`@/records/iot/wifi.md`). One allocation for a loop that ends on drop is
-                    // the cheapest thing on offer.
-                    let page_serve = Box::pin(provision::serve(stack, runner, setup.mac));
-                    log::info!("[HEAP] {} B free with setup mode's future up", heap_free());
-                    let ending =
-                        select3(pick(station, history, saved, mode), page_serve, page_idle()).await;
-                    if let Err(error) = station.end_setup() {
-                        log::warn!("[WIFI] the setup access point would not come down: {error:?}");
+                let device = match station.begin_setup(setup.name, secured) {
+                    Ok(device) => device,
+                    Err(error) => {
+                        log::error!("[WIFI] the setup access point would not come up: {error:?}");
+                        park().await
                     }
+                };
+                let seed = seed_from(mac_of(&device));
+                let (stack, runner) = embassy_net::new(
+                    device,
+                    provision::setup_config(),
+                    &mut *setup.resources,
+                    seed,
+                );
+                log::info!(
+                    "[WIFI] setup access point \"{}\" is up, {}",
+                    setup.name.as_display_text().unwrap_or("<not drawable>"),
+                    if secured {
+                        "under a passphrase"
+                    } else {
+                        "open"
+                    },
+                );
+                let mode = NetworkMode::Setup {
+                    host: SetupHost::AccessPoint,
+                    cancellable,
+                };
+                publish_link(station.status().with_mode(mode), any(saved.as_deref()));
+
+                // Boxed, not inline: four server loops with their socket buffers inside the
+                // product's one task, whose static pool is the scarce resource on the S3
+                // (`@/records/iot/wifi.md`). One allocation for a loop that ends on drop is
+                // the cheapest thing on offer.
+                let mut page_serve = Box::pin(provision::serve(stack, runner, setup.mac));
+                log::info!("[HEAP] {} B free with setup mode's future up", heap_free());
+                loop {
+                    let ending = select3(
+                        pick(station, history, saved, mode),
+                        &mut page_serve,
+                        page_idle(),
+                    )
+                    .await;
                     match ending {
                         Either3::First(Choice::Network(credentials, origin)) => {
+                            lower_setup(station);
                             return Some((credentials, origin));
                         }
                         Either3::Second(never) => match never {},
@@ -180,24 +181,48 @@ where
                             log::info!(
                                 "[WIFI] the panel took its own host back; the access point goes down"
                             );
+                            lower_setup(station);
                             setup.host = SetupHost::Panel;
                             break;
                         }
                         Either3::First(Choice::SetupOpen(open)) => {
-                            secured = !open;
-                            log::info!(
-                                "[WIFI] the setup access point is being put up again, {}",
-                                if secured {
-                                    "under a passphrase"
-                                } else {
-                                    "open"
+                            let next = !open;
+                            match station.retune_setup(setup.name, next) {
+                                Ok(()) => {
+                                    secured = next;
+                                    log::info!(
+                                        "[WIFI] the setup access point is being put up again, {}",
+                                        if secured {
+                                            "under a passphrase"
+                                        } else {
+                                            "open"
+                                        }
+                                    );
+                                    publish_link(
+                                        station.status().with_mode(mode),
+                                        any(saved.as_deref()),
+                                    );
                                 }
-                            );
+                                Err(error) => {
+                                    log::error!(
+                                        "[WIFI] the setup access point would not change its \
+                                         passphrase: {error:?}"
+                                    );
+                                    publish_link(
+                                        LinkStatus {
+                                            phase: LinkPhase::Failed(error),
+                                            ..station.status().with_mode(mode)
+                                        },
+                                        any(saved.as_deref()),
+                                    );
+                                }
+                            }
                         }
                         Either3::First(Choice::Cancel) => {
                             log::info!(
                                 "[WIFI] the panel closed setup mode; the access point goes down"
                             );
+                            lower_setup(station);
                             return None;
                         }
                         Either3::First(Choice::Hidden) => {}
@@ -206,6 +231,7 @@ where
                                 "[WIFI] nobody read the page in {} s; the access point goes down",
                                 SETUP_IDLE_MS / 1_000
                             );
+                            lower_setup(station);
                             setup.host = SetupHost::Panel;
                             break;
                         }
@@ -215,6 +241,7 @@ where
                                  and the saved network is tried again",
                                 SETUP_IDLE_MS / 1_000
                             );
+                            lower_setup(station);
                             publish_link(station.status(), any(saved.as_deref()));
                             return None;
                         }
@@ -226,6 +253,12 @@ where
 }
 
 const SETUP_IDLE_MS: u64 = 180_000;
+
+fn lower_setup<S: Station>(station: &mut S) {
+    if let Err(error) = station.end_setup() {
+        log::warn!("[WIFI] the setup access point would not come down: {error:?}");
+    }
+}
 
 async fn page_idle() {
     loop {

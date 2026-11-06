@@ -60,21 +60,30 @@ impl Strip {
 
 /// The strip the page is offering right now.
 pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
+    let asked = draft.join_wait || draft.setup_wait.is_some();
     if let NetworkMode::Setup { host, cancellable } = link.mode {
         let right = Control {
-            kind: match host {
-                SetupHost::Panel => ControlKind::AccessPoint,
-                SetupHost::AccessPoint => ControlKind::Panel,
+            kind: if asked {
+                ControlKind::Wait
+            } else {
+                match host {
+                    SetupHost::Panel => ControlKind::AccessPoint,
+                    SetupHost::AccessPoint => ControlKind::Panel,
+                }
             },
             command: ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         };
         let left = match (host, cancellable) {
             (_, true) => Some(Control {
-                kind: ControlKind::Cancel,
+                kind: if draft.setup_wait.is_some() {
+                    ControlKind::Wait
+                } else {
+                    ControlKind::Cancel
+                },
                 command: ActionIntent::NetworkPage(NetworkPageIntent::CloseSetup),
             }),
             (SetupHost::Panel, false) => Some(Control {
-                kind: if draft.rescan_wait {
+                kind: if draft.busy() {
                     ControlKind::Wait
                 } else {
                     ControlKind::Scan
@@ -87,7 +96,7 @@ pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
     }
     if link.mode.is_browsing() {
         let left = Control {
-            kind: if draft.rescan_wait {
+            kind: if draft.busy() {
                 ControlKind::Wait
             } else {
                 ControlKind::Scan
@@ -95,7 +104,11 @@ pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
             command: ActionIntent::NetworkPage(NetworkPageIntent::ScanNow),
         };
         let right = Control {
-            kind: ControlKind::AccessPoint,
+            kind: if asked {
+                ControlKind::Wait
+            } else {
+                ControlKind::AccessPoint
+            },
             command: ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         };
         return Strip {
@@ -110,7 +123,7 @@ pub fn strip(draft: NetworkPage, link: LinkStatus) -> Strip {
         }
     } else {
         Control {
-            kind: if draft.rescan_wait {
+            kind: if draft.busy() {
                 ControlKind::Wait
             } else {
                 ControlKind::Scan
@@ -161,6 +174,7 @@ pub fn confirm_verb(confirm: Confirm) -> ControlKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::state::SetupWait;
     use iot_core::drivers::network::{LinkPhase, SetupPass};
 
     fn in_setup(host: SetupHost, cancellable: bool) -> LinkStatus {
@@ -324,5 +338,49 @@ mod tests {
             )),
             ControlKind::Forget
         );
+    }
+
+    #[test]
+    fn a_pending_join_turns_the_front_switch_into_a_wait() {
+        let draft = NetworkPage {
+            join_wait: true,
+            ..NetworkPage::default()
+        };
+        let browsing = LinkStatus {
+            mode: NetworkMode::Browsing,
+            ..LinkStatus::default()
+        };
+        let split = strip(draft, browsing);
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::Wait);
+        assert_eq!(
+            split.command(ToolbarCell::Right),
+            ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
+            "the cell still names the tap it would take, once the join is answered"
+        );
+    }
+
+    #[test]
+    fn a_pending_setup_change_turns_both_cells_into_waits() {
+        let asked = NetworkPage {
+            setup_wait: Some(SetupWait::Host(SetupHost::AccessPoint)),
+            ..NetworkPage::default()
+        };
+        let panel = strip(asked, in_setup(SetupHost::Panel, false));
+        assert_eq!(panel.kind(ToolbarCell::Left), ControlKind::Wait);
+        assert_eq!(panel.kind(ToolbarCell::Right), ControlKind::Wait);
+
+        let closable = strip(asked, in_setup(SetupHost::Panel, true));
+        assert_eq!(
+            closable.kind(ToolbarCell::Left),
+            ControlKind::Wait,
+            "closing is not offered while the switch is on its way either"
+        );
+
+        let open = NetworkPage {
+            setup_wait: Some(SetupWait::Open(true)),
+            ..NetworkPage::default()
+        };
+        let one = strip(open, in_setup(SetupHost::AccessPoint, false));
+        assert_eq!(one.kind(ToolbarCell::Right), ControlKind::Wait);
     }
 }

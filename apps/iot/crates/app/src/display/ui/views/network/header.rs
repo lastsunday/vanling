@@ -85,10 +85,8 @@ impl Surface<'_> {
             let mut text = [0u8; MAC_TEXT_BYTES];
             self.stamp_text_right(mac_text(mac, &mut text), PANEL_RIGHT, overlay_row_top(0));
         }
-        if link.mode.is_setup() {
-            if link.shows_setup_box()
-                && let Some(mac) = mac
-            {
+        if link.shows_setup_box() {
+            if let Some(mac) = mac {
                 let mut name = [0u8; SSID_BYTES];
                 let name = format_setup_name(Some(mac), &mut name);
                 self.stamp_left(b"AP", name, Block::First, 1);
@@ -112,7 +110,7 @@ impl Surface<'_> {
         text[3..3 + word.len()].copy_from_slice(word);
         self.stamp_text(&text[..3 + word.len()], HEADER_PHASE_X, overlay_row_top(1));
         if let Some(ap) = shown_ap
-            && !link.mode.is_setup()
+            && !link.shows_setup_box()
         {
             self.stamp_text_right(
                 format_bars(ap.bars(), &mut [0u8; 4]),
@@ -163,5 +161,101 @@ impl Surface<'_> {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::display::diagnostics::Diagnostics;
+    use crate::model::state::Entry;
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use iot_core::drivers::network::{NetworkMode, SetupHost, Ssid};
+    use iot_core::overlay::PANEL_ROWS;
+    use iot_core::ui::Canvas;
+
+    fn ap(ssid: &[u8]) -> AccessPoint {
+        AccessPoint {
+            ssid: Ssid::from_octets(ssid),
+            ..AccessPoint::default()
+        }
+    }
+
+    fn header(draft: NetworkPage, link: LinkStatus, shown_ap: Option<AccessPoint>) -> Vec<u8> {
+        let mut frame = vec![0u8; PANEL_COLUMNS * PANEL_ROWS * 2];
+        let diagnostics = Diagnostics::default();
+        {
+            let canvas = Canvas::new(&mut frame, PANEL_COLUMNS, PANEL_ROWS, None);
+            let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
+            surface.stamp_header(draft, link, shown_ap, Some([0x02, 1, 2, 3, 4, 5]), Some(3));
+        }
+        frame
+    }
+
+    /// The name's own cells of the link row, left of the phase word: what the header says the
+    /// page is about, without the word beside it or the draft under it.
+    fn name_band(frame: &[u8]) -> Vec<u8> {
+        let left = block_x(Block::First) * 2;
+        let right = HEADER_PHASE_X * 2;
+        (overlay_row_top(1)..overlay_row_top(2))
+            .flat_map(|y| {
+                let row = y * PANEL_COLUMNS * 2;
+                frame[row + left..row + right].to_vec()
+            })
+            .collect()
+    }
+
+    fn typing(selected: AccessPoint) -> NetworkPage {
+        NetworkPage {
+            keyboard: true,
+            entry: Some(Entry::default()),
+            selected: Some(selected),
+            ..NetworkPage::default()
+        }
+    }
+
+    fn panel_front() -> LinkStatus {
+        LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::Panel,
+                cancellable: false,
+            },
+            ..LinkStatus::default()
+        }
+    }
+
+    #[test]
+    fn the_row_the_page_picked_is_on_the_header_while_the_keys_are_up() {
+        let picked = ap(b"neighbour");
+        let draft = typing(picked);
+        let in_setup = name_band(&header(draft, panel_front(), Some(picked)));
+        let browsing = name_band(&header(draft, LinkStatus::default(), Some(picked)));
+        assert_eq!(
+            in_setup, browsing,
+            "the panel front draws the picked row exactly as the list does"
+        );
+        assert_ne!(
+            in_setup,
+            name_band(&header(draft, panel_front(), Some(ap(b"cafe")))),
+            "and the name comes from the row, not from a blank"
+        );
+    }
+
+    #[test]
+    fn the_access_points_box_names_the_access_point_not_the_row_behind_it() {
+        let phone = LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
+            ..LinkStatus::default()
+        };
+        let picked = ap(b"neighbour");
+        assert_eq!(
+            name_band(&header(typing(picked), phone, Some(picked))),
+            name_band(&header(typing(picked), phone, None)),
+            "the row under the box has no say in the header"
+        );
     }
 }

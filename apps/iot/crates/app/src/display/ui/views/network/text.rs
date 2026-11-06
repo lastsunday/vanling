@@ -184,6 +184,9 @@ const ASSOCIATED_BODY: &[u8] = b"WAIT FOR AN ADDRESS";
 pub const SETUP_NOTICE_TITLE: &[u8] = b"SETUP MODE";
 const SETUP_NOTICE_PREFIX: &[u8] = b"AP ";
 
+/// What the box says while the access point it names is still being brought up or retuned.
+pub const SETUP_STARTING_BODY: &[u8] = b"STARTING";
+
 /// The setup access point's own name, derived from the board's address here rather than
 /// carried in the state: the network task derives it the same way, and two copies of one
 /// name are one copy too many.
@@ -264,6 +267,10 @@ const _: () = assert!(
     "the setup announcement is wider than the box it is drawn in"
 );
 const _: () = assert!(
+    SETUP_STARTING_BODY.len() <= DIALOG_GLYPHS,
+    "what the box says while the access point starts is wider than its line"
+);
+const _: () = assert!(
     SETUP_PASS_PREFIX.len() + SETUP_PASS_LEN <= DIALOG_GLYPHS
         && SETUP_PASS_OPEN.len() <= DIALOG_GLYPHS,
     "the setup passphrase is wider than the line the box gives it"
@@ -290,16 +297,21 @@ pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG
 }
 
 /// The join box's own title: the word for the stage the radio has reached, and the network
-/// the attempt is for.
-pub fn format_joining_title(ap: Option<AccessPoint>, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
-    let word = if ap.is_some() {
+/// the attempt is for. The word follows the radio's own report; the name follows the row the
+/// page handed over, which it has before the radio does.
+pub fn format_joining_title(
+    associated: bool,
+    name: Option<AccessPoint>,
+    buf: &mut [u8; DIALOG_GLYPHS],
+) -> &[u8] {
+    let word = if associated {
         JOINED_WORD
     } else {
         JOINING_WORD
     };
     buf[..word.len()].copy_from_slice(word);
     let mut n = word.len();
-    let Some(ap) = ap else {
+    let Some(ap) = name else {
         return &buf[..n];
     };
     buf[n] = b' ';
@@ -312,8 +324,8 @@ pub fn format_joining_title(ap: Option<AccessPoint>, buf: &mut [u8; DIALOG_GLYPH
 
 /// What the join box says under the word: which of the two things the attempt is waiting
 /// on.
-pub fn joining_body(ap: Option<AccessPoint>) -> &'static [u8] {
-    if ap.is_some() {
+pub fn joining_body(associated: bool) -> &'static [u8] {
+    if associated {
         ASSOCIATED_BODY
     } else {
         ASSOCIATING_BODY
@@ -406,5 +418,40 @@ mod tests {
         assert_eq!(key_label(Key::Cancel, Layer::Abc), b"X");
         assert_eq!(key_label(Key::Reveal, Layer::Abc), b"SHOW");
         assert_eq!(key_label(Key::Char(0), Layer::Abc), b"");
+    }
+
+    #[test]
+    fn the_join_box_names_the_row_the_page_handed_over() {
+        let ap = AccessPoint {
+            ssid: iot_core::drivers::network::Ssid::from_octets(b"neighbour"),
+            ..AccessPoint::default()
+        };
+        let mut buf = [0u8; DIALOG_GLYPHS];
+        assert_eq!(
+            format_joining_title(false, Some(ap), &mut buf),
+            b"JOINING neighbour"
+        );
+        assert_eq!(joining_body(false), b"WAIT FOR THE NETWORK");
+    }
+
+    #[test]
+    fn the_join_boxes_word_follows_the_radio_and_its_body_says_what_it_waits_on() {
+        let ap = AccessPoint {
+            ssid: iot_core::drivers::network::Ssid::from_octets(b"cafe"),
+            ..AccessPoint::default()
+        };
+        let mut buf = [0u8; DIALOG_GLYPHS];
+        assert_eq!(
+            format_joining_title(true, Some(ap), &mut buf),
+            b"JOINED cafe"
+        );
+        assert_eq!(joining_body(true), b"WAIT FOR AN ADDRESS");
+    }
+
+    #[test]
+    fn a_join_with_no_row_says_only_the_stage() {
+        let mut buf = [0u8; DIALOG_GLYPHS];
+        assert_eq!(format_joining_title(false, None, &mut buf), b"JOINING");
+        assert_eq!(format_joining_title(true, None, &mut buf), b"JOINED");
     }
 }

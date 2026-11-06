@@ -868,6 +868,10 @@ pub trait Station {
 
     fn begin_setup(&mut self, ssid: &Ssid, secured: bool) -> Result<Self::Device, NetworkError>;
 
+    /// Changes the access point's security without taking it down: the interface the stack
+    /// already holds stays valid, so a phone only re-associates with the same network.
+    fn retune_setup(&mut self, ssid: &Ssid, secured: bool) -> Result<(), NetworkError>;
+
     fn end_setup(&mut self) -> Result<(), NetworkError>;
 }
 

@@ -206,6 +206,163 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
 }
 
 #[test]
+fn a_front_switch_waits_for_the_other_host_to_report() {
+    let mut manager = on_network_page();
+    setup_mode(&mut manager, false);
+    assert_eq!(
+        tap_strip(&mut manager),
+        Some(Command::Network(NetworkCommand::SwitchHost {
+            from: SetupHost::AccessPoint
+        }))
+    );
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        Some(SetupWait::Host(SetupHost::Panel)),
+        "the page is waiting for the host it asked the radio for"
+    );
+    assert_eq!(
+        tap_strip(&mut manager),
+        None,
+        "a second tap while the radio is switching asks for nothing new"
+    );
+
+    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+        mode: NetworkMode::Setup {
+            host: SetupHost::Panel,
+            cancellable: false,
+        },
+        ..LinkStatus::default()
+    })));
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        None,
+        "the host the radio reports is the answer the page was waiting for"
+    );
+    assert_eq!(
+        tap_strip(&mut manager),
+        Some(Command::Network(NetworkCommand::SwitchHost {
+            from: SetupHost::Panel
+        })),
+        "and the switch is offered again"
+    );
+    assert!(
+        manager.state().network_page.setup_box_pending(),
+        "asking for the access point puts its box up before it is reported"
+    );
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        Some(SetupWait::Host(SetupHost::AccessPoint))
+    );
+}
+
+#[test]
+fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
+    let mut manager = on_network_page();
+    setup_mode(&mut manager, true);
+    assert_eq!(
+        tap_answer(&mut manager, controls::DialogChoice::Keep),
+        Some(Command::Network(NetworkCommand::SetupOpen {
+            from: SetupHost::AccessPoint,
+            open: true
+        }))
+    );
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        Some(SetupWait::Open(true))
+    );
+    assert_eq!(
+        tap_answer(&mut manager, controls::DialogChoice::Keep),
+        None,
+        "the same answer is already on its way"
+    );
+    assert_eq!(
+        tap_strip(&mut manager),
+        None,
+        "and the front switch waits with it"
+    );
+
+    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+        mode: NetworkMode::Setup {
+            host: SetupHost::AccessPoint,
+            cancellable: false,
+        },
+        setup_password: Some(iot_core::drivers::network::SetupPass::from_array(
+            *b"k3mq9t7w2x",
+        )),
+        ..LinkStatus::default()
+    })));
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        Some(SetupWait::Open(true)),
+        "a report that has not changed the passphrase is not the answer"
+    );
+
+    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+        mode: NetworkMode::Setup {
+            host: SetupHost::AccessPoint,
+            cancellable: false,
+        },
+        ..LinkStatus::default()
+    })));
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        None,
+        "the box now says the access point is open, which is what was asked"
+    );
+    assert_eq!(
+        tap_answer(&mut manager, controls::DialogChoice::Keep),
+        Some(Command::Network(NetworkCommand::SetupOpen {
+            from: SetupHost::AccessPoint,
+            open: false
+        })),
+        "and the next answer asks for the passphrase back"
+    );
+}
+
+#[test]
+fn a_setup_change_stops_waiting_when_setup_mode_ends() {
+    let mut manager = on_network_page();
+    setup_mode(&mut manager, false);
+    tap_strip(&mut manager);
+    assert!(manager.state().network_page.setup_wait.is_some());
+
+    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+        mode: NetworkMode::Browsing,
+        ..LinkStatus::default()
+    })));
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        None,
+        "a report that is not setup mode ends the wait: no setup report can follow it"
+    );
+}
+
+#[test]
+fn a_refused_setup_change_stops_waiting() {
+    let mut manager = on_network_page();
+    setup_mode(&mut manager, false);
+    tap_strip(&mut manager);
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        Some(SetupWait::Host(SetupHost::Panel))
+    );
+
+    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+        mode: NetworkMode::Setup {
+            host: SetupHost::AccessPoint,
+            cancellable: false,
+        },
+        phase: LinkPhase::Failed(NetworkError::Driver),
+        ..LinkStatus::default()
+    })));
+    assert_eq!(
+        manager.state().network_page.setup_wait,
+        None,
+        "a refusal is an answer: the page must not keep saying WAIT for a change that failed"
+    );
+}
+
+#[test]
 fn the_radio_s_three_moments_are_heard() {
     let mut manager = booted(Boot {
         backed: Backed {

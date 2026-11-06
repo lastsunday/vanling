@@ -18,6 +18,7 @@ use super::*;
 use crate::controls::{self, DialogChoice, Key};
 use alloc::collections::{BTreeSet, VecDeque};
 use alloc::string::String;
+use iot_core::drivers::network::{NetworkMode, SetupHost, SetupPass};
 
 const LIST_X: u16 = 30;
 
@@ -28,6 +29,19 @@ fn key(state: &DeviceState) -> Vec<u8> {
     key.push(state.nav.entries().len() as u8);
     for page in state.nav.entries() {
         key.push(page.code());
+    }
+    match state.network.link.mode {
+        NetworkMode::Link => key.push(0),
+        NetworkMode::Browsing => key.push(1),
+        NetworkMode::Setup { host, cancellable } => {
+            key.push(2);
+            key.push(match host {
+                SetupHost::Panel => 0,
+                SetupHost::AccessPoint => 1,
+            });
+            key.push(u8::from(cancellable));
+            key.push(u8::from(state.network.link.setup_password.is_some()));
+        }
     }
     key.push(u8::from(state.network.link.is_leavable()));
     encode_ap(&mut key, state.network.link.ap);
@@ -49,7 +63,17 @@ fn key(state: &DeviceState) -> Vec<u8> {
     encode_ap(&mut key, state.network_page.selected);
     key.push(u8::from(state.network_page.entry.is_some()));
     key.push(u8::from(state.network_page.keyboard));
+    key.push(u8::from(state.network_page.join_wait));
     key.push(state.network_page.list_top);
+    match state.network_page.setup_wait {
+        None => key.push(0),
+        Some(SetupWait::Host(SetupHost::Panel)) => key.push(1),
+        Some(SetupWait::Host(SetupHost::AccessPoint)) => key.push(2),
+        Some(SetupWait::Open(open)) => {
+            key.push(3);
+            key.push(u8::from(open));
+        }
+    }
     match state.network_page.confirm {
         None => key.push(0),
         Some(Confirm::Leave) => key.push(1),
@@ -100,6 +124,20 @@ fn broken(state: &DeviceState) -> Option<&'static str> {
     }
     if state.network_page.rescan_wait && state.network.link.is_leavable() {
         return Some("the strip is waiting for a scan round under a link it would offer to leave");
+    }
+    if state.network_page.join_wait && state.network_page.keyboard {
+        return Some(
+            "a join is already with the radio while the keys are still up, so the keyboard's \
+                 OK would ask for a second one over the first",
+        );
+    }
+    if matches!(state.network_page.setup_wait, Some(SetupWait::Open(_)))
+        && !state.network.link.mode.is_setup()
+    {
+        return Some(
+            "a passphrase change is waiting outside setup mode, so no report the radio can \
+                 send will ever clear it",
+        );
     }
     None
 }
@@ -367,6 +405,31 @@ fn the_driver_refused(manager: &mut DeviceManager) -> Option<Command> {
         },
     )
 }
+fn setup_on_the_panel(manager: &mut DeviceManager) -> Option<Command> {
+    link_to(
+        manager,
+        LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::Panel,
+                cancellable: false,
+            },
+            ..LinkStatus::default()
+        },
+    )
+}
+fn setup_access_point(manager: &mut DeviceManager) -> Option<Command> {
+    link_to(
+        manager,
+        LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
+            setup_password: Some(SetupPass::from_array(*b"k3mq9t7w2x")),
+            ..LinkStatus::default()
+        },
+    )
+}
 
 fn scan_two(manager: &mut DeviceManager) -> Option<Command> {
     scan_of(manager, &[neighbour(), cafe()]);
@@ -564,6 +627,14 @@ fn alphabet() -> Vec<Move> {
             name: "a scan with a saved row",
             run: scan_with_a_saved_row
         },
+        Move {
+            name: "the setup mode offered on the panel",
+            run: setup_on_the_panel
+        },
+        Move {
+            name: "the setup access point up",
+            run: setup_access_point
+        },
     ]
 }
 
@@ -635,6 +706,14 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
     assert!(
         reached(|state| state.network_page.keyboard && state.network_page.entry.is_some()),
         "the keyboard never came up over a draft"
+    );
+    assert!(
+        reached(|state| state.network_page.join_wait),
+        "a join was never held while the radio answered"
+    );
+    assert!(
+        reached(|state| state.network_page.setup_wait.is_some()),
+        "a setup tap was never left waiting for the radio"
     );
     assert!(
         reached(|state| state.network_page.selected.is_some() && state.network_page.entry.is_none()),

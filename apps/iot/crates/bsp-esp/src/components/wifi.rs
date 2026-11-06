@@ -167,6 +167,20 @@ impl EspStation {
         }
         Ok(Config::Station(station))
     }
+
+    fn access_point_config(&self, ssid: &NetSsid, secured: bool) -> Result<Config, NetworkError> {
+        let name = Ssid::try_from(ssid.as_bytes()).map_err(Self::kind_of)?;
+        let mut access_point = AccessPointConfig::default().with_ssid(name);
+        if secured {
+            let password = Password::try_from(self.setup_pass.as_bytes()).map_err(Self::kind_of)?;
+            access_point = access_point
+                .with_authentication(AuthenticationMethodConfig::Wpa2Personal(password));
+        }
+        Ok(Config::AccessPointStation(
+            StationConfig::default(),
+            access_point,
+        ))
+    }
 }
 
 impl Station for EspStation {
@@ -214,6 +228,7 @@ impl Station for EspStation {
         }
 
         self.status = self.status.with_address(None);
+        self.status.ap = None;
         self.status.phase = LinkPhase::Connecting;
         Ok(())
     }
@@ -279,18 +294,18 @@ impl Station for EspStation {
             log::error!("[WIFI] the access-point interface is already taken");
             NetworkError::Driver
         })?;
-        let name = Ssid::try_from(ssid.as_bytes()).map_err(Self::kind_of)?;
-        let mut access_point = AccessPointConfig::default().with_ssid(name);
-        if secured {
-            let password = Password::try_from(self.setup_pass.as_bytes()).map_err(Self::kind_of)?;
-            access_point = access_point
-                .with_authentication(AuthenticationMethodConfig::Wpa2Personal(password));
-        }
-        let config = Config::AccessPointStation(StationConfig::default(), access_point);
+        let config = self.access_point_config(ssid, secured)?;
         self.controller.set_config(&config).map_err(Self::kind_of)?;
         self.status = LinkStatus::default();
         self.status.setup_password = secured.then_some(self.setup_pass);
         Ok(interface)
+    }
+
+    fn retune_setup(&mut self, ssid: &NetSsid, secured: bool) -> Result<(), NetworkError> {
+        let config = self.access_point_config(ssid, secured)?;
+        self.controller.set_config(&config).map_err(Self::kind_of)?;
+        self.status.setup_password = secured.then_some(self.setup_pass);
+        Ok(())
     }
 
     fn end_setup(&mut self) -> Result<(), NetworkError> {

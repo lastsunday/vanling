@@ -360,32 +360,28 @@ fn a_copy_the_store_has_that_was_refused_comes_back_as_a_keyboard() {
 #[test]
 fn an_answer_about_another_row_is_not_this_rows_question() {
     let mut manager = on_network_page();
-    marked(&mut manager, &["neighbour", "cafe"]);
     tap_band(&mut manager, 0);
-    assert_eq!(
-        tap_band(&mut manager, 1),
-        Some(Command::Network(NetworkCommand::Join(JoinRequest::Held(
-            Ssid::from_octets(b"cafe")
-        )))),
-        "the newer row is the one the page asks for"
-    );
     manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::NoCopy(
-        Ssid::from_octets(b"neighbour"),
+        Ssid::from_octets(b"cafe"),
     )));
     assert!(
-        !manager.state().network_page.keyboard,
+        manager.state().network_page.keyboard,
         "the answer is about a row that is not the picked one"
     );
-    assert_eq!(manager.state().network_page.entry, None);
+    assert_eq!(
+        manager.state().network_page.entry,
+        Some(Entry::default()),
+        "so the draft for the picked row stays open, and stays empty"
+    );
     assert_eq!(
         manager.state().network_page.selected,
-        Some(ap(b"cafe")),
+        Some(ap(b"neighbour")),
         "which is still the row the finger is on"
     );
 }
 
 #[test]
-fn a_second_tap_of_the_same_row_keeps_the_draft_through_a_rescan() {
+fn a_row_tap_while_the_join_is_pending_is_not_a_second_join() {
     let mut manager = on_network_page();
     tap_band(&mut manager, 0);
     type_letter(&mut manager, b'b', 0);
@@ -394,10 +390,19 @@ fn a_second_tap_of_the_same_row_keeps_the_draft_through_a_rescan() {
         ap_named(b"neighbour", -70, true),
         ap(b"cafe"),
     ]));
-    tap_band(&mut manager, 0);
+    assert_eq!(
+        tap_band(&mut manager, 0),
+        None,
+        "the list is behind the join box: a row tap is not a new join"
+    );
+    link_at(
+        &mut manager,
+        LinkPhase::Failed(NetworkError::Credentials),
+        b"neighbour",
+    );
     assert!(
         manager.state().network_page.keyboard,
-        "the same row opens the entry again over the draft"
+        "the refusal opens the entry again over the draft"
     );
     assert_eq!(
         manager

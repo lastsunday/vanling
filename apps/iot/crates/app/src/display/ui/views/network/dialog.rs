@@ -1,14 +1,16 @@
 //! The overlay band: the confirmation, the setup announcement, and the join box.
 
 use crate::controls::DIALOG_GLYPHS;
-use crate::model::state::{self as page_controls, ControlKind, NetworkPage, confirm_verb};
+use crate::model::state::{
+    self as page_controls, ControlKind, NetworkPage, SetupWait, confirm_verb,
+};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
 
 use crate::display::ui::components::dialog::Dialog;
 use crate::display::ui::surface::Surface;
 use crate::display::ui::views::network::text::{
-    SETUP_NOTICE_TITLE, body, control_label, format_joining_title, format_question,
-    format_setup_notice_body, format_setup_pass, joining_body,
+    SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
+    format_question, format_setup_notice_body, format_setup_pass, joining_body,
 };
 
 impl Surface<'_> {
@@ -21,31 +23,55 @@ impl Surface<'_> {
     ) {
         if draft.confirm.is_some() {
             self.stamp_confirm(draft, link);
+        } else if draft.setup_box_pending() {
+            self.stamp_setup_starting(mac);
         } else if link.shows_setup_box() {
-            self.stamp_notice(link, mac);
+            self.stamp_notice(draft, link, mac);
         } else {
-            self.stamp_joining(shown_ap);
+            self.stamp_joining(link, shown_ap);
         }
     }
 
-    fn stamp_notice(&mut self, link: LinkStatus, mac: Option<[u8; 6]>) {
-        let answers = page_controls::answers(link);
+    /// The box is on the glass the moment the panel asks for the access point, before the
+    /// radio has been reconfigured for it.
+    fn stamp_setup_starting(&mut self, mac: Option<[u8; 6]>) {
         let mut name = [0u8; SSID_BYTES];
-        let mut pass = [0u8; SSID_BYTES];
         Dialog::new(SETUP_NOTICE_TITLE)
             .line(format_setup_notice_body(mac, &mut name))
-            .line(format_setup_pass(link.setup_password.as_ref(), &mut pass))
-            .answers(
-                control_label(answers.keep.kind),
-                control_label(answers.act.kind),
-            )
+            .line(SETUP_STARTING_BODY)
             .stamp(self);
     }
 
-    fn stamp_joining(&mut self, shown_ap: Option<AccessPoint>) {
+    fn stamp_notice(&mut self, draft: NetworkPage, link: LinkStatus, mac: Option<[u8; 6]>) {
+        let answers = page_controls::answers(link);
+        let mut name = [0u8; SSID_BYTES];
+        let mut pass = [0u8; SSID_BYTES];
+        let asked = match draft.setup_wait {
+            Some(SetupWait::Open(open)) => Some(open),
+            _ => None,
+        };
+        let keep = if asked.is_some() {
+            ControlKind::Wait
+        } else {
+            answers.keep.kind
+        };
+        let line = match asked {
+            Some(true) => format_setup_pass(None, &mut pass),
+            Some(false) => SETUP_STARTING_BODY,
+            None => format_setup_pass(link.setup_password.as_ref(), &mut pass),
+        };
+        Dialog::new(SETUP_NOTICE_TITLE)
+            .line(format_setup_notice_body(mac, &mut name))
+            .line(line)
+            .answers(control_label(keep), control_label(answers.act.kind))
+            .stamp(self);
+    }
+
+    fn stamp_joining(&mut self, link: LinkStatus, shown_ap: Option<AccessPoint>) {
         let mut title = [0u8; DIALOG_GLYPHS];
-        Dialog::new(format_joining_title(shown_ap, &mut title))
-            .line(joining_body(shown_ap))
+        let associated = link.ap.is_some();
+        Dialog::new(format_joining_title(associated, shown_ap, &mut title))
+            .line(joining_body(associated))
             .stamp(self);
     }
 

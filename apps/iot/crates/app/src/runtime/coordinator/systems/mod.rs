@@ -70,10 +70,12 @@ mod tests {
     use core::cell::RefCell;
 
     use super::*;
-    use crate::model::intent::{ActionIntent, Intent, NetworkPageIntent};
+    use crate::model::intent::{ActionIntent, Intent, LinkIntent, NetworkPageIntent};
     use crate::model::state::{Backed, Boot, DeviceManager, NetworkCommand};
     use crate::runtime::feature::input::IntentBus;
     use crate::runtime::workers::NETWORK;
+    use iot_core::drivers::network::{LinkPhase, LinkStatus};
+    use iot_core::drivers::surface::SurfaceRole;
 
     #[derive(Clone)]
     struct Recorder {
@@ -97,12 +99,17 @@ mod tests {
                 network: true,
                 ..Backed::NONE
             },
+            surface_roles: [SurfaceRole::Lamp, SurfaceRole::Absent],
             ..Default::default()
         })
     }
 
     fn scan() -> Intent {
         Intent::Action(ActionIntent::NetworkPage(NetworkPageIntent::ScanNow))
+    }
+
+    fn leave() -> Intent {
+        Intent::Action(ActionIntent::NetworkPage(NetworkPageIntent::Leave))
     }
 
     #[test]
@@ -150,8 +157,14 @@ mod tests {
         let mut schedule = Schedule::new();
         schedule.register(NetworkSystem::new(manager.state_ref(), NETWORK));
 
-        let _ = bus.try_send(scan());
-        let _ = bus.try_send(scan());
+        let _ = bus.try_send(Intent::Action(ActionIntent::Link(LinkIntent::LinkReport(
+            LinkStatus {
+                phase: LinkPhase::Connected,
+                ..LinkStatus::default()
+            },
+        ))));
+        let _ = bus.try_send(leave());
+        let _ = bus.try_send(leave());
         {
             let mut frame = Frame {
                 bus: &bus,
@@ -161,14 +174,8 @@ mod tests {
             schedule.process_intents(&mut frame);
         }
 
-        assert_eq!(
-            NETWORK.commands.try_receive(),
-            Some(NetworkCommand::ScanNow)
-        );
-        assert_eq!(
-            NETWORK.commands.try_receive(),
-            Some(NetworkCommand::ScanNow)
-        );
+        assert_eq!(NETWORK.commands.try_receive(), Some(NetworkCommand::Leave));
+        assert_eq!(NETWORK.commands.try_receive(), Some(NetworkCommand::Leave));
         assert_eq!(
             NETWORK.commands.try_receive(),
             None,
