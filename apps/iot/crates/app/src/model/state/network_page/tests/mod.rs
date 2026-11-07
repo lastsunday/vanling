@@ -1,9 +1,9 @@
 use super::*;
-use crate::controls::MULTITAP_WINDOW_MS;
-use crate::controls::{self, Key, Layer};
 use crate::model::intent::*;
+use crate::model::keyboard::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
+use crate::model::layout;
 use crate::model::state::test_support::*;
-use crate::model::state::{Boot, DeviceManager, DisplayPage};
+use crate::model::state::{Boot, DeviceManager, DisplayPage, LIST_ROWS};
 use iot_core::drivers::input::FINGER_LONG_PRESS;
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, Credentials, PASSWORD_BYTES, SetupHost};
@@ -83,7 +83,7 @@ fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
 }
 
 fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
-    let y = (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16;
+    let y = (layout::LIST_TOP + band * layout::LIST_ROW_H + layout::LIST_ROW_H / 2) as u16;
     tap_on(manager, 30, y)
 }
 
@@ -111,7 +111,7 @@ fn handed_over(command: Option<Command>) -> Option<Credentials> {
 }
 
 fn type_letter(manager: &mut DeviceManager, wanted: u8, at_ms: u32) {
-    for digit in 0..controls::CHARS {
+    for digit in 0..CHARS {
         let candidates = Layer::Abc.candidates(digit);
         let Some(taps) = candidates.iter().position(|candidate| *candidate == wanted) else {
             continue;
@@ -144,11 +144,11 @@ fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
         id: 0,
         direction: SwipeDirection::Up,
         x: 30,
-        y: (controls::LIST_TOP + controls::LIST_ROW_H * 2) as u16,
+        y: (layout::LIST_TOP + layout::LIST_ROW_H * 2) as u16,
         end_x: 30,
-        end_y: controls::LIST_TOP as u16,
+        end_y: layout::LIST_TOP as u16,
         held_ms: 40,
-        distance_px: (controls::LIST_ROW_H * 2) as u16,
+        distance_px: (layout::LIST_ROW_H * 2) as u16,
     }));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
@@ -159,7 +159,7 @@ fn tap_strip(manager: &mut DeviceManager) -> Option<Command> {
     tap_on(
         manager,
         160,
-        (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
+        (layout::TOOLBAR_TOP + layout::TOOLBAR_H / 2) as u16,
     )
 }
 
@@ -167,12 +167,12 @@ fn tap_strip_left(manager: &mut DeviceManager) -> Option<Command> {
     tap_on(
         manager,
         40,
-        (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
+        (layout::TOOLBAR_TOP + layout::TOOLBAR_H / 2) as u16,
     )
 }
 
 fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
-    let y = (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16;
+    let y = (layout::LIST_TOP + band * layout::LIST_ROW_H + layout::LIST_ROW_H / 2) as u16;
     let operation = op(InputEvent::Gesture(GestureEvent::LongPress {
         id: 0,
         x: 30,
@@ -184,8 +184,8 @@ fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
     manager.apply_action(business)
 }
 
-fn tap_answer(manager: &mut DeviceManager, choice: controls::DialogChoice) -> Option<Command> {
-    let box_ = controls::dialog_answer_box(choice);
+fn tap_answer(manager: &mut DeviceManager, choice: layout::DialogChoice) -> Option<Command> {
+    let box_ = layout::dialog_answer_box(choice);
     tap_on(
         manager,
         (box_.x + box_.w / 2) as u16,

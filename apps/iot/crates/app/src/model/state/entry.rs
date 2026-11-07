@@ -1,7 +1,7 @@
 //! A passphrase being typed: the draft's octets, the shift state, and the pending character
 //! a repeat of the same key can still cycle.
 
-use crate::controls::{Cycling, Key, Layer, MULTITAP_WINDOW_MS};
+use crate::model::keyboard::{Cycling, Key, Layer, MULTITAP_WINDOW_MS};
 use iot_core::drivers::network::{Credentials, PASSWORD_BYTES, Password, Ssid};
 
 /// A passphrase being typed on the Network page's keyboard.

@@ -1,50 +1,7 @@
-use crate::model::intent::{ActionIntent, AudioIntent, InputIntent};
+use crate::model::intent::AudioIntent;
 use iot_core::drivers::audio::{AudioPhase, AudioSample};
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 
-use super::{DeviceManager, DeviceState, Health, light_control};
-
-/// The Audio page's gestures: a tap starts or stops the capture, and everything else is the
-/// lamp's, as on every page without a verb of its own for it.
-pub(in crate::model::state) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
-    match op.event {
-        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            ActionIntent::Audio(capture_target(current.audio.phase))
-        }
-        InputEvent::Button(ButtonEvent::DoubleClick) => light_control::step(current, op.source),
-        InputEvent::Button(ButtonEvent::LongPress) => light_control::cycle(current, op.source),
-        InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-            light_control::cycle_panel(current, op.source)
-        }
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-            light_control::swipe(current, op.source, direction)
-        }
-        _ => ActionIntent::Invalid,
-    }
-}
-
-fn capture_target(phase: AudioPhase) -> AudioIntent {
-    if phase == AudioPhase::Recording {
-        AudioIntent::Stop
-    } else {
-        AudioIntent::Start
-    }
-}
-
-/// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
-/// it should draw.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct AudioDiagnostics {
-    pub phase: AudioPhase,
-    pub envelope: iot_core::drivers::audio::AudioEnvelope,
-    pub elapsed_ms: u32,
-    /// How many times the capture's DMA had to be re-armed.
-    pub restarts: u16,
-    /// A-weighted sound level of the shown capture, in LSB, slow-tracked.
-    pub dba_lsb: u16,
-    /// Whether the capture part is answering, and why not when it is not.
-    pub health: Health,
-}
+use super::{DeviceManager, Health};
 
 /// Capture state behind the Audio page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,23 +63,6 @@ impl AudioState {
                 self.phase = AudioPhase::Stopped;
             }
             _ => {}
-        }
-    }
-}
-
-impl DeviceState {
-    pub(crate) fn audio_diagnostics(&self) -> AudioDiagnostics {
-        let shown = match self.audio.phase {
-            AudioPhase::Stopped => &self.audio.view.captured,
-            AudioPhase::Recording | AudioPhase::Idle => &self.audio.view.live,
-        };
-        AudioDiagnostics {
-            phase: self.audio.phase,
-            envelope: shown.envelope,
-            elapsed_ms: shown.elapsed_ms,
-            restarts: shown.restarts,
-            dba_lsb: shown.dba_lsb,
-            health: self.audio.health,
         }
     }
 }

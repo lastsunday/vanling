@@ -1,7 +1,8 @@
 //! Where the bench's finger lands: the cells and rows the panel draws, as coordinates.
 
-use crate::controls;
-use crate::controls::{DialogChoice, Key};
+use crate::model::keyboard::Key;
+use crate::model::layout;
+use crate::model::layout::DialogChoice;
 
 use super::BAND_X;
 
@@ -15,13 +16,13 @@ pub(super) enum Touch {
 pub(super) fn strip_point() -> Touch {
     Touch::At {
         x: BAND_X,
-        y: (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
+        y: (layout::TOOLBAR_TOP + layout::TOOLBAR_H / 2) as u16,
         at_ms: 0,
     }
 }
 
 pub(super) fn answer_point(choice: DialogChoice) -> Touch {
-    let rect = controls::dialog_answer_box(choice);
+    let rect = layout::dialog_answer_box(choice);
     Touch::At {
         x: (rect.x + rect.w / 2) as u16,
         y: (rect.y + rect.h / 2) as u16,
@@ -45,8 +46,8 @@ pub(super) fn hold_point(band: usize) -> Touch {
 }
 
 pub(super) fn cancel_point() -> Touch {
-    let cell = controls::cell_of(Key::Cancel).expect("the grid holds cancel");
-    let rect = controls::key_box(cell).expect("a cell of the grid");
+    let cell = layout::cell_of(Key::Cancel).expect("the grid holds cancel");
+    let rect = layout::key_box(cell).expect("a cell of the grid");
     Touch::At {
         x: (rect.x + rect.w / 2) as u16,
         y: (rect.y + rect.h / 2) as u16,
@@ -55,5 +56,5 @@ pub(super) fn cancel_point() -> Touch {
 }
 
 pub(super) fn band_center(band: usize) -> u16 {
-    (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16
+    (layout::LIST_TOP + band * layout::LIST_ROW_H + layout::LIST_ROW_H / 2) as u16
 }

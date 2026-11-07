@@ -11,18 +11,19 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
+    use crate::controller::translate;
     use crate::model::intent::{ActionIntent, NetworkPageIntent};
     use crate::model::route::test_support::{
         DEFAULT_BREATH, op, state_on, with_network, with_network_page,
     };
-    use crate::model::state::translate;
     use crate::model::state::{DeviceState, DisplayPage};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
     use iot_core::drivers::network::{LinkStatus, SetupHost};
 
     mod network_page {
         use super::*;
-        use crate::controls::{self, Key};
+        use crate::model::keyboard::Key;
+        use crate::model::layout;
         use iot_core::drivers::network::{AccessPoint, ApList, Ssid};
 
         fn ap(ssid: &[u8], rssi: i8) -> AccessPoint {
@@ -98,7 +99,7 @@ mod tests {
         }
 
         fn key_tap(cell: usize) -> InputEvent {
-            let rect = controls::key_box(cell).expect("a cell of the grid");
+            let rect = layout::key_box(cell).expect("a cell of the grid");
             tap_at((rect.x + rect.w / 2) as u16, (rect.y + rect.h / 2) as u16)
         }
 
@@ -110,20 +111,20 @@ mod tests {
                     ap_with(b"cafe", -60, 7),
                 ]));
             });
-            let first = controls::LIST_TOP as u16;
+            let first = layout::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(tap_at(30, first)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
                 "the list's first band is the first network"
             );
             assert_eq!(
-                translate(&op(tap_at(30, first + controls::LIST_ROW_H as u16)), &state),
+                translate(&op(tap_at(30, first + layout::LIST_ROW_H as u16)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"cafe", -60, 7))),
                 "a band down is the next network"
             );
             assert_eq!(
                 translate(
-                    &op(tap_at(30, first + controls::LIST_ROW_H as u16 - 1)),
+                    &op(tap_at(30, first + layout::LIST_ROW_H as u16 - 1)),
                     &state
                 ),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
@@ -168,12 +169,12 @@ mod tests {
                     ap_with(b"bakery", -65, 8),
                 ]));
             });
-            let strip = controls::toolbar_box();
+            let strip = layout::toolbar_box();
             for (x, _cell) in [
-                (0, controls::ToolbarCell::Left),
-                (strip.w / 2 - 1, controls::ToolbarCell::Left),
-                (strip.w / 2, controls::ToolbarCell::Right),
-                (strip.w - 1, controls::ToolbarCell::Right),
+                (0, layout::ToolbarCell::Left),
+                (strip.w / 2 - 1, layout::ToolbarCell::Left),
+                (strip.w / 2, layout::ToolbarCell::Right),
+                (strip.w - 1, layout::ToolbarCell::Right),
             ] {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
@@ -184,7 +185,7 @@ mod tests {
                 }
             }
             assert_eq!(
-                translate(&op(tap_at(160, (controls::TOOLBAR_TOP - 1) as u16)), &state),
+                translate(&op(tap_at(160, (layout::TOOLBAR_TOP - 1) as u16)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"bakery", -65, 8))),
                 "the row above the strip is still the list's own last band"
             );
@@ -209,8 +210,8 @@ mod tests {
                     ..Default::default()
                 };
             });
-            let keep = controls::dialog_answer_box(controls::DialogChoice::Keep);
-            let act = controls::dialog_answer_box(controls::DialogChoice::Act);
+            let keep = layout::dialog_answer_box(layout::DialogChoice::Keep);
+            let act = layout::dialog_answer_box(layout::DialogChoice::Act);
             assert_eq!(
                 translate(
                     &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
@@ -240,14 +241,14 @@ mod tests {
                     ap_with(b"cafe", -60, 7),
                 ]));
             });
-            let first = controls::LIST_TOP as u16;
+            let first = layout::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap(b"neighbour", -55)))
             );
             assert_eq!(
                 translate(
-                    &op(long_press_at(30, first + controls::LIST_ROW_H as u16)),
+                    &op(long_press_at(30, first + layout::LIST_ROW_H as u16)),
                     &state
                 ),
                 ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap_with(b"cafe", -60, 7)))
@@ -258,10 +259,7 @@ mod tests {
                 "the header is not a row to ask about"
             );
             assert_eq!(
-                translate(
-                    &op(long_press_at(160, controls::TOOLBAR_TOP as u16)),
-                    &state
-                ),
+                translate(&op(long_press_at(160, layout::TOOLBAR_TOP as u16)), &state),
                 ActionIntent::Invalid,
                 "and neither is the strip"
             );
@@ -275,8 +273,8 @@ mod tests {
         #[test]
         fn a_question_is_answered_by_where_a_finger_lands_and_by_nothing_else() {
             let state = asking();
-            let act = controls::dialog_answer_box(controls::DialogChoice::Act);
-            let keep = controls::dialog_answer_box(controls::DialogChoice::Keep);
+            let act = layout::dialog_answer_box(layout::DialogChoice::Act);
+            let keep = layout::dialog_answer_box(layout::DialogChoice::Keep);
             assert_eq!(
                 translate(
                     &op(tap_at(
@@ -303,11 +301,11 @@ mod tests {
             );
             for (x, y) in [
                 (30, 5),
-                (30, controls::LIST_TOP as u16 + 2),
-                (160, controls::TOOLBAR_TOP as u16 + 2),
+                (30, layout::LIST_TOP as u16 + 2),
+                (160, layout::TOOLBAR_TOP as u16 + 2),
                 (
-                    (controls::DIALOG_X + 2) as u16,
-                    (controls::DIALOG_TOP + 2) as u16,
+                    (layout::DIALOG_X + 2) as u16,
+                    (layout::DIALOG_TOP + 2) as u16,
                 ),
             ] {
                 assert_eq!(
@@ -322,14 +320,11 @@ mod tests {
                 "a swipe under the box does not slide a list it cannot see"
             );
             assert_eq!(
-                translate(
-                    &op(long_press_at(30, controls::LIST_TOP as u16 + 2)),
-                    &state
-                ),
+                translate(&op(long_press_at(30, layout::LIST_TOP as u16 + 2)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
             );
             assert_eq!(
-                translate(&op(tap_at(160, controls::TOOLBAR_TOP as u16 + 2)), &state),
+                translate(&op(tap_at(160, layout::TOOLBAR_TOP as u16 + 2)), &state),
                 ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
             );
         }
@@ -364,7 +359,7 @@ mod tests {
             assert_eq!(
                 translate(
                     &op(key_tap(
-                        controls::cell_of(Key::Shift).expect("a control's own cell")
+                        layout::cell_of(Key::Shift).expect("a control's own cell")
                     )),
                     &state
                 ),
@@ -376,7 +371,7 @@ mod tests {
             assert_eq!(
                 translate(
                     &op(key_tap(
-                        controls::cell_of(Key::Cancel).expect("a control's own cell")
+                        layout::cell_of(Key::Cancel).expect("a control's own cell")
                     )),
                     &state
                 ),
@@ -388,7 +383,7 @@ mod tests {
             assert_eq!(
                 translate(
                     &op(key_tap(
-                        controls::cell_of(Key::Reveal).expect("a control's own cell")
+                        layout::cell_of(Key::Reveal).expect("a control's own cell")
                     )),
                     &state
                 ),
@@ -402,7 +397,7 @@ mod tests {
                 translate(
                     &op(tap_at(
                         30,
-                        (controls::KEYBOARD_TOP + controls::ROWS * controls::KEY_H) as u16
+                        (layout::KEYBOARD_TOP + layout::ROWS * layout::KEY_H) as u16
                     )),
                     &state
                 ),
@@ -416,8 +411,8 @@ mod tests {
                 translate(
                     &op(InputEvent::Gesture(GestureEvent::Tap {
                         id: 0,
-                        x: controls::KEY_W as u16 / 2,
-                        y: (controls::KEYBOARD_TOP + controls::KEY_H / 2) as u16,
+                        x: layout::KEY_W as u16 / 2,
+                        y: (layout::KEYBOARD_TOP + layout::KEY_H / 2) as u16,
                         held_ms: 40,
                         at_ms: 4_321,
                     })),

@@ -283,17 +283,17 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
 }
 
 #[test]
-fn the_network_never_reaches_the_panel() {
+fn the_network_never_reaches_the_presentation() {
     assert_no_reference(
         sources(&app_src().join("runtime/feature/network")),
-        &["crate::display", "crate::runtime::coordinator"],
+        &["crate::ui", "crate::runtime::coordinator"],
     );
 }
 
 #[test]
-fn the_panel_side_never_reaches_the_radio() {
+fn the_ui_side_never_reaches_the_radio() {
     let src = app_src();
-    let mut files = sources(&src.join("display"));
+    let mut files = sources(&src.join("ui"));
     files.extend(sources(&src.join("runtime/feature/playback")));
     files.extend(sources(&src.join("runtime/coordinator")));
     files.extend(sources(&src.join("runtime/workers")));
@@ -377,7 +377,7 @@ fn the_worker_handles_never_reach_a_worker() {
         sources(&app_src().join("runtime/workers")),
         &[
             "crate::runtime::feature",
-            "crate::display",
+            "crate::ui",
             "crate::runtime::coordinator",
         ],
     );
@@ -389,8 +389,8 @@ fn the_page_table_is_a_leaf() {
         shipping_sources(&app_src().join("model/route")),
         &[
             "crate::model::state",
-            "crate::display::render",
-            "crate::display::diagnostics",
+            "crate::ui::render",
+            "crate::ui::diagnostics",
         ],
     );
 }
@@ -401,8 +401,8 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
         shipping_source(app_src().join("model/intent.rs")),
         &[
             "crate::model::route",
-            "crate::display::render",
-            "crate::display::diagnostics",
+            "crate::ui::render",
+            "crate::ui::diagnostics",
         ],
     );
 }
@@ -411,14 +411,14 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
 fn state_neither_draws_nor_snapshots_itself() {
     assert_no_reference(
         shipping_sources(&app_src().join("model/state")),
-        &["crate::display::render", "crate::display::diagnostics"],
+        &["crate::ui::render", "crate::ui::diagnostics"],
     );
 }
 
 #[test]
 fn translation_dispatches_without_naming_page_geometry() {
     assert_no_reference(
-        shipping_source(app_src().join("model/state/translate.rs")),
+        shipping_source(app_src().join("controller/translate.rs")),
         &["keyboard::", "Band::", "controls::", "Confirm"],
     );
 }
@@ -443,14 +443,14 @@ fn drivers_never_reach_up() {
 #[test]
 fn diagnostics_snapshots_without_drawing() {
     assert_no_reference(
-        shipping_source(app_src().join("display/diagnostics.rs")),
-        &["crate::display::render"],
+        shipping_source(app_src().join("ui/diagnostics.rs")),
+        &["crate::ui::render"],
     );
 }
 
-/// The three layers: each one's direct children are nodes of the graph, and the rule between
-/// the layers is the point of drawing it at all.
-const LAYERS: [&str; 3] = ["model", "display", "runtime"];
+/// The layers: each one's direct children are nodes of the graph, and the rule between the
+/// layers is the point of drawing it at all.
+const LAYERS: [&str; 4] = ["model", "controller", "ui", "runtime"];
 
 /// Every module the library declares, by logical path (`model::state`), with the file that
 /// defines it. `main.rs` and `bin/` are separate crates, so they are not in the tree; the
@@ -696,27 +696,55 @@ fn app_edges(src: &Path) -> BTreeSet<(String, String)> {
 #[test]
 fn the_app_module_graph_is_the_one_the_codemap_draws() {
     let allowed: BTreeSet<(String, String)> = [
-        ("bench", "controls"),
+        ("bench", "model::layout"),
         ("bench", "model::boot"),
         ("bench", "model::intent"),
+        ("bench", "model::keyboard"),
         ("bench", "model::state"),
         ("bench", "runtime::feature::input"),
         ("bench", "runtime::feature::playback"),
         ("bench", "runtime::system"),
-        ("display", "display::render"),
-        ("display", "display::ui"),
-        ("display", "model::state"),
-        ("display::diagnostics", "model::route"),
-        ("display::diagnostics", "model::state"),
-        ("display::render", "display::diagnostics"),
-        ("display::render", "model::route"),
-        ("display::render", "model::state"),
-        ("display::ui", "assets"),
-        ("display::ui", "controls"),
-        ("display::ui", "display::diagnostics"),
-        ("display::ui", "model::state"),
+        ("bench", "controller"),
+        ("controller", "controller::light"),
+        ("controller", "controller::network"),
+        ("controller", "controller::translate"),
+        ("controller::apply", "controller::translate"),
+        ("controller::apply", "model::intent"),
+        ("controller::apply", "model::state"),
+        ("controller::audio", "controller::light"),
+        ("controller::audio", "model::intent"),
+        ("controller::audio", "model::state"),
+        ("controller::light", "model::intent"),
+        ("controller::light", "model::state"),
+        ("controller::network", "model::intent"),
+        ("controller::network", "model::state"),
+        ("controller::network", "model::layout"),
+        ("controller::playback", "controller::light"),
+        ("controller::playback", "model::intent"),
+        ("controller::playback", "model::state"),
+        ("controller::translate", "controller::audio"),
+        ("controller::translate", "controller::light"),
+        ("controller::translate", "controller::network"),
+        ("controller::translate", "controller::playback"),
+        ("controller::translate", "model::intent"),
+        ("controller::translate", "model::state"),
+        ("ui", "ui::wiring"),
+        ("ui::diagnostics", "model::route"),
+        ("ui::diagnostics", "model::state"),
+        ("ui::render", "ui::diagnostics"),
+        ("ui::render", "model::route"),
+        ("ui::render", "model::state"),
+        ("ui::pages", "assets"),
+        ("ui::pages", "controller"),
+        ("ui::pages", "model::layout"),
+        ("ui::pages", "ui::diagnostics"),
+        ("ui::pages", "model::keyboard"),
+        ("ui::pages", "model::state"),
+        ("ui::wiring", "model::state"),
+        ("ui::wiring", "ui::pages"),
+        ("ui::wiring", "ui::render"),
         ("lib", "bench"),
-        ("lib", "display"),
+        ("lib", "ui"),
         ("lib", "model::boot"),
         ("lib", "model::state"),
         ("lib", "runtime::coordinator"),
@@ -724,12 +752,15 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
         ("lib", "runtime::feature::playback"),
         ("lib", "runtime::workers"),
         ("model::boot", "model::state"),
-        ("model::intent", "controls"),
+        ("model::intent", "model::keyboard"),
         ("model::intent", "model::state"),
-        ("model::state", "controls"),
         ("model::state", "model::intent"),
+        ("model::state", "model::keyboard"),
+        ("model::state", "model::layout"),
         ("model::state", "model::route"),
-        ("runtime::coordinator", "display"),
+        ("model::layout", "model::keyboard"),
+        ("model::layout", "model::state"),
+        ("runtime::coordinator", "ui"),
         ("runtime::coordinator", "model::state"),
         ("runtime::coordinator", "runtime::feature::input"),
         ("runtime::coordinator", "runtime::system"),
@@ -768,15 +799,18 @@ fn the_app_module_graph_is_the_one_the_codemap_draws() {
     );
 }
 
-/// The layers lean inward only: the model knows neither the runtime nor the display, and the
-/// display never drives a worker. The one edge outward from the runtime is the frame loop
-/// presenting what the model settled on.
+/// The layers lean inward only: the model knows neither the controller nor the presentation
+/// nor the runtime, the controller never draws or drives a worker, and the presentation never
+/// drives one. The one edge outward from the runtime is the frame loop presenting what the
+/// model settled on.
 #[test]
 fn the_layers_lean_inward_only() {
     for (from, to) in app_edges(&app_src()) {
         let outward = if from.starts_with("model::") {
-            to.starts_with("display") || to.starts_with("runtime")
-        } else if from.starts_with("display") {
+            to.starts_with("controller") || to.starts_with("ui") || to.starts_with("runtime")
+        } else if from.starts_with("controller") {
+            to.starts_with("ui") || to.starts_with("runtime")
+        } else if from.starts_with("ui") {
             to.starts_with("runtime")
         } else {
             false
@@ -785,9 +819,9 @@ fn the_layers_lean_inward_only() {
     }
 }
 
-/// The top of the tree is the three layers, the two leaves they share, and the entries.
+/// The top of the tree is the four layers, the two leaves they share, and the entries.
 #[test]
-fn the_app_tree_is_three_layers_two_leaves_and_the_entries() {
+fn the_app_tree_is_four_layers_two_leaves_and_the_entries() {
     let src = app_src();
     let mut top: BTreeSet<String> = module_tree(&src)
         .keys()
@@ -798,7 +832,15 @@ fn the_app_tree_is_three_layers_two_leaves_and_the_entries() {
     top.insert("main".to_string());
     top.insert("lib".to_string());
     let expected: BTreeSet<String> = [
-        "assets", "bench", "bin", "controls", "display", "lib", "main", "model", "runtime",
+        "assets",
+        "bench",
+        "bin",
+        "controller",
+        "lib",
+        "main",
+        "model",
+        "runtime",
+        "ui",
     ]
     .into_iter()
     .map(str::to_string)

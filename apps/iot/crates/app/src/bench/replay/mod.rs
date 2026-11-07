@@ -8,10 +8,12 @@ pub(crate) use self::slot::Slot;
 
 use alloc::vec::Vec;
 
-use crate::controls;
-use crate::controls::{DialogChoice, Key, LIST_ROWS};
+use crate::controller::Band;
 use crate::model::intent::{Intent, recognize};
-use crate::model::state::{Band, Confirm, DeviceManager, DeviceState, DisplayPage};
+use crate::model::keyboard::Key;
+use crate::model::layout;
+use crate::model::layout::DialogChoice;
+use crate::model::state::{Confirm, DeviceManager, DeviceState, DisplayPage, LIST_ROWS};
 use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
 
@@ -236,14 +238,14 @@ impl PanelBench {
             at_ms: 0,
         });
         for tap in &script {
-            let rect = controls::key_box(tap.cell).expect("a script only taps cells the grid has");
+            let rect = layout::key_box(tap.cell).expect("a script only taps cells the grid has");
             touches.push(Touch::At {
                 x: (rect.x + rect.w / 2) as u16,
                 y: (rect.y + rect.h / 2) as u16,
                 at_ms: tap.at_ms,
             });
         }
-        let ok = controls::key_box(controls::cell_of(Key::Connect).expect("the grid has connect"))
+        let ok = layout::key_box(layout::cell_of(Key::Connect).expect("the grid has connect"))
             .expect("a cell of the grid");
         touches.push(Touch::At {
             x: (ok.x + ok.w / 2) as u16,

@@ -1,4 +1,4 @@
-use crate::controls::Key;
+use crate::model::keyboard::Key;
 use crate::model::state::{Confirm, LightState};
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
@@ -108,8 +108,9 @@ pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controller::translate;
     use crate::model::route::test_support::{long_press, op, state_on};
-    use crate::model::state::{DeviceState, DisplayPage, LightState, NetworkState, translate};
+    use crate::model::state::{DeviceState, DisplayPage, LightState, NetworkState};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, SwipeDirection};
 
     mod recognize {

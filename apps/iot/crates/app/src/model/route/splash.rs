@@ -15,11 +15,12 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
+    use crate::controller::translate;
     use crate::model::intent::{ActionIntent, LightIntent, PageIntent};
     use crate::model::route::test_support::{
         DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
-    use crate::model::state::{DisplayPage, LightState, translate};
+    use crate::model::state::{DisplayPage, LightState};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
     use iot_core::drivers::network::LinkStatus;
 

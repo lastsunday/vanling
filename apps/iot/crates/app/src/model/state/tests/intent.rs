@@ -1,7 +1,5 @@
 use super::*;
 
-use crate::model::state::translate;
-
 fn landing() -> DeviceManager {
     DeviceManager::boot(Boot {
         backed: Backed {

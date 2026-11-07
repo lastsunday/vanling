@@ -3,9 +3,9 @@
 use std::sync::atomic::Ordering;
 
 use embassy_time::{Duration, Timer};
-use iot_app::controls::Key;
+use iot_app::controller::PALETTE;
 use iot_app::model::intent::{ActionIntent, Intent, NetworkPageIntent};
-use iot_app::model::state::PALETTE;
+use iot_app::model::keyboard::Key;
 use iot_app::model::state::{Confirm, DisplayPage, NetworkCommand};
 use iot_app::runtime::workers::NETWORK;
 use iot_core::drivers::audio::dbfs;

@@ -18,13 +18,12 @@ use iot_core::drivers::surface::WiredSurface;
 
 mod assets;
 pub mod bench;
-pub mod controls;
-pub mod display;
+pub mod controller;
 pub mod model;
 pub mod runtime;
+pub mod ui;
 
 use bench::replay::{BENCH, Slot};
-use display::wired;
 use model::boot::{boot_override, boot_page};
 use runtime::coordinator::{
     CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
@@ -33,6 +32,7 @@ use runtime::coordinator::{
 use runtime::feature::input::{INTENT_BUS, input_task};
 use runtime::feature::playback::{playback_tasks, share};
 use runtime::workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand};
+use ui::wired;
 
 pub enum Feed {
     Interrupt(SendSpawner),

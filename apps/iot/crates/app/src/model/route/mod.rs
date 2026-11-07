@@ -1,8 +1,10 @@
 //! The pages as vocabulary: a route table declares, for every page, the name it answers to,
-//! what it needs from the board, what it grounds the panel with, whether it draws frames,
-//! what it claims of a demand, how often it may repaint, whether it can be booted on, and how
-//! long it lives. The enum is the destination; [`DisplayPage::route`] is the one exhaustive
-//! map from a destination to its row, so a new page cannot exist without a route.
+//! what it needs from the board, what it claims of a demand, whether it can be booted on, and
+//! how long it lives. The enum is the destination; [`DisplayPage::route`] is the one
+//! exhaustive map from a destination to its row, so a new page cannot exist without a route.
+//!
+//! How a page is drawn — its ground, whether frames arrive from a camera, how often it may
+//! repaint — belongs to the renderer (`ui::render::policy`), not to this table.
 //!
 //! The order the button cycles in is a navigation fact, not a route property, and the
 //! [`Navigator`] is what walks it (`nav`).
@@ -26,13 +28,6 @@ pub use self::splash::SPLASH_MS;
 use iot_core::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Priority};
 use iot_core::drivers::board::Backed;
 
-/// The least wall time between diagnostics-driven repaints. A repaint ships the whole 320×240
-/// frame down one blocking SPI transfer (on the order of 15 ms), so without a bound the live
-/// pages hold the shared cooperative executor in a ~15 ms block almost continuously, starving
-/// the playback feed and the capture poll past their ring runway. A page raises it for itself
-/// in its route.
-pub const DIAG_REPAINT_STEP_MS: u64 = 40;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DisplayPage {
     #[default]
@@ -53,13 +48,7 @@ struct Route {
     path: &'static str,
     /// What the board must wire for this page to be reachable at all.
     needs: fn(Backed) -> bool,
-    /// The fill that covers the panel before the page draws, or `None` when it draws over
-    /// what the light already showed.
-    ground: Option<iot_core::paint::Rgb>,
-    /// Whether frames arrive from the camera instead of being drawn.
-    draws_frames: bool,
     claim: fn(DemandKind) -> Claim,
-    repaint_step_ms: u64,
     /// Whether a build may come up on this page.
     bootable: bool,
     /// How long a transient page stays up, in milliseconds.
@@ -75,10 +64,7 @@ const ON_SCREEN: Claim = Claim::new(Mode::Continuous, 0, Priority::Primary);
 static AMBIENT: Route = Route {
     path: "ambient",
     needs: |_| true,
-    ground: None,
-    draws_frames: false,
     claim: ambient::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS,
     bootable: true,
     timeout_ms: None,
 };
@@ -86,10 +72,7 @@ static AMBIENT: Route = Route {
 static ATTITUDE: Route = Route {
     path: "attitude",
     needs: |backed| backed.motion.is_some(),
-    ground: None,
-    draws_frames: false,
     claim: attitude::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS,
     bootable: true,
     timeout_ms: None,
 };
@@ -97,10 +80,7 @@ static ATTITUDE: Route = Route {
 static AUDIO: Route = Route {
     path: "audio",
     needs: |backed| backed.audio,
-    ground: None,
-    draws_frames: false,
     claim: audio::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS * 2,
     bootable: true,
     timeout_ms: None,
 };
@@ -108,10 +88,7 @@ static AUDIO: Route = Route {
 static SPEAKER: Route = Route {
     path: "speaker",
     needs: |backed| backed.playback,
-    ground: None,
-    draws_frames: false,
     claim: speaker::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS,
     bootable: true,
     timeout_ms: None,
 };
@@ -119,10 +96,7 @@ static SPEAKER: Route = Route {
 static CAMERA: Route = Route {
     path: "camera",
     needs: |backed| backed.camera,
-    ground: Some(iot_core::paint::Rgb(0, 0, 0)),
-    draws_frames: true,
     claim: camera::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS,
     bootable: true,
     timeout_ms: None,
 };
@@ -130,10 +104,7 @@ static CAMERA: Route = Route {
 static NETWORK: Route = Route {
     path: "network",
     needs: |backed| backed.network,
-    ground: Some(iot_core::paint::Rgb(0, 0, 0)),
-    draws_frames: false,
     claim: network::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS,
     bootable: true,
     timeout_ms: None,
 };
@@ -141,10 +112,7 @@ static NETWORK: Route = Route {
 static SPLASH: Route = Route {
     path: "splash",
     needs: |_| true,
-    ground: None,
-    draws_frames: false,
     claim: splash::claim,
-    repaint_step_ms: DIAG_REPAINT_STEP_MS,
     bootable: false,
     timeout_ms: Some(SPLASH_MS),
 };
@@ -186,17 +154,6 @@ impl DisplayPage {
             Self::Network => &NETWORK,
             Self::Splash => &SPLASH,
         }
-    }
-
-    /// The fill this page grounds the panel with, or `None` when the page draws over what the
-    /// light was already showing.
-    pub fn ground(&self) -> Option<iot_core::paint::Rgb> {
-        self.route().ground
-    }
-
-    /// Whether this page's frames arrive from the camera instead of being drawn.
-    pub fn draws_frames(&self) -> bool {
-        self.route().draws_frames
     }
 
     /// The page the button turns to: the next backed page in [`CYCLE`], wrapping. A transient
@@ -242,11 +199,6 @@ impl DisplayPage {
             index += 1;
         }
         None
-    }
-
-    /// The least wall time this page waits between diagnostics-driven repaints.
-    pub fn repaint_step_ms(&self) -> u64 {
-        self.route().repaint_step_ms
     }
 
     /// Whether a build may come up on this page.

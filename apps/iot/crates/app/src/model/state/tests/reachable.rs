@@ -15,7 +15,8 @@
 //! a field left out that a move reads would merge two states the page tells apart.
 
 use super::*;
-use crate::controls::{self, DialogChoice, Key};
+use crate::model::keyboard::Key;
+use crate::model::layout::{self, DialogChoice};
 use alloc::collections::{BTreeSet, VecDeque};
 use alloc::string::String;
 use iot_core::drivers::network::{NetworkMode, SetupHost, SetupPass};
@@ -166,7 +167,7 @@ fn path(origin: &[(Option<usize>, &'static str)], at: usize, this: &str) -> Stri
 }
 
 fn band_y(band: usize) -> u16 {
-    (controls::LIST_TOP + band * controls::LIST_ROW_H + controls::LIST_ROW_H / 2) as u16
+    (layout::LIST_TOP + band * layout::LIST_ROW_H + layout::LIST_ROW_H / 2) as u16
 }
 
 fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<Command> {
@@ -219,12 +220,10 @@ fn swipe(manager: &mut DeviceManager, direction: SwipeDirection, end_y: u16) -> 
 }
 
 fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<Command> {
-    let cell = controls::cell_of(key)
-        .or_else(|| {
-            (0..controls::KEYS).find(|cell| controls::key_of(Layer::Abc, *cell) == Some(key))
-        })
+    let cell = layout::cell_of(key)
+        .or_else(|| (0..layout::KEYS).find(|cell| layout::key_of(Layer::Abc, *cell) == Some(key)))
         .expect("the grid holds every key");
-    let rect = controls::key_box(cell).expect("a cell of the grid");
+    let rect = layout::key_box(cell).expect("a cell of the grid");
     tap_at(
         manager,
         (rect.x + rect.w / 2) as u16,
@@ -233,7 +232,7 @@ fn tap_key(manager: &mut DeviceManager, key: Key) -> Option<Command> {
 }
 
 fn tap_answer(manager: &mut DeviceManager, choice: DialogChoice) -> Option<Command> {
-    let choice = controls::dialog_answer_box(choice);
+    let choice = layout::dialog_answer_box(choice);
     tap_at(
         manager,
         (choice.x + choice.w / 2) as u16,
@@ -280,7 +279,7 @@ fn tap_the_strip(manager: &mut DeviceManager) -> Option<Command> {
     tap_at(
         manager,
         160,
-        (controls::TOOLBAR_TOP + controls::TOOLBAR_H / 2) as u16,
+        (layout::TOOLBAR_TOP + layout::TOOLBAR_H / 2) as u16,
     )
 }
 fn tap_the_header(manager: &mut DeviceManager) -> Option<Command> {

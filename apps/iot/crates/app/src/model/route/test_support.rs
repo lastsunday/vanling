@@ -1,9 +1,10 @@
+use crate::controller::translate;
 use crate::model::intent::{
     ActionIntent, InputIntent, LightIntent, LinkIntent, NetworkPageIntent, PageIntent, recognize,
 };
 use crate::model::state::MAX_LIGHTS;
 use crate::model::state::{
-    Backed, Breath, DeviceState, DisplayPage, LightState, Navigator, SurfaceRole, translate,
+    Backed, Breath, DeviceState, DisplayPage, LightState, Navigator, SurfaceRole,
 };
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::motion::MotionCapabilities;

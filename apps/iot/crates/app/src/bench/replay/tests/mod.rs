@@ -1,8 +1,8 @@
 //! The walk, exercised end to end.
 
 use super::*;
-use crate::controls::Layer;
 use crate::model::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
+use crate::model::keyboard::Layer;
 use crate::model::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
@@ -42,8 +42,8 @@ fn showing(names: &[&str]) -> DeviceState {
 }
 
 fn key_center(key: Key) -> Touch {
-    let cell = controls::cell_of(key).expect("the grid holds every control");
-    let rect = controls::key_box(cell).expect("a cell of the grid");
+    let cell = layout::cell_of(key).expect("the grid holds every control");
+    let rect = layout::key_box(cell).expect("a cell of the grid");
     Touch::At {
         x: (rect.x + rect.w / 2) as u16,
         y: (rect.y + rect.h / 2) as u16,
@@ -74,7 +74,7 @@ fn a_run_taps_the_row_the_named_network_is_on() {
             at_ms: 0
         }
     );
-    assert_eq!(controls::list_band_at(band_center(2)), Some(2));
+    assert_eq!(layout::list_band_at(band_center(2)), Some(2));
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn every_row_a_scan_can_carry_is_reachable_by_the_bench() {
             .count();
         let (_, y) = point(plan[slides]);
         assert_eq!(
-            controls::list_band_at(y),
+            layout::list_band_at(y),
             Some(index - slides),
             "row {index} is the band its tap lands on after {slides} slides"
         );
@@ -322,14 +322,14 @@ fn a_run_ends_on_the_key_that_hands_the_passphrase_over() {
     let last = plan.last().copied().expect("a run has taps");
     assert_eq!(point(last), point(key_center(Key::Connect)));
     assert_eq!(
-        controls::key_at(Layer::Abc, point(last).0, point(last).1),
+        layout::key_at(Layer::Abc, point(last).0, point(last).1),
         Some(Key::Connect),
         "the last tap is the key that hands the credential over, not a cell beside it"
     );
     for tap in &plan[..plan.len() - 1] {
         let (x, y) = point(*tap);
         assert!(
-            controls::key_at(Layer::Abc, x, y).is_some(),
+            layout::key_at(Layer::Abc, x, y).is_some(),
             "the tap at ({x}, {y}) is on a key"
         );
     }

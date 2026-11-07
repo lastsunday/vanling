@@ -61,14 +61,14 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         Some(ap(b"b")),
         "and the first band now holds the second network"
     );
-    for _ in 0..(8 - controls::LIST_ROWS) {
+    for _ in 0..(8 - LIST_ROWS) {
         manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Scroll {
             rows: 1,
         }));
     }
     assert_eq!(
         manager.state().network_page.list_top,
-        (8 - controls::LIST_ROWS) as u8,
+        (8 - LIST_ROWS) as u8,
         "eight rows through a three-row window stop five rows down"
     );
     manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Scroll {
@@ -76,7 +76,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
     }));
     assert_eq!(
         manager.state().network_page.list_top,
-        (8 - controls::LIST_ROWS) as u8,
+        (8 - LIST_ROWS) as u8,
         "and the end of the list is as far as it goes"
     );
     manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Scroll {
@@ -84,7 +84,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
     }));
     assert_eq!(
         manager.state().network_page.list_top,
-        (8 - controls::LIST_ROWS - 1) as u8
+        (8 - LIST_ROWS - 1) as u8
     );
     for _ in 0..8 {
         manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Scroll {

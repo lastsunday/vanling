@@ -6,5 +6,7 @@
 
 pub mod boot;
 pub mod intent;
+pub mod keyboard;
+pub mod layout;
 pub mod route;
 pub mod state;

@@ -5,7 +5,8 @@
 
 use alloc::vec::Vec;
 
-use crate::controls::{Key, Layer, MULTITAP_WINDOW_MS, cell_for_digit, cell_of};
+use crate::model::keyboard::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
+use crate::model::layout::{cell_for_digit, cell_of};
 
 /// One tap of a script: the cell a finger lands on, and when its lift is read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,7 +62,7 @@ pub fn script_for(text: &[u8]) -> Option<Vec<Tap>> {
 }
 
 fn find(layer: Layer, byte: u8) -> Option<(usize, usize)> {
-    (0..crate::controls::CHARS).find_map(|digit| {
+    (0..CHARS).find_map(|digit| {
         layer
             .candidates(digit)
             .iter()
@@ -73,7 +74,7 @@ fn find(layer: Layer, byte: u8) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::controls::{key_box, key_of};
+    use crate::model::layout::{key_box, key_of};
     use crate::model::state::Entry;
 
     #[test]

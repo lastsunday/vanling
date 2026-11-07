@@ -12,11 +12,12 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
+    use crate::controller::{COLOR_GROUPS, translate};
     use crate::model::intent::{ActionIntent, AudioIntent, LightIntent};
     use crate::model::route::test_support::{
         BREATH_BASE, DEFAULT_BREATH, op, state, state_on, tap_gesture, target, target_in,
     };
-    use crate::model::state::{COLOR_GROUPS, DisplayPage, LightState, translate};
+    use crate::model::state::{DisplayPage, LightState};
     use iot_core::drivers::input::{ButtonEvent, InputEvent};
 
     mod audio_page {

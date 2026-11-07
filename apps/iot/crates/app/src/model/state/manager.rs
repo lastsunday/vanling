@@ -7,11 +7,10 @@ use iot_core::demand::{DemandKey, EffectiveDemand, Override};
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
 
-use crate::model::intent::{ActionIntent, InputIntent, Intent, LinkIntent, PageIntent};
+use crate::model::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
 use crate::model::route::{DisplayPage, Navigator};
 
 use super::device::Effects;
-use super::translate::translate;
 use super::{
     Boot, Command, DeviceState, LightState, MAX_LIGHTS, NetworkCommand, NoticeKind, PlaybackState,
 };
@@ -86,22 +85,6 @@ impl DeviceManager {
     /// the installed array so one out-of-range intent can never panic.
     pub fn apply_to(&mut self, instance: usize, state: LightState) {
         self.state.lights[instance.min(MAX_LIGHTS - 1)] = state;
-    }
-
-    /// Route one intent all the way to the state it moves, and answer with what the model
-    /// cannot do itself. The input half is written to the record before it is translated, so
-    /// the page's answer is read against the state that gesture produced. The caller hands
-    /// that answer to the systems in registration order, and the one that owns the boundary
-    /// takes it.
-    pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
-        let action = match intent {
-            Intent::Input(op) => {
-                self.apply_input(op);
-                translate(&op, &self.state)
-            }
-            Intent::Action(action) => action,
-        };
-        self.apply_action(action)
     }
 
     /// Route one input event to the record that owns it: motion to the part's tallies,

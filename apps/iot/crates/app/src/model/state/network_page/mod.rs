@@ -4,8 +4,8 @@
 //! from the worker cannot land in a page field and a page edit cannot change what the radio
 //! said.
 
-use crate::controls::{Key, LIST_ROWS};
 use crate::model::intent::NetworkPageIntent;
+use crate::model::keyboard::Key;
 use iot_core::drivers::network::{
     AccessPoint, JoinRequest, LinkPhase, LinkStatus, NetworkError, NetworkMode, SetupHost, Ssid,
 };
@@ -16,11 +16,8 @@ use super::command::Command;
 use super::entry::Entry;
 use super::network::NetworkState;
 
-mod controls;
-
-pub use self::controls::{Answers, Control, ControlKind, Strip, answers, confirm_verb, strip};
-
-pub(super) mod translate;
+/// The scan rows the panel shows at once: what the list's scroll window keeps on glass.
+pub const LIST_ROWS: usize = 3;
 
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.

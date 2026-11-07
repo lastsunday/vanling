@@ -1,4 +1,5 @@
 pub(crate) use super::*;
+pub(crate) use crate::controller::translate;
 pub(crate) use crate::model::intent::{ActionIntent, InputIntent, Intent, LightIntent, PageIntent};
 pub(crate) use crate::model::route::CYCLE;
 pub(crate) use iot_core::drivers::input::{

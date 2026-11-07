@@ -11,10 +11,10 @@ use crate::model::state::DeviceManager;
 use embassy_futures::select::select;
 use embassy_time::{Instant, Timer};
 
-use crate::display::Renderers;
 use crate::runtime::feature::input::IntentBus;
 use crate::runtime::system::Frame;
 use crate::runtime::workers::WAKE;
+use crate::ui::Renderers;
 
 use self::clock::{FrameClock, Wait};
 pub(crate) use self::systems::{

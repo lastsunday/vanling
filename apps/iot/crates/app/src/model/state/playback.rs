@@ -1,41 +1,7 @@
-use crate::model::intent::{ActionIntent, InputIntent, PlaybackAction};
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use crate::model::intent::PlaybackAction;
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 
-use super::{DeviceManager, DeviceState, Health, light_control};
-
-/// The Speaker page's gestures: a tap walks the catalogue, a hold mutes, and the button and
-/// swipes are the lamp's, as on every page without a verb of its own for them.
-pub(in crate::model::state) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
-    match op.event {
-        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            ActionIntent::Playback(PlaybackAction::Next)
-        }
-        InputEvent::Button(ButtonEvent::LongPress)
-        | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-            ActionIntent::Playback(PlaybackAction::SetMuted(!current.playback.muted))
-        }
-        InputEvent::Button(ButtonEvent::DoubleClick) => light_control::step(current, op.source),
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-            light_control::swipe(current, op.source, direction)
-        }
-        _ => ActionIntent::Invalid,
-    }
-}
-
-/// Playback state stamped on the Speaker page: the phase the page is showing, the sound a
-/// tap would play, the mute latch, and the two tallies that make a busy finger visible —
-/// sounds started against taps that arrived over one and were therefore not heard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PlaybackDiagnostics {
-    pub phase: PlaybackPhase,
-    pub sound: Sound,
-    pub muted: bool,
-    pub plays: u16,
-    pub dropped: u16,
-    /// Whether the output is answering, and why not when it is not.
-    pub health: Health,
-}
+use super::{DeviceManager, Health};
 
 /// Playback state behind the Speaker page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,19 +109,6 @@ impl PlaybackState {
                     self.phase = PlaybackPhase::Idle;
                 }
             }
-        }
-    }
-}
-
-impl DeviceState {
-    pub(crate) fn playback_diagnostics(&self) -> PlaybackDiagnostics {
-        PlaybackDiagnostics {
-            phase: self.playback.phase,
-            sound: self.playback.sound,
-            muted: self.playback.muted,
-            plays: self.playback.view.plays,
-            dropped: self.playback.view.dropped,
-            health: self.playback.health,
         }
     }
 }

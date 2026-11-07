@@ -1,5 +1,5 @@
-use crate::controls::Layer;
 use crate::model::intent::*;
+use crate::model::keyboard::Layer;
 use crate::model::state::test_support::*;
 use iot_core::demand::DemandKey;
 use iot_core::drivers::input::FingerLast;
