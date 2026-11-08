@@ -50,6 +50,7 @@ console-uart = ["esp-println/uart"]
 critical-section = { workspace = true }
 embedded-alloc = { workspace = true }
 embassy-executor = { workspace = true }
+embassy-time = { workspace = true }
 esp-alloc = { workspace = true, optional = true }
 esp-backtrace = { workspace = true }
 esp-bootloader-esp-idf = { workspace = true }

@@ -2,8 +2,8 @@
 title = "Work Items"
 weight = 21
 [extra]
-source_file_hash = "2ad159c21b7ad7d26cd39bb07cc5fdc7cfbdb6be"
-translated_at = "2026-10-26T00:00:00Z"
+source_file_hash = "0d27bd4c545275015587acf650a1a73de92ac679"
+translated_at = "2026-11-08T00:00:00Z"
 +++
 
 # Work Items
@@ -298,7 +298,7 @@ Priority reference:
 | 🟡 P2    | ❌     | ❌   | Reconnect/buffering                | Retransmission and message buffering                                                                                                                                                                                                                                            |                                                            |
 | 🔵 P3    | ❌     | ❌   | SNTP time sync                     | Trustworthy data timestamps                                                                                                                                                                                                                                                     |                                                            |
 | 🔵 P3    | ❌     | ❌   | Low-power/deep sleep               | Long standby power optimization, after model selection converges                                                                                                                                                                                                                |                                                            |
-| 🔵 P3    | ❌     | ❌   | Watchdog/reset strategy            | Task watchdog + panic reset recovery strategy                                                                                                                                                                                                                                   |                                                            |
+| 🔵 P3    | ⚠️     | —    | Watchdog/reset strategy            | Wired and flashed once on each of S3/C6: `custom_halt` → `software_reset()`, RWDT Stage0 5 s, fed every 1 s on the coordinator executor; the panic → reset hop is not measured — see hardware-constraints                                                                                                   |                                                            |
 
 ## Infrastructure
 

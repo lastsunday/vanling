@@ -30,8 +30,8 @@ pub(super) struct SetupMode<'d> {
     pub(super) mac: [u8; 6],
     pub(super) resources: &'d mut StackResources<SETUP_SOCKETS>,
     pub(super) host: SetupHost,
-    /// Whether the first access point this mode raises starts under a passphrase; the splash
-    /// decides, so `serve` leaves it off and `link` sets it the moment the verdict lands.
+    /// Whether the first access point this mode raises starts under a passphrase. Set once by
+    /// `link` from the board's surfaces, so every host and every entry agree.
     pub(super) secure_on_entry: bool,
     pub(super) has_pages: bool,
 }

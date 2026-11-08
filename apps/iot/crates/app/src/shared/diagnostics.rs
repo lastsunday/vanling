@@ -7,12 +7,31 @@ use crate::pages::network::model::NetworkDraft;
 use crate::shared::route::Page;
 use crate::shared::state::{AudioPhase, Health};
 use crate::state::DeviceState;
+use core::sync::atomic::{AtomicU32, Ordering};
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 use iot_core::drivers::surface::MAX_LIGHTS;
+
+/// Intents the input worker could not hand to the coordinator because the ring was full.
+///
+/// Process-wide and saturating: it answers "has input ever gone missing" for the diagnostics
+/// snapshot. The per-window count in the `[INPUT]` line answers "is it happening now".
+static DROPPED_INTENTS: AtomicU32 = AtomicU32::new(0);
+
+/// Counts one intent the input worker failed to enqueue.
+pub fn note_dropped_intent() {
+    let _ = DROPPED_INTENTS.try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+        (count < u32::MAX).then_some(count + 1)
+    });
+}
+
+/// How many intents have been dropped since boot.
+pub fn dropped_intents() -> u32 {
+    DROPPED_INTENTS.load(Ordering::Relaxed)
+}
 
 /// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
 /// it should draw.
@@ -148,9 +167,26 @@ pub struct Diagnostics {
     pub motion_caps: MotionCapabilities,
     pub audio: AudioDiagnostics,
     pub playback: PlaybackDiagnostics,
+    /// Input intents the coordinator's ring had no room for, since boot.
+    pub dropped_intents: u32,
 }
 
 /// Consumer of the device diagnostic snapshot.
 pub trait DiagnosticsSink {
     fn consume(&mut self, _diagnostics: &Diagnostics) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{dropped_intents, note_dropped_intent};
+
+    #[test]
+    fn a_noted_drop_is_visible_and_the_count_never_falls() {
+        let before = dropped_intents();
+        note_dropped_intent();
+        assert!(
+            dropped_intents() > before,
+            "the counter is a boot total, so a note can only raise it"
+        );
+    }
 }

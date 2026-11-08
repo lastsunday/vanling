@@ -43,7 +43,7 @@ pub async fn run_loop(
         let active = renderers.tick(manager.state_ref(), manager.demand(), pacing.elapsed_ms())
             || manager.notice_active();
         renderers.flush().await;
-        match pacing.tick(active) {
+        match pacing.tick(active, Instant::now()) {
             Wait::At(deadline) => Timer::at(deadline).await,
             Wait::Park => {
                 select(bus.ready_to_receive(), WAKE.wait()).await;

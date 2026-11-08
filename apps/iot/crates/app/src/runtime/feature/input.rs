@@ -21,6 +21,23 @@ pub static INTENT_BUS: IntentBus = IntentBus::new();
 
 const HOLD_REPORT_MS: u64 = 5_000;
 
+/// Hands one intent to the coordinator, counting it when the ring is full.
+///
+/// The return value is what the splash needs: a verdict that never made it has to be tried
+/// again next tick, not treated as delivered.
+fn forward<const N: usize>(
+    bus: &Channel<CriticalSectionRawMutex, Intent, N>,
+    intent: Intent,
+    dropped: &mut u32,
+) -> bool {
+    if bus.try_send(intent).is_ok() {
+        return true;
+    }
+    *dropped = dropped.saturating_add(1);
+    crate::shared::diagnostics::note_dropped_intent();
+    false
+}
+
 /// How long the boot transient stays up, read from its route so the timer and the page cannot
 /// disagree. A splash that stops being transient fails the build here rather than hanging.
 const SPLASH_TIMEOUT_MS: u64 = Page::Splash
@@ -131,6 +148,7 @@ pub async fn input_task(
     let mut window_hold_us: u64 = 0;
     let mut window_worst_hold_ms: u64 = 0;
     let mut window_ticks: u32 = 0;
+    let mut window_dropped: u32 = 0;
     let mut last_report = Instant::now();
     let mut stack_peak = 0usize;
     let mut splash_open = true;
@@ -150,7 +168,7 @@ pub async fn input_task(
             let poll_start = Instant::now();
             if let Some(event) = entry.poll(now_ms) {
                 let intent = Intent::Input(recognize(event, entry.source_id()));
-                let _ = intent_bus.try_send(intent);
+                forward(intent_bus, intent, &mut window_dropped);
             }
             entry.advance_past(now_ms);
             let took_us = poll_start.elapsed().as_micros();
@@ -164,9 +182,11 @@ pub async fn input_task(
         if splash_open
             && now_ms >= SPLASH_TIMEOUT_MS
             && !sources.iter().any(|entry| entry.held())
-            && intent_bus
-                .try_send(Intent::Action(ActionIntent::Page(PageIntent::SplashOver)))
-                .is_ok()
+            && forward(
+                intent_bus,
+                Intent::Action(ActionIntent::Page(PageIntent::SplashOver)),
+                &mut window_dropped,
+            )
         {
             splash_open = false;
         }
@@ -199,17 +219,19 @@ pub async fn input_task(
                 } else {
                     log::Level::Debug
                 },
-                "[INPUT] held the executor {} ms of {} ms over {} ticks; worst single hold {} ms (bound {} ms); worst source: {}",
+                "[INPUT] held the executor {} ms of {} ms over {} ticks; worst single hold {} ms (bound {} ms); worst source: {}; dropped {} intents",
                 window_hold_us / 1_000,
                 window_ms,
                 window_ticks,
                 window_worst_hold_ms,
                 MAX_SINGLE_HOLD_MS,
-                parts
+                parts,
+                window_dropped
             );
             window_hold_us = 0;
             window_worst_hold_ms = 0;
             window_ticks = 0;
+            window_dropped = 0;
             worst_us.fill(0);
             polled.fill(false);
             last_report = now;
@@ -495,6 +517,26 @@ mod tests {
             assert!(sources[0].is_active(), "the input path was gated");
             assert_eq!(sources[0].cadence_ms(), 10, "the input path was stretched");
         }
+    }
+
+    #[test]
+    fn a_full_intent_ring_counts_what_it_refuses_and_the_count_saturates() {
+        let bus: Channel<CriticalSectionRawMutex, Intent, 1> = Channel::new();
+        let mut dropped = 0u32;
+
+        assert!(
+            forward(&bus, Intent::Action(ActionIntent::Invalid), &mut dropped),
+            "the empty ring takes the first intent"
+        );
+        assert!(
+            !forward(&bus, Intent::Action(ActionIntent::Invalid), &mut dropped),
+            "the full ring refuses the next one"
+        );
+        assert_eq!(dropped, 1, "a refused intent is counted, not lost silently");
+
+        let mut saturated = u32::MAX;
+        let _ = forward(&bus, Intent::Action(ActionIntent::Invalid), &mut saturated);
+        assert_eq!(saturated, u32::MAX, "the window count never wraps");
     }
 
     const MOTION_CADENCE_MS: u64 = iot_core::drivers::motion::MOTION_SCAN_MS;

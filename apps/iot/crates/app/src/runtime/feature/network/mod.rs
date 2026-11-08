@@ -100,8 +100,8 @@ where
         resources: Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new())),
         host,
         has_pages,
-        // The splash decides whether the first access point starts secured; `link` sets this the
-        // moment the verdict lands, and nothing reaches setup mode before then.
+        // A board with a page can show the passphrase, so `link` secures every entry; a board
+        // without one leaves it open. Publishing happens after that decision lands.
         secure_on_entry: false,
     };
     publish_link(station.status(), store::any(saved.as_deref()));

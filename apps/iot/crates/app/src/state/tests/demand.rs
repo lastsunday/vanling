@@ -1,5 +1,4 @@
 use super::*;
-use iot_core::config::{MotionConfig, Unreachable};
 use iot_core::demand::{ALL_KEYS, Claim, DemandKey, DemandKind, Mode, Priority};
 
 fn fully_wired() -> DeviceManager {
@@ -212,67 +211,4 @@ fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
             &DeviceManager::proposed(&manager.state, &manager.demand_keys, &manager.override_)
         );
     }
-}
-
-#[test]
-fn a_committed_demand_survives_being_read_back() {
-    let mut manager = landed(fully_wired_on(Page::Camera));
-    assert_eq!(manager.state().page(), Page::Camera);
-    assert_eq!(
-        manager.demand().claim(DemandKey::CAMERA).mode,
-        Mode::Continuous
-    );
-
-    let narrowed = manager.demand().without(DemandKey::MOTION);
-    manager.commit_demand(narrowed);
-
-    assert_eq!(manager.demand().claim(DemandKey::MOTION).mode, Mode::Off);
-    assert_eq!(
-        manager.demand().claim(DemandKey::CAMERA).mode,
-        Mode::Continuous
-    );
-    assert_ne!(
-        manager.demand(),
-        &DeviceManager::proposed(&manager.state, &manager.demand_keys, &manager.override_),
-        "a committed demand is the one place the two are allowed to differ"
-    );
-}
-
-#[test]
-fn a_refused_device_leaves_the_committed_demand_but_nothing_else_does() {
-    let mut manager = landed(fully_wired());
-    let refused = Unreachable {
-        key: DemandKey::MOTION,
-        mode: Mode::OnChange,
-        config: MotionConfig::PolledRegisters,
-    };
-
-    manager.commit_demand(manager.demand().without(refused.key));
-
-    assert_eq!(manager.demand().claim(DemandKey::MOTION).mode, Mode::Off);
-    assert_eq!(
-        manager.demand().claim(DemandKey::DISPLAY).mode,
-        Mode::Continuous,
-        "one device going unmet is not a reason to drop the others"
-    );
-    assert_eq!(
-        manager.demand().claim(DemandKey::INTERACTION).mode,
-        Mode::Continuous,
-        "nothing a demand says may switch the interaction path off"
-    );
-}
-
-#[test]
-fn a_page_change_re_proposes_over_a_committed_demand() {
-    let mut manager = landed(fully_wired());
-    manager.commit_demand(manager.demand().without(DemandKey::MOTION));
-    assert_eq!(manager.demand().claim(DemandKey::MOTION).mode, Mode::Off);
-
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
-
-    assert_ne!(
-        manager.demand().claim(DemandKey::MOTION).mode,
-        Mode::Off,
-        "a page that asks for motion again must be heard again"
-    );
 }

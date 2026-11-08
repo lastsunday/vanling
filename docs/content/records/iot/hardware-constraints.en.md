@@ -3,7 +3,7 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "2d12d7419bfa896ea9faafed465dc6de0629f144"
+source_file_hash = "8638cb629da0e70473a6e40e332d926f86eee26c"
 translated_at = "2026-11-08T00:00:00Z"
 +++
 
@@ -430,3 +430,38 @@ eight rows, column-major, bit 0 the top row. The pitch is still 9×13 (`FONT_W 5
 
 The table is flash: `[u8; 95 × 5] = 475 B`, the same size as the old one; the static wall is 65,720 B
 before and after (floor 65,536 B, 184 B spare).
+
+## Panic reset and the watchdog: a reboot is the only way out of a freeze (`[test]`/`[measured]`/`[reported]`, 2026-11-08)
+
+- **A panic only stops by default**: esp-backtrace's `panic-handler` prints the backtrace and parks
+  this core in an interrupt-free loop that only a power cycle leaves. This round turns on
+  `custom-halt` on the workspace dependency, and `custom_halt()` — defined in `iot-chip-esp` — calls
+  `software_reset()` directly. When `custom-halt` and `halt-cores` are both on, the latter wins
+  (the branch order in `abort()`'s `cfg_select!`), so **this repository must never enable
+  `halt-cores`** — with it on, `custom_halt` is never called and nothing fails to compile.
+- **esp-hal's `init` disables the RWDT**, so the watchdog can only be armed again in the chip layer.
+  `watchdog.rs` takes `RTC_TIMER` with `Rtc::new(steal())`: `Board::new` destructures `Peripherals`
+  ending in `..`, the RTC timer is not one of its fields, and that is the same `# Safety` basis as
+  the PSRAM steal. Stage0 is `ResetSystem` with a 5 s timeout, and the `Rwdt` lives in a
+  `critical_section::Mutex<RefCell<Option<_>>>`.
+- **Feeding is an ordinary task on the coordinator's executor**, waking every 1 s; `1 s × 3 ≤ 5 s`
+  is a compile-time assertion. That is exactly the wanted rule: as long as that executor still
+  schedules, the watchdog is fed; when the frame loop itself stops, nobody feeds it — including the
+  case where `renderers.flush().await` never returns because the panel core stopped taking DMA. It
+  does **not** cover a separate executor or the other core stalling on its own while the
+  coordinator keeps running; the 5 s never arrives then.
+- **The WS2812 no longer panics**: on the C6 the strip is the only surface, and a failed write used
+  to `expect` every frame, so panic → reset → panic made a reboot loop one round per 5 s. Now a
+  failure logs one `[RGB]` warning, a success clears the flag, and the next outage reports again.
+- **`[measured]` (2026-11-08, one flash per board)**: the C6 product image prints
+  `[WATCHDOG] armed for 5000 ms, fed every 1000 ms from the coordinator` at boot, and after one
+  `CTRL+R` reset it ran for about five minutes with no reset at all (only lamp-colour lines).
+  The S3, flashed with `-a watchdog-reset`, booted, associated with its saved network, and was still
+  printing at **5.7 s** (`[STACK] core 1 peak …`), so the 5 s RWDT did not fire; its
+  `[WATCHDOG]` line cannot be captured — the native-USB CDC enumerates only after the app's first
+  lines, and the same function prints that line on the C6. The reading was taken by flashing with
+  `espflash flash … -a watchdog-reset` and then opening the port with `cat` straight away
+  (`espflash monitor` drops the port itself when the watchdog reset re-enumerates it).
+- **`[reported]`**: panic → reset still has not been reproduced on a bench (nothing has deliberately
+  called `panic!`); what can be defended is `custom_halt`'s signature, esp-backtrace's call site and
+  the existing uses of `software_reset()`. The reading still owed is a reset log after a `panic!`.

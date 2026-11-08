@@ -21,6 +21,10 @@ static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
 async fn main(spawner: Spawner) -> ! {
     let (mut board, feed, io) = boot_board();
 
+    // The coordinator's own executor feeds this; a frozen panel therefore resets rather than
+    // standing there forever. `boot_board` has already started the timer driver it needs.
+    iot_chip_esp::start_watchdog(spawner);
+
     let surfaces = board.take_surfaces().expect("board has a wired surface");
     let has_pages = surfaces
         .iter()

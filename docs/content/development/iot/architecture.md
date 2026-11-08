@@ -329,7 +329,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 配置器随需求一起兑现，`[DEMAND]` 报的是这次排程的结果。
 
-需求按设备索引，不按字段枚举。`EffectiveDemand` 是 `BTreeMap<DemandKey, Claim>`，键是「器件类型 + 第几个」，所以 `claim`、`without` 与 `Override::apply` 全是查表，新增一个传感器不需要改动需求机械的任何一行。
+需求按设备索引，不按字段枚举。`EffectiveDemand` 是 `BTreeMap<DemandKey, Claim>`，键是「器件类型 + 第几个」，所以 `claim` 与 `Override::apply` 全是查表，新增一个传感器不需要改动需求机械的任何一行。
 
 两个同型号器件可以分开提需求（`DemandKey::instance(Audio, 0)` 与 `…, 1`）。
 
@@ -339,7 +339,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 需求状态是被持有的，不是现算的。`DeviceManager` 持有 `demand`，与 `state` 并列。派生的唯一出处是 `propose_demand()`，而 `page`、设备清单、`override_` 的任何一次写入都要跟着它走。
 
-理由只有一个：配置器要有东西可以改。`commit_demand` 把可达的那份写回同一处，下游读的都是被改过的那份。
+下游读的始终是这份提案。输入任务遇到某个器件无法兑现时只记一条告警，并让该器件停在原来的配置；提案本身不回写。当前树里 `MotionConfig::for_mode` 只返回 `PolledRegisters`，所有接线动件的驱动都支持它，所以这条告警路径不可达。
 
 仲裁由 `resolve_speed` 在采集设备上取最高要求，测试断言它按设备取最高速，而不是整表一个常量。
 

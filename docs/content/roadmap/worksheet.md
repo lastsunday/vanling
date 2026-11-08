@@ -295,7 +295,7 @@ weight = 21
 | 🟡 P2  | ❌   | ❌   | 断线重连/缓冲                | 补传与消息缓冲                                                                                                                                                                                                       |                                                      |
 | 🔵 P3  | ❌   | ❌   | SNTP 时间同步                | 数据时间戳可信                                                                                                                                                                                                       |                                                      |
 | 🔵 P3  | ❌   | ❌   | 低功耗/深度睡眠              | 长待机功耗优化，模型选型收敛后推进                                                                                                                                                                                   |                                                      |
-| 🔵 P3  | ❌   | ❌   | 看门狗/复位策略              | 任务看门狗 + panic 复位恢复策略                                                                                                                                                                                      |                                                      |
+| 🔵 P3  | ⚠️   | —    | 看门狗/复位策略              | 已接线并在 S3/C6 上各烧一次：`custom_halt` → `software_reset()`，RWDT Stage0 5 s、coordinator 执行器 1 s 喂狗；panic → 复位这一跳未实测，见 hardware-constraints                    |                                                      |
 
 ## 基础设施
 

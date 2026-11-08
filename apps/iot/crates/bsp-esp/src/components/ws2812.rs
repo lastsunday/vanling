@@ -15,6 +15,8 @@ pub const RMT_FREQ_HZ: u32 = 80_000_000;
 pub struct Ws2812RgbLed<'d, const BUFFER_SIZE: usize> {
     driver: RmtSmartLeds<'d, BUFFER_SIZE, Blocking, RGB8, color_order::Grb>,
     led_count: usize,
+    /// Whether the last write failed, so one broken strip logs once instead of every frame.
+    faulted: bool,
 }
 
 impl<'d, const BUFFER_SIZE: usize> Ws2812RgbLed<'d, BUFFER_SIZE> {
@@ -29,7 +31,11 @@ impl<'d, const BUFFER_SIZE: usize> Ws2812RgbLed<'d, BUFFER_SIZE> {
     {
         let clock = Rate::from_hz(RMT_FREQ_HZ);
         let driver = RmtSmartLeds::new_with_memsize(WS2812_TIMING, channel, pin, 2, clock)?;
-        Ok(Self { driver, led_count })
+        Ok(Self {
+            driver,
+            led_count,
+            faulted: false,
+        })
     }
 }
 
@@ -37,9 +43,17 @@ impl<const BUFFER_SIZE: usize> RgbLight for Ws2812RgbLed<'_, BUFFER_SIZE> {
     fn set_rgb(&mut self, color: Rgb) {
         let data = RGB8::new(color.0, color.1, color.2);
         let strip = core::iter::repeat_n(data, self.led_count);
-        self.driver
-            .write(strip)
-            .expect("failed to write WS2812 LED");
+        match self.driver.write(strip) {
+            Ok(()) => self.faulted = false,
+            Err(_) => {
+                // This is the C6's only surface and runs per frame: a panic here would reset
+                // the part, and a line per frame would bury the reason. One line per outage.
+                if !self.faulted {
+                    self.faulted = true;
+                    log::warn!("[RGB] the strip did not take a frame");
+                }
+            }
+        }
     }
 }
 

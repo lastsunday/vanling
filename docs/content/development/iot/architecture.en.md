@@ -2,7 +2,7 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "50db8c909d63f0a061cce45ce43332043ecf4de1"
+source_file_hash = "b082e7ba3b16b7d98139ef62893668f87c19ab3f"
 translated_at = "2026-11-08T00:00:00Z"
 +++
 
@@ -348,7 +348,7 @@ But the parts live in `input_task`, which `run_loop` cannot reach, so the config
 
 The configurator is realised alongside the demand, and `[DEMAND]` reports the resulting schedule.
 
-The demand is keyed by device, not by enumerated fields. `EffectiveDemand` is a `BTreeMap<DemandKey, Claim>` where the key is a device type plus which of them is meant, so `claim`, `without` and `Override::apply` are all lookups and adding a sensor changes no line of the demand machinery.
+The demand is keyed by device, not by enumerated fields. `EffectiveDemand` is a `BTreeMap<DemandKey, Claim>` where the key is a device type plus which of them is meant, so `claim` and `Override::apply` are all lookups and adding a sensor changes no line of the demand machinery.
 
 Two devices of one kind can be demanded apart (`DemandKey::instance(Audio, 0)` and `…, 1`).
 
@@ -358,7 +358,7 @@ A device the board did not declare is absent from the demand and reads as `Off`,
 
 The demand state is held, not re-derived. `DeviceManager` holds `demand` beside `state`. The one place it is derived is `propose_demand()`, and every write to `page`, the device list or `override_` is followed by it.
 
-There is exactly one reason for holding it: the configurator needs something to change, and `commit_demand` writes the achievable demand back to the same place so everything downstream reads the amended version.
+Downstream reads that proposal as it stands. When the input worker meets a part it cannot put into the asked-for configuration it logs the refusal and leaves that part where it was; the proposal is not written back. No part in the tree reaches that path today: `MotionConfig::for_mode` only returns `PolledRegisters`, and every wired motion driver supports it.
 
 Arbitration: `resolve_speed` takes the highest requirement among collecting devices; a test holds it to being per device rather than one constant for the whole map.
 

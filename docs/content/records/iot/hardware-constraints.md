@@ -408,3 +408,12 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 - **回归**：`iot:test` 钉「非空格有墨」「形近字不同形」（`l/1`、`I/l`、`0/O`、`c/e`、`u/v`、`g/q`、`p/q`、`y/v`、`m/w`、`M/W`）与「降部到得了底行」（`g/p/q/y/j`）。换表时 `0/O` 真的同形，是第二条测试先报的。
 
 字模在 flash：`[u8; 95 × 5] = 475 B`，与旧表同尺寸；静态墙前后都是 65,720 B（下限 65,536 B，余量 184 B）。
+
+## panic 复位与看门狗：冻结时唯一的出路是重启（`[测试]`/`[实测]`/`[据称]`，2026-11-08）
+
+- **panic 默认只是停住**：esp-backtrace 的 `panic-handler` 打完回溯后把本核停在关中断的空循环里，只有断电才能离开。本轮给工作区依赖打开 `custom-halt`，由 `iot-chip-esp` 定义的 `custom_halt()` 直接调 `software_reset()`。`custom-halt` 与 `halt-cores` 同时开启时后者优先（`abort()` 里 `cfg_select!` 的分支顺序），所以**本仓永远不要开 `halt-cores`** —— 开了 `custom_halt` 就再也不会被调用，而且编译不会报错。
+- **RWDT 被 esp-hal 的 `init` 关掉**，所以看门狗只能在芯片层重新武装。`watchdog.rs` 用 `Rtc::new(steal())` 取 `RTC_TIMER`：`Board::new` 解构 `Peripherals` 时以 `..` 收尾，RTC 定时器不在它的字段里，这与 PSRAM 的 steal 是同一条 Safety 依据。Stage0 = `ResetSystem`、超时 5 s，`Rwdt` 存进 `critical_section::Mutex<RefCell<Option<_>>>`。
+- **喂狗是 coordinator 执行器上的普通任务**，每 1 s 醒一次；`1 s × 3 ≤ 5 s` 是编译期断言。判据正是想要的：只要那个执行器还在调度，狗就被喂；帧循环自己停住时没人喂 —— 包括 `renderers.flush().await` 永不返回（面板核不再接 DMA）这一种。它**不覆盖**独立执行器或另一颗核单独卡住而 coordinator 照跑的情况，那时 5 s 不会到。
+- **WS2812 不再 panic**：C6 的灯是它唯一的面板，写失败原来每帧 `expect` 一次，panic → 复位 → 再 panic，会变成一周 5 s 的重启环。现在失败只记一次 `[RGB]` 警告，成功后清掉标志，下一次断流还会再报。
+- **`[实测]`（2026-11-08，两块板各烧一次）**：C6 产品镜像开机打 `[WATCHDOG] armed for 5000 ms, fed every 1000 ms from the coordinator`，随后一次 `CTRL+R` 复位之后连续运行约 5 分钟没有任何复位（期间只有灯色日志）。S3 用 `-a watchdog-reset` 烧录后正常启动、关联已存网络，日志在 **5.7 s** 处仍有 `[STACK] core 1 peak …`，说明 5 s 的 RWDT 没有触发；S3 那行 `[WATCHDOG]` 抓不到 —— 原生 USB 的 CDC 在应用第一段日志之后才枚举，而这行在 C6 上由同一个函数打出。读数用 `espflash flash … -a watchdog-reset` 后立即 `cat` 串口取得（monitor 的 watchdog 复位会让端口重枚举，`espflash monitor` 自己会在那时候断掉）。
+- **`[据称]`**：panic → 复位的这一跳仍未在台架上复现（没有故意 `panic!` 过）；能辩护的只有 `custom_halt` 的签名、esp-backtrace 的调用点与 `software_reset()` 的既有使用。要补的读数：一次 `panic!` 之后的复位日志。

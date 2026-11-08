@@ -229,16 +229,12 @@ impl DeviceManager {
         &self.state
     }
 
-    /// What the device is committed to, which is the proposal narrowed to what the parts
-    /// can actually meet.
+    /// What the device is committed to: the page's proposal with the build override applied.
+    ///
+    /// A part that cannot meet a claim is reported by the input worker, which logs it and
+    /// leaves that part in the configuration it already had. No wired part reports one today.
     pub fn demand(&self) -> &EffectiveDemand {
         &self.demand
-    }
-
-    /// Commits a demand the configurator could actually meet.
-    #[cfg(test)]
-    pub fn commit_demand(&mut self, demand: EffectiveDemand) {
-        self.demand = demand;
     }
 
     #[cfg(test)]

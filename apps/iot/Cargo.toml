@@ -31,7 +31,14 @@ embedded-hal = { version = "1.0.0", default-features = false }
 # `malloc`, so the binary needs those symbols. `global-allocator` stays off
 # because the app's own allocator is `embedded-alloc`.
 esp-alloc = { version = "0.11.0", default-features = false, features = ["compat"] }
-esp-backtrace = { version = "0.20.0", features = ["panic-handler", "println"] }
+# `custom-halt` is what turns a panic into a reset: without it esp-backtrace prints the
+# backtrace and parks the core in an interrupt-free loop, which only a power cycle leaves.
+# The halt itself is defined by the chip layer, which is the layer that owns reset.
+esp-backtrace = { version = "0.20.0", features = [
+  "panic-handler",
+  "println",
+  "custom-halt",
+] }
 esp-bootloader-esp-idf = "0.6.0"
 esp-hal = { version = "1.2.2", default-features = false, features = [
   "rt",

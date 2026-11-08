@@ -522,14 +522,6 @@ impl EffectiveDemand {
     pub fn keys(&self) -> impl Iterator<Item = &DemandKey> {
         self.entries().iter().map(|(key, _)| key)
     }
-
-    pub fn without(&self, key: DemandKey) -> Self {
-        let mut demand = *self;
-        if key.kind() != DemandKind::Interaction {
-            demand.set(key, Claim::off());
-        }
-        demand
-    }
 }
 
 #[cfg(test)]

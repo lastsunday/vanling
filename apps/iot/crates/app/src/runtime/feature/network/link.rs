@@ -62,9 +62,9 @@ where
     let mut saved = saved;
     let entry_host = setup.host;
 
-    let from_splash = splash_setup(NETWORK.commands).await;
-    setup.secure_on_entry = setup_ap_starts_secured(setup.has_pages, from_splash);
-    if from_splash {
+    let setup_asked = splash_setup(NETWORK.commands).await;
+    setup.secure_on_entry = setup_ap_starts_secured(setup.has_pages);
+    if setup_asked {
         log::info!(
             "[WIFI] the splash asked for setup mode; the access point is the host it opens on"
         );
@@ -72,7 +72,6 @@ where
         let cancellable = any(saved.as_deref());
         await_network(station, stack, &mut saved, None, cancellable, &mut setup).await;
         log::info!("[WIFI] setup mode is over; this device goes back to its own page");
-        setup.secure_on_entry = setup_ap_starts_secured(setup.has_pages, false);
     }
 
     // The network this build was named is joined before the saved list and is never handed back

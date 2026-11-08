@@ -12,12 +12,24 @@ mod heap;
 pub(crate) mod logging;
 #[cfg(feature = "radio")]
 mod radio;
+mod watchdog;
 
 pub use heap::{PRODUCT_HEAP_BYTES, heap_free, init_heap};
+pub use watchdog::start_watchdog;
 
 /// Restarts the part from a clean boot.
 pub fn reset() -> ! {
     esp_hal::system::software_reset()
+}
+
+/// The halt `esp-backtrace` calls after printing a panic, once `custom-halt` is on.
+///
+/// # Safety
+///
+/// Called by the panic handler with interrupts disabled; it must not return.
+#[unsafe(no_mangle)]
+pub unsafe extern "Rust" fn custom_halt() -> ! {
+    reset()
 }
 
 #[cfg(feature = "radio")]

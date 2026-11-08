@@ -52,8 +52,13 @@ pub fn scan_pause_after(mode: NetworkMode, empty_rounds: u8, idle_rounds: u8) ->
 }
 
 /// Whether the access point this setup raises starts under a passphrase.
-pub const fn setup_ap_starts_secured(has_pages: bool, from_splash: bool) -> bool {
-    has_pages && !from_splash
+///
+/// A board with a page surface can show the passphrase the station generated, so every entry
+/// into setup mode is secured — including the one the splash asks for. A board with no page
+/// has no way to show it, so its access point has to stay open; that is the only way a
+/// radio-only build can be provisioned.
+pub const fn setup_ap_starts_secured(has_pages: bool) -> bool {
+    has_pages
 }
 
 /// How many association windows in a row may pass without an address before the link is
@@ -1189,17 +1194,12 @@ mod tests {
     }
 
     #[test]
-    fn an_access_point_starts_secured_only_from_a_running_display() {
-        for (has_pages, from_splash, secured) in [
-            (true, false, true),
-            (true, true, false),
-            (false, false, false),
-            (false, true, false),
-        ] {
+    fn a_display_makes_the_access_point_secured_on_every_entry() {
+        for (has_pages, secured) in [(true, true), (false, false)] {
             assert_eq!(
-                setup_ap_starts_secured(has_pages, from_splash),
+                setup_ap_starts_secured(has_pages),
                 secured,
-                "display {has_pages}, splash {from_splash}"
+                "display {has_pages}"
             );
         }
     }

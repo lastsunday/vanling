@@ -1416,6 +1416,7 @@ version = "0.1.0"
 dependencies = [
  "critical-section",
  "embassy-executor",
+ "embassy-time",
  "embedded-alloc",
  "esp-alloc",
  "esp-backtrace",

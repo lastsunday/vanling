@@ -3,7 +3,7 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "85b6fbe6b5817220601c9fab0130bacc5ddd77b1"
+source_file_hash = "b9194b666147a6b09462718df215e5a2ea448b3a"
 translated_at = "2026-11-08T00:00:00Z"
 +++
 
@@ -1769,7 +1769,7 @@ Three places where we **differ from it**:
 | --- | --- | --- | --- |
 | When the service stops | after the device **is connected**, with the client able to read the status | **as soon as a credential arrives** (first past `select` wins, see "The answer reaches the phone before setup mode ends") | a wrong passphrase drops the phone off the AP, and only the device itself can bring setup mode back. On the panel's path a refusal is measured at 37.6 s (`AUTH`, still-to-do 5④); the setup page's side is measured too (2026-10-24, C6): the device brought the AP back by itself after the refusal (by eye, no serial reading this round) |
 | Scanning under a SoftAP | the documents warn that scanning channel by channel interrupts the client's connection, so a grouped sweep is offered (`[as-reported]`; the difference was not reproduced on this device) | channel by channel (APSTA) | the phone stayed on through several bench rounds (`[measured]`); worth re-checking on another board. On the page's side this is settled: the page no longer presses scan on its own (the third version drops the rescan every `/scan` used to trigger — see the previous section) |
-| How a credential travels | a protocomm session + proof of possession + encryption | **an open AP and a plain-text form** | anyone on the same network can read that passphrase, and can hand the device a different one — a known trade; the splash entry's AP is open (the panel's `PASS` switches to WPA2), while a running panel starts it secured, so this trade sits on the default path only for the splash round; a one-time PIN would close it further |
+| How a credential travels | a protocomm session + proof of possession + encryption | **a plain-text form; every AP on a board with a panel is WPA2** | the passphrase has to be read off the panel, but a client already on that AP can still read the form and can still hand the device a different credential — a known trade; the panel shows a WPA2 passphrase the device generated for every entry (`NO PASS` opens it for that round), and a board with no panel has nowhere to show one, so its AP stays open — that is its only provisioning door; a one-time PIN would close it further |
 
 ## Setup mode becomes a gear the panel can see and leave (`[measured]`/`[test]`, 2026-10-20)
 
@@ -1966,7 +1966,7 @@ This round splits it into **two front ends, one at a time**:
 | Switching to a phone | join the AP | strip's right cell `AP`: the AP comes up, the list is covered by a box |
 | Back to the panel | not possible | `CLOSE` in the box, or the strip's right cell `PANEL`: the AP goes down, the list is back |
 | A board with no panel (C6) | AP always up | boots on `SetupHost::AccessPoint`, an **open** AP (see the note after this section) |
-| Whether the AP has a passphrase | always open | **per entry**: open from the splash page; on a running board with a panel, the AP starts on WPA2 with a random 10 characters (not remembered); the C6 has no screen, so it can only be open |
+| Whether the AP has a passphrase | always open | **every entry on a board with a panel is WPA2 with a random 10 characters (not remembered), the splash entry included; the C6 has no screen, so it can only be open** |
 | Nobody reading the page | AP stays up | 3 minutes without a page request takes the AP down and returns to the panel |
 | A broken touch panel | power-cycle only | a Boot long press **on any page** in setup mode switches fronts |
 
@@ -1984,14 +1984,12 @@ The rules settled here:
 - **The alphabet drops `0/o/1/l`**: `23456789abcdefghjkmnpqrstuvwxyz`, 31 symbols × 10 characters
   ≈ 49.5 bits. Copying that off a 320 px line into a phone's keyboard, look-alike characters are the
   only place it goes wrong.
-- **The default passphrase depends on the entry, and is not remembered**: the splash page's BOOT
-  hold still raises an open AP, so a phone joins by tapping the network's name. Every entry made
-  from a running device — the Network page's `AP`, a `LEAVE`, a refusal — starts on WPA2 with a
-  random 10 characters on a board with a panel; the box shows `PASS …`, and `NO PASS` opens it for
-  that entry. `PASS`/`NO PASS` last for one visit; going away and back restores the entry's default.
-  The C6 has no screen to show a passphrase, so it can only be open. The price is that the splash
-  entry takes anyone in range for 180 s and the form is plain text; the running entry at least costs
-  a passer-by the ten characters read off the panel.
+- **The default passphrase does not depend on the entry, and is not remembered**: the splash
+  page's BOOT hold, the `AP` cell, a `LEAVE` and a refusal all raise a WPA2 AP with a random 10
+  characters on a board with a panel; the box shows `PASS …`, and `NO PASS` opens it for that
+  entry. Going away and back restores WPA2. The C6 has no screen to show a passphrase, so it can
+  only be open. The price is that the form is still plain text once someone is past the
+  passphrase; a passer-by now has to read the panel for that round.
 - **`CLOSE` and `CANCEL` are different things**: the box's right answer `CLOSE` only takes the AP
   down (back to the panel front); the strip's left cell `CANCEL` leaves setup mode to rejoin the
   saved network. The latter is drawn only when there is a way back (`setup_cancellable`); with no
@@ -2522,8 +2520,10 @@ C6 `820,384 / 1,048,576 B` (78.24%).
 
 ### The default passphrase depends on the entry; the offline page keeps both cells; the glyph table is Spleen 5×8 (`[test]`/`[measured]`, 2026-10-22)
 
-- **The default passphrase depends on the entry**: `setup_ap_starts_secured(panel, from_splash)`
-  decides `secure_on_entry`. The splash entry is open (`OPEN, NO PASSWORD` + `PASS`); the running
+- **The default passphrase depends on the entry** (superseded on 2026-11-08 — the splash entry
+  carries a passphrase too, see "Setup mode's AP no longer has an open register"):
+  `setup_ap_starts_secured(panel, from_splash)` decides `secure_on_entry`. The splash entry is open
+  (`OPEN, NO PASSWORD` + `PASS`); the running
   entries — the offline page's `AP`, a `LEAVE`, a refusal, a named build's `LEAVE` — start on WPA2
   with a random 10 characters where there is a panel (`PASS …` + `NO PASS`). Both buttons last for
   one visit; going away and back restores the entry's default. The C6 has no screen, so it is
@@ -2546,7 +2546,8 @@ C6 `820,384 / 1,048,576 B` (78.24%).
   across the entry rule and the reset line, not itemised. `_stack_start_cpu0 − _stack_end_cpu0` is
   **65,688 B** (`0x3fce9710 − 0x3fcd9678`, 152 B left).
 - **Not measured**: the normal entry's `[WIFI] setup mode for "vanling-1234" is open, under a
-  passphrase` and the splash hold's `..., open` each need one finger; how the table reads at 1× on
+  passphrase` needs one finger (the splash hold logs the same line since 2026-11-08, when it stopped
+  being open — see "Setup mode's AP no longer has an open register"); how the table reads at 1× on
   the panel (the counters, the density of `m/w`, the descenders) only a person can answer; and the
   offline page's `SCAN | AP` cells and the `PASS`/`NO PASS` box behind `AP` still need one tap.
 
@@ -2661,6 +2662,14 @@ Two defects sat on the same panel path: type a passphrase on the panel and let i
 ### After `LEAVE` the strip is `CANCEL`, not `SCAN`: that is the design
 
 With a stored network, leaving a link enters `Setup { host: Panel, cancellable: true }`; the strip's left cell is then `CANCEL` (leave setup mode and go back to the network the device keeps), and `SCAN` appears only while browsing or in setup mode with no way back (`cancellable = false`) — the rule and the reasons are in "Two front ends of setup mode, one at a time" under "`CANCEL` is only offered when there is a way back". After leaving, a new list does not need `SCAN`: setup mode's survey runs a round on its own every 5 s. This is not changed; this round only fills the reading in here.
+
+## Setup mode's AP no longer has an open register (`[test]`, 2026-11-08)
+
+- **Before**: `setup_ap_starts_secured(has_pages, from_splash) = has_pages && !from_splash`. A BOOT hold on the splash raised an open AP; only the running entries — `AP`, `LEAVE`, a refusal — carried WPA2. That made **the entry most likely to be used** (right after a reset with no credential, or after the network broke and setup mode is the only way back) the one entry on the default path without a passphrase — on a board that has somewhere to show it.
+- **Now**: the only question left is whether the board can show the passphrase — `setup_ap_starts_secured(has_pages) = has_pages`. `link()` computes it once before setup mode and writes `secure_on_entry`, so the splash and the running entries are treated alike; `NO PASS` still opens **that round**, and going away and back restores WPA2. The C6 has no page and stays open: that is its only provisioning door, and a device with nowhere to show a passphrase must not demand one.
+- **Why not keep it per entry**: the entry says how a person got here; the passphrase guards against whoever is in radio range without an invitation. The splash path is not more trustworthy than the others — with a fresh reset and an empty store, it is the only path.
+- **`[test]`**: `a_display_makes_the_access_point_secured_on_every_entry` (a page → secured, no page → open). Only one input is left, so the "splash × panel = open" cell and its test are gone.
+- **`[not measured]`**: the bench was not re-run this round. The existing hardware readings (the C6 end to end, the S3 after four rounds of fixes) verified the **open** AP; the splash entry now runs WPA2, and "copy the passphrase from the panel to a phone" has no new serial or phone reading. `[test]` covers the policy function; the wiring from `secure_on_entry` to `begin_setup(…, secured)` rests on review.
 
 ## Still to do (`[not done]`)
 
