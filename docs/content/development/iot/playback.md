@@ -42,7 +42,7 @@ C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在�
 
 Speaker 页与 Audio 页是两个页。
 
-板级没找到 ES8311 时 `Backed::playback` 为假，该页不进入页面循环（`DisplayPage::next_page` 跳过没有能力背书的页），采集与其余页照常。出声是加法，不该是采集的前置条件。
+板级没找到 ES8311 时 `Backed::playback` 为假，该页不进入页面循环（`Page::next_page` 跳过没有能力背书的页），采集与其余页照常。出声是加法，不该是采集的前置条件。
 
 ## 声音从哪来
 

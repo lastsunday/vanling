@@ -21,7 +21,7 @@ a hardware measurement, **`[as-reported]`** not reproduced, left as a trace.
 ## State
 
 **The probe has run end to end on both parts** (scan, associate, DHCP). The product page
-lands in two slices: **the read-only one is in** (`DisplayPage::Network`: phase, the access
+lands in two slices: **the read-only one is in** (`Page::Network`: phase, the access
 point in use, the address, and the scan list), and **the second slice is in as well** (the
 4 × 4 keyboard, the reveal key, a list that slides a row at a time, hysteresis and caching for
 the list, the selected row reversed, open networks, failure classes, the page-gated survey with
@@ -445,7 +445,7 @@ probe does (`SCAN_ROUNDS = 6`, 500 ms apart).
 ### The rhythm of a round
 
 The product **asks the radio only while the scan list is really on the panel**
-(`DisplayPage::Network` — see "When the page scans"). While it is scanning, the rhythm lives in
+(`Page::Network` — see "When the page scans"). While it is scanning, the rhythm lives in
 `iot-core::drivers::network` (`SCAN_PAUSE_MS = 5_000`, `SCAN_EMPTY_PAUSE_MS = 1_000`,
 `SCAN_EMPTY_RETRIES = 3`, and the idle backoff's `SCAN_IDLE_PAUSE_MS = 15_000` /
 `SCAN_IDLE_MAX_PAUSE_MS = 30_000` / `SCAN_IDLE_ROUNDS = 3`, decided by
@@ -498,7 +498,7 @@ after `clear`).
 
 `PageWatch` (`PAGE` in `app/src/workers/network.rs`) is the **only shared reading** of the page: the render
 loop publishes `manager.state().page` once a pass, and the network task waits on
-`PAGE.wait_for(DisplayPage::Network)` for "the list is on the panel", waking on `select3` between
+`PAGE.wait_for(Page::Network)` for "the list is on the panel", waking on `select3` between
 "the scan interval is up", "the page has come **back** to the list" and "a staged credential is
 ready".
 
@@ -509,7 +509,7 @@ state being sent as a message. It has the same shape as `EffectiveDemand`.
 
 The gate is in the **task** rather than in the scan itself because the scan is a loop with no
 "page" input; the layer that can see both the page and the radio is the one that connects them.
-Coming back to the page, `wait_for(DisplayPage::Network)` reports that it waited, so the backoff
+Coming back to the page, `wait_for(Page::Network)` reports that it waited, so the backoff
 counters are cleared and the page is scanned again at once.
 
 `[measured]` **"Back on the list" has to be an edge, not a level** — this is the second time the
@@ -521,7 +521,7 @@ once took effect, which is to say the radio scanned continuously while nothing o
 
 The fix is `wait_for_return()` on `PageWatch`: read the page now, then wait for it to **change** to
 the list's, so "left and came back" stops being the same thing as "never left". It is an **edge**;
-`wait_for(DisplayPage::Network)` is a **level**, and both are in use: the edge is the rest's circuit
+`wait_for(Page::Network)` is a **level**, and both are in use: the edge is the rest's circuit
 breaker, the level is how the loop asks "should I be scanning at all". `[test]` One test pins the difference
 (`a_rest_on_the_list_is_not_cut_short_by_the_list_being_up`: on one `PageWatch`, the level is `Ready` while
 the list is up and the edge is `Pending`; only away-then-back is `Ready`).
@@ -719,7 +719,7 @@ it reached the `wifi` entry. That is `features.md` rule 5: **name every part you
 
 ## The product page: a scan list and a 4×4 keyboard
 
-`DisplayPage::Network` lands in two slices. **The first (read-only) is in**: the link across
+`Page::Network` lands in two slices. **The first (read-only) is in**: the link across
 the top (a phase word, the access point in use with its signal bars, the address) and the scan
 list below it. **The second slice is in as well** (input and state machine,
 panel drawing, a list that slides a row at a time, hysteresis and caching for the list, the
@@ -738,7 +738,7 @@ whether a confirmation is up, and the two waits the page itself holds (`join_wai
 | confirmation (over the list) | **neither the list nor the strip is drawn** (`page::Part::hidden`); only a 256 × 118 px modal sits over the list: the title `LEAVE "<name>"?` / `FORGET "<name>"?`, the body `THE LINK GOES DOWN` / `THE SAVED KEY IS ERASED`, and below it two answers, `KEEP` and the verb (`LEAVE`/`FORGET`, 100 × 44 px each) | the two answers only; **every other gesture and tap is a cancel** (one `answer_at` decides) |
 | joining (over the list, strip kept) | **the list is not drawn, the strip is** (`page::Part::hidden`): the same 256 × 118 px box, **with no answer in it**, titled `JOINING <name>` / `JOINED <name>` over the body `WAIT FOR THE NETWORK` / `WAIT FOR AN ADDRESS`. The word follows `LinkStatus.ap`; `<name>` is the **picked row**; the box is up on the frame the credential is handed over (`join_wait`), not on the radio's first report | the strip only: `LEAVE` is still the one way out. **When a question is up at the same time the question is what the box holds** (`Overlay` is one rectangle, and the question wins); it is not drawn while a keyboard is up either — what the finger is doing then is typing |
 
-The key layout is a table in `apps/iot/crates/app/src/features/network/layout/keyboard.rs` (`CELLS`), not arithmetic — the digits do
+The key layout is a table in `apps/iot/crates/app/src/pages/network/layout/keyboard.rs` (`CELLS`), not arithmetic — the digits do
 not sit in cell order:
 
 ```
@@ -757,14 +757,14 @@ The geometry writes no magic numbers: it all falls out of the footer in core's `
 `FOOTER_ROWS = 8` (the global FPS badge, which no page owns) gives
 `CONTENT_BOTTOM = PANEL_ROWS - FOOTER_ROWS = 232`, hence
 `KEYBOARD_TOP = LIST_TOP = overlay_row_top(LIST_ROW = 3) = 47` (`LIST_ROW` lives in
-`app/src/features/network/layout/list.rs`), `KEY_H = (232 − 47)/4 = 46`,
+`app/src/pages/network/layout/list.rs`), `KEY_H = (232 − 47)/4 = 46`,
 `KEY_W = 320/4 = 80`, `LIST_ROW_H = 47` (the list is still
 three rows, taken from 61 down to 47 to give up 42 px), `TOOLBAR_TOP = 47 + 3×47 = 188` and
 `TOOLBAR_H = 44` (to `CONTENT_BOTTOM`). **The list state and the typing state start at the same
 y**: under three header
 rows the list is cut into three and the keyboard into four, so nothing already on the page
 moves when the keyboard comes up — a second block simply appears below.
-The `const _: () = assert!(...)` in each `app/src/features/network/layout` module ties "where a page ends" to
+The `const _: () = assert!(...)` in each `app/src/pages/network/layout` module ties "where a page ends" to
 that same number (neither the list's last band, nor the strip's last row, nor the keyboard's last
 row, nor the dialog may cross) — a badge moved by a
 row would be overdrawn by whatever control grew into it.
@@ -792,9 +792,9 @@ Every decision sits where a test can reach it:
 | The confirmation covers the list | core's `page::Part` (`Header`/`Content`/`Controls`/`Overlay`, order = drawing order) declares what is drawn and in what order, and `page::walk` hands out only what is showing; while a question is up both `Content` and `Controls` are `hidden`; the surface is **written** solid by `stamp::fill_surface` rather than the page underneath being reversed | the panel has one kind of paper — the ground turned over — so a "reverse fill" turns whatever was already drawn (which is paper-coloured to begin with) into the ground colour: the list's own glyphs look printed on the modal, so what was missing was solidity rather than z-order. And the band of the row the question is about is the same paper as the question, so a band sticking out either side of the box would read as part of the box; the list is therefore not drawn at all. `Part::hidden` is the hit-testing rule too (`intent` resolves the question first, then reads `Part::showing` for the list) |
 | The strip is not drawn while a finger types | `page::Part::hidden` gives `Controls` one more term, `\|\| setup.keyboard`, and the same predicates reach `intent` through `Part::showing` | the strip's box (y 188–232) and the keyboard's **last row** of keys (y 185–231) are the same band of the panel: with both up, `SCAN`'s three glyphs land on the row holding the `OK` that ends an entry (the label row is 206), and `intent` sends every point to the keys at that moment — so the strip was dead pixels. **This was not a z-order problem, it was drawing something that should not be drawn**, and its root cause is "drawn" and "hit" being said twice; the hit rule now reads the same `page` answer (one test in `page.rs` pins the overlap itself — once the two bands are apart, this rule has to be read again) |
 | An attempt in flight has to be visible | `Station::connect` splits into a synchronous `begin_connect()` (sets the config and the phase, **including when setting it fails**) and `await_connected()` (waits for the radio's answer), with `hold` publishing `station.status()` between the two; the page draws a **non-modal** joining box and keeps the strip | the whole association used to sit behind `connect().await`: from the `OK` tap to the address arriving, the page's phase was the old one (the strip drawing `SCAN`, `ST` still the previous word) and `is_leavable()` was false, so `pick_row`'s gate was **open through that window** — a tap could start a new draft. The worst measured case is **37.6 s** (a wrong passphrase plus the driver's four-way-handshake timeout). Reporting a failed `set_config` as a phase fixed `NAME`/`DRV` never being drawn as well. The box is **not modal**: what is wanted here is not a confirmation but "it is under way" plus a way out, and the way out is the strip's own `LEAVE` |
-| The two sentences in that box | the title `JOINING`/`JOINED` plus the name, the body `WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`; the **word** follows whether `LinkStatus.ap` has a value, the **name** is the page's `shown_ap` (the same one the header draws), and the box is drawn on the frame the credential is handed over (`NetworkPage.join_wait`) | the two lines are two different waits that end differently (one ends in a link or a refusal, the other in an address or in a link with none), so one word for both would have the panel say the same thing about a radio that has not answered yet and a network with no lease. The page knows the name when it hands the credential over and need not wait for the radio to report `ap` — waiting would put a whole command queue and a pre-association report between "OK was tapped" and "something happened". When the network came from a build input, nobody typed its name on the panel (no picked row) and the box keeps the word alone rather than inventing a name |
-| Which frame the joining box starts on | `NetworkPage.join_wait` is set by `Key::Connect`, by a stored row and by an open row when the credential is handed over; `on_link` clears it only on `Connecting`/`Connected`/`Failed`, and `reopen_entry` (NoCopy, a refusal) clears it too; `Scanning`/`Off` do not. While it is set, picking a row, scanning, switching the front and the open-network switch are all refused | the page hands the credential over synchronously, and the network task can only publish a report once it is scheduled again; hanging the box on the phase put a whole command queue between "OK" and "the box". `Scanning`/`Off` are not enough because a scan round may have been published before this join was dequeued — clearing on it would flash the box off and back on. A list that is not drawn cannot be aimed at, and `pick_row`'s gate covers callers that read the state directly |
-| Switching the front or the passphrase answers at once | `NetworkPage.setup_wait` (`Host(..)` / `Open(bool)`): on the tap's own frame `Band::Content` gives way, `Overlay` draws `SETUP MODE / AP vanling-xxxx / STARTING` for the **access point being raised**, and both strip cells and the box's answers read `WAIT`; `on_link` clears it when the asked-for front or passphrase is reported, or on any report that leaves setup mode | `begin_setup` is synchronous (it can hold the executor) and the report cannot be published before the next frame; changing the picture only when the report lands leaves "the tap did nothing" exactly on the slowest step. With `Open` the box is already the access point's, so keeping it and turning its answer into `WAIT` (second line showing the target state) is one jump fewer than swapping in another box |
+| The two sentences in that box | the title `JOINING`/`JOINED` plus the name, the body `WAIT FOR THE NETWORK`/`WAIT FOR AN ADDRESS`; the **word** follows whether `LinkStatus.ap` has a value, the **name** is the page's `shown_ap` (the same one the header draws), and the box is drawn on the frame the credential is handed over (`NetworkDraft.join_wait`) | the two lines are two different waits that end differently (one ends in a link or a refusal, the other in an address or in a link with none), so one word for both would have the panel say the same thing about a radio that has not answered yet and a network with no lease. The page knows the name when it hands the credential over and need not wait for the radio to report `ap` — waiting would put a whole command queue and a pre-association report between "OK was tapped" and "something happened". When the network came from a build input, nobody typed its name on the panel (no picked row) and the box keeps the word alone rather than inventing a name |
+| Which frame the joining box starts on | `NetworkDraft.join_wait` is set by `Key::Connect`, by a stored row and by an open row when the credential is handed over; `on_link` clears it only on `Connecting`/`Connected`/`Failed`, and `reopen_entry` (NoCopy, a refusal) clears it too; `Scanning`/`Off` do not. While it is set, picking a row, scanning, switching the front and the open-network switch are all refused | the page hands the credential over synchronously, and the network task can only publish a report once it is scheduled again; hanging the box on the phase put a whole command queue between "OK" and "the box". `Scanning`/`Off` are not enough because a scan round may have been published before this join was dequeued — clearing on it would flash the box off and back on. A list that is not drawn cannot be aimed at, and `pick_row`'s gate covers callers that read the state directly |
+| Switching the front or the passphrase answers at once | `NetworkDraft.setup_wait` (`Host(..)` / `Open(bool)`): on the tap's own frame `Band::Content` gives way, `Overlay` draws `SETUP MODE / AP vanling-xxxx / STARTING` for the **access point being raised**, and both strip cells and the box's answers read `WAIT`; `on_link` clears it when the asked-for front or passphrase is reported, or on any report that leaves setup mode | `begin_setup` is synchronous (it can hold the executor) and the report cannot be published before the next frame; changing the picture only when the report lands leaves "the tap did nothing" exactly on the slowest step. With `Open` the box is already the access point's, so keeping it and turning its answer into `WAIT` (second line showing the target state) is one jump fewer than swapping in another box |
 | A passphrase change does not tear the radio down | `Station::retune_setup(ssid, secured)`: in the same AP mode it only `set_config`s the authentication and updates `setup_password`; the AP branch of `setup.rs` calls `begin_setup` once, reuses `page_serve` and the `embassy_net::Stack` across iterations, and calls `end_setup` only where the session really ends (leave, cancel, idle) | the old path treated `SetupOpen` as "rebuild the access point": `end_setup` → `begin_setup` → a new `Interface` → a new `Stack` → a new `page_serve`, dropping every phone and restarting the page server. A passphrase is one authentication change on the same network; the radio need not restart, and reusing `page_serve` turns setup mode's heap future from "allocated again per switch" into "allocated once" |
 | A long press on a row forgets it | `Touch::Hold` → `BusinessIntent::AskForget(ap)`: only a row that is **stored** opens the `FORGET` confirmation, and the record is erased only when the verb is answered | forgetting is not reversible (the passphrase has to be typed from the start), which is why only it asks; a long press rather than another button, because it holds for few rows and drawing it would take the row's right edge. The name in the confirmation comes from that row's `ApList` entry, and the erase goes through `Store::forget` (the whole record rewritten, the two slots still written in turn) |
 | A rescan does not ask | with no link the strip is `SCAN`, and a tap sends a `RESCAN` signal to the survey task at once | scanning is read-only and repeatable, so there is nothing irreversible to confirm; with a link up there is **no `SCAN`**, because `survey` is not reached at all while a link is held (`setup` is awaiting `hold` at that point), so the two actions never hold at once and the strip need not say "and" about them |
@@ -1325,7 +1325,7 @@ panel), and `save` is called only when the origin is not `Stored`
 ## How a board with no panel gets configured: an open AP behind a page (`[measured]`/`[test]`)
 
 The C6 carries a WS2812 and a Boot key, and `LightRenderer::page_ground()` only lays down black when
-`light.draws_pages()` — a WS2812 draws no pages, so `DisplayPage::Network` on that board is **neither
+`light.draws_pages()` — a WS2812 draws no pages, so `Page::Network` on that board is **neither
 visible nor operable**. What was added is another front door: the device brings up an **open** access
 point, hands out addresses over DHCP, answers **every** name with itself (which is what turns a
 phone's "this network has no internet" check into the page opening by itself), and serves the config
@@ -1404,7 +1404,7 @@ meaningless, because the answer is to take it down:
 
 `[measured]`: in setup mode `survey` scans **unconditionally** (the round's own pacing is unchanged —
 see "The rhythm of a round"), replacing the "wait for the panel to arrive" gate
-(`PAGE.wait_for(DisplayPage::Network)`) with a non-blocking `PAGE.shows(DisplayPage::Network)` plus
+(`PAGE.wait_for(Page::Network)`) with a non-blocking `PAGE.shows(Page::Network)` plus
 a rising edge. The reason: on the C6 nobody ever reaches that page, and the page is reading exactly
 this list.
 `ScanHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
@@ -1622,7 +1622,7 @@ that does) for 158 px, ending at 168, and the MAC's 17 glyphs start at 171 — a
 pins that they cannot meet (the first draft kept the label slot and the assertion went red by six
 pixels). The typing state needs the whole row for `PSK <draft>`, so the address is not drawn there and
 comes back when the keyboard closes. A hole in `diag_repaint_due` was closed at the same time:
-`DisplayPage::Network` compared `link`/`aps`/`setup` and **not `mac`** — the address arrives after the
+`Page::Network` compared `link`/`aps`/`setup` and **not `mac`** — the address arrives after the
 radio's first report, while the survey's normal answer is "the list is unchanged, so the page is not
 redrawn", so that cell could stay blank for good. The diff now includes `prev.mac != next.mac`, with a
 test that changes only the MAC and requires a Network repaint.
@@ -2423,7 +2423,7 @@ The rules:
   down" implementation would leave two lines in that window and put the access point front 2–3 s
   later.
 - **No credentials means an offline device**: when `first_saved()` is empty, `browsing()` takes the
-  device. It scans only while `PAGE.shows(DisplayPage::Network)` (the panel sitting on Network),
+  device. It scans only while `PAGE.shows(Page::Network)` (the panel sitting on Network),
   stops when the page leaves, and only `JOIN` leads to `hold` — which is where the write happens. No setup mode, no
   access point: an unwrapped device is invisible in a phone's list. The panel page still carries both
   cells, and `AP` is what raises the access point. The C6 has no panel, so configuring it still means

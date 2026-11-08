@@ -8,7 +8,7 @@
 use core::future::Future;
 use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 
-use crate::state::{DisplayPage, NetworkCommand};
+use crate::state::{NetworkCommand, Page};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use iot_core::drivers::network::{ApList, SavedNetworks};
@@ -118,12 +118,12 @@ pub struct PageWatch {
 impl PageWatch {
     pub(crate) const fn new() -> Self {
         Self {
-            page: AtomicU8::new(DisplayPage::Ambient.code()),
+            page: AtomicU8::new(Page::Ambient.code()),
             changed: Signal::new(),
         }
     }
 
-    pub fn publish(&self, page: DisplayPage) {
+    pub fn publish(&self, page: Page) {
         if self.page.swap(page.code(), Ordering::Relaxed) != page.code() {
             self.changed.signal(());
         }

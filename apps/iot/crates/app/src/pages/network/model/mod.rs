@@ -12,14 +12,14 @@ use iot_core::drivers::network::{
 
 use iot_core::drivers::network::NetworkCommand;
 
-use crate::features::network::layout::LIST_ROWS;
+use crate::pages::network::layout::LIST_ROWS;
 use crate::shared::intent::Confirm;
 use crate::shared::state::{Command, NetworkState};
 
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NetworkPage {
+pub struct NetworkDraft {
     /// The scanned row the user picked, whose name the draft goes with.
     pub selected: Option<AccessPoint>,
     /// The draft, and with it what a passphrase is being typed for.
@@ -49,7 +49,7 @@ pub enum SetupWait {
     Open(bool),
 }
 
-impl NetworkPage {
+impl NetworkDraft {
     /// Whether the page is waiting on an ask of its own, so the strip has nothing to offer.
     pub fn busy(&self) -> bool {
         self.rescan_wait || self.join_wait || self.setup_wait.is_some()

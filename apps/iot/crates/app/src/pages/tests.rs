@@ -6,9 +6,9 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::features::paint;
+use crate::pages::paint;
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::route::DisplayPage;
+use crate::shared::route::Page;
 use crate::shared::view_kit::surface::Surface;
 use iot_core::paint::Rgb;
 use iot_core::ui::Canvas;
@@ -16,7 +16,7 @@ use iot_core::ui::Canvas;
 const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
 const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;
 
-fn render(page: DisplayPage, debug: bool, ground: Option<Rgb>) -> Vec<u8> {
+fn render(page: Page, debug: bool, ground: Option<Rgb>) -> Vec<u8> {
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
     let diagnostics = Diagnostics {
         page,
@@ -61,8 +61,8 @@ const GOLDEN: [(&str, bool, u32); 14] = [
 #[test]
 fn every_page_draws_the_picture_the_golden_table_expects() {
     let update = std::env::var_os("PAGE_GOLDEN_UPDATE").is_some();
-    for page in DisplayPage::ALL {
-        let ground = (page != DisplayPage::Camera).then_some(Rgb(0, 0, 0));
+    for page in Page::ALL {
+        let ground = (page != Page::Camera).then_some(Rgb(0, 0, 0));
         for debug in [false, true] {
             let actual = fingerprint(&render(page, debug, ground));
             if update {
@@ -86,8 +86,8 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
 
 #[test]
 fn every_page_stamps_something_and_does_it_the_same_way_twice() {
-    for page in DisplayPage::ALL {
-        let ground = (page != DisplayPage::Camera).then_some(Rgb(0, 0, 0));
+    for page in Page::ALL {
+        let ground = (page != Page::Camera).then_some(Rgb(0, 0, 0));
         let first = render(page, true, ground);
         let second = render(page, true, ground);
         assert!(
@@ -100,9 +100,9 @@ fn every_page_stamps_something_and_does_it_the_same_way_twice() {
 
 #[test]
 fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
-    let mut expected = render(DisplayPage::Camera, false, None);
+    let mut expected = render(Page::Camera, false, None);
     let diagnostics = Diagnostics {
-        page: DisplayPage::Camera,
+        page: Page::Camera,
         ..Diagnostics::default()
     };
     {
@@ -110,5 +110,5 @@ fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
         let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
         surface.stamp_fps();
     }
-    assert_eq!(render(DisplayPage::Camera, true, None), expected);
+    assert_eq!(render(Page::Camera, true, None), expected);
 }

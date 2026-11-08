@@ -30,7 +30,7 @@ fn the_wiring_record_is_what_the_page_table_asks() {
         MotionCapabilities::EMPTY,
         "a board with no part declares nothing, whatever the board would report"
     );
-    assert!(!DisplayPage::Attitude.is_backed(bare));
+    assert!(!Page::Attitude.is_backed(bare));
 
     let wired = DeviceManager::boot(Boot {
         backed: Backed {
@@ -44,9 +44,9 @@ fn the_wiring_record_is_what_the_page_table_asks() {
     .backed;
     assert_eq!(wired.motion, Some(MotionCapabilities::TAP));
     assert_eq!(wired.motion_caps(), MotionCapabilities::TAP);
-    assert!(DisplayPage::Attitude.is_backed(wired));
-    assert!(DisplayPage::Audio.is_backed(wired));
-    assert!(!DisplayPage::Speaker.is_backed(wired));
+    assert!(Page::Attitude.is_backed(wired));
+    assert!(Page::Audio.is_backed(wired));
+    assert!(!Page::Speaker.is_backed(wired));
 }
 
 #[test]

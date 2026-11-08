@@ -8,7 +8,7 @@ use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
 
 use crate::shared::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
-use crate::shared::route::{DisplayPage, Navigator};
+use crate::shared::route::{Navigator, Page};
 use crate::shared::state::{Effects, Health, Notice, PlaybackPhase};
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::playback::Sound;
@@ -26,7 +26,7 @@ pub struct DeviceManager {
     demand: EffectiveDemand,
     /// The page `demand` was derived from: the proposal reads the page and nothing else, so a
     /// state write that cannot have moved it does not need to rebuild the table.
-    demand_page: DisplayPage,
+    demand_page: Page,
     /// Whether the button asked for setup mode while the splash was up. A boot decision the
     /// splash landing reads, not something the link knows.
     setup_wanted: bool,
@@ -43,7 +43,7 @@ impl DeviceManager {
     pub fn boot(boot: Boot) -> Self {
         let backed = boot.backed;
         let mut nav = Navigator::new(DeviceState::landed_on(boot.boot_page, backed));
-        nav.push(DisplayPage::Splash, backed);
+        nav.push(Page::Splash, backed);
         let state = DeviceState {
             backed,
             nav,
@@ -79,7 +79,7 @@ impl DeviceManager {
     }
 
     /// The page this device lands on once the splash is over: the root of the stack.
-    pub fn boot_page(&self) -> DisplayPage {
+    pub fn boot_page(&self) -> Page {
         self.state.nav.root()
     }
 
@@ -122,7 +122,7 @@ impl DeviceManager {
                 self.apply_effects(effects);
                 None
             }
-            ActionIntent::NetworkPage(intent) => {
+            ActionIntent::NetworkDraft(intent) => {
                 let has_pages = self.state.has_pages();
                 self.state
                     .network_page
@@ -178,7 +178,7 @@ impl DeviceManager {
                 None
             }
             PageIntent::RequestSetup => {
-                if self.state.page() == DisplayPage::Splash {
+                if self.state.page() == Page::Splash {
                     self.setup_wanted = true;
                 }
                 None
@@ -188,12 +188,12 @@ impl DeviceManager {
     }
 
     fn land_after_splash(&mut self) -> Option<Command> {
-        if self.state.page() != DisplayPage::Splash {
+        if self.state.page() != Page::Splash {
             return None;
         }
         self.state.nav.pop();
         if self.setup_wanted && self.state.backed.network {
-            self.state.nav.go(DisplayPage::Network, self.state.backed);
+            self.state.nav.go(Page::Network, self.state.backed);
         }
         // A device that boots with nothing to join has nothing to say after the splash
         // except that: one amber burst, then the page's own light. A hold that asked for

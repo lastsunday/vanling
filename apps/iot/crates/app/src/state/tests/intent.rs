@@ -45,9 +45,5 @@ fn one_action_intent_answers_like_apply_action() {
         "an action intent is apply_action and nothing else"
     );
     assert_eq!(direct.state(), manual.state());
-    assert_ne!(
-        direct.state().page(),
-        DisplayPage::Splash,
-        "the splash landed"
-    );
+    assert_ne!(direct.state().page(), Page::Splash, "the splash landed");
 }

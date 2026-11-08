@@ -15,8 +15,8 @@
 //! a field left out that a move reads would merge two states the page tells apart.
 
 use super::*;
-use crate::features::network::layout::{self, DialogChoice};
-use crate::features::network::model::SetupWait;
+use crate::pages::network::layout::{self, DialogChoice};
+use crate::pages::network::model::SetupWait;
 use crate::shared::intent::Confirm;
 use crate::shared::keyboard::Key;
 use alloc::collections::{BTreeSet, VecDeque};
@@ -471,7 +471,7 @@ fn carry_out(manager: &mut DeviceManager, command: NetworkCommand) {
             }) {
                 associated(manager);
             } else {
-                manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::NoCopy(ssid)));
+                manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(ssid)));
             }
         }
         NetworkCommand::Leave => {
@@ -768,7 +768,7 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
         "the link was never up"
     );
     assert!(
-        reached(|state| state.page() != DisplayPage::Network),
+        reached(|state| state.page() != Page::Network),
         "the page cycle was never walked"
     );
 }

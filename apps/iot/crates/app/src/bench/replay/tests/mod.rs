@@ -32,7 +32,7 @@ fn marked(names: &[&str], saved: &[&str]) -> ApList {
 fn showing(names: &[&str]) -> DeviceState {
     let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
     DeviceState {
-        nav: crate::state::Navigator::new(DisplayPage::Network),
+        nav: crate::state::Navigator::new(Page::Network),
         network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
             ..Default::default()
@@ -92,7 +92,7 @@ fn every_row_a_scan_can_carry_is_reachable_by_the_bench() {
         })
         .collect();
     let state = DeviceState {
-        nav: crate::state::Navigator::new(DisplayPage::Network),
+        nav: crate::state::Navigator::new(Page::Network),
         network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
             ..Default::default()
@@ -129,7 +129,7 @@ fn the_row_the_page_keeps_picked_is_the_band_its_own_tap_lands_on() {
         })
         .collect();
     let mut state = DeviceState {
-        nav: crate::state::Navigator::new(DisplayPage::Network),
+        nav: crate::state::Navigator::new(Page::Network),
         network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
             ..Default::default()
@@ -170,7 +170,9 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         .aps
         .and_then(|list| list.get(0))
         .expect("the row the bench's scan published");
-    manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Choose(picked)));
+    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Choose(
+        picked,
+    )));
     assert!(
         manager.state_ref().network_page.keyboard,
         "the pick is there to begin with"
@@ -362,7 +364,7 @@ fn an_open_network_is_refused_rather_than_typed_into() {
 #[test]
 fn no_run_is_built_before_the_list_is_there() {
     let mut state = DeviceState {
-        nav: crate::state::Navigator::new(DisplayPage::Network),
+        nav: crate::state::Navigator::new(Page::Network),
         ..DeviceState::default()
     };
     let mut bench = PanelBench::new();

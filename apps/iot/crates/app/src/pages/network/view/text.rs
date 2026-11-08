@@ -1,9 +1,9 @@
 //! Network, setup and question text: the words the link's readings become.
 
-use crate::features::network::controller::{ControlKind, confirm_verb};
-use crate::features::network::layout::LIST_ROWS;
-use crate::features::network::layout::{DIALOG_ANSWER_W, DIALOG_GLYPHS, ToolbarCell, toolbar_cell};
-use crate::features::network::model::Entry;
+use crate::pages::network::controller::{ControlKind, confirm_verb};
+use crate::pages::network::layout::LIST_ROWS;
+use crate::pages::network::layout::{DIALOG_ANSWER_W, DIALOG_GLYPHS, ToolbarCell, toolbar_cell};
+use crate::pages::network::model::Entry;
 use crate::shared::intent::Confirm;
 use crate::shared::keyboard::{Key, Layer};
 use iot_core::drivers::network::{

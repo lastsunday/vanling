@@ -18,14 +18,14 @@ mod tests {
         target_in,
     };
     use crate::state::translate::translate;
-    use crate::state::{DeviceState, DisplayPage, LightState};
+    use crate::state::{DeviceState, LightState, Page};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 
     mod speaker_page {
         use super::*;
 
         fn on_speaker() -> DeviceState {
-            state_on(DisplayPage::Speaker, DEFAULT_BREATH)
+            state_on(Page::Speaker, DEFAULT_BREATH)
         }
 
         fn long_press_gesture() -> InputEvent {

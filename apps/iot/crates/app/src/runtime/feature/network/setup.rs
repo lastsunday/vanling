@@ -3,7 +3,7 @@
 use alloc::boxed::Box;
 
 use crate::shared::intent::{ActionIntent, Intent, NetworkPageIntent};
-use crate::state::{DisplayPage, NetworkCommand};
+use crate::state::{NetworkCommand, Page};
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
 use embassy_net::{Stack, StackResources};
@@ -290,7 +290,7 @@ where
     let mut idle_rounds: u8 = 0;
     let mut panel_was_showing = false;
     loop {
-        let showing = NETWORK.page.shows(DisplayPage::Network);
+        let showing = NETWORK.page.shows(Page::Network);
         // Browsing ends when the panel leaves; setup keeps the scan up for the phone.
         if mode.is_browsing() && !showing {
             return Choice::Hidden;
@@ -357,7 +357,7 @@ pub(super) fn resolve_join<R: FlashRegion>(
                     "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
                     ssid.as_display_text().unwrap_or("<unprintable>"),
                 );
-                let _ = INTENT_BUS.try_send(Intent::Action(ActionIntent::NetworkPage(
+                let _ = INTENT_BUS.try_send(Intent::Action(ActionIntent::NetworkDraft(
                     NetworkPageIntent::NoCopy(ssid),
                 )));
             }

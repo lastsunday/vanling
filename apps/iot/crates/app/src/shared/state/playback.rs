@@ -133,12 +133,12 @@ mod speaker_page {
             ..Default::default()
         }));
         for _ in 0..=3 {
-            if manager.state().page() == DisplayPage::Speaker {
+            if manager.state().page() == Page::Speaker {
                 break;
             }
             apply_page(&mut manager, triple_click());
         }
-        assert_eq!(manager.state().page(), DisplayPage::Speaker);
+        assert_eq!(manager.state().page(), Page::Speaker);
         manager
     }
 
@@ -174,66 +174,58 @@ mod speaker_page {
     #[test]
     fn the_speaker_page_only_appears_on_a_board_that_has_one() {
         assert_eq!(
-            DisplayPage::Ambient.next_page(Backed {
+            Page::Ambient.next_page(Backed {
                 motion: Some(MotionCapabilities::EMPTY),
                 playback: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Attitude
+            Page::Attitude
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(Backed {
+            Page::Audio.next_page(Backed {
                 motion: Some(MotionCapabilities::EMPTY),
                 audio: true,
                 playback: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Speaker
+            Page::Speaker
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(Backed {
+            Page::Audio.next_page(Backed {
                 motion: Some(MotionCapabilities::EMPTY),
                 audio: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient,
+            Page::Ambient,
             "a board without a speaker skips the page"
         );
         assert_eq!(
-            DisplayPage::Ambient.next_page(Backed {
+            Page::Ambient.next_page(Backed {
                 playback: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Speaker
+            Page::Speaker
         );
         assert_eq!(
-            DisplayPage::Speaker.next_page(Backed {
+            Page::Speaker.next_page(Backed {
                 motion: Some(MotionCapabilities::EMPTY),
                 audio: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient
+            Page::Ambient
         );
     }
 
     #[test]
     fn a_full_lap_walks_every_page_and_returns_home() {
         let mut manager = on_speaker();
-        let pages = [
-            DisplayPage::Ambient,
-            DisplayPage::Attitude,
-            DisplayPage::Audio,
-        ];
+        let pages = [Page::Ambient, Page::Attitude, Page::Audio];
         for expected in pages {
             manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
             assert_eq!(manager.state().page(), expected);
         }
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
-        assert_eq!(
-            manager.state().page(),
-            DisplayPage::Speaker,
-            "and back round"
-        );
+        assert_eq!(manager.state().page(), Page::Speaker, "and back round");
     }
 
     #[test]
@@ -409,11 +401,7 @@ mod speaker_page {
     fn a_board_without_a_speaker_plays_nothing() {
         let mut manager = landed(DeviceManager::new());
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
-        assert_eq!(
-            manager.state().page(),
-            DisplayPage::Ambient,
-            "no page either"
-        );
+        assert_eq!(manager.state().page(), Page::Ambient, "no page either");
         manager.apply_action(ActionIntent::Playback(PlaybackAction::Next));
         assert_eq!(manager.playback_state(), PlaybackState::boot());
         manager.apply_action(ActionIntent::Playback(PlaybackAction::SetMuted(true)));

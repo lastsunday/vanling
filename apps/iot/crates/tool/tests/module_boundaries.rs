@@ -281,10 +281,10 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
     }
 }
 
-/// Every `.rs` under a feature, except the page dispatch and the golden tests, which speak
+/// Every `.rs` under a page, except the page dispatch and the golden tests, which speak
 /// for the whole product on purpose.
-fn feature_sources() -> Vec<(PathBuf, String, String)> {
-    let root = app_src().join("features");
+fn page_sources() -> Vec<(PathBuf, String, String)> {
+    let root = app_src().join("pages");
     sources(&root)
         .into_iter()
         .filter_map(|(path, text)| {
@@ -308,7 +308,7 @@ fn the_network_never_reaches_the_presentation() {
     assert_no_reference(
         sources(&app_src().join("runtime/feature/network")),
         &[
-            "crate::features",
+            "crate::pages",
             "crate::render",
             "crate::runtime::coordinator",
         ],
@@ -318,7 +318,7 @@ fn the_network_never_reaches_the_presentation() {
 #[test]
 fn the_presentation_never_reaches_the_radio() {
     let src = app_src();
-    let mut files = sources(&src.join("features"));
+    let mut files = sources(&src.join("pages"));
     files.extend(sources(&src.join("render")));
     files.extend(sources(&src.join("runtime/feature/playback")));
     files.extend(sources(&src.join("runtime/coordinator")));
@@ -356,20 +356,14 @@ fn the_core_never_knows_the_app() {
 fn the_pixel_layer_names_no_product() {
     assert_no_reference(
         sources(&ui_src()),
-        &[
-            "iot_app",
-            "DisplayPage",
-            "Diagnostics",
-            "NetworkPage",
-            "vanling",
-        ],
+        &["iot_app", "Page", "Diagnostics", "NetworkDraft", "vanling"],
     );
 }
 
 #[test]
-fn a_feature_does_not_import_another_feature() {
-    let prefix = "crate::features::";
-    for (path, name, text) in feature_sources() {
+fn a_page_does_not_import_another_page() {
+    let prefix = "crate::pages::";
+    for (path, name, text) in page_sources() {
         let text = without_comments(&text);
         let mut rest = text.as_str();
         while let Some(at) = rest.find(prefix) {
@@ -380,25 +374,19 @@ fn a_feature_does_not_import_another_feature() {
                 .collect();
             assert!(
                 other.is_empty() || other == name,
-                "{} reaches crate::features::{other}; a page's directory is its own slice",
+                "{} reaches crate::pages::{other}; a page's directory is its own slice",
                 path.display()
             );
         }
     }
 }
 
-/// The surface paints every page, but it learns the page's ink from the feature that owns it.
+/// The surface paints every page, but it learns the page's ink from the page that owns it.
 #[test]
 fn the_view_kit_names_no_page() {
     assert_no_reference(
         shipping_sources(&app_src().join("shared/view_kit")),
-        &[
-            "crate::features",
-            "DisplayPage",
-            "NetworkPage",
-            "Entry",
-            "SetupWait",
-        ],
+        &["crate::pages", "Page", "NetworkDraft", "Entry", "SetupWait"],
     );
 }
 
@@ -439,7 +427,7 @@ fn the_worker_handles_never_reach_a_worker() {
         sources(&app_src().join("runtime/workers")),
         &[
             "crate::runtime::feature",
-            "crate::features",
+            "crate::pages",
             "crate::render",
             "crate::runtime::coordinator",
         ],
@@ -454,7 +442,7 @@ fn the_page_table_is_a_leaf() {
             "crate::state",
             "crate::render",
             "crate::shared::diagnostics",
-            "crate::features",
+            "crate::pages",
         ],
     );
 }
@@ -467,7 +455,7 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
             "crate::shared::route",
             "crate::render",
             "crate::shared::diagnostics",
-            "crate::features",
+            "crate::pages",
             "crate::state",
         ],
     );
@@ -492,7 +480,9 @@ fn translation_dispatches_without_naming_page_geometry() {
 #[test]
 fn drivers_never_reach_up() {
     let src = core_src().join("drivers");
-    let upward = &["iot_app", "DisplayPage", "Diagnostics"];
+    // The bare word names core's own `PageSurface` and `SurfaceRole::Pages`; a product page
+    // can only reach a driver by naming a variant, so that is the token to forbid.
+    let upward = &["iot_app", "Page::", "Diagnostics"];
     let mut plain = Vec::new();
     let mut surface = Vec::new();
     for (path, text) in shipping_sources(&src) {

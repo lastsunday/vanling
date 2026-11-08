@@ -16,13 +16,13 @@ mod tests {
         DEFAULT_BREATH, op, state_on, with_network, with_network_page,
     };
     use crate::state::translate::translate;
-    use crate::state::{DeviceState, DisplayPage};
+    use crate::state::{DeviceState, Page};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
     use iot_core::drivers::network::{LinkStatus, SetupHost};
 
     mod network_page {
         use super::*;
-        use crate::features::network::layout;
+        use crate::pages::network::layout;
         use crate::shared::keyboard::Key;
         use iot_core::drivers::network::{AccessPoint, ApList, Ssid};
 
@@ -41,16 +41,16 @@ mod tests {
         }
 
         fn on_network() -> DeviceState {
-            with_network(state_on(DisplayPage::Network, DEFAULT_BREATH), |network| {
+            with_network(state_on(Page::Network, DEFAULT_BREATH), |network| {
                 network.aps = Some(ApList::from_ranked(&[ap(b"neighbour", -55)]));
             })
         }
 
         fn typing() -> DeviceState {
             with_network_page(on_network(), |page| {
-                *page = crate::features::network::model::NetworkPage {
+                *page = crate::pages::network::model::NetworkDraft {
                     selected: Some(ap(b"neighbour", -55)),
-                    entry: Some(crate::features::network::model::Entry::default()),
+                    entry: Some(crate::pages::network::model::Entry::default()),
                     keyboard: true,
                     ..Default::default()
                 };
@@ -78,7 +78,7 @@ mod tests {
 
         fn asking() -> DeviceState {
             with_network_page(on_network(), |page| {
-                *page = crate::features::network::model::NetworkPage {
+                *page = crate::pages::network::model::NetworkDraft {
                     confirm: Some(crate::shared::intent::Confirm::Forget(ap(
                         b"neighbour",
                         -55,
@@ -117,12 +117,12 @@ mod tests {
             let first = layout::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(tap_at(30, first)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
                 "the list's first band is the first network"
             );
             assert_eq!(
                 translate(&op(tap_at(30, first + layout::LIST_ROW_H as u16)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"cafe", -60, 7))),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap_with(b"cafe", -60, 7))),
                 "a band down is the next network"
             );
             assert_eq!(
@@ -130,7 +130,7 @@ mod tests {
                     &op(tap_at(30, first + layout::LIST_ROW_H as u16 - 1)),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
                 "and the pixels below a band's glyphs still belong to that band"
             );
             assert_eq!(
@@ -145,12 +145,12 @@ mod tests {
             let state = on_network();
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Scroll { rows: 1 }),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { rows: 1 }),
                 "a finger pushing the list up walks down it"
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Down)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Scroll { rows: -1 })
+                ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { rows: -1 })
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Left)), &state),
@@ -182,14 +182,14 @@ mod tests {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
                         translate(&op(tap_at(x as u16, y as u16)), &state),
-                        ActionIntent::NetworkPage(NetworkPageIntent::ScanNow),
+                        ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow),
                         "({x}, {y}) is the strip"
                     );
                 }
             }
             assert_eq!(
                 translate(&op(tap_at(160, (layout::TOOLBAR_TOP - 1) as u16)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"bakery", -65, 8))),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap_with(b"bakery", -65, 8))),
                 "the row above the strip is still the list's own last band"
             );
         }
@@ -198,7 +198,7 @@ mod tests {
         fn the_button_is_the_strip_verb_and_the_setup_box_asks_about_its_passphrase() {
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_network()),
-                ActionIntent::NetworkPage(NetworkPageIntent::ScanNow)
+                ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
             );
 
             let announcing = with_network(on_network(), |network| {
@@ -220,11 +220,11 @@ mod tests {
                     &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
                     &announcing
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true))
+                ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(true))
             );
             assert_eq!(
                 translate(&op(tap_at(act.x as u16 + 1, act.y as u16 + 1)), &announcing),
-                ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+                ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
             );
             assert_eq!(
                 translate(&op(tap_at(10, 10)), &announcing),
@@ -247,14 +247,14 @@ mod tests {
             let first = layout::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap(b"neighbour", -55)))
+                ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(ap(b"neighbour", -55)))
             );
             assert_eq!(
                 translate(
                     &op(long_press_at(30, first + layout::LIST_ROW_H as u16)),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap_with(b"cafe", -60, 7)))
+                ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(ap_with(b"cafe", -60, 7)))
             );
             assert_eq!(
                 translate(&op(long_press_at(30, 5)), &state),
@@ -286,7 +286,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Answer(
+                ActionIntent::NetworkDraft(NetworkPageIntent::Answer(
                     crate::shared::intent::Confirm::Forget(ap(b"neighbour", -55))
                 )),
                 "the action's own button is the whole of the yes"
@@ -299,7 +299,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Dismiss),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss),
                 "and the button that says no says no"
             );
             for (x, y) in [
@@ -313,22 +313,22 @@ mod tests {
             ] {
                 assert_eq!(
                     translate(&op(tap_at(x, y)), &state),
-                    ActionIntent::NetworkPage(NetworkPageIntent::Dismiss),
+                    ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss),
                     "({x}, {y}) leaves the question undone"
                 );
             }
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Dismiss),
+                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss),
                 "a swipe under the box does not slide a list it cannot see"
             );
             assert_eq!(
                 translate(&op(long_press_at(30, layout::LIST_TOP as u16 + 2)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
+                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss)
             );
             assert_eq!(
                 translate(&op(tap_at(160, layout::TOOLBAR_TOP as u16 + 2)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
+                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss)
             );
         }
 
@@ -353,7 +353,7 @@ mod tests {
             let state = typing();
             assert_eq!(
                 translate(&op(key_tap(1)), &state),
-                ActionIntent::NetworkPage(NetworkPageIntent::Key {
+                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
                     key: Key::Char(b'2'),
                     at_ms: 1_000,
                 }),
@@ -366,7 +366,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Key {
+                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
                     key: Key::Shift,
                     at_ms: 1_000,
                 })
@@ -378,7 +378,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Key {
+                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
                     key: Key::Cancel,
                     at_ms: 1_000,
                 })
@@ -390,7 +390,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Key {
+                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
                     key: Key::Reveal,
                     at_ms: 1_000,
                 })
@@ -421,7 +421,7 @@ mod tests {
                     })),
                     &typing()
                 ),
-                ActionIntent::NetworkPage(NetworkPageIntent::Key {
+                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
                     key: Key::Char(b'1'),
                     at_ms: 4_321,
                 })

@@ -223,7 +223,7 @@ write_reg(sensor->slv_addr, 0x0f, L8(win_w + 16));
 
 `[测试]` 修复是 `FrameOwner`（`iot-core::drivers::camera`）：`NeedsPaint` / `Painted { fill, color }` / `Camera` 三个变体各对应一种合法状态，第四种组合不再可表示。5 条单测覆盖转换，其中 `a_released_camera_lets_the_next_fill_through` 走的正是当年出不去的那条序列；`host-smoke` 的 `HostLight` 用同一个类型，断言离开 Camera 页后必须有填充到达面板。
 
-`[测试]` 配套的是把「持有者」这份事实收回一处：`LightRenderer` 曾同时存 `camera_page: bool` 与 `page: Option<DisplayPage>` 记同一件事，删掉前者，`step()` 现算。面板侧的 `owner` 字段**不**按 camera feature 门控 —— 颜色的那一半也是没有摄像头的面板判断一次填充值不值得下发的依据，门控它等于把这个决定的一半落在持有它的值之外。
+`[测试]` 配套的是把「持有者」这份事实收回一处：`LightRenderer` 曾同时存 `camera_page: bool` 与 `page: Option<Page>` 记同一件事，删掉前者，`step()` 现算。面板侧的 `owner` 字段**不**按 camera feature 门控 —— 颜色的那一半也是没有摄像头的面板判断一次填充值不值得下发的依据，门控它等于把这个决定的一半落在持有它的值之外。
 
 ---
 

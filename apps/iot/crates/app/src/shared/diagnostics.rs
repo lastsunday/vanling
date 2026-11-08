@@ -3,8 +3,8 @@
 //! [`LightSnapshot`] per light surface — and fans out through pluggable
 //! [`DiagnosticsSink`]s.
 
-use crate::features::network::model::NetworkPage;
-use crate::shared::route::DisplayPage;
+use crate::pages::network::model::NetworkDraft;
+use crate::shared::route::Page;
 use crate::shared::state::{AudioPhase, Health};
 use crate::state::DeviceState;
 use iot_core::demand::EffectiveDemand;
@@ -132,7 +132,7 @@ pub struct Diagnostics {
     pub touch: TouchDiagnostics,
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
-    pub page: DisplayPage,
+    pub page: Page,
     /// Where the link stands and what the last scan saw, as the network task last reported
     /// them — copied whole rather than borrowed, so a sink holds no reference into the
     /// state layer.
@@ -142,7 +142,7 @@ pub struct Diagnostics {
     pub aps: Option<ApList>,
     /// What the Network page is in the middle of taking: the row a passphrase is being
     /// typed for, the draft, and the last refusal.
-    pub draft: NetworkPage,
+    pub draft: NetworkDraft,
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,

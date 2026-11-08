@@ -1,6 +1,6 @@
 //! The pages as vocabulary: a route table declares, for every page, the name it answers to,
 //! what it needs from the board, what it claims of a demand, whether it can be booted on, and
-//! how long it lives. The enum is the destination; [`DisplayPage::route`] is the one
+//! how long it lives. The enum is the destination; [`Page::route`] is the one
 //! exhaustive map from a destination to its row, so a new page cannot exist without a route.
 //!
 //! How a page is drawn — its ground, whether frames arrive from a camera, how often it may
@@ -29,7 +29,7 @@ use iot_core::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Prio
 use iot_core::drivers::board::Backed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DisplayPage {
+pub enum Page {
     #[default]
     Ambient,
     Attitude,
@@ -44,7 +44,7 @@ pub enum DisplayPage {
 /// One page's row in the route table: the properties that follow from being that page.
 struct Route {
     /// The name the page answers to, trimmed and case-insensitive through
-    /// [`DisplayPage::from_path`].
+    /// [`Page::from_path`].
     path: &'static str,
     /// What the board must wire for this page to be reachable at all.
     needs: fn(Backed) -> bool,
@@ -117,18 +117,18 @@ static SPLASH: Route = Route {
     timeout_ms: Some(SPLASH_MS),
 };
 
-/// The button's order. A prefix of [`DisplayPage::ALL`], so the page that leaves the cycle
+/// The button's order. A prefix of [`Page::ALL`], so the page that leaves the cycle
 /// (the splash) stays at the tail and the two lists cannot drift apart silently.
-pub(crate) const CYCLE: [DisplayPage; 6] = [
-    DisplayPage::Ambient,
-    DisplayPage::Attitude,
-    DisplayPage::Audio,
-    DisplayPage::Speaker,
-    DisplayPage::Camera,
-    DisplayPage::Network,
+pub(crate) const CYCLE: [Page; 6] = [
+    Page::Ambient,
+    Page::Attitude,
+    Page::Audio,
+    Page::Speaker,
+    Page::Camera,
+    Page::Network,
 ];
 
-impl DisplayPage {
+impl Page {
     /// Every page, in `code()` order.
     pub const ALL: [Self; 7] = [
         Self::Ambient,
@@ -267,56 +267,50 @@ mod tests {
 
     #[test]
     fn the_table_is_in_code_order_and_the_cycle_is_its_prefix() {
-        for (position, page) in DisplayPage::ALL.iter().enumerate() {
+        for (position, page) in Page::ALL.iter().enumerate() {
             assert_eq!(usize::from(page.code()), position, "{page:?}");
         }
         for (position, page) in CYCLE.iter().enumerate() {
-            assert_eq!(DisplayPage::ALL[position], *page);
+            assert_eq!(Page::ALL[position], *page);
         }
-        assert_eq!(DisplayPage::ALL[CYCLE.len()], DisplayPage::Splash);
+        assert_eq!(Page::ALL[CYCLE.len()], Page::Splash);
     }
 
     #[test]
     fn every_page_answers_to_its_own_path() {
-        for page in DisplayPage::ALL {
-            assert_eq!(DisplayPage::from_path(page.path()), Some(page), "{page:?}");
+        for page in Page::ALL {
+            assert_eq!(Page::from_path(page.path()), Some(page), "{page:?}");
             assert_eq!(
-                DisplayPage::from_path(&page.path().to_ascii_uppercase()),
+                Page::from_path(&page.path().to_ascii_uppercase()),
                 Some(page),
                 "{page:?} in capitals"
             );
         }
-        assert_eq!(
-            DisplayPage::from_path("  CAMERA  "),
-            Some(DisplayPage::Camera)
-        );
-        assert_eq!(
-            DisplayPage::from_path("\tcamera\n"),
-            Some(DisplayPage::Camera)
-        );
-        assert_eq!(DisplayPage::from_path("photograph"), None);
-        assert_eq!(DisplayPage::from_path(""), None);
-        assert_eq!(DisplayPage::from_path("   "), None);
+        assert_eq!(Page::from_path("  CAMERA  "), Some(Page::Camera));
+        assert_eq!(Page::from_path("\tcamera\n"), Some(Page::Camera));
+        assert_eq!(Page::from_path("photograph"), None);
+        assert_eq!(Page::from_path(""), None);
+        assert_eq!(Page::from_path("   "), None);
     }
 
     #[test]
     fn every_page_has_a_stable_wire_code() {
-        for (position, page) in DisplayPage::ALL.iter().enumerate() {
+        for (position, page) in Page::ALL.iter().enumerate() {
             assert_eq!(usize::from(page.code()), position, "{page:?}");
-            assert_eq!(DisplayPage::from_code(page.code()), Some(*page), "{page:?}");
+            assert_eq!(Page::from_code(page.code()), Some(*page), "{page:?}");
         }
         assert_eq!(
-            DisplayPage::from_code(DisplayPage::ALL.len() as u8),
+            Page::from_code(Page::ALL.len() as u8),
             None,
             "one past the last page"
         );
-        assert_eq!(DisplayPage::from_code(u8::MAX), None, "a code no page owns");
+        assert_eq!(Page::from_code(u8::MAX), None, "a code no page owns");
     }
 
     #[test]
     fn no_two_pages_share_a_path() {
-        for (position, page) in DisplayPage::ALL.iter().enumerate() {
-            for other in &DisplayPage::ALL[position + 1..] {
+        for (position, page) in Page::ALL.iter().enumerate() {
+            for other in &Page::ALL[position + 1..] {
                 assert_ne!(page.path(), other.path(), "{page:?} and {other:?}");
             }
         }
@@ -324,7 +318,7 @@ mod tests {
 
     #[test]
     fn every_route_is_either_bootable_or_transient() {
-        for page in DisplayPage::ALL {
+        for page in Page::ALL {
             assert!(
                 page.bootable() || page.timeout_ms().is_some(),
                 "{page:?} is neither somewhere the device may come up nor a transient with a \

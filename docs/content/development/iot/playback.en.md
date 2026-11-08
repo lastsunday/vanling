@@ -49,7 +49,7 @@ A trigger while muted still plays to the end and still reports completion: mutin
 
 The Speaker page and the Audio page are two pages.
 
-With no ES8311 found, `Backed::playback` is false and the page does not enter the page loop (`DisplayPage::next_page` skips pages no capability backs); capture and every other page carry on. Making sound is an addition, not a precondition for capture.
+With no ES8311 found, `Backed::playback` is false and the page does not enter the page loop (`Page::next_page` skips pages no capability backs); capture and every other page carry on. Making sound is an addition, not a precondition for capture.
 
 ## Where the sound comes from
 

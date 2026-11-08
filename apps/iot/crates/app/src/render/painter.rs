@@ -3,7 +3,7 @@
 
 use core::any::Any;
 
-use crate::features::paint;
+use crate::pages::paint;
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::view_kit::surface::Surface;
 use iot_core::drivers::camera::CameraSnapshot;

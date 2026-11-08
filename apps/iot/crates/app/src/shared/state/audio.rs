@@ -109,7 +109,7 @@ mod audio_page {
         }));
         apply(&mut manager, triple_click());
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Audio);
+        assert_eq!(manager.state().page(), Page::Audio);
         manager
     }
 
@@ -145,34 +145,34 @@ mod audio_page {
     #[test]
     fn the_audio_page_only_appears_on_a_board_that_has_one() {
         assert_eq!(
-            DisplayPage::Ambient.next_page(Backed {
+            Page::Ambient.next_page(Backed {
                 motion: Some(ALL_CAPS),
                 ..Backed::NONE
             }),
-            DisplayPage::Attitude
+            Page::Attitude
         );
         assert_eq!(
-            DisplayPage::Attitude.next_page(Backed {
+            Page::Attitude.next_page(Backed {
                 motion: Some(ALL_CAPS),
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient,
+            Page::Ambient,
             "a board without audio skips the page"
         );
         assert_eq!(
-            DisplayPage::Ambient.next_page(Backed {
+            Page::Ambient.next_page(Backed {
                 audio: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Audio
+            Page::Audio
         );
         assert_eq!(
-            DisplayPage::Attitude.next_page(Backed {
+            Page::Attitude.next_page(Backed {
                 motion: Some(ALL_CAPS),
                 audio: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Audio
+            Page::Audio
         );
     }
 
@@ -186,36 +186,36 @@ mod audio_page {
             ..Default::default()
         }));
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Audio);
+        assert_eq!(manager.state().page(), Page::Audio);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), Page::Ambient);
     }
 
     #[test]
     fn the_camera_page_only_appears_on_a_board_that_has_one() {
         assert_eq!(
-            DisplayPage::Ambient.next_page(Backed {
+            Page::Ambient.next_page(Backed {
                 camera: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Camera
+            Page::Camera
         );
         assert_eq!(
-            DisplayPage::Ambient.next_page(Backed::NONE),
-            DisplayPage::Ambient,
+            Page::Ambient.next_page(Backed::NONE),
+            Page::Ambient,
             "a board without a camera never reaches the page"
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(Backed {
+            Page::Audio.next_page(Backed {
                 camera: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Camera,
+            Page::Camera,
             "the camera follows the pages that need a wired source"
         );
         assert_eq!(
-            DisplayPage::Audio.next_page(Backed::NONE),
-            DisplayPage::Ambient,
+            Page::Audio.next_page(Backed::NONE),
+            Page::Ambient,
             "and is skipped when there is none"
         );
     }
@@ -223,48 +223,48 @@ mod audio_page {
     #[test]
     fn leaving_the_last_page_wraps_to_the_start_of_the_cycle() {
         assert_eq!(
-            DisplayPage::Network.next_page(Backed {
+            Page::Network.next_page(Backed {
                 motion: Some(ALL_CAPS),
                 network: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient,
+            Page::Ambient,
             "a board that lost the link mid-cycle wraps rather than jumping ahead"
         );
         assert_eq!(
-            DisplayPage::Network.next_page(Backed {
+            Page::Network.next_page(Backed {
                 network: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient,
+            Page::Ambient,
             "and a link is the only capability, so back to Ambient"
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(Backed {
+            Page::Camera.next_page(Backed {
                 camera: true,
                 network: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Network
+            Page::Network
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(Backed {
+            Page::Camera.next_page(Backed {
                 motion: Some(ALL_CAPS),
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient,
+            Page::Ambient,
             "a board that lost the camera mid-cycle wraps rather than jumping ahead"
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(Backed {
+            Page::Camera.next_page(Backed {
                 audio: true,
                 ..Backed::NONE
             }),
-            DisplayPage::Ambient
+            Page::Ambient
         );
         assert_eq!(
-            DisplayPage::Camera.next_page(Backed::NONE),
-            DisplayPage::Ambient,
+            Page::Camera.next_page(Backed::NONE),
+            Page::Ambient,
             "and a camera is the only capability, so back to Ambient"
         );
     }
@@ -290,7 +290,7 @@ mod audio_page {
                 camera,
                 network,
             };
-            let backed: Vec<DisplayPage> = CYCLE
+            let backed: Vec<Page> = CYCLE
                 .iter()
                 .copied()
                 .filter(|page| page.is_backed(wired))
@@ -350,14 +350,14 @@ mod audio_page {
                 camera: true,
                 ..Backed::NONE
             },
-            boot_page: DisplayPage::Camera,
+            boot_page: Page::Camera,
             ..Default::default()
         }));
-        assert_eq!(manager.state().page(), DisplayPage::Camera);
+        assert_eq!(manager.state().page(), Page::Camera);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), Page::Ambient);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Attitude);
+        assert_eq!(manager.state().page(), Page::Attitude);
     }
 
     #[test]
@@ -383,12 +383,12 @@ mod audio_page {
                     motion: Some(ALL_CAPS),
                     ..Backed::NONE
                 },
-                boot_page: DisplayPage::Attitude,
+                boot_page: Page::Attitude,
                 ..Default::default()
             }))
             .state()
             .page(),
-            DisplayPage::Attitude,
+            Page::Attitude,
             "the one capability it does have"
         );
         assert_eq!(
@@ -397,12 +397,12 @@ mod audio_page {
                     motion: Some(ALL_CAPS),
                     ..Backed::NONE
                 },
-                boot_page: DisplayPage::Camera,
+                boot_page: Page::Camera,
                 ..Default::default()
             }))
             .state()
             .page(),
-            DisplayPage::Ambient,
+            Page::Ambient,
             "and the one it does not"
         );
     }
@@ -422,9 +422,9 @@ mod audio_page {
         }));
         assert!(manager.state().backed.camera);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Camera);
+        assert_eq!(manager.state().page(), Page::Camera);
         apply(&mut manager, triple_click());
-        assert_eq!(manager.state().page(), DisplayPage::Ambient);
+        assert_eq!(manager.state().page(), Page::Ambient);
     }
 
     #[test]
@@ -441,7 +441,7 @@ mod audio_page {
             apply(&mut manager, triple_click());
             assert_ne!(
                 manager.state().page(),
-                DisplayPage::Camera,
+                Page::Camera,
                 "the camera page is gated on the wiring, not on how long you press"
             );
         }
@@ -559,7 +559,7 @@ mod audio_page {
     fn a_tap_records_without_leaving_the_audio_page() {
         let mut manager = on_audio_page();
         apply(&mut manager, tap());
-        assert_eq!(manager.state().page(), DisplayPage::Audio, "the page holds");
+        assert_eq!(manager.state().page(), Page::Audio, "the page holds");
         assert_eq!(manager.state().audio.phase, AudioPhase::Recording);
     }
 
@@ -569,11 +569,7 @@ mod audio_page {
         let before = manager.state().lights[0];
 
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
-        assert_eq!(
-            manager.state().page(),
-            DisplayPage::Ambient,
-            "walked off audio"
-        );
+        assert_eq!(manager.state().page(), Page::Ambient, "walked off audio");
 
         apply(&mut manager, tap());
         assert_eq!(

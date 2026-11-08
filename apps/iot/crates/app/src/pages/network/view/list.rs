@@ -1,8 +1,8 @@
 //! The scan list: three bands between the header and the action strip.
 
-use crate::features::network::layout::LIST_ROWS;
-use crate::features::network::layout::{LIST_ROW_H, LIST_TOP, band_lines_top};
-use crate::features::network::model::NetworkPage;
+use crate::pages::network::layout::LIST_ROWS;
+use crate::pages::network::layout::{LIST_ROW_H, LIST_TOP, band_lines_top};
+use crate::pages::network::model::NetworkDraft;
 use iot_core::drivers::network::{ApList, LinkStatus, SSID_BYTES};
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{
@@ -10,8 +10,8 @@ use iot_core::overlay::{
 };
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 
-use crate::features::network::view::header::BARS_GLYPHS;
-use crate::features::network::view::text::{NETWORK_NAME_GLYPHS, format_bars, format_network_name};
+use crate::pages::network::view::header::BARS_GLYPHS;
+use crate::pages::network::view::text::{NETWORK_NAME_GLYPHS, format_bars, format_network_name};
 use crate::shared::view_kit::placement::PANEL_RIGHT;
 use crate::shared::view_kit::surface::Surface;
 
@@ -44,7 +44,12 @@ const _: () = assert!(
 );
 
 impl Surface<'_> {
-    pub(super) fn stamp_list(&mut self, draft: NetworkPage, link: LinkStatus, aps: Option<ApList>) {
+    pub(super) fn stamp_list(
+        &mut self,
+        draft: NetworkDraft,
+        link: LinkStatus,
+        aps: Option<ApList>,
+    ) {
         match aps {
             None => self.stamp_band(b"NOT SCANNED"),
             Some(list) if list.is_empty() => self.stamp_band(b"NO NETWORKS"),

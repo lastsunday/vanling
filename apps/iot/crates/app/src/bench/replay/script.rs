@@ -5,7 +5,7 @@
 
 use alloc::vec::Vec;
 
-use crate::features::network::layout::{cell_for_digit, cell_of};
+use crate::pages::network::layout::{cell_for_digit, cell_of};
 use crate::shared::keyboard::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
 
 /// One tap of a script: the cell a finger lands on, and when its lift is read.
@@ -74,8 +74,8 @@ fn find(layer: Layer, byte: u8) -> Option<(usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::network::layout::{key_box, key_of};
-    use crate::features::network::model::Entry;
+    use crate::pages::network::layout::{key_box, key_of};
+    use crate::pages::network::model::Entry;
 
     #[test]
     fn a_script_types_its_own_text_through_the_keyboard() {

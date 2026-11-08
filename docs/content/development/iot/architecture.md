@@ -50,34 +50,36 @@ weight = 10
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::keyboard`、几何在 `app::features::network::layout`
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::keyboard`、几何在 `app::pages::network::layout`
 - **main 入口**：按家族 feature 分支，每家族一份
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
 ## iot-app 内部分区
 
-`app/src/` 按垂直切片组织：页面各自成目录，跨页真相与词汇收在 `shared/`，组合根与表示层各自独立，接线只发生在组合根：
+`app/src/` 按垂直切片组织：页面各自成目录，跨页真相与词汇收在 `shared/`，组合根与表示层各自独立，接线只发生在组合根。
+
+页面是设备当前的目的地，不是屏幕上的画面：`Route.needs` 只看板子接了什么能力，屏的存在由 `SurfaceRole::Pages` 单独回答；无面板的板子照样有当前页，灯带、demand 与网络 setup 都只是这个目的地的其他消费者。
 
 | 路径 | 职责 |
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
 | `main.rs` | 芯片启动、executor 选择、家族入口 |
-| `features/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`tests.rs` 守黄金像素 |
-| `features/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
-| `features/audio/{mod,controller,view}.rs`、`features/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/state` |
-| `features/network/{model,controller,layout,view}/` | Network 页自己的草稿与列表位置（`NetworkPage`/`Entry`/`SetupWait`）、手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制 |
+| `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`tests.rs` 守黄金像素 |
+| `pages/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
+| `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/state` |
+| `pages/network/{model,controller,layout,view}/` | Network 页自己的草稿与列表位置（`NetworkDraft`/`Entry`/`SetupWait`）、手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制 |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西 |
 | `shared/state/` | 工作者写入、渲染循环读取的记录，一域一文件；页面私有的草稿不在这里 |
-| `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`DisplayPage` 是目的地，`route()` 是穷尽 `match`，`ALL`/`CYCLE` 是次序 |
+| `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`Page` 是目的地，`route()` 是穷尽 `match`，`ALL`/`CYCLE` 是次序 |
 | `shared/keyboard.rs` | 键位词汇：`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表 |
 | `shared/intent.rs` | 意图词汇：输入被问成什么，含跨页的 `Confirm` |
 | `shared/light.rs` | 灯光行走的表与调色板；页面控制器调用它 |
 | `shared/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放诊断与 Network 页草稿 |
 | `shared/view_kit/` | 页面壳 `Surface`、版面常量、文字排版、band/overlay 原语与控件；只认像素与快照，不认页面 |
-| `state/` | 组合根：`DeviceState`、`DeviceManager`、`apply_intent`、手势→意图的分派、`Boot`/`Backed`、构建期配置；唯一认识所有 feature 的模块 |
-| `state/translate.rs` | 按当前页分派到 `features/<page>/controller`；不读键格、band 或确认框几何 |
+| `state/` | 组合根：`DeviceState`、`DeviceManager`、`apply_intent`、手势→意图的分派、`Boot`/`Backed`、构建期配置；唯一认识所有页面的模块 |
+| `state/translate.rs` | 按当前页分派到 `pages/<page>/controller`；不读键格、band 或确认框几何 |
 | `state/boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `render/` | 表示消费：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，页面渲染策略（底色/出帧/重绘步长）在 `policy.rs`，`AppPainter` 调 `features::paint`，renderer 决定*怎么显示* |
+| `render/` | 表示消费：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，页面渲染策略（底色/出帧/重绘步长）在 `policy.rs`，`AppPainter` 调 `pages::paint`，renderer 决定*怎么显示* |
 | `render/wiring.rs` | 接线：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
 | `runtime/system.rs` | `Frame` 与 `System` 契约：一帧交给系统的共享件（意图总线、状态、时钟），`tick` 与 `intent` 两个入口；worker 句柄由系统自己持有，不经 `Frame` |
@@ -92,27 +94,27 @@ weight = 10
 方向由 `iot-tool/tests/module_boundaries.rs` 的几条诚实规则守着（编译器不查 crate 内模块环），不是逐条边的地图：
 
 ```
-lib               → { bench, render, state, runtime, features::paint }
-features/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit}, state::DeviceState }
-state             → { features::<page>::{model, controller, layout}, shared::{intent, light, route, state} }
-render            → { features::paint, shared::{diagnostics, route, state, view_kit}, state }
+lib               → { bench, render, state, runtime, pages::paint }
+pages/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit}, state::DeviceState }
+state             → { pages::<page>::{model, controller, layout}, shared::{intent, light, route, state} }
+render            → { pages::paint, shared::{diagnostics, route, state, view_kit}, state }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, state}, runtime::workers }
 runtime::feature::network  → { assets, bench, shared::{intent, state}, runtime::{feature::input, workers} }
 runtime::feature::playback → { shared::state, runtime::{feature::input, workers} }
 runtime::workers           → { shared::state }
-bench             → { features::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
+bench             → { pages::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
 ```
 
-- **feature 之间不互相 import**：页面目录只读 `shared` 与组合根给出的 `DeviceState`；页面需要另一页的东西时，那份东西就属于 `shared`
-- **`state` 是唯一的双向点**：它认识每个 feature 的 `model`/`controller`/`layout`，分派翻译并组合聚合状态；feature 只从它取 `DeviceState` 这一个读句柄，`DisplayPage` 等词汇仍来自 `shared::route`
-- **`shared/view_kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `features::paint` 决定
-- `shared` 不依赖 `state`/`render`/`features`，路由表与意图词汇是叶子；`shared::diagnostics` 是唯一例外，它的快照要复制 Network 页草稿，所以认识 `features::network::model::NetworkPage`
-- `shared/state` 只放被多处读写的记录；页面的私有草稿（如 `NetworkPage`）留在 `features/network/model`
+- **页面之间不互相 import**：页面目录只读 `shared` 与组合根给出的 `DeviceState`；页面需要另一页的东西时，那份东西就属于 `shared`
+- **`state` 是唯一的双向点**：它认识每个页面的 `model`/`controller`/`layout`，分派翻译并组合聚合状态；页面只从它取 `DeviceState` 这一个读句柄，`Page` 等词汇仍来自 `shared::route`
+- **`shared/view_kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `pages::paint` 决定
+- `shared` 不依赖 `state`/`render`/`pages`，路由表与意图词汇是叶子；`shared::diagnostics` 是唯一例外，它的快照要复制 Network 页草稿，所以认识 `pages::network::model::NetworkDraft`
+- `shared/state` 只放被多处读写的记录；页面的私有草稿（如 `NetworkDraft`）留在 `pages/network/model`
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
-- `runtime::feature::network` 不依赖 `features`/`render`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
+- `runtime::feature::network` 不依赖 `pages`/`render`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
 - `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用；`bench::replay` 被组合根（注册 `Slot`）与网络工作者（取构建凭据）引用，但非 bench 构建编译期折叠
 - `core` 不认识 `iot_app`
 
@@ -195,11 +197,11 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 新增场景 = 新增一个 `ActionIntent` 变体；运行期换节奏 = 再一个变体。`apply_action` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
-需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
+需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Link`/`NetworkDraft`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-`shared/state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` 各放工作者写入、渲染循环读取的记录。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。页面的私有草稿与列表位置不在 `shared`：`NetworkPage`/`Entry`/`SetupWait` 在 `features/network/model`。聚合状态 `DeviceState`、`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/apply.rs`，按当前页走 `state/translate.rs`，先写记录再翻译。
+`shared/state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` 各放工作者写入、渲染循环读取的记录。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。页面的私有草稿与列表位置不在 `shared`：`NetworkDraft`/`Entry`/`SetupWait` 在 `pages/network/model`。聚合状态 `DeviceState`、`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/apply.rs`，按当前页走 `state/translate.rs`，先写记录再翻译。
 
-业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkPage` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），只有手指的 `NetworkPageIntent` 写它。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
+业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkDraft` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），只有手指的 `NetworkPageIntent` 写它。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 
 命令的出处也随这条边界走：页面域的 `apply` 直接返回 `Option<NetworkCommand>`，`Effects` 只装设备内的回声与提示，不留发件箱——从意图到工作者只有一条路径。
 
@@ -329,7 +331,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 两个同型号器件可以分开提需求（`DemandKey::instance(Audio, 0)` 与 `…, 1`）。
 
-设备清单由板子给。`DisplayPage::demand(&self, keys)` 遍历板子声明的设备表调 `claim_for`。这个 match 是穷尽的，所以页面不可能漏掉一个设备然后继承一份没人选过的需求。
+设备清单由板子给。`Page::demand(&self, keys)` 遍历板子声明的设备表调 `claim_for`。这个 match 是穷尽的，所以页面不可能漏掉一个设备然后继承一份没人选过的需求。
 
 板子没声明的设备不出现在需求里，读作 `Off`，不需要再用四个布尔开关夹一次。
 
@@ -402,7 +404,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面：路由表 + 导航栈
 
-`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `DisplayPage` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。底色、是否出帧与重绘步长是渲染策略，在 `app/src/render/policy.rs`，由 `DisplayPage::ALL` 的覆盖测试逼迫每页作答。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/features/mod.rs` 的分派分支与 `app/src/features/<path>` 下的视图模块（分派本身由编译器穷尽检查）。
+`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `Page` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。底色、是否出帧与重绘步长是渲染策略，在 `app/src/render/policy.rs`，由 `Page::ALL` 的覆盖测试逼迫每页作答。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/pages/mod.rs` 的分派分支与 `app/src/pages/<path>` 下的视图模块（分派本身由编译器穷尽检查）。
 
 `app/src/shared/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕；瞬态没有次序，停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 

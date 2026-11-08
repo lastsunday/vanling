@@ -172,7 +172,7 @@ fn a_hold_on_a_row_this_device_has_not_saved_asks_nothing() {
     marked(&mut manager, &["neighbour"]);
     hold_band(&mut manager, 0);
     assert!(manager.state().network_page.confirm.is_some());
-    manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Dismiss));
+    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss));
     marked(&mut manager, &[]);
     hold_band(&mut manager, 0);
     assert_eq!(
@@ -318,7 +318,7 @@ fn a_row_the_store_has_no_copy_of_puts_the_page_back_on_the_keyboard() {
     let mut manager = on_network_page();
     marked(&mut manager, &["neighbour"]);
     tap_band(&mut manager, 0);
-    manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::NoCopy(
+    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(
         Ssid::from_octets(b"neighbour"),
     )));
     assert!(manager.state().network_page.keyboard, "the page has to ask");
@@ -361,7 +361,7 @@ fn a_copy_the_store_has_that_was_refused_comes_back_as_a_keyboard() {
 fn an_answer_about_another_row_is_not_this_rows_question() {
     let mut manager = on_network_page();
     tap_band(&mut manager, 0);
-    manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::NoCopy(
+    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(
         Ssid::from_octets(b"cafe"),
     )));
     assert!(

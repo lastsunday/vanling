@@ -7,7 +7,7 @@ use iot_app::runtime::workers::NETWORK;
 use iot_app::shared::intent::{ActionIntent, Confirm, Intent, NetworkPageIntent};
 use iot_app::shared::keyboard::Key;
 use iot_app::shared::light::PALETTE;
-use iot_app::state::{DisplayPage, NetworkCommand};
+use iot_app::state::{NetworkCommand, Page};
 use iot_core::drivers::audio::dbfs;
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, SavedNetworks, Ssid,
@@ -72,24 +72,24 @@ pub(super) async fn scenario() {
     triple_click().await;
 
     let mut attempts = 0;
-    while !page_seen(DisplayPage::Attitude) && attempts < 100 {
+    while !page_seen(Page::Attitude) && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
         attempts += 1;
     }
     assert!(
-        page_seen(DisplayPage::Attitude),
+        page_seen(Page::Attitude),
         "triple click did not reach the motion-enabled page"
     );
 
     triple_click().await;
 
     attempts = 0;
-    while !page_seen(DisplayPage::Audio) && attempts < 100 {
+    while !page_seen(Page::Audio) && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
         attempts += 1;
     }
     assert!(
-        page_seen(DisplayPage::Audio),
+        page_seen(Page::Audio),
         "the capture-enabled page was never reached"
     );
     assert!(
@@ -125,12 +125,12 @@ pub(super) async fn scenario() {
     triple_click().await;
 
     attempts = 0;
-    while !page_seen(DisplayPage::Speaker) && attempts < 100 {
+    while !page_seen(Page::Speaker) && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
         attempts += 1;
     }
     assert!(
-        page_seen(DisplayPage::Speaker),
+        page_seen(Page::Speaker),
         "the speaker-enabled page was never reached"
     );
 
@@ -225,12 +225,12 @@ pub(super) async fn scenario() {
     triple_click().await;
 
     attempts = 0;
-    while !page_seen(DisplayPage::Camera) && attempts < 100 {
+    while !page_seen(Page::Camera) && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
         attempts += 1;
     }
     assert!(
-        page_seen(DisplayPage::Camera),
+        page_seen(Page::Camera),
         "the camera-enabled page was never reached"
     );
 
@@ -251,7 +251,7 @@ pub(super) async fn scenario() {
     attempts = 0;
     while !PAGES.lock().unwrap()[pages_before..]
         .iter()
-        .any(|page| *page != DisplayPage::Camera)
+        .any(|page| *page != Page::Camera)
         && attempts < 100
     {
         Timer::after(Duration::from_millis(10)).await;
@@ -260,7 +260,7 @@ pub(super) async fn scenario() {
     assert!(
         PAGES.lock().unwrap()[pages_before..]
             .iter()
-            .any(|page| *page != DisplayPage::Camera),
+            .any(|page| *page != Page::Camera),
         "the page cycle did not come back round from the camera page"
     );
 
@@ -282,7 +282,7 @@ pub(super) async fn scenario() {
     );
 
     assert!(
-        page_seen(DisplayPage::Network),
+        page_seen(Page::Network),
         "the link's page was never reached by the cycle"
     );
 
@@ -310,7 +310,7 @@ pub(super) async fn scenario() {
         let _ = iot_app::runtime::feature::input::INTENT_BUS.try_send(Intent::Action(intent));
     };
 
-    send(ActionIntent::NetworkPage(NetworkPageIntent::Choose(
+    send(ActionIntent::NetworkDraft(NetworkPageIntent::Choose(
         list.get(0).expect("a row to pick"),
     )));
     Timer::after(Duration::from_millis(100)).await;
@@ -323,7 +323,7 @@ pub(super) async fn scenario() {
         Key::Shift,
         Key::Char(b'8'),
     ] {
-        send(ActionIntent::NetworkPage(NetworkPageIntent::Key {
+        send(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
             key,
             at_ms,
         }));
@@ -340,7 +340,7 @@ pub(super) async fn scenario() {
         "the keyboard's draft never reached the panel's snapshot"
     );
 
-    send(ActionIntent::NetworkPage(NetworkPageIntent::Key {
+    send(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
         key: Key::Connect,
         at_ms,
     }));
@@ -370,7 +370,7 @@ pub(super) async fn scenario() {
         "the credential did not carry what was typed"
     );
 
-    send(ActionIntent::NetworkPage(NetworkPageIntent::Key {
+    send(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
         key: Key::Cancel,
         at_ms,
     }));
@@ -395,7 +395,7 @@ pub(super) async fn scenario() {
         "a marked list published through the link never reached the panel's snapshot"
     );
 
-    send(ActionIntent::NetworkPage(NetworkPageIntent::ScanNow));
+    send(ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow));
     attempts = 0;
     let mut scanned = false;
     while !scanned && attempts < 100 {
@@ -412,11 +412,11 @@ pub(super) async fn scenario() {
         "the strip's request to look around never reached the network worker"
     );
 
-    send(ActionIntent::NetworkPage(NetworkPageIntent::AskForget(
+    send(ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(
         list.get(0).expect("a row to ask about"),
     )));
     Timer::after(Duration::from_millis(100)).await;
-    send(ActionIntent::NetworkPage(NetworkPageIntent::Answer(
+    send(ActionIntent::NetworkDraft(NetworkPageIntent::Answer(
         Confirm::Forget(list.get(0).expect("the row the question named")),
     )));
     attempts = 0;

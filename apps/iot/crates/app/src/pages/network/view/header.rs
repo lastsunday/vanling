@@ -1,6 +1,6 @@
 //! The header's three rows: the page's title and window, the link, and the draft or address.
 
-use crate::features::network::model::NetworkPage;
+use crate::pages::network::model::NetworkDraft;
 use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus, SSID_BYTES};
 use iot_core::overlay::{
     Block, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, block_value_x, block_x, level_value_end,
@@ -8,7 +8,7 @@ use iot_core::overlay::{
 };
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 
-use crate::features::network::view::text::{
+use crate::pages::network::view::text::{
     format_address, format_bars, format_network_name, format_phase, format_psk, format_setup_name,
     format_window,
 };
@@ -67,7 +67,7 @@ const _: () = assert!(
 impl Surface<'_> {
     pub(super) fn stamp_header(
         &mut self,
-        draft: NetworkPage,
+        draft: NetworkDraft,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
@@ -167,7 +167,7 @@ impl Surface<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::network::model::Entry;
+    use crate::pages::network::model::Entry;
     use crate::shared::diagnostics::Diagnostics;
     use alloc::vec;
     use alloc::vec::Vec;
@@ -182,7 +182,7 @@ mod tests {
         }
     }
 
-    fn header(draft: NetworkPage, link: LinkStatus, shown_ap: Option<AccessPoint>) -> Vec<u8> {
+    fn header(draft: NetworkDraft, link: LinkStatus, shown_ap: Option<AccessPoint>) -> Vec<u8> {
         let mut frame = vec![0u8; PANEL_COLUMNS * PANEL_ROWS * 2];
         let diagnostics = Diagnostics::default();
         {
@@ -206,12 +206,12 @@ mod tests {
             .collect()
     }
 
-    fn typing(selected: AccessPoint) -> NetworkPage {
-        NetworkPage {
+    fn typing(selected: AccessPoint) -> NetworkDraft {
+        NetworkDraft {
             keyboard: true,
             entry: Some(Entry::default()),
             selected: Some(selected),
-            ..NetworkPage::default()
+            ..NetworkDraft::default()
         }
     }
 

@@ -3,7 +3,7 @@
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::ROW_PITCH;
 
-use crate::features::network::layout::{
+use crate::pages::network::layout::{
     DIALOG_BODY_TOP, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP, DIALOG_TOP, DIALOG_W, DIALOG_X,
     DialogChoice, dialog_answer_box,
 };

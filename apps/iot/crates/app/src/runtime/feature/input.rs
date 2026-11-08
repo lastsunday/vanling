@@ -3,7 +3,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use crate::shared::intent::{ActionIntent, Intent, PageIntent, recognize};
-use crate::state::DisplayPage;
+use crate::state::Page;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Instant, Ticker};
@@ -23,7 +23,7 @@ const HOLD_REPORT_MS: u64 = 5_000;
 
 /// How long the boot transient stays up, read from its route so the timer and the page cannot
 /// disagree. A splash that stops being transient fails the build here rather than hanging.
-const SPLASH_TIMEOUT_MS: u64 = DisplayPage::Splash
+const SPLASH_TIMEOUT_MS: u64 = Page::Splash
     .timeout_ms()
     .expect("the splash route is a transient with a lifetime");
 

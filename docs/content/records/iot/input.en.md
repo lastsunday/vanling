@@ -26,7 +26,7 @@ To reproduce: from `apps/iot/`, flash the default firmware and read `[INPUT] pag
 The verdict over one run of 46 transitions:
 
 - **0** consecutive repeated pages
-- **0** transitions deviating from `DisplayPage::CYCLE`
+- **0** transitions deviating from `Page::CYCLE`
 - all five pages appeared
 - one physical tap = one transition, which is what the zero repeated pages proves
 

@@ -1,6 +1,6 @@
 //! The Network page's bands: which parts of the panel are showing, and in what layering.
 
-use crate::features::network::model::NetworkPage;
+use crate::pages::network::model::NetworkDraft;
 use iot_core::drivers::network::{LinkPhase, LinkStatus};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -14,7 +14,7 @@ pub enum Band {
 impl Band {
     pub const IN_ORDER: [Band; 4] = [Band::Header, Band::Content, Band::Controls, Band::Overlay];
 
-    pub fn hidden(self, draft: NetworkPage, link: LinkStatus) -> bool {
+    pub fn hidden(self, draft: NetworkDraft, link: LinkStatus) -> bool {
         let question = draft.confirm.is_some();
         let boxed = question || link.shows_setup_box() || draft.setup_box_pending();
         let joining = joining(draft, link);
@@ -26,16 +26,16 @@ impl Band {
         }
     }
 
-    pub fn showing(self, draft: NetworkPage, link: LinkStatus) -> bool {
+    pub fn showing(self, draft: NetworkDraft, link: LinkStatus) -> bool {
         !self.hidden(draft, link)
     }
 }
 
-pub fn joining(draft: NetworkPage, link: LinkStatus) -> bool {
+pub fn joining(draft: NetworkDraft, link: LinkStatus) -> bool {
     !draft.keyboard && (link.phase == LinkPhase::Connecting || draft.join_wait)
 }
 
-pub fn each_band<F: FnMut(Band)>(draft: NetworkPage, link: LinkStatus, mut draw: F) {
+pub fn each_band<F: FnMut(Band)>(draft: NetworkDraft, link: LinkStatus, mut draw: F) {
     for band in Band::IN_ORDER {
         if band.showing(draft, link) {
             draw(band);
@@ -46,8 +46,8 @@ pub fn each_band<F: FnMut(Band)>(draft: NetworkPage, link: LinkStatus, mut draw:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::features::network::layout;
-    use crate::features::network::model::{Entry, SetupWait};
+    use crate::pages::network::layout;
+    use crate::pages::network::model::{Entry, SetupWait};
     use crate::shared::intent::Confirm;
     use alloc::vec;
     use alloc::vec::Vec;
@@ -55,10 +55,10 @@ mod tests {
         AccessPoint, LinkPhase, LinkStatus, NetworkMode, SetupHost, SetupPass,
     };
 
-    fn asking() -> NetworkPage {
-        NetworkPage {
+    fn asking() -> NetworkDraft {
+        NetworkDraft {
             confirm: Some(Confirm::Forget(AccessPoint::default())),
-            ..NetworkPage::default()
+            ..NetworkDraft::default()
         }
     }
 
@@ -69,11 +69,11 @@ mod tests {
         }
     }
 
-    fn typing() -> NetworkPage {
-        NetworkPage {
+    fn typing() -> NetworkDraft {
+        NetworkDraft {
             keyboard: true,
             entry: Some(Entry::default()),
-            ..NetworkPage::default()
+            ..NetworkDraft::default()
         }
     }
 
@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn a_page_that_is_only_showing_the_page_has_no_box_over_it() {
-        let (draft, link) = (NetworkPage::default(), LinkStatus::default());
+        let (draft, link) = (NetworkDraft::default(), LinkStatus::default());
         assert!(Band::Header.showing(draft, link));
         assert!(
             Band::Content.showing(draft, link),
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn a_join_in_flight_is_a_box_over_the_list_with_the_strip_still_offered() {
-        let draft = NetworkPage::default();
+        let draft = NetworkDraft::default();
         let link = attempting();
         assert!(
             Band::Content.hidden(draft, link),
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn the_setup_box_covers_the_list_and_leaves_the_strip_offered() {
-        let draft = NetworkPage::default();
+        let draft = NetworkDraft::default();
         let link = LinkStatus {
             mode: NetworkMode::Setup {
                 host: SetupHost::AccessPoint,
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn a_phone_less_front_has_no_box_over_the_list() {
-        let draft = NetworkPage::default();
+        let draft = NetworkDraft::default();
         let link = LinkStatus {
             mode: NetworkMode::Setup {
                 host: SetupHost::Panel,
@@ -230,7 +230,7 @@ mod tests {
         );
     }
 
-    fn bands(draft: NetworkPage, link: LinkStatus) -> Vec<Band> {
+    fn bands(draft: NetworkDraft, link: LinkStatus) -> Vec<Band> {
         let mut asked = Vec::new();
         each_band(draft, link, |band| asked.push(band));
         asked
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn the_bands_hand_out_the_page_and_leave_the_box_out_while_there_is_nothing_to_say() {
         assert_eq!(
-            bands(NetworkPage::default(), LinkStatus::default()),
+            bands(NetworkDraft::default(), LinkStatus::default()),
             vec![Band::Header, Band::Content, Band::Controls]
         );
     }
@@ -263,16 +263,16 @@ mod tests {
     #[test]
     fn the_bands_put_the_join_box_over_the_list_and_leave_the_strip_under_it() {
         assert_eq!(
-            bands(NetworkPage::default(), attempting()),
+            bands(NetworkDraft::default(), attempting()),
             vec![Band::Header, Band::Controls, Band::Overlay]
         );
     }
 
     #[test]
     fn a_join_the_page_handed_over_is_a_box_before_the_radio_reports() {
-        let draft = NetworkPage {
+        let draft = NetworkDraft {
             join_wait: true,
-            ..NetworkPage::default()
+            ..NetworkDraft::default()
         };
         assert_eq!(
             bands(draft, LinkStatus::default()),
@@ -283,9 +283,9 @@ mod tests {
 
     #[test]
     fn an_access_point_the_page_is_waiting_for_puts_its_box_up_first() {
-        let waiting = NetworkPage {
+        let waiting = NetworkDraft {
             setup_wait: Some(SetupWait::Host(SetupHost::AccessPoint)),
-            ..NetworkPage::default()
+            ..NetworkDraft::default()
         };
         assert_eq!(
             bands(waiting, LinkStatus::default()),
@@ -296,9 +296,9 @@ mod tests {
 
     #[test]
     fn a_passphrase_change_alone_keeps_the_box_it_was_answered_in() {
-        let draft = NetworkPage {
+        let draft = NetworkDraft {
             setup_wait: Some(SetupWait::Open(true)),
-            ..NetworkPage::default()
+            ..NetworkDraft::default()
         };
         let link = LinkStatus {
             mode: NetworkMode::Setup {

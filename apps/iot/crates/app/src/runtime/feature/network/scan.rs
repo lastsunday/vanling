@@ -2,7 +2,7 @@
 
 use core::future::pending;
 
-use crate::state::{DisplayPage, NetworkCommand};
+use crate::state::{NetworkCommand, Page};
 use embassy_futures::select::{Either3, select3};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::network::{
@@ -67,9 +67,9 @@ where
     };
     match select3(clock, NETWORK.commands.receive(), async {
         if mode.is_setup() {
-            NETWORK.page.wait_for_return(DisplayPage::Network).await;
+            NETWORK.page.wait_for_return(Page::Network).await;
         } else {
-            NETWORK.page.wait_until_away(DisplayPage::Network).await;
+            NETWORK.page.wait_until_away(Page::Network).await;
         }
     })
     .await

@@ -1,12 +1,12 @@
 //! The key grid: each key's face, the characters it cycles, and the two latched controls.
 
-use crate::features::network::layout;
-use crate::features::network::model::Entry;
+use crate::pages::network::layout;
+use crate::pages::network::model::Entry;
 use crate::shared::keyboard::{Key, MAX_CANDIDATES};
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH};
 
-use crate::features::network::view::text::{HIDE_LABEL, key_label};
+use crate::pages::network::view::text::{HIDE_LABEL, key_label};
 use crate::shared::view_kit::surface::Surface;
 use crate::shared::view_kit::widgets::label::text_left;
 

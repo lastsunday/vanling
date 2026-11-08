@@ -11,10 +11,10 @@ pub use self::bands::{Band, each_band, joining};
 pub use self::verbs::{Answers, Control, ControlKind, Strip, answers, confirm_verb, strip};
 
 use self::verbs as page_controls;
-use crate::features::network::layout;
+use crate::pages::network::layout;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{ActionIntent, InputIntent, NetworkPageIntent};
-use crate::shared::route::DisplayPage;
+use crate::shared::route::Page;
 use crate::state::DeviceState;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::AccessPoint;
@@ -22,10 +22,10 @@ use iot_core::drivers::network::AccessPoint;
 /// The setup-mode hold is a link decision, not a page one: switching the host is offered from
 /// anywhere but the splash, so it is answered before the page sees the gesture.
 pub(crate) fn shortcut(op: &InputIntent, current: &DeviceState) -> Option<ActionIntent> {
-    (current.page() != DisplayPage::Splash
+    (current.page() != Page::Splash
         && current.network.link.mode.is_setup()
         && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)))
-    .then_some(ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost))
+    .then_some(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost))
 }
 
 pub(crate) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
@@ -36,17 +36,17 @@ pub(crate) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent
             if !current.network_page.keyboard =>
         {
             if current.network_page.confirm.is_some() {
-                return ActionIntent::NetworkPage(NetworkPageIntent::Dismiss);
+                return ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss);
             }
             if !Band::Content.showing(current.network_page, current.network.link) {
                 return ActionIntent::Invalid;
             }
             match direction {
                 SwipeDirection::Up => {
-                    ActionIntent::NetworkPage(NetworkPageIntent::Scroll { rows: 1 })
+                    ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { rows: 1 })
                 }
                 SwipeDirection::Down => {
-                    ActionIntent::NetworkPage(NetworkPageIntent::Scroll { rows: -1 })
+                    ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { rows: -1 })
                 }
                 _ => ActionIntent::Invalid,
             }
@@ -65,7 +65,7 @@ fn tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> ActionIntent {
             return ActionIntent::Invalid;
         };
         return layout::key_at(entry.layer(), x, y).map_or(ActionIntent::Invalid, |key| {
-            ActionIntent::NetworkPage(NetworkPageIntent::Key { key, at_ms })
+            ActionIntent::NetworkDraft(NetworkPageIntent::Key { key, at_ms })
         });
     }
     if let Some(answer) = answer_at(current, x, y) {
@@ -79,7 +79,7 @@ fn tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> ActionIntent {
     }
     match layout::list_band_at(y) {
         Some(band) => ap_at(current, band).map_or(ActionIntent::Invalid, |ap| {
-            ActionIntent::NetworkPage(NetworkPageIntent::Choose(ap))
+            ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap))
         }),
         None => ActionIntent::Invalid,
     }
@@ -97,7 +97,7 @@ fn hold(current: &DeviceState, x: u16, y: u16) -> ActionIntent {
     }
     match layout::list_band_at(y) {
         Some(band) => ap_at(current, band).map_or(ActionIntent::Invalid, |ap| {
-            ActionIntent::NetworkPage(NetworkPageIntent::AskForget(ap))
+            ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(ap))
         }),
         None => ActionIntent::Invalid,
     }
@@ -115,10 +115,10 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<ActionIntent> {
     let confirm: Confirm = current.network_page.confirm?;
     Some(match layout::dialog_choice_at(x, y) {
         Some(layout::DialogChoice::Act) => {
-            ActionIntent::NetworkPage(NetworkPageIntent::Answer(confirm))
+            ActionIntent::NetworkDraft(NetworkPageIntent::Answer(confirm))
         }
         Some(layout::DialogChoice::Keep) | None => {
-            ActionIntent::NetworkPage(NetworkPageIntent::Dismiss)
+            ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss)
         }
     })
 }

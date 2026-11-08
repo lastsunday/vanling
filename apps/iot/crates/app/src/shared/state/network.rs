@@ -1,5 +1,5 @@
 //! The link: the phase the radio reports, the scan list it published, and the one-shot news
-//! it owes. What the page is in the middle of drafting is [`NetworkPage`](super::NetworkPage)'s,
+//! it owes. What the page is in the middle of drafting is [`NetworkDraft`](super::NetworkDraft)'s,
 //! not this record's; this one is written by the worker's reports and read by everyone else.
 
 use crate::shared::intent::LinkIntent;
@@ -43,7 +43,7 @@ impl NetworkState {
 
     /// Fold one status report in and say what it is worth hearing: the first of two rings
     /// wins, because a ring over a sounding one is a drop. The page reacts to the same report
-    /// through [`NetworkPage::on_link`](super::NetworkPage::on_link); nothing here writes it.
+    /// through [`NetworkDraft::on_link`](super::NetworkDraft::on_link); nothing here writes it.
     fn report(&mut self, status: LinkStatus) -> Effects {
         let sound = if status.mode.is_setup() && !self.link.mode.is_setup() {
             Some(Sound::Rise)

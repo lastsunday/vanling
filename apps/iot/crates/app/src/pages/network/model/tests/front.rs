@@ -62,7 +62,7 @@ fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
+        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)),
         Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::Panel
         })),
@@ -73,7 +73,7 @@ fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
     let business = translate(&operation, &manager.state());
     assert_ne!(
         business,
-        ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost),
+        ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost),
         "a hold outside setup mode does not switch the host"
     );
 }
@@ -90,7 +90,7 @@ fn a_board_with_no_display_has_no_front_to_switch_to() {
     });
     setup_mode(&mut manager, false);
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
+        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)),
         None,
         "a lamp-only board has nowhere to switch to"
     );
@@ -104,7 +104,7 @@ fn a_front_switch_that_outlives_setup_mode_is_dropped() {
         LinkStatus::default(),
     )));
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
+        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)),
         None,
         "a switch cannot ask for another host once the mode is gone"
     );
@@ -197,7 +197,7 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkPage(
+        manager.apply_action(ActionIntent::NetworkDraft(
             NetworkPageIntent::SetOpenAccessPoint(true)
         )),
         None,

@@ -80,7 +80,7 @@ impl Surface<'_> {
 mod tests {
     use super::*;
     use crate::shared::diagnostics::Diagnostics;
-    use crate::state::DisplayPage;
+    use crate::state::Page;
     use alloc::vec;
     use iot_core::drivers::camera::CameraCounters;
 
@@ -96,7 +96,7 @@ mod tests {
             *byte = (index % 251) as u8;
         }
         let diagnostics = Diagnostics {
-            page: DisplayPage::Camera,
+            page: Page::Camera,
             ..Diagnostics::default()
         };
         let before = frame.clone();
@@ -128,7 +128,7 @@ mod tests {
     fn a_camera_that_cannot_start_says_so_and_offers_the_retry() {
         let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
         let diagnostics = Diagnostics {
-            page: DisplayPage::Camera,
+            page: Page::Camera,
             ..Diagnostics::default()
         };
         let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, None);

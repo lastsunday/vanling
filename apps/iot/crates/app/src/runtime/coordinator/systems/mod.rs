@@ -135,11 +135,11 @@ mod tests {
     }
 
     fn scan() -> Intent {
-        Intent::Action(ActionIntent::NetworkPage(NetworkPageIntent::ScanNow))
+        Intent::Action(ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow))
     }
 
     fn leave() -> Intent {
-        Intent::Action(ActionIntent::NetworkPage(NetworkPageIntent::Leave))
+        Intent::Action(ActionIntent::NetworkDraft(NetworkPageIntent::Leave))
     }
 
     #[test]

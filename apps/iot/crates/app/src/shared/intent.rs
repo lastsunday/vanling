@@ -40,7 +40,7 @@ pub enum ActionIntent {
     /// What the radio reports. Written by the worker, never by a finger.
     Link(LinkIntent),
     /// What a finger asks of the Network page.
-    NetworkPage(NetworkPageIntent),
+    NetworkDraft(NetworkPageIntent),
     Audio(AudioIntent),
     Playback(PlaybackAction),
     Light(LightIntent),
@@ -128,7 +128,7 @@ mod tests {
     use super::*;
     use crate::shared::route::test_support::{long_press, op, state_on};
     use crate::state::translate::translate;
-    use crate::state::{DeviceState, DisplayPage, LightState, NetworkState};
+    use crate::state::{DeviceState, LightState, NetworkState, Page};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, SwipeDirection};
 
     mod recognize {
@@ -175,11 +175,11 @@ mod tests {
                 },
                 ..NetworkState::default()
             },
-            ..state_on(DisplayPage::Ambient, LightState::Off)
+            ..state_on(Page::Ambient, LightState::Off)
         };
         assert_eq!(
             translate(&op(long_press()), &setup),
-            ActionIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+            ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
         );
     }
 }

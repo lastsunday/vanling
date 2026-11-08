@@ -3,7 +3,7 @@
 
 use alloc::boxed::Box;
 
-use crate::state::{DisplayPage, NetworkCommand};
+use crate::state::{NetworkCommand, Page};
 use embassy_futures::select::{Either, select};
 use embassy_net::Stack;
 use embassy_net::driver::Driver;
@@ -197,7 +197,7 @@ where
     discard_setup(NETWORK.commands);
     let mut history = Box::new(ScanHistory::new());
     loop {
-        NETWORK.page.wait_for(DisplayPage::Network).await;
+        NETWORK.page.wait_for(Page::Network).await;
         match pick(station, &mut history, saved, NetworkMode::Browsing).await {
             Choice::Network(credentials, origin) => return Some((credentials, origin)),
             Choice::SwitchHost => {

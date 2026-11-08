@@ -4,7 +4,7 @@
 //! None of this is state. It is what the render layer decides when it is handed a page, so it
 //! sits with the renderer rather than in the page table the model owns.
 
-use crate::shared::route::DisplayPage;
+use crate::shared::route::Page;
 use iot_core::paint::Rgb;
 
 /// The least wall time between diagnostics-driven repaints. A repaint ships the whole 320×240
@@ -16,20 +16,16 @@ pub const DIAG_REPAINT_STEP_MS: u64 = 40;
 
 /// The fill this page covers the panel with before drawing, or `None` when it draws over what
 /// the light was already showing.
-pub fn ground(page: DisplayPage) -> Option<Rgb> {
+pub fn ground(page: Page) -> Option<Rgb> {
     match page {
-        DisplayPage::Camera | DisplayPage::Network => Some(Rgb(0, 0, 0)),
-        DisplayPage::Ambient
-        | DisplayPage::Attitude
-        | DisplayPage::Audio
-        | DisplayPage::Speaker
-        | DisplayPage::Splash => None,
+        Page::Camera | Page::Network => Some(Rgb(0, 0, 0)),
+        Page::Ambient | Page::Attitude | Page::Audio | Page::Speaker | Page::Splash => None,
     }
 }
 
 /// Whether this page's frames arrive from the camera instead of being drawn.
-pub fn draws_frames(page: DisplayPage) -> bool {
-    matches!(page, DisplayPage::Camera)
+pub fn draws_frames(page: Page) -> bool {
+    matches!(page, Page::Camera)
 }
 
 /// The least wall time this page waits between diagnostics-driven repaints. The Audio page
@@ -37,15 +33,15 @@ pub fn draws_frames(page: DisplayPage) -> bool {
 /// already redraws a 200-column sweep every ~45 ms and this page alone held the executor 40%
 /// of the wall time on the S3. At twice the step a frame advances the sweep eight columns
 /// instead of four — still a sweep, at half the cost.
-pub fn repaint_step_ms(page: DisplayPage) -> u64 {
+pub fn repaint_step_ms(page: Page) -> u64 {
     match page {
-        DisplayPage::Audio => DIAG_REPAINT_STEP_MS * 2,
-        DisplayPage::Ambient
-        | DisplayPage::Attitude
-        | DisplayPage::Speaker
-        | DisplayPage::Camera
-        | DisplayPage::Network
-        | DisplayPage::Splash => DIAG_REPAINT_STEP_MS,
+        Page::Audio => DIAG_REPAINT_STEP_MS * 2,
+        Page::Ambient
+        | Page::Attitude
+        | Page::Speaker
+        | Page::Camera
+        | Page::Network
+        | Page::Splash => DIAG_REPAINT_STEP_MS,
     }
 }
 
@@ -55,25 +51,21 @@ mod tests {
 
     #[test]
     fn every_page_answers_every_policy_question() {
-        for page in DisplayPage::ALL {
+        for page in Page::ALL {
             let ground = ground(page);
             assert_eq!(
                 ground,
-                matches!(page, DisplayPage::Camera | DisplayPage::Network).then_some(Rgb(0, 0, 0)),
+                matches!(page, Page::Camera | Page::Network).then_some(Rgb(0, 0, 0)),
                 "{page:?} grounds"
             );
-            assert_eq!(
-                draws_frames(page),
-                page == DisplayPage::Camera,
-                "{page:?} frames"
-            );
+            assert_eq!(draws_frames(page), page == Page::Camera, "{page:?} frames");
             assert!(
                 repaint_step_ms(page) >= DIAG_REPAINT_STEP_MS,
                 "{page:?} cannot repaint faster than the floor"
             );
             assert_eq!(
                 repaint_step_ms(page) > DIAG_REPAINT_STEP_MS,
-                page == DisplayPage::Audio,
+                page == Page::Audio,
                 "{page:?} step"
             );
         }

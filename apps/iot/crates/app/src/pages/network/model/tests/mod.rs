@@ -1,10 +1,10 @@
 use super::*;
-use crate::features::network::layout;
-use crate::features::network::layout::LIST_ROWS;
+use crate::pages::network::layout;
+use crate::pages::network::layout::LIST_ROWS;
 use crate::shared::intent::*;
 use crate::shared::keyboard::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
 use crate::state::test_support::*;
-use crate::state::{Boot, DeviceManager, DisplayPage};
+use crate::state::{Boot, DeviceManager, Page};
 use iot_core::drivers::input::FINGER_LONG_PRESS;
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, Credentials, PASSWORD_BYTES, SetupHost};
@@ -47,12 +47,12 @@ fn booted(boot: Boot) -> DeviceManager {
     let mut manager = landed(DeviceManager::boot(boot));
     manager.apply_scan(ApList::from_ranked(&[ap(b"neighbour"), ap(b"cafe")]));
     for _ in 0..CYCLE.len() {
-        if manager.state().page() == DisplayPage::Network {
+        if manager.state().page() == Page::Network {
             break;
         }
         manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
     }
-    assert_eq!(manager.state().page(), DisplayPage::Network);
+    assert_eq!(manager.state().page(), Page::Network);
     manager
 }
 
@@ -89,7 +89,7 @@ fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
 }
 
 fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) -> Option<Command> {
-    manager.apply_action(ActionIntent::NetworkPage(NetworkPageIntent::Key {
+    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
         key,
         at_ms,
     }))

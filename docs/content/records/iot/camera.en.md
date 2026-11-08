@@ -228,7 +228,7 @@ A PSRAM ring is therefore always left in the configuration Espressif declines to
 
 `[test]` The fix is `FrameOwner` (`iot-core::drivers::camera`): `NeedsPaint` / `Painted { fill, color }` / `Camera`, one variant per legal state, so the fourth combination is unrepresentable. Five unit tests cover the transitions, of which `a_released_camera_lets_the_next_fill_through` walks exactly the sequence that could not be left; `host-smoke`'s `HostLight` uses the same type and asserts that a fill must reach the surface after leaving the Camera page.
 
-`[test]` Alongside it, "who owns it" went back to being recorded once: `LightRenderer` carried both `camera_page: bool` and `page: Option<DisplayPage>` for the same fact, so the former is gone and `step()` computes it. The panel's `owner` field is **not** gated on the camera feature — the colour half is also how a panel with no camera decides whether a fill is worth shipping, and gating it leaves half of that decision outside the value that holds it.
+`[test]` Alongside it, "who owns it" went back to being recorded once: `LightRenderer` carried both `camera_page: bool` and `page: Option<Page>` for the same fact, so the former is gone and `step()` computes it. The panel's `owner` field is **not** gated on the camera feature — the colour half is also how a panel with no camera decides whether a fill is worth shipping, and gating it leaves half of that decision outside the value that holds it.
 
 ---
 

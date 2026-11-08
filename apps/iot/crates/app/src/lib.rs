@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use crate::state::{Backed, Boot, DeviceManager, DisplayPage};
+use crate::state::{Backed, Boot, DeviceManager, Page};
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
 use iot_core::config::Configurator;
@@ -18,7 +18,7 @@ use iot_core::drivers::surface::WiredSurface;
 
 mod assets;
 pub mod bench;
-pub mod features;
+pub mod pages;
 pub mod render;
 pub mod runtime;
 pub mod shared;
@@ -211,7 +211,7 @@ where
         overrides: boot_override(),
     }));
     let boot = manager.boot_page();
-    if boot != DisplayPage::Ambient {
+    if boot != Page::Ambient {
         log::info!("[IOT] boot page is {boot:?}");
     }
 

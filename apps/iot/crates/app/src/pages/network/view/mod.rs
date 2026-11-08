@@ -7,12 +7,12 @@ mod keyboard;
 mod list;
 mod text;
 
-use crate::features::network::controller::{self as page_controls, Band, each_band};
-use crate::features::network::layout;
-use crate::features::network::model::NetworkPage;
+use crate::pages::network::controller::{self as page_controls, Band, each_band};
+use crate::pages::network::layout;
+use crate::pages::network::model::NetworkDraft;
 use iot_core::drivers::network::{ApList, LinkStatus};
 
-use crate::features::network::view::text::control_label;
+use crate::pages::network::view::text::control_label;
 use crate::shared::view_kit::surface::Surface;
 
 impl Surface<'_> {
@@ -43,7 +43,7 @@ impl Surface<'_> {
         });
     }
 
-    fn stamp_content(&mut self, draft: NetworkPage, link: LinkStatus, aps: Option<ApList>) {
+    fn stamp_content(&mut self, draft: NetworkDraft, link: LinkStatus, aps: Option<ApList>) {
         if draft.keyboard {
             if let Some(entry) = draft.entry {
                 self.stamp_keyboard(entry, draft.revealed);
@@ -53,7 +53,7 @@ impl Surface<'_> {
         self.stamp_list(draft, link, aps);
     }
 
-    fn stamp_strip(&mut self, draft: NetworkPage, link: LinkStatus) {
+    fn stamp_strip(&mut self, draft: NetworkDraft, link: LinkStatus) {
         let strip = page_controls::strip(draft, link);
         if strip.is_split() {
             self.stamp_cell(

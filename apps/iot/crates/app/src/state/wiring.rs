@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use crate::shared::route::DisplayPage;
+use crate::shared::route::Page;
 use iot_core::demand::{DemandKey, Override};
 use iot_core::drivers::board::Backed;
 use iot_core::drivers::surface::{MAX_LIGHTS, SurfaceRole};
@@ -22,8 +22,8 @@ pub struct Boot {
     pub demand_keys: Vec<DemandKey>,
     pub surface_roles: [SurfaceRole; MAX_LIGHTS],
     /// The page to land on after the splash; a page the board cannot back falls back to
-    /// [`DisplayPage::Ambient`].
-    pub boot_page: DisplayPage,
+    /// [`Page::Ambient`].
+    pub boot_page: Page,
     /// What the build pins beyond the page's claim.
     pub overrides: Override,
 }

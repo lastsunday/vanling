@@ -377,7 +377,7 @@ Validation error for crate esp-hal, option data-cache-size: Expected one of ["32
 
 `[未分离]` 那 4,336 B 具体压坏了哪一块没有分开：可能是主栈越界、直接写进 blob 的 `.bss`；也可能只是帧变大改变了 internal heap 的布局，让电台任务的栈落到了 blob 的静态量上。两种都能解释这组读数，也都不影响修法。
 
-`[实测]` 修法：启动页在**编译期**落成常量——`const BOOT_PAGE: DisplayPage = boot_page_from_env(option_env!("IOT_BOOT_PAGE"))`，`const fn` 做去空白与大小写比较；非法名字另存 `const UNKNOWN_BOOT_PAGE: Option<&str>`，由 `boot_page()` 打那行 `[IOT] IOT_BOOT_PAGE=… is not a page`（名字合法时它是 `None`，`if let` 整块被折掉）。修后 `IOT_BOOT_PAGE=attitude` 与产品构建逐项同值（`main stack 65,976 B`、峰值 `42,392 B`、连接处 23,409 B），并正常关联、拿到 `192.168.1.136`。桌面测试 `only_a_name_no_page_answers_to_is_reported` 钉住「非法名才报警、合法名在各种拼写下都不报」。
+`[实测]` 修法：启动页在**编译期**落成常量——`const BOOT_PAGE: Page = boot_page_from_env(option_env!("IOT_BOOT_PAGE"))`，`const fn` 做去空白与大小写比较；非法名字另存 `const UNKNOWN_BOOT_PAGE: Option<&str>`，由 `boot_page()` 打那行 `[IOT] IOT_BOOT_PAGE=… is not a page`（名字合法时它是 `None`，`if let` 整块被折掉）。修后 `IOT_BOOT_PAGE=attitude` 与产品构建逐项同值（`main stack 65,976 B`、峰值 `42,392 B`、连接处 23,409 B），并正常关联、拿到 `192.168.1.136`。桌面测试 `only_a_name_no_page_answers_to_is_reported` 钉住「非法名才报警、合法名在各种拼写下都不报」。
 
 **约束**：启动页留在编译期。bench 镜像与产品镜像共用同一张栈预算，这就是它的前提——上表六页的 `main stack` 能一字不差，靠的是启动页不参与运行期布局。
 

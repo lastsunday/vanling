@@ -1,7 +1,7 @@
 //! The route table is written by hand, and this test holds the parts the compiler cannot.
 //!
 //! `route()` is an exhaustive match, so a variant without a row does not compile, and the
-//! page dispatch in `app/src/features/mod.rs` is exhaustive too. What is *not* compiler-checked is that
+//! page dispatch in `app/src/pages/mod.rs` is exhaustive too. What is *not* compiler-checked is that
 //! `ALL` lists every variant, that the cycle stays a prefix of it, that a page is either
 //! bootable or transient, and that a page still has a view module. This test reads the table
 //! as source and checks those edges, so a half-added page fails here rather than on a bench.
@@ -60,7 +60,7 @@ fn items(text: &str, prefix: &str) -> Vec<String> {
 }
 
 fn variants(source: &str) -> Vec<String> {
-    let body = span(source, "pub enum DisplayPage {", "\n}");
+    let body = span(source, "pub enum Page {", "\n}");
     let mut variants = Vec::new();
     for line in body.lines() {
         let line = line.trim();
@@ -189,10 +189,7 @@ fn every_page_has_a_unique_path() {
 fn the_cycle_is_a_prefix_of_all_and_leaves_only_transients_out() {
     let source = source();
     let all = items(span(&source, "pub const ALL:", "];"), "Self::");
-    let cycle = items(
-        span(&source, "pub(crate) const CYCLE:", "];"),
-        "DisplayPage::",
-    );
+    let cycle = items(span(&source, "pub(crate) const CYCLE:", "];"), "Page::");
     assert!(!cycle.is_empty(), "the button would cycle through nothing");
     assert_eq!(
         &all[..cycle.len()],
@@ -230,22 +227,22 @@ fn a_page_that_cannot_be_booted_says_why() {
 
 #[test]
 fn every_page_has_a_view() {
-    let dispatch = read("apps/iot/crates/app/src/features/mod.rs");
-    let feature_root = repo_root().join("apps/iot/crates/app/src/features");
+    let dispatch = read("apps/iot/crates/app/src/pages/mod.rs");
+    let page_root = repo_root().join("apps/iot/crates/app/src/pages");
     for row in rows(&source()) {
         assert!(
-            dispatch.contains(&format!("DisplayPage::{}", row.variant)),
-            "{} has no arm in app/src/features/mod.rs::paint; the match must stay exhaustive",
+            dispatch.contains(&format!("Page::{}", row.variant)),
+            "{} has no arm in app/src/pages/mod.rs::paint; the match must stay exhaustive",
             row.variant
         );
         let candidates = [
-            feature_root.join(format!("{}.rs", row.path)),
-            feature_root.join(&row.path).join("view.rs"),
-            feature_root.join(&row.path).join("view/mod.rs"),
+            page_root.join(format!("{}.rs", row.path)),
+            page_root.join(&row.path).join("view.rs"),
+            page_root.join(&row.path).join("view/mod.rs"),
         ];
         assert!(
             candidates.iter().any(|path| path.exists()),
-            "{} names no feature view next to {}",
+            "{} names no page view next to {}",
             row.variant,
             candidates[0].display()
         );

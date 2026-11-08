@@ -22,7 +22,7 @@ pub use self::manager::DeviceManager;
 
 pub use self::wiring::Boot;
 
-pub use crate::shared::route::{DisplayPage, Navigator};
+pub use crate::shared::route::{Navigator, Page};
 
 pub use crate::shared::state::*;
 

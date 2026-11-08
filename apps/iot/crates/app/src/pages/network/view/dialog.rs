@@ -1,12 +1,12 @@
 //! The overlay band: the confirmation, the setup announcement, and the join box.
 
-use crate::features::network::controller::{self as page_controls, ControlKind, confirm_verb};
-use crate::features::network::layout::DIALOG_GLYPHS;
-use crate::features::network::model::{NetworkPage, SetupWait};
+use crate::pages::network::controller::{self as page_controls, ControlKind, confirm_verb};
+use crate::pages::network::layout::DIALOG_GLYPHS;
+use crate::pages::network::model::{NetworkDraft, SetupWait};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
 
 use super::dialog_box::Dialog;
-use crate::features::network::view::text::{
+use crate::pages::network::view::text::{
     SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
     format_question, format_setup_notice_body, format_setup_pass, joining_body,
 };
@@ -15,7 +15,7 @@ use crate::shared::view_kit::surface::Surface;
 impl Surface<'_> {
     pub(super) fn stamp_box(
         &mut self,
-        draft: NetworkPage,
+        draft: NetworkDraft,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
@@ -41,7 +41,7 @@ impl Surface<'_> {
             .stamp(self);
     }
 
-    fn stamp_notice(&mut self, draft: NetworkPage, link: LinkStatus, mac: Option<[u8; 6]>) {
+    fn stamp_notice(&mut self, draft: NetworkDraft, link: LinkStatus, mac: Option<[u8; 6]>) {
         let answers = page_controls::answers(link);
         let mut name = [0u8; SSID_BYTES];
         let mut pass = [0u8; SSID_BYTES];
@@ -74,7 +74,7 @@ impl Surface<'_> {
             .stamp(self);
     }
 
-    fn stamp_confirm(&mut self, draft: NetworkPage, link: LinkStatus) {
+    fn stamp_confirm(&mut self, draft: NetworkDraft, link: LinkStatus) {
         let Some(confirm) = draft.confirm else {
             return;
         };

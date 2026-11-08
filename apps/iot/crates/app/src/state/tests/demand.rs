@@ -3,10 +3,10 @@ use iot_core::config::{MotionConfig, Unreachable};
 use iot_core::demand::{ALL_KEYS, Claim, DemandKey, DemandKind, Mode, Priority};
 
 fn fully_wired() -> DeviceManager {
-    fully_wired_on(DisplayPage::Ambient)
+    fully_wired_on(Page::Ambient)
 }
 
-fn fully_wired_on(boot_page: DisplayPage) -> DeviceManager {
+fn fully_wired_on(boot_page: Page) -> DeviceManager {
     DeviceManager::boot(Boot {
         backed: Backed {
             motion: Some(MotionCapabilities::EMPTY),
@@ -29,7 +29,7 @@ fn fully_wired_on(boot_page: DisplayPage) -> DeviceManager {
 #[test]
 fn a_pages_class_follows_the_page_that_draws_the_device() {
     assert_eq!(
-        DisplayPage::Attitude
+        Page::Attitude
             .demand(ALL_KEYS)
             .claim(DemandKey::MOTION)
             .priority,
@@ -37,7 +37,7 @@ fn a_pages_class_follows_the_page_that_draws_the_device() {
         "the page that draws the motion sample may wait nothing for it"
     );
     assert_eq!(
-        DisplayPage::Audio
+        Page::Audio
             .demand(ALL_KEYS)
             .claim(DemandKey::AUDIO)
             .priority,
@@ -46,7 +46,7 @@ fn a_pages_class_follows_the_page_that_draws_the_device() {
     );
 
     for page in CYCLE {
-        if matches!(page, DisplayPage::Attitude | DisplayPage::Camera) {
+        if matches!(page, Page::Attitude | Page::Camera) {
             continue;
         }
         assert_eq!(
@@ -85,7 +85,7 @@ fn a_device_the_board_did_not_declare_is_never_claimed() {
 
 #[test]
 fn a_page_claims_every_device_it_is_asked_about_and_nothing_more() {
-    let claimed = DisplayPage::Camera.demand(ALL_KEYS);
+    let claimed = Page::Camera.demand(ALL_KEYS);
 
     assert_eq!(claimed.keys().count(), ALL_KEYS.len());
     assert_eq!(claimed.claim(DemandKey::CAMERA).mode, Mode::Continuous);
@@ -102,7 +102,7 @@ fn a_page_claims_every_device_it_is_asked_about_and_nothing_more() {
 fn only_the_page_that_draws_the_envelope_claims_the_microphone() {
     for page in CYCLE {
         let claimed = page.demand(ALL_KEYS).claim(DemandKey::AUDIO);
-        if page == DisplayPage::Audio {
+        if page == Page::Audio {
             assert_eq!(claimed.mode, Mode::Continuous, "{page:?}");
         } else {
             assert_eq!(
@@ -203,7 +203,7 @@ fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
                 motion: Some(MotionCapabilities::EMPTY),
                 ..Backed::NONE
             },
-            boot_page: DisplayPage::Attitude,
+            boot_page: Page::Attitude,
             ..Default::default()
         }),
     ] {
@@ -216,8 +216,8 @@ fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
 
 #[test]
 fn a_committed_demand_survives_being_read_back() {
-    let mut manager = landed(fully_wired_on(DisplayPage::Camera));
-    assert_eq!(manager.state().page(), DisplayPage::Camera);
+    let mut manager = landed(fully_wired_on(Page::Camera));
+    assert_eq!(manager.state().page(), Page::Camera);
     assert_eq!(
         manager.demand().claim(DemandKey::CAMERA).mode,
         Mode::Continuous

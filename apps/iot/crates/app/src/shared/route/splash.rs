@@ -20,13 +20,13 @@ mod tests {
         DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
     use crate::state::translate::translate;
-    use crate::state::{DisplayPage, LightState};
+    use crate::state::{LightState, Page};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
     use iot_core::drivers::network::LinkStatus;
 
     #[test]
     fn the_splash_page_is_where_the_button_asks_for_setup_mode() {
-        let booting = state_on(DisplayPage::Splash, LightState::Off);
+        let booting = state_on(Page::Splash, LightState::Off);
         assert_eq!(
             translate(&op(long_press()), &booting),
             ActionIntent::Page(PageIntent::RequestSetup)
@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn the_splash_page_answers_nothing_but_the_hold() {
-        let booting = state_on(DisplayPage::Splash, LightState::Off);
+        let booting = state_on(Page::Splash, LightState::Off);
         for event in [
             InputEvent::Button(ButtonEvent::Click),
             InputEvent::Button(ButtonEvent::DoubleClick),
@@ -55,7 +55,7 @@ mod tests {
                 "{event:?} on the splash"
             );
         }
-        let with_link = with_network(state_on(DisplayPage::Splash, LightState::Off), |network| {
+        let with_link = with_network(state_on(Page::Splash, LightState::Off), |network| {
             network.link = LinkStatus {
                 phase: iot_core::drivers::network::LinkPhase::Connected,
                 ..LinkStatus::default()
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
-        let on_air = with_network(state_on(DisplayPage::Ambient, LightState::Off), |network| {
+        let on_air = with_network(state_on(Page::Ambient, LightState::Off), |network| {
             network.link = LinkStatus {
                 phase: iot_core::drivers::network::LinkPhase::Connected,
                 ..LinkStatus::default()

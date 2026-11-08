@@ -1,11 +1,11 @@
 //! The whole of what the device knows: one record per domain, plus the queries that read
 //! across them.
 
-use crate::shared::route::{DisplayPage, Navigator};
+use crate::shared::route::{Navigator, Page};
 use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::network::{LinkPhase, SetupHost};
 
-use crate::features::network::model::NetworkPage;
+use crate::pages::network::model::NetworkDraft;
 use crate::shared::state::{
     AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, PlaybackState,
     SurfaceRole, TouchState,
@@ -17,7 +17,8 @@ use crate::shared::state::{
 pub struct DeviceState {
     /// What the board wired. Every page asks this before it asks anything else.
     pub backed: Backed,
-    /// Where the panel is and what is stacked over it. Read through [`Self::page`].
+    /// Where the device is: the stack of destinations, whether or not a panel draws them.
+    /// Read through [`Self::page`].
     pub nav: Navigator,
     pub lights: [LightState; MAX_LIGHTS],
     /// What each slot's surface is for, fixed by the wiring rather than by the current
@@ -32,13 +33,13 @@ pub struct DeviceState {
     /// What the radio reported. Written only by the link's own reports.
     pub network: NetworkState,
     /// What the Network page is drafting. Reads the link; the link never reads or writes it.
-    pub network_page: NetworkPage,
+    pub network_page: NetworkDraft,
     pub touch: TouchState,
 }
 
 impl DeviceState {
     /// The page on screen: the top of the navigation stack.
-    pub fn page(&self) -> DisplayPage {
+    pub fn page(&self) -> Page {
         self.nav.current()
     }
 
@@ -76,11 +77,11 @@ impl DeviceState {
 
     /// The page that becomes the boot page: a splash has no page to land on, and a page the
     /// board cannot back is not somewhere it could ever arrive.
-    pub(super) fn landed_on(page: DisplayPage, backed: Backed) -> DisplayPage {
+    pub(super) fn landed_on(page: Page, backed: Backed) -> Page {
         match page {
-            DisplayPage::Splash => DisplayPage::Ambient,
+            Page::Splash => Page::Ambient,
             page if page.is_backed(backed) => page,
-            _ => DisplayPage::Ambient,
+            _ => Page::Ambient,
         }
     }
 }

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 
 use embassy_time::{Duration, Timer};
 use iot_app::shared::diagnostics::Diagnostics;
-use iot_app::state::{DisplayPage, PlaybackPhase};
+use iot_app::state::{Page, PlaybackPhase};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
 use iot_core::drivers::audio::{
@@ -34,7 +34,7 @@ pub(super) static CAMERA_PAINTED: AtomicUsize = AtomicUsize::new(0);
 pub(super) static RELEASED: AtomicUsize = AtomicUsize::new(0);
 
 pub(super) static PRESSED: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
-pub(super) static PAGES: Mutex<Vec<DisplayPage>> = Mutex::new(Vec::new());
+pub(super) static PAGES: Mutex<Vec<Page>> = Mutex::new(Vec::new());
 
 pub(super) static AUDIO_POLLS: AtomicUsize = AtomicUsize::new(0);
 
@@ -179,7 +179,7 @@ struct HostLight {
     camera: Option<Box<dyn FrameSource + Send>>,
     // The panel's ownership rule, so a page change that would deadlock there is shown to survive here.
     owner: FrameOwner,
-    page: Option<DisplayPage>,
+    page: Option<Page>,
 }
 
 impl HostLight {
@@ -478,7 +478,7 @@ pub(super) fn paints_on(instance: u8) -> usize {
         .count()
 }
 
-pub(super) fn page_seen(page: DisplayPage) -> bool {
+pub(super) fn page_seen(page: Page) -> bool {
     PAGES.lock().unwrap().contains(&page)
 }
 
