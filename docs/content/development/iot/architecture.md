@@ -79,7 +79,9 @@ weight = 10
 | `state/` | 组合根：`DeviceState`、`DeviceManager`、`apply_intent`、手势→意图的分派、`Boot`/`Backed`、构建期配置；唯一认识所有页面的模块 |
 | `state/translate.rs` | 按当前页分派到 `pages/<page>/controller`；不读键格、band 或确认框几何 |
 | `state/boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `render/` | 表示消费：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，页面渲染策略（底色/出帧/重绘步长）在 `policy.rs`，`AppPainter` 调 `pages::paint`，renderer 决定*怎么显示* |
+| `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
+| `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `pages::paint`、`policy.rs`（底色/出帧/重绘步长）、`repaint.rs`（诊断漂移） |
+| `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有面板会叠上去的东西 |
 | `render/wiring.rs` | 接线：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
 | `runtime/system.rs` | `Frame` 与 `System` 契约：一帧交给系统的共享件（意图总线、状态、时钟），`tick` 与 `intent` 两个入口；worker 句柄由系统自己持有，不经 `Frame` |
@@ -404,7 +406,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面：路由表 + 导航栈
 
-`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `Page` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。底色、是否出帧与重绘步长是渲染策略，在 `app/src/render/policy.rs`，由 `Page::ALL` 的覆盖测试逼迫每页作答。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/pages/mod.rs` 的分派分支与 `app/src/pages/<path>` 下的视图模块（分派本身由编译器穷尽检查）。
+`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `Page` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。底色、是否出帧与重绘步长是渲染策略，在 `app/src/render/screen/policy.rs`，由 `Page::ALL` 的覆盖测试逼迫每页作答。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/pages/mod.rs` 的分派分支与 `app/src/pages/<path>` 下的视图模块（分派本身由编译器穷尽检查）。
 
 `app/src/shared/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕；瞬态没有次序，停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 

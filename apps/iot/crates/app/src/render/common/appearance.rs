@@ -105,7 +105,7 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
     }
 }
 
-pub(super) fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnostics {
+pub(crate) fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnostics {
     Diagnostics {
         demand: *demand,
         touch: TouchDiagnostics {

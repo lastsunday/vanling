@@ -1,13 +1,20 @@
 //! The panel's renderer: pages over the colour, the backlight, and the camera feed.
 
+mod painter;
+mod policy;
+mod repaint;
+
+pub use self::painter::AppPainter;
+pub use self::policy::DIAG_REPAINT_STEP_MS;
+pub use self::repaint::{diag_repaint_due, windowed_percent, windowed_rate};
+
 use alloc::boxed::Box;
 use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::render::color::ColorDriver;
-use crate::render::policy;
-use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer, diag_repaint_due};
+use crate::render::common::ColorDriver;
+use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 use crate::shared::diagnostics::Diagnostics;
 use crate::state::{LightState, Page};
 use iot_core::demand::{DemandKey, Mode};

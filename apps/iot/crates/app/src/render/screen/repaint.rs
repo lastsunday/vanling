@@ -37,7 +37,7 @@ pub fn diag_repaint_due(
 /// the executor 40% of the wall time on the S3. At twice the step a frame advances the sweep
 /// eight columns instead of four — still a sweep, at half the cost.
 pub(crate) fn repaint_step_ms(page: Page) -> u64 {
-    crate::render::policy::repaint_step_ms(page)
+    super::policy::repaint_step_ms(page)
 }
 
 fn repaint_due(page: Page, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
@@ -89,7 +89,7 @@ pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::policy::DIAG_REPAINT_STEP_MS;
+    use crate::render::screen::policy::DIAG_REPAINT_STEP_MS;
     use crate::state::{AudioPhase, PlaybackPhase};
     use iot_core::drivers::audio::AudioEnvelope;
     use iot_core::drivers::network::{AccessPoint, ApList, Ipv4, LinkPhase, Ssid};

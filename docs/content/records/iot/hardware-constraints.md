@@ -242,7 +242,7 @@ panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMem
 
 `[实测]` 上一节把一帧的**连续**持有从 15 ms 压到 1–2 ms，但 16 ms 的线上时间仍是 core 0 的账：`SpiDma<Blocking>` 的忙等只是被切成小段，整段仍归协作执行器。Audio 页把这件事放大到看得见 —— `[DISPLAY] Audio 44 repaints in 2059 ms, held the executor 819 ms (40%)`，而 `[INPUT]` 在同一构建的稳态窗里是 39%（`1970 ms of 5003 ms`，见下文），也就是说 core 0 的大头一直是采集折叠，不是面板。两处一起改，先改便宜的。
 
-**一、Audio 页的重绘步长 40 → 80 ms。** 门槛从 `render::DIAG_REPAINT_STEP_MS` 挪到每页的渲染策略（`render::policy::repaint_step_ms(page)`），只有 Audio 是默认值的两倍，其余页面仍是 40。理由是这一页的漂移来得比谁读得都快：capture 每 20 ms 折两列包络，40 ms 的步长已经把 200 列的扫线每 ~45 ms 重画一次；80 ms 下一帧推进八列，仍是扫线，代价减半。`the_audio_page_waits_twice_the_default_step` 钉住这条。
+**一、Audio 页的重绘步长 40 → 80 ms。** 门槛从 `render::DIAG_REPAINT_STEP_MS` 挪到每页的渲染策略（`render::screen::policy::repaint_step_ms(page)`），只有 Audio 是默认值的两倍，其余页面仍是 40。理由是这一页的漂移来得比谁读得都快：capture 每 20 ms 折两列包络，40 ms 的步长已经把 200 列的扫线每 ~45 ms 重画一次；80 ms 下一帧推进八列，仍是扫线，代价减半。`the_audio_page_waits_twice_the_default_step` 钉住这条。
 
 | 读数（`IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug`，~2 s 窗） | 改前 | 只改步长 | 再搬第二个核 |
 | --- | --- | --- | --- |

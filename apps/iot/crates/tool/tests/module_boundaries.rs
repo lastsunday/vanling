@@ -503,3 +503,35 @@ fn diagnostics_snapshots_without_drawing() {
         &["crate::render"],
     );
 }
+
+/// A lamp paints one colour. Anything a panel adds on top of that colour, or a page to paint
+/// at all, means the lamp slice reached into the panel instead of staying on its own side of
+/// the split.
+#[test]
+fn the_lamp_never_reaches_the_panel() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("render/lamp")),
+        &[
+            "crate::pages",
+            "crate::render::screen",
+            "policy",
+            "painter",
+            "repaint",
+            "camera",
+        ],
+    );
+}
+
+/// The shared half is shared: if it named a surface, the two renderers would no longer stand
+/// on the same bucket.
+#[test]
+fn what_every_surface_shares_knows_no_surface() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("render/common")),
+        &[
+            "crate::render::screen",
+            "crate::render::lamp",
+            "crate::pages",
+        ],
+    );
+}

@@ -4,7 +4,7 @@
 //! exhaustive map from a destination to its row, so a new page cannot exist without a route.
 //!
 //! How a page is drawn — its ground, whether frames arrive from a camera, how often it may
-//! repaint — belongs to the renderer (`ui::render::policy`), not to this table.
+//! repaint — belongs to the renderer (`render/screen/policy.rs`), not to this table.
 //!
 //! The order the button cycles in is a navigation fact, not a route property, and the
 //! [`Navigator`] is what walks it (`nav`).

@@ -8,7 +8,7 @@ use iot_core::paint::Rgb;
 
 /// What one painted appearance is: nothing, one colour, or a breath that keeps moving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Lit {
+pub(crate) enum Lit {
     Off,
     Solid,
     Breathing(Breath),
@@ -16,7 +16,7 @@ pub(super) enum Lit {
 
 impl Lit {
     /// The panel's backlight for this appearance; lamps never ask.
-    pub(super) fn backlight(self, now_ms: u32, floor_pct: u8) -> u8 {
+    pub(crate) fn backlight(self, now_ms: u32, floor_pct: u8) -> u8 {
         match self {
             Self::Off => 0,
             Self::Solid => 100,
@@ -26,14 +26,14 @@ impl Lit {
 }
 
 /// Writes appearances to a surface: dedupes a slow one, steps a breathing one.
-pub(super) struct ColorDriver {
+pub(crate) struct ColorDriver {
     last: Option<Rgb>,
     breath: Option<Breath>,
     display: Mode,
 }
 
 impl ColorDriver {
-    pub(super) const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             last: None,
             breath: None,
@@ -43,32 +43,32 @@ impl ColorDriver {
 
     /// Follows the display demand. A mode that stops collecting forgets the last colour, so
     /// the first frame after it is a full one.
-    pub(super) fn set_display(&mut self, mode: Mode) {
+    pub(crate) fn set_display(&mut self, mode: Mode) {
         if self.display.is_collecting() != mode.is_collecting() {
             self.last = None;
         }
         self.display = mode;
     }
 
-    pub(super) fn breathing(&self) -> bool {
+    pub(crate) fn breathing(&self) -> bool {
         self.breath.is_some()
     }
 
-    pub(super) fn display(&self) -> Mode {
+    pub(crate) fn display(&self) -> Mode {
         self.display
     }
 
     /// Stops the breath without painting: what being dark means.
-    pub(super) fn stop(&mut self) {
+    pub(crate) fn stop(&mut self) {
         self.breath = None;
     }
 
     /// Forgets the last colour, so the next appearance repaints even if it did not move.
-    pub(super) fn forget(&mut self) {
+    pub(crate) fn forget(&mut self) {
         self.last = None;
     }
 
-    pub(super) fn show<R: RgbLight + ?Sized>(
+    pub(crate) fn show<R: RgbLight + ?Sized>(
         &mut self,
         light: &mut R,
         step: u8,
@@ -95,13 +95,13 @@ impl ColorDriver {
     }
 
     /// A page's own ground: solid and still, whatever the light was doing.
-    pub(super) fn ground<R: RgbLight + ?Sized>(&mut self, light: &mut R, step: u8, color: Rgb) {
+    pub(crate) fn ground<R: RgbLight + ?Sized>(&mut self, light: &mut R, step: u8, color: Rgb) {
         self.breath = None;
         self.drive(light, step, color);
     }
 
     /// Paints the next breathing frame, or `None` when nothing is breathing.
-    pub(super) fn step<R: RgbLight + ?Sized>(
+    pub(crate) fn step<R: RgbLight + ?Sized>(
         &mut self,
         light: &mut R,
         step: u8,

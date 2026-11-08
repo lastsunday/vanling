@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use crate::render::color::ColorDriver;
+use crate::render::common::ColorDriver;
 use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 use iot_core::demand::{DemandKey, Mode};
 use iot_core::drivers::surface::RgbLight;

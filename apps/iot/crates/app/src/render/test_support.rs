@@ -1,6 +1,6 @@
 //! Fixtures shared by the render layer's tests.
 
-use crate::render::appearance::light_diagnostics;
+use crate::render::common::light_diagnostics;
 use crate::render::{Appearance, LightAppearance, RenderController};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{ActionIntent, PageIntent};
