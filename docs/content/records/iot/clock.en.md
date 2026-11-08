@@ -5,8 +5,8 @@ weight = 72
 sort_by = "weight"
 
 [extra]
-source_file_hash = "e1ec272ab06ca70542985a3abcce21cf1cfd8dde"
-translated_at = "2026-11-01T00:00:00Z"
+source_file_hash = "7eb87b6309380f6567038ed22ed20a6c5aa26164"
+translated_at = "2026-11-08T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "1e8b096dabe25134326cd18dc22aab2da4a97f34"
-translated_at = "2026-11-06T00:00:00Z"
+source_file_hash = "50db8c909d63f0a061cce45ce43332043ecf4de1"
+translated_at = "2026-11-08T00:00:00Z"
 +++
 
 # Architecture
