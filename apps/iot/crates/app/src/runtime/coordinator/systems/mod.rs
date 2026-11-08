@@ -12,8 +12,8 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::any::TypeId;
 
-use crate::model::state::Command;
 use crate::runtime::system::{Frame, System};
+use crate::state::Command;
 
 pub(crate) use self::capture::CaptureSystem;
 pub(crate) use self::demand::DemandSystem;
@@ -100,10 +100,10 @@ mod tests {
     use core::cell::RefCell;
 
     use super::*;
-    use crate::model::intent::{ActionIntent, Intent, LinkIntent, NetworkPageIntent};
-    use crate::model::state::{Backed, Boot, DeviceManager, NetworkCommand};
     use crate::runtime::feature::input::IntentBus;
     use crate::runtime::workers::NETWORK;
+    use crate::shared::intent::{ActionIntent, Intent, LinkIntent, NetworkPageIntent};
+    use crate::state::{Backed, Boot, DeviceManager, NetworkCommand};
     use iot_core::drivers::network::{LinkPhase, LinkStatus};
     use iot_core::drivers::surface::SurfaceRole;
 

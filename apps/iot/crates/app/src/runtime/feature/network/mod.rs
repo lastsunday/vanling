@@ -4,7 +4,7 @@
 use alloc::boxed::Box;
 use core::cell::Cell;
 
-use crate::model::intent::{ActionIntent, Intent, LinkIntent};
+use crate::shared::intent::{ActionIntent, Intent, LinkIntent};
 use embassy_futures::join::join;
 use embassy_net::driver::{Driver, HardwareAddress};
 use embassy_net::{Config, StackResources};

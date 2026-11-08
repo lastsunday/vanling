@@ -2,10 +2,10 @@
 
 pub mod sounds;
 
-use crate::model::intent::{ActionIntent, Intent, PlaybackAction};
-use crate::model::state::PlaybackCommand;
 use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers;
+use crate::shared::intent::{ActionIntent, Intent, PlaybackAction};
+use crate::state::PlaybackCommand;
 use alloc::boxed::Box;
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -344,9 +344,9 @@ mod tests {
 
     #[test]
     fn a_capture_window_costs_one_slot_beside_the_ring() {
-        use crate::model::intent::Intent;
         use crate::runtime::feature::input::INTENT_SLOTS;
         use crate::runtime::workers::CaptureWindow;
+        use crate::shared::intent::Intent;
         use iot_core::drivers::audio::AudioSample;
 
         let ring = core::mem::size_of::<Intent>() * INTENT_SLOTS;

@@ -13,10 +13,10 @@ sort_by = "weight"
 ## 已归位
 
 - 呼吸灯的取色与背光包络是 `Breath` 的属性，落在 `core::state::light`；渲染器只问 `rgb()` / `backlight()`，不再各自复算一遍色相与亮度。
-- `LampRenderer` / `ScreenRenderer` 与 renderer 注册表落在 `app::ui::render`：`core::ui` 才是像素与字形层，所以渲染器不放进 UI；`Renderer` 接口随后也随实现一起收进 app。
+- `LampRenderer` / `ScreenRenderer` 与 renderer 注册表落在 `app::render`：`core::ui` 才是像素与字形层，所以渲染器不放进 UI；`Renderer` 接口随后也随实现一起收进 app。
 - 播放命令（`Play` / `SetMuted`）与边沿判定（`mute_command` / `play_command`）归 `PlaybackState`；app 的 dispatch 只负责排队与满队重试。
 - `InputSource::name`、`PollEntry::name`、`DemandKind::name` 由驱动与需求层回答，app 不再维护一张按位置索引的名字表。
-- 页面整屏铺底、是否出帧与重绘步长是渲染策略（`ui::render::policy`），渲染器按页问策略，板级与设备都不再各写一份 `matches!`；页面表（`model::route`）只留名字、能力、claim、可启动与生存期。
+- 页面整屏铺底、是否出帧与重绘步长是渲染策略（`render::policy`），渲染器按页问策略，板级与设备都不再各写一份 `matches!`；页面表（`shared::route`）只留名字、能力、claim、可启动与生存期。
 - 在线判据 `AddressWatch` 与 `ADDRESS_LOST_WINDOWS` 落在 `core::drivers::network`，链路循环只喂观察值。
 - 扫频参数属于会议室探针，留在 `bench/probe/echo_room`；产品音色表不再生成它，探针用 `audio::start_source` 播放自己构造的激励。
 - 构建期网络名的读取只有一处（`boot::build_wifi_credentials`），bench 例外由产品侧的 `boot::wifi_credentials` 决定；探针要的永远是构建时给的名字，所以直接读前者。
@@ -37,7 +37,7 @@ sort_by = "weight"
 第一轮把 `page_ground` / `page_draws_frames` 从板级收进 `Screen`，但接口仍是「灯」：屏幕能力长在 `RgbLight` 上，没有屏幕的板子只能写空实现。这一轮按能力拆开设备接口。
 
 - `RgbLight` 只剩 `set_rgb(Rgb)`；`PageSurface: RgbLight + DiagnosticsSink + CameraTarget` 才有背光、repaint 节流与相机，只有面板实现。
-- `page_ground` / `page_draws_frames` / `CameraTarget::takes_frames` 删除。铺底与「画面来自相机」早已由页面回答（现在在 `ui::render::policy`），角色也已由 `WiredSurface::Pages/Lamp` 在接线时给出；渲染层再问一遍设备，等于把同一个答案抄两遍。
+- `page_ground` / `page_draws_frames` / `CameraTarget::takes_frames` 删除。铺底与「画面来自相机」早已由页面回答（现在在 `render::policy`），角色也已由 `WiredSurface::Pages/Lamp` 在接线时给出；渲染层再问一遍设备，等于把同一个答案抄两遍。
 - `WiredSurface` 改为 `Pages(Box<dyn PageSurface>) | Lamp(Box<dyn RgbLight>)`，`HasSurface` 不再带关联类型；WS2812 随之删掉 `DiagnosticsSink`、`CameraTarget`、背光与 repaint 四个空实现。相机由 `surface::wired()` 交给第一个 `Pages`，不再问 `takes_frames`。
 - renderer 拆 `LampRenderer` / `ScreenRenderer`，共享 `render::colour::ColourDriver`（呼吸、常亮、关、显示需求门控）。注册表仍是 `Box<dyn Renderer>`，晚注册逻辑不变。
 - `Rgb` 与色彩数学迁到 `core::paint`；`MAX_LIGHTS` 归 `state`（它量的是状态槽位，不是驱动事实）。`ui` 与 `stamp` 不再从 `drivers` 取颜色。

@@ -5,8 +5,8 @@
 
 use core::any::TypeId;
 
-use crate::model::state::{Command, DeviceManager};
 use crate::runtime::feature::input::IntentBus;
+use crate::state::{Command, DeviceManager};
 
 /// Everything a system may touch in one frame. The wall clock rather than the frame counter:
 /// a held executor makes a logical clock replay the steps it skipped.

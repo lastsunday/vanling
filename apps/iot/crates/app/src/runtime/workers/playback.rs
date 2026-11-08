@@ -1,7 +1,7 @@
 //! The playback worker's side: commands go out, and a sound's completion comes back as an
 //! intent, so there is no `from` side here.
 
-use crate::model::state::PlaybackCommand;
+use crate::state::PlaybackCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 

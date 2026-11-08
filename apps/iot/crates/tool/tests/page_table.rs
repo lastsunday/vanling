@@ -1,7 +1,7 @@
 //! The route table is written by hand, and this test holds the parts the compiler cannot.
 //!
 //! `route()` is an exhaustive match, so a variant without a row does not compile, and the
-//! view match in `app/src/ui/pages/surface.rs` is exhaustive too. What is *not* compiler-checked is that
+//! page dispatch in `app/src/features/mod.rs` is exhaustive too. What is *not* compiler-checked is that
 //! `ALL` lists every variant, that the cycle stays a prefix of it, that a page is either
 //! bootable or transient, and that a page still has a view module. This test reads the table
 //! as source and checks those edges, so a half-added page fails here rather than on a bench.
@@ -22,7 +22,7 @@ fn read(relative: &str) -> String {
         .unwrap_or_else(|error| panic!("{} is readable: {error}", path.display()))
 }
 
-const PAGE: &str = "apps/iot/crates/app/src/model/route/mod.rs";
+const PAGE: &str = "apps/iot/crates/app/src/shared/route/mod.rs";
 
 fn source() -> String {
     read(PAGE)
@@ -230,22 +230,24 @@ fn a_page_that_cannot_be_booted_says_why() {
 
 #[test]
 fn every_page_has_a_view() {
-    let surface = read("apps/iot/crates/app/src/ui/pages/surface.rs");
+    let dispatch = read("apps/iot/crates/app/src/features/mod.rs");
+    let feature_root = repo_root().join("apps/iot/crates/app/src/features");
     for row in rows(&source()) {
         assert!(
-            surface.contains(&format!("DisplayPage::{}", row.variant)),
-            "{} has no arm in app/src/ui/pages/surface.rs::render; the match must stay exhaustive",
+            dispatch.contains(&format!("DisplayPage::{}", row.variant)),
+            "{} has no arm in app/src/features/mod.rs::paint; the match must stay exhaustive",
             row.variant
         );
-        if row.path == "ambient" {
-            continue;
-        }
-        let single = format!("apps/iot/crates/app/src/ui/pages/views/{}.rs", row.path);
-        let split = format!("apps/iot/crates/app/src/ui/pages/views/{}/mod.rs", row.path);
+        let candidates = [
+            feature_root.join(format!("{}.rs", row.path)),
+            feature_root.join(&row.path).join("view.rs"),
+            feature_root.join(&row.path).join("view/mod.rs"),
+        ];
         assert!(
-            repo_root().join(&single).exists() || repo_root().join(&split).exists(),
-            "{} names no view module at {single} or {split}",
-            row.variant
+            candidates.iter().any(|path| path.exists()),
+            "{} names no feature view next to {}",
+            row.variant,
+            candidates[0].display()
         );
     }
 }

@@ -1,8 +1,8 @@
 //! Where the bench's finger lands: the cells and rows the panel draws, as coordinates.
 
-use crate::model::keyboard::Key;
-use crate::model::layout;
-use crate::model::layout::DialogChoice;
+use crate::features::network::layout;
+use crate::features::network::layout::DialogChoice;
+use crate::shared::keyboard::Key;
 
 use super::BAND_X;
 

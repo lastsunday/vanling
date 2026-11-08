@@ -1,9 +1,9 @@
 //! The walk, exercised end to end.
 
 use super::*;
-use crate::model::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
-use crate::model::keyboard::Layer;
-use crate::model::state::{Backed, Boot, Command, NetworkCommand};
+use crate::shared::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
+use crate::shared::keyboard::Layer;
+use crate::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
 };
@@ -32,8 +32,8 @@ fn marked(names: &[&str], saved: &[&str]) -> ApList {
 fn showing(names: &[&str]) -> DeviceState {
     let rows: Vec<AccessPoint> = names.iter().map(|name| ap(name)).collect();
     DeviceState {
-        nav: crate::model::state::Navigator::new(DisplayPage::Network),
-        network: crate::model::state::NetworkState {
+        nav: crate::state::Navigator::new(DisplayPage::Network),
+        network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
             ..Default::default()
         },
@@ -92,8 +92,8 @@ fn every_row_a_scan_can_carry_is_reachable_by_the_bench() {
         })
         .collect();
     let state = DeviceState {
-        nav: crate::model::state::Navigator::new(DisplayPage::Network),
-        network: crate::model::state::NetworkState {
+        nav: crate::state::Navigator::new(DisplayPage::Network),
+        network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
             ..Default::default()
         },
@@ -129,8 +129,8 @@ fn the_row_the_page_keeps_picked_is_the_band_its_own_tap_lands_on() {
         })
         .collect();
     let mut state = DeviceState {
-        nav: crate::model::state::Navigator::new(DisplayPage::Network),
-        network: crate::model::state::NetworkState {
+        nav: crate::state::Navigator::new(DisplayPage::Network),
+        network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
             ..Default::default()
         },
@@ -362,7 +362,7 @@ fn an_open_network_is_refused_rather_than_typed_into() {
 #[test]
 fn no_run_is_built_before_the_list_is_there() {
     let mut state = DeviceState {
-        nav: crate::model::state::Navigator::new(DisplayPage::Network),
+        nav: crate::state::Navigator::new(DisplayPage::Network),
         ..DeviceState::default()
     };
     let mut bench = PanelBench::new();

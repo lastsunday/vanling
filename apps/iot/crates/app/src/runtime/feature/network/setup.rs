@@ -2,8 +2,8 @@
 
 use alloc::boxed::Box;
 
-use crate::model::intent::{ActionIntent, Intent, NetworkPageIntent};
-use crate::model::state::{DisplayPage, NetworkCommand};
+use crate::shared::intent::{ActionIntent, Intent, NetworkPageIntent};
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
 use embassy_net::{Stack, StackResources};

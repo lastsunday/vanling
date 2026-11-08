@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use crate::model::state::{Backed, Boot, DeviceManager, DisplayPage};
+use crate::state::{Backed, Boot, DeviceManager, DisplayPage};
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
 use iot_core::config::Configurator;
@@ -18,13 +18,14 @@ use iot_core::drivers::surface::WiredSurface;
 
 mod assets;
 pub mod bench;
-pub mod controller;
-pub mod model;
+pub mod features;
+pub mod render;
 pub mod runtime;
-pub mod ui;
+pub mod shared;
+pub mod state;
 
 use bench::replay::{BENCH, Slot};
-use model::boot::{boot_override, boot_page};
+use render::wired;
 use runtime::coordinator::{
     CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
     Schedule, run_loop,
@@ -32,7 +33,7 @@ use runtime::coordinator::{
 use runtime::feature::input::{INTENT_BUS, input_task};
 use runtime::feature::playback::{playback_tasks, share};
 use runtime::workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand};
-use ui::wired;
+use state::boot::{boot_override, boot_page};
 
 pub enum Feed {
     Interrupt(SendSpawner),

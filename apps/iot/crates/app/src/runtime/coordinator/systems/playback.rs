@@ -3,8 +3,8 @@
 
 use embassy_sync::channel::TrySendError;
 
-use crate::model::state::{PlaybackCommand, PlaybackState};
 use crate::runtime::workers::{Playback, PlaybackQueue};
+use crate::state::{PlaybackCommand, PlaybackState};
 
 use crate::runtime::system::{Frame, System};
 

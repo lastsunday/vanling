@@ -3,7 +3,7 @@
 
 use alloc::boxed::Box;
 
-use crate::model::state::{DisplayPage, NetworkCommand};
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_futures::select::{Either, select};
 use embassy_net::Stack;
 use embassy_net::driver::Driver;

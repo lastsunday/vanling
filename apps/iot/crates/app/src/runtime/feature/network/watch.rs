@@ -4,7 +4,7 @@
 
 use core::sync::atomic::Ordering;
 
-use crate::model::state::DisplayPage;
+use crate::state::DisplayPage;
 
 use crate::runtime::workers::{NetworkInbox, PageWatch};
 
@@ -68,7 +68,7 @@ pub(crate) fn discard_setup(commands: &NetworkInbox) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::state::NetworkCommand;
+    use crate::state::NetworkCommand;
     use core::task::{Context, Waker};
     use iot_core::drivers::network::{JoinRequest, SetupHost, Ssid};
 

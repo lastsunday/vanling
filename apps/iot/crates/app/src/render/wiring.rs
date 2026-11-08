@@ -1,0 +1,50 @@
+//! Composition: one renderer per wired surface, and the slot roles the state layer addresses
+//! them by. Both come from this one pass, so a renderer can never outnumber the consumers it
+//! paints.
+
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
+use crate::render::AppPainter;
+use crate::render::{LampRenderer, Registry, Renderer, ScreenRenderer};
+use crate::state::{MAX_LIGHTS, SurfaceRole};
+use iot_core::drivers::camera::FrameSource;
+use iot_core::drivers::surface::WiredSurface;
+
+pub type Renderers = Registry;
+
+/// Turns each board surface into the renderer that draws on it.
+pub fn wired(
+    surfaces: Vec<WiredSurface>,
+    mut camera: Option<Box<dyn FrameSource + Send>>,
+) -> (Registry, [SurfaceRole; MAX_LIGHTS]) {
+    assert!(
+        surfaces.len() <= MAX_LIGHTS,
+        "more wired surfaces than consumers"
+    );
+    let mut roles = [SurfaceRole::Absent; MAX_LIGHTS];
+    for (role, surface) in roles.iter_mut().zip(&surfaces) {
+        *role = surface.role();
+    }
+    let mut renderers = Registry::new();
+    for (instance, surface) in surfaces.into_iter().enumerate() {
+        let instance = instance as u8;
+        let renderer: Box<dyn Renderer> = match surface {
+            WiredSurface::Pages(surface) => {
+                let panel =
+                    ScreenRenderer::new(instance, surface).with_painter(Box::new(AppPainter), true);
+                match camera.take() {
+                    Some(taken) => Box::new(panel.with_camera(taken)),
+                    None => Box::new(panel),
+                }
+            }
+            WiredSurface::Lamp(light) => Box::new(LampRenderer::new(instance, light)),
+        };
+        renderers.register(renderer, 0);
+    }
+    if camera.is_some() {
+        log::info!("[CAM] no surface has a frame buffer, dropping the camera");
+        drop(camera);
+    }
+    (renderers, roles)
+}

@@ -16,10 +16,10 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 ## What moved where
 
 - A breath's colour and backlight envelope are `Breath` properties, in `core::state::light`; a renderer only asks `rgb()` / `backlight()` instead of recomputing hue and brightness itself.
-- `LampRenderer` / `ScreenRenderer` and the renderer registry live in `app::ui::render`: `core::ui` is the pixel and glyph layer, so the renderer does not go into the UI; the `Renderer` interface later moved into the app with its implementations.
+- `LampRenderer` / `ScreenRenderer` and the renderer registry live in `app::render`: `core::ui` is the pixel and glyph layer, so the renderer does not go into the UI; the `Renderer` interface later moved into the app with its implementations.
 - Playback commands (`Play` / `SetMuted`) and their edge decisions (`mute_command` / `play_command`) belong to `PlaybackState`; the app's dispatch only queues and retries a full queue.
 - `InputSource::name`, `PollEntry::name` and `DemandKind::name` are answered by the driver and demand layers; the app no longer keeps a name table indexed by position.
-- Grounding the whole panel, whether frames come from the camera, and the repaint step are render policy (`ui::render::policy`); the renderer asks the policy per page, so neither the board nor the device repeats a `matches!`. The route table (`model::route`) keeps only the name, needs, claim, bootability and lifetime.
+- Grounding the whole panel, whether frames come from the camera, and the repaint step are render policy (`render::policy`); the renderer asks the policy per page, so neither the board nor the device repeats a `matches!`. The route table (`shared::route`) keeps only the name, needs, claim, bootability and lifetime.
 - The online judgement `AddressWatch` and `ADDRESS_LOST_WINDOWS` live in `core::drivers::network`; the link loop only feeds observations in.
 - The sweep parameters belong to the echo-room probe and stay in `bench/probe/echo_room`; the product sound catalogue no longer generates a sweep, and the probe plays its own excitation through `audio::start_source`.
 - The build-time network name is read in one place (`boot::build_wifi_credentials`); the bench exception is decided by the product-side `boot::wifi_credentials`. A probe always wants the name its build was given, so it reads the former.
@@ -40,7 +40,7 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 Round one moved `page_ground` / `page_draws_frames` from the board into `Screen`, but the interface was still "a lamp": screen abilities hung off `RgbLight`, so a board without a panel could only write empty implementations. This round splits the device interface by capability.
 
 - `RgbLight` keeps only `set_rgb(Rgb)`; `PageSurface: RgbLight + DiagnosticsSink + CameraTarget` owns the backlight, the repaint throttle and the camera, and only a panel implements it.
-- `page_ground` / `page_draws_frames` / `CameraTarget::takes_frames` are gone. Grounding and "the frames come from the camera" were already answered by the page (now in `ui::render::policy`), and the role was already given by `WiredSurface::Pages/Lamp` at wiring time; asking the device again copied the same answer twice.
+- `page_ground` / `page_draws_frames` / `CameraTarget::takes_frames` are gone. Grounding and "the frames come from the camera" were already answered by the page (now in `render::policy`), and the role was already given by `WiredSurface::Pages/Lamp` at wiring time; asking the device again copied the same answer twice.
 - `WiredSurface` is now `Pages(Box<dyn PageSurface>) | Lamp(Box<dyn RgbLight>)`, and `HasSurface` no longer has an associated type; the WS2812 therefore drops its `DiagnosticsSink`, `CameraTarget`, backlight and repaint stubs. `surface::wired()` hands the camera to the first `Pages`, without asking `takes_frames`.
 - The renderer splits into `LampRenderer` / `ScreenRenderer`, sharing `render::colour::ColourDriver` (breathing, solid, off, display-demand gate). The registry is still `Box<dyn Renderer>`, and late registration is unchanged.
 - `Rgb` and the colour maths move to `core::paint`; `MAX_LIGHTS` belongs to `state` (it measures state slots, not a driver fact). `ui` and `stamp` no longer take colours from `drivers`.

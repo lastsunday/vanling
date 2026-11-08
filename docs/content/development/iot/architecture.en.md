@@ -47,91 +47,83 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
 - **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic, e.g. `button`/`ft6336`/`pca9557`/`st7789`/`ws2812`), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `PageSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
-- **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`app::ui::pages::Surface`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
+- **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`app::shared::view_kit::surface::Surface`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
 - **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `PanelTarget`/`PanelContext` to the app through `core`'s `PanelPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `Diagnostics` nor any page type.
 - **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
 - **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
-- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page: its vocabulary is in `app::model::keyboard` and its geometry in `app::model::layout`.
+- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page: its vocabulary is in `app::shared::keyboard` and its geometry in `app::features::network::layout`.
 - **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`).
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
 ## Inside `iot-app`
 
-`app/src/` is four layers plus two shared leaves; the composition root only wires:
+`app/src/` is organised by vertical slice: each page is its own directory, cross-page truth and vocabulary live in `shared/`, the composition root and the presentation layer stand apart, and wiring happens only in the composition root:
 
 | Path | Responsibility |
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator |
 | `main.rs` | chip bring-up, executor choice, family entry |
-| `model/` | the product's own vocabulary and truth — pages, state, intents, key vocabulary, build-time configuration. It reads no file, drives no pin and paints no pixel, so it compiles for a host test with no board attached |
-| `model/route/{mod,nav}.rs` | the route table and `Navigator`: `DisplayPage` is the destination, `route()` is the exhaustive match, `ALL`/`CYCLE` are the order |
-| `model/state/` | the device state machine, one file per domain; `network_page/` holds only the Network page's own state |
-| `model/keyboard.rs` | key vocabulary: `Key`/`Layer`/`Cycling`, the multitap window, and the candidate character table per layer |
-| `model/intent.rs` | the intent vocabulary: what an input is asked |
-| `model/boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `controller/` | gesture→intent: the top-level `translate`, a translation per page, the Network page's band and action-strip verbs, and the input path that writes a record before translating it |
-| `controller/{apply,translate,audio,playback,light}.rs` | `apply_intent` and each page's translation; `light` also holds the tables the light walks |
-| `controller/network/{mod,bands,verbs}.rs` | the Network page's translation, band visibility, and the action strip / confirmation verbs |
-| `ui/` | presentation entry: declares `pages`/`render`/`diagnostics`/`wiring`, re-exports only |
-| `ui/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
-| `ui/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state, including the audio and playback diagnostics |
-| `ui/render/{mod,policy,appearance,repaint,reconcile}.rs` | render consumers and the registry: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, the per-page render policy (ground, frames, repaint step) in `policy.rs`, and a renderer decides *how* |
-| `ui/pages/{mod,surface,text,placement,widgets,components,views}` | page content: `surface.rs` is the page shell, `placement.rs` holds the placement constants every page shares, `widgets/` the primitives (frame, row, label), `components/` the cross-page pieces, and `views/` assembles them per page |
+| `features/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` is the one page→view dispatch `paint`, `tests.rs` guards the golden pixels |
+| `features/{ambient,attitude,camera,splash}.rs` | single-file pages with one canvas: the `stamp_*` methods on the page shell draw directly |
+| `features/audio/{mod,controller,view}.rs`, `features/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/state` |
+| `features/network/{model,controller,layout,view}/` | the Network page's own draft and list position (`NetworkPage`/`Entry`/`SetupWait`), gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing |
+| `shared/` | cross-page truth and vocabulary: only what more than one page reads |
+| `shared/state/` | records the workers write and the render loop reads, one file per domain; a page's private draft does not live here |
+| `shared/route/{mod,nav}.rs` | the route table and `Navigator`: `DisplayPage` is the destination, `route()` is the exhaustive match, `ALL`/`CYCLE` are the order |
+| `shared/keyboard.rs` | key vocabulary: `Key`/`Layer`/`Cycling`, the multitap window, and the candidate character table per layer |
+| `shared/intent.rs` | the intent vocabulary: what an input is asked, including the cross-page `Confirm` |
+| `shared/light.rs` | the tables the light walks and the palette; page controllers call it |
+| `shared/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state, including the audio and playback diagnostics and the Network page draft |
+| `shared/view_kit/` | the page shell `Surface`, placement constants, text layout, band/overlay primitives and widgets; it knows pixels and a snapshot, not pages |
+| `state/` | the composition root: `DeviceState`, `DeviceManager`, `apply_intent`, gesture→intent dispatch, `Boot`/`Backed`, build-time configuration; the only module that knows every feature |
+| `state/translate.rs` | dispatches the current page to `features/<page>/controller`; it reads no key-grid, band or confirmation-box geometry |
+| `state/boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
+| `render/` | render consumers: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, the per-page render policy (ground, frames, repaint step) in `policy.rs`, `AppPainter` calls `features::paint`, and a renderer decides *how* |
+| `render/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
 | `runtime/system.rs` | the `Frame` and `System` contract: the shared pieces one frame hands a system (intent bus, state, clock), with `tick` and `intent` as its two entries; a worker handle is held by the system, not by the frame |
 | `runtime/coordinator/{mod,clock}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
-| `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports and the parked-frame line `WAKE`, with no aggregate handle struct, and the rest are each worker's handles and protocol; the network command vocabulary lives in `model/state/network.rs` |
+| `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports and the parked-frame line `WAKE`; the network command vocabulary lives in `shared/state/network.rs` |
 | `runtime/feature/{mod,input}.rs` | the feature workers; `mod.rs` is the one `wifi` gate. Input worker: polling, demand scheduling, gesture recognition |
-| `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue (`sounds/mod.rs` plus the five `.mid` files); state→command lives in `coordinator/systems/playback.rs` |
+| `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue; state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
-| `model/layout/{mod,keyboard,list,toolbar,dialog}.rs` | touch geometry and hit testing: key grid, scan list, action strip, confirmation box; reads only `model` vocabulary, and `ui::pages` and `controller` read the same coordinates |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
 | `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs` and stays off the product path; `replay/` is the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), registered by the composition root as an ordinary `System` in a bench build and read by the network worker for the build's credential, folded away outside a bench build |
 
-Dependency directions (`iot-tool/tests/module_boundaries.rs` asserts them; the compiler does not
-check module cycles inside a crate):
+The directions are held by a few honest rules in `iot-tool/tests/module_boundaries.rs` (the
+compiler does not check module cycles inside a crate), not by an edge-by-edge map:
 
 ```
-lib       → { bench, ui, model::{boot, state}, runtime::{coordinator, feature::{input, playback}, workers} }
-model::boot   → { model::state }
-model::intent → { model::{keyboard, state} }
-model::state  → { model::{intent, keyboard, layout, route} }
-model::layout → { model::{keyboard, state} }
-controller            → { controller::{light, network, translate} }
-controller::apply     → { controller::translate, model::{intent, state} }
-controller::translate → { controller::{audio, light, network, playback}, model::{intent, state} }
-controller::audio     → { controller::light, model::{intent, state} }
-controller::playback  → { controller::light, model::{intent, state} }
-controller::light     → { model::{intent, state} }
-controller::network   → { model::{intent, layout, state} }
-ui                    → { ui::wiring }
-ui::wiring            → { model::state, ui::{pages, render} }
-ui::diagnostics       → { model::{route, state} }
-ui::render            → { ui::diagnostics, model::{route, state} }
-ui::pages             → { assets, controller, model::{keyboard, layout, state}, ui::diagnostics }
-runtime::coordinator → { ui, model::state, runtime::{feature::input, system, workers} }
-runtime::system       → { model::state, runtime::feature::input }
-runtime::feature::input    → { model::{intent, state}, runtime::workers }
-runtime::feature::network  → { assets, bench, model::{intent, state}, runtime::{feature::input, workers} }
-runtime::feature::playback → { model::{intent, state}, runtime::{feature::input, workers} }
-runtime::workers    → { model::state }
-bench               → { controller, model::{boot, intent, keyboard, layout, state}, runtime::{feature::{input, playback}, system} }
+lib               → { bench, render, state, runtime, features::paint }
+features/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit}, state::DeviceState }
+state             → { features::<page>::{model, controller, layout}, shared::{intent, light, route, state} }
+render            → { features::paint, shared::{diagnostics, route, state, view_kit}, state }
+runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
+runtime::system       → { state, runtime::feature::input }
+runtime::feature::input    → { shared::{intent, state}, runtime::workers }
+runtime::feature::network  → { assets, bench, shared::{intent, state}, runtime::{feature::input, workers} }
+runtime::feature::playback → { shared::state, runtime::{feature::input, workers} }
+runtime::workers           → { shared::state }
+bench             → { features::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
 ```
+
+- **features never import each other**: a page directory reads `shared` and the `DeviceState` the composition root hands it; when a page needs something from another page, that thing belongs in `shared`
+- **`state` is the one two-way point**: it knows every feature's `model`/`controller`/`layout`, dispatches translation and composes the aggregate state; a feature takes only the `DeviceState` read handle from it, while vocabulary such as `DisplayPage` still comes from `shared::route`
+- **`shared/view_kit` names no page**: `Surface` offers the `stamp_*` primitives; `features::paint` decides which page stamps which mark
+- `shared` does not depend on `state`/`render`/`features`; the route table and intent vocabulary are leaves. `shared::diagnostics` is the one exception: its snapshot copies the Network page draft, so it knows `features::network::model::NetworkPage`
+- `shared/state` holds only records more than one place reads or writes; a page's private draft (such as `NetworkPage`) stays in `features/network/model`
+- `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
+- `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
+- `runtime::feature::network` does not reach `features`/`render`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
+- `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it; `bench::replay` is reached by the composition root (registering `Slot`) and the network worker (for the build's credential), and is folded away outside a bench build
+- `core` does not know `iot_app`
 
 `main` is the binary crate root and reaches `lib`/`runtime::feature::network` through `iot_app::`, so it is
 outside this graph; the chip family injects `second_core_peak` and the rest of the capabilities
 into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
-
-- the four layers lean inward only (`the_layers_lean_inward_only`): `model` knows neither `controller` nor `runtime` nor `ui`, `controller` knows neither `runtime` nor `ui`, and `ui` never knows `runtime`; the one edge outward is `runtime::coordinator → ui`, because the coordinator presents what the model already settled on
-- `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
-- `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
-- `runtime::feature::network` does not reach `ui`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
-- `model::layout` sits under `model`: `controller` and `ui::pages` read the same coordinates, and it depends only on `model` vocabulary; putting it under `ui` would make `controller` depend on the presentation layer. `assets` stays at the top because both `ui::pages` and `runtime::feature::network` read it
-- `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it
-- `core` does not know `iot_app`
 
 ## Composition (three orthogonal axes)
 
@@ -216,7 +208,7 @@ A new scenario is a new `ActionIntent` variant; switching cadence at runtime is 
 
 A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
-`model/state/` holds one file per domain: `mod.rs` is only the barrel and `MAX_LIGHTS`, `wiring.rs` holds `Backed`/`Boot`/`SurfaceRole`, `device.rs` holds `DeviceState` and its queries, and `manager.rs` holds construction, action routing and accessors. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. Gesture→intent translation is not in `state`: it reads the whole `DeviceState`, so it belongs to `controller`; `DeviceManager::apply_intent` is also defined in `controller/apply.rs`, writing the record before translating.
+`shared/state/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` hold the records the workers write and the render loop reads. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. A page's private draft and list position do not live in `shared`: `NetworkPage`/`Entry`/`SetupWait` are in `features/network/model`. The aggregate `DeviceState`, `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/apply.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
 
 Business state and page state sit apart, and **whoever writes a field owns it**: `NetworkState` holds only what the radio reported (`link` / `mac` / `aps` / `outage_announced`) and only `LinkIntent` writes it; `NetworkPage` holds only what the page is in the middle of (the selected row, the draft, keys, the confirmation, the list's scroll position) and only the finger's `NetworkPageIntent` writes it. The page reads `&NetworkState`; the link never reads or writes a page field, so neither "a worker's report lands in a page field" nor "a page edit changes what the radio said" can happen. The other domains keep a `view` sub-record (`AudioView`, `PlaybackView`, `TouchView`) with the same meaning: only what the page is in the middle of, read by notifications and rendering. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
 
@@ -247,11 +239,11 @@ The shape follows the semantics, not convenience:
 - **Retained values** use `PageWatch`/`Retained` (`Network.page`, the list inside `Scan`): a write replaces the old value and reading does not consume it, so the panel and the phone's page read the same copy. The splash's verdict is not a retained value but a **one-shot command**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
 - **The newest window** uses `Input.from`: a 1.7 KB capture sample only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `app/src/model/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` (defined in `controller/apply.rs`) returns the command as a `Command`, `Schedule::process_intents` looks it up by `Command::type_id()` in the registry and hands it to the one system that declared `System::takes`, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `app/src/shared/state/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` (defined in `state/apply.rs`) returns the command as a `Command`, `Schedule::process_intents` looks it up by `Command::type_id()` in the registry and hands it to the one system that declared `System::takes`, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
 **Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `Frame` hands it the shared state. Systems never call each other. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is looked up in the registry by type and handed to the system that declared `System::takes`; two commands in one frame do not collapse, and a command nobody took is logged as an error under `[COORD]` in release too (debug builds have an assertion as well).
 
-**The render layer costs nothing**: `Diagnostics` in `app/src/ui/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`; the screen renderer reads it through the painter seam.
+**The render layer costs nothing**: `Diagnostics` in `app/src/shared/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`; the screen renderer reads it through the painter seam.
 
 The camera's chain runs end to end today:
 
@@ -433,9 +425,9 @@ The per-device figures and their individual basis labels are in the [implementat
 
 ## Pages: a route table plus a navigation stack
 
-`app/src/model/route/mod.rs` holds one route table: the `DisplayPage` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. Ground, frames and repaint step are render policy, in `app/src/ui/render/policy.rs`, and `DisplayPage::ALL`'s coverage test forces every page to answer them. `ALL` is the complete list in `code()` order (the wire code is its index), and `CYCLE` is the button's order, which must be a prefix of `ALL`; `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, the cycle prefix, and each page's render arm in `app/src/ui/pages/surface.rs` and view module under `app/src/ui/pages/views/` (the render match itself is checked exhaustively by the compiler).
+`app/src/shared/route/mod.rs` holds one route table: the `DisplayPage` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. Ground, frames and repaint step are render policy, in `app/src/render/policy.rs`, and `DisplayPage::ALL`'s coverage test forces every page to answer them. `ALL` is the complete list in `code()` order (the wire code is its index), and `CYCLE` is the button's order, which must be a prefix of `ALL`; `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, the cycle prefix, and each page's dispatch arm in `app/src/features/mod.rs` and view module under `app/src/features/<path>` (the dispatch match itself is checked exhaustively by the compiler).
 
-`Navigator` in `app/src/model/route/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
+`Navigator` in `app/src/shared/route/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 
 The capability test is one column of each route (`Route::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So the entry point hands over a `Wifi` (`Absent` / `Unattended` / `Worker`), and `run` folds it into that `bool` with `wifi.wired()`: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`wifi`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
 

@@ -4,8 +4,8 @@
 extern crate alloc;
 
 use embassy_executor::Spawner;
-use iot_app::model::state::SurfaceRole;
 use iot_core::drivers::board::{HasSurface, HasWifi};
+use iot_core::drivers::surface::SurfaceRole;
 
 type Board = iot_bsp_esp::Board<'static>;
 

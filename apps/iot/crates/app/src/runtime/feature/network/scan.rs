@@ -2,7 +2,7 @@
 
 use core::future::pending;
 
-use crate::model::state::{DisplayPage, NetworkCommand};
+use crate::state::{DisplayPage, NetworkCommand};
 use embassy_futures::select::{Either3, select3};
 use embassy_time::{Duration, Timer};
 use iot_core::drivers::network::{

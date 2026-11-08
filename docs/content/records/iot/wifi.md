@@ -350,7 +350,7 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 | 确认框（盖在列表上） | **列表与工具条都不画**（`page::Part::hidden`），只画一条 256 × 118 px 的模态框：标题 `LEAVE "<name>"?` / `FORGET "<name>"?`，正文 `THE LINK GOES DOWN` / `THE SAVED KEY IS ERASED`，下面两个答案键 `KEEP` / 动词（`LEAVE`/`FORGET`，各 100 × 44 px） | 只有两个答案键；**其余一切手势与点击都是取消**（`answer_at` 统一裁定） |
 | 连接框（盖在列表上，工具条留着） | **列表不画、工具条照画**（`page::Part::hidden`）：同一条 256 × 118 px 的框，**没有答案键**，标题 `JOINING <name>` / `JOINED <name>`，正文 `WAIT FOR THE NETWORK` / `WAIT FOR AN ADDRESS`。词由 `LinkStatus.ap` 定，`<name>` 取**选中行**，框在**交凭据的那一帧**就出现（`join_wait`），不等射频第一次回报 | 只有工具条：`LEAVE` 仍是唯一出口。**问题与它同时在场时画问题**（`Overlay` 只有一个矩形，问题优先）；键盘升起时不画它 —— 手指当下的事是打字 |
 
-键位（`apps/iot/crates/app/src/model/layout/keyboard.rs` 的 `CELLS` 表，不是算出来的下标 —— 数字块不按 cell 顺序排）：
+键位（`apps/iot/crates/app/src/features/network/layout/keyboard.rs` 的 `CELLS` 表，不是算出来的下标 —— 数字块不按 cell 顺序排）：
 
 ```
 1  2  3  | SH        ← 右列是四个独立控制键，不是跨行合并
@@ -361,7 +361,7 @@ X  0  OK | SHOW
 
 `1 2 3 / 4 5 6 / 7 8 9` 是拇指记住的块，为此右列两个格子空着也值；`0` 放在手机把它放在的位置（Cancel 与 OK 之间）。右列那四个键在**三层上是同一批 cell**（只有标签随层变），手指记的是格子而不是字。
 
-几何不写魔数，全部从 core `overlay.rs` 的页脚推出来：`FOOTER_ROWS = 8`（全局 FPS 徽标，任何页都不拥有它）、`CONTENT_BOTTOM = PANEL_ROWS - FOOTER_ROWS = 232`，于是 `KEYBOARD_TOP = LIST_TOP = overlay_row_top(LIST_ROW = 3) = 47`（`LIST_ROW` 在 `app/src/model/layout/list.rs`）、`KEY_H = (232 − 47)/4 = 46`、`KEY_W = 320/4 = 80`、`LIST_ROW_H = 47`（列表仍是 3 行，从 61 收到 47 让出 42 px）、`TOOLBAR_TOP = 47 + 3×47 = 188`、`TOOLBAR_H = 44`（到 `CONTENT_BOTTOM`）。**列表态与打字态从同一个 y 起**：表头三行之下，列表分三份、键盘分四份，所以键盘升起时页面上的字一动不动，只是多出下面的一块。`app/src/model/layout` 里各控件的 `const _: () = assert!(...)` 把「页面到哪为止」钉在同一个数上（列表末行、工具条末行、键盘末行、对话框都不得越界）—— 徽标挪一行就会被长上来的控件压掉。
+几何不写魔数，全部从 core `overlay.rs` 的页脚推出来：`FOOTER_ROWS = 8`（全局 FPS 徽标，任何页都不拥有它）、`CONTENT_BOTTOM = PANEL_ROWS - FOOTER_ROWS = 232`，于是 `KEYBOARD_TOP = LIST_TOP = overlay_row_top(LIST_ROW = 3) = 47`（`LIST_ROW` 在 `app/src/features/network/layout/list.rs`）、`KEY_H = (232 − 47)/4 = 46`、`KEY_W = 320/4 = 80`、`LIST_ROW_H = 47`（列表仍是 3 行，从 61 收到 47 让出 42 px）、`TOOLBAR_TOP = 47 + 3×47 = 188`、`TOOLBAR_H = 44`（到 `CONTENT_BOTTOM`）。**列表态与打字态从同一个 y 起**：表头三行之下，列表分三份、键盘分四份，所以键盘升起时页面上的字一动不动，只是多出下面的一块。`app/src/features/network/layout` 里各控件的 `const _: () = assert!(...)` 把「页面到哪为止」钉在同一个数上（列表末行、工具条末行、键盘末行、对话框都不得越界）—— 徽标挪一行就会被长上来的控件压掉。
 
 决定都放在能被测试打到的层：
 

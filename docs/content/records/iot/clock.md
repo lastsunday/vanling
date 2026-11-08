@@ -209,7 +209,7 @@ IOT_DEMAND="display=continuous,audio=continuous,speed=slow"
 
 **表是从 sink 上取的，不是并排传进去的** —— `ClockSink::Table` 是关联类型。两个数是同一次测量：一行说的是**那块芯片上**某个设备持有多久，所以拿 A 片的表配 B 片的 `set_speed` 就是替一块没在跑的芯片算 deadline。做成关联类型，这个配对变成编译错误而不是运行时的意外。
 
-**`Governor` 在 core 里，因为它是本仓库已有的形状** —— `RenderController` 就是这个形状（现在在 `app::ui::render`）：同样是有状态（存 `last`）、`&mut self`、变了才动、效果经注入（那边是闭包，这里是 `ClockSink`）、返回「有没有动」（那边是 `bool`，这里是 `Option<Applied>`）。**core 连 `Box` 都在用**，所以「core 只依赖 libm」不是它不放有状态控制器的理由——那是现状，不是约束。
+**`Governor` 在 core 里，因为它是本仓库已有的形状** —— `RenderController` 就是这个形状（现在在 `app::render`）：同样是有状态（存 `last`）、`&mut self`、变了才动、效果经注入（那边是闭包，这里是 `ClockSink`）、返回「有没有动」（那边是 `bool`，这里是 `Option<Applied>`）。**core 连 `Box` 都在用**，所以「core 只依赖 libm」不是它不放有状态控制器的理由——那是现状，不是约束。
 
 **用 `&mut self` 而不是 `static`，换回来三样东西**：
 

@@ -213,7 +213,7 @@ Every row is a **worst hold in wall time, measured on that part**. The same dead
 
 **The table comes off the sink rather than being passed beside it** — `ClockSink::Table` is an associated type. The two are one measurement: a row says how long a device holds **on that part**, so pairing one part's rows with another's `set_speed` computes a deadline for a chip that is not running. As an associated type, that pairing is a compile error rather than a runtime surprise.
 
-**The governor lives in core because that is a shape this repository already has** — `RenderController` is that shape (it now lives in `app::ui::render`): equally stateful (it holds `last`), equally `&mut self`, acts only on a change, reaches its effect through something injected (a closure there, a `ClockSink` here), and returns whether anything moved (`bool` there, `Option<Applied>` here). **core allocates a `Box` too**, so "core only depends on libm" was never the reason to keep a stateful controller out of it — that is a fact about today, not a constraint.
+**The governor lives in core because that is a shape this repository already has** — `RenderController` is that shape (it now lives in `app::render`): equally stateful (it holds `last`), equally `&mut self`, acts only on a change, reaches its effect through something injected (a closure there, a `ClockSink` here), and returns whether anything moved (`bool` there, `Option<Applied>` here). **core allocates a `Box` too**, so "core only depends on libm" was never the reason to keep a stateful controller out of it — that is a fact about today, not a constraint.
 
 **`&mut self` rather than a `static` buys three things back**:
 

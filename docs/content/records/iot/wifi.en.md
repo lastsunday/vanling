@@ -738,7 +738,7 @@ whether a confirmation is up, and the two waits the page itself holds (`join_wai
 | confirmation (over the list) | **neither the list nor the strip is drawn** (`page::Part::hidden`); only a 256 × 118 px modal sits over the list: the title `LEAVE "<name>"?` / `FORGET "<name>"?`, the body `THE LINK GOES DOWN` / `THE SAVED KEY IS ERASED`, and below it two answers, `KEEP` and the verb (`LEAVE`/`FORGET`, 100 × 44 px each) | the two answers only; **every other gesture and tap is a cancel** (one `answer_at` decides) |
 | joining (over the list, strip kept) | **the list is not drawn, the strip is** (`page::Part::hidden`): the same 256 × 118 px box, **with no answer in it**, titled `JOINING <name>` / `JOINED <name>` over the body `WAIT FOR THE NETWORK` / `WAIT FOR AN ADDRESS`. The word follows `LinkStatus.ap`; `<name>` is the **picked row**; the box is up on the frame the credential is handed over (`join_wait`), not on the radio's first report | the strip only: `LEAVE` is still the one way out. **When a question is up at the same time the question is what the box holds** (`Overlay` is one rectangle, and the question wins); it is not drawn while a keyboard is up either — what the finger is doing then is typing |
 
-The key layout is a table in `apps/iot/crates/app/src/model/layout/keyboard.rs` (`CELLS`), not arithmetic — the digits do
+The key layout is a table in `apps/iot/crates/app/src/features/network/layout/keyboard.rs` (`CELLS`), not arithmetic — the digits do
 not sit in cell order:
 
 ```
@@ -757,14 +757,14 @@ The geometry writes no magic numbers: it all falls out of the footer in core's `
 `FOOTER_ROWS = 8` (the global FPS badge, which no page owns) gives
 `CONTENT_BOTTOM = PANEL_ROWS - FOOTER_ROWS = 232`, hence
 `KEYBOARD_TOP = LIST_TOP = overlay_row_top(LIST_ROW = 3) = 47` (`LIST_ROW` lives in
-`app/src/model/layout/list.rs`), `KEY_H = (232 − 47)/4 = 46`,
+`app/src/features/network/layout/list.rs`), `KEY_H = (232 − 47)/4 = 46`,
 `KEY_W = 320/4 = 80`, `LIST_ROW_H = 47` (the list is still
 three rows, taken from 61 down to 47 to give up 42 px), `TOOLBAR_TOP = 47 + 3×47 = 188` and
 `TOOLBAR_H = 44` (to `CONTENT_BOTTOM`). **The list state and the typing state start at the same
 y**: under three header
 rows the list is cut into three and the keyboard into four, so nothing already on the page
 moves when the keyboard comes up — a second block simply appears below.
-The `const _: () = assert!(...)` in each `app/src/model/layout` module ties "where a page ends" to
+The `const _: () = assert!(...)` in each `app/src/features/network/layout` module ties "where a page ends" to
 that same number (neither the list's last band, nor the strip's last row, nor the keyboard's last
 row, nor the dialog may cross) — a badge moved by a
 row would be overdrawn by whatever control grew into it.

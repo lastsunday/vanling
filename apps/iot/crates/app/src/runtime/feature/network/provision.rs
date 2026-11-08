@@ -3,7 +3,7 @@
 use core::convert::Infallible;
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-use crate::model::state::NetworkCommand;
+use crate::state::NetworkCommand;
 use edge_dhcp::io::{self, DEFAULT_SERVER_PORT};
 use edge_dhcp::server::{Server, ServerOptions};
 use edge_nal::UdpBind;

@@ -5,8 +5,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 
 use embassy_time::{Duration, Timer};
-use iot_app::model::state::{DisplayPage, PlaybackPhase};
-use iot_app::ui::diagnostics::Diagnostics;
+use iot_app::shared::diagnostics::Diagnostics;
+use iot_app::state::{DisplayPage, PlaybackPhase};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
 use iot_core::drivers::audio::{

@@ -8,12 +8,14 @@ pub(crate) use self::slot::Slot;
 
 use alloc::vec::Vec;
 
-use crate::controller::Band;
-use crate::model::intent::{Intent, recognize};
-use crate::model::keyboard::Key;
-use crate::model::layout;
-use crate::model::layout::DialogChoice;
-use crate::model::state::{Confirm, DeviceManager, DeviceState, DisplayPage, LIST_ROWS};
+use crate::features::network::controller::Band;
+use crate::features::network::layout;
+use crate::features::network::layout::DialogChoice;
+use crate::features::network::layout::LIST_ROWS;
+use crate::shared::intent::Confirm;
+use crate::shared::intent::{Intent, recognize};
+use crate::shared::keyboard::Key;
+use crate::state::{DeviceManager, DeviceState, DisplayPage};
 use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
 
@@ -34,7 +36,7 @@ pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
     if BENCH {
         return None;
     }
-    crate::model::boot::build_wifi_credentials()
+    crate::state::boot::build_wifi_credentials()
 }
 
 const BAND_X: u16 = 4;
@@ -600,7 +602,7 @@ impl Default for PanelBench {
 }
 
 fn credentials() -> Option<(&'static str, &'static str)> {
-    crate::model::boot::build_wifi_credentials()
+    crate::state::boot::build_wifi_credentials()
 }
 
 fn ssid() -> Option<&'static str> {

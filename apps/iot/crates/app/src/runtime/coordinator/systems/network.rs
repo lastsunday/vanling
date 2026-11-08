@@ -3,7 +3,7 @@
 
 use core::any::TypeId;
 
-use crate::model::state::{
+use crate::state::{
     Command, DeviceManager, DeviceState, DisplayPage, LampLine, LightState, NetworkCommand,
 };
 use iot_core::drivers::network::SetupHost;

@@ -285,7 +285,7 @@ async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
 }
 
 fn credentials_from_build() -> Option<(&'static str, &'static str)> {
-    let (ssid, password) = iot_app::model::boot::build_wifi_credentials()?;
+    let (ssid, password) = iot_app::state::boot::build_wifi_credentials()?;
     log::info!("[PROBE] this build joins the network named {ssid:?}");
     Some((ssid, password))
 }
