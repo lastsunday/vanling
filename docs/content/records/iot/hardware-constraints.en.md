@@ -3,7 +3,7 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "8638cb629da0e70473a6e40e332d926f86eee26c"
+source_file_hash = "10960a9a82911e5fb94a404ecbe827373e61cd16"
 translated_at = "2026-11-08T00:00:00Z"
 +++
 
@@ -435,15 +435,54 @@ before and after (floor 65,536 B, 184 B spare).
 
 - **A panic only stops by default**: esp-backtrace's `panic-handler` prints the backtrace and parks
   this core in an interrupt-free loop that only a power cycle leaves. This round turns on
-  `custom-halt` on the workspace dependency, and `custom_halt()` — defined in `iot-chip-esp` — calls
-  `software_reset()` directly. When `custom-halt` and `halt-cores` are both on, the latter wins
+  `custom-halt` on the workspace dependency, and `custom_halt()` — defined in `iot-chip-esp` — sets
+  the crash flag and then calls `software_reset()` (`crashed_reset()`). When `custom-halt` and
+  `halt-cores` are both on, the latter wins
   (the branch order in `abort()`'s `cfg_select!`), so **this repository must never enable
   `halt-cores`** — with it on, `custom_halt` is never called and nothing fails to compile.
 - **esp-hal's `init` disables the RWDT**, so the watchdog can only be armed again in the chip layer.
   `watchdog.rs` takes `RTC_TIMER` with `Rtc::new(steal())`: `Board::new` destructures `Peripherals`
   ending in `..`, the RTC timer is not one of its fields, and that is the same `# Safety` basis as
-  the PSRAM steal. Stage0 is `ResetSystem` with a 5 s timeout, and the `Rwdt` lives in a
-  `critical_section::Mutex<RefCell<Option<_>>>`.
+  the PSRAM steal. The `Rwdt` lives in a `critical_section::Mutex<RefCell<Option<_>>>`.
+- **Two arming points**: `arm_boot_watchdog()` arms it with a **30 s** timeout before heap setup and
+  `Board::new`, covering each driver's own boot timeout; `start_watchdog()` tightens it to **5 s**
+  once the coordinator executor exists and starts the feeder. Stage0 acts with `ResetCore`, not
+  `ResetSystem`: the latter resets the RTC domain, where the crash count lives in `store0`, while
+  `software_reset()` (the panic path) is a core reset too, so both preserve the count.
+- **Crash counting and safe mode** (`iot_core::boot` + `iot-chip-esp::boot_guard`): one word in
+  `store0` — the top 16 bits are the magic `0x5642`, bit 15 means "the previous boot panicked", and
+  the low 15 bits are the consecutive crash count. The panic `custom_halt()`, heap/PSRAM/board-init
+  failures all go through `crashed_reset()`, which sets the flag before resetting; watchdog resets
+  are recognised from the reset reason. Every boot folds its reset in via `note_boot()`: a crash
+  adds one, a clean start (power-on, manual reset, reflash) goes back to zero — so "reset often"
+  does not drift into safe mode. The boot after the **fifth** consecutive crash reset enters safe
+  mode (four normal retries before it).
+- **Boot health is no longer time-based**: `iot_core::boot::Readiness` needs both halves before
+  this boot counts — the first frame has been flushed on every wired surface (reported by the
+  coordinator), and the network worker has built the IP stack, or this build deliberately has no
+  radio (`Wifi::Absent`/`Unattended` is reported by `run`, the worker reports after
+  `embassy_net::new`). Once both are in, the feeder calls `mark_healthy()` once and clears the
+  count. A failed association or a DHCP address that never arrives is **not** a crash: the device
+  is alive, just not reachable.
+- **Safe mode keeps Wi-Fi and a read-only diagnostic surface**: the safe branch skips `Board::new`
+  and takes only `WIFI`/`FLASH`/`TIMG0`/`FROM_CPU_INTR0` from `Peripherals`, using
+  `try_init_heap()` (a failure parks on the console instead of resetting) and `EspStation` to
+  bring the stack up directly. It makes one station attempt with a saved network (or the
+  build-time credential) and, if an address arrives within 20 s, serves diagnostics on the
+  station's address; otherwise it raises the open AP `vanling-safe-xxxx` (192.168.4.1) with the
+  same DHCP/DNS pair and a read-only text page on `GET /`, `/status`, `/health` (crash count,
+  uptime, heap free, saved networks, link phase and address). Every other method or path is 400.
+  The AP is open because the normal setup passphrase is shown on a panel this path does not trust,
+  and the page is read-only.
+- **Safe mode is latched, so it cannot build a reset loop**: once `enter_safe_mode()` is set, a
+  panic, `crashed_reset()` or a heap/board failure parks in `park_forever()` with no watchdog
+  armed, and the console repeats a line every 10 s. The reset button, a power cycle or a reflash
+  all return to one normal attempt (none of those reset reasons counts as a crash). A panic in
+  the diagnostic path itself therefore leaves the evidence in place.
+- **`[test]` (2026-11-08, `cargo test -p iot-core`)**: `safe.rs` pins that the page carries every
+  fact, the no-address/AP case, refusal of a too-small buffer, and that only the read-only surface
+  is served; `boot.rs` pins that only the fifth crash enters safe mode and that neither half of
+  "first frame + network" is enough on its own.
 - **Feeding is an ordinary task on the coordinator's executor**, waking every 1 s; `1 s × 3 ≤ 5 s`
   is a compile-time assertion. That is exactly the wanted rule: as long as that executor still
   schedules, the watchdog is fed; when the frame loop itself stops, nobody feeds it — including the
@@ -453,7 +492,7 @@ before and after (floor 65,536 B, 184 B spare).
 - **The WS2812 no longer panics**: on the C6 the strip is the only surface, and a failed write used
   to `expect` every frame, so panic → reset → panic made a reboot loop one round per 5 s. Now a
   failure logs one `[RGB]` warning, a success clears the flag, and the next outage reports again.
-- **`[measured]` (2026-11-08, one flash per board)**: the C6 product image prints
+- **`[measured]` (2026-11-08, one flash per board, old image)**: the C6 product image prints
   `[WATCHDOG] armed for 5000 ms, fed every 1000 ms from the coordinator` at boot, and after one
   `CTRL+R` reset it ran for about five minutes with no reset at all (only lamp-colour lines).
   The S3, flashed with `-a watchdog-reset`, booted, associated with its saved network, and was still
@@ -461,7 +500,19 @@ before and after (floor 65,536 B, 184 B spare).
   `[WATCHDOG]` line cannot be captured — the native-USB CDC enumerates only after the app's first
   lines, and the same function prints that line on the C6. The reading was taken by flashing with
   `espflash flash … -a watchdog-reset` and then opening the port with `cat` straight away
-  (`espflash monitor` drops the port itself when the watchdog reset re-enumerates it).
-- **`[reported]`**: panic → reset still has not been reproduced on a bench (nothing has deliberately
-  called `panic!`); what can be defended is `custom_halt`'s signature, esp-backtrace's call site and
-  the existing uses of `software_reset()`. The reading still owed is a reset log after a `panic!`.
+  (`espflash monitor` drops the port itself when the watchdog reset re-enumerates it). Both readings
+  are from the `ResetSystem` + coordinator-only arming image; the `[WATCHDOG]` line is now two lines
+  (boot and runtime).
+- **`[measured]` (2026-11-08, `moon run iot:emu-smoke`)**: the new image boots in the C6 emulator
+  from ROM and the 2nd-stage bootloader, printing
+  `[BOOT] reset reason Some(ChipPowerOn); 0 crashed boot(s) in a row; Normal start` and
+  `[WATCHDOG] armed before board bring-up for 30000 ms; tightened to 5000 ms once the coordinator runs`,
+  then `[IOT] boot complete`. This shows `store0` is accessible on the C6, an uninitialised value is
+  rejected by the magic and counted as a clean boot, and the boot arming does not misfire on the
+  normal path. The emulator does not model the real RWDT expiry.
+- **`[reported]`**: four bench readings remain — (1) panic → `custom_halt` → reset (nothing has
+  deliberately called `panic!`); (2) `ResetCore` preserving `store0` when the RWDT really expires;
+  (3) consecutive crashes actually reaching safe mode, and a power cycle returning to a normal
+  start; (4) the safe-mode `vanling-safe-xxxx` AP opening in a real browser and serving the
+  diagnostic page. What can be defended is the register semantics, that both `ResetCore` and
+  `software_reset()` are core resets, and the emulator log above.

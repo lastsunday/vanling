@@ -182,6 +182,11 @@ where
         camera: camera.is_some(),
         network: wifi.wired(),
     };
+    if !matches!(&wifi, Wifi::Worker(_)) {
+        // No worker means no radio to wait for: absent by wiring, or driven by the caller.
+        // The boot can finish its network half here, and the first frame finishes the rest.
+        iot_core::boot::note_network_settled();
+    }
     let configurator = Configurator::new(board.motion_configurations());
     sources.extend(motion);
     sources.extend(audio);

@@ -54,6 +54,20 @@ pub fn load(mut flash: FlashStorage<'static>) -> Option<CredentialStore> {
     Some(store)
 }
 
+/// Open the saved networks straight from the flash peripheral.
+///
+/// Safe mode does not construct a `Board`, so it cannot take the store the board would have
+/// loaded. The S3 keeps its multicore parking here for the same reason the board does: a flash
+/// call while the other core runs is not safe on that part.
+pub fn load_from_peripherals(
+    flash: esp_hal::peripherals::FLASH<'static>,
+) -> Option<CredentialStore> {
+    let flash = FlashStorage::new(flash);
+    #[cfg(feature = "lckfb-szpi-esp32s3")]
+    let flash = flash.multicore_auto_park();
+    load(flash)
+}
+
 impl FlashRegion for CredentialRegion<'_> {
     fn read(&mut self, offset: u32, into: &mut [u8]) -> Result<(), RegionError> {
         let at = self.address(offset, into.len() as u32)?;

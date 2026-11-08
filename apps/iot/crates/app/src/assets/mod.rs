@@ -5,6 +5,10 @@ use iot_core::provision::Site;
 
 pub const AP_PREFIX: &[u8] = b"vanling-";
 
+/// Safe mode's own name: it must not be mistaken for the setup portal, because the page it
+/// serves is read-only and the access point is open.
+pub const SAFE_AP_PREFIX: &[u8] = b"vanling-safe-";
+
 #[cfg(any(test, feature = "wifi"))]
 pub const SITE: Site = Site {
     page: include_str!("portal.html"),
@@ -22,6 +26,14 @@ mod tests {
         assert_eq!(
             setup_ap_ssid(AP_PREFIX, [0xaa, 0x00, 0x00, 0x00, 0x1f, 0xc2]).as_display_text(),
             Some("vanling-1fc2")
+        );
+    }
+
+    #[test]
+    fn safe_mode_does_not_answer_to_the_setup_name() {
+        assert_eq!(
+            setup_ap_ssid(SAFE_AP_PREFIX, [0xaa, 0x00, 0x00, 0x00, 0x1f, 0xc2]).as_display_text(),
+            Some("vanling-safe-1fc2")
         );
     }
 

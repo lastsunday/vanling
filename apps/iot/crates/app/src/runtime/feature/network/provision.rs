@@ -66,7 +66,7 @@ where
     match join4(runner.run(), leases(stack), names(stack), page(stack, mac)).await {}
 }
 
-async fn leases(stack: Stack<'_>) {
+pub(super) async fn leases(stack: Stack<'_>) {
     let address = Ipv4Addr::from(ADDRESS);
     let mut gateway = [Ipv4Addr::UNSPECIFIED];
     let resolvers = [address];
@@ -100,7 +100,7 @@ async fn leases(stack: Stack<'_>) {
     }
 }
 
-async fn names(stack: Stack<'_>) {
+pub(super) async fn names(stack: Stack<'_>) {
     let mut rx_meta = [PacketMetadata::EMPTY; 2];
     let mut rx_buf = [0u8; 512];
     let mut tx_meta = [PacketMetadata::EMPTY; 2];

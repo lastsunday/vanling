@@ -4,6 +4,8 @@
 extern crate alloc;
 
 use embassy_executor::Spawner;
+use esp_hal::peripherals::Peripherals;
+use esp_hal::timer::timg::TimerGroup;
 use iot_core::drivers::board::{HasSurface, HasWifi};
 use iot_core::drivers::surface::SurfaceRole;
 
@@ -19,7 +21,7 @@ static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    let (mut board, feed, io) = boot_board();
+    let (mut board, feed, io) = boot_board().await;
 
     // The coordinator's own executor feeds this; a frozen panel therefore resets rather than
     // standing there forever. `boot_board` has already started the timer driver it needs.
@@ -71,9 +73,48 @@ fn second_core_peak() -> Option<(usize, usize)> {
     None
 }
 
-fn boot_board() -> (Board, iot_app::Feed, iot_app::IoPlacement) {
+async fn boot_board() -> (Board, iot_app::Feed, iot_app::IoPlacement) {
     let peripherals = iot_chip_esp::chip_init_for_product();
     iot_chip_esp::init_logging();
+
+    let boot = iot_chip_esp::note_boot();
+    if boot.is_safe() {
+        // No board bring-up and no watchdog: the station and one read-only page are the
+        // whole surface. The heap is allowed to be unavailable here, which is why this
+        // path uses `try_init_heap` and parks instead of resetting into safe mode again.
+        iot_chip_esp::enter_safe_mode();
+        iot_chip_esp::init_radio_heap();
+        match iot_chip_esp::try_init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES) {
+            Ok(()) => iot_app::runtime::feature::network::report_heap_free(iot_chip_esp::heap_free),
+            Err(error) => {
+                log::error!("[SAFE] no general heap ({error:?}); the console is all that is left");
+                iot_chip_esp::park_safe_mode(&boot);
+            }
+        }
+
+        #[allow(non_snake_case)]
+        let Peripherals {
+            WIFI,
+            FLASH,
+            TIMG0,
+            FROM_CPU_INTR0,
+            ..
+        } = peripherals;
+        let timer = TimerGroup::new(TIMG0);
+        iot_chip_esp::start_rtos(timer.timer0, FROM_CPU_INTR0);
+        iot_chip_esp::ungate_radio();
+        let station = iot_bsp_esp::components::wifi::start(WIFI);
+        let saved = iot_bsp_esp::components::credentials::load_from_peripherals(FLASH)
+            .map(alloc::boxed::Box::new);
+        iot_app::runtime::feature::network::safe::run(station, saved, boot.record.crashed_boots())
+            .await
+    }
+
+    // The boot-sized arm goes before the first driver timeout and before board bring-up:
+    // a hang from here on is a reset, and after enough resets in a row safe mode keeps it
+    // from becoming an endless one.
+    iot_chip_esp::arm_boot_watchdog();
+
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES);
     iot_app::runtime::feature::network::report_heap_free(iot_chip_esp::heap_free);
@@ -86,7 +127,7 @@ fn boot_board() -> (Board, iot_app::Feed, iot_app::IoPlacement) {
         Ok(startup) => startup,
         Err(error) => {
             log::error!("[IOT] board init failed, resetting: {error:?}");
-            iot_chip_esp::reset();
+            iot_chip_esp::crashed_reset();
         }
     };
 

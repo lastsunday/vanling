@@ -22,6 +22,7 @@ use crate::runtime::workers::NETWORK;
 
 mod link;
 mod provision;
+pub mod safe;
 mod scan;
 mod setup;
 mod store;
@@ -109,6 +110,9 @@ where
     let (stack, mut runner) =
         embassy_net::new(device, Config::dhcpv4(Default::default()), resources, seed);
     log::info!("[WIFI] network stack up, DHCP requested");
+    // The radio and the IP stack are what the network half of a boot can prove. Association
+    // and DHCP are policy on top: an AP that will not answer is a live device, not a crash.
+    iot_core::boot::note_network_settled();
 
     match join(
         runner.run(),

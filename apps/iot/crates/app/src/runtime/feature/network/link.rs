@@ -408,7 +408,7 @@ fn stack_address(stack: &Stack<'_>) -> Option<Ipv4> {
         .map(|config| Ipv4::from_octets(config.address.address().octets()))
 }
 
-async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
+pub(super) async fn wait_for_address(stack: &Stack<'_>) -> Option<Ipv4> {
     loop {
         if let Some(address) = stack_address(stack) {
             return Some(address);

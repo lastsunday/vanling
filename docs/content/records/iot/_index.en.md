@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "7d8bf14787670104929efcf080eb9c041b01e872"
-translated_at = "2026-11-01T00:00:00Z"
+source_file_hash = "30fe6fec5f06467e2194e1261a09adbd7c9746fe"
+translated_at = "2026-11-08T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -108,6 +108,7 @@ The system description lives in [development docs / IoT firmware](@/development/
 | Shared MCLK | The two units run in their own clock domains; **the transmit unit drives the pin and capture is forced subordinate**, and the direction is not interchangeable | `with_signal_loopback` is the only misleading name here |
 | Main task stack | Changed when the camera entered the product; read the linked ELF symbols | `_stack_start_cpu0` = 83,060 B |
 | esp-hal stack-overflow watchpoint | Fires spuriously and cannot be used as an overflow criterion | — |
+| Freeze / crash reboot | The RWDT is armed twice (boot, runtime); the boot after the fifth consecutive crash reset enters safe mode and still serves read-only Wi-Fi diagnostics | boot 30 s, runtime 5 s; the count lives in RTC `store0`; healthy = first frame + network stack ready |
 | **A 64 KB data cache leaves the reclaimed region empty** | esp-hal calls the space above 0x3FCF0000 "leaving to the heap", but takes the data cache off its top. At the default, `#[ram(reclaimed)]` has nowhere to go | The existing ELF in this tree has **zero symbols** above 0x3FCF0000; halving the cache buys **32 KiB** back |
 
 ### Network (Wi-Fi)

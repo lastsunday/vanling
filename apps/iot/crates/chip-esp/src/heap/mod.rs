@@ -23,9 +23,9 @@ pub const PRODUCT_HEAP_BYTES: usize = 512 * 1024;
 pub const PRODUCT_HEAP_BYTES: usize = 64 * 1024;
 
 #[cfg(feature = "esp32c6")]
-use esp32c6::window;
+use esp32c6::try_window;
 #[cfg(feature = "esp32s3")]
-use esp32s3::window;
+use esp32s3::try_window;
 
 static HEAP: AtomicPtr<Heap> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -35,15 +35,31 @@ pub(crate) struct Window {
     pub(crate) len: usize,
 }
 
+/// Why the product's general-purpose heap was not handed out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeapError {
+    /// This part maps no window at all: the S3's PSRAM is absent or did not read back.
+    Unavailable { source: &'static str },
+    /// The window exists, but it is smaller than the product asked for.
+    TooLarge {
+        asked: usize,
+        available: usize,
+        source: &'static str,
+    },
+}
+
 /// Give `allocator` this part's memory for `bytes` of a general-purpose heap.
-pub fn init_heap(allocator: &Heap, bytes: usize) {
-    let (window, source) = window();
+///
+/// Returns the reason instead of resetting, so safe mode can keep its serial console after a
+/// heap window this boot cannot use. The product path is [`init_heap`], which resets.
+pub fn try_init_heap(allocator: &Heap, bytes: usize) -> Result<(), HeapError> {
+    let (window, source) = try_window()?;
     if bytes > window.len {
-        log::error!(
-            "[HEAP] asked for {bytes} B of a {}-byte {source} window, resetting",
-            window.len
-        );
-        esp_hal::system::software_reset();
+        return Err(HeapError::TooLarge {
+            asked: bytes,
+            available: window.len,
+            source,
+        });
     }
     // SAFETY: called exactly once, before any allocation. The window is either a static this
     // module owns or memory `chip_init_at` mapped and read a pattern back through, and
@@ -55,6 +71,15 @@ pub fn init_heap(allocator: &Heap, bytes: usize) {
         window.start,
         window.len
     );
+    Ok(())
+}
+
+/// Give `allocator` this part's memory for `bytes`, or reset the part.
+pub fn init_heap(allocator: &Heap, bytes: usize) {
+    if let Err(error) = try_init_heap(allocator, bytes) {
+        log::error!("[HEAP] {error:?}, resetting");
+        crate::crashed_reset();
+    }
 }
 
 /// What is left of the general-purpose heap.

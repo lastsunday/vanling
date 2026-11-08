@@ -1,13 +1,13 @@
 use super::Window;
 
-pub(crate) fn window() -> (Window, &'static str) {
-    (
+pub(crate) fn try_window() -> Result<(Window, &'static str), super::HeapError> {
+    Ok((
         Window {
             start: core::ptr::addr_of_mut!(DRAM_HEAP) as usize,
             len: DRAM_HEAP_BYTES,
         },
         "internal DRAM",
-    )
+    ))
 }
 
 static mut DRAM_HEAP: [core::mem::MaybeUninit<u8>; DRAM_HEAP_BYTES] =
