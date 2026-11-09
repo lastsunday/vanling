@@ -9,12 +9,43 @@ use iot_app::shared::keyboard::Key;
 use iot_app::shared::light::PALETTE;
 use iot_app::state::{NetworkCommand, Page};
 use iot_core::drivers::audio::dbfs;
+use iot_core::drivers::input::LONG_PRESS_MS;
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError,
     SavedNetworks, Ssid,
 };
 
 use super::board::*;
+
+/// A finger's hold, not a threshold probe; the scanner's boundary is unit-tested.
+const LONG_HOLD: Duration = Duration::from_millis(LONG_PRESS_MS + 400);
+
+/// Repeats the gesture only while the page has not moved; a wrong landing still fails.
+async fn triple_click_to(page: Page) {
+    let start = *PAGES
+        .lock()
+        .unwrap()
+        .last()
+        .expect("a page was painted before the first triple click");
+    for attempt in 0..3 {
+        triple_click().await;
+        for _ in 0..200 {
+            let landed = *PAGES
+                .lock()
+                .unwrap()
+                .last()
+                .expect("a page was painted before the first triple click");
+            if landed == page {
+                return;
+            }
+            if landed != start {
+                panic!("triple click {attempt} landed on {landed:?}, not {page:?}");
+            }
+            Timer::after(Duration::from_millis(10)).await;
+        }
+    }
+    panic!("three triple clicks never left {start:?} for {page:?}");
+}
 
 /// Takes everything the coordinator handed the network worker. Nothing consumes these
 /// commands on the host, so this is where a command is read rather than acted on.
@@ -36,7 +67,7 @@ pub(super) async fn scenario() {
     Timer::after(Duration::from_millis(3_200)).await;
 
     PRESSED[0].store(true, Ordering::SeqCst);
-    Timer::after(Duration::from_millis(600)).await;
+    Timer::after(LONG_HOLD).await;
     PRESSED[0].store(false, Ordering::SeqCst);
 
     let mut attempts = 0;
@@ -70,29 +101,9 @@ pub(super) async fn scenario() {
         "button 1 must not touch surface 0's solid color"
     );
 
-    triple_click().await;
+    triple_click_to(Page::Attitude).await;
 
-    let mut attempts = 0;
-    while !page_seen(Page::Attitude) && attempts < 100 {
-        Timer::after(Duration::from_millis(10)).await;
-        attempts += 1;
-    }
-    assert!(
-        page_seen(Page::Attitude),
-        "triple click did not reach the motion-enabled page"
-    );
-
-    triple_click().await;
-
-    attempts = 0;
-    while !page_seen(Page::Audio) && attempts < 100 {
-        Timer::after(Duration::from_millis(10)).await;
-        attempts += 1;
-    }
-    assert!(
-        page_seen(Page::Audio),
-        "the capture-enabled page was never reached"
-    );
+    triple_click_to(Page::Audio).await;
     assert!(
         AUDIO_POLLS.load(Ordering::SeqCst) > 0,
         "the capture source was never polled"
@@ -123,17 +134,7 @@ pub(super) async fn scenario() {
         "the capture's A-weighted level did not reach the panel's diagnostics"
     );
 
-    triple_click().await;
-
-    attempts = 0;
-    while !page_seen(Page::Speaker) && attempts < 100 {
-        Timer::after(Duration::from_millis(10)).await;
-        attempts += 1;
-    }
-    assert!(
-        page_seen(Page::Speaker),
-        "the speaker-enabled page was never reached"
-    );
+    triple_click_to(Page::Speaker).await;
 
     click(1).await;
 
@@ -200,7 +201,7 @@ pub(super) async fn scenario() {
     );
 
     PRESSED[0].store(true, Ordering::SeqCst);
-    Timer::after(Duration::from_millis(700)).await;
+    Timer::after(LONG_HOLD).await;
     PRESSED[0].store(false, Ordering::SeqCst);
 
     attempts = 0;
@@ -223,17 +224,7 @@ pub(super) async fn scenario() {
         "the mute did not reach the driver as a single latch"
     );
 
-    triple_click().await;
-
-    attempts = 0;
-    while !page_seen(Page::Camera) && attempts < 100 {
-        Timer::after(Duration::from_millis(10)).await;
-        attempts += 1;
-    }
-    assert!(
-        page_seen(Page::Camera),
-        "the camera-enabled page was never reached"
-    );
+    triple_click_to(Page::Camera).await;
 
     attempts = 0;
     while CAMERA_PAINTED.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -247,23 +238,7 @@ pub(super) async fn scenario() {
 
     let painted_before = PAINTED.lock().unwrap().len();
     let released_before = RELEASED.load(Ordering::SeqCst);
-    let pages_before = PAGES.lock().unwrap().len();
-    triple_click().await;
-    attempts = 0;
-    while !PAGES.lock().unwrap()[pages_before..]
-        .iter()
-        .any(|page| *page != Page::Camera)
-        && attempts < 100
-    {
-        Timer::after(Duration::from_millis(10)).await;
-        attempts += 1;
-    }
-    assert!(
-        PAGES.lock().unwrap()[pages_before..]
-            .iter()
-            .any(|page| *page != Page::Camera),
-        "the page cycle did not come back round from the camera page"
-    );
+    triple_click_to(Page::Network).await;
 
     assert!(
         RELEASED.load(Ordering::SeqCst) > released_before,
@@ -440,6 +415,12 @@ pub(super) async fn scenario() {
         ),
         None => panic!("the hold's answer never reached the network worker"),
     }
+
+    assert_eq!(
+        iot_app::shared::diagnostics::dropped_intents(),
+        0,
+        "the input ring dropped an intent rather than the gesture being slow"
+    );
 
     std::process::exit(0);
 }
