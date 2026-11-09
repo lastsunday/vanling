@@ -7,6 +7,7 @@ pub const AP_PREFIX: &[u8] = b"vanling-";
 
 /// Safe mode's own name: it must not be mistaken for the setup portal, because the page it
 /// serves is read-only and the access point is open.
+#[cfg(any(test, feature = "wifi"))]
 pub const SAFE_AP_PREFIX: &[u8] = b"vanling-safe-";
 
 #[cfg(any(test, feature = "wifi"))]

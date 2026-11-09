@@ -4,13 +4,14 @@ use std::sync::atomic::Ordering;
 
 use embassy_time::{Duration, Timer};
 use iot_app::runtime::workers::NETWORK;
-use iot_app::shared::intent::{ActionIntent, Confirm, Intent, NetworkPageIntent};
+use iot_app::shared::intent::{ActionIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
 use iot_app::shared::keyboard::Key;
 use iot_app::shared::light::PALETTE;
 use iot_app::state::{NetworkCommand, Page};
 use iot_core::drivers::audio::dbfs;
 use iot_core::drivers::network::{
-    AccessPoint, ApList, Credentials, JoinRequest, SavedNetworks, Ssid,
+    AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError,
+    SavedNetworks, Ssid,
 };
 
 use super::board::*;
@@ -370,10 +371,11 @@ pub(super) async fn scenario() {
         "the credential did not carry what was typed"
     );
 
-    send(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
-        key: Key::Cancel,
-        at_ms,
-    }));
+    // The radio's report on the attempt; without it the page stays busy and refuses the scan.
+    send(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+        phase: LinkPhase::Failed(NetworkError::Credentials),
+        ..LinkStatus::default()
+    })));
     Timer::after(Duration::from_millis(100)).await;
 
     let mut store = SavedNetworks::empty();
