@@ -5,8 +5,8 @@ use crate::shared::route::{Navigator, Page};
 use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::network::{LinkPhase, SetupHost};
 
-use crate::pages::network::model::NetworkDraft;
-use crate::shared::state::{
+use super::draft::NetworkDraft;
+use super::{
     AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, PlaybackState,
     SurfaceRole, TouchState,
 };
@@ -77,7 +77,7 @@ impl DeviceState {
 
     /// The page that becomes the boot page: a splash has no page to land on, and a page the
     /// board cannot back is not somewhere it could ever arrive.
-    pub(super) fn landed_on(page: Page, backed: Backed) -> Page {
+    pub(crate) fn landed_on(page: Page, backed: Backed) -> Page {
         match page {
             Page::Splash => Page::Ambient,
             page if page.is_backed(backed) => page,

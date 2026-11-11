@@ -1,6 +1,6 @@
 //! The header's three rows: the page's title and window, the link, and the draft or address.
 
-use crate::pages::network::model::NetworkDraft;
+use crate::shared::state::NetworkDraft;
 use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus, SSID_BYTES};
 use iot_core::overlay::{
     Block, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, block_value_x, block_x, level_value_end,
@@ -167,8 +167,8 @@ impl Surface<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pages::network::model::Entry;
     use crate::shared::diagnostics::Diagnostics;
+    use crate::shared::state::Entry;
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{NetworkMode, SetupHost, Ssid};

@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::render::{Activity, Consumer, RenderController, Renderer};
-use crate::state::DeviceState;
+use crate::shared::state::DeviceState;
 use iot_core::demand::EffectiveDemand;
 
 struct Entry {

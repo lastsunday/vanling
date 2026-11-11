@@ -50,7 +50,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 - **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, diagnostic, network, product or chip. The page shell (`app::shared::view_kit::surface::Surface`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
 - **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `PanelTarget`/`PanelContext` to the app through `core`'s `PanelPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `Diagnostics` nor any page type.
 - **Each component is its own feature**: one feature per component (`button`/`ft6336`/`pca9557`/`ws2812`/`st7789`/`screen`, gated once at the `mod` in `components/`, absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
-- **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in app `main.rs` (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
+- **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in the app's bin entries (`main.rs`, `bin/*.rs`) (esp-hal/esp-rtos are feature-gated in the app purely so the entry point resolves).
 - **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
@@ -66,21 +66,21 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 
 | Path | Responsibility |
 | --- | --- |
-| `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator |
-| `main.rs` | chip bring-up, executor choice, family entry |
+| `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
+| `main.rs` | chip bring-up, executor choice, family entry; the board bring-up lives in `bin/common/`, shared with `bin/panel-bench.rs` |
 | `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` is the one page→view dispatch `paint`, `tests.rs` guards the golden pixels |
 | `pages/{ambient,attitude,camera,splash}.rs` | single-file pages with one canvas: the `stamp_*` methods on the page shell draw directly |
 | `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/state` |
-| `pages/network/{model,controller,layout,view}/` | the Network page's own draft and list position (`NetworkDraft`/`Entry`/`SetupWait`), gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing |
-| `shared/` | cross-page truth and vocabulary: only what more than one page reads |
-| `shared/state/` | records the workers write and the render loop reads, one file per domain; a page's private draft does not live here |
+| `pages/network/{controller,layout,view}/` | the Network page's gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing; the draft itself lives in `shared/state/draft/` |
+| `shared/` | cross-page truth and vocabulary: only what more than one page reads, and the leaf of the module graph |
+| `shared/state/` | records the workers write and the render loop reads, one file per domain; `device.rs` is the aggregate `DeviceState`, `draft/` is the Network page draft (owned by the device, edited by the page) |
 | `shared/route/{mod,nav}.rs` | the route table and `Navigator`: `Page` is the destination, `route()` is the exhaustive match, `ALL`/`CYCLE` are the order |
 | `shared/keyboard.rs` | key vocabulary: `Key`/`Layer`/`Cycling`, the multitap window, and the candidate character table per layer |
 | `shared/intent.rs` | the intent vocabulary: what an input is asked, including the cross-page `Confirm` |
 | `shared/light.rs` | the tables the light walks and the palette; page controllers call it |
 | `shared/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state, including the audio and playback diagnostics and the Network page draft |
 | `shared/view_kit/` | the page shell `Surface`, placement constants, text layout, band/overlay primitives and widgets; it knows pixels and a snapshot, not pages |
-| `state/` | the composition root: `DeviceState`, `DeviceManager`, `apply_intent`, gesture→intent dispatch, `Boot`/`Backed`, build-time configuration; the only module that knows every feature |
+| `state/` | device behaviour: `DeviceManager`, `apply_intent`, gesture→intent dispatch, `Boot`/`Backed`, build-time configuration; the only module that knows every page (a one-way `state → pages`) |
 | `state/translate.rs` | dispatches the current page to `pages/<page>/controller`; it reads no key-grid, band or confirmation-box geometry |
 | `state/boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `render/common/` | surface-agnostic: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, `color.rs` steps the colour, and `registry.rs` hands the appearance to the renderers that claimed it |
@@ -95,38 +95,42 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue; state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
-| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs` and stays off the product path; `replay/` is the product-reachable panel replay (`IOT_PANEL_BENCH`) and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), registered by the composition root as an ordinary `System` in a bench build and read by the network worker for the build's credential, folded away outside a bench build |
+| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs`; `replay/` is the panel replay and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached only by `bin/panel-bench.rs` through `bench::run`. Neither is on the product path: the product entry and the frame loop do not know `bench`; the `IOT_PANEL_BENCH` flag and the build-credential choice live in `state::boot` |
 
 The directions are held by a few honest rules in `iot-tool/tests/module_boundaries.rs` (the
 compiler does not check module cycles inside a crate), not by an edge-by-edge map:
 
+The layering is `lib → runtime → {render, state} → pages → shared`; `assets` is a leaf shared by
+`pages` and `runtime`.
+
 ```
-lib               → { bench, render, state, runtime, pages::paint }
-pages/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit}, state::DeviceState }
-state             → { pages::<page>::{model, controller, layout}, shared::{intent, light, route, state} }
-render            → { pages::paint, shared::{diagnostics, route, state, view_kit}, state }
+lib               → { render, state, runtime }
+pages/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit} }
+state             → { pages::<page>::controller, shared::{intent, light, route, state} }
+render            → { pages::paint, shared::{diagnostics, route, state, view_kit} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, state}, runtime::workers }
-runtime::feature::network  → { assets, bench, shared::{intent, state}, runtime::{feature::input, workers} }
+runtime::feature::network  → { assets, shared::intent, state, runtime::{feature::input, workers} }
 runtime::feature::playback → { shared::state, runtime::{feature::input, workers} }
 runtime::workers           → { shared::state }
-bench             → { pages::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
+bench             → { lib::run_with, pages::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
 ```
 
-- **pages never import each other**: a page directory reads `shared` and the `DeviceState` the composition root hands it; when a page needs something from another page, that thing belongs in `shared`
-- **`state` is the one two-way point**: it knows every page's `model`/`controller`/`layout`, dispatches translation and composes the aggregate state; a page takes only the `DeviceState` read handle from it, while vocabulary such as `Page` still comes from `shared::route`
+- **pages never import each other**: a page directory reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
+- **`state` is the only module that knows every page**: it dispatches translation to `pages/<page>/controller`, but the edge is one-way — a page reads `shared::state::DeviceState` and does not know `state`; vocabulary such as `Page` comes from `shared::route`
 - **`shared/view_kit` names no page**: `Surface` offers the `stamp_*` primitives; `pages::paint` decides which page stamps which mark
-- `shared` does not depend on `state`/`render`/`pages`; the route table and intent vocabulary are leaves. `shared::diagnostics` is the one exception: its snapshot copies the Network page draft, so it knows `pages::network::model::NetworkDraft`
-- `shared/state` holds only records more than one place reads or writes; a page's private draft (such as `NetworkDraft`) stays in `pages/network/model`
+- `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState` and the Network draft live there so pages, the snapshot and rendering all look downward
+- `shared/state` holds the records more than one place reads or writes; `DeviceState` is their aggregate, `draft/` is the Network page draft (edited by the page, copied by the snapshot, never read by the link)
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
 - `runtime::feature::network` does not reach `pages`/`render`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
-- `bench::probe` stays off the product path: only `bin/*-probe.rs` reference it; `bench::replay` is reached by the composition root (registering `Slot`) and the network worker (for the build's credential), and is folded away outside a bench build
+- `bench` is an entry/fixture, not a layer: `probe` is reached only by `bin/*-probe.rs` and `replay` only by `bin/panel-bench.rs` through `bench::run`; neither `lib` nor `runtime` knows `bench`, held by `the_bench_is_reached_only_by_its_own_entry` in `module_boundaries.rs`. The build-time flag `BENCH` and `build_credentials` live in `state::boot`, so the network worker fetching a credential never points back at the harness
 - `core` does not know `iot_app`
 
-`main` is the binary crate root and reaches `lib`/`runtime::feature::network` through `iot_app::`, so it is
-outside this graph; the chip family injects `second_core_peak` and the rest of the capabilities
+`main` and `bin/panel-bench.rs` are the binary crate roots and reach `lib::run` / `bench::run` and
+`runtime::feature::network` through `iot_app::`, so they are outside this graph; the board bring-up is
+shared by `bin/common/`, and the chip family injects `second_core_peak` and the rest of the capabilities
 into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
 
 ## Composition (three orthogonal axes)
@@ -212,7 +216,7 @@ A new scenario is a new `ActionIntent` variant; switching cadence at runtime is 
 
 A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Link`/`NetworkDraft`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
-`shared/state/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` hold the records the workers write and the render loop reads. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. A page's private draft and list position do not live in `shared`: `NetworkDraft`/`Entry`/`SetupWait` are in `pages/network/model`. The aggregate `DeviceState`, `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/apply.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
+`shared/state/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` hold the records the workers write and the render loop reads, while `device.rs` is the aggregate `DeviceState` and `draft/` is the Network page draft (`NetworkDraft`/`Entry`/`SetupWait`) — the device owns it, the page edits it, the snapshot copies it, and the link never reads it. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/apply.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
 
 Business state and page state sit apart, and **whoever writes a field owns it**: `NetworkState` holds only what the radio reported (`link` / `mac` / `aps` / `outage_announced`) and only `LinkIntent` writes it; `NetworkDraft` holds only what the page is in the middle of (the selected row, the draft, keys, the confirmation, the list's scroll position) and only the finger's `NetworkPageIntent` writes it. The page reads `&NetworkState`; the link never reads or writes a page field, so neither "a worker's report lands in a page field" nor "a page edit changes what the radio said" can happen. The other domains keep a `view` sub-record (`AudioView`, `PlaybackView`, `TouchView`) with the same meaning: only what the page is in the middle of, read by notifications and rendering. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
 
@@ -464,7 +468,7 @@ A log reporting a configuration nothing is running is worse than no log.
 ## Adding a board
 
 1. Add the board module to `bsp-esp/` (Board + HasXxx traits) with feature gating.
-2. Add the board's `SETUP_HOST` constant in `app/src/main.rs` (and `HEAP_BYTES` where the part's memory differs); the feed's arm is already there per part.
+2. Export the board's `SETUP_HOST` from the board module (and `HEAP_BYTES` where the part's memory differs); `bin/common/` reads both, and the feed's arm is already there per part.
 3. Forward the app feature `iot-bsp-esp/<board>`.
 4. Add the board to the `platforms` default JSON in `reusable-iot-build.yml` and the `platforms` input of `iot-dev-release.yml`. Xtensa boards need `use-xtensa-toolchain: true` and go through the `build-s3` task: the espup native `esp` 1.98.1.0 toolchain on CI/release, with a same-version Docker image locally on macOS Intel
 5. Verify: `cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`
@@ -474,6 +478,6 @@ A log reporting a configuration nothing is running is worse than no log.
 The esp family is fixed as `iot-chip-esp`/`iot-bsp-esp`; adding a non-esp family:
 
 1. Add the `iot-chip-<family>`/`iot-bsp-<family>` crates.
-2. Gate that family's entry dependencies behind the app family-alias feature; add the family entry block to `main` (`#[cfg(feature)]`).
+2. Gate that family's entry dependencies behind the app family-alias feature; add the family's board bring-up arm in `app/src/bin/common/` (each arm under its own `#[cfg(feature)]`).
 3. Toolchain target + `rust-toolchain.toml` + `platforms` in `reusable-iot-build.yml` (`target`/`use-xtensa-toolchain`) and the `platforms` input of `iot-dev-release.yml`.
 4. Switch `moon`/`lefthook` `--workspace --target` to the firmware scope; the toolchain target flows into moon tasks via `CARGO_ESP_TARGET` (set in `.envrc`/CI env and workflow inputs; tasks take `- '$CARGO_ESP_TARGET'` in `inputs` to keep cross-chip build caches isolated).

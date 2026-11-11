@@ -15,7 +15,7 @@ use crate::pages::network::layout;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{ActionIntent, InputIntent, NetworkPageIntent};
 use crate::shared::route::Page;
-use crate::state::DeviceState;
+use crate::shared::state::DeviceState;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::AccessPoint;
 

@@ -39,8 +39,18 @@ fn collect(dir: &Path, found: &mut Vec<(PathBuf, String)>) {
             .expect("the source tree does not change while it is read")
             .path();
         if path.is_dir() {
+            // A `tests/` directory is a test module's body, the same as a `#[cfg(test)]`
+            // item: it may name anything to build a fixture, so it is not part of the graph.
+            if path.file_name().is_some_and(|name| name == "tests") {
+                continue;
+            }
             collect(&path, found);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
+            // The same for a file the parent pulls in with `#[cfg(test)] mod tests;`: the
+            // marker lives in the parent, so the child would otherwise be scanned whole.
+            if path.file_name().is_some_and(|name| name == "tests.rs") {
+                continue;
+            }
             let text = std::fs::read_to_string(&path).expect("a source file is UTF-8");
             found.push((path, text));
         }
@@ -331,8 +341,8 @@ fn the_presentation_never_reaches_the_radio() {
     assert_no_reference(files, &["crate::runtime::feature::network"]);
 }
 
-/// Probes are the bodies of separate binaries. The panel replay under `bench` is reached by the
-/// product loop, so it is not one of them and is not filtered out here.
+/// Probes are the bodies of separate binaries, and the panel replay is now the same shape: only
+/// `bin/panel-bench.rs` reaches it, through `bench::run`.
 #[test]
 fn probes_stay_out_of_the_product_path() {
     let src = app_src();
@@ -342,6 +352,22 @@ fn probes_stay_out_of_the_product_path() {
         .filter(|(path, _)| !path.starts_with(&probes) && !path.starts_with(src.join("bin")))
         .collect();
     assert_no_reference(product, &["bench::probe", "probe::"]);
+}
+
+/// The bench is a harness, not a layer: `bin/panel-bench.rs` reaches `bench::run`, and nothing
+/// else in the crate names it. It used to be the other way round as well — `lib` registered the
+/// replay's system and the network worker asked it for a build credential — which put
+/// `runtime ↔ bench` in the product path.
+#[test]
+fn the_bench_is_reached_only_by_its_own_entry() {
+    let src = app_src();
+    let bench = src.join("bench");
+    let bins = src.join("bin");
+    let product: Vec<_> = shipping_sources(&src)
+        .into_iter()
+        .filter(|(path, _)| !path.starts_with(&bench) && !path.starts_with(&bins))
+        .collect();
+    assert_no_reference(product, &["crate::bench", "bench::"]);
 }
 
 #[test]
@@ -501,6 +527,42 @@ fn diagnostics_snapshots_without_drawing() {
     assert_no_reference(
         shipping_source(app_src().join("shared/diagnostics.rs")),
         &["crate::render"],
+    );
+}
+
+/// The shared half is the leaf: it holds the records every layer reads, so it may not name a
+/// layer that reads it. `DeviceState` and the Network draft live here for exactly this
+/// reason — when they lived in `state`, the page and the snapshot had to reach back up.
+#[test]
+fn shared_never_reaches_up() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("shared")),
+        &[
+            "crate::state",
+            "crate::pages",
+            "crate::render",
+            "crate::runtime",
+        ],
+    );
+}
+
+/// A page draws and translates; it does not run the device. Naming the state layer would put
+/// the aggregate back above it, which is the cycle the split removed.
+#[test]
+fn pages_never_reach_up() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("pages")),
+        &["crate::state", "crate::render", "crate::runtime"],
+    );
+}
+
+/// Render reads the shared records and calls the page painter. The coordinator owns the frame
+/// order and the manager, so neither belongs to the view.
+#[test]
+fn render_never_reaches_up() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("render")),
+        &["crate::state", "crate::runtime"],
     );
 }
 

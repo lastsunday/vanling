@@ -2,7 +2,7 @@
 
 use crate::pages::network::controller::{self as page_controls, ControlKind, confirm_verb};
 use crate::pages::network::layout::DIALOG_GLYPHS;
-use crate::pages::network::model::{NetworkDraft, SetupWait};
+use crate::shared::state::{NetworkDraft, SetupWait};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
 
 use super::dialog_box::Dialog;

@@ -1,5 +1,6 @@
 //! The state more than one page reads: the records the workers write and the render loop
-//! observes. A page's own draft or list position belongs to its feature instead.
+//! observes, plus the aggregate that composes them. The Network draft lives here too — the
+//! device owns it, even though only its page edits it.
 //!
 //! Nothing here paints, drives a pin or opens a file, so every record compiles for a host
 //! test with no board attached.
@@ -7,6 +8,10 @@
 mod audio;
 
 mod command;
+
+mod device;
+
+mod draft;
 
 mod effects;
 
@@ -27,6 +32,10 @@ pub use self::audio::{AudioState, AudioView};
 pub use iot_core::drivers::audio::AudioPhase;
 
 pub use self::command::Command;
+
+pub use self::device::DeviceState;
+
+pub use self::draft::{Entry, LIST_ROWS, NetworkDraft, SetupWait};
 
 pub(crate) use self::effects::Effects;
 

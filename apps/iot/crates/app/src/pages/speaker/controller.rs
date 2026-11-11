@@ -2,7 +2,7 @@
 //! swipes are the lamp's, as on every page without a verb of its own for them.
 
 use crate::shared::intent::{ActionIntent, InputIntent, PlaybackAction};
-use crate::state::DeviceState;
+use crate::shared::state::DeviceState;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 
 use crate::shared::light;

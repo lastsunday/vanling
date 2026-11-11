@@ -317,7 +317,7 @@ IOT_PORT=<port> moon run iot:flash-s3                  # 两块板同时插入�
 | `IOT_DEMAND` | 各数据面的开关与节奏 | 固件内的默认档 |
 | `IOT_LOG_LEVEL` | 串口输出级别：`error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | 编入固件的凭据 | 不编入，设备停在配网页 |
-| `IOT_PANEL_BENCH` | 强制未配置状态，强制在面板输入一次密码 | 无 |
+| `IOT_PANEL_BENCH` | 强制未配置状态，强制在面板输入一次密码；只对 `panel-bench` 入口有意义 | 无 |
 
 `IOT_PORT` 不属于此类：它只交给 espflash 定位端口，不进入固件。
 

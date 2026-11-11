@@ -204,7 +204,7 @@ tasks:
   check-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin vanling --bin audio-probe --bin camera-probe --bin multicore-s3 \
+        --bin vanling --bin panel-bench --bin audio-probe --bin camera-probe --bin multicore-s3 \
         --bin demand-probe --bin aec-probe --bin clock-probe --bin echo-probe \
         --bin wifi-probe \
         --target xtensa-esp32s3-none-elf \
@@ -393,30 +393,25 @@ tasks:
   #
   # `IOT_BOOT_PAGE=network` is part of the bench rather than a convenience: the survey only asks the
   # radio while that page is on the panel, and the list the row is picked from is what it fills.
-  # `IOT_PANEL_BENCH` is what makes the product come up unconfigured — a build that was handed its
+  # `IOT_PANEL_BENCH` is what makes the build come up unconfigured — a build that was handed its
   # credentials would join them without touching the panel at all.
+  #
+  # The bin is `panel-bench`, not `vanling`: the replay is its own entry (`bench::run`), so the
+  # product image is neither overwritten nor restored here.
   panel-typing-s3:
     script: |
-      # `set -e` because the build sits between the copy that saves the product image and the
-      # copy that publishes this task's variant: a failed build would otherwise publish the
-      # stale product as the variant, and the task would report success for it.
-      set -e
-      out=target/xtensa-esp32s3-none-elf/release/vanling
-      if [ -f "$out" ]; then cp "$out" "$out.product"; fi
       IOT_PANEL_BENCH=1 IOT_BOOT_PAGE=network \
         bash ../../scripts/iot-xtensa.sh build --release \
-        -p iot-app --bin vanling \
+        -p iot-app --bin panel-bench \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
-      cp "$out" "$out-panel"
-      if [ -f "$out.product" ]; then mv "$out.product" "$out"; fi
     outputs:
-      - 'target/xtensa-esp32s3-none-elf/release/vanling-panel'
+      - 'target/xtensa-esp32s3-none-elf/release/panel-bench'
     deps:
       - ~:check-s3
     options:
-      # Uncached for `build-s3`'s reason: this is `vanling`, with the credentials compiled in.
+      # Uncached for `build-s3`'s reason: this is a bench image, with the credentials compiled in.
       cache: false
       runInCI: false
 
@@ -427,7 +422,7 @@ tasks:
         --partition-table partitions/lckfb-szpi-esp32s3.csv \
         -a watchdog-reset \
         ${IOT_PORT:+--port $IOT_PORT} \
-        target/xtensa-esp32s3-none-elf/release/vanling-panel
+        target/xtensa-esp32s3-none-elf/release/panel-bench
     deps:
       - ~:panel-typing-s3
     options:

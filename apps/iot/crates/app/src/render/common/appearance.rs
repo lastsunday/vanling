@@ -3,7 +3,7 @@
 use crate::shared::diagnostics::{
     BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics, dropped_intents,
 };
-use crate::state::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::state::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
 use iot_core::demand::EffectiveDemand;
 use iot_core::paint::{MODE_BREATH, MODE_OFF, MODE_SOLID, Rgb, rgb_hue, scale_brightness};
 

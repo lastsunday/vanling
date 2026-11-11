@@ -1,6 +1,6 @@
 //! The Network page's bands: which parts of the panel are showing, and in what layering.
 
-use crate::pages::network::model::NetworkDraft;
+use crate::shared::state::NetworkDraft;
 use iot_core::drivers::network::{LinkPhase, LinkStatus};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -47,8 +47,8 @@ pub fn each_band<F: FnMut(Band)>(draft: NetworkDraft, link: LinkStatus, mut draw
 mod tests {
     use super::*;
     use crate::pages::network::layout;
-    use crate::pages::network::model::{Entry, SetupWait};
     use crate::shared::intent::Confirm;
+    use crate::shared::state::{Entry, SetupWait};
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{

@@ -1,22 +1,19 @@
-//! The composition root: the aggregate state, the manager that routes intents into it, and
-//! the two leaves a boot decides before any state exists.
+//! The behaviour over the shared state: the manager that routes intents into it, the dispatch
+//! table that hands each input to the page that owns it, and the two leaves a boot decides
+//! before any state exists.
 //!
-//! This is the only module allowed to know every feature: it composes the shared records
-//! with the Network page's own draft and hands the runtime one state to read.
+//! The records themselves live in [`crate::shared::state`]; this module is the only one
+//! allowed to know every page, because it is the one that dispatches to them.
 
 mod apply;
 
 pub mod boot;
-
-mod device;
 
 mod manager;
 
 pub(crate) mod translate;
 
 mod wiring;
-
-pub use self::device::DeviceState;
 
 pub use self::manager::DeviceManager;
 

@@ -6,7 +6,7 @@ use super::TOUCH_MIN;
 use super::toolbar::TOOLBAR_TOP;
 
 /// The scan rows the panel shows at once: what the list's scroll window keeps on glass.
-pub const LIST_ROWS: usize = 3;
+pub use crate::shared::state::LIST_ROWS;
 
 /// The row below the header's three, where the page's own content starts.
 const LIST_ROW: usize = 3;

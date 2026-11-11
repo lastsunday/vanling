@@ -24,7 +24,6 @@ pub mod runtime;
 pub mod shared;
 pub mod state;
 
-use bench::replay::{BENCH, Slot};
 use render::wired;
 use runtime::coordinator::{
     CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
@@ -32,6 +31,7 @@ use runtime::coordinator::{
 };
 use runtime::feature::input::{INTENT_BUS, input_task};
 use runtime::feature::playback::{playback_tasks, share};
+use runtime::system::System;
 use runtime::workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand};
 use state::boot::{boot_override, boot_page};
 
@@ -151,9 +151,25 @@ pub async fn run_io_from(queue: &'static IoQueue) {
     io_loop(io).await
 }
 
+/// The product entry: the coordinator half with no extra system.
+pub async fn run<B, C>(board: B, wiring: Wiring<C>) -> !
+where
+    B: HasInput + HasMotion + HasAudio + HasPlayback + HasCamera,
+    C: ClockSink,
+{
+    run_with(board, wiring, None).await
+}
+
 /// The coordinator half: one renderer per wired surface, the driver half, then the frame
 /// loop. Every other worker was spawned by whoever owns its drivers, before this call.
-pub async fn run<B, C>(mut board: B, wiring: Wiring<C>) -> !
+///
+/// `extra` is the one system the caller may add to the schedule; only the panel replay's entry
+/// uses it, so the product path and the library name no bench.
+pub(crate) async fn run_with<B, C>(
+    mut board: B,
+    wiring: Wiring<C>,
+    extra: Option<Box<dyn System>>,
+) -> !
 where
     B: HasInput + HasMotion + HasAudio + HasPlayback + HasCamera,
     C: ClockSink,
@@ -257,8 +273,8 @@ where
     schedule.register(NoticeSystem);
     schedule.register(DemandSystem::new(Input::new(demand)));
     schedule.register(GovernorSystem::new(&mut clock));
-    if BENCH {
-        schedule.register(Slot::new());
+    if let Some(system) = extra {
+        schedule.register_boxed(system);
     }
 
     run_loop(&INTENT_BUS, renderers, &mut manager, &mut schedule).await

@@ -1,8 +1,10 @@
-//! The Network page's own state: the row a passphrase is being typed for, the draft itself,
-//! the question the page is asking, and where the list is scrolled. The link is not here —
-//! this record reads [`NetworkState`](crate::shared::state::NetworkState) and never writes it, so a report
-//! from the worker cannot land in a page field and a page edit cannot change what the radio
-//! said.
+//! The Network page's draft: the row a passphrase is being typed for, the draft itself, the
+//! question the page is asking, and where the list is scrolled. The link is not here — this
+//! record reads [`NetworkState`] and never writes it, so a report from the worker cannot land
+//! in a page field and a page edit cannot change what the radio said.
+//!
+//! It lives beside [`DeviceState`](super::DeviceState) because the device owns it: the page
+//! edits it, the diagnostics snapshot copies it, and the link never reads it.
 
 use crate::shared::intent::NetworkPageIntent;
 use crate::shared::keyboard::Key;
@@ -12,9 +14,11 @@ use iot_core::drivers::network::{
 
 use iot_core::drivers::network::NetworkCommand;
 
-use crate::pages::network::layout::LIST_ROWS;
 use crate::shared::intent::Confirm;
 use crate::shared::state::{Command, NetworkState};
+
+/// The scan rows the draft keeps in its scroll window; the list draws this many.
+pub const LIST_ROWS: usize = 3;
 
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.

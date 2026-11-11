@@ -45,6 +45,12 @@ impl<'a> Schedule<'a> {
     }
 
     pub(crate) fn register(&mut self, system: impl System + 'a) {
+        self.register_boxed(Box::new(system));
+    }
+
+    /// The same, for a system the caller already boxed: the bench entry builds its one extra
+    /// system outside the schedule and hands it over.
+    pub(crate) fn register_boxed(&mut self, system: Box<dyn System + 'a>) {
         if let Some(kind) = system.takes() {
             let slot = self.steps.len();
             assert!(
@@ -52,7 +58,7 @@ impl<'a> Schedule<'a> {
                 "two systems take the same command type"
             );
         }
-        self.steps.push(Box::new(system));
+        self.steps.push(system);
     }
 
     /// Bus → state. Each intent is applied and its command delivered to the system that

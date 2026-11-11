@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 
 use crate::render::AppPainter;
 use crate::render::{LampRenderer, Registry, Renderer, ScreenRenderer};
-use crate::state::{MAX_LIGHTS, SurfaceRole};
+use crate::shared::state::{MAX_LIGHTS, SurfaceRole};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::surface::WiredSurface;
 

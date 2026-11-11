@@ -1,7 +1,7 @@
-//! The Network page: the link's page-private draft, the gestures that move it, the control
-//! geometry, and the drawing that reads it.
+//! The Network page: the gestures that move the draft, the control geometry, and the drawing
+//! that reads it. The draft itself lives in [`crate::shared::state`] because the device owns
+//! it.
 
 pub mod controller;
 pub mod layout;
-pub mod model;
 mod view;

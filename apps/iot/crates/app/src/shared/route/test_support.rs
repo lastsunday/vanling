@@ -55,7 +55,7 @@ pub(crate) fn with_network(
 /// The same for the Network page's own record, which the link never writes.
 pub(crate) fn with_network_page(
     mut state: DeviceState,
-    change: impl FnOnce(&mut crate::pages::network::model::NetworkDraft),
+    change: impl FnOnce(&mut crate::shared::state::NetworkDraft),
 ) -> DeviceState {
     change(&mut state.network_page);
     state

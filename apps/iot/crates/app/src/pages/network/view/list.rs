@@ -2,7 +2,7 @@
 
 use crate::pages::network::layout::LIST_ROWS;
 use crate::pages::network::layout::{LIST_ROW_H, LIST_TOP, band_lines_top};
-use crate::pages::network::model::NetworkDraft;
+use crate::shared::state::NetworkDraft;
 use iot_core::drivers::network::{ApList, LinkStatus, SSID_BYTES};
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{

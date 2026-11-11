@@ -7,6 +7,14 @@ edition.workspace = true
 name = "vanling"
 path = "src/main.rs"
 
+# The panel replay as its own entry. It builds the same board bring-up as `vanling` (shared
+# through `src/bin/common/`) and registers the replay system through `bench::run`, so neither
+# the product entry nor the library's frame loop names the bench.
+[[bin]]
+name = "panel-bench"
+path = "src/bin/panel-bench.rs"
+required-features = ["lckfb-szpi-esp32s3"]
+
 [[bin]]
 name = "host-smoke"
 path = "src/bin/host-smoke/main.rs"
@@ -91,28 +99,50 @@ required-features = ["wifi"]
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
 esp32c6 = [
-  "dep:iot-chip-esp", "dep:esp-hal", "dep:esp-rtos",
-  "dep:esp-backtrace", "dep:esp-bootloader-esp-idf",
+  "dep:iot-chip-esp",
+  "dep:esp-hal",
+  "dep:esp-rtos",
+  "dep:esp-backtrace",
+  "dep:esp-bootloader-esp-idf",
   "iot-chip-esp/esp32c6",
-  "esp-backtrace/esp32c6", "esp-bootloader-esp-idf/esp32c6",
-  "esp-hal/esp32c6", "esp-println/esp32c6", "esp-rtos/esp32c6",
+  "esp-backtrace/esp32c6",
+  "esp-bootloader-esp-idf/esp32c6",
+  "esp-hal/esp32c6",
+  "esp-println/esp32c6",
+  "esp-rtos/esp32c6",
 ]
 # The board carries its own `wifi` the same way the S3 one does: this devkit has a radio
 # soldered to it, so the driver's heap and the IP stack have to fit this part's DRAM too,
 # which is a different budget from the S3's and only a build here answers it.
-esp32c6-devkitc-1 = ["esp32c6", "dep:iot-bsp-esp", "iot-bsp-esp/esp32c6-devkitc-1", "wifi"]
+esp32c6-devkitc-1 = [
+  "esp32c6",
+  "dep:iot-bsp-esp",
+  "iot-bsp-esp/esp32c6-devkitc-1",
+  "wifi",
+]
 esp32s3 = [
-  "dep:iot-chip-esp", "dep:esp-hal", "dep:esp-rtos",
-  "dep:esp-backtrace", "dep:esp-bootloader-esp-idf",
+  "dep:iot-chip-esp",
+  "dep:esp-hal",
+  "dep:esp-rtos",
+  "dep:esp-backtrace",
+  "dep:esp-bootloader-esp-idf",
   "iot-chip-esp/esp32s3",
-  "esp-backtrace/esp32s3", "esp-bootloader-esp-idf/esp32s3",
-  "esp-hal/esp32s3", "esp-println/esp32s3", "esp-rtos/esp32s3",
+  "esp-backtrace/esp32s3",
+  "esp-bootloader-esp-idf/esp32s3",
+  "esp-hal/esp32s3",
+  "esp-println/esp32s3",
+  "esp-rtos/esp32s3",
 ]
 # The board carries its own `wifi` the same way it carries `camera`: the radio is
 # on this board, so the product's link is where the driver's heap and the IP stack
 # have to fit, and `build-s3` is what answers that. Naming it here is also what
 # lets `check-s3` compile the network probe without a second feature set.
-lckfb-szpi-esp32s3 = ["esp32s3", "dep:iot-bsp-esp", "iot-bsp-esp/lckfb-szpi-esp32s3", "wifi"]
+lckfb-szpi-esp32s3 = [
+  "esp32s3",
+  "dep:iot-bsp-esp",
+  "iot-bsp-esp/lckfb-szpi-esp32s3",
+  "wifi",
+]
 # The camera, on its own. The S3 board feature carries it with the rest of its wiring, so
 # this exists for a board that mounts a sensor the product does not draw, and for
 # `check-features` to build the capture path alone. It is not a product tier: the product's
@@ -126,8 +156,12 @@ camera = ["iot-bsp-esp/camera"]
 # a board that has a radio and no screen has no other way to be configured, so the portal is
 # part of "has a radio", not an option a build can leave out. See `iot/features.md`.
 wifi = [
-  "iot-bsp-esp/wifi", "iot-chip-esp?/radio", "dep:embassy-net",
-  "dep:edge-dhcp", "dep:edge-nal", "dep:edge-nal-embassy",
+  "iot-bsp-esp/wifi",
+  "iot-chip-esp?/radio",
+  "dep:embassy-net",
+  "dep:edge-dhcp",
+  "dep:edge-nal",
+  "dep:edge-nal-embassy",
 ]
 
 # Log console routing for esp_println. `console-auto` mirrors device behavior:
@@ -144,9 +178,11 @@ console-uart = ["esp-println/uart", "iot-chip-esp?/console-uart"]
 
 # Host testing backend (runs on the development machine, no ESP hardware).
 host = [
-  "embassy-executor/platform-std", "embassy-executor/executor-thread",
+  "embassy-executor/platform-std",
+  "embassy-executor/executor-thread",
   "embassy-time/std",
-  "dep:critical-section", "critical-section/std",
+  "dep:critical-section",
+  "critical-section/std",
 ]
 
 [dependencies]

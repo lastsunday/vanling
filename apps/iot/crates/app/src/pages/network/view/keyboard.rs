@@ -1,8 +1,8 @@
 //! The key grid: each key's face, the characters it cycles, and the two latched controls.
 
 use crate::pages::network::layout;
-use crate::pages::network::model::Entry;
 use crate::shared::keyboard::{Key, MAX_CANDIDATES};
+use crate::shared::state::Entry;
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH};
 

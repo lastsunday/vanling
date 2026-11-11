@@ -320,7 +320,7 @@ The following are read at build time; a change requires a rebuild.
 | `IOT_DEMAND` | Which devices, at what cadence | The firmware's defaults |
 | `IOT_LOG_LEVEL` | Serial output level: `error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | Credentials compiled in | Not compiled in; the device stays on the setup page |
-| `IOT_PANEL_BENCH` | Force the unconfigured state so a passphrase has to be typed on the panel | None |
+| `IOT_PANEL_BENCH` | Force the unconfigured state so a passphrase has to be typed on the panel; only meaningful for the `panel-bench` entry | None |
 
 `IOT_PORT` is not one of these: it only tells espflash which port to use and never enters the firmware.
 

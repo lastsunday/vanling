@@ -4,7 +4,8 @@ use crate::render::common::light_diagnostics;
 use crate::render::{Appearance, LightAppearance, RenderController};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{ActionIntent, PageIntent};
-use crate::state::{DeviceManager, DeviceState, LightState, MAX_LIGHTS};
+use crate::shared::state::{DeviceState, LightState, MAX_LIGHTS};
+use crate::state::DeviceManager;
 use iot_core::demand::EffectiveDemand;
 
 pub(super) const BOOT_BREATH: crate::state::Breath = crate::state::Breath {

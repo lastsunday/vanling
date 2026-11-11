@@ -9,7 +9,7 @@ mod text;
 
 use crate::pages::network::controller::{self as page_controls, Band, each_band};
 use crate::pages::network::layout;
-use crate::pages::network::model::NetworkDraft;
+use crate::shared::state::NetworkDraft;
 use iot_core::drivers::network::{ApList, LinkStatus};
 
 use crate::pages::network::view::text::control_label;

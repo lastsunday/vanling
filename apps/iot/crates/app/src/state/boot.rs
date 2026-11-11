@@ -1,8 +1,10 @@
-//! Build-time product configuration: the page the firmware comes up on and the demand it
-//! starts with.
+//! Build-time product configuration: the page the firmware comes up on, the demand it starts
+//! with, and whether this build is a panel bench.
 //!
-//! Both come from `option_env!` and are resolved by `const fn`, so the run-time path never
+//! They come from `option_env!` and are resolved by `const fn`, so the run-time path never
 //! turns them into a string — `@/development/iot/flashing.md` has the measurement behind that.
+//! The bench flag lives here rather than in `bench` so the network worker never names the
+//! harness that suppresses its build credential.
 
 use crate::state::Page;
 use iot_core::demand::{Override, parse_override};
@@ -28,6 +30,21 @@ pub fn build_wifi_credentials() -> Option<(&'static str, &'static str)> {
     let ssid = option_env!("IOT_WIFI_SSID")?;
     let password = option_env!("IOT_WIFI_PSK")?;
     Some((ssid, password))
+}
+
+/// Whether this build replays a credential through the panel rather than being handed one.
+/// Only the credential choice below asks, so the flag exists only where the radio does.
+#[cfg(feature = "wifi")]
+const BENCH: bool = option_env!("IOT_PANEL_BENCH").is_some();
+
+/// The network this build was named, unless the build is a bench run: a bench image has to join
+/// whatever the panel names, not the credential its build happens to carry.
+#[cfg(feature = "wifi")]
+pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
+    if BENCH {
+        return None;
+    }
+    build_wifi_credentials()
 }
 
 const BOOT_PAGE: Page = boot_page_from_env(option_env!("IOT_BOOT_PAGE"));

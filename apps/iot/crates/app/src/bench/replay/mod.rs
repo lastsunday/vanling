@@ -25,20 +25,6 @@ use self::point::{
     Touch, answer_point, band_center, cancel_point, hold_point, row_point, strip_point,
 };
 
-/// Whether this build replays a credential through the panel rather than being handed one.
-pub const BENCH: bool = option_env!("IOT_PANEL_BENCH").is_some();
-
-/// The network this build was named, unless the build is a bench run: a bench image has to join
-/// whatever the panel names, not the credential its build happens to carry. Only the network
-/// worker asks for it, and that worker exists only with `wifi`.
-#[cfg(feature = "wifi")]
-pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
-    if BENCH {
-        return None;
-    }
-    crate::state::boot::build_wifi_credentials()
-}
-
 const BAND_X: u16 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

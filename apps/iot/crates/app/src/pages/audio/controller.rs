@@ -3,7 +3,7 @@
 
 use crate::shared::intent::{ActionIntent, AudioIntent, InputIntent};
 use crate::shared::state::AudioPhase;
-use crate::state::DeviceState;
+use crate::shared::state::DeviceState;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 
 use crate::shared::light;

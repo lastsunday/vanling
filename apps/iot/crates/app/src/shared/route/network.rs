@@ -48,9 +48,9 @@ mod tests {
 
         fn typing() -> DeviceState {
             with_network_page(on_network(), |page| {
-                *page = crate::pages::network::model::NetworkDraft {
+                *page = crate::shared::state::NetworkDraft {
                     selected: Some(ap(b"neighbour", -55)),
-                    entry: Some(crate::pages::network::model::Entry::default()),
+                    entry: Some(crate::shared::state::Entry::default()),
                     keyboard: true,
                     ..Default::default()
                 };
@@ -78,7 +78,7 @@ mod tests {
 
         fn asking() -> DeviceState {
             with_network_page(on_network(), |page| {
-                *page = crate::pages::network::model::NetworkDraft {
+                *page = crate::shared::state::NetworkDraft {
                     confirm: Some(crate::shared::intent::Confirm::Forget(ap(
                         b"neighbour",
                         -55,

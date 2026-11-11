@@ -4,7 +4,7 @@ use crate::shared::intent::{ActionIntent, InputIntent, LightIntent};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::paint::{GROUP_CAPACITY, Rgb};
 
-use crate::state::{Breath, DeviceState, LightState};
+use crate::shared::state::{Breath, DeviceState, LightState};
 
 pub const PALETTE: [Rgb; 7] = [
     Rgb(255, 64, 48),

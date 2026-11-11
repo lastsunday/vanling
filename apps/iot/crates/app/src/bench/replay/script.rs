@@ -75,7 +75,7 @@ fn find(layer: Layer, byte: u8) -> Option<(usize, usize)> {
 mod tests {
     use super::*;
     use crate::pages::network::layout::{key_box, key_of};
-    use crate::pages::network::model::Entry;
+    use crate::shared::state::Entry;
 
     #[test]
     fn a_script_types_its_own_text_through_the_keyboard() {

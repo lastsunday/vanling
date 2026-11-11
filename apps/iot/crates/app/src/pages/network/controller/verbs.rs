@@ -2,9 +2,9 @@
 //! than by the word the view puts on it.
 
 use crate::pages::network::layout::ToolbarCell;
-use crate::pages::network::model::NetworkDraft;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{ActionIntent, NetworkPageIntent};
+use crate::shared::state::NetworkDraft;
 use iot_core::drivers::network::{LinkStatus, NetworkMode, SetupHost};
 
 /// What a box does, which is also what the view has to call it.
@@ -175,7 +175,7 @@ pub fn confirm_verb(confirm: Confirm) -> ControlKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pages::network::model::SetupWait;
+    use crate::shared::state::SetupWait;
     use iot_core::drivers::network::{LinkPhase, SetupPass};
 
     fn in_setup(host: SetupHost, cancellable: bool) -> LinkStatus {

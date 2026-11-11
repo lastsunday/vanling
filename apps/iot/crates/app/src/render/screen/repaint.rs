@@ -1,7 +1,7 @@
 //! When a diagnostics drift earns a full-frame repaint.
 
 use crate::shared::diagnostics::Diagnostics;
-use crate::state::Page;
+use crate::shared::route::Page;
 use iot_core::demand::{DemandKey, Mode};
 
 /// Minimum wall time between full-frame panel repaints driven by a diagnostics

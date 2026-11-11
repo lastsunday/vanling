@@ -46,12 +46,12 @@ weight = 10
 - **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、诊断、网络、产品或芯片。页面壳（`shared::view_kit::surface::Surface`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖面板
 - **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `PanelPainter` 接缝把 `PanelTarget`/`PanelContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `Diagnostics` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
-- **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app `main.rs`
+- **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app 的 bin 入口（`main.rs`、`bin/*.rs`）
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
 - **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::keyboard`、几何在 `app::pages::network::layout`
-- **main 入口**：按家族 feature 分支，每家族一份
+- **main 入口**：按家族 feature 分支，每家族一份；板级 bring-up 在 `bin/common/`，产品入口与 bench 入口共用，两者只在最后调 `lib::run` 还是 `bench::run` 上分开
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
 ## iot-app 内部分区
@@ -62,21 +62,21 @@ weight = 10
 
 | 路径 | 职责 |
 | --- | --- |
-| `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者 |
-| `main.rs` | 芯片启动、executor 选择、家族入口 |
+| `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
+| `main.rs` | 芯片启动、executor 选择、家族入口；板级 bring-up 在 `bin/common/`，与 `bin/panel-bench.rs` 共用 |
 | `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`tests.rs` 守黄金像素 |
 | `pages/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
 | `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/state` |
-| `pages/network/{model,controller,layout,view}/` | Network 页自己的草稿与列表位置（`NetworkDraft`/`Entry`/`SetupWait`）、手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制 |
-| `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西 |
-| `shared/state/` | 工作者写入、渲染循环读取的记录，一域一文件；页面私有的草稿不在这里 |
+| `pages/network/{controller,layout,view}/` | Network 页的手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制；草稿本身在 `shared/state/draft/` |
+| `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
+| `shared/state/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`draft/` 是 Network 页草稿（设备拥有、页面编辑） |
 | `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`Page` 是目的地，`route()` 是穷尽 `match`，`ALL`/`CYCLE` 是次序 |
 | `shared/keyboard.rs` | 键位词汇：`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表 |
 | `shared/intent.rs` | 意图词汇：输入被问成什么，含跨页的 `Confirm` |
 | `shared/light.rs` | 灯光行走的表与调色板；页面控制器调用它 |
 | `shared/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放诊断与 Network 页草稿 |
 | `shared/view_kit/` | 页面壳 `Surface`、版面常量、文字排版、band/overlay 原语与控件；只认像素与快照，不认页面 |
-| `state/` | 组合根：`DeviceState`、`DeviceManager`、`apply_intent`、手势→意图的分派、`Boot`/`Backed`、构建期配置；唯一认识所有页面的模块 |
+| `state/` | 设备行为：`DeviceManager`、`apply_intent`、手势→意图的分派、`Boot`/`Backed`、构建期配置；唯一认识所有页面的模块（单向 `state → pages`） |
 | `state/translate.rs` | 按当前页分派到 `pages/<page>/controller`；不读键格、band 或确认框几何 |
 | `state/boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
@@ -91,36 +91,38 @@ weight = 10
 | `runtime/feature/playback/{mod,sounds/}` | 播放工作者与声音目录；状态→命令在 `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `assets/` | 设置侧自己的字节：`vanling-` 热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
-| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用，不进产品路径；`replay/` 是产品可达的面板回放（`IOT_PANEL_BENCH`）与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），被组合根在 bench 构建下注册为普通 `System`、被网络工作者用来取构建凭据，非 bench 构建编译期折叠 |
+| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用；`replay/` 是面板回放与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），只被 `bin/panel-bench.rs` 经 `bench::run` 引用。两者都不在产品路径上：产品入口与帧循环都不认识 `bench`；`IOT_PANEL_BENCH` 与构建凭据的取舍在 `state::boot` |
 
 方向由 `iot-tool/tests/module_boundaries.rs` 的几条诚实规则守着（编译器不查 crate 内模块环），不是逐条边的地图：
 
+分层是 `lib → runtime → {render, state} → pages → shared`；`assets` 是 `pages`/`runtime` 共用的叶子。
+
 ```
-lib               → { bench, render, state, runtime, pages::paint }
-pages/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit}, state::DeviceState }
-state             → { pages::<page>::{model, controller, layout}, shared::{intent, light, route, state} }
-render            → { pages::paint, shared::{diagnostics, route, state, view_kit}, state }
+lib               → { render, state, runtime }
+pages/<page>   → { assets, shared::{intent, keyboard, light, route, state, view_kit} }
+state             → { pages::<page>::controller, shared::{intent, light, route, state} }
+render            → { pages::paint, shared::{diagnostics, route, state, view_kit} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, state}, runtime::workers }
-runtime::feature::network  → { assets, bench, shared::{intent, state}, runtime::{feature::input, workers} }
+runtime::feature::network  → { assets, shared::intent, state, runtime::{feature::input, workers} }
 runtime::feature::playback → { shared::state, runtime::{feature::input, workers} }
 runtime::workers           → { shared::state }
-bench             → { pages::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
+bench             → { lib::run_with, pages::network::{controller, layout}, shared::{intent, keyboard, state}, state, runtime::{feature::{input, playback}, system} }
 ```
 
-- **页面之间不互相 import**：页面目录只读 `shared` 与组合根给出的 `DeviceState`；页面需要另一页的东西时，那份东西就属于 `shared`
-- **`state` 是唯一的双向点**：它认识每个页面的 `model`/`controller`/`layout`，分派翻译并组合聚合状态；页面只从它取 `DeviceState` 这一个读句柄，`Page` 等词汇仍来自 `shared::route`
+- **页面之间不互相 import**：页面目录只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
+- **`state` 是唯一认识所有页面的模块**：它分派翻译到 `pages/<page>/controller`，但这是单向边——页面只读 `shared::state::DeviceState`，不认识 `state`；`Page` 等词汇来自 `shared::route`
 - **`shared/view_kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `pages::paint` 决定
-- `shared` 不依赖 `state`/`render`/`pages`，路由表与意图词汇是叶子；`shared::diagnostics` 是唯一例外，它的快照要复制 Network 页草稿，所以认识 `pages::network::model::NetworkDraft`
-- `shared/state` 只放被多处读写的记录；页面的私有草稿（如 `NetworkDraft`）留在 `pages/network/model`
+- `shared` 是叶子：不依赖 `state`/`pages`/`render`/`runtime`。`DeviceState` 与 Network 草稿放在这里，就是为了让页面、快照和渲染都只朝下看
+- `shared/state` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`draft/` 是 Network 页草稿（页面编辑、快照复制、链路不读）
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
 - `runtime::feature::network` 不依赖 `pages`/`render`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
-- `bench::probe` 不进产品路径：只有 `bin/*-probe.rs` 引用；`bench::replay` 被组合根（注册 `Slot`）与网络工作者（取构建凭据）引用，但非 bench 构建编译期折叠
+- `bench` 是入口/夹具，不是层：`probe` 只被 `bin/*-probe.rs` 引用，`replay` 只被 `bin/panel-bench.rs` 经 `bench::run` 引用；`lib` 与 `runtime` 都不认 `bench`，`module_boundaries.rs` 的 `the_bench_is_reached_only_by_its_own_entry` 守着。构建期开关 `BENCH`/`build_credentials` 在 `state::boot`，网络工作者取凭据因此不会反向指向 harness
 - `core` 不认识 `iot_app`
 
-`main` 是二进制 crate 根，经 `iot_app::` 取 `lib`/`runtime::feature::network` 的入口，不在这张模块图内；芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
+`main` 与 `bin/panel-bench.rs` 是二进制 crate 根，经 `iot_app::` 取 `lib::run` / `bench::run` 与 `runtime::feature::network` 的入口，不在这张模块图内；板级 bring-up 由 `bin/common/` 共享，芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
 ## 组合（三轴正交）
 
@@ -201,7 +203,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Link`/`NetworkDraft`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-`shared/state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` 各放工作者写入、渲染循环读取的记录。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。页面的私有草稿与列表位置不在 `shared`：`NetworkDraft`/`Entry`/`SetupWait` 在 `pages/network/model`。聚合状态 `DeviceState`、`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/apply.rs`，按当前页走 `state/translate.rs`，先写记录再翻译。
+`shared/state/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs` 各放工作者写入、渲染循环读取的记录，`device.rs` 是聚合体 `DeviceState`，`draft/` 是 Network 页草稿（`NetworkDraft`/`Entry`/`SetupWait`）——设备拥有它，页面编辑它，快照复制它，链路从不读它。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/apply.rs`，按当前页走 `state/translate.rs`，先写记录再翻译。
 
 业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkDraft` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），只有手指的 `NetworkPageIntent` 写它。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 
@@ -437,7 +439,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 ## 新增板
 
 1. `bsp-esp/` 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 `components/` 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配
-2. `app/src/main.rs` 加该板的 `SETUP_HOST` 常量（芯片内存不同再加 `HEAP_BYTES`）；feed 落点已按芯片分好
+2. 板模块导出该板的 `SETUP_HOST`（芯片内存不同再加 `HEAP_BYTES`）；`app/src/bin/common/` 按芯片分支读取，feed 落点已按芯片分好
 3. app feature 透传 `iot-bsp-esp/<board>`
 4. `reusable-iot-build.yml` 的 `platforms` 默认 JSON 与 `iot-dev-release.yml` 的 `platforms` 输入里加该板（xtensa 板需标 `use-xtensa-toolchain: true`，经 `build-s3` 任务构建：CI/发布用 espup 原生 `esp` 1.98.1.0 工具链，macOS Intel 本地用同版本 Docker 镜像）
 5. 验证：`cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`
@@ -447,6 +449,6 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 esp 家族仓固定为 `iot-chip-esp`/`iot-bsp-esp`；新增非 esp 家族：
 
 1. 新增 `iot-chip-<family>`/`iot-bsp-<family>` crate
-2. app 家族别名 feature 门控该家族 entry deps；`main` 加家族入口块（`#[cfg(feature)]`）
+2. app 家族别名 feature 门控该家族 entry deps；`app/src/bin/common/` 加该家族的板级 bring-up 分支（`#[cfg(feature)]`）
 3. 工具链目标 + `rust-toolchain.toml` + `reusable-iot-build.yml` 的 `platforms`（`target`/`use-xtensa-toolchain`）与 `iot-dev-release.yml` 的 `platforms` 输入
 4. `moon`/`lefthook` 的 `--workspace --target` 改按固件作用域；工具链目标经 `CARGO_ESP_TARGET` 传入 moon 任务（`.envrc`/CI env 与 workflow inputs 提供，moon 任务以 `- '$CARGO_ESP_TARGET'` 收入 inputs 保证跨芯片缓存隔离）
