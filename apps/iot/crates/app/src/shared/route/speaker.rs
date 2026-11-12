@@ -11,8 +11,8 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
+    use crate::shared::gesture::light::COLOR_GROUPS;
     use crate::shared::intent::{ActionIntent, PageIntent, PlaybackAction};
-    use crate::shared::light::COLOR_GROUPS;
     use crate::shared::route::test_support::{
         BREATH_BASE, DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, target,
         target_in,

@@ -7,8 +7,8 @@ use iot_core::overlay::{
     overlay_row_top,
 };
 
-use crate::shared::view_kit::surface::Surface;
-use crate::shared::view_kit::text::format_i32;
+use crate::shared::kit::surface::Surface;
+use crate::shared::kit::text::format_i32;
 
 const SCOPE_DECIBEL_FLOOR: i16 = iot_core::drivers::audio::SCOPE_FLOOR_DECIBELS as i16;
 

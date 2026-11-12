@@ -4,8 +4,8 @@
 use iot_core::drivers::audio::spl;
 use iot_core::overlay::{Block, block_value_x, block_x, level_columns, overlay_row_top};
 
-use crate::shared::view_kit::surface::Surface;
-use crate::shared::view_kit::text::format_i32;
+use crate::shared::kit::surface::Surface;
+use crate::shared::kit::text::format_i32;
 
 impl Surface<'_> {
     /// A label and its value on one row of `block`.

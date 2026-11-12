@@ -1,9 +1,9 @@
-//! The state more than one page reads: the records the workers write and the render loop
-//! observes, plus the aggregate that composes them. The Network draft lives here too — the
-//! device owns it, even though only its page edits it.
+//! The records more than one page reads: what the workers write and the render loop observes,
+//! plus the aggregate that composes them. The Network draft lives here too — the device owns
+//! it, even though only its page edits it.
 //!
-//! Nothing here paints, drives a pin or opens a file, so every record compiles for a host
-//! test with no board attached.
+//! Records only: nothing here paints, drives a pin or opens a file, so every record compiles
+//! for a host test with no board attached.
 
 mod audio;
 

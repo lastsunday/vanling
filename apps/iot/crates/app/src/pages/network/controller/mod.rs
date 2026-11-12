@@ -1,8 +1,6 @@
-//! What one gesture means on the Network page: the keyboard, the list, the two dialogs, and
-//! the setup-mode hold that answers from any page but the splash.
+//! What one gesture means on the Network page: the keyboard, the list, and the two dialogs.
 //!
-//! The bands the page is showing and the boxes its strip offers are this module's own: both
-//! are read by the view, but neither is state the model owns.
+//! The bands and the strip are read by the view but are not state the model owns.
 
 pub mod bands;
 pub mod verbs;
@@ -14,21 +12,11 @@ use self::verbs as page_controls;
 use crate::pages::network::layout;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{ActionIntent, InputIntent, NetworkPageIntent};
-use crate::shared::route::Page;
-use crate::shared::state::DeviceState;
+use crate::shared::model::DeviceState;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::AccessPoint;
 
-/// The setup-mode hold is a link decision, not a page one: switching the host is offered from
-/// anywhere but the splash, so it is answered before the page sees the gesture.
-pub(crate) fn shortcut(op: &InputIntent, current: &DeviceState) -> Option<ActionIntent> {
-    (current.page() != Page::Splash
-        && current.network.link.mode.is_setup()
-        && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)))
-    .then_some(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost))
-}
-
-pub(crate) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
+pub(crate) fn bind(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     match op.event {
         InputEvent::Gesture(GestureEvent::Tap { x, y, at_ms, .. }) => tap(current, x, y, at_ms),
         InputEvent::Gesture(GestureEvent::LongPress { x, y, .. }) => hold(current, x, y),

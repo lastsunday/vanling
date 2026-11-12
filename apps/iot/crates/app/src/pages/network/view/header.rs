@@ -1,6 +1,6 @@
 //! The header's three rows: the page's title and window, the link, and the draft or address.
 
-use crate::shared::state::NetworkDraft;
+use crate::shared::model::NetworkDraft;
 use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus, SSID_BYTES};
 use iot_core::overlay::{
     Block, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, block_value_x, block_x, level_value_end,
@@ -12,8 +12,8 @@ use crate::pages::network::view::text::{
     format_address, format_bars, format_network_name, format_phase, format_psk, format_setup_name,
     format_window,
 };
-use crate::shared::view_kit::placement::PANEL_RIGHT;
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::placement::PANEL_RIGHT;
+use crate::shared::kit::surface::Surface;
 
 // Glyphs of the masked passphrase on the row above the keyboard: the whole row, so a draft
 // longer than it is marked rather than silently truncated.
@@ -168,7 +168,7 @@ impl Surface<'_> {
 mod tests {
     use super::*;
     use crate::shared::diagnostics::Diagnostics;
-    use crate::shared::state::Entry;
+    use crate::shared::model::Entry;
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{NetworkMode, SetupHost, Ssid};

@@ -1,7 +1,7 @@
 //! The colour half of a renderer: what gets painted, and when it has to be stepped.
 
 use crate::render::LightAppearance;
-use crate::shared::state::Breath;
+use crate::shared::model::Breath;
 use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
 use iot_core::paint::Rgb;

@@ -6,7 +6,7 @@
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{CONTENT_BOTTOM, PANEL_COLUMNS};
 
-use crate::shared::keyboard::{Key, Layer};
+use crate::shared::intent::{Key, Layer};
 
 use super::TOUCH_MIN;
 use super::list::LIST_TOP;
@@ -110,7 +110,7 @@ pub fn key_box(cell: usize) -> Option<ControlRect> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::keyboard::CHARS;
+    use crate::shared::intent::CHARS;
     use alloc::vec::Vec;
 
     const LAYERS: [Layer; 3] = [Layer::Abc, Layer::Digits, Layer::Symbols];

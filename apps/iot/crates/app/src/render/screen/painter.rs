@@ -5,7 +5,7 @@ use core::any::Any;
 
 use crate::pages::paint;
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{PanelContext, PanelPainter, PanelTarget};
 use iot_core::ui::Canvas;

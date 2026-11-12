@@ -1,12 +1,12 @@
-use crate::shared::state::AudioPhase;
+use crate::shared::model::AudioPhase;
 use iot_core::drivers::audio::{dbfs, spl};
 use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 
-use crate::shared::view_kit::bands::WAVE_TOP;
-use crate::shared::view_kit::placement::PANEL_RIGHT;
-use crate::shared::view_kit::surface::Surface;
-use crate::shared::view_kit::text::format_u16;
-use crate::shared::view_kit::text::{format_dba, format_i32};
+use crate::shared::kit::bands::WAVE_TOP;
+use crate::shared::kit::placement::PANEL_RIGHT;
+use crate::shared::kit::surface::Surface;
+use crate::shared::kit::text::format_u16;
+use crate::shared::kit::text::{format_dba, format_i32};
 
 impl Surface<'_> {
     pub(crate) fn stamp_audio(&mut self) {

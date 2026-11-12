@@ -2,7 +2,7 @@
 
 use crate::pages::network::layout::LIST_ROWS;
 use crate::pages::network::layout::{LIST_ROW_H, LIST_TOP, band_lines_top};
-use crate::shared::state::NetworkDraft;
+use crate::shared::model::NetworkDraft;
 use iot_core::drivers::network::{ApList, LinkStatus, SSID_BYTES};
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{
@@ -12,8 +12,8 @@ use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 
 use crate::pages::network::view::header::BARS_GLYPHS;
 use crate::pages::network::view::text::{NETWORK_NAME_GLYPHS, format_bars, format_network_name};
-use crate::shared::view_kit::placement::PANEL_RIGHT;
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::placement::PANEL_RIGHT;
+use crate::shared::kit::surface::Surface;
 
 const OPEN_MARKER_RIGHT: isize = PANEL_RIGHT - 5 * GLYPH_PITCH as isize;
 

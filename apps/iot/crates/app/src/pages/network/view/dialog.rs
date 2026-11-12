@@ -2,7 +2,7 @@
 
 use crate::pages::network::controller::{self as page_controls, ControlKind, confirm_verb};
 use crate::pages::network::layout::DIALOG_GLYPHS;
-use crate::shared::state::{NetworkDraft, SetupWait};
+use crate::shared::model::{NetworkDraft, SetupWait};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
 
 use super::dialog_box::Dialog;
@@ -10,7 +10,7 @@ use crate::pages::network::view::text::{
     SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
     format_question, format_setup_notice_body, format_setup_pass, joining_body,
 };
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 
 impl Surface<'_> {
     pub(super) fn stamp_box(

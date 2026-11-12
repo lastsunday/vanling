@@ -6,8 +6,8 @@
 use core::ops::{Deref, DerefMut};
 
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::view_kit::placement::{FPS_Y, PANEL_RIGHT};
-use crate::shared::view_kit::text::format_u16;
+use crate::shared::kit::placement::{FPS_Y, PANEL_RIGHT};
+use crate::shared::kit::text::format_u16;
 use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::paint::MODE_BREATH;
 use iot_core::paint::{Rgb, brightness_of, rgb_hue};

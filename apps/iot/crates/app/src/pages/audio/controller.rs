@@ -2,13 +2,13 @@
 //! lamp's, as on every page without a verb of its own for it.
 
 use crate::shared::intent::{ActionIntent, AudioIntent, InputIntent};
-use crate::shared::state::AudioPhase;
-use crate::shared::state::DeviceState;
+use crate::shared::model::AudioPhase;
+use crate::shared::model::DeviceState;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 
-use crate::shared::light;
+use crate::shared::gesture::light;
 
-pub(crate) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
+pub(crate) fn bind(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
             ActionIntent::Audio(capture_target(current.audio.phase))

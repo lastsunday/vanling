@@ -17,8 +17,8 @@
 use super::*;
 use crate::pages::network::layout::{self, DialogChoice};
 use crate::shared::intent::Confirm;
-use crate::shared::keyboard::Key;
-use crate::shared::state::SetupWait;
+use crate::shared::intent::Key;
+use crate::shared::model::SetupWait;
 use alloc::collections::{BTreeSet, VecDeque};
 use alloc::string::String;
 use iot_core::drivers::network::{NetworkMode, SetupHost, SetupPass};

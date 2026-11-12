@@ -23,7 +23,7 @@ mod tests {
     mod network_page {
         use super::*;
         use crate::pages::network::layout;
-        use crate::shared::keyboard::Key;
+        use crate::shared::intent::Key;
         use iot_core::drivers::network::{AccessPoint, ApList, Ssid};
 
         fn ap(ssid: &[u8], rssi: i8) -> AccessPoint {
@@ -48,9 +48,9 @@ mod tests {
 
         fn typing() -> DeviceState {
             with_network_page(on_network(), |page| {
-                *page = crate::shared::state::NetworkDraft {
+                *page = crate::shared::model::NetworkDraft {
                     selected: Some(ap(b"neighbour", -55)),
-                    entry: Some(crate::shared::state::Entry::default()),
+                    entry: Some(crate::shared::model::Entry::default()),
                     keyboard: true,
                     ..Default::default()
                 };
@@ -78,7 +78,7 @@ mod tests {
 
         fn asking() -> DeviceState {
             with_network_page(on_network(), |page| {
-                *page = crate::shared::state::NetworkDraft {
+                *page = crate::shared::model::NetworkDraft {
                     confirm: Some(crate::shared::intent::Confirm::Forget(ap(
                         b"neighbour",
                         -55,

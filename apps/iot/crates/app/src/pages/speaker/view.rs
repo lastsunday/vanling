@@ -1,8 +1,8 @@
-use crate::shared::state::PlaybackPhase;
+use crate::shared::model::PlaybackPhase;
 use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 
-use crate::shared::view_kit::surface::Surface;
-use crate::shared::view_kit::text::{format_u16, sound_label};
+use crate::shared::kit::surface::Surface;
+use crate::shared::kit::text::{format_u16, sound_label};
 
 impl Surface<'_> {
     pub(crate) fn stamp_speaker(&mut self) {

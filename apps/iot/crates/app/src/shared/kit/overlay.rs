@@ -5,8 +5,8 @@ use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
 use iot_core::overlay::Block;
 use iot_core::paint::{MODE_BREATH, MODE_SOLID};
 
-use crate::shared::view_kit::surface::Surface;
-use crate::shared::view_kit::text::{format_pair, format_u16, light_mode_word, write_u16};
+use crate::shared::kit::surface::Surface;
+use crate::shared::kit::text::{format_pair, format_u16, light_mode_word, write_u16};
 
 fn direction_arrow(dir: u8) -> u8 {
     match dir {

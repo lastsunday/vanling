@@ -1,8 +1,6 @@
 //! The key grid's vocabulary: what a key is, what each layer types, and how long a key stays
-//! open for its next candidate.
-//!
-//! The boxes those keys are drawn in and the hit test that maps a finger to one live in
-//! `panel`, which reads this vocabulary and never the other way round.
+//! open for its next candidate. The boxes and hit test live in `pages/network/layout`, which
+//! reads this vocabulary and never the other way round.
 
 /// The ten character keys: the nine the digit block holds and the zero beside the controls.
 pub const CHARS: usize = 10;

@@ -6,8 +6,8 @@
 //! It lives beside [`DeviceState`](super::DeviceState) because the device owns it: the page
 //! edits it, the diagnostics snapshot copies it, and the link never reads it.
 
+use crate::shared::intent::Key;
 use crate::shared::intent::NetworkPageIntent;
-use crate::shared::keyboard::Key;
 use iot_core::drivers::network::{
     AccessPoint, JoinRequest, LinkPhase, LinkStatus, NetworkError, NetworkMode, SetupHost, Ssid,
 };
@@ -15,7 +15,7 @@ use iot_core::drivers::network::{
 use iot_core::drivers::network::NetworkCommand;
 
 use crate::shared::intent::Confirm;
-use crate::shared::state::{Command, NetworkState};
+use crate::shared::model::{Command, NetworkState};
 
 /// The scan rows the draft keeps in its scroll window; the list draws this many.
 pub const LIST_ROWS: usize = 3;

@@ -12,8 +12,8 @@ pub mod network;
 pub mod speaker;
 pub mod splash;
 
+use crate::shared::kit::surface::Surface;
 use crate::shared::route::Page;
-use crate::shared::view_kit::surface::Surface;
 
 /// Draws `page` into `surface` and stamps the debug badge every page but the camera carries.
 pub fn paint(page: Page, surface: &mut Surface<'_>) {

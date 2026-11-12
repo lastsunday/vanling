@@ -1,14 +1,14 @@
 //! The key grid: each key's face, the characters it cycles, and the two latched controls.
 
 use crate::pages::network::layout;
-use crate::shared::keyboard::{Key, MAX_CANDIDATES};
-use crate::shared::state::Entry;
+use crate::shared::intent::{Key, MAX_CANDIDATES};
+use crate::shared::model::Entry;
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH};
 
 use crate::pages::network::view::text::{HIDE_LABEL, key_label};
-use crate::shared::view_kit::surface::Surface;
-use crate::shared::view_kit::widgets::label::text_left;
+use crate::shared::kit::surface::Surface;
+use crate::shared::kit::widgets::label::text_left;
 
 /// The gap between a key's face and the row of characters under it.
 const KEY_LINE_GAP: usize = 4;

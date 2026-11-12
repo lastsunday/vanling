@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "b9194b666147a6b09462718df215e5a2ea448b3a"
-translated_at = "2026-11-08T00:00:00Z"
+source_file_hash = "66657d7e5e2f5d392220cd97f4d5b04d6a27697f"
+translated_at = "2026-11-12T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -2375,6 +2375,34 @@ is recorded as too fast a teardown. The same window has four completed `Get /` a
 and the new one is answered as usual (a GET is retried, a POST is not, which is why only submit
 showed it).
 
+### The pure-logic part (host-testable)
+
+Three rules in `iot-core::drivers::network` are product decisions rather than plumbing, so
+they sit where a test can pin them:
+
+- **A scan list is ranked, not raw**: dedupe on BSSID keeping the strongest report, order
+  by signal, truncate to 8. Same-name access points are separate networks — a phone shows
+  both — so the identity is the BSSID, not the name.
+- **An SSID is bytes.** 802.11 allows arbitrary octets and the panel's glyph table is
+  printable ASCII, so whether a name can be *drawn* is one decision with a fallback (draw
+  the BSSID instead). A non-ASCII name is still carried byte for byte — connecting needs
+  it — and only its drawing fails.
+- **A round's rhythm** (a 5 s round, an empty round retried after 1 s up to three in a row, and a
+  rest stretched to 15 s and then 30 s while nobody acts) is the same kind of policy, so it lives
+  there too — see "The rhythm of a round".
+
+`Credentials::from_text` **rejects** an over-long passphrase rather than truncating it,
+because the driver rejects it too and a truncated passphrase authenticates against nothing
+while reading as "wrong password".
+
+Credentials come from **build-time environment variables** (`IOT_WIFI_SSID` /
+`IOT_WIFI_PSK`, read with `option_env!`) rather than a secret store: a bench image should
+say which network it joins, and a value compiled in is a value in the build command line.
+The product's credentials are typed on the panel and kept in the `creds` partition (see "Where a
+credential lives"); they must never be compiled into firmware. A build input outranks the stored
+list: a build that names a network has that one path to try (changing it means changing the build),
+where the stored list is the answer to "this device has been set up".
+
 ### Getting back to setup: hold BOOT on the splash page (`[test]`/`[measured]`, 2026-10-21, third cut)
 
 The entry point is unchanged: **both boards draw a 1.5-second splash page at boot, and holding Boot
@@ -2550,34 +2578,6 @@ C6 `820,384 / 1,048,576 B` (78.24%).
   being open — see "Setup mode's AP no longer has an open register"); how the table reads at 1× on
   the panel (the counters, the density of `m/w`, the descenders) only a person can answer; and the
   offline page's `SCAN | AP` cells and the `PASS`/`NO PASS` box behind `AP` still need one tap.
-
-## The pure-logic part (host-testable)
-
-Three rules in `iot-core::drivers::network` are product decisions rather than plumbing, so
-they sit where a test can pin them:
-
-- **A scan list is ranked, not raw**: dedupe on BSSID keeping the strongest report, order
-  by signal, truncate to 8. Same-name access points are separate networks — a phone shows
-  both — so the identity is the BSSID, not the name.
-- **An SSID is bytes.** 802.11 allows arbitrary octets and the panel's glyph table is
-  printable ASCII, so whether a name can be *drawn* is one decision with a fallback (draw
-  the BSSID instead). A non-ASCII name is still carried byte for byte — connecting needs
-  it — and only its drawing fails.
-- **A round's rhythm** (a 5 s round, an empty round retried after 1 s up to three in a row, and a
-  rest stretched to 15 s and then 30 s while nobody acts) is the same kind of policy, so it lives
-  there too — see "The rhythm of a round".
-
-`Credentials::from_text` **rejects** an over-long passphrase rather than truncating it,
-because the driver rejects it too and a truncated passphrase authenticates against nothing
-while reading as "wrong password".
-
-Credentials come from **build-time environment variables** (`IOT_WIFI_SSID` /
-`IOT_WIFI_PSK`, read with `option_env!`) rather than a secret store: a bench image should
-say which network it joins, and a value compiled in is a value in the build command line.
-The product's credentials are typed on the panel and kept in the `creds` partition (see "Where a
-credential lives"); they must never be compiled into firmware. A build input outranks the stored
-list: a build that names a network has that one path to try (changing it means changing the build),
-where the stored list is the answer to "this device has been set up".
 
 ## A hold outside the splash no longer opens the AP; the C6 keeps its credential and rejoins after reset (`[test]`/`[measured]`, 2026-10-23/24)
 

@@ -3,7 +3,7 @@
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP};
 
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 
 /// The panel width of a run of glyphs: the gap after the last one is not ink.
 pub(crate) fn text_width(text: &[u8]) -> usize {

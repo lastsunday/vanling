@@ -9,11 +9,11 @@ mod text;
 
 use crate::pages::network::controller::{self as page_controls, Band, each_band};
 use crate::pages::network::layout;
-use crate::shared::state::NetworkDraft;
+use crate::shared::model::NetworkDraft;
 use iot_core::drivers::network::{ApList, LinkStatus};
 
 use crate::pages::network::view::text::control_label;
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 
 impl Surface<'_> {
     pub(crate) fn stamp_network(&mut self) {

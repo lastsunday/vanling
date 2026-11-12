@@ -7,7 +7,7 @@ use crate::pages::network::layout::{
     DIALOG_BODY_TOP, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP, DIALOG_TOP, DIALOG_W, DIALOG_X,
     DialogChoice, dialog_answer_box,
 };
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 
 /// A box over the list: a title, up to two lines under it, and optionally two answers along
 /// its bottom edge. It owns where each part sits, so a caller hands it words only.

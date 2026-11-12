@@ -4,7 +4,7 @@ use iot_core::geometry::ControlRect;
 use iot_core::overlay::FONT_H;
 
 use super::label::text_left;
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 
 impl Surface<'_> {
     /// One pixel of ink around `rect`'s own edge, inside it.

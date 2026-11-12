@@ -3,10 +3,10 @@
 //! [`LightSnapshot`] per light surface — and fans out through pluggable
 //! [`DiagnosticsSink`]s.
 
+use crate::shared::model::DeviceState;
+use crate::shared::model::NetworkDraft;
+use crate::shared::model::{AudioPhase, Health};
 use crate::shared::route::Page;
-use crate::shared::state::DeviceState;
-use crate::shared::state::NetworkDraft;
-use crate::shared::state::{AudioPhase, Health};
 use core::sync::atomic::{AtomicU32, Ordering};
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
@@ -118,7 +118,7 @@ pub struct LightSnapshot {
 }
 
 /// The touch-path diagnostics stamped on a light surface, folded field by field out of
-/// [`DeviceState`](crate::shared::state::DeviceState): counter gaps between `taps` and `presses`
+/// [`DeviceState`](crate::shared::model::DeviceState): counter gaps between `taps` and `presses`
 /// localize dropped touches, `ghost` flags input trouble the classifier saw,
 /// `points`/`finger` carry the live per-finger readout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

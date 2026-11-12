@@ -1,7 +1,7 @@
 //! The central judge: diffs successive state snapshots and reports only what moved.
 
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::state::{DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
 use alloc::boxed::Box;
 use core::future::Future;
 use core::pin::Pin;

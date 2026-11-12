@@ -4,9 +4,9 @@ use std::sync::atomic::Ordering;
 
 use embassy_time::{Duration, Timer};
 use iot_app::runtime::workers::NETWORK;
+use iot_app::shared::gesture::light::PALETTE;
+use iot_app::shared::intent::Key;
 use iot_app::shared::intent::{ActionIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
-use iot_app::shared::keyboard::Key;
-use iot_app::shared::light::PALETTE;
 use iot_app::state::{NetworkCommand, Page};
 use iot_core::drivers::audio::dbfs;
 use iot_core::drivers::input::LONG_PRESS_MS;

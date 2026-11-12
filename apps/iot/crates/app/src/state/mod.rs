@@ -2,7 +2,7 @@
 //! table that hands each input to the page that owns it, and the two leaves a boot decides
 //! before any state exists.
 //!
-//! The records themselves live in [`crate::shared::state`]; this module is the only one
+//! The records themselves live in [`crate::shared::model`]; this module is the only one
 //! allowed to know every page, because it is the one that dispatches to them.
 
 mod apply;
@@ -21,7 +21,7 @@ pub use self::wiring::Boot;
 
 pub use crate::shared::route::{Navigator, Page};
 
-pub use crate::shared::state::*;
+pub use crate::shared::model::*;
 
 #[cfg(test)]
 pub(crate) mod test_support;

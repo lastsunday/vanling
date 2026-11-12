@@ -8,8 +8,8 @@ use alloc::vec::Vec;
 
 use crate::pages::paint;
 use crate::shared::diagnostics::Diagnostics;
+use crate::shared::kit::surface::Surface;
 use crate::shared::route::Page;
-use crate::shared::view_kit::surface::Surface;
 use iot_core::paint::Rgb;
 use iot_core::ui::Canvas;
 

@@ -2,7 +2,7 @@
 
 use crate::pages::network::layout;
 use crate::pages::network::layout::DialogChoice;
-use crate::shared::keyboard::Key;
+use crate::shared::intent::Key;
 
 use super::BAND_X;
 

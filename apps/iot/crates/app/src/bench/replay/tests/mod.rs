@@ -1,8 +1,8 @@
 //! The walk, exercised end to end.
 
 use super::*;
+use crate::shared::intent::Layer;
 use crate::shared::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
-use crate::shared::keyboard::Layer;
 use crate::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,

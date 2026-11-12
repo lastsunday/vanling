@@ -2,7 +2,7 @@
 
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS};
 
-use crate::shared::view_kit::surface::Surface;
+use crate::shared::kit::surface::Surface;
 
 impl Surface<'_> {
     pub(crate) fn stamp_splash(&mut self) {

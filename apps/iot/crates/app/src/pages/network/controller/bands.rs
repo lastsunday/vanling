@@ -1,6 +1,6 @@
 //! The Network page's bands: which parts of the panel are showing, and in what layering.
 
-use crate::shared::state::NetworkDraft;
+use crate::shared::model::NetworkDraft;
 use iot_core::drivers::network::{LinkPhase, LinkStatus};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -48,7 +48,7 @@ mod tests {
     use super::*;
     use crate::pages::network::layout;
     use crate::shared::intent::Confirm;
-    use crate::shared::state::{Entry, SetupWait};
+    use crate::shared::model::{Entry, SetupWait};
     use alloc::vec;
     use alloc::vec::Vec;
     use iot_core::drivers::network::{

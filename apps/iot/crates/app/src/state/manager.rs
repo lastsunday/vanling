@@ -8,8 +8,8 @@ use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
 
 use crate::shared::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
+use crate::shared::model::{Effects, Health, Notice, PlaybackPhase};
 use crate::shared::route::{Navigator, Page};
-use crate::shared::state::{Effects, Health, Notice, PlaybackPhase};
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::playback::Sound;
 

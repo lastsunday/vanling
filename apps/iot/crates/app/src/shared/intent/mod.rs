@@ -1,5 +1,11 @@
-use crate::shared::keyboard::Key;
-use crate::shared::state::LightState;
+//! The intent vocabulary: the input a source reports, the action a page asks for, and the key
+//! grid the Network page types on.
+
+mod keyboard;
+
+pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WINDOW_MS};
+
+use crate::shared::model::LightState;
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 

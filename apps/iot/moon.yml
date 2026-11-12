@@ -380,7 +380,7 @@ tasks:
       runInCI: false
 
   # The product holding its own keyboard: the credential this build is given is typed on the panel
-  # at boot, at the cells `crates/app/src/model/layout/keyboard.rs` draws them in, and through the
+  # at boot, at the cells `crates/app/src/pages/network/layout/keyboard.rs` draws them in, and through the
   # same intent ring a finger's taps arrive on. What it proves is the chain the setup path is end
   # to end —
   # a tap picks the row, the keys fill the draft, `OK` hands a credential to the state, the render

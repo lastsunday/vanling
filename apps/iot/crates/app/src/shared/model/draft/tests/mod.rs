@@ -2,7 +2,7 @@ use super::*;
 use crate::pages::network::layout;
 use crate::pages::network::layout::LIST_ROWS;
 use crate::shared::intent::*;
-use crate::shared::keyboard::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
+use crate::shared::intent::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
 use crate::state::test_support::*;
 use crate::state::{Boot, DeviceManager, Page};
 use iot_core::drivers::input::FINGER_LONG_PRESS;

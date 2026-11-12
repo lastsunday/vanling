@@ -409,9 +409,9 @@ fn a_page_does_not_import_another_page() {
 
 /// The surface paints every page, but it learns the page's ink from the page that owns it.
 #[test]
-fn the_view_kit_names_no_page() {
+fn the_kit_names_no_page() {
     assert_no_reference(
-        shipping_sources(&app_src().join("shared/view_kit")),
+        shipping_sources(&app_src().join("shared/kit")),
         &["crate::pages", "Page", "NetworkDraft", "Entry", "SetupWait"],
     );
 }
@@ -476,7 +476,7 @@ fn the_page_table_is_a_leaf() {
 #[test]
 fn intents_name_what_is_asked_and_not_what_answers_it() {
     assert_no_reference(
-        shipping_source(app_src().join("shared/intent.rs")),
+        shipping_sources(&app_src().join("shared/intent")),
         &[
             "crate::shared::route",
             "crate::render",
@@ -544,6 +544,59 @@ fn shared_never_reaches_up() {
             "crate::runtime",
         ],
     );
+}
+
+/// A seventh bucket is a decision this test asks a reader to make on purpose.
+#[test]
+fn the_shared_buckets_are_the_six_the_taxonomy_names() {
+    let shared = app_src().join("shared");
+    let mut found: Vec<String> = std::fs::read_dir(&shared)
+        .expect("the shared directory is readable")
+        .map(|entry| {
+            entry
+                .expect("the source tree does not change while it is read")
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("every entry is UTF-8")
+                .trim_end_matches(".rs")
+                .to_string()
+        })
+        .filter(|name| name != "mod")
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        ["diagnostics", "gesture", "intent", "kit", "model", "route"],
+        "shared/ is one bucket per change reason; a new one must say why it is not a page's"
+    );
+}
+
+/// A bucket with one reader is a page's private vocabulary; `bench`/`bin` do not count.
+#[test]
+fn every_shared_bucket_has_two_product_readers() {
+    let src = app_src();
+    let shared = src.join("shared");
+    let readers: Vec<_> = shipping_sources(&src)
+        .into_iter()
+        .filter(|(path, _)| {
+            !path.starts_with(src.join("bench")) && !path.starts_with(src.join("bin"))
+        })
+        .collect();
+    for bucket in ["diagnostics", "gesture", "intent", "kit", "model", "route"] {
+        let dir = shared.join(bucket);
+        let file = shared.join(format!("{bucket}.rs"));
+        let own = if dir.is_dir() { dir } else { file };
+        let needle = format!("shared::{bucket}");
+        let count = readers
+            .iter()
+            .filter(|(path, text)| !path.starts_with(&own) && text.contains(&needle))
+            .count();
+        assert!(
+            count >= 2,
+            "shared/{bucket} has {count} product reader(s); a bucket needs at least two"
+        );
+    }
 }
 
 /// A page draws and translates; it does not run the device. Naming the state layer would put

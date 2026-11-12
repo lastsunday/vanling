@@ -4,7 +4,7 @@ use crate::shared::intent::{ActionIntent, InputIntent, LightIntent};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::paint::{GROUP_CAPACITY, Rgb};
 
-use crate::shared::state::{Breath, DeviceState, LightState};
+use crate::shared::model::{Breath, DeviceState, LightState};
 
 pub const PALETTE: [Rgb; 7] = [
     Rgb(255, 64, 48),
@@ -64,7 +64,7 @@ pub const COLOR_GROUPS: [ColorGroup; 4] = [
     },
 ];
 
-pub(crate) fn translate(op: &InputIntent, current: &DeviceState) -> ActionIntent {
+pub(crate) fn bind(op: &InputIntent, current: &DeviceState) -> ActionIntent {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) => click(current, op.source),
         InputEvent::Button(ButtonEvent::DoubleClick) => step(current, op.source),
