@@ -57,12 +57,12 @@ fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
         },
         ..Default::default()
     }));
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Browsing,
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)),
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
         Some(Command::Network(NetworkCommand::SwitchHost {
             from: SetupHost::Panel
         })),
@@ -73,7 +73,7 @@ fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
     let business = translate(&operation, &manager.state());
     assert_ne!(
         business,
-        ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost),
+        BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         "a hold outside setup mode does not switch the host"
     );
 }
@@ -90,7 +90,7 @@ fn a_board_with_no_display_has_no_front_to_switch_to() {
     });
     setup_mode(&mut manager, false);
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)),
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
         None,
         "a lamp-only board has nowhere to switch to"
     );
@@ -100,11 +100,11 @@ fn a_board_with_no_display_has_no_front_to_switch_to() {
 fn a_front_switch_that_outlives_setup_mode_is_dropped() {
     let mut manager = on_network_page();
     setup_mode(&mut manager, true);
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
         LinkStatus::default(),
     )));
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)),
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)),
         None,
         "a switch cannot ask for another host once the mode is gone"
     );
@@ -126,7 +126,7 @@ fn a_device_with_nothing_saved_has_only_the_front_switch_on_the_access_points_fr
 #[test]
 fn the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back() {
     let mut manager = on_network_page();
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::Panel,
             cancellable: false,
@@ -158,7 +158,7 @@ fn the_box_belongs_to_the_access_points_front_and_not_to_a_boot() {
     setup_mode(&mut manager, true);
     assert!(manager.state().network.link.shows_setup_box());
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::Panel,
             cancellable: false,
@@ -170,7 +170,7 @@ fn the_box_belongs_to_the_access_points_front_and_not_to_a_boot() {
         "the list is what the panel's own host shows"
     );
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
         LinkStatus::default(),
     )));
     setup_mode(&mut manager, true);
@@ -189,7 +189,7 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
         }))
     );
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::Panel,
             cancellable: false,
@@ -197,7 +197,7 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkDraft(
+        manager.apply_business(BusinessIntent::NetworkPage(
             NetworkPageIntent::SetOpenAccessPoint(true)
         )),
         None,
@@ -226,7 +226,7 @@ fn a_front_switch_waits_for_the_other_host_to_report() {
         "a second tap while the radio is switching asks for nothing new"
     );
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::Panel,
             cancellable: false,
@@ -281,7 +281,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         "and the front switch waits with it"
     );
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::AccessPoint,
             cancellable: false,
@@ -297,7 +297,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         "a report that has not changed the passphrase is not the answer"
     );
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::AccessPoint,
             cancellable: false,
@@ -326,7 +326,7 @@ fn a_setup_change_stops_waiting_when_setup_mode_ends() {
     tap_strip(&mut manager);
     assert!(manager.state().network_page.setup_wait.is_some());
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Browsing,
         ..LinkStatus::default()
     })));
@@ -347,7 +347,7 @@ fn a_refused_setup_change_stops_waiting() {
         Some(SetupWait::Host(SetupHost::Panel))
     );
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::AccessPoint,
             cancellable: false,
@@ -381,7 +381,7 @@ fn the_radio_s_three_moments_are_heard() {
         "entering setup mode"
     );
 
-    manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+    manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
     link_up(&mut manager, b"neighbour");
     assert_eq!(
         manager.playback_state().sound,
@@ -389,7 +389,7 @@ fn the_radio_s_three_moments_are_heard() {
         "the network answered"
     );
 
-    manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+    manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
     link_at(
         &mut manager,
         LinkPhase::Failed(NetworkError::Credentials),

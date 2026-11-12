@@ -108,7 +108,7 @@ mod tests {
     use super::*;
     use crate::runtime::feature::input::IntentBus;
     use crate::runtime::workers::NETWORK;
-    use crate::shared::intent::{ActionIntent, Intent, LinkIntent, NetworkPageIntent};
+    use crate::shared::intent::{BusinessIntent, Intent, LinkIntent, NetworkPageIntent};
     use crate::state::{Backed, Boot, DeviceManager, NetworkCommand};
     use iot_core::drivers::network::{LinkPhase, LinkStatus};
     use iot_core::drivers::surface::SurfaceRole;
@@ -141,11 +141,11 @@ mod tests {
     }
 
     fn scan() -> Intent {
-        Intent::Action(ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow))
+        Intent::Business(BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow))
     }
 
     fn leave() -> Intent {
-        Intent::Action(ActionIntent::NetworkDraft(NetworkPageIntent::Leave))
+        Intent::Business(BusinessIntent::NetworkPage(NetworkPageIntent::Leave))
     }
 
     #[test]
@@ -163,8 +163,8 @@ mod tests {
             log: Rc::clone(&log),
         });
 
-        let _ = bus.try_send(Intent::Action(ActionIntent::Invalid));
-        let _ = bus.try_send(Intent::Action(ActionIntent::Invalid));
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
         {
             let mut frame = Frame {
                 bus: &bus,
@@ -193,7 +193,7 @@ mod tests {
         let mut schedule = Schedule::new();
         schedule.register(NetworkSystem::new(manager.state_ref(), NETWORK));
 
-        let _ = bus.try_send(Intent::Action(ActionIntent::Link(LinkIntent::LinkReport(
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Link(LinkIntent::Status(
             LinkStatus {
                 phase: LinkPhase::Connected,
                 ..LinkStatus::default()

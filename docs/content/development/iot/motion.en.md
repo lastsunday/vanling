@@ -3,8 +3,8 @@ title = "Motion Semantic Framework"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "5459d360325916313780893668fcde4675f1aa6a"
-translated_at = "2026-10-31T00:00:00Z"
+source_file_hash = "fc6dda0fa0224acc012242536e7f2713f769543e"
+translated_at = "2026-11-12T00:00:00Z"
 +++
 
 # Motion Semantic Framework
@@ -396,7 +396,7 @@ One tick can carry several cross-family events at the same time after arbitratio
 3. Declare the union of the capabilities that driver itself has; do not re-declare the core-derived part.
 4. Hook `MotionInput::new(driver)` onto the board layer's `take_motion`.
 
-Business mapping is a **separate layer**. `InputEvent::Motion` currently maps to `ActionIntent::Invalid` — the framework is already in place, and wiring semantics onto concrete product intents is a business decision, not something done in the driver layer.
+Business mapping is a **separate layer**. `InputEvent::Motion` currently maps to `BusinessIntent::Invalid` — the framework is already in place, and wiring semantics onto concrete product intents is a business decision, not something done in the driver layer.
 
 With multiple IMUs, sample, health-check and recognize each source independently, with one `MotionCapabilities` per source. A 50 Hz semantic bus does not suit scenarios like flight control / balancing vehicles that need a high-rate inertial stream — that is a different road.
 

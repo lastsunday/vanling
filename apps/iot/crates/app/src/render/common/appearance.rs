@@ -149,7 +149,7 @@ mod tests {
     use crate::render::RenderController;
     use crate::render::test_support::*;
     use crate::shared::diagnostics::{BreathSnapshot, LightSnapshot};
-    use crate::shared::intent::{ActionIntent, AudioIntent, PageIntent};
+    use crate::shared::intent::{AudioIntent, BusinessIntent, NavigationIntent};
     use crate::state::{AudioPhase, Backed, DeviceManager, Page};
     use iot_core::demand::DemandKey;
     use iot_core::drivers::audio::{AudioEnvelope, AudioSample};
@@ -195,8 +195,8 @@ mod tests {
             AudioPhase::Idle,
             "polling alone never starts a capture"
         );
-        manager.apply_action(ActionIntent::Audio(AudioIntent::Start));
-        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+        manager.apply_business(BusinessIntent::Audio(AudioIntent::Start));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         let recording = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
@@ -209,7 +209,7 @@ mod tests {
              recovered from still reads as a capture that simply went quiet"
         );
 
-        manager.apply_action(ActionIntent::Audio(AudioIntent::Stop));
+        manager.apply_business(BusinessIntent::Audio(AudioIntent::Stop));
         let stopped = light_diagnostics(&manager.state(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(
@@ -529,7 +529,7 @@ mod tests {
             ..Default::default()
         };
         let mut quiet_manager = DeviceManager::boot(setup.clone());
-        quiet_manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+        quiet_manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
         assert_eq!(quiet_manager.state().page(), Page::Audio);
         let quiet = *quiet_manager.demand();
         assert_eq!(
@@ -541,7 +541,7 @@ mod tests {
             overrides: iot_core::demand::parse_override("audio=off"),
             ..setup
         });
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
         assert_eq!(
             manager.demand().claim(DemandKey::AUDIO).mode,
             iot_core::demand::Mode::Off

@@ -50,7 +50,7 @@ fn booted(boot: Boot) -> DeviceManager {
         if manager.state().page() == Page::Network {
             break;
         }
-        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     }
     assert_eq!(manager.state().page(), Page::Network);
     manager
@@ -76,7 +76,7 @@ fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) -> Option<
     }));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
-    manager.apply_action(business)
+    manager.apply_business(business)
 }
 
 fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
@@ -89,7 +89,7 @@ fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
 }
 
 fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) -> Option<Command> {
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
         key,
         at_ms,
     }))
@@ -136,7 +136,7 @@ fn eight_rows() -> DeviceManager {
     }));
     let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
     manager.apply_scan(ApList::from_ranked(&aps));
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     manager
 }
 
@@ -153,7 +153,7 @@ fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
     }));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
-    manager.apply_action(business)
+    manager.apply_business(business)
 }
 
 fn tap_strip(manager: &mut DeviceManager) -> Option<Command> {
@@ -182,7 +182,7 @@ fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
     }));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
-    manager.apply_action(business)
+    manager.apply_business(business)
 }
 
 fn tap_answer(manager: &mut DeviceManager, choice: layout::DialogChoice) -> Option<Command> {
@@ -199,7 +199,7 @@ fn link_up(manager: &mut DeviceManager, ssid: &[u8]) {
 }
 
 fn link_at(manager: &mut DeviceManager, phase: LinkPhase, ssid: &[u8]) {
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase,
         ap: Some(ap(ssid)),
         address: None,
@@ -211,11 +211,11 @@ fn long_press_the_button(manager: &mut DeviceManager) -> Option<Command> {
     let operation = op(InputEvent::Button(ButtonEvent::LongPress));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
-    manager.apply_action(business)
+    manager.apply_business(business)
 }
 
 fn setup_mode(manager: &mut DeviceManager, cancellable: bool) {
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Setup {
             host: SetupHost::AccessPoint,
             cancellable,

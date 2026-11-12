@@ -33,7 +33,7 @@ impl NetworkState {
     /// build. What the rest of the device must do about it comes back as [`Effects`].
     pub(crate) fn apply(&mut self, intent: LinkIntent) -> Effects {
         match intent {
-            LinkIntent::LinkReport(status) => self.report(status),
+            LinkIntent::Status(status) => self.report(status),
             LinkIntent::Mac(mac) => {
                 self.mac = Some(mac);
                 Effects::default()

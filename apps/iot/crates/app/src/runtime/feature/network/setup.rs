@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use crate::shared::intent::{ActionIntent, Intent, NetworkPageIntent};
+use crate::shared::intent::{BusinessIntent, Intent, NetworkPageIntent};
 use crate::state::{NetworkCommand, Page};
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
@@ -357,7 +357,7 @@ pub(super) fn resolve_join<R: FlashRegion>(
                     "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
                     ssid.as_display_text().unwrap_or("<unprintable>"),
                 );
-                let _ = INTENT_BUS.try_send(Intent::Action(ActionIntent::NetworkDraft(
+                let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::NetworkPage(
                     NetworkPageIntent::NoCopy(ssid),
                 )));
             }

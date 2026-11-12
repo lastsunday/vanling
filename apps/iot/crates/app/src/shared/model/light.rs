@@ -1,8 +1,10 @@
-//! The light surfaces as the render loop reads them: the breathing schedule and the
-//! behavior a page's snapshot carries.
+//! The light surfaces as the render loop reads them: the breathing schedule, the behaviour a
+//! page's snapshot carries, and the tables the lamp's verbs walk.
 
 use iot_core::drivers::network::NetworkError;
 use iot_core::paint::{GROUP_CAPACITY, Rgb};
+
+use crate::shared::intent::LightAction;
 
 /// A breathing schedule: brightness envelope plus the hue path it travels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +55,70 @@ impl Breath {
     }
 }
 
+/// The solid-mode palette, in the order a step walks it.
+pub const PALETTE: [Rgb; 7] = [
+    Rgb(255, 64, 48),
+    Rgb(255, 160, 48),
+    Rgb(255, 224, 64),
+    Rgb(80, 200, 96),
+    Rgb(32, 200, 220),
+    Rgb(72, 128, 255),
+    Rgb(190, 96, 255),
+];
+
+/// The breathing periods a step walks, in milliseconds.
+const BREATH_PERIODS_MS: [u32; 10] = [125, 250, 375, 500, 750, 1_000, 2_000, 3_000, 5_000, 8_000];
+
+/// The solid-mode brightness ladder a step walks.
+const SOLID_BRIGHTNESS_STEPS: [u8; 6] = [32, 64, 100, 140, 200, 255];
+
+/// How far one brightness swipe shifts the envelope.
+const BRIGHTNESS_ENVELOPE_STEP: u8 = 32;
+
+/// One hue group a breathing light can walk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColorGroup {
+    pub hue_span: u8,
+    pub group: [u8; GROUP_CAPACITY],
+    pub group_len: u8,
+}
+
+impl ColorGroup {
+    pub fn into_breath(self, base: Breath) -> Breath {
+        Breath {
+            hue_span: self.hue_span,
+            group: self.group,
+            group_len: self.group_len,
+            ..base
+        }
+    }
+}
+
+/// The hue groups a colour step walks, head first: the default sunset, the seven-way
+/// rainbow, one single-hue sweep, and the static group.
+pub const COLOR_GROUPS: [ColorGroup; 4] = [
+    ColorGroup {
+        hue_span: 255,
+        group: [16, 32, 3, 0, 0, 0, 0],
+        group_len: 3,
+    },
+    ColorGroup {
+        hue_span: 255,
+        group: [0, 21, 43, 85, 128, 170, 213],
+        group_len: 7,
+    },
+    ColorGroup {
+        hue_span: 255,
+        group: [28, 0, 0, 0, 0, 0, 0],
+        group_len: 1,
+    },
+    ColorGroup {
+        hue_span: 255,
+        group: [0, 0, 0, 0, 0, 0, 0],
+        group_len: 0,
+    },
+];
+
 /// Light behavior, read by the render loop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightState {
@@ -102,6 +168,21 @@ impl LightState {
     /// Backlight floor for the breathing envelope: the panel never sinks below this percent
     /// while pixels are lit, so the trough stays a dim glow instead of a hard on/off blip.
     pub const BACKLIGHT_FLOOR_PCT: u8 = 12;
+
+    /// Whether this state has anything for the action to move. `Off` answers only `Cycle`.
+    pub(crate) fn can(self, action: LightAction) -> bool {
+        !matches!(self, Self::Off) || matches!(action, LightAction::Cycle)
+    }
+
+    /// The state the action lands on, or `None` when it has nothing to move.
+    pub(crate) fn apply(self, action: LightAction) -> Option<Self> {
+        match action {
+            LightAction::Cycle => Some(cycle_mode(self)),
+            LightAction::NextColor { forward } => advance_color(self, forward),
+            LightAction::Step => advance_step(self),
+            LightAction::Brightness { up } => swipe_brightness(self, up),
+        }
+    }
 
     pub const fn boot() -> Self {
         LightState::Breath(Breath {
@@ -242,6 +323,107 @@ impl Notice {
             light: kind.color(),
         }
     }
+}
+
+fn cycle_mode(current: LightState) -> LightState {
+    match current {
+        LightState::Off => LightState::default(),
+        LightState::Breath { .. } => LightState::Solid {
+            color: PALETTE[0],
+            brightness: LightState::SOLID_DEFAULT_BRIGHTNESS,
+        },
+        LightState::Solid { .. } => LightState::Off,
+    }
+}
+
+fn advance_color(current: LightState, forward: bool) -> Option<LightState> {
+    match current {
+        LightState::Off => None,
+        LightState::Breath(breath) => {
+            let next_group = color_group_step(&breath, forward);
+            Some(LightState::Breath(next_group.into_breath(breath)))
+        }
+        LightState::Solid { color, brightness } => {
+            let next_color = table_step(&PALETTE, color, if forward { 1 } else { -1 });
+            Some(LightState::Solid {
+                color: next_color,
+                brightness,
+            })
+        }
+    }
+}
+
+fn advance_step(current: LightState) -> Option<LightState> {
+    match current {
+        LightState::Off => None,
+        LightState::Breath(breath) => {
+            let next_period = table_step(&BREATH_PERIODS_MS, breath.period_ms, 1);
+            Some(LightState::Breath(Breath {
+                period_ms: next_period,
+                ..breath
+            }))
+        }
+        LightState::Solid { color, brightness } => {
+            let next = table_step(&SOLID_BRIGHTNESS_STEPS, brightness, 1);
+            Some(LightState::Solid {
+                color,
+                brightness: next,
+            })
+        }
+    }
+}
+
+fn swipe_brightness(current: LightState, up: bool) -> Option<LightState> {
+    match current {
+        LightState::Off => None,
+        LightState::Breath(breath) => Some(LightState::Breath(shift_envelope(breath, up))),
+        LightState::Solid { color, brightness } => {
+            let next = table_step(&SOLID_BRIGHTNESS_STEPS, brightness, if up { 1 } else { -1 });
+            Some(LightState::Solid {
+                color,
+                brightness: next,
+            })
+        }
+    }
+}
+
+fn shift_envelope(breath: Breath, up: bool) -> Breath {
+    let step = if up {
+        i16::from(BRIGHTNESS_ENVELOPE_STEP)
+    } else {
+        -i16::from(BRIGHTNESS_ENVELOPE_STEP)
+    };
+    let guard = i16::from(BRIGHTNESS_ENVELOPE_STEP);
+    let min = (i16::from(breath.min_brightness) + step).clamp(0, 255 - guard);
+    let max = (i16::from(breath.max_brightness) + step).clamp(guard, 255);
+    Breath {
+        min_brightness: min as u8,
+        max_brightness: max as u8,
+        ..breath
+    }
+}
+
+fn table_step<T: Copy + PartialEq>(table: &[T], current: T, dir: isize) -> T {
+    let idx = table.iter().position(|&v| v == current).unwrap_or(0);
+    let len = table.len() as isize;
+    table[((idx as isize + dir).rem_euclid(len)) as usize]
+}
+
+fn color_group_idx(breath: &Breath) -> usize {
+    COLOR_GROUPS
+        .iter()
+        .position(|c| c.group == breath.group && c.group_len == breath.group_len)
+        .unwrap_or(0)
+}
+
+fn color_group_step(breath: &Breath, forward: bool) -> ColorGroup {
+    let idx = color_group_idx(breath);
+    let len = COLOR_GROUPS.len();
+    COLOR_GROUPS[if forward {
+        (idx + 1) % len
+    } else {
+        (idx + len - 1) % len
+    }]
 }
 
 impl Default for LightState {
@@ -400,6 +582,232 @@ mod tests {
 }
 
 #[cfg(test)]
+mod actions {
+    use super::*;
+
+    const BREATH: LightState = LightState::boot();
+
+    const EVERY_ACTION: [LightAction; 6] = [
+        LightAction::Cycle,
+        LightAction::NextColor { forward: true },
+        LightAction::NextColor { forward: false },
+        LightAction::Step,
+        LightAction::Brightness { up: true },
+        LightAction::Brightness { up: false },
+    ];
+
+    fn breathe() -> Breath {
+        let LightState::Breath(breath) = BREATH else {
+            unreachable!();
+        };
+        breath
+    }
+
+    fn solid(brightness: u8) -> LightState {
+        LightState::Solid {
+            color: PALETTE[0],
+            brightness,
+        }
+    }
+
+    #[test]
+    fn cycle_walks_off_breath_solid_and_back() {
+        let breathing = LightState::Off
+            .apply(LightAction::Cycle)
+            .expect("off cycles on");
+        assert!(matches!(breathing, LightState::Breath(_)));
+        let lit = breathing
+            .apply(LightAction::Cycle)
+            .expect("breath cycles to solid");
+        assert_eq!(lit, solid(LightState::SOLID_DEFAULT_BRIGHTNESS));
+        assert_eq!(lit.apply(LightAction::Cycle), Some(LightState::Off));
+    }
+
+    #[test]
+    fn next_color_walks_the_group_in_breath_and_the_palette_in_solid() {
+        let breath = breathe();
+        assert_eq!(
+            BREATH.apply(LightAction::NextColor { forward: true }),
+            Some(LightState::Breath(COLOR_GROUPS[1].into_breath(breath)))
+        );
+        assert_eq!(
+            BREATH.apply(LightAction::NextColor { forward: false }),
+            Some(LightState::Breath(COLOR_GROUPS[3].into_breath(breath)))
+        );
+        assert_eq!(
+            solid(140).apply(LightAction::NextColor { forward: true }),
+            Some(LightState::Solid {
+                color: PALETTE[1],
+                brightness: 140,
+            })
+        );
+        assert_eq!(
+            solid(60).apply(LightAction::NextColor { forward: false }),
+            Some(LightState::Solid {
+                color: *PALETTE.last().unwrap(),
+                brightness: 60,
+            })
+        );
+    }
+
+    #[test]
+    fn step_walks_the_period_in_breath_and_the_ladder_in_solid() {
+        let mut state = LightState::Breath(Breath {
+            period_ms: BREATH_PERIODS_MS[0],
+            ..breathe()
+        });
+        for i in 0..BREATH_PERIODS_MS.len() {
+            let next = state
+                .apply(LightAction::Step)
+                .expect("a breath has a period");
+            let LightState::Breath(next) = next else {
+                panic!("step must stay in breathing");
+            };
+            assert_eq!(
+                next.period_ms,
+                BREATH_PERIODS_MS[(i + 1) % BREATH_PERIODS_MS.len()],
+                "step {i}: wrong period reached"
+            );
+            state = LightState::Breath(next);
+        }
+        assert_eq!(solid(140).apply(LightAction::Step), Some(solid(200)));
+        assert_eq!(solid(255).apply(LightAction::Step), Some(solid(32)));
+    }
+
+    #[test]
+    fn brightness_shifts_the_envelope_in_breath_and_the_ladder_in_solid() {
+        let breath = breathe();
+        assert_eq!(
+            BREATH.apply(LightAction::Brightness { up: true }),
+            Some(LightState::Breath(Breath {
+                min_brightness: breath.min_brightness + BRIGHTNESS_ENVELOPE_STEP,
+                max_brightness: breath.max_brightness + BRIGHTNESS_ENVELOPE_STEP,
+                ..breath
+            }))
+        );
+        assert_eq!(
+            BREATH.apply(LightAction::Brightness { up: false }),
+            Some(LightState::Breath(Breath {
+                min_brightness: 0,
+                max_brightness: breath.max_brightness - BRIGHTNESS_ENVELOPE_STEP,
+                ..breath
+            }))
+        );
+        assert_eq!(
+            solid(140).apply(LightAction::Brightness { up: true }),
+            Some(solid(200))
+        );
+        assert_eq!(
+            solid(140).apply(LightAction::Brightness { up: false }),
+            Some(solid(100))
+        );
+        assert_eq!(
+            solid(32).apply(LightAction::Brightness { up: false }),
+            Some(solid(255))
+        );
+        assert_eq!(
+            solid(255).apply(LightAction::Brightness { up: true }),
+            Some(solid(32))
+        );
+    }
+
+    #[test]
+    fn the_envelope_keeps_its_span_at_both_walls() {
+        let at_bottom = Breath {
+            min_brightness: 8,
+            max_brightness: 40,
+            ..breathe()
+        };
+        let sunk = shift_envelope(at_bottom, false);
+        assert_eq!(sunk.min_brightness, 0, "floor clamps at 0");
+        assert_eq!(
+            sunk.max_brightness, BRIGHTNESS_ENVELOPE_STEP,
+            "ceiling rides the wall guard so the envelope keeps its span"
+        );
+        let at_top = Breath {
+            min_brightness: 240,
+            max_brightness: 255,
+            ..breathe()
+        };
+        let lifted = shift_envelope(at_top, true);
+        assert_eq!(
+            lifted.min_brightness,
+            255 - BRIGHTNESS_ENVELOPE_STEP,
+            "floor parks at 255-guard so the envelope keeps its span"
+        );
+        assert_eq!(lifted.max_brightness, 255, "ceiling clamps at 255");
+        let mut breath = breathe();
+        for up in [true, false] {
+            for _ in 0..32 {
+                breath = shift_envelope(breath, up);
+                assert!(
+                    breath.max_brightness as u16 - breath.min_brightness as u16
+                        >= u16::from(BRIGHTNESS_ENVELOPE_STEP),
+                    "a shift keeps at least a full step of span"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn off_answers_only_cycle_and_can_agrees_with_apply() {
+        assert!(LightState::Off.can(LightAction::Cycle));
+        assert!(LightState::Off.apply(LightAction::Cycle).is_some());
+        for state in [LightState::Off, solid(140), BREATH] {
+            for action in EVERY_ACTION {
+                assert_eq!(
+                    state.can(action),
+                    state.apply(action).is_some(),
+                    "{state:?} {action:?}"
+                );
+            }
+        }
+        for action in EVERY_ACTION {
+            if action != LightAction::Cycle {
+                assert!(!LightState::Off.can(action), "{action:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_step_falls_back_to_head_when_current_is_not_in_the_table() {
+        assert_eq!(
+            table_step(&BREATH_PERIODS_MS, 9999, 1),
+            BREATH_PERIODS_MS[1]
+        );
+        assert_eq!(table_step(&PALETTE, Rgb(0, 0, 0), 1), PALETTE[1]);
+        assert_eq!(
+            table_step(&SOLID_BRIGHTNESS_STEPS, 7, 1),
+            SOLID_BRIGHTNESS_STEPS[1]
+        );
+        let unknown = Breath {
+            group: [200, 250, 30, 0, 0, 0, 0],
+            group_len: 3,
+            ..breathe()
+        };
+        assert_eq!(color_group_step(&unknown, true), COLOR_GROUPS[1]);
+    }
+
+    #[test]
+    fn retreat_and_step_wrap_backwards() {
+        let last = *PALETTE.last().unwrap();
+        assert_eq!(table_step(&PALETTE, PALETTE[0], -1), last);
+        assert_eq!(table_step(&PALETTE, last, 1), PALETTE[0]);
+        assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 32, -1), 255);
+        assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 140, -1), 100);
+        assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 7, -1), 255);
+    }
+
+    #[test]
+    fn the_seven_color_preset_uses_every_hue_slot() {
+        let expected: [u8; GROUP_CAPACITY] = [0, 21, 43, 85, 128, 170, 213];
+        let rainbow = COLOR_GROUPS[1];
+        assert_eq!(rainbow.group_len, expected.len() as u8);
+        assert_eq!(rainbow.group, expected);
+    }
+}
+
+#[cfg(test)]
 mod lamp {
     use super::*;
     use crate::shared::intent::*;
@@ -418,7 +826,7 @@ mod lamp {
     }
 
     fn report(manager: &mut DeviceManager, status: LinkStatus) {
-        manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(status)));
+        manager.apply_business(BusinessIntent::Link(LinkIntent::Status(status)));
     }
 
     fn setup(manager: &mut DeviceManager) {
@@ -625,7 +1033,7 @@ mod lamp {
     fn a_boot_with_nothing_saved_flashes_amber_and_then_shows_the_page() {
         let mut manager = lamp_only();
         assert_eq!(manager.state().page(), Page::Splash);
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
@@ -651,7 +1059,7 @@ mod lamp {
             surface_roles: [SurfaceRole::Pages, SurfaceRole::Lamp],
             ..Default::default()
         });
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
         assert_eq!(
             manager.state().notice.map(|notice| notice.kind),
             Some(NoticeKind::Offline)
@@ -662,8 +1070,8 @@ mod lamp {
     #[test]
     fn a_splash_hold_opens_setup_instead_of_flashing_offline() {
         let mut manager = lamp_only();
-        manager.apply_action(ActionIntent::Page(PageIntent::RequestSetup));
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::RequestSetup));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
         assert_eq!(manager.state().notice, None);
         assert_eq!(manager.state().page(), Page::Network);
     }

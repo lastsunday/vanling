@@ -4,9 +4,9 @@ use std::sync::atomic::Ordering;
 
 use embassy_time::{Duration, Timer};
 use iot_app::runtime::workers::NETWORK;
-use iot_app::shared::gesture::light::PALETTE;
 use iot_app::shared::intent::Key;
-use iot_app::shared::intent::{ActionIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
+use iot_app::shared::intent::{BusinessIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
+use iot_app::shared::model::PALETTE;
 use iot_app::state::{NetworkCommand, Page};
 use iot_core::drivers::audio::dbfs;
 use iot_core::drivers::input::LONG_PRESS_MS;
@@ -282,11 +282,11 @@ pub(super) async fn scenario() {
         "a scan published through the link never reached the panel's snapshot"
     );
 
-    let send = |intent: ActionIntent| {
-        let _ = iot_app::runtime::feature::input::INTENT_BUS.try_send(Intent::Action(intent));
+    let send = |intent: BusinessIntent| {
+        let _ = iot_app::runtime::feature::input::INTENT_BUS.try_send(Intent::Business(intent));
     };
 
-    send(ActionIntent::NetworkDraft(NetworkPageIntent::Choose(
+    send(BusinessIntent::NetworkPage(NetworkPageIntent::Choose(
         list.get(0).expect("a row to pick"),
     )));
     Timer::after(Duration::from_millis(100)).await;
@@ -299,7 +299,7 @@ pub(super) async fn scenario() {
         Key::Shift,
         Key::Char(b'8'),
     ] {
-        send(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+        send(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
             key,
             at_ms,
         }));
@@ -316,7 +316,7 @@ pub(super) async fn scenario() {
         "the keyboard's draft never reached the panel's snapshot"
     );
 
-    send(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+    send(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
         key: Key::Connect,
         at_ms,
     }));
@@ -347,7 +347,7 @@ pub(super) async fn scenario() {
     );
 
     // The radio's report on the attempt; without it the page stays busy and refuses the scan.
-    send(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    send(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Failed(NetworkError::Credentials),
         ..LinkStatus::default()
     })));
@@ -372,7 +372,7 @@ pub(super) async fn scenario() {
         "a marked list published through the link never reached the panel's snapshot"
     );
 
-    send(ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow));
+    send(BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow));
     attempts = 0;
     let mut scanned = false;
     while !scanned && attempts < 100 {
@@ -389,11 +389,11 @@ pub(super) async fn scenario() {
         "the strip's request to look around never reached the network worker"
     );
 
-    send(ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(
+    send(BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(
         list.get(0).expect("a row to ask about"),
     )));
     Timer::after(Duration::from_millis(100)).await;
-    send(ActionIntent::NetworkDraft(NetworkPageIntent::Answer(
+    send(BusinessIntent::NetworkPage(NetworkPageIntent::Answer(
         Confirm::Forget(list.get(0).expect("the row the question named")),
     )));
     attempts = 0;

@@ -83,7 +83,7 @@ fn a_pick_of_an_open_row_is_read_only_under_a_link_too() {
         ..Default::default()
     });
     manager.apply_scan(ApList::from_ranked(&[open(b"cafe")]));
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     link_at(&mut manager, LinkPhase::Connected, b"neighbour");
 
     let asked = tap_band(&mut manager, 0);
@@ -172,7 +172,7 @@ fn a_hold_on_a_row_this_device_has_not_saved_asks_nothing() {
     marked(&mut manager, &["neighbour"]);
     hold_band(&mut manager, 0);
     assert!(manager.state().network_page.confirm.is_some());
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss));
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss));
     marked(&mut manager, &[]);
     hold_band(&mut manager, 0);
     assert_eq!(
@@ -185,7 +185,7 @@ fn a_hold_on_a_row_this_device_has_not_saved_asks_nothing() {
 #[test]
 fn the_same_row_is_a_request_to_join_while_the_link_is_not_on_it() {
     let mut manager = on_network_page();
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Failed(NetworkError::Credentials),
         ap: Some(ap(b"neighbour")),
         address: None,
@@ -318,7 +318,7 @@ fn a_row_the_store_has_no_copy_of_puts_the_page_back_on_the_keyboard() {
     let mut manager = on_network_page();
     marked(&mut manager, &["neighbour"]);
     tap_band(&mut manager, 0);
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::NoCopy(
         Ssid::from_octets(b"neighbour"),
     )));
     assert!(manager.state().network_page.keyboard, "the page has to ask");
@@ -339,7 +339,7 @@ fn a_copy_the_store_has_that_was_refused_comes_back_as_a_keyboard() {
     let mut manager = on_network_page();
     marked(&mut manager, &["neighbour"]);
     tap_band(&mut manager, 0);
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Failed(NetworkError::Credentials),
         ap: Some(ap(b"neighbour")),
         address: None,
@@ -361,7 +361,7 @@ fn a_copy_the_store_has_that_was_refused_comes_back_as_a_keyboard() {
 fn an_answer_about_another_row_is_not_this_rows_question() {
     let mut manager = on_network_page();
     tap_band(&mut manager, 0);
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::NoCopy(
         Ssid::from_octets(b"cafe"),
     )));
     assert!(
@@ -437,7 +437,7 @@ fn the_row_a_link_was_left_from_opens_a_new_draft() {
 
     tap_strip(&mut manager);
     tap_answer(&mut manager, layout::DialogChoice::Act);
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
         LinkStatus::default(),
     )));
     assert!(
@@ -467,7 +467,7 @@ fn a_refused_passphrase_comes_back_to_the_keyboard_over_the_draft() {
         !manager.state().network_page.keyboard,
         "the keyboard is down while the radio tries"
     );
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Failed(NetworkError::Credentials),
         ..LinkStatus::default()
     })));
@@ -488,7 +488,7 @@ fn a_refused_passphrase_comes_back_to_the_keyboard_over_the_draft() {
         Some(b"b".to_vec()),
         "over the draft that was refused, not over an empty field"
     );
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Connected,
         ..LinkStatus::default()
     })));

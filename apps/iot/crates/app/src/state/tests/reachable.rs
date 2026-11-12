@@ -176,7 +176,7 @@ fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<Command> {
     let operation = op(event);
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state());
-    manager.apply_action(business)
+    manager.apply_business(business)
 }
 
 fn tap_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
@@ -261,7 +261,7 @@ fn cafe() -> AccessPoint {
 }
 
 fn link_to(manager: &mut DeviceManager, status: LinkStatus) -> Option<Command> {
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(status)))
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(status)))
 }
 
 fn scan_of(manager: &mut DeviceManager, rows: &[AccessPoint]) {
@@ -330,7 +330,7 @@ fn triple_click(manager: &mut DeviceManager) -> Option<Command> {
     applied(manager, InputEvent::Button(ButtonEvent::TripleClick))
 }
 fn splash_over(manager: &mut DeviceManager) -> Option<Command> {
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver))
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver))
 }
 fn click(manager: &mut DeviceManager) -> Option<Command> {
     applied(manager, InputEvent::Button(ButtonEvent::Click))
@@ -471,7 +471,8 @@ fn carry_out(manager: &mut DeviceManager, command: NetworkCommand) {
             }) {
                 associated(manager);
             } else {
-                manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(ssid)));
+                manager
+                    .apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::NoCopy(ssid)));
             }
         }
         NetworkCommand::Leave => {

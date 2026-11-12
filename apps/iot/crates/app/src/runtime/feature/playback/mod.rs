@@ -4,7 +4,7 @@ pub mod sounds;
 
 use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers;
-use crate::shared::intent::{ActionIntent, Intent, PlaybackAction};
+use crate::shared::intent::{BusinessIntent, Intent, PlaybackAction};
 use crate::state::PlaybackCommand;
 use alloc::boxed::Box;
 use core::cell::RefCell;
@@ -283,7 +283,7 @@ async fn finished(intent_bus: &'static IntentBus) {
 
 async fn report(intent_bus: &'static IntentBus, action: PlaybackAction) {
     intent_bus
-        .send(Intent::Action(ActionIntent::Playback(action)))
+        .send(Intent::Business(BusinessIntent::Playback(action)))
         .await;
 }
 

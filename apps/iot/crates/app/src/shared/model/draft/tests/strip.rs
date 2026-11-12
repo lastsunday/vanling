@@ -37,7 +37,7 @@ fn a_link_that_is_coming_up_is_already_one_to_leave() {
     for named in [None, Some(ap(b"neighbour"))] {
         for phase in [LinkPhase::Connecting, LinkPhase::Connected] {
             let mut manager = on_network_page();
-            manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+            manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
                 phase,
                 ap: named,
                 address: None,
@@ -121,7 +121,7 @@ fn a_question_about_the_link_does_not_outlive_the_link() {
     tap_strip(&mut manager);
     assert!(manager.state().network_page.confirm.is_some());
 
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Failed(NetworkError::NotFound),
         ap: None,
         address: None,
@@ -133,7 +133,7 @@ fn a_question_about_the_link_does_not_outlive_the_link() {
         "a link that is gone takes its own question with it"
     );
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Leave)),
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Leave)),
         None
     );
 }
@@ -143,7 +143,7 @@ fn a_scan_round_ends_the_strips_wait() {
     let mut manager = on_network_page();
     tap_strip(&mut manager);
     assert!(manager.state().network_page.rescan_wait);
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
         LinkStatus::default(),
     )));
     assert!(
@@ -156,7 +156,7 @@ fn a_scan_round_ends_the_strips_wait() {
 fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     let mut manager = on_network_page();
     assert_eq!(
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
             rows: 1
         })),
         None,

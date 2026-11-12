@@ -207,13 +207,13 @@ fn a_refusal_is_kept_until_another_attempt_starts() {
         phase: LinkPhase::Failed(NetworkError::Driver),
         ..LinkStatus::default()
     };
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(failed)));
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(failed)));
     assert_eq!(
         manager.state().network_page.phase(LinkPhase::Off),
         LinkPhase::Failed(NetworkError::Driver),
         "the round's own phase does not bury the refusal"
     );
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Scanning,
         ..LinkStatus::default()
     })));
@@ -222,7 +222,7 @@ fn a_refusal_is_kept_until_another_attempt_starts() {
         LinkPhase::Failed(NetworkError::Driver),
         "nor does the scan that follows it"
     );
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Connecting,
         ..LinkStatus::default()
     })));

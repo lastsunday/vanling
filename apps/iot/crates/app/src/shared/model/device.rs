@@ -1,8 +1,10 @@
 //! The whole of what the device knows: one record per domain, plus the queries that read
 //! across them.
 
+use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
 use crate::shared::route::{Navigator, Page};
 use iot_core::demand::{DemandKey, EffectiveDemand};
+use iot_core::drivers::input::SwipeDirection;
 use iot_core::drivers::network::{LinkPhase, SetupHost};
 
 use super::draft::NetworkDraft;
@@ -41,6 +43,27 @@ impl DeviceState {
     /// The page on screen: the top of the navigation stack.
     pub fn page(&self) -> Page {
         self.nav.current()
+    }
+
+    /// The surface an input source drives: wiring order, clamped to the installed array.
+    pub fn light_surface(&self, source: u8) -> u8 {
+        source.min((MAX_LIGHTS - 1) as u8)
+    }
+
+    /// What one input asks of the lamp, or `Invalid` when that surface has nothing to move.
+    pub fn light_intent(&self, op: &InputIntent, action: LightAction) -> BusinessIntent {
+        let instance = self.light_surface(op.surface());
+        if !self.lights[usize::from(instance)].can(action) {
+            return BusinessIntent::Invalid;
+        }
+        BusinessIntent::Light { instance, action }
+    }
+
+    /// The lamp's answer to a swipe: a diagonal has no axis, so it asks for nothing.
+    pub fn light_swipe(&self, op: &InputIntent, direction: SwipeDirection) -> BusinessIntent {
+        LightAction::from_swipe(direction).map_or(BusinessIntent::Invalid, |action| {
+            self.light_intent(op, action)
+        })
     }
 
     /// Whether any wired surface draws the pages and puts the questions on them.

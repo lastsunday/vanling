@@ -71,12 +71,12 @@ weight = 10
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`draft/` 是 Network 页草稿（设备拥有、页面编辑） |
 | `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`Page` 是目的地，`route()` 是穷尽 `match`，`ALL`/`CYCLE` 是次序 |
-| `shared/intent/` | 入站消息：`InputIntent`/`ActionIntent` 与各页问句，含跨页的 `Confirm`；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
-| `shared/gesture/light.rs` | 灯光手势与调色板：三个灯光页的整张表由 `bind` 给出，其他页只借单条答案（`click`/`step`） |
+| `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
+| `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
 | `shared/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放诊断与 Network 页草稿 |
 | `shared/kit/` | 页面壳 `Surface`、版面常量、文字排版、band/overlay 原语与控件；只认像素与快照，不认页面 |
 | `state/` | 设备行为：`DeviceManager`、`apply_intent`、手势→意图的分派、`Boot`/`Backed`、构建期配置；唯一认识所有页面的模块（单向 `state → pages`） |
-| `state/translate.rs` | 输入边界：先答跨页绑定（setup 长按、三击），再按当前页分派到 `pages/<page>::controller::bind`；不读键格、band 或确认框几何 |
+| `state/translate.rs` | 输入边界：先答跨页绑定（setup 长按、三击），再按当前页分派到 `pages/<page>::controller::bind`；三个灯光页共用 `lamp` 表，把事件翻成 `LightAction`；不读键格、band 或确认框几何 |
 | `state/boot.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
 | `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `pages::paint`、`policy.rs`（底色/出帧/重绘步长）、`repaint.rs`（诊断漂移） |
@@ -98,8 +98,8 @@ weight = 10
 
 ```
 lib               → { render, state, runtime }
-pages/<page>   → { assets, shared::{gesture, intent, kit, model, route} }
-state             → { pages::<page>::controller, shared::{gesture, intent, model, route} }
+pages/<page>   → { assets, shared::{intent, kit, model, route} }
+state             → { pages::<page>::controller, shared::{intent, model, route} }
 render            → { pages::paint, shared::{diagnostics, kit, model, route} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
@@ -114,7 +114,7 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - **`state` 是唯一认识所有页面的模块**：它分派翻译到 `pages/<page>::controller::bind`，但这是单向边——页面只读 `shared::model::DeviceState`，不认识 `state`；`Page` 等词汇来自 `shared::route`
 - **`shared/kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `pages::paint` 决定
 - `shared` 是叶子：不依赖 `state`/`pages`/`render`/`runtime`。`DeviceState` 与 Network 草稿放在这里，就是为了让页面、快照和渲染都只朝下看
-- `shared` 六个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`gesture`（跨页共享的手势答案）/`kit`（像素原语）/`diagnostics`（快照）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_six_the_taxonomy_names` 守着桶的集合
+- `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`diagnostics`（快照）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
 - `shared/model` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`draft/` 是 Network 页草稿（页面编辑、快照复制、链路不读）
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
@@ -197,11 +197,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ### 更改：复用现有意图路径
 
-`apply_intent` 是状态变化的唯一入口（输入先写进记录再翻译），内部仍只经 `apply_action` 落状态；手势改页只有 `ActionIntent::NextPage`，`SplashOver` 只在启动页结束时落到 build 的页。
+`apply_intent` 是状态变化的唯一入口（输入先写进记录再翻译），内部仍只经 `apply_business` 落状态；手势改页只有 `BusinessIntent::Navigation(NavigationIntent::NextPage)`，`SplashOver` 只在启动页结束时落到 build 的页。
 
-新增场景 = 新增一个 `ActionIntent` 变体；运行期换节奏 = 再一个变体。`apply_action` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
+新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
-需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`ActionIntent` 按域分组为 `Page`/`Link`/`NetworkDraft`/`Audio`/`Playback`/`Light`，`apply_action` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
+需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`BusinessIntent` 按域分组为 `Navigation`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`，`apply_business` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
+
+词汇只有三层：驱动 `Event` 折成总线上的 `Intent`（手指的请求、worker 的回报、启动的决定），记录自己的动作表是 `Action`。`Link` 的回报因此仍是 `LinkIntent`；`Playback` 的请求与回报由同一个 `PlaybackState` 消费，共用 `PlaybackAction` 一张表，`PlaybackState::apply` 只有一个入口。
 
 `shared/model/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` 各放工作者写入、渲染循环读取的记录，`device.rs` 是聚合体 `DeviceState`，`draft/` 是 Network 页草稿（`NetworkDraft`/`Entry`/`SetupWait`）——设备拥有它，页面编辑它，快照复制它，链路从不读它。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/apply.rs`，按当前页走 `state/translate.rs`，先写记录再翻译。
 

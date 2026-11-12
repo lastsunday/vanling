@@ -1,6 +1,4 @@
-use crate::shared::intent::{
-    ActionIntent, InputIntent, LightIntent, LinkIntent, NetworkPageIntent, PageIntent, recognize,
-};
+use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, recognize};
 use crate::state::MAX_LIGHTS;
 use crate::state::translate::translate;
 use crate::state::{Backed, Breath, DeviceState, LightState, Navigator, Page, SurfaceRole};
@@ -69,33 +67,14 @@ pub(crate) fn long_press() -> InputEvent {
     InputEvent::Button(ButtonEvent::LongPress)
 }
 
-pub(crate) fn target(event: InputEvent, current: LightState) -> Option<LightState> {
+pub(crate) fn target(event: InputEvent, current: LightState) -> Option<LightAction> {
     target_in(event, &state(current))
 }
 
-pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightState> {
+pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightAction> {
     match translate(&op(event), current) {
-        ActionIntent::Light(LightIntent { state, .. }) => Some(state),
-        ActionIntent::Invalid
-        | ActionIntent::Page(PageIntent::NextPage)
-        | ActionIntent::Audio(_)
-        | ActionIntent::Playback(_)
-        | ActionIntent::Page(PageIntent::SplashOver)
-        | ActionIntent::Page(PageIntent::RequestSetup)
-        | ActionIntent::Link(LinkIntent::LinkReport(_))
-        | ActionIntent::NetworkDraft(NetworkPageIntent::NoCopy(_))
-        | ActionIntent::Link(LinkIntent::Mac(_))
-        | ActionIntent::NetworkDraft(NetworkPageIntent::Key { .. })
-        | ActionIntent::NetworkDraft(NetworkPageIntent::Choose(_))
-        | ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(_))
-        | ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { .. })
-        | ActionIntent::NetworkDraft(NetworkPageIntent::Leave)
-        | ActionIntent::NetworkDraft(NetworkPageIntent::Answer(_))
-        | ActionIntent::NetworkDraft(NetworkPageIntent::CloseSetup)
-        | ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
-        | ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
-        | ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(_))
-        | ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss) => None,
+        BusinessIntent::Light { action, .. } => Some(action),
+        _ => None,
     }
 }
 

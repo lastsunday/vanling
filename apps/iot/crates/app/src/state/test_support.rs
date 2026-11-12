@@ -1,7 +1,5 @@
 pub(crate) use super::*;
-pub(crate) use crate::shared::intent::{
-    ActionIntent, InputIntent, Intent, LightIntent, PageIntent,
-};
+pub(crate) use crate::shared::intent::{BusinessIntent, InputIntent, Intent, NavigationIntent};
 pub(crate) use crate::shared::route::CYCLE;
 pub(crate) use crate::state::translate::translate;
 pub(crate) use iot_core::drivers::input::{
@@ -77,20 +75,16 @@ pub(crate) fn touch_event(status: TouchStatus) -> InputIntent {
     }))
 }
 
-pub(crate) fn set_light(instance: u8, state: LightState) -> ActionIntent {
-    ActionIntent::Light(LightIntent { instance, state })
-}
-
 pub(crate) fn press(id: u8, x: u16, y: u16) -> InputIntent {
     op(InputEvent::Gesture(GestureEvent::Press { id, x, y }))
 }
 
-pub(crate) fn apply_page(manager: &mut DeviceManager, operation: InputIntent) {
+pub(crate) fn feed_input(manager: &mut DeviceManager, operation: InputIntent) {
     manager.apply_intent(Intent::Input(operation));
 }
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     assert_ne!(manager.state().page(), Page::Splash);
     manager
 }

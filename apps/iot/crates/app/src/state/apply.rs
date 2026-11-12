@@ -13,13 +13,13 @@ impl DeviceManager {
     /// that answer to the systems in registration order, and the one that owns the boundary
     /// takes it.
     pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
-        let action = match intent {
+        let business = match intent {
             Intent::Input(op) => {
                 self.apply_input(op);
                 translate(&op, self.state_ref())
             }
-            Intent::Action(action) => action,
+            Intent::Business(business) => business,
         };
-        self.apply_action(action)
+        self.apply_business(business)
     }
 }

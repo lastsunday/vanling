@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "931968fb1d66dd0ec0d28c53d8afee53a0529ca9"
-translated_at = "2026-11-12T00:00:00Z"
+source_file_hash = "48da23e7e2d556d6785669748107d78215467104"
+translated_at = "2026-11-12T15:44:44Z"
 +++
 
 # Architecture
@@ -75,12 +75,12 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `shared/` | cross-page truth and vocabulary: only what more than one page reads, and the leaf of the module graph |
 | `shared/model/` | records the workers write and the render loop reads, one file per domain; `device.rs` is the aggregate `DeviceState`, `draft/` is the Network page draft (owned by the device, edited by the page) |
 | `shared/route/{mod,nav}.rs` | the route table and `Navigator`: `Page` is the destination, `route()` is the exhaustive match, `ALL`/`CYCLE` are the order |
-| `shared/intent/` | inbound messages: `InputIntent`/`ActionIntent` and the questions each page asks, including the cross-page `Confirm`; `keyboard.rs` is the key vocabulary the Network page types with (`Key`/`Layer`/`Cycling`, the multitap window, the candidate character table per layer) |
-| `shared/gesture/light.rs` | the lamp's gestures and palette: `bind` is the whole table for the three light pages, and other pages borrow single answers (`click`/`step`) |
+| `shared/intent/` | inbound messages: `InputIntent`/`BusinessIntent` and the questions each page asks, including the cross-page `Confirm`; the lamp's verb `LightAction` and the `BusinessIntent::Light { instance, action }` variant are defined here; `keyboard.rs` is the key vocabulary the Network page types with (`Key`/`Layer`/`Cycling`, the multitap window, the candidate character table per layer) |
+| `shared/model/light.rs` | the light record: mode, breathing schedule and palette; `LightState::apply` lands a `LightAction` on the next mode, and `can` says whether the mode accepts that verb |
 | `shared/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state, including the audio and playback diagnostics and the Network page draft |
 | `shared/kit/` | the page shell `Surface`, placement constants, text layout, band/overlay primitives and widgets; it knows pixels and a snapshot, not pages |
 | `state/` | device behaviour: `DeviceManager`, `apply_intent`, gesture→intent dispatch, `Boot`/`Backed`, build-time configuration; the only module that knows every page (a one-way `state → pages`) |
-| `state/translate.rs` | the input boundary: the cross-page bindings first (the setup hold, the triple click), then the current page's `pages/<page>::controller::bind`; it reads no key-grid, band or confirmation-box geometry |
+| `state/translate.rs` | the input boundary: the cross-page bindings first (the setup hold, the triple click), then the current page's `pages/<page>::controller::bind`; the three lamp pages share the `lamp` table that turns an event into a `LightAction`; it reads no key-grid, band or confirmation-box geometry |
 | `state/boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `render/common/` | surface-agnostic: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, `color.rs` steps the colour, and `registry.rs` hands the appearance to the renderers that claimed it |
 | `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `pages::paint`, `policy.rs` (ground, frames, repaint step), `repaint.rs` (diagnostics drift) |
@@ -104,8 +104,8 @@ The layering is `lib → runtime → {render, state} → pages → shared`; `ass
 
 ```
 lib               → { render, state, runtime }
-pages/<page>   → { assets, shared::{gesture, intent, kit, model, route} }
-state             → { pages::<page>::controller, shared::{gesture, intent, model, route} }
+pages/<page>   → { assets, shared::{intent, kit, model, route} }
+state             → { pages::<page>::controller, shared::{intent, model, route} }
 render            → { pages::paint, shared::{diagnostics, kit, model, route} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
@@ -120,7 +120,7 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - **`state` is the only module that knows every page**: it dispatches translation to `pages/<page>::controller::bind`, but the edge is one-way — a page reads `shared::model::DeviceState` and does not know `state`; vocabulary such as `Page` comes from `shared::route`
 - **`shared/kit` names no page**: `Surface` offers the `stamp_*` primitives; `pages::paint` decides which page stamps which mark
 - `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState` and the Network draft live there so pages, the snapshot and rendering all look downward
-- `shared` is six buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `gesture` (the answers pages share) / `kit` (pixel primitives) / `diagnostics` (the snapshot); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_six_the_taxonomy_names` holds the set
+- `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `diagnostics` (the snapshot); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
 - `shared/model` holds the records more than one place reads or writes; `DeviceState` is their aggregate, `draft/` is the Network page draft (edited by the page, copied by the snapshot, never read by the link)
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
@@ -210,11 +210,13 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 ### Changing: reuse the existing intent path
 
-`apply_intent` is the single entry point for state changes (the input half is written to the record before it is translated) and still lands everything through `apply_action`; the only gesture-driven page change is `ActionIntent::NextPage`, and `SplashOver` lands on the build's page when the splash ends.
+`apply_intent` is the single entry point for state changes (the input half is written to the record before it is translated) and still lands everything through `apply_business`; the only gesture-driven page change is `BusinessIntent::Navigation(NavigationIntent::NextPage)`, and `SplashOver` lands on the build's page when the splash ends.
 
-A new scenario is a new `ActionIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_action`. No new mechanism.
+A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_business`. No new mechanism.
 
-A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `ActionIntent` is grouped by domain into `Page`/`Link`/`NetworkDraft`/`Audio`/`Playback`/`Light`, and `apply_action` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
+A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `BusinessIntent` is grouped by domain into `Navigation`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`, and `apply_business` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
+
+The vocabulary is three layers: a driver `Event` folds into an `Intent` on the bus (a finger's request, a worker's report, a boot decision), and a record's own verb table is an `Action`. `Link` reports therefore stay `LinkIntent`; `Playback` requests and reports are consumed by the same `PlaybackState` and share one `PlaybackAction` table, with one `PlaybackState::apply` entry point.
 
 `shared/model/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` hold the records the workers write and the render loop reads, while `device.rs` is the aggregate `DeviceState` and `draft/` is the Network page draft (`NetworkDraft`/`Entry`/`SetupWait`) — the device owns it, the page edits it, the snapshot copies it, and the link never reads it. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/apply.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
 

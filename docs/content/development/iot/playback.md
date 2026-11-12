@@ -28,7 +28,7 @@ ES8311 只是一颗从器件。页面对外暴露的是**一段声音的起点�
 
 C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在同一个 executor 上 `join`，语义不变。两者的落点由 `playback::playback_tasks` 一处决定：`run` 只 join 它一个，并把 `Playback` 按值传进去，所以「spawn 而不是 join」这条规则和它解释的两个循环住在同一个文件里，而不是散在组合点上。
 
-`ActionIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
+`BusinessIntent::Playback(PlaybackAction::Finished)` 由播放任务送回 intent 总线，不是轮询出来的标志位。
 
 页面相位只在驱动自己开口时才离开 `Playing`。让页面和驱动各说各话，出现的就是「看着还在放，其实早就放完」，而此后每一次轻点都会被当成重播丢弃。
 

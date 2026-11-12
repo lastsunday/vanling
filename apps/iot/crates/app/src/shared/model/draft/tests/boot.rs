@@ -48,7 +48,7 @@ fn the_splash_is_stacked_over_the_landing_page_and_pops_off_it() {
         &[Page::Camera, Page::Splash],
         "the landing page sits under the transient"
     );
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     assert_eq!(
         manager.state().nav.entries(),
         &[Page::Camera],
@@ -69,7 +69,7 @@ fn the_splash_lands_on_the_page_that_offers_setup_when_it_was_asked_for() {
         ..Default::default()
     });
     long_press_the_button(&mut manager);
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     assert_eq!(manager.state().page(), Page::Network);
     assert_eq!(
         manager.state().nav.entries(),
@@ -97,7 +97,7 @@ fn the_splash_lands_on_the_build_page_when_nothing_was_asked() {
 fn a_board_with_no_radio_lands_on_its_page_even_after_the_hold() {
     let mut manager = DeviceManager::new();
     long_press_the_button(&mut manager);
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     assert_eq!(manager.state().page(), Page::Ambient);
 }
 
@@ -134,12 +134,12 @@ fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
     manager.state.nav.push(Page::Splash, manager.state.backed);
     long_press_the_button(&mut manager);
     assert_eq!(
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
         Some(Command::Network(NetworkCommand::SplashOver { setup: true })),
         "one answer: the page ended, and setup mode was asked for on it"
     );
     assert_eq!(
-        manager.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
         None,
         "and the landing is news once"
     );
@@ -150,7 +150,7 @@ fn a_boot_through_the_splash_tells_the_link_that_setup_was_not_asked_for() {
     let mut booting = on_network_page();
     booting.state.nav.push(Page::Splash, booting.state.backed);
     assert_eq!(
-        booting.apply_action(ActionIntent::Page(PageIntent::SplashOver)),
+        booting.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
         Some(Command::Network(NetworkCommand::SplashOver {
             setup: false
         })),

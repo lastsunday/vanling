@@ -3,7 +3,7 @@
 use crate::render::common::light_diagnostics;
 use crate::render::{Appearance, LightAppearance, RenderController};
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::intent::{ActionIntent, PageIntent};
+use crate::shared::intent::{BusinessIntent, NavigationIntent};
 use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS};
 use crate::state::DeviceManager;
 use iot_core::demand::EffectiveDemand;
@@ -35,7 +35,7 @@ pub(super) fn collect(ctl: &mut RenderController, s: &DeviceState) -> Vec<Appear
 
 pub(super) fn landed() -> DeviceManager {
     let mut manager = DeviceManager::new();
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     manager
 }
 

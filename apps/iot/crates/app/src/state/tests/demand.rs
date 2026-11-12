@@ -152,7 +152,7 @@ fn demand_follows_the_page_instead_of_lagging_it() {
     let mut manager = landed(fully_wired());
     let before = *manager.demand();
 
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
 
     assert_ne!(
         manager.demand(),
@@ -169,7 +169,7 @@ fn demand_follows_the_page_instead_of_lagging_it() {
 #[test]
 fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
     let mut by_page = landed(fully_wired());
-    by_page.apply_action(ActionIntent::Page(PageIntent::NextPage));
+    by_page.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     assert_eq!(
         by_page.demand(),
         &DeviceManager::proposed(&by_page.state, &by_page.demand_keys, &by_page.override_)

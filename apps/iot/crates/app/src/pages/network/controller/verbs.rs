@@ -3,7 +3,7 @@
 
 use crate::pages::network::layout::ToolbarCell;
 use crate::shared::intent::Confirm;
-use crate::shared::intent::{ActionIntent, NetworkPageIntent};
+use crate::shared::intent::{BusinessIntent, NetworkPageIntent};
 use crate::shared::model::NetworkDraft;
 use iot_core::drivers::network::{LinkStatus, NetworkMode, SetupHost};
 
@@ -26,7 +26,7 @@ pub enum ControlKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Control {
     pub kind: ControlKind,
-    pub command: ActionIntent,
+    pub command: BusinessIntent,
 }
 
 /// The action strip: one box, or two while setup mode has two verbs.
@@ -38,7 +38,7 @@ pub struct Strip {
 
 impl Strip {
     /// The command a tap on `cell` sends.
-    pub fn command(self, cell: ToolbarCell) -> ActionIntent {
+    pub fn command(self, cell: ToolbarCell) -> BusinessIntent {
         match (cell, self.left) {
             (ToolbarCell::Left, Some(left)) => left.command,
             _ => self.right.command,
@@ -72,7 +72,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
                     SetupHost::AccessPoint => ControlKind::Panel,
                 }
             },
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         };
         let left = match (host, cancellable) {
             (_, true) => Some(Control {
@@ -81,7 +81,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
                 } else {
                     ControlKind::Cancel
                 },
-                command: ActionIntent::NetworkDraft(NetworkPageIntent::CloseSetup),
+                command: BusinessIntent::NetworkPage(NetworkPageIntent::CloseSetup),
             }),
             (SetupHost::Panel, false) => Some(Control {
                 kind: if draft.busy() {
@@ -89,7 +89,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
                 } else {
                     ControlKind::Scan
                 },
-                command: ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow),
+                command: BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
             }),
             (SetupHost::AccessPoint, false) => None,
         };
@@ -102,7 +102,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
             } else {
                 ControlKind::Scan
             },
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
         };
         let right = Control {
             kind: if asked {
@@ -110,7 +110,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
             } else {
                 ControlKind::AccessPoint
             },
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         };
         return Strip {
             left: Some(left),
@@ -120,7 +120,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
     let right = if link.is_leavable() {
         Control {
             kind: ControlKind::Leave,
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::Leave),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::Leave),
         }
     } else {
         Control {
@@ -129,7 +129,7 @@ pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
             } else {
                 ControlKind::Scan
             },
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
         }
     };
     Strip { left: None, right }
@@ -147,19 +147,19 @@ pub fn answers(link: LinkStatus) -> Answers {
     let keep = if link.setup_password.is_some() {
         Control {
             kind: ControlKind::NoPass,
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(true)),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true)),
         }
     } else {
         Control {
             kind: ControlKind::Pass,
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(false)),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(false)),
         }
     };
     Answers {
         keep,
         act: Control {
             kind: ControlKind::Panel,
-            command: ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost),
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
         },
     }
 }
@@ -196,18 +196,18 @@ mod tests {
         assert_eq!(linked.kind(ToolbarCell::Left), ControlKind::Leave);
         assert_eq!(
             linked.command(ToolbarCell::Left),
-            ActionIntent::NetworkDraft(NetworkPageIntent::Leave)
+            BusinessIntent::NetworkPage(NetworkPageIntent::Leave)
         );
         assert_eq!(
             linked.command(ToolbarCell::Right),
-            ActionIntent::NetworkDraft(NetworkPageIntent::Leave)
+            BusinessIntent::NetworkPage(NetworkPageIntent::Leave)
         );
 
         let idle = strip(NetworkDraft::default(), LinkStatus::default());
         assert_eq!(idle.kind(ToolbarCell::Right), ControlKind::Scan);
         assert_eq!(
             idle.command(ToolbarCell::Right),
-            ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
 
         let waiting = NetworkDraft {
@@ -218,7 +218,7 @@ mod tests {
         assert_eq!(waiting.kind(ToolbarCell::Right), ControlKind::Wait);
         assert_eq!(
             waiting.command(ToolbarCell::Right),
-            ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
     }
 
@@ -229,12 +229,12 @@ mod tests {
         assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Cancel);
         assert_eq!(
             split.command(ToolbarCell::Left),
-            ActionIntent::NetworkDraft(NetworkPageIntent::CloseSetup)
+            BusinessIntent::NetworkPage(NetworkPageIntent::CloseSetup)
         );
         assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
         assert_eq!(
             split.command(ToolbarCell::Right),
-            ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
         );
     }
 
@@ -249,12 +249,12 @@ mod tests {
         assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
         assert_eq!(
             split.command(ToolbarCell::Left),
-            ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
         assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
         assert_eq!(
             split.command(ToolbarCell::Right),
-            ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
         );
     }
 
@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
         assert_eq!(
             split.command(ToolbarCell::Left),
-            ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
         assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
 
@@ -288,7 +288,7 @@ mod tests {
             assert_eq!(one.kind(cell), ControlKind::Panel);
             assert_eq!(
                 one.command(cell),
-                ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
+                BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
             );
         }
     }
@@ -307,12 +307,12 @@ mod tests {
         assert_eq!(secured.keep.kind, ControlKind::NoPass);
         assert_eq!(
             secured.keep.command,
-            ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(true))
+            BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true))
         );
         assert_eq!(secured.act.kind, ControlKind::Panel);
         assert_eq!(
             secured.act.command,
-            ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
         );
 
         let open = LinkStatus {
@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(open.keep.kind, ControlKind::Pass);
         assert_eq!(
             open.keep.command,
-            ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(false))
+            BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(false))
         );
     }
 
@@ -355,7 +355,7 @@ mod tests {
         assert_eq!(split.kind(ToolbarCell::Right), ControlKind::Wait);
         assert_eq!(
             split.command(ToolbarCell::Right),
-            ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost),
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
             "the cell still names the tap it would take, once the join is answered"
         );
     }

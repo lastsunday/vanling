@@ -13,6 +13,7 @@ mod boot;
 mod business;
 mod demand;
 mod intent;
+mod light;
 mod motion;
 mod reachable;
 mod separation;

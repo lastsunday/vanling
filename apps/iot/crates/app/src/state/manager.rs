@@ -1,4 +1,4 @@
-//! The single owner of device state: it constructs the state, routes each action intent to
+//! The single owner of device state: it constructs the state, routes each business intent to
 //! the domain that owns it, and hands the app the state and the requests it has taken.
 
 use alloc::vec::Vec;
@@ -7,7 +7,7 @@ use iot_core::demand::{DemandKey, EffectiveDemand, Override};
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
 
-use crate::shared::intent::{ActionIntent, InputIntent, LinkIntent, PageIntent};
+use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent, NavigationIntent};
 use crate::shared::model::{Effects, Health, Notice, PlaybackPhase};
 use crate::shared::route::{Navigator, Page};
 use iot_core::drivers::audio::AudioSample;
@@ -105,41 +105,44 @@ impl DeviceManager {
         }
     }
 
-    /// Route one action intent to the domain that owns it, and answer with what that domain
+    /// Route one business intent to the domain that owns it, and answer with what that domain
     /// asked the runtime for. Each domain matches its own group, so the manager knows the
-    /// groups and never a domain's actions; a domain that needs nothing outside the core
+    /// groups and never the variants inside them; a domain that needs nothing outside the core
     /// answers `None`, and the caller that owns a worker is the only one that can deliver a
     /// command, so it gets exactly one pass at it.
-    pub fn apply_action(&mut self, intent: ActionIntent) -> Option<Command> {
+    pub fn apply_business(&mut self, intent: BusinessIntent) -> Option<Command> {
         let command = match intent {
-            ActionIntent::Invalid => None,
-            ActionIntent::Page(intent) => self.apply_page(intent),
-            ActionIntent::Link(intent) => {
+            BusinessIntent::Invalid => None,
+            BusinessIntent::Navigation(intent) => self.apply_navigation(intent),
+            BusinessIntent::Link(intent) => {
                 let effects = self.state.network.apply(intent);
-                if let LinkIntent::LinkReport(status) = intent {
+                if let LinkIntent::Status(status) = intent {
                     self.state.network_page.on_link(status);
                 }
                 self.apply_effects(effects);
                 None
             }
-            ActionIntent::NetworkDraft(intent) => {
+            BusinessIntent::NetworkPage(intent) => {
                 let has_pages = self.state.has_pages();
                 self.state
                     .network_page
                     .apply(intent, &self.state.network, has_pages)
             }
-            ActionIntent::Audio(intent) => {
+            BusinessIntent::Audio(intent) => {
                 self.state.audio.apply(intent, self.state.backed.audio);
                 None
             }
-            ActionIntent::Playback(action) => {
+            BusinessIntent::Playback(action) => {
                 self.state
                     .playback
                     .apply(action, self.state.backed.playback);
                 None
             }
-            ActionIntent::Light(intent) => {
-                self.apply_to(usize::from(intent.instance), intent.state);
+            BusinessIntent::Light { instance, action } => {
+                let instance = usize::from(instance).min(MAX_LIGHTS - 1);
+                if let Some(next) = self.state.lights[instance].apply(action) {
+                    self.apply_to(instance, next);
+                }
                 None
             }
         };
@@ -168,22 +171,22 @@ impl DeviceManager {
         }
     }
 
-    /// The page's transitions, which read the wiring, the link and the boot page together.
-    /// A landing answers with the boot decision the runtime cannot observe, on the same
-    /// return path as every other command.
-    fn apply_page(&mut self, intent: PageIntent) -> Option<Command> {
+    /// The device's own transitions, which read the wiring, the link and the boot page
+    /// together. A landing answers with the boot decision the runtime cannot observe, on the
+    /// same return path as every other command.
+    fn apply_navigation(&mut self, intent: NavigationIntent) -> Option<Command> {
         match intent {
-            PageIntent::NextPage => {
+            NavigationIntent::NextPage => {
                 self.state.nav.advance(self.state.backed);
                 None
             }
-            PageIntent::RequestSetup => {
+            NavigationIntent::RequestSetup => {
                 if self.state.page() == Page::Splash {
                     self.setup_wanted = true;
                 }
                 None
             }
-            PageIntent::SplashOver => self.land_after_splash(),
+            NavigationIntent::SplashOver => self.land_after_splash(),
         }
     }
 

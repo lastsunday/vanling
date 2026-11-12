@@ -11,7 +11,7 @@ fn the_address_the_radio_reports_is_the_one_the_page_draws() {
         "nothing has reported one yet"
     );
     let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
-    manager.apply_action(ActionIntent::Link(LinkIntent::Mac(mac)));
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Mac(mac)));
     assert_eq!(manager.state().network.mac, Some(mac));
 }
 
@@ -37,17 +37,17 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
     }));
     let aps: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
     manager.apply_scan(ApList::from_ranked(&aps));
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
 
     tap_band(&mut manager, 0);
     assert_eq!(manager.state().network_page.selected, Some(ap(b"a")));
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
         key: Key::Cancel,
         at_ms: 1,
     }));
 
     assert_eq!(manager.state().network_page.list_top, 0);
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: 1,
     }));
     assert_eq!(
@@ -62,7 +62,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         "and the first band now holds the second network"
     );
     for _ in 0..(8 - LIST_ROWS) {
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
             rows: 1,
         }));
     }
@@ -71,7 +71,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         (8 - LIST_ROWS) as u8,
         "eight rows through a three-row window stop five rows down"
     );
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: 1,
     }));
     assert_eq!(
@@ -79,7 +79,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         (8 - LIST_ROWS) as u8,
         "and the end of the list is as far as it goes"
     );
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: -1,
     }));
     assert_eq!(
@@ -87,7 +87,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         (8 - LIST_ROWS - 1) as u8
     );
     for _ in 0..8 {
-        manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
             rows: -1,
         }));
     }
@@ -140,8 +140,8 @@ fn a_scan_that_shrank_pulls_the_list_back_to_its_own_end() {
     }));
     let eight: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
     manager.apply_scan(ApList::from_ranked(&eight));
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Scroll {
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: 1,
     }));
     assert_eq!(manager.state().network_page.list_top, 1);

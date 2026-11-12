@@ -4,7 +4,7 @@
 use alloc::boxed::Box;
 use core::cell::Cell;
 
-use crate::shared::intent::{ActionIntent, Intent, LinkIntent};
+use crate::shared::intent::{BusinessIntent, Intent, LinkIntent};
 use embassy_futures::join::join;
 use embassy_net::driver::{Driver, HardwareAddress};
 use embassy_net::{Config, StackResources};
@@ -156,7 +156,7 @@ impl LinkWatch {
             return;
         };
         if INTENT_BUS
-            .try_send(Intent::Action(ActionIntent::Link(LinkIntent::Mac(mac))))
+            .try_send(Intent::Business(BusinessIntent::Link(LinkIntent::Mac(mac))))
             .is_ok()
         {
             self.mac.lock(|slot| slot.set(None));
@@ -173,7 +173,7 @@ impl LinkWatch {
             return;
         }
         if INTENT_BUS
-            .try_send(Intent::Action(ActionIntent::Link(LinkIntent::LinkReport(
+            .try_send(Intent::Business(BusinessIntent::Link(LinkIntent::Status(
                 status,
             ))))
             .is_ok()

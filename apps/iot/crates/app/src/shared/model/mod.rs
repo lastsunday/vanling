@@ -41,7 +41,7 @@ pub(crate) use self::effects::Effects;
 
 pub use self::health::Health;
 
-pub use self::light::{Breath, LampLine, LightState, Notice, NoticeKind};
+pub use self::light::{Breath, COLOR_GROUPS, LampLine, LightState, Notice, NoticeKind, PALETTE};
 
 pub use self::motion::MotionState;
 

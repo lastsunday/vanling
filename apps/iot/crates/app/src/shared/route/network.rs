@@ -11,7 +11,7 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
-    use crate::shared::intent::{ActionIntent, NetworkPageIntent};
+    use crate::shared::intent::{BusinessIntent, NetworkPageIntent};
     use crate::shared::route::test_support::{
         DEFAULT_BREATH, op, state_on, with_network, with_network_page,
     };
@@ -117,12 +117,12 @@ mod tests {
             let first = layout::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(tap_at(30, first)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
                 "the list's first band is the first network"
             );
             assert_eq!(
                 translate(&op(tap_at(30, first + layout::LIST_ROW_H as u16)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap_with(b"cafe", -60, 7))),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"cafe", -60, 7))),
                 "a band down is the next network"
             );
             assert_eq!(
@@ -130,12 +130,12 @@ mod tests {
                     &op(tap_at(30, first + layout::LIST_ROW_H as u16 - 1)),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Choose(ap(b"neighbour", -55))),
                 "and the pixels below a band's glyphs still belong to that band"
             );
             assert_eq!(
                 translate(&op(tap_at(30, 5)), &state),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "while the page's own header is not a band"
             );
         }
@@ -145,21 +145,21 @@ mod tests {
             let state = on_network();
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { rows: 1 }),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Scroll { rows: 1 }),
                 "a finger pushing the list up walks down it"
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Down)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Scroll { rows: -1 })
+                BusinessIntent::NetworkPage(NetworkPageIntent::Scroll { rows: -1 })
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Left)), &state),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "the list is one column, so there is nothing to slide sideways to"
             );
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &typing()),
-                ActionIntent::Invalid
+                BusinessIntent::Invalid
             );
         }
 
@@ -182,14 +182,14 @@ mod tests {
                 for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
                     assert_eq!(
                         translate(&op(tap_at(x as u16, y as u16)), &state),
-                        ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow),
+                        BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
                         "({x}, {y}) is the strip"
                     );
                 }
             }
             assert_eq!(
                 translate(&op(tap_at(160, (layout::TOOLBAR_TOP - 1) as u16)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Choose(ap_with(b"bakery", -65, 8))),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Choose(ap_with(b"bakery", -65, 8))),
                 "the row above the strip is still the list's own last band"
             );
         }
@@ -198,7 +198,7 @@ mod tests {
         fn the_button_is_the_strip_verb_and_the_setup_box_asks_about_its_passphrase() {
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_network()),
-                ActionIntent::NetworkDraft(NetworkPageIntent::ScanNow)
+                BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
             );
 
             let announcing = with_network(on_network(), |network| {
@@ -220,19 +220,19 @@ mod tests {
                     &op(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
                     &announcing
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::SetOpenAccessPoint(true))
+                BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true))
             );
             assert_eq!(
                 translate(&op(tap_at(act.x as u16 + 1, act.y as u16 + 1)), &announcing),
-                ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
+                BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
             );
             assert_eq!(
                 translate(&op(tap_at(10, 10)), &announcing),
-                ActionIntent::Invalid
+                BusinessIntent::Invalid
             );
             assert_eq!(
                 translate(&op(long_press_at(10, 10)), &announcing),
-                ActionIntent::Invalid
+                BusinessIntent::Invalid
             );
         }
 
@@ -247,28 +247,28 @@ mod tests {
             let first = layout::LIST_TOP as u16;
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(ap(b"neighbour", -55)))
+                BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(ap(b"neighbour", -55)))
             );
             assert_eq!(
                 translate(
                     &op(long_press_at(30, first + layout::LIST_ROW_H as u16)),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::AskForget(ap_with(b"cafe", -60, 7)))
+                BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(ap_with(b"cafe", -60, 7)))
             );
             assert_eq!(
                 translate(&op(long_press_at(30, 5)), &state),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "the header is not a row to ask about"
             );
             assert_eq!(
                 translate(&op(long_press_at(160, layout::TOOLBAR_TOP as u16)), &state),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "and neither is the strip"
             );
             assert_eq!(
                 translate(&op(long_press_at(30, first)), &typing()),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "while the keyboard is up there is no list under the finger to hold"
             );
         }
@@ -286,7 +286,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Answer(
+                BusinessIntent::NetworkPage(NetworkPageIntent::Answer(
                     crate::shared::intent::Confirm::Forget(ap(b"neighbour", -55))
                 )),
                 "the action's own button is the whole of the yes"
@@ -299,7 +299,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss),
                 "and the button that says no says no"
             );
             for (x, y) in [
@@ -313,22 +313,22 @@ mod tests {
             ] {
                 assert_eq!(
                     translate(&op(tap_at(x, y)), &state),
-                    ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss),
+                    BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss),
                     "({x}, {y}) leaves the question undone"
                 );
             }
             assert_eq!(
                 translate(&op(swipe(SwipeDirection::Up)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss),
+                BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss),
                 "a swipe under the box does not slide a list it cannot see"
             );
             assert_eq!(
                 translate(&op(long_press_at(30, layout::LIST_TOP as u16 + 2)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss)
+                BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss)
             );
             assert_eq!(
                 translate(&op(tap_at(160, layout::TOOLBAR_TOP as u16 + 2)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Dismiss)
+                BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss)
             );
         }
 
@@ -337,13 +337,13 @@ mod tests {
             let header = tap_at(30, 5);
             assert_eq!(
                 translate(&op(header), &on_network()),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "the page's header is not a control and not a colour walk"
             );
             let state = typing();
             assert_eq!(
                 translate(&op(tap_at(30, 5)), &state),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "and the keyboard's own header is not a key"
             );
         }
@@ -353,7 +353,7 @@ mod tests {
             let state = typing();
             assert_eq!(
                 translate(&op(key_tap(1)), &state),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+                BusinessIntent::NetworkPage(NetworkPageIntent::Key {
                     key: Key::Char(b'2'),
                     at_ms: 1_000,
                 }),
@@ -366,7 +366,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+                BusinessIntent::NetworkPage(NetworkPageIntent::Key {
                     key: Key::Shift,
                     at_ms: 1_000,
                 })
@@ -378,7 +378,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+                BusinessIntent::NetworkPage(NetworkPageIntent::Key {
                     key: Key::Cancel,
                     at_ms: 1_000,
                 })
@@ -390,12 +390,15 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+                BusinessIntent::NetworkPage(NetworkPageIntent::Key {
                     key: Key::Reveal,
                     at_ms: 1_000,
                 })
             );
-            assert_eq!(translate(&op(tap_at(30, 5)), &state), ActionIntent::Invalid);
+            assert_eq!(
+                translate(&op(tap_at(30, 5)), &state),
+                BusinessIntent::Invalid
+            );
             assert_eq!(
                 translate(
                     &op(tap_at(
@@ -404,7 +407,7 @@ mod tests {
                     )),
                     &state
                 ),
-                ActionIntent::Invalid
+                BusinessIntent::Invalid
             );
         }
 
@@ -421,7 +424,7 @@ mod tests {
                     })),
                     &typing()
                 ),
-                ActionIntent::NetworkDraft(NetworkPageIntent::Key {
+                BusinessIntent::NetworkPage(NetworkPageIntent::Key {
                     key: Key::Char(b'1'),
                     at_ms: 4_321,
                 })

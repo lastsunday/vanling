@@ -11,14 +11,12 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
-    use crate::shared::gesture::light::COLOR_GROUPS;
-    use crate::shared::intent::{ActionIntent, PageIntent, PlaybackAction};
+    use crate::shared::intent::{BusinessIntent, LightAction, NavigationIntent, PlaybackAction};
     use crate::shared::route::test_support::{
-        BREATH_BASE, DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, target,
-        target_in,
+        DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, target, target_in,
     };
     use crate::state::translate::translate;
-    use crate::state::{DeviceState, LightState, Page};
+    use crate::state::{DeviceState, Page};
     use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 
     mod speaker_page {
@@ -41,19 +39,19 @@ mod tests {
         fn a_tap_plays_and_a_long_press_mutes() {
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_speaker()),
-                ActionIntent::Playback(PlaybackAction::Next)
+                BusinessIntent::Playback(PlaybackAction::Next)
             );
             assert_eq!(
                 translate(&op(long_press_gesture()), &on_speaker()),
-                ActionIntent::Playback(PlaybackAction::SetMuted(true))
+                BusinessIntent::Playback(PlaybackAction::SetMuted(true))
             );
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_speaker()),
-                ActionIntent::Playback(PlaybackAction::Next)
+                BusinessIntent::Playback(PlaybackAction::Next)
             );
             assert_eq!(
                 translate(&op(long_press()), &on_speaker()),
-                ActionIntent::Playback(PlaybackAction::SetMuted(true))
+                BusinessIntent::Playback(PlaybackAction::SetMuted(true))
             );
         }
 
@@ -81,7 +79,7 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::TripleClick)),
                     &on_speaker()
                 ),
-                ActionIntent::Page(PageIntent::NextPage)
+                BusinessIntent::Navigation(NavigationIntent::NextPage)
             );
         }
 
@@ -89,7 +87,7 @@ mod tests {
         fn a_tap_off_the_speaker_page_never_plays() {
             assert_eq!(
                 target(tap_gesture(0), DEFAULT_BREATH),
-                Some(LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)))
+                Some(LightAction::NextColor { forward: true })
             );
         }
 
@@ -103,7 +101,7 @@ mod tests {
             ] {
                 assert_ne!(
                     translate(&op(event), &on_speaker()),
-                    ActionIntent::Playback(PlaybackAction::Finished),
+                    BusinessIntent::Playback(PlaybackAction::Finished),
                     "{event:?} must not fake a driver report"
                 );
             }

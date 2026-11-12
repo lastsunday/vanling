@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "66657d7e5e2f5d392220cd97f4d5b04d6a27697f"
-translated_at = "2026-11-12T00:00:00Z"
+source_file_hash = "149e019928ff38c079f2129bee1426fa1fffed9a"
+translated_at = "2026-11-12T16:02:56Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -14,6 +14,10 @@ translated_at = "2026-11-12T00:00:00Z"
 The Wi-Fi link in `apps/iot`, from "which networks are out there" to "the device has
 an address". **AI output, not reviewed by a human** — see the
 [parent note](@/records/_index.md).
+
+> Note: `BusinessIntent::NoCopy`/`AskForget`/`Scroll`/`Choose` in this record are the
+> flat names from before grouping; they are `BusinessIntent::NetworkPage(NetworkPageIntent::*)`
+> today, and `SplashOver`/`RequestSetup` are `BusinessIntent::Navigation(NavigationIntent::*)`.
 
 Each judgement carries its basis: **`[test]`** a unit test pins it, **`[measured]`**
 a hardware measurement, **`[as-reported]`** not reproduced, left as a trace.

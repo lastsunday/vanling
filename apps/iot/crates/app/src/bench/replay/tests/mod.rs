@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::shared::intent::Layer;
-use crate::shared::intent::{ActionIntent, LinkIntent, NetworkPageIntent, PageIntent};
+use crate::shared::intent::{BusinessIntent, LinkIntent, NavigationIntent, NetworkPageIntent};
 use crate::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
@@ -161,16 +161,16 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         },
         ..Default::default()
     });
-    manager.apply_action(ActionIntent::Page(PageIntent::SplashOver));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     manager.apply_scan(marked(&["target"], &[]));
-    manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     let picked = manager
         .state()
         .network
         .aps
         .and_then(|list| list.get(0))
         .expect("the row the bench's scan published");
-    manager.apply_action(ActionIntent::NetworkDraft(NetworkPageIntent::Choose(
+    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Choose(
         picked,
     )));
     assert!(
@@ -178,7 +178,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         "the pick is there to begin with"
     );
     manager.apply_scan(marked(&["target"], &["target"]));
-    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Connected,
         ap: Some(ap("target")),
         address: None,
@@ -212,7 +212,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
             match command {
                 NetworkCommand::Leave => {
                     leaves += 1;
-                    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
+                    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
                         LinkStatus::default(),
                     )));
                 }
@@ -227,7 +227,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
                         Ssid::from_octets(b"target"),
                         "the row the walk tapped"
                     );
-                    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(LinkStatus {
+                    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
                         phase: LinkPhase::Connecting,
                         ap: Some(ap("target")),
                         address: None,
@@ -236,7 +236,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
                 }
                 NetworkCommand::ScanNow => {
                     rounds += 1;
-                    manager.apply_action(ActionIntent::Link(LinkIntent::LinkReport(
+                    manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
                         LinkStatus::default(),
                     )));
                 }

@@ -1,16 +1,18 @@
-//! The intent vocabulary: the input a source reports, the action a page asks for, and the key
-//! grid the Network page types on.
+//! Three words, two paths: a driver `Event` folds into an `Intent` on the bus (a finger's
+//! request, a worker's report, a boot decision), and a record answers with its own `Action`
+//! table. Where an intent is already that table, the record applies it as is.
+//!
+//! The Network key grid lives in `keyboard`.
 
 mod keyboard;
 
 pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WINDOW_MS};
 
-use crate::shared::model::LightState;
-use iot_core::drivers::input::InputEvent;
+use iot_core::drivers::input::{InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 
 /// The action a confirmation is standing in front of. It is the page's question, kept with
-/// the action vocabulary because the answer is an intent like any other.
+/// the business vocabulary because the answer is an intent like any other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Confirm {
     Leave,
@@ -35,26 +37,44 @@ pub struct InputIntent {
     pub event: InputEvent,
 }
 
-/// What the device is asked to do, grouped by the domain that owns the answer. The manager
+impl InputIntent {
+    /// The surface this input drives: a button carries its wiring order, and a touch is the
+    /// panel's own surface.
+    pub const fn surface(&self) -> u8 {
+        match self.event {
+            InputEvent::Button(_) => self.source,
+            _ => 0,
+        }
+    }
+}
+
+/// What the device must act on, grouped by the domain that owns the answer. The manager
 /// routes one arm per domain; each domain matches its own group exhaustively, so a new
-/// variant cannot be left unanswered and the manager never learns a domain's actions.
+/// variant cannot be left unanswered and the manager never learns a domain's own variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActionIntent {
+pub enum BusinessIntent {
     /// Nothing the panel asked for survived translation.
     Invalid,
-    Page(PageIntent),
+    /// Where the device goes: the boot splash, the page cycle, the setup request.
+    Navigation(NavigationIntent),
     /// What the radio reports. Written by the worker, never by a finger.
     Link(LinkIntent),
     /// What a finger asks of the Network page.
-    NetworkDraft(NetworkPageIntent),
+    NetworkPage(NetworkPageIntent),
     Audio(AudioIntent),
     Playback(PlaybackAction),
-    Light(LightIntent),
+    /// One light surface and the verb it is asked for. The instance is routing, not part of
+    /// the verb: the record's `apply` only ever sees the action.
+    Light {
+        instance: u8,
+        action: LightAction,
+    },
 }
 
-/// The page's own transitions: the splash ends, the button asks for setup, the page turns.
+/// The device's own transitions: the splash ends, a hold asks for setup, the button turns the
+/// page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PageIntent {
+pub enum NavigationIntent {
     NextPage,
     SplashOver,
     RequestSetup,
@@ -81,7 +101,7 @@ pub enum NetworkPageIntent {
 /// What the radio reports, and nothing the page decides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkIntent {
-    LinkReport(LinkStatus),
+    Status(LinkStatus),
     Mac([u8; 6]),
 }
 
@@ -93,16 +113,40 @@ pub enum AudioIntent {
     Stop,
 }
 
-/// An absolute target for one light surface, clamped by the manager to the wired slots.
+/// The lamp's verbs. `Cycle` is the only one that leaves `Off`; the rest need a mode to act
+/// in, which is what `LightState::can` answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LightIntent {
-    pub instance: u8,
-    pub state: LightState,
+pub enum LightAction {
+    /// Off → breath → solid → off.
+    Cycle,
+    /// The next colour: the palette in solid, the hue group in breath.
+    NextColor { forward: bool },
+    /// The next step of the mode's own scalar: breath period, or solid brightness.
+    Step,
+    /// Shift the breathing envelope, or step solid brightness.
+    Brightness { up: bool },
 }
 
-/// What the Speaker page asks of the output, or the report that comes back. A tap while the
-/// part is down still reaches the worker: that is the recovery attempt, and `Started` is what
-/// confirms a sound actually played.
+impl LightAction {
+    /// The step a resolved swipe asks for. A diagonal has no axis, so it asks for nothing.
+    pub const fn from_swipe(direction: SwipeDirection) -> Option<Self> {
+        match direction {
+            SwipeDirection::Left => Some(Self::NextColor { forward: false }),
+            SwipeDirection::Right => Some(Self::NextColor { forward: true }),
+            SwipeDirection::Up => Some(Self::Brightness { up: true }),
+            SwipeDirection::Down => Some(Self::Brightness { up: false }),
+            SwipeDirection::UpLeft
+            | SwipeDirection::UpRight
+            | SwipeDirection::DownLeft
+            | SwipeDirection::DownRight => None,
+        }
+    }
+}
+
+/// The output's trigger table: the page asks with `Next`/`SetMuted`, the worker answers with
+/// `Finished`/`Started`/`Ready`/`Refused`. One table, because both move one state machine. A
+/// tap while the part is down still reaches the worker: that is the recovery attempt, and
+/// `Started` is what confirms a sound actually played.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackAction {
     Next,
@@ -120,7 +164,7 @@ pub enum PlaybackAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Intent {
     Input(InputIntent),
-    Action(ActionIntent),
+    Business(BusinessIntent),
 }
 
 /// Stateless recognition: fold a raw input event plus its wiring-order source into an
@@ -185,7 +229,7 @@ mod tests {
         };
         assert_eq!(
             translate(&op(long_press()), &setup),
-            ActionIntent::NetworkDraft(NetworkPageIntent::SwitchHost)
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
         );
     }
 }

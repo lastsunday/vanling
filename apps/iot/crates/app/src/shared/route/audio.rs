@@ -12,10 +12,9 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
-    use crate::shared::gesture::light::COLOR_GROUPS;
-    use crate::shared::intent::{ActionIntent, AudioIntent, LightIntent};
+    use crate::shared::intent::{AudioIntent, BusinessIntent, LightAction};
     use crate::shared::route::test_support::{
-        BREATH_BASE, DEFAULT_BREATH, op, state, state_on, tap_gesture, target, target_in,
+        DEFAULT_BREATH, op, state, state_on, tap_gesture, target, target_in,
     };
     use crate::state::translate::translate;
     use crate::state::{LightState, Page};
@@ -29,7 +28,7 @@ mod tests {
             let on_audio = state_on(Page::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_audio),
-                ActionIntent::Audio(AudioIntent::Start),
+                BusinessIntent::Audio(AudioIntent::Start),
                 "on the audio page the button is the record control, the same as the tap"
             );
             assert_eq!(
@@ -37,10 +36,10 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state_on(Page::Camera, DEFAULT_BREATH)
                 ),
-                ActionIntent::Light(LightIntent {
+                BusinessIntent::Light {
                     instance: 0,
-                    state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                }),
+                    action: LightAction::NextColor { forward: true },
+                },
                 "the camera page is not a control page, so the colour still walks"
             );
             assert_eq!(
@@ -48,20 +47,20 @@ mod tests {
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state(DEFAULT_BREATH)
                 ),
-                ActionIntent::Light(LightIntent {
+                BusinessIntent::Light {
                     instance: 0,
-                    state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                })
+                    action: LightAction::NextColor { forward: true },
+                }
             );
             assert_eq!(
                 translate(
                     &op(InputEvent::Button(ButtonEvent::Click)),
                     &state_on(Page::Attitude, DEFAULT_BREATH)
                 ),
-                ActionIntent::Light(LightIntent {
+                BusinessIntent::Light {
                     instance: 0,
-                    state: LightState::Breath(COLOR_GROUPS[1].into_breath(BREATH_BASE)),
-                })
+                    action: LightAction::NextColor { forward: true },
+                }
             );
         }
 
@@ -70,12 +69,12 @@ mod tests {
             let on_audio = state_on(Page::Audio, DEFAULT_BREATH);
             assert_eq!(
                 translate(&op(tap_gesture(0)), &on_audio),
-                ActionIntent::Audio(AudioIntent::Start),
+                BusinessIntent::Audio(AudioIntent::Start),
                 "on the audio page the tap is the record control"
             );
             assert_eq!(
                 translate(&op(tap_gesture(0)), &state(LightState::Off)),
-                ActionIntent::Invalid
+                BusinessIntent::Invalid
             );
             assert_eq!(
                 target_in(tap_gesture(0), &state_on(Page::Attitude, DEFAULT_BREATH)),

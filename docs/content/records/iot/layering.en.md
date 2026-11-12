@@ -3,8 +3,8 @@ title = "Layering review of the app crate: what landed"
 weight = 90
 sort_by = "weight"
 [extra]
-source_file_hash = "3786ea038225d05b03a21fa11935c68ed56577c0"
-translated_at = "2026-11-08T00:00:00Z"
+source_file_hash = "c97963a569a04bedb033147382a4f5c982a023ed"
+translated_at = "2026-11-12T15:44:44Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -27,8 +27,8 @@ A layering review of `apps/iot/crates/app`: general mechanisms went back to `iot
 - The product heap size belongs to the chip layer (`iot-chip-esp::PRODUCT_HEAP_BYTES`) and the starting setup front to the board layer (`iot-bsp-esp::FRONT`); `main.rs` only reads them.
 - The link's business state and the Network page's state are two records: `NetworkState` is written only by `LinkIntent`, `NetworkDraft` only by the fingers' `NetworkPageIntent`, and the page reads `&NetworkState` while the link never touches a page field. `Effects` no longer carries an outbox: the page domain returns `NetworkCommand` directly, so there is one path from an intent to the worker.
 - The network worker no longer reaches `run` through a `WorkerStart`: its driver types are only known to the entry point, so it builds `Wifi::Worker(NetworkWorker)` there — a closure that takes only a `Spawner` — and `run` starts it before `run_loop` without holding a worker list. The splash's verdict travels as `NetworkCommand::SplashOver { setup }`; `PageWatch` is only a page level and no longer carries a splash edge.
-- `state` and `intent` are **deliberately two-way**: `state` defines and owns the payload types an intent carries (`Confirm`, `Page`, `AudioPhase` and so on), while `translate` — which turns a finger into an `ActionIntent` — now lives in `controller`. Neither of them is a render or snapshot layer, so the structural test forbids only `state → {render, diagnostics}` and `intent → {page, render, diagnostics}`; an audit should not read this as a new hole.
-- The coordinator's network machinery moved into `coordinator/systems/network.rs`: `NetworkOutbox` holds the one command that did not fit in the queue, `NetworkMirror` publishes the page level, records the front and lamp edges and reclaims the scan list, and `run_loop` keeps only intent orchestration. On the `core` side the splash verdict was folded back into `apply_page`'s return value and the `take_splash_end` side channel is gone, so from an intent to the worker there really is one path.
+- `state` and `intent` are **deliberately two-way**: `state` defines and owns the payload types an intent carries (`Confirm`, `Page`, `AudioPhase` and so on), while `translate` — which turns a finger into an `BusinessIntent` — now lives in `controller`. Neither of them is a render or snapshot layer, so the structural test forbids only `state → {render, diagnostics}` and `intent → {page, render, diagnostics}`; an audit should not read this as a new hole.
+- The coordinator's network machinery moved into `coordinator/systems/network.rs`: `NetworkOutbox` holds the one command that did not fit in the queue, `NetworkMirror` publishes the page level, records the front and lamp edges and reclaims the scan list, and `run_loop` keeps only intent orchestration. On the `core` side the splash verdict was folded back into `apply_navigation`'s return value and the `take_splash_end` side channel is gone, so from an intent to the worker there really is one path.
 - The coordinator is split by boundary: one `System` per file under `coordinator/systems/` (declaration order in `coordinator::systems::Schedule` is execution order), each holding only what must survive a frame; `Frame` hands it the state and the worker handles. The intent → state → command recipe moved into `DeviceManager::apply_intent` so tests stop copying it, and the demand slot's lock moved back to `workers::Input::publish`. `[measured]` On the S3 product image `_stack_end` sits 96 B lower than HEAD, `.text` is 2,188 B smaller, and `.data`/`.bss` are unchanged.
 
 ## Blocker: the probe's board `#[cfg]` did not move down

@@ -15,7 +15,7 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 
 #[cfg(test)]
 mod tests {
-    use crate::shared::intent::{ActionIntent, LightIntent, PageIntent};
+    use crate::shared::intent::{BusinessIntent, LightAction, NavigationIntent};
     use crate::shared::route::test_support::{
         DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
@@ -29,7 +29,7 @@ mod tests {
         let booting = state_on(Page::Splash, LightState::Off);
         assert_eq!(
             translate(&op(long_press()), &booting),
-            ActionIntent::Page(PageIntent::RequestSetup)
+            BusinessIntent::Navigation(NavigationIntent::RequestSetup)
         );
     }
 
@@ -51,7 +51,7 @@ mod tests {
         ] {
             assert_eq!(
                 translate(&op(event), &booting),
-                ActionIntent::Invalid,
+                BusinessIntent::Invalid,
                 "{event:?} on the splash"
             );
         }
@@ -63,7 +63,7 @@ mod tests {
         });
         assert_eq!(
             translate(&op(long_press()), &with_link),
-            ActionIntent::Page(PageIntent::RequestSetup)
+            BusinessIntent::Navigation(NavigationIntent::RequestSetup)
         );
     }
 
@@ -77,10 +77,10 @@ mod tests {
         });
         assert_eq!(
             translate(&op(long_press()), &on_air),
-            ActionIntent::Light(LightIntent {
+            BusinessIntent::Light {
                 instance: 0,
-                state: DEFAULT_BREATH,
-            })
+                action: LightAction::Cycle,
+            }
         );
     }
 }

@@ -2,7 +2,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::shared::intent::{ActionIntent, Intent, PageIntent, recognize};
+use crate::shared::intent::{BusinessIntent, Intent, NavigationIntent, recognize};
 use crate::state::Page;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -184,7 +184,7 @@ pub async fn input_task(
             && !sources.iter().any(|entry| entry.held())
             && forward(
                 intent_bus,
-                Intent::Action(ActionIntent::Page(PageIntent::SplashOver)),
+                Intent::Business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
                 &mut window_dropped,
             )
         {
@@ -525,17 +525,29 @@ mod tests {
         let mut dropped = 0u32;
 
         assert!(
-            forward(&bus, Intent::Action(ActionIntent::Invalid), &mut dropped),
+            forward(
+                &bus,
+                Intent::Business(BusinessIntent::Invalid),
+                &mut dropped
+            ),
             "the empty ring takes the first intent"
         );
         assert!(
-            !forward(&bus, Intent::Action(ActionIntent::Invalid), &mut dropped),
+            !forward(
+                &bus,
+                Intent::Business(BusinessIntent::Invalid),
+                &mut dropped
+            ),
             "the full ring refuses the next one"
         );
         assert_eq!(dropped, 1, "a refused intent is counted, not lost silently");
 
         let mut saturated = u32::MAX;
-        let _ = forward(&bus, Intent::Action(ActionIntent::Invalid), &mut saturated);
+        let _ = forward(
+            &bus,
+            Intent::Business(BusinessIntent::Invalid),
+            &mut saturated,
+        );
         assert_eq!(saturated, u32::MAX, "the window count never wraps");
     }
 

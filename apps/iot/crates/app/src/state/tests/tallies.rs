@@ -16,7 +16,7 @@ fn tap_tallies_stamps_origin_and_accumulates() {
     assert_eq!(
         manager.light_state(),
         LightState::default(),
-        "the tally never moves the light; only the translated action intent does"
+        "the tally never moves the light; only the translated business intent does"
     );
 }
 
@@ -105,7 +105,7 @@ fn swipe_tallies_records_travel_and_wraps() {
     assert_eq!(
         state.lights[0],
         LightState::default(),
-        "the swipe op tallies; the light move is the translated action intent"
+        "the swipe op tallies; the light move is the translated business intent"
     );
     assert_eq!(
         state.touch.points,

@@ -136,7 +136,7 @@ mod speaker_page {
             if manager.state().page() == Page::Speaker {
                 break;
             }
-            apply_page(&mut manager, triple_click());
+            feed_input(&mut manager, triple_click());
         }
         assert_eq!(manager.state().page(), Page::Speaker);
         manager
@@ -144,7 +144,7 @@ mod speaker_page {
 
     fn play(manager: &mut DeviceManager) {
         let before = manager.playback_state();
-        apply_page(manager, tap());
+        feed_input(manager, tap());
         if before.phase == PlaybackPhase::Playing {
             assert_eq!(
                 manager.playback_state().sound,
@@ -157,13 +157,13 @@ mod speaker_page {
                 before.sound,
                 "a heard tap advances to the next sound"
             );
-            manager.apply_action(ActionIntent::Playback(PlaybackAction::Started));
+            manager.apply_business(BusinessIntent::Playback(PlaybackAction::Started));
         }
     }
 
     fn mute(manager: &mut DeviceManager) {
         let before = manager.playback_state().muted;
-        apply_page(manager, long_press());
+        feed_input(manager, long_press());
         assert_ne!(
             manager.playback_state().muted,
             before,
@@ -221,10 +221,10 @@ mod speaker_page {
         let mut manager = on_speaker();
         let pages = [Page::Ambient, Page::Attitude, Page::Audio];
         for expected in pages {
-            manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+            manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
             assert_eq!(manager.state().page(), expected);
         }
-        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         assert_eq!(manager.state().page(), Page::Speaker, "and back round");
     }
 
@@ -255,7 +255,7 @@ mod speaker_page {
         assert_eq!(dropped.view.plays, 1, "so no second sound started");
         assert_eq!(dropped.view.dropped, 1);
 
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
         assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
         play(&mut manager);
         let second_play = manager.playback_state();
@@ -274,11 +274,11 @@ mod speaker_page {
     #[test]
     fn a_finish_arriving_with_nothing_playing_is_ignored() {
         let mut manager = on_speaker();
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
         assert_eq!(manager.playback_state().phase, PlaybackPhase::Idle);
         play(&mut manager);
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
         assert_eq!(
             manager.playback_state().phase,
             PlaybackPhase::Idle,
@@ -313,7 +313,7 @@ mod speaker_page {
     #[test]
     fn a_refused_play_leaves_the_page_idle_and_names_the_reason() {
         let mut manager = on_speaker();
-        apply_page(&mut manager, tap());
+        feed_input(&mut manager, tap());
         let asked = manager.playback_state();
         assert_eq!(
             asked.phase,
@@ -322,7 +322,7 @@ mod speaker_page {
         );
         assert_eq!(asked.view.plays, 0, "nothing is counted before it started");
 
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Refused(
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Refused(
             "the codec did not answer on I2C",
         )));
         let refused = manager.playback_state();
@@ -333,8 +333,8 @@ mod speaker_page {
         );
         assert_eq!(refused.view.plays, 0);
 
-        apply_page(&mut manager, tap());
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Started));
+        feed_input(&mut manager, tap());
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Started));
         let recovered = manager.playback_state();
         assert_eq!(recovered.health, Health::Ready);
         assert_eq!(recovered.view.plays, 1, "the retry is what gets counted");
@@ -348,13 +348,15 @@ mod speaker_page {
             Health::Ready,
             "the page starts assuming nothing is wrong"
         );
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Refused("no codec")));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Refused(
+            "no codec",
+        )));
         assert_eq!(
             manager.state().playback_diagnostics().health,
             Health::Down("no codec"),
             "the worker's boot report is what the page shows"
         );
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Ready));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Ready));
         assert_eq!(
             manager.state().playback_diagnostics().health,
             Health::Ready,
@@ -400,11 +402,11 @@ mod speaker_page {
     #[test]
     fn a_board_without_a_speaker_plays_nothing() {
         let mut manager = landed(DeviceManager::new());
-        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         assert_eq!(manager.state().page(), Page::Ambient, "no page either");
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Next));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Next));
         assert_eq!(manager.playback_state(), PlaybackState::boot());
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::SetMuted(true)));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::SetMuted(true)));
         assert!(
             !manager.playback_state().muted,
             "an unwired board's latch is nobody's business"
@@ -417,7 +419,7 @@ mod speaker_page {
         manager.state.playback.view.plays = u16::MAX;
         manager.state.playback.view.dropped = u16::MAX;
         play(&mut manager);
-        manager.apply_action(ActionIntent::Playback(PlaybackAction::Finished));
+        manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
         let saturated = manager.playback_state();
         assert_eq!(saturated.view.plays, u16::MAX);
         assert_eq!(saturated.view.dropped, u16::MAX);

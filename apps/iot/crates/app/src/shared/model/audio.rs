@@ -568,7 +568,7 @@ mod audio_page {
         let mut manager = on_audio_page();
         let before = manager.state().lights[0];
 
-        manager.apply_action(ActionIntent::Page(PageIntent::NextPage));
+        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         assert_eq!(manager.state().page(), Page::Ambient, "walked off audio");
 
         apply(&mut manager, tap());

@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "ffe27cb58db577325fb0deed9040097e7bf41fc2"
-translated_at = "2026-11-08T00:00:00Z"
+source_file_hash = "4e76735ee000c9e6ae3200c3b8e66fd842bd3b4b"
+translated_at = "2026-11-12T00:00:00Z"
 +++
 
 # Playback Semantics
@@ -35,7 +35,7 @@ That is why `Speaker` demands `Send + 'static`, and why its error is the named `
 
 The C6 and the host have no second software interrupt, so they take `Feed::Inline` and the two loops are `join`ed on one executor, with the same semantics. Where the feed lands is decided in one place, `playback::playback_tasks`, which `run` joins as a single future and is handed `Playback` by value — so "spawned, not joined" lives beside the two loops it explains instead of at the composition point.
 
-`ActionIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
+`BusinessIntent::Playback(PlaybackAction::Finished)` travels back over the intent bus from the playback task; it is not a polled flag.
 
 The phase leaves `Playing` only when the driver itself says so. Letting the page and the driver each tell their own story produces "it still looks like it is playing, but it finished ages ago", and every later tap is then dropped as a replay of a sound that had already ended.
 
