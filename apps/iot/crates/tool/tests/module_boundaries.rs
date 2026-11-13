@@ -333,7 +333,7 @@ fn the_presentation_never_reaches_the_radio() {
     files.extend(sources(&src.join("runtime/feature/playback")));
     files.extend(sources(&src.join("runtime/coordinator")));
     files.extend(sources(&src.join("runtime/workers")));
-    for name in ["runtime/feature/input.rs", "state/boot.rs"] {
+    for name in ["runtime/feature/input.rs", "state/env.rs"] {
         let path = src.join(name);
         let text = std::fs::read_to_string(&path).expect("the file is part of the app");
         files.push((path, text));
@@ -505,6 +505,17 @@ fn state_neither_draws_nor_snapshots_itself() {
     assert_no_reference(
         shipping_sources(&app_src().join("state")),
         &["crate::render", "crate::shared::diagnostics"],
+    );
+}
+
+/// The read side is what the coordinator and the renderers hold; every write goes through
+/// `intent.rs`. A getter that reached a page or the gesture table would make the half that
+/// only reads depend on the half that answers.
+#[test]
+fn the_state_read_side_stays_a_reader() {
+    assert_no_reference(
+        shipping_source(app_src().join("state/manager.rs")),
+        &["crate::pages", "super::translate", "crate::shared::intent"],
     );
 }
 

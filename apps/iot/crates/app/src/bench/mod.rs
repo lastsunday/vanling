@@ -4,7 +4,7 @@
 //! `probe` is referenced only by the probe binaries. `replay` registers one ordinary system and
 //! drives the panel through the same intent bus a finger does; the product entry names it only
 //! under that feature, and the library's frame loop never does. What a bench build should join is
-//! decided in `state::boot`.
+//! decided in `state::env`.
 
 use alloc::boxed::Box;
 

@@ -588,7 +588,7 @@ impl Default for PanelBench {
 }
 
 fn credentials() -> Option<(&'static str, &'static str)> {
-    crate::state::boot::build_wifi_credentials()
+    crate::state::env::build_wifi_credentials()
 }
 
 fn ssid() -> Option<&'static str> {

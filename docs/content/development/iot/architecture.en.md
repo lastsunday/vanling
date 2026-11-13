@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "4dd322c9b7943a993a1d219989c951bf1ec6444f"
-translated_at = "2026-11-13T00:00:00Z"
+source_file_hash = "f4ff7473ab41090511087b9557de91311ecbfcad"
+translated_at = "2026-11-14T00:00:00Z"
 +++
 
 # Architecture
@@ -79,9 +79,10 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `shared/model/light.rs` | the light record: mode, breathing schedule and palette; `LightState::apply` lands a `LightAction` on the next mode, and `can` says whether the mode accepts that verb |
 | `shared/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state, including the audio and playback diagnostics and the Network page draft |
 | `shared/kit/` | the page shell `Surface`, placement constants, text layout, band/overlay primitives and widgets; it knows pixels and a snapshot, not pages |
-| `state/` | device behaviour: `DeviceManager`, `apply_intent`, gesture→intent dispatch, `Boot`/`Backed`, build-time configuration; the only module that knows every page (a one-way `state → pages`) |
+| `state/manager.rs` | the read side: ownership and construction of `DeviceState` (`Boot`, `DeviceManager::boot`), the per-page `DemandPolicy`, and the getters the coordinator and the render loop read |
+| `state/intent.rs` | the write side: every write from the bus, a worker report or the clock's tick; records move only here |
 | `state/translate.rs` | the input boundary: the cross-page bindings first (the setup hold, the triple click), then the current page's `pages/<page>::controller::bind`; the three lamp pages share the `lamp` table that turns an event into a `LightAction`; it reads no key-grid, band or confirmation-box geometry |
-| `state/boot.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
+| `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `render/common/` | surface-agnostic: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, `color.rs` steps the colour, and `registry.rs` hands the appearance to the renderers that claimed it |
 | `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `pages::paint`, `policy.rs` (ground, frames, repaint step), `repaint.rs` (diagnostics drift) |
 | `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a panel would add |
@@ -94,7 +95,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue; state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
-| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs`; `replay/` is the panel replay and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached only by `main.rs` through `bench::run` under the `panel-bench` feature, and compiled by the host tests. The product entry and the frame loop do not know `bench`; the `IOT_PANEL_BENCH` flag and the build-credential choice live in `state::boot` |
+| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs`; `replay/` is the panel replay and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached only by `main.rs` through `bench::run` under the `panel-bench` feature, and compiled by the host tests. The product entry and the frame loop do not know `bench`; the `IOT_PANEL_BENCH` flag and the build-credential choice live in `state::env` |
 
 The directions are held by a few honest rules in `iot-tool/tests/module_boundaries.rs` (the
 compiler does not check module cycles inside a crate), not by an edge-by-edge map:
@@ -125,7 +126,7 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
 - `runtime::feature::network` does not reach `pages`/`render`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
-- `bench` is an entry/fixture, not a layer: `probe` is reached only by `bin/*-probe.rs` and `replay` only by `main.rs` through `bench::run` under the `panel-bench` feature (the host tests also compile `replay`); neither `lib` nor `runtime` knows `bench`, held by `the_bench_is_reached_only_by_its_own_entry` in `module_boundaries.rs`. The build-time flag `BENCH` and `build_credentials` live in `state::boot`, so the network worker fetching a credential never points back at the harness
+- `bench` is an entry/fixture, not a layer: `probe` is reached only by `bin/*-probe.rs` and `replay` only by `main.rs` through `bench::run` under the `panel-bench` feature (the host tests also compile `replay`); neither `lib` nor `runtime` knows `bench`, held by `the_bench_is_reached_only_by_its_own_entry` in `module_boundaries.rs`. The build-time flag `BENCH` and `build_credentials` live in `state::env`, so the network worker fetching a credential never points back at the harness
 - `core` does not know `iot_app`
 
 `main` is the product binary crate root (each `bin/*-probe.rs` is its own) and reaches `lib::run` /
@@ -220,7 +221,7 @@ One chain, five words: `Event → Intent → Action → State → Hardware` — 
 
 **Hardware is driven by State alone, State is changed by Action alone, Action is triggered by Intent alone, and Intent is raised by Event alone.**
 
-`shared/model/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` hold the records the workers write and the render loop reads, while `device.rs` is the aggregate `DeviceState` and `draft/` is the Network page draft (`NetworkDraft`/`Entry`/`SetupWait`) — the device owns it, the page edits it, the snapshot copies it, and the link never reads it. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/apply.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
+`shared/model/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` hold the records the workers write and the render loop reads, while `device.rs` is the aggregate `DeviceState` and `draft/` is the Network page draft (`NetworkDraft`/`Entry`/`SetupWait`) — the device owns it, the page edits it, the snapshot copies it, and the link never reads it. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/intent.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
 
 Business state and page state sit apart, and **whoever writes a field owns it**: `NetworkState` holds only what the radio reported (`link` / `mac` / `aps` / `outage_announced`) and only `LinkIntent` writes it; `NetworkDraft` holds only what the page is in the middle of (the selected row, the draft, keys, the confirmation, the list's scroll position) and only the finger's `NetworkPageIntent` writes it. The page reads `&NetworkState`; the link never reads or writes a page field, so neither "a worker's report lands in a page field" nor "a page edit changes what the radio said" can happen. The other domains keep a `view` sub-record (`AudioView`, `PlaybackView`, `TouchView`) with the same meaning: only what the page is in the middle of, read by notifications and rendering. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
 
@@ -251,7 +252,7 @@ The shape follows the semantics, not convenience:
 - **Retained values** use `PageWatch`/`Retained` (`Network.page`, the list inside `Scan`): a write replaces the old value and reading does not consume it, so the panel and the phone's page read the same copy. The splash's verdict is not a retained value but a **one-shot command**: it travels as `NetworkCommand::SplashOver { setup }` on the same queue as the panel's other requests, so the worker never asks how far the page has got.
 - **The newest window** uses `Input.from`: a 1.7 KB capture sample only has a newest copy worth keeping, so it overwrites instead of queueing.
 
-The `NetworkCommand` vocabulary stays in `app/src/shared/model/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` (defined in `state/apply.rs`) returns the command as a `Command`, `Schedule::process_intents` looks it up by `Command::type_id()` in the registry and hands it to the one system that declared `System::takes`, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
+The `NetworkCommand` vocabulary stays in `app/src/shared/model/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` (defined in `state/intent.rs`) returns the command as a `Command`, `Schedule::process_intents` looks it up by `Command::type_id()` in the registry and hands it to the one system that declared `System::takes`, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
 **Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `Frame` hands it the shared state. Systems never call each other. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is looked up in the registry by type and handed to the system that declared `System::takes`; two commands in one frame do not collapse, and a command nobody took is logged as an error under `[COORD]` in release too (debug builds have an assertion as well).
 

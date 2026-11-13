@@ -157,7 +157,8 @@ fn a_long_press_after_the_splash_is_the_pages_own_verb() {
 #[test]
 fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
     let mut manager = on_network_page();
-    manager.state.nav.push(Page::Splash, manager.state.backed);
+    let backed = manager.state().backed;
+    manager.state_mut().nav.push(Page::Splash, backed);
     long_press_the_button(&mut manager);
     assert_eq!(
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
@@ -174,7 +175,8 @@ fn the_splash_lands_once_and_says_whether_setup_was_asked_for() {
 #[test]
 fn a_boot_through_the_splash_tells_the_link_that_setup_was_not_asked_for() {
     let mut booting = on_network_page();
-    booting.state.nav.push(Page::Splash, booting.state.backed);
+    let backed = booting.state().backed;
+    booting.state_mut().nav.push(Page::Splash, backed);
     assert_eq!(
         booting.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
         Some(Command::Network(NetworkCommand::SplashOver {

@@ -81,7 +81,7 @@ where
 }
 
 fn credentials_for<R: FlashRegion>(saved: &Option<Box<Store<R>>>) -> Option<Credentials> {
-    crate::state::boot::build_credentials()
+    crate::state::env::build_credentials()
         .and_then(|(ssid, password)| Credentials::from_text(ssid, password).ok())
         .or_else(|| {
             saved

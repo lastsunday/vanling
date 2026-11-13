@@ -18,7 +18,7 @@ use super::setup::{Choice, SetupMode, await_network, pick, resolve_join};
 use super::store::{any, first_saved, forget, remark_and_publish, save};
 use super::{NETWORK, discard_setup, park, publish_link};
 use crate::runtime::workers::NetworkInbox;
-use crate::state::boot::build_credentials;
+use crate::state::env::build_credentials;
 
 const WINDOW_MS: u64 = 2_000;
 

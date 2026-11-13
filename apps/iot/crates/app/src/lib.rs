@@ -33,7 +33,7 @@ use runtime::feature::input::{INTENT_BUS, input_task};
 use runtime::feature::playback::{playback_tasks, share};
 use runtime::system::System;
 use runtime::workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand};
-use state::boot::{boot_override, boot_page};
+use state::env::{boot_override, boot_page};
 
 pub enum Feed {
     Interrupt(SendSpawner),

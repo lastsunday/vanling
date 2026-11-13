@@ -416,8 +416,8 @@ mod speaker_page {
     #[test]
     fn the_tallies_saturate_rather_than_wrap() {
         let mut manager = on_speaker();
-        manager.state.playback.view.plays = u16::MAX;
-        manager.state.playback.view.dropped = u16::MAX;
+        manager.state_mut().playback.view.plays = u16::MAX;
+        manager.state_mut().playback.view.dropped = u16::MAX;
         play(&mut manager);
         manager.apply_business(BusinessIntent::Playback(PlaybackAction::Finished));
         let saturated = manager.playback_state();

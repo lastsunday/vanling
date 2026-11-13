@@ -2,12 +2,58 @@ pub(crate) use super::*;
 pub(crate) use crate::shared::intent::{BusinessIntent, InputIntent, Intent, NavigationIntent};
 pub(crate) use crate::shared::route::CYCLE;
 pub(crate) use crate::state::translate::translate;
+pub(crate) use iot_core::demand::EffectiveDemand;
 pub(crate) use iot_core::drivers::input::{
     ButtonEvent, GestureEvent, InputEvent, MAX_TOUCH_POINTS, SwipeDirection, TouchEvent,
     TouchPoint, TouchStatus,
 };
-pub(crate) use iot_core::drivers::motion::MotionScale;
+pub(crate) use iot_core::drivers::motion::{MotionCounts, MotionSample, MotionScale};
 pub(crate) use iot_core::drivers::network::{Ipv4, SavedNetworks};
+
+impl DeviceManager {
+    pub(crate) fn state(&self) -> DeviceState {
+        self.state.clone()
+    }
+
+    pub(crate) fn state_mut(&mut self) -> &mut DeviceState {
+        &mut self.state
+    }
+
+    /// A derivation from the held keys, to pin the cache to what the page claims.
+    pub(crate) fn fresh_demand(&self) -> EffectiveDemand {
+        self.demand.fresh(&self.state)
+    }
+
+    pub(crate) fn setup_requested(&self) -> bool {
+        self.state.setup_requested
+    }
+
+    pub(crate) fn light_state(&self) -> LightState {
+        self.state.lights[0]
+    }
+
+    /// Clamped like the write side: an out-of-range read is the last surface, never a panic.
+    pub(crate) fn light_state_at(&self, instance: u8) -> LightState {
+        self.state.lights[usize::from(instance).min(MAX_LIGHTS - 1)]
+    }
+
+    pub(crate) fn touch_state(&self) -> Option<TouchEvent> {
+        self.state.touch.last
+    }
+
+    pub(crate) fn motion_state(&self) -> Option<MotionSample> {
+        self.state.motion.sample
+    }
+
+    pub(crate) fn motion_counts_state(&self) -> MotionCounts {
+        self.state.motion.counts
+    }
+
+    /// An absolute target, so a test can start from a mode instead of cycling into it.
+    pub(crate) fn apply_to(&mut self, instance: usize, state: LightState) {
+        self.state.lights[instance.min(MAX_LIGHTS - 1)] = state;
+    }
+}
 
 pub(crate) const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
 

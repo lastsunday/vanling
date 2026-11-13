@@ -161,7 +161,7 @@ fn demand_follows_the_page_instead_of_lagging_it() {
     );
     assert_eq!(
         manager.demand(),
-        &DeviceManager::proposed(&manager.state, &manager.demand_keys, &manager.override_),
+        &manager.fresh_demand(),
         "a held demand a fresh derivation would contradict has fallen behind"
     );
 }
@@ -170,10 +170,7 @@ fn demand_follows_the_page_instead_of_lagging_it() {
 fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
     let mut by_page = landed(fully_wired());
     by_page.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-    assert_eq!(
-        by_page.demand(),
-        &DeviceManager::proposed(&by_page.state, &by_page.demand_keys, &by_page.override_)
-    );
+    assert_eq!(by_page.demand(), &by_page.fresh_demand());
 
     for manager in [
         DeviceManager::boot(Boot {
@@ -206,9 +203,6 @@ fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
             ..Default::default()
         }),
     ] {
-        assert_eq!(
-            manager.demand(),
-            &DeviceManager::proposed(&manager.state, &manager.demand_keys, &manager.override_)
-        );
+        assert_eq!(manager.demand(), &manager.fresh_demand());
     }
 }
