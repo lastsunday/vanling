@@ -80,7 +80,7 @@ pub fn cell_of(key: Key) -> Option<usize> {
 }
 
 /// The cell the `digit`-th character key sits in.
-pub(crate) fn cell_for_digit(digit: usize) -> Option<usize> {
+pub fn cell_for_digit(digit: usize) -> Option<usize> {
     (0..KEYS).find(|cell| CELLS[*cell] == Cell::Digit(digit))
 }
 

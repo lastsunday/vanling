@@ -1,11 +1,10 @@
-//! Bench-only drivers: the bodies behind `bin/*-probe.rs` and the panel replay behind
-//! `bin/panel-bench.rs`.
+//! Bench-only drivers: the probe bodies behind `bin/*-probe.rs`, and the panel replay the
+//! `panel-bench` feature selects instead of the product frame loop.
 //!
-//! `probe` is referenced only by the probe binaries. `replay` is reached only by [`run`], the
-//! entry `bin/panel-bench.rs` calls: it registers one ordinary system in the frame loop and
-//! drives the panel through the same intent bus a finger does. The product entry (`main`) and
-//! the library's frame loop name neither, so the bench only ever depends downward. What a bench
-//! build should join is decided in `state::boot`, next to the other build-time configuration.
+//! `probe` is referenced only by the probe binaries. `replay` registers one ordinary system and
+//! drives the panel through the same intent bus a finger does; the product entry names it only
+//! under that feature, and the library's frame loop never does. What a bench build should join is
+//! decided in `state::boot`.
 
 use alloc::boxed::Box;
 

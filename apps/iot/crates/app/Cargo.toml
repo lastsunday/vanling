@@ -7,14 +7,6 @@ edition.workspace = true
 name = "vanling"
 path = "src/main.rs"
 
-# The panel replay as its own entry. It builds the same board bring-up as `vanling` (shared
-# through `src/bin/common/`) and registers the replay system through `bench::run`, so neither
-# the product entry nor the library's frame loop names the bench.
-[[bin]]
-name = "panel-bench"
-path = "src/bin/panel-bench.rs"
-required-features = ["lckfb-szpi-esp32s3"]
-
 [[bin]]
 name = "host-smoke"
 path = "src/bin/host-smoke/main.rs"
@@ -98,6 +90,9 @@ required-features = ["wifi"]
 
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
+# The product entry replaying a credential through the panel instead of being handed one. Same
+# bin and boot; the feature only selects `bench::run` over `lib::run`.
+panel-bench = ["lckfb-szpi-esp32s3"]
 esp32c6 = [
   "dep:iot-chip-esp",
   "dep:esp-hal",

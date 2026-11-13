@@ -3,8 +3,8 @@ title = "Roadmap"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "c93dd5629cff115ac28ee388c857fa164744d037"
-translated_at = "2026-10-26T00:00:00Z"
+source_file_hash = "acf6d98e8e3454cf0459cf28f1bac995bcd25bf0"
+translated_at = "2026-11-13T00:00:00Z"
 +++
 
 # Roadmap
@@ -177,6 +177,7 @@ Structure and capability list; the backlog and priorities live in [Work Items](@
 #### Flow Chart
 
 ```txt
+Page
                               ┌─────────────────────┐
                               │Network Setting Page │
                               │───────────────      │
@@ -219,15 +220,97 @@ Structure and capability list; the backlog and priorities live in [Work Items](@
 │                   │
 └───────────────────┘
 
+Runtime
+  ┌───┐ ┌───┐
+  │WDT│ │Log│
+  └───┘ └───┘
+
+Application architecture
+    ┌───────────────────────────────────────────────────────────────┐
+ │  │app│                                                           │
+ │  │───┘            ┌────┐                                         │
+ │  │                │main│                                         │
+ │  │                └────┘                                         │
+ │  │                  │                                            │
+ │  │                  ▼                                            │
+ │  │                ┌───┐                                          │
+ │  │        ┌───────│lib│──────────────────────┐                   │
+ │  │        │       └───┘                      │                   │
+ │  │        │         │                        │                   │
+ │  │        │         ▼                        │                   │
+ │  │        │       ┌───────┐                  │                   │
+ │  │        │       │runtime│                  │                   │
+ │  │        │       └───────┘                  │                   │
+ │  │        │           │                      │                   │
+ │  │        │      ┌────┴────┬─────────┐       │                   │
+ │  │        │      ▼         ▼         ▼       │                   │
+ │  │        │  ┌──────┐   ┌──────┐    ┌─────┐  │                   │
+ │  │        └─►│render│──►│shared│◄───│state│◄─┘                   │
+ │  │           └──────┘   └──────┘    └─────┘                      │
+ │  │              │          ▲          │                          │
+ │  │              │          │          │                          │
+ │  │              │        ┌─────┐      │                          │
+ │  │              └───────►│pages│◄─────┘                          │
+ │  │                       └─────┘                                 │
+ │  │                                                               │
+ │  │═════════════════════════════════════════════                  │
+ │  │                                                               │
+ │  │  ┌──────────────────────────────────────────────────────────┐ │
+ │  │  │Intent│        │           │                              │ │
+ │  │  │──────┘        ▼           ▼                              │ │
+ │  │  │ ┌─────┐    ┌──────┐    ┌──────┐    ┌─────┐    ┏━━━━━━━━┓ │ │
+ │  │  │ │Event│───►│Intent│───►│Action│───►│State│═══►┃Hardware┃ │ │
+ │  │  │ └─────┘    └──────┘    └──────┘    └─────┘    ┗━━━━━━━━┛ │ │
+ │  │  └──────────────────────────────────────────────────────────┘ │
+ │  │                                                               │
+ │  │                                                               │
+ │  └───────────────────────────────────────────────────────────────┘
+ │  ┌───────┐
+ │  │bsp-esp│
+ │  └───────┘
+ │  ┌────────┐
+ │  │chip-esp│
+ │  └────────┘
+ │  ┌────┐
+ ▼  │core│
+    └────┘
+
+Peripheral components
+  ┌──────┐ ┌──────┐
+  │Button│ │WS2812│
+  └──────┘ └──────┘
+  ┌───────┐ ┌──────┐ ┌──────┐ ┌───────┐ ┌──────┐ ┌──────┐ ┌──────┐
+  │PCA9557│ │ST7789│ │FT6336│ │QMI8658│ │ES7210│ │ES8311│ │GC2145│
+  └───────┘ └──────┘ └──────┘ └───────┘ └──────┘ └──────┘ └──────┘
+
+Interfaces
+  ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌───────┐ ┌───┐
+  │GPIO│ │I2C0│ │I2S0│ │SPI3│ │LEDC│ │LCD_CAM│ │RMT│
+  └────┘ └────┘ └────┘ └────┘ └────┘ └───────┘ └───┘
+
+Chip resources
+  ┌─────┐ ┌────────┐
+  │TIMG0│ │CPU_CTRL│
+  └─────┘ └────────┘
+  ┌───────┐ ┌───────┐ ┌───────┐
+  │DMA_CH0│ │DMA_CH1│ │DMA_CH2│
+  └───────┘ └───────┘ └───────┘
+  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+  │FROM_CPU_INTR0│ │FROM_CPU_INTR1│ │FROM_CPU_INTR2│
+  └──────────────┘ └──────────────┘ └──────────────┘
+  ┌────┐ ┌─────┐ ┌─────┐
+  │WIFI│ │FLASH│ │PSRAM│
+  └────┘ └─────┘ └─────┘
+
+Built-in components
+  ┌───┐ ┌────┐ ┌───┐ ┌─────┐
+  │CPU│ │SRAM│ │ROM│ │RADIO│
+  └───┘ └────┘ └───┘ └─────┘
+
 
 ```
 
-1. Splash Screen -> Network Setting Page(AP Mode) requires pressing and holding BOOT within 1.5 s of the
-   restart, and releasing after ≥600 ms
-2. Splash Screen -> Boot Page is entered automatically by default
-3. Page -> XX Page uses a triple-click of BOOT, following the predefined page sequence
-
-#### Architecture Diagram
+#### Runtime Diagram
 
 ```txt
 

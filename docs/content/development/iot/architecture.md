@@ -51,7 +51,7 @@ weight = 10
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
 - **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::intent`、几何在 `app::pages::network::layout`
-- **main 入口**：按家族 feature 分支，每家族一份；板级 bring-up 在 `bin/common/`，产品入口与 bench 入口共用，两者只在最后调 `lib::run` 还是 `bench::run` 上分开
+- **main 入口**：产品二进制入口（`bin/*-probe.rs` 是各自的探针入口）；芯片 init、堆、执行器与 `Wiring` 都在 `main.rs`，芯片族分支留在 `start_executors`。产品与面板 bench 共用这条启动路径，`panel-bench` feature 只决定最后调 `lib::run` 还是 `bench::run`
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
 ## iot-app 内部分区
@@ -63,7 +63,7 @@ weight = 10
 | 路径 | 职责 |
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
-| `main.rs` | 芯片启动、executor 选择、家族入口；板级 bring-up 在 `bin/common/`，与 `bin/panel-bench.rs` 共用 |
+| `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
 | `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`tests.rs` 守黄金像素 |
 | `pages/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
 | `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
@@ -90,7 +90,7 @@ weight = 10
 | `runtime/feature/playback/{mod,sounds/}` | 播放工作者与声音目录；状态→命令在 `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
 | `assets/` | 设置侧自己的字节：`vanling-` 热点前缀与 setup portal 的 HTML/SVG（协议仍在 `core`） |
-| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用；`replay/` 是面板回放与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），只被 `bin/panel-bench.rs` 经 `bench::run` 引用。两者都不在产品路径上：产品入口与帧循环都不认识 `bench`；`IOT_PANEL_BENCH` 与构建凭据的取舍在 `state::boot` |
+| `bench/{probe,replay}/`、`bin/` | bench 专用驱动与入口：`probe/` 只被 `bin/*-probe.rs` 引用；`replay/` 是面板回放与把文本敲进键盘的 tap 脚本（`point.rs` 只放落点坐标），只被 `main.rs` 在 `panel-bench` feature 下经 `bench::run` 引用，宿主测试也编译它。产品入口与帧循环都不认识 `bench`；`IOT_PANEL_BENCH` 与构建凭据的取舍在 `state::boot` |
 
 方向由 `iot-tool/tests/module_boundaries.rs` 的几条诚实规则守着（编译器不查 crate 内模块环），不是逐条边的地图：
 
@@ -119,10 +119,10 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
 - `runtime::feature::network` 不依赖 `pages`/`render`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态
-- `bench` 是入口/夹具，不是层：`probe` 只被 `bin/*-probe.rs` 引用，`replay` 只被 `bin/panel-bench.rs` 经 `bench::run` 引用；`lib` 与 `runtime` 都不认 `bench`，`module_boundaries.rs` 的 `the_bench_is_reached_only_by_its_own_entry` 守着。构建期开关 `BENCH`/`build_credentials` 在 `state::boot`，网络工作者取凭据因此不会反向指向 harness
+- `bench` 是入口/夹具，不是层：`probe` 只被 `bin/*-probe.rs` 引用，`replay` 只被 `main.rs` 在 `panel-bench` feature 下经 `bench::run` 引用（宿主测试另编译 `replay`）；`lib` 与 `runtime` 都不认 `bench`，`module_boundaries.rs` 的 `the_bench_is_reached_only_by_its_own_entry` 守着。构建期开关 `BENCH`/`build_credentials` 在 `state::boot`，网络工作者取凭据因此不会反向指向 harness
 - `core` 不认识 `iot_app`
 
-`main` 与 `bin/panel-bench.rs` 是二进制 crate 根，经 `iot_app::` 取 `lib::run` / `bench::run` 与 `runtime::feature::network` 的入口，不在这张模块图内；板级 bring-up 由 `bin/common/` 共享，芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
+`main` 是产品二进制 crate 根（`bin/*-probe.rs` 各有自己的根），经 `iot_app::` 取 `lib::run` / `bench::run` 与 `runtime::feature::network` 的入口，不在这张模块图内；板级 bring-up 就在 `main.rs`，芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
 
 ## 组合（三轴正交）
 
@@ -443,7 +443,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 ## 新增板
 
 1. `bsp-esp/` 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 `components/` 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配
-2. 板模块导出该板的 `SETUP_HOST`（芯片内存不同再加 `HEAP_BYTES`）；`app/src/bin/common/` 按芯片分支读取，feed 落点已按芯片分好
+2. 板模块导出该板的 `SETUP_HOST`（芯片内存不同再加 `HEAP_BYTES`）；`app/src/main.rs` 按芯片分支读取，feed 落点已按芯片分好
 3. app feature 透传 `iot-bsp-esp/<board>`
 4. `reusable-iot-build.yml` 的 `platforms` 默认 JSON 与 `iot-dev-release.yml` 的 `platforms` 输入里加该板（xtensa 板需标 `use-xtensa-toolchain: true`，经 `build-s3` 任务构建：CI/发布用 espup 原生 `esp` 1.98.1.0 工具链，macOS Intel 本地用同版本 Docker 镜像）
 5. 验证：`cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`
@@ -453,6 +453,6 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 esp 家族仓固定为 `iot-chip-esp`/`iot-bsp-esp`；新增非 esp 家族：
 
 1. 新增 `iot-chip-<family>`/`iot-bsp-<family>` crate
-2. app 家族别名 feature 门控该家族 entry deps；`app/src/bin/common/` 加该家族的板级 bring-up 分支（`#[cfg(feature)]`）
+2. app 家族别名 feature 门控该家族 entry deps；`app/src/main.rs` 的 `start_executors` 加该家族的板级 bring-up 分支（`#[cfg(feature)]`）
 3. 工具链目标 + `rust-toolchain.toml` + `reusable-iot-build.yml` 的 `platforms`（`target`/`use-xtensa-toolchain`）与 `iot-dev-release.yml` 的 `platforms` 输入
 4. `moon`/`lefthook` 的 `--workspace --target` 改按固件作用域；工具链目标经 `CARGO_ESP_TARGET` 传入 moon 任务（`.envrc`/CI env 与 workflow inputs 提供，moon 任务以 `- '$CARGO_ESP_TARGET'` 收入 inputs 保证跨芯片缓存隔离）

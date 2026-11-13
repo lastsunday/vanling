@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "1aee7a12c0b34f49377f840d49f99234fb0a0cf6"
-translated_at = "2026-11-13T04:17:51Z"
+source_file_hash = "4dd322c9b7943a993a1d219989c951bf1ec6444f"
+translated_at = "2026-11-13T00:00:00Z"
 +++
 
 # Architecture
@@ -55,7 +55,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
 - **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page: its vocabulary is in `app::shared::intent` and its geometry in `app::pages::network::layout`.
-- **main entry**: dispatches per family feature, one entry block per family (esp family alias `esp32c6`); the board bring-up lives in `bin/common/`, shared by the product and bench entries, which differ only in whether they finally call `lib::run` or `bench::run`.
+- **main entry**: the product binary entry (`bin/*-probe.rs` are their own probe entries); chip init, the heap, the executors and `Wiring` all live in `main.rs`, with the per-family branch in `start_executors`. The product and the panel bench share that path; the `panel-bench` feature only decides whether the entry finally calls `lib::run` or `bench::run`.
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
 ## Inside `iot-app`
@@ -67,7 +67,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | Path | Responsibility |
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
-| `main.rs` | chip bring-up, executor choice, family entry; the board bring-up lives in `bin/common/`, shared with `bin/panel-bench.rs` |
+| `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
 | `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` is the one page→view dispatch `paint`, `tests.rs` guards the golden pixels |
 | `pages/{ambient,attitude,camera,splash}.rs` | single-file pages with one canvas: the `stamp_*` methods on the page shell draw directly |
 | `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
@@ -94,7 +94,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue; state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
 | `assets/` | the setup side's own bytes: the `vanling-` AP prefix and the setup portal HTML/SVG (the protocol stays in `core`) |
-| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs`; `replay/` is the panel replay and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached only by `bin/panel-bench.rs` through `bench::run`. Neither is on the product path: the product entry and the frame loop do not know `bench`; the `IOT_PANEL_BENCH` flag and the build-credential choice live in `state::boot` |
+| `bench/{probe,replay}/`, `bin/` | bench-only drivers and entries: `probe/` is reached only by `bin/*-probe.rs`; `replay/` is the panel replay and the tap script that types text into the key grid (`point.rs` holds only the landing coordinates), reached only by `main.rs` through `bench::run` under the `panel-bench` feature, and compiled by the host tests. The product entry and the frame loop do not know `bench`; the `IOT_PANEL_BENCH` flag and the build-credential choice live in `state::boot` |
 
 The directions are held by a few honest rules in `iot-tool/tests/module_boundaries.rs` (the
 compiler does not check module cycles inside a crate), not by an edge-by-edge map:
@@ -125,13 +125,13 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
 - `runtime::feature::network` does not reach `pages`/`render`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state
-- `bench` is an entry/fixture, not a layer: `probe` is reached only by `bin/*-probe.rs` and `replay` only by `bin/panel-bench.rs` through `bench::run`; neither `lib` nor `runtime` knows `bench`, held by `the_bench_is_reached_only_by_its_own_entry` in `module_boundaries.rs`. The build-time flag `BENCH` and `build_credentials` live in `state::boot`, so the network worker fetching a credential never points back at the harness
+- `bench` is an entry/fixture, not a layer: `probe` is reached only by `bin/*-probe.rs` and `replay` only by `main.rs` through `bench::run` under the `panel-bench` feature (the host tests also compile `replay`); neither `lib` nor `runtime` knows `bench`, held by `the_bench_is_reached_only_by_its_own_entry` in `module_boundaries.rs`. The build-time flag `BENCH` and `build_credentials` live in `state::boot`, so the network worker fetching a credential never points back at the harness
 - `core` does not know `iot_app`
 
-`main` and `bin/panel-bench.rs` are the binary crate roots and reach `lib::run` / `bench::run` and
-`runtime::feature::network` through `iot_app::`, so they are outside this graph; the board bring-up is
-shared by `bin/common/`, and the chip family injects `second_core_peak` and the rest of the capabilities
-into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
+`main` is the product binary crate root (each `bin/*-probe.rs` is its own) and reaches `lib::run` /
+`bench::run` and `runtime::feature::network` through `iot_app::`, so it is outside this graph; the
+board bring-up lives in `main.rs`, and the chip family injects `second_core_peak` and the rest of
+the capabilities into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
 
 ## Composition (three orthogonal axes)
 
@@ -472,7 +472,7 @@ A log reporting a configuration nothing is running is worse than no log.
 ## Adding a board
 
 1. Add the board module to `bsp-esp/` (Board + HasXxx traits) with feature gating. For a chip the board selects, first build the real component under `components/` (reuse an existing one, and give each new component its own feature); the board feature aggregates the component list, and the board module only assembles them.
-2. Export the board's `SETUP_HOST` from the board module (and `HEAP_BYTES` where the part's memory differs); `bin/common/` reads both, and the feed's arm is already there per part.
+2. Export the board's `SETUP_HOST` from the board module (and `HEAP_BYTES` where the part's memory differs); `app/src/main.rs` reads both, and the feed's arm is already there per part.
 3. Forward the app feature `iot-bsp-esp/<board>`.
 4. Add the board to the `platforms` default JSON in `reusable-iot-build.yml` and the `platforms` input of `iot-dev-release.yml`. Xtensa boards need `use-xtensa-toolchain: true` and go through the `build-s3` task: the espup native `esp` 1.98.1.0 toolchain on CI/release, with a same-version Docker image locally on macOS Intel
 5. Verify: `cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features <board>`
@@ -482,6 +482,6 @@ A log reporting a configuration nothing is running is worse than no log.
 The esp family is fixed as `iot-chip-esp`/`iot-bsp-esp`; adding a non-esp family:
 
 1. Add the `iot-chip-<family>`/`iot-bsp-<family>` crates.
-2. Gate that family's entry dependencies behind the app family-alias feature; add the family's board bring-up arm in `app/src/bin/common/` (each arm under its own `#[cfg(feature)]`).
+2. Gate that family's entry dependencies behind the app family-alias feature; add the family's board bring-up arm in `app/src/main.rs` (each arm under its own `#[cfg(feature)]`).
 3. Toolchain target + `rust-toolchain.toml` + `platforms` in `reusable-iot-build.yml` (`target`/`use-xtensa-toolchain`) and the `platforms` input of `iot-dev-release.yml`.
 4. Switch `moon`/`lefthook` `--workspace --target` to the firmware scope; the toolchain target flows into moon tasks via `CARGO_ESP_TARGET` (set in `.envrc`/CI env and workflow inputs; tasks take `- '$CARGO_ESP_TARGET'` in `inputs` to keep cross-chip build caches isolated).

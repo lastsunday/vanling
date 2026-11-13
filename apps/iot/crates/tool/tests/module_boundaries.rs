@@ -341,8 +341,8 @@ fn the_presentation_never_reaches_the_radio() {
     assert_no_reference(files, &["crate::runtime::feature::network"]);
 }
 
-/// Probes are the bodies of separate binaries, and the panel replay is now the same shape: only
-/// `bin/panel-bench.rs` reaches it, through `bench::run`.
+/// Probes are the bodies of separate binaries; the panel replay is a feature of the product
+/// entry, not a second entry point.
 #[test]
 fn probes_stay_out_of_the_product_path() {
     let src = app_src();
@@ -354,20 +354,33 @@ fn probes_stay_out_of_the_product_path() {
     assert_no_reference(product, &["bench::probe", "probe::"]);
 }
 
-/// The bench is a harness, not a layer: `bin/panel-bench.rs` reaches `bench::run`, and nothing
-/// else in the crate names it. It used to be the other way round as well — `lib` registered the
-/// replay's system and the network worker asked it for a build credential — which put
-/// `runtime ↔ bench` in the product path.
+/// The bench is a harness, not a layer: only the product entry names `bench::run`, and only
+/// under the `panel-bench` feature; nothing else in the crate reaches it. It used to be the other
+/// way round as well — `lib` registered the replay's system and the network worker asked it for a
+/// build credential — which put `runtime ↔ bench` in the product path. The gate itself is proven
+/// by `check-s3`, which compiles the entry without the feature.
 #[test]
 fn the_bench_is_reached_only_by_its_own_entry() {
     let src = app_src();
     let bench = src.join("bench");
     let bins = src.join("bin");
+    let entry = src.join("main.rs");
     let product: Vec<_> = shipping_sources(&src)
         .into_iter()
-        .filter(|(path, _)| !path.starts_with(&bench) && !path.starts_with(&bins))
+        .filter(|(path, _)| !path.starts_with(&bench) && !path.starts_with(&bins) && path != &entry)
         .collect();
     assert_no_reference(product, &["crate::bench", "bench::"]);
+
+    let callers: Vec<_> = shipping_sources(&src)
+        .into_iter()
+        .filter(|(_, text)| text.contains("bench::run"))
+        .map(|(path, _)| path)
+        .collect();
+    assert_eq!(
+        callers,
+        vec![entry],
+        "something besides the product entry reaches the bench"
+    );
 }
 
 #[test]

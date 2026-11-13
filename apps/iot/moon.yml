@@ -204,12 +204,19 @@ tasks:
   check-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
-        --bin vanling --bin panel-bench --bin audio-probe --bin camera-probe --bin multicore-s3 \
+        --bin vanling --bin audio-probe --bin camera-probe --bin multicore-s3 \
         --bin demand-probe --bin aec-probe --bin clock-probe --bin echo-probe \
         --bin wifi-probe \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
+      # The `panel-bench` feature selects the other branch of the product entry, so the product
+      # check above never sees `bench::run`.
+      bash ../../scripts/iot-xtensa.sh check -p iot-app \
+        --bin vanling \
+        --target xtensa-esp32s3-none-elf \
+        -Z build-std=core,alloc \
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto,panel-bench
     inputs:
       - '@group(build-inputs)'
 
@@ -396,18 +403,26 @@ tasks:
   # `IOT_PANEL_BENCH` is what makes the build come up unconfigured — a build that was handed its
   # credentials would join them without touching the panel at all.
   #
-  # The bin is `panel-bench`, not `vanling`: the replay is its own entry (`bench::run`), so the
-  # product image is neither overwritten nor restored here.
+  # The bench is the product entry compiled with `panel-bench`, so Cargo writes the same
+  # `vanling` path. Move the product aside for the duration and publish this image as
+  # `vanling-panel`, so `flash-s3` and `iot-image.sh` never pick it up — including when the build
+  # fails, or when there was no product ELF to keep.
   panel-typing-s3:
     script: |
+      set -e
+      out=target/xtensa-esp32s3-none-elf/release/vanling
+      saved="$out.product"
+      if [ -f "$out" ]; then mv "$out" "$saved"; fi
+      trap 'if [ -f "$saved" ]; then mv "$saved" "$out"; else rm -f "$out"; fi' EXIT
       IOT_PANEL_BENCH=1 IOT_BOOT_PAGE=network \
         bash ../../scripts/iot-xtensa.sh build --release \
-        -p iot-app --bin panel-bench \
+        -p iot-app --bin vanling \
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
-        --no-default-features --features lckfb-szpi-esp32s3,console-auto
+        --no-default-features --features lckfb-szpi-esp32s3,console-auto,panel-bench
+      cp "$out" "$out-panel"
     outputs:
-      - 'target/xtensa-esp32s3-none-elf/release/panel-bench'
+      - 'target/xtensa-esp32s3-none-elf/release/vanling-panel'
     deps:
       - ~:check-s3
     options:
@@ -422,7 +437,7 @@ tasks:
         --partition-table partitions/lckfb-szpi-esp32s3.csv \
         -a watchdog-reset \
         ${IOT_PORT:+--port $IOT_PORT} \
-        target/xtensa-esp32s3-none-elf/release/panel-bench
+        target/xtensa-esp32s3-none-elf/release/vanling-panel
     deps:
       - ~:panel-typing-s3
     options:
