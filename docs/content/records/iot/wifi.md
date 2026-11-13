@@ -10,7 +10,7 @@ sort_by = "weight"
 
 `apps/iot` 的 Wi-Fi 链路：从「扫到哪些网络」到「拿到一个地址」。**AI 产出，未经人类审阅**，见[上级说明](@/records/_index.md)。
 
-> 注：本文出现的 `BusinessIntent::NoCopy`/`AskForget`/`Scroll`/`Choose` 是分组前的扁平名，今为 `BusinessIntent::NetworkPage(NetworkPageIntent::*)`；`SplashOver`/`RequestSetup` 今为 `BusinessIntent::Navigation(NavigationIntent::*)`。
+> 注：本文出现的 `BusinessIntent::NoCopy`/`AskForget`/`Scroll`/`Choose` 是分组前的扁平名，今为 `BusinessIntent::NetworkPage(NetworkPageIntent::*)`；`SplashOver`/`RequestSetup` 今为 `BusinessIntent::Navigation(NavigationIntent::*)`；`setup_wanted` 今为 `DeviceState::setup_requested`。
 
 每条判断标注依据：**`[测试]`** 有对应单元测试，**`[实测]`** 有硬件测量并附复现方式，**`[据称]`** 未复现、仅留痕。
 

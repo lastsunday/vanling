@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "149e019928ff38c079f2129bee1426fa1fffed9a"
-translated_at = "2026-11-12T16:02:56Z"
+source_file_hash = "a240f9da904c26271a9293a6a67efe46bc6ab85a"
+translated_at = "2026-11-13T04:18:31Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -17,7 +17,8 @@ an address". **AI output, not reviewed by a human** — see the
 
 > Note: `BusinessIntent::NoCopy`/`AskForget`/`Scroll`/`Choose` in this record are the
 > flat names from before grouping; they are `BusinessIntent::NetworkPage(NetworkPageIntent::*)`
-> today, and `SplashOver`/`RequestSetup` are `BusinessIntent::Navigation(NavigationIntent::*)`.
+> today, `SplashOver`/`RequestSetup` are `BusinessIntent::Navigation(NavigationIntent::*)`,
+> and `setup_wanted` is `DeviceState::setup_requested`.
 
 Each judgement carries its basis: **`[test]`** a unit test pins it, **`[measured]`**
 a hardware measurement, **`[as-reported]`** not reproduced, left as a trace.

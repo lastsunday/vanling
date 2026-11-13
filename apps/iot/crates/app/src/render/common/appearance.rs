@@ -227,6 +227,7 @@ mod tests {
             let DeviceState {
                 backed: _,
                 nav: _,
+                setup_requested: _,
                 lights: _,
                 surface_roles: _,
                 notice: _,

@@ -17,7 +17,7 @@ pub(super) const fn claim(kind: DemandKind) -> Claim {
 mod tests {
     use crate::shared::intent::{BusinessIntent, LightAction, NavigationIntent};
     use crate::shared::route::test_support::{
-        DEFAULT_BREATH, long_press, op, state_on, swipe_event, tap_gesture, with_network,
+        long_press, op, state_on, swipe_event, tap_gesture, with_network,
     };
     use crate::state::translate::translate;
     use crate::state::{LightState, Page};

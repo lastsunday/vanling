@@ -22,6 +22,9 @@ pub struct DeviceState {
     /// Where the device is: the stack of destinations, whether or not a panel draws them.
     /// Read through [`Self::page`].
     pub nav: Navigator,
+    /// What the button asked for while the splash was up: the landing reads it, and the
+    /// link hears it once as `SplashOver`.
+    pub setup_requested: bool,
     pub lights: [LightState; MAX_LIGHTS],
     /// What each slot's surface is for, fixed by the wiring rather than by the current
     /// appearance. Not part of `backed`: presence and role answer different questions.

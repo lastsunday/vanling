@@ -27,9 +27,6 @@ pub struct DeviceManager {
     /// The page `demand` was derived from: the proposal reads the page and nothing else, so a
     /// state write that cannot have moved it does not need to rebuild the table.
     demand_page: Page,
-    /// Whether the button asked for setup mode while the splash was up. A boot decision the
-    /// splash landing reads, not something the link knows.
-    setup_wanted: bool,
 }
 
 impl DeviceManager {
@@ -56,7 +53,6 @@ impl DeviceManager {
             state,
             demand_keys: boot.demand_keys,
             override_: boot.overrides,
-            setup_wanted: false,
         }
     }
 
@@ -182,7 +178,7 @@ impl DeviceManager {
             }
             NavigationIntent::RequestSetup => {
                 if self.state.page() == Page::Splash {
-                    self.setup_wanted = true;
+                    self.state.setup_requested = true;
                 }
                 None
             }
@@ -194,15 +190,16 @@ impl DeviceManager {
         if self.state.page() != Page::Splash {
             return None;
         }
+        let setup = self.state.setup_requested;
         self.state.nav.pop();
-        if self.setup_wanted && self.state.backed.network {
+        if setup && self.state.backed.network {
             self.state.nav.go(Page::Network, self.state.backed);
         }
         // A device that boots with nothing to join has nothing to say after the splash
         // except that: one amber burst, then the page's own light. A hold that asked for
         // setup is not this — the access point is the answer to it, and the mode has its own
         // colour.
-        if !self.setup_wanted
+        if !setup
             && self.state.backed.network
             && !self.state.network.link.saved
             && !self.state.network.link.mode.is_setup()
@@ -210,15 +207,13 @@ impl DeviceManager {
         {
             self.announce(NoticeKind::Offline);
         }
-        Some(Command::Network(NetworkCommand::SplashOver {
-            setup: self.setup_wanted,
-        }))
+        Some(Command::Network(NetworkCommand::SplashOver { setup }))
     }
 
     /// Whether the button asked for setup mode while the splash was up.
     #[cfg(test)]
-    pub fn setup_wanted(&self) -> bool {
-        self.setup_wanted
+    pub fn setup_requested(&self) -> bool {
+        self.state.setup_requested
     }
 
     pub fn state(&self) -> DeviceState {

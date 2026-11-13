@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "48da23e7e2d556d6785669748107d78215467104"
-translated_at = "2026-11-12T15:44:44Z"
+source_file_hash = "1aee7a12c0b34f49377f840d49f99234fb0a0cf6"
+translated_at = "2026-11-13T04:17:51Z"
 +++
 
 # Architecture
@@ -216,7 +216,9 @@ A new scenario is a new `BusinessIntent` variant; switching cadence at runtime i
 
 A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `BusinessIntent` is grouped by domain into `Navigation`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`, and `apply_business` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
-The vocabulary is three layers: a driver `Event` folds into an `Intent` on the bus (a finger's request, a worker's report, a boot decision), and a record's own verb table is an `Action`. `Link` reports therefore stay `LinkIntent`; `Playback` requests and reports are consumed by the same `PlaybackState` and share one `PlaybackAction` table, with one `PlaybackState::apply` entry point.
+One chain, five words: `Event → Intent → Action → State → Hardware` — an `Event` is what the device heard (a finger, a button, a worker's report, a boot decision), an `Intent` is what it was told, an `Action` is what it decided to do (a record's own verb table; where a domain has one verb, the intent is that table), `State` is what it looks like now (RAM), and `Hardware` is its body (panel, lamp, radio, speaker, storage).
+
+**Hardware is driven by State alone, State is changed by Action alone, Action is triggered by Intent alone, and Intent is raised by Event alone.**
 
 `shared/model/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` hold the records the workers write and the render loop reads, while `device.rs` is the aggregate `DeviceState` and `draft/` is the Network page draft (`NetworkDraft`/`Entry`/`SetupWait`) — the device owns it, the page edits it, the snapshot copies it, and the link never reads it. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/apply.rs`, dispatches through `state/translate.rs` for the current page, and writes the record before translating.
 

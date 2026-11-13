@@ -17,7 +17,10 @@ fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
             ..Default::default()
         });
         let asked = long_press_the_button(&mut manager);
-        assert!(manager.setup_wanted(), "{kinds:?}: the request is latched");
+        assert!(
+            manager.setup_requested(),
+            "{kinds:?}: the request is latched"
+        );
         assert_eq!(
             manager.state().network_page.confirm,
             None,
@@ -30,6 +33,29 @@ fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
             "{kinds:?}: the page keeps its window"
         );
     }
+}
+
+#[test]
+fn the_splash_lands_with_the_setup_request_the_state_holds() {
+    let mut manager = DeviceManager::boot(Boot {
+        backed: Backed {
+            network: true,
+            ..Backed::NONE
+        },
+        ..Default::default()
+    });
+    long_press_the_button(&mut manager);
+    assert!(
+        manager.state().setup_requested,
+        "the request lives in the state the landing reads"
+    );
+
+    let command = manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
+    assert_eq!(
+        command,
+        Some(Command::Network(NetworkCommand::SplashOver { setup: true })),
+        "the landing reads the request from state, not from the manager"
+    );
 }
 
 #[test]
@@ -90,7 +116,7 @@ fn the_splash_lands_on_the_build_page_when_nothing_was_asked() {
         ..Default::default()
     }));
     assert_eq!(manager.state().page(), Page::Camera);
-    assert!(!manager.setup_wanted());
+    assert!(!manager.setup_requested());
 }
 
 #[test]

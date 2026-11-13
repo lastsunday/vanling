@@ -1,6 +1,6 @@
-//! Three words, two paths: a driver `Event` folds into an `Intent` on the bus (a finger's
-//! request, a worker's report, a boot decision), and a record answers with its own `Action`
-//! table. Where an intent is already that table, the record applies it as is.
+//! One chain, five words: `Event` (what a driver saw) → `Intent` (what the device was told)
+//! → `Action` (the record's own verb table, or the intent itself) → `State` (RAM) →
+//! `Hardware`. An action only writes state; hardware only reads it.
 //!
 //! The Network key grid lives in `keyboard`.
 

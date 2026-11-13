@@ -203,7 +203,9 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`BusinessIntent` 按域分组为 `Navigation`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`，`apply_business` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
-词汇只有三层：驱动 `Event` 折成总线上的 `Intent`（手指的请求、worker 的回报、启动的决定），记录自己的动作表是 `Action`。`Link` 的回报因此仍是 `LinkIntent`；`Playback` 的请求与回报由同一个 `PlaybackState` 消费，共用 `PlaybackAction` 一张表，`PlaybackState::apply` 只有一个入口。
+一条链，五个词：`Event → Intent → Action → State → Hardware` —— `Event` 是设备听到的事（手指、按钮、worker 的回报、启动的决定），`Intent` 是设备被告知了什么，`Action` 是它决定做什么（记录自己的动作表；动词只有一个的域，意图本身就是那张表），`State` 是它现在是什么样（RAM），`Hardware` 是它的身体（屏、灯、射频、喇叭、存储）。
+
+**硬件只由 State 驱动，State 只由 Action 改，Action 只由 Intent 触发，Intent 只由 Event 产生。**
 
 `shared/model/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` 各放工作者写入、渲染循环读取的记录，`device.rs` 是聚合体 `DeviceState`，`draft/` 是 Network 页草稿（`NetworkDraft`/`Entry`/`SetupWait`）——设备拥有它，页面编辑它，快照复制它，链路从不读它。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/apply.rs`，按当前页走 `state/translate.rs`，先写记录再翻译。
 
