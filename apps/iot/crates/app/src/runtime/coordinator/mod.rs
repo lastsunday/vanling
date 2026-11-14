@@ -4,7 +4,7 @@
 //! intents are applied before anything reads state, systems run in their registered order, and
 //! what the surfaces draw is the state this frame settled on.
 
-mod clock;
+mod pacing;
 mod systems;
 
 use crate::state::DeviceManager;
@@ -15,7 +15,7 @@ use crate::render::Renderers;
 use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers::WAKE;
 
-use self::clock::{FrameClock, Wait};
+use self::pacing::{FramePacer, Wait};
 pub(crate) use self::systems::{
     CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
     Schedule,
@@ -27,21 +27,21 @@ pub async fn run_loop(
     manager: &mut DeviceManager,
     schedule: &mut Schedule<'_>,
 ) -> ! {
-    let mut pacing = FrameClock::new(Instant::now());
+    let mut pacing = FramePacer::new(Instant::now());
     let mut first_frame_reported = false;
     loop {
-        let now_ms = Instant::now().as_millis() as u32;
+        let wall_ms = Instant::now().as_millis() as u32;
         schedule.process_intents(bus, manager);
-        schedule.tick(manager, now_ms);
-        let active = renderers.tick(manager.state_ref(), manager.demand(), pacing.elapsed_ms())
+        schedule.tick(manager, wall_ms);
+        let active = renderers.tick(manager.state_ref(), manager.demand(), pacing.frame_ms())
             || manager.notice_active();
         renderers.flush().await;
         if !first_frame_reported {
             first_frame_reported = true;
             iot_core::boot::note_first_frame();
         }
-        match pacing.tick(active, Instant::now()) {
-            Wait::At(deadline) => Timer::at(deadline).await,
+        match pacing.end_frame(active, Instant::now()) {
+            Wait::Until(deadline) => Timer::at(deadline).await,
             Wait::Park => {
                 select(bus.ready_to_receive(), WAKE.wait()).await;
                 pacing.reanchor(Instant::now());

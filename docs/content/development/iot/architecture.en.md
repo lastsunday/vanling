@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "27b9e2433410ef513a56ad3f9d8a01dafd399ebb"
-translated_at = "2026-11-14T15:06:23Z"
+source_file_hash = "01df1e3fda9642ac2540fde434573648dae140ff"
+translated_at = "2026-11-14T15:52:49Z"
 +++
 
 # Architecture
@@ -105,7 +105,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `render/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
 | `runtime/system.rs` | the `System` contract: `tick` takes the manager and the clock, `intent` reads the state its intent already wrote; a worker handle is held by the system |
-| `runtime/coordinator/{mod,clock}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
+| `runtime/coordinator/{mod,pacing}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `pacing.rs` holds the frame clock and the next deadline |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports and the parked-frame line `WAKE`; the network command vocabulary lives in `shared/model/network.rs` |
 | `runtime/feature/{mod,input}.rs` | the feature workers; `mod.rs` is the one `wifi` gate. Input worker: polling, demand scheduling, gesture recognition |
 | `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue; state→command lives in `coordinator/systems/playback.rs` |
