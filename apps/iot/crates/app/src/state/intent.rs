@@ -4,10 +4,10 @@
 
 use crate::shared::intent::{BusinessIntent, InputIntent, Intent, LinkIntent, NavigationIntent};
 use crate::shared::model::{
-    Command, Effects, Health, MAX_LIGHTS, NetworkCommand, Notice, NoticeKind, PlaybackPhase,
+    Command, Effects, Health, NetworkCommand, Notice, NoticeKind, PlaybackPhase,
 };
 use crate::shared::route::Page;
-use crate::state::DeviceManager;
+use crate::state::{DeviceManager, DeviceState};
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
@@ -17,8 +17,11 @@ use super::translate::translate;
 
 impl DeviceManager {
     /// Route one intent all the way to the state it moves, and answer with what the model
-    /// cannot do itself. The input half is written before it is translated, so the page's
-    /// answer is read against the state that gesture produced.
+    /// cannot do itself.
+    ///
+    /// The two input halves touch different fields: the write lands in `touch`/`motion`, which
+    /// only renderers and diagnostics read, while the translation reads the page, the lights and
+    /// the link. Their order is a reading order, not a dependency.
     pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
         let business = match intent {
             Intent::Input(op) => {
@@ -79,9 +82,9 @@ impl DeviceManager {
                 None
             }
             BusinessIntent::Light { instance, action } => {
-                let instance = usize::from(instance).min(MAX_LIGHTS - 1);
-                if let Some(next) = self.state.lights[instance].apply(action) {
-                    self.state.lights[instance] = next;
+                let index = usize::from(DeviceState::light_index(instance));
+                if let Some(next) = self.state.lights[index].apply(action) {
+                    self.state.lights[index] = next;
                 }
                 None
             }

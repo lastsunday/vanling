@@ -34,7 +34,7 @@ impl DeviceManager {
 
     /// Clamped like the write side: an out-of-range read is the last surface, never a panic.
     pub(crate) fn light_state_at(&self, instance: u8) -> LightState {
-        self.state.lights[usize::from(instance).min(MAX_LIGHTS - 1)]
+        self.state.lights[usize::from(DeviceState::light_index(instance))]
     }
 
     pub(crate) fn touch_state(&self) -> Option<TouchEvent> {
@@ -50,8 +50,9 @@ impl DeviceManager {
     }
 
     /// An absolute target, so a test can start from a mode instead of cycling into it.
-    pub(crate) fn apply_to(&mut self, instance: usize, state: LightState) {
-        self.state.lights[instance.min(MAX_LIGHTS - 1)] = state;
+    pub(crate) fn apply_to(&mut self, instance: u8, state: LightState) {
+        let index = usize::from(DeviceState::light_index(instance));
+        self.state.lights[index] = state;
     }
 }
 

@@ -48,14 +48,15 @@ impl DeviceState {
         self.nav.current()
     }
 
-    /// The surface an input source drives: wiring order, clamped to the installed array.
-    pub fn light_surface(&self, source: u8) -> u8 {
-        source.min((MAX_LIGHTS - 1) as u8)
+    /// The light an index names: clamped to the installed array, so an out-of-range intent or
+    /// snapshot lands on the last surface instead of panicking.
+    pub fn light_index(instance: u8) -> u8 {
+        instance.min((MAX_LIGHTS - 1) as u8)
     }
 
     /// What one input asks of the lamp, or `Invalid` when that surface has nothing to move.
     pub fn light_intent(&self, op: &InputIntent, action: LightAction) -> BusinessIntent {
-        let instance = self.light_surface(op.surface());
+        let instance = Self::light_index(op.surface());
         if !self.lights[usize::from(instance)].can(action) {
             return BusinessIntent::Invalid;
         }

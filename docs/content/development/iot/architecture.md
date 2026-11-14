@@ -200,7 +200,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 `apply_intent` 是状态变化的唯一入口（输入先写进记录再翻译），内部仍只经 `apply_business` 落状态；手势改页只有 `BusinessIntent::Navigation(NavigationIntent::NextPage)`，`SplashOver` 只在启动页结束时落到 build 的页。
 
-新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `propose_demand()` 重新求 `EffectiveDemand`。不新造机制。
+新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `settle_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
 需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。`BusinessIntent` 按域分组为 `Navigation`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`，`apply_business` 只做一层索引；每个域在自己的模块里穷尽 `match` 本组变体，新增变体只在拥有它的模块里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由领域返回 `Effects`、门面执行，领域之间不互相调用。
 
@@ -213,6 +213,11 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkDraft` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），只有手指的 `NetworkPageIntent` 写它。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 
 命令的出处也随这条边界走：页面域的 `apply` 直接返回 `Option<NetworkCommand>`，`Effects` 只装设备内的回声与提示，不留发件箱——从意图到工作者只有一条路径。
+
+跨边界的写法按语义选，两个方向各两种：
+
+- **回报**：可能引出命令的（`Link(Status)`、`Playback(Finished)`、`SplashOver`）走总线意图；纯闩锁（扫描列表、采集窗口）在系统的 `tick` 里直接写。
+- **请求**：在状态里推不出来的（重复 `ScanNow`、「要删」而非「已删」、`SplashOver{setup}`）走 `Command`；能由状态边沿推出来的（静音、播放相位）在 `tick` 里 diff。
 
 ### 传输：协调者与工作者
 
@@ -344,7 +349,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 板子没声明的设备不出现在需求里，读作 `Off`，不需要再用四个布尔开关夹一次。
 
-需求状态是被持有的，不是现算的。`DeviceManager` 持有 `demand`，与 `state` 并列。派生的唯一出处是 `propose_demand()`，而 `page`、设备清单、`override_` 的任何一次写入都要跟着它走。
+需求状态是被持有的，不是现算的。`DeviceManager` 持有一份 `EffectiveDemand`，与它来自的页一起放在 `DemandPolicy` 里。派生的唯一出处是 `DemandPolicy::settle`（`apply_business` 末尾经 `settle_demand()` 调用）：缓存键只有页，`keys` 与 `overrides` 自 boot 起不再变，所以页没换就不重算。
 
 下游读的始终是这份提案。输入任务遇到某个器件无法兑现时只记一条告警，并让该器件停在原来的配置；提案本身不回写。当前树里 `MotionConfig::for_mode` 只返回 `PolledRegisters`，所有接线动件的驱动都支持它，所以这条告警路径不可达。
 

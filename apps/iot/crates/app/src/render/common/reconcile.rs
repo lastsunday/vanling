@@ -108,7 +108,7 @@ impl RenderController {
             Consumer::Surface(instance) => Appearance::Surface {
                 instance,
                 appearance: light_appearance(
-                    last.lights[usize::from(instance).min(MAX_LIGHTS - 1)],
+                    last.lights[usize::from(DeviceState::light_index(instance))],
                 ),
             },
             Consumer::Diagnostics => Appearance::Diagnostics(last.diagnostics),

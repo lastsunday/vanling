@@ -2,7 +2,7 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "f4ff7473ab41090511087b9557de91311ecbfcad"
+source_file_hash = "3dbe4c2e63ab6ee33fa7ad22090347c4462d9799"
 translated_at = "2026-11-14T00:00:00Z"
 +++
 
@@ -213,7 +213,7 @@ They are neither a mode nor a cadence: the same mode can carry different UI sema
 
 `apply_intent` is the single entry point for state changes (the input half is written to the record before it is translated) and still lands everything through `apply_business`; the only gesture-driven page change is `BusinessIntent::Navigation(NavigationIntent::NextPage)`, and `SplashOver` lands on the build's page when the splash ends.
 
-A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `propose_demand()` right after `apply_business`. No new mechanism.
+A new scenario is a new `BusinessIntent` variant; switching cadence at runtime is another variant. `EffectiveDemand` is re-derived by `settle_demand()` right after `apply_business`. No new mechanism.
 
 A capability that carries rules (multi-step transitions, invariants, edges across fields) gets its own module. `BusinessIntent` is grouped by domain into `Navigation`/`Link`/`NetworkPage`/`Audio`/`Playback`/`Light`, and `apply_business` is only an index over them; each domain matches its own group exhaustively, so a new variant is one arm in the module that owns it and a missed one is a compile error. Cross-domain actions (a sound, a lamp notice) come back as `Effects` for the manager to apply; domains never call into each other.
 
@@ -226,6 +226,11 @@ One chain, five words: `Event → Intent → Action → State → Hardware` — 
 Business state and page state sit apart, and **whoever writes a field owns it**: `NetworkState` holds only what the radio reported (`link` / `mac` / `aps` / `outage_announced`) and only `LinkIntent` writes it; `NetworkDraft` holds only what the page is in the middle of (the selected row, the draft, keys, the confirmation, the list's scroll position) and only the finger's `NetworkPageIntent` writes it. The page reads `&NetworkState`; the link never reads or writes a page field, so neither "a worker's report lands in a page field" nor "a page edit changes what the radio said" can happen. The other domains keep a `view` sub-record (`AudioView`, `PlaybackView`, `TouchView`) with the same meaning: only what the page is in the middle of, read by notifications and rendering. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
 
 Where a command comes from follows the same boundary: the page domain's `apply` returns `Option<NetworkCommand>` directly, and `Effects` carries only in-device sounds and notices — there is no outbox, and one path from an intent to the worker.
+
+Which form a crossing takes follows the meaning — two forms per direction:
+
+- **Reports**: those that can raise a command (`Link(Status)`, `Playback(Finished)`, `SplashOver`) ride the intent bus; a pure latch (a scan list, a capture window) is written straight from the system's `tick`.
+- **Requests**: those that cannot be derived from state (a repeated `ScanNow`, "forget" rather than "forgotten", `SplashOver{setup}`) go out as a `Command`; those that can be derived from a state edge (mute, playback phase) are diffed in `tick`.
 
 ### Transport: coordinators and workers
 
@@ -365,7 +370,7 @@ The device list is the board's. `Page::demand(&self, keys)` walks the devices th
 
 A device the board did not declare is absent from the demand and reads as `Off`, so four boolean gates are no longer needed on top.
 
-The demand state is held, not re-derived. `DeviceManager` holds `demand` beside `state`. The one place it is derived is `propose_demand()`, and every write to `page`, the device list or `override_` is followed by it.
+The demand state is held, not re-derived. `DeviceManager` keeps an `EffectiveDemand` beside the page it came from, together in `DemandPolicy`. The one place it is derived is `DemandPolicy::settle` (called from `apply_business` through `settle_demand()`): the page is the whole key — `keys` and `overrides` never change after boot — so an unchanged page means no recompute.
 
 Downstream reads that proposal as it stands. When the input worker meets a part it cannot put into the asked-for configuration it logs the refusal and leaves that part where it was; the proposal is not written back. No part in the tree reaches that path today: `MotionConfig::for_mode` only returns `PolledRegisters`, and every wired motion driver supports it.
 
