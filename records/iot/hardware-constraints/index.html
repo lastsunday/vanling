@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/records/iot/hardware-constraints">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title active">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link active">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link active leaf">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/records/iot/hardware-constraints/#硬件约束记录">硬件约束记录</a></li>
+    
+  </ul>
+  
+  <!-- doc-audience: ai -->
+<h1 id="硬件约束记录">硬件约束记录</h1>
+<p><code>apps/iot</code> 在真实硬件上摸出来的约束。<strong>AI 产出，未经人类审阅</strong>，见<a href="https://lastsunday.github.io/vanling/records/">上级说明</a>。</p>
+<p>每条判断标注依据：<strong><code>[测试]</code></strong> 有对应单元测试，<strong><code>[实测]</code></strong> 有硬件测量并附复现方式，<strong><code>[据称]</code></strong> 未复现、仅留痕。</p>
+<hr />
+<h2 id="还没有电源管理，所以还没有时钟源锁——但顺序不能反">还没有电源管理，所以还没有时钟源锁——但顺序不能反</h2>
+<p><code>[据称]</code>（未实现，仅留痕）ESP-IDF 的 <code>esp_pm</code> 用三种锁表达组件对功耗的需求：<code>ESP_PM_CPU_FREQ_MAX</code>、<code>ESP_PM_APB_FREQ_MAX</code>、<code>ESP_PM_NO_LIGHT_SLEEP</code>。锁是<strong>递归</strong>的，持有几次就得释放几次。其文档给出两条本板将来会撞上的事实：</p>
+<ul>
+<li><strong>Light-sleep 期间外设被时钟门控，且不会产生中断。</strong> 因此任何依赖外设中断的驱动必须持 <code>NO_LIGHT_SLEEP</code>。本板的 DVP 采集链与 I2S 采集/放音链都靠 DMA 完成传输，落在这一条里。</li>
+<li><code>REF_TICK</code> / <code>XTAL</code> / <code>RC_FAST</code>（即 RTC_8M）等外设时钟源<strong>不受 APB 降频影响</strong>，所以降频不等于全停，某些时钟能活过 APB 变化。</li>
+</ul>
+<p>当前固件<strong>没有任何 PM 配置</strong>——没有 light-sleep、没有 <code>esp_pm_configure</code>、没有 <code>WFI</code>。喂数任务已在独立的 <code>InterruptExecutor</code> 上（<code>lib.rs</code> 的 <code>Feed::Interrupt</code>），所以执行器争用这条路已经被结构解决，不需要锁。</p>
+<p>因此<strong>没有实现锁是对的</strong>：加两把没有持有者的锁就是死代码，而死锁比死代码更难查。</p>
+<p>但顺序不能反。要加 light-sleep，必须先有引用计数的锁集合，并让至少这些持有：</p>
+<table><thead><tr><th>持有者</th><th>需要的原因</th></tr></thead><tbody>
+<tr><td>播放喂数</td><td>它的存在本身就是时钟来源；停它等于停掉 codec 的主时钟</td></tr>
+<tr><td>采集链</td><td>DMA 完成即释放环，DMA 被门控则环永远不排空</td></tr>
+<tr><td>DVP 采集链</td><td>同上，且其链的修复轮询住在 render 侧</td></tr>
+</tbody></table>
+<p><code>InputSource::set_demand_collecting</code> 已经是这个形状（设备关闭时不能靠下一次 poll 得知，必须有人显式说），所以接线位置已经对了，缺的只是锁本身。</p>
+<p>Zephyr 的做法也印证这个分工：它的 device runtime PM 明确<strong>不管理设备依赖</strong>，「devices can manually get or put their dependencies」——依赖关系由消费者自己管，不是自动的。</p>
+<hr />
+<h2 id="共用一根_MCLK">共用一根 MCLK</h2>
+<p><code>[实测]</code> 采集与放音两个 codec 挂同一组 MCLK / BCLK / LRCK。若各自用独立时钟声明，可以相差几 Hz 而<strong>没有任何东西会报告</strong>：面板会把采集计量对，喇叭却略微偏高——听起来像硬件故障，而它不是。</p>
+<p><code>[实测]</code> 两个故障各自都很安静、且像对方：喇叭吃到错位时钟是爆音，麦克风被错位时钟采样则返回恒定满刻度，看起来像"房间很吵"。</p>
+<p><code>[实测]</code> <strong>哪个单元驱动那对引脚，两个方向都试过，两个都坏</strong>：</p>
+<table><thead><tr><th>谁驱动引脚</th><th>发送侧听到的</th><th>采集侧看到什么</th></tr></thead><tbody>
+<tr><td>采集单元</td><td>持续爆音（发送单元在一个 ES8311 并未被其时钟的除数上移出采样）</td><td>正常</td></tr>
+<tr><td>发送单元</td><td>正常</td><td>恒定满刻度读数 + 一条死平的波形（在采集一个并非给 ES7210 定时的那只除数）</td></tr>
+</tbody></table>
+<p>两个单元跑在各自的时钟域里，谁都不能独自拥有时钟。所以<strong>发送单元驱动引脚、采集被强制为从属</strong>，方向不可交换。</p>
+<p>代码里的对应约束（<code>shared_tdm_config</code>）：<code>with_signal_loopback</code> 让接收单元从属跟随，<strong>其名是唯一误导之处</strong>——它不跨单元传样本，只共享时钟。</p>
+<p><code>audio::tdm_config</code> 与 <code>audio_out::shared_tdm_config</code> 是<strong>有意保留的两份拷贝</strong>，因为两个 feature 相互独立（只有喇叭的板、只有麦克风的板都是真实存在的），不能让任何一半拥有那个共同答案。采集侧那份必须关掉从属——没有发送单元就没有主。</p>
+<hr />
+<h2 id="麦克风前端的_DC_阻断写序">麦克风前端的 DC 阻断写序</h2>
+<p><code>[测试]</code> ES7210 每对输入的 DC 阻断滤波器占两个只差 bit 5 的寄存器（<code>0x0A ^ 0x2A == 0x20</code>），因此拐角是两者唯一共享的字段。有 MockI2c 的写序 trace 测试守着这次写序。</p>
+<p>寄存器按<strong>它们携带的位</strong>命名，而非按级次顺序：没有公开文档支持级次命名——datasheet 是 "Everest Semiconductor Confidential" 并把位定义指向一份不公开的 guide，两个驱动家族连名字都不一致（<code>esp-bsp</code> 称 <code>0x22</code> 为 HPF2，<code>esp-audio-dev</code> 称 HPF1）。</p>
+<p><code>[实测]</code> 交换这一对<strong>不是外观问题</strong>：会抬高静音底噪。所以写序跟着参考驱动走，而不是跟着一个无文档支持的级次顺序。</p>
+<hr />
+<h2 id="0_dBFS_=_102_dB_SPL">0 dBFS = 102 dB SPL</h2>
+<p><code>[据称]</code> 2026-09-28 以 30 cm 对着语音标定：底噪 66 dB SPL，峰值到 80。本次未复现此标定。</p>
+<p>推导链（代码注释里有完整版）：ES7210 满量程为 AVDD/3.3 Vrms，故在 <code>ANALOG_POWER_RUN</code> 下是 1.0 Vrms 而非"headroom"暗示的 2 Vrms；ZTS6216 的 −38 dBV/Pa 即 12.59 mV/Pa，经 <code>GAIN_30DB</code> 到转换器是 397.8 mV/Pa——于是满量程 2.51 Pa，对 20 µPa 参考压力即 101.98 dB。</p>
+<p><strong>重新标定的方法</strong>（换胶囊或换增益档时）：设 <code>CAL_SPL_LOG</code>，在同一距离说话。</p>
+<blockquote>
+<p>这些数字留在代码注释里是因为它们决定读数；要改数值必须同时改这里和代码。</p>
+</blockquote>
+<p>核心侧如何消费这个偏移（为什么 <code>spl()</code> 把它当参数收）见<a href="https://lastsunday.github.io/vanling/records/iot/audio/">音频实现记录</a>。</p>
+<hr />
+<h2 id="QMI8658A_的_tap_engine_不可用">QMI8658A 的 tap engine 不可用</h2>
+<p><code>[据称]</code> 该器件的轻点引擎在使能瞬间锁住一个不释放的 tap 位和冻结的 <code>TAP_NUM</code>，无法分辨真实敲击，因此只 arm No-Motion，敲击判定改由 core 侧的识别器承担（<code>recognizer.rs</code>，<code>[测试]</code> 7 个用例覆盖敲击/转身/一次敲击计数）。本次未复现该现象。</p>
+<p>完整的判定规则、门限来源与被否方案见<a href="https://lastsunday.github.io/vanling/records/iot/motion/">运动实现记录</a>。</p>
+<hr />
+<h2 id="主任务栈容量">主任务栈容量</h2>
+<blockquote>
+<p><code>[实测]</code> <strong>栈的三个数字都已随摄像头进产品而变，以下是当前值</strong>（<code>vanling</code>，<code>moon run iot:build-s3</code> 后读 ELF 符号）：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>_stack_end        = 0x3fcd529c   (was 0x3fcd154c)</span></span>
+<span class="giallo-l"><span>_stack_start_cpu0 = 0x3fce9710   →  83 060 B = 81.1 KB   (was 98 756 B)</span></span></code></pre>
+<p>面板帧缓冲从堆上那份 <code>Vec</code> 变成了板层的静态 arena（与相机 ring 共用，见 <code>camera.md</code>），<code>HEAP_MEM</code> 因此从 204,800 降到 65,536；净效果是 <code>.bss</code> <strong>增加</strong> 14,336 B、主栈减少约 15 KB。<code>FRAME_ARENA</code> 实测落在 <code>0x3fcaf900</code>，<code>% 64 == 0</code>。</p>
+</blockquote>
+<p><code>[实测]</code> <code>esp-hal</code> 自带的 <code>stack.x</code> 把主任务栈顶设在 <code>dram_seg</code> 末尾，<code>dram2_seg</code> 那块无人认领，<code>crates/app/linker/esp32s3-main-stack.x</code> 把它接上，栈因此跨两块内存连续。</p>
+<p><code>[实测]</code> 从 ELF 符号读出的真实几何：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>_stack_end        = 0x3fcd154c</span></span>
+<span class="giallo-l"><span>_stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB</span></span></code></pre>
+<blockquote>
+<p><code>[实测]</code> <strong>这两个值是摄像头进产品之前测的</strong>，见本节开头。<code>_stack_start_cpu0</code> 此前还记为 <code>0x3fced710</code> / 115 140 B，少算了 ROM 的两个 16 KB 引导栈：<code>esp32s3-main-stack.x</code> 把栈顶设在 <code>dram2_seg</code> 上沿<strong>减</strong> <code>ROM_BOOT_STACKS = 0x4000</code>（<code>0x3fced710 - 0x4000 = 0x3fce9710</code>）；ROM 的 PRO/APP 引导栈不能被主栈顶到。同一个漏算让 <code>camera.md</code> 一度得出"ring 进 <code>vanling</code> 必然 region overflow"的错误结论，那一节已注明。</p>
+</blockquote>
+<p><strong>为什么需要</strong>：绘制一屏渲染时 <code>Diagnostics</code> 快照与两个 <code>[u16; ENVELOPE_COLUMNS]</code> 列数组按值在栈上，Audio 页曾在这个栈上崩溃（异常的 <code>A1</code> 落在 <code>_stack_end</code> 之下）。</p>
+<p><code>[实测]</code> 2026-10-28 在 Ambient 页读到 <strong>42,392 B of 65,976 B</strong>（64.3%），余 23,584 B（info 镜像开机日志，<code>[DISPLAY] stack peak 42392 B of 65976 B</code>，2.7 s 处的第一个窗口）；此前记的 36,453 B（43.9%）是这几轮 render/state 改动之前的值。固件自带水位测量（<code>[DISPLAY] stack peak</code>），每重绘窗口采样一次，取最深值——不是估算。Camera 页的水位此前一直读 <code>0 B</code>：那条路径不经过任何采样点，是没测而不是水位低，现已补上。</p>
+<p><strong>一个未解的疑问</strong>：这个峰值从开机起几乎不变，多页切换也没有推高它。而历史崩溃点是 Audio 页的整帧 stamp。峰值到底属于哪条路径<strong>尚未定位</strong>；若它其实属于渲染，说明渲染比代码注释描述的还重，值得继续查。</p>
+<h3 id="操作面按页拆开之后：墙没动，峰值_42,392_B（[实测]，2026-10-28）">操作面按页拆开之后：墙没动，峰值 42,392 B（<code>[实测]</code>，2026-10-28）</h3>
+<p><code>[实测]</code> 同一把尺子（<code>nm apps/iot/target/xtensa-esp32s3-none-elf/release/vanling</code>），读数取在 <code>state/</code> 按页拆分与声音目录搬去 <code>app</code> 之后：</p>
+<table><thead><tr><th>量</th><th>读数</th></tr></thead><tbody>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td><code>0x3fce9710 − 0x3fcd9558</code> = <strong>65,976 B</strong>（下限 65,536，余量 <strong>440 B</strong>）</td></tr>
+<tr><td><code>__embassy_main::POOL</code></td><td><strong>42,776 B</strong>（<code>0xa718</code>）</td></tr>
+<tr><td><code>moon run iot:image</code></td><td>S3 <code>1,059,904 / 6,291,456 B</code>（16.85%）、C6 <code>842,400 / 1,048,576 B</code>（80.34%）</td></tr>
+</tbody></table>
+<p>这一组地址与拆分之前逐字节相同，所以这两轮对 S3 静态量的净增量是 <strong>0</strong>：搬的是代码的归属，不是布局。镜像是 S3 <code>1,059,888 → 1,059,904 B</code>（+16 B）；C6 上一版记的是 <code>826,976 B</code>，但与 HEAD 用同一条命令重编比，C6 是 <strong>826,656 → 842,400 B（+15,744 B）</strong>。</p>
+<p><strong>这 15.7 KB 全在 C6 一侧，出处已经量到</strong>：<code>app/src/playback/sounds.rs</code> 的 <code>play</code> 现在先解析再交给喇叭，而 HEAD 上解析发生在 S3 的驱动里——C6 的 <code>UnwiredSpeaker::play(Sound)</code> 什么都不做，LTO 就把解析摘掉了。证据是符号：HEAD 的 C6 镜像里 <code>from_midi</code>、<code>Score::into_notes</code> 的排序、<code>Tone::fill</code> <strong>0 处</strong>，本轮 7 处；<code>control_loop::poll</code> 因此长了 5,466 B，<code>iot_core::drivers::playback</code> 的符号在本轮合计 10,608 B。C6 的 <code>take_playback()</code> 返回 <code>None</code>，这条路径运行时不执行，付的是槽位不是周期。C6 还剩 206,176 B，所以这条只记录：要不要把解析重新关在编译期（软 feature，或只在有喇叭的构建里保留 <code>play</code>）是一个待定项。</p>
+<p>该次构建没有设 <code>IOT_WIFI_*</code>，凭证字符串会挪 <code>_stack_end</code>，所以这组墙只与同样不带凭证的构建比。</p>
+<p><code>[实测]</code> <strong>峰值：<code>42,392 B of 65,976 B</code></strong>（64.3%，余 23,584 B）。这行印在产品 info 镜像的开机日志里（<code>moon run iot:flash-s3</code>，复位后 2.7 s 的第一个窗口，Ambient 页），<code>main stack</code> 与 <code>nm</code> 一致——<code>[DISPLAY] stack peak</code> 并不需要 debug 镜像：水位每涨 1,024 B 就在 info 印一次，同样的读数重播才降到 debug。这个数含启动页与落地后那一页的绘制。</p>
+<p><code>[实测]</code> <strong>跨页最坏值：42,392 B <code>of</code> 65,976 B</strong>（Speaker 页 42,376 B，是六页里唯一更低的一个）。六页各用 <code>IOT_BOOT_PAGE=&lt;页名&gt;</code> 重编、烧录、录一次开机；同一块板、同一时段、全部拿到 <code>192.168.1.136</code>：</p>
+<table><thead><tr><th>页</th><th><code>App/part</code> B</th><th><code>main stack</code> B</th><th>峰值 B</th></tr></thead><tbody>
+<tr><td>ambient</td><td>1,059,904</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>attitude</td><td>1,059,952</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>audio</td><td>1,059,984</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>speaker</td><td>1,060,192</td><td>65,976</td><td>42,376</td></tr>
+<tr><td>camera</td><td>1,059,920</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>network</td><td>1,059,936</td><td>65,976</td><td>42,392</td></tr>
+</tbody></table>
+<p><code>main stack</code> 六页一字不差：启动页只挑入口，不动静态布局。峰值最小的是 Speaker 页（42,376 B，比其余页浅 16 B），差的是那一页的绘制链深度，不是测量粒度——打印按「每涨 1,024 B 报一次」触发，报出来的值是精确水位。按上限记账时仍取 42,392 B。<strong>440 B 是墙到下限的距离；42,392 B 是已经踩到的水位。</strong></p>
+<h3 id="B/C_拆分之后：墙宽了_160_B（[实测]，2026-10-29）">B/C 拆分之后：墙宽了 160 B（<code>[实测]</code>，2026-10-29）</h3>
+<p><code>[实测]</code> 同一把尺子，读数取在 <code>core/src/page/</code> 一页一模块、<code>state/tests.rs</code> 按模块搬家、<code>ui/src/pages/live.rs</code> 拆成三页、帧节拍抽成 <code>app/src/frame.rs</code> 之后（Docker 引擎恢复后补测，构建未设 <code>IOT_WIFI_*</code>）：</p>
+<table><thead><tr><th>量</th><th>读数</th><th>上一组（A 收尾）</th><th>差</th></tr></thead><tbody>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td><code>0x3fce9710 − 0x3fcd94b8</code> = <strong>66,136 B</strong></td><td>65,976 B</td><td><strong>+160 B</strong></td></tr>
+<tr><td>余量（减 65,536）</td><td><strong>600 B</strong></td><td>440 B</td><td>+160 B</td></tr>
+<tr><td><code>__embassy_main::POOL</code></td><td><strong>42,784 B</strong>（<code>0xa720</code>）</td><td>42,776 B</td><td>+8 B</td></tr>
+<tr><td><code>moon run iot:image</code> S3</td><td><code>1,059,216 / 6,291,456 B</code>（16.84%）</td><td>1,059,904</td><td><strong>−688 B</strong></td></tr>
+<tr><td><code>moon run iot:image</code> C6</td><td><code>843,728 / 1,048,576 B</code>（80.46%）</td><td>842,400</td><td><strong>+1,328 B</strong></td></tr>
+</tbody></table>
+<p><code>[实测]</code> POOL 长了 8 B，墙却宽了 160 B，说明别的静态量少了 168 B：B/C 是代码搬家，LTO 在新模块边界上重排了结果，不是某一处被刻意缩小。C6 的 +1,328 B 没有逐符号归因——C6 还剩 204,848 B，只记录这个数。<code>check-s3</code>、<code>build-s3</code>、<code>iot:image</code>、<code>check-features</code>（六 subset host + 九 subset 裸金属/C6）本轮全部通过。</p>
+<p><code>[实测]</code> 第一次尝试因本机 Docker Desktop 引擎掉线而未测：<code>moon run iot:check-s3</code> 停在 <code>image vanling/xtensa:esp32s3_1.98.1.0 is missing</code>，<code>docker info</code> 报 <code>Cannot connect to the Docker daemon at unix:///Users/yu/.docker/run/docker.sock</code>；引擎恢复（Server 28.5.1）后同一棵树补测得上表。</p>
+<h3 id="板层两个大件装箱：墙宽了_35,616_B（[实测]，2026-10-30）">板层两个大件装箱：墙宽了 35,616 B（<code>[实测]</code>，2026-10-30）</h3>
+<p><code>[实测]</code> <code>Board</code> 按值传进 <code>main</code> 的 future，future 又整个驻在 <code>__embassy_main::POOL</code> 这个静态池里，所以<strong>字段内联多少，静态量就多重多少</strong>。本轮把 <code>lckfb_szpi_esp32s3</code> 板上两个按值携带的器件装箱（字段 <code>light</code> 同时更名为 <code>screen</code>；C6 的 <code>light</code> 是真 WS2812，不动）：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-source">screen</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Screen</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                    // 原 light: Option&lt;Screen&gt;</span></span>
+<span class="giallo-l"><span class="z-source">audio</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Es7210Rx</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-source">…</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> REFERENCE_SAMPLES</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">   // 原 Option&lt;Es7210Rx&lt;…&gt;&gt;</span></span></code></pre>
+<p><code>size_of</code>（<code>check-s3</code> 里拿 <code>let _: [u8; 0] = [0u8; size_of::&lt;T&gt;()]</code> 探出来的，探针未留在树上）：<code>Screen</code> <strong>2,712 B</strong>（其中 <code>Diagnostics</code> 2,568 B）、<code>Option&lt;Es7210Rx&lt;…&gt;&gt;</code> <strong>9,168 B</strong>（AEC 的 <code>AdaptiveFilter</code> 是大头）、<code>Board</code> 两者都装箱 <strong>240 B</strong>（都内联时 <strong>12,112 B</strong>，由上两次读数推算）。</p>
+<table><thead><tr><th>量</th><th>都装箱（本轮）</th><th>只装箱屏幕</th><th>都不装箱</th><th>差（都不装箱 → 都装箱）</th></tr></thead><tbody>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td><code>0x3fce9710 − 0x3fcd09b8</code> = <strong>101,720 B</strong></td><td>74,232 B</td><td>66,104 B</td><td><strong>+35,616 B</strong></td></tr>
+<tr><td>余量（减 65,536）</td><td><strong>36,184 B</strong></td><td>8,696 B</td><td>568 B</td><td>+35,616 B</td></tr>
+<tr><td><code>__embassy_main::POOL</code></td><td><strong>7,192 B</strong>（<code>0x1c18</code>）</td><td>34,696 B（<code>0x8788</code>）</td><td>42,808 B（<code>0xa738</code>）</td><td><strong>−35,616 B</strong></td></tr>
+</tbody></table>
+<p>三段读数取自同一棵树、同一把尺子（<code>nm -S apps/iot/target/xtensa-esp32s3-none-elf/release/vanling</code>），只改这两处的装箱与字段名。POOL 的减少量各是字段大小的约三倍（屏幕 <strong>−8,112 B</strong> ≈ 3 × 2,712；麦克风前端 <strong>−27,504 B</strong> = 3 × 9,168），即 future 布局里每个值被搬了三份（板层构造、<code>take_*</code> 的临时、<code>WiredSurface</code>/<code>PollEntry</code> 的落地各一）；具体符号没有逐处归因。</p>
+<p><strong>堆不变</strong>：两个 <code>Box</code> 在 <code>take_surfaces</code> / <code>take_audio</code> 处释放，值随即搬进本来就有的 <code>Vec&lt;WiredSurface&lt;Screen&gt;&gt;</code> 与 <code>PollEntry</code> 的 <code>Box</code>，S3 那块 96 KB PSRAM 堆的峰值不变，只是这些字节在开机那一刻先落堆、再原样挪走。</p>
+<p><code>check-s3</code>、<code>check-c6</code>、<code>check-host</code>、<code>build-s3</code> 与 S3 目标的 <code>cargo clippy -- -D warnings</code> 本轮全部通过。</p>
+<h3 id="面板_SPI_拷贝缓冲_8_KiB_→_128_B，主栈墙宽_8,088_B（[实测]，2026-11-01）">面板 SPI 拷贝缓冲 8 KiB → 128 B，主栈墙宽 8,088 B（<code>[实测]</code>，2026-11-01）</h3>
+<p><code>[实测]</code> 面板 SPI 那两个 4 KiB <code>with_buffers</code> 不参与帧传输。<code>SpiDma::write</code> 的 <code>DmaOperationKind::for_write</code> 对<strong>内部 DRAM 切片</strong>判 <code>InPlace</code>（<code>memory_range!("DRAM")</code> = <code>0x3FC88000..0x3FD00000</code>，<code>FRAME_ARENA</code> 在 <code>0x3fc9b420</code>），所以 153,600 B 的帧、以及栈上的命令与参数都是直传；只有 <strong>rustc 提升到 <code>.rodata</code> 的常量切片</strong>（<code>&amp;[0x01]</code> 这种）落在 flash、DMA 读不到，才走拷贝缓冲。</p>
+<p><code>[实测]</code> 干脆删掉 <code>with_buffers</code> <strong>起不来</strong>：<code>board init failed, resetting: Spi(DmaError(BufferTooSmall))</code> —— <code>panel_spi</code> 里的软件复位 <code>&amp;[0x01]</code> 正是那种常量。所以缓冲必须留，尺寸按「最长的一条命令参数」定：两个 64 B，合计 128 B。</p>
+<table><thead><tr><th>量</th><th>改前</th><th>改后</th><th>差</th></tr></thead><tbody>
+<tr><td><code>.bss</code></td><td>231,064 B</td><td>222,976 B</td><td>−8,088 B</td></tr>
+<tr><td><code>.stack</code>（dram_seg 一侧）</td><td>43,880 B</td><td>52,000 B</td><td>+8,120 B</td></tr>
+<tr><td><code>main stack</code>（开机日志）</td><td>101,240 B</td><td><strong>109,328 B</strong></td><td>+8,088 B</td></tr>
+<tr><td><code>[HEAP]</code></td><td>96 KiB</td><td><strong>512 KiB</strong></td><td>堆在 PSRAM，不占内部 DRAM</td></tr>
+</tbody></table>
+<p><code>dram_seg</code> 总量仍是 341,760 B、余量仍是 0：省下来的字节被链接脚本直接并进主栈，所以收益是<strong>墙更宽</strong>，不是「多出可用字节」。</p>
+<p><code>[实测]</code> 帧传输没变慢：64 B 缓冲下同一窗口 9 次重绘里 8 次落在 15–19 ms（153,600 B / 80 MHz = 15.36 ms）。另一次读数 610 ms，同一时段 <code>[INPUT]</code> 报 <code>worst single hold 597 ms … worst source: touch 597 ms</code> —— 是触摸轮询占住执行器，与缓冲无关（帧在 <code>.bss</code>，本来就不经拷贝缓冲）。</p>
+<p><code>[实测]</code> 同一轮把射频驱动堆的 <code>dram_seg</code> 份额从 16 KiB 收到 8 KiB（<code>radio/esp32s3.rs</code> 的 <code>INTERNAL_BYTES</code>）：开机 <code>[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it</code>，总量 49,152 → <strong>40,960 B</strong>，主栈 109,328 → <strong>117,520 B</strong>（+8,192，与收掉的份额一一对应）。余量按已量的驱动峰值 33,332 B 算约 <strong>7.6 KB</strong>（32.2% → 23.1%）；产品在该尺寸下关联、拿到地址并稳定持有，没有 <code>OutOfMemory</code>。S3 与 C6 的驱动堆就此不再同尺寸（C6 仍是单块 48 KiB）。</p>
+<p><code>[实测]</code> 堆 96 KiB → 512 KiB：开机 <code>[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window</code>。改前开机只剩约 1.6 KB，下一次 <code>Box</code> 就是分配失败；PSRAM 窗口 8 MiB，抬到 512 KiB 不动内部 DRAM。</p>
+<h3 id="面板帧传输按_32_行分块_+_yield：最长连续持有_15_ms_→_1–2_ms（[实测]，2026-11-01）">面板帧传输按 32 行分块 + yield：最长连续持有 15 ms → 1–2 ms（<code>[实测]</code>，2026-11-01）</h3>
+<p><code>[实测]</code> 一帧 153,600 B / 80 MHz = <strong>15.36 ms</strong>，原先一次 <code>SpiBus::write</code> 把这一整段连续占住 core 0 的协作执行器 —— 喂数、触摸/运动轮询、capture 轮询与渲染共用它。修法不是换驱动，而是让这段传输中间让出执行器。</p>
+<p><strong>async DMA 这条路走不通</strong>：<code>SpiDma&lt;Async&gt;::write_async</code> 把它的 <code>[DmaDescriptor; LINK_DESCRIPTOR_COUNT]</code>（<code>MAX_DMA_SIZE.div_ceil(CHUNK_SIZE) + 3</code>）放在协程帧里，而本仓的 future 一律 <code>Box::pin</code> 到 PSRAM 堆上，于是真机一写就 panic：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMemoryRegion</span></span></code></pre>
+<p>描述符必须落内部 DRAM，堆上的 boxed future 给不了它。所以本板<strong>不能</strong>把 esp-hal 的 async DMA 与堆上 future 一起用。</p>
+<p>采用的做法：驱动仍是 <code>SpiDma&lt;'static, Blocking&gt;</code>，<code>write_frame</code> 变 <code>async</code>，帧按 <strong>32 个控制器行 = 15,360 B</strong> 分块发送，块间 <code>embassy_futures::yield_now().await</code>；描述符继续留在 blocking 调用自己的栈帧（内部 DRAM）。<code>FRAME_CHUNK_BYTES ≤ 32,736</code>（esp-hal 私有的 <code>MAX_DMA_SIZE</code>）由 <code>const _: () = assert!(...)</code> 在编译期钉住，越界会在运行时报 <code>MaxDmaTransferSizeExceeded</code>、表现为整帧不上屏。</p>
+<p><strong>线上安全</strong>：<code>panel_spi</code> 不接 CS（只有 <code>.with_sck().with_mosi()</code>），分块只是插入 SCK 空闲间隙，DC 全程为高，字节流与一次发完完全一致；渲染结果与页面行为不变。</p>
+<p>接口面只多一条：<code>PageSurface::flush</code> / <code>Renderer::flush</code> 返回 <code>Option&lt;Pin&lt;Box&lt;dyn Future&gt;&gt;&gt;</code>，<code>Registry::flush()</code> 在 <code>tick</code> 之后 await 一次；绘制仍同步（只写 RAM），传输落在 flush 里。<code>camera-probe</code> 也 await 同一个 <code>write_frame</code>。</p>
+<p>计量口径：<code>hold</code> = render + 线上总时间（CPU 负载没变，只是不再连成一整段），新增 <code>worst chunk</code> = 最长单次传输，也就是<strong>真正的最长连续持有</strong>。本节读数用的是旧口径；下一节把传输搬到第二个核之后，<code>hold</code> 只剩 render，<code>worst wait</code> 记的是被 park 的时间。</p>
+<table><thead><tr><th>读数（Attitude 页，<code>IOT_BOOT_PAGE=Attitude IOT_LOG_LEVEL=debug</code>）</th><th>改前</th><th>改后</th></tr></thead><tbody>
+<tr><td>首窗</td><td><code>6 repaints in 2046 ms, held 110 ms (5%), worst render 3 ms, worst write 15 ms</code></td><td><code>6 repaints in 2724 ms, held 110 ms (4%), worst render 2 ms, worst write 17 ms (longest chunk 2 ms)</code></td></tr>
+<tr><td>稳态窗</td><td><code>10 repaints in 2097 ms, held 193 ms (9%), worst render 4 ms, worst write 16 ms</code></td><td><code>12 repaints in 2202 ms, held 229 ms (10%), worst render 3 ms, worst write 16 ms (longest chunk 2 ms)</code></td></tr>
+</tbody></table>
+<p><code>worst write</code> 仍是 15–17 ms（线上时间不会因为分块变短），变的是它不再是一整段：<code>longest chunk</code> 1–2 ms。开机窗偶见的 6xx ms 是 WiFi 关联落在单块传输里，改前同样存在（同一时段 <code>[INPUT]</code> 报 <code>worst single hold 597 ms … worst source: touch 597 ms</code>），与分块无关。</p>
+<p><code>[实测]</code> 资源不变：开机 <code>[DISPLAY] … main stack 117520 B</code> 与 HEAD 相同（<code>nm</code> 读数 <code>_stack_start_cpu0 − _stack_end</code> = <code>0x3fce9710 − 0x3fcccc00</code>），<code>.data</code> 18,904 B、<code>.data.wifi</code> 496 B、<code>.bss</code> 214,784 B，App 1,055,264 B。回退 async 驱动顺带丢掉了它带来的 +88 B <code>.data</code>。</p>
+<h3 id="Audio_重绘步长翻倍_+_面板传输搬到第二个核：core_0_持有_40%_→_3%（[实测]，2026-11-01）">Audio 重绘步长翻倍 + 面板传输搬到第二个核：core 0 持有 40% → 3%（<code>[实测]</code>，2026-11-01）</h3>
+<p><code>[实测]</code> 上一节把一帧的<strong>连续</strong>持有从 15 ms 压到 1–2 ms，但 16 ms 的线上时间仍是 core 0 的账：<code>SpiDma&lt;Blocking&gt;</code> 的忙等只是被切成小段，整段仍归协作执行器。Audio 页把这件事放大到看得见 —— <code>[DISPLAY] Audio 44 repaints in 2059 ms, held the executor 819 ms (40%)</code>，而 <code>[INPUT]</code> 在同一构建的稳态窗里是 39%（<code>1970 ms of 5003 ms</code>，见下文），也就是说 core 0 的大头一直是采集折叠，不是面板。两处一起改，先改便宜的。</p>
+<p><strong>一、Audio 页的重绘步长 40 → 80 ms。</strong> 门槛从 <code>render::DIAG_REPAINT_STEP_MS</code> 挪到每页的渲染策略（<code>render::screen::policy::repaint_step_ms(page)</code>），只有 Audio 是默认值的两倍，其余页面仍是 40。理由是这一页的漂移来得比谁读得都快：capture 每 20 ms 折两列包络，40 ms 的步长已经把 200 列的扫线每 ~45 ms 重画一次；80 ms 下一帧推进八列，仍是扫线，代价减半。<code>the_audio_page_waits_twice_the_default_step</code> 钉住这条。</p>
+<table><thead><tr><th>读数（<code>IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug</code>，~2 s 窗）</th><th>改前</th><th>只改步长</th><th>再搬第二个核</th></tr></thead><tbody>
+<tr><td>重绘次数</td><td>44–45</td><td>27–30</td><td>26–30</td></tr>
+<tr><td><code>held the executor</code></td><td>819 ms (40%)</td><td>505–561 ms (24–27%)</td><td><strong>65–76 ms (3%)</strong></td></tr>
+<tr><td><code>worst render</code></td><td>3 ms</td><td>2–3 ms</td><td>2–3 ms</td></tr>
+<tr><td><code>worst wait</code></td><td>—</td><td>—</td><td>17 ms</td></tr>
+<tr><td><code>worst write</code>（<code>longest chunk</code>）</td><td>16 ms (1–2 ms)</td><td>16 ms (1–2 ms)</td><td>15–16 ms (1 ms)</td></tr>
+</tbody></table>
+<p><strong>二、面板的传输搬到第二个 APP core。</strong> 控制器和总线成为 <code>PanelBus</code>，<code>Screen</code> 只留一条通道；协调者把画完的帧当 <code>Ticket</code>（裸指针 + 长度，<code>unsafe impl Send</code>）投进 <code>REQUESTS: Channel&lt;_, Ticket, 1&gt;</code>，然后 park 在 <code>SHIPPED.wait()</code> 上等结果，<code>panel_service</code> 在另一个核上 <code>write_frame</code> 并回一个 <code>Result&lt;Wire, Error&gt;</code>。安全性靠握手本身：帧是 <code>'static</code> 的 <code>static mut</code> 竞技场，<code>Panel::write</code> 在票据整个生命周期内都停在 <code>wait()</code> 里不碰它，总线上只有一次请求在飞。</p>
+<p><code>[实测]</code> 触发点必须换：<code>esp_rtos::start_second_core</code> 硬编码 <code>FROM_CPU_INTR1</code>，而产品里 <code>Priority2</code> 的喇叭 feed executor 已经占着它，所以 feed 改到 <code>FROM_CPU_INTR2</code>（<code>InterruptExecutor&lt;2&gt;</code>），核间唤醒留在 INTR1。第二个核的栈是 16 KiB 静态量（<code>chip-esp</code> 的 <code>PANEL_CORE_STACK</code>）—— <code>.stack</code> 填满区域剩余部分，所以这是从主栈墙上切走的一块，不是额外拿到的一块。</p>
+<p><code>[实测]</code> 计量口径随之改：<code>hold</code> 现在只算 render（协调者自己的 CPU），被 park 的时间单列 <code>worst wait</code>。所以「40% → 3%」是<strong>持有归属的转移</strong>，不是线上时间变短：那 16 ms 仍在花，只是花在另一个核上；<code>worst write</code> 仍 15–16 ms，<code>longest chunk</code> 1 ms —— 但从这一节起，<code>longest chunk</code> 量的是 <strong>core 1 的持有</strong>，不再进 core 0 的账；它是面板服务自己那条 lane 的抖动指标，不能和 <code>[INPUT]</code>/<code>[DISPLAY]</code> 的持有相加。</p>
+<table><thead><tr><th>资源（<code>size -A</code> / <code>nm</code>，同一棵树）</th><th>改前</th><th>改后</th><th>差</th></tr></thead><tbody>
+<tr><td><code>.text</code></td><td>850,713 B</td><td>857,729 B</td><td>+7,016 B</td></tr>
+<tr><td><code>.bss</code></td><td>214,784 B</td><td>231,544 B</td><td>+16,760 B（16 KiB 栈 + 通道/信号量）</td></tr>
+<tr><td><code>.data</code></td><td>18,904 B</td><td>18,928 B</td><td>+24 B</td></tr>
+<tr><td>主栈（开机日志 / <code>_stack_start_cpu0 − _stack_end</code>）</td><td>117,520 B（<code>0x3fcccc00</code>）</td><td><strong>100,728 B</strong>（<code>0x3fcd0d98</code>）</td><td>−16,792 B</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 行为没有回退：Attitude 页 <code>[DISPLAY] Attitude 5–9 repaints in 2041–2560 ms, held the executor 16–29 ms (0–1%), worst render 3 ms, worst wait 16 ms, worst write 15 ms (longest chunk 1 ms)</code>；两页 <code>stack peak 29848 B of 100728 B</code>，无 panic、无 <code>[DISPLAY]</code> 告警。core 0 剩下最大的持有者是 capture 折叠（<code>[INPUT] held the executor 1970 ms of 5003 ms</code>，~39%），本次不动。</p>
+<p><code>[实测]</code> 检查面：<code>check-s3</code>、<code>check-c6</code>、<code>check-host</code>、<code>check-features</code>（全部子集）、<code>build-s3</code>（只剩既有的 RWX 链接告警）、S3 目标的 <code>cargo clippy -- -D warnings</code>、<code>lint</code>、<code>lint-host</code>、<code>test</code>、<code>test-bsp</code> 本轮全部通过。</p>
+<h3 id="驱动半边整体搬到_core_1：core_0_只剩_render_的_4%（[实测]，2026-11-01）">驱动半边整体搬到 core 1：core 0 只剩 render 的 4%（<code>[实测]</code>，2026-11-01）</h3>
+<p>上一节末尾把 core 0 剩下的 39% 记成「本次不动」的采集折叠。这一节动它：<code>input_task</code> 与 <code>control_loop</code> 连同它们持有的驱动成为一个 <code>Io</code> 束，由 <code>IoPlacement</code> 决定落在哪——<code>Elsewhere(&amp;IoQueue)</code> 交给第二个核上的 <code>run_io_from</code>，<code>Inline(spawner)</code> 留在协调者自己的执行器上。单核 C6 和没有面板的 S3 走 <code>Inline</code>，任务与代码路径完全相同，只是位置不同。</p>
+<table><thead><tr><th>读数（<code>IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug</code>，~2 s 窗，稳态）</th><th>改前（面板在 core 1）</th><th>改后（驱动半边也在 core 1）</th></tr></thead><tbody>
+<tr><td><code>[DISPLAY] Audio</code> 重绘</td><td>26–30</td><td>26–29</td></tr>
+<tr><td><code>held the executor</code></td><td>65–76 ms (3%)</td><td>83–95 ms (4%)</td></tr>
+<tr><td><code>worst render</code></td><td>2–3 ms</td><td>3–4 ms</td></tr>
+<tr><td><code>worst wait</code></td><td>17 ms</td><td>26–47 ms</td></tr>
+<tr><td><code>worst write</code>（<code>longest chunk</code>）</td><td>15–16 ms (1 ms)</td><td>15–16 ms (1 ms)</td></tr>
+<tr><td><code>[INPUT] held the executor</code></td><td>1970 ms of 5003 ms（39%），记在 core 0</td><td>1677–2026 ms of 5001–5007 ms（33–40%），记在 core 1</td></tr>
+<tr><td><code>[INPUT] worst single hold</code></td><td>—</td><td>9–19 ms（bound 30 ms），capture 7–16 ms</td></tr>
+<tr><td><code>[PLAY] cadence</code></td><td>—</td><td>400 feeds in 2000 ms（100% of nominal），0 gaps over 20 ms，worst gap 5 ms，worst work 428–707 µs</td></tr>
+<tr><td><code>stack peak</code></td><td>29848 B of 100728 B</td><td>24008 B of 91824 B</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 采集折叠的账几乎原样搬了家：<code>[INPUT] held the executor … of 5001 ms</code> 这条读数的分子分母都没变，只是从 core 0 换到 core 1；core 0 的执行器现在只剩 render 的 4%。代价单一且可指认——Audio 页的 <code>worst wait</code> 从 17 ms 涨到 26–47 ms：面板服务在 core 1 上与采集轮询（最长 7 ms，开机首个窗口 16 ms）和喇叭喂数排同一个协作执行器，一次完整传输 ~15 ms 加上这段，落在 30 ms 上下，偶发一次 47 ms。重绘数没变（26–29），多出来的等待没有丢帧。</p>
+<p><code>[实测]</code> 播放、运动与摄像头都没有因此变差：<code>[PLAY]</code> 满速 400 feeds/2 s、0 gaps；Attitude 页 <code>[DISPLAY] Attitude 5–9 repaints in 2022–2779 ms, held the executor 15–30 ms (0–1%), worst render 3–4 ms, worst wait 17–19 ms, worst write 15 ms (longest chunk 1 ms)</code>，同一窗口 <code>[INPUT] held the executor 632–637 ms of 5003–5005 ms</code>（12–13%，这页不开采集）、core 1 栈 1856 B；Camera 页稳态 <code>[DISPLAY] Camera 11 repaints in 2118–2120 ms, held the executor 3–4 ms (0%), worst render 0 ms, worst wait 17 ms, worst write 15 ms (longest chunk 1 ms)</code>，与改前同量级。Camera 页每次开机都会在第一个窗口报一次 <code>[CAM] no descriptor completed in 420 ms, stalled at 0 of 40, peripheral running (re-arm 1/2)</code>（同一窗口 <code>worst wait 639 ms</code>），此后不再出现；那条路径在 core 0 的渲染里（<code>advance(frame)</code> 在绘制里写面板帧），本次不动。摄像头仍走 core 0 的渲染链路（<code>advance(frame)</code> 在绘制里写面板帧），本次不动。</p>
+<p><code>[实测]</code> 资源：<code>.text</code> 857,729 → 857,321 B（−408），<code>.bss</code> 231,544 → 240,448 B（+8,904：第二个核的栈 16 → 24 KiB，其余是 <code>IoQueue</code> 与 <code>run_io_from</code> 的任务槽），<code>.data</code> 18,928 B 不变，App 1,062,400 B；主栈 100,728 → 91,824 B。</p>
+<p><code>[实测]</code> 那 24 KiB 现在有读数：每 5 s 一条 <code>[STACK] core 1 peak {high} B of {total} B</code>（涨 ≥1 KiB 才升到 info，否则 debug），三页各跑一轮：</p>
+<table><thead><tr><th>页（<code>IOT_BOOT_PAGE=…</code>）</th><th>常开的东西</th><th>core 1 栈水位</th></tr></thead><tbody>
+<tr><td>Audio</td><td>采集 + 面板 + 播放</td><td><strong>4556 → 4780 B</strong> of 24,576 B（19%）</td></tr>
+<tr><td>Speaker</td><td>面板 + 播放</td><td>2336 B</td></tr>
+<tr><td>Attitude</td><td>面板 + 运动轮询</td><td>1856 B</td></tr>
+<tr><td>Camera</td><td>面板</td><td>1920 B</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 最深的一条路是音频采集的轮询，24 KiB 里还剩 19,796 B 给后续的驱动任务。量法是把栈刷成 0xA5（字模式，单字节会撞上普通数据）再找最下面一个仍然完整的字，水位只增不减；扫描从栈底 512 B 之上开始——esp-hal 在第二核启动前会把自己的入口闭包停在栈底那几个字节里，不跳过就永远读成满栈（第一次量正是读成 24,512 B）。从 core 1 内部补刷一遍漆这条路试过，板子起不来，已回退：跨核写自己正在用的栈不可行。</p>
+<p><code>[实测]</code> 检查面：<code>check-s3</code>、<code>check-c6</code>、<code>check-host</code>、<code>check-features</code>、<code>lint</code>、<code>lint-host</code>、<code>test</code>（726 + 10 + 29 + 42）、<code>test-bsp</code>（101）、S3 目标的 <code>clippy -- -D warnings</code>、<code>build-s3</code>（只剩既有的 RWX 链接告警）全绿；C6 实机烧写后 Ambient 页正常起、WS2812 亮、无 panic。三个 trait object（<code>InputSource</code>/<code>EventAggregator</code>/<code>FrameSource</code>）与 <code>CaptureSink</code> 上的 <code>Send</code> 是编译期约束：束里放不进一个不能跨核的东西，不靠逐处检查。</p>
+<h3 id="网络工作者从_join_改成任务：主栈区_−64_B（[实测]，2026-11-02）">网络工作者从 <code>join</code> 改成任务：主栈区 −64 B（<code>[实测]</code>，2026-11-02）</h3>
+<p><code>main</code> 不再 <code>join(run, net::serve)</code>：网络是一个 <code>#[embassy_executor::task]</code>（那一版由 <code>run</code> 起），和驱动半边同一种生命周期。静态量从 <code>main</code> 的池挪到网络自己的池，总量只差一个任务头。同一棵树、同一条命令（<code>bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc --no-default-features --features lckfb-szpi-esp32s3,console-auto</code>）前后各量一次：</p>
+<table><thead><tr><th>读数（<code>nm -S</code>，S3 <code>vanling</code>）</th><th>改前</th><th>改后</th></tr></thead><tbody>
+<tr><td><code>__embassy_main::POOL</code></td><td>2,528 B（<code>0x9e0</code>）</td><td>1,432 B（<code>0x598</code>）</td></tr>
+<tr><td><code>network::task::POOL</code></td><td>—</td><td>1,168 B（<code>0x490</code>）</td></tr>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td>96,432 B</td><td>96,368 B</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 两个池相加从 2,528 涨到 2,600 B（+72 B），主栈区只少了 64 B；<code>network::task</code> 的 future 只有 1,168 B，因为 <code>link</code> 里的大件（凭据库、扫描历史、<code>browsing</code> 的 future）本来就是堆上的。<code>_stack_end_cpu0</code> 落在 <code>0x3fcd1ea0</code>，距 65,536 B 的下限还很远。<code>check-s3</code> 只 type-check，这个差值只有链接后的 <code>nm</code> 看得见。</p>
+<p>同一份镜像的开机日志把「任务真的起来了」对上号（那一版 <code>run</code> 才起工作者，所以顺序是）：<code>[IOT] starting the net worker</code> 出现在 <code>[IOT] demand …</code> 之后、<code>[DISPLAY] stack peak</code> 之前，紧接着 <code>[WIFI] network stack up, DHCP requested</code>；<code>[DISPLAY] backlight dark until the first frame; main stack 96368 B</code> 与 <code>[DISPLAY] stack peak 14917 B of 96368 B</code> 和 <code>nm</code> 的分区尺寸一致，说明池搬家没有改变主栈区的大小。</p>
+<h3 id="网络工作者改在组合点_spawn：池_−16_B，主栈区_+32_B（[实测]，2026-11-02）">网络工作者改在组合点 <code>spawn</code>：池 −16 B，主栈区 +32 B（<code>[实测]</code>，2026-11-02）</h3>
+<p><code>WorkerStart { name, start }</code> 删除：网络任务的驱动类型只有入口认识，于是 <code>main</code> 在交给 <code>run</code> 之前直接 <code>spawn</code>，<code>run</code> 不再持 worker 清单，也不再拥有「这次要起哪些工作者」这件事。同一棵树、同一条命令：</p>
+<table><thead><tr><th>读数（<code>nm -S</code>，S3 <code>vanling</code>）</th><th>上一版</th><th>本版</th></tr></thead><tbody>
+<tr><td><code>__embassy_main::POOL</code></td><td>1,432 B（<code>0x598</code>）</td><td>1,416 B（<code>0x588</code>）</td></tr>
+<tr><td><code>network::task::POOL</code></td><td>1,168 B（<code>0x490</code>）</td><td>1,152 B（<code>0x480</code>）</td></tr>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td>96,368 B</td><td>96,400 B</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 池合计少 32 B、主栈区多 32 B，两者互为镜像，净额为零；没有逐符号归因。<code>_stack_end_cpu0</code> = <code>0x3fcd1e80</code>。App 1,062,128 B（S3）/ 845,392 B（C6，分区 80.62%）。</p>
+<p><code>[实测]</code> 开机日志把新的启动顺序和启动页结论都钉住了：S3 先打 <code>[IOT] starting the net worker</code>、再打 <code>[IOT] demand …</code>（因为 <code>spawn</code> 在 <code>run</code> 之前），<code>[DISPLAY] … main stack 96400 B</code> 与 <code>nm</code> 读数一致；<code>[INPUT] the splash is over; setup mode was not asked for</code> 之后 8 ms 就出现 <code>[WIFI] this device saved a network; joining …</code>，说明工作者确实在等 <code>NetworkCommand::SplashOver</code> 而不是别的信号。C6 同样 <code>[IOT] starting the net worker</code> → <code>[WIFI] network stack up</code>，启动页结束后立刻 <code>[WIFI] no page surface and no saved network; waiting offline</code>，WS2812 走完离线提示回到页面自己的灯。两块板都无 panic。</p>
+<p><code>[未重测]</code> 之后的 Wi-Fi 重写把启动点收回 <code>run</code>：入口只交出 <code>Wifi::Worker(NetworkWorker)</code>（一个接收 <code>Spawner</code> 的闭包），<code>run</code> 在 <code>run_loop</code> 之前执行它。上表的两个池读数是「入口直接 <code>spawn</code>」那一版的；这次重写只跑了 <code>check-s3</code> / <code>check-c6</code> / <code>check-host</code>（均只 type-check），没有重新链接，因此没有新的 <code>nm</code> 读数。</p>
+<h3 id="IRAM_的_DRAM_镜像_47,396_B：一个字节都不属于本仓（[实测]，2026-11-01）">IRAM 的 DRAM 镜像 47,396 B：一个字节都不属于本仓（<code>[实测]</code>，2026-11-01）</h3>
+<p><code>[实测]</code> S3 的 IRAM 与 DRAM 是同一块 SRAM 的两个视图，所以每一段放进 IRAM 的代码都在 <code>dram_seg</code> 里占一份同样大的镜像 —— <code>.rwdata_dummy</code> 就是这个占位，<strong>47,396 B</strong>，由三段相加而来（<code>objdump -h</code>）：</p>
+<table><thead><tr><th>节</th><th>字节</th><th>是什么</th></tr></thead><tbody>
+<tr><td><code>.vectors</code></td><td>1,024</td><td>中断向量表</td></tr>
+<tr><td><code>.rwtext</code></td><td>14,392</td><td>esp-hal / esp-rtos / esp-storage / xtensa 运行时放进 IRAM 的代码</td></tr>
+<tr><td><code>.rwtext.wifi</code></td><td>31,980</td><td>射频 blob 的 IRAM 副本（ESP-IDF 对 blob 的硬要求）</td></tr>
+</tbody></table>
+<p><code>[实测]</code> 把 <code>.rwtext</code> 按符号归类（<code>nm -S</code> 取 <code>0x40378400..0x4037bc38</code>）：</p>
+<table><thead><tr><th>归属</th><th>字节</th><th>为什么必须在 IRAM</th></tr></thead><tbody>
+<tr><td>esp-hal</td><td>4,843</td><td>PSRAM 初始化与映射（改 cache/SPI0 时不能从 flash 取指）、GPIO 与 I2C 的 ISR、cache 配置</td></tr>
+<tr><td>esp-rtos</td><td>3,547</td><td>调度器：<code>trigger_task_switch</code>、<code>RunQueue</code>、<code>timer_tick_handler</code>，全在中断里跑</td></tr>
+<tr><td>xtensa 运行时与异常/中断入口</td><td>1,789</td><td><code>Reset</code>、<code>save_context</code>/<code>restore_context</code>、<code>__level_{1..7}_interrupt</code>、<code>__INTERRUPTS</code></td></tr>
+<tr><td>esp-radio / phy 胶水</td><td>1,048</td><td><code>semphr_take/give</code>、<code>interrupt_dispatch</code>、<code>tx_done_cb</code>、<code>__esp_phy_*</code>、<code>__pender</code></td></tr>
+<tr><td>esp-storage</td><td>765</td><td><code>spiflash_read/write/erase_*</code>：写 flash 期间 cache 是关的</td></tr>
+<tr><td>链接符号表与函数间对齐</td><td>2,400</td><td><code>sym_*</code> 那张地址表（984 B）加 127 个符号间的对齐缝隙</td></tr>
+</tbody></table>
+<p><code>[实测]</code> <strong>本仓在这 14,392 B 里占 0</strong>：<code>rg '#\[ram'</code> 全仓只有一处，是 <code>radio/esp32s3.rs</code> 的 <code>RECLAIMED_MEM</code>（一块数据，不是代码）。所以「把不需要 IRAM 的函数移回 flash」这条在本仓没有对象 —— 能动的只有 esp-hal 自己的取舍（PSRAM 初始化的 ~1.7 KB、<code>gpio::wakeup::record_wakeup</code> 的 410 B），而那要 patch 依赖，不做。</p>
+<p><code>[实测]</code> <strong>D-cache 32 → 16 KB 不是选项</strong>：S3 只有 32 KB 与 64 KB 两档。把 <code>ESP_HAL_CONFIG_DATA_CACHE_SIZE</code> 改成 <code>16KB</code> 时 esp-hal 的构建脚本直接拒绝：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Validation error for crate esp-hal, option data-cache-size: Expected one of [&quot;32KB&quot;, &quot;64KB&quot;], found &#39;16KB&#39;</span></span></code></pre>
+<p><code>[实测]</code> <strong>第二个核不是白拿的</strong>：<code>Stack&lt;N&gt;</code> 是 DRAM 里的静态量（探针用 8 KiB / 16 KiB），也就是直接从主栈墙里切同样大的一块；而且 <code>esp_rtos::start_second_core</code> 的签名固定要 <code>FROM_CPU_INTR1</code>，产品里那个 <code>Priority2</code> 的喇叭 feed executor 原本占着它（<code>start_feed_executor(feed_intr)</code>）。用第二个核得先把 feed 挪到 <code>FROM_CPU_INTR2</code>，再算上跨核同步的代码量 —— 这是一次架构改动，不是一次调参；面板传输这一次的代价与收益见上文「Audio 重绘步长翻倍 + 面板传输搬到第二个核」（<code>.text</code> +7,016 B、<code>.bss</code> +16,760 B、主栈 −16,792 B）。</p>
+<hr />
+<h2 id="IOT_BOOT_PAGE_必须在构建期解析（[实测]，2026-10-29）"><code>IOT_BOOT_PAGE</code> 必须在构建期解析（<code>[实测]</code>，2026-10-29）</h2>
+<p><code>[实测]</code> 症状：任何<strong>设置了</strong> <code>IOT_BOOT_PAGE</code> 的构建都在连网时死——日志停在 <code>[WIFI] this device saved a network; joining …</code> 之后，异常是 <code>StoreProhibited</code>（有时 <code>LoadProhibited</code>），PC 落在 esp-radio 的 <code>os_adapter::free</code> / <code>event_post</code> 里，<code>EXCVADDR</code> 是 <code>0x3</code>。同一份源码不设变量构建、烧进同一块板，每次都连上并拿到地址；HEAD（<code>a13e96f5</code>）设 <code>IOT_BOOT_PAGE=ambient</code> 也能连（峰值 41,880 B of 65,912 B）。</p>
+<p><code>[实测]</code> 崩的不在主栈上：异常的 <code>THREADPTR = 0x3fcd4908</code> 是电台任务的 TCB，<code>A1 = 0x3fcd4570</code> 比主栈底 <code>_stack_end = 0x3fcd9568</code> 低 20,472 B——那是电台任务自己的栈。写坏的是电台 blob 的静态量，<code>sta_con_timer</code>（<code>0x3fcd8974</code>）起那一整片就紧贴在主栈底下方。<code>.cargo/config.toml</code> 的 <code>ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"</code> 让越界不出任何告警，只以「别人的代码崩了」的形式出现（见下一节）。</p>
+<p><code>[实测]</code> 差异锁在一处：<code>boot_page()</code> 当时在运行期解析 <code>option_env!</code>——<code>trim().to_ascii_lowercase()</code> 成 <code>String</code> 再查表。同一份代码，不设变量时连接处用到 23,409 B、峰值 42,392 B；设 <code>IOT_BOOT_PAGE=ambient</code> 时 27,745 B / 46,728 B，<strong>+4,336 B</strong>，然后必崩。多出变量那一版的主任务 poll 帧是 <code>entry a1, 0x6710</code>（26,384 B），HEAD 是 <code>entry a1, 0x5540</code>（21,824 B）——后者含本轮其它改动，所以帧的绝对差不能全记到启动页账上，能逐项对齐的是上面那对同源读数。</p>
+<p><code>[未分离]</code> 那 4,336 B 具体压坏了哪一块没有分开：可能是主栈越界、直接写进 blob 的 <code>.bss</code>；也可能只是帧变大改变了 internal heap 的布局，让电台任务的栈落到了 blob 的静态量上。两种都能解释这组读数，也都不影响修法。</p>
+<p><code>[实测]</code> 修法：启动页在<strong>编译期</strong>落成常量——<code>const BOOT_PAGE: Page = boot_page_from_env(option_env!("IOT_BOOT_PAGE"))</code>，<code>const fn</code> 做去空白与大小写比较；非法名字另存 <code>const UNKNOWN_BOOT_PAGE: Option&lt;&amp;str&gt;</code>，由 <code>boot_page()</code> 打那行 <code>[IOT] IOT_BOOT_PAGE=… is not a page</code>（名字合法时它是 <code>None</code>，<code>if let</code> 整块被折掉）。修后 <code>IOT_BOOT_PAGE=attitude</code> 与产品构建逐项同值（<code>main stack 65,976 B</code>、峰值 <code>42,392 B</code>、连接处 23,409 B），并正常关联、拿到 <code>192.168.1.136</code>。桌面测试 <code>only_a_name_no_page_answers_to_is_reported</code> 钉住「非法名才报警、合法名在各种拼写下都不报」。</p>
+<p><strong>约束</strong>：启动页留在编译期。bench 镜像与产品镜像共用同一张栈预算，这就是它的前提——上表六页的 <code>main stack</code> 能一字不差，靠的是启动页不参与运行期布局。</p>
+<hr />
+<h2 id="esp-hal_的栈溢出_watchpoint_会误触发">esp-hal 的栈溢出 watchpoint 会误触发</h2>
+<p><code>[实测]</code> esp-hal / esp-rtos 在硬件 STORE watchpoint 上做栈溢出保护，而被 arm 的窗口会压到合法写入，抛出 level-6 Debug 异常把 boot 干掉（曾在 esp32s3 的渲染 <code>on_appearance</code> 上观察到）。</p>
+<p>因此 <code>.cargo/config.toml</code> 关闭硬件检测、开启软件 canary：</p>
+<pre class="giallo z-code"><code data-lang="toml"><span class="giallo-l"><span class="z-source">ESP_RTOS_CONFIG_HW_TASK_OVERFLOW_DETECTION</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;false&quot;</span></span>
+<span class="giallo-l"><span class="z-source">ESP_HAL_CONFIG_STACK_GUARD_MONITORING</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;false&quot;</span></span>
+<span class="giallo-l"><span class="z-source">ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;true&quot;</span></span></code></pre><h2 id="软件_canary_在每次上下文切换时检查栈底以下的哨兵，并以出错的任务名_panic——比静默破坏内存好。">软件 canary 在每次上下文切换时检查栈底以下的哨兵，并以出错的任务名 panic——比静默破坏内存好。</h2>
+<h2 id="面板的字模：Spleen_5×8，一套字（[测试]，2026-10-22）">面板的字模：Spleen 5×8，一套字（<code>[测试]</code>，2026-10-22）</h2>
+<p>字模在 <code>apps/iot/crates/core/src/ui/font.rs</code>：95 个可打印 ASCII，5 列 × 8 行、列优先、bit 0 是顶行；节距仍是 9×13（<code>FONT_W 5 + OVERLAY_GAP 4</code>、<code>FONT_H 8 + OVERLAY_ROW_GAP 5</code>）。</p>
+<ul>
+<li><strong>第一次换是因为开口</strong>：Adafruit <code>glcdfont</code> 的 <code>a/e/g/p/r/t/y</code> 在 5×7 里只剩 1 px 的开口，网络名和口令读不快。m5x7（Daniel Linssen，CC0）在同样的 5 列里画出 2 px 开口 —— 但它的 <code>m/M/w/W</code> 是 7 列、<code>0</code> 与 <code>O</code> 同形、<code>\</code> 缺字，这五处只能沿用 Adafruit，一句带 <code>m</code>/<code>w</code> 的话就混了两套笔画，上板后比换之前更难看（2026-10-22 的使用反馈）。</li>
+<li><strong>现在是 Spleen 5×8</strong>（Frederic Cambus，BSD-2-Clause）：5×8 版本只含可打印 ASCII，字形原生就是 5 列 8 行，<code>m/M/w/W</code>、<code>0</code>、<code>\</code> 全在同一套里；不用拼字，也没有被裁掉的降部行。</li>
+<li><strong>只加一行</strong>：<code>FONT_H</code> 7→8、<code>OVERLAY_ROW_GAP</code> 6→5，<code>ROW_PITCH</code> 仍是 13。FPS 徽标 <code>232 + 8 = 240</code> 刚好填满页脚，音频页 <code>WAVE_TOP 42</code> 刚好落在第二行字下方 —— 两处都是编译期等号断言，改字号时先断在这里。</li>
+<li><strong>回归</strong>：<code>iot:test</code> 钉「非空格有墨」「形近字不同形」（<code>l/1</code>、<code>I/l</code>、<code>0/O</code>、<code>c/e</code>、<code>u/v</code>、<code>g/q</code>、<code>p/q</code>、<code>y/v</code>、<code>m/w</code>、<code>M/W</code>）与「降部到得了底行」（<code>g/p/q/y/j</code>）。换表时 <code>0/O</code> 真的同形，是第二条测试先报的。</li>
+</ul>
+<p>字模在 flash：<code>[u8; 95 × 5] = 475 B</code>，与旧表同尺寸；静态墙前后都是 65,720 B（下限 65,536 B，余量 184 B）。</p>
+<h2 id="panic_复位与看门狗：冻结时唯一的出路是重启（[测试]/[实测]/[据称]，2026-11-08）">panic 复位与看门狗：冻结时唯一的出路是重启（<code>[测试]</code>/<code>[实测]</code>/<code>[据称]</code>，2026-11-08）</h2>
+<ul>
+<li><strong>panic 默认只是停住</strong>：esp-backtrace 的 <code>panic-handler</code> 打完回溯后把本核停在关中断的空循环里，只有断电才能离开。本轮给工作区依赖打开 <code>custom-halt</code>，由 <code>iot-chip-esp</code> 定义的 <code>custom_halt()</code> 先置崩溃标志再调 <code>software_reset()</code>（<code>crashed_reset()</code>）。<code>custom-halt</code> 与 <code>halt-cores</code> 同时开启时后者优先（<code>abort()</code> 里 <code>cfg_select!</code> 的分支顺序），所以<strong>本仓永远不要开 <code>halt-cores</code></strong> —— 开了 <code>custom_halt</code> 就再也不会被调用，而且编译不会报错。</li>
+<li><strong>RWDT 被 esp-hal 的 <code>init</code> 关掉</strong>，所以看门狗只能在芯片层重新武装。<code>watchdog.rs</code> 用 <code>Rtc::new(steal())</code> 取 <code>RTC_TIMER</code>：<code>Board::new</code> 解构 <code>Peripherals</code> 时以 <code>..</code> 收尾，RTC 定时器不在它的字段里，这与 PSRAM 的 steal 是同一条 Safety 依据。<code>Rwdt</code> 存进 <code>critical_section::Mutex&lt;RefCell&lt;Option&lt;_&gt;&gt;&gt;</code>。</li>
+<li><strong>分两次武装</strong>：<code>arm_boot_watchdog()</code> 在堆初始化与 <code>Board::new</code> 之前就以 <strong>30 s</strong> 超时先武装，覆盖各驱动自己的启动超时；<code>start_watchdog()</code> 在拿到 coordinator 执行器后收紧到 <strong>5 s</strong> 并起喂狗任务。Stage0 动作是 <code>ResetCore</code> 而不是 <code>ResetSystem</code>：后者会复位 RTC 域，而崩溃计数就存在 RTC 的 <code>store0</code> 里；<code>software_reset()</code>（panic 路径）本来也是 core reset，两者因此都保得住计数。</li>
+<li><strong>崩溃计数与安全模式</strong>（<code>iot_core::boot</code> + <code>iot-chip-esp::boot_guard</code>）：<code>store0</code> 里一个字，高 16 位是 magic <code>0x5642</code>，bit 15 是「上一次启动 panic 过」，低 15 位是连续崩溃次数。panic 的 <code>custom_halt()</code>、堆/PSRAM/板级初始化失败都走 <code>crashed_reset()</code>，先置位再复位；看门狗复位由 reset reason 认出。每次启动 <code>note_boot()</code> 把这次复位折进计数：崩溃 +1，干净启动（上电、手动复位、重烧）回到 0 —— 所以「经常被复位」不会累积到安全模式。<strong>第 5 次</strong>连续崩溃复位后的启动进安全模式（之前有 4 次正常重试）。</li>
+<li><strong>开机是否健康不再按时间算</strong>：<code>iot_core::boot::Readiness</code> 要两半都到才算这次启动成立——第一帧已经在每块有线屏上 <code>flush</code> 完成（coordinator 报），以及网络 worker 已经建好 IP 栈、或这个构建本来就没有 radio（<code>Wifi::Absent</code>/<code>Unattended</code> 由 <code>run</code> 报，worker 在 <code>embassy_net::new</code> 之后报）。两半都到，喂狗任务才调一次 <code>mark_healthy()</code> 把计数清零。关联失败或 DHCP 拿不到地址<strong>不算</strong>崩溃：设备活着，只是连不上。</li>
+<li><strong>安全模式仍保留 Wi-Fi 与只读诊断面</strong>：安全分支不走 <code>Board::new</code>，只从 <code>Peripherals</code> 取 <code>WIFI</code>/<code>FLASH</code>/<code>TIMG0</code>/<code>FROM_CPU_INTR0</code>，用 <code>try_init_heap()</code>（失败只在串口停住，不再复位）和 <code>EspStation</code> 直接起栈。先用已存网络（或构建期凭据）做一次 station 尝试，20 s 内拿到地址就以 station 地址提供诊断；否则拉起开放 AP <code>vanling-safe-xxxx</code>（192.168.4.1），跑同一套 DHCP/DNS，页面是 <code>GET /</code>、<code>/status</code>、<code>/health</code> 的只读文本（崩溃次数、运行时长、堆余量、已存网络数、链路阶段与地址），其它方法/路径一律 400。AP 开放是因为正常 setup 口令显示在一块这条路径不信任的屏上，而页面只读。</li>
+<li><strong>安全模式锁存，不再制造复位环</strong>：<code>enter_safe_mode()</code> 置位后，panic、<code>crashed_reset()</code>、堆/板级失败一律 <code>park_forever()</code>，不武装看门狗；串口每 10 s 提示一次。复位键、断电或重烧都会回到一次正常启动（这些 reset reason 都不算崩溃）。诊断路径自己 panic 时证据也还在。</li>
+<li><strong><code>[测试]</code>（2026-11-08，<code>cargo test -p iot-core</code>）</strong>：<code>safe.rs</code> 钉住诊断页包含每项事实、地址缺失/AP 模式、缓冲区过小被拒绝、只服务只读路径；<code>boot.rs</code> 钉住第 5 次才进安全模式与「首帧 + 网络」两半缺一不可。</li>
+<li><strong>喂狗是 coordinator 执行器上的普通任务</strong>，每 1 s 醒一次；<code>1 s × 3 ≤ 5 s</code> 是编译期断言。判据正是想要的：只要那个执行器还在调度，狗就被喂；帧循环自己停住时没人喂 —— 包括 <code>renderers.flush().await</code> 永不返回（面板核不再接 DMA）这一种。它<strong>不覆盖</strong>独立执行器或另一颗核单独卡住而 coordinator 照跑的情况，那时 5 s 不会到。</li>
+<li><strong>WS2812 不再 panic</strong>：C6 的灯是它唯一的面板，写失败原来每帧 <code>expect</code> 一次，panic → 复位 → 再 panic，会变成一周 5 s 的重启环。现在失败只记一次 <code>[RGB]</code> 警告，成功后清掉标志，下一次断流还会再报。</li>
+<li><strong><code>[实测]</code>（2026-11-08，两块板各烧一次，旧镜像）</strong>：C6 产品镜像开机打 <code>[WATCHDOG] armed for 5000 ms, fed every 1000 ms from the coordinator</code>，随后一次 <code>CTRL+R</code> 复位之后连续运行约 5 分钟没有任何复位（期间只有灯色日志）。S3 用 <code>-a watchdog-reset</code> 烧录后正常启动、关联已存网络，日志在 <strong>5.7 s</strong> 处仍有 <code>[STACK] core 1 peak …</code>，说明 5 s 的 RWDT 没有触发；S3 那行 <code>[WATCHDOG]</code> 抓不到 —— 原生 USB 的 CDC 在应用第一段日志之后才枚举，而这行在 C6 上由同一个函数打出。读数用 <code>espflash flash … -a watchdog-reset</code> 后立即 <code>cat</code> 串口取得（monitor 的 watchdog 复位会让端口重枚举，<code>espflash monitor</code> 自己会在那时候断掉）。这两次读的是 <code>ResetSystem</code> + 只在 coordinator 武装的旧镜像，<code>[WATCHDOG]</code> 行现在已改成两条（启动/运行）。</li>
+<li><strong><code>[实测]</code>（2026-11-08，<code>moon run iot:emu-smoke</code>）</strong>：新镜像在 C6 模拟器里从 ROM、2nd-stage bootloader 起，串口依次打出 <code>[BOOT] reset reason Some(ChipPowerOn); 0 crashed boot(s) in a row; Normal start</code> 与 <code>[WATCHDOG] armed before board bring-up for 30000 ms; tightened to 5000 ms once the coordinator runs</code>，随后 <code>[IOT] boot complete</code>。这证明 <code>store0</code> 在 C6 上可访问、未初始化的值被 magic 拒绝并记为干净启动，启动武装也没在正常启动路径上误触发。模拟器不模拟真正的 RWDT 到期。</li>
+<li><strong><code>[据称]</code></strong>：四件台架读数还没做——(1) panic → <code>custom_halt</code> → 复位这一跳（从未故意 <code>panic!</code>）；(2) RWDT 真的到期时 <code>ResetCore</code> 保留 <code>store0</code>；(3) 连续崩溃真的走进安全模式、断电后回到正常启动；(4) 安全模式的 <code>vanling-safe-xxxx</code> AP 在真机浏览器上能打开并读到诊断页。能辩护的是寄存器语义、<code>ResetCore</code> 与 <code>software_reset()</code> 都属 core reset，以及上面的模拟器日志。</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

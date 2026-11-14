@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/server/dialogue-flow">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link active">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link active leaf">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/server/dialogue-flow/#对话流程">对话流程</a></li>
+    
+  </ul>
+  
+  <h1 id="对话流程">对话流程</h1>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>flowchart TB</span></span>
+<span class="giallo-l"><span>  subgraph Device</span></span>
+<span class="giallo-l"><span>    direction TB</span></span>
+<span class="giallo-l"><span>    DeviceSession[Device Session] --&gt; DeviceMCPServer[Device MCP Server]</span></span>
+<span class="giallo-l"><span>    DeviceMCPServer .-&gt; DeviceSession</span></span>
+<span class="giallo-l"><span>  end</span></span>
+<span class="giallo-l"><span>  WebSocket</span></span>
+<span class="giallo-l"><span>    subgraph Server</span></span>
+<span class="giallo-l"><span>    direction LR</span></span>
+<span class="giallo-l"><span>    ServerSession[Server Session]</span></span>
+<span class="giallo-l"><span>    ServerMCPHost[Server MCP Host]</span></span>
+<span class="giallo-l"><span>    ServerMCPClient[Server MCP Client]</span></span>
+<span class="giallo-l"><span>    ServerMCPServer[Server MCP Server]</span></span>
+<span class="giallo-l"><span>    RemoteServerMCPServer[Remote Server MCP Server]</span></span>
+<span class="giallo-l"><span>    VAD</span></span>
+<span class="giallo-l"><span>    ASR</span></span>
+<span class="giallo-l"><span>    LLM</span></span>
+<span class="giallo-l"><span>    TTS</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>    ServerSession --&gt; ServerMCPHost</span></span>
+<span class="giallo-l"><span>    ServerMCPHost --&gt; ServerMCPClient</span></span>
+<span class="giallo-l"><span>    ServerMCPClient --&gt; ServerMCPServer</span></span>
+<span class="giallo-l"><span>    ServerMCPServer .-&gt; ServerMCPClient</span></span>
+<span class="giallo-l"><span>    ServerMCPClient --&gt; RemoteServerMCPServer</span></span>
+<span class="giallo-l"><span>    RemoteServerMCPServer .-&gt; ServerMCPClient</span></span>
+<span class="giallo-l"><span>    ServerMCPClient .-&gt; ServerMCPHost</span></span>
+<span class="giallo-l"><span>    ServerMCPHost .-&gt; ServerSession</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>    ServerSession --&gt; VAD</span></span>
+<span class="giallo-l"><span>    VAD --&gt; ASR</span></span>
+<span class="giallo-l"><span>    ASR --&gt; LLM</span></span>
+<span class="giallo-l"><span>    LLM --&gt; ServerMCPHost</span></span>
+<span class="giallo-l"><span>    ServerMCPHost .-&gt; LLM</span></span>
+<span class="giallo-l"><span>    LLM --&gt; TTS</span></span>
+<span class="giallo-l"><span>    TTS .-&gt; ServerSession</span></span>
+<span class="giallo-l"><span>  end</span></span>
+<span class="giallo-l"><span>  subgraph Transport</span></span>
+<span class="giallo-l"><span>    WebSocket</span></span>
+<span class="giallo-l"><span>  end</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span>  DeviceSession &lt;--&gt; WebSocket</span></span>
+<span class="giallo-l"><span>  WebSocket &lt;--&gt; ServerSession</span></span></code></pre><h3 id="握手阶段">握手阶段</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>    autonumber</span></span>
+<span class="giallo-l"><span>    Device Session -&gt;&gt; Server Session: 1. websocket connect request</span></span>
+<span class="giallo-l"><span>    Server Session --&gt;&gt; Device Session: 2. websocket connect response</span></span>
+<span class="giallo-l"><span>    Device Session -&gt;&gt; Server Session: 3. hello message request</span></span>
+<span class="giallo-l"><span>    Server Session --&gt;&gt; Device Session: 4. hello message response</span></span>
+<span class="giallo-l"><span>    alt Hello message response has mcp = true</span></span>
+<span class="giallo-l"><span>        Server Session -&gt;&gt; Device Session: 5. mcp initialize message request</span></span>
+<span class="giallo-l"><span>        Device Session --&gt;&gt; Server Session: 6. mcp initialize message response</span></span>
+<span class="giallo-l"><span>        Server Session -&gt;&gt; Device Session: 7. mcp tools list message request</span></span>
+<span class="giallo-l"><span>        Device Session --&gt;&gt; Server Session: 8. mcp tools list message response</span></span>
+<span class="giallo-l"><span>        loop Tools list message response has next cursor</span></span>
+<span class="giallo-l"><span>            Server Session -&gt;&gt; Device Session: 7. mcp tools list message request</span></span>
+<span class="giallo-l"><span>            Device Session --&gt;&gt; Server Session: 8. mcp tools list message response</span></span>
+<span class="giallo-l"><span>        end</span></span>
+<span class="giallo-l"><span>    end</span></span></code></pre><h3 id="通讯阶段">通讯阶段</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>    autonumber</span></span>
+<span class="giallo-l"><span>    participant DeviceSession as Device Session</span></span>
+<span class="giallo-l"><span>    participant ServerSession as Server Session</span></span>
+<span class="giallo-l"><span>    DeviceSession -&gt;&gt; ServerSession: audio data</span></span>
+<span class="giallo-l"><span>    DeviceSession -&gt;&gt; ServerSession: listen(detect) message</span></span>
+<span class="giallo-l"><span>    ServerSession --&gt;&gt; DeviceSession: stt message</span></span>
+<span class="giallo-l"><span>    DeviceSession -&gt;&gt; ServerSession: listen(start) message</span></span>
+<span class="giallo-l"><span>    loop</span></span>
+<span class="giallo-l"><span>      DeviceSession -&gt;&gt; ServerSession: audio data</span></span>
+<span class="giallo-l"><span>      break when no voice timeout</span></span>
+<span class="giallo-l"><span>        ServerSession -&gt;&gt; DeviceSession: disconnect</span></span>
+<span class="giallo-l"><span>      end</span></span>
+<span class="giallo-l"><span>      par</span></span>
+<span class="giallo-l"><span>        ServerSession -&gt;&gt; ServerSession: vad handle</span></span>
+<span class="giallo-l"><span>        opt if voice silence timeout</span></span>
+<span class="giallo-l"><span>          ServerSession -&gt;&gt; ServerSession: send main handle stop single</span></span>
+<span class="giallo-l"><span>        end</span></span>
+<span class="giallo-l"><span>      and</span></span>
+<span class="giallo-l"><span>        opt if voice silence timeout</span></span>
+<span class="giallo-l"><span>          note right of ServerSession: when recv main handle stop single to exit following logic</span></span>
+<span class="giallo-l"><span>          ServerSession -&gt;&gt; ServerSession: asr handle</span></span>
+<span class="giallo-l"><span>          ServerSession -&gt;&gt; ServerSession: llm handle</span></span>
+<span class="giallo-l"><span>          loop if last llm messages is tools call response</span></span>
+<span class="giallo-l"><span>            ServerSession -&gt;&gt; ServerSession: mcp handle</span></span>
+<span class="giallo-l"><span>            ServerSession -&gt;&gt; ServerSession: llm handle</span></span>
+<span class="giallo-l"><span>          end</span></span>
+<span class="giallo-l"><span>          loop</span></span>
+<span class="giallo-l"><span>            ServerSession --&gt;&gt; DeviceSession: llm message</span></span>
+<span class="giallo-l"><span>            ServerSession --&gt;&gt; DeviceSession: tts(start) message</span></span>
+<span class="giallo-l"><span>            ServerSession --&gt;&gt; DeviceSession: tts(sentence start) message</span></span>
+<span class="giallo-l"><span>            ServerSession --&gt;&gt; DeviceSession: audio data</span></span>
+<span class="giallo-l"><span>            ServerSession --&gt;&gt; DeviceSession: tts(sentence end) message</span></span>
+<span class="giallo-l"><span>            ServerSession --&gt;&gt; DeviceSession: tts(stop) message</span></span>
+<span class="giallo-l"><span>          end</span></span>
+<span class="giallo-l"><span>        end</span></span>
+<span class="giallo-l"><span>      end</span></span>
+<span class="giallo-l"><span>    end</span></span></code></pre><h3 id="Listen_mode">Listen mode</h3>
+<p>监听模式由 <strong><code>listen(start)</code> 帧的 <code>mode</code> 字段</strong>决定（<code>auto</code>/<code>manual</code>/<code>realtime</code> 映射为 <code>barge_in</code> + <code>is_voice_break_detect</code>），并非来自 Hello 的全局字段。三种模式共用同一条节点链（<code>opus→vad→asr→turn→ling→tts</code>）。</p>
+<h4 id="Auto">Auto</h4>
+<p>设备持续发送音频 → 服务器按静默确认自动判定说完 → ASR + LLM + TTS。免提对话的默认模式。</p>
+<h4 id="Manual">Manual</h4>
+<p>服务器<strong>不抢答</strong>：设备控制语音发送的起止，<code>listen(start)</code> 开始接收，<code>listen(stop)</code> 才成文。按住期间 ASR 逐帧喂流预解码但不发 partial、不做静音确认，所以中途停顿不会被截断，松开后识别几乎瞬时（解码已摊在按住期间）。无人声时按 <code>EmptyKind::Manual</code> 提示一次，见<a href="https://lastsunday.github.io/vanling/development/server/dialogue-flow/#%E7%A9%BA%E8%BE%93%E5%85%A5%E8%A1%8C%E4%B8%BA">空输入行为</a>。机制细节见 <a href="https://lastsunday.github.io/vanling/development/server/vad/">VAD 与回合判定</a>。</p>
+<h4 id="Realtime">Realtime</h4>
+<p>低延迟模式：VAD 检测到语音即开始 LLM 推理与 TTS 流式输出，不等静默确认。适合 ESP32 等实时设备。</p>
+<h3 id="空输入行为">空输入行为</h3>
+<p>空输入（无有效语音）由中枢（Session）辨别类型并分级提示，生成层只渲染文案——「中枢决策、NLG 渲染」分层：Session 负责判别 + 计数 + 决策，<code>Ling</code> / Echo 只按 <code>Act</code> 措辞。判别依据是模式 + 前一 turn：</p>
+<table><thead><tr><th>kind</th><th>判定条件</th><th>行为</th></tr></thead><tbody>
+<tr><td><code>Manual</code></td><td>push-to-talk：<code>ListenStop</code> 且未检出语音（<code>!is_voice_break_detect</code> 且 <code>!speech_active</code>）</td><td>每次按键播 1 次引导（"没听到，请再说"），之后回监听等待</td></tr>
+<tr><td><code>Wake</code></td><td>唤醒词（<code>Input{mode:Wake}</code>）之后首次监听的空输入</td><td>引导式（"想让我帮你做什么？"），逐次升级，3 次回 idle</td></tr>
+<tr><td><code>AutoSpoke</code></td><td>免提 auto：VAD 触发但 ASR 文本为空（<code>asr_node</code> 产 <code>EmptyInput</code>）</td><td>"没听清，请重说" → 给可操作示例 → 优雅收尾</td></tr>
+<tr><td><code>Silence</code></td><td>免提 auto/realtime 完全静默：VAD 从未触发，ASR 无流 <code>Nothing</code></td><td>温柔引导不指责，逐次升级，3 次回 idle</td></tr>
+<tr><td><code>Continuing</code></td><td>回复后连续监听（realtime <code>Speaking→Listening</code>）下的空输入</td><td>静默等待，不反复提示，超时回 idle</td></tr>
+</tbody></table>
+<p><strong>计数（Rule of three）</strong>：Session 维护 <code>empty_count</code>，每次 <code>EmptyTurn</code> 加一，真实输入 <code>TurnComplete</code> 后复位，最多 3 次后收敛。<code>Manual</code> 例外：事件驱动，每次按键无人声都提示一次、提示后归零，不受 3 次限次。</p>
+<p><strong>决策</strong>：Session 观察 <code>(After, EmptyInput)</code> / <code>(After, EmptyTurn)</code> 后产出三种动作——<code>Prompt{kind, count}</code> 重新注入链首（各节点透传未识别事件，<code>Ling</code> 渲染提示语）、<code>Silence</code> 不注入表达（静默等待 / 回 idle）、<code>GiveUp</code> 回 <code>Idle</code>。真实 LLM 按 Act 组 prompt，Echo 模型按 kind/count 返回分级固定句。</p>
+<p><code>Manual</code> 的提示语只有一条来源：manual 模式下 VAD 未检到语音时 <code>finish_stream</code> 返回 <code>Nothing</code>，由 <code>EmptyKind::Manual</code> 驱动，避免与链内 <code>EmptyInput</code> 双触发。ASR 侧的三态与阈值见 <a href="https://lastsunday.github.io/vanling/development/server/vad/">VAD 与回合判定</a>。</p>
+<h3 id="MCP_handle">MCP handle</h3>
+<pre class="giallo z-code"><code data-lang="mermaid"><span class="giallo-l"><span>sequenceDiagram</span></span>
+<span class="giallo-l"><span>    autonumber</span></span>
+<span class="giallo-l"><span>    participant DeviceSession as Device Session</span></span>
+<span class="giallo-l"><span>    participant ServerSession as Server Session</span></span>
+<span class="giallo-l"><span>    participant ServerMCPServer as Server MCP Server</span></span>
+<span class="giallo-l"><span>    alt if call server tool (checked first)</span></span>
+<span class="giallo-l"><span>      ServerSession -&gt;&gt; ServerMCPServer: mcp tools call http request</span></span>
+<span class="giallo-l"><span>      ServerMCPServer --&gt;&gt; ServerSession: mcp tools call http response</span></span>
+<span class="giallo-l"><span>    else if call device tool (fallback)</span></span>
+<span class="giallo-l"><span>      ServerSession -&gt;&gt; DeviceSession: mcp tools call message request</span></span>
+<span class="giallo-l"><span>      DeviceSession --&gt;&gt; ServerSession: mcp tools call message response</span></span>
+<span class="giallo-l"><span>    end</span></span></code></pre>
+<p>详细的协议字段定义见 <a href="https://lastsunday.github.io/vanling/development/server/websocket-protocol/">WebSocket Protocol</a>。</p>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>
