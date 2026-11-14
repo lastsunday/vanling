@@ -1,7 +1,9 @@
-//! The reset record: how many times in a row this part has come back from a crash.
+//! What this boot inherited and what it has proved: the crash record the reset handed
+//! over, and the readiness the running boot reports.
 //!
-//! The chip layer stores one word in a register the reset does not clear; this module is
+//! The chip layer stores the record in a register the reset does not clear; this module is
 //! the part that decides what that word means, so the rule can be tested without a board.
+//! Readiness is the opposite: it lives in RAM and must not survive a reset.
 //!
 //! A boot counts as crashed when the previous boot raised a panic (the panic handler sets
 //! the flag before resetting) or when this reset's reason says a watchdog fired. A power
@@ -120,8 +122,12 @@ const FRAME_BIT: u8 = 1 << 0;
 const NETWORK_BIT: u8 = 1 << 1;
 
 impl Readiness {
+    const fn from_bits(bits: u8) -> Self {
+        Self { bits }
+    }
+
     pub const fn new() -> Self {
-        Self { bits: 0 }
+        Self::from_bits(0)
     }
 
     pub fn note_frame(&mut self) {
@@ -155,8 +161,7 @@ pub fn note_network_settled() {
 
 /// Whether both halves have reported since reset.
 pub fn boot_ready() -> bool {
-    READINESS.load(core::sync::atomic::Ordering::Acquire) & (FRAME_BIT | NETWORK_BIT)
-        == FRAME_BIT | NETWORK_BIT
+    Readiness::from_bits(READINESS.load(core::sync::atomic::Ordering::Acquire)).is_ready()
 }
 
 #[cfg(test)]

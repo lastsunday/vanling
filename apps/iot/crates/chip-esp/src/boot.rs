@@ -4,8 +4,8 @@
 //! not clear — that is the kind of reset both the panic path and the watchdog use. A
 //! power-on clears it, and that is also how a person gets out of safe mode.
 //!
-//! The rule for what a record means is in [`iot_core::boot`]; this module only supplies
-//! the register, the reset reason, and the loop that keeps a parked part observable.
+//! The rule for what a record means is `iot_core::boot`'s; this module supplies the
+//! register, the reset reason, and the loop that keeps a parked part observable.
 
 use esp_hal::delay::Delay;
 use esp_hal::rtc_cntl::{SocResetReason, reset_reason};

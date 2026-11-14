@@ -10,7 +10,7 @@
 //! the part resets instead of parking a dead UI in front of a person.
 //!
 //! The reset action is [`RwdtStageAction::ResetCore`], not `ResetSystem`: a system reset
-//! clears the RTC domain, which is where [`crate::boot_guard`] keeps the crash count, and
+//! clears the RTC domain, which is where [`crate::boot`] keeps the crash count, and
 //! the panic path (`software_reset`) is a core reset too. Both kinds then leave the count
 //! intact so a boot loop can reach safe mode.
 
@@ -94,13 +94,13 @@ fn store(rwdt: Rwdt) {
 
 #[embassy_executor::task]
 async fn feed_watchdog() -> ! {
-    let mut healthy = false;
+    let mut health_reported = false;
     loop {
         Timer::after(Duration::from_millis(FEED_INTERVAL_MS)).await;
         feed();
-        if !healthy && iot_core::boot::boot_ready() {
-            healthy = true;
-            crate::boot_guard::mark_healthy();
+        if !health_reported && iot_core::boot::boot_ready() {
+            health_reported = true;
+            crate::boot::mark_healthy();
             log::info!(
                 "[WATCHDOG] the first frame was shown and the network path settled; this boot \
                  is healthy"

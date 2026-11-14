@@ -54,6 +54,22 @@ weight = 10
 - **main 入口**：产品二进制入口（`bin/*-probe.rs` 是各自的探针入口）；芯片 init、堆、执行器与 `Wiring` 都在 `main.rs`，芯片族分支留在 `start_executors`。产品与面板 bench 共用这条启动路径，`panel-bench` feature 只决定最后调 `lib::run` 还是 `bench::run`
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
+### 状态词汇：四道问题，各归一处
+
+一次启动里「还好吗」有四种问法，存活期不同；混用会把持久事实当成运行期结论。
+
+| 问题 | 类型 | 归属 | 存活期 |
+| --- | --- | --- | --- |
+| 这块板焊出来了吗 | `Backed` | `app::shared::model` | 组合点一次决定，运行期不变 |
+| 启动时这个件答了吗 | `Presence` / `Evidence` | `bsp-esp::hardware` | 启动一次 |
+| 这次启动算数吗（跨复位） | `ResetRecord` / `BootMode` | 规则 `core::boot`，寄存器 `chip-esp::boot` | RTC，跨复位 |
+| 这次启动证明过自己吗 | `Readiness` | `core::boot` | RAM，复位即失 |
+| 现在这个件答不答 | `Health` | `app::shared::model` | 运行期 |
+
+`Readiness` 是 RAM 里那半边：首帧在每块有线屏上 `flush` 完、网络栈就绪（或这个构建本来没有 radio）两半都到，喂狗任务才调一次 `mark_healthy()` 清掉计数——时间不是证据。
+
+命名跟着做的事走：一次性上报用 `*_reported`（`first_frame_reported`、`health_reported`、`chain_reported`），收下一个事实用 `note_*`，发出去用 `report_*`，盖持久标记用 `mark_*`。
+
 ## iot-app 内部分区
 
 `app/src/` 按垂直切片组织：页面各自成目录，跨页真相与词汇收在 `shared/`，组合根与表示层各自独立，接线只发生在组合根。

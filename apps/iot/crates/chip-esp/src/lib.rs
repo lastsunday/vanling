@@ -8,14 +8,14 @@
 
 use esp_backtrace as _;
 
-mod boot_guard;
+mod boot;
 mod heap;
 pub(crate) mod logging;
 #[cfg(feature = "radio")]
 mod radio;
 mod watchdog;
 
-pub use boot_guard::{BootInfo, enter_safe_mode, note_boot, park_safe_mode};
+pub use boot::{BootInfo, enter_safe_mode, note_boot, park_safe_mode};
 pub use heap::{HeapError, PRODUCT_HEAP_BYTES, heap_free, init_heap, try_init_heap};
 pub use watchdog::{arm_boot_watchdog, start_watchdog};
 
@@ -29,10 +29,10 @@ pub fn reset() -> ! {
 /// Safe mode suppresses the reset. If that path panics, rebooting only re-enters safe mode and
 /// destroys the console evidence, so the boot parks where it can still be read.
 pub fn crashed_reset() -> ! {
-    if boot_guard::is_safe_mode() {
-        boot_guard::park_forever("a fault in safe mode");
+    if boot::is_safe_mode() {
+        boot::park_forever("a fault in safe mode");
     }
-    boot_guard::mark_crashed();
+    boot::mark_crashed();
     reset()
 }
 

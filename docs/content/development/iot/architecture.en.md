@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "b4b667dc579758de106f839098d4bd3552d4558d"
-translated_at = "2026-11-14T14:23:46Z"
+source_file_hash = "27b9e2433410ef513a56ad3f9d8a01dafd399ebb"
+translated_at = "2026-11-14T15:06:23Z"
 +++
 
 # Architecture
@@ -57,6 +57,22 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 - **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page: its vocabulary is in `app::shared::intent` and its geometry in `app::pages::network::layout`.
 - **main entry**: the product binary entry (`bin/*-probe.rs` are their own probe entries); chip init, the heap, the executors and `Wiring` all live in `main.rs`, with the per-family branch in `start_executors`. The product and the panel bench share that path; the `panel-bench` feature only decides whether the entry finally calls `lib::run` or `bench::run`.
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
+
+### Status vocabulary: four questions, one owner each
+
+"How is it?" has four answers within one boot, and they do not share a lifetime. Mixing them turns a persisted fact into a runtime conclusion.
+
+| Question | Type | Owner | Lifetime |
+| --- | --- | --- | --- |
+| Is this part built into the board? | `Backed` | `app::shared::model` | Decided once at composition, fixed at runtime |
+| Did this part answer at boot? | `Presence` / `Evidence` | `bsp-esp::hardware` | Once per boot |
+| Does this boot count? (across resets) | `ResetRecord` / `BootMode` | rule in `core::boot`, register in `chip-esp::boot` | RTC, survives a reset |
+| Has this boot proved itself? | `Readiness` | `core::boot` | RAM, lost on reset |
+| Does this part answer now? | `Health` | `app::shared::model` | Runtime |
+
+`Readiness` is the RAM half: the first frame has been flushed to every wired surface and the network stack is up (or this build deliberately has no radio). The watchdog calls `mark_healthy()` once both arrive and clears the count — time alone is not evidence.
+
+Names follow the work: a one-shot report is `*_reported` (`first_frame_reported`, `health_reported`, `chain_reported`), taking a fact in is `note_*`, sending it out is `report_*`, and stamping a persistent marker is `mark_*`.
 
 ## Inside `iot-app`
 

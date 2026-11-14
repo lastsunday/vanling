@@ -28,7 +28,7 @@ pub async fn run_loop(
     schedule: &mut Schedule<'_>,
 ) -> ! {
     let mut pacing = FrameClock::new(Instant::now());
-    let mut first_frame = true;
+    let mut first_frame_reported = false;
     loop {
         let now_ms = Instant::now().as_millis() as u32;
         schedule.process_intents(bus, manager);
@@ -36,8 +36,8 @@ pub async fn run_loop(
         let active = renderers.tick(manager.state_ref(), manager.demand(), pacing.elapsed_ms())
             || manager.notice_active();
         renderers.flush().await;
-        if first_frame {
-            first_frame = false;
+        if !first_frame_reported {
+            first_frame_reported = true;
             iot_core::boot::note_first_frame();
         }
         match pacing.tick(active, Instant::now()) {
