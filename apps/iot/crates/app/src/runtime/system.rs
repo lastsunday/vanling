@@ -1,26 +1,14 @@
-//! The contract a coordinated system implements, and the handles one frame hands it.
+//! The contract a coordinated system implements.
 //!
 //! A system owns one boundary: the worker handle it reads and writes, and the state that has
-//! to survive a frame. The frame hands it only what is shared.
+//! to survive a frame. The loop hands it the shared manager and the clock.
 
 use core::any::TypeId;
 
-use crate::runtime::feature::input::IntentBus;
 use crate::state::{Command, DeviceManager};
 
-/// Everything a system may touch in one frame. The wall clock rather than the frame counter:
-/// a held executor makes a logical clock replay the steps it skipped.
-pub(crate) struct Frame<'a> {
-    pub(crate) bus: &'a IntentBus,
-    pub(crate) manager: &'a mut DeviceManager,
-    pub(crate) now_ms: u32,
-}
-
-/// One slice of coordination. A system owns one boundary: the worker handle it drives, and the
-/// state that must survive a frame. Systems never call each other; whatever they share arrives
-/// in the [`Frame`].
 pub(crate) trait System {
-    fn tick(&mut self, frame: &mut Frame<'_>);
+    fn tick(&mut self, manager: &mut DeviceManager, now_ms: u32);
 
     /// The command type this system takes off the bus. Registration builds the dispatch table
     /// from this, so the system never sees the schedule.
@@ -32,6 +20,6 @@ pub(crate) trait System {
     fn take(&mut self, _command: &mut Option<Command>) {}
 
     /// Once per applied intent, in registration order: the reaction that owns no command.
-    /// Delivery has already happened by the time this runs.
-    fn intent(&mut self, _frame: &mut Frame<'_>) {}
+    /// The read-only manager is the state its intent already wrote.
+    fn intent(&mut self, _manager: &DeviceManager) {}
 }

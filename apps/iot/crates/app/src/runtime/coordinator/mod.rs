@@ -13,7 +13,6 @@ use embassy_time::{Instant, Timer};
 
 use crate::render::Renderers;
 use crate::runtime::feature::input::IntentBus;
-use crate::runtime::system::Frame;
 use crate::runtime::workers::WAKE;
 
 use self::clock::{FrameClock, Wait};
@@ -32,15 +31,8 @@ pub async fn run_loop(
     let mut first_frame = true;
     loop {
         let now_ms = Instant::now().as_millis() as u32;
-        {
-            let mut frame = Frame {
-                bus,
-                manager,
-                now_ms,
-            };
-            schedule.process_intents(&mut frame);
-            schedule.tick(&mut frame);
-        }
+        schedule.process_intents(bus, manager);
+        schedule.tick(manager, now_ms);
         let active = renderers.tick(manager.state_ref(), manager.demand(), pacing.elapsed_ms())
             || manager.notice_active();
         renderers.flush().await;

@@ -1,7 +1,8 @@
 //! The microphone window the board folded, into state.
 
-use crate::runtime::system::{Frame, System};
+use crate::runtime::system::System;
 use crate::runtime::workers::CaptureWindow;
+use crate::state::DeviceManager;
 
 /// Stateless: the newest window lives in the handle, not here.
 pub(crate) struct CaptureSystem {
@@ -15,9 +16,9 @@ impl CaptureSystem {
 }
 
 impl System for CaptureSystem {
-    fn tick(&mut self, frame: &mut Frame<'_>) {
+    fn tick(&mut self, manager: &mut DeviceManager, _now_ms: u32) {
         if let Some(sample) = self.from.take() {
-            frame.manager.apply_capture(sample);
+            manager.apply_capture(sample);
         }
     }
 }

@@ -3,20 +3,28 @@
 
 use alloc::boxed::Box;
 
-use crate::runtime::system::{Frame, System};
+use crate::runtime::feature::input::IntentBus;
+use crate::runtime::system::System;
+use crate::state::DeviceManager;
 
 use super::PanelBench;
 
-pub(crate) struct Slot(Box<PanelBench>);
+pub(crate) struct Slot {
+    bench: Box<PanelBench>,
+    bus: &'static IntentBus,
+}
 
 impl Slot {
-    pub(crate) fn new() -> Self {
-        Self(Box::default())
+    pub(crate) fn new(bus: &'static IntentBus) -> Self {
+        Self {
+            bench: Box::default(),
+            bus,
+        }
     }
 }
 
 impl System for Slot {
-    fn tick(&mut self, frame: &mut Frame<'_>) {
-        self.0.step(frame.manager, frame.bus);
+    fn tick(&mut self, manager: &mut DeviceManager, _now_ms: u32) {
+        self.bench.step(manager, self.bus);
     }
 }

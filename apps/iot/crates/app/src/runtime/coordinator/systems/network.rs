@@ -10,7 +10,7 @@ use iot_core::drivers::network::SetupHost;
 
 use crate::runtime::workers::Network;
 
-use crate::runtime::system::{Frame, System};
+use crate::runtime::system::System;
 
 /// What the coordinator observes about the network boundary, and the handle it drives it
 /// through, in the order a frame sees them.
@@ -63,9 +63,9 @@ impl NetworkSystem {
 }
 
 impl System for NetworkSystem {
-    fn tick(&mut self, frame: &mut Frame<'_>) {
-        self.observe(frame.manager.state_ref());
-        self.drain(frame.manager);
+    fn tick(&mut self, manager: &mut DeviceManager, _now_ms: u32) {
+        self.observe(manager.state_ref());
+        self.drain(manager);
     }
 
     fn takes(&self) -> Option<TypeId> {

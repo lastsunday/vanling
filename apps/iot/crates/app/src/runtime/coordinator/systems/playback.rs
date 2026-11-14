@@ -4,9 +4,9 @@
 use embassy_sync::channel::TrySendError;
 
 use crate::runtime::workers::{Playback, PlaybackQueue};
-use crate::state::{PlaybackCommand, PlaybackState};
+use crate::state::{DeviceManager, PlaybackCommand, PlaybackState};
 
-use crate::runtime::system::{Frame, System};
+use crate::runtime::system::System;
 
 pub(crate) struct PlaybackSystem {
     playback: Playback,
@@ -37,12 +37,12 @@ impl PlaybackSystem {
 }
 
 impl System for PlaybackSystem {
-    fn tick(&mut self, frame: &mut Frame<'_>) {
-        self.dispatch(frame.manager.playback_state());
+    fn tick(&mut self, manager: &mut DeviceManager, _now_ms: u32) {
+        self.dispatch(manager.playback_state());
     }
 
-    fn intent(&mut self, frame: &mut Frame<'_>) {
-        self.dispatch(frame.manager.playback_state());
+    fn intent(&mut self, manager: &DeviceManager) {
+        self.dispatch(manager.playback_state());
     }
 }
 

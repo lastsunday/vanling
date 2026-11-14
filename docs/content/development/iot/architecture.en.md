@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "3dbe4c2e63ab6ee33fa7ad22090347c4462d9799"
-translated_at = "2026-11-14T00:00:00Z"
+source_file_hash = "b4b667dc579758de106f839098d4bd3552d4558d"
+translated_at = "2026-11-14T14:23:46Z"
 +++
 
 # Architecture
@@ -88,7 +88,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a panel would add |
 | `render/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
-| `runtime/system.rs` | the `Frame` and `System` contract: the shared pieces one frame hands a system (intent bus, state, clock), with `tick` and `intent` as its two entries; a worker handle is held by the system, not by the frame |
+| `runtime/system.rs` | the `System` contract: `tick` takes the manager and the clock, `intent` reads the state its intent already wrote; a worker handle is held by the system |
 | `runtime/coordinator/{mod,clock}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `clock.rs` holds the logical frame clock |
 | `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports and the parked-frame line `WAKE`; the network command vocabulary lives in `shared/model/network.rs` |
 | `runtime/feature/{mod,input}.rs` | the feature workers; `mod.rs` is the one `wifi` gate. Input worker: polling, demand scheduling, gesture recognition |
@@ -259,7 +259,7 @@ The shape follows the semantics, not convenience:
 
 The `NetworkCommand` vocabulary stays in `app/src/shared/model/network.rs`; the handle only carries it. `DeviceManager::apply_intent()` (defined in `state/intent.rs`) returns the command as a `Command`, `Schedule::process_intents` looks it up by `Command::type_id()` in the registry and hands it to the one system that declared `System::takes`, and `NetworkSystem` takes `Command::Network` and publishes it — no variant-by-variant translation, and no outbox in the state. A full queue gives up its oldest entry, so the coordinator never stops a frame for a command. Setup commands carry the `SetupHost` they were issued on so the worker can drop a previous session's leftovers.
 
-**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `Frame` hands it the shared state. Systems never call each other. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is looked up in the registry by type and handed to the system that declared `System::takes`; two commands in one frame do not collapse, and a command nobody took is logged as an error under `[COORD]` in release too (debug builds have an assertion as well).
+**Per-frame logic is split by boundary.** One `System` per file under `coordinator/systems/`; it holds the worker handle for its own boundary and what must survive a frame (the last playback state, the last page, the governor), while `tick` hands it the shared state and the clock. Systems never call each other. Up to two shared collaborators travel as explicit parameters; a third, or a set that cannot be named at compile time, is the point to collect them into a `Context`. The bus is held by the loop and handed to `process_intents` explicitly each frame. Adding a feature is one file plus one `Schedule::register` at the composition root, where the handle is handed over; the registration order is the execution order, and reordering it is a behaviour change. The intent side goes through `System` too: after each intent is applied, the `Command` the model left behind is looked up in the registry by type and handed to the system that declared `System::takes`; two commands in one frame do not collapse, and a command nobody took is logged as an error under `[COORD]` in release too (debug builds have an assertion as well).
 
 **The render layer costs nothing**: `Diagnostics` in `app/src/shared/diagnostics.rs` is already "one snapshot fusing every subsystem's state", carrying `page` / `motion` / `audio` / `playback`; the screen renderer reads it through the painter seam.
 

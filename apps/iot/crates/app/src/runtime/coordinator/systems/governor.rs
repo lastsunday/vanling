@@ -3,7 +3,8 @@
 
 use iot_core::demand::{ClockGovernor, ClockSink};
 
-use crate::runtime::system::{Frame, System};
+use crate::runtime::system::System;
+use crate::state::DeviceManager;
 
 /// The governor is loop-local: a second `run` in one process must not answer for the first.
 pub(crate) struct GovernorSystem<'a, C: ClockSink> {
@@ -21,8 +22,8 @@ impl<'a, C: ClockSink> GovernorSystem<'a, C> {
 }
 
 impl<C: ClockSink> System for GovernorSystem<'_, C> {
-    fn tick(&mut self, frame: &mut Frame<'_>) {
-        if let Some(applied) = self.governor.apply(frame.manager.demand(), self.sink)
+    fn tick(&mut self, manager: &mut DeviceManager, _now_ms: u32) {
+        if let Some(applied) = self.governor.apply(manager.demand(), self.sink)
             && let Some(short) = applied.undercuts
         {
             log::warn!(

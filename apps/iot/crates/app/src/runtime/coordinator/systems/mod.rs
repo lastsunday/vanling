@@ -12,8 +12,9 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::any::TypeId;
 
-use crate::runtime::system::{Frame, System};
-use crate::state::Command;
+use crate::runtime::feature::input::IntentBus;
+use crate::runtime::system::System;
+use crate::state::{Command, DeviceManager};
 
 pub(crate) use self::capture::CaptureSystem;
 pub(crate) use self::demand::DemandSystem;
@@ -28,7 +29,7 @@ const _: () =
     assert!(crate::runtime::workers::COMMAND_SLOTS >= crate::runtime::feature::input::INTENT_SLOTS);
 
 /// The registered systems. Registration order is execution order, so the composition root
-/// decides a frame's sequence; the schedule names no worker and no feature.
+/// decides a frame's sequence; a system's worker handle never appears here.
 pub(crate) struct Schedule<'a> {
     steps: Vec<Box<dyn System + 'a>>,
     /// Which registered system takes which command type, keyed by the payload its `Command`
@@ -65,12 +66,12 @@ impl<'a> Schedule<'a> {
     /// declared its type, and only then is every system asked to react: two edges in one frame
     /// (mute, then unmute) must not collapse into the last one. A leftover command means the
     /// boundary was registered without a system that takes it.
-    pub(crate) fn process_intents(&mut self, frame: &mut Frame<'_>) {
-        while let Ok(intent) = frame.bus.try_receive() {
-            let mut command: Option<Command> = frame.manager.apply_intent(intent);
+    pub(crate) fn process_intents(&mut self, bus: &IntentBus, manager: &mut DeviceManager) {
+        while let Ok(intent) = bus.try_receive() {
+            let mut command: Option<Command> = manager.apply_intent(intent);
             self.deliver(&mut command);
             for step in &mut self.steps {
-                step.intent(frame);
+                step.intent(manager);
             }
         }
     }
@@ -90,9 +91,9 @@ impl<'a> Schedule<'a> {
         debug_assert!(command.is_none(), "no system takes {command:?}");
     }
 
-    pub(crate) fn tick(&mut self, frame: &mut Frame<'_>) {
+    pub(crate) fn tick(&mut self, manager: &mut DeviceManager, now_ms: u32) {
         for step in &mut self.steps {
-            step.tick(frame);
+            step.tick(manager, now_ms);
         }
     }
 }
@@ -108,8 +109,10 @@ mod tests {
     use super::*;
     use crate::runtime::feature::input::IntentBus;
     use crate::runtime::workers::NETWORK;
-    use crate::shared::intent::{BusinessIntent, Intent, LinkIntent, NetworkPageIntent};
-    use crate::state::{Backed, Boot, DeviceManager, NetworkCommand};
+    use crate::shared::intent::{
+        BusinessIntent, Intent, LightAction, LinkIntent, NetworkPageIntent,
+    };
+    use crate::state::{Backed, Boot, DeviceManager, LightState, NetworkCommand};
     use iot_core::drivers::network::{LinkPhase, LinkStatus};
     use iot_core::drivers::surface::SurfaceRole;
 
@@ -120,11 +123,11 @@ mod tests {
     }
 
     impl System for Recorder {
-        fn tick(&mut self, _frame: &mut Frame<'_>) {
+        fn tick(&mut self, _manager: &mut DeviceManager, _now_ms: u32) {
             self.log.borrow_mut().push(self.name);
         }
 
-        fn intent(&mut self, _frame: &mut Frame<'_>) {
+        fn intent(&mut self, _manager: &DeviceManager) {
             self.log.borrow_mut().push(self.name);
         }
     }
@@ -165,15 +168,8 @@ mod tests {
 
         let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
         let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
-        {
-            let mut frame = Frame {
-                bus: &bus,
-                manager: &mut manager,
-                now_ms: 0,
-            };
-            schedule.process_intents(&mut frame);
-            schedule.tick(&mut frame);
-        }
+        schedule.process_intents(&bus, &mut manager);
+        schedule.tick(&mut manager, 0);
 
         assert_eq!(
             &*log.borrow(),
@@ -183,6 +179,41 @@ mod tests {
                 "first", "second", // the frame's tick
             ]
         );
+    }
+
+    #[test]
+    fn a_reaction_sees_the_state_its_intent_wrote() {
+        let bus = IntentBus::new();
+        let mut manager = manager();
+        let before = manager.state_ref().lights[0];
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let mut schedule = Schedule::new();
+        schedule.register(LightWatcher {
+            seen: Rc::clone(&seen),
+        });
+
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Light {
+            instance: 0,
+            action: LightAction::Cycle,
+        }));
+        schedule.process_intents(&bus, &mut manager);
+
+        let after = manager.state_ref().lights[0];
+        assert_ne!(after, before);
+        assert_eq!(&*seen.borrow(), &[after]);
+    }
+
+    #[derive(Clone)]
+    struct LightWatcher {
+        seen: Rc<RefCell<Vec<LightState>>>,
+    }
+
+    impl System for LightWatcher {
+        fn tick(&mut self, _manager: &mut DeviceManager, _now_ms: u32) {}
+
+        fn intent(&mut self, manager: &DeviceManager) {
+            self.seen.borrow_mut().push(manager.state_ref().lights[0]);
+        }
     }
 
     #[test]
@@ -201,14 +232,7 @@ mod tests {
         ))));
         let _ = bus.try_send(leave());
         let _ = bus.try_send(leave());
-        {
-            let mut frame = Frame {
-                bus: &bus,
-                manager: &mut manager,
-                now_ms: 0,
-            };
-            schedule.process_intents(&mut frame);
-        }
+        schedule.process_intents(&bus, &mut manager);
 
         assert_eq!(NETWORK.commands.try_receive(), Some(NetworkCommand::Leave));
         assert_eq!(NETWORK.commands.try_receive(), Some(NetworkCommand::Leave));
@@ -228,11 +252,6 @@ mod tests {
         let mut schedule = Schedule::new();
 
         let _ = bus.try_send(scan());
-        let mut frame = Frame {
-            bus: &bus,
-            manager: &mut manager,
-            now_ms: 0,
-        };
-        schedule.process_intents(&mut frame);
+        schedule.process_intents(&bus, &mut manager);
     }
 }

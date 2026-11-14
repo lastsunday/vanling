@@ -1,7 +1,8 @@
 //! The demand the page declares, into the slot the input worker and the feed interrupt read.
 
-use crate::runtime::system::{Frame, System};
+use crate::runtime::system::System;
 use crate::runtime::workers::Input;
+use crate::state::DeviceManager;
 
 pub(crate) struct DemandSystem<'a> {
     input: Input<'a>,
@@ -14,7 +15,7 @@ impl<'a> DemandSystem<'a> {
 }
 
 impl System for DemandSystem<'_> {
-    fn tick(&mut self, frame: &mut Frame<'_>) {
-        self.input.publish(frame.manager.demand());
+    fn tick(&mut self, manager: &mut DeviceManager, _now_ms: u32) {
+        self.input.publish(manager.demand());
     }
 }
